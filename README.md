@@ -78,15 +78,16 @@ BrassClaw is built on a simple principle: **your AI assistant should work for yo
 The deploy script installs vLLM, builds BrassClaw, and registers both as systemd services in one command:
 
 ```bash
+cd /opt
 git clone https://github.com/chtugha/brassclaw.git
 cd brassclaw
-sudo bash deploy/dietpi-setup.sh
+VLLM_HOST=192.168.10.223 VLLM_PORT=8000 sudo bash deploy/dietpi-setup.sh
 ```
 
 Point to a remote GPU server instead of installing vLLM locally:
 
 ```bash
-VLLM_HOST=192.168.1.50 VLLM_PORT=8000 sudo bash deploy/dietpi-setup.sh
+VLLM_HOST=192.168.10.223 VLLM_PORT=8000 sudo bash deploy/dietpi-setup.sh
 ```
 
 ### Option B: Build from source
@@ -94,6 +95,7 @@ VLLM_HOST=192.168.1.50 VLLM_PORT=8000 sudo bash deploy/dietpi-setup.sh
 Requires [Rust 1.92+](https://rustup.rs).
 
 ```bash
+cd /opt
 git clone https://github.com/chtugha/brassclaw.git
 cd brassclaw
 cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn --features webui-v2-beta
