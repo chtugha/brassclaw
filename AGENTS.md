@@ -2,96 +2,141 @@
 
 ## Purpose and Precedence
 
-- `AGENTS.md` is the quick-start contract for coding agents. It is not the full architecture spec.
-- Read the relevant subsystem spec before changing a complex area. When a repo spec exists, treat it as authoritative.
+`AGENTS.md` is the quick-start routing map for AI coding agents entering the codebase. It is not the full architecture spec. Read the relevant subsystem spec before changing a complex area. When a crate spec exists, treat it as authoritative.
+
 Start with these deeper docs as needed:
+
 - `CLAUDE.md`
+- `crates/brassclaw_reborn_cli/AGENTS.md`
+- `crates/brassclaw_reborn/CLAUDE.md`
+- `crates/brassclaw_reborn_composition/CLAUDE.md`
+- `crates/brassclaw_reborn_config/CLAUDE.md`
+- `crates/brassclaw_agent_loop/CLAUDE.md`
+- `crates/brassclaw_llm/CLAUDE.md`
+- `crates/brassclaw_safety/CLAUDE.md`
+- `crates/brassclaw_reborn_webui_ingress/CLAUDE.md`
 - `src/agent/CLAUDE.md`
 - `src/channels/web/CLAUDE.md`
 - `src/db/CLAUDE.md`
-- `crates/brassclaw_llm/CLAUDE.md`
-- `src/setup/README.md`
 - `src/tools/README.md`
 - `src/workspace/README.md`
-- `src/NETWORK_SECURITY.md`
 - `tests/e2e/CLAUDE.md`
 
 ## Architecture Mental Model
 
-- Channels normalize external input into `IncomingMessage`; `ChannelManager` merges all active channel streams.
-- `Agent` owns session/thread/turn handling, submission parsing, the LLM/tool loop, approvals, routines, and background runtime behavior.
-- `AppBuilder` is the composition root that wires database, secrets, LLMs, tools, workspace, extensions, skills, hooks, and cost controls before the agent starts.
-- The web gateway is a browser-facing API/UI layered on top of the same agent/session/tool systems, not a separate product path.
+BrassClaw Reborn is organized in three conceptual layers:
+
+- **Products** own UX and surface-level composition. They wire together loops, capabilities, and host access for a specific deployment shape (CLI, web, daemon). Products do not implement agent logic directly.
+- **Loops** own agent behavior. They manage planning, tool dispatch, turn sequencing, approval gates, checkpointing, retries, and completion. A loop is the unit of agentic execution. Product code must not implement a second loop or bypass the loop runner.
+- **Kernel** owns authority. It controls trust decisions, secret resolution, safety policy enforcement, sandboxing, capability grants, and session identity. Kernel boundaries are not negotiable from product or loop code.
+
+The legacy v1 runtime in `src/` follows a different model (Channel/Agent/AppBuilder). Do not mix the two models. New Reborn work belongs in `crates/`.
 
 ## Where to Work
 
-- Agent/runtime behavior: `src/agent/`
-- Web gateway/API/SSE/WebSocket: `src/channels/web/`
-- Persistence and DB abstractions: `src/db/`
-- Setup/onboarding/configuration flow: `src/setup/`
-- LLM providers and routing: `crates/brassclaw_llm/`
-- Workspace, memory, embeddings, search: `src/workspace/`
-- Extensions, tools, channels, MCP, WASM: `src/extensions/`, `src/tools/`, `src/channels/`
+| Area | Location |
+|------|----------|
+| brassclaw-reborn CLI binary | `crates/brassclaw_reborn_cli/` |
+| Reborn runtime and driver registry | `crates/brassclaw_reborn/` |
+| Composition and wiring | `crates/brassclaw_reborn_composition/` |
+| Config resolution and profiles | `crates/brassclaw_reborn_config/` |
+| Agent loop driver | `crates/brassclaw_agent_loop/` |
+| LLM providers and routing | `crates/brassclaw_llm/` |
+| Skills system | `crates/brassclaw_skills/`, `skills/` |
+| Security, safety, prompt injection | `crates/brassclaw_safety/` |
+| WASM sandbox and tool runtime | `crates/brassclaw_wasm/` |
+| WebUI v2 server (React SPA) | `crates/brassclaw_webui_v2/`, `crates/brassclaw_webui_v2_static/` |
+| WebUI ingress / gateway adapter | `crates/brassclaw_reborn_webui_ingress/` |
+| Extensions lifecycle | `crates/brassclaw_extensions/` |
+| Host runtime shell access | `crates/brassclaw_host_runtime/` |
+| Embeddings | `crates/brassclaw_embeddings/` |
+| Dual-backend persistence | `src/db/` |
+| Legacy v1 agent runtime | `src/agent/` — do not modify unless the task explicitly targets v1 |
+| Legacy v1 web gateway | `src/channels/web/` — do not modify unless the task explicitly targets v1 |
 
-## Ownership and Composition Rules
+When a task touches only `crates/` and makes no reference to v1 behavior, do not open or edit files under `src/`.
 
-- Keep `src/main.rs` and `src/app.rs` orchestration-focused. Do not move module-owned logic into entrypoints.
-- Module-specific initialization should live in the owning module behind a public factory/helper, not be reimplemented ad hoc.
-- Keep feature-flag branching inside the module that owns the abstraction whenever possible.
-- Prefer extending existing traits and registries over hardcoding one-off integration paths.
-- Subagent spawn creates and wires child runs only. It must not implement a second agent loop: child planning, execution, capability calls, checkpointing, gates, retries, and completion must go through the existing Reborn runner/driver/executor path.
-- Host-trusted trigger ingress is sealed by trigger-worker-owned request minting plus private conversation-owned trusted inbound construction. Product adapters, product workflow, first-party capabilities, and host-runtime handlers must use untrusted inbound requests and must not mint `TrustedInboundTurnRequest` or call trusted trigger submitter factories.
+## Subagent and Loop Rules
+
+- Subagent spawn creates and wires child runs only. It must not implement a second agent loop.
+- Child planning, execution, capability calls, checkpointing, gates, retries, and completion must go through the existing loop runner/driver/executor path.
+- Host-trusted trigger ingress is sealed by trigger-worker-owned request minting plus private conversation-owned trusted inbound construction.
+- Product adapters, product workflow, first-party capabilities, and host-runtime handlers must use untrusted inbound requests and must not mint `TrustedInboundTurnRequest` or call trusted trigger submitter factories.
 
 ## Repo-Wide Coding Rules
 
-- Avoid `.unwrap()` and `.expect()` in production; prefer proper error handling. They are fine in tests, and in production only for truly infallible invariants (e.g., literals/regexes) with a safety comment.
-- Keep clippy clean with zero warnings.
-- Prefer `crate::` imports for cross-module references.
+- No `.unwrap()` or `.expect()` in production code. They are acceptable in tests and for truly infallible invariants (e.g., compiled-in literals, regexes) with a safety comment.
+- Keep clippy clean with zero warnings: `cargo clippy --all --benches --tests --examples --all-features -- -D warnings`.
+- Prefer `crate::` for cross-module imports. `super::` is fine in tests and intra-module refs.
 - Use strong types and enums over stringly-typed control flow when the shape is known.
+- Use `thiserror` for error types in `error.rs`. Map errors with context: `.map_err(|e| SomeError::Variant { reason: e.to_string() })?`.
+- No `pub use` re-exports unless exposing to downstream consumers.
+- Comments for non-obvious logic only.
+- Multi-line prompt strings go in `crates/brassclaw_engine/prompts/*.md` and are loaded via `include_str!()`. Never inline large prompt templates as Rust string constants.
+- `info!` and `warn!` output appears in the REPL and corrupts the terminal UI. Use `debug!` for internal diagnostics. Background tasks must never use `info!`.
 
-## Database, Setup, and Config Rules
+## Database Rules
 
 - New persistence behavior must support both PostgreSQL and libSQL.
 - Add new DB operations to the shared DB trait first, then implement both backends.
-- Treat bootstrap config, DB-backed settings, and encrypted secrets as distinct layers; do not collapse them casually.
-- If onboarding or setup behavior changes, update `src/setup/README.md` in the same branch.
+- Treat bootstrap config, DB-backed settings, and encrypted secrets as distinct layers; do not collapse them.
 - Do not break config precedence, bootstrap env loading, DB-backed config reload, or post-secrets LLM re-resolution.
 
-## Security and Runtime Invariants
+## Security Invariants
 
 - Review any change touching listeners, routes, auth, secrets, sandboxing, approvals, or outbound HTTP with a security mindset.
 - Do not weaken bearer-token auth, webhook auth, CORS/origin checks, body limits, rate limits, allowlists, or secret-handling guarantees.
 - Treat Docker containers and external services as untrusted.
-- Session/thread/turn state matters. Submission parsing happens before normal chat handling.
-- Skills are selected deterministically. Tool approval and auth flows are special paths and must not be mixed into normal chat history carelessly.
-- Persistent memory is the workspace system, not just transcript storage; preserve file-like semantics, chunking/search behavior, and identity/system-prompt loading.
+- Session, thread, and turn state matters. Submission parsing happens before normal chat handling.
+- Skills are selected deterministically. Tool approval and auth flows are special paths and must not be mixed into normal chat history.
+- Persistent memory is the workspace system, not just transcript storage.
 
-## Tools, Channels, and Extensions
+## Testing Rules
 
-- Use a built-in Rust tool for core internal capabilities tightly coupled to the runtime.
-- Use WASM tools or WASM channels for sandboxed extensions and plugin-style integrations.
-- Use MCP for external server integrations when the capability belongs outside the main binary.
-- Preserve extension lifecycle expectations: install, authenticate/configure, activate, remove.
+- Add the narrowest tests that validate the change: unit tests for local logic, integration tests for runtime/DB/routing behavior, E2E or trace coverage for gateway, approvals, extensions, or other user-visible flows.
+- Test through the caller, not just the helper. When a predicate/classifier/transform helper gates a side effect (HTTP, DB write, OAuth flow, UI mutation, tool execution) and has any wrapper or computed input between it and that side effect, a unit test on the helper alone is not sufficient regression coverage. Add a test that drives the actual call site at the integration tier or higher.
+- Mocks of multi-arg runtime APIs must capture every argument the production caller passes.
 
-## Docs, Parity, and Testing
+## Key Environment Variables
 
-- If behavior changes, update the relevant docs/specs in the same branch.
-- If you change implementation status for any feature tracked in `FEATURE_PARITY.md`, update that file in the same branch.
-- Do not open a PR that changes feature behavior without checking `FEATURE_PARITY.md` for needed status updates (`❌`, `🚧`, `✅`, notes, and priorities).
-- Add the narrowest tests that validate the change: unit tests for local logic, integration tests for runtime/DB/routing behavior, and E2E or trace coverage for gateway, approvals, extensions, or other user-visible flows.
-- **Test through the caller, not just the helper.** When a predicate/classifier/transform helper gates a side effect (HTTP, DB write, OAuth flow, UI mutation, tool execution) and has any wrapper or computed input between it and that side effect, a unit test on the helper alone is not sufficient regression coverage. Add a test that drives the actual call site (`*_handler`, `factory::create_*`, `manager::*`) at the integration tier or higher. Mocks of multi-arg runtime APIs must capture every argument the production caller passes. See `.claude/rules/testing.md` for the full rule and bug examples.
+| Variable | Purpose |
+|----------|---------|
+| `BRASSCLAW_REBORN_HOME` | Reborn state root (default: `~/.brassclaw/reborn`) |
+| `BRASSCLAW_REBORN_PROFILE` | Boot profile: `local-dev`, `local-dev-yolo`, `production`, `migration-dry-run` |
+| `BRASSCLAW_REBORN_LOG` | Log filter for Reborn runtime (e.g., `brassclaw=debug`) |
+| `LLM_BACKEND` | LLM provider: `openai`, `anthropic`, `ollama`, `nearai`, `bedrock`, `openai_compatible`, `tinfoil` |
+| `LLM_BASE_URL` | Base URL for the LLM endpoint |
+| `LLM_MODEL` | Model name/ID to use |
+| `LLM_API_KEY` | API key for the LLM provider |
 
-## Risk and Change Discipline
+## Build and Test
 
-- Keep changes scoped; avoid broad refactors unless the task truly requires them.
-- Security, database schema, runtime, worker, CI, and secrets changes are high-risk. Call out rollback risks, compatibility concerns, and hidden side effects.
-- Preserve existing defaults unless the task explicitly changes them.
-- Avoid unrelated file churn and generated-file edits unless required.
-- Respect a dirty worktree and never revert user changes you did not make.
+```bash
+# Build the Reborn binary with WebUI v2
+cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn --features webui-v2-beta
+
+# Format
+cargo fmt
+
+# Lint a specific crate (zero warnings)
+cargo clippy -p <crate_name> --all-targets -- -D warnings
+
+# Lint everything
+cargo clippy --all --benches --tests --examples --all-features -- -D warnings
+
+# Unit tests for a specific crate
+cargo test -p <crate_name>
+
+# All unit tests
+cargo test
+
+# Integration tests (requires PostgreSQL)
+cargo test --features integration
+```
 
 ## Before Finishing
 
 - Confirm whether behavior changes require updates to `FEATURE_PARITY.md`, specs, API docs, or `CHANGELOG.md`.
-- Run the most targeted tests/checks that cover the change.
+- Run the most targeted tests and clippy checks that cover the change.
 - Re-check security-sensitive paths when touching auth, secrets, network listeners, sandboxing, or approvals.
-- Keep the final diff scoped to the task.
+- Keep the final diff scoped to the task. Avoid unrelated file churn.

@@ -1,7 +1,7 @@
 # Reborn Agent Architecture
 
 This document maps the Reborn agent architecture as implemented in the `crates/`
-workspace on `reborn-integration`. It focuses on the crates-level shape: how a
+workspace on `main`. It focuses on the crates-level shape: how a
 user turn enters Reborn, how a runner executes it, how model and capability work
 flow through host ports, and where each component is allowed to depend.
 

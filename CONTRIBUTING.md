@@ -49,17 +49,20 @@ Refactor-only PRs are not accepted from contributors outside the core team. If a
 ## Development Workflow
 
 ```bash
-cargo fmt                                                    # format
-cargo clippy --all --benches --tests --examples --all-features  # lint (zero warnings)
-cargo test                                                   # unit tests
-cargo test --features integration                            # + PostgreSQL tests
+cargo fmt                                                              # format
+cargo clippy --all --benches --tests --examples --all-features         # lint (zero warnings)
+cargo test                                                             # unit tests
+cargo test --features integration                                      # + PostgreSQL tests
+
+# Build the Reborn binary
+cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn --features webui-v2-beta
 ```
 
 These commands are for day-to-day iteration while you are developing locally. The pre-submission checks below are intentionally stricter and use CI-style flags so you can catch formatting drift and clippy warnings before requesting review.
 
 ## Before You Open a PR
 
-Run the local validation checks required before requesting a review. These are stricter than the commands for iterative development:
+Run the local validation checks required before requesting a review:
 
 ```bash
 cargo fmt --all -- --check
@@ -81,8 +84,6 @@ Before asking for review:
 - Fill out the PR template with a clear summary, validation notes, and impact assessment
 - If your change affects tracked behavior, update `FEATURE_PARITY.md` in the same branch
 - If onboarding or setup behavior changes, update the relevant setup docs in the same branch
-- If you are using a coding agent and it supports them, run `review-pr` or `pr-shepherd --fix` before opening or updating the PR
-- `codex review --base origin/main` is also encouraged before requesting review
 
 ## Review Follow-Through
 
@@ -100,9 +101,33 @@ If a PR is stale for more than 48 hours after review feedback is posted, maintai
 - No `.unwrap()` or `.expect()` in production code (tests are fine)
 - Use `thiserror` for error types, map errors with context
 - Prefer `crate::` for cross-module imports
+- No `pub use` re-exports unless exposing to downstream consumers
+- Use strong types and enums over stringly-typed control flow
 - Comments for non-obvious logic only
 
 See `CLAUDE.md` for full style guidelines.
+
+## Architecture Boundaries
+
+The codebase has two distinct runtimes:
+
+- **Reborn** (`crates/`): the new architecture. New features and Reborn-owned surfaces belong here.
+- **v1** (`src/`): the legacy runtime. Do not modify v1 files unless your task explicitly targets v1 behavior.
+
+Do not mix patterns between the two runtimes. See `CLAUDE.md` for the four-layer Reborn model.
+
+## Database Changes
+
+BrassClaw uses dual-backend persistence (PostgreSQL + libSQL). All new persistence features must support both backends.
+
+- Add new DB operations to the shared `Database` trait first, then implement both backends.
+- Do not collapse bootstrap config, DB-backed settings, and encrypted secrets into each other.
+
+See `src/db/CLAUDE.md` and `.claude/rules/database.md`.
+
+## Adding Dependencies
+
+Run `cargo deny check` before adding new dependencies to verify license compatibility and check for known advisories.
 
 ## Feature Parity Requirement
 
@@ -122,44 +147,34 @@ All PRs follow a risk-based review process:
 |-------|-------|-------------|
 | **A** | Docs, tests, chore, dependency bumps | 1 approval + CI green |
 | **B** | Features, maintainer-requested refactors, new tools/channels | 1 approval + CI green + test evidence |
-| **C** | Security (`src/safety/`, `src/secrets/`), runtime (`src/agent/`, `src/worker/`), database schema, CI workflows | 2 approvals + rollback plan documented |
+| **C** | Security (`crates/brassclaw_safety/`, `src/secrets/`), runtime (`crates/brassclaw_reborn/`, `src/agent/`, `src/worker/`), database schema, CI workflows | 2 approvals + rollback plan documented |
 
 Select the appropriate track in the PR template based on what your changes touch.
 
-## Database Changes
+## Skills Documentation
 
-BrassClaw uses dual-backend persistence (PostgreSQL + libSQL). All new persistence features must support both backends. See `src/db/CLAUDE.md`.
+SKILL.md files extend the agent's prompt with domain-specific instructions. When contributing a new skill or modifying an existing one:
 
-## Adding Dependencies
+- Trusted skills live in `~/.brassclaw/skills/` or the workspace `skills/` directory.
+- Installed skills come from the registry and are subject to read-only tool attenuation.
+- Skills are selected by a scoring pipeline: gating -> scoring -> budget (2,048 tokens) -> attenuation.
+- Read `.claude/rules/skills.md` before authoring a new skill.
 
-Run `cargo deny check` before adding new dependencies to verify license compatibility and check for known advisories.
+## Documenting Your Changes
 
-## Document your Changes
+- The `docs/` folder contains user-facing documentation built with Mintlify.
+- For features, update the relevant capability doc in `docs/capabilities/`.
+- For channels, update the relevant channel doc in `docs/channels/`.
+- For extensions and tools, update `docs/extensions/`.
+- Internal reference documentation goes in `docs/internal/`.
+- Plans and design records go in `docs/plans/`.
 
-- The folder `/docs` contains user-facing documentation for technical savvy users, developers and operators. It is built with Mintlify and rendered on the website.
-- For features, update the relevant capability doc in `docs/capabilities/`
-- For channels, update the relevant channel doc in `docs/channels/`
-- For extensions / tools, update the relevant doc in `docs/extensions/`
-- Core features live in `docs/capabilities`
-
-In case you want to document the library itself (i.e. reference documentation) for other core contributors, use the `docs/internal/` folder
-
-If you use your Claude Code to "plan" and want to leave a record of it, use the `docs/plans` folder.
-
-### Skills
-Read the `.claude/skills/mintlify-docs` for guidelines on how to generate documentation with mintlify.
-
-### Test the Docs
-To make sure the documentation still works, do:
+### Testing Documentation
 
 ```bash
 cd docs
-mint dev
+mint dev           # preview
+mint broken-links  # check internal links
 ```
 
-To make sure you did not break any internal links, do:
-
-```bash
-cd docs
-mint broken-links
-```
+Read `.claude/skills/mintlify-docs` for Mintlify authoring guidelines.

@@ -1,6 +1,6 @@
 # BrassClaw Crates Map
 
-Instructions for AI coding assistants entering `crates/` on `reborn-integration`.
+Instructions for AI coding assistants entering `crates/` on `main`.
 
 This file is a routing map, not a full architecture spec. Pick the crate(s) that match the change, then read crate-local guidance before editing:
 
@@ -13,7 +13,7 @@ Do **not** eagerly load every crate guide. Use this map to choose.
 
 ## Branch and Workspace
 
-This map was refreshed from `reborn-integration` after inspecting the workspace crate manifests, source layout, tests, and crate-local docs. Most crates have a crate-local `AGENTS.md`; when one is missing, load `CLAUDE.md`, `Cargo.toml`, and `src/lib.rs` instead.
+This map was refreshed from `main` after inspecting the workspace crate manifests, source layout, tests, and crate-local docs. Most crates have a crate-local `AGENTS.md`; when one is missing, load `CLAUDE.md`, `Cargo.toml`, and `src/lib.rs` instead.
 
 Run crate work from repo root unless crate-local docs say otherwise.
 
