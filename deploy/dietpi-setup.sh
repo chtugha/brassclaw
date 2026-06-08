@@ -49,36 +49,16 @@ fi
 rustup update stable
 echo "  Done."
 
-if [ "$VLLM_HOST" = "localhost" ] || [ "$VLLM_HOST" = "127.0.0.1" ]; then
-    echo "[4/7] Installing vLLM (local mode)..."
-    pip3 install --upgrade pip
-    pip3 install vllm
-    echo "  Done."
 
-    echo "[5/7] Setting up vLLM systemd service..."
-    cp "$(dirname "$0")/vllm.service" /etc/systemd/system/vllm.service
-    systemctl daemon-reload
-    systemctl enable vllm
-    systemctl start vllm
-    echo "  Waiting for vLLM to become ready..."
-    for i in $(seq 1 60); do
-        if curl -s http://localhost:${VLLM_PORT}/health >/dev/null 2>&1; then
-            echo "  vLLM is ready."
-            break
-        fi
-        sleep 5
-    done
-    echo "  Done."
+echo "[4/7] Skipping local vLLM install (using remote: ${VLLM_HOST}:${VLLM_PORT})..."
+echo "[5/7] Verifying remote vLLM connectivity..."
+if curl -s --connect-timeout 5 "http://${VLLM_HOST}:${VLLM_PORT}/v1/models" >/dev/null 2>&1; then
+    echo "  Remote vLLM is reachable."
 else
-    echo "[4/7] Skipping local vLLM install (using remote: ${VLLM_HOST}:${VLLM_PORT})..."
-    echo "[5/7] Verifying remote vLLM connectivity..."
-    if curl -s --connect-timeout 5 "http://${VLLM_HOST}:${VLLM_PORT}/v1/models" >/dev/null 2>&1; then
-        echo "  Remote vLLM is reachable."
-    else
-        echo "  WARNING: Cannot reach vLLM at ${VLLM_HOST}:${VLLM_PORT}. Ensure it is running."
-    fi
-    echo "  Done."
+    echo "  WARNING: Cannot reach vLLM at ${VLLM_HOST}:${VLLM_PORT}. Ensure it is running."
 fi
+echo "  Done."
+
 
 echo "[6/7] Cloning and building BrassClaw..."
 rm -rf "$BRASSCLAW_DIR"
