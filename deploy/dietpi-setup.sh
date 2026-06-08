@@ -68,6 +68,8 @@ echo "[6/7] Cloning and building BrassClaw..."
 #git clone "$BRASSCLAW_REPO" "$BRASSCLAW_DIR"
 cd "$BRASSCLAW_DIR"
 git pull
+cargo install sccache
+export RUSTC_WRAPPER=sccache
 cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn
 ln -sf "$BRASSCLAW_DIR/target/release/brassclaw-reborn" /usr/local/bin/brassclaw-reborn
 echo "  Done."
