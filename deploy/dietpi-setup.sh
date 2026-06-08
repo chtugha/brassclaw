@@ -63,7 +63,7 @@ echo "  Done."
 
 
 echo "[6/7] Cloning and building BrassClaw..."
-cd opt
+cd /opt
 rm -rf "$BRASSCLAW_DIR"
 git clone "$BRASSCLAW_REPO" "$BRASSCLAW_DIR"
 cd "$BRASSCLAW_DIR"
