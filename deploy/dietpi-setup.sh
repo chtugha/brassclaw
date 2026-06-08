@@ -4,8 +4,8 @@ set -euo pipefail
 BRASSCLAW_DIR="/opt/brassclaw"
 BRASSCLAW_REPO="https://github.com/chtugha/brassclaw.git"
 VLLM_MODEL="Qwen/Qwen2.5-7B-Instruct-AWQ"
-VLLM_HOST="${VLLM_HOST:-localhost}"
-VLLM_PORT="${VLLM_PORT:-8000}"
+#VLLM_HOST="${VLLM_HOST:-localhost}"
+#VLLM_PORT="${VLLM_PORT:-8000}"
 
 echo "=== BrassClaw DietPi Setup ==="
 echo "This script sets up BrassClaw on a DietPi system."
