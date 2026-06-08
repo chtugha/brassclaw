@@ -131,7 +131,7 @@ export function useProviderLogin({ onSuccess } = {}) {
     try {
       const channelName = walletLoginChannelName();
       const popup = window.open(
-        `/v2/wallet/connect?channel=${encodeURIComponent(channelName)}`,
+        `/wallet/connect?channel=${encodeURIComponent(channelName)}`,
         "_blank",
         "noopener,noreferrer,width=460,height=640"
       );

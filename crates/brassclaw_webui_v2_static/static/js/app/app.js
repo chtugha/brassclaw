@@ -32,7 +32,7 @@ function LoginPage({ auth }) {
   const from = fromLocation
     ? `${fromLocation.pathname || defaultRoute}${fromLocation.search || ""}${fromLocation.hash || ""}`
     : defaultRoute;
-  const redirectAfter = `/v2${from === "/" ? "" : from}`;
+  const redirectAfter = from === "/" ? "/" : from;
 
   const handleSubmit = React.useCallback(
     (token) => {
@@ -96,7 +96,7 @@ export function App() {
   const auth = useAuthSession();
 
   return html`
-    <${BrowserRouter} basename="/v2">
+    <${BrowserRouter} basename="/">
       <${Routes}>
         <${Route} path="/login" element=${html`<${LoginPage} auth=${auth} />`} />
         <${Route} path="/" element=${html`<${AuthenticatedLayout} auth=${auth} />`}>

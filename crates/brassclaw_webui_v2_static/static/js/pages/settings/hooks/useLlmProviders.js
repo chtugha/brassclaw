@@ -41,7 +41,7 @@ export function useLlmProviders({ settings: _settings, gatewayStatus }) {
     snapshot.active?.provider_id || gatewayStatus?.llm_backend
   );
   const activeProviderId =
-    snapshot.active?.provider_id || gatewayStatus?.llm_backend || "nearai";
+    snapshot.active?.provider_id || gatewayStatus?.llm_backend || "";
   const selectedModel = snapshot.active?.model || gatewayStatus?.llm_model || "";
   const builtinProviders = allProviders.filter((provider) => provider.builtin);
   const customProviders = allProviders.filter((provider) => !provider.builtin);

@@ -436,6 +436,13 @@ fn provider_info(
             .and_then(|selection| selection.model.clone())
             .unwrap_or_else(|| def.default_model.clone())
     });
+    let resolved_base_url = if active_for_provider {
+        active
+            .and_then(|s| s.base_url.clone())
+            .or_else(|| def.default_base_url.clone())
+    } else {
+        def.default_base_url.clone()
+    };
     RebornProviderInfo {
         id: def.id.clone(),
         description: def.description.clone(),
@@ -448,7 +455,7 @@ fn provider_info(
             model_env: def.model_env.clone(),
             api_key_env: def.api_key_env.clone(),
             api_key_required: def.api_key_required,
-            base_url: def.default_base_url.clone(),
+            base_url: resolved_base_url,
             credential_kind: def.setup.as_ref().map(|setup| setup.kind()),
             accepts_api_key: def.api_key_env.is_some()
                 || def

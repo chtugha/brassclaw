@@ -10,7 +10,7 @@ import { cn } from "../../utils/cn.js";
 import { OAuthProviderButtons } from "./components/oauth-provider-buttons.js";
 import { useOAuthProviders } from "./hooks/useOAuthProviders.js";
 
-export function LoginPage({ initialToken, error, oauthRedirectAfter = "/v2", onSubmit }) {
+export function LoginPage({ initialToken, error, oauthRedirectAfter = "/", onSubmit }) {
   const t = useT();
   const { theme, toggleTheme } = useInterfaceTheme();
   const oauthProviders = useOAuthProviders();

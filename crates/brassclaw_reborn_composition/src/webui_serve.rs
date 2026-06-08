@@ -683,7 +683,7 @@ pub fn webui_v2_app_with_lifecycle(
         // used because the factory already returns fully prefixed
         // routes — `nest` in axum 0.8 has quirky dispatch for the
         // exact prefix with/without trailing slash.
-        .merge(brassclaw_webui_v2_static::mount_at_prefix("/v2"))
+        .merge(brassclaw_webui_v2_static::static_router())
         // Outer global cap: applies to unmatched paths (e.g. 404 fallback)
         // as defense in depth. v2 routes are tighter via the per-route
         // body-limit middleware above.
