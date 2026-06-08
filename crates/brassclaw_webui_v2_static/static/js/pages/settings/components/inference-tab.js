@@ -7,6 +7,7 @@ import { filterSettingsSections, matchesSearch } from "../lib/settings-search.js
 import { ProviderManagement } from "./provider-management.js";
 import { SettingsGroup } from "./settings-field.js";
 import { SettingsSearchEmpty } from "./settings-search-empty.js";
+import { useLlmProviders } from "../hooks/useLlmProviders.js";
 
 export function InferenceTab({
   settings,
@@ -21,8 +22,9 @@ export function InferenceTab({
     return html`<${SettingsSkeleton} />`;
   }
 
-  const backend = settings.llm_backend || gatewayStatus?.llm_backend || "nearai";
-  const model = settings.selected_model || gatewayStatus?.llm_model || "";
+  const llm = useLlmProviders({ settings, gatewayStatus });
+  const backend = settings.llm_backend || llm.activeProviderId || gatewayStatus?.llm_backend || "";
+  const model = settings.selected_model || llm.selectedModel || gatewayStatus?.llm_model || "";
   const sections = filterSettingsSections(INFERENCE_FIELDS, settings, searchQuery, t);
   const showProviderSummary = matchesSearch(searchQuery, [
     t("inference.provider"),
@@ -57,8 +59,8 @@ export function InferenceTab({
           <div className="rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-4 py-3">
             <div className="text-xs text-[var(--v2-text-muted)]">${t("inference.backend")}</div>
             <div className="mt-1 flex items-center gap-2">
-              <span className="font-mono text-lg font-semibold text-[var(--v2-text-strong)]">${backend}</span>
-              <${Badge} tone="positive" label=${t("inference.active")} size="sm" />
+              <span className="font-mono text-lg font-semibold text-[var(--v2-text-strong)]">${backend || "—"}</span>
+              ${backend && html`<${Badge} tone="positive" label=${t("inference.active")} size="sm" />`}
             </div>
           </div>
           <div className="rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-4 py-3">
