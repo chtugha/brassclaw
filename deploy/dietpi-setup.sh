@@ -14,15 +14,25 @@ echo "vLLM endpoint: http://${VLLM_HOST}:${VLLM_PORT}/v1"
 echo "  Set VLLM_HOST / VLLM_PORT env vars to override (e.g. remote GPU server)."
 echo ""
 
-echo "[1/7] Removing old ironclaw remnants and Ollama..."
+echo "[1/7] Removing old ironclaw+brassclaw remnants and Ollama..."
 systemctl stop ironclaw 2>/dev/null || true
 systemctl disable ironclaw 2>/dev/null || true
 rm -f /etc/systemd/system/ironclaw.service
+rm -rf /etc/systemd/system/ironclaw.service.d
+systemctl stop brassclaw 2>/dev/null || true
+systemctl disable brassclaw 2>/dev/null || true
+rm -f /etc/systemd/system/brassclaw.service
+rm -rf /etc/systemd/system/brassclaw.service.d
 systemctl stop ollama 2>/dev/null || true
 systemctl disable ollama 2>/dev/null || true
 apt-get remove -y ollama 2>/dev/null || true
+rm -f /etc/systemd/system/ollama.service
+rm -rf /etc/systemd/system/ollama.service.d
 rm -rf /usr/local/bin/ollama /usr/share/ollama ~/.ollama
 rm -rf /opt/ironclaw ~/.ironclaw
+rm -rf /root/.ironclaw
+rm -rf /root/.brassclaw
+rm -rf /root/brassclaw-workspace
 systemctl daemon-reload
 echo "  Done."
 
@@ -90,7 +100,7 @@ api_key_env = "BRASSCLAW_VLLM_KEY"
 base_url = "http://${VLLM_HOST}:${VLLM_PORT}/v1"
 
 [boot]
-profile = "local-dev"
+profile = "local-dev-yolo"
 EOF
 
 if [ "$VLLM_HOST" = "localhost" ] || [ "$VLLM_HOST" = "127.0.0.1" ]; then
