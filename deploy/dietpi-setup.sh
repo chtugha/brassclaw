@@ -4,6 +4,8 @@ set -euo pipefail
 BRASSCLAW_DIR="/opt/brassclaw"
 BRASSCLAW_REPO="https://github.com/chtugha/brassclaw.git"
 VLLM_MODEL="Qwen/Qwen2.5-7B-Instruct-AWQ"
+export VLLM_HOST="${VLLM_HOST}"
+export VLLM_PORT="${VLLM_PORT}"
 #VLLM_HOST="${VLLM_HOST:-localhost}"
 #VLLM_PORT="${VLLM_PORT:-8000}"
 
@@ -61,6 +63,7 @@ echo "  Done."
 
 
 echo "[6/7] Cloning and building BrassClaw..."
+cd opt
 rm -rf "$BRASSCLAW_DIR"
 git clone "$BRASSCLAW_REPO" "$BRASSCLAW_DIR"
 cd "$BRASSCLAW_DIR"
@@ -102,11 +105,11 @@ ${VLLM_DEPS}
 Type=simple
 User=root
 WorkingDirectory=/root/brassclaw-workspace
-Environment=BRASSCLAW_REBORN_LOG=info
+Environment=BRASSCLAW_REBORN_LOG=debug
 Environment=BRASSCLAW_REBORN_WEBUI_TOKEN=${WEBUI_TOKEN}
 Environment=BRASSCLAW_REBORN_WEBUI_USER_ID=brassclaw-admin
 Environment=BRASSCLAW_REBORN_HOME=/root/.brassclaw/reborn
-Environment=BRASSCLAW_REBORN_PROFILE=local-dev
+Environment=BRASSCLAW_REBORN_PROFILE=local-dev-yolo
 Environment=LLM_BACKEND=openai_compatible
 Environment=LLM_BASE_URL=http://${VLLM_HOST}:${VLLM_PORT}/v1
 Environment=LLM_API_KEY=none
