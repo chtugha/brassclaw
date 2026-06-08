@@ -81,13 +81,21 @@ The deploy script installs vLLM, builds BrassClaw, and registers both as systemd
 cd /opt
 git clone https://github.com/chtugha/brassclaw.git
 cd brassclaw
-VLLM_HOST=192.168.10.223 VLLM_PORT=8000 sudo bash deploy/dietpi-setup.sh
+export VLLM_HOST=127.0.0.1
+export VLLM_PORT=8000
+sudo bash deploy/dietpi-setup.sh
 ```
 
 Point to a remote GPU server instead of installing vLLM locally:
 
+
 ```bash
-VLLM_HOST=192.168.10.223 VLLM_PORT=8000 sudo bash deploy/dietpi-setup.sh
+cd /opt
+git clone https://github.com/chtugha/brassclaw.git
+cd brassclaw
+export VLLM_HOST=192.168.10.223
+export VLLM_PORT=8000
+sudo bash deploy/dietpi-setup.sh
 ```
 
 ### Option B: Build from source
