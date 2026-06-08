@@ -9,14 +9,14 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    use ironclaw::channels::web::GatewayChannel;
-    use ironclaw::channels::web::auth::MultiAuthState;
-    use ironclaw::channels::web::platform::router::start_server;
-    use ironclaw::config::{Config, GatewayConfig};
-    use ironclaw::db::Database;
+    use brassclaw::channels::web::GatewayChannel;
+    use brassclaw::channels::web::auth::MultiAuthState;
+    use brassclaw::channels::web::platform::router::start_server;
+    use brassclaw::config::{Config, GatewayConfig};
+    use brassclaw::db::Database;
 
     async fn create_test_db() -> (Arc<dyn Database>, tempfile::TempDir) {
-        use ironclaw::db::libsql::LibSqlBackend;
+        use brassclaw::db::libsql::LibSqlBackend;
 
         let dir = tempfile::tempdir().expect("temp db dir");
         let path = dir.path().join("gateway-startup-test.db");

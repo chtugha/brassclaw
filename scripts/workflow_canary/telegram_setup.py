@@ -200,7 +200,7 @@ async def post_telegram_webhook(
     *,
     secret: str = WEBHOOK_SECRET,
 ) -> httpx.Response:
-    """POST a Telegram-shaped update to IronClaw's webhook endpoint."""
+    """POST a Telegram-shaped update to BrassClaw's webhook endpoint."""
     headers = {
         "Content-Type": "application/json",
         "X-Telegram-Bot-Api-Secret-Token": secret,

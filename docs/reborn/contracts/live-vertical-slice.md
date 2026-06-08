@@ -1,8 +1,8 @@
-# IronClaw Reborn live vertical slice
+# BrassClaw Reborn live vertical slice
 
 **Date:** 2026-04-25
 **Status:** Runnable V1 demo
-**Crates:** `ironclaw_filesystem`, `ironclaw_extensions`, `ironclaw_resources`, `ironclaw_events`, `ironclaw_dispatcher`, `ironclaw_host_runtime`, `ironclaw_scripts`
+**Crates:** `brassclaw_filesystem`, `brassclaw_extensions`, `brassclaw_resources`, `brassclaw_events`, `brassclaw_dispatcher`, `brassclaw_host_runtime`, `brassclaw_scripts`
 
 ---
 
@@ -30,7 +30,7 @@ It is intentionally not a product agent loop, gateway, TUI, secret flow, or full
 ## 2. Run it
 
 ```bash
-cargo run -p ironclaw_dispatcher --example reborn_echo
+cargo run -p brassclaw_dispatcher --example reborn_echo
 ```
 
 Expected output shape:
@@ -54,13 +54,13 @@ event[7]=runtime_selected capability=echo-mcp.say runtime=mcp error=none
 event[8]=dispatch_succeeded capability=echo-mcp.say runtime=mcp error=none
 ```
 
-The default dispatcher example uses in-crate echo adapters so `ironclaw_dispatcher` can demonstrate routing, resource lifecycle, and event emission without depending on concrete WASM, Script, or MCP runtime crates. Real runtime wiring now lives in `ironclaw_host_runtime`, whose examples use `HostRuntimeServices` to adapt configured runtimes into dispatcher adapters and then drive capability/process workflows without Docker by default.
+The default dispatcher example uses in-crate echo adapters so `brassclaw_dispatcher` can demonstrate routing, resource lifecycle, and event emission without depending on concrete WASM, Script, or MCP runtime crates. Real runtime wiring now lives in `brassclaw_host_runtime`, whose examples use `HostRuntimeServices` to adapt configured runtimes into dispatcher adapters and then drive capability/process workflows without Docker by default.
 
 ---
 
 ## 3. What this validates
 
-The integration test `crates/ironclaw_dispatcher/tests/vertical_slice_contract.rs` validates:
+The integration test `crates/brassclaw_dispatcher/tests/vertical_slice_contract.rs` validates:
 
 - extension manifests are read from `LocalFilesystem` via `/system/extensions`
 - extension discovery returns WASM, Script, and MCP packages

@@ -1,0 +1,28 @@
+[package]
+name = "brassclaw_wasm"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+brassclaw_host_api = { path = "../brassclaw_host_api" }
+brassclaw_wasm_limiter = { path = "../brassclaw_wasm_limiter" }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
+tracing = "0.1"
+wasmtime = { version = "44.0.2", features = ["component-model"] }
+wasmtime-wasi = "44.0.2"
+
+[dev-dependencies]
+async-trait = "0.1"
+brassclaw_dispatcher = { path = "../brassclaw_dispatcher" }
+brassclaw_events = { path = "../brassclaw_events" }
+brassclaw_extensions = { path = "../brassclaw_extensions" }
+brassclaw_filesystem = { path = "../brassclaw_filesystem" }
+brassclaw_resources = { path = "../brassclaw_resources" }
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
+wat = "1.245.1"
+wit-component = "0.245.1"
+wit-parser = "0.245.1"

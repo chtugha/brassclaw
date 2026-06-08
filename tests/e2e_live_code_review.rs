@@ -1,12 +1,12 @@
 //! Live/replay test for `/code-review owner/repo N`.
 //!
 //! Drives the `code-review` skill against a real (or replayed) pull
-//! request on `nearai/ironclaw` and verifies:
+//! request on `chtugha/brassclaw` and verifies:
 //!
 //! 1. The `code-review` skill actually activated from the `/code-review`
 //!    slash mention.
 //! 2. The agent fetched the *correct* PR via the GitHub API (the URL
-//!    contains `/repos/nearai/ironclaw/pulls/2483`, not some other PR).
+//!    contains `/repos/chtugha/brassclaw/pulls/2483`, not some other PR).
 //! 3. The response text references the PR the user asked about, so a
 //!    silent-substitution regression (agent reviews the wrong PR but
 //!    confidently answers) is caught.
@@ -20,12 +20,12 @@
 //!
 //! **Live mode** (real LLM + real GitHub API, records/updates fixture):
 //! ```bash
-//! IRONCLAW_LIVE_TEST=1 cargo test --features libsql \
+//! BRASSCLAW_LIVE_TEST=1 cargo test --features libsql \
 //!     --test e2e_live_code_review -- --ignored --test-threads=1 --nocapture
 //! ```
 //!
 //! Live mode requires a `github_token` secret in the developer's
-//! `~/.ironclaw/ironclaw.db` (read scope is enough; the PR is public).
+//! `~/.brassclaw/brassclaw.db` (read scope is enough; the PR is public).
 //! Replay mode does not need any credentials — the trace fixture carries
 //! the LLM side and the harness stubs HTTP interactions recorded in the
 //! fixture.
@@ -39,11 +39,11 @@ mod code_review_test {
     use std::time::Duration;
 
     use crate::support::live_harness::{LiveTestHarness, LiveTestHarnessBuilder};
-    use ironclaw::channels::StatusUpdate;
+    use brassclaw::channels::StatusUpdate;
 
     const TEST_NAME: &str = "code_review_pr_2483";
     const REPO_OWNER: &str = "nearai";
-    const REPO_NAME: &str = "ironclaw";
+    const REPO_NAME: &str = "brassclaw";
     const PR_NUMBER: u64 = 2483;
 
     fn repo_skills_dir() -> PathBuf {
@@ -97,7 +97,7 @@ mod code_review_test {
     /// always run (and the fixture gets recorded).
     fn should_run_test(test_name: &str) -> bool {
         if trace_fixture_path(test_name).exists()
-            || std::env::var("IRONCLAW_LIVE_TEST")
+            || std::env::var("BRASSCLAW_LIVE_TEST")
                 .ok()
                 .filter(|v| !v.is_empty() && v != "0")
                 .is_some()
@@ -166,9 +166,9 @@ mod code_review_test {
         eprintln!("───── end activity ─────");
     }
 
-    /// End-to-end: `/code-review nearai/ironclaw 2483` must (a) activate
+    /// End-to-end: `/code-review chtugha/brassclaw 2483` must (a) activate
     /// the `code-review` skill, (b) hit
-    /// `api.github.com/repos/nearai/ironclaw/pulls/2483`, and (c)
+    /// `api.github.com/repos/chtugha/brassclaw/pulls/2483`, and (c)
     /// produce a response naming the PR it reviewed.
     #[tokio::test]
     #[ignore] // Live tier: requires LLM API keys or a recorded trace fixture
@@ -268,7 +268,7 @@ mod code_review_test {
             "Response should reference PR #{PR_NUMBER}; got: {}",
             joined.chars().take(400).collect::<String>()
         );
-        let names_repo = lower.contains("nearai/ironclaw") || lower.contains("ironclaw");
+        let names_repo = lower.contains("chtugha/brassclaw") || lower.contains("brassclaw");
         assert!(
             names_repo,
             "Response should name the repo that was reviewed; got: {}",

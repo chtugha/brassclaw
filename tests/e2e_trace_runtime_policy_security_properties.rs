@@ -10,8 +10,8 @@
 //!
 //! Planner defense-in-depth (refusing `SpawnProcess`/`Network`/`UseSecret`
 //! against disabling policies) is covered by the substrate's
-//! `crates/ironclaw_host_runtime/src/planner.rs` unit tests and the
-//! `crates/ironclaw_host_runtime/tests/runtime_policy_planner_contract.rs`
+//! `crates/brassclaw_host_runtime/src/planner.rs` unit tests and the
+//! `crates/brassclaw_host_runtime/tests/runtime_policy_planner_contract.rs`
 //! integration tests — not duplicated here.
 
 use std::sync::Arc;
@@ -20,19 +20,19 @@ use std::time::Duration;
 use async_trait::async_trait;
 use rust_decimal::Decimal;
 
-use ironclaw::context::JobContext;
-use ironclaw::tools::builtin::{
+use brassclaw::context::JobContext;
+use brassclaw::tools::builtin::{
     ApplyPatchTool, HttpTool, ListDirTool, ReadFileTool, WriteFileTool,
 };
-use ironclaw::tools::{
+use brassclaw::tools::{
     ApprovalRequirement, EngineCompatibility, RiskLevel, Tool, ToolDomain, ToolError, ToolOutput,
     ToolRegistry, ToolRuntimeAffordance,
 };
-use ironclaw_host_api::runtime_policy::{
+use brassclaw_host_api::runtime_policy::{
     DeploymentMode, EffectiveRuntimePolicy, FilesystemBackendKind, NetworkMode, ProcessBackendKind,
     RuntimeProfile,
 };
-use ironclaw_runtime_policy::{OrgPolicyConstraints, ResolveRequest, resolve};
+use brassclaw_runtime_policy::{OrgPolicyConstraints, ResolveRequest, resolve};
 
 // ---------------------------------------------------------------------------
 // Helpers

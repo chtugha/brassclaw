@@ -1,18 +1,18 @@
 //! Adapters that bridge main-crate types into the trait surface
-//! `ironclaw_llm` exposes for session management.
+//! `brassclaw_llm` exposes for session management.
 //!
-//! `ironclaw_llm::SessionManager` owns NEAR-AI session-token lifecycle and
+//! `brassclaw_llm::SessionManager` owns NEAR-AI session-token lifecycle and
 //! authenticates API requests, but it deliberately does not depend on the
 //! main crate's `Database`, `SecretsStore`, `setup` UI, or `bootstrap` env
 //! file helpers. The adapters in this module wire those concrete impls into
-//! the LLM-side traits without forcing `ironclaw_llm` to know about them.
+//! the LLM-side traits without forcing `brassclaw_llm` to know about them.
 //!
-//! See `crates/ironclaw_llm/src/host.rs` for the trait definitions.
+//! See `crates/brassclaw_llm/src/host.rs` for the trait definitions.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use ironclaw_llm::host::{SessionDb, SessionKeyPersistor, SessionSecrets};
+use brassclaw_llm::host::{SessionDb, SessionKeyPersistor, SessionSecrets};
 use secrecy::SecretString;
 
 use crate::db::Database;

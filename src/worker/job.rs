@@ -30,12 +30,12 @@ use crate::worker::autonomous_recovery::{
     AutonomousRecoveryAction, AutonomousRecoveryState, EMPTY_TOOL_COMPLETION_FAILURE,
     EMPTY_TOOL_COMPLETION_NUDGE, FORCE_TEXT_RECOVERY_PROMPT,
 };
-use ironclaw_common::{AppEvent, JobResultStatus};
-use ironclaw_llm::{
+use brassclaw_common::{AppEvent, JobResultStatus};
+use brassclaw_llm::{
     ActionPlan, ChatMessage, LlmProvider, Reasoning, ReasoningContext, RespondResult,
     ResponseMetadata, ToolCall, ToolSelection,
 };
-use ironclaw_safety::SafetyLayer;
+use brassclaw_safety::SafetyLayer;
 
 /// Shared dependencies for worker execution.
 ///
@@ -58,7 +58,7 @@ pub struct WorkerDeps {
     /// are pre-approved for autonomous execution.
     pub approval_context: Option<ApprovalContext>,
     /// HTTP interceptor for trace recording/replay (propagated to JobContext).
-    pub http_interceptor: Option<Arc<dyn ironclaw_llm::recording::HttpInterceptor>>,
+    pub http_interceptor: Option<Arc<dyn brassclaw_llm::recording::HttpInterceptor>>,
     /// Whether the deployment is multi-tenant (used for admin tool policy filtering).
     pub multi_tenant: bool,
     /// Resolved runtime policy used to filter the model-facing tool list
@@ -70,7 +70,7 @@ pub struct WorkerDeps {
     /// iteration-2 gap on the dispatcher path. When `None` (tests, the
     /// bootstrap path before `Config::with_runtime_overrides` runs),
     /// the legacy unfiltered tool list is used.
-    pub runtime_policy: Option<ironclaw_host_api::runtime_policy::EffectiveRuntimePolicy>,
+    pub runtime_policy: Option<brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy>,
 }
 
 /// Worker that executes a single job.
@@ -347,7 +347,7 @@ Report when the job is complete or if you encounter issues you cannot resolve."#
             .ok()
             .and_then(|ctx| ctx.metadata.get("max_iterations").and_then(|v| v.as_u64()))
             .unwrap_or(50) as usize;
-        let max_iterations = max_iterations.min(ironclaw_common::MAX_WORKER_ITERATIONS as usize);
+        let max_iterations = max_iterations.min(brassclaw_common::MAX_WORKER_ITERATIONS as usize);
 
         // Initial tool definitions for planning (will be refreshed in loop).
         // Use the policy-filtered variant when a runtime policy is configured
@@ -1261,7 +1261,7 @@ impl<'a> JobDelegate<'a> {
         &self,
         retry_after: Option<Duration>,
         context: &str,
-    ) -> Result<ironclaw_llm::RespondOutput, crate::error::Error> {
+    ) -> Result<brassclaw_llm::RespondOutput, crate::error::Error> {
         use std::sync::atomic::Ordering::Relaxed;
 
         let count = self.consecutive_rate_limits.fetch_add(1, Relaxed) + 1;
@@ -1296,10 +1296,10 @@ impl<'a> JobDelegate<'a> {
         );
         tokio::time::sleep(wait).await;
 
-        Ok(ironclaw_llm::RespondOutput {
+        Ok(brassclaw_llm::RespondOutput {
             result: RespondResult::Text(String::new()),
-            usage: ironclaw_llm::TokenUsage::default(),
-            finish_reason: ironclaw_llm::FinishReason::Stop,
+            usage: brassclaw_llm::TokenUsage::default(),
+            finish_reason: brassclaw_llm::FinishReason::Stop,
             metadata: ResponseMetadata::default(),
         })
     }
@@ -1328,7 +1328,7 @@ impl<'a> JobDelegate<'a> {
         &self,
         context: &str,
         error: &crate::error::LlmError,
-    ) -> Option<ironclaw_llm::RespondOutput> {
+    ) -> Option<brassclaw_llm::RespondOutput> {
         if !is_completion_eligible_error(error) {
             return None;
         }
@@ -1344,10 +1344,10 @@ impl<'a> JobDelegate<'a> {
             "{context} empty response after text output — treating as completion"
         );
         self.mark_completed_or_warn(context).await;
-        Some(ironclaw_llm::RespondOutput {
+        Some(brassclaw_llm::RespondOutput {
             result: RespondResult::Text(String::new()),
-            usage: ironclaw_llm::TokenUsage::default(),
-            finish_reason: ironclaw_llm::FinishReason::Stop,
+            usage: brassclaw_llm::TokenUsage::default(),
+            finish_reason: brassclaw_llm::FinishReason::Stop,
             metadata: ResponseMetadata::default(),
         })
     }
@@ -1513,7 +1513,7 @@ impl<'a> LoopDelegate for JobDelegate<'a> {
         reasoning: &Reasoning,
         reason_ctx: &mut ReasoningContext,
         _iteration: usize,
-    ) -> Result<ironclaw_llm::RespondOutput, crate::error::Error> {
+    ) -> Result<brassclaw_llm::RespondOutput, crate::error::Error> {
         // Try select_tools first, fall back to respond_with_tools
         match reasoning.select_tools(reason_ctx).await {
             Ok(s) if !s.is_empty() => {
@@ -1526,14 +1526,14 @@ impl<'a> LoopDelegate for JobDelegate<'a> {
                     .iter()
                     .find_map(|sel| (!sel.reasoning.is_empty()).then_some(sel.reasoning.clone()));
                 let tool_calls: Vec<ToolCall> = selections_to_tool_calls(&s);
-                return Ok(ironclaw_llm::RespondOutput {
+                return Ok(brassclaw_llm::RespondOutput {
                     result: RespondResult::ToolCalls {
                         tool_calls,
                         content: reasoning_text,
                         reasoning: None,
                     },
-                    usage: ironclaw_llm::TokenUsage::default(),
-                    finish_reason: ironclaw_llm::FinishReason::ToolUse,
+                    usage: brassclaw_llm::TokenUsage::default(),
+                    finish_reason: brassclaw_llm::FinishReason::ToolUse,
                     metadata: ResponseMetadata::default(),
                 });
             }
@@ -1696,7 +1696,7 @@ impl<'a> LoopDelegate for JobDelegate<'a> {
 
     async fn execute_tool_calls(
         &self,
-        tool_calls: Vec<ironclaw_llm::ToolCall>,
+        tool_calls: Vec<brassclaw_llm::ToolCall>,
         content: Option<String>,
         reason_ctx: &mut ReasoningContext,
         reasoning: Option<String>,
@@ -1868,7 +1868,7 @@ mod tests {
     use std::sync::Arc;
 
     use crate::channels::ChannelManager;
-    use ironclaw_llm::ToolSelection;
+    use brassclaw_llm::ToolSelection;
 
     use super::*;
     use crate::config::SafetyConfig;
@@ -1876,11 +1876,11 @@ mod tests {
     use crate::testing::{BroadcastCapture, RecordingBroadcastChannel};
     use crate::tools::builtin::MessageTool;
     use crate::tools::{Tool, ToolError as ToolExecError, ToolOutput};
-    use ironclaw_llm::{
+    use brassclaw_llm::{
         CompletionRequest, CompletionResponse, LlmProvider, ToolCompletionRequest,
         ToolCompletionResponse,
     };
-    use ironclaw_safety::SafetyLayer;
+    use brassclaw_safety::SafetyLayer;
 
     /// A test tool that sleeps for a configurable duration before returning.
     struct SlowTool {

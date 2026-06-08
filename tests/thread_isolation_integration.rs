@@ -18,13 +18,13 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use ironclaw::agent::SessionManager;
-use ironclaw::channels::web::auth::{MultiAuthState, UserIdentity};
-use ironclaw::channels::web::platform::router::start_server;
-use ironclaw::channels::web::platform::state::{GatewayState, PerUserRateLimiter, RateLimiter};
-use ironclaw::channels::web::sse::SseManager;
-use ironclaw::channels::web::ws::WsConnectionTracker;
-use ironclaw::db::Database;
+use brassclaw::agent::SessionManager;
+use brassclaw::channels::web::auth::{MultiAuthState, UserIdentity};
+use brassclaw::channels::web::platform::router::start_server;
+use brassclaw::channels::web::platform::state::{GatewayState, PerUserRateLimiter, RateLimiter};
+use brassclaw::channels::web::sse::SseManager;
+use brassclaw::channels::web::ws::WsConnectionTracker;
+use brassclaw::db::Database;
 
 const ALICE_TOKEN: &str = "tok-alice-thread-isolation";
 const BOB_TOKEN: &str = "tok-bob-thread-isolation";
@@ -63,7 +63,7 @@ async fn start_server_with_db() -> (
 ) {
     let temp_dir = tempfile::tempdir().expect("tempdir");
     let path = temp_dir.path().join("test.db");
-    let backend = ironclaw::db::libsql::LibSqlBackend::new_local(&path)
+    let backend = brassclaw::db::libsql::LibSqlBackend::new_local(&path)
         .await
         .expect("backend");
     backend.run_migrations().await.expect("migrations");

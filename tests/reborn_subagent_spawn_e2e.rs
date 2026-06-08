@@ -5,12 +5,12 @@ mod support;
 
 use std::time::Duration;
 
-use ironclaw_host_api::CapabilityId;
-use ironclaw_host_runtime::READ_FILE_CAPABILITY_ID;
-use ironclaw_loop_support::{
+use brassclaw_host_api::CapabilityId;
+use brassclaw_host_runtime::READ_FILE_CAPABILITY_ID;
+use brassclaw_loop_support::{
     DEFAULT_SPAWN_SUBAGENT_CAPABILITY_ID, HostManagedModelMessageRole, HostManagedModelResponse,
 };
-use ironclaw_turns::TurnStatus;
+use brassclaw_turns::TurnStatus;
 use reborn_support::{
     config::WaitConfig,
     harness::{RebornBinaryE2EHarness, RecordingTestCapabilityPort, SubmittedTurn},
@@ -436,7 +436,7 @@ fn subagent_allowed_tool_call(call_id: impl Into<String>) -> RebornScriptedProvi
 async fn await_single_child(
     harness: &RebornBinaryE2EHarness,
     submitted: &SubmittedTurn,
-) -> ironclaw_turns::TurnRunRecord {
+) -> brassclaw_turns::TurnRunRecord {
     let mut children = await_children(harness, submitted, 1).await;
     children.pop().expect("one child")
 }
@@ -445,7 +445,7 @@ async fn await_children(
     harness: &RebornBinaryE2EHarness,
     submitted: &SubmittedTurn,
     expected: usize,
-) -> Vec<ironclaw_turns::TurnRunRecord> {
+) -> Vec<brassclaw_turns::TurnRunRecord> {
     let wait = WaitConfig::default();
     let deadline = tokio::time::Instant::now() + wait.timeout;
     loop {
@@ -466,7 +466,7 @@ async fn await_children(
     }
 }
 
-fn assert_child_thread_invariants(parent: &SubmittedTurn, child: &ironclaw_turns::TurnRunRecord) {
+fn assert_child_thread_invariants(parent: &SubmittedTurn, child: &brassclaw_turns::TurnRunRecord) {
     assert_eq!(child.parent_run_id, Some(parent.run_id));
     assert_eq!(child.subagent_depth, 1);
     assert_eq!(child.spawn_tree_root_run_id, Some(parent.run_id));

@@ -1,12 +1,12 @@
 ---
 title: Google Compute Engine
-description: 在 Google Compute Engine 虚拟机上托管 IronClaw
+description: 在 Google Compute Engine 虚拟机上托管 BrassClaw
 ---
 
-Google Compute Engine（GCE）让您在 Google 基础设施上运行虚拟机，提供灵活的定价和慷慨的免费套餐。本指南将带您创建一个 GCE 虚拟机实例，并对其进行安全配置，以便运行 IronClaw 并仅暴露您实际需要的端点。
+Google Compute Engine（GCE）让您在 Google 基础设施上运行虚拟机，提供灵活的定价和慷慨的免费套餐。本指南将带您创建一个 GCE 虚拟机实例，并对其进行安全配置，以便运行 BrassClaw 并仅暴露您实际需要的端点。
 
 <Tip>
-如果您不想自己搭建基础设施，也可以在 [agent.near.ai](https://agent.near.ai) 上点几下就安装好 IronClaw。
+如果您不想自己搭建基础设施，也可以在 [agent.near.ai](https://agent.near.ai) 上点几下就安装好 BrassClaw。
 </Tip>
 
 ---
@@ -19,7 +19,7 @@ Google Compute Engine（GCE）让您在 Google 基础设施上运行虚拟机，
 
 填写项目详情：
 
-- **项目名称**：选择一个描述性名称（例如 `ironclaw`）
+- **项目名称**：选择一个描述性名称（例如 `brassclaw`）
 - **组织**：除非您的账号属于 Google Workspace 组织，否则保持默认
 - **位置**：个人账号保持默认即可
 
@@ -37,7 +37,7 @@ Google Compute Engine（GCE）让您在 Google 基础设施上运行虚拟机，
 
 点击**创建实例**并进行如下配置：
 
-- **名称**：选择一个描述性名称（例如 `ironclaw`）
+- **名称**：选择一个描述性名称（例如 `brassclaw`）
 - **区域 / 可用区**：选择离您用户最近的区域
 - **机器类型**：`e2-micro`（符合免费套餐资格）足以满足大多数使用场景，或选择 `e2-small` 以获得更多余量
 - **启动磁盘**：Ubuntu 24.04 LTS，至少 10 GB
@@ -79,7 +79,7 @@ ssh <USERNAME>@<IP_ADDRESS>
 
 ## 配置防火墙规则
 
-IronClaw 的 Web 网关默认绑定到 `127.0.0.1:3000`，即默认仅限本地访问，无法直接从互联网访问。
+BrassClaw 的 Web 网关默认绑定到 `127.0.0.1:3000`，即默认仅限本地访问，无法直接从互联网访问。
 
 推荐的暴露模型：
 
@@ -112,14 +112,14 @@ IronClaw 的 Web 网关默认绑定到 `127.0.0.1:3000`，即默认仅限本地�
 如果通过 SSH 隧道或 VPN 访问，保持 `GATEWAY_HOST` 为默认值（`127.0.0.1`），不要在 GCE 防火墙中开放网关端口。
 
 <Note>
-将 SSH 限制为您的 IP 可以防止来自互联网的暴力破解攻击。如果您的 IP 发生变化，可以随时更新来源范围。Webhook（例如 Telegram）需要 `8080` 端口来向 IronClaw 发送事件。在 Linux 上，编排器内部 API 监听 `50051` 端口并绑定到 `0.0.0.0`；除非您为其添加防火墙规则，GCE 的默认拒绝所有入站流量策略仍会阻止外部访问。其他 IronClaw 监听器默认绑定到 `127.0.0.1`。
+将 SSH 限制为您的 IP 可以防止来自互联网的暴力破解攻击。如果您的 IP 发生变化，可以随时更新来源范围。Webhook（例如 Telegram）需要 `8080` 端口来向 BrassClaw 发送事件。在 Linux 上，编排器内部 API 监听 `50051` 端口并绑定到 `0.0.0.0`；除非您为其添加防火墙规则，GCE 的默认拒绝所有入站流量策略仍会阻止外部访问。其他 BrassClaw 监听器默认绑定到 `127.0.0.1`。
 </Note>
 
 ---
 
 ## 加固您的实例
 
-获得访问权限后，在安装 IronClaw 之前先对虚拟机进行安全加固。
+获得访问权限后，在安装 BrassClaw 之前先对虚拟机进行安全加固。
 
 ### 更新和升级
 
@@ -131,32 +131,32 @@ sudo apt update && sudo apt upgrade -y
 
 ### 创建新用户
 
-良好的实践是创建一个具备 sudo 权限的专用用户，而不是依赖默认账号。您可以创建一个新用户（例如 `ironclaw`），并将其加入 sudo 组：
+良好的实践是创建一个具备 sudo 权限的专用用户，而不是依赖默认账号。您可以创建一个新用户（例如 `brassclaw`），并将其加入 sudo 组：
 
 ```bash
-sudo adduser ironclaw
-sudo usermod -aG sudo ironclaw
+sudo adduser brassclaw
+sudo usermod -aG sudo brassclaw
 ```
 
 将 SSH 密钥从当前用户复制到新用户，以便您能够登录：
 
 ```bash
 # 为新用户创建 .ssh 目录
-sudo mkdir -p /home/ironclaw/.ssh
+sudo mkdir -p /home/brassclaw/.ssh
 
 # 从当前用户复制 authorized_keys
-sudo cp ~/.ssh/authorized_keys /home/ironclaw/.ssh/authorized_keys
+sudo cp ~/.ssh/authorized_keys /home/brassclaw/.ssh/authorized_keys
 
 # 设置正确的权限（非常关键——否则 SSH 会忽略该文件）
-sudo chown -R ironclaw:ironclaw /home/ironclaw/
-sudo chmod 700 /home/ironclaw/.ssh
-sudo chmod 600 /home/ironclaw/.ssh/authorized_keys
+sudo chown -R brassclaw:brassclaw /home/brassclaw/
+sudo chmod 700 /home/brassclaw/.ssh
+sudo chmod 600 /home/brassclaw/.ssh/authorized_keys
 ```
 
 打开一个新的终端窗口，确认可以成功登录后再继续：
 
 ```bash
-ssh ironclaw@<IP_ADDRESS>
+ssh brassclaw@<IP_ADDRESS>
 ```
 
 <Warning>
@@ -166,29 +166,29 @@ ssh ironclaw@<IP_ADDRESS>
 
 ---
 
-## 安装 IronClaw
+## 安装 BrassClaw
 
-服务器加固完成后，安装 IronClaw 并启动：
+服务器加固完成后，安装 BrassClaw 并启动：
 
 ```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nearai/ironclaw/releases/latest/download/ironclaw-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nearai/brassclaw/releases/latest/download/brassclaw-installer.sh | sh
 ```
 
-然后启动 IronClaw 并按照提示完成配置：
+然后启动 BrassClaw 并按照提示完成配置：
 
 ```bash
-ironclaw
+brassclaw
 ```
 
 <Tip>
-建议使用 `tmux` 或 `screen` 这样的会话管理器，以便在 SSH 会话之间轻松分离和恢复运行中的 IronClaw 进程。
+建议使用 `tmux` 或 `screen` 这样的会话管理器，以便在 SSH 会话之间轻松分离和恢复运行中的 BrassClaw 进程。
 </Tip>
 
 ---
 
 ## 下一步
 
-阅读我们的[快速开始指南](/quickstart)，创建您的第一个智能体，把它连接到 Telegram，并开始探索 IronClaw 的能力。
+阅读我们的[快速开始指南](/quickstart)，创建您的第一个智能体，把它连接到 Telegram，并开始探索 BrassClaw 的能力。
 
 想通过消息应用与您的智能体对话？请查看[**频道**](/channels/overview)文档，了解如何完成接入。
 

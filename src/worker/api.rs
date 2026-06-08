@@ -1,13 +1,13 @@
 //! HTTP client for worker-to-orchestrator communication.
 //!
-//! Every request includes a bearer token from `IRONCLAW_WORKER_TOKEN` env var.
+//! Every request includes a bearer token from `BRASSCLAW_WORKER_TOKEN` env var.
 //! The orchestrator validates this token is scoped to the correct job.
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::WorkerError;
-use ironclaw_llm::{
+use brassclaw_llm::{
     ChatMessage, CompletionRequest, CompletionResponse, FinishReason, ToolCall,
     ToolCompletionRequest, ToolCompletionResponse, ToolDefinition,
 };
@@ -125,10 +125,10 @@ pub struct CredentialResponse {
 impl WorkerHttpClient {
     /// Create a new client from environment.
     ///
-    /// Reads `IRONCLAW_WORKER_TOKEN` from the environment.
+    /// Reads `BRASSCLAW_WORKER_TOKEN` from the environment.
     pub fn from_env(orchestrator_url: String, job_id: Uuid) -> Result<Self, WorkerError> {
         let token =
-            std::env::var("IRONCLAW_WORKER_TOKEN").map_err(|_| WorkerError::MissingToken)?;
+            std::env::var("BRASSCLAW_WORKER_TOKEN").map_err(|_| WorkerError::MissingToken)?;
 
         Ok(Self {
             client: reqwest::Client::new(),

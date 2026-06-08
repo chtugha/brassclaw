@@ -1,4 +1,4 @@
-//! Interactive setup wizard for IronClaw.
+//! Interactive setup wizard for BrassClaw.
 //!
 //! Provides a guided setup experience for:
 //! 1. Database connection
@@ -16,7 +16,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use ironclaw::setup::SetupWizard;
+//! use brassclaw::setup::SetupWizard;
 //!
 //! let mut wizard = SetupWizard::new();
 //! wizard.run().await?;

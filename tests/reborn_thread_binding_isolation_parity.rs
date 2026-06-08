@@ -3,9 +3,9 @@
 mod reborn_support;
 mod support;
 
-use ironclaw_loop_support::HostManagedModelResponse;
-use ironclaw_threads::{MessageKind, MessageStatus, ThreadMessageRecord};
-use ironclaw_turns::TurnStatus;
+use brassclaw_loop_support::HostManagedModelResponse;
+use brassclaw_threads::{MessageKind, MessageStatus, ThreadMessageRecord};
+use brassclaw_turns::TurnStatus;
 use reborn_support::harness::{RebornBinaryE2EHarness, RecordingTestCapabilityPort};
 use reborn_support::model_replay::RebornTraceReplayModelGateway;
 

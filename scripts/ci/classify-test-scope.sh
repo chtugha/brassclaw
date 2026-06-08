@@ -36,25 +36,25 @@ is_shared_test_path() {
     .github/workflows/test.yml|.github/workflows/reborn-tests.yml|.github/workflows/reborn-integration.yml|.github/workflows/reborn-e2e.yml|.github/workflows/nightly-deep-ci.yml)
       return 0
       ;;
-    crates/ironclaw_common/*|crates/ironclaw_host_api/*|crates/ironclaw_host_runtime/*|crates/ironclaw_loop_support/*)
+    crates/brassclaw_common/*|crates/brassclaw_host_api/*|crates/brassclaw_host_runtime/*|crates/brassclaw_loop_support/*)
       return 0
       ;;
-    crates/ironclaw_filesystem/*|crates/ironclaw_memory/*|crates/ironclaw_events/*|crates/ironclaw_event_projections/*|crates/ironclaw_event_streams/*)
+    crates/brassclaw_filesystem/*|crates/brassclaw_memory/*|crates/brassclaw_events/*|crates/brassclaw_event_projections/*|crates/brassclaw_event_streams/*)
       return 0
       ;;
-    crates/ironclaw_capabilities/*|crates/ironclaw_secrets/*|crates/ironclaw_network/*|crates/ironclaw_runtime_policy/*)
+    crates/brassclaw_capabilities/*|crates/brassclaw_secrets/*|crates/brassclaw_network/*|crates/brassclaw_runtime_policy/*)
       return 0
       ;;
-    crates/ironclaw_authorization/*|crates/ironclaw_run_state/*|crates/ironclaw_approvals/*|crates/ironclaw_resources/*)
+    crates/brassclaw_authorization/*|crates/brassclaw_run_state/*|crates/brassclaw_approvals/*|crates/brassclaw_resources/*)
       return 0
       ;;
-    crates/ironclaw_auth/*|crates/ironclaw_trust/*|crates/ironclaw_turns/*|crates/ironclaw_agent_loop/*|crates/ironclaw_threads/*)
+    crates/brassclaw_auth/*|crates/brassclaw_trust/*|crates/brassclaw_turns/*|crates/brassclaw_agent_loop/*|crates/brassclaw_threads/*)
       return 0
       ;;
-    crates/ironclaw_prompt_envelope/*|crates/ironclaw_hooks/*|crates/ironclaw_first_party_extensions/*|crates/ironclaw_llm/*)
+    crates/brassclaw_prompt_envelope/*|crates/brassclaw_hooks/*|crates/brassclaw_first_party_extensions/*|crates/brassclaw_llm/*)
       return 0
       ;;
-    crates/ironclaw_embeddings/*|crates/ironclaw_safety/*|crates/ironclaw_skills/*|crates/ironclaw_oauth/*)
+    crates/brassclaw_embeddings/*|crates/brassclaw_safety/*|crates/brassclaw_skills/*|crates/brassclaw_oauth/*)
       return 0
       ;;
     *)
@@ -69,19 +69,19 @@ is_reborn_test_path() {
     docs/reborn/*|scripts/reborn-e2e-rust.sh|scripts/ci/run-reborn-root-partition.sh|tests/reborn_*|tests/support/reborn/*|tests/e2e/scenarios/test_reborn_*)
       return 0
       ;;
-    crates/ironclaw_architecture/*)
+    crates/brassclaw_architecture/*)
       return 0
       ;;
-    crates/ironclaw_reborn/*|crates/ironclaw_reborn_*/*)
+    crates/brassclaw_reborn/*|crates/brassclaw_reborn_*/*)
       return 0
       ;;
-    crates/ironclaw_product_*/*|crates/ironclaw_slack_v2_adapter/*|crates/ironclaw_telegram_v2_adapter/*)
+    crates/brassclaw_product_*/*|crates/brassclaw_slack_v2_adapter/*|crates/brassclaw_telegram_v2_adapter/*)
       return 0
       ;;
-    crates/ironclaw_wasm_product_adapters/*|crates/ironclaw_webui_v2/*|crates/ironclaw_webui_v2_static/*)
+    crates/brassclaw_wasm_product_adapters/*|crates/brassclaw_webui_v2/*|crates/brassclaw_webui_v2_static/*)
       return 0
       ;;
-    crates/ironclaw_conversations/*|crates/ironclaw_outbound/*|crates/ironclaw_triggers/*)
+    crates/brassclaw_conversations/*|crates/brassclaw_outbound/*|crates/brassclaw_triggers/*)
       return 0
       ;;
     *)

@@ -7,31 +7,31 @@ if [ "$#" -ne 1 ]; then
 fi
 
 case "$1" in
-  ironclaw_reborn_cli)
+  brassclaw_reborn_cli)
     printf '%s\n' "--features webui-v2-beta,slack-v2-host-beta"
     ;;
-  ironclaw_product_adapters)
+  brassclaw_product_adapters)
     printf '%s\n' "--features test-support,host-auth-mint"
     ;;
-  ironclaw_product_workflow)
+  brassclaw_product_workflow)
     printf '%s\n' "--features test-support"
     ;;
-  ironclaw_product_workflow_storage)
+  brassclaw_product_workflow_storage)
     printf '%s\n' "--features libsql"
     ;;
-  ironclaw_reborn_composition)
+  brassclaw_reborn_composition)
     printf '%s\n' "--features test-support,webui-v2-beta,slack-v2-host-beta,libsql"
     ;;
-  ironclaw_reborn)
+  brassclaw_reborn)
     printf '%s\n' "--features root-llm-provider,libsql-secrets,libsql-restart-tests,webui-user-store"
     ;;
-  ironclaw_reborn_event_store)
+  brassclaw_reborn_event_store)
     printf '%s\n' "--features libsql"
     ;;
-  ironclaw_reborn_webui_ingress)
+  brassclaw_reborn_webui_ingress)
     printf '%s\n' "--features dev-in-memory-session"
     ;;
-  ironclaw_webui_v2 | ironclaw_webui_v2_static)
+  brassclaw_webui_v2 | brassclaw_webui_v2_static)
     printf '%s\n' "--features webui-v2-beta"
     ;;
   *)

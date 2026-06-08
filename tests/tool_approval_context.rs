@@ -5,8 +5,8 @@
 //! - Builder sub-tools use proper approval checks
 //! - Worker checks job-level approval context
 
-use ironclaw::context::JobContext;
-use ironclaw::tools::{
+use brassclaw::context::JobContext;
+use brassclaw::tools::{
     ApprovalContext, ApprovalRequirement, Tool, ToolError, ToolOutput, check_approval_in_context,
 };
 

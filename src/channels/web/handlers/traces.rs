@@ -654,7 +654,7 @@ mod tests {
         write_trace_policy_for_scope,
     };
     use chrono::Utc;
-    use ironclaw_llm::recording::{TraceFile, TraceResponse, TraceStep, TraceToolCall};
+    use brassclaw_llm::recording::{TraceFile, TraceResponse, TraceStep, TraceToolCall};
     use std::collections::BTreeSet;
 
     fn write_trace_records(scope: &str, records: &[LocalTraceSubmissionRecord]) {
@@ -1028,7 +1028,7 @@ mod tests {
             .redact_trace(raw)
             .await
             .expect("redaction should succeed");
-        envelope.schema_version = "ironclaw.trace_contribution.v0".to_string();
+        envelope.schema_version = "brassclaw.trace_contribution.v0".to_string();
         envelope.consent.policy_version = "2025-01-01".to_string();
         envelope.privacy.redaction_pipeline_version = "legacy-redactor".to_string();
         envelope.trace_card.redaction_pipeline_version = "legacy-trace-card-redactor".to_string();

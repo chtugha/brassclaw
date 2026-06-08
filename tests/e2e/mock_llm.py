@@ -73,7 +73,7 @@ CANNED_RESPONSES = [
     # After the orchestrator sends its nudge, recover with a final completion.
     # The exact nudge prefix is "You said you would perform an action..." —
     # see `signals_tool_intent` + the nudge append in
-    # `crates/ironclaw_engine/orchestrator/default.py`. Match either the new
+    # `crates/brassclaw_engine/orchestrator/default.py`. Match either the new
     # phrasing or the legacy "You expressed intent" so older deployments
     # still work.
     (re.compile(r"You said you would perform an action|You expressed intent", re.IGNORECASE),
@@ -184,7 +184,7 @@ TOOL_CALL_PATTERNS = [
     # Workflow-canary Sheet-write side-effect probe. When a routine's
     # Lightweight prompt carries [CANARY-WORKFLOW-SHEET-APPEND], emit
     # an http POST to the mock Google Sheets API's values:append
-    # endpoint. The IRONCLAW_TEST_HTTP_REMAP set in
+    # endpoint. The BRASSCLAW_TEST_HTTP_REMAP set in
     # run_workflow_canary.py routes sheets.googleapis.com to the local
     # sheets_mock subprocess, which records the captured row for the
     # scenario's assertion.
@@ -220,7 +220,7 @@ TOOL_CALL_PATTERNS = [
     #   1. GET events.list against the mock Calendar API
     #   2. POST sendMessage with a prep briefing referencing the seeded
     #      event title.
-    # IRONCLAW_TEST_HTTP_REMAP routes both: www.googleapis.com →
+    # BRASSCLAW_TEST_HTTP_REMAP routes both: www.googleapis.com →
     # calendar_mock, api.telegram.org → telegram_mock. Parallel emit is
     # required because the engine's lightweight loop dedup
     # (match_tool_call:1178-1179) skips re-dispatching the same tool —
@@ -241,7 +241,7 @@ TOOL_CALL_PATTERNS = [
             },
             # Web-search lookup for the meeting attendee's company.
             # Routes to web_search_mock via
-            # IRONCLAW_TEST_HTTP_REMAP=api.search.brave.com=<mock>.
+            # BRASSCLAW_TEST_HTTP_REMAP=api.search.brave.com=<mock>.
             {
                 "tool_name": "http",
                 "arguments": {
@@ -370,7 +370,7 @@ TOOL_CALL_PATTERNS = [
     # Default workflow-canary scenarios tag their routine prompt with
     # [CANARY-WORKFLOW-<key>] so this matcher emits a deterministic
     # `http` tool call that reaches mock_telegram via
-    # IRONCLAW_TEST_HTTP_REMAP=api.telegram.org=<mock>. The chat_id is
+    # BRASSCLAW_TEST_HTTP_REMAP=api.telegram.org=<mock>. The chat_id is
     # the canary's simulated test user (mock_telegram DEFAULT_USER_ID).
     # The text echoes the scenario key so the scenario can disambiguate
     # which message belongs to it when the mock_telegram is shared
@@ -548,13 +548,13 @@ TOOL_CALL_PATTERNS = [
     ),
     (
         re.compile(
-            r"create (?:an )?issue.*(?:nearai|ironclaw)|issue in nearai/ironclaw",
+            r"create (?:an )?issue.*(?:nearai|brassclaw)|issue in chtugha/brassclaw",
             re.IGNORECASE,
         ),
         "http",
         lambda _: {
             "method": "POST",
-            "url": f"{_github_api_url}/repos/nearai/ironclaw/issues",
+            "url": f"{_github_api_url}/repos/chtugha/brassclaw/issues",
             "body": {
                 "title": "E2E auth flow test issue",
                 "body": "Created by the E2E mock LLM auth-flow scenario.",
@@ -562,11 +562,11 @@ TOOL_CALL_PATTERNS = [
         },
     ),
     (
-        re.compile(r"list.*issues.*(?:nearai|ironclaw)|github.*issues", re.IGNORECASE),
+        re.compile(r"list.*issues.*(?:nearai|brassclaw)|github.*issues", re.IGNORECASE),
         "http",
         lambda _: {
             "method": "GET",
-            "url": f"{_github_api_url}/repos/nearai/ironclaw/issues?per_page=5",
+            "url": f"{_github_api_url}/repos/chtugha/brassclaw/issues?per_page=5",
         },
     ),
     # For max iterations test: always returns a tool call, never FINAL
@@ -650,7 +650,7 @@ TOOL_CALL_PATTERNS = [
     # 1. Move the top tab bar into a left side panel by writing the
     #    ``.system/gateway/custom.css`` overlay file. The CSS targets the
     #    real DOM nodes (`#app`, `.tab-bar`) defined in
-    #    ``crates/ironclaw_gateway/static/index.html``.
+    #    ``crates/brassclaw_gateway/static/index.html``.
     (
         re.compile(r"customize:\s*move tab bar to left", re.IGNORECASE),
         "memory_write",
@@ -712,7 +712,7 @@ TOOL_CALL_PATTERNS = [
                     "append": False,
                     "force": True,
                     "content": (
-                "IronClaw.registerWidget({\n"
+                "BrassClaw.registerWidget({\n"
                 "  id: 'skills-viewer',\n"
                 "  name: 'Skills',\n"
                 "  slot: 'tab',\n"
@@ -1342,7 +1342,7 @@ def _extract_tool_name(msg: dict) -> str:
     name = msg.get("name")
     if name:
         return name
-    # ironclaw wraps tool output as <tool_output name="...">
+    # brassclaw wraps tool output as <tool_output name="...">
     content = msg.get("content", "")
     m = re.search(r'<tool_output\s+name="([^"]+)"', content)
     if m:
@@ -2188,7 +2188,7 @@ def _is_google_token_url(url: str) -> bool:
 async def oauth_exchange(request: web.Request) -> web.Response:
     """Mock OAuth token exchange proxy for E2E tests.
 
-    Accepts the generic hosted OAuth proxy contract used by IronClaw and
+    Accepts the generic hosted OAuth proxy contract used by BrassClaw and
     returns a fake token response. MCP callback tests assert that provider-
     specific token params such as RFC 8707 `resource` are forwarded here.
     """
@@ -2456,7 +2456,7 @@ async def mcp_oauth_register(request: web.Request) -> web.Response:
     return web.json_response({
         "client_id": "mock-mcp-client-id",
         "client_secret": "mock-mcp-client-secret",
-        "client_name": body.get("client_name", "IronClaw"),
+        "client_name": body.get("client_name", "BrassClaw"),
         "redirect_uris": body.get("redirect_uris", []),
     })
 
@@ -2622,7 +2622,7 @@ def main():
     app.router.add_post("/oauth/register", mcp_oauth_register)
     app.router.add_post("/oauth/token", mcp_oauth_token)
     # Gmail API mocks (consumed by the WASM gmail tool when
-    # IRONCLAW_TEST_HTTP_REWRITE_MAP routes gmail.googleapis.com here).
+    # BRASSCLAW_TEST_HTTP_REWRITE_MAP routes gmail.googleapis.com here).
     app.router.add_post("/gmail/v1/users/me/drafts", gmail_create_draft)
     app.router.add_post("/gmail/v1/users/me/messages/send", gmail_send_message)
     app.router.add_get("/gmail/v1/users/me/messages", gmail_list_messages)

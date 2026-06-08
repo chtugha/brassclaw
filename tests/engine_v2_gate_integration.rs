@@ -17,8 +17,8 @@ use std::time::Duration;
 use chrono::Utc;
 use tokio::sync::RwLock;
 
-use ironclaw_engine::types::capability::{EffectType, LeaseId, ModelToolSurface};
-use ironclaw_engine::{
+use brassclaw_engine::types::capability::{EffectType, LeaseId, ModelToolSurface};
+use brassclaw_engine::{
     ActionDef, ActionInventory, ActionResult, Capability, CapabilityLease, CapabilityRegistry,
     DocId, EffectExecutor, EngineError, GrantedActions, LeaseManager, LlmBackend, LlmCallConfig,
     LlmOutput, LlmResponse, MemoryDoc, Mission, MissionId, MissionStatus, PolicyEngine, Project,
@@ -26,8 +26,8 @@ use ironclaw_engine::{
     ThreadMessage, ThreadOutcome, ThreadState, ThreadType, TokenUsage,
 };
 
-use ironclaw::gate::pending::{PendingGate, PendingGateKey};
-use ironclaw::gate::store::{GateStoreError, PendingGateStore, TRUSTED_GATE_CHANNELS};
+use brassclaw::gate::pending::{PendingGate, PendingGateKey};
+use brassclaw::gate::store::{GateStoreError, PendingGateStore, TRUSTED_GATE_CHANNELS};
 
 // ── Scripted LLM ─────────────────────────────────────────────
 
@@ -204,7 +204,7 @@ impl EffectExecutor for InstallThenAliasEffects {
         action_name: &str,
         parameters: serde_json::Value,
         _lease: &CapabilityLease,
-        _context: &ironclaw_engine::ThreadExecutionContext,
+        _context: &brassclaw_engine::ThreadExecutionContext,
     ) -> Result<ActionResult, EngineError> {
         self.calls
             .write()
@@ -220,7 +220,7 @@ impl EffectExecutor for InstallThenAliasEffects {
                 call_id: "call_install_1".into(),
                 parameters: Box::new(parameters),
                 resume_kind: Box::new(ResumeKind::Authentication {
-                    credential_name: ironclaw_common::CredentialName::new("github").unwrap(),
+                    credential_name: brassclaw_common::CredentialName::new("github").unwrap(),
                     instructions: "Authenticate GitHub".into(),
                     auth_url: None,
                 }),
@@ -241,7 +241,7 @@ impl EffectExecutor for InstallThenAliasEffects {
     async fn available_actions(
         &self,
         _leases: &[CapabilityLease],
-        _context: &ironclaw_engine::ThreadExecutionContext,
+        _context: &brassclaw_engine::ThreadExecutionContext,
     ) -> Result<Vec<ActionDef>, EngineError> {
         Ok(vec![
             ActionDef {
@@ -268,8 +268,8 @@ impl EffectExecutor for InstallThenAliasEffects {
     async fn available_capabilities(
         &self,
         _leases: &[CapabilityLease],
-        _context: &ironclaw_engine::ThreadExecutionContext,
-    ) -> Result<Vec<ironclaw_engine::CapabilitySummary>, EngineError> {
+        _context: &brassclaw_engine::ThreadExecutionContext,
+    ) -> Result<Vec<brassclaw_engine::CapabilitySummary>, EngineError> {
         Ok(vec![])
     }
 }
@@ -281,7 +281,7 @@ impl EffectExecutor for GateMockEffects {
         action_name: &str,
         parameters: serde_json::Value,
         _lease: &CapabilityLease,
-        _context: &ironclaw_engine::ThreadExecutionContext,
+        _context: &brassclaw_engine::ThreadExecutionContext,
     ) -> Result<ActionResult, EngineError> {
         self.calls
             .write()
@@ -314,7 +314,7 @@ impl EffectExecutor for GateMockEffects {
                     call_id: "call_gate_2".into(),
                     parameters: Box::new(parameters),
                     resume_kind: Box::new(ResumeKind::Authentication {
-                        credential_name: ironclaw_common::CredentialName::new("notion").unwrap(),
+                        credential_name: brassclaw_common::CredentialName::new("notion").unwrap(),
                         instructions: "Authenticate your Notion workspace".into(),
                         auth_url: None,
                     }),
@@ -345,7 +345,7 @@ impl EffectExecutor for GateMockEffects {
                 call_id: "call_gate_2".into(),
                 parameters: Box::new(parameters),
                 resume_kind: Box::new(ResumeKind::Authentication {
-                    credential_name: ironclaw_common::CredentialName::new("test_api_key").unwrap(),
+                    credential_name: brassclaw_common::CredentialName::new("test_api_key").unwrap(),
                     instructions: "Provide your API key".into(),
                     auth_url: None,
                 }),
@@ -366,7 +366,7 @@ impl EffectExecutor for GateMockEffects {
     async fn available_actions(
         &self,
         _leases: &[CapabilityLease],
-        _context: &ironclaw_engine::ThreadExecutionContext,
+        _context: &brassclaw_engine::ThreadExecutionContext,
     ) -> Result<Vec<ActionDef>, EngineError> {
         // requires_approval: false — the gate check is done by the mock's
         // execute_action() returning GatePaused, not by the PolicyEngine.
@@ -404,8 +404,8 @@ impl EffectExecutor for GateMockEffects {
     async fn available_capabilities(
         &self,
         _leases: &[CapabilityLease],
-        _context: &ironclaw_engine::ThreadExecutionContext,
-    ) -> Result<Vec<ironclaw_engine::CapabilitySummary>, EngineError> {
+        _context: &brassclaw_engine::ThreadExecutionContext,
+    ) -> Result<Vec<brassclaw_engine::CapabilitySummary>, EngineError> {
         Ok(vec![])
     }
 }
@@ -419,7 +419,7 @@ impl EffectExecutor for ToolInfoCallableEffects {
         action_name: &str,
         parameters: serde_json::Value,
         _lease: &CapabilityLease,
-        _context: &ironclaw_engine::ThreadExecutionContext,
+        _context: &brassclaw_engine::ThreadExecutionContext,
     ) -> Result<ActionResult, EngineError> {
         let output = match action_name {
             "tool_info" => serde_json::json!({
@@ -457,7 +457,7 @@ impl EffectExecutor for ToolInfoCallableEffects {
     async fn available_actions(
         &self,
         leases: &[CapabilityLease],
-        context: &ironclaw_engine::ThreadExecutionContext,
+        context: &brassclaw_engine::ThreadExecutionContext,
     ) -> Result<Vec<ActionDef>, EngineError> {
         Ok(self
             .available_action_inventory(leases, context)
@@ -468,7 +468,7 @@ impl EffectExecutor for ToolInfoCallableEffects {
     async fn available_action_inventory(
         &self,
         _leases: &[CapabilityLease],
-        _context: &ironclaw_engine::ThreadExecutionContext,
+        _context: &brassclaw_engine::ThreadExecutionContext,
     ) -> Result<ActionInventory, EngineError> {
         let tool_info = ActionDef {
             name: "tool_info".into(),
@@ -511,8 +511,8 @@ impl EffectExecutor for ToolInfoCallableEffects {
     async fn available_capabilities(
         &self,
         _leases: &[CapabilityLease],
-        _context: &ironclaw_engine::ThreadExecutionContext,
-    ) -> Result<Vec<ironclaw_engine::CapabilitySummary>, EngineError> {
+        _context: &brassclaw_engine::ThreadExecutionContext,
+    ) -> Result<Vec<brassclaw_engine::CapabilitySummary>, EngineError> {
         Ok(vec![])
     }
 }
@@ -786,7 +786,7 @@ fn sample_pending_gate(
         user_id: user_id.into(),
         thread_id,
         scope_thread_id: None,
-        conversation_id: ironclaw_engine::ConversationId::new(),
+        conversation_id: brassclaw_engine::ConversationId::new(),
         source_channel: channel.into(),
         action_name: "http".into(),
         call_id: "call_1".into(),
@@ -825,7 +825,7 @@ fn resumed_action_result_message(
 /// continue to work without this controller.
 struct AutoApprovingGateController {
     effects: Arc<GateMockEffects>,
-    pauses: tokio::sync::Mutex<Vec<ironclaw_engine::GatePauseRequest>>,
+    pauses: tokio::sync::Mutex<Vec<brassclaw_engine::GatePauseRequest>>,
 }
 
 impl AutoApprovingGateController {
@@ -836,17 +836,17 @@ impl AutoApprovingGateController {
         })
     }
 
-    async fn pauses_seen(&self) -> Vec<ironclaw_engine::GatePauseRequest> {
+    async fn pauses_seen(&self) -> Vec<brassclaw_engine::GatePauseRequest> {
         self.pauses.lock().await.clone()
     }
 }
 
 #[async_trait::async_trait]
-impl ironclaw_engine::GateController for AutoApprovingGateController {
+impl brassclaw_engine::GateController for AutoApprovingGateController {
     async fn pause(
         &self,
-        request: ironclaw_engine::GatePauseRequest,
-    ) -> ironclaw_engine::GateResolution {
+        request: brassclaw_engine::GatePauseRequest,
+    ) -> brassclaw_engine::GateResolution {
         // Only auto-approve Approval gates. Authentication gates need
         // an actual credential write — returning Cancelled here makes
         // the engine fall through to the legacy `ThreadOutcome::GatePaused`
@@ -855,14 +855,14 @@ impl ironclaw_engine::GateController for AutoApprovingGateController {
         // path covered by `authentication_gate_resolves_inline_via_controller`.
         if matches!(
             request.resume_kind,
-            ironclaw_engine::ResumeKind::Authentication { .. }
+            brassclaw_engine::ResumeKind::Authentication { .. }
         ) {
             self.pauses.lock().await.push(request);
-            return ironclaw_engine::GateResolution::Cancelled;
+            return brassclaw_engine::GateResolution::Cancelled;
         }
         self.effects.mark_approved(&request.action_name).await;
         self.pauses.lock().await.push(request);
-        ironclaw_engine::GateResolution::Approved { always: true }
+        brassclaw_engine::GateResolution::Approved { always: true }
     }
 }
 
@@ -885,7 +885,7 @@ async fn approval_gate_resolves_inline_via_controller() {
     let llm = ScriptedLlm::new(vec![
         LlmOutput {
             response: LlmResponse::ActionCalls {
-                calls: vec![ironclaw_engine::ActionCall {
+                calls: vec![brassclaw_engine::ActionCall {
                     id: "call_1".into(),
                     action_name: "http".into(),
                     parameters: serde_json::json!({"url": "https://example.com"}),
@@ -910,7 +910,7 @@ async fn approval_gate_resolves_inline_via_controller() {
         Arc::new(PolicyEngine::new()),
     ));
     let controller = AutoApprovingGateController::new(effects.clone());
-    mgr.set_gate_controller(controller.clone() as Arc<dyn ironclaw_engine::GateController>)
+    mgr.set_gate_controller(controller.clone() as Arc<dyn brassclaw_engine::GateController>)
         .await;
 
     let tid = mgr
@@ -950,7 +950,7 @@ async fn approval_gate_resolves_inline_via_controller() {
         .filter(|e| {
             matches!(
                 e.kind,
-                ironclaw_engine::types::event::EventKind::ApprovalRequested { .. }
+                brassclaw_engine::types::event::EventKind::ApprovalRequested { .. }
             )
         })
         .collect();
@@ -958,7 +958,7 @@ async fn approval_gate_resolves_inline_via_controller() {
     let executed = saved.events.iter().any(|e| {
         matches!(
             &e.kind,
-            ironclaw_engine::types::event::EventKind::ActionExecuted { action_name, .. }
+            brassclaw_engine::types::event::EventKind::ActionExecuted { action_name, .. }
                 if action_name == "http"
         )
     });
@@ -991,7 +991,7 @@ async fn authentication_gate_resolves_inline_via_controller() {
     let llm = ScriptedLlm::new(vec![
         LlmOutput {
             response: LlmResponse::ActionCalls {
-                calls: vec![ironclaw_engine::ActionCall {
+                calls: vec![brassclaw_engine::ActionCall {
                     id: "call_1".into(),
                     action_name: "http".into(),
                     parameters: serde_json::json!({"url": "https://api.example.com"}),
@@ -1022,24 +1022,24 @@ async fn authentication_gate_resolves_inline_via_controller() {
     // the parked waiter — the retry sees the credential as present.
     struct AuthAutoApprover {
         effects: Arc<GateMockEffects>,
-        pauses: tokio::sync::Mutex<Vec<ironclaw_engine::GatePauseRequest>>,
+        pauses: tokio::sync::Mutex<Vec<brassclaw_engine::GatePauseRequest>>,
     }
     #[async_trait::async_trait]
-    impl ironclaw_engine::GateController for AuthAutoApprover {
+    impl brassclaw_engine::GateController for AuthAutoApprover {
         async fn pause(
             &self,
-            request: ironclaw_engine::GatePauseRequest,
-        ) -> ironclaw_engine::GateResolution {
+            request: brassclaw_engine::GatePauseRequest,
+        ) -> brassclaw_engine::GateResolution {
             self.effects.mark_authenticated(&request.action_name).await;
             self.pauses.lock().await.push(request);
-            ironclaw_engine::GateResolution::Approved { always: false }
+            brassclaw_engine::GateResolution::Approved { always: false }
         }
     }
     let controller = Arc::new(AuthAutoApprover {
         effects: effects.clone(),
         pauses: tokio::sync::Mutex::new(Vec::new()),
     });
-    mgr.set_gate_controller(controller.clone() as Arc<dyn ironclaw_engine::GateController>)
+    mgr.set_gate_controller(controller.clone() as Arc<dyn brassclaw_engine::GateController>)
         .await;
 
     let tid = mgr
@@ -1082,7 +1082,7 @@ async fn authentication_gate_resolves_inline_via_controller() {
         .filter(|e| {
             matches!(
                 e.kind,
-                ironclaw_engine::types::event::EventKind::ApprovalRequested { .. }
+                brassclaw_engine::types::event::EventKind::ApprovalRequested { .. }
             )
         })
         .collect();
@@ -1090,7 +1090,7 @@ async fn authentication_gate_resolves_inline_via_controller() {
     let executed = saved.events.iter().any(|e| {
         matches!(
             &e.kind,
-            ironclaw_engine::types::event::EventKind::ActionExecuted { action_name, .. }
+            brassclaw_engine::types::event::EventKind::ActionExecuted { action_name, .. }
                 if action_name == "http"
         )
     });
@@ -1108,7 +1108,7 @@ async fn gate_paused_authentication_carries_credential_name() {
 
     let llm = ScriptedLlm::new(vec![LlmOutput {
         response: LlmResponse::ActionCalls {
-            calls: vec![ironclaw_engine::ActionCall {
+            calls: vec![brassclaw_engine::ActionCall {
                 id: "call_1".into(),
                 action_name: "http".into(),
                 parameters: serde_json::json!({"url": "https://api.example.com"}),
@@ -1177,7 +1177,7 @@ async fn approval_denied_inline_completes_thread_with_failed_action() {
     let llm = ScriptedLlm::new(vec![
         LlmOutput {
             response: LlmResponse::ActionCalls {
-                calls: vec![ironclaw_engine::ActionCall {
+                calls: vec![brassclaw_engine::ActionCall {
                     id: "call_1".into(),
                     action_name: "http".into(),
                     parameters: serde_json::json!({"url": "https://example.com"}),
@@ -1231,7 +1231,7 @@ async fn approval_denied_inline_completes_thread_with_failed_action() {
     let failed = saved.events.iter().any(|e| {
         matches!(
             &e.kind,
-            ironclaw_engine::types::event::EventKind::ActionFailed { action_name, .. }
+            brassclaw_engine::types::event::EventKind::ActionFailed { action_name, .. }
                 if action_name == "http"
         )
     });
@@ -1245,7 +1245,7 @@ async fn tool_info_does_not_gate_callable_tool_into_next_llm_callable_set() {
     let llm = ActionCapturingScriptedLlm::new(vec![
         LlmOutput {
             response: LlmResponse::ActionCalls {
-                calls: vec![ironclaw_engine::ActionCall {
+                calls: vec![brassclaw_engine::ActionCall {
                     id: "call_tool_info_1".into(),
                     action_name: "tool_info".into(),
                     parameters: serde_json::json!({
@@ -1318,7 +1318,7 @@ async fn auth_resolution_retries_same_pending_action_without_second_pause() {
     let llm = ScriptedLlm::new(vec![
         LlmOutput {
             response: LlmResponse::ActionCalls {
-                calls: vec![ironclaw_engine::ActionCall {
+                calls: vec![brassclaw_engine::ActionCall {
                     id: "call_auth_1".into(),
                     action_name: "http".into(),
                     parameters: serde_json::json!({"url": "https://example.com/private"}),
@@ -1329,7 +1329,7 @@ async fn auth_resolution_retries_same_pending_action_without_second_pause() {
         },
         LlmOutput {
             response: LlmResponse::ActionCalls {
-                calls: vec![ironclaw_engine::ActionCall {
+                calls: vec![brassclaw_engine::ActionCall {
                     id: "call_auth_2".into(),
                     action_name: "http".into(),
                     parameters: serde_json::json!({"url": "https://example.com/private"}),
@@ -1379,12 +1379,12 @@ async fn auth_resolution_retries_same_pending_action_without_second_pause() {
         .find_lease_for_action(tid, "http")
         .await
         .expect("lease for http");
-    let exec_ctx = ironclaw_engine::ThreadExecutionContext {
+    let exec_ctx = brassclaw_engine::ThreadExecutionContext {
         thread_id: tid,
         thread_type: thread.thread_type,
         project_id: thread.project_id,
         user_id: "test-user".into(),
-        step_id: ironclaw_engine::StepId::new(),
+        step_id: brassclaw_engine::StepId::new(),
         current_call_id: Some("call_auth_1".into()),
         source_channel: None,
         user_timezone: None,
@@ -1392,7 +1392,7 @@ async fn auth_resolution_retries_same_pending_action_without_second_pause() {
         available_actions_snapshot: None,
         available_action_inventory_snapshot: None,
         conversation_scope: None,
-        gate_controller: ironclaw_engine::CancellingGateController::arc(),
+        gate_controller: brassclaw_engine::CancellingGateController::arc(),
         call_approval_granted: false,
         conversation_id: None,
     };
@@ -1434,7 +1434,7 @@ async fn auth_resolution_retries_same_pending_action_without_second_pause() {
         .filter(|event| {
             matches!(
                 event.kind,
-                ironclaw_engine::types::event::EventKind::ApprovalRequested { .. }
+                brassclaw_engine::types::event::EventKind::ApprovalRequested { .. }
             )
         })
         .count();
@@ -1459,7 +1459,7 @@ async fn approval_chains_directly_into_auth_for_install_flow() {
     let llm = ScriptedLlm::new(vec![
         LlmOutput {
             response: LlmResponse::ActionCalls {
-                calls: vec![ironclaw_engine::ActionCall {
+                calls: vec![brassclaw_engine::ActionCall {
                     id: "call_install_1".into(),
                     action_name: "tool_install".into(),
                     parameters: install_params.clone(),
@@ -1484,7 +1484,7 @@ async fn approval_chains_directly_into_auth_for_install_flow() {
         Arc::new(PolicyEngine::new()),
     ));
     let controller = AutoApprovingGateController::new(effects.clone());
-    mgr.set_gate_controller(controller.clone() as Arc<dyn ironclaw_engine::GateController>)
+    mgr.set_gate_controller(controller.clone() as Arc<dyn brassclaw_engine::GateController>)
         .await;
 
     let tid = mgr
@@ -1545,12 +1545,12 @@ async fn approval_chains_directly_into_auth_for_install_flow() {
         .find_lease_for_action(tid, "tool_install")
         .await
         .expect("lease for tool_install");
-    let exec_ctx = ironclaw_engine::ThreadExecutionContext {
+    let exec_ctx = brassclaw_engine::ThreadExecutionContext {
         thread_id: tid,
         thread_type: thread.thread_type,
         project_id: thread.project_id,
         user_id: "test-user".into(),
-        step_id: ironclaw_engine::StepId::new(),
+        step_id: brassclaw_engine::StepId::new(),
         current_call_id: Some("call_install_1".into()),
         source_channel: None,
         user_timezone: None,
@@ -1558,7 +1558,7 @@ async fn approval_chains_directly_into_auth_for_install_flow() {
         available_actions_snapshot: None,
         available_action_inventory_snapshot: None,
         conversation_scope: None,
-        gate_controller: ironclaw_engine::CancellingGateController::arc(),
+        gate_controller: brassclaw_engine::CancellingGateController::arc(),
         call_approval_granted: false,
         conversation_id: None,
     };
@@ -1595,7 +1595,7 @@ async fn install_auth_resume_followed_by_aliased_tool_call_completes_without_han
     let llm = ScriptedLlm::new(vec![
         LlmOutput {
             response: LlmResponse::ActionCalls {
-                calls: vec![ironclaw_engine::ActionCall {
+                calls: vec![brassclaw_engine::ActionCall {
                     id: "call_install_1".into(),
                     action_name: "tool_install".into(),
                     parameters: serde_json::json!({"kind": "mcp_server", "name": "github"}),
@@ -1606,7 +1606,7 @@ async fn install_auth_resume_followed_by_aliased_tool_call_completes_without_han
         },
         LlmOutput {
             response: LlmResponse::ActionCalls {
-                calls: vec![ironclaw_engine::ActionCall {
+                calls: vec![brassclaw_engine::ActionCall {
                     id: "call_followup_1".into(),
                     action_name: "create-issue".into(),
                     parameters: serde_json::json!({"title": "Issue after install"}),
@@ -1656,12 +1656,12 @@ async fn install_auth_resume_followed_by_aliased_tool_call_completes_without_han
         .find_lease_for_action(tid, "tool_install")
         .await
         .expect("lease for tool_install");
-    let exec_ctx = ironclaw_engine::ThreadExecutionContext {
+    let exec_ctx = brassclaw_engine::ThreadExecutionContext {
         thread_id: tid,
         thread_type: thread.thread_type,
         project_id: thread.project_id,
         user_id: "test-user".into(),
-        step_id: ironclaw_engine::StepId::new(),
+        step_id: brassclaw_engine::StepId::new(),
         current_call_id: Some("call_install_1".into()),
         source_channel: None,
         user_timezone: None,
@@ -1669,7 +1669,7 @@ async fn install_auth_resume_followed_by_aliased_tool_call_completes_without_han
         available_actions_snapshot: None,
         available_action_inventory_snapshot: None,
         conversation_scope: None,
-        gate_controller: ironclaw_engine::CancellingGateController::arc(),
+        gate_controller: brassclaw_engine::CancellingGateController::arc(),
         call_approval_granted: false,
         conversation_id: None,
     };
@@ -1942,7 +1942,7 @@ async fn persistence_round_trip_survives_restart() {
     }
 
     #[async_trait]
-    impl ironclaw::gate::store::GatePersistence for FakePersistence {
+    impl brassclaw::gate::store::GatePersistence for FakePersistence {
         async fn save(&self, gate: &PendingGate) -> Result<(), GateStoreError> {
             self.gates.lock().unwrap().push(gate.clone());
             Ok(())
@@ -1991,7 +1991,7 @@ async fn persistence_round_trip_survives_restart() {
 /// Research threads cannot access Privileged or Administrative tools.
 #[tokio::test]
 async fn lease_planner_research_excludes_privileged() {
-    use ironclaw_engine::LeasePlanner;
+    use brassclaw_engine::LeasePlanner;
 
     let planner = LeasePlanner::new();
     let caps = make_caps(true); // http has requires_approval=true → Privileged
@@ -2015,7 +2015,7 @@ async fn lease_planner_research_excludes_privileged() {
 /// Mission threads exclude Administrative tools (denylist).
 #[tokio::test]
 async fn lease_planner_mission_excludes_denylisted() {
-    use ironclaw_engine::LeasePlanner;
+    use brassclaw_engine::LeasePlanner;
 
     let mut caps = CapabilityRegistry::new();
     caps.register(Capability {
@@ -2164,8 +2164,8 @@ async fn wildcard_parent_lease_gives_requested_subset_not_wildcard() {
 /// LeaseGate denies actions without a valid lease.
 #[tokio::test]
 async fn lease_gate_denies_without_lease() {
-    use ironclaw_engine::gate::lease::LeaseGate;
-    use ironclaw_engine::gate::{ExecutionGate, ExecutionMode, GateContext, GateDecision};
+    use brassclaw_engine::gate::lease::LeaseGate;
+    use brassclaw_engine::gate::{ExecutionGate, ExecutionMode, GateContext, GateDecision};
 
     let mgr = Arc::new(LeaseManager::new());
     let tid = ThreadId::new();
@@ -2204,8 +2204,8 @@ async fn lease_gate_denies_without_lease() {
 /// LeaseGate allows actions covered by a valid lease.
 #[tokio::test]
 async fn lease_gate_allows_with_valid_lease() {
-    use ironclaw_engine::gate::lease::LeaseGate;
-    use ironclaw_engine::gate::{ExecutionGate, ExecutionMode, GateContext, GateDecision};
+    use brassclaw_engine::gate::lease::LeaseGate;
+    use brassclaw_engine::gate::{ExecutionGate, ExecutionMode, GateContext, GateDecision};
 
     let mgr = Arc::new(LeaseManager::new());
     let tid = ThreadId::new();
@@ -2254,8 +2254,8 @@ async fn lease_gate_allows_with_valid_lease() {
 /// Pipeline evaluates gates in priority order; first Deny wins.
 #[tokio::test]
 async fn pipeline_first_deny_wins() {
-    use ironclaw_engine::gate::pipeline::GatePipeline;
-    use ironclaw_engine::gate::{ExecutionGate, ExecutionMode, GateContext, GateDecision};
+    use brassclaw_engine::gate::pipeline::GatePipeline;
+    use brassclaw_engine::gate::{ExecutionGate, ExecutionMode, GateContext, GateDecision};
 
     struct AlwaysAllow;
     #[async_trait::async_trait]
@@ -2337,7 +2337,7 @@ async fn auto_approve_mode_skips_approval_for_standard_tools() {
 
     let llm = ScriptedLlm::new(vec![LlmOutput {
         response: LlmResponse::ActionCalls {
-            calls: vec![ironclaw_engine::ActionCall {
+            calls: vec![brassclaw_engine::ActionCall {
                 id: "call_1".into(),
                 action_name: "echo".into(),
                 parameters: serde_json::json!({"text": "hello"}),
@@ -2381,7 +2381,7 @@ async fn auto_approve_mode_skips_approval_for_standard_tools() {
 /// Auto-approve mode: Always-gated tools still pause for explicit approval.
 #[tokio::test]
 async fn auto_approve_mode_still_pauses_always_tools() {
-    use ironclaw_engine::gate::{ExecutionMode, GateContext};
+    use brassclaw_engine::gate::{ExecutionMode, GateContext};
 
     // Test the ApprovalGate directly since we need the mode check
     // without a full ThreadManager setup.
@@ -2453,7 +2453,7 @@ impl EffectExecutor for InlineGateGithubEffects {
         action_name: &str,
         parameters: serde_json::Value,
         _lease: &CapabilityLease,
-        _context: &ironclaw_engine::ThreadExecutionContext,
+        _context: &brassclaw_engine::ThreadExecutionContext,
     ) -> Result<ActionResult, EngineError> {
         self.calls.lock().await.push(parameters.clone());
         let approved = *self.approved.lock().await;
@@ -2468,7 +2468,7 @@ impl EffectExecutor for InlineGateGithubEffects {
                 resume_output: None,
             });
         }
-        // Realistic mock payload — at the time of writing, nearai/ironclaw
+        // Realistic mock payload — at the time of writing, chtugha/brassclaw
         // has multiple open P1 issues (e.g. #2818, #2997). Returning a
         // non-empty fixture keeps the script's `len(items)` assertion
         // grounded in reality rather than the misleading "Found 0".
@@ -2477,8 +2477,8 @@ impl EffectExecutor for InlineGateGithubEffects {
             action_name: action_name.into(),
             output: serde_json::json!({
                 "items": [
-                    {"number": 2818, "title": "[P1] mock fixture title", "html_url": "https://github.com/nearai/ironclaw/issues/2818"},
-                    {"number": 2997, "title": "[P1] another mock fixture", "html_url": "https://github.com/nearai/ironclaw/issues/2997"}
+                    {"number": 2818, "title": "[P1] mock fixture title", "html_url": "https://github.com/chtugha/brassclaw/issues/2818"},
+                    {"number": 2997, "title": "[P1] another mock fixture", "html_url": "https://github.com/chtugha/brassclaw/issues/2997"}
                 ]
             }),
             is_error: false,
@@ -2489,7 +2489,7 @@ impl EffectExecutor for InlineGateGithubEffects {
     async fn available_actions(
         &self,
         _leases: &[CapabilityLease],
-        _context: &ironclaw_engine::ThreadExecutionContext,
+        _context: &brassclaw_engine::ThreadExecutionContext,
     ) -> Result<Vec<ActionDef>, EngineError> {
         Ok(vec![ActionDef {
             name: "github_tool".into(),
@@ -2505,8 +2505,8 @@ impl EffectExecutor for InlineGateGithubEffects {
     async fn available_capabilities(
         &self,
         _leases: &[CapabilityLease],
-        _context: &ironclaw_engine::ThreadExecutionContext,
-    ) -> Result<Vec<ironclaw_engine::CapabilitySummary>, EngineError> {
+        _context: &brassclaw_engine::ThreadExecutionContext,
+    ) -> Result<Vec<brassclaw_engine::CapabilitySummary>, EngineError> {
         Ok(vec![])
     }
 }
@@ -2517,7 +2517,7 @@ impl EffectExecutor for InlineGateGithubEffects {
 /// pause() returns, so atomicity here matters — using a detached
 /// `tokio::spawn` to mark approval would race the retry.
 struct OneShotApprovingGateController {
-    requests: tokio::sync::Mutex<Vec<ironclaw_engine::GatePauseRequest>>,
+    requests: tokio::sync::Mutex<Vec<brassclaw_engine::GatePauseRequest>>,
     effects: Arc<InlineGateGithubEffects>,
 }
 
@@ -2529,17 +2529,17 @@ impl OneShotApprovingGateController {
         })
     }
 
-    async fn requests_seen(&self) -> Vec<ironclaw_engine::GatePauseRequest> {
+    async fn requests_seen(&self) -> Vec<brassclaw_engine::GatePauseRequest> {
         self.requests.lock().await.clone()
     }
 }
 
 #[async_trait::async_trait]
-impl ironclaw_engine::GateController for OneShotApprovingGateController {
+impl brassclaw_engine::GateController for OneShotApprovingGateController {
     async fn pause(
         &self,
-        request: ironclaw_engine::GatePauseRequest,
-    ) -> ironclaw_engine::GateResolution {
+        request: brassclaw_engine::GatePauseRequest,
+    ) -> brassclaw_engine::GateResolution {
         let mut requests = self.requests.lock().await;
         let first = requests.is_empty();
         requests.push(request);
@@ -2549,16 +2549,16 @@ impl ironclaw_engine::GateController for OneShotApprovingGateController {
             // The engine's retry call to execute_action happens AFTER
             // this future resolves, so the approval lands first.
             self.effects.mark_approved().await;
-            ironclaw_engine::GateResolution::Approved { always: false }
+            brassclaw_engine::GateResolution::Approved { always: false }
         } else {
-            ironclaw_engine::GateResolution::Cancelled
+            brassclaw_engine::GateResolution::Cancelled
         }
     }
 }
 
 /// Live regression for the user-reported CodeAct bug:
 ///
-/// > "what are p1 bugs in nearai/ironclaw filed in last 7 days" — the
+/// > "what are p1 bugs in chtugha/brassclaw filed in last 7 days" — the
 /// > `github_tool` call inside the CodeAct script returned mid-execution
 /// > with `EngineError::GatePaused`, and the script aborted with
 /// > `RuntimeError: execution paused by gate 'approval'` instead of
@@ -2581,10 +2581,10 @@ async fn codeact_inline_gate_await_resumes_user_reproducer() {
     // FINAL() materializes the result so the engine can complete.
     let codeact_script = r#"
 result = await github_tool(action="search_issues_pull_requests",
-                           query="repo:nearai/ironclaw is:issue is:open label:P1",
+                           query="repo:chtugha/brassclaw is:issue is:open label:P1",
                            per_page=50)
 items = result.get("items", []) if isinstance(result, dict) else []
-FINAL(f"Found {len(items)} P1 bugs in nearai/ironclaw.")
+FINAL(f"Found {len(items)} P1 bugs in chtugha/brassclaw.")
 "#;
 
     let llm = ScriptedLlm::new(vec![LlmOutput {
@@ -2629,12 +2629,12 @@ FINAL(f"Found {len(items)} P1 bugs in nearai/ironclaw.")
     // approved on the effects mock BEFORE returning the resolution,
     // so the retry-execute returns success rather than another gate.
     let controller = OneShotApprovingGateController::new(effects.clone());
-    mgr.set_gate_controller(controller.clone() as Arc<dyn ironclaw_engine::GateController>)
+    mgr.set_gate_controller(controller.clone() as Arc<dyn brassclaw_engine::GateController>)
         .await;
 
     let tid = mgr
         .spawn_thread(
-            "what are p1 bugs in nearai/ironclaw filed in last 7 days",
+            "what are p1 bugs in chtugha/brassclaw filed in last 7 days",
             ThreadType::Foreground,
             project_id,
             ThreadConfig::default(),
@@ -2686,7 +2686,7 @@ FINAL(f"Found {len(items)} P1 bugs in nearai/ironclaw.")
     let approval_requested = thread.events.iter().any(|e| {
         matches!(
             &e.kind,
-            ironclaw_engine::types::event::EventKind::ApprovalRequested { action_name, .. }
+            brassclaw_engine::types::event::EventKind::ApprovalRequested { action_name, .. }
                 if action_name == "github_tool"
         )
     });
@@ -2697,7 +2697,7 @@ FINAL(f"Found {len(items)} P1 bugs in nearai/ironclaw.")
     let action_executed = thread.events.iter().any(|e| {
         matches!(
             &e.kind,
-            ironclaw_engine::types::event::EventKind::ActionExecuted { action_name, .. }
+            brassclaw_engine::types::event::EventKind::ActionExecuted { action_name, .. }
                 if action_name == "github_tool"
         )
     });
@@ -2718,10 +2718,10 @@ FINAL(f"Found {len(items)} P1 bugs in nearai/ironclaw.")
     );
     // The mock fixture returns 2 items, so the script's `len(items)`
     // produces "Found 2 P1 bugs ...". (At least one of those issue
-    // numbers — #2818, #2997 — is actually open in nearai/ironclaw at
+    // numbers — #2818, #2997 — is actually open in chtugha/brassclaw at
     // the time of writing.)
     assert!(
-        final_response.contains("Found 2 P1 bugs in nearai/ironclaw"),
+        final_response.contains("Found 2 P1 bugs in chtugha/brassclaw"),
         "FINAL() must reflect the post-approval tool result; got: {final_response}"
     );
 }
@@ -2786,13 +2786,13 @@ FINAL("should not reach here")
         requests: tokio::sync::Mutex<u32>,
     }
     #[async_trait::async_trait]
-    impl ironclaw_engine::GateController for DenyingGateController {
+    impl brassclaw_engine::GateController for DenyingGateController {
         async fn pause(
             &self,
-            _request: ironclaw_engine::GatePauseRequest,
-        ) -> ironclaw_engine::GateResolution {
+            _request: brassclaw_engine::GatePauseRequest,
+        ) -> brassclaw_engine::GateResolution {
             *self.requests.lock().await += 1;
-            ironclaw_engine::GateResolution::Denied {
+            brassclaw_engine::GateResolution::Denied {
                 reason: Some("not now".into()),
             }
         }
@@ -2800,7 +2800,7 @@ FINAL("should not reach here")
     let controller = Arc::new(DenyingGateController {
         requests: tokio::sync::Mutex::new(0),
     });
-    mgr.set_gate_controller(controller.clone() as Arc<dyn ironclaw_engine::GateController>)
+    mgr.set_gate_controller(controller.clone() as Arc<dyn brassclaw_engine::GateController>)
         .await;
 
     let tid = mgr
@@ -2845,13 +2845,13 @@ FINAL("should not reach here")
         .events
         .iter()
         .filter_map(|e| match &e.kind {
-            ironclaw_engine::types::event::EventKind::CodeExecuted { stdout, .. } => {
+            brassclaw_engine::types::event::EventKind::CodeExecuted { stdout, .. } => {
                 Some(stdout.clone())
             }
-            ironclaw_engine::types::event::EventKind::CodeExecutionFailed { error, .. } => {
+            brassclaw_engine::types::event::EventKind::CodeExecutionFailed { error, .. } => {
                 Some(error.clone())
             }
-            ironclaw_engine::types::event::EventKind::ActionFailed { error, .. } => {
+            brassclaw_engine::types::event::EventKind::ActionFailed { error, .. } => {
                 Some(error.clone())
             }
             _ => None,

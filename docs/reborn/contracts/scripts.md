@@ -1,15 +1,15 @@
-# IronClaw Reborn script runner contract
+# BrassClaw Reborn script runner contract
 
 **Date:** 2026-04-25
 **Status:** V1 contract slice
-**Crate:** `crates/ironclaw_scripts`
+**Crate:** `crates/brassclaw_scripts`
 **Depends on:** `docs/reborn/contracts/host-api.md`, `docs/reborn/contracts/extensions.md`, `docs/reborn/contracts/resources.md`, `docs/reborn/contracts/dispatcher.md`
 
 ---
 
 ## 1. Purpose
 
-`ironclaw_scripts` provides the native CLI/software execution lane without requiring every useful tool to be rebuilt in WASM.
+`brassclaw_scripts` provides the native CLI/software execution lane without requiring every useful tool to be rebuilt in WASM.
 
 The public runtime kind is:
 
@@ -144,7 +144,7 @@ Future PRs may add scoped filesystem mounts, artifact export, network policy, an
 
 ## 6. Dispatcher relationship
 
-`ironclaw_dispatcher` selects the script lane when a declared capability has:
+`brassclaw_dispatcher` selects the script lane when a declared capability has:
 
 ```text
 RuntimeKind::Script

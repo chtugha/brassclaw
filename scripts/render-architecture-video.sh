@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 VIDEO_DIR="$PROJECT_ROOT/docs/architecture-video"
-OUTPUT="${1:-$PROJECT_ROOT/ironclaw-architecture.mp4}"
+OUTPUT="${1:-$PROJECT_ROOT/brassclaw-architecture.mp4}"
 case "$OUTPUT" in
   /*) ;;
   *) OUTPUT="$PROJECT_ROOT/$OUTPUT" ;;
@@ -34,8 +34,8 @@ if [ ! -d "$VIDEO_DIR/node_modules" ]; then
   fi
 fi
 
-echo "Rendering IronClaw architecture video..."
-(cd "$VIDEO_DIR" && npx remotion render IronClawArchitecture -- "$OUTPUT")
+echo "Rendering BrassClaw architecture video..."
+(cd "$VIDEO_DIR" && npx remotion render BrassClawArchitecture -- "$OUTPUT")
 
 echo ""
 echo "Done: $OUTPUT"

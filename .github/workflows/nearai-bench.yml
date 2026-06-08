@@ -31,7 +31,7 @@ on:
 # integration`, despite the docs at
 # https://docs.github.com/rest/reactions/reactions#create-reaction-for-an-issue-comment
 # listing only `issues: write`. Observed in
-# https://github.com/nearai/ironclaw/actions/runs/26197185339 (the
+# https://github.com/chtugha/brassclaw/actions/runs/26197185339 (the
 # canary on PR #3834 that found this bug).
 permissions:
   pull-requests: write  # gh pr view + gh pr comment + reactions on PR comments

@@ -77,7 +77,7 @@ export const ThreadStateScene: React.FC = () => {
           fontFamily: FONTS.mono,
         }}
       >
-        crates/ironclaw_engine/src/types/thread.rs &bull; events persisted to
+        crates/brassclaw_engine/src/types/thread.rs &bull; events persisted to
         Store (never deleted)
       </div>
 

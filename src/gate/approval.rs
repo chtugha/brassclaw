@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use ironclaw_engine::gate::{ExecutionGate, ExecutionMode, GateContext, GateDecision, ResumeKind};
+use brassclaw_engine::gate::{ExecutionGate, ExecutionMode, GateContext, GateDecision, ResumeKind};
 
 use crate::tools::rate_limiter::RateLimiter;
 use crate::tools::{ApprovalRequirement, ToolRegistry};
@@ -311,9 +311,9 @@ mod tests {
     use super::*;
     use crate::context::JobContext;
     use crate::tools::{Tool, ToolError, ToolOutput};
-    use ironclaw_engine::gate::ExecutionMode;
-    use ironclaw_engine::types::capability::{ActionDef, EffectType, ModelToolSurface};
-    use ironclaw_engine::types::thread::ThreadId;
+    use brassclaw_engine::gate::ExecutionMode;
+    use brassclaw_engine::types::capability::{ActionDef, EffectType, ModelToolSurface};
+    use brassclaw_engine::types::thread::ThreadId;
     use std::collections::HashSet;
     use std::time::Duration;
 

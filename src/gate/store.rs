@@ -333,7 +333,7 @@ impl PendingGateStore {
     /// gates that can never be resolved.
     pub async fn discard_for_thread(
         &self,
-        thread_id: ironclaw_engine::ThreadId,
+        thread_id: brassclaw_engine::ThreadId,
     ) -> Vec<PendingGate> {
         let removed = {
             let mut inner = self.inner.lock().await;
@@ -448,7 +448,7 @@ impl PendingGateStore {
 mod tests {
     use super::*;
     use chrono::{Duration, Utc};
-    use ironclaw_engine::{ConversationId, ResumeKind, ThreadId};
+    use brassclaw_engine::{ConversationId, ResumeKind, ThreadId};
 
     fn sample_gate_with(
         user_id: &str,

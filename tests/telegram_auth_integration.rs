@@ -18,13 +18,13 @@ use std::sync::{Mutex, OnceLock};
 #[cfg(feature = "integration")]
 use futures::StreamExt;
 #[cfg(feature = "integration")]
-use ironclaw::channels::Channel;
+use brassclaw::channels::Channel;
 #[cfg(feature = "integration")]
-use ironclaw::channels::OutgoingResponse;
-use ironclaw::channels::wasm::{
+use brassclaw::channels::OutgoingResponse;
+use brassclaw::channels::wasm::{
     PreparedChannelModule, WasmChannel, WasmChannelRuntime, WasmChannelRuntimeConfig,
 };
-use ironclaw::pairing::PairingStore;
+use brassclaw::pairing::PairingStore;
 #[cfg(feature = "integration")]
 use tokio::time::{Duration, timeout};
 
@@ -151,7 +151,7 @@ async fn create_telegram_channel_with_store(
     let capabilities_bytes = std::fs::read(telegram_capabilities_path())
         .unwrap_or_else(|err| panic!("Failed to read Telegram capabilities file: {err}"));
     let capabilities_file =
-        ironclaw::channels::wasm::ChannelCapabilitiesFile::from_bytes(&capabilities_bytes)
+        brassclaw::channels::wasm::ChannelCapabilitiesFile::from_bytes(&capabilities_bytes)
             .unwrap_or_else(|err| panic!("Failed to parse Telegram capabilities file: {err}"));
 
     let channel = WasmChannel::new(
@@ -251,7 +251,7 @@ impl Drop for ScopedEnvVar {
 }
 
 #[cfg(feature = "integration")]
-async fn expect_no_message(stream: &mut ironclaw::channels::MessageStream, timeout_ms: u64) {
+async fn expect_no_message(stream: &mut brassclaw::channels::MessageStream, timeout_ms: u64) {
     let result = timeout(Duration::from_millis(timeout_ms), stream.next()).await;
     assert!(
         result.is_err(),
@@ -525,7 +525,7 @@ async fn test_private_dm_webhook_and_reply_use_fake_telegram_api() {
         let _ = axum::serve(listener, app).await;
     });
     let _guard = ScopedEnvVar::set(
-        "IRONCLAW_TEST_TELEGRAM_API_BASE_URL",
+        "BRASSCLAW_TEST_TELEGRAM_API_BASE_URL",
         &format!("http://{addr}"),
     );
 
@@ -577,7 +577,7 @@ async fn test_private_dm_webhook_and_reply_use_fake_telegram_api() {
     channel
         .respond(
             &incoming,
-            OutgoingResponse::text("hello back from ironclaw"),
+            OutgoingResponse::text("hello back from brassclaw"),
         )
         .await
         .expect("telegram respond should succeed");
@@ -600,7 +600,7 @@ async fn test_private_dm_webhook_and_reply_use_fake_telegram_api() {
     assert_eq!(payloads[0]["chat_id"], serde_json::json!(999));
     assert_eq!(
         payloads[0]["text"],
-        serde_json::json!("hello back from ironclaw")
+        serde_json::json!("hello back from brassclaw")
     );
     assert_eq!(payloads[0]["reply_to_message_id"], serde_json::json!(201));
 }
@@ -1098,7 +1098,7 @@ async fn test_document_attachment_downloads_via_fake_telegram_api() {
         let _ = axum::serve(listener, app).await;
     });
     let _guard = ScopedEnvVar::set(
-        "IRONCLAW_TEST_TELEGRAM_API_BASE_URL",
+        "BRASSCLAW_TEST_TELEGRAM_API_BASE_URL",
         &format!("http://{addr}"),
     );
 
@@ -1249,7 +1249,7 @@ async fn test_photo_attachment_downloads_via_fake_telegram_api() {
         let _ = axum::serve(listener, app).await;
     });
     let _guard = ScopedEnvVar::set(
-        "IRONCLAW_TEST_TELEGRAM_API_BASE_URL",
+        "BRASSCLAW_TEST_TELEGRAM_API_BASE_URL",
         &format!("http://{addr}"),
     );
 
@@ -1422,7 +1422,7 @@ async fn test_voice_attachment_downloads_via_fake_telegram_api() {
         let _ = axum::serve(listener, app).await;
     });
     let _guard = ScopedEnvVar::set(
-        "IRONCLAW_TEST_TELEGRAM_API_BASE_URL",
+        "BRASSCLAW_TEST_TELEGRAM_API_BASE_URL",
         &format!("http://{addr}"),
     );
 
@@ -1558,7 +1558,7 @@ async fn test_long_message_splits_into_multiple_send_message_calls() {
         let _ = axum::serve(listener, app).await;
     });
     let _guard = ScopedEnvVar::set(
-        "IRONCLAW_TEST_TELEGRAM_API_BASE_URL",
+        "BRASSCLAW_TEST_TELEGRAM_API_BASE_URL",
         &format!("http://{addr}"),
     );
 
@@ -1719,7 +1719,7 @@ async fn test_markdown_parse_error_falls_back_to_plain_text() {
         let _ = axum::serve(listener, app).await;
     });
     let _guard = ScopedEnvVar::set(
-        "IRONCLAW_TEST_TELEGRAM_API_BASE_URL",
+        "BRASSCLAW_TEST_TELEGRAM_API_BASE_URL",
         &format!("http://{addr}"),
     );
 
@@ -1808,7 +1808,7 @@ async fn test_send_chat_action_typing_on_status_thinking() {
     use axum::{
         Router, body::Bytes, extract::State, http::Uri, response::IntoResponse, routing::any,
     };
-    use ironclaw::channels::Channel;
+    use brassclaw::channels::Channel;
 
     #[derive(Clone)]
     struct FakeTelegramState {
@@ -1848,7 +1848,7 @@ async fn test_send_chat_action_typing_on_status_thinking() {
         let _ = axum::serve(listener, app).await;
     });
     let _guard = ScopedEnvVar::set(
-        "IRONCLAW_TEST_TELEGRAM_API_BASE_URL",
+        "BRASSCLAW_TEST_TELEGRAM_API_BASE_URL",
         &format!("http://{addr}"),
     );
 
@@ -1878,7 +1878,7 @@ async fn test_send_chat_action_typing_on_status_thinking() {
     // Send typing status
     channel
         .send_status(
-            ironclaw::channels::StatusUpdate::Thinking("Processing...".to_string()),
+            brassclaw::channels::StatusUpdate::Thinking("Processing...".to_string()),
             &metadata,
         )
         .await
@@ -2001,7 +2001,7 @@ async fn test_polling_mode_get_updates_via_fake_telegram_api() {
         let _ = axum::serve(listener, app).await;
     });
     let _guard = ScopedEnvVar::set(
-        "IRONCLAW_TEST_TELEGRAM_API_BASE_URL",
+        "BRASSCLAW_TEST_TELEGRAM_API_BASE_URL",
         &format!("http://{addr}"),
     );
 

@@ -26,7 +26,7 @@ through trusted ingress, runs in a dedicated thread, and persists the result.
 ## Current Ground Truth
 
 - Work targets `reborn-integration`, not `staging`.
-- `ironclaw_outbound` owns outbound policy, reply-target validation, delivery
+- `brassclaw_outbound` owns outbound policy, reply-target validation, delivery
   attempts, and thread notification policy.
 - `OutboundPolicyService::prepare_delivery_attempt` currently has contract-test
   coverage but no production orchestration caller.
@@ -36,7 +36,7 @@ through trusted ingress, runs in a dedicated thread, and persists the result.
 - Product workflow is primarily inbound. Product adapters own transport
   rendering through `ProductAdapter::render_outbound`; host/composition glue
   must own the policy sequence before adapter render.
-- `ironclaw_conversations::InboundTurnService` owns inbound replay, binding
+- `brassclaw_conversations::InboundTurnService` owns inbound replay, binding
   resolution, message acceptance, and turn submission. Trigger ingress must
   extend this service rather than duplicate the pipeline.
 - `ConversationBindingService` already exposes
@@ -45,7 +45,7 @@ through trusted ingress, runs in a dedicated thread, and persists the result.
 - `AdapterKind` and `ExternalConversationRef` are publicly constructible
   bounded values today, so a reserved string alone is not enough to seal
   host-internal trigger ingress from product adapters.
-- `ironclaw_triggers` does not exist yet.
+- `brassclaw_triggers` does not exist yet.
 - Runtime composition currently owns one turn-runner worker handle; adding a
   trigger poller needs explicit multi-worker startup/shutdown ownership.
 - Trigger delivery must not smuggle communication destinations through
@@ -82,7 +82,7 @@ PRs should record them as contract language.
    `CommunicationDeliveryCandidate -> prepare_delivery_attempt -> render_outbound`.
    Product adapters keep transport rendering ownership and do not perform
    outbound policy lookup.
-7. Trigger prompt materialization uses a narrow port/helper. `ironclaw_triggers`
+7. Trigger prompt materialization uses a narrow port/helper. `brassclaw_triggers`
    asks for an inbound content ref and does not reach into composition, product
    adapters, or transcript internals directly.
 8. V1 active-run back-pressure is required:
@@ -92,7 +92,7 @@ PRs should record them as contract language.
    poller counter.
 9. `trigger_create`, `trigger_list`, and `trigger_remove` are required
    user-facing first-party capabilities, registered first in
-   `ironclaw_host_runtime::first_party_tools` and then consumed by composition.
+   `brassclaw_host_runtime::first_party_tools` and then consumed by composition.
    The host-runtime package, handlers, and registry entries must stay in
    lockstep.
 10. Trigger poll settings are composition-owned, and V1 schedules must reject
@@ -105,12 +105,12 @@ PRs should record them as contract language.
     policy. Approval/auth prompt delivery must resolve through exact-owner
     prompt targets first; requested outbound may only apply to ordinary
     non-authority delivery or narrow to the same exact-owner prompt target.
-13. Trigger fires bypass `ironclaw_product_workflow` ingress entirely. Product
+13. Trigger fires bypass `brassclaw_product_workflow` ingress entirely. Product
     workflow remains adapter-facing; scheduled triggers enter only through the
-    planned `ironclaw_conversations::InboundTurnService` trusted facade.
+    planned `brassclaw_conversations::InboundTurnService` trusted facade.
 14. Host-trusted trigger ingress authority is sealed by
-    `TrustedTriggerSubmitRequest` minting in `ironclaw_triggers` and private
-    trusted inbound construction inside `ironclaw_conversations`. Product
+    `TrustedTriggerSubmitRequest` minting in `brassclaw_triggers` and private
+    trusted inbound construction inside `brassclaw_conversations`. Product
     adapters must not receive constructors, call the trusted trigger submitter
     factory, or model trusted trigger ingress in product payload DTOs.
 
@@ -135,7 +135,7 @@ Delivery track
                                           └─> PR 7 Product Outbound Orchestration
 
 Trigger execution track
-  PR 2 ─> PR 8 Trusted Inbound Facade ─> PR 9 ironclaw_triggers Crate Skeleton
+  PR 2 ─> PR 8 Trusted Inbound Facade ─> PR 9 brassclaw_triggers Crate Skeleton
                                            └─> PR 10 Trigger Persistence Model and Backend 1
                                                 └─> PR 11 Trigger Persistence Backend 2 and Parity
                                                      └─> PR 12 Atomic Fire Claim API
@@ -234,7 +234,7 @@ Expected size: docs only.
 
 ### PR 3 — Outbound Resolver Domain Types
 
-Add typed request/response shapes in `ironclaw_outbound`:
+Add typed request/response shapes in `brassclaw_outbound`:
 
 - `CommunicationDeliveryResolutionRequest`
 - `CommunicationDeliveryIntent`
@@ -258,9 +258,9 @@ authority-bearing prompt payloads without allowing contradictory input.
 
 `SourceRouteContext` must also stay outbound-owned and binding-level only:
 carry the canonical `ReplyTargetBindingRef` produced by
-`ironclaw_conversations`, not raw adapter identity such as `AdapterKind`,
+`brassclaw_conversations`, not raw adapter identity such as `AdapterKind`,
 `AdapterInstallationId`, `ExternalActorRef`, or `ExternalConversationRef`.
-`ironclaw_outbound` must not depend on `ironclaw_conversations`; composition or
+`brassclaw_outbound` must not depend on `brassclaw_conversations`; composition or
 later product outbound orchestration owns any translation between conversation
 source-route records and outbound resolution inputs.
 
@@ -270,7 +270,7 @@ Expected size: less than 700 lines.
 
 ### PR 4 — Communication Preferences DB Model
 
-Add user delivery preferences owned by `ironclaw_outbound` and persisted in a
+Add user delivery preferences owned by `brassclaw_outbound` and persisted in a
 dedicated typed database table/repository:
 
 - final replies target
@@ -289,7 +289,7 @@ Imitate the DB store pattern where useful, but keep communication preferences a
 typed outbound-owned repository.
 
 The repository, DTOs, and backend/migration code live under the
-`ironclaw_outbound` ownership boundary, not `src/db` generic settings. Backend
+`brassclaw_outbound` ownership boundary, not `src/db` generic settings. Backend
 integration may reuse workspace migration conventions, but schema ownership and
 tests belong with the outbound crate/module that owns communication policy.
 
@@ -354,7 +354,7 @@ Expected size: less than 1000 lines.
 Wire the host/composition-side outbound orchestration point for a named real
 adapter path. Do not treat the current WebUI projection path as the outbound
 orchestration path unless this PR explicitly refactors it to enter
-`ironclaw_outbound`.
+`brassclaw_outbound`.
 
 - Own the sequence
   `resolve candidate -> prepare delivery attempt -> adapter render_outbound`.
@@ -373,18 +373,18 @@ and adapter call sites heavily.
 
 Implement the planned
 `InboundTurnService::handle_inbound_turn_with_trusted_scope` facade in
-`ironclaw_conversations` after PR 2:
+`brassclaw_conversations` after PR 2:
 
 - Add a typed trusted request shape that bundles the ordinary inbound request
   with host-owned `agent_id` and `project_id` authority. Adapter-supplied
   requested scope hints are cleared before trusted binding resolution.
-- Add `ironclaw_conversations` sealed trusted-ingress marker/witness types, but
+- Add `brassclaw_conversations` sealed trusted-ingress marker/witness types, but
   do not expose production minting publicly in this PR. PR 8 seals and tests
   the facade locally; the later trigger worker/composition integration PR owns
   the host-owned construction shim for scheduled triggers. Product adapters
   cannot model, mint, or construct trusted ingress.
-- Trigger fires call only this `ironclaw_conversations` facade. They must not
-  pass through `ironclaw_product_workflow::InboundTurnService`, which remains
+- Trigger fires call only this `brassclaw_conversations` facade. They must not
+  pass through `brassclaw_product_workflow::InboundTurnService`, which remains
   adapter-facing.
 - Keep replay lookup first, exactly like `handle_inbound_turn`, so duplicate
   scheduled-slot retries hit existing inbound idempotency.
@@ -398,7 +398,7 @@ Implement the planned
 
 Expected size: less than 500 lines.
 
-### PR 9 — `ironclaw_triggers` Crate Skeleton
+### PR 9 — `brassclaw_triggers` Crate Skeleton
 
 Add the trigger crate with domain and in-memory behavior:
 
@@ -457,7 +457,7 @@ Add the first durable `TriggerRepository` backend:
 - scoped list/remove behavior
 - backend-specific tests
 
-Reborn storage boundary: `ironclaw_triggers` may own the trigger repository
+Reborn storage boundary: `brassclaw_triggers` may own the trigger repository
 backend because it owns trigger schema, row decoding, due-query semantics, and
 trigger-scoped persistence tests. It must not own generic database accessors,
 database URL/path/env parsing, production substrate selection, or shared
@@ -552,11 +552,11 @@ tests exceed the line budget.
 
 Add the narrow ports/helpers the poller needs before the worker implementation:
 
-- `ironclaw_triggers` owns the prompt-materialization port trait and asks for an
+- `brassclaw_triggers` owns the prompt-materialization port trait and asks for an
   inbound content ref. Composition provides the adapter from trigger prompt data
   to the conversation/thread content-ref boundary.
-- `ironclaw_triggers` owns the active-fire clear request type, but the concrete
-  turn-state lookup adapter is supplied by composition over `ironclaw_turns` /
+- `brassclaw_triggers` owns the active-fire clear request type, but the concrete
+  turn-state lookup adapter is supplied by composition over `brassclaw_turns` /
   turn-persistence APIs. It is not a trigger-local counter.
 - V1 policy is exactly one active fire per trigger; later concurrency can be an
   explicit config expansion.
@@ -638,9 +638,9 @@ registry first, not local-dev synthetic capabilities:
 - `trigger_create`
 - `trigger_list`
 - `trigger_remove`
-- package declarations in `ironclaw_host_runtime::first_party_tools`
-- handler registration in `ironclaw_host_runtime::first_party_tools`
-- `FirstPartyCapabilityRegistry` entries in `ironclaw_host_runtime`
+- package declarations in `brassclaw_host_runtime::first_party_tools`
+- handler registration in `brassclaw_host_runtime::first_party_tools`
+- `FirstPartyCapabilityRegistry` entries in `brassclaw_host_runtime`
 - production composition wiring that injects the trigger repository dependency
 - tests that capability IDs are present in package manifest, handlers, and
   registry
@@ -742,7 +742,7 @@ Wire the trigger poller into Reborn composition:
     - keep trusted trigger authority on the worker-minted sealed trigger
       request, not on a reusable authority-token facade;
     - keep `TrustedInboundTurnRequest` raw construction private inside
-      `ironclaw_conversations`;
+      `brassclaw_conversations`;
     - expose only the narrow trigger-fire submission operation needed by
       composition, not a reusable generic trusted-inbound token;
     - update architecture tests so adapter/product crates are forbidden from
@@ -783,7 +783,7 @@ Wire the trigger poller into Reborn composition:
     real per-process random or seeded PRNG source if deployed replicas need
     stronger startup/tick de-correlation than the current bounded wall-clock
     fallback.
-- architecture tests for `ironclaw_triggers` dependency edges
+- architecture tests for `brassclaw_triggers` dependency edges
 - current architecture map update
 - `FEATURE_PARITY.md` update with a distinct Reborn trigger-loop note rather
   than relying on legacy cron rows
@@ -801,7 +801,7 @@ ready, connect trigger-origin final reply delivery:
   authorization against the real agent/project access source of truth.
 - name the first real adapter path and readiness gate. Do not use the WebUI
   projection path as a stand-in unless it is explicitly routed through
-  `ironclaw_outbound`.
+  `brassclaw_outbound`.
 - construct `RunNotificationOrigin::Triggered`.
 - construct `RunNotificationOrigin::TriggeredFromSourceRoute` when a trigger
   run also has a live source route, and verify live source route precedence.
@@ -818,7 +818,7 @@ Expected size: less than 1000 lines.
 
 ### Status Snapshot (2026-06-02)
 
-PR 1–18 merged. Trigger backend complete: `ironclaw_triggers` domain crate,
+PR 1–18 merged. Trigger backend complete: `brassclaw_triggers` domain crate,
 dual-backend persistence, atomic fire claim, poller worker, trusted inbound
 facade, `trigger_*` first-party capabilities, and worker lifecycle composition
 wiring. A Reborn ownership audit found no boundary breaches.
@@ -834,7 +834,7 @@ Two gaps block shipping user-creatable cron jobs:
    actually fires."
 2. **Some security hardening is deferred.** Trusted trigger submission is now
    type-sealed through `TrustedTriggerSubmitRequest` and converted inside
-   `ironclaw_conversations`; product/adapter crates cannot mint host-trusted
+   `brassclaw_conversations`; product/adapter crates cannot mint host-trusted
    inbound turns directly. Fire-time creator authorization is still a
    tenant-ID-equality placeholder
    (`TenantScopedTrustedTriggerFireAuthorizer`), not wired to a real agent/project
@@ -851,7 +851,7 @@ of the trigger result stays fast-follow (PR 19).
 **Cron is the first of several trigger sources, not the end state.** Today the
 domain models only one source: `TriggerSchedule::Cron`, `TriggerSourceKind::Schedule`,
 and the single `ScheduleTriggerSourceProvider` impl
-(`crates/ironclaw_triggers/src/lib.rs`). `TriggerSourceProvider` is the pluggable
+(`crates/brassclaw_triggers/src/lib.rs`). `TriggerSourceProvider` is the pluggable
 seam — future sources (webhook, inbound event, email-arrival, etc.) are new
 enum variants plus new provider impls, with the poller, persistence, trusted
 ingress, and capabilities all unchanged. The user-facing surface is therefore
@@ -868,14 +868,14 @@ Three independent tracks branch from the PR 18 baseline.
 
 **PR 18.6 — Trigger Poller Config and Runtime Enablement**
 
-- Add a `[trigger_poller]` section to `ironclaw_reborn_config` (`config_file.rs`):
+- Add a `[trigger_poller]` section to `brassclaw_reborn_config` (`config_file.rs`):
   `enabled`, poll interval, fires per tick, and per-trigger active-run cap. Map
   onto the existing `TriggerPollerWorkerConfig` / `TriggerPollerSettings` shape —
   do not invent a parallel type.
-- Honor an env fallback (`IRONCLAW_TRIGGER_POLLER_ENABLED`, plus optional
+- Honor an env fallback (`BRASSCLAW_TRIGGER_POLLER_ENABLED`, plus optional
   interval/cap overrides) so smoke tests do not need a config file.
 - Read the resolved settings in
-  `ironclaw_reborn_cli::build_runtime_input_with_options` and call
+  `brassclaw_reborn_cli::build_runtime_input_with_options` and call
   `.with_trigger_poller_settings(...)`.
 - Document the flag in `.env.example`, off by default.
 - Preserve the PR 18 opt-in-default rule: absent config/env ⇒ poller stays off.
@@ -898,9 +898,9 @@ Three independent tracks branch from the PR 18 baseline.
 
 - New `tests/e2e/scenarios/test_cron_trigger_autofires.py`: create a cron
   trigger through chat send, wait one poller interval, and assert a completed
-  run exists under the new `ironclaw_triggers` domain. Distinct from the v1
+  run exists under the new `brassclaw_triggers` domain. Distinct from the v1
   routines scenario (`test_routine_full_job.py`), which exercises the legacy
-  Mission/routine path, not `ironclaw_triggers`.
+  Mission/routine path, not `brassclaw_triggers`.
 - Deps: PR 18.6 (e2e runs the real binary; the poller must be enableable there).
 - Expected size: less than 300 lines.
 
@@ -911,9 +911,9 @@ Three independent tracks branch from the PR 18 baseline.
 - Seal trusted trigger submission so product/adapter crates cannot mint
   host-trusted inbound turns even by adding dependencies. Authority lives in
   `TrustedTriggerSubmitRequest`, constructed only by the trigger worker and
-  converted inside `ironclaw_conversations`.
+  converted inside `brassclaw_conversations`.
 - Keep `TrustedInboundTurnRequest` raw construction private in
-  `ironclaw_conversations` (already done) and expose only the narrow
+  `brassclaw_conversations` (already done) and expose only the narrow
   trigger-fire submission operation.
 - Add a negative/structural test proving an adapter path cannot construct
   host-trusted ingress — not just another dependency-edge assertion.
@@ -950,14 +950,14 @@ source providers add new types under the same surface without reshaping it.
 
 **PR 18.9 — Automations Management HTTP API (v2 surface)**
 
-- Add a read-only automation list route to the `ironclaw_webui_v2` router.
+- Add a read-only automation list route to the `brassclaw_webui_v2` router.
   Match the existing WebUI v2 pattern:
-  `ironclaw_webui_v2` handlers consume only
-  `ironclaw_product_workflow::RebornServicesApi`; product-workflow owns the
-  WebUI-facing automation facade/DTOs; `ironclaw_reborn_composition` wires the
+  `brassclaw_webui_v2` handlers consume only
+  `brassclaw_product_workflow::RebornServicesApi`; product-workflow owns the
+  WebUI-facing automation facade/DTOs; `brassclaw_reborn_composition` wires the
   concrete facade to the Reborn host-runtime capability path.
 - Do not put dispatcher, host-runtime, trigger repository, DB/storage, or
-  product-adapter transport/rendering dependencies in `ironclaw_webui_v2`.
+  product-adapter transport/rendering dependencies in `brassclaw_webui_v2`.
   Browser management ingress is moderated by host composition
   (auth/CORS/body/rate limits) plus `WebUiAuthenticatedCaller` and the
   product-workflow facade. Product adapters continue to moderate external

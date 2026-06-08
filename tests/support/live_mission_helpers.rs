@@ -16,7 +16,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use ironclaw::channels::{IncomingMessage, StatusUpdate};
+use brassclaw::channels::{IncomingMessage, StatusUpdate};
 use uuid::Uuid;
 
 use crate::support::test_channel::TestChannel;
@@ -110,7 +110,7 @@ impl ApprovalAutoResponder {
                                  (request_id={rid})"
                             );
                             let submission =
-                                ironclaw::agent::submission::Submission::ExecApproval {
+                                brassclaw::agent::submission::Submission::ExecApproval {
                                     request_id: rid,
                                     approved: true,
                                     always: false,

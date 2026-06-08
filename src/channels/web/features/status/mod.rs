@@ -77,7 +77,7 @@ pub(crate) async fn gateway_status_handler(
         (None, None, None)
     };
 
-    let restart_enabled = std::env::var("IRONCLAW_IN_DOCKER")
+    let restart_enabled = std::env::var("BRASSCLAW_IN_DOCKER")
         .map(|v| v.to_lowercase() == "true")
         .unwrap_or(false);
 

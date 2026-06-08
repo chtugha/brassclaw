@@ -35,7 +35,7 @@ env:
   # Linux Secret Service). Guarded by src/secrets/keychain.rs::os_keychain_suppressed:
   # cfg!(test) covers unit tests; this covers integration/e2e that link the
   # non-cfg(test) library.
-  IRONCLAW_DISABLE_OS_KEYCHAIN: "1"
+  BRASSCLAW_DISABLE_OS_KEYCHAIN: "1"
 
 jobs:
   changes:
@@ -262,7 +262,7 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@localhost/ironclaw_test
       # Turn a missing/unreachable Postgres into a HARD failure so the full
       # cross-backend matrix (in-memory + libSQL + Postgres) cannot skip-pass.
-      IRONCLAW_REQUIRE_POSTGRES: "1"
+      BRASSCLAW_REQUIRE_POSTGRES: "1"
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -277,7 +277,7 @@ jobs:
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       # Full parity matrix across all three backends: --features postgres
       # compiles the Postgres leg, --features integration adds the multi-host
-      # adversarial suite, and IRONCLAW_REQUIRE_POSTGRES=1 (set above) makes the
+      # adversarial suite, and BRASSCLAW_REQUIRE_POSTGRES=1 (set above) makes the
       # Postgres leg mandatory. The libSQL leg always runs (embedded temp-file).
       - name: Run hooks parity matrix + multi-host adversarial suite (all backends)
         run: |

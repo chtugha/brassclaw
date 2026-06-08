@@ -12,7 +12,7 @@ use std::hash::{Hash, Hasher};
 
 use crate::agent::session::PendingApproval;
 use crate::error::Error;
-use ironclaw_llm::{
+use brassclaw_llm::{
     ChatMessage, FinishReason, Reasoning, ReasoningContext, RespondResult, ResponseMetadata,
     ToolCall,
 };
@@ -105,7 +105,7 @@ pub trait LoopDelegate: Send + Sync {
         reasoning: &Reasoning,
         reason_ctx: &mut ReasoningContext,
         iteration: usize,
-    ) -> Result<ironclaw_llm::RespondOutput, Error>;
+    ) -> Result<brassclaw_llm::RespondOutput, Error>;
 
     /// Handle a text-only response from the LLM.
     /// Return `TextAction::Return` to exit the loop, `TextAction::Continue` to proceed.
@@ -124,7 +124,7 @@ pub trait LoopDelegate: Send + Sync {
     /// duplicate tool call detector to escalate repeated identical failures.
     async fn execute_tool_calls(
         &self,
-        tool_calls: Vec<ironclaw_llm::ToolCall>,
+        tool_calls: Vec<brassclaw_llm::ToolCall>,
         content: Option<String>,
         reason_ctx: &mut ReasoningContext,
         reasoning: Option<String>,
@@ -274,7 +274,7 @@ pub async fn run_agentic_loop(
                     && !reason_ctx.available_tools.is_empty()
                     && !reason_ctx.force_text
                     && consecutive_tool_intent_nudges < config.max_tool_intent_nudges
-                    && ironclaw_llm::llm_signals_tool_intent(&text)
+                    && brassclaw_llm::llm_signals_tool_intent(&text)
                 {
                     consecutive_tool_intent_nudges += 1;
                     tracing::info!(
@@ -285,13 +285,13 @@ pub async fn run_agentic_loop(
                     reason_ctx.messages.push(ChatMessage::assistant(&text));
                     reason_ctx
                         .messages
-                        .push(ChatMessage::user(ironclaw_llm::TOOL_INTENT_NUDGE));
+                        .push(ChatMessage::user(brassclaw_llm::TOOL_INTENT_NUDGE));
                     delegate.after_iteration(iteration).await;
                     continue;
                 }
 
                 // Reset nudge counter since we got a non-intent text response
-                if !ironclaw_llm::llm_signals_tool_intent(&text) {
+                if !brassclaw_llm::llm_signals_tool_intent(&text) {
                     consecutive_tool_intent_nudges = 0;
                 }
 
@@ -328,7 +328,7 @@ pub async fn run_agentic_loop(
                     }
                     reason_ctx
                         .messages
-                        .push(ChatMessage::user(ironclaw_llm::TRUNCATED_TOOL_CALL_NOTICE));
+                        .push(ChatMessage::user(brassclaw_llm::TRUNCATED_TOOL_CALL_NOTICE));
                     // After repeated truncations, force text-only mode so the LLM
                     // stops attempting tool calls it can't fit in the output budget.
                     if truncation_count >= 3 {
@@ -405,7 +405,7 @@ pub fn truncate_for_preview(s: &str, max: usize) -> Cow<'_, str> {
 mod tests {
     use super::*;
     use crate::testing::StubLlm;
-    use ironclaw_llm::{RespondOutput, ResponseAnomaly, ResponseMetadata, TokenUsage, ToolCall};
+    use brassclaw_llm::{RespondOutput, ResponseAnomaly, ResponseMetadata, TokenUsage, ToolCall};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::sync::Mutex;
@@ -513,7 +513,7 @@ mod tests {
             _reasoning: &Reasoning,
             _reason_ctx: &mut ReasoningContext,
             iteration: usize,
-        ) -> Result<ironclaw_llm::RespondOutput, crate::error::Error> {
+        ) -> Result<brassclaw_llm::RespondOutput, crate::error::Error> {
             self.call_llm_iterations.lock().await.push(iteration);
             let mut responses = self.llm_responses.lock().await;
             if responses.is_empty() {
@@ -675,7 +675,7 @@ mod tests {
         assert!(matches!(outcome, LoopOutcome::Response(_)));
         assert!(
             ctx.messages.iter().any(
-                |m| m.role == ironclaw_llm::Role::User && m.content.contains("injected prompt")
+                |m| m.role == brassclaw_llm::Role::User && m.content.contains("injected prompt")
             ),
             "Injected message should appear in context"
         );
@@ -704,7 +704,7 @@ mod tests {
                 _: &Reasoning,
                 _: &mut ReasoningContext,
                 _: usize,
-            ) -> Result<ironclaw_llm::RespondOutput, crate::error::Error> {
+            ) -> Result<brassclaw_llm::RespondOutput, crate::error::Error> {
                 Ok(RespondOutput {
                     result: RespondResult::Text("fallback".to_string()),
                     usage: zero_usage(),
@@ -776,7 +776,7 @@ mod tests {
                 _: &Reasoning,
                 _: &mut ReasoningContext,
                 _: usize,
-            ) -> Result<ironclaw_llm::RespondOutput, crate::error::Error> {
+            ) -> Result<brassclaw_llm::RespondOutput, crate::error::Error> {
                 Ok(text_output("still working"))
             }
             async fn handle_text_response(
@@ -815,7 +815,7 @@ mod tests {
         let assistant_count = ctx
             .messages
             .iter()
-            .filter(|m| m.role == ironclaw_llm::Role::Assistant)
+            .filter(|m| m.role == brassclaw_llm::Role::Assistant)
             .count();
         assert_eq!(assistant_count, 3);
     }
@@ -829,7 +829,7 @@ mod tests {
         ]);
         let reasoning = stub_reasoning();
         let mut ctx = ReasoningContext::new();
-        ctx.available_tools.push(ironclaw_llm::ToolDefinition {
+        ctx.available_tools.push(brassclaw_llm::ToolDefinition {
             name: "search".to_string(),
             description: "Search files".to_string(),
             parameters: serde_json::json!({"type": "object"}),
@@ -850,7 +850,7 @@ mod tests {
             .messages
             .iter()
             .filter(|m| {
-                m.role == ironclaw_llm::Role::User
+                m.role == brassclaw_llm::Role::User
                     && m.content.contains("you did not include any tool calls")
             })
             .count();
@@ -944,14 +944,14 @@ mod tests {
         assert!(
             ctx.messages
                 .iter()
-                .any(|m| m.role == ironclaw_llm::Role::User && m.content.contains("truncated")),
+                .any(|m| m.role == brassclaw_llm::Role::User && m.content.contains("truncated")),
             "Should inject truncation notice into context"
         );
         // The partial assistant content should have been preserved
         assert!(
             ctx.messages
                 .iter()
-                .any(|m| m.role == ironclaw_llm::Role::Assistant
+                .any(|m| m.role == brassclaw_llm::Role::Assistant
                     && m.content.contains("write the report")),
             "Should preserve partial assistant content"
         );
@@ -1140,7 +1140,7 @@ mod tests {
             .messages
             .iter()
             .filter(|m| {
-                m.role == ironclaw_llm::Role::User && m.content.contains("same failing tool call")
+                m.role == brassclaw_llm::Role::User && m.content.contains("same failing tool call")
             })
             .count();
         assert!(
@@ -1226,7 +1226,7 @@ mod tests {
                 _: &Reasoning,
                 _: &mut ReasoningContext,
                 _: usize,
-            ) -> Result<ironclaw_llm::RespondOutput, crate::error::Error> {
+            ) -> Result<brassclaw_llm::RespondOutput, crate::error::Error> {
                 let mut responses = self.llm_responses.lock().await;
                 if responses.is_empty() {
                     panic!("No more responses");
@@ -1291,7 +1291,7 @@ mod tests {
             .messages
             .iter()
             .filter(|m| {
-                m.role == ironclaw_llm::Role::User && m.content.contains("same failing tool call")
+                m.role == brassclaw_llm::Role::User && m.content.contains("same failing tool call")
             })
             .count();
         assert_eq!(

@@ -65,9 +65,9 @@ case "${1:-}" in
     mkdir -p "$(dirname "$out")"
     echo "Recording $out (model_name: $model)"
     echo "Interact with the agent, then quit to flush the trace."
-    IRONCLAW_RECORD_TRACE=1 \
-    IRONCLAW_TRACE_OUTPUT="$out" \
-    IRONCLAW_TRACE_MODEL_NAME="$model" \
+    BRASSCLAW_RECORD_TRACE=1 \
+    BRASSCLAW_TRACE_OUTPUT="$out" \
+    BRASSCLAW_TRACE_MODEL_NAME="$model" \
       cargo run
     ;;
   *)

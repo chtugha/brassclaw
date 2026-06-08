@@ -1,4 +1,4 @@
-//! Error types for IronClaw.
+//! Error types for BrassClaw.
 
 use std::time::Duration;
 
@@ -72,13 +72,13 @@ pub enum ConfigError {
     Io(#[from] std::io::Error),
 }
 
-impl From<ironclaw_llm::LlmConfigError> for ConfigError {
-    fn from(err: ironclaw_llm::LlmConfigError) -> Self {
+impl From<brassclaw_llm::LlmConfigError> for ConfigError {
+    fn from(err: brassclaw_llm::LlmConfigError) -> Self {
         match err {
-            ironclaw_llm::LlmConfigError::MissingRequired { key, hint } => {
+            brassclaw_llm::LlmConfigError::MissingRequired { key, hint } => {
                 Self::MissingRequired { key, hint }
             }
-            ironclaw_llm::LlmConfigError::InvalidValue { key, message } => {
+            brassclaw_llm::LlmConfigError::InvalidValue { key, message } => {
                 Self::InvalidValue { key, message }
             }
         }
@@ -154,10 +154,10 @@ pub enum ChannelError {
     HealthCheckFailed { name: String },
 }
 
-// LlmError lives in `ironclaw_llm`; re-exported here so existing
+// LlmError lives in `brassclaw_llm`; re-exported here so existing
 // `crate::error::LlmError` callers and the `Error::Llm(#[from] LlmError)`
 // variant keep working without churn.
-pub use ironclaw_llm::LlmError;
+pub use brassclaw_llm::LlmError;
 
 /// Tool execution errors.
 #[derive(Debug, thiserror::Error)]
@@ -392,7 +392,7 @@ pub enum WorkerError {
     #[error("Worker execution failed: {reason}")]
     ExecutionFailed { reason: String },
 
-    #[error("Missing worker token (IRONCLAW_WORKER_TOKEN not set)")]
+    #[error("Missing worker token (BRASSCLAW_WORKER_TOKEN not set)")]
     MissingToken,
 }
 
@@ -440,7 +440,7 @@ pub enum RoutineError {
         partial_tokens: Option<i32>,
         /// Whether the underlying LLM error was classified as retryable.
         /// Set at the `LlmError` → `RoutineError` conversion site using
-        /// `ironclaw_llm::retry::is_retryable()`, avoiding fragile substring
+        /// `brassclaw_llm::retry::is_retryable()`, avoiding fragile substring
         /// matching on the stringified reason.
         retryable: bool,
     },
@@ -465,7 +465,7 @@ impl RoutineError {
     /// Whether this error is transient and worth retrying with backoff.
     ///
     /// Retryable: LLM failures where the underlying `LlmError` was classified
-    /// as retryable by `ironclaw_llm::retry::is_retryable()`, empty responses,
+    /// as retryable by `brassclaw_llm::retry::is_retryable()`, empty responses,
     /// and truncated responses.
     /// Non-retryable: configuration errors, authorization, resource limits,
     /// DB errors, and LLM failures caused by auth/content-policy/context-length.

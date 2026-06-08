@@ -1,6 +1,6 @@
-# IronClaw Architecture Overview Video
+# BrassClaw Architecture Overview Video
 
-A Remotion-based animated video that walks new contributors through IronClaw's
+A Remotion-based animated video that walks new contributors through BrassClaw's
 internals — the five primitives, execution loop, CodeAct, thread state machine,
 skills pipeline, tool dispatcher, channels, extensibility traits, and the LLM
 provider decorator chain.
@@ -28,7 +28,7 @@ npm run dev
 Render to MP4 from this directory:
 
 ```console
-npx remotion render IronClawArchitecture out.mp4
+npx remotion render BrassClawArchitecture out.mp4
 ```
 
 Or from the repository root:
@@ -45,7 +45,7 @@ npm run lint
 
 ## Structure
 
-- `src/IronClawArchitecture.tsx` — scene sequencing, durations, transitions
+- `src/BrassClawArchitecture.tsx` — scene sequencing, durations, transitions
 - `src/scenes/*.tsx` — one file per scene (12 total)
 - `src/components/Code.tsx` — shared syntax-highlighted code block
 - `src/theme.ts` — shared colors and fonts
@@ -53,6 +53,6 @@ npm run lint
 
 ## License
 
-This video project is part of IronClaw and dual-licensed MIT OR Apache-2.0.
+This video project is part of BrassClaw and dual-licensed MIT OR Apache-2.0.
 Remotion itself has a [custom license](https://github.com/remotion-dev/remotion/blob/main/LICENSE.md);
 use is covered under the open-source free tier for this project.

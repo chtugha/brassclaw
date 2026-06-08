@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
-use ironclaw_common::McpServerName;
+use brassclaw_common::McpServerName;
 use tokio::sync::RwLock;
 
 use crate::auth::resolve_access_token_string_with_refresh;
@@ -64,7 +64,7 @@ pub struct McpClient {
     ///
     /// Typed via `McpServerName` so session-manager lookups and logging
     /// are both compile-time-gated behind the allowlist validation that
-    /// lives in `ironclaw_common::identity`.
+    /// lives in `brassclaw_common::identity`.
     server_name: McpServerName,
 
     /// Request ID counter.
@@ -632,7 +632,7 @@ impl McpClient {
                         )
                     } else {
                         format!(
-                            "MCP server '{}' requires authentication. Run: ironclaw mcp auth {}",
+                            "MCP server '{}' requires authentication. Run: brassclaw mcp auth {}",
                             self.server_name, self.server_name
                         )
                     };
@@ -848,7 +848,7 @@ fn extract_server_name(url: &str) -> String {
 /// Build the canonical registry identifier for an MCP tool.
 ///
 /// MCP tool names commonly contain dashes (e.g. `notion-search`), and so do
-/// user-supplied server names (`my-server`). The IronClaw runtime converges
+/// user-supplied server names (`my-server`). The BrassClaw runtime converges
 /// on snake_case identifiers (see `ToolRegistry::resolve_name`), and LLMs,
 /// Codex / GPT-5 in particular, silently normalize tool names to valid
 /// Python identifiers by converting dashes to underscores. If we registered
@@ -1557,7 +1557,7 @@ mod tests {
 
     // --- Regression: constructors validate caller-provided server names ---
     //
-    // Copilot review comments on PR nearai/ironclaw#2681 flagged that
+    // Copilot review comments on PR chtugha/brassclaw#2681 flagged that
     // `new_with_transport`, `new_with_config`, and `new_authenticated`
     // used `McpServerName::from_trusted` on caller-provided input,
     // allowing invalid names to enter the typed field and diverge from

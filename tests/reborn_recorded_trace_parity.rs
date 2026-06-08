@@ -3,8 +3,8 @@
 mod reborn_support;
 mod support;
 
-use ironclaw_loop_support::{HostManagedModelMessageRole, HostManagedModelResponse};
-use ironclaw_turns::{TurnStatus, run_profile::LoopHostMilestoneKind};
+use brassclaw_loop_support::{HostManagedModelMessageRole, HostManagedModelResponse};
+use brassclaw_turns::{TurnStatus, run_profile::LoopHostMilestoneKind};
 use reborn_support::{
     harness::{
         RebornBinaryE2EHarness, RecordingTestCapabilityPort, assert_milestone_order,

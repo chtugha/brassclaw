@@ -1,4 +1,4 @@
-use ironclaw_common::ExtensionName;
+use brassclaw_common::ExtensionName;
 
 use crate::extensions::ExtensionError;
 

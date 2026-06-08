@@ -3,21 +3,21 @@ use std::sync::Once;
 
 use secrecy::SecretString;
 
-use crate::bootstrap::ironclaw_base_dir;
+use crate::bootstrap::brassclaw_base_dir;
 use crate::config::helpers::{
     db_first_bool, db_first_or_default, optional_env, parse_optional_env, validate_base_url,
     validate_operator_base_url,
 };
 use crate::error::ConfigError;
 use crate::settings::Settings;
-use ironclaw_llm::config::*;
-use ironclaw_llm::registry::{ProviderProtocol, ProviderRegistry};
-use ironclaw_llm::session::SessionConfig;
+use brassclaw_llm::config::*;
+use brassclaw_llm::registry::{ProviderProtocol, ProviderRegistry};
+use brassclaw_llm::session::SessionConfig;
 
 static LOG_LLM_BACKEND_RESOLUTION: Once = Once::new();
 
 fn selected_model_override(settings: &Settings) -> Option<String> {
-    ironclaw_llm::normalized_model_override(settings.selected_model.as_deref()).map(str::to_string)
+    brassclaw_llm::normalized_model_override(settings.selected_model.as_deref()).map(str::to_string)
 }
 
 /// Create a test-friendly config without reading env vars.
@@ -27,7 +27,7 @@ pub fn for_testing() -> LlmConfig {
         backend: "nearai".to_string(),
         session: SessionConfig {
             auth_base_url: "http://localhost:0".to_string(),
-            session_path: std::env::temp_dir().join("ironclaw-test-session.json"),
+            session_path: std::env::temp_dir().join("brassclaw-test-session.json"),
         },
         nearai: NearAiConfig {
             model: "test-model".to_string(),
@@ -219,7 +219,7 @@ pub fn resolve(settings: &Settings) -> Result<LlmConfig, ConfigError> {
     });
     // Warn operators when a DB-persisted value silently overrides LLM_BACKEND.
     // Skip the warning when both values are identical — this is the normal
-    // state after `ironclaw models set-provider`, which intentionally writes
+    // state after `brassclaw models set-provider`, which intentionally writes
     // to both config.toml and .env for immediate effect.
     if backend_source == "db:llm_backend"
         && let Ok(env_val) = std::env::var("LLM_BACKEND")
@@ -323,7 +323,7 @@ pub fn resolve(settings: &Settings) -> Result<LlmConfig, ConfigError> {
     } else if let Some(model) = optional_env("NEARAI_MODEL")? {
         model
     } else {
-        ironclaw_llm::DEFAULT_MODEL.to_string()
+        brassclaw_llm::DEFAULT_MODEL.to_string()
     };
     let nearai_base_url_explicit = optional_env("NEARAI_BASE_URL")?;
     let nearai_base_url = if let Some(url) = nearai_override.and_then(|o| o.base_url.clone()) {
@@ -655,8 +655,8 @@ fn resolve_registry_provider(
     let mut codex_base_url_override: Option<String> = None;
     let codex_creds = if parse_optional_env("LLM_USE_CODEX_AUTH", false)? {
         let override_path = optional_env("CODEX_AUTH_PATH")?.map(std::path::PathBuf::from);
-        ironclaw_llm::auth::load_persisted_credentials(
-            ironclaw_llm::auth::CredentialSource::CodexCli,
+        brassclaw_llm::auth::load_persisted_credentials(
+            brassclaw_llm::auth::CredentialSource::CodexCli,
             override_path.as_deref(),
         )
     } else {
@@ -764,7 +764,7 @@ fn resolve_registry_provider(
     };
     let extra_headers = if canonical_id == "github_copilot" {
         merge_extra_headers(
-            ironclaw_llm::auth::default_headers(ironclaw_llm::auth::AuthBackend::GithubCopilot),
+            brassclaw_llm::auth::default_headers(brassclaw_llm::auth::AuthBackend::GithubCopilot),
             extra_headers,
         )
     } else {
@@ -874,9 +874,9 @@ fn merge_extra_headers(
     merged
 }
 
-/// Get the default session file path (~/.ironclaw/session.json).
+/// Get the default session file path (~/.brassclaw/session.json).
 pub fn default_session_path() -> PathBuf {
-    ironclaw_base_dir().join("session.json")
+    brassclaw_base_dir().join("session.json")
 }
 
 #[cfg(test)]
@@ -1663,7 +1663,7 @@ mod tests {
         assert_eq!(provider.model, "my-model");
         assert_eq!(
             provider.protocol,
-            ironclaw_llm::registry::ProviderProtocol::OpenAiCompletions
+            brassclaw_llm::registry::ProviderProtocol::OpenAiCompletions
         );
     }
 
@@ -2614,7 +2614,7 @@ mod tests {
         );
         assert_eq!(
             cfg.nearai.model,
-            ironclaw_llm::DEFAULT_MODEL,
+            brassclaw_llm::DEFAULT_MODEL,
             "NearAI fallback should use the built-in default model when the pre-fallback \
              selection is cleared"
         );

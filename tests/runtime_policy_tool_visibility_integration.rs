@@ -24,13 +24,13 @@
 
 use std::sync::Arc;
 
-use ironclaw::config::{RuntimeConfig, RuntimeConfigOverrides};
-use ironclaw::tools::ToolRegistry;
-use ironclaw::tools::builtin::{
+use brassclaw::config::{RuntimeConfig, RuntimeConfigOverrides};
+use brassclaw::tools::ToolRegistry;
+use brassclaw::tools::builtin::{
     ApplyPatchTool, HttpTool, ListDirTool, ReadFileTool, ShellTool, WriteFileTool,
 };
-use ironclaw_host_api::runtime_policy::{DeploymentMode, RuntimeProfile};
-use ironclaw_runtime_policy::{OrgPolicyConstraints, ResolveRequest, resolve};
+use brassclaw_host_api::runtime_policy::{DeploymentMode, RuntimeProfile};
+use brassclaw_runtime_policy::{OrgPolicyConstraints, ResolveRequest, resolve};
 
 async fn registry_with_shell() -> ToolRegistry {
     let registry = ToolRegistry::new();
@@ -189,12 +189,12 @@ async fn shell_is_hidden_under_hosted_dev_policy_through_dispatcher_path() {
     // covered end-to-end.
     assert_ne!(
         policy.process_backend,
-        ironclaw_host_api::runtime_policy::ProcessBackendKind::LocalHost,
+        brassclaw_host_api::runtime_policy::ProcessBackendKind::LocalHost,
         "hosted multi-tenant must never resolve to LocalHost shell"
     );
     assert_ne!(
         policy.filesystem_backend,
-        ironclaw_host_api::runtime_policy::FilesystemBackendKind::HostWorkspace,
+        brassclaw_host_api::runtime_policy::FilesystemBackendKind::HostWorkspace,
         "hosted multi-tenant must never resolve to HostWorkspace filesystem"
     );
 }
@@ -257,7 +257,7 @@ async fn full_config_pipeline_carries_resolved_policy_to_tool_filter() {
         RuntimeConfig::resolve_from(&overrides_hosted).expect("resolve HostedDev");
     assert_ne!(
         runtime_config_hosted.effective_policy.process_backend,
-        ironclaw_host_api::runtime_policy::ProcessBackendKind::LocalHost
+        brassclaw_host_api::runtime_policy::ProcessBackendKind::LocalHost
     );
 }
 

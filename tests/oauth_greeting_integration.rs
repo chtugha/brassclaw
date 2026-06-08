@@ -12,20 +12,20 @@
 mod tests {
     use std::sync::Arc;
 
-    use ironclaw::agent::SessionManager;
-    use ironclaw::channels::web::auth::{MultiAuthState, UserIdentity};
-    use ironclaw::channels::web::platform::router::start_server;
-    use ironclaw::channels::web::platform::state::{GatewayState, PerUserRateLimiter, RateLimiter};
-    use ironclaw::channels::web::sse::SseManager;
-    use ironclaw::channels::web::ws::WsConnectionTracker;
-    use ironclaw::db::Database;
-    use ironclaw::workspace::GREETING_SEED;
+    use brassclaw::agent::SessionManager;
+    use brassclaw::channels::web::auth::{MultiAuthState, UserIdentity};
+    use brassclaw::channels::web::platform::router::start_server;
+    use brassclaw::channels::web::platform::state::{GatewayState, PerUserRateLimiter, RateLimiter};
+    use brassclaw::channels::web::sse::SseManager;
+    use brassclaw::channels::web::ws::WsConnectionTracker;
+    use brassclaw::db::Database;
+    use brassclaw::workspace::GREETING_SEED;
 
     const ALICE_TOKEN: &str = "tok-alice-greeting-test";
     const BOB_TOKEN: &str = "tok-bob-greeting-test";
 
     async fn create_test_db() -> (Arc<dyn Database>, tempfile::TempDir) {
-        use ironclaw::db::libsql::LibSqlBackend;
+        use brassclaw::db::libsql::LibSqlBackend;
 
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let db_path = temp_dir.path().join("greeting_test.db");
@@ -122,7 +122,7 @@ mod tests {
 
     async fn create_user(db: &Arc<dyn Database>, user_id: &str) {
         let now = chrono::Utc::now();
-        db.create_user(&ironclaw::db::UserRecord {
+        db.create_user(&brassclaw::db::UserRecord {
             id: user_id.to_string(),
             email: Some(format!("{user_id}@example.com")),
             display_name: user_id.to_string(),
@@ -314,7 +314,7 @@ mod tests {
 
         let resp = c
             .get(format!("http://{addr}/api/chat/threads"))
-            .header("Cookie", format!("ironclaw_session={ALICE_TOKEN}"))
+            .header("Cookie", format!("brassclaw_session={ALICE_TOKEN}"))
             .send()
             .await
             .expect("cookie auth request");

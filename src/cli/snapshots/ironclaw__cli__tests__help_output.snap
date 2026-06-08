@@ -4,11 +4,11 @@ expression: help
 ---
 Secure personal AI assistant that protects your data and expands its capabilities
 
-Usage: ironclaw [OPTIONS] [COMMAND]
+Usage: brassclaw [OPTIONS] [COMMAND]
 
 Commands:
   run         Run the AI agent
-  onboard     Run interactive setup wizard (start here if new to IronClaw)
+  onboard     Run interactive setup wizard (start here if new to BrassClaw)
   config      Manage app configuration settings
   tool        Manage WASM tools
   registry    Browse/install extensions
@@ -38,7 +38,7 @@ Options:
   -c, --config <CONFIG>            Configuration file path (optional, uses env vars by default)
       --no-onboard                 Skip first-run onboarding check
       --auto-approve               Auto-approve tool execution (shell, file writes, HTTP, etc.)
-      --deployment-mode <MODE>     Deployment mode: where IronClaw is running and who owns the machine boundary
+      --deployment-mode <MODE>     Deployment mode: where BrassClaw is running and who owns the machine boundary
       --runtime-profile <PROFILE>  Requested runtime profile (#3045)
       --yolo-disclosure            Acknowledge the disclosure required by `*_yolo*` profiles
   -h, --help                       Print help (see more with '--help')

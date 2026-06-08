@@ -20,13 +20,13 @@ Do **not** use your primary personal Telegram account. Use a dedicated test acco
 - attachment message flow
 - optional group `@mention` flow
 
-By default the script only checks that the bot replies at all. If you run IronClaw
+By default the script only checks that the bot replies at all. If you run BrassClaw
 with a deterministic mock LLM, you can also require a fixed reply substring.
 
 ## Requirements
 
 - Python 3.11+
-- a local IronClaw instance already running with Telegram configured
+- a local BrassClaw instance already running with Telegram configured
 - a Telegram bot dedicated to smoke testing
 - a Telegram user account dedicated to smoke testing
 - Telegram `api_id` and `api_hash` for that user account
@@ -47,7 +47,7 @@ pip install -e '.[telegram]'
 ## Configure The Smoke Runner
 
 ```bash
-cd /path/to/ironclaw
+cd /path/to/brassclaw
 cp scripts/telegram_smoke/config.example.env scripts/telegram_smoke/config.env
 ```
 
@@ -72,19 +72,19 @@ source scripts/telegram_smoke/config.env
 set +a
 ```
 
-## Start IronClaw
+## Start BrassClaw
 
 Run the exact build/config you want to validate before release.
 
 Typical checklist:
 
 1. Build the release candidate binary.
-2. Start IronClaw with the Telegram channel enabled.
+2. Start BrassClaw with the Telegram channel enabled.
 3. Ensure Telegram is already configured and activated.
 4. Confirm the bot is reachable from your test Telegram account.
 
 If you have a health endpoint available, set `TG_SMOKE_HEALTHCHECK_URL` so the
-script fails fast when IronClaw is not up.
+script fails fast when BrassClaw is not up.
 
 ## First Login
 
@@ -141,13 +141,13 @@ python scripts/telegram_smoke/run_smoke.py --list-cases
    ```bash
    cargo test --features integration --test telegram_auth_integration -- --nocapture
    ```
-2. Start the release-candidate IronClaw build.
+2. Start the release-candidate BrassClaw build.
 3. Run the real Telegram smoke script.
 4. Treat any missing reply or timeout as a release blocker.
 
 ## Deterministic Replies
 
-If you want strict assertions, run IronClaw against a deterministic mock LLM and
+If you want strict assertions, run BrassClaw against a deterministic mock LLM and
 set:
 
 ```bash
@@ -173,7 +173,7 @@ and requires the bot to reply to that exact message.
 ## Failure Modes
 
 - `Timed out waiting for bot reply`
-  - IronClaw is down, Telegram is misconfigured, the LLM path is stuck, or the
+  - BrassClaw is down, Telegram is misconfigured, the LLM path is stuck, or the
     bot is not responding in time.
 - `SKIP group`
   - `TG_SMOKE_GROUP_TARGET` is not configured.

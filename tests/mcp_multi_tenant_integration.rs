@@ -7,14 +7,14 @@ mod support;
 mod tests {
     use std::sync::Arc;
 
-    use ironclaw::context::JobContext;
-    use ironclaw::db::{Database, libsql::LibSqlBackend};
-    use ironclaw::extensions::{ExtensionKind, ExtensionManager};
-    use ironclaw::secrets::{
+    use brassclaw::context::JobContext;
+    use brassclaw::db::{Database, libsql::LibSqlBackend};
+    use brassclaw::extensions::{ExtensionKind, ExtensionManager};
+    use brassclaw::secrets::{
         CreateSecretParams, InMemorySecretsStore, SecretsCrypto, SecretsStore,
     };
-    use ironclaw::tools::ToolRegistry;
-    use ironclaw::tools::mcp::{McpProcessManager, McpServerConfig, McpSessionManager};
+    use brassclaw::tools::ToolRegistry;
+    use brassclaw::tools::mcp::{McpProcessManager, McpServerConfig, McpSessionManager};
     use secrecy::SecretString;
 
     use crate::support::mock_mcp_server::{

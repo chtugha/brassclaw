@@ -102,6 +102,6 @@ pub mod prelude {
     pub use crate::error::{Error, Result};
     pub use crate::tools::{Tool, ToolOutput, ToolRegistry};
     pub use crate::workspace::{MemoryDocument, Workspace};
-    pub use ironclaw_llm::LlmProvider;
-    pub use ironclaw_safety::{SanitizedOutput, Sanitizer};
+    pub use brassclaw_llm::LlmProvider;
+    pub use brassclaw_safety::{SanitizedOutput, Sanitizer};
 }

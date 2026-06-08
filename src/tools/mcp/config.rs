@@ -1,16 +1,16 @@
 //! MCP server configuration.
 //!
 //! Stores configuration for connecting to hosted MCP servers.
-//! Configuration is persisted at ~/.ironclaw/mcp-servers.json.
+//! Configuration is persisted at ~/.brassclaw/mcp-servers.json.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use ironclaw_common::{MAX_MCP_SERVER_NAME_LEN, McpServerName};
+use brassclaw_common::{MAX_MCP_SERVER_NAME_LEN, McpServerName};
 use serde::{Deserialize, Serialize};
 use tokio::fs;
 
-use crate::bootstrap::ironclaw_base_dir;
+use crate::bootstrap::brassclaw_base_dir;
 use crate::tools::mcp::McpTool;
 use crate::tools::tool::ToolError;
 
@@ -162,7 +162,7 @@ impl McpServerConfig {
     pub fn validate(&self) -> Result<(), ConfigError> {
         // The server-name allowlist (non-empty, length cap, alphanumeric /
         // dash / underscore only) now lives in `McpServerName::new` — see
-        // `ironclaw_common::identity`. Delegating here keeps the on-disk
+        // `brassclaw_common::identity`. Delegating here keeps the on-disk
         // wire format a plain string (via `McpServerConfig.name: String`)
         // while gating every construction path through the newtype's
         // validation. The allowlist itself originated in #2400 as
@@ -533,7 +533,7 @@ pub async fn load_mcp_servers_ready(
 
 /// Get the default MCP servers configuration path.
 pub fn default_config_path() -> PathBuf {
-    ironclaw_base_dir().join("mcp-servers.json")
+    brassclaw_base_dir().join("mcp-servers.json")
 }
 
 /// Load MCP server configurations from the default location.
@@ -1583,7 +1583,7 @@ mod tests {
         );
     }
 
-    /// Regression for PR nearai/ironclaw#2681 review comment 3110617080.
+    /// Regression for PR chtugha/brassclaw#2681 review comment 3110617080.
     ///
     /// Before the `McpServerName` newtype landed, `McpServerConfig::validate()`
     /// had no length cap. Delegating validation to `McpServerName::new` added

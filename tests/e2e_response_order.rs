@@ -16,9 +16,9 @@ mod response_order_tests {
     use crate::support::test_channel::CapturedEvent;
     use crate::support::test_rig::TestRigBuilder;
     use crate::support::trace_llm::{LlmTrace, TraceResponse, TraceStep, TraceToolCall, TraceTurn};
-    use ironclaw::channels::StatusUpdate;
-    use ironclaw::context::JobContext;
-    use ironclaw::tools::{ApprovalRequirement, Tool, ToolError, ToolOutput};
+    use brassclaw::channels::StatusUpdate;
+    use brassclaw::context::JobContext;
+    use brassclaw::tools::{ApprovalRequirement, Tool, ToolError, ToolOutput};
 
     const TIMEOUT: Duration = Duration::from_secs(15);
 

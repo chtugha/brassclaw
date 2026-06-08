@@ -1,4 +1,4 @@
-//! Centralized ownership types for IronClaw.
+//! Centralized ownership types for BrassClaw.
 //!
 //! [`UserId`] is the typed identifier carried from the channel boundary through
 //! every scope constructor and authorization check. It collapses the previous

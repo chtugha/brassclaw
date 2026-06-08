@@ -5,10 +5,10 @@ mod support;
 
 use std::time::Duration;
 
-use ironclaw_host_api::{CapabilityId, NetworkMethod};
-use ironclaw_loop_support::{HostManagedModelMessageRole, HostManagedModelResponse};
-use ironclaw_network::NetworkHttpRequest;
-use ironclaw_turns::TurnStatus;
+use brassclaw_host_api::{CapabilityId, NetworkMethod};
+use brassclaw_loop_support::{HostManagedModelMessageRole, HostManagedModelResponse};
+use brassclaw_network::NetworkHttpRequest;
+use brassclaw_turns::TurnStatus;
 use reborn_support::{
     harness::{HarnessWaitConfig, RebornBinaryE2EHarness},
     model_replay::{
@@ -153,7 +153,7 @@ fn github_capability_calls() -> Vec<RebornScriptedProviderToolCall> {
         call(
             "github.get_repo",
             "get-repo",
-            json!({"owner": "nearai", "repo": "ironclaw"}),
+            json!({"owner": "nearai", "repo": "brassclaw"}),
         ),
         call(
             "github.create_repo",
@@ -171,14 +171,14 @@ fn github_capability_calls() -> Vec<RebornScriptedProviderToolCall> {
         call(
             "github.list_issues",
             "list-issues",
-            json!({"owner": "nearai", "repo": "ironclaw", "state": "closed", "limit": 7, "page": 2}),
+            json!({"owner": "nearai", "repo": "brassclaw", "state": "closed", "limit": 7, "page": 2}),
         ),
         call(
             "github.create_issue",
             "create-issue",
             json!({
                 "owner": "nearai",
-                "repo": "ironclaw",
+                "repo": "brassclaw",
                 "title": "matrix issue",
                 "body": "body",
                 "labels": ["qa", "reborn"]
@@ -187,12 +187,12 @@ fn github_capability_calls() -> Vec<RebornScriptedProviderToolCall> {
         call(
             "github.get_issue",
             "get-issue",
-            json!({"owner": "nearai", "repo": "ironclaw", "issue_number": 42}),
+            json!({"owner": "nearai", "repo": "brassclaw", "issue_number": 42}),
         ),
         call(
             "github.list_issue_comments",
             "list-issue-comments",
-            json!({"owner": "nearai", "repo": "ironclaw", "issue_number": 42, "limit": 5, "page": 3}),
+            json!({"owner": "nearai", "repo": "brassclaw", "issue_number": 42, "limit": 5, "page": 3}),
         ),
         call(
             "github.create_issue_comment",
@@ -202,14 +202,14 @@ fn github_capability_calls() -> Vec<RebornScriptedProviderToolCall> {
         call(
             "github.list_pull_requests",
             "list-prs",
-            json!({"owner": "nearai", "repo": "ironclaw", "state": "all", "limit": 9, "page": 4}),
+            json!({"owner": "nearai", "repo": "brassclaw", "state": "all", "limit": 9, "page": 4}),
         ),
         call(
             "github.create_pull_request",
             "create-pr",
             json!({
                 "owner": "nearai",
-                "repo": "ironclaw",
+                "repo": "brassclaw",
                 "title": "matrix pr",
                 "head": "feature/matrix",
                 "base": "main",
@@ -220,19 +220,19 @@ fn github_capability_calls() -> Vec<RebornScriptedProviderToolCall> {
         call(
             "github.get_pull_request",
             "get-pr",
-            json!({"owner": "nearai", "repo": "ironclaw", "pr_number": 4280}),
+            json!({"owner": "nearai", "repo": "brassclaw", "pr_number": 4280}),
         ),
         call(
             "github.get_pull_request_files",
             "get-pr-files",
-            json!({"owner": "nearai", "repo": "ironclaw", "pr_number": 4280}),
+            json!({"owner": "nearai", "repo": "brassclaw", "pr_number": 4280}),
         ),
         call(
             "github.create_pr_review",
             "create-pr-review",
             json!({
                 "owner": "nearai",
-                "repo": "ironclaw",
+                "repo": "brassclaw",
                 "pr_number": 4280,
                 "body": "review body",
                 "event": "COMMENT"
@@ -241,14 +241,14 @@ fn github_capability_calls() -> Vec<RebornScriptedProviderToolCall> {
         call(
             "github.list_pull_request_comments",
             "list-pr-comments",
-            json!({"owner": "nearai", "repo": "ironclaw", "pr_number": 4280, "limit": 6, "page": 2}),
+            json!({"owner": "nearai", "repo": "brassclaw", "pr_number": 4280, "limit": 6, "page": 2}),
         ),
         call(
             "github.reply_pull_request_comment",
             "reply-pr-comment",
             json!({
                 "owner": "nearai",
-                "repo": "ironclaw",
+                "repo": "brassclaw",
                 "pr_number": 4280,
                 "comment_id": 123456789_u64,
                 "body": "reply"
@@ -257,19 +257,19 @@ fn github_capability_calls() -> Vec<RebornScriptedProviderToolCall> {
         call(
             "github.get_pull_request_reviews",
             "get-pr-reviews",
-            json!({"owner": "nearai", "repo": "ironclaw", "pr_number": 4280, "limit": 8, "page": 3}),
+            json!({"owner": "nearai", "repo": "brassclaw", "pr_number": 4280, "limit": 8, "page": 3}),
         ),
         call(
             "github.get_combined_status",
             "get-status",
-            json!({"owner": "nearai", "repo": "ironclaw", "ref": "feature/matrix"}),
+            json!({"owner": "nearai", "repo": "brassclaw", "ref": "feature/matrix"}),
         ),
         call(
             "github.merge_pull_request",
             "merge-pr",
             json!({
                 "owner": "nearai",
-                "repo": "ironclaw",
+                "repo": "brassclaw",
                 "pr_number": 4280,
                 "commit_title": "merge title",
                 "commit_message": "merge body",
@@ -284,32 +284,32 @@ fn github_capability_calls() -> Vec<RebornScriptedProviderToolCall> {
         call(
             "github.search_repositories",
             "search-repos",
-            json!({"query": "org:nearai ironclaw", "limit": 12, "page": 3, "sort": "updated", "order": "desc"}),
+            json!({"query": "org:nearai brassclaw", "limit": 12, "page": 3, "sort": "updated", "order": "desc"}),
         ),
         call(
             "github.search_code",
             "search-code",
-            json!({"query": "repo:nearai/ironclaw path:src Tool", "limit": 12, "page": 3, "sort": "updated", "order": "desc"}),
+            json!({"query": "repo:chtugha/brassclaw path:src Tool", "limit": 12, "page": 3, "sort": "updated", "order": "desc"}),
         ),
         call(
             "github.search_issues_pull_requests",
             "search-issues-prs",
-            json!({"query": "repo:nearai/ironclaw is:pr", "limit": 12, "page": 3, "sort": "updated", "order": "desc"}),
+            json!({"query": "repo:chtugha/brassclaw is:pr", "limit": 12, "page": 3, "sort": "updated", "order": "desc"}),
         ),
         call(
             "github.list_branches",
             "list-branches",
-            json!({"owner": "nearai", "repo": "ironclaw", "protected": true, "limit": 13, "page": 2}),
+            json!({"owner": "nearai", "repo": "brassclaw", "protected": true, "limit": 13, "page": 2}),
         ),
         call(
             "github.create_branch",
             "create-branch",
-            json!({"owner": "nearai", "repo": "ironclaw", "branch": "feature/matrix", "from_ref": "main"}),
+            json!({"owner": "nearai", "repo": "brassclaw", "branch": "feature/matrix", "from_ref": "main"}),
         ),
         call(
             "github.get_file_content",
             "get-file",
-            json!({"owner": "nearai", "repo": "ironclaw", "path": "docs/replay.md", "ref": "feature/matrix"}),
+            json!({"owner": "nearai", "repo": "brassclaw", "path": "docs/replay.md", "ref": "feature/matrix"}),
         ),
         call(
             "github.create_or_update_file",
@@ -320,14 +320,14 @@ fn github_capability_calls() -> Vec<RebornScriptedProviderToolCall> {
         call(
             "github.list_releases",
             "list-releases",
-            json!({"owner": "nearai", "repo": "ironclaw", "limit": 14, "page": 2}),
+            json!({"owner": "nearai", "repo": "brassclaw", "limit": 14, "page": 2}),
         ),
         call(
             "github.create_release",
             "create-release",
             json!({
                 "owner": "nearai",
-                "repo": "ironclaw",
+                "repo": "brassclaw",
                 "tag_name": "v1.2.3",
                 "target_commitish": "main",
                 "name": "v1.2.3",
@@ -342,7 +342,7 @@ fn github_capability_calls() -> Vec<RebornScriptedProviderToolCall> {
             "trigger-workflow",
             json!({
                 "owner": "nearai",
-                "repo": "ironclaw",
+                "repo": "brassclaw",
                 "workflow_id": "ci.yml",
                 "ref": "main",
                 "inputs": {"suite": "smoke"}
@@ -351,16 +351,16 @@ fn github_capability_calls() -> Vec<RebornScriptedProviderToolCall> {
         call(
             "github.get_workflow_runs",
             "get-workflow-runs",
-            json!({"owner": "nearai", "repo": "ironclaw", "workflow_id": "ci.yml", "limit": 15, "page": 2}),
+            json!({"owner": "nearai", "repo": "brassclaw", "workflow_id": "ci.yml", "limit": 15, "page": 2}),
         ),
         call(
             "github.fork_repo",
             "fork-repo",
             json!({
                 "owner": "nearai",
-                "repo": "ironclaw",
+                "repo": "brassclaw",
                 "organization": "nearai-labs",
-                "name": "ironclaw-fork",
+                "name": "brassclaw-fork",
                 "default_branch_only": true
             }),
         ),
@@ -375,10 +375,10 @@ fn github_capability_calls() -> Vec<RebornScriptedProviderToolCall> {
                     },
                     "body_json": {
                         "action": "created",
-                        "repository": {"full_name": "nearai/ironclaw"},
+                        "repository": {"full_name": "chtugha/brassclaw"},
                         "issue": {
                             "number": 4280,
-                            "pull_request": {"url": "https://api.github.com/repos/nearai/ironclaw/pulls/4280"}
+                            "pull_request": {"url": "https://api.github.com/repos/chtugha/brassclaw/pulls/4280"}
                         },
                         "comment": {"id": 99, "body": "looks good"}
                     }
@@ -390,7 +390,7 @@ fn github_capability_calls() -> Vec<RebornScriptedProviderToolCall> {
 
 fn expected_github_http_requests() -> Vec<ExpectedGithubHttpRequest> {
     vec![
-        get("https://api.github.com/repos/nearai/ironclaw"),
+        get("https://api.github.com/repos/chtugha/brassclaw"),
         request(
             "POST",
             "https://api.github.com/orgs/nearai/repos",
@@ -403,23 +403,23 @@ fn expected_github_http_requests() -> Vec<ExpectedGithubHttpRequest> {
                 "license_template": "mit"
             }),
         ),
-        get("https://api.github.com/repos/nearai/ironclaw/issues?state=closed&per_page=7&page=2"),
+        get("https://api.github.com/repos/chtugha/brassclaw/issues?state=closed&per_page=7&page=2"),
         request(
             "POST",
-            "https://api.github.com/repos/nearai/ironclaw/issues",
+            "https://api.github.com/repos/chtugha/brassclaw/issues",
             json!({"title": "matrix issue", "body": "body", "labels": ["qa", "reborn"]}),
         ),
-        get("https://api.github.com/repos/nearai/ironclaw/issues/42"),
-        get("https://api.github.com/repos/nearai/ironclaw/issues/42/comments?per_page=5&page=3"),
+        get("https://api.github.com/repos/chtugha/brassclaw/issues/42"),
+        get("https://api.github.com/repos/chtugha/brassclaw/issues/42/comments?per_page=5&page=3"),
         request(
             "POST",
-            "https://api.github.com/repos/nearai/ironclaw/issues/42/comments",
+            "https://api.github.com/repos/chtugha/brassclaw/issues/42/comments",
             json!({"body": "matrix comment"}),
         ),
-        get("https://api.github.com/repos/nearai/ironclaw/pulls?state=all&per_page=9&page=4"),
+        get("https://api.github.com/repos/chtugha/brassclaw/pulls?state=all&per_page=9&page=4"),
         request(
             "POST",
-            "https://api.github.com/repos/nearai/ironclaw/pulls",
+            "https://api.github.com/repos/chtugha/brassclaw/pulls",
             json!({
                 "title": "matrix pr",
                 "head": "feature/matrix",
@@ -428,24 +428,24 @@ fn expected_github_http_requests() -> Vec<ExpectedGithubHttpRequest> {
                 "draft": true
             }),
         ),
-        get("https://api.github.com/repos/nearai/ironclaw/pulls/4280"),
-        get("https://api.github.com/repos/nearai/ironclaw/pulls/4280/files"),
+        get("https://api.github.com/repos/chtugha/brassclaw/pulls/4280"),
+        get("https://api.github.com/repos/chtugha/brassclaw/pulls/4280/files"),
         request(
             "POST",
-            "https://api.github.com/repos/nearai/ironclaw/pulls/4280/reviews",
+            "https://api.github.com/repos/chtugha/brassclaw/pulls/4280/reviews",
             json!({"body": "review body", "event": "COMMENT"}),
         ),
-        get("https://api.github.com/repos/nearai/ironclaw/pulls/4280/comments?per_page=6&page=2"),
+        get("https://api.github.com/repos/chtugha/brassclaw/pulls/4280/comments?per_page=6&page=2"),
         request(
             "POST",
-            "https://api.github.com/repos/nearai/ironclaw/pulls/4280/comments/123456789/replies",
+            "https://api.github.com/repos/chtugha/brassclaw/pulls/4280/comments/123456789/replies",
             json!({"body": "reply"}),
         ),
-        get("https://api.github.com/repos/nearai/ironclaw/pulls/4280/reviews?per_page=8&page=3"),
-        get("https://api.github.com/repos/nearai/ironclaw/commits/feature%2Fmatrix/status"),
+        get("https://api.github.com/repos/chtugha/brassclaw/pulls/4280/reviews?per_page=8&page=3"),
+        get("https://api.github.com/repos/chtugha/brassclaw/commits/feature%2Fmatrix/status"),
         request(
             "PUT",
-            "https://api.github.com/repos/nearai/ironclaw/pulls/4280/merge",
+            "https://api.github.com/repos/chtugha/brassclaw/pulls/4280/merge",
             json!({
                 "merge_method": "squash",
                 "commit_title": "merge title",
@@ -454,29 +454,29 @@ fn expected_github_http_requests() -> Vec<ExpectedGithubHttpRequest> {
         ),
         get("https://api.github.com/users/nearai/repos?per_page=11&page=2"),
         get(
-            "https://api.github.com/search/repositories?q=org%3Anearai%20ironclaw&per_page=12&page=3&sort=updated&order=desc",
+            "https://api.github.com/search/repositories?q=org%3Anearai%20brassclaw&per_page=12&page=3&sort=updated&order=desc",
         ),
         get(
-            "https://api.github.com/search/code?q=repo%3Anearai%2Fironclaw%20path%3Asrc%20Tool&per_page=12&page=3&sort=updated&order=desc",
+            "https://api.github.com/search/code?q=repo%3Anearai%2Fbrassclaw%20path%3Asrc%20Tool&per_page=12&page=3&sort=updated&order=desc",
         ),
         get(
-            "https://api.github.com/search/issues?q=repo%3Anearai%2Fironclaw%20is%3Apr&per_page=12&page=3&sort=updated&order=desc",
+            "https://api.github.com/search/issues?q=repo%3Anearai%2Fbrassclaw%20is%3Apr&per_page=12&page=3&sort=updated&order=desc",
         ),
         get(
-            "https://api.github.com/repos/nearai/ironclaw/branches?per_page=13&protected=true&page=2",
+            "https://api.github.com/repos/chtugha/brassclaw/branches?per_page=13&protected=true&page=2",
         ),
-        get("https://api.github.com/repos/nearai/ironclaw/git/ref/heads/main"),
+        get("https://api.github.com/repos/chtugha/brassclaw/git/ref/heads/main"),
         request(
             "POST",
-            "https://api.github.com/repos/nearai/ironclaw/git/refs",
+            "https://api.github.com/repos/chtugha/brassclaw/git/refs",
             json!({"ref": "refs/heads/feature/matrix", "sha": "abc123def4567890abc123def4567890abc123de"}),
         ),
         get(
-            "https://api.github.com/repos/nearai/ironclaw/contents/docs/replay.md?ref=feature%2Fmatrix",
+            "https://api.github.com/repos/chtugha/brassclaw/contents/docs/replay.md?ref=feature%2Fmatrix",
         ),
         request(
             "PUT",
-            "https://api.github.com/repos/nearai/ironclaw/contents/docs/replay.md",
+            "https://api.github.com/repos/chtugha/brassclaw/contents/docs/replay.md",
             json!({
                 "message": "write replay",
                 "content": "aGVsbG8=",
@@ -488,7 +488,7 @@ fn expected_github_http_requests() -> Vec<ExpectedGithubHttpRequest> {
         ),
         request(
             "DELETE",
-            "https://api.github.com/repos/nearai/ironclaw/contents/docs/replay.md",
+            "https://api.github.com/repos/chtugha/brassclaw/contents/docs/replay.md",
             json!({
                 "message": "delete replay",
                 "sha": "abc123",
@@ -497,10 +497,10 @@ fn expected_github_http_requests() -> Vec<ExpectedGithubHttpRequest> {
                 "author": {"name": "Author Bot", "email": "author@example.com"}
             }),
         ),
-        get("https://api.github.com/repos/nearai/ironclaw/releases?per_page=14&page=2"),
+        get("https://api.github.com/repos/chtugha/brassclaw/releases?per_page=14&page=2"),
         request(
             "POST",
-            "https://api.github.com/repos/nearai/ironclaw/releases",
+            "https://api.github.com/repos/chtugha/brassclaw/releases",
             json!({
                 "tag_name": "v1.2.3",
                 "target_commitish": "main",
@@ -513,18 +513,18 @@ fn expected_github_http_requests() -> Vec<ExpectedGithubHttpRequest> {
         ),
         request(
             "POST",
-            "https://api.github.com/repos/nearai/ironclaw/actions/workflows/ci.yml/dispatches",
+            "https://api.github.com/repos/chtugha/brassclaw/actions/workflows/ci.yml/dispatches",
             json!({"ref": "main", "inputs": {"suite": "smoke"}}),
         ),
         get(
-            "https://api.github.com/repos/nearai/ironclaw/actions/workflows/ci.yml/runs?per_page=15&page=2",
+            "https://api.github.com/repos/chtugha/brassclaw/actions/workflows/ci.yml/runs?per_page=15&page=2",
         ),
         request(
             "POST",
-            "https://api.github.com/repos/nearai/ironclaw/forks",
+            "https://api.github.com/repos/chtugha/brassclaw/forks",
             json!({
                 "organization": "nearai-labs",
-                "name": "ironclaw-fork",
+                "name": "brassclaw-fork",
                 "default_branch_only": true
             }),
         ),
@@ -614,7 +614,7 @@ fn request(
 fn issue_comment_input() -> serde_json::Value {
     json!({
         "owner": "nearai",
-        "repo": "ironclaw",
+        "repo": "brassclaw",
         "issue_number": 42,
         "body": "matrix comment"
     })
@@ -623,7 +623,7 @@ fn issue_comment_input() -> serde_json::Value {
 fn file_write_input() -> serde_json::Value {
     json!({
         "owner": "nearai",
-        "repo": "ironclaw",
+        "repo": "brassclaw",
         "path": "docs/replay.md",
         "message": "write replay",
         "content": "hello",
@@ -637,7 +637,7 @@ fn file_write_input() -> serde_json::Value {
 fn file_delete_input() -> serde_json::Value {
     json!({
         "owner": "nearai",
-        "repo": "ironclaw",
+        "repo": "brassclaw",
         "path": "docs/replay.md",
         "message": "delete replay",
         "sha": "abc123",

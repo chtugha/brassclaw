@@ -17,25 +17,25 @@ mod tests {
     use secrecy::SecretString;
     use uuid::Uuid;
 
-    use ironclaw::agent::routine::{
+    use brassclaw::agent::routine::{
         NotifyConfig, Routine, RoutineAction, RoutineGuardrails, RoutineRun, RunStatus, Trigger,
     };
-    use ironclaw::agent::routine_engine::RoutineEngine;
-    use ironclaw::agent::{HeartbeatConfig, HeartbeatRunner, Scheduler, SchedulerDeps};
-    use ironclaw::channels::IncomingMessage;
-    use ironclaw::config::{AgentConfig, RoutineConfig, SafetyConfig};
-    use ironclaw::context::{ContextManager, JobContext};
-    use ironclaw::db::{Database, libsql::LibSqlBackend};
-    use ironclaw::extensions::ExtensionManager;
-    use ironclaw::hooks::HookRegistry;
-    use ironclaw::secrets::{InMemorySecretsStore, SecretsCrypto, SecretsStore};
-    use ironclaw::tools::builtin::routine::RoutineUpdateTool;
-    use ironclaw::tools::mcp::{McpProcessManager, McpSessionManager};
-    use ironclaw::tools::{ApprovalRequirement, Tool, ToolError, ToolOutput, ToolRegistry};
-    use ironclaw::workspace::Workspace;
-    use ironclaw::workspace::hygiene::HygieneConfig;
-    use ironclaw_llm::LlmProvider;
-    use ironclaw_safety::SafetyLayer;
+    use brassclaw::agent::routine_engine::RoutineEngine;
+    use brassclaw::agent::{HeartbeatConfig, HeartbeatRunner, Scheduler, SchedulerDeps};
+    use brassclaw::channels::IncomingMessage;
+    use brassclaw::config::{AgentConfig, RoutineConfig, SafetyConfig};
+    use brassclaw::context::{ContextManager, JobContext};
+    use brassclaw::db::{Database, libsql::LibSqlBackend};
+    use brassclaw::extensions::ExtensionManager;
+    use brassclaw::hooks::HookRegistry;
+    use brassclaw::secrets::{InMemorySecretsStore, SecretsCrypto, SecretsStore};
+    use brassclaw::tools::builtin::routine::RoutineUpdateTool;
+    use brassclaw::tools::mcp::{McpProcessManager, McpSessionManager};
+    use brassclaw::tools::{ApprovalRequirement, Tool, ToolError, ToolOutput, ToolRegistry};
+    use brassclaw::workspace::Workspace;
+    use brassclaw::workspace::hygiene::HygieneConfig;
+    use brassclaw_llm::LlmProvider;
+    use brassclaw_safety::SafetyLayer;
 
     use crate::support::trace_llm::{LlmTrace, TraceLlm, TraceResponse, TraceStep, TraceToolCall};
 
@@ -342,14 +342,14 @@ mod tests {
             SchedulerDeps {
                 tools: registry.clone(),
                 extension_manager: extension_manager.clone(),
-                store: Some(ironclaw::tenant::SystemScope::new(db.clone())),
+                store: Some(brassclaw::tenant::SystemScope::new(db.clone())),
                 hooks: Arc::new(HookRegistry::new()),
             },
         ));
 
         Arc::new(RoutineEngine::new(
             RoutineConfig::default(),
-            ironclaw::tenant::SystemScope::new(db),
+            brassclaw::tenant::SystemScope::new(db),
             llm,
             ws,
             notify_tx,
@@ -357,7 +357,7 @@ mod tests {
             extension_manager,
             registry,
             safety,
-            ironclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
+            brassclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
             None,
         ))
     }
@@ -481,7 +481,7 @@ mod tests {
 
         let engine = Arc::new(RoutineEngine::new(
             RoutineConfig::default(),
-            ironclaw::tenant::SystemScope::new(db.clone()),
+            brassclaw::tenant::SystemScope::new(db.clone()),
             llm,
             ws,
             notify_tx,
@@ -489,7 +489,7 @@ mod tests {
             None,
             tools,
             safety,
-            ironclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
+            brassclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
             None,
         ));
 
@@ -561,7 +561,7 @@ mod tests {
 
         let engine = Arc::new(RoutineEngine::new(
             RoutineConfig::default(),
-            ironclaw::tenant::SystemScope::new(db.clone()),
+            brassclaw::tenant::SystemScope::new(db.clone()),
             llm,
             ws,
             notify_tx,
@@ -569,7 +569,7 @@ mod tests {
             None,
             tools,
             safety,
-            ironclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
+            brassclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
             None,
         ));
 
@@ -642,7 +642,7 @@ mod tests {
 
         let engine = Arc::new(RoutineEngine::new(
             RoutineConfig::default(),
-            ironclaw::tenant::SystemScope::new(db.clone()),
+            brassclaw::tenant::SystemScope::new(db.clone()),
             llm,
             ws,
             notify_tx,
@@ -650,7 +650,7 @@ mod tests {
             None,
             tools,
             safety,
-            ironclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
+            brassclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
             None,
         ));
 
@@ -750,7 +750,7 @@ mod tests {
 
         let engine = Arc::new(RoutineEngine::new(
             RoutineConfig::default(),
-            ironclaw::tenant::SystemScope::new(db.clone()),
+            brassclaw::tenant::SystemScope::new(db.clone()),
             llm,
             ws,
             notify_tx,
@@ -758,12 +758,12 @@ mod tests {
             None,
             tools,
             safety,
-            ironclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
+            brassclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
             None,
         ));
 
         let mut filters = std::collections::HashMap::new();
-        filters.insert("repository".to_string(), "nearai/ironclaw".to_string());
+        filters.insert("repository".to_string(), "chtugha/brassclaw".to_string());
 
         let routine = make_routine(
             "github-issue-opened",
@@ -783,7 +783,7 @@ mod tests {
                 "github",
                 "issue.opened",
                 &serde_json::json!({
-                    "repository": "nearai/ironclaw",
+                    "repository": "chtugha/brassclaw",
                     "issue_number": 42
                 }),
                 Some("default"),
@@ -807,7 +807,7 @@ mod tests {
             .emit_system_event(
                 "github",
                 "issue.closed",
-                &serde_json::json!({"repository": "nearai/ironclaw"}),
+                &serde_json::json!({"repository": "chtugha/brassclaw"}),
                 Some("default"),
             )
             .await;
@@ -836,7 +836,7 @@ mod tests {
                 "GitHub",
                 "Issue.Opened",
                 &serde_json::json!({
-                    "repository": "nearai/ironclaw",
+                    "repository": "chtugha/brassclaw",
                     "issue_number": 99
                 }),
                 Some("default"),
@@ -852,7 +852,7 @@ mod tests {
             .emit_system_event(
                 "github",
                 "issue.opened",
-                &serde_json::json!({"repository": "NearAI/IronClaw"}),
+                &serde_json::json!({"repository": "NearAI/BrassClaw"}),
                 Some("default"),
             )
             .await;
@@ -894,7 +894,7 @@ mod tests {
 
         let engine = Arc::new(RoutineEngine::new(
             RoutineConfig::default(),
-            ironclaw::tenant::SystemScope::new(db.clone()),
+            brassclaw::tenant::SystemScope::new(db.clone()),
             llm,
             ws,
             notify_tx,
@@ -902,7 +902,7 @@ mod tests {
             None,
             tools,
             safety,
-            ironclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
+            brassclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
             None,
         ));
 
@@ -988,7 +988,7 @@ mod tests {
 
         let result = runner.check_heartbeat().await;
         match result {
-            ironclaw::agent::HeartbeatResult::NeedsAttention(msg) => {
+            brassclaw::agent::HeartbeatResult::NeedsAttention(msg) => {
                 assert!(
                     msg.contains("error"),
                     "Expected 'error' in attention message: {msg}"
@@ -1033,7 +1033,7 @@ mod tests {
 
         let result = runner.check_heartbeat().await;
         assert!(
-            matches!(result, ironclaw::agent::HeartbeatResult::Skipped),
+            matches!(result, brassclaw::agent::HeartbeatResult::Skipped),
             "Expected Skipped for empty checklist, got: {result:?}"
         );
     }
@@ -1070,7 +1070,7 @@ mod tests {
 
         let engine = Arc::new(RoutineEngine::new(
             RoutineConfig::default(),
-            ironclaw::tenant::SystemScope::new(Arc::clone(&db)),
+            brassclaw::tenant::SystemScope::new(Arc::clone(&db)),
             llm,
             ws,
             notify_tx,
@@ -1078,7 +1078,7 @@ mod tests {
             None,
             tools,
             safety,
-            ironclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
+            brassclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
             None,
         ));
 
@@ -1161,10 +1161,10 @@ mod tests {
 
     #[tokio::test]
     async fn full_job_max_concurrent_blocks_second_fire_while_first_active() {
-        use ironclaw::agent::routine::{
+        use brassclaw::agent::routine::{
             NotifyConfig, Routine, RoutineAction, RoutineGuardrails, RoutineRun, RunStatus, Trigger,
         };
-        use ironclaw::error::RoutineError;
+        use brassclaw::error::RoutineError;
 
         let (db, _tmp) = create_test_db().await;
         let ws = create_workspace(&db);
@@ -1193,7 +1193,7 @@ mod tests {
 
         let engine = Arc::new(RoutineEngine::new(
             RoutineConfig::default(),
-            ironclaw::tenant::SystemScope::new(db.clone()),
+            brassclaw::tenant::SystemScope::new(db.clone()),
             llm,
             ws,
             notify_tx,
@@ -1201,7 +1201,7 @@ mod tests {
             None,
             tools,
             safety,
-            ironclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
+            brassclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
             None,
         ));
 
@@ -1302,7 +1302,7 @@ mod tests {
 
         let engine = Arc::new(RoutineEngine::new(
             config,
-            ironclaw::tenant::SystemScope::new(db.clone()),
+            brassclaw::tenant::SystemScope::new(db.clone()),
             llm,
             ws,
             notify_tx,
@@ -1310,7 +1310,7 @@ mod tests {
             None,
             tools,
             safety,
-            ironclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
+            brassclaw::agent::routine_engine::SandboxReadiness::DisabledByConfig,
             None,
         ));
 

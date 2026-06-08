@@ -8,14 +8,14 @@ PR lands).
 
 ## Context
 
-Before this ADR every persistence concern in the IronClaw workspace owned
+Before this ADR every persistence concern in the BrassClaw workspace owned
 its own `Store`/`Repository` trait with a per-backend dispatch for libSQL
 and PostgreSQL:
 
-- `ironclaw_secrets`, `ironclaw_authorization`, `ironclaw_memory`,
-  `ironclaw_processes`, `ironclaw_run_state`, `ironclaw_outbound`,
-  `ironclaw_conversations`, `ironclaw_reborn_event_store`,
-  `ironclaw_engine` (`Store` trait), plus `src/db/` (composite `Database`
+- `brassclaw_secrets`, `brassclaw_authorization`, `brassclaw_memory`,
+  `brassclaw_processes`, `brassclaw_run_state`, `brassclaw_outbound`,
+  `brassclaw_conversations`, `brassclaw_reborn_event_store`,
+  `brassclaw_engine` (`Store` trait), plus `src/db/` (composite `Database`
   trait, 7 sub-traits, ~78 methods), `src/secrets/`, `src/workspace/`,
   `src/history/`.
 
@@ -34,7 +34,7 @@ stays small and every backend is interchangeable behind one trait.
 
 There is **one universal filesystem dispatch fabric**:
 
-1. **One trait:** `RootFilesystem` (in `crates/ironclaw_filesystem/`).
+1. **One trait:** `RootFilesystem` (in `crates/brassclaw_filesystem/`).
    Every backend (local file, libSQL, PostgreSQL, HSM, in-memory,
    encrypted-decorator, object-store, …) implements it. The composite
    dispatcher (`CompositeRootFilesystem`) also implements it; it *is*
@@ -103,7 +103,7 @@ consumer chooses to.
   one method.
 - Feature-flag dispatch (`#[cfg(feature = "libsql")]` /
   `#[cfg(feature = "postgres")]`) concentrates in
-  `crates/ironclaw_filesystem/`; consumer crates lose their per-backend
+  `crates/brassclaw_filesystem/`; consumer crates lose their per-backend
   branches.
 
 **Costs:**
@@ -153,4 +153,4 @@ consumer chooses to.
 - Architecture sprawl rule: `.claude/rules/architecture.md` — "duplicate
   dispatch pipelines" is the smell this rework eliminates at the
   storage layer.
-- Filesystem crate guardrails: `crates/ironclaw_filesystem/CLAUDE.md`.
+- Filesystem crate guardrails: `crates/brassclaw_filesystem/CLAUDE.md`.

@@ -1,0 +1,20 @@
+[package]
+name = "brassclaw_dispatcher"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+async-trait = "0.1"
+brassclaw_events = { path = "../brassclaw_events" }
+brassclaw_extensions = { path = "../brassclaw_extensions" }
+brassclaw_filesystem = { path = "../brassclaw_filesystem" }
+brassclaw_host_api = { path = "../brassclaw_host_api" }
+brassclaw_resources = { path = "../brassclaw_resources" }
+serde_json = "1"
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt"] }
+tracing-test = { version = "0.2", features = ["no-env-filter"] }

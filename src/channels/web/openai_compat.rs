@@ -1,7 +1,7 @@
 //! OpenAI-compatible HTTP API (`/v1/chat/completions`, `/v1/models`).
 //!
 //! This module provides a direct LLM proxy through the web gateway so any
-//! standard OpenAI client library can use IronClaw as a backend by simply
+//! standard OpenAI client library can use BrassClaw as a backend by simply
 //! changing the `base_url`.
 
 use std::sync::Arc;
@@ -17,7 +17,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use ironclaw_llm::{
+use brassclaw_llm::{
     ChatMessage, CompletionRequest, FinishReason, Role, ToolCall, ToolCompletionRequest,
     ToolDefinition,
 };
@@ -597,7 +597,7 @@ pub async fn chat_completions_handler(
 /// proper HTTP errors instead of SSE error events. True token streaming can be
 /// added later by extending `LlmProvider` with a `complete_stream()` method.
 async fn handle_streaming(
-    llm: Arc<dyn ironclaw_llm::LlmProvider>,
+    llm: Arc<dyn brassclaw_llm::LlmProvider>,
     req: OpenAiChatRequest,
     has_tools: bool,
 ) -> Result<Response, (StatusCode, Json<OpenAiErrorResponse>)> {
@@ -612,8 +612,8 @@ async fn handle_streaming(
     // Since streaming is simulated (LlmProvider returns complete responses),
     // this lets us return proper HTTP errors on failure.
     enum LlmResult {
-        Simple(ironclaw_llm::CompletionResponse),
-        WithTools(ironclaw_llm::ToolCompletionResponse),
+        Simple(brassclaw_llm::CompletionResponse),
+        WithTools(brassclaw_llm::ToolCompletionResponse),
     }
 
     let llm_result = if has_tools {
@@ -714,7 +714,7 @@ async fn handle_streaming(
     let sse = Sse::new(stream).keep_alive(KeepAlive::new().text(""));
     let mut response = sse.into_response();
     response.headers_mut().insert(
-        "x-ironclaw-streaming",
+        "x-brassclaw-streaming",
         HeaderValue::from_static("simulated"),
     );
     Ok(response)
@@ -826,7 +826,7 @@ pub async fn models_handler(
                     "id": name,
                     "object": "model",
                     "created": created,
-                    "owned_by": "ironclaw"
+                    "owned_by": "brassclaw"
                 })
             })
             .collect(),
@@ -836,7 +836,7 @@ pub async fn models_handler(
                 "id": model_name,
                 "object": "model",
                 "created": created,
-                "owned_by": "ironclaw"
+                "owned_by": "brassclaw"
             })]
         }
         Err(e) => return Err(map_llm_error(e)),

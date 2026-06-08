@@ -1,4 +1,4 @@
-# IronClaw Reborn agent loop protocol contract
+# BrassClaw Reborn agent loop protocol contract
 
 **Date:** 2026-04-25
 **Status:** Draft contract

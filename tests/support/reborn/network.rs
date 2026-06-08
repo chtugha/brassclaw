@@ -3,8 +3,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use ironclaw_host_api::NetworkMethod;
-use ironclaw_network::{
+use brassclaw_host_api::NetworkMethod;
+use brassclaw_network::{
     NetworkHttpError, NetworkHttpResponse, NetworkHttpTransport, NetworkTransportRequest,
     PolicyNetworkHttpEgress,
 };

@@ -25,14 +25,14 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ironclaw_authorization::{GrantAuthorizer, TrustAwareCapabilityDispatchAuthorizer};
-use ironclaw_extensions::ExtensionRegistry;
-use ironclaw_filesystem::{
+use brassclaw_authorization::{GrantAuthorizer, TrustAwareCapabilityDispatchAuthorizer};
+use brassclaw_extensions::ExtensionRegistry;
+use brassclaw_filesystem::{
     BackendCapabilities, BackendId, BackendKind, CompositeRootFilesystem, ContentKind,
     InMemoryBackend, IndexPolicy, LocalFilesystem, MountDescriptor, RootFilesystem,
     ScopedFilesystem, StorageClass,
 };
-use ironclaw_host_api::{
+use brassclaw_host_api::{
     AgentId, CapabilityDescriptor, CapabilityGrant, CapabilityGrantId, CapabilityId, CapabilitySet,
     CredentialStageError, Decision, EffectKind, ExecutionContext, ExtensionId, GrantConstraints,
     HostPath, MountAlias, MountGrant, MountPermissions, MountView, NetworkPolicy, NetworkScheme,
@@ -41,7 +41,7 @@ use ironclaw_host_api::{
     RuntimeHttpEgressError, RuntimeHttpEgressRequest, RuntimeHttpEgressResponse, RuntimeKind,
     SecretHandle, TenantId, ThreadId, TrustClass, UserId, VirtualPath,
 };
-use ironclaw_host_runtime::{
+use brassclaw_host_runtime::{
     APPLY_PATCH_CAPABILITY_ID, BUILTIN_FIRST_PARTY_PROVIDER, CapabilitySurfacePolicy,
     CapabilitySurfaceVersion as HostRuntimeCapabilitySurfaceVersion, ECHO_CAPABILITY_ID,
     GLOB_CAPABILITY_ID, GREP_CAPABILITY_ID, HTTP_CAPABILITY_ID, HTTP_SAVE_CAPABILITY_ID,
@@ -54,31 +54,31 @@ use ironclaw_host_runtime::{
     TRIGGER_LIST_CAPABILITY_ID, TRIGGER_REMOVE_CAPABILITY_ID, WRITE_FILE_CAPABILITY_ID,
     builtin_first_party_handlers, builtin_first_party_package,
 };
-use ironclaw_loop_support::{
+use brassclaw_loop_support::{
     CapabilityAllowSet, CapabilityResolveError, CapabilityResultWrite,
     CapabilitySurfaceProfileResolver, DEFAULT_SPAWN_SUBAGENT_CAPABILITY_ID,
     HostIdentityContextBuildError, HostIdentityContextCandidate, HostIdentityContextSource,
     HostManagedModelRequest, HostRuntimeLoopCapabilityPortFactory, JsonSpawnSubagentInputCodec,
     LoopCapabilityPortFactory, LoopCapabilityResultWriter,
 };
-use ironclaw_network::{
+use brassclaw_network::{
     NetworkHttpEgress, NetworkHttpError, NetworkHttpRequest, NetworkHttpResponse, NetworkUsage,
     PolicyNetworkHttpEgress, ReqwestNetworkTransport,
 };
-use ironclaw_product_adapters::{
+use brassclaw_product_adapters::{
     ProductInboundAck, ProductInboundEnvelope, ProductInboundPayload, ProductTriggerReason,
     ProductWorkflow,
 };
-use ironclaw_product_workflow::{
+use brassclaw_product_workflow::{
     ConversationBindingService, DefaultInboundTurnService, DefaultProductWorkflow,
     IdempotencyLedger, InboundTurnService, ProductConversationRouteKind, ResolveBindingRequest,
     ResolvedBinding,
 };
-use ironclaw_reborn::subagent::{
+use brassclaw_reborn::subagent::{
     flavors::StaticSubagentDefinitionResolver, gate_resolution::BoundedSubagentGateResolutionStore,
     goal_store::InMemoryBoundedSubagentGoalStore,
 };
-use ironclaw_reborn::{
+use brassclaw_reborn::{
     loop_exit_applier::{
         BlockedEvidenceRequest, CompletionEvidenceRequest, FailureEvidenceRequest,
         FinalCheckpointEvidenceRequest, LoopExitEvidencePort, ThreadCheckpointLoopExitEvidencePort,
@@ -89,22 +89,22 @@ use ironclaw_reborn::{
     },
     turn_runner::{TurnRunnerWakeSender, TurnRunnerWorker, TurnRunnerWorkerConfig},
 };
-use ironclaw_reborn_composition::{
+use brassclaw_reborn_composition::{
     ProductLiveCapabilityIo, ProductLiveVisibleCapabilityRequestConfig, RebornBuildInput,
     build_reborn_services, visible_capability_request_for_run,
 };
-use ironclaw_resources::InMemoryResourceGovernor;
-use ironclaw_secrets::{
+use brassclaw_resources::InMemoryResourceGovernor;
+use brassclaw_secrets::{
     InMemorySecretStore, SecretLease, SecretLeaseId, SecretLeaseStatus, SecretMaterial,
     SecretMetadata, SecretStore, SecretStoreError,
 };
-use ironclaw_threads::{
+use brassclaw_threads::{
     FilesystemSessionThreadService, SessionThreadService, ThreadHistoryRequest,
     ThreadMessageRecord, ThreadScope,
 };
-use ironclaw_trust::{AdminConfig, AdminEntry, HostTrustAssignment, HostTrustPolicy};
-use ironclaw_trust::{EffectiveTrustClass, TrustDecision};
-use ironclaw_turns::{
+use brassclaw_trust::{AdminConfig, AdminEntry, HostTrustAssignment, HostTrustPolicy};
+use brassclaw_trust::{EffectiveTrustClass, TrustDecision};
+use brassclaw_turns::{
     CancelRunRequest, FilesystemTurnStateStore, GateRef, GetLoopCheckpointRequest,
     GetRunStateRequest, IdempotencyKey, InMemoryCheckpointStateStore, LoopBlockedKind,
     LoopCheckpointKind, LoopCheckpointStore, LoopGateRef, LoopResultRef, ReplyTargetBindingRef,
@@ -121,7 +121,7 @@ use ironclaw_turns::{
         VisibleCapabilitySurface,
     },
 };
-use ironclaw_wasm::{WitToolHost, WitToolRuntimeConfig};
+use brassclaw_wasm::{WitToolHost, WitToolRuntimeConfig};
 use serde_json::json;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -146,7 +146,7 @@ type HarnessResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 type HarnessCapabilityParts = (
     Arc<dyn LoopCapabilityPortFactory>,
     Arc<dyn CapabilitySurfaceProfileResolver>,
-    Arc<dyn ironclaw_loop_support::LoopCapabilityInputResolver>,
+    Arc<dyn brassclaw_loop_support::LoopCapabilityInputResolver>,
     Arc<dyn LoopCapabilityResultWriter>,
     HarnessCapabilityRecorder,
 );
@@ -164,7 +164,7 @@ pub struct RebornBinaryE2EHarness {
     thread_harness: RebornThreadHarness,
     model_gateway: RebornTraceReplayModelGateway,
     capability_recorder: HarnessCapabilityRecorder,
-    milestone_sink: Arc<ironclaw_turns::run_profile::InMemoryLoopHostMilestoneSink>,
+    milestone_sink: Arc<brassclaw_turns::run_profile::InMemoryLoopHostMilestoneSink>,
     worker: Arc<TurnRunnerWorker>,
     cancel: CancellationToken,
     worker_tasks: Vec<JoinHandle<()>>,
@@ -269,7 +269,7 @@ impl RebornBinaryE2EHarness {
         Self::with_model_gateway(
             conversation_id,
             RebornTraceReplayModelGateway::with_responses([
-                ironclaw_loop_support::HostManagedModelResponse::assistant_reply(reply),
+                brassclaw_loop_support::HostManagedModelResponse::assistant_reply(reply),
             ]),
             RecordingTestCapabilityPort::echo(),
         )
@@ -835,7 +835,7 @@ impl RebornBinaryE2EHarness {
         let checkpoint_state_store = Arc::new(InMemoryCheckpointStateStore::default());
         let loop_checkpoint_store: Arc<dyn LoopCheckpointStore> = turn_store.clone();
         let milestone_sink =
-            Arc::new(ironclaw_turns::run_profile::InMemoryLoopHostMilestoneSink::default());
+            Arc::new(brassclaw_turns::run_profile::InMemoryLoopHostMilestoneSink::default());
         let (
             capability_factory,
             capability_surface_resolver,
@@ -857,7 +857,7 @@ impl RebornBinaryE2EHarness {
         let composition = build_default_planned_runtime(DefaultPlannedRuntimeParts {
             turn_state: Arc::clone(&turn_store),
             thread_service: thread_harness.service.clone()
-                as Arc<dyn ironclaw_threads::SessionThreadService>,
+                as Arc<dyn brassclaw_threads::SessionThreadService>,
             thread_scope: thread_scope.clone(),
             model_gateway: Arc::new(model_gateway.clone()),
             checkpoint_state_store,
@@ -872,7 +872,7 @@ impl RebornBinaryE2EHarness {
             subagent_spawn_input_codec: Arc::new(JsonSpawnSubagentInputCodec::new(
                 capability_input_resolver,
             )),
-            subagent_spawn_limits: ironclaw_loop_support::SubagentSpawnLimits::default(),
+            subagent_spawn_limits: brassclaw_loop_support::SubagentSpawnLimits::default(),
             loop_exit_evidence: evidence,
             config: DefaultPlannedRuntimeConfig {
                 worker: TurnRunnerWorkerConfig {
@@ -935,7 +935,7 @@ impl RebornBinaryE2EHarness {
         thread_harness: RebornThreadHarness,
         model_gateway: RebornTraceReplayModelGateway,
         capability_recorder: HarnessCapabilityRecorder,
-        milestone_sink: Arc<ironclaw_turns::run_profile::InMemoryLoopHostMilestoneSink>,
+        milestone_sink: Arc<brassclaw_turns::run_profile::InMemoryLoopHostMilestoneSink>,
         composition: RebornRuntimeLoopComposition<
             FilesystemTurnStateStore<LocalFilesystem>,
             dyn SessionThreadService,
@@ -1116,7 +1116,7 @@ impl RebornBinaryE2EHarness {
                 actor,
                 run_id,
                 gate_resolution_ref: gate_ref,
-                precondition: ironclaw_turns::ResumeTurnPrecondition::AnyBlockedGate,
+                precondition: brassclaw_turns::ResumeTurnPrecondition::AnyBlockedGate,
                 source_binding_ref: SourceBindingRef::new("src:resume")?,
                 reply_target_binding_ref: ReplyTargetBindingRef::new("reply:resume")?,
                 idempotency_key: IdempotencyKey::new(idempotency_key.into())?,
@@ -1409,7 +1409,7 @@ impl LoopExitEvidencePort for HarnessLoopExitEvidencePort {
     async fn is_cancellation_observed(
         &self,
         scope: &TurnScope,
-        turn_id: ironclaw_turns::TurnId,
+        turn_id: brassclaw_turns::TurnId,
         run_id: TurnRunId,
     ) -> Result<bool, TurnError> {
         self.inner
@@ -1420,9 +1420,9 @@ impl LoopExitEvidencePort for HarnessLoopExitEvidencePort {
     async fn latest_checkpoint_kind(
         &self,
         scope: &TurnScope,
-        turn_id: ironclaw_turns::TurnId,
+        turn_id: brassclaw_turns::TurnId,
         run_id: TurnRunId,
-    ) -> Result<Option<ironclaw_turns::LoopCheckpointKind>, TurnError> {
+    ) -> Result<Option<brassclaw_turns::LoopCheckpointKind>, TurnError> {
         self.inner
             .latest_checkpoint_kind(scope, turn_id, run_id)
             .await
@@ -1432,7 +1432,7 @@ impl LoopExitEvidencePort for HarnessLoopExitEvidencePort {
 impl HarnessCapabilityMode {
     fn into_parts(
         self,
-        milestone_sink: Arc<ironclaw_turns::run_profile::InMemoryLoopHostMilestoneSink>,
+        milestone_sink: Arc<brassclaw_turns::run_profile::InMemoryLoopHostMilestoneSink>,
     ) -> HarnessResult<HarnessCapabilityParts> {
         match self {
             Self::Recording(port) => {
@@ -1791,7 +1791,7 @@ impl HostRuntimeCapabilityHarness {
 
     fn capability_factory(
         self: &Arc<Self>,
-        milestone_sink: Arc<ironclaw_turns::run_profile::InMemoryLoopHostMilestoneSink>,
+        milestone_sink: Arc<brassclaw_turns::run_profile::InMemoryLoopHostMilestoneSink>,
     ) -> Arc<dyn LoopCapabilityPortFactory> {
         Arc::new(HostRuntimeHarnessCapabilityPortFactory {
             harness: Arc::clone(self),
@@ -1835,7 +1835,7 @@ impl HostRuntimeCapabilityHarness {
 
 struct HostRuntimeHarnessCapabilityPortFactory {
     harness: Arc<HostRuntimeCapabilityHarness>,
-    milestone_sink: Arc<ironclaw_turns::run_profile::InMemoryLoopHostMilestoneSink>,
+    milestone_sink: Arc<brassclaw_turns::run_profile::InMemoryLoopHostMilestoneSink>,
 }
 
 #[async_trait]
@@ -1973,7 +1973,7 @@ fn local_dev_host_runtime_with_registry_and_runtime_http_egress(
         local_dev_root_filesystem(storage_root, LocalDevRootMounts::core_builtins())?,
         Arc::new(InMemoryResourceGovernor::new()),
         Arc::new(GrantAuthorizer::new()),
-        ironclaw_processes::ProcessServices::in_memory(),
+        brassclaw_processes::ProcessServices::in_memory(),
         HostRuntimeCapabilitySurfaceVersion::new("reborn-app-v1")?,
     )
     .with_secret_store(Arc::new(StaticSecretStore::new(
@@ -1984,7 +1984,7 @@ fn local_dev_host_runtime_with_registry_and_runtime_http_egress(
         result: Ok(SecretHandle::new("github_manual_access")?),
     }))
     .with_first_party_capabilities(Arc::new(builtin_first_party_handlers(Arc::new(
-        ironclaw_triggers::InMemoryTriggerRepository::default(),
+        brassclaw_triggers::InMemoryTriggerRepository::default(),
     ))?))
     .with_first_party_http_egress(egress)
     .with_trust_policy(Arc::new(first_party_trust_policy()?));
@@ -2003,7 +2003,7 @@ fn local_dev_host_runtime_with_registry_and_egress(
         local_dev_root_filesystem(storage_root, LocalDevRootMounts::github_assets())?,
         Arc::new(InMemoryResourceGovernor::new()),
         Arc::new(GithubHarnessAuthorizer::new()?),
-        ironclaw_processes::ProcessServices::in_memory(),
+        brassclaw_processes::ProcessServices::in_memory(),
         HostRuntimeCapabilitySurfaceVersion::new("reborn-app-v1")?,
     )
     .with_secret_store(Arc::new(StaticSecretStore::new(
@@ -2014,7 +2014,7 @@ fn local_dev_host_runtime_with_registry_and_egress(
         result: Ok(SecretHandle::new("github_manual_access")?),
     }))
     .with_first_party_capabilities(Arc::new(builtin_first_party_handlers(Arc::new(
-        ironclaw_triggers::InMemoryTriggerRepository::default(),
+        brassclaw_triggers::InMemoryTriggerRepository::default(),
     ))?))
     .with_runtime_http_egress(runtime_http_egress)
     .with_trust_policy(Arc::new(github_first_party_trust_policy()?))
@@ -2037,12 +2037,12 @@ fn local_dev_host_runtime_with_live_http_egress(
         local_dev_root_filesystem(storage_root, LocalDevRootMounts::core_builtins())?,
         Arc::new(InMemoryResourceGovernor::new()),
         Arc::new(GrantAuthorizer::new()),
-        ironclaw_processes::ProcessServices::in_memory(),
+        brassclaw_processes::ProcessServices::in_memory(),
         HostRuntimeCapabilitySurfaceVersion::new("reborn-app-v1")?,
     )
     .with_secret_store(Arc::new(InMemorySecretStore::new()))
     .with_first_party_capabilities(Arc::new(builtin_first_party_handlers(Arc::new(
-        ironclaw_triggers::InMemoryTriggerRepository::default(),
+        brassclaw_triggers::InMemoryTriggerRepository::default(),
     ))?))
     .try_with_host_http_egress(PolicyNetworkHttpEgress::new(ReqwestNetworkTransport::new(
         Duration::from_secs(2),
@@ -2417,7 +2417,7 @@ impl RuntimeHttpEgress for RecordingRuntimeHttpEgress {
 }
 
 #[async_trait]
-impl ironclaw_host_runtime::ToolCallHttpEgress for RecordingRuntimeHttpEgress {
+impl brassclaw_host_runtime::ToolCallHttpEgress for RecordingRuntimeHttpEgress {
     async fn execute_for_model_visible_output(
         &self,
         request: RuntimeHttpEgressRequest,
@@ -2506,7 +2506,7 @@ impl LoopCapabilityResultWriter for RecordingCapabilityResultWriter {
             .await?;
         self.results.lock().unwrap().push(RecordedCapabilityResult {
             capability_id: CapabilityId::new(
-                ironclaw_loop_support::DEFAULT_SPAWN_SUBAGENT_CAPABILITY_ID,
+                brassclaw_loop_support::DEFAULT_SPAWN_SUBAGENT_CAPABILITY_ID,
             )
             .map_err(|error| {
                 AgentLoopHostError::new(AgentLoopHostErrorKind::Internal, error.to_string())
@@ -2690,10 +2690,10 @@ impl RecordingTestCapabilityPort {
     fn completed_result(&self) -> CapabilityOutcome {
         let ordinal = self.next_result.fetch_add(1, Ordering::SeqCst);
         CapabilityOutcome::Completed(CapabilityResultMessage {
-            result_ref: ironclaw_turns::LoopResultRef::new(format!("result:test-echo-{ordinal}"))
+            result_ref: brassclaw_turns::LoopResultRef::new(format!("result:test-echo-{ordinal}"))
                 .expect("valid result ref"),
             safe_summary: "echo: hi".to_string(),
-            progress: ironclaw_turns::run_profile::CapabilityProgress::MadeProgress,
+            progress: brassclaw_turns::run_profile::CapabilityProgress::MadeProgress,
             terminate_hint: false,
         })
     }
@@ -2976,8 +2976,8 @@ where
     Ok(Arc::new(ScopedFilesystem::with_fixed_view(backend, mounts)))
 }
 
-pub fn trace_tool_call_response() -> ironclaw_loop_support::HostManagedModelResponse {
-    ironclaw_loop_support::HostManagedModelResponse {
+pub fn trace_tool_call_response() -> brassclaw_loop_support::HostManagedModelResponse {
+    brassclaw_loop_support::HostManagedModelResponse {
         safe_text_deltas: Vec::new(),
         safe_reasoning_deltas: Vec::new(),
         usage: None,

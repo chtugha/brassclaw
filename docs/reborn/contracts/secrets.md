@@ -1,15 +1,15 @@
-# IronClaw Reborn secrets service contract
+# BrassClaw Reborn secrets service contract
 
 **Date:** 2026-04-26
 **Status:** V1 service-boundary slice
-**Crate:** `crates/ironclaw_secrets`
+**Crate:** `crates/brassclaw_secrets`
 **Depends on:** `docs/reborn/contracts/host-api.md`
 
 ---
 
 ## 1. Purpose
 
-`ironclaw_secrets` is the scoped secret metadata and lease service for Reborn.
+`brassclaw_secrets` is the scoped secret metadata and lease service for Reborn.
 
 It turns opaque host API handles into explicit, short-lived access leases:
 
@@ -95,7 +95,7 @@ let material = secrets.consume(&scope, lease.id).await?;
 Durable libSQL/PostgreSQL storage is provided by `FilesystemSecretStore` and
 `FilesystemCredentialBroker` over the database-backed `RootFilesystem`
 implementations. Backend selection is now a property of the filesystem layer;
-`ironclaw_secrets` stores encrypted payloads and per-record salts under scoped
+`brassclaw_secrets` stores encrypted payloads and per-record salts under scoped
 filesystem paths, with tenant id projected as a defense-in-depth index. Store
 readiness must fail closed when the configured master key is missing or
 malformed. The earlier filesystem-stored key-check sentinel was removed with the
@@ -202,12 +202,12 @@ The crate tests cover:
 ## 7. Reborn issue #3088 closeout notes
 
 This contract is the current status source for the secrets side of
-[#3088](https://github.com/nearai/ironclaw/issues/3088), alongside:
+[#3088](https://github.com/chtugha/brassclaw/issues/3088), alongside:
 
-- [#3068](https://github.com/nearai/ironclaw/issues/3068) for credential-injection parity
-- [#3085](https://github.com/nearai/ironclaw/issues/3085) for shared runtime HTTP egress
-- [#3026](https://github.com/nearai/ironclaw/issues/3026) for production composition
-- [#3032](https://github.com/nearai/ironclaw/issues/3032) for no-exposure safeguards
+- [#3068](https://github.com/chtugha/brassclaw/issues/3068) for credential-injection parity
+- [#3085](https://github.com/chtugha/brassclaw/issues/3085) for shared runtime HTTP egress
+- [#3026](https://github.com/chtugha/brassclaw/issues/3026) for production composition
+- [#3032](https://github.com/chtugha/brassclaw/issues/3032) for no-exposure safeguards
 
 Closed in the current Reborn slice:
 

@@ -24,17 +24,17 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use chrono::Utc;
-use ironclaw::agent::SessionManager;
-use ironclaw::agent::routine::{
+use brassclaw::agent::SessionManager;
+use brassclaw::agent::routine::{
     Routine, RoutineAction, RoutineGuardrails, RoutineRun, RunStatus, Trigger,
 };
-use ironclaw::channels::web::auth::{MultiAuthState, UserIdentity};
-use ironclaw::channels::web::platform::router::start_server;
-use ironclaw::channels::web::platform::state::{GatewayState, PerUserRateLimiter, RateLimiter};
-use ironclaw::channels::web::sse::SseManager;
-use ironclaw::channels::web::ws::WsConnectionTracker;
-use ironclaw::db::Database;
-use ironclaw::history::SandboxJobRecord;
+use brassclaw::channels::web::auth::{MultiAuthState, UserIdentity};
+use brassclaw::channels::web::platform::router::start_server;
+use brassclaw::channels::web::platform::state::{GatewayState, PerUserRateLimiter, RateLimiter};
+use brassclaw::channels::web::sse::SseManager;
+use brassclaw::channels::web::ws::WsConnectionTracker;
+use brassclaw::db::Database;
+use brassclaw::history::SandboxJobRecord;
 use uuid::Uuid;
 
 const ALICE_TOKEN: &str = "tok-alice-resource-isolation";
@@ -71,7 +71,7 @@ async fn start_server_with_db() -> (
 ) {
     let temp_dir = tempfile::tempdir().expect("tempdir");
     let path = temp_dir.path().join("test.db");
-    let backend = ironclaw::db::libsql::LibSqlBackend::new_local(&path)
+    let backend = brassclaw::db::libsql::LibSqlBackend::new_local(&path)
         .await
         .expect("backend");
     backend.run_migrations().await.expect("migrations");

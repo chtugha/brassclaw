@@ -6,11 +6,11 @@
 # What it does:
 # - Runs unit and integration tests with coverage instrumentation
 # - Runs E2E tests with coverage instrumentation
-# - Uploads coverage reports to Codecov (https://codecov.io/gh/nearai/ironclaw)
+# - Uploads coverage reports to Codecov (https://codecov.io/gh/chtugha/brassclaw)
 #
 # Viewing coverage reports:
 # - PRs automatically get coverage comments showing changes in coverage
-# - Visit https://codecov.io/gh/nearai/ironclaw for detailed coverage reports
+# - Visit https://codecov.io/gh/chtugha/brassclaw for detailed coverage reports
 # - Coverage reports are generated for three configurations:
 #   1. all-features: Full feature set
 #   2. default: Default features
@@ -39,7 +39,7 @@ env:
   # Linux Secret Service). Guarded by src/secrets/keychain.rs::os_keychain_suppressed:
   # cfg!(test) covers unit tests; this covers integration/e2e that link the
   # non-cfg(test) library.
-  IRONCLAW_DISABLE_OS_KEYCHAIN: "1"
+  BRASSCLAW_DISABLE_OS_KEYCHAIN: "1"
 
 jobs:
   coverage:

@@ -10,23 +10,23 @@ fn runtime_dockerfile() -> String {
 }
 
 #[test]
-fn runtime_image_declares_and_prepares_ironclaw_home() {
+fn runtime_image_declares_and_prepares_brassclaw_home() {
     let dockerfile = runtime_dockerfile();
 
     assert!(
-        dockerfile.contains("useradd -m -d /home/ironclaw -u 1000 ironclaw"),
-        "runtime image must create the ironclaw user with the expected home directory",
+        dockerfile.contains("useradd -m -d /home/brassclaw -u 1000 brassclaw"),
+        "runtime image must create the brassclaw user with the expected home directory",
     );
     assert!(
-        dockerfile.contains("ENV HOME=/home/ironclaw"),
-        "runtime image must set HOME to /home/ironclaw for ~/.ironclaw state",
+        dockerfile.contains("ENV HOME=/home/brassclaw"),
+        "runtime image must set HOME to /home/brassclaw for ~/.brassclaw state",
     );
     assert!(
-        dockerfile.contains("WORKDIR /home/ironclaw"),
-        "runtime image must start in the ironclaw home directory",
+        dockerfile.contains("WORKDIR /home/brassclaw"),
+        "runtime image must start in the brassclaw home directory",
     );
     assert!(
-        dockerfile.contains("mkdir -p /home/ironclaw/.ironclaw"),
-        "runtime image must pre-create ~/.ironclaw before dropping privileges",
+        dockerfile.contains("mkdir -p /home/brassclaw/.brassclaw"),
+        "runtime image must pre-create ~/.brassclaw before dropping privileges",
     );
 }

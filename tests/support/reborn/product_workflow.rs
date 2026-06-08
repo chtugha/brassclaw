@@ -6,12 +6,12 @@ use std::{
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use ironclaw_filesystem::{FilesystemError, LocalFilesystem, RootFilesystem, ScopedFilesystem};
-use ironclaw_host_api::{
+use brassclaw_filesystem::{FilesystemError, LocalFilesystem, RootFilesystem, ScopedFilesystem};
+use brassclaw_host_api::{
     AgentId, HostApiError, MountAlias, MountGrant, MountPermissions, MountView, ProjectId,
     ResourceScope, ScopedPath, TenantId, ThreadId, UserId, VirtualPath,
 };
-use ironclaw_product_workflow::{
+use brassclaw_product_workflow::{
     ActionFingerprintKey, ActionPhase, ConversationBindingService, IdempotencyDecision,
     IdempotencyLedger, ProductConversationRouteKind, ProductInboundAction, ProductWorkflowError,
     ResolveBindingRequest, ResolvedBinding,
@@ -618,6 +618,6 @@ pub fn resource_scope(
         project_id,
         mission_id: None,
         thread_id: None,
-        invocation_id: ironclaw_host_api::InvocationId::new(),
+        invocation_id: brassclaw_host_api::InvocationId::new(),
     }
 }

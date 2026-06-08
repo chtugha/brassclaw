@@ -1,6 +1,6 @@
 """Fake Telegram Bot API server for E2E tests.
 
-Serves minimal Telegram Bot API endpoints so the IronClaw Telegram WASM
+Serves minimal Telegram Bot API endpoints so the BrassClaw Telegram WASM
 channel can be set up and exercised without a real Telegram connection.
 
 Control endpoints (/__mock/*) let tests queue updates, inspect sent

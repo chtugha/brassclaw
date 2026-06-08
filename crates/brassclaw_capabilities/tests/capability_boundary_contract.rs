@@ -1,0 +1,26 @@
+use std::fs;
+use std::path::PathBuf;
+
+#[test]
+fn capabilities_crate_does_not_depend_on_concrete_runtime_or_dispatcher_crates() {
+    let manifest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+    let manifest = fs::read_to_string(manifest_path).unwrap();
+    let production_dependencies = manifest
+        .split("\n[dev-dependencies]")
+        .next()
+        .unwrap_or(&manifest);
+    for forbidden in [
+        "brassclaw_dispatcher",
+        "brassclaw_host_runtime",
+        "brassclaw_mcp",
+        "brassclaw_scripts",
+        "brassclaw_wasm",
+        "brassclaw_secrets",
+        "brassclaw_network",
+    ] {
+        assert!(
+            !production_dependencies.contains(forbidden),
+            "brassclaw_capabilities production code must use neutral ports and must not depend on {forbidden}"
+        );
+    }
+}

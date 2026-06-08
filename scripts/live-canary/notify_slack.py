@@ -640,7 +640,7 @@ def main() -> int:
     p.add_argument("--commit", default=os.environ.get("GITHUB_SHA"))
     p.add_argument(
         "--repo",
-        default=os.environ.get("GITHUB_REPOSITORY", "nearai/ironclaw"),
+        default=os.environ.get("GITHUB_REPOSITORY", "chtugha/brassclaw"),
         help="owner/name slug used for `gh issue` operations",
     )
     p.add_argument(

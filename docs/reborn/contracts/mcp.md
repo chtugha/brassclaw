@@ -1,15 +1,15 @@
-# IronClaw Reborn MCP adapter contract
+# BrassClaw Reborn MCP adapter contract
 
 **Date:** 2026-06-02
 **Status:** Hosted HTTP/SSE discovery slice
-**Crate:** `crates/ironclaw_mcp`
+**Crate:** `crates/brassclaw_mcp`
 **Depends on:** `docs/reborn/contracts/host-api.md`, `docs/reborn/contracts/extensions.md`, `docs/reborn/contracts/resources.md`, `docs/reborn/contracts/dispatcher.md`
 
 ---
 
 ## 1. Purpose
 
-`ironclaw_mcp` adapts manifest-declared MCP tools into IronClaw capabilities.
+`brassclaw_mcp` adapts manifest-declared MCP tools into BrassClaw capabilities.
 
 MCP is an integration lane, not an authority bypass:
 

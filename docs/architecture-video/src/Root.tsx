@@ -1,16 +1,16 @@
 import "./index.css";
 import { Composition } from "remotion";
 import {
-  IronClawArchitecture,
+  BrassClawArchitecture,
   TOTAL_DURATION,
-} from "./IronClawArchitecture";
+} from "./BrassClawArchitecture";
 
 export const RemotionRoot: React.FC = () => {
   return (
     <>
       <Composition
-        id="IronClawArchitecture"
-        component={IronClawArchitecture}
+        id="BrassClawArchitecture"
+        component={BrassClawArchitecture}
         durationInFrames={TOTAL_DURATION}
         fps={30}
         width={1280}

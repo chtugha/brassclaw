@@ -3,9 +3,9 @@
 mod reborn_support;
 mod support;
 
-use ironclaw_product_adapters::ProductInboundAck;
-use ironclaw_threads::{MessageKind, MessageStatus};
-use ironclaw_turns::TurnStatus;
+use brassclaw_product_adapters::ProductInboundAck;
+use brassclaw_threads::{MessageKind, MessageStatus};
+use brassclaw_turns::TurnStatus;
 use reborn_support::harness::RebornBinaryE2EHarness;
 
 #[tokio::test]

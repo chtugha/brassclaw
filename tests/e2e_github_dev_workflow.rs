@@ -2,7 +2,7 @@
 //!
 //! This is a **fully real** end-to-end test that exercises the
 //! `developer-setup` + `github-workflow` skills against the real
-//! `nearai/ironclaw` GitHub repo. The intent (per project owner) is to
+//! `chtugha/brassclaw` GitHub repo. The intent (per project owner) is to
 //! validate the workflow by doing useful work on the real repo and
 //! recording every interaction so we can debug what doesn't work and
 //! iterate on the skills.
@@ -11,11 +11,11 @@
 //!
 //! 1. **Setup turn** — agent installs the workflow missions
 //!    (`wf-issue-plan-*`, `wf-maintainer-gate-*`, `wf-pr-monitor-*`,
-//!    `wf-ci-fix-*`, `wf-learning-*`) for `nearai/ironclaw` via real
+//!    `wf-ci-fix-*`, `wf-learning-*`) for `chtugha/brassclaw` via real
 //!    `mission_create` calls.
 //!
 //! 2. **Real issue creation** — the test (NOT the agent) opens a real
-//!    issue on `nearai/ironclaw` via direct REST API. Title is prefixed
+//!    issue on `chtugha/brassclaw` via direct REST API. Title is prefixed
 //!    `[live-test {timestamp}]` so it's identifiable. Issue URL is
 //!    printed at the start so the human running the test can monitor
 //!    or intervene.
@@ -54,14 +54,14 @@
 //!
 //! **Live mode** (default for this test — there is no replay yet):
 //! ```bash
-//! IRONCLAW_LIVE_TEST=1 cargo test --features libsql \
+//! BRASSCLAW_LIVE_TEST=1 cargo test --features libsql \
 //!     --test e2e_github_dev_workflow \
 //!     -- --ignored --test-threads=1 --nocapture
 //! ```
 //!
 //! Requires:
-//! - `~/.ironclaw/.env` with valid LLM credentials
-//! - A `github_token` secret in `~/.ironclaw/ironclaw.db` with `repo`
+//! - `~/.brassclaw/.env` with valid LLM credentials
+//! - A `github_token` secret in `~/.brassclaw/brassclaw.db` with `repo`
 //!   scope (the test rig copies it via `with_secrets(["github_token"])`)
 //!
 //! Replay mode is supported but requires the trace fixture to exist.
@@ -80,7 +80,7 @@ mod github_dev_workflow_test {
     /// Repository under test. Owned and watched by the project owner;
     /// safe to create live-test issues against.
     const REPO_OWNER: &str = "nearai";
-    const REPO_NAME: &str = "ironclaw";
+    const REPO_NAME: &str = "brassclaw";
 
     fn repo_skills_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("skills")
@@ -98,7 +98,7 @@ mod github_dev_workflow_test {
     /// Skip in replay mode if the fixture doesn't exist yet.
     fn should_run_test(test_name: &str) -> bool {
         if trace_fixture_path(test_name).exists()
-            || std::env::var("IRONCLAW_LIVE_TEST")
+            || std::env::var("BRASSCLAW_LIVE_TEST")
                 .ok()
                 .filter(|v| !v.is_empty() && v != "0")
                 .is_some()
@@ -122,7 +122,7 @@ mod github_dev_workflow_test {
             // plus per-event reasoning, so we need a generous iteration cap.
             .with_max_tool_iterations(80)
             .with_skills_dir(repo_skills_dir())
-            // Copy the real github_token from ~/.ironclaw/ironclaw.db so
+            // Copy the real github_token from ~/.brassclaw/brassclaw.db so
             // the agent can talk to api.github.com. Required: the test
             // creates a real issue and the agent reads it + comments on it.
             .with_secrets(["github_token"])
@@ -157,7 +157,7 @@ mod github_dev_workflow_test {
     /// Dump captured tool activity to stderr after each turn so failing
     /// runs surface what the agent actually did.
     fn dump_activity(harness: &LiveTestHarness, label: &str) {
-        use ironclaw::channels::StatusUpdate;
+        use brassclaw::channels::StatusUpdate;
         eprintln!("───── [{label}] activity dump ─────");
         eprintln!("active skills: {:?}", harness.rig().active_skill_names());
         for event in harness.rig().captured_status_events() {
@@ -210,7 +210,7 @@ mod github_dev_workflow_test {
 
         fn client() -> reqwest::Client {
             reqwest::Client::builder()
-                .user_agent("ironclaw-live-test/0.1")
+                .user_agent("brassclaw-live-test/0.1")
                 .build()
                 .expect("build reqwest client")
         }
@@ -348,7 +348,7 @@ mod github_dev_workflow_test {
     /// should never mask the original test result.
     async fn cleanup_issue(token: &str, issue_number: u64) {
         let final_comment = "🤖 **Live test complete.** Closing this issue.\n\n\
-             This issue was created by the IronClaw `e2e_github_dev_workflow` \
+             This issue was created by the BrassClaw `e2e_github_dev_workflow` \
              live integration test. If you're seeing this and the test was \
              still useful, the recorded trace is at \
              `tests/fixtures/llm_traces/live/github_dev_workflow_full_loop.json`.";
@@ -375,7 +375,7 @@ mod github_dev_workflow_test {
     }
 
     #[tokio::test]
-    #[ignore] // Live tier: requires LLM API keys + github_token in ~/.ironclaw
+    #[ignore] // Live tier: requires LLM API keys + github_token in ~/.brassclaw
     async fn github_dev_workflow_full_loop() {
         let test_name = "github_dev_workflow_full_loop";
         if !should_run_test(test_name) {
@@ -397,21 +397,21 @@ mod github_dev_workflow_test {
         // step is "did a real comment appear on a real GitHub issue".
         let Some(github_token) = harness.rig().get_secret("github_token").await else {
             eprintln!(
-                "[{test_name}] github_token not found in ~/.ironclaw/ironclaw.db; \
+                "[{test_name}] github_token not found in ~/.brassclaw/brassclaw.db; \
                  skipping. This test makes real GitHub API calls and cannot run \
                  in pure replay mode. To enable: configure a github_token secret \
-                 in your local ironclaw setup and rerun with IRONCLAW_LIVE_TEST=1."
+                 in your local brassclaw setup and rerun with BRASSCLAW_LIVE_TEST=1."
             );
             return;
         };
 
         // ── Turn 1: Setup workflow ───────────────────────────────────
-        // The agent installs the wf-* mission set for nearai/ironclaw.
+        // The agent installs the wf-* mission set for chtugha/brassclaw.
         // We don't strictly need this turn for the triage flow below,
         // but it exercises the github-workflow skill's install path
         // which is the other half of the dev workflow surface area.
         let setup_msg = "I'm a software engineer. Set up the GitHub workflow for \
-                         nearai/ironclaw. Maintainers: ilblackdragon. Staging \
+                         chtugha/brassclaw. Maintainers: ilblackdragon. Staging \
                          branch: staging. Do NOT install the staging-batch-review \
                          mission — humans will merge to main. Use sensible defaults \
                          and skip the setup questions.";
@@ -436,7 +436,7 @@ mod github_dev_workflow_test {
         );
         transcript.push(SessionTurn::user(setup_msg, setup_responses));
 
-        // ── Create a real test issue on nearai/ironclaw ──────────────
+        // ── Create a real test issue on chtugha/brassclaw ──────────────
         let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M UTC");
         let issue_title = format!("[live-test {timestamp}] Add /metrics Prometheus endpoint");
         let issue_body = "**This is an automated live integration test issue.** It was opened by \
@@ -444,13 +444,13 @@ mod github_dev_workflow_test {
             `developer-setup` + `github-workflow` skills end-to-end against a real \
             repository.\n\n\
             ## Feature request\n\n\
-            Expose Prometheus-style metrics for IronClaw at `/metrics`. Should include:\n\n\
+            Expose Prometheus-style metrics for BrassClaw at `/metrics`. Should include:\n\n\
             - Request latency histograms per channel + per tool\n\
             - Tool execution count + success rate\n\
             - Active session count + thread count\n\
             - LLM token usage counters per model + per backend\n\n\
             The endpoint should not require auth in single-user mode (the typical local \
-            ironclaw deployment); for multi-user gateway deployments it should require the \
+            brassclaw deployment); for multi-user gateway deployments it should require the \
             existing admin credential.\n\n\
             ## Why this matters\n\n\
             Production observability is currently limited to `tracing` log output. A \
@@ -470,7 +470,7 @@ mod github_dev_workflow_test {
             issue_body,
         )
         .await
-        .expect("create real test issue on nearai/ironclaw");
+        .expect("create real test issue on chtugha/brassclaw");
         eprintln!("[live-test] created real issue #{issue_number}: {issue_url}");
 
         // Wrap everything after issue creation in a guard so cleanup

@@ -1,11 +1,11 @@
-# IronClaw E2E Tests
+# BrassClaw E2E Tests
 
-Browser-level end-to-end tests for the IronClaw web gateway using Python + Playwright.
+Browser-level end-to-end tests for the BrassClaw web gateway using Python + Playwright.
 
 ## Prerequisites
 
 - Python 3.11+
-- Rust toolchain (for building ironclaw)
+- Rust toolchain (for building brassclaw)
 - Chromium (installed via Playwright)
 
 ## Setup
@@ -16,9 +16,9 @@ pip install -e .
 playwright install chromium
 ```
 
-## Build ironclaw
+## Build brassclaw
 
-The tests need the ironclaw binary built with libsql support:
+The tests need the brassclaw binary built with libsql support:
 
 ```bash
 cargo build --no-default-features --features libsql
@@ -41,7 +41,7 @@ HEADED=1 pytest tests/e2e/scenarios/test_connection.py -v
 
 Tests start two subprocesses:
 1. **Mock LLM** (`mock_llm.py`) -- fake OpenAI-compat server with canned responses
-2. **IronClaw** -- the real binary with gateway enabled, pointing to the mock LLM
+2. **BrassClaw** -- the real binary with gateway enabled, pointing to the mock LLM
 
 Then Playwright drives a headless Chromium browser against the gateway, making DOM assertions.
 
@@ -78,7 +78,7 @@ lifecycle tests deterministic, see [`E2E_DEBT.md`](./E2E_DEBT.md).
 
 For tabs that depend on external data (extensions, jobs, memory, routines), use
 Playwright's `page.route()` to intercept the browser's HTTP requests to the
-ironclaw gateway and return deterministic fixture JSON. This avoids needing
+brassclaw gateway and return deterministic fixture JSON. This avoids needing
 real installed binaries, live external services, or complex database setup.
 
 ### Basic pattern

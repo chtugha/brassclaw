@@ -2,13 +2,13 @@
 //!
 //! Owns the browser-facing extension lifecycle surface: list / readiness /
 //! tools / install / activate / remove / registry / setup / setup-submit.
-//! Migrated from `server.rs` in ironclaw#2599 stage 4d (final feature
+//! Migrated from `server.rs` in brassclaw#2599 stage 4d (final feature
 //! slice before the `server.rs` shim can be retired).
 //!
 //! # Identity boundary
 //!
 //! Every handler that takes an extension name from the URL path validates
-//! it through [`ironclaw_common::ExtensionName::new`] before the value
+//! it through [`brassclaw_common::ExtensionName::new`] before the value
 //! reaches extension lookup, SSE broadcast, or any `from_trusted` wrap.
 //! Path-traversal / malformed slugs return 400 at the boundary. The rule
 //! is enforced by check #8 in `scripts/pre-commit-safety.sh`; see the
@@ -42,7 +42,7 @@ use crate::channels::web::types::*;
 /// explicit owner_id in settings. Either is sufficient to upgrade an active
 /// channel from `Pairing` to `Active`.
 ///
-/// See nearai/ironclaw#1921 for the regression that motivated plumbing
+/// See chtugha/brassclaw#1921 for the regression that motivated plumbing
 /// `has_paired` through here instead of hardcoding it to `false`.
 pub(crate) fn derive_activation_status(
     ext: &crate::extensions::InstalledExtension,
@@ -260,12 +260,12 @@ pub(crate) async fn extensions_install_handler(
     // URL-path handlers (`activate`, `remove`, `setup`, `setup_submit`)
     // already enforce. Rejects path-traversal, invalid characters, and
     // malformed slugs with a 400 before the value reaches registry
-    // lookup, filesystem path construction under `~/.ironclaw/extensions/`,
+    // lookup, filesystem path construction under `~/.brassclaw/extensions/`,
     // or any downstream extension-manager call. The canonical form
     // (hyphens folded to underscores) is used everywhere the previous
     // raw `req.name` was read, keeping the error messages and registry
     // lookup keyed off the same identity the install pipeline sees.
-    let name = ironclaw_common::ExtensionName::new(&req.name).map_err(|e| {
+    let name = brassclaw_common::ExtensionName::new(&req.name).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
             format!("Invalid extension name: {e}"),
@@ -281,7 +281,7 @@ pub(crate) async fn extensions_install_handler(
                 crate::extensions::ExtensionSource::WasmBuildable { .. } => {
                     format!(
                         "'{name_str}' requires building from source. \
-                         Run `ironclaw registry install {name_str}` from the CLI."
+                         Run `brassclaw registry install {name_str}` from the CLI."
                     )
                 }
                 _ => format!(
@@ -387,7 +387,7 @@ pub(crate) async fn extensions_activate_handler(
     // The URL path segment is user input — validate at the boundary via
     // `ExtensionName::new` and use the canonical form for all downstream
     // extension-manager calls and response formatting.
-    let name = ironclaw_common::ExtensionName::new(&name).map_err(|e| {
+    let name = brassclaw_common::ExtensionName::new(&name).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
             format!("Invalid extension name: {e}"),
@@ -428,7 +428,7 @@ pub(crate) async fn extensions_remove_handler(
     // Validate user-controlled path segment before it reaches the extension
     // manager — rejects path-traversal, invalid characters, and malformed
     // slugs with a 400.
-    let name = ironclaw_common::ExtensionName::new(&name).map_err(|e| {
+    let name = brassclaw_common::ExtensionName::new(&name).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
             format!("Invalid extension name: {e}"),
@@ -516,7 +516,7 @@ pub(crate) async fn extensions_setup_handler(
 ) -> Result<Json<ExtensionSetupResponse>, (StatusCode, String)> {
     // Validate user-controlled path segment at entry. Downstream lookups
     // (`get_setup_schema`, `list().find(...)`) consume the canonical form.
-    let name = ironclaw_common::ExtensionName::new(&name).map_err(|e| {
+    let name = brassclaw_common::ExtensionName::new(&name).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
             format!("Invalid extension name: {e}"),
@@ -557,7 +557,7 @@ pub(crate) async fn extensions_login_start_handler(
     Path(name): Path<String>,
     Json(_req): Json<ExtensionInteractiveLoginStartRequest>,
 ) -> Result<Json<ExtensionInteractiveLoginResponse>, (StatusCode, String)> {
-    let name = ironclaw_common::ExtensionName::new(&name).map_err(|e| {
+    let name = brassclaw_common::ExtensionName::new(&name).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
             format!("Invalid extension name: {e}"),
@@ -599,7 +599,7 @@ pub(crate) async fn extensions_login_poll_handler(
     Path(name): Path<String>,
     Json(req): Json<ExtensionInteractiveLoginPollRequest>,
 ) -> Result<Json<ExtensionInteractiveLoginResponse>, (StatusCode, String)> {
-    let name = ironclaw_common::ExtensionName::new(&name).map_err(|e| {
+    let name = brassclaw_common::ExtensionName::new(&name).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
             format!("Invalid extension name: {e}"),
@@ -671,7 +671,7 @@ pub(crate) async fn extensions_setup_submit_handler(
     // `ExtensionName::new`. Reject path-traversal, invalid characters, or
     // malformed slugs with a 400 before the value reaches extension
     // lookup, SSE broadcast, or any `from_trusted` wrap below.
-    let name = ironclaw_common::ExtensionName::new(&name).map_err(|e| {
+    let name = brassclaw_common::ExtensionName::new(&name).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
             format!("Invalid extension name: {e}"),
@@ -826,7 +826,7 @@ mod tests {
     ///
     /// Either `has_paired` or `has_owner_binding` is sufficient to upgrade
     /// from `Pairing` to `Active`. Pinning the four-cell matrix here means a
-    /// regression that drops one axis (the bug shape behind nearai/ironclaw#1921)
+    /// regression that drops one axis (the bug shape behind chtugha/brassclaw#1921)
     /// trips at least two cells, not zero.
     #[test]
     fn derive_activation_status_truth_table_for_active_wasm_channel() {
@@ -849,7 +849,7 @@ mod tests {
         }
     }
 
-    /// Regression for nearai/ironclaw#1921 — caller-level coverage.
+    /// Regression for chtugha/brassclaw#1921 — caller-level coverage.
     ///
     /// Before this fix the wrapper hardcoded the underlying classifier's
     /// `has_paired` axis to `false`, so a paired-but-not-owner-bound
@@ -863,7 +863,7 @@ mod tests {
             derive_activation_status(&ext, true, false),
             Some(ExtensionActivationStatus::Active),
             "a WASM channel with paired senders must report Active even when \
-             no owner binding is set (nearai/ironclaw#1921)"
+             no owner binding is set (chtugha/brassclaw#1921)"
         );
     }
 
@@ -1105,7 +1105,7 @@ mod tests {
         // Each of these is the JSON-body `name` the handler now validates
         // through `ExtensionName::new`. Previously `req.name` was taken
         // verbatim into `ext_mgr.install(&req.name, ...)` which constructs
-        // filesystem paths under `~/.ironclaw/extensions/` — so path-traversal
+        // filesystem paths under `~/.brassclaw/extensions/` — so path-traversal
         // / separators / control characters could silently reach the
         // filesystem layer before failing deep in the install pipeline.
         for bad in ["..", "../traversal", "slash/name", "BadCase", "has space"] {
@@ -1327,7 +1327,7 @@ mod tests {
         use tower::ServiceExt;
 
         // DB-backed manager so the install path does not fall back to the
-        // developer's real `~/.ironclaw/mcp-servers.json` (which would
+        // developer's real `~/.brassclaw/mcp-servers.json` (which would
         // panic with `AlreadyInstalled("notion")` on dev machines that
         // already have a notion entry configured).
         let (ext_mgr, _wasm_tools_dir, _wasm_channels_dir, _db_dir) = test_ext_mgr_with_db().await;
@@ -1442,7 +1442,7 @@ mod tests {
         assert_eq!(telegram["activation_status"], "installed");
     }
 
-    /// Caller-level wire-contract regression for nearai/ironclaw#2235.
+    /// Caller-level wire-contract regression for chtugha/brassclaw#2235.
     ///
     /// The Settings → Extensions UI picks the WASM-channel fallback button
     /// label ("Setup" vs "Reconfigure") from `ExtensionInfo.authenticated`

@@ -208,12 +208,12 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           if [[ "${IS_RELEASE_BUILD}" == "true" && -n "${VERSION}" ]]; then
-            gh api repos/nearai/ironclaw-dind/dispatches \
+            gh api repos/chtugha/brassclaw-dind/dispatches \
               --method POST \
               -f event_type="ironclaw_image_published" \
               -f client_payload[version]="${VERSION}"
           elif [[ "${EVENT_NAME}" == "schedule" ]] || [[ "${INPUT_TAG}" == "staging" ]]; then
-            gh api repos/nearai/ironclaw-dind/dispatches \
+            gh api repos/chtugha/brassclaw-dind/dispatches \
               --method POST \
               -f event_type="ironclaw_image_published"
           fi

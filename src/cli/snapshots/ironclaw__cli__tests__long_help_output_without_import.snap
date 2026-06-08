@@ -2,27 +2,27 @@
 source: src/cli/mod.rs
 expression: help
 ---
-IronClaw is a secure AI assistant.
+BrassClaw is a secure AI assistant.
 
 Getting started:
-  ironclaw onboard              # Interactive setup wizard (recommended for first run)
-  ironclaw onboard --quick      # Quick setup: just pick a provider and model
-  ironclaw models set-provider openai  # Switch to a specific provider
-  ironclaw doctor               # Check your configuration
+  brassclaw onboard              # Interactive setup wizard (recommended for first run)
+  brassclaw onboard --quick      # Quick setup: just pick a provider and model
+  brassclaw models set-provider openai  # Switch to a specific provider
+  brassclaw doctor               # Check your configuration
 
 Common commands:
-  ironclaw run                  # Start the agent
-  ironclaw config list          # View all settings
-  ironclaw models status        # Show current provider and model
-  ironclaw models list          # List available providers
+  brassclaw run                  # Start the agent
+  brassclaw config list          # View all settings
+  brassclaw models status        # Show current provider and model
+  brassclaw models list          # List available providers
 
-Use 'ironclaw <subcommand> --help' for details on any command.
+Use 'brassclaw <subcommand> --help' for details on any command.
 
-Usage: ironclaw [OPTIONS] [COMMAND]
+Usage: brassclaw [OPTIONS] [COMMAND]
 
 Commands:
   run         Run the AI agent
-  onboard     Run interactive setup wizard (start here if new to IronClaw)
+  onboard     Run interactive setup wizard (start here if new to BrassClaw)
   config      Manage app configuration settings
   tool        Manage WASM tools
   registry    Browse/install extensions
@@ -66,19 +66,19 @@ Options:
           Skips interactive approval prompts for standard tools. Destructive operations still require explicit approval. Other safeguards remain active: rate limits, hooks, authentication gates.
 
       --deployment-mode <MODE>
-          Deployment mode: where IronClaw is running and who owns the machine boundary.
+          Deployment mode: where BrassClaw is running and who owns the machine boundary.
 
-          Wire names: `local_single_user`, `hosted_multi_tenant`, `enterprise_dedicated`. Falls back to `IRONCLAW_DEPLOYMENT_MODE`, then to `local_single_user`.
+          Wire names: `local_single_user`, `hosted_multi_tenant`, `enterprise_dedicated`. Falls back to `BRASSCLAW_DEPLOYMENT_MODE`, then to `local_single_user`.
 
       --runtime-profile <PROFILE>
           Requested runtime profile (#3045).
 
-          Wire names: `secure_default`, `local_safe`, `local_dev`, `local_yolo`, `hosted_safe`, `hosted_dev`, `hosted_yolo_tenant_scoped`, `enterprise_safe`, `enterprise_dev`, `enterprise_yolo_dedicated`, `sandboxed`, `experiment`. Falls back to `IRONCLAW_RUNTIME_PROFILE`, then to `secure_default`.
+          Wire names: `secure_default`, `local_safe`, `local_dev`, `local_yolo`, `hosted_safe`, `hosted_dev`, `hosted_yolo_tenant_scoped`, `enterprise_safe`, `enterprise_dev`, `enterprise_yolo_dedicated`, `sandboxed`, `experiment`. Falls back to `BRASSCLAW_RUNTIME_PROFILE`, then to `secure_default`.
 
       --yolo-disclosure
           Acknowledge the disclosure required by `*_yolo*` profiles.
 
-          Yolo profiles intentionally reduce approvals inside their authority boundary. The CLI must capture explicit operator confirmation — without this flag (or `IRONCLAW_YOLO_DISCLOSURE=true`), any yolo profile selection fails closed.
+          Yolo profiles intentionally reduce approvals inside their authority boundary. The CLI must capture explicit operator confirmation — without this flag (or `BRASSCLAW_YOLO_DISCLOSURE=true`), any yolo profile selection fails closed.
 
   -h, --help
           Print help (see a summary with '-h')

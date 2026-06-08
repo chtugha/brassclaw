@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use ironclaw_llm::ChatMessage;
+use brassclaw_llm::ChatMessage;
 
 /// Maximum number of checkpoints to keep by default.
 const DEFAULT_MAX_CHECKPOINTS: usize = 20;

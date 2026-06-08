@@ -1,12 +1,12 @@
 ---
 title: Google Compute Engine
-description: Host IronClaw on a Google Compute Engine VM
+description: Host BrassClaw on a Google Compute Engine VM
 ---
 
-Google Compute Engine (GCE) lets you run virtual machines on Google's infrastructure with flexible pricing and a generous free tier. In this guide we will create a GCE VM instance and configure it securely so you can run IronClaw and expose only the endpoints you actually need.
+Google Compute Engine (GCE) lets you run virtual machines on Google's infrastructure with flexible pricing and a generous free tier. In this guide we will create a GCE VM instance and configure it securely so you can run BrassClaw and expose only the endpoints you actually need.
 
 <Tip>
-Do not feel like setting up your own infrastructure? You can install IronClaw with a few clicks on [agent.near.ai](https://agent.near.ai)
+Do not feel like setting up your own infrastructure? You can install BrassClaw with a few clicks on [agent.near.ai](https://agent.near.ai)
 </Tip>
 
 ---
@@ -19,7 +19,7 @@ In the top navigation bar, click the **project selector** (it shows the current 
 
 Fill in the project details:
 
-- **Project name**: choose a descriptive name (e.g. `ironclaw`)
+- **Project name**: choose a descriptive name (e.g. `brassclaw`)
 - **Organization**: leave as-is unless your account belongs to a Google Workspace org
 - **Location**: leave as-is for personal accounts
 
@@ -37,7 +37,7 @@ Navigate to **Compute Engine → VM instances**. If this is your first time usin
 
 Click **Create Instance** and configure the following:
 
-- **Name**: choose a descriptive name (e.g. `ironclaw`)
+- **Name**: choose a descriptive name (e.g. `brassclaw`)
 - **Region / Zone**: pick a region close to your users
 - **Machine type**: `e2-micro` (free tier eligible) is sufficient for most use cases, or `e2-small` for more headroom
 - **Boot disk**: Ubuntu 24.04 LTS, at least 10 GB
@@ -80,7 +80,7 @@ ssh <USERNAME>@<IP_ADDRESS>
 
 ## Configure Firewall Rules
 
-IronClaw's Web Gateway defaults to `127.0.0.1:3000`, which means it is local-only by default and not directly reachable from the internet.
+BrassClaw's Web Gateway defaults to `127.0.0.1:3000`, which means it is local-only by default and not directly reachable from the internet.
 
 Recommended exposure model:
 
@@ -113,14 +113,14 @@ If you intentionally expose the gateway directly (generally not recommended), yo
 With SSH tunnel or VPN access, keep `GATEWAY_HOST` at the default (`127.0.0.1`) and do not open the gateway port in GCE firewall.
 
 <Note>
-Restricting SSH to your IP prevents brute-force attacks from the internet. You can update the source range later if your IP changes. Port `8080` is required for webhooks (e.g. Telegram) to deliver events to IronClaw. On Linux, the orchestrator internal API listens on port `50051` and binds to `0.0.0.0`; unless you add a firewall rule for it, GCE's default deny-all ingress policy will still block external access. Other IronClaw listeners bind to `127.0.0.1` by default.
+Restricting SSH to your IP prevents brute-force attacks from the internet. You can update the source range later if your IP changes. Port `8080` is required for webhooks (e.g. Telegram) to deliver events to BrassClaw. On Linux, the orchestrator internal API listens on port `50051` and binds to `0.0.0.0`; unless you add a firewall rule for it, GCE's default deny-all ingress policy will still block external access. Other BrassClaw listeners bind to `127.0.0.1` by default.
 </Note>
 
 ---
 
 ## Secure Your Instance
 
-Now that you have access to your VM, harden it before installing IronClaw.
+Now that you have access to your VM, harden it before installing BrassClaw.
 
 ### Update and Upgrade
 
@@ -132,32 +132,32 @@ sudo apt update && sudo apt upgrade -y
 
 ### Create a New User
 
-It is good practice to create a dedicated user with sudo privileges instead of relying on the default account. You can create a new user (for example, `ironclaw`) and add it to the sudo group:
+It is good practice to create a dedicated user with sudo privileges instead of relying on the default account. You can create a new user (for example, `brassclaw`) and add it to the sudo group:
 
 ```bash
-sudo adduser ironclaw
-sudo usermod -aG sudo ironclaw
+sudo adduser brassclaw
+sudo usermod -aG sudo brassclaw
 ```
 
 Copy your SSH key from the current user to the new one so you can log in:
 
 ```bash
 # Create the .ssh directory for the new user
-sudo mkdir -p /home/ironclaw/.ssh
+sudo mkdir -p /home/brassclaw/.ssh
 
 # Copy the authorized_keys from the current user
-sudo cp ~/.ssh/authorized_keys /home/ironclaw/.ssh/authorized_keys
+sudo cp ~/.ssh/authorized_keys /home/brassclaw/.ssh/authorized_keys
 
 # Set the correct permissions (critical — SSH will ignore the file otherwise)
-sudo chown -R ironclaw:ironclaw /home/ironclaw/
-sudo chmod 700 /home/ironclaw/.ssh
-sudo chmod 600 /home/ironclaw/.ssh/authorized_keys
+sudo chown -R brassclaw:brassclaw /home/brassclaw/
+sudo chmod 700 /home/brassclaw/.ssh
+sudo chmod 600 /home/brassclaw/.ssh/authorized_keys
 ```
 
 Open a new terminal window and confirm you can log in before continuing:
 
 ```bash
-ssh ironclaw@<IP_ADDRESS>
+ssh brassclaw@<IP_ADDRESS>
 ```
 
 <Warning>
@@ -167,29 +167,29 @@ Do not move forward until you have confirmed that you can log in with the new us
 
 ---
 
-## Install IronClaw
+## Install BrassClaw
 
-With the server hardened, install IronClaw and start it up:
+With the server hardened, install BrassClaw and start it up:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nearai/ironclaw/releases/latest/download/ironclaw-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nearai/brassclaw/releases/latest/download/brassclaw-installer.sh | sh
 ```
 
-Then start IronClaw and follow the prompts to complete the setup:
+Then start BrassClaw and follow the prompts to complete the setup:
 
 ```bash
-ironclaw
+brassclaw
 ```
 
 <Tip>
-We recommend using a session manager like `tmux` or `screen` so you can easily detach and reattach to your running IronClaw instance between SSH sessions.
+We recommend using a session manager like `tmux` or `screen` so you can easily detach and reattach to your running BrassClaw instance between SSH sessions.
 </Tip>
 
 ---
 
 ## Next Steps
 
-Follow our [Quickstart Guide](/quickstart) to create your first agent, connect it to Telegram, and start exploring IronClaw's capabilities.
+Follow our [Quickstart Guide](/quickstart) to create your first agent, connect it to Telegram, and start exploring BrassClaw's capabilities.
 
 Want to talk with your agent using a messaging app? Check out the [**Channels**](/channels/overview) documentation to learn how to connect.
 

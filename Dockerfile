@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for the IronClaw agent (cloud deployment).
+# Multi-stage Dockerfile for the BrassClaw agent (cloud deployment).
 #
 # Uses cargo-chef for dependency caching — only rebuilds deps when
 # Cargo.toml/Cargo.lock change, not on every source edit.
@@ -8,10 +8,10 @@
 # database reopen), so we use glibc.
 #
 # Build:
-#   docker build --platform linux/amd64 --target runtime -t ironclaw:latest .
+#   docker build --platform linux/amd64 --target runtime -t brassclaw:latest .
 #
 # Run:
-#   docker run --env-file .env -p 3000:3000 ironclaw:latest
+#   docker run --env-file .env -p 3000:3000 brassclaw:latest
 
 # Stage 1: Install cargo-chef
 FROM rust:1.92-bookworm AS chef
@@ -49,7 +49,7 @@ ENV CARGO_PROFILE_DIST_PANIC=abort \
 COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --profile dist --recipe-path recipe.json
 
-# Stage 4: Build the actual binary (only recompiles ironclaw source)
+# Stage 4: Build the actual binary (only recompiles brassclaw source)
 FROM deps AS builder
 
 COPY Cargo.toml Cargo.lock ./
@@ -65,7 +65,7 @@ COPY wit/ wit/
 COPY providers.json providers.json
 COPY profiles/ profiles/
 
-RUN cargo build --profile dist --bin ironclaw
+RUN cargo build --profile dist --bin brassclaw
 
 # Stage 4b: Build all WASM extensions from source (only used by runtime-staging)
 #
@@ -125,30 +125,30 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/dist/ironclaw /usr/local/bin/ironclaw
+COPY --from=builder /app/target/dist/brassclaw /usr/local/bin/brassclaw
 COPY --from=builder /app/migrations /app/migrations
 
 # Non-root user
-ENV HOME=/home/ironclaw
-RUN useradd -m -d /home/ironclaw -u 1000 ironclaw \
-    && mkdir -p /home/ironclaw/.ironclaw \
-    && chown -R ironclaw:ironclaw /home/ironclaw
-WORKDIR /home/ironclaw
+ENV HOME=/home/brassclaw
+RUN useradd -m -d /home/brassclaw -u 1000 brassclaw \
+    && mkdir -p /home/brassclaw/.brassclaw \
+    && chown -R brassclaw:brassclaw /home/brassclaw
+WORKDIR /home/brassclaw
 
 EXPOSE 3000
 
-ENV RUST_LOG=ironclaw=info
+ENV RUST_LOG=brassclaw=info
 
-ENTRYPOINT ["ironclaw"]
+ENTRYPOINT ["brassclaw"]
 
 # Stage 5b: Production runtime (no pre-bundled extensions)
 FROM runtime-base AS runtime
-USER ironclaw
+USER brassclaw
 
 # Stage 5c: Staging runtime (with pre-built WASM extensions)
 # Last stage = default target. Railway doesn't support --target, so this
 # must be last for Railway deploys. CI uses explicit --target flags.
 FROM runtime-base AS runtime-staging
-COPY --from=wasm-builder --chown=ironclaw:ironclaw /app/wasm-bundles/tools/ /home/ironclaw/.ironclaw/tools/
-COPY --from=wasm-builder --chown=ironclaw:ironclaw /app/wasm-bundles/channels/ /home/ironclaw/.ironclaw/channels/
-USER ironclaw
+COPY --from=wasm-builder --chown=brassclaw:brassclaw /app/wasm-bundles/tools/ /home/brassclaw/.brassclaw/tools/
+COPY --from=wasm-builder --chown=brassclaw:brassclaw /app/wasm-bundles/channels/ /home/brassclaw/.brassclaw/channels/
+USER brassclaw

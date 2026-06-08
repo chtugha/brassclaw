@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="ironclaw.png?v=2" alt="IronClaw" width="200"/>
+  <img src="brassclaw.png?v=2" alt="BrassClaw" width="200"/>
 </p>
 
-<h1 align="center">IronClaw</h1>
+<h1 align="center">BrassClaw</h1>
 
 <p align="center">
   <strong>Ваш защищенный персональный AI-ассистент, всегда на вашей стороне</strong>
@@ -10,8 +10,8 @@
 
 <p align="center">
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache%202.0-blue.svg" alt="Лицензия: MIT OR Apache-2.0" /></a>
-  <a href="https://t.me/ironclawAI"><img src="https://img.shields.io/badge/Telegram-%40ironclawAI-26A5E4?style=flat&logo=telegram&logoColor=white" alt="Telegram: @ironclawAI" /></a>
-  <a href="https://www.reddit.com/r/ironclawAI/"><img src="https://img.shields.io/badge/Reddit-r%2FironclawAI-FF4500?style=flat&logo=reddit&logoColor=white" alt="Reddit: r/ironclawAI" /></a>
+  <a href="https://t.me/brassclawAI"><img src="https://img.shields.io/badge/Telegram-%40brassclawAI-26A5E4?style=flat&logo=telegram&logoColor=white" alt="Telegram: @brassclawAI" /></a>
+  <a href="https://www.reddit.com/r/brassclawAI/"><img src="https://img.shields.io/badge/Reddit-r%2FbrassclawAI-FF4500?style=flat&logo=reddit&logoColor=white" alt="Reddit: r/brassclawAI" /></a>
 </p>
 
 <p align="center">
@@ -35,16 +35,16 @@
 
 ## Философия
 
-IronClaw построен на простом принципе: **ваш AI-ассистент должен работать на вас, а не против вас**.
+BrassClaw построен на простом принципе: **ваш AI-ассистент должен работать на вас, а не против вас**.
 
-В мире, где системы ИИ становятся все более непрозрачными в вопросах обработки данных и ориентируются на корпоративные интересы, IronClaw выбирает другой путь:
+В мире, где системы ИИ становятся все более непрозрачными в вопросах обработки данных и ориентируются на корпоративные интересы, BrassClaw выбирает другой путь:
 
 - **Ваши данные остаются вашими** — вся информация хранится локально, зашифрована и никогда не покидает ваш контроль.
 - **Прозрачность по умолчанию** — открытый исходный код, возможность аудита, отсутствие скрытой телеметрии или сбора данных.
 - **Саморасширяемые возможности** — создавайте новые инструменты «на лету», не дожидаясь обновлений от вендора.
 - **Глубокая защита** — несколько уровней безопасности защищают от инъекций промптов и утечки данных.
 
-IronClaw — это AI-ассистент, которому вы действительно можете доверять в личной и профессиональной жизни.
+BrassClaw — это AI-ассистент, которому вы действительно можете доверять в личной и профессиональной жизни.
 
 ## Возможности
 
@@ -67,7 +67,7 @@ IronClaw — это AI-ассистент, которому вы действи�
 
 ### Саморасширяемый
 
-- **Динамическое создание инструментов** — опишите, что вам нужно, и IronClaw создаст это как инструмент WASM.
+- **Динамическое создание инструментов** — опишите, что вам нужно, и BrassClaw создаст это как инструмент WASM.
 - **Протокол MCP** — подключайтесь к серверам Model Context Protocol для получения дополнительных возможностей.
 - **Плагинная архитектура** — добавляйте новые инструменты WASM и каналы без перезагрузки системы.
 
@@ -87,12 +87,12 @@ IronClaw — это AI-ассистент, которому вы действи�
 
 ## Загрузка и сборка
 
-Посетите [страницу релизов](https://github.com/nearai/ironclaw/releases/), чтобы увидеть последние обновления.
+Посетите [страницу релизов](https://github.com/chtugha/brassclaw/releases/), чтобы увидеть последние обновления.
 
 <details>
   <summary>Установка через установщик Windows (Windows)</summary>
 
-Загрузите [Windows Installer](https://github.com/nearai/ironclaw/releases/latest/download/ironclaw-x86_64-pc-windows-msvc.msi) и запустите его.
+Загрузите [Windows Installer](https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-x86_64-pc-windows-msvc.msi) и запустите его.
 
 </details>
 
@@ -100,7 +100,7 @@ IronClaw — это AI-ассистент, которому вы действи�
   <summary>Установка через powershell-скрипт (Windows)</summary>
 
 ```sh
-irm https://github.com/nearai/ironclaw/releases/latest/download/ironclaw-installer.ps1 | iex
+irm https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-installer.ps1 | iex
 ```
 
 </details>
@@ -109,7 +109,7 @@ irm https://github.com/nearai/ironclaw/releases/latest/download/ironclaw-install
   <summary>Установка через shell-скрипт (macOS, Linux, Windows/WSL)</summary>
 
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nearai/ironclaw/releases/latest/download/ironclaw-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-installer.sh | sh
 ```
 </details>
 
@@ -117,7 +117,7 @@ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nearai/ironclaw/release
   <summary>Установка через Homebrew (macOS/Linux)</summary>
 
 ```sh
-brew install ironclaw
+brew install brassclaw
 ```
 
 </details>
@@ -129,8 +129,8 @@ brew install ironclaw
 
 ```bash
 # Клонируйте репозиторий
-git clone https://github.com/nearai/ironclaw.git
-cd ironclaw
+git clone https://github.com/chtugha/brassclaw.git
+cd brassclaw
 
 # Сборка
 cargo build --release
@@ -147,25 +147,25 @@ cargo test
 
 ```bash
 # Создание базы данных
-createdb ironclaw
+createdb brassclaw
 
 # Включение pgvector
-psql ironclaw -c "CREATE EXTENSION IF NOT EXISTS vector;"
+psql brassclaw -c "CREATE EXTENSION IF NOT EXISTS vector;"
 ```
 
 ## Конфигурация
 
-Запустите мастер настройки для конфигурации IronClaw:
+Запустите мастер настройки для конфигурации BrassClaw:
 
 ```bash
-ironclaw onboard
+brassclaw onboard
 ```
 
-Мастер настройки поможет установить соединение с базой данных, пройти аутентификацию NEAR AI (через браузер OAuth) и настроить шифрование секретов (используя системную связку ключей). Настройки сохраняются в базе данных; базовые переменные (например, `DATABASE_URL`, `LLM_BACKEND`) записываются в `~/.ironclaw/.env`, чтобы они были доступны до подключения к БД.
+Мастер настройки поможет установить соединение с базой данных, пройти аутентификацию NEAR AI (через браузер OAuth) и настроить шифрование секретов (используя системную связку ключей). Настройки сохраняются в базе данных; базовые переменные (например, `DATABASE_URL`, `LLM_BACKEND`) записываются в `~/.brassclaw/.env`, чтобы они были доступны до подключения к БД.
 
 ### Альтернативные LLM-провайдеры
 
-IronClaw по умолчанию использует NEAR AI, но поддерживает множество LLM-провайдеров из коробки.
+BrassClaw по умолчанию использует NEAR AI, но поддерживает множество LLM-провайдеров из коробки.
 Встроенные провайдеры включают **Anthropic**, **OpenAI**, **Google Gemini**, **MiniMax**,
 **Mistral** и **Ollama** (локально). Также поддерживаются OpenAI-совместимые сервисы:
 **OpenRouter** (300+ моделей), **Together AI**, **Fireworks AI** и собственные серверы
@@ -189,7 +189,7 @@ LLM_MODEL=anthropic/claude-sonnet-4
 
 ## Безопасность
 
-IronClaw реализует эшелонированную защиту для обеспечения безопасности ваших данных и предотвращения злоупотреблений.
+BrassClaw реализует эшелонированную защиту для обеспечения безопасности ваших данных и предотвращения злоупотреблений.
 
 ### Песочница WASM
 
@@ -281,17 +281,17 @@ WASM ──► Валидатор ──► Сканер ───► Инъек
 
 ## Использование
 
-Сейчас engine v2 включается отдельно. Если вы хотите запускать новый движок вместо устаревшего цикла агента, запускайте IronClaw с `ENGINE_V2=true`.
+Сейчас engine v2 включается отдельно. Если вы хотите запускать новый движок вместо устаревшего цикла агента, запускайте BrassClaw с `ENGINE_V2=true`.
 
 ```bash
 # Первоначальная настройка (БД, аутентификация и т.д.)
-ironclaw onboard
+brassclaw onboard
 
 # Запуск установленного бинарника
-ironclaw
+brassclaw
 
 # Запуск установленного бинарника с engine v2
-ENGINE_V2=true ironclaw
+ENGINE_V2=true brassclaw
 
 # Запуск интерактивного REPL из исходников
 cargo run
@@ -300,7 +300,7 @@ cargo run
 ENGINE_V2=true cargo run
 
 # Engine v2 с отладочными логами
-ENGINE_V2=true RUST_LOG=ironclaw=debug cargo run
+ENGINE_V2=true RUST_LOG=brassclaw=debug cargo run
 ```
 
 ## Разработка
@@ -313,7 +313,7 @@ cargo fmt
 cargo clippy --all --benches --tests --examples --all-features
 
 # Запуск тестов
-createdb ironclaw_test
+createdb brassclaw_test
 cargo test
 
 # Запуск конкретного теста
@@ -325,7 +325,7 @@ cargo test название_теста
 
 ## Наследие OpenClaw
 
-IronClaw — это реализация на Rust, вдохновленная проектом [OpenClaw](https://github.com/openclaw/openclaw). Полную матрицу соответствия функций можно найти в [FEATURE_PARITY.md](FEATURE_PARITY.md).
+BrassClaw — это реализация на Rust, вдохновленная проектом [OpenClaw](https://github.com/openclaw/openclaw). Полную матрицу соответствия функций можно найти в [FEATURE_PARITY.md](FEATURE_PARITY.md).
 
 Ключевые отличия:
 

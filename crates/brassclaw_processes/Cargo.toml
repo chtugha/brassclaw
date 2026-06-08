@@ -1,0 +1,23 @@
+[package]
+name = "brassclaw_processes"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+async-trait = "0.1"
+futures = "0.3"
+brassclaw_events = { path = "../brassclaw_events" }
+brassclaw_filesystem = { path = "../brassclaw_filesystem" }
+brassclaw_host_api = { path = "../brassclaw_host_api" }
+brassclaw_resources = { path = "../brassclaw_resources" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt", "sync", "time"] }
+
+[dev-dependencies]
+brassclaw_event_projections = { path = "../brassclaw_event_projections" }
+brassclaw_reborn_event_store = { path = "../brassclaw_reborn_event_store" }
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt", "time"] }

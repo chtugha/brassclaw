@@ -12,8 +12,8 @@ use async_trait::async_trait;
 use rust_decimal::Decimal;
 use tokio::sync::Mutex;
 
-use ironclaw::error::LlmError;
-use ironclaw_llm::{
+use brassclaw::error::LlmError;
+use brassclaw_llm::{
     CompletionRequest, CompletionResponse, LlmProvider, ModelMetadata, ToolCompletionRequest,
     ToolCompletionResponse,
 };

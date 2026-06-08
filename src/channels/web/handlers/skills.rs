@@ -24,7 +24,7 @@ fn install_requested_identifier<'a>(
         .unwrap_or(name)
 }
 
-fn skill_setup_hint(skill: &ironclaw_skills::types::LoadedSkill) -> Option<String> {
+fn skill_setup_hint(skill: &brassclaw_skills::types::LoadedSkill) -> Option<String> {
     let mut hints = Vec::new();
     if !skill.manifest.requires.env.is_empty() {
         hints.push(format!(
@@ -41,15 +41,15 @@ fn skill_setup_hint(skill: &ironclaw_skills::types::LoadedSkill) -> Option<Strin
     (!hints.is_empty()).then(|| hints.join(" · "))
 }
 
-async fn skill_info(skill: ironclaw_skills::types::LoadedSkill) -> SkillInfo {
+async fn skill_info(skill: brassclaw_skills::types::LoadedSkill) -> SkillInfo {
     let bundle_dir = match &skill.source {
-        ironclaw_skills::types::SkillSource::Workspace(path)
-        | ironclaw_skills::types::SkillSource::User(path)
-        | ironclaw_skills::types::SkillSource::Installed(path)
-        | ironclaw_skills::types::SkillSource::Bundled(path) => Some(path.clone()),
+        brassclaw_skills::types::SkillSource::Workspace(path)
+        | brassclaw_skills::types::SkillSource::User(path)
+        | brassclaw_skills::types::SkillSource::Installed(path)
+        | brassclaw_skills::types::SkillSource::Bundled(path) => Some(path.clone()),
     };
     let install_meta = match &bundle_dir {
-        Some(path) => ironclaw_skills::registry::SkillRegistry::read_install_metadata(path).await,
+        Some(path) => brassclaw_skills::registry::SkillRegistry::read_install_metadata(path).await,
         None => None,
     };
     let has_requirements = match &bundle_dir {
@@ -137,7 +137,7 @@ pub async fn skills_search_handler(
     let query_lower = req.query.to_lowercase();
     let (installed_names, matching_skills): (
         Vec<String>,
-        Vec<ironclaw_skills::types::LoadedSkill>,
+        Vec<brassclaw_skills::types::LoadedSkill>,
     ) = {
         let guard = registry.read().map_err(|e| {
             (
@@ -166,7 +166,7 @@ pub async fn skills_search_handler(
     let catalog_json: Vec<serde_json::Value> = entries
         .into_iter()
         .map(|e| {
-            let is_installed = ironclaw_skills::catalog::catalog_entry_is_installed(
+            let is_installed = brassclaw_skills::catalog::catalog_entry_is_installed(
                 &e.slug,
                 &e.name,
                 &installed_names,
@@ -238,7 +238,7 @@ pub async fn skills_install_handler(
             req.name.clone()
         } else {
             let outcome = catalog.search(&req.name).await;
-            match ironclaw_skills::catalog::resolve_catalog_slug_for_name(
+            match brassclaw_skills::catalog::resolve_catalog_slug_for_name(
                 &req.name,
                 &outcome.results,
             ) {
@@ -259,7 +259,7 @@ pub async fn skills_install_handler(
             }
         };
         let url =
-            ironclaw_skills::catalog::skill_download_url(catalog.registry_url(), &download_key);
+            brassclaw_skills::catalog::skill_download_url(catalog.registry_url(), &download_key);
         resolved_download_key = Some(download_key);
         crate::tools::builtin::skill_tools::fetch_skill_payload(&url)
             .await
@@ -270,7 +270,7 @@ pub async fn skills_install_handler(
         )));
     };
 
-    let normalized = ironclaw_skills::normalize_line_endings(&install_payload.skill_md);
+    let normalized = brassclaw_skills::normalize_line_endings(&install_payload.skill_md);
     let requested_identifier = install_requested_identifier(
         &req.name,
         req.slug.as_deref(),
@@ -287,7 +287,7 @@ pub async fn skills_install_handler(
         })?;
 
         let (skill_name, install_content) =
-            ironclaw_skills::registry::SkillRegistry::resolve_install_content(
+            brassclaw_skills::registry::SkillRegistry::resolve_install_content(
                 &normalized,
                 Some(requested_identifier),
             )
@@ -309,7 +309,7 @@ pub async fn skills_install_handler(
 
     // Perform async I/O (write to disk, load) with no lock held.
     let (skill_name, loaded_skill) =
-        ironclaw_skills::registry::SkillRegistry::prepare_install_bundle_to_disk(
+        brassclaw_skills::registry::SkillRegistry::prepare_install_bundle_to_disk(
             &user_dir,
             &skill_name_from_parse,
             &install_content,
@@ -375,7 +375,7 @@ pub async fn skills_remove_handler(
     };
 
     // Delete files from disk (async I/O, no lock held)
-    ironclaw_skills::registry::SkillRegistry::delete_skill_files(&skill_path)
+    brassclaw_skills::registry::SkillRegistry::delete_skill_files(&skill_path)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -404,7 +404,7 @@ mod tests {
     fn catalog_entry_matches_installed_slug_suffix() {
         let installed = vec!["mortgage-calculator".to_string()];
 
-        assert!(ironclaw_skills::catalog::catalog_entry_is_installed(
+        assert!(brassclaw_skills::catalog::catalog_entry_is_installed(
             "finance/mortgage-calculator",
             "Mortgage Calculator",
             &installed,
@@ -415,7 +415,7 @@ mod tests {
     fn catalog_entry_matches_installed_display_name() {
         let installed = vec!["Mortgage Calculator".to_string()];
 
-        assert!(ironclaw_skills::catalog::catalog_entry_is_installed(
+        assert!(brassclaw_skills::catalog::catalog_entry_is_installed(
             "finance/mortgage-calculator",
             "Mortgage Calculator",
             &installed,
@@ -426,7 +426,7 @@ mod tests {
     fn catalog_entry_does_not_match_unrelated_installed_skill() {
         let installed = vec!["budget-planner".to_string()];
 
-        assert!(!ironclaw_skills::catalog::catalog_entry_is_installed(
+        assert!(!brassclaw_skills::catalog::catalog_entry_is_installed(
             "finance/mortgage-calculator",
             "Mortgage Calculator",
             &installed,
@@ -437,7 +437,7 @@ mod tests {
     fn catalog_entry_matches_owner_aware_normalized_install_name() {
         let installed = vec!["finance-mortgage-calculator".to_string()];
 
-        assert!(ironclaw_skills::catalog::catalog_entry_is_installed(
+        assert!(brassclaw_skills::catalog::catalog_entry_is_installed(
             "finance/mortgage-calculator",
             "Mortgage Calculator",
             &installed,
@@ -459,23 +459,23 @@ mod tests {
     #[tokio::test]
     async fn skill_info_reports_bundle_files() {
         let install_dir = tempfile::tempdir().expect("tempdir");
-        let metadata = ironclaw_skills::registry::InstalledSkillMetadata {
+        let metadata = brassclaw_skills::registry::InstalledSkillMetadata {
             source_url: Some("https://example.com/skill".to_string()),
             source_subdir: None,
             ..Default::default()
         };
         let extra_files = vec![
-            ironclaw_skills::registry::InstallFile {
+            brassclaw_skills::registry::InstallFile {
                 relative_path: Path::new("requirements.txt").to_path_buf(),
                 contents: b"httpx==0.27.0\n".to_vec(),
             },
-            ironclaw_skills::registry::InstallFile {
+            brassclaw_skills::registry::InstallFile {
                 relative_path: Path::new("scripts/run.py").to_path_buf(),
                 contents: b"print('ok')\n".to_vec(),
             },
         ];
 
-        let (_, skill) = ironclaw_skills::registry::SkillRegistry::prepare_install_bundle_to_disk(
+        let (_, skill) = brassclaw_skills::registry::SkillRegistry::prepare_install_bundle_to_disk(
             install_dir.path(),
             "demo-skill",
             "---\nname: demo-skill\ndescription: Demo\nversion: 1.0.0\n---\n\n# Demo\n",

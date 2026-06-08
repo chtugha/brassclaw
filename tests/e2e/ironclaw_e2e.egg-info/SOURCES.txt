@@ -1,10 +1,10 @@
 README.md
 pyproject.toml
-ironclaw_e2e.egg-info/PKG-INFO
-ironclaw_e2e.egg-info/SOURCES.txt
-ironclaw_e2e.egg-info/dependency_links.txt
-ironclaw_e2e.egg-info/requires.txt
-ironclaw_e2e.egg-info/top_level.txt
+brassclaw_e2e.egg-info/PKG-INFO
+brassclaw_e2e.egg-info/SOURCES.txt
+brassclaw_e2e.egg-info/dependency_links.txt
+brassclaw_e2e.egg-info/requires.txt
+brassclaw_e2e.egg-info/top_level.txt
 scenarios/__init__.py
 scenarios/test_agent_loop_recovery.py
 scenarios/test_auth_no_duplicate_response.py

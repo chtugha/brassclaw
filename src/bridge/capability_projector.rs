@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use ironclaw_engine::{
+use brassclaw_engine::{
     CapabilityLease, CapabilityStatus, CapabilitySummary, CapabilitySummaryKind, EngineError,
     ThreadExecutionContext,
 };
@@ -333,7 +333,7 @@ pub(crate) const fn is_channel_extension_kind(kind: ExtensionKind) -> bool {
 mod tests {
     use std::collections::HashMap;
 
-    use ironclaw_engine::{
+    use brassclaw_engine::{
         CapabilityLease, CapabilityStatus, CapabilitySummaryKind, GrantedActions,
     };
 
@@ -342,8 +342,8 @@ mod tests {
 
     fn make_lease() -> CapabilityLease {
         CapabilityLease {
-            id: ironclaw_engine::LeaseId::new(),
-            thread_id: ironclaw_engine::ThreadId::new(),
+            id: brassclaw_engine::LeaseId::new(),
+            thread_id: brassclaw_engine::ThreadId::new(),
             capability_name: "tools".to_string(),
             granted_actions: GrantedActions::All,
             granted_at: chrono::Utc::now(),

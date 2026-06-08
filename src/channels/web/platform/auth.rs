@@ -59,7 +59,7 @@ use crate::db::Database;
 
 /// Cookie name for OAuth browser sessions. Shared between the auth middleware
 /// (cookie extraction) and the auth handlers (cookie set/clear).
-pub const SESSION_COOKIE_NAME: &str = "ironclaw_session";
+pub const SESSION_COOKIE_NAME: &str = "brassclaw_session";
 
 // ── User identity ────────────────────────────────────────────────────────
 
@@ -937,7 +937,7 @@ fn extract_oidc_email_claims(jwt: &str) -> (Option<String>, bool) {
 /// restrictions. Lives in the platform layer because OIDC validation
 /// inside `validate_oidc_jwt()` calls it before any feature handler
 /// runs — keeping the helper here avoids a `platform → handlers`
-/// back-edge that would otherwise violate the ironclaw#2599 layering
+/// back-edge that would otherwise violate the brassclaw#2599 layering
 /// rule (see `scripts/check_gateway_boundaries.py`).
 pub(crate) fn check_email_domain(
     email: Option<&str>,
@@ -1238,7 +1238,7 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             axum::http::header::COOKIE,
-            HeaderValue::from_static("other=\"quoted;value\"; ironclaw_session=abc123"),
+            HeaderValue::from_static("other=\"quoted;value\"; brassclaw_session=abc123"),
         );
 
         assert_eq!(
@@ -1471,7 +1471,7 @@ mod tests {
             .uri("/api/chat/history")
             .header(
                 "Cookie",
-                format!("ironclaw_session={TEST_AUTH_SECRET_TOKEN}"),
+                format!("brassclaw_session={TEST_AUTH_SECRET_TOKEN}"),
             )
             .body(Body::empty())
             .unwrap();
@@ -1486,7 +1486,7 @@ mod tests {
         let req = Request::builder()
             .uri("/api/chat/history")
             .header("Authorization", format!("Bearer {TEST_AUTH_SECRET_TOKEN}"))
-            .header("Cookie", "ironclaw_session=wrong-token")
+            .header("Cookie", "brassclaw_session=wrong-token")
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
@@ -1498,7 +1498,7 @@ mod tests {
         let app = test_app(TEST_AUTH_SECRET_TOKEN);
         let req = Request::builder()
             .uri("/api/chat/history")
-            .header("Cookie", "ironclaw_session=")
+            .header("Cookie", "brassclaw_session=")
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
@@ -1512,7 +1512,7 @@ mod tests {
             .uri("/api/chat/history")
             .header(
                 "Cookie",
-                format!("other=foo; ironclaw_session={TEST_AUTH_SECRET_TOKEN}; bar=baz"),
+                format!("other=foo; brassclaw_session={TEST_AUTH_SECRET_TOKEN}; bar=baz"),
             )
             .body(Body::empty())
             .unwrap();

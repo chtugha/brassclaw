@@ -21,8 +21,8 @@ if [ -f "$WASM_PATH" ]; then
     echo "Built: wechat.wasm ($(du -h wechat.wasm | cut -f1))"
     echo ""
     echo "To install:"
-    echo "  mkdir -p ~/.ironclaw/channels"
-    echo "  cp wechat.wasm wechat.capabilities.json ~/.ironclaw/channels/"
+    echo "  mkdir -p ~/.brassclaw/channels"
+    echo "  cp wechat.wasm wechat.capabilities.json ~/.brassclaw/channels/"
 else
     echo "Error: WASM output not found at $WASM_PATH"
     exit 1

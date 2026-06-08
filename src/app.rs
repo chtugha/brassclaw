@@ -1,4 +1,4 @@
-//! Application builder for initializing core IronClaw components.
+//! Application builder for initializing core BrassClaw components.
 //!
 //! Extracts the mechanical initialization phases from `main.rs` into a
 //! reusable builder so that:
@@ -22,12 +22,12 @@ use crate::tools::mcp::{McpProcessManager, McpSessionManager};
 use crate::tools::wasm::SharedCredentialRegistry;
 use crate::tools::wasm::WasmToolRuntime;
 use crate::workspace::Workspace;
-use ironclaw_embeddings::{EmbeddingCacheConfig, EmbeddingProvider};
-use ironclaw_llm::recording::HttpInterceptor;
-use ironclaw_llm::{LlmProvider, LlmReloadHandle, RecordingLlm, SessionManager};
-use ironclaw_safety::SafetyLayer;
-use ironclaw_skills::SkillRegistry;
-use ironclaw_skills::catalog::SkillCatalog;
+use brassclaw_embeddings::{EmbeddingCacheConfig, EmbeddingProvider};
+use brassclaw_llm::recording::HttpInterceptor;
+use brassclaw_llm::{LlmProvider, LlmReloadHandle, RecordingLlm, SessionManager};
+use brassclaw_safety::SafetyLayer;
+use brassclaw_skills::SkillRegistry;
+use brassclaw_skills::catalog::SkillCatalog;
 
 /// Fully initialized application components, ready for channel wiring
 /// and agent construction.
@@ -230,7 +230,7 @@ impl AppBuilder {
             }
         }
 
-        let session_db: ironclaw_llm::host::SharedSessionDb =
+        let session_db: brassclaw_llm::host::SharedSessionDb =
             std::sync::Arc::new(crate::llm_host::DatabaseSessionDb::new(db.clone()));
         self.session
             .attach_store(session_db, &self.config.owner_id)
@@ -276,14 +276,14 @@ impl AppBuilder {
             anyhow::anyhow!(
                 "failed to initialize ephemeral secrets store ({reason}): {e}. \
                  This should not happen in practice; please report at \
-                 https://github.com/nearai/ironclaw/issues"
+                 https://github.com/chtugha/brassclaw/issues"
             )
         })?;
         tracing::warn!(
             reason = reason,
             "Persistent secrets store unavailable; installing ephemeral in-memory fallback. \
-             Credentials saved via `ironclaw tool auth` will not persist across restarts. \
-             Run `ironclaw doctor` for diagnostics (see #1537 for hosted-TEE specifics)."
+             Credentials saved via `brassclaw tool auth` will not persist across restarts. \
+             Run `brassclaw doctor` for diagnostics (see #1537 for hosted-TEE specifics)."
         );
         self.secrets_store = Some(store);
         Ok(())
@@ -365,7 +365,7 @@ impl AppBuilder {
             if self.config.secrets.generated {
                 crate::secrets::rollback_generated_key_persistence(
                     self.config.secrets.source,
-                    &crate::bootstrap::ironclaw_env_path(),
+                    &crate::bootstrap::brassclaw_env_path(),
                 )
                 .await;
             }
@@ -416,7 +416,7 @@ impl AppBuilder {
 
             // Wire the secrets store into the session manager so future
             // token saves go to encrypted storage.
-            let session_secrets: ironclaw_llm::host::SharedSessionSecrets = Arc::new(
+            let session_secrets: brassclaw_llm::host::SharedSessionSecrets = Arc::new(
                 crate::llm_host::SecretsStoreSessionSecrets::new(Arc::clone(secrets)),
             );
             self.session.attach_secrets(session_secrets).await;
@@ -490,7 +490,7 @@ impl AppBuilder {
         anyhow::Error,
     > {
         let (llm, cheap_llm, recording_handle, reload_handle) =
-            ironclaw_llm::build_provider_chain(&self.config.llm, self.session.clone()).await?;
+            brassclaw_llm::build_provider_chain(&self.config.llm, self.session.clone()).await?;
         Ok((llm, cheap_llm, recording_handle, reload_handle))
     }
 
@@ -530,7 +530,7 @@ impl AppBuilder {
             registry = registry.with_credentials(Arc::clone(&credential_registry), Arc::clone(ss));
         }
         // Test-only HTTP host remapping. Gated to debug/test builds so a stray
-        // `IRONCLAW_TEST_HTTP_REMAP` env var on a release deployment cannot
+        // `BRASSCLAW_TEST_HTTP_REMAP` env var on a release deployment cannot
         // silently redirect outbound HTTP from production to a test endpoint.
         let http_interceptor = if cfg!(any(test, debug_assertions)) {
             crate::http_intercept::remap_from_env()
@@ -552,19 +552,19 @@ impl AppBuilder {
         // Create embeddings provider using the unified method.
         // Translate the LLM-side `BedrockConfig` into the embeddings-side
         // `BedrockEmbeddingSetup` at the boundary so the embeddings layer
-        // does not depend on `ironclaw_llm` config types.
+        // does not depend on `brassclaw_llm` config types.
         let bedrock_setup =
             self.config
                 .llm
                 .bedrock
                 .as_ref()
-                .map(|b| ironclaw_embeddings::BedrockEmbeddingSetup {
+                .map(|b| brassclaw_embeddings::BedrockEmbeddingSetup {
                     region: b.region.clone(),
                     profile: b.profile.clone(),
                 });
-        let embeddings = ironclaw_embeddings::create_provider(
+        let embeddings = brassclaw_embeddings::create_provider(
             &self.config.embeddings,
-            ironclaw_embeddings::ProviderDeps {
+            brassclaw_embeddings::ProviderDeps {
                 session: self.session.clone(),
                 bedrock_setup,
             },
@@ -668,13 +668,13 @@ impl AppBuilder {
                     .map(|p| p.model.clone())
                     .unwrap_or_else(|| self.config.llm.nearai.model.clone());
                 let models = vec![model_name.clone()];
-                let gen_model = ironclaw_llm::image_models::suggest_image_model(&models)
+                let gen_model = brassclaw_llm::image_models::suggest_image_model(&models)
                     .unwrap_or("black-forest-labs/FLUX.2-klein-4B")
                     .to_string();
                 tools.register_image_tools(api_base.clone(), api_key.clone(), gen_model, None);
 
                 // Check for vision models
-                let vision_model = ironclaw_llm::vision_models::suggest_vision_model(&models)
+                let vision_model = brassclaw_llm::vision_models::suggest_vision_model(&models)
                     .unwrap_or(&model_name)
                     .to_string();
                 tools.register_vision_tools(api_base, api_key, vision_model, None);
@@ -888,7 +888,7 @@ impl AppBuilder {
                                             } else {
                                                 tracing::warn!(
                                                     "MCP server '{}' requires authentication. \
-                                                     Run: ironclaw mcp auth {}",
+                                                     Run: brassclaw mcp auth {}",
                                                     server_name,
                                                     server_name
                                                 );
@@ -1138,7 +1138,7 @@ impl AppBuilder {
         // sub-struct and don't populate `LlmConfig.provider`. For
         // OpenAI-shape registry backends, fail early if no provider
         // config was resolved.
-        let registry = ironclaw_llm::ProviderRegistry::load();
+        let registry = brassclaw_llm::ProviderRegistry::load();
         let has_dedicated_config = registry
             .find(self.config.llm.backend.as_str())
             .is_some_and(|d| d.protocol.has_dedicated_config());
@@ -1321,7 +1321,7 @@ impl AppBuilder {
             }
 
             let registry = Arc::new(std::sync::RwLock::new(registry));
-            let catalog = ironclaw_skills::catalog::shared_catalog();
+            let catalog = brassclaw_skills::catalog::shared_catalog();
             tools.register_skill_tools(Arc::clone(&registry), Arc::clone(&catalog));
             (Some(registry), Some(catalog))
         } else {

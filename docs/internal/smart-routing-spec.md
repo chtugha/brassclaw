@@ -1,4 +1,4 @@
-# Smart Model Routing for IronClaw
+# Smart Model Routing for BrassClaw
 
 **Status:** Implemented
 **Author:** Microwave

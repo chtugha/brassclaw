@@ -12,7 +12,7 @@
 //!   Error: Migration failed: applied migration V6__routines is different
 //!   than filesystem one V6__routines
 //!
-//! See [issue #1328](https://github.com/nearai/ironclaw/issues/1328).
+//! See [issue #1328](https://github.com/chtugha/brassclaw/issues/1328).
 //!
 //! ## Why a runtime fix-up is required
 //!
@@ -369,7 +369,7 @@ mod tests {
         let lockfile_path = dir.join("checksums.lock");
         let lockfile_contents = std::fs::read_to_string(&lockfile_path).unwrap_or_else(|e| {
             panic!(
-                "missing {}: {e}\nRun `cargo test -p ironclaw -- --ignored \
+                "missing {}: {e}\nRun `cargo test -p brassclaw -- --ignored \
                  regenerate_migration_checksums_lockfile` to bootstrap it.",
                 lockfile_path.display()
             )
@@ -444,7 +444,7 @@ mod tests {
     /// Bootstrap helper. Run with:
     ///
     /// ```text
-    /// cargo test -p ironclaw -- --ignored regenerate_migration_checksums_lockfile
+    /// cargo test -p brassclaw -- --ignored regenerate_migration_checksums_lockfile
     /// ```
     ///
     /// Writes a fresh `migrations/checksums.lock` from the current
@@ -493,7 +493,7 @@ mod tests {
              #\n\
              # When adding a new migration, append a new line in the same commit.\n\
              # Regenerate locally with:\n\
-             #   cargo test -p ironclaw -- --ignored regenerate_migration_checksums_lockfile\n\n",
+             #   cargo test -p brassclaw -- --ignored regenerate_migration_checksums_lockfile\n\n",
         );
         for path in &sql_files {
             let stem = path.file_stem().and_then(|s| s.to_str()).unwrap();
@@ -514,7 +514,7 @@ mod tests {
     ///
     /// ```text
     /// MIGRATION_CHECKSUM_PATH=/tmp/v6_modified.sql \
-    ///   cargo test -p ironclaw -- --ignored \
+    ///   cargo test -p brassclaw -- --ignored \
     ///   compute_checksum_for_external_file --nocapture
     /// ```
     #[test]
@@ -617,7 +617,7 @@ mod tests {
     /// Run with:
     ///
     /// ```text
-    /// DATABASE_URL=postgres://localhost/ironclaw_test \
+    /// DATABASE_URL=postgres://localhost/brassclaw_test \
     ///     cargo test --features integration --lib \
     ///     db::migration_fixup::tests::realign_repairs_known_bad_checksum_against_postgres
     /// ```
@@ -628,7 +628,7 @@ mod tests {
         use tokio_postgres::{Config, NoTls};
 
         let database_url = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://localhost/ironclaw_test".to_string());
+            .unwrap_or_else(|_| "postgres://localhost/brassclaw_test".to_string());
         let config: Config = match database_url.parse() {
             Ok(c) => c,
             Err(e) => {
@@ -777,7 +777,7 @@ mod tests {
         use tokio_postgres::{Config, NoTls};
 
         let database_url = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://localhost/ironclaw_test".to_string());
+            .unwrap_or_else(|_| "postgres://localhost/brassclaw_test".to_string());
         let config: Config = match database_url.parse() {
             Ok(c) => c,
             Err(e) => {

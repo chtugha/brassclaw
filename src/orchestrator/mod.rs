@@ -48,8 +48,8 @@ use uuid::Uuid;
 
 use crate::db::Database;
 use crate::secrets::SecretsStore;
-use ironclaw_common::AppEvent;
-use ironclaw_llm::LlmProvider;
+use brassclaw_common::AppEvent;
+use brassclaw_llm::LlmProvider;
 
 /// Resolve the orchestrator port from the `ORCHESTRATOR_PORT` environment
 /// variable, falling back to 50051.

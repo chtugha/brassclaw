@@ -118,10 +118,10 @@ pub(crate) fn is_protected_orchestrator_path(path: &str) -> bool {
 
 /// Re-export the engine's process-wide self-modify snapshot so the tool
 /// reads the same value as the engine loop, store gate, and self-improvement
-/// mission. See `ironclaw_engine::runtime::self_modify_enabled` for the
+/// mission. See `brassclaw_engine::runtime::self_modify_enabled` for the
 /// rationale (single OnceLock-backed snapshot, can't flip at runtime).
 fn self_modify_enabled() -> bool {
-    ironclaw_engine::runtime::self_modify_enabled()
+    brassclaw_engine::runtime::self_modify_enabled()
 }
 
 /// True when the normalized path resolves to a `.py` file inside the
@@ -192,7 +192,7 @@ const REASONING_LLM_TIMEOUT: std::time::Duration = std::time::Duration::from_sec
 /// prior work, decisions, preferences, or any historical context.
 pub struct MemorySearchTool {
     resolver: Arc<dyn WorkspaceResolver>,
-    llm: Option<Arc<dyn ironclaw_llm::LlmProvider>>,
+    llm: Option<Arc<dyn brassclaw_llm::LlmProvider>>,
     reasoning_enabled: bool,
     /// Per-user rate limiter for reasoning LLM calls.
     reasoning_limiter: Arc<crate::tools::rate_limiter::RateLimiter>,
@@ -212,7 +212,7 @@ impl MemorySearchTool {
     /// Create a memory search tool with optional reasoning-augmented recall.
     pub fn with_reasoning(
         resolver: Arc<dyn WorkspaceResolver>,
-        llm: Option<Arc<dyn ironclaw_llm::LlmProvider>>,
+        llm: Option<Arc<dyn brassclaw_llm::LlmProvider>>,
         reasoning_enabled: bool,
     ) -> Self {
         Self {
@@ -334,23 +334,23 @@ impl Tool for MemorySearchTool {
                     .join("\n\n");
 
                 let llm_messages = vec![
-                    ironclaw_llm::ChatMessage::system(include_str!(
-                        "../../../crates/ironclaw_engine/prompts/memory_reasoning_synthesis.md"
+                    brassclaw_llm::ChatMessage::system(include_str!(
+                        "../../../crates/brassclaw_engine/prompts/memory_reasoning_synthesis.md"
                     )),
-                    ironclaw_llm::ChatMessage::user(format!(
+                    brassclaw_llm::ChatMessage::user(format!(
                         "Query: {query}\n\nMemory fragments:\n{fragments}"
                     )),
                 ];
 
                 let request =
-                    ironclaw_llm::CompletionRequest::new(llm_messages).with_max_tokens(500);
+                    brassclaw_llm::CompletionRequest::new(llm_messages).with_max_tokens(500);
 
                 match tokio::time::timeout(REASONING_LLM_TIMEOUT, llm.complete(request)).await {
                     Ok(Ok(response)) => {
                         // Memory chunks may contain attacker-controlled text that
                         // flows through the synthesis and back into future LLM
                         // contexts. Match SessionSummaryHook's sanitization.
-                        let sanitizer = ironclaw_safety::Sanitizer::new();
+                        let sanitizer = brassclaw_safety::Sanitizer::new();
                         let sanitized = sanitizer.sanitize(response.content.trim());
                         if sanitized.was_modified {
                             tracing::debug!(
@@ -731,7 +731,7 @@ impl Tool for MemoryWriteTool {
                 } else {
                     existing.replacen(old_str, new_str, 1)
                 };
-                if let Err(reason) = ironclaw_engine::executor::validate_python_syntax(&preview) {
+                if let Err(reason) = brassclaw_engine::executor::validate_python_syntax(&preview) {
                     return Err(ToolError::InvalidParameters(format!(
                         "orchestrator patch has invalid Python syntax: {reason}"
                     )));
@@ -766,7 +766,7 @@ impl Tool for MemoryWriteTool {
             } else {
                 content.to_string()
             };
-            if let Err(reason) = ironclaw_engine::executor::validate_python_syntax(&final_content) {
+            if let Err(reason) = brassclaw_engine::executor::validate_python_syntax(&final_content) {
                 return Err(ToolError::InvalidParameters(format!(
                     "orchestrator patch has invalid Python syntax: {reason}"
                 )));
@@ -1339,7 +1339,7 @@ mod tests {
 
     #[test]
     fn requires_approval_protected_path_self_modify_enabled() {
-        let _guard = ironclaw_engine::runtime::SelfModifyTestGuard::enable();
+        let _guard = brassclaw_engine::runtime::SelfModifyTestGuard::enable();
         let tool = make_test_write_tool();
         let result = tool.requires_approval(&serde_json::json!({
             "target": "orchestrator:main",
@@ -1350,7 +1350,7 @@ mod tests {
 
     #[test]
     fn requires_approval_protected_path_self_modify_disabled() {
-        let _guard = ironclaw_engine::runtime::SelfModifyTestGuard::disable();
+        let _guard = brassclaw_engine::runtime::SelfModifyTestGuard::disable();
         let tool = make_test_write_tool();
         // Falls through to Never — execute() will return NotAuthorized.
         let result = tool.requires_approval(&serde_json::json!({
@@ -1362,7 +1362,7 @@ mod tests {
 
     #[test]
     fn requires_approval_physical_orchestrator_path_with_self_modify() {
-        let _guard = ironclaw_engine::runtime::SelfModifyTestGuard::enable();
+        let _guard = brassclaw_engine::runtime::SelfModifyTestGuard::enable();
         let tool = make_test_write_tool();
         let result = tool.requires_approval(&serde_json::json!({
             "target": ".system/engine/orchestrator/v3.py",
@@ -1373,7 +1373,7 @@ mod tests {
 
     #[test]
     fn requires_approval_dot_segment_bypass_attempt() {
-        let _guard = ironclaw_engine::runtime::SelfModifyTestGuard::enable();
+        let _guard = brassclaw_engine::runtime::SelfModifyTestGuard::enable();
         let tool = make_test_write_tool();
         let result = tool.requires_approval(&serde_json::json!({
             "target": "engine/./orchestrator/v3.py",
@@ -1390,7 +1390,7 @@ mod tests {
         // Traversal paths fail normalization — return Never so execute()
         // rejects immediately as InvalidParameters rather than triggering
         // a spurious approval gate that the user would see before the error.
-        let _guard = ironclaw_engine::runtime::SelfModifyTestGuard::enable();
+        let _guard = brassclaw_engine::runtime::SelfModifyTestGuard::enable();
         let tool = make_test_write_tool();
         let result = tool.requires_approval(&serde_json::json!({
             "target": "engine/knowledge/../orchestrator/v3.py",
@@ -1404,7 +1404,7 @@ mod tests {
 
     #[test]
     fn requires_approval_unprotected_path_is_never() {
-        let _guard = ironclaw_engine::runtime::SelfModifyTestGuard::enable();
+        let _guard = brassclaw_engine::runtime::SelfModifyTestGuard::enable();
         let tool = make_test_write_tool();
         let result = tool.requires_approval(&serde_json::json!({
             "target": "daily_log",
@@ -1415,7 +1415,7 @@ mod tests {
 
     #[test]
     fn requires_approval_missing_target_is_never() {
-        let _guard = ironclaw_engine::runtime::SelfModifyTestGuard::enable();
+        let _guard = brassclaw_engine::runtime::SelfModifyTestGuard::enable();
         let tool = make_test_write_tool();
         let result = tool.requires_approval(&serde_json::json!({
             "content": "no target"
@@ -1546,7 +1546,7 @@ mod tests {
     }
 
     // Regression tests for per-user workspace scoping (multi-tenant mode).
-    // See: https://github.com/nearai/ironclaw/pull/1118
+    // See: https://github.com/chtugha/brassclaw/pull/1118
     // Bug: memory tools used a single startup workspace regardless of which
     // user was chatting. Fix: resolve workspace per-request via JobContext.user_id.
 
@@ -1683,7 +1683,7 @@ mod tests {
             let pool = crate::channels::web::platform::state::WorkspacePool::new(
                 db,
                 None,
-                ironclaw_embeddings::EmbeddingCacheConfig::default(),
+                brassclaw_embeddings::EmbeddingCacheConfig::default(),
                 crate::config::WorkspaceSearchConfig::default(),
                 crate::config::WorkspaceConfig::default(),
             );
@@ -1704,7 +1704,7 @@ mod tests {
             let pool = crate::channels::web::platform::state::WorkspacePool::new(
                 db,
                 None,
-                ironclaw_embeddings::EmbeddingCacheConfig::default(),
+                brassclaw_embeddings::EmbeddingCacheConfig::default(),
                 crate::config::WorkspaceSearchConfig::default(),
                 crate::config::WorkspaceConfig::default(),
             );
@@ -1724,7 +1724,7 @@ mod tests {
     #[cfg(feature = "libsql")]
     mod reasoning_recall_tests {
         use super::*;
-        use ironclaw_llm::{
+        use brassclaw_llm::{
             CompletionRequest, CompletionResponse, FinishReason, LlmError, LlmProvider,
             ToolCompletionRequest, ToolCompletionResponse,
         };

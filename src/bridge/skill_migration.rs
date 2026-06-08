@@ -12,15 +12,15 @@
 
 use std::sync::Arc;
 
-use ironclaw_engine::traits::store::Store;
-use ironclaw_engine::types::error::EngineError;
-use ironclaw_engine::types::memory::{DocType, MemoryDoc};
-use ironclaw_engine::types::project::ProjectId;
-use ironclaw_engine::types::shared_owner_id;
+use brassclaw_engine::traits::store::Store;
+use brassclaw_engine::types::error::EngineError;
+use brassclaw_engine::types::memory::{DocType, MemoryDoc};
+use brassclaw_engine::types::project::ProjectId;
+use brassclaw_engine::types::shared_owner_id;
 
-use ironclaw_skills::SkillRegistry;
-use ironclaw_skills::types::{LoadedSkill, SkillSource};
-use ironclaw_skills::v2::{SkillMetrics, V2SkillMetadata, V2SkillSource};
+use brassclaw_skills::SkillRegistry;
+use brassclaw_skills::types::{LoadedSkill, SkillSource};
+use brassclaw_skills::v2::{SkillMetrics, V2SkillMetadata, V2SkillSource};
 
 /// Migrate v1 skills to v2 MemoryDocs.
 ///
@@ -159,7 +159,7 @@ async fn v1_skill_to_memory_doc(
         | SkillSource::Installed(path)
         | SkillSource::Bundled(path) => (
             Some(path.display().to_string()),
-            ironclaw_skills::registry::SkillRegistry::read_install_metadata(path)
+            brassclaw_skills::registry::SkillRegistry::read_install_metadata(path)
                 .await
                 .and_then(|meta| meta.source_url),
         ),
@@ -203,7 +203,7 @@ async fn v1_skill_to_memory_doc(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ironclaw_skills::types::{ActivationCriteria, SkillManifest, SkillTrust};
+    use brassclaw_skills::types::{ActivationCriteria, SkillManifest, SkillTrust};
     use std::path::PathBuf;
 
     fn make_v1_skill(name: &str, content: &str) -> LoadedSkill {
@@ -217,12 +217,12 @@ mod tests {
                     ..Default::default()
                 },
                 credentials: vec![],
-                requires: ironclaw_skills::GatingRequirements::default(),
+                requires: brassclaw_skills::GatingRequirements::default(),
             },
             prompt_content: content.to_string(),
             trust: SkillTrust::Trusted,
             source: SkillSource::User(PathBuf::from("/tmp/test")), // safety: dummy path in test, not used for I/O
-            content_hash: ironclaw_skills::compute_hash(content),
+            content_hash: brassclaw_skills::compute_hash(content),
             compiled_patterns: vec![],
             lowercased_keywords: vec!["test".to_string()],
             lowercased_exclude_keywords: vec![],
@@ -282,12 +282,12 @@ mod tests {
     /// duplicated shared docs across per-user projects.
     #[tokio::test]
     async fn test_sync_v1_skill_deduplicates_across_projects() {
-        use ironclaw_engine::types::capability::{CapabilityLease, LeaseId};
-        use ironclaw_engine::types::event::ThreadEvent;
-        use ironclaw_engine::types::mission::{Mission, MissionId, MissionStatus};
-        use ironclaw_engine::types::step::Step;
-        use ironclaw_engine::types::thread::{Thread, ThreadId, ThreadState};
-        use ironclaw_engine::{DocId, Project};
+        use brassclaw_engine::types::capability::{CapabilityLease, LeaseId};
+        use brassclaw_engine::types::event::ThreadEvent;
+        use brassclaw_engine::types::mission::{Mission, MissionId, MissionStatus};
+        use brassclaw_engine::types::step::Step;
+        use brassclaw_engine::types::thread::{Thread, ThreadId, ThreadState};
+        use brassclaw_engine::{DocId, Project};
         use tokio::sync::Mutex as TokioMutex;
 
         #[derive(Default)]

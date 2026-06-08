@@ -3,7 +3,7 @@
 // once the surface stops moving.
 #![allow(dead_code)]
 
-//! Portfolio WASM tool for IronClaw.
+//! Portfolio WASM tool for BrassClaw.
 //!
 //! Single tool with three operations:
 //!

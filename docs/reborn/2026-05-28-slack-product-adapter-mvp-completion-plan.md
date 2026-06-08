@@ -3,13 +3,13 @@
 **Status:** Design / execution plan — pending implementation
 **Date:** 2026-05-28
 **Branch scope:** `reborn-integration` — Slack ProductAdapter MVP, Reborn product-surface seams only
-**Tracks:** [#3857 — Lane 10: add Slack ProductAdapter MVP with preconfigured credentials](https://github.com/nearai/ironclaw/issues/3857)
-**Current slice:** [#4035 — feat(slack): add Reborn ProductAdapter core](https://github.com/nearai/ironclaw/pull/4035)
-**Related Reborn lanes:** [#3280](https://github.com/nearai/ironclaw/issues/3280), [#4164](https://github.com/nearai/ironclaw/pull/4164), [#3281](https://github.com/nearai/ironclaw/issues/3281), [#3266](https://github.com/nearai/ironclaw/issues/3266), [#3094](https://github.com/nearai/ironclaw/issues/3094), [#3289](https://github.com/nearai/ironclaw/issues/3289), [#3279](https://github.com/nearai/ironclaw/issues/3279)
+**Tracks:** [#3857 — Lane 10: add Slack ProductAdapter MVP with preconfigured credentials](https://github.com/chtugha/brassclaw/issues/3857)
+**Current slice:** [#4035 — feat(slack): add Reborn ProductAdapter core](https://github.com/chtugha/brassclaw/pull/4035)
+**Related Reborn lanes:** [#3280](https://github.com/chtugha/brassclaw/issues/3280), [#4164](https://github.com/chtugha/brassclaw/pull/4164), [#3281](https://github.com/chtugha/brassclaw/issues/3281), [#3266](https://github.com/chtugha/brassclaw/issues/3266), [#3094](https://github.com/chtugha/brassclaw/issues/3094), [#3289](https://github.com/chtugha/brassclaw/issues/3289), [#3279](https://github.com/chtugha/brassclaw/issues/3279)
 
 ## 1. Purpose
 
-[#3857](https://github.com/nearai/ironclaw/issues/3857) asks for a default-off Slack ProductAdapter MVP using preconfigured Slack app credentials. The MVP must verify Slack requests, support DMs and app mentions, route work through Reborn services, acknowledge Slack events immediately, deliver final replies asynchronously, and handle approval/auth-required states safely.
+[#3857](https://github.com/chtugha/brassclaw/issues/3857) asks for a default-off Slack ProductAdapter MVP using preconfigured Slack app credentials. The MVP must verify Slack requests, support DMs and app mentions, route work through Reborn services, acknowledge Slack events immediately, deliver final replies asynchronously, and handle approval/auth-required states safely.
 
 This plan explains why the whole issue cannot be honestly closed in one immediate PR without violating Reborn layering, while still identifying what can be completed now. It turns the remaining work into a short sequence of reviewable slices and makes active blockers visible through linked issues/PRs.
 
@@ -19,14 +19,14 @@ The key boundary is:
 
 ## 2. Current state
 
-[#4035](https://github.com/nearai/ironclaw/pull/4035) is the current Slack adapter-core draft. The status snapshot below is as of **2026-05-28**; use the latest GitHub state when implementing follow-up slices.
+[#4035](https://github.com/chtugha/brassclaw/pull/4035) is the current Slack adapter-core draft. The status snapshot below is as of **2026-05-28**; use the latest GitHub state when implementing follow-up slices.
 
 - Open and still draft.
 - Review-blocked with `CHANGES_REQUESTED`.
 - Merge-blocked with `DIRTY` merge state against `reborn-integration`.
 - Scoped to adapter-core / protocol-boundary work only.
 
-It currently adds a native `ironclaw_slack_v2_adapter` crate that is intended to own:
+It currently adds a native `brassclaw_slack_v2_adapter` crate that is intended to own:
 
 - Slack Events API inbound normalization:
   - DM `message` events -> `ProductInboundPayload::UserMessage`.
@@ -37,21 +37,21 @@ It currently adds a native `ironclaw_slack_v2_adapter` crate that is intended to
 - `FinalReplyView` -> `chat.postMessage` render contract.
 - Adapter-local parse/render/boundary coverage.
 
-[#4035](https://github.com/nearai/ironclaw/pull/4035) does **not** complete [#3857](https://github.com/nearai/ironclaw/issues/3857). It intentionally does not own host webhook registration, Slack signature verification, immediate ACK orchestration, ProductWorkflow submission, final-reply fanout, approval/auth interaction behavior, or fake Slack E2E acceptance.
+[#4035](https://github.com/chtugha/brassclaw/pull/4035) does **not** complete [#3857](https://github.com/chtugha/brassclaw/issues/3857). It intentionally does not own host webhook registration, Slack signature verification, immediate ACK orchestration, ProductWorkflow submission, final-reply fanout, approval/auth interaction behavior, or fake Slack E2E acceptance.
 
 ## 3. Blockers
 
-The issue's exit criteria span multiple Reborn lanes that are still open. Implementing all of them inside Slack now would require Slack-specific shortcuts such as direct runtime calls, Slack-local pending approval stores, or custom outbound fanout. Those shortcuts would conflict with the review direction on [#4035](https://github.com/nearai/ironclaw/pull/4035): no v1 reuse and no bypass of Reborn product surfaces.
+The issue's exit criteria span multiple Reborn lanes that are still open. Implementing all of them inside Slack now would require Slack-specific shortcuts such as direct runtime calls, Slack-local pending approval stores, or custom outbound fanout. Those shortcuts would conflict with the review direction on [#4035](https://github.com/chtugha/brassclaw/pull/4035): no v1 reuse and no bypass of Reborn product surfaces.
 
 | #3857 requirement | Current blocker | Why it blocks full completion now | Safe next step |
 |---|---|---|---|
-| Merge the Slack adapter-core slice | [#4035](https://github.com/nearai/ironclaw/pull/4035) open draft, `CHANGES_REQUESTED`, `DIRTY` as of 2026-05-28 | The first slice still needs review cleanup and conflict resolution before downstream host wiring can depend on it. | Finish #4035 as adapter-only core; do not expand it into host/runtime wiring. |
-| Route Slack inbound work through ProductWorkflow | [#3280](https://github.com/nearai/ironclaw/issues/3280), [#4164](https://github.com/nearai/ironclaw/pull/4164), [#3885](https://github.com/nearai/ironclaw/pull/3885) | User-message routing exists, but ProductWorkflow routing/outcome shape is still being planned/reviewed for full product-surface behavior. Slack should not route around it. | Wire only to stable ProductWorkflow APIs; keep command/read/continuation assumptions out of Slack. |
-| Deliver final AgentLoop replies asynchronously back to Slack | [#3281](https://github.com/nearai/ironclaw/issues/3281), [#3266](https://github.com/nearai/ironclaw/issues/3266) | Slack can render `chat.postMessage`, but durable projection fanout and outbound/subscription policy are owned by EventStreamManager/outbound lanes. | Keep Slack render contract in #4035; add fanout only after shared outbound policy stabilizes. |
-| Support proactive Slack delivery / Slack as product capability | [#3281](https://github.com/nearai/ironclaw/issues/3281), [#3266](https://github.com/nearai/ironclaw/issues/3266) | Proactive send should be a generic outbound delivery capability, not a Slack-specific LLM tool or special runtime bypass. | Model Slack as a delivery backend behind shared outbound policy. |
-| Conversational approval handling (`approve` / `deny`) | [#3094](https://github.com/nearai/ironclaw/issues/3094), [#3280](https://github.com/nearai/ironclaw/issues/3280) | Approval service foundations exist, but Slack must not maintain its own pending approval authority or directly resume turns. | Route Slack replies to approval interaction services once the product contract is stable. |
-| Auth-required Slack UX | [#3289](https://github.com/nearai/ironclaw/issues/3289), [#3094](https://github.com/nearai/ironclaw/issues/3094) | OAuth/manual token/recovery foundations have landed, but product auth setup/recovery behavior remains open. Slack should not invent a parallel auth flow. | Post safe blocked/setup guidance only through the shared auth interaction contract. |
-| Fake Slack E2E proving signed event -> Reborn -> async reply / approval | [#3279](https://github.com/nearai/ironclaw/issues/3279), plus [#3281](https://github.com/nearai/ironclaw/issues/3281) / [#3266](https://github.com/nearai/ironclaw/issues/3266) | The acceptance harness and outbound fanout surfaces are not ready to prove the full flow end-to-end. | Keep adapter-local tests in #4035; add full acceptance once harness/outbound land. |
+| Merge the Slack adapter-core slice | [#4035](https://github.com/chtugha/brassclaw/pull/4035) open draft, `CHANGES_REQUESTED`, `DIRTY` as of 2026-05-28 | The first slice still needs review cleanup and conflict resolution before downstream host wiring can depend on it. | Finish #4035 as adapter-only core; do not expand it into host/runtime wiring. |
+| Route Slack inbound work through ProductWorkflow | [#3280](https://github.com/chtugha/brassclaw/issues/3280), [#4164](https://github.com/chtugha/brassclaw/pull/4164), [#3885](https://github.com/chtugha/brassclaw/pull/3885) | User-message routing exists, but ProductWorkflow routing/outcome shape is still being planned/reviewed for full product-surface behavior. Slack should not route around it. | Wire only to stable ProductWorkflow APIs; keep command/read/continuation assumptions out of Slack. |
+| Deliver final AgentLoop replies asynchronously back to Slack | [#3281](https://github.com/chtugha/brassclaw/issues/3281), [#3266](https://github.com/chtugha/brassclaw/issues/3266) | Slack can render `chat.postMessage`, but durable projection fanout and outbound/subscription policy are owned by EventStreamManager/outbound lanes. | Keep Slack render contract in #4035; add fanout only after shared outbound policy stabilizes. |
+| Support proactive Slack delivery / Slack as product capability | [#3281](https://github.com/chtugha/brassclaw/issues/3281), [#3266](https://github.com/chtugha/brassclaw/issues/3266) | Proactive send should be a generic outbound delivery capability, not a Slack-specific LLM tool or special runtime bypass. | Model Slack as a delivery backend behind shared outbound policy. |
+| Conversational approval handling (`approve` / `deny`) | [#3094](https://github.com/chtugha/brassclaw/issues/3094), [#3280](https://github.com/chtugha/brassclaw/issues/3280) | Approval service foundations exist, but Slack must not maintain its own pending approval authority or directly resume turns. | Route Slack replies to approval interaction services once the product contract is stable. |
+| Auth-required Slack UX | [#3289](https://github.com/chtugha/brassclaw/issues/3289), [#3094](https://github.com/chtugha/brassclaw/issues/3094) | OAuth/manual token/recovery foundations have landed, but product auth setup/recovery behavior remains open. Slack should not invent a parallel auth flow. | Post safe blocked/setup guidance only through the shared auth interaction contract. |
+| Fake Slack E2E proving signed event -> Reborn -> async reply / approval | [#3279](https://github.com/chtugha/brassclaw/issues/3279), plus [#3281](https://github.com/chtugha/brassclaw/issues/3281) / [#3266](https://github.com/chtugha/brassclaw/issues/3266) | The acceptance harness and outbound fanout surfaces are not ready to prove the full flow end-to-end. | Keep adapter-local tests in #4035; add full acceptance once harness/outbound land. |
 
 ## 4. Merged foundations that are not active blockers
 
@@ -59,11 +59,11 @@ Some dependencies have already landed and should be treated as foundations, not 
 
 | Area | Link | Status | Use in Slack plan |
 |---|---:|---|---|
-| Approval service foundation | [#4029](https://github.com/nearai/ironclaw/pull/4029) | Merged | Use as the approval interaction target; do not reimplement in Slack. |
-| Product auth OAuth routes | [#4031](https://github.com/nearai/ironclaw/pull/4031) | Merged | Foundation for auth setup; [#3289](https://github.com/nearai/ironclaw/issues/3289) still owns completion. |
-| Manual token secure submit | [#4068](https://github.com/nearai/ironclaw/pull/4068) | Merged | Auth foundation; not Slack-specific. |
-| Credential recovery projections | [#4069](https://github.com/nearai/ironclaw/pull/4069) | Merged | Auth/projection foundation; not Slack-specific. |
-| ProductWorkflow completion plan | [#4164](https://github.com/nearai/ironclaw/pull/4164) | Open docs PR | Coordinates [#3280](https://github.com/nearai/ironclaw/issues/3280) follow-up routing work. |
+| Approval service foundation | [#4029](https://github.com/chtugha/brassclaw/pull/4029) | Merged | Use as the approval interaction target; do not reimplement in Slack. |
+| Product auth OAuth routes | [#4031](https://github.com/chtugha/brassclaw/pull/4031) | Merged | Foundation for auth setup; [#3289](https://github.com/chtugha/brassclaw/issues/3289) still owns completion. |
+| Manual token secure submit | [#4068](https://github.com/chtugha/brassclaw/pull/4068) | Merged | Auth foundation; not Slack-specific. |
+| Credential recovery projections | [#4069](https://github.com/chtugha/brassclaw/pull/4069) | Merged | Auth/projection foundation; not Slack-specific. |
+| ProductWorkflow completion plan | [#4164](https://github.com/chtugha/brassclaw/pull/4164) | Open docs PR | Coordinates [#3280](https://github.com/chtugha/brassclaw/issues/3280) follow-up routing work. |
 
 ## 5. Scope
 
@@ -91,7 +91,7 @@ Some dependencies have already landed and should be treated as foundations, not 
 
 The goal is to keep the Slack work reviewable without pretending the blocked parts are unblocked.
 
-- **PR0 (current):** [#4035](https://github.com/nearai/ironclaw/pull/4035) — adapter-core/protocol boundary.
+- **PR0 (current):** [#4035](https://github.com/chtugha/brassclaw/pull/4035) — adapter-core/protocol boundary.
 - **Default follow-up implementation PRs after #4035:** 3.
 - **Fallback maximum:** 4 only if acceptance/outbound closure needs to split from approval/auth work.
 
@@ -106,7 +106,7 @@ The goal is to keep the Slack work reviewable without pretending the blocked par
 
 **Current blockers**
 
-- [#4035](https://github.com/nearai/ironclaw/pull/4035) is draft, `CHANGES_REQUESTED`, and `DIRTY`.
+- [#4035](https://github.com/chtugha/brassclaw/pull/4035) is draft, `CHANGES_REQUESTED`, and `DIRTY`.
 - This is locally fixable; it is not a cross-lane architecture blocker.
 
 **Should not add**
@@ -129,8 +129,8 @@ The goal is to keep the Slack work reviewable without pretending the blocked par
 
 **Blocked by / sequencing dependency**
 
-- [#4035](https://github.com/nearai/ironclaw/pull/4035) must land or stabilize first so host wiring depends on the final adapter contract.
-- [#3280](https://github.com/nearai/ironclaw/issues/3280) / [#4164](https://github.com/nearai/ironclaw/pull/4164) define ProductWorkflow completion sequencing. PR1 should use only stable user-message ProductWorkflow APIs and avoid assuming unresolved command/read/continuation behavior from [#3885](https://github.com/nearai/ironclaw/pull/3885).
+- [#4035](https://github.com/chtugha/brassclaw/pull/4035) must land or stabilize first so host wiring depends on the final adapter contract.
+- [#3280](https://github.com/chtugha/brassclaw/issues/3280) / [#4164](https://github.com/chtugha/brassclaw/pull/4164) define ProductWorkflow completion sequencing. PR1 should use only stable user-message ProductWorkflow APIs and avoid assuming unresolved command/read/continuation behavior from [#3885](https://github.com/chtugha/brassclaw/pull/3885).
 
 **Pseudo-code shape**
 
@@ -160,15 +160,15 @@ Function names in this sketch are illustrative. The actual implementation should
 **Scope**
 
 - Connect Reborn final reply/projection output to Slack `chat.postMessage` through shared outbound delivery policy.
-- Use the adapter's render contract from [#4035](https://github.com/nearai/ironclaw/pull/4035).
+- Use the adapter's render contract from [#4035](https://github.com/chtugha/brassclaw/pull/4035).
 - Preserve Slack thread reply semantics when `thread_ts` is present.
 - Classify Slack egress failures into retryable/unauthorized/permanent delivery outcomes.
 - Support proactive Slack delivery only as a backend of generic outbound capability, not as a Slack-specific tool bypass.
 
 **Blocked by**
 
-- [#3281](https://github.com/nearai/ironclaw/issues/3281) — durable projection fanout / EventStreamManager.
-- [#3266](https://github.com/nearai/ironclaw/issues/3266) — outbound egress and subscription policy.
+- [#3281](https://github.com/chtugha/brassclaw/issues/3281) — durable projection fanout / EventStreamManager.
+- [#3266](https://github.com/chtugha/brassclaw/issues/3266) — outbound egress and subscription policy.
 
 **Pseudo-code shape**
 
@@ -193,10 +193,10 @@ async fn deliver_slack_projection(event: ProjectionEvent) -> DeliveryOutcome {
 
 **Blocked by**
 
-- [#3094](https://github.com/nearai/ironclaw/issues/3094) — approval/auth interaction service completion.
-- [#3289](https://github.com/nearai/ironclaw/issues/3289) — auth setup/product flows.
-- [#3279](https://github.com/nearai/ironclaw/issues/3279) — product-flow acceptance harness.
-- Depending on landing order, PR3 may also depend on [#3281](https://github.com/nearai/ironclaw/issues/3281) / [#3266](https://github.com/nearai/ironclaw/issues/3266) from PR2.
+- [#3094](https://github.com/chtugha/brassclaw/issues/3094) — approval/auth interaction service completion.
+- [#3289](https://github.com/chtugha/brassclaw/issues/3289) — auth setup/product flows.
+- [#3279](https://github.com/chtugha/brassclaw/issues/3279) — product-flow acceptance harness.
+- Depending on landing order, PR3 may also depend on [#3281](https://github.com/chtugha/brassclaw/issues/3281) / [#3266](https://github.com/chtugha/brassclaw/issues/3266) from PR2.
 
 **Pseudo-code shape**
 
@@ -221,7 +221,7 @@ The scope lookup must fail closed on stale/missing/cross-user/cross-thread appro
 
 Split PR3 only if:
 
-- [#3279](https://github.com/nearai/ironclaw/issues/3279) lands after the approval/auth implementation is otherwise ready.
+- [#3279](https://github.com/chtugha/brassclaw/issues/3279) lands after the approval/auth implementation is otherwise ready.
 - The acceptance harness requires non-trivial fixture work that would make PR3 too large.
 - Reviewers ask to isolate final fake Slack E2E proof from feature wiring.
 
@@ -240,7 +240,7 @@ Implications:
 - ProductWorkflow/EventStreamManager owns subscription/projection routing.
 - Slack does not bypass policy with raw Slack API calls from the LLM/tool layer.
 
-Related blockers remain [#3281](https://github.com/nearai/ironclaw/issues/3281) and [#3266](https://github.com/nearai/ironclaw/issues/3266).
+Related blockers remain [#3281](https://github.com/chtugha/brassclaw/issues/3281) and [#3266](https://github.com/chtugha/brassclaw/issues/3266).
 
 ## 8. Safety and layering invariants
 
@@ -262,7 +262,7 @@ This plan is docs-only. Implementation PRs should add the narrowest tests throug
 
 | PR | Required coverage |
 |---|---|
-| PR0 / [#4035](https://github.com/nearai/ironclaw/pull/4035) | Adapter parse/render/no-op/auth metadata/egress metadata/redaction; public adapter boundary error mapping; architecture boundary rule. |
+| PR0 / [#4035](https://github.com/chtugha/brassclaw/pull/4035) | Adapter parse/render/no-op/auth metadata/egress metadata/redaction; public adapter boundary error mapping; architecture boundary rule. |
 | PR1 | Signed Slack request success; invalid signature reject before parse; timestamp/replay guard; immediate ACK; ProductWorkflow submit call; unsupported events ACK/no-op. |
 | PR2 | Final reply projection -> Slack egress; Slack thread preservation; retryable/unauthorized/permanent delivery classification; no raw token exposure. |
 | PR3 | Approval prompt render; scoped approve/deny replies; stale/missing/cross-scope fail closed; auth-required blocked/setup message; no direct resume. |
@@ -270,10 +270,10 @@ This plan is docs-only. Implementation PRs should add the narrowest tests throug
 
 ## 10. Reviewer checklist
 
-- [ ] The plan makes clear that [#4035](https://github.com/nearai/ironclaw/pull/4035) is adapter-core only and does not close [#3857](https://github.com/nearai/ironclaw/issues/3857).
+- [ ] The plan makes clear that [#4035](https://github.com/chtugha/brassclaw/pull/4035) is adapter-core only and does not close [#3857](https://github.com/chtugha/brassclaw/issues/3857).
 - [ ] Active blockers are linked and separated from merged foundations.
 - [ ] The proposed follow-up PR count is reviewable: 3 by default after #4035, 4 only as an acceptance/outbound fallback.
 - [ ] Slack host wiring does not use v1 channel paths.
 - [ ] Async final replies and proactive delivery wait for shared outbound/EventStreamManager policy instead of becoming Slack-specific shortcuts.
 - [ ] Approval/auth handling waits for shared interaction services and does not create Slack-local run authority.
-- [ ] Acceptance expectations are tied to [#3279](https://github.com/nearai/ironclaw/issues/3279) rather than hidden in adapter unit tests.
+- [ ] Acceptance expectations are tied to [#3279](https://github.com/chtugha/brassclaw/issues/3279) rather than hidden in adapter unit tests.

@@ -3,10 +3,10 @@
 mod reborn_support;
 mod support;
 
-use ironclaw_host_api::{TenantId, UserId};
-use ironclaw_loop_support::HostManagedModelResponse;
-use ironclaw_threads::ThreadScope;
-use ironclaw_turns::{TurnActor, TurnScope, TurnStatus};
+use brassclaw_host_api::{TenantId, UserId};
+use brassclaw_loop_support::HostManagedModelResponse;
+use brassclaw_threads::ThreadScope;
+use brassclaw_turns::{TurnActor, TurnScope, TurnStatus};
 use reborn_support::{
     harness::{RebornBinaryE2EHarness, RecordingTestCapabilityPort, trace_tool_call_response},
     model_replay::RebornTraceReplayModelGateway,

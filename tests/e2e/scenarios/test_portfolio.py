@@ -94,9 +94,9 @@ async def _get_skills(base_url: str) -> list:
 # ---- Skill discovery ----
 
 
-async def test_portfolio_skill_listed(ironclaw_server):
+async def test_portfolio_skill_listed(brassclaw_server):
     """The trusted portfolio skill should appear in the skills list API."""
-    skills = await _get_skills(ironclaw_server)
+    skills = await _get_skills(brassclaw_server)
 
     portfolio_skills = [s for s in skills if s.get("name") == "portfolio"]
     assert len(portfolio_skills) == 1, (
@@ -110,9 +110,9 @@ async def test_portfolio_skill_listed(ironclaw_server):
     )
 
 
-async def test_portfolio_skill_has_activation_keywords(ironclaw_server):
+async def test_portfolio_skill_has_activation_keywords(brassclaw_server):
     """Portfolio skill metadata should include the expected activation keywords."""
-    skills = await _get_skills(ironclaw_server)
+    skills = await _get_skills(brassclaw_server)
     portfolio = next((s for s in skills if s.get("name") == "portfolio"), None)
     assert portfolio is not None
 
@@ -154,9 +154,9 @@ async def test_portfolio_wallet_address_triggers_skill(page):
 # ---- Widget rendering ----
 
 
-async def test_portfolio_widget_renders_positions(page, ironclaw_server):
+async def test_portfolio_widget_renders_positions(page, brassclaw_server):
     """Pre-seed state.json and verify the portfolio widget renders positions."""
-    await _seed_portfolio_state(ironclaw_server)
+    await _seed_portfolio_state(brassclaw_server)
 
     await _open_portfolio_tab_or_skip(page)
 
@@ -190,9 +190,9 @@ async def test_portfolio_widget_renders_positions(page, ironclaw_server):
     assert "$200.00/yr" in sug_text
 
 
-async def test_portfolio_widget_shows_share_button(page, ironclaw_server):
+async def test_portfolio_widget_shows_share_button(page, brassclaw_server):
     """Share button appears when there are gains/suggestions."""
-    await _seed_portfolio_state(ironclaw_server)
+    await _seed_portfolio_state(brassclaw_server)
 
     await _open_portfolio_tab_or_skip(page)
 
@@ -205,9 +205,9 @@ async def test_portfolio_widget_shows_share_button(page, ironclaw_server):
     assert "Share gains" in (await share_btn.text_content() or "")
 
 
-async def test_portfolio_share_modal_opens(page, ironclaw_server):
+async def test_portfolio_share_modal_opens(page, brassclaw_server):
     """Clicking 'Share gains' opens the share modal with social buttons."""
-    await _seed_portfolio_state(ironclaw_server)
+    await _seed_portfolio_state(brassclaw_server)
 
     await _open_portfolio_tab_or_skip(page)
 
@@ -242,9 +242,9 @@ async def test_portfolio_share_modal_opens(page, ironclaw_server):
     assert await title.text_content() == "Share your gains"
 
 
-async def test_portfolio_share_modal_closes(page, ironclaw_server):
+async def test_portfolio_share_modal_closes(page, brassclaw_server):
     """Share modal closes when clicking the X button or the overlay."""
-    await _seed_portfolio_state(ironclaw_server)
+    await _seed_portfolio_state(brassclaw_server)
 
     await _open_portfolio_tab_or_skip(page)
 
@@ -261,7 +261,7 @@ async def test_portfolio_share_modal_closes(page, ironclaw_server):
     assert await overlay.is_hidden(), "Modal should be hidden after clicking close"
 
 
-async def test_portfolio_widget_no_share_button_without_gains(page, ironclaw_server):
+async def test_portfolio_widget_no_share_button_without_gains(page, brassclaw_server):
     """Share button should not appear when there are no gains or suggestions."""
     no_gains_state = {
         "schema_version": "portfolio-widget/1",
@@ -284,7 +284,7 @@ async def test_portfolio_widget_no_share_button_without_gains(page, ironclaw_ser
         "pending_intents": [],
     }
     await api_post(
-        ironclaw_server,
+        brassclaw_server,
         "/api/memory/write",
         json={
             "path": "projects/portfolio/widgets/state.json",

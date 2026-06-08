@@ -23,8 +23,8 @@ if [ -f "$WASM_PATH" ]; then
     echo "Built: wecom.wasm ($(du -h wecom.wasm | cut -f1))"
     echo ""
     echo "To install:"
-    echo "  mkdir -p ~/.ironclaw/channels"
-    echo "  cp wecom.wasm wecom.capabilities.json ~/.ironclaw/channels/"
+    echo "  mkdir -p ~/.brassclaw/channels"
+    echo "  cp wecom.wasm wecom.capabilities.json ~/.brassclaw/channels/"
 else
     echo "Error: WASM output not found at $WASM_PATH"
     exit 1
