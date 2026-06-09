@@ -225,20 +225,7 @@ impl InstructionBundleBuilder {
                 .as_bytes(),
         );
 
-        if !request.inline_messages.is_empty() {
-            requires_materialization_store = true;
-        }
-        for (ordinal, message) in request.inline_messages.into_iter().enumerate() {
-            push_inline_message(
-                &mut messages,
-                &mut materialized_messages,
-                &mut fingerprint,
-                ordinal,
-                message,
-                &mut synthetic_refs,
-            )?;
-        }
-
+        // PRIORITY 1: Identity messages (essential tenant/user context)
         if !request.context_bundle.identity_messages.is_empty() {
             requires_materialization_store = true;
         }
@@ -262,6 +249,43 @@ impl InstructionBundleBuilder {
             )?;
         }
 
+        // PRIORITY 2: Thread context messages (conversation history)
+        // Moving this earlier ensures recent conversation is preserved when context is trimmed.
+        // This is the most critical change: conversation flow now takes precedence over
+        // system instructions, preventing the "instruction spam" issue in longer chats.
+        for (ordinal, message) in request.context_bundle.messages.into_iter().enumerate() {
+            requires_materialization_store |= push_context_message(
+                &mut messages,
+                &mut materialized_messages,
+                &mut fingerprint,
+                ContextMessageOptions {
+                    section: "thread",
+                    ordinal,
+                    force_materialize: false,
+                },
+                &mut synthetic_refs,
+                message,
+            )?;
+        }
+
+        // PRIORITY 3: Inline control messages (immediate feedback/warnings)
+        // These come after conversation so the model sees the context before the control message.
+        if !request.inline_messages.is_empty() {
+            requires_materialization_store = true;
+        }
+        for (ordinal, message) in request.inline_messages.into_iter().enumerate() {
+            push_inline_message(
+                &mut messages,
+                &mut materialized_messages,
+                &mut fingerprint,
+                ordinal,
+                message,
+                &mut synthetic_refs,
+            )?;
+        }
+
+        // PRIORITY 4: Instruction snippets (skills and other instructions)
+        // Skills now come after conversation, so they're dropped first if context is tight.
         let mut instruction_snippets = request.context_bundle.instruction_snippets;
         sort_instruction_snippets_for_prompt(&mut instruction_snippets);
         let mut skill_ordinal = 0usize;
@@ -310,6 +334,7 @@ impl InstructionBundleBuilder {
             }
         }
 
+        // PRIORITY 5: Memory snippets (contextual information)
         let mut memory_snippets = request.context_bundle.memory_snippets;
         if !memory_snippets.is_empty() {
             requires_materialization_store = true;
@@ -329,6 +354,7 @@ impl InstructionBundleBuilder {
             )?;
         }
 
+        // PRIORITY 6: Safety context (policy information)
         if let Some(safety_context) = request.safety_context {
             requires_materialization_store = true;
             push_safety_context(
@@ -340,6 +366,7 @@ impl InstructionBundleBuilder {
             )?;
         }
 
+        // PRIORITY 7: Visible capability surface (available tools/capabilities)
         if let Some(surface) = request
             .visible_surface
             .filter(|surface| !surface.descriptors.is_empty())
@@ -351,21 +378,6 @@ impl InstructionBundleBuilder {
                 &mut fingerprint,
                 surface,
                 &mut synthetic_refs,
-            )?;
-        }
-
-        for (ordinal, message) in request.context_bundle.messages.into_iter().enumerate() {
-            requires_materialization_store |= push_context_message(
-                &mut messages,
-                &mut materialized_messages,
-                &mut fingerprint,
-                ContextMessageOptions {
-                    section: "thread",
-                    ordinal,
-                    force_materialize: false,
-                },
-                &mut synthetic_refs,
-                message,
             )?;
         }
 
