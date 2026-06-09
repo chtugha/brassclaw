@@ -795,6 +795,33 @@ fn validate_model_role(role: &str) -> Result<(), AgentLoopHostError> {
         "context message role is not model-safe",
     ))
 }
+/// Estimate the number of tokens in a text string.
+///
+/// Uses a simple heuristic: ~4 characters per token. This is a rough
+/// approximation that works reasonably well for English prose and code.
+///
+/// This function is provided for future use in per-section token budgeting
+/// and monitoring. Currently unused but will be needed when implementing
+/// more sophisticated token budget allocation strategies.
+#[allow(dead_code)]
+pub(crate) fn estimate_snippet_tokens(content: &str) -> usize {
+    // ~4 characters per token is a reasonable heuristic
+    content.len().saturating_add(3) / 4
+}
+
+/// Estimate total tokens for an instruction bundle section.
+///
+/// Useful for monitoring token distribution across different prompt sections
+/// (identity, skills, memory, conversation, etc.) and for implementing
+/// per-section token budgets in the future.
+#[allow(dead_code)]
+pub(crate) fn estimate_section_tokens(snippets: &[LoopContextSnippet]) -> usize {
+    snippets
+        .iter()
+        .map(|snippet| estimate_snippet_tokens(&snippet.model_content))
+        .sum()
+}
+
 
 fn validate_context_ref(value: String, label: &'static str) -> Result<String, AgentLoopHostError> {
     if value.is_empty()

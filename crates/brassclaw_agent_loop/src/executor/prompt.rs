@@ -546,6 +546,18 @@ pub(super) async fn build_prompt_bundle_for_surface(
                 stage: HostStage::Prompt,
             }
         })?;
+    
+    // Track token usage for monitoring and budget enforcement
+    let estimated_tokens = estimate_prompt_bundle_tokens(&prompt_bundle);
+    debug!(
+        iteration = state.iteration,
+        message_count = prompt_bundle.messages.len(),
+        estimated_tokens = estimated_tokens,
+        identity_messages = prompt_bundle.identity_message_count,
+        instruction_snippets = prompt_bundle.instruction_snippet_count,
+        "Prompt bundle built with token estimation"
+    );
+    
     CheckpointStage
         .emit_progress(
             ctx,
@@ -567,6 +579,21 @@ pub(super) async fn build_prompt_bundle_for_surface(
         rendered_reply_admission_control,
         rendered_repeated_call_warning,
     })
+}
+
+/// Estimate the total token count for a prompt bundle.
+///
+/// This provides visibility into token usage for monitoring and helps
+/// identify when prompts are approaching model context limits.
+fn estimate_prompt_bundle_tokens(bundle: &brassclaw_turns::run_profile::LoopPromptBundle) -> usize {
+    // Note: We can't access the actual message content here since we only have
+    // message refs. This is a limitation of the current architecture where
+    // content is resolved by the host. For now, we estimate based on message count.
+    // A more accurate implementation would require the host to return token counts.
+    
+    // Rough estimate: ~200 tokens per message on average
+    const AVG_TOKENS_PER_MESSAGE: usize = 200;
+    bundle.messages.len() * AVG_TOKENS_PER_MESSAGE
 }
 
 fn refresh_compaction_prompt_from_index(
