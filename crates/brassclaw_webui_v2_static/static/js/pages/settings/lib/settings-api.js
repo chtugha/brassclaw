@@ -80,10 +80,13 @@ export function startCodexLogin() {
   });
 }
 export function fetchTools() {
-  return Promise.resolve({ tools: [], todo: true });
+  return apiFetch("/api/settings/tools");
 }
-export function updateToolPermission(_name, _state) {
-  return Promise.resolve({ success: false, message: "TODO: requires v2 tools endpoint" });
+export function updateToolPermission(name, state) {
+  return apiFetch(`/api/settings/tools/${encodeURIComponent(name)}`, {
+    method: "PUT",
+    body: JSON.stringify({ state }),
+  });
 }
 export function fetchExtensions() {
   return apiFetch("/api/webchat/v2/extensions");

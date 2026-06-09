@@ -15,12 +15,12 @@ export function useTools() {
 
   const mutation = useMutation({
     mutationFn: ({ name, state }) => updateToolPermission(name, state),
-    onSuccess: (_data, { name, state }) => {
+    onSuccess: (updatedTool, { name }) => {
       queryClient.setQueryData(["settings-tools"], (old) => {
         if (!old) return old;
         return {
           ...old,
-          tools: old.tools.map((t) => (t.name === name ? { ...t, state } : t)),
+          tools: old.tools.map((t) => (t.name === name ? { ...t, current_state: updatedTool.current_state } : t)),
         };
       });
       setSavedTools((prev) => ({ ...prev, [name]: true }));

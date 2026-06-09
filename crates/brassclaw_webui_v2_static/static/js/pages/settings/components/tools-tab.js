@@ -15,9 +15,10 @@ function ToolRow({ tool, onPermissionChange, isSaved }) {
   ];
 
   const isLocked = tool.locked;
+  const toolState = tool.current_state || tool.state; // Support both field names
   const current =
-    permissionStates.find((p) => p.value === tool.state) || permissionStates[1];
-  const isDefault = tool.state === tool.default_state;
+    permissionStates.find((p) => p.value === toolState) || permissionStates[1];
+  const isDefault = toolState === tool.default_state;
 
   return html`
     <div
@@ -57,7 +58,7 @@ function ToolRow({ tool, onPermissionChange, isSaved }) {
           ? html`<${Badge} tone=${current.tone} label=${current.label} size="sm" />`
           : html`
               <select
-                value=${tool.state}
+                value=${toolState}
                 onChange=${(e) => onPermissionChange(tool.name, e.target.value)}
                 aria-label=${t("tools.permissionFor", { name: tool.name })}
                 className="v2-select h-8 rounded-md border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-2.5 font-mono text-xs text-[var(--v2-text-strong)] outline-none focus:border-[color-mix(in_srgb,var(--v2-accent)_45%,var(--v2-panel-border))]"
