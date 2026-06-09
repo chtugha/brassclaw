@@ -135,6 +135,7 @@ SVCEOF
 
 systemctl daemon-reload
 systemctl enable brassclaw
+systemctl start brassclaw
 echo "  Done."
 
 echo ""
