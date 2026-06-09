@@ -296,7 +296,10 @@ mod tests {
 
     #[tokio::test]
     async fn plan_context_request_clamps_zero_to_one() {
-        let strategy = DefaultContextStrategy { max_messages: 0 };
+        let strategy = DefaultContextStrategy {
+            max_messages: 0,
+            max_context_tokens: Some(DEFAULT_MAX_CONTEXT_TOKENS),
+        };
         let state = LoopExecutionState::initial_for_run(&test_run_context());
 
         let request = strategy.plan_context_request(&state).await;
