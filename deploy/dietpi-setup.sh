@@ -68,7 +68,7 @@ echo "[6/7] Cloning and building BrassClaw..."
 #git clone "$BRASSCLAW_REPO" "$BRASSCLAW_DIR"
 cd "$BRASSCLAW_DIR"
 git pull
-cargo install sccache
+cargo install --list | grep -q '^sccache ' || cargo install sccache
 export RUSTC_WRAPPER=sccache
 export CC=clang
 export CXX=clang++
