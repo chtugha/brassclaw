@@ -72,8 +72,9 @@ cargo install --list | grep -q '^sccache ' || cargo install sccache
 export RUSTC_WRAPPER=sccache
 export CC=clang
 export CXX=clang++
-export RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=mold"
+export RUSTFLAGS=""
 ./scripts/build-wasm-extensions.sh --first-party
+export RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=mold"
 cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn
 ln -sf "$BRASSCLAW_DIR/target/release/brassclaw-reborn" /usr/local/bin/brassclaw-reborn
 echo "  Done."
