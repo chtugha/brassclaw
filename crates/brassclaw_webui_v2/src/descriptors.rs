@@ -41,8 +41,6 @@ pub const WEBUI_V2_ROUTE_START_NEARAI_LOGIN: &str = "webui.v2.start_nearai_login
 pub const WEBUI_V2_ROUTE_COMPLETE_NEARAI_WALLET_LOGIN: &str =
     "webui.v2.complete_nearai_wallet_login";
 pub const WEBUI_V2_ROUTE_START_CODEX_LOGIN: &str = "webui.v2.start_codex_login";
-pub const WEBUI_V2_ROUTE_GET_TOOLS: &str = "webui.v2.get_tools";
-pub const WEBUI_V2_ROUTE_UPDATE_TOOL_PERMISSION: &str = "webui.v2.update_tool_permission";
 
 pub const WEBUI_V2_PATTERN_CREATE_THREAD: &str = "/api/webchat/v2/threads";
 pub const WEBUI_V2_PATTERN_LIST_THREADS: &str = "/api/webchat/v2/threads";
@@ -75,8 +73,6 @@ pub const WEBUI_V2_PATTERN_LIST_LLM_MODELS: &str = "/api/webchat/v2/llm/list-mod
 pub const WEBUI_V2_PATTERN_START_NEARAI_LOGIN: &str = "/api/webchat/v2/llm/nearai/login";
 pub const WEBUI_V2_PATTERN_COMPLETE_NEARAI_WALLET_LOGIN: &str = "/api/webchat/v2/llm/nearai/wallet";
 pub const WEBUI_V2_PATTERN_START_CODEX_LOGIN: &str = "/api/webchat/v2/llm/codex/login";
-pub const WEBUI_V2_PATTERN_GET_TOOLS: &str = "/api/webchat/v2/tools";
-pub const WEBUI_V2_PATTERN_UPDATE_TOOL_PERMISSION: &str = "/api/webchat/v2/tools/{tool_name}";
 
 /// Return the canonical [`IngressRouteDescriptor`] set for the WebChat v2
 /// beta route surface.
@@ -113,8 +109,6 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         start_nearai_login_descriptor(),
         complete_nearai_wallet_login_descriptor(),
         start_codex_login_descriptor(),
-        get_tools_descriptor(),
-        update_tool_permission_descriptor(),
     ]
 }
 
@@ -514,34 +508,6 @@ fn start_codex_login_descriptor() -> IngressRouteDescriptor {
             AllowedEffectPath::ProductWorkflow,
         ),
     )
-fn get_tools_descriptor() -> IngressRouteDescriptor {
-    descriptor(
-        WEBUI_V2_ROUTE_GET_TOOLS,
-        NetworkMethod::Get,
-        WEBUI_V2_PATTERN_GET_TOOLS,
-        read_policy(
-            read_rate_limit(),
-            AuditTraceClass::UserAction,
-            AllowedEffectPath::ProjectionOnly,
-            StreamingMode::None,
-        ),
-    )
-}
-
-fn update_tool_permission_descriptor() -> IngressRouteDescriptor {
-    descriptor(
-        WEBUI_V2_ROUTE_UPDATE_TOOL_PERMISSION,
-        NetworkMethod::Put,
-        WEBUI_V2_PATTERN_UPDATE_TOOL_PERMISSION,
-        mutation_policy(
-            body_limit_kib(4),
-            mutation_rate_limit(),
-            AuditTraceClass::UserAction,
-            AllowedEffectPath::ProductWorkflow,
-        ),
-    )
-}
-
 }
 
 fn ws_read_policy(

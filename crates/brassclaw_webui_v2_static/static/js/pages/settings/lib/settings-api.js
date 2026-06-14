@@ -79,15 +79,6 @@ export function startCodexLogin() {
     method: "POST",
   });
 }
-export function fetchTools() {
-  return apiFetch("/api/settings/tools");
-}
-export function updateToolPermission(name, state) {
-  return apiFetch(`/api/settings/tools/${encodeURIComponent(name)}`, {
-    method: "PUT",
-    body: JSON.stringify({ state }),
-  });
-}
 export function fetchExtensions() {
   return apiFetch("/api/webchat/v2/extensions");
 }

@@ -68,7 +68,7 @@ fn resolve_settings_scope(
             );
             return Err(StatusCode::FORBIDDEN);
         }
-        Ok(crate::tools::permissions::ADMIN_SETTINGS_USER_ID.to_string())
+        Ok(crate::tenant::ADMIN_SETTINGS_USER_ID.to_string())
     } else {
         Ok(user.user_id.clone())
     }
@@ -290,7 +290,7 @@ fn llm_setting_requires_reload(key: &str) -> bool {
 /// (any authenticated user writing their own `selected_model` cannot force
 /// an expensive global chain rebuild).
 fn scope_feeds_global_chain(state: &GatewayState, effective_user_id: &str) -> bool {
-    let admin_scope = crate::tools::permissions::ADMIN_SETTINGS_USER_ID;
+    let admin_scope = crate::tenant::ADMIN_SETTINGS_USER_ID;
     effective_user_id == admin_scope || effective_user_id == state.owner_id
 }
 
@@ -969,159 +969,6 @@ fn mask_settings_api_keys(settings: &mut std::collections::HashMap<String, serde
 // Tool Permissions API
 // ---------------------------------------------------------------------------
 
-/// `GET /api/settings/tools` — list all tools with current permission state.
-pub async fn settings_tools_list_handler(
-    State(state): State<Arc<GatewayState>>,
-    AuthenticatedUser(user): AuthenticatedUser,
-) -> Result<Json<ToolPermissionsResponse>, StatusCode> {
-    use crate::tools::permissions::{
-        PermissionState, TOOL_PERMISSION_LOCKED_REASON, effective_permission,
-        seeded_default_permission, tool_permission_locked,
-    };
-
-    let registry = state
-        .tool_registry
-        .as_ref()
-        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
-
-    // Load current user tool permission overrides from the cache.
-    let store = resolve_settings_store(&state)?;
-    let db_map = store.get_all_settings(&user.user_id).await.map_err(|e| {
-        tracing::error!("Failed to load settings for tool permissions: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    let user_overrides = crate::settings::Settings::from_db_map(&db_map).tool_permissions;
-
-    let tools = registry.all().await;
-    let mut entries: Vec<ToolPermissionEntry> = tools
-        .iter()
-        .map(|tool| {
-            let name = tool.name().to_string();
-            let description = tool.description().to_string();
-
-            let current = effective_permission(&name, &user_overrides);
-            let default = seeded_default_permission(&name).unwrap_or(PermissionState::AskEachTime);
-            let locked = tool_permission_locked(tool.as_ref());
-
-            ToolPermissionEntry {
-                name,
-                description,
-                current_state: permission_state_to_str(current).to_string(),
-                default_state: permission_state_to_str(default).to_string(),
-                locked,
-                locked_reason: locked.then(|| TOOL_PERMISSION_LOCKED_REASON.to_string()),
-            }
-        })
-        .collect();
-
-    entries.sort_by(|a, b| a.name.cmp(&b.name));
-
-    Ok(Json(ToolPermissionsResponse { tools: entries }))
-}
-
-/// `PUT /api/settings/tools/:name` — update permission state for a single tool.
-pub async fn settings_tools_set_handler(
-    State(state): State<Arc<GatewayState>>,
-    AuthenticatedUser(user): AuthenticatedUser,
-    Path(name): Path<String>,
-    Json(body): Json<UpdateToolPermissionRequest>,
-) -> Result<Json<ToolPermissionEntry>, (StatusCode, axum::Json<serde_json::Value>)> {
-    let registry = state.tool_registry.as_ref().ok_or((
-        StatusCode::SERVICE_UNAVAILABLE,
-        axum::Json(serde_json::json!({"error": "Tool registry unavailable"})),
-    ))?;
-
-    // Validate tool exists.
-    let tool = registry.get(&name).await.ok_or((
-        StatusCode::NOT_FOUND,
-        axum::Json(serde_json::json!({"error": format!("Tool '{}' not found", name)})),
-    ))?;
-
-    // Parse the requested state.
-    let new_state = str_to_permission_state(&body.state).ok_or((
-        StatusCode::UNPROCESSABLE_ENTITY,
-        axum::Json(
-            serde_json::json!({"error": format!("Invalid permission state: '{}'", body.state)}),
-        ),
-    ))?;
-    let locked = crate::tools::permissions::tool_permission_locked(tool.as_ref());
-    if locked
-        && matches!(
-            new_state,
-            crate::tools::permissions::PermissionState::AlwaysAllow
-        )
-    {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            axum::Json(serde_json::json!({
-                "error": format!(
-                    "Tool '{}' always requires approval and cannot be set to always_allow",
-                    name
-                )
-            })),
-        ));
-    }
-
-    // Persist the permission override, routed through the cached settings store
-    // so the agent loop sees the change immediately.
-    let store = resolve_settings_store(&state).map_err(|status| {
-        (
-            status,
-            axum::Json(serde_json::json!({"error": "Settings store unavailable"})),
-        )
-    })?;
-
-    let json_value = serde_json::to_value(new_state).map_err(|e| {
-        tracing::error!("Failed to serialize permission state: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            axum::Json(serde_json::json!({"error": "Internal error"})),
-        )
-    })?;
-
-    store
-        .set_setting(
-            &user.user_id,
-            &format!("tool_permissions.{}", name),
-            &json_value,
-        )
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to set tool permission '{}': {}", name, e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                axum::Json(serde_json::json!({"error": "Failed to persist permission"})),
-            )
-        })?;
-
-    Ok(Json(ToolPermissionEntry {
-        description: tool.description().to_string(),
-        default_state: permission_state_to_str(
-            crate::tools::permissions::seeded_default_permission(&name)
-                .unwrap_or(crate::tools::permissions::PermissionState::AskEachTime),
-        )
-        .to_string(),
-        name,
-        current_state: permission_state_to_str(new_state).to_string(),
-        locked,
-        locked_reason: locked
-            .then(|| crate::tools::permissions::TOOL_PERMISSION_LOCKED_REASON.to_string()),
-    }))
-}
-
-fn permission_state_to_str(state: crate::tools::permissions::PermissionState) -> &'static str {
-    use crate::tools::permissions::PermissionState;
-    match state {
-        PermissionState::AlwaysAllow => "always_allow",
-        PermissionState::AskEachTime => "ask_each_time",
-        PermissionState::Disabled => "disabled",
-    }
-}
-
-fn str_to_permission_state(s: &str) -> Option<crate::tools::permissions::PermissionState> {
-    serde_json::from_value(serde_json::Value::String(s.to_string())).ok()
-}
-
 /// Check the secrets store for vaulted API keys and annotate the settings map.
 ///
 /// For builtin overrides and custom providers whose API key was stripped from
@@ -1741,7 +1588,7 @@ mod tests {
 
         // Seed admin-scope settings that `Config::from_db_with_toml` reads
         // so the reloaded chain resolves nearai_model from `selected_model`.
-        let admin_scope = crate::tools::permissions::ADMIN_SETTINGS_USER_ID;
+        let admin_scope = crate::tenant::ADMIN_SETTINGS_USER_ID;
         db.set_setting(admin_scope, "llm_backend", &serde_json::json!("nearai"))
             .await
             .expect("seed llm_backend");
@@ -1816,7 +1663,7 @@ mod tests {
         let status = settings_set_handler(
             State(Arc::clone(&state)),
             AuthenticatedUser(UserIdentity {
-                user_id: crate::tools::permissions::ADMIN_SETTINGS_USER_ID.to_string(),
+                user_id: crate::tenant::ADMIN_SETTINGS_USER_ID.to_string(),
                 role: "admin".to_string(),
                 workspace_read_scopes: Vec::new(),
             }),
@@ -1855,7 +1702,7 @@ mod tests {
                 .await
                 .expect("initial chain");
 
-        let admin_scope = crate::tools::permissions::ADMIN_SETTINGS_USER_ID;
+        let admin_scope = crate::tenant::ADMIN_SETTINGS_USER_ID;
         db.set_setting(admin_scope, "llm_backend", &serde_json::json!("nearai"))
             .await
             .expect("seed llm_backend");
@@ -2016,7 +1863,7 @@ mod tests {
         let _env_guard = lock_env();
         let (state, primary, _tmp) = hot_reload_harness().await;
         let before_model = primary.active_model_name();
-        let admin_scope = crate::tools::permissions::ADMIN_SETTINGS_USER_ID;
+        let admin_scope = crate::tenant::ADMIN_SETTINGS_USER_ID;
         let store = state.store.as_ref().expect("store"); // dispatch-exempt: test harness
 
         // Poison the admin-scope LLM config so any reload will fail at
@@ -2108,7 +1955,7 @@ mod tests {
     async fn reload_rebuilds_from_owner_scope_not_effective_scope() {
         let _env_guard = lock_env();
         let (state, primary, _tmp) = hot_reload_harness().await;
-        let admin_scope = crate::tools::permissions::ADMIN_SETTINGS_USER_ID;
+        let admin_scope = crate::tenant::ADMIN_SETTINGS_USER_ID;
         let store = state.store.as_ref().expect("store"); // dispatch-exempt: test harness
 
         // Owner scope has its own `selected_model` overlay that admin

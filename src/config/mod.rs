@@ -448,7 +448,7 @@ impl Config {
         profile::apply_profile(&mut settings)?;
         Self::apply_toml_overlay(&mut settings, toml_path)?;
 
-        let admin_scope = crate::tools::permissions::ADMIN_SETTINGS_USER_ID;
+        let admin_scope = crate::tenant::ADMIN_SETTINGS_USER_ID;
         if user_id != admin_scope {
             match store.get_all_settings(admin_scope).await {
                 Ok(mut admin_map) if !admin_map.is_empty() => {
@@ -1363,7 +1363,7 @@ mod tests {
         let store = FakeSettingsStore::new();
         store
             .seed(
-                crate::tools::permissions::ADMIN_SETTINGS_USER_ID,
+                crate::tenant::ADMIN_SETTINGS_USER_ID,
                 "llm_builtin_overrides",
                 serde_json::json!({
                     "nearai": {
@@ -1399,7 +1399,7 @@ mod tests {
         let store = FakeSettingsStore::new();
         store
             .seed(
-                crate::tools::permissions::ADMIN_SETTINGS_USER_ID,
+                crate::tenant::ADMIN_SETTINGS_USER_ID,
                 "llm_builtin_overrides",
                 serde_json::json!({
                     "nearai": {

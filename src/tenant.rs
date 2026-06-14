@@ -28,6 +28,9 @@ use tokio::sync::{Semaphore, SemaphorePermit};
 use uuid::Uuid;
 
 use crate::agent::BrokenTool;
+
+/// Reserved user ID for admin-scoped settings that apply across all tenants.
+pub const ADMIN_SETTINGS_USER_ID: &str = "__admin__";
 use crate::agent::cost_guard::{CostGuard, CostLimitExceeded};
 use crate::agent::routine::{Routine, RoutineRun, RunStatus};
 use crate::context::{ActionRecord, JobContext, JobState};
@@ -304,7 +307,7 @@ impl TenantScope {
         }
         // Fall back to admin scope.
         self.settings()
-            .get_setting(crate::tools::permissions::ADMIN_SETTINGS_USER_ID, key)
+            .get_setting(ADMIN_SETTINGS_USER_ID, key)
             .await
     }
 
@@ -572,43 +575,19 @@ impl SystemScope {
         Workspace::new_with_db(user_id, Arc::clone(&self.inner))
     }
 
-    /// Load the current admin tool policy from the shared admin settings scope.
+    /// Stub: Load admin tool policy (always returns None).
     pub async fn get_admin_tool_policy(
         &self,
     ) -> Result<Option<crate::tools::permissions::AdminToolPolicy>, DatabaseError> {
-        match self
-            .inner
-            .get_setting(
-                crate::tools::permissions::ADMIN_SETTINGS_USER_ID,
-                crate::tools::permissions::ADMIN_TOOL_POLICY_KEY,
-            )
-            .await?
-        {
-            Some(value) => {
-                crate::tools::permissions::parse_admin_tool_policy(value, "system_scope")
-                    .map(Some)
-                    .map_err(|error| DatabaseError::Serialization(error.to_string()))
-            }
-            None => Ok(None),
-        }
+        Ok(None)
     }
 
-    /// Replace the current admin tool policy in the shared admin settings scope.
+    /// Stub: Set admin tool policy (no-op).
     pub async fn set_admin_tool_policy(
         &self,
-        policy: &crate::tools::permissions::AdminToolPolicy,
+        _policy: &crate::tools::permissions::AdminToolPolicy,
     ) -> Result<(), DatabaseError> {
-        crate::tools::permissions::validate_admin_tool_policy(policy)
-            .map_err(DatabaseError::Serialization)?;
-        let value = serde_json::to_value(policy)
-            .map_err(|error| DatabaseError::Serialization(error.to_string()))?;
-        self.inner
-            .set_setting(
-                crate::tools::permissions::ADMIN_SETTINGS_USER_ID,
-                crate::tools::permissions::ADMIN_TOOL_POLICY_KEY,
-                &value,
-            )
-            .await
+        Ok(())
     }
 
     /// Read a user's role for system-process authorization decisions.
@@ -1234,7 +1213,7 @@ mod tests {
         let (db, _tmp) = crate::testing::test_db().await;
         // Set both admin and user values.
         db.set_setting(
-            crate::tools::permissions::ADMIN_SETTINGS_USER_ID,
+            ADMIN_SETTINGS_USER_ID,
             "temperature",
             &serde_json::json!(0.3),
         )
@@ -1257,7 +1236,7 @@ mod tests {
     async fn test_admin_fallback_returns_admin_value_when_user_unset() {
         let (db, _tmp) = crate::testing::test_db().await;
         db.set_setting(
-            crate::tools::permissions::ADMIN_SETTINGS_USER_ID,
+            ADMIN_SETTINGS_USER_ID,
             "temperature",
             &serde_json::json!(0.5),
         )

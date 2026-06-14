@@ -74,7 +74,7 @@ use crate::channels::web::platform::static_files::{
 // Feature slices under `features/<slice>/`. As of brassclaw#2599 stage 4d,
 // every route composed below comes from one of these or from a
 // transitional `handlers/*.rs` file (auth, engine, frontend, llm,
-// memory, secrets, skills, system_prompt, tokens, tool_policy, users,
+// memory, secrets, skills, system_prompt, tokens, users,
 // webhooks). No feature handler lives in `server.rs` — that file is a
 // backward-compat re-export shim waiting on stage 6 deletion.
 use crate::channels::web::features::chat::{
@@ -102,7 +102,6 @@ use crate::channels::web::features::routines::{
 use crate::channels::web::features::settings::{
     settings_delete_handler, settings_export_handler, settings_get_handler,
     settings_import_handler, settings_list_handler, settings_set_handler,
-    settings_tools_list_handler, settings_tools_set_handler,
 };
 use crate::channels::web::features::status::gateway_status_handler;
 
@@ -317,14 +316,6 @@ pub async fn start_server(
         .route("/api/settings", get(settings_list_handler))
         .route("/api/settings/export", get(settings_export_handler))
         .route("/api/settings/import", post(settings_import_handler))
-        // NOTE: These static routes intentionally shadow `/api/settings/{key}` when
-        // key="tools". Axum resolves static routes before parameterized ones, so this
-        // works correctly. Avoid adding a setting named literally "tools".
-        .route("/api/settings/tools", get(settings_tools_list_handler))
-        .route(
-            "/api/settings/tools/{name}",
-            axum::routing::put(settings_tools_set_handler),
-        )
         .route("/api/settings/{key}", get(settings_get_handler))
         .route(
             "/api/settings/{key}",
@@ -389,12 +380,6 @@ pub async fn start_server(
             "/api/admin/users/{user_id}/secrets/{name}",
             put(crate::channels::web::handlers::secrets::secrets_put_handler)
                 .delete(crate::channels::web::handlers::secrets::secrets_delete_handler),
-        )
-        // Admin tool policy
-        .route(
-            "/api/admin/tool-policy",
-            get(crate::channels::web::handlers::tool_policy::tool_policy_get_handler)
-                .put(crate::channels::web::handlers::tool_policy::tool_policy_put_handler),
         )
         // Admin system prompt — tighter body cap than the global 10 MB so an
         // oversized payload is rejected before being parsed into memory.

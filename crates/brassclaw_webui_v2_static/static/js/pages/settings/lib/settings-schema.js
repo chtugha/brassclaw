@@ -3,7 +3,6 @@ export const SETTINGS_TABS = [
   { id: "agent", labelKey: "settings.agent", icon: "bolt" },
   { id: "channels", labelKey: "settings.channels", icon: "send" },
   { id: "networking", labelKey: "settings.networking", icon: "pulse" },
-  { id: "tools", labelKey: "settings.tools", icon: "tool" },
   { id: "skills", labelKey: "settings.skills", icon: "file" },
   { id: "users", labelKey: "settings.users", icon: "lock" },
   { id: "language", labelKey: "settings.language", icon: "globe" },

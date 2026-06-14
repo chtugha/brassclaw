@@ -20,7 +20,7 @@ use crate::channels::web::types::{
     AdminUserProfileResponse, AdminUserStatusResponse,
 };
 use crate::db::{Database, UserRecord};
-use crate::tools::permissions::ADMIN_SETTINGS_USER_ID;
+use crate::tenant::ADMIN_SETTINGS_USER_ID;
 
 fn admin_user_info_from_record(
     user_record: &UserRecord,
