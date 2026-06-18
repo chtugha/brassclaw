@@ -12,7 +12,7 @@ use thiserror::Error;
 
 use crate::context::JobContext;
 use crate::tools::tool::Tool;
-use crate::tools::wasm::{Capabilities, WasmError, WasmToolRuntime, WasmToolWrapper};
+use crate::wasm_runtime::{Capabilities, WasmError, WasmToolRuntime, WasmToolWrapper};
 
 /// Errors during testing.
 #[derive(Debug, Error)]

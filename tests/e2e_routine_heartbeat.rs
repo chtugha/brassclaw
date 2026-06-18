@@ -30,7 +30,7 @@ mod tests {
     use brassclaw::hooks::HookRegistry;
     use brassclaw::secrets::{InMemorySecretsStore, SecretsCrypto, SecretsStore};
     use brassclaw::tools::builtin::routine::RoutineUpdateTool;
-    use brassclaw::tools::mcp::{McpProcessManager, McpSessionManager};
+    use brassclaw::mcp_client::{McpProcessManager, McpSessionManager};
     use brassclaw::tools::{ApprovalRequirement, Tool, ToolError, ToolOutput, ToolRegistry};
     use brassclaw::workspace::Workspace;
     use brassclaw::workspace::hygiene::HygieneConfig;

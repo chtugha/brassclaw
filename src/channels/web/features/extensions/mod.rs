@@ -1332,7 +1332,7 @@ mod tests {
         // already have a notion entry configured).
         let (ext_mgr, _wasm_tools_dir, _wasm_channels_dir, _db_dir) = test_ext_mgr_with_db().await;
         let mut server =
-            crate::tools::mcp::McpServerConfig::new("notion", "https://mcp.notion.com/mcp");
+            crate::mcp_client::McpServerConfig::new("notion", "https://mcp.notion.com/mcp");
         server.description = Some("Notion".to_string());
         ext_mgr
             .install(

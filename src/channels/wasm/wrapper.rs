@@ -61,8 +61,8 @@ use crate::generated_images::{
 use crate::pairing::PairingStore;
 use crate::secrets::SecretsStore;
 use crate::secrets::host_matches_pattern;
-use crate::tools::wasm::credential_injector::{InjectedCredentials, inject_credential};
-use crate::tools::wasm::{
+use crate::wasm_runtime::credential_injector::{InjectedCredentials, inject_credential};
+use crate::wasm_runtime::{
     LogLevel, WasmResourceLimiter, reject_private_ip, ssrf_safe_client_builder,
 };
 use brassclaw_common::CredentialName;
@@ -1470,11 +1470,11 @@ impl WasmChannel {
         let ws_cap = caps
             .tool_capabilities
             .workspace_read
-            .get_or_insert_with(|| crate::tools::wasm::WorkspaceCapability {
+            .get_or_insert_with(|| crate::wasm_runtime::WorkspaceCapability {
                 allowed_prefixes: Vec::new(),
                 reader: None,
             });
-        ws_cap.reader = Some(Arc::clone(store) as Arc<dyn crate::tools::wasm::WorkspaceReader>);
+        ws_cap.reader = Some(Arc::clone(store) as Arc<dyn crate::wasm_runtime::WorkspaceReader>);
         caps
     }
 
@@ -1941,7 +1941,7 @@ impl WasmChannel {
                     "{msg}. This may indicate a WIT version mismatch — \
                          the channel was compiled against a different WIT than the host supports \
                          (host WIT: {}). Rebuild the channel against the current WIT.",
-                    crate::tools::wasm::WIT_CHANNEL_VERSION
+                    crate::wasm_runtime::WIT_CHANNEL_VERSION
                 ))
             } else {
                 WasmChannelError::Instantiation(msg)
@@ -2004,19 +2004,19 @@ impl WasmChannel {
     fn log_host_state_entries(channel_name: &str, host_state: &mut ChannelHostState) {
         for entry in host_state.take_logs() {
             match entry.level {
-                crate::tools::wasm::LogLevel::Trace => {
+                crate::wasm_runtime::LogLevel::Trace => {
                     tracing::trace!(channel = %channel_name, "{}", entry.message);
                 }
-                crate::tools::wasm::LogLevel::Debug => {
+                crate::wasm_runtime::LogLevel::Debug => {
                     tracing::debug!(channel = %channel_name, "{}", entry.message);
                 }
-                crate::tools::wasm::LogLevel::Info => {
+                crate::wasm_runtime::LogLevel::Info => {
                     tracing::info!(channel = %channel_name, "{}", entry.message);
                 }
-                crate::tools::wasm::LogLevel::Error => {
+                crate::wasm_runtime::LogLevel::Error => {
                     tracing::error!(channel = %channel_name, "{}", entry.message);
                 }
-                crate::tools::wasm::LogLevel::Warn => {
+                crate::wasm_runtime::LogLevel::Warn => {
                     tracing::warn!(channel = %channel_name, "{}", entry.message);
                 }
             }
@@ -4514,7 +4514,7 @@ fn discord_gateway_presence_status(
     workspace_store: &crate::channels::wasm::host::ChannelWorkspaceStore,
     _pairing_store: &PairingStore,
 ) -> &'static str {
-    use crate::tools::wasm::WorkspaceReader;
+    use crate::wasm_runtime::WorkspaceReader;
 
     let owner_key = format!("channels/{}/state/owner_id", channel_name);
     if workspace_store
@@ -4670,24 +4670,24 @@ fn drain_guest_logs(
     channel_name: &str,
     callback: &str,
     host_state: &mut ChannelHostState,
-) -> Vec<crate::tools::wasm::LogEntry> {
+) -> Vec<crate::wasm_runtime::LogEntry> {
     let entries = host_state.take_logs();
 
     for entry in &entries {
         match entry.level {
-            crate::tools::wasm::LogLevel::Error => {
+            crate::wasm_runtime::LogLevel::Error => {
                 tracing::error!(channel = %channel_name, callback = callback, "{}", entry.message);
             }
-            crate::tools::wasm::LogLevel::Warn => {
+            crate::wasm_runtime::LogLevel::Warn => {
                 tracing::warn!(channel = %channel_name, callback = callback, "{}", entry.message);
             }
-            crate::tools::wasm::LogLevel::Info => {
+            crate::wasm_runtime::LogLevel::Info => {
                 tracing::info!(channel = %channel_name, callback = callback, "{}", entry.message);
             }
-            crate::tools::wasm::LogLevel::Debug => {
+            crate::wasm_runtime::LogLevel::Debug => {
                 tracing::debug!(channel = %channel_name, callback = callback, "{}", entry.message);
             }
-            crate::tools::wasm::LogLevel::Trace => {
+            crate::wasm_runtime::LogLevel::Trace => {
                 tracing::trace!(channel = %channel_name, callback = callback, "{}", entry.message);
             }
         }
@@ -5692,7 +5692,7 @@ fn is_loopback_test_rewrite_base(base: &str) -> bool {
     // so `::1` parses as `IpAddr::V6` — without this, valid IPv6
     // loopback rewrite targets (`http://[::1]:8443`) silently fall
     // through and are rejected. Mirror in
-    // `tools::wasm::wrapper::is_loopback_test_rewrite_base`.
+    // `wasm_runtime::wrapper::is_loopback_test_rewrite_base`.
     let host = host
         .strip_prefix('[')
         .and_then(|v| v.strip_suffix(']'))
@@ -6020,7 +6020,7 @@ mod tests {
     use crate::pairing::PairingStore;
     use crate::secrets::{CreateSecretParams, InMemorySecretsStore, SecretsCrypto, SecretsStore};
     use crate::testing::credentials::{TEST_CRYPTO_KEY, TEST_TELEGRAM_BOT_TOKEN};
-    use crate::tools::wasm::{
+    use crate::wasm_runtime::{
         Capabilities as ToolCapabilities, EndpointPattern, HttpCapability, LogLevel, ResourceLimits,
     };
 
@@ -7341,7 +7341,7 @@ mod tests {
 
     #[test]
     fn test_inject_workspace_reader_preserves_allowed_prefixes() {
-        let tool_capabilities = crate::tools::wasm::Capabilities::default()
+        let tool_capabilities = crate::wasm_runtime::Capabilities::default()
             .with_workspace_read(vec!["state/".to_string(), "context/".to_string()]);
         let capabilities =
             ChannelCapabilities::for_channel("test").with_tool_capabilities(tool_capabilities);
@@ -7434,7 +7434,7 @@ mod tests {
     #[test]
     fn test_on_respond_workspace_write_commit_survives_later_callback() {
         use crate::channels::wasm::host::{ChannelHostState, ChannelWorkspaceStore};
-        use crate::tools::wasm::{WorkspaceCapability, WorkspaceReader};
+        use crate::wasm_runtime::{WorkspaceCapability, WorkspaceReader};
 
         let workspace_store = ChannelWorkspaceStore::new();
         let mut respond_state =
@@ -7520,7 +7520,7 @@ mod tests {
         restored.load_durable_workspace_snapshot().await;
 
         assert_eq!(
-            crate::tools::wasm::WorkspaceReader::read(
+            crate::wasm_runtime::WorkspaceReader::read(
                 &*restored.workspace_store,
                 "channels/slack/state/active_threads",
             ),
@@ -8187,7 +8187,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_websocket_poll_restores_processing_queue_when_on_poll_fails() {
-        use crate::tools::wasm::WorkspaceReader;
+        use crate::wasm_runtime::WorkspaceReader;
 
         let channel = create_wecom_component_test_channel().await;
         let frame = serde_json::json!({

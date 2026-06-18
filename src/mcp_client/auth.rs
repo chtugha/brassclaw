@@ -18,7 +18,7 @@ use url::Url;
 use crate::auth::oauth::{self, OAUTH_CALLBACK_PORT};
 use crate::auth::resolve_access_token_string_with_refresh;
 use crate::secrets::{CreateSecretParams, SecretsStore};
-use crate::tools::mcp::config::McpServerConfig;
+use crate::mcp_client::config::McpServerConfig;
 
 /// Shared HTTP client for all OAuth/discovery requests.
 ///
@@ -373,7 +373,7 @@ async fn validate_url_safe(url: &str) -> Result<(), AuthError> {
         )));
     }
     if scheme == "http" {
-        if !crate::tools::mcp::config::is_localhost_url(url) {
+        if !crate::mcp_client::config::is_localhost_url(url) {
             let host = parsed.host_str().unwrap_or("");
             return Err(AuthError::DiscoveryFailed(format!(
                 "HTTP is only allowed for localhost; use HTTPS for '{}'",
@@ -2289,7 +2289,7 @@ mod tests {
             return;
         };
         let server = McpServerConfig::new("notion", "https://mcp.notion.com/mcp").with_oauth(
-            crate::tools::mcp::config::OAuthConfig::new("configured-client")
+            crate::mcp_client::config::OAuthConfig::new("configured-client")
                 .with_endpoints("http://127.0.0.1/authorize", format!("{base_url}/token")),
         );
 
@@ -2356,7 +2356,7 @@ mod tests {
         let secrets = test_secrets_store();
         let user_id = "test-user";
         let server = McpServerConfig::new("notion", "https://mcp.notion.com/mcp").with_oauth(
-            crate::tools::mcp::config::OAuthConfig::new("configured-client")
+            crate::mcp_client::config::OAuthConfig::new("configured-client")
                 .with_endpoints("http://127.0.0.1/authorize", expected_token_url.clone()),
         );
 
@@ -2411,7 +2411,7 @@ mod tests {
             return;
         };
         let server = McpServerConfig::new("notion", "https://mcp.notion.com/mcp").with_oauth(
-            crate::tools::mcp::config::OAuthConfig::new("configured-client")
+            crate::mcp_client::config::OAuthConfig::new("configured-client")
                 .with_endpoints("http://127.0.0.1/authorize", format!("{base_url}/token")),
         );
 

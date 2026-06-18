@@ -44,13 +44,13 @@ use crate::hooks::HookRegistry;
 use crate::pairing::PairingStore;
 use crate::secrets::{CreateSecretParams, SecretsStore};
 use crate::tools::ToolRegistry;
-use crate::tools::mcp::auth::{
+use crate::mcp_client::auth::{
     authorize_mcp_server, canonical_resource_uri, discover_full_oauth_metadata,
     find_available_port, is_authenticated, register_client,
 };
-use crate::tools::mcp::config::{McpServerConfig, NEARAI_MCP_SERVER_NAME};
-use crate::tools::mcp::session::McpSessionManager;
-use crate::tools::wasm::{WasmToolLoader, WasmToolRuntime, discover_tools};
+use crate::mcp_client::config::{McpServerConfig, NEARAI_MCP_SERVER_NAME};
+use crate::mcp_client::session::McpSessionManager;
+use crate::wasm_runtime::{WasmToolLoader, WasmToolRuntime, discover_tools};
 
 /// Pending OAuth authorization state.
 struct PendingAuth {
@@ -529,13 +529,13 @@ pub struct ExtensionManager {
 
     // MCP infrastructure
     mcp_session_manager: Arc<McpSessionManager>,
-    mcp_process_manager: Arc<crate::tools::mcp::process::McpProcessManager>,
+    mcp_process_manager: Arc<crate::mcp_client::process::McpProcessManager>,
     /// Active MCP clients keyed by `(user, server)`. Shared as `Arc` with
     /// every registered `McpToolWrapper` so tool dispatch can resolve the
     /// caller's per-user client at execute time instead of embedding a
     /// specific client in the globally-registered wrapper (which would
     /// let the second activating user's credentials shadow the first).
-    mcp_clients: Arc<crate::tools::mcp::McpClientStore>,
+    mcp_clients: Arc<crate::mcp_client::McpClientStore>,
     /// Per-server async mutex that serialises `activate_mcp` and the
     /// `McpServer` arm of `remove` on the same server name. Without this,
     /// user B's `remove` (which unregisters the server's global tool
@@ -583,8 +583,7 @@ pub struct ExtensionManager {
     installed_relay_extensions: RwLock<HashSet<String>>,
     /// Last activation error for each WASM channel (ephemeral, cleared on success).
     activation_errors: RwLock<HashMap<String, String>>,
-    /// SSE broadcast manager (set post-construction via `set_sse_sender()`).
-    sse_manager: RwLock<Option<Arc<crate::channels::web::sse::SseManager>>>,
+    event_publisher: RwLock<Option<brassclaw_common::DynEventPublisher>>,
     /// Shared registry of pending OAuth flows for gateway-routed callbacks.
     ///
     /// Keyed by CSRF `state` parameter. Populated in `start_wasm_oauth()`
@@ -808,7 +807,7 @@ impl ExtensionManager {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         mcp_session_manager: Arc<McpSessionManager>,
-        mcp_process_manager: Arc<crate::tools::mcp::process::McpProcessManager>,
+        mcp_process_manager: Arc<crate::mcp_client::process::McpProcessManager>,
         secrets: Arc<dyn SecretsStore + Send + Sync>,
         tool_registry: Arc<ToolRegistry>,
         hooks: Option<Arc<HookRegistry>>,
@@ -830,7 +829,7 @@ impl ExtensionManager {
             discovery: OnlineDiscovery::new(),
             mcp_session_manager,
             mcp_process_manager,
-            mcp_clients: Arc::new(crate::tools::mcp::McpClientStore::new()),
+            mcp_clients: Arc::new(crate::mcp_client::McpClientStore::new()),
             mcp_lifecycle_locks: RwLock::new(HashMap::new()),
             wasm_tool_runtime,
             wasm_tools_dir,
@@ -850,7 +849,7 @@ impl ExtensionManager {
             active_channel_names: RwLock::new(HashSet::new()),
             installed_relay_extensions: RwLock::new(HashSet::new()),
             activation_errors: RwLock::new(HashMap::new()),
-            sse_manager: RwLock::new(None),
+            event_publisher: RwLock::new(None),
             pending_oauth_flows: crate::auth::oauth::new_pending_oauth_registry(),
             oauth_proxy_auth_token: crate::auth::oauth::oauth_proxy_auth_token(),
             relay_config: crate::config::RelayConfig::from_env(),
@@ -1477,7 +1476,7 @@ impl ExtensionManager {
     /// the global `ToolRegistry` hold an `Arc<McpClientStore>` and resolve
     /// the caller's client at dispatch time via
     /// `store.get(ctx.user_id, server_name)`.
-    pub(crate) fn mcp_client_store(&self) -> Arc<crate::tools::mcp::McpClientStore> {
+    pub(crate) fn mcp_client_store(&self) -> Arc<crate::mcp_client::McpClientStore> {
         Arc::clone(&self.mcp_clients)
     }
 
@@ -1508,7 +1507,7 @@ impl ExtensionManager {
         &self,
         name: String,
         user_id: &str,
-        client: Arc<crate::tools::mcp::McpClient>,
+        client: Arc<crate::mcp_client::McpClient>,
     ) -> Vec<String> {
         if name.is_empty() {
             tracing::warn!("inject_mcp_client called with empty name; ignoring");
@@ -1540,7 +1539,7 @@ impl ExtensionManager {
         // cache, so fetching the list here doesn't cost a second round
         // trip.
         let surface_signature = match client.list_tools().await {
-            Ok(tools) => crate::tools::mcp::surface_signature(&tools),
+            Ok(tools) => crate::mcp_client::surface_signature(&tools),
             Err(e) => {
                 tracing::warn!(
                     error = %e,
@@ -1675,9 +1674,8 @@ impl ExtensionManager {
         }
     }
 
-    /// Set the SSE broadcast sender for pushing extension status events to the web UI.
-    pub async fn set_sse_sender(&self, sse: Arc<crate::channels::web::sse::SseManager>) {
-        *self.sse_manager.write().await = Some(sse);
+    pub async fn set_event_publisher(&self, ep: brassclaw_common::DynEventPublisher) {
+        *self.event_publisher.write().await = Some(ep);
     }
 
     /// Returns the pending OAuth flow registry for sharing with the web gateway.
@@ -1688,8 +1686,8 @@ impl ExtensionManager {
         &self.pending_oauth_flows
     }
 
-    pub async fn sse_sender(&self) -> Option<Arc<crate::channels::web::sse::SseManager>> {
-        self.sse_manager.read().await.clone()
+    pub async fn event_publisher(&self) -> Option<brassclaw_common::DynEventPublisher> {
+        self.event_publisher.read().await.clone()
     }
 
     pub fn database(&self) -> Option<&Arc<dyn crate::db::Database>> {
@@ -1876,8 +1874,8 @@ impl ExtensionManager {
 
     /// Broadcast an extension status change to the web UI via SSE.
     async fn broadcast_extension_status(&self, name: &str, status: &str, message: Option<&str>) {
-        if let Some(ref sse) = *self.sse_manager.read().await {
-            sse.broadcast(brassclaw_common::AppEvent::ExtensionStatus {
+        if let Some(ref ep) = *self.event_publisher.read().await {
+            ep.broadcast(brassclaw_common::AppEvent::ExtensionStatus {
                 extension_name: brassclaw_common::ExtensionName::from_trusted(name.to_string()),
                 status: status.to_string(),
                 message: message.map(|m| m.to_string()),
@@ -2384,7 +2382,7 @@ impl ExtensionManager {
                         // so hyphenated server names match underscore-only
                         // registry keys.
                         let tools = if active {
-                            let prefix = crate::tools::mcp::mcp_tool_id(&server.name, "");
+                            let prefix = crate::mcp_client::mcp_tool_id(&server.name, "");
                             self.tool_registry
                                 .list()
                                 .await
@@ -2446,7 +2444,7 @@ impl ExtensionManager {
                                 .await
                                 .ok()
                                 .and_then(|bytes| {
-                                    crate::tools::wasm::CapabilitiesFile::from_bytes(&bytes).ok()
+                                    crate::wasm_runtime::CapabilitiesFile::from_bytes(&bytes).ok()
                                 })
                                 .and_then(|cap| cap.version)
                         } else {
@@ -2668,7 +2666,7 @@ impl ExtensionManager {
                 if removed_last_active_client {
                     // Unregister tools with this server's normalized prefix only
                     // when no other user still has the same server active.
-                    let prefix = crate::tools::mcp::mcp_tool_id(&name, "");
+                    let prefix = crate::mcp_client::mcp_tool_id(&name, "");
                     tool_names = self
                         .tool_registry
                         .list()
@@ -2964,10 +2962,10 @@ impl ExtensionManager {
     /// Upgrade a single WASM extension if its WIT version is outdated.
     async fn upgrade_one(&self, name: &str, kind: ExtensionKind, user_id: &str) -> UpgradeOutcome {
         let (cap_dir, host_wit) = match kind {
-            ExtensionKind::WasmTool => (&self.wasm_tools_dir, crate::tools::wasm::WIT_TOOL_VERSION),
+            ExtensionKind::WasmTool => (&self.wasm_tools_dir, crate::wasm_runtime::WIT_TOOL_VERSION),
             ExtensionKind::WasmChannel => (
                 &self.wasm_channels_dir,
-                crate::tools::wasm::WIT_CHANNEL_VERSION,
+                crate::wasm_runtime::WIT_CHANNEL_VERSION,
             ),
             ExtensionKind::McpServer | ExtensionKind::ChannelRelay | ExtensionKind::AcpAgent => {
                 return UpgradeOutcome {
@@ -2989,7 +2987,7 @@ impl ExtensionManager {
                 Ok(bytes) => {
                     let wit: Option<String> = match kind {
                         ExtensionKind::WasmTool => {
-                            crate::tools::wasm::CapabilitiesFile::from_bytes(&bytes)
+                            crate::wasm_runtime::CapabilitiesFile::from_bytes(&bytes)
                                 .ok()
                                 .and_then(|c| c.wit_version)
                         }
@@ -3012,7 +3010,7 @@ impl ExtensionManager {
 
         // Check if upgrade is needed
         let needs_upgrade =
-            crate::tools::wasm::check_wit_version_compat(name, declared_wit.as_deref(), host_wit)
+            crate::wasm_runtime::check_wit_version_compat(name, declared_wit.as_deref(), host_wit)
                 .is_err();
 
         if !needs_upgrade {
@@ -3117,7 +3115,7 @@ impl ExtensionManager {
 
                 if cap_path.exists()
                     && let Ok(bytes) = tokio::fs::read(&cap_path).await
-                    && let Ok(cap) = crate::tools::wasm::CapabilitiesFile::from_bytes(&bytes)
+                    && let Ok(cap) = crate::wasm_runtime::CapabilitiesFile::from_bytes(&bytes)
                 {
                     info["version"] =
                         serde_json::json!(cap.version.unwrap_or_else(|| "unknown".into()));
@@ -3125,7 +3123,7 @@ impl ExtensionManager {
                         serde_json::json!(cap.wit_version.unwrap_or_else(|| "unknown".into()));
                 }
 
-                info["host_wit_version"] = serde_json::json!(crate::tools::wasm::WIT_TOOL_VERSION);
+                info["host_wit_version"] = serde_json::json!(crate::wasm_runtime::WIT_TOOL_VERSION);
 
                 Ok(info)
             }
@@ -3154,7 +3152,7 @@ impl ExtensionManager {
                 }
 
                 info["host_wit_version"] =
-                    serde_json::json!(crate::tools::wasm::WIT_CHANNEL_VERSION);
+                    serde_json::json!(crate::wasm_runtime::WIT_CHANNEL_VERSION);
 
                 Ok(info)
             }
@@ -3189,12 +3187,12 @@ impl ExtensionManager {
     async fn load_mcp_servers(
         &self,
         user_id: &str,
-    ) -> Result<crate::tools::mcp::config::McpServersFile, crate::tools::mcp::config::ConfigError>
+    ) -> Result<crate::mcp_client::config::McpServersFile, crate::mcp_client::config::ConfigError>
     {
         if let Some(ref store) = self.store {
-            crate::tools::mcp::config::load_mcp_servers_from_db(store.as_ref(), user_id).await
+            crate::mcp_client::config::load_mcp_servers_from_db(store.as_ref(), user_id).await
         } else {
-            crate::tools::mcp::config::load_mcp_servers().await
+            crate::mcp_client::config::load_mcp_servers().await
         }
     }
 
@@ -3209,7 +3207,7 @@ impl ExtensionManager {
         &self,
         name: &str,
         user_id: &str,
-    ) -> Result<McpServerConfig, crate::tools::mcp::config::ConfigError> {
+    ) -> Result<McpServerConfig, crate::mcp_client::config::ConfigError> {
         let servers = self.load_mcp_servers(user_id).await?;
         if let Some(config) = servers.get(name) {
             return Ok(config.clone());
@@ -3228,7 +3226,7 @@ impl ExtensionManager {
         {
             return Ok(config.clone());
         }
-        Err(crate::tools::mcp::config::ConfigError::ServerNotFound {
+        Err(crate::mcp_client::config::ConfigError::ServerNotFound {
             name: name.to_string(),
         })
     }
@@ -3237,7 +3235,7 @@ impl ExtensionManager {
         &self,
         config: McpServerConfig,
         user_id: &str,
-    ) -> Result<(), crate::tools::mcp::config::ConfigError> {
+    ) -> Result<(), crate::mcp_client::config::ConfigError> {
         config.validate()?;
         if let Some(oauth) = config.oauth.as_ref()
             && let (Some(authorization_url), Some(token_url)) =
@@ -3266,9 +3264,9 @@ impl ExtensionManager {
             .await;
         }
         let result = if let Some(ref store) = self.store {
-            crate::tools::mcp::config::add_mcp_server_db(store.as_ref(), user_id, config).await
+            crate::mcp_client::config::add_mcp_server_db(store.as_ref(), user_id, config).await
         } else {
-            crate::tools::mcp::config::add_mcp_server(config).await
+            crate::mcp_client::config::add_mcp_server(config).await
         };
         if result.is_ok() {
             // A newly configured MCP server may have a matching registry
@@ -3285,7 +3283,7 @@ impl ExtensionManager {
         &self,
         config: McpServerConfig,
         user_id: &str,
-    ) -> Result<(), crate::tools::mcp::config::ConfigError> {
+    ) -> Result<(), crate::mcp_client::config::ConfigError> {
         config.validate()?;
         if let Some(oauth) = config.oauth.as_ref()
             && let (Some(authorization_url), Some(token_url)) =
@@ -3316,10 +3314,10 @@ impl ExtensionManager {
         let mut servers = self.load_mcp_servers(user_id).await?;
         servers.upsert(config);
         let result = if let Some(ref store) = self.store {
-            crate::tools::mcp::config::save_mcp_servers_to_db(store.as_ref(), user_id, &servers)
+            crate::mcp_client::config::save_mcp_servers_to_db(store.as_ref(), user_id, &servers)
                 .await
         } else {
-            crate::tools::mcp::config::save_mcp_servers(&servers).await
+            crate::mcp_client::config::save_mcp_servers(&servers).await
         };
         if result.is_ok() {
             self.invalidate_latent_wasm_provider_actions_cache().await;
@@ -3332,11 +3330,11 @@ impl ExtensionManager {
         &self,
         name: &str,
         user_id: &str,
-    ) -> Result<(), crate::tools::mcp::config::ConfigError> {
+    ) -> Result<(), crate::mcp_client::config::ConfigError> {
         let result = if let Some(ref store) = self.store {
-            crate::tools::mcp::config::remove_mcp_server_db(store.as_ref(), user_id, name).await
+            crate::mcp_client::config::remove_mcp_server_db(store.as_ref(), user_id, name).await
         } else {
-            crate::tools::mcp::config::remove_mcp_server(name).await
+            crate::mcp_client::config::remove_mcp_server(name).await
         };
         if result.is_ok() {
             // Removing a server flips it back to the latent/uninstalled
@@ -3532,7 +3530,7 @@ impl ExtensionManager {
             ));
         }
 
-        let config = match crate::tools::mcp::config::nearai_mcp_server_from_env() {
+        let config = match crate::mcp_client::config::nearai_mcp_server_from_env() {
             Ok(Some(config)) => config,
             Ok(None) => {
                 return Err(ExtensionError::InstallFailed(
@@ -3540,7 +3538,7 @@ impl ExtensionManager {
                         .to_string(),
                 ));
             }
-            Err(crate::tools::mcp::config::ConfigError::InvalidConfig { .. }) => {
+            Err(crate::mcp_client::config::ConfigError::InvalidConfig { .. }) => {
                 return Err(ExtensionError::InstallFailed(
                     "NEAR AI MCP environment is set, but the derived MCP server configuration is invalid."
                         .to_string(),
@@ -4184,7 +4182,7 @@ impl ExtensionManager {
                 tracing::info!("MCP server '{}' authenticated via OAuth", name);
                 Ok(AuthResult::authenticated(name, ExtensionKind::McpServer))
             }
-            Err(crate::tools::mcp::auth::AuthError::NotSupported) => {
+            Err(crate::mcp_client::auth::AuthError::NotSupported) => {
                 // Server doesn't support OAuth, try building a URL
                 match self.auth_mcp_build_url(name, &server, user_id).await {
                     Ok(result) => Ok(result),
@@ -4263,7 +4261,7 @@ impl ExtensionManager {
                 discover_full_oauth_metadata(&server.url)
                     .await
                     .map_err(|e| match e {
-                        crate::tools::mcp::auth::AuthError::NotSupported => {
+                        crate::mcp_client::auth::AuthError::NotSupported => {
                             ExtensionError::AuthNotSupported(e.to_string())
                         }
                         _ => ExtensionError::AuthFailed(e.to_string()),
@@ -4380,7 +4378,7 @@ impl ExtensionManager {
             extra_params,
             user_id: user_id.to_string(),
             secrets: Arc::clone(&self.secrets),
-            sse_manager: self.sse_manager.read().await.clone(),
+            event_publisher: self.event_publisher.read().await.clone(),
             gateway_token: self.oauth_proxy_auth_token.clone(),
             token_exchange_extra_params: {
                 let mut token_exchange_extra_params = HashMap::new();
@@ -4652,7 +4650,7 @@ impl ExtensionManager {
     fn wasm_auth_descriptor(
         name: &str,
         kind: AuthDescriptorKind,
-        auth: &crate::tools::wasm::AuthCapabilitySchema,
+        auth: &crate::wasm_runtime::AuthCapabilitySchema,
     ) -> AuthDescriptor {
         AuthDescriptor {
             kind,
@@ -4711,7 +4709,7 @@ impl ExtensionManager {
         // indefinitely on a hostile or slow server URL.
         let supports = match discover_full_oauth_metadata(&server.url).await {
             Ok(_) => true,
-            Err(crate::tools::mcp::auth::AuthError::NotSupported) => false,
+            Err(crate::mcp_client::auth::AuthError::NotSupported) => false,
             Err(error) => {
                 tracing::debug!(
                     server = %server.name,
@@ -4776,7 +4774,7 @@ impl ExtensionManager {
             builtin.as_ref(),
             oauth::exchange_proxy_url().is_some(),
         );
-        let sse_manager = self.sse_manager.read().await.clone();
+        let event_publisher = self.event_publisher.read().await.clone();
         let kind = self
             .determine_installed_kind(extension_name, user_id)
             .await
@@ -4795,7 +4793,7 @@ impl ExtensionManager {
             secret_name: secret_name.to_string(),
             provider: descriptor.provider.clone(),
             validation_endpoint: oauth.validation_url.map(|url| {
-                crate::tools::wasm::ValidationEndpointSchema {
+                crate::wasm_runtime::ValidationEndpointSchema {
                     url,
                     method: "GET".to_string(),
                     success_status: 200,
@@ -4807,7 +4805,7 @@ impl ExtensionManager {
             extra_params: oauth.extra_params,
             user_id: user_id.to_string(),
             secrets: Arc::clone(&self.secrets),
-            sse_manager,
+            event_publisher,
             gateway_token: self.oauth_proxy_auth_token.clone(),
             token_exchange_extra_params: std::collections::HashMap::new(),
             client_id_secret_name: None,
@@ -4857,11 +4855,11 @@ impl ExtensionManager {
     async fn load_tool_capabilities(
         &self,
         name: &str,
-    ) -> Option<crate::tools::wasm::CapabilitiesFile> {
+    ) -> Option<crate::wasm_runtime::CapabilitiesFile> {
         let cap_path =
             Self::existing_extension_file_path(&self.wasm_tools_dir, name, ".capabilities.json");
         let cap_bytes = tokio::fs::read(&cap_path).await.ok()?;
-        crate::tools::wasm::CapabilitiesFile::from_bytes(&cap_bytes).ok()
+        crate::wasm_runtime::CapabilitiesFile::from_bytes(&cap_bytes).ok()
     }
 
     async fn load_channel_capabilities(
@@ -5035,7 +5033,7 @@ impl ExtensionManager {
         Ok(referenced_secret_names)
     }
 
-    fn tool_secret_names(cap: &crate::tools::wasm::CapabilitiesFile) -> HashSet<String> {
+    fn tool_secret_names(cap: &crate::wasm_runtime::CapabilitiesFile) -> HashSet<String> {
         let mut names = HashSet::new();
 
         if let Some(auth) = &cap.auth {
@@ -5226,8 +5224,8 @@ impl ExtensionManager {
     async fn needs_setup_credentials(
         &self,
         name: &str,
-        auth: &crate::tools::wasm::AuthCapabilitySchema,
-        oauth: &crate::tools::wasm::OAuthConfigSchema,
+        auth: &crate::wasm_runtime::AuthCapabilitySchema,
+        oauth: &crate::wasm_runtime::OAuthConfigSchema,
         user_id: &str,
     ) -> bool {
         let builtin = crate::auth::oauth::builtin_credentials(&auth.secret_name);
@@ -5310,8 +5308,8 @@ impl ExtensionManager {
     async fn start_wasm_oauth(
         &self,
         name: &str,
-        auth: &crate::tools::wasm::AuthCapabilitySchema,
-        oauth: &crate::tools::wasm::OAuthConfigSchema,
+        auth: &crate::wasm_runtime::AuthCapabilitySchema,
+        oauth: &crate::wasm_runtime::OAuthConfigSchema,
         user_id: &str,
     ) -> Result<AuthResult, String> {
         use crate::auth::oauth;
@@ -5412,7 +5410,7 @@ impl ExtensionManager {
             extra_params: oauth.extra_params.clone(),
             user_id: user_id.to_string(),
             secrets: Arc::clone(&self.secrets),
-            sse_manager: self.sse_manager.read().await.clone(),
+            event_publisher: self.event_publisher.read().await.clone(),
             gateway_token: self.oauth_proxy_auth_token.clone(),
             token_exchange_extra_params: std::collections::HashMap::new(),
             client_id_secret_name: None,
@@ -5451,7 +5449,7 @@ impl ExtensionManager {
             let user_id_for_pending = launch.flow.user_id.clone();
             let user_id = launch.flow.user_id.clone();
             let secrets = Arc::clone(&launch.flow.secrets);
-            let sse_manager = self.sse_manager.read().await.clone();
+            let event_publisher = self.event_publisher.read().await.clone();
             let ext_name = name.to_string();
             let client_secret = client_secret.clone();
             let redirect_uri = launch.flow.redirect_uri.clone();
@@ -5543,7 +5541,7 @@ impl ExtensionManager {
                     }
                 }
 
-                if let Some(ref sse) = sse_manager {
+                if let Some(ref sse) = event_publisher {
                     // Scope to the OAuth flow owner — a global broadcast
                     // would surface this onboarding state to every
                     // connected tenant tab.
@@ -5606,7 +5604,7 @@ impl ExtensionManager {
     /// that the user doesn't need to fill (e.g., Google tools with builtin credentials).
     fn is_auto_resolved_oauth_field(
         secret_name: &str,
-        cap_file: &crate::tools::wasm::CapabilitiesFile,
+        cap_file: &crate::wasm_runtime::CapabilitiesFile,
     ) -> bool {
         let lower = secret_name.to_lowercase();
         let is_client_id = lower.ends_with("client_id") || lower == "client_id";
@@ -5655,7 +5653,7 @@ impl ExtensionManager {
         match kind {
             ExtensionKind::McpServer => {
                 let server = self.get_mcp_server(name, user_id).await.ok()?;
-                if crate::tools::mcp::auth::is_authenticated(&server, &self.secrets, user_id).await
+                if crate::mcp_client::auth::is_authenticated(&server, &self.secrets, user_id).await
                 {
                     None
                 } else {
@@ -5939,7 +5937,7 @@ impl ExtensionManager {
             // underscore-only keys in the registry. `mcp_tool_id(name, "")`
             // produces `normalized_server_` which is exactly the prefix
             // every tool registered by this server starts with.
-            let prefix = crate::tools::mcp::mcp_tool_id(name, "");
+            let prefix = crate::mcp_client::mcp_tool_id(name, "");
             let tools: Vec<String> = self
                 .tool_registry
                 .list()
@@ -5961,7 +5959,7 @@ impl ExtensionManager {
             .await
             .map_err(|e| ExtensionError::NotInstalled(e.to_string()))?;
 
-        let client = crate::tools::mcp::create_client_from_config(
+        let client = crate::mcp_client::create_client_from_config(
             server.clone(),
             &self.mcp_session_manager,
             &self.mcp_process_manager,
@@ -5978,7 +5976,7 @@ impl ExtensionManager {
         // is badly formatted" instead of 401 when auth is missing or invalid.
         let mcp_tools = client.list_tools().await.map_err(|e| {
             let msg = e.to_string();
-            if crate::tools::mcp::is_auth_error_message(&msg) {
+            if crate::mcp_client::is_auth_error_message(&msg) {
                 if server.has_custom_auth_header() {
                     ExtensionError::ActivationFailed(format!(
                         "MCP server '{}' rejected its configured Authorization header. Update the configured credential and try again.",
@@ -6011,7 +6009,7 @@ impl ExtensionManager {
         // affected user seeing tool names and schemas from a backend
         // that cannot be activated while the other user owns the
         // shared server name.
-        let surface_signature = crate::tools::mcp::surface_signature(&mcp_tools);
+        let surface_signature = crate::mcp_client::surface_signature(&mcp_tools);
         if let Some(other_user) = self
             .mcp_clients
             .check_surface_conflict(user_id, name, &surface_signature)
@@ -6116,7 +6114,7 @@ impl ExtensionManager {
             };
 
             LatentProviderAction {
-                action_name: crate::tools::mcp::mcp_tool_id(&server.name, &tool.name),
+                action_name: crate::mcp_client::mcp_tool_id(&server.name, &tool.name),
                 provider_extension: server.name.clone(),
                 description: format!(
                     "{} The runtime will connect/authenticate this provider automatically before use.",
@@ -7343,7 +7341,7 @@ impl ExtensionManager {
     async fn is_tool_setup_field_provided(
         &self,
         name: &str,
-        field: &crate::tools::wasm::ToolFieldSetupSchema,
+        field: &crate::wasm_runtime::ToolFieldSetupSchema,
         saved_fields: &HashMap<String, String>,
     ) -> bool {
         let user_id = self.user_id.clone();
@@ -7358,7 +7356,7 @@ impl ExtensionManager {
         &self,
         name: &str,
         user_id: &str,
-        field: &crate::tools::wasm::ToolFieldSetupSchema,
+        field: &crate::wasm_runtime::ToolFieldSetupSchema,
         saved_fields: &HashMap<String, String>,
     ) -> bool {
         if saved_fields
@@ -7556,7 +7554,7 @@ impl ExtensionManager {
                         ),
                         optional: true,
                         provided: current_url.is_some(),
-                        input_type: crate::tools::wasm::ToolSetupFieldInputType::Text,
+                        input_type: crate::wasm_runtime::ToolSetupFieldInputType::Text,
                     }],
                     interactive_login: None,
                 })
@@ -7813,7 +7811,7 @@ impl ExtensionManager {
         let mut channel_validation_endpoint: Option<String> = None;
         let (allowed_secrets, setup_fields): (
             std::collections::HashSet<String>,
-            Vec<crate::tools::wasm::ToolFieldSetupSchema>,
+            Vec<crate::wasm_runtime::ToolFieldSetupSchema>,
         ) = match kind {
             ExtensionKind::WasmChannel => {
                 // Use the alias-aware helper so a channel installed
@@ -7862,12 +7860,12 @@ impl ExtensionManager {
                 (names, Vec::new())
             }
             ExtensionKind::ChannelRelay => {
-                let relay_fields = vec![crate::tools::wasm::ToolFieldSetupSchema {
+                let relay_fields = vec![crate::wasm_runtime::ToolFieldSetupSchema {
                     name: "relay_url".to_string(),
                     prompt: "Channel-relay service URL override".to_string(),
                     optional: true,
                     setting_path: Some(format!("extensions.{name}.relay_url")),
-                    input_type: crate::tools::wasm::ToolSetupFieldInputType::Text,
+                    input_type: crate::wasm_runtime::ToolSetupFieldInputType::Text,
                 }];
                 (std::collections::HashSet::new(), relay_fields)
             }
@@ -7882,7 +7880,7 @@ impl ExtensionManager {
             setup_fields.iter().map(|f| f.name.clone()).collect();
         let setup_field_defs: std::collections::HashMap<
             String,
-            crate::tools::wasm::ToolFieldSetupSchema,
+            crate::wasm_runtime::ToolFieldSetupSchema,
         > = setup_fields
             .into_iter()
             .map(|f| (f.name.clone(), f))
@@ -7967,11 +7965,11 @@ impl ExtensionManager {
                     crate::tools::builtin::skill_tools::validate_fetch_url(&validation_url)
                         .map_err(|e| ExtensionError::Other(format!("SSRF blocked: {}", e)))?;
                 let validation_target =
-                    crate::tools::wasm::validate_and_resolve_http_target(&validation_url)
+                    crate::wasm_runtime::validate_and_resolve_http_target(&validation_url)
                         .await
                         .map_err(|e| ExtensionError::Other(format!("SSRF blocked: {}", e)))?;
                 let mut response =
-                    crate::tools::wasm::ssrf_safe_client_builder_for_target(&validation_target)
+                    crate::wasm_runtime::ssrf_safe_client_builder_for_target(&validation_target)
                         .timeout(std::time::Duration::from_secs(10))
                         .build()
                         .map_err(|e| ExtensionError::Other(e.to_string()))?
@@ -8314,7 +8312,7 @@ impl ExtensionManager {
                     && !self.has_wasm_channel_owner_binding(&name).await
                     && !self.has_wasm_channel_pairing(&name).await;
 
-                if needs_pairing && let Some(ref sse) = *self.sse_manager.read().await {
+                if needs_pairing && let Some(ref sse) = *self.event_publisher.read().await {
                     let onboarding = crate::channels::web::features::extensions::derive_onboarding(
                         &name,
                         Some(crate::channels::web::types::ExtensionActivationStatus::Pairing),
@@ -8355,7 +8353,7 @@ impl ExtensionManager {
                     pairing_required: needs_pairing,
                     auth_url: None,
                     onboarding_state: if needs_pairing {
-                        Some(crate::channels::web::types::ChannelOnboardingState::PairingRequired)
+                        Some(brassclaw_common::ChannelOnboardingState::PairingRequired)
                     } else {
                         None
                     },
@@ -8773,8 +8771,8 @@ mod tests {
     use crate::pairing::PairingStore;
     use crate::secrets::CreateSecretParams;
     use crate::tools::ToolError;
-    use crate::tools::mcp::config::NEARAI_MCP_SERVER_NAME;
-    use crate::tools::mcp::{McpClient, McpRequest, McpResponse, McpServerConfig, McpTransport};
+    use crate::mcp_client::config::NEARAI_MCP_SERVER_NAME;
+    use crate::mcp_client::{McpClient, McpRequest, McpResponse, McpServerConfig, McpTransport};
     use async_trait::async_trait;
 
     fn require(condition: bool, message: impl Into<String>) -> Result<(), String> {
@@ -9006,7 +9004,7 @@ mod tests {
 
     /// Build a minimal ExtensionManager suitable for unit tests.
     fn make_test_manager_with_dirs(
-        wasm_runtime: Option<Arc<crate::tools::wasm::WasmToolRuntime>>,
+        wasm_runtime: Option<Arc<crate::wasm_runtime::WasmToolRuntime>>,
         tools_dir: std::path::PathBuf,
         channels_dir: std::path::PathBuf,
         store: Option<Arc<dyn crate::db::Database>>,
@@ -9024,15 +9022,15 @@ mod tests {
     /// `latent_provider_actions` registry-discovery paths or
     /// `ensure_extension_ready` auto-install paths.
     fn make_test_manager_with_catalog(
-        wasm_runtime: Option<Arc<crate::tools::wasm::WasmToolRuntime>>,
+        wasm_runtime: Option<Arc<crate::wasm_runtime::WasmToolRuntime>>,
         tools_dir: std::path::PathBuf,
         channels_dir: std::path::PathBuf,
         store: Option<Arc<dyn crate::db::Database>>,
         catalog_entries: Vec<RegistryEntry>,
     ) -> crate::extensions::manager::ExtensionManager {
         use crate::secrets::{InMemorySecretsStore, SecretsCrypto};
-        use crate::tools::mcp::process::McpProcessManager;
-        use crate::tools::mcp::session::McpSessionManager;
+        use crate::mcp_client::process::McpProcessManager;
+        use crate::mcp_client::session::McpSessionManager;
 
         std::fs::create_dir_all(&tools_dir).ok();
         std::fs::create_dir_all(&channels_dir).ok();
@@ -9061,7 +9059,7 @@ mod tests {
     }
 
     fn make_test_manager(
-        wasm_runtime: Option<Arc<crate::tools::wasm::WasmToolRuntime>>,
+        wasm_runtime: Option<Arc<crate::wasm_runtime::WasmToolRuntime>>,
         tools_dir: std::path::PathBuf,
     ) -> crate::extensions::manager::ExtensionManager {
         make_test_manager_with_dirs(wasm_runtime, tools_dir.clone(), tools_dir, None)
@@ -9916,7 +9914,7 @@ mod tests {
 
         let mut server = McpServerConfig::new("notion", "https://mcp.notion.com/mcp");
         server.description = Some("Notion MCP".to_string());
-        server.cached_tools = vec![crate::tools::mcp::McpTool {
+        server.cached_tools = vec![crate::mcp_client::McpTool {
             name: "search".to_string(),
             description: "Search Notion pages".to_string(),
             input_schema: serde_json::json!({
@@ -9965,13 +9963,13 @@ mod tests {
 
         let mut server = McpServerConfig::new("my-mcp-server", "https://example.com/mcp");
         server.cached_tools = vec![
-            crate::tools::mcp::McpTool {
+            crate::mcp_client::McpTool {
                 name: "search-all".to_string(),
                 description: "Search everything".to_string(),
                 input_schema: serde_json::json!({"type": "object"}),
                 annotations: None,
             },
-            crate::tools::mcp::McpTool {
+            crate::mcp_client::McpTool {
                 name: "get_item".to_string(),
                 description: "Get an item".to_string(),
                 input_schema: serde_json::json!({"type": "object"}),
@@ -10086,7 +10084,7 @@ mod tests {
         );
 
         let mut server = McpServerConfig::new("notion", "https://mcp.notion.com/mcp");
-        server.cached_tools = vec![crate::tools::mcp::McpTool {
+        server.cached_tools = vec![crate::mcp_client::McpTool {
             name: "search".to_string(),
             description: "Search Notion pages".to_string(),
             input_schema: serde_json::json!({"type": "object"}),
@@ -10331,7 +10329,7 @@ mod tests {
             assert_eq!(result.name, NEARAI_MCP_SERVER_NAME);
 
             let servers =
-                crate::tools::mcp::config::load_mcp_servers_from_db(store.as_ref(), "test")
+                crate::mcp_client::config::load_mcp_servers_from_db(store.as_ref(), "test")
                     .await
                     .expect("load mcp servers");
             let server = servers
@@ -10418,11 +10416,11 @@ mod tests {
             dir.path().join("channels"),
             Some(Arc::clone(&store)),
         );
-        let field = crate::tools::wasm::ToolFieldSetupSchema {
+        let field = crate::wasm_runtime::ToolFieldSetupSchema {
             name: "provider".to_string(),
             prompt: "Provider".to_string(),
             optional: false,
-            input_type: crate::tools::wasm::ToolSetupFieldInputType::Text,
+            input_type: crate::wasm_runtime::ToolSetupFieldInputType::Text,
             setting_path: Some("nearai.session_token".to_string()),
         };
 
@@ -10659,8 +10657,8 @@ mod tests {
         // because no .wasm file exists on disk — but the error message should
         // be "not found", NOT "WASM runtime not available".
         let dir = tempfile::tempdir().expect("temp dir");
-        let config = crate::tools::wasm::WasmRuntimeConfig::for_testing();
-        let runtime = Arc::new(crate::tools::wasm::WasmToolRuntime::new(config).expect("runtime"));
+        let config = crate::wasm_runtime::WasmRuntimeConfig::for_testing();
+        let runtime = Arc::new(crate::wasm_runtime::WasmToolRuntime::new(config).expect("runtime"));
         let mgr = make_test_manager(Some(runtime), dir.path().to_path_buf());
 
         let err = mgr.activate("nonexistent", "test").await.unwrap_err();
@@ -10707,8 +10705,8 @@ mod tests {
         // Canonical file → no alias needed.
         std::fs::write(tools_dir.join("gmail.wasm"), b"not-a-real-wasm").expect("canonical file");
 
-        let config = crate::tools::wasm::WasmRuntimeConfig::for_testing();
-        let runtime = Arc::new(crate::tools::wasm::WasmToolRuntime::new(config).expect("runtime"));
+        let config = crate::wasm_runtime::WasmRuntimeConfig::for_testing();
+        let runtime = Arc::new(crate::wasm_runtime::WasmToolRuntime::new(config).expect("runtime"));
         let mgr = make_test_manager(Some(runtime), tools_dir);
 
         // Hyphen → canonical lookup. Must NOT return NotInstalled / not found.
@@ -10900,7 +10898,7 @@ mod tests {
         let caps = serde_json::json!({
             "type": "channel",
             "name": "test-channel",
-            "wit_version": crate::tools::wasm::WIT_CHANNEL_VERSION,
+            "wit_version": crate::wasm_runtime::WIT_CHANNEL_VERSION,
         });
         std::fs::write(&cap_path, serde_json::to_string(&caps).unwrap()).unwrap();
 
@@ -10951,8 +10949,8 @@ mod tests {
         use crate::secrets::{InMemorySecretsStore, SecretsCrypto};
         use crate::testing::credentials::TEST_CRYPTO_KEY;
         use crate::tools::ToolRegistry;
-        use crate::tools::mcp::process::McpProcessManager;
-        use crate::tools::mcp::session::McpSessionManager;
+        use crate::mcp_client::process::McpProcessManager;
+        use crate::mcp_client::session::McpSessionManager;
 
         std::fs::create_dir_all(&tools_dir).ok();
         std::fs::create_dir_all(&channels_dir).ok();
@@ -11210,8 +11208,8 @@ mod tests {
             use crate::secrets::{InMemorySecretsStore, SecretsCrypto};
             use crate::testing::credentials::TEST_CRYPTO_KEY;
             use crate::tools::ToolRegistry;
-            use crate::tools::mcp::process::McpProcessManager;
-            use crate::tools::mcp::session::McpSessionManager;
+            use crate::mcp_client::process::McpProcessManager;
+            use crate::mcp_client::session::McpSessionManager;
 
             let master_key = secrecy::SecretString::from(TEST_CRYPTO_KEY.to_string());
             let crypto = Arc::new(
@@ -11403,8 +11401,8 @@ mod tests {
         use crate::secrets::{InMemorySecretsStore, SecretsCrypto};
         use crate::testing::credentials::TEST_CRYPTO_KEY;
         use crate::tools::ToolRegistry;
-        use crate::tools::mcp::process::McpProcessManager;
-        use crate::tools::mcp::session::McpSessionManager;
+        use crate::mcp_client::process::McpProcessManager;
+        use crate::mcp_client::session::McpSessionManager;
 
         let master_key = secrecy::SecretString::from(TEST_CRYPTO_KEY.to_string());
         let crypto = Arc::new(
@@ -11600,8 +11598,8 @@ mod tests {
         use crate::secrets::{InMemorySecretsStore, SecretsCrypto};
         use crate::testing::credentials::TEST_CRYPTO_KEY;
         use crate::tools::ToolRegistry;
-        use crate::tools::mcp::process::McpProcessManager;
-        use crate::tools::mcp::session::McpSessionManager;
+        use crate::mcp_client::process::McpProcessManager;
+        use crate::mcp_client::session::McpSessionManager;
 
         let master_key = secrecy::SecretString::from(TEST_CRYPTO_KEY.to_string());
         let crypto = Arc::new(
@@ -12134,7 +12132,7 @@ mod tests {
                 scopes: vec![],
                 user_id: "test".to_string(),
                 secrets: Arc::clone(&secrets),
-                sse_manager: None,
+                event_publisher: None,
                 gateway_token: None,
                 token_exchange_extra_params: std::collections::HashMap::new(),
                 client_id_secret_name: None,
@@ -12161,7 +12159,7 @@ mod tests {
                 scopes: vec![],
                 user_id: "test".to_string(),
                 secrets,
-                sse_manager: None,
+                event_publisher: None,
                 gateway_token: None,
                 token_exchange_extra_params: std::collections::HashMap::new(),
                 client_id_secret_name: None,
@@ -12262,7 +12260,7 @@ mod tests {
                     scopes: vec![],
                     user_id: user_id.to_string(),
                     secrets: Arc::clone(&secrets),
-                    sse_manager: None,
+                    event_publisher: None,
                     gateway_token: None,
                     token_exchange_extra_params: std::collections::HashMap::new(),
                     client_id_secret_name: None,
@@ -12623,7 +12621,7 @@ mod tests {
             Some(Arc::clone(&store)),
         );
         let server = McpServerConfig::new("notion", "https://example.com/mcp").with_oauth(
-            crate::tools::mcp::config::OAuthConfig::new("notion-client").with_endpoints(
+            crate::mcp_client::config::OAuthConfig::new("notion-client").with_endpoints(
                 "https://example.com/oauth/authorize",
                 "https://example.com/oauth/token",
             ),
@@ -12664,7 +12662,7 @@ mod tests {
             Some(Arc::clone(&store)),
         );
         let server = McpServerConfig::new("notion", "https://example.com/mcp").with_oauth(
-            crate::tools::mcp::config::OAuthConfig::new("notion-client")
+            crate::mcp_client::config::OAuthConfig::new("notion-client")
                 .with_endpoints(
                     "https://example.com/oauth/authorize",
                     "https://example.com/oauth/token",
@@ -12801,8 +12799,8 @@ mod tests {
     /// Build a minimal ExtensionManager with a custom tunnel_url.
     fn make_manager_with_tunnel(tunnel_url: Option<String>) -> ExtensionManager {
         use crate::secrets::{InMemorySecretsStore, SecretsCrypto};
-        use crate::tools::mcp::process::McpProcessManager;
-        use crate::tools::mcp::session::McpSessionManager;
+        use crate::mcp_client::process::McpProcessManager;
+        use crate::mcp_client::session::McpSessionManager;
 
         let key = secrecy::SecretString::from(crate::secrets::keychain::generate_master_key_hex());
         let crypto = Arc::new(SecretsCrypto::new(key).expect("crypto"));

@@ -627,9 +627,8 @@ pub struct ConfigureResult {
     /// OAuth authorization URL (if OAuth flow was started).
     pub auth_url: Option<String>,
     /// Shared onboarding state for channels using guided setup/pairing.
-    pub onboarding_state: Option<crate::channels::web::types::ChannelOnboardingState>,
-    /// Shared onboarding copy/metadata for the web gateway UI.
-    pub onboarding: Option<crate::channels::web::types::ChannelOnboardingInfo>,
+    pub onboarding_state: Option<brassclaw_common::ChannelOnboardingState>,
+    pub onboarding: Option<brassclaw_common::ChannelOnboardingInfo>,
 }
 
 fn default_true() -> bool {

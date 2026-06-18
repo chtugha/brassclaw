@@ -18,7 +18,7 @@ use crate::agent::agentic_loop::{
 };
 use crate::agent::scheduler::WorkerMessage;
 use crate::agent::task::TaskOutput;
-use crate::channels::web::types::ToolDecisionDto;
+use brassclaw_common::ToolDecisionDto;
 use crate::context::{ContextManager, JobState};
 use crate::error::Error;
 use crate::hooks::HookRegistry;
@@ -51,8 +51,7 @@ pub struct WorkerDeps {
     pub hooks: Arc<HookRegistry>,
     pub timeout: Duration,
     pub use_planning: bool,
-    /// Broadcast sender for live job event streaming to the web gateway.
-    pub sse_tx: Option<Arc<crate::channels::web::sse::SseManager>>,
+    pub event_publisher: Option<brassclaw_common::DynEventPublisher>,
     /// Approval context for tool execution. When `None`, all non-`Never` tools are
     /// blocked (legacy behavior). When `Some`, the context determines which tools
     /// are pre-approved for autonomous execution.
@@ -153,7 +152,7 @@ impl Worker {
         }
 
         // Broadcast SSE for live web UI updates
-        if let Some(ref sse) = self.deps.sse_tx {
+        if let Some(ref sse) = self.deps.event_publisher {
             let job_id_str = job_id.to_string();
             let event = match event_type {
                 "message" => Some(AppEvent::JobMessage {
@@ -1963,7 +1962,7 @@ mod tests {
             hooks: Arc::new(crate::hooks::HookRegistry::new()),
             timeout: Duration::from_secs(30),
             use_planning: false,
-            sse_tx: None,
+            event_publisher: None,
             approval_context: None,
             http_interceptor: None,
             multi_tenant: false,
@@ -2184,7 +2183,7 @@ mod tests {
             hooks: Arc::new(crate::hooks::HookRegistry::new()),
             timeout: Duration::from_secs(30),
             use_planning: false,
-            sse_tx: None,
+            event_publisher: None,
             approval_context,
             http_interceptor: None,
             multi_tenant: false,

@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::tools::wasm::{Capabilities as ToolCapabilities, RateLimitConfig};
+use crate::wasm_runtime::{Capabilities as ToolCapabilities, RateLimitConfig};
 
 /// Minimum allowed polling interval (30 seconds).
 pub const MIN_POLL_INTERVAL_MS: u32 = 30_000;

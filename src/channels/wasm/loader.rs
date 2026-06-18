@@ -94,10 +94,10 @@ impl WasmChannelLoader {
                     );
 
                     // Check WIT version compatibility
-                    crate::tools::wasm::loader::check_wit_version_compat(
+                    crate::wasm_runtime::loader::check_wit_version_compat(
                         name,
                         cap_file.wit_version.as_deref(),
-                        crate::tools::wasm::WIT_CHANNEL_VERSION,
+                        crate::wasm_runtime::WIT_CHANNEL_VERSION,
                     )
                     .map_err(|e| WasmChannelError::IncompatibleWitVersion(e.to_string()))?;
 

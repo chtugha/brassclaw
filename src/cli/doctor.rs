@@ -534,7 +534,7 @@ fn check_gateway_config(settings: &Settings) -> CheckResult {
 // ── MCP servers ─────────────────────────────────────────────
 
 async fn check_mcp_config() -> CheckResult {
-    match crate::tools::mcp::config::load_mcp_servers().await {
+    match crate::mcp_client::config::load_mcp_servers().await {
         Ok(file) => {
             let servers: Vec<_> = file.enabled_servers().collect();
             if servers.is_empty() {

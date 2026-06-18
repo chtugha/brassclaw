@@ -816,7 +816,7 @@ mod tests {
     use crate::pairing::PairingStore;
     use crate::secrets::{CreateSecretParams, SecretsStore};
     use crate::testing::credentials::test_secrets_store;
-    use crate::tools::wasm::ResourceLimits;
+    use crate::wasm_runtime::ResourceLimits;
 
     /// Build the same reserved-name list that `setup_wasm_channels` uses.
     fn reserved_names() -> Vec<&'static str> {

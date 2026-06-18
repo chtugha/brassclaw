@@ -386,7 +386,7 @@ impl TestHarnessBuilder {
             hooks,
             auth_manager: None,
             cost_guard,
-            sse_tx: None,
+            event_publisher: None,
             http_interceptor: None,
             transcription: None,
             document_extraction: None,

@@ -33,8 +33,8 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::secrets::{CredentialLocation, CredentialMapping};
-use crate::tools::tool::ToolDiscoverySummary;
-use crate::tools::wasm::{
+use crate::tools::ToolDiscoverySummary;
+use crate::wasm_runtime::{
     Capabilities, EndpointPattern, HttpCapability, RateLimitConfig, SecretsCapability,
     ToolInvokeCapability, WebhookCapability, WorkspaceCapability,
 };
@@ -809,7 +809,7 @@ fn default_tool_setup_field_input_type() -> ToolSetupFieldInputType {
 mod tests {
     use serde_json::json;
 
-    use crate::tools::wasm::capabilities_schema::{CapabilitiesFile, CredentialLocationSchema};
+    use crate::wasm_runtime::capabilities_schema::{CapabilitiesFile, CredentialLocationSchema};
 
     #[test]
     fn test_parse_minimal() {
@@ -1336,7 +1336,7 @@ mod tests {
         );
         assert_eq!(
             setup.required_fields[0].input_type,
-            crate::tools::wasm::capabilities_schema::ToolSetupFieldInputType::Text
+            crate::wasm_runtime::capabilities_schema::ToolSetupFieldInputType::Text
         );
         assert_eq!(setup.required_fields[1].name, "selected_model");
     }
@@ -1363,11 +1363,11 @@ mod tests {
         let setup = caps.setup.unwrap();
         assert_eq!(
             setup.required_fields[0].input_type,
-            crate::tools::wasm::capabilities_schema::ToolSetupFieldInputType::Text
+            crate::wasm_runtime::capabilities_schema::ToolSetupFieldInputType::Text
         );
         assert_eq!(
             setup.required_fields[1].input_type,
-            crate::tools::wasm::capabilities_schema::ToolSetupFieldInputType::Password
+            crate::wasm_runtime::capabilities_schema::ToolSetupFieldInputType::Password
         );
     }
 

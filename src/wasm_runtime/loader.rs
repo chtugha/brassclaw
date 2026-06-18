@@ -41,9 +41,9 @@ use tokio::fs;
 
 use crate::db::UserStore;
 use crate::secrets::SecretsStore;
-use crate::tools::registry::{ToolRegistry, WasmRegistrationError, WasmToolRegistration};
-use crate::tools::wasm::capabilities_schema::CapabilitiesFile;
-use crate::tools::wasm::{
+use crate::tools::{ToolRegistry, WasmRegistrationError, WasmToolRegistration};
+use crate::wasm_runtime::capabilities_schema::CapabilitiesFile;
+use crate::wasm_runtime::{
     Capabilities, OAuthRefreshConfig, WasmError, WasmStorageError, WasmToolRuntime, WasmToolStore,
 };
 
@@ -148,7 +148,7 @@ impl WasmToolLoader {
                     check_wit_version_compat(
                         name,
                         cap_file.wit_version.as_deref(),
-                        crate::tools::wasm::WIT_TOOL_VERSION,
+                        crate::wasm_runtime::WIT_TOOL_VERSION,
                     )?;
 
                     let caps = cap_file.to_capabilities();
@@ -343,7 +343,7 @@ impl WasmToolLoader {
 
         for tool in tools {
             // Skip non-active tools
-            if tool.status != crate::tools::wasm::ToolStatus::Active {
+            if tool.status != crate::wasm_runtime::ToolStatus::Active {
                 continue;
             }
 
@@ -741,7 +741,7 @@ mod tests {
 
     use crate::config::helpers::lock_env;
     use crate::testing::credentials::{TEST_OAUTH_CLIENT_ID, TEST_OAUTH_CLIENT_SECRET};
-    use crate::tools::wasm::loader::{WasmLoadError, check_wit_version_compat, discover_tools};
+    use crate::wasm_runtime::loader::{WasmLoadError, check_wit_version_compat, discover_tools};
 
     /// Restores a test-scoped env var override on drop.
     struct EnvVarGuard {
@@ -904,7 +904,7 @@ mod tests {
 
     #[test]
     fn test_resolve_oauth_refresh_config_with_oauth() {
-        use crate::tools::wasm::capabilities_schema::{
+        use crate::wasm_runtime::capabilities_schema::{
             AuthCapabilitySchema, CapabilitiesFile, OAuthConfigSchema,
         };
 
@@ -947,7 +947,7 @@ mod tests {
 
     #[test]
     fn test_resolve_oauth_refresh_config_no_auth() {
-        use crate::tools::wasm::capabilities_schema::CapabilitiesFile;
+        use crate::wasm_runtime::capabilities_schema::CapabilitiesFile;
 
         let caps = CapabilitiesFile::default();
         let config = super::resolve_oauth_refresh_config(&caps);
@@ -956,7 +956,7 @@ mod tests {
 
     #[test]
     fn test_resolve_oauth_refresh_config_no_oauth() {
-        use crate::tools::wasm::capabilities_schema::{AuthCapabilitySchema, CapabilitiesFile};
+        use crate::wasm_runtime::capabilities_schema::{AuthCapabilitySchema, CapabilitiesFile};
 
         let caps = CapabilitiesFile {
             auth: Some(AuthCapabilitySchema {
@@ -972,7 +972,7 @@ mod tests {
 
     #[test]
     fn test_resolve_oauth_refresh_config_no_client_id() {
-        use crate::tools::wasm::capabilities_schema::{
+        use crate::wasm_runtime::capabilities_schema::{
             AuthCapabilitySchema, CapabilitiesFile, OAuthConfigSchema,
         };
 
@@ -997,7 +997,7 @@ mod tests {
 
     #[test]
     fn test_resolve_oauth_refresh_config_builtin_google() {
-        use crate::tools::wasm::capabilities_schema::{
+        use crate::wasm_runtime::capabilities_schema::{
             AuthCapabilitySchema, CapabilitiesFile, OAuthConfigSchema,
         };
 
@@ -1034,7 +1034,7 @@ mod tests {
     #[test]
     fn test_resolve_oauth_refresh_config_hosted_proxy_populates_env_and_suppresses_builtin_secret()
     {
-        use crate::tools::wasm::capabilities_schema::{
+        use crate::wasm_runtime::capabilities_schema::{
             AuthCapabilitySchema, CapabilitiesFile, OAuthConfigSchema,
         };
 
@@ -1075,7 +1075,7 @@ mod tests {
 
     #[test]
     fn test_resolve_oauth_refresh_config_hosted_proxy_preserves_explicit_secret() {
-        use crate::tools::wasm::capabilities_schema::{
+        use crate::wasm_runtime::capabilities_schema::{
             AuthCapabilitySchema, CapabilitiesFile, OAuthConfigSchema,
         };
 
@@ -1122,7 +1122,7 @@ mod tests {
 
     #[test]
     fn test_resolve_oauth_refresh_config_hosted_proxy_prefers_dedicated_proxy_auth_token() {
-        use crate::tools::wasm::capabilities_schema::{
+        use crate::wasm_runtime::capabilities_schema::{
             AuthCapabilitySchema, CapabilitiesFile, OAuthConfigSchema,
         };
 
@@ -1167,8 +1167,8 @@ mod tests {
 
     use std::sync::Arc;
 
-    use crate::tools::registry::ToolRegistry;
-    use crate::tools::wasm::{WasmRuntimeConfig, WasmToolRuntime};
+    use crate::tools::ToolRegistry;
+    use crate::wasm_runtime::{WasmRuntimeConfig, WasmToolRuntime};
 
     /// Helper: create a WasmToolLoader backed by a real runtime + registry.
     fn make_loader() -> super::WasmToolLoader {

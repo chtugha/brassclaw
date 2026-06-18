@@ -14,7 +14,7 @@ mod tests {
         CreateSecretParams, InMemorySecretsStore, SecretsCrypto, SecretsStore,
     };
     use brassclaw::tools::ToolRegistry;
-    use brassclaw::tools::mcp::{McpProcessManager, McpServerConfig, McpSessionManager};
+    use brassclaw::mcp_client::{McpProcessManager, McpServerConfig, McpSessionManager};
     use secrecy::SecretString;
 
     use crate::support::mock_mcp_server::{

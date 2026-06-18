@@ -585,7 +585,7 @@ mod tests {
         unpack_prepared_wechat_upload,
     };
     use crate::channels::wasm::{ChannelCapabilities, ChannelHostState};
-    use crate::tools::wasm::{Capabilities, EndpointPattern, HttpCapability};
+    use crate::wasm_runtime::{Capabilities, EndpointPattern, HttpCapability};
     use base64::Engine as _;
 
     fn make_attachment() -> Attachment {

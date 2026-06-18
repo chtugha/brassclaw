@@ -13,7 +13,6 @@ use brassclaw::{
         ChannelManager, GatewayChannel, HttpChannel, ReplChannel, SignalChannel, WebhookServer,
         WebhookServerConfig,
         wasm::{WasmChannelRouter, WasmChannelRuntime},
-        web::log_layer::LogBroadcaster,
     },
     cli::{
         Cli, Command, run_mcp_command, run_pairing_command, run_profile_command,
@@ -21,6 +20,7 @@ use brassclaw::{
     },
     config::Config,
     hooks::bootstrap_hooks,
+    logging::LogBroadcaster,
     orchestrator::{ReaperConfig, SandboxReaper},
     pairing::PairingStore,
     tracing_fmt::{init_cli_tracing, init_worker_tracing},
@@ -421,7 +421,7 @@ async fn async_main() -> anyhow::Result<()> {
     // log levels at runtime without restarting.
     let suppress_stderr =
         config.channels.tui.is_some() && cli.message.is_none() && cfg!(feature = "tui");
-    let log_level_handle = brassclaw::channels::web::log_layer::init_tracing(
+    let log_level_handle = brassclaw::logging::init_tracing(
         Arc::clone(&log_broadcaster),
         suppress_stderr,
     );
@@ -882,7 +882,7 @@ async fn async_main() -> anyhow::Result<()> {
     // ── Gateway channel ────────────────────────────────────────────────
 
     let mut gateway_url: Option<String> = None;
-    let mut sse_manager: Option<std::sync::Arc<brassclaw::channels::web::sse::SseManager>> = None;
+    let mut event_pub: Option<brassclaw_common::DynEventPublisher> = None;
     if enable_non_cli && let Some(ref gw_config) = config.channels.gateway {
         let mut gw = GatewayChannel::new(gw_config.clone(), config.owner_id.clone());
         gw = gw.with_multi_tenant_mode(config.is_multi_tenant_deployment());
@@ -1092,7 +1092,7 @@ async fn async_main() -> anyhow::Result<()> {
         // Capture SSE sender and routine engine slot before moving gw into channels.
         // IMPORTANT: This must come after all `with_*` calls since `rebuild_state`
         // creates a new SseManager, which would orphan this sender.
-        sse_manager = Some(Arc::clone(&gw.state().sse));
+        event_pub = Some(Arc::clone(&gw.state().sse) as brassclaw_common::DynEventPublisher);
         channel_names.push("gateway".to_string());
         channels.add(Box::new(gw)).await;
     }
@@ -1242,13 +1242,13 @@ async fn async_main() -> anyhow::Result<()> {
 
     // Wire SSE sender into extension manager for broadcasting status events.
     if let Some(ref ext_mgr) = components.extension_manager
-        && let Some(ref sse) = sse_manager
+        && let Some(ref sse) = event_pub
     {
-        ext_mgr.set_sse_sender(Arc::clone(sse)).await;
+        ext_mgr.set_event_publisher(Arc::clone(sse)).await;
     }
 
     // Wire SSE into plan_update tool for live plan progress broadcasting.
-    if let Some(ref sse) = sse_manager {
+    if let Some(ref sse) = event_pub {
         components.tools.register_plan_tools(Some(Arc::clone(sse)));
     }
 
@@ -1337,7 +1337,7 @@ async fn async_main() -> anyhow::Result<()> {
         hooks: components.hooks,
         auth_manager,
         cost_guard: components.cost_guard,
-        sse_tx: sse_manager,
+        event_publisher: event_pub,
         http_interceptor,
         transcription: config
             .transcription

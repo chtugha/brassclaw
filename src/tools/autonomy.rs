@@ -79,7 +79,7 @@ mod tests {
     use crate::extensions::ExtensionManager;
     use crate::hooks::HookRegistry;
     use crate::secrets::{InMemorySecretsStore, SecretsCrypto, SecretsStore};
-    use crate::tools::mcp::{McpProcessManager, McpSessionManager};
+    use crate::mcp_client::{McpProcessManager, McpSessionManager};
     use crate::tools::{Tool, ToolError, ToolOutput};
 
     struct FakeTool {

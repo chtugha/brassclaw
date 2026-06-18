@@ -891,7 +891,7 @@ Create alongside the .wasm file to grant capabilities:
         match (&requirement.software_type, &requirement.language) {
             (SoftwareType::WasmTool, Language::Rust) => {
                 // WASM output location
-                crate::tools::wasm::wasm_artifact_path(
+                crate::wasm_runtime::wasm_artifact_path(
                     project_dir,
                     &requirement.name.replace('-', "_"),
                 )

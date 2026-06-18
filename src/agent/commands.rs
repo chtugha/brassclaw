@@ -1242,7 +1242,7 @@ mod tests {
             hooks: Arc::new(HookRegistry::new()),
             auth_manager: None,
             cost_guard: Arc::new(CostGuard::new(CostGuardConfig::default())),
-            sse_tx: None,
+            event_publisher: None,
             http_interceptor: None,
             transcription: None,
             document_extraction: None,

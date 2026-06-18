@@ -12,7 +12,7 @@ use tokio::sync::RwLock;
 use wasmtime::{Config, Engine, OptLevel};
 
 use crate::channels::wasm::error::WasmChannelError;
-use crate::tools::wasm::{FuelConfig, ResourceLimits};
+use crate::wasm_runtime::{FuelConfig, ResourceLimits};
 
 /// Configuration for the WASM channel runtime.
 #[derive(Debug, Clone)]
@@ -158,7 +158,7 @@ impl WasmChannelRuntime {
         // OS error 33 (ERROR_LOCK_VIOLATION) when multiple engines share the
         // default cache and Windows holds exclusive locks on memory-mapped
         // files. See #448.
-        if let Err(e) = crate::tools::wasm::enable_compilation_cache(
+        if let Err(e) = crate::wasm_runtime::enable_compilation_cache(
             &mut wasmtime_config,
             "channels",
             config.cache_dir.as_deref(),

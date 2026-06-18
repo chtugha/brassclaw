@@ -90,8 +90,8 @@ impl Tool for MockGithubWebhookTool {
         ))
     }
 
-    fn webhook_capability(&self) -> Option<brassclaw::tools::wasm::WebhookCapability> {
-        Some(brassclaw::tools::wasm::WebhookCapability {
+    fn webhook_capability(&self) -> Option<brassclaw::wasm_runtime::WebhookCapability> {
+        Some(brassclaw::wasm_runtime::WebhookCapability {
             secret_name: Some("github_webhook_secret".to_string()),
             secret_header: Some("x-webhook-secret".to_string()),
             ..Default::default()
@@ -280,7 +280,7 @@ impl GatewayWorkflowHarness {
                 hooks: components.hooks,
                 auth_manager: None,
                 cost_guard: components.cost_guard,
-                sse_tx: None,
+                event_publisher: None,
                 http_interceptor: None,
                 transcription: None,
                 document_extraction: None,

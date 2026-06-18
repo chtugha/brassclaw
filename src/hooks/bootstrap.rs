@@ -9,7 +9,7 @@ use crate::hooks::bundled::{
     HookBundleConfig, HookRegistrationSummary, register_bundle, register_bundled_hooks,
 };
 use crate::hooks::registry::HookRegistry;
-use crate::tools::wasm::{discover_dev_tools, discover_tools};
+use crate::wasm_runtime::{discover_dev_tools, discover_tools};
 use crate::workspace::Workspace;
 
 /// Summary of hook bootstrap work done at startup.

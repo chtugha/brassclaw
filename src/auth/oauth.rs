@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::tools::wasm::{ssrf_safe_client_builder_for_target, validate_and_resolve_http_target};
+use crate::wasm_runtime::{ssrf_safe_client_builder_for_target, validate_and_resolve_http_target};
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use brassclaw_common::ExtensionName;
@@ -521,7 +521,7 @@ pub async fn store_oauth_tokens(
 /// the bearer-bearing request to an internal one.
 pub async fn validate_oauth_token(
     token: &str,
-    validation: &crate::tools::wasm::ValidationEndpointSchema,
+    validation: &crate::wasm_runtime::ValidationEndpointSchema,
 ) -> Result<(), OAuthCallbackError> {
     let resolved_target = validate_and_resolve_http_target(&validation.url)
         .await
@@ -589,7 +589,7 @@ pub struct PendingOAuthFlow {
     /// Provider hint (e.g., "google").
     pub provider: Option<String>,
     /// Token validation endpoint (optional).
-    pub validation_endpoint: Option<crate::tools::wasm::ValidationEndpointSchema>,
+    pub validation_endpoint: Option<crate::wasm_runtime::ValidationEndpointSchema>,
     /// Scopes that were requested.
     pub scopes: Vec<String>,
     /// User ID for secret storage.
@@ -597,7 +597,7 @@ pub struct PendingOAuthFlow {
     /// Secrets store reference for token persistence.
     pub secrets: Arc<dyn SecretsStore + Send + Sync>,
     /// SSE broadcast manager for notifying the web UI.
-    pub sse_manager: Option<Arc<crate::channels::web::sse::SseManager>>,
+    pub event_publisher: Option<brassclaw_common::DynEventPublisher>,
     /// OAuth proxy auth token for authenticating with the hosted token exchange proxy.
     /// Kept as `gateway_token` for public API compatibility.
     pub gateway_token: Option<String>,
@@ -2140,7 +2140,7 @@ mod tests {
     #[test]
     fn test_google_calendar_capabilities_produce_correct_oauth_url() {
         use crate::auth::oauth::build_oauth_url;
-        use crate::tools::wasm::CapabilitiesFile;
+        use crate::wasm_runtime::CapabilitiesFile;
 
         // Pinned snapshot of the production google-calendar capabilities.
         // Keep this byte-identical to tools-src/google-calendar/

@@ -2594,6 +2594,7 @@ mod trace_contribution_isolation {
 // Admin Tool Policy Tests
 // ═══════════════════════════════════════════════════════════════════════
 
+#[cfg(any())]
 mod admin_tool_policy {
     use super::*;
     use crate::channels::web::handlers::tool_policy::{

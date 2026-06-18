@@ -36,7 +36,7 @@
 use brassclaw::db::libsql::LibSqlBackend;
 use brassclaw::db::{ConversationStore, Database};
 use brassclaw::history::{SandboxJobRecord, SandboxRestartParams};
-use brassclaw::tools::mcp::config::{
+use brassclaw::mcp_client::config::{
     McpServerConfig, McpServersFile, load_mcp_servers_from_db, save_mcp_servers_to_db,
 };
 use std::error::Error;

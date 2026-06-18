@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::channels::wasm::capabilities::{ChannelCapabilities, EmitRateLimitConfig};
 use crate::channels::wasm::error::WasmChannelError;
-use crate::tools::wasm::{HostState, LogLevel};
+use crate::wasm_runtime::{HostState, LogLevel};
 
 /// Maximum emitted messages per callback execution.
 const MAX_EMITS_PER_EXECUTION: usize = 100;
@@ -466,7 +466,7 @@ impl ChannelHostState {
         &mut self,
         level: LogLevel,
         message: String,
-    ) -> Result<(), crate::tools::wasm::WasmError> {
+    ) -> Result<(), crate::wasm_runtime::WasmError> {
         self.base.log(level, message)
     }
 
@@ -479,7 +479,7 @@ impl ChannelHostState {
     pub fn workspace_read(
         &self,
         path: &str,
-    ) -> Result<Option<String>, crate::tools::wasm::WasmError> {
+    ) -> Result<Option<String>, crate::wasm_runtime::WasmError> {
         // Prefix the path with channel namespace before reading
         let full_path = self.capabilities.prefix_workspace_path(path);
         self.base.workspace_read(&full_path)
@@ -501,7 +501,7 @@ impl ChannelHostState {
     }
 
     /// Take logs (delegates to base).
-    pub fn take_logs(&mut self) -> Vec<crate::tools::wasm::LogEntry> {
+    pub fn take_logs(&mut self) -> Vec<crate::wasm_runtime::LogEntry> {
         self.base.take_logs()
     }
 }
@@ -670,7 +670,7 @@ impl ChannelWorkspaceStore {
     }
 }
 
-impl crate::tools::wasm::WorkspaceReader for ChannelWorkspaceStore {
+impl crate::wasm_runtime::WorkspaceReader for ChannelWorkspaceStore {
     fn read(&self, path: &str) -> Option<String> {
         self.data.read().ok()?.get(path).cloned()
     }
@@ -898,7 +898,7 @@ mod tests {
     #[test]
     fn test_channel_workspace_store_commit_and_read() {
         use crate::channels::wasm::host::{ChannelWorkspaceStore, PendingWorkspaceWrite};
-        use crate::tools::wasm::WorkspaceReader;
+        use crate::wasm_runtime::WorkspaceReader;
 
         let store = ChannelWorkspaceStore::new();
 
@@ -950,7 +950,7 @@ mod tests {
     #[test]
     fn test_channel_workspace_store_append_json_text_queue_is_bounded() {
         use crate::channels::wasm::host::ChannelWorkspaceStore;
-        use crate::tools::wasm::WorkspaceReader;
+        use crate::wasm_runtime::WorkspaceReader;
 
         let store = ChannelWorkspaceStore::new();
         let path = "channels/discord/state/gateway_event_queue";
@@ -966,7 +966,7 @@ mod tests {
     #[test]
     fn test_channel_workspace_store_move_json_text_queue_is_atomic() {
         use crate::channels::wasm::host::ChannelWorkspaceStore;
-        use crate::tools::wasm::WorkspaceReader;
+        use crate::wasm_runtime::WorkspaceReader;
 
         let store = ChannelWorkspaceStore::new();
         let live_path = "channels/discord/state/gateway_event_queue";
@@ -995,7 +995,7 @@ mod tests {
     #[test]
     fn test_channel_workspace_store_restore_json_text_queue_retries_processing_first() {
         use crate::channels::wasm::host::ChannelWorkspaceStore;
-        use crate::tools::wasm::WorkspaceReader;
+        use crate::wasm_runtime::WorkspaceReader;
 
         let store = ChannelWorkspaceStore::new();
         let live_path = "channels/discord/state/gateway_event_queue";
@@ -1034,7 +1034,7 @@ mod tests {
     #[test]
     fn test_channel_workspace_store_restore_json_text_queue_drops_live_tail_on_overflow() {
         use crate::channels::wasm::host::ChannelWorkspaceStore;
-        use crate::tools::wasm::WorkspaceReader;
+        use crate::wasm_runtime::WorkspaceReader;
 
         let store = ChannelWorkspaceStore::new();
         let live_path = "channels/discord/state/gateway_event_queue";
@@ -1076,7 +1076,7 @@ mod tests {
         // Full lifecycle: write in one "callback", commit, then read in a
         // subsequent "callback" using the same store as the workspace reader.
         use crate::channels::wasm::host::ChannelWorkspaceStore;
-        use crate::tools::wasm::{WorkspaceCapability, WorkspaceReader};
+        use crate::wasm_runtime::{WorkspaceCapability, WorkspaceReader};
         use std::sync::Arc;
 
         let store = Arc::new(ChannelWorkspaceStore::new());
@@ -1121,7 +1121,7 @@ mod tests {
     fn test_workspace_overwrite_across_callbacks() {
         // Verify that a second write to the same key overwrites the first.
         use crate::channels::wasm::host::ChannelWorkspaceStore;
-        use crate::tools::wasm::{WorkspaceCapability, WorkspaceReader};
+        use crate::wasm_runtime::{WorkspaceCapability, WorkspaceReader};
         use std::sync::Arc;
 
         let store = Arc::new(ChannelWorkspaceStore::new());
@@ -1190,7 +1190,7 @@ mod tests {
     fn test_channels_have_isolated_namespaces() {
         // Two channels writing to the same relative path should not collide.
         use crate::channels::wasm::host::ChannelWorkspaceStore;
-        use crate::tools::wasm::{WorkspaceCapability, WorkspaceReader};
+        use crate::wasm_runtime::{WorkspaceCapability, WorkspaceReader};
         use std::sync::Arc;
 
         let store = Arc::new(ChannelWorkspaceStore::new());

@@ -1034,14 +1034,14 @@ mod tests {
         use crate::secrets::{InMemorySecretsStore, SecretsCrypto};
         use crate::testing::credentials::TEST_CRYPTO_KEY;
         use crate::tools::ToolRegistry;
-        use crate::tools::mcp::session::McpSessionManager;
+        use crate::mcp_client::session::McpSessionManager;
 
         let master_key = secrecy::SecretString::from(TEST_CRYPTO_KEY.to_string());
         let crypto = Arc::new(SecretsCrypto::new(master_key).unwrap());
 
         Arc::new(ExtensionManager::new(
             Arc::new(McpSessionManager::new()),
-            Arc::new(crate::tools::mcp::process::McpProcessManager::new()),
+            Arc::new(crate::mcp_client::process::McpProcessManager::new()),
             Arc::new(InMemorySecretsStore::new(crypto)),
             Arc::new(ToolRegistry::new()),
             None,

@@ -12,6 +12,7 @@ use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 use uuid::Uuid;
 
+use brassclaw_common::EventPublisher;
 use crate::channels::web::types::AppEvent;
 
 /// Maximum number of concurrent SSE/WebSocket connections.
@@ -347,6 +348,24 @@ impl<S> Drop for CountedStream<S> {
         if let Some(v) = &self.verbose_counter {
             v.fetch_sub(1, Ordering::Relaxed);
         }
+    }
+}
+
+impl EventPublisher for SseManager {
+    fn broadcast(&self, event: AppEvent) {
+        SseManager::broadcast(self, event);
+    }
+
+    fn broadcast_for_user(&self, user_id: &str, event: AppEvent) {
+        SseManager::broadcast_for_user(self, user_id, event);
+    }
+
+    fn has_receivers(&self) -> bool {
+        SseManager::has_receivers(self)
+    }
+
+    fn has_verbose_receivers(&self) -> bool {
+        SseManager::has_verbose_receivers(self)
     }
 }
 

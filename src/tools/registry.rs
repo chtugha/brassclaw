@@ -26,7 +26,7 @@ use crate::tools::rate_limiter::RateLimiter;
 use crate::tools::tool::{
     ApprovalRequirement, EngineVersion, Tool, ToolDiscoverySummary, ToolDomain,
 };
-use crate::tools::wasm::{
+use crate::wasm_runtime::{
     Capabilities, OAuthRefreshConfig, ResourceLimits, SharedCredentialRegistry, WasmError,
     WasmStorageError, WasmToolRuntime, WasmToolStore, WasmToolWrapper,
 };
@@ -841,10 +841,10 @@ impl ToolRegistry {
     /// The plan_update tool lets the LLM emit structured plan progress
     /// checklist events via SSE. Works without SSE (no broadcast), but
     /// pass the `SseManager` for real-time UI updates.
-    pub fn register_plan_tools(&self, sse: Option<Arc<crate::channels::web::sse::SseManager>>) {
+    pub fn register_plan_tools(&self, ep: Option<brassclaw_common::DynEventPublisher>) {
         let mut tool = PlanUpdateTool::new();
-        if let Some(sse) = sse {
-            tool = tool.with_sse(sse);
+        if let Some(ep) = ep {
+            tool = tool.with_event_publisher(ep);
         }
         self.register_sync(Arc::new(tool));
         tracing::debug!("Registered plan_update tool");

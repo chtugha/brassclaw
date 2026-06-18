@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use crate::agent::SessionManager as AgentSessionManager;
-use crate::channels::web::log_layer::LogBroadcaster;
+use crate::logging::LogBroadcaster;
 use crate::config::Config;
 use crate::context::ContextManager;
 use crate::db::{Database, UserStore};
@@ -18,9 +18,9 @@ use crate::extensions::ExtensionManager;
 use crate::hooks::HookRegistry;
 use crate::secrets::SecretsStore;
 use crate::tools::ToolRegistry;
-use crate::tools::mcp::{McpProcessManager, McpSessionManager};
-use crate::tools::wasm::SharedCredentialRegistry;
-use crate::tools::wasm::WasmToolRuntime;
+use crate::mcp_client::{McpProcessManager, McpSessionManager};
+use crate::wasm_runtime::SharedCredentialRegistry;
+use crate::wasm_runtime::WasmToolRuntime;
 use crate::workspace::Workspace;
 use brassclaw_embeddings::{EmbeddingCacheConfig, EmbeddingProvider};
 use brassclaw_llm::recording::HttpInterceptor;
@@ -724,7 +724,7 @@ impl AppBuilder {
         ),
         anyhow::Error,
     > {
-        use crate::tools::wasm::{WasmToolLoader, load_dev_tools};
+        use crate::wasm_runtime::{WasmToolLoader, load_dev_tools};
 
         // `McpSessionManager::new()` hardcodes the 1800s idle timeout
         // (see `src/tools/mcp/session.rs`). There is no session-count
@@ -817,7 +817,7 @@ impl AppBuilder {
             let owner_id = self.config.owner_id.clone();
             async move {
                 let servers_result =
-                    crate::tools::mcp::config::load_mcp_servers_ready(db.as_deref(), &owner_id)
+                    crate::mcp_client::config::load_mcp_servers_ready(db.as_deref(), &owner_id)
                         .await;
                 match servers_result {
                     Ok(servers) => {
@@ -840,7 +840,7 @@ impl AppBuilder {
                                 let server_name = server.name.clone();
                                 let has_custom_auth_header = server.has_custom_auth_header();
 
-                                let client = match crate::tools::mcp::create_client_from_config(
+                                let client = match crate::mcp_client::create_client_from_config(
                                     server,
                                     &mcp_sm,
                                     &pm,
@@ -878,7 +878,7 @@ impl AppBuilder {
                                     }
                                     Err(e) => {
                                         let err_str = e.to_string();
-                                        if crate::tools::mcp::is_auth_error_message(&err_str)
+                                        if crate::mcp_client::is_auth_error_message(&err_str)
                                         {
                                             if has_custom_auth_header {
                                                 tracing::warn!(
@@ -927,8 +927,8 @@ impl AppBuilder {
                     Err(e) => {
                         if matches!(
                             e,
-                            crate::tools::mcp::config::ConfigError::InvalidConfig { .. }
-                                | crate::tools::mcp::config::ConfigError::Json(_)
+                            crate::mcp_client::config::ConfigError::InvalidConfig { .. }
+                                | crate::mcp_client::config::ConfigError::Json(_)
                         ) {
                             tracing::warn!(
                                 "MCP server configuration is invalid: {}. \

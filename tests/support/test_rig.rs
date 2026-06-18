@@ -1384,7 +1384,7 @@ impl TestRigBuilder {
 
             // Register WASM tools with the shared HTTP interceptor.
             if !wasm_tools.is_empty() {
-                use brassclaw::tools::wasm::{
+                use brassclaw::wasm_runtime::{
                     Capabilities, CapabilitiesFile, WasmRuntimeConfig, WasmToolRuntime,
                     WasmToolWrapper,
                 };
@@ -1509,7 +1509,7 @@ impl TestRigBuilder {
             hooks: components.hooks,
             auth_manager: None,
             cost_guard: components.cost_guard,
-            sse_tx: None,
+            event_publisher: None,
             http_interceptor,
             transcription: None,
             document_extraction: None,

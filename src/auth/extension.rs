@@ -23,7 +23,7 @@ use crate::extensions::{
 use crate::secrets::SecretsStore;
 use crate::tools::ToolRegistry;
 use crate::tools::builtin::{extract_host_from_params, extract_path_from_params};
-use crate::tools::wasm::SharedCredentialRegistry;
+use crate::wasm_runtime::SharedCredentialRegistry;
 use brassclaw_common::{CredentialName, ExtensionName as CommonExtensionName};
 use brassclaw_skills::{SkillCredentialSpec, SkillRegistry};
 
@@ -814,7 +814,7 @@ impl AuthManager {
             oauth
                 .test_url
                 .as_ref()
-                .map(|url| crate::tools::wasm::ValidationEndpointSchema {
+                .map(|url| crate::wasm_runtime::ValidationEndpointSchema {
                     url: url.clone(),
                     method: "GET".to_string(),
                     success_status: 200,
@@ -840,7 +840,7 @@ impl AuthManager {
             extra_params: oauth.extra_params.clone(),
             user_id: user_id.to_string(),
             secrets: Arc::clone(&self.secrets_store),
-            sse_manager: ext_mgr.sse_sender().await,
+            event_publisher: ext_mgr.event_publisher().await,
             gateway_token: oauth::oauth_proxy_auth_token(),
             token_exchange_extra_params: std::collections::HashMap::new(),
             client_id_secret_name: None,
@@ -1040,8 +1040,8 @@ mod tests {
         tools: Arc<ToolRegistry>,
     ) -> Arc<crate::extensions::ExtensionManager> {
         Arc::new(crate::extensions::ExtensionManager::new(
-            Arc::new(crate::tools::mcp::session::McpSessionManager::new()),
-            Arc::new(crate::tools::mcp::process::McpProcessManager::new()),
+            Arc::new(crate::mcp_client::session::McpSessionManager::new()),
+            Arc::new(crate::mcp_client::process::McpProcessManager::new()),
             secrets_store,
             tools,
             None,
@@ -1569,7 +1569,7 @@ Test skill
             .to_string(),
         )
         .expect("write channel caps");
-        let credential_registry = crate::tools::wasm::SharedCredentialRegistry::new();
+        let credential_registry = crate::wasm_runtime::SharedCredentialRegistry::new();
         {
             let guard = skill_registry.read().expect("skill registry");
             crate::skills::register_skill_credentials(guard.skills(), &credential_registry);
@@ -1669,7 +1669,7 @@ Test skill
         )
         .expect("write channel caps");
 
-        let credential_registry = crate::tools::wasm::SharedCredentialRegistry::new();
+        let credential_registry = crate::wasm_runtime::SharedCredentialRegistry::new();
         {
             let guard = skill_registry.read().expect("skill registry");
             crate::skills::register_skill_credentials(guard.skills(), &credential_registry);

@@ -9,10 +9,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use brassclaw_common::McpServerName;
 
-use crate::tools::mcp::protocol::{McpRequest, McpResponse};
-use crate::tools::mcp::session::McpSessionManager;
-use crate::tools::mcp::transport::McpTransport;
-use crate::tools::tool::ToolError;
+use crate::mcp_client::protocol::{McpRequest, McpResponse};
+use crate::mcp_client::session::McpSessionManager;
+use crate::mcp_client::transport::McpTransport;
+use crate::tools::ToolError;
 
 /// MCP transport that communicates with a server over HTTP.
 ///

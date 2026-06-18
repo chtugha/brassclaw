@@ -20,7 +20,7 @@ use chrono::{DateTime, Utc};
 use deadpool_postgres::Pool;
 use uuid::Uuid;
 
-use crate::tools::wasm::capabilities::{
+use crate::wasm_runtime::capabilities::{
     Capabilities, EndpointPattern, HttpCapability, RateLimitConfig, SecretsCapability,
     ToolInvokeCapability,
 };
@@ -1032,7 +1032,7 @@ fn libsql_row_to_tool_at(
 
 #[cfg(test)]
 mod tests {
-    use crate::tools::wasm::storage::{
+    use crate::wasm_runtime::storage::{
         ToolStatus, TrustLevel, compute_binary_hash, verify_binary_integrity,
     };
 

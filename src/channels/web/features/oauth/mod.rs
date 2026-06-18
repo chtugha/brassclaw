@@ -276,7 +276,7 @@ pub(crate) async fn oauth_callback_handler(
         if let Some(ref flow) = removed_flow {
             // Notify the UI so the auth card stops spinning and shows the
             // error instead. Same shape as the expiry branch.
-            if let Some(ref sse) = flow.sse_manager {
+            if let Some(ref sse) = flow.event_publisher {
                 sse.broadcast_for_user(
                     &flow.user_id,
                     AppEvent::OnboardingState {
@@ -410,7 +410,7 @@ pub(crate) async fn oauth_callback_handler(
             "OAuth flow expired"
         );
         // Notify UI so auth card can show error instead of staying stuck
-        if let Some(ref sse) = flow.sse_manager {
+        if let Some(ref sse) = flow.event_publisher {
             sse.broadcast_for_user(
                 &flow.user_id,
                 AppEvent::OnboardingState {
@@ -654,7 +654,7 @@ pub(crate) async fn oauth_callback_handler(
 
     // Broadcast event to notify the web UI
     let extension_name = flow.extension_name.clone();
-    if let Some(ref sse) = flow.sse_manager {
+    if let Some(ref sse) = flow.event_publisher {
         sse.broadcast_for_user(
             &flow.user_id,
             AppEvent::OnboardingState {
@@ -1471,7 +1471,7 @@ mod tests {
 
     fn fresh_pending_oauth_flow(
         secrets: Arc<dyn crate::secrets::SecretsStore + Send + Sync>,
-        sse_manager: Option<Arc<SseManager>>,
+        event_publisher: Option<Arc<SseManager>>,
         oauth_proxy_auth_token: Option<String>,
     ) -> crate::auth::oauth::PendingOAuthFlow {
         crate::auth::oauth::PendingOAuthFlow {
@@ -1489,7 +1489,7 @@ mod tests {
             scopes: vec!["email".to_string()],
             user_id: "test".to_string(),
             secrets,
-            sse_manager,
+            event_publisher: event_publisher.map(|ep| ep as brassclaw_common::DynEventPublisher),
             gateway_token: oauth_proxy_auth_token,
             token_exchange_extra_params: std::collections::HashMap::new(),
             client_id_secret_name: None,
@@ -1747,7 +1747,7 @@ mod tests {
             scopes: vec![],
             user_id: "test".to_string(),
             secrets,
-            sse_manager: None,
+            event_publisher: None,
             gateway_token: None,
             token_exchange_extra_params: std::collections::HashMap::new(),
             client_id_secret_name: None,
@@ -1816,7 +1816,7 @@ mod tests {
             scopes: vec![],
             user_id: "test".to_string(),
             secrets,
-            sse_manager: Some(sse_mgr),
+            event_publisher: Some(sse_mgr),
             gateway_token: None,
             token_exchange_extra_params: std::collections::HashMap::new(),
             client_id_secret_name: None,
@@ -1926,7 +1926,7 @@ mod tests {
             scopes: vec![],
             user_id: "test".to_string(),
             secrets,
-            sse_manager: None,
+            event_publisher: None,
             gateway_token: None,
             token_exchange_extra_params: std::collections::HashMap::new(),
             client_id_secret_name: None,
@@ -2013,7 +2013,7 @@ mod tests {
             scopes: vec![],
             user_id: "test".to_string(),
             secrets,
-            sse_manager: None,
+            event_publisher: None,
             gateway_token: None,
             token_exchange_extra_params: std::collections::HashMap::new(),
             client_id_secret_name: None,
@@ -2092,7 +2092,7 @@ mod tests {
             scopes: vec![],
             user_id: "test".to_string(),
             secrets,
-            sse_manager: None,
+            event_publisher: None,
             gateway_token: None,
             token_exchange_extra_params: std::collections::HashMap::new(),
             client_id_secret_name: None,

@@ -432,8 +432,8 @@ mod tests {
             ))
         }
 
-        fn webhook_capability(&self) -> Option<crate::tools::wasm::WebhookCapability> {
-            Some(crate::tools::wasm::WebhookCapability {
+        fn webhook_capability(&self) -> Option<crate::wasm_runtime::WebhookCapability> {
+            Some(crate::wasm_runtime::WebhookCapability {
                 secret_name: Some("test_webhook_secret".to_string()),
                 secret_header: Some("x-webhook-secret".to_string()),
                 ..Default::default()
@@ -466,8 +466,8 @@ mod tests {
             ))
         }
 
-        fn webhook_capability(&self) -> Option<crate::tools::wasm::WebhookCapability> {
-            Some(crate::tools::wasm::WebhookCapability {
+        fn webhook_capability(&self) -> Option<crate::wasm_runtime::WebhookCapability> {
+            Some(crate::wasm_runtime::WebhookCapability {
                 hmac_secret_name: Some("hmac_secret".to_string()),
                 hmac_signature_header: Some("x-hub-signature-256".to_string()),
                 hmac_prefix: Some("sha256=".to_string()),
@@ -501,8 +501,8 @@ mod tests {
             ))
         }
 
-        fn webhook_capability(&self) -> Option<crate::tools::wasm::WebhookCapability> {
-            Some(crate::tools::wasm::WebhookCapability::default())
+        fn webhook_capability(&self) -> Option<crate::wasm_runtime::WebhookCapability> {
+            Some(crate::wasm_runtime::WebhookCapability::default())
         }
     }
 

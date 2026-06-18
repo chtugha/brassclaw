@@ -4,7 +4,9 @@
 mod attachment;
 pub mod env_helpers;
 mod event;
+mod event_publisher;
 pub mod hashing;
+mod onboarding;
 mod identity;
 pub mod paths;
 pub mod pkce;
@@ -20,6 +22,8 @@ pub use event::{
     AppEvent, CodeExecutionFailureCategory, JobResultStatus, OnboardingStateDto, PlanStepDto,
     SelfImprovementPhase, ToolDecisionDto,
 };
+pub use event_publisher::{DynEventPublisher, EventPublisher};
+pub use onboarding::{ChannelOnboardingInfo, ChannelOnboardingState};
 pub use identity::{
     CredentialName, ExtensionName, ExternalThreadId, ExternalThreadIdError,
     MAX_MCP_SERVER_NAME_LEN, MAX_NAME_LEN, McpServerName,

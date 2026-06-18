@@ -5592,7 +5592,7 @@ mod tests {
     async fn preflight_gate_blocks_missing_credential() {
         use crate::secrets::CredentialMapping;
         use crate::testing::credentials::test_secrets_store;
-        use crate::tools::wasm::SharedCredentialRegistry;
+        use crate::wasm_runtime::SharedCredentialRegistry;
 
         let secrets = Arc::new(test_secrets_store());
         let cred_reg = Arc::new(SharedCredentialRegistry::new());
@@ -5800,8 +5800,8 @@ mod tests {
     async fn available_actions_omit_latent_inactive_provider_actions() {
         use crate::secrets::InMemorySecretsStore;
         use crate::secrets::SecretsCrypto;
-        use crate::tools::mcp::process::McpProcessManager;
-        use crate::tools::mcp::session::McpSessionManager;
+        use crate::mcp_client::process::McpProcessManager;
+        use crate::mcp_client::session::McpSessionManager;
 
         let dir = tempfile::tempdir().expect("temp dir");
         std::fs::create_dir_all(dir.path().join("tools")).expect("tools dir");
@@ -5871,8 +5871,8 @@ mod tests {
     async fn available_capabilities_include_latent_provider_activation_entry() {
         use crate::secrets::InMemorySecretsStore;
         use crate::secrets::SecretsCrypto;
-        use crate::tools::mcp::process::McpProcessManager;
-        use crate::tools::mcp::session::McpSessionManager;
+        use crate::mcp_client::process::McpProcessManager;
+        use crate::mcp_client::session::McpSessionManager;
 
         let dir = tempfile::tempdir().expect("temp dir");
         std::fs::create_dir_all(dir.path().join("tools")).expect("tools dir");
@@ -5952,8 +5952,8 @@ mod tests {
     async fn available_actions_omit_registered_tool_when_provider_is_not_installed() {
         use crate::secrets::InMemorySecretsStore;
         use crate::secrets::SecretsCrypto;
-        use crate::tools::mcp::process::McpProcessManager;
-        use crate::tools::mcp::session::McpSessionManager;
+        use crate::mcp_client::process::McpProcessManager;
+        use crate::mcp_client::session::McpSessionManager;
 
         struct LinearSearchTool;
 
@@ -6093,8 +6093,8 @@ mod tests {
     ) -> ProviderFixture {
         use crate::secrets::InMemorySecretsStore;
         use crate::secrets::SecretsCrypto;
-        use crate::tools::mcp::process::McpProcessManager;
-        use crate::tools::mcp::session::McpSessionManager;
+        use crate::mcp_client::process::McpProcessManager;
+        use crate::mcp_client::session::McpSessionManager;
 
         let dir = tempfile::tempdir().expect("temp dir");
         let dir_path = dir.path().to_path_buf();
@@ -6312,8 +6312,8 @@ mod tests {
     async fn available_capabilities_include_latent_provider_background() {
         use crate::secrets::InMemorySecretsStore;
         use crate::secrets::SecretsCrypto;
-        use crate::tools::mcp::process::McpProcessManager;
-        use crate::tools::mcp::session::McpSessionManager;
+        use crate::mcp_client::process::McpProcessManager;
+        use crate::mcp_client::session::McpSessionManager;
 
         let dir = tempfile::tempdir().expect("temp dir");
         std::fs::create_dir_all(dir.path().join("tools")).expect("tools dir");

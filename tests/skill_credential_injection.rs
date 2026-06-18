@@ -28,7 +28,7 @@ use brassclaw::secrets::{
     SecretsStore,
 };
 use brassclaw::tools::builtin::HttpTool;
-use brassclaw::tools::wasm::SharedCredentialRegistry;
+use brassclaw::wasm_runtime::SharedCredentialRegistry;
 use brassclaw::tools::{ApprovalRequirement, Tool, ToolError};
 use brassclaw_skills::types::*;
 

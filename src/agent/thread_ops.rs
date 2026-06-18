@@ -3252,7 +3252,7 @@ mod tests {
             cost_guard: Arc::new(crate::agent::cost_guard::CostGuard::new(
                 crate::agent::cost_guard::CostGuardConfig::default(),
             )),
-            sse_tx: None,
+            event_publisher: None,
             http_interceptor: None,
             transcription: None,
             document_extraction: None,
@@ -3745,7 +3745,7 @@ mod tests {
             hooks: Arc::new(HookRegistry::new()),
             auth_manager: None,
             cost_guard: Arc::new(CostGuard::new(CostGuardConfig::default())),
-            sse_tx: None,
+            event_publisher: None,
             http_interceptor: None,
             transcription: None,
             document_extraction: None,
@@ -3829,7 +3829,7 @@ mod tests {
             hooks: Arc::new(HookRegistry::new()),
             auth_manager: None,
             cost_guard: Arc::new(CostGuard::new(CostGuardConfig::default())),
-            sse_tx: None,
+            event_publisher: None,
             http_interceptor: None,
             transcription: None,
             document_extraction: None,
@@ -4630,7 +4630,7 @@ mod tests {
             make_db_msg("assistant", "Done"),
         ];
 
-        let turns = crate::channels::web::util::build_turns_from_db_messages(&messages);
+        let turns = crate::agent::turn_builder::build_turns_from_db_messages(&messages);
 
         assert_eq!(turns.len(), 1);
         assert_eq!(turns[0].generated_images.len(), 1);
@@ -4678,7 +4678,7 @@ mod tests {
             hooks: Arc::new(HookRegistry::new()),
             auth_manager: None,
             cost_guard: Arc::new(CostGuard::new(CostGuardConfig::default())),
-            sse_tx: None,
+            event_publisher: None,
             http_interceptor: None,
             transcription: None,
             document_extraction: None,

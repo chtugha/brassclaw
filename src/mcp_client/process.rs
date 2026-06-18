@@ -9,9 +9,9 @@ use std::time::Duration;
 
 use tokio::sync::RwLock;
 
-use crate::tools::mcp::stdio_transport::StdioMcpTransport;
-use crate::tools::mcp::transport::McpTransport;
-use crate::tools::tool::ToolError;
+use crate::mcp_client::stdio_transport::StdioMcpTransport;
+use crate::mcp_client::transport::McpTransport;
+use crate::tools::ToolError;
 
 /// Configuration for spawning a stdio MCP server.
 #[derive(Debug, Clone)]

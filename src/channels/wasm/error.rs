@@ -85,8 +85,8 @@ pub enum WasmChannelError {
     IncompatibleWitVersion(String),
 }
 
-impl From<crate::tools::wasm::WasmError> for WasmChannelError {
-    fn from(err: crate::tools::wasm::WasmError) -> Self {
+impl From<crate::wasm_runtime::WasmError> for WasmChannelError {
+    fn from(err: crate::wasm_runtime::WasmError) -> Self {
         WasmChannelError::Compilation(err.to_string())
     }
 }

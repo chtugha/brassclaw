@@ -14,15 +14,15 @@ use tokio::sync::RwLock;
 use crate::auth::resolve_access_token_string_with_refresh;
 use crate::context::JobContext;
 use crate::secrets::SecretsStore;
-use crate::tools::mcp::auth::refresh_access_token;
-use crate::tools::mcp::config::McpServerConfig;
-use crate::tools::mcp::http_transport::HttpMcpTransport;
-use crate::tools::mcp::protocol::{
+use crate::mcp_client::auth::refresh_access_token;
+use crate::mcp_client::config::McpServerConfig;
+use crate::mcp_client::http_transport::HttpMcpTransport;
+use crate::mcp_client::protocol::{
     CallToolResult, InitializeResult, ListToolsResult, McpRequest, McpResponse, McpTool,
 };
-use crate::tools::mcp::session::McpSessionManager;
-use crate::tools::mcp::transport::McpTransport;
-use crate::tools::tool::{ApprovalRequirement, Tool, ToolError, ToolOutput};
+use crate::mcp_client::session::McpSessionManager;
+use crate::mcp_client::transport::McpTransport;
+use crate::tools::{ApprovalRequirement, Tool, ToolError, ToolOutput};
 
 /// Tag identifying which constructor produced an `McpClient`.
 ///
@@ -205,7 +205,7 @@ impl McpClient {
     pub fn new_with_config(config: McpServerConfig) -> Result<Self, ToolError> {
         if !matches!(
             config.effective_transport(),
-            crate::tools::mcp::config::EffectiveTransport::Http
+            crate::mcp_client::config::EffectiveTransport::Http
         ) {
             return Err(ToolError::InvalidParameters(
                 "new_with_config only supports HTTP transport; use new_with_transport for stdio/UDS"
@@ -1206,7 +1206,7 @@ mod tests {
 
     #[test]
     fn test_mcp_tool_requires_approval_destructive() {
-        use crate::tools::mcp::protocol::{McpTool, McpToolAnnotations};
+        use crate::mcp_client::protocol::{McpTool, McpToolAnnotations};
         let tool = McpTool {
             name: "delete_all".to_string(),
             description: "Deletes everything".to_string(),
@@ -1223,7 +1223,7 @@ mod tests {
 
     #[test]
     fn test_mcp_tool_no_approval_when_not_destructive() {
-        use crate::tools::mcp::protocol::{McpTool, McpToolAnnotations};
+        use crate::mcp_client::protocol::{McpTool, McpToolAnnotations};
         let tool = McpTool {
             name: "read_data".to_string(),
             description: "Reads data".to_string(),
@@ -1240,7 +1240,7 @@ mod tests {
 
     #[test]
     fn test_mcp_tool_no_approval_when_no_annotations() {
-        use crate::tools::mcp::protocol::McpTool;
+        use crate::mcp_client::protocol::McpTool;
         let tool = McpTool {
             name: "simple_tool".to_string(),
             description: "A simple tool".to_string(),
@@ -1678,7 +1678,7 @@ mod tests {
     // --- Issue 13: McpToolWrapper unit tests ---
 
     fn make_test_mcp_tool(destructive: bool) -> McpTool {
-        use crate::tools::mcp::protocol::McpToolAnnotations;
+        use crate::mcp_client::protocol::McpToolAnnotations;
         McpTool {
             name: "do_thing".to_string(),
             description: "Does a thing".to_string(),
@@ -1707,7 +1707,7 @@ mod tests {
             prefixed_name: format!("mcp__{server}__do_thing"),
             provider_extension: server.to_string(),
             server_name: server.to_string(),
-            client_store: Arc::new(crate::tools::mcp::McpClientStore::new()),
+            client_store: Arc::new(crate::mcp_client::McpClientStore::new()),
         }
     }
 
@@ -1868,7 +1868,7 @@ mod tests {
         let client =
             McpClient::new_with_transport("notion", transport.clone(), None, None, "default", None);
 
-        let store = Arc::new(crate::tools::mcp::McpClientStore::new());
+        let store = Arc::new(crate::mcp_client::McpClientStore::new());
         let tools = client
             .create_tools_with_store(store)
             .await
@@ -1935,7 +1935,7 @@ mod tests {
         let client =
             McpClient::new_with_transport("demo", transport.clone(), None, None, "default", None);
 
-        let store = Arc::new(crate::tools::mcp::McpClientStore::new());
+        let store = Arc::new(crate::mcp_client::McpClientStore::new());
         let tools = client
             .create_tools_with_store(store)
             .await
@@ -1950,7 +1950,7 @@ mod tests {
         // Register both into a real ToolRegistry: the second wins (this is
         // the documented shadowing behaviour). Without the warn log there
         // would be no signal that the first tool became unreachable.
-        let registry = crate::tools::registry::ToolRegistry::new();
+        let registry = crate::tools::ToolRegistry::new();
         for tool in tools {
             registry.register(tool).await;
         }
@@ -1974,7 +1974,7 @@ mod tests {
     /// differently from the schema-emitting path.
     #[tokio::test]
     async fn test_create_tools_round_trips_through_registry_resolve_name() {
-        use crate::tools::registry::ToolRegistry;
+        use crate::tools::ToolRegistry;
 
         let init_response = McpResponse {
             jsonrpc: "2.0".to_string(),
@@ -2015,7 +2015,7 @@ mod tests {
             McpClient::new_with_transport("notion", transport.clone(), None, None, "default", None);
 
         let registry = ToolRegistry::new();
-        let store = Arc::new(crate::tools::mcp::McpClientStore::new());
+        let store = Arc::new(crate::mcp_client::McpClientStore::new());
         for tool in client
             .create_tools_with_store(store)
             .await

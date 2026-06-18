@@ -184,7 +184,7 @@ pub async fn run_status_command() -> anyhow::Result<()> {
     println!("{}", fmt::kv_line("Heartbeat", &hb_value, 12));
 
     // MCP servers
-    let mcp_value = match crate::tools::mcp::config::load_mcp_servers().await {
+    let mcp_value = match crate::mcp_client::config::load_mcp_servers().await {
         Ok(servers) => {
             let enabled = servers.servers.iter().filter(|s| s.enabled).count();
             let total = servers.servers.len();

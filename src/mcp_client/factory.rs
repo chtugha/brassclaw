@@ -8,9 +8,9 @@ use std::sync::Arc;
 use brassclaw_common::McpServerName;
 
 use crate::secrets::SecretsStore;
-use crate::tools::mcp::config::{EffectiveTransport, McpServerConfig};
-use crate::tools::mcp::http_transport::HttpMcpTransport;
-use crate::tools::mcp::{McpClient, McpProcessManager, McpSessionManager, McpTransport};
+use crate::mcp_client::config::{EffectiveTransport, McpServerConfig};
+use crate::mcp_client::http_transport::HttpMcpTransport;
+use crate::mcp_client::{McpClient, McpProcessManager, McpSessionManager, McpTransport};
 
 /// Error returned when MCP client creation fails.
 #[derive(Debug, thiserror::Error)]
@@ -88,7 +88,7 @@ pub async fn create_client_from_config(
         }
         #[cfg(unix)]
         EffectiveTransport::Unix { socket_path } => {
-            let transport = crate::tools::mcp::unix_transport::UnixMcpTransport::connect(
+            let transport = crate::mcp_client::unix_transport::UnixMcpTransport::connect(
                 validated_name.as_str(),
                 socket_path,
             )
@@ -115,7 +115,7 @@ pub async fn create_client_from_config(
             // Authenticated (OAuth) path: tokens exist or server requires auth.
             if let Some(ref secrets) = secrets {
                 let has_tokens =
-                    crate::tools::mcp::is_authenticated(&server, secrets, user_id).await;
+                    crate::mcp_client::is_authenticated(&server, secrets, user_id).await;
 
                 if has_tokens || server.requires_auth() {
                     return Ok(McpClient::new_authenticated(
@@ -155,8 +155,8 @@ mod tests {
 
     use crate::secrets::{CreateSecretParams, InMemorySecretsStore, SecretsCrypto, SecretsStore};
     use crate::testing::credentials::TEST_CRYPTO_KEY;
-    use crate::tools::mcp::OAuthConfig;
-    use crate::tools::mcp::client::McpClientConstructor;
+    use crate::mcp_client::OAuthConfig;
+    use crate::mcp_client::client::McpClientConstructor;
 
     fn empty_secrets_store() -> Arc<dyn SecretsStore + Send + Sync> {
         let key = secrecy::SecretString::from(TEST_CRYPTO_KEY.to_string());
@@ -411,7 +411,7 @@ mod tests {
             .await;
 
         // Send a request through the client's transport to trigger session capture.
-        use crate::tools::mcp::protocol::McpRequest;
+        use crate::mcp_client::protocol::McpRequest;
         let request = McpRequest {
             jsonrpc: "2.0".to_string(),
             id: Some(1),

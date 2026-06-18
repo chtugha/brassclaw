@@ -29,7 +29,7 @@ use crate::secrets::{
     CredentialLocation, CredentialMapping, DecryptedSecret, SecretError, SecretsStore,
     host_matches_pattern,
 };
-use crate::tools::wasm::OAuthRefreshConfig;
+use crate::wasm_runtime::OAuthRefreshConfig;
 
 /// Error during credential injection.
 #[derive(Debug, Clone, thiserror::Error)]
@@ -473,7 +473,7 @@ mod tests {
         SecretsStore,
     };
     use crate::testing::credentials::{TEST_OPENAI_API_KEY, test_secrets_store};
-    use crate::tools::wasm::credential_injector::{CredentialInjector, base64_encode};
+    use crate::wasm_runtime::credential_injector::{CredentialInjector, base64_encode};
 
     fn test_store() -> InMemorySecretsStore {
         test_secrets_store()
@@ -706,7 +706,7 @@ mod tests {
 
     // ── SharedCredentialRegistry tests ─────────────────────────────────
 
-    use crate::tools::wasm::credential_injector::SharedCredentialRegistry;
+    use crate::wasm_runtime::credential_injector::SharedCredentialRegistry;
 
     #[test]
     fn test_shared_registry_empty() {

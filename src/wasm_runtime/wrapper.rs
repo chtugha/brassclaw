@@ -21,14 +21,14 @@ use crate::context::JobContext;
 use crate::db::UserStore;
 use crate::secrets::SecretsStore;
 use crate::secrets::host_matches_pattern;
-use crate::tools::tool::{Tool, ToolDiscoverySummary, ToolError, ToolOutput};
-use crate::tools::wasm::capabilities::Capabilities;
-use crate::tools::wasm::credential_injector::{InjectedCredentials, inject_credential};
-use crate::tools::wasm::error::WasmError;
-use crate::tools::wasm::host::{HostState, LogLevel};
-use crate::tools::wasm::limits::{ResourceLimits, WasmResourceLimiter};
-use crate::tools::wasm::runtime::{EPOCH_TICK_INTERVAL, PreparedModule, WasmToolRuntime};
-use crate::tools::wasm::{ssrf_safe_client_builder_for_target, validate_and_resolve_http_target};
+use crate::tools::{Tool, ToolDiscoverySummary, ToolError, ToolOutput};
+use crate::wasm_runtime::capabilities::Capabilities;
+use crate::wasm_runtime::credential_injector::{InjectedCredentials, inject_credential};
+use crate::wasm_runtime::error::WasmError;
+use crate::wasm_runtime::host::{HostState, LogLevel};
+use crate::wasm_runtime::limits::{ResourceLimits, WasmResourceLimiter};
+use crate::wasm_runtime::runtime::{EPOCH_TICK_INTERVAL, PreparedModule, WasmToolRuntime};
+use crate::wasm_runtime::{ssrf_safe_client_builder_for_target, validate_and_resolve_http_target};
 use brassclaw_llm::recording::{HttpExchangeRequest, HttpExchangeResponse, HttpInterceptor};
 use brassclaw_safety::LeakDetector;
 
@@ -1000,7 +1000,7 @@ impl WasmToolWrapper {
         params: serde_json::Value,
         context_json: Option<String>,
         host_credentials: Vec<ResolvedHostCredential>,
-    ) -> Result<(String, Vec<crate::tools::wasm::host::LogEntry>), WasmError> {
+    ) -> Result<(String, Vec<crate::wasm_runtime::host::LogEntry>), WasmError> {
         let engine = self.runtime.engine();
         let limits = &self.prepared.limits;
 
@@ -1048,7 +1048,7 @@ impl WasmToolWrapper {
                         "{msg}. This usually means the extension was compiled against \
                          a different WIT version than the host supports. \
                          Rebuild the extension against the current WIT (host: {}).",
-                        crate::tools::wasm::WIT_TOOL_VERSION
+                        crate::wasm_runtime::WIT_TOOL_VERSION
                     ))
                 } else {
                     WasmError::InstantiationFailed(msg)
@@ -1271,7 +1271,7 @@ impl Tool for WasmToolWrapper {
     /// a hint to the description directing the LLM to call `tool_info` for the
     /// full parameter schema. This keeps the raw description clean while still
     /// guiding the LLM.
-    fn schema(&self) -> crate::tools::tool::ToolSchema {
+    fn schema(&self) -> crate::tools::ToolSchema {
         let description = if self.schemas.is_advertised_permissive() {
             format!(
                 "{} (call tool_info(name: \"{}\", include_schema: true) for parameter schema)",
@@ -1280,7 +1280,7 @@ impl Tool for WasmToolWrapper {
         } else {
             self.description.clone()
         };
-        crate::tools::tool::ToolSchema {
+        crate::tools::ToolSchema {
             name: self.prepared.name.clone(),
             description,
             parameters: self.schemas.advertised(),
@@ -1398,7 +1398,7 @@ impl Tool for WasmToolWrapper {
         Some(self.prepared.limits.timeout)
     }
 
-    fn webhook_capability(&self) -> Option<crate::tools::wasm::WebhookCapability> {
+    fn webhook_capability(&self) -> Option<crate::wasm_runtime::WebhookCapability> {
         self.capabilities.webhook.clone()
     }
 }
@@ -1670,12 +1670,12 @@ fn extract_host_from_url(url: &str) -> Option<String> {
 
 #[cfg(test)]
 fn reject_private_ip(url: &str) -> Result<(), String> {
-    crate::tools::wasm::reject_private_ip(url)
+    crate::wasm_runtime::reject_private_ip(url)
 }
 
 #[cfg(test)]
 fn is_private_ip(ip: std::net::IpAddr) -> bool {
-    crate::tools::wasm::is_private_ip(ip)
+    crate::wasm_runtime::is_private_ip(ip)
 }
 
 fn schema_contains_container_properties(schema: &serde_json::Value) -> bool {
@@ -1942,9 +1942,9 @@ mod tests {
         TEST_GOOGLE_OAUTH_TOKEN, TEST_OAUTH_CLIENT_ID, TEST_OAUTH_CLIENT_SECRET,
         test_secrets_store,
     };
-    use crate::tools::tool::Tool;
-    use crate::tools::wasm::capabilities::Capabilities;
-    use crate::tools::wasm::runtime::{WasmRuntimeConfig, WasmToolRuntime};
+    use crate::tools::Tool;
+    use crate::wasm_runtime::capabilities::Capabilities;
+    use crate::wasm_runtime::runtime::{WasmRuntimeConfig, WasmToolRuntime};
 
     struct RecordingSecretsStore {
         inner: InMemorySecretsStore,
@@ -2503,7 +2503,7 @@ mod tests {
 
     #[test]
     fn test_extract_host_from_url() {
-        use crate::tools::wasm::wrapper::extract_host_from_url;
+        use crate::wasm_runtime::wrapper::extract_host_from_url;
 
         assert_eq!(
             extract_host_from_url("https://www.googleapis.com/calendar/v3/events"),
@@ -2536,7 +2536,7 @@ mod tests {
 
     #[test]
     fn test_inject_host_credentials_bearer() {
-        use crate::tools::wasm::wrapper::{ResolvedHostCredential, StoreData};
+        use crate::wasm_runtime::wrapper::{ResolvedHostCredential, StoreData};
         use std::collections::HashMap;
 
         let host_credentials = vec![ResolvedHostCredential {
@@ -2580,7 +2580,7 @@ mod tests {
 
     #[test]
     fn test_inject_host_credentials_path_scoped() {
-        use crate::tools::wasm::wrapper::{ResolvedHostCredential, StoreData};
+        use crate::wasm_runtime::wrapper::{ResolvedHostCredential, StoreData};
         use std::collections::HashMap;
 
         let host_credentials = vec![ResolvedHostCredential {
@@ -2630,7 +2630,7 @@ mod tests {
 
     #[test]
     fn test_inject_host_credentials_different_paths_same_host() {
-        use crate::tools::wasm::wrapper::{ResolvedHostCredential, StoreData};
+        use crate::wasm_runtime::wrapper::{ResolvedHostCredential, StoreData};
         use std::collections::HashMap;
 
         let host_credentials = vec![
@@ -2699,7 +2699,7 @@ mod tests {
         // credential source could pick the wrong winner. With ordered
         // specificity, the longest matching path prefix must always win any
         // conflicting header, regardless of insertion order.
-        use crate::tools::wasm::wrapper::{ResolvedHostCredential, StoreData};
+        use crate::wasm_runtime::wrapper::{ResolvedHostCredential, StoreData};
         use std::collections::HashMap;
 
         fn global() -> ResolvedHostCredential {
@@ -2752,7 +2752,7 @@ mod tests {
 
     #[test]
     fn test_inject_host_credentials_query_params() {
-        use crate::tools::wasm::wrapper::{ResolvedHostCredential, StoreData};
+        use crate::wasm_runtime::wrapper::{ResolvedHostCredential, StoreData};
         use std::collections::HashMap;
 
         let host_credentials = vec![ResolvedHostCredential {
@@ -2784,7 +2784,7 @@ mod tests {
 
     #[test]
     fn test_redact_credentials_includes_host_credentials() {
-        use crate::tools::wasm::wrapper::{ResolvedHostCredential, StoreData};
+        use crate::wasm_runtime::wrapper::{ResolvedHostCredential, StoreData};
         use std::collections::HashMap;
 
         let host_credentials = vec![ResolvedHostCredential {
@@ -2811,7 +2811,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_host_credentials_no_store() {
-        use crate::tools::wasm::wrapper::resolve_host_credentials;
+        use crate::wasm_runtime::wrapper::resolve_host_credentials;
 
         let caps = Capabilities::default();
         let result = resolve_host_credentials(&caps, None, "user1", None, None).await;
@@ -2820,7 +2820,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_host_credentials_no_http_cap() {
-        use crate::tools::wasm::wrapper::resolve_host_credentials;
+        use crate::wasm_runtime::wrapper::resolve_host_credentials;
 
         let store = test_secrets_store();
 
@@ -2834,8 +2834,8 @@ mod tests {
         use crate::secrets::{
             CreateSecretParams, CredentialLocation, CredentialMapping, SecretsStore,
         };
-        use crate::tools::wasm::capabilities::HttpCapability;
-        use crate::tools::wasm::wrapper::resolve_host_credentials;
+        use crate::wasm_runtime::capabilities::HttpCapability;
+        use crate::wasm_runtime::wrapper::resolve_host_credentials;
 
         let store = test_secrets_store();
 
@@ -2881,8 +2881,8 @@ mod tests {
         use crate::secrets::{
             CreateSecretParams, CredentialLocation, CredentialMapping, SecretsStore,
         };
-        use crate::tools::wasm::capabilities::HttpCapability;
-        use crate::tools::wasm::wrapper::resolve_host_credentials;
+        use crate::wasm_runtime::capabilities::HttpCapability;
+        use crate::wasm_runtime::wrapper::resolve_host_credentials;
 
         let store = test_secrets_store();
         let ctx = JobContext::with_user("owner-scope", "owner-scope test", "owner-scope test");
@@ -2926,7 +2926,7 @@ mod tests {
     #[tokio::test]
     async fn test_execute_resolves_host_credentials_from_owner_scope_context() {
         use crate::secrets::{CredentialLocation, CredentialMapping};
-        use crate::tools::wasm::capabilities::HttpCapability;
+        use crate::wasm_runtime::capabilities::HttpCapability;
 
         let runtime = Arc::new(WasmToolRuntime::new(WasmRuntimeConfig::for_testing()).unwrap());
         let prepared = runtime
@@ -2977,8 +2977,8 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_host_credentials_missing_secret() {
         use crate::secrets::{CredentialLocation, CredentialMapping};
-        use crate::tools::wasm::capabilities::HttpCapability;
-        use crate::tools::wasm::wrapper::resolve_host_credentials;
+        use crate::wasm_runtime::capabilities::HttpCapability;
+        use crate::wasm_runtime::wrapper::resolve_host_credentials;
 
         let store = test_secrets_store();
 
@@ -3012,8 +3012,8 @@ mod tests {
         use crate::secrets::{
             CreateSecretParams, CredentialLocation, CredentialMapping, SecretsStore,
         };
-        use crate::tools::wasm::capabilities::HttpCapability;
-        use crate::tools::wasm::wrapper::{OAuthRefreshConfig, resolve_host_credentials};
+        use crate::wasm_runtime::capabilities::HttpCapability;
+        use crate::wasm_runtime::wrapper::{OAuthRefreshConfig, resolve_host_credentials};
 
         let store = test_secrets_store();
 
@@ -3074,8 +3074,8 @@ mod tests {
         use crate::secrets::{
             CreateSecretParams, CredentialLocation, CredentialMapping, SecretsStore,
         };
-        use crate::tools::wasm::capabilities::HttpCapability;
-        use crate::tools::wasm::wrapper::resolve_host_credentials;
+        use crate::wasm_runtime::capabilities::HttpCapability;
+        use crate::wasm_runtime::wrapper::resolve_host_credentials;
 
         let store = test_secrets_store();
 
@@ -3119,8 +3119,8 @@ mod tests {
         use crate::secrets::{
             CreateSecretParams, CredentialLocation, CredentialMapping, SecretsStore,
         };
-        use crate::tools::wasm::capabilities::HttpCapability;
-        use crate::tools::wasm::wrapper::{OAuthRefreshConfig, resolve_host_credentials};
+        use crate::wasm_runtime::capabilities::HttpCapability;
+        use crate::wasm_runtime::wrapper::{OAuthRefreshConfig, resolve_host_credentials};
 
         let store = test_secrets_store();
 
@@ -3180,8 +3180,8 @@ mod tests {
         use crate::secrets::{
             CreateSecretParams, CredentialLocation, CredentialMapping, SecretsStore,
         };
-        use crate::tools::wasm::capabilities::HttpCapability;
-        use crate::tools::wasm::wrapper::{OAuthRefreshConfig, resolve_host_credentials};
+        use crate::wasm_runtime::capabilities::HttpCapability;
+        use crate::wasm_runtime::wrapper::{OAuthRefreshConfig, resolve_host_credentials};
 
         struct EnvLockGuard {
             _guard: std::sync::MutexGuard<'static, ()>,
@@ -3331,8 +3331,8 @@ mod tests {
         use crate::secrets::{
             CreateSecretParams, CredentialLocation, CredentialMapping, SecretsStore,
         };
-        use crate::tools::wasm::capabilities::HttpCapability;
-        use crate::tools::wasm::wrapper::{OAuthRefreshConfig, resolve_host_credentials};
+        use crate::wasm_runtime::capabilities::HttpCapability;
+        use crate::wasm_runtime::wrapper::{OAuthRefreshConfig, resolve_host_credentials};
 
         let store = RecordingSecretsStore::new();
 
@@ -3401,8 +3401,8 @@ mod tests {
         use crate::secrets::{
             CreateSecretParams, CredentialLocation, CredentialMapping, SecretsStore,
         };
-        use crate::tools::wasm::capabilities::HttpCapability;
-        use crate::tools::wasm::wrapper::{OAuthRefreshConfig, resolve_host_credentials};
+        use crate::wasm_runtime::capabilities::HttpCapability;
+        use crate::wasm_runtime::wrapper::{OAuthRefreshConfig, resolve_host_credentials};
 
         let store = RecordingSecretsStore::new();
 
@@ -3575,10 +3575,10 @@ mod tests {
             .await
             .unwrap(); // safety: test-only setup
 
-        let summary = crate::tools::tool::ToolDiscoverySummary {
+        let summary = crate::tools::ToolDiscoverySummary {
             always_required: vec!["action".into()],
             notes: vec!["Use tool_info for the full schema".into()],
-            ..crate::tools::tool::ToolDiscoverySummary::default()
+            ..crate::tools::ToolDiscoverySummary::default()
         };
 
         let wrapper =
@@ -3803,8 +3803,8 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_host_credentials_denies_default_fallback_for_admin_user() {
         use crate::secrets::{CredentialLocation, CredentialMapping, SecretsStore};
-        use crate::tools::wasm::capabilities::HttpCapability;
-        use crate::tools::wasm::wrapper::resolve_host_credentials;
+        use crate::wasm_runtime::capabilities::HttpCapability;
+        use crate::wasm_runtime::wrapper::resolve_host_credentials;
 
         let store = test_secrets_store();
         let db = test_user_db("routine_user_123", "admin").await;
@@ -3834,7 +3834,7 @@ mod tests {
             http: Some(HttpCapability {
                 allowlist: vec![],
                 credentials: creds,
-                rate_limit: crate::tools::wasm::capabilities::RateLimitConfig::default(),
+                rate_limit: crate::wasm_runtime::capabilities::RateLimitConfig::default(),
                 max_request_bytes: 1024 * 1024,
                 max_response_bytes: 10 * 1024 * 1024,
                 timeout: std::time::Duration::from_secs(30),
@@ -3874,7 +3874,7 @@ mod tests {
         // from the "default" scope; if the caller IS already "default", there
         // is nothing to fall back to and treating it as an admin loops the
         // resolution back into the same scope it just failed in.
-        use crate::tools::wasm::wrapper::resolve_host_credentials;
+        use crate::wasm_runtime::wrapper::resolve_host_credentials;
 
         let store = test_secrets_store();
         // Even though the user has admin role, the literal id "default" must
@@ -3903,7 +3903,7 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_host_credentials_denies_default_fallback_for_member_user() {
         use crate::secrets::SecretsStore;
-        use crate::tools::wasm::wrapper::resolve_host_credentials;
+        use crate::wasm_runtime::wrapper::resolve_host_credentials;
 
         let store = test_secrets_store();
         let db = test_user_db("member_user_123", "member").await;
@@ -3934,7 +3934,7 @@ mod tests {
 
     fn test_capabilities_with_google_oauth() -> Capabilities {
         use crate::secrets::{CredentialLocation, CredentialMapping};
-        use crate::tools::wasm::capabilities::HttpCapability;
+        use crate::wasm_runtime::capabilities::HttpCapability;
 
         let mut creds = std::collections::HashMap::new();
         creds.insert(
@@ -3951,7 +3951,7 @@ mod tests {
             http: Some(HttpCapability {
                 allowlist: vec![],
                 credentials: creds,
-                rate_limit: crate::tools::wasm::capabilities::RateLimitConfig::default(),
+                rate_limit: crate::wasm_runtime::capabilities::RateLimitConfig::default(),
                 max_request_bytes: 1024 * 1024,
                 max_response_bytes: 10 * 1024 * 1024,
                 timeout: std::time::Duration::from_secs(30),
@@ -3963,7 +3963,7 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_host_credentials_prefers_user_specific_over_default() {
         use crate::secrets::SecretsStore;
-        use crate::tools::wasm::wrapper::resolve_host_credentials;
+        use crate::wasm_runtime::wrapper::resolve_host_credentials;
 
         let store = test_secrets_store();
 
@@ -4002,7 +4002,7 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_host_credentials_no_fallback_when_already_default() {
         use crate::secrets::SecretsStore;
-        use crate::tools::wasm::wrapper::resolve_host_credentials;
+        use crate::wasm_runtime::wrapper::resolve_host_credentials;
 
         let store = test_secrets_store();
 
@@ -4028,7 +4028,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_host_credentials_missing_secret_warns() {
-        use crate::tools::wasm::wrapper::resolve_host_credentials;
+        use crate::wasm_runtime::wrapper::resolve_host_credentials;
 
         let store = test_secrets_store();
 
@@ -4101,8 +4101,8 @@ mod tests {
     /// map to the correct `WasmError` via structured downcast.
     #[test]
     fn trap_classification_fuel_via_downcast() {
-        use crate::tools::wasm::error::WasmError;
-        use crate::tools::wasm::limits::ResourceLimits;
+        use crate::wasm_runtime::error::WasmError;
+        use crate::wasm_runtime::limits::ResourceLimits;
 
         let limits = ResourceLimits::default();
         let err: wasmtime::Error = wasmtime::Trap::OutOfFuel.into();
@@ -4115,8 +4115,8 @@ mod tests {
 
     #[test]
     fn trap_classification_stack_overflow_via_downcast() {
-        use crate::tools::wasm::error::WasmError;
-        use crate::tools::wasm::limits::ResourceLimits;
+        use crate::wasm_runtime::error::WasmError;
+        use crate::wasm_runtime::limits::ResourceLimits;
 
         let limits = ResourceLimits::default();
         let err: wasmtime::Error = wasmtime::Trap::StackOverflow.into();
@@ -4129,8 +4129,8 @@ mod tests {
 
     #[test]
     fn trap_classification_unreachable_via_downcast() {
-        use crate::tools::wasm::error::WasmError;
-        use crate::tools::wasm::limits::ResourceLimits;
+        use crate::wasm_runtime::error::WasmError;
+        use crate::wasm_runtime::limits::ResourceLimits;
 
         let limits = ResourceLimits::default();
         let err: wasmtime::Error = wasmtime::Trap::UnreachableCodeReached.into();
@@ -4144,8 +4144,8 @@ mod tests {
     /// Non-Trap errors (host glue, component model) pass through with full chain.
     #[test]
     fn trap_classification_non_trap_preserves_chain() {
-        use crate::tools::wasm::error::WasmError;
-        use crate::tools::wasm::limits::ResourceLimits;
+        use crate::wasm_runtime::error::WasmError;
+        use crate::wasm_runtime::limits::ResourceLimits;
 
         let limits = ResourceLimits::default();
         let err = wasmtime::Error::msg("component model glue exploded");
@@ -4161,8 +4161,8 @@ mod tests {
     /// contains the diagnostic string.
     #[test]
     fn trap_classification_fuel_via_string_fallback() {
-        use crate::tools::wasm::error::WasmError;
-        use crate::tools::wasm::limits::ResourceLimits;
+        use crate::wasm_runtime::error::WasmError;
+        use crate::wasm_runtime::limits::ResourceLimits;
 
         let limits = ResourceLimits::default();
         // Wrap the fuel message in a plain wasmtime::Error so downcast_ref

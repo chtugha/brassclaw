@@ -196,7 +196,7 @@ mod tests {
             hooks: components.hooks.clone(),
             auth_manager: None,
             cost_guard: components.cost_guard.clone(),
-            sse_tx: None,
+            event_publisher: None,
             http_interceptor: None,
             transcription: None,
             document_extraction: None,

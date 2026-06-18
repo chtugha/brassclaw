@@ -51,8 +51,8 @@
 //! # Example
 //!
 //! ```ignore
-//! use brassclaw::tools::wasm::{WasmToolRuntime, WasmRuntimeConfig, WasmToolWrapper};
-//! use brassclaw::tools::wasm::Capabilities;
+//! use brassclaw::wasm_runtime::{WasmToolRuntime, WasmRuntimeConfig, WasmToolWrapper};
+//! use brassclaw::wasm_runtime::Capabilities;
 //! use std::sync::Arc;
 //!
 //! // Create runtime

@@ -535,7 +535,7 @@ pub async fn jobs_restart_handler(
             // when the user has servers configured (staging-regressions
             // issue 3 — the orchestrator used to read from a hardcoded host
             // file path that bootstrap moves into the DB on first run).
-            let master_mcp_config = crate::tools::mcp::config::load_master_mcp_config_value(
+            let master_mcp_config = crate::mcp_client::config::load_master_mcp_config_value(
                 store.as_ref(),
                 &old_job.user_id,
             )

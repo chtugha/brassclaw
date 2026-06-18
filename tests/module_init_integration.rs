@@ -191,8 +191,8 @@ async fn extension_manager_with_process_manager_constructs() {
     use brassclaw::extensions::ExtensionManager;
     use brassclaw::secrets::InMemorySecretsStore;
     use brassclaw::tools::ToolRegistry;
-    use brassclaw::tools::mcp::McpProcessManager;
-    use brassclaw::tools::mcp::McpSessionManager;
+    use brassclaw::mcp_client::McpProcessManager;
+    use brassclaw::mcp_client::McpSessionManager;
 
     let crypto = test_crypto();
     let secrets: Arc<dyn SecretsStore + Send + Sync> = Arc::new(InMemorySecretsStore::new(crypto));

@@ -5,19 +5,16 @@
 //! "this function doesn't do anything useful; it gives the model a structured
 //! way to record its plan that clients can read and render."
 
-use std::sync::Arc;
-
 use async_trait::async_trait;
 
-use crate::channels::web::sse::SseManager;
+use brassclaw_common::{AppEvent, DynEventPublisher, PlanStepDto};
 use crate::context::JobContext;
 use crate::tools::tool::{Tool, ToolError, ToolOutput, require_str};
-use brassclaw_common::{AppEvent, PlanStepDto};
 
 /// Tool for emitting structured plan progress updates via SSE.
 #[derive(Default)]
 pub struct PlanUpdateTool {
-    sse_tx: Option<Arc<SseManager>>,
+    event_publisher: Option<DynEventPublisher>,
 }
 
 impl PlanUpdateTool {
@@ -25,8 +22,8 @@ impl PlanUpdateTool {
         Self::default()
     }
 
-    pub fn with_sse(mut self, sse: Arc<SseManager>) -> Self {
-        self.sse_tx = Some(sse);
+    pub fn with_event_publisher(mut self, ep: DynEventPublisher) -> Self {
+        self.event_publisher = Some(ep);
         self
     }
 }
@@ -133,8 +130,8 @@ impl Tool for PlanUpdateTool {
         let total = steps.len();
 
         // Broadcast SSE event if manager is available
-        if let Some(ref sse) = self.sse_tx {
-            sse.broadcast(AppEvent::PlanUpdate {
+        if let Some(ref ep) = self.event_publisher {
+            ep.broadcast(AppEvent::PlanUpdate {
                 plan_id: plan_id.to_string(),
                 title: title.to_string(),
                 status: status.to_string(),

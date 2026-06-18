@@ -69,50 +69,7 @@ pub struct ThreadListResponse {
     pub active_thread: Option<Uuid>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct TurnInfo {
-    pub turn_number: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user_message_id: Option<Uuid>,
-    pub user_input: String,
-    pub response: Option<String>,
-    pub state: String,
-    pub started_at: String,
-    pub completed_at: Option<String>,
-    pub tool_calls: Vec<ToolCallInfo>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub generated_images: Vec<GeneratedImageInfo>,
-    /// Agent's reasoning narrative for this turn.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub narrative: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ToolCallInfo {
-    pub name: String,
-    pub has_result: bool,
-    pub has_error: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub call_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub result_preview: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub result: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-    /// Agent's reasoning for choosing this tool.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rationale: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct GeneratedImageInfo {
-    pub event_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub path: Option<String>,
-}
+pub use crate::agent::turn_builder::{GeneratedImageInfo, ToolCallInfo, TurnInfo};
 
 #[derive(Debug, Serialize)]
 pub struct HistoryResponse {
@@ -408,36 +365,7 @@ pub enum ExtensionActivationStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ChannelOnboardingState {
-    SetupRequired,
-    AuthRequired,
-    PairingRequired,
-    Ready,
-    Failed,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChannelOnboardingInfo {
-    pub state: ChannelOnboardingState,
-    #[serde(default)]
-    pub requires_pairing: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub credential_title: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub credential_instructions: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub credential_next_step: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub setup_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pairing_title: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pairing_instructions: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub restart_instructions: Option<String>,
-}
+pub use brassclaw_common::{ChannelOnboardingInfo, ChannelOnboardingState};
 
 pub fn classify_wasm_channel_activation(
     ext: &crate::extensions::InstalledExtension,
@@ -572,7 +500,7 @@ pub struct SetupFieldInfo {
     /// Whether this field already has a stored value.
     pub provided: bool,
     /// Input type for web UI rendering.
-    pub input_type: crate::tools::wasm::ToolSetupFieldInputType,
+    pub input_type: crate::wasm_runtime::ToolSetupFieldInputType,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1615,7 +1543,7 @@ mod tests {
             prompt: "Model".to_string(),
             optional: false,
             provided: true,
-            input_type: crate::tools::wasm::ToolSetupFieldInputType::Password,
+            input_type: crate::wasm_runtime::ToolSetupFieldInputType::Password,
         };
 
         let json = serde_json::to_value(field).unwrap();

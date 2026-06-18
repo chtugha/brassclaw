@@ -502,8 +502,7 @@ pub struct AgentDeps {
     pub auth_manager: Option<Arc<crate::auth::extension::AuthManager>>,
     /// Cost enforcement guardrails (daily budget, hourly rate limits).
     pub cost_guard: Arc<crate::agent::cost_guard::CostGuard>,
-    /// SSE manager for live job event streaming to the web gateway.
-    pub sse_tx: Option<Arc<crate::channels::web::sse::SseManager>>,
+    pub event_publisher: Option<brassclaw_common::DynEventPublisher>,
     /// HTTP interceptor for trace recording/replay.
     pub http_interceptor: Option<Arc<dyn brassclaw_llm::recording::HttpInterceptor>>,
     /// Audio transcription middleware for voice messages.
@@ -600,8 +599,8 @@ impl Agent {
                 hooks: deps.hooks.clone(),
             },
         );
-        if let Some(ref sse) = deps.sse_tx {
-            scheduler.set_sse_sender(Arc::clone(sse));
+        if let Some(ref ep) = deps.event_publisher {
+            scheduler.set_event_publisher(Arc::clone(ep));
         }
         if let Some(ref interceptor) = deps.http_interceptor {
             scheduler.set_http_interceptor(Arc::clone(interceptor));
@@ -2628,7 +2627,7 @@ mod tests {
             hooks: Arc::new(HookRegistry::new()),
             auth_manager: None,
             cost_guard: Arc::new(CostGuard::new(CostGuardConfig::default())),
-            sse_tx: None,
+            event_publisher: None,
             http_interceptor: None,
             transcription: None,
             document_extraction: None,

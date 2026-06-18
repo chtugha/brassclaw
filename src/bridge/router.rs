@@ -21,7 +21,7 @@ use crate::bridge::engine_actions::mission_capability_actions;
 use crate::bridge::llm_adapter::LlmBridgeAdapter;
 use crate::bridge::store_adapter::HybridStore;
 use crate::channels::web::GATEWAY_CHANNEL_NAME;
-use crate::channels::web::sse::SseManager;
+use brassclaw_common::DynEventPublisher;
 use crate::channels::{IncomingMessage, OutgoingResponse, StatusUpdate};
 use crate::db::Database;
 use crate::error::Error;
@@ -699,7 +699,7 @@ fn parse_credential_name(text: &str) -> Option<String> {
 /// Notify all surfaces about a pending gate: SSE broadcast (if `sse` is
 /// some) plus the channel-level status event and the user-facing prompt.
 ///
-/// Takes `sse` as an owned `Option<Arc<SseManager>>` rather than borrowing
+/// Takes `sse` as an owned `Option<DynEventPublisher>` rather than borrowing
 /// from `&EngineState` so callers can clone the Arc out of the engine
 /// state read-guard and `drop(guard)` *before* awaiting on broadcast +
 /// channel I/O. Holding the engine state guard across these awaits is
@@ -717,7 +717,7 @@ fn parse_credential_name(text: &str) -> Option<String> {
 /// await, keeping the read-lock scope tight.
 async fn notify_pending_gate(
     agent: &Agent,
-    sse: Option<Arc<SseManager>>,
+    sse: Option<DynEventPublisher>,
     tools: &crate::tools::ToolRegistry,
     auth_manager: Option<&AuthManager>,
     extension_manager: Option<&crate::extensions::ExtensionManager>,
@@ -1412,7 +1412,7 @@ struct EngineState {
     /// Unified pending gate store — keyed by (user_id, thread_id).
     pending_gates: Arc<crate::gate::store::PendingGateStore>,
     /// SSE manager for broadcasting AppEvents to the web gateway.
-    sse: Option<Arc<SseManager>>,
+    sse: Option<DynEventPublisher>,
     /// V1 database for writing conversation messages (gateway reads from here).
     db: Option<Arc<dyn Database>>,
     /// Secrets store for storing credentials after auth flow.
@@ -1948,7 +1948,7 @@ pub async fn init_engine(agent: &Agent) -> Result<(), Error> {
     {
         let mut notification_rx = mission_manager.subscribe_notifications();
         let channels = Arc::clone(&agent.channels);
-        let sse_ref = agent.deps.sse_tx.clone();
+        let sse_ref = agent.deps.event_publisher.clone();
         let db_ref = agent.deps.store.clone();
         let conv_mgr_ref = Arc::clone(&conversation_manager);
         let auth_mgr_ref = agent.deps.auth_manager.clone();
@@ -2101,7 +2101,7 @@ pub async fn init_engine(agent: &Agent) -> Result<(), Error> {
     // earlier tool calls in the same script (the very bug the inline-await
     // path exists to prevent). Drop them at startup so the user gets a
     // clean retry path instead.
-    invalidate_stranded_approval_gates(&pending_gates, agent.deps.sse_tx.as_ref()).await;
+    invalidate_stranded_approval_gates(&pending_gates, agent.deps.event_publisher.as_ref()).await;
     if let Err(e) = reconcile_pending_gate_state(&store_dyn, &pending_gates).await {
         debug!("engine v2: pending gate reconciliation failed: {e}");
     }
@@ -2145,7 +2145,7 @@ pub async fn init_engine(agent: &Agent) -> Result<(), Error> {
     let resolutions = Arc::new(crate::bridge::gate_controller::GateResolutions::new());
     let gate_controller = Arc::new(crate::bridge::gate_controller::BridgeGateController::new(
         Arc::clone(&pending_gates),
-        agent.deps.sse_tx.clone(),
+        agent.deps.event_publisher.clone(),
         Arc::clone(effect_adapter.tools()),
         auth_manager.clone(),
         agent.deps.extension_manager.clone(),
@@ -2163,7 +2163,7 @@ pub async fn init_engine(agent: &Agent) -> Result<(), Error> {
         store: store.clone(),
         default_project_id: project_id,
         pending_gates,
-        sse: agent.deps.sse_tx.clone(),
+        sse: agent.deps.event_publisher.clone(),
         db: agent.deps.store.clone(),
         secrets_store: agent.tools().secrets_store().cloned(),
         auth_manager,
@@ -2184,7 +2184,7 @@ pub async fn init_engine(agent: &Agent) -> Result<(), Error> {
 /// and External gates survive — they don't depend on a live VM.
 async fn invalidate_stranded_approval_gates(
     pending_gates: &crate::gate::store::PendingGateStore,
-    sse: Option<&Arc<SseManager>>,
+    sse: Option<&DynEventPublisher>,
 ) {
     let restored = pending_gates.list_all().await;
     for gate in restored {
@@ -4512,7 +4512,7 @@ async fn handle_with_engine_inner(
             // then drop the engine read guard before awaiting on
             // broadcast + channel I/O. The auth branch above does the
             // same, and `notify_pending_gate` is signed to accept an
-            // owned Option<Arc<SseManager>> precisely so this
+            // owned Option<DynEventPublisher> precisely so this
             // terminal-return branch can release the lock. The tools
             // registry handle is needed by `notify_pending_gate` to
             // resolve the auth-gate display name without holding the
@@ -5858,7 +5858,7 @@ fn interpret_message_event(role: &str, content_preview: &str) -> Option<&'static
 pub(crate) async fn handle_mission_notification(
     notif: &brassclaw_engine::MissionNotification,
     channels: &std::sync::Arc<crate::channels::ChannelManager>,
-    sse: Option<&Arc<SseManager>>,
+    sse: Option<&DynEventPublisher>,
     db: Option<&Arc<dyn Database>>,
     conv_mgr: Option<&brassclaw_engine::ConversationManager>,
     auth_manager: Option<&AuthManager>,
@@ -8056,6 +8056,7 @@ mod tests {
     use crate::channels::{
         Channel, ChannelManager, IncomingMessage, MessageStream, OutgoingResponse, StatusUpdate,
     };
+    use crate::channels::web::sse::SseManager;
     use crate::config::{AgentConfig, SafetyConfig, SkillsConfig};
     use crate::context::ContextManager;
     use crate::error::ChannelError;
@@ -8487,7 +8488,7 @@ mod tests {
     }
 
     async fn make_router_test_agent(
-        sse: Option<Arc<SseManager>>,
+        sse: Option<DynEventPublisher>,
     ) -> (Agent, Arc<TokioMutex<Vec<StatusUpdate>>>) {
         struct StaticLlmProvider;
 
@@ -8556,7 +8557,7 @@ mod tests {
             cost_guard: Arc::new(crate::agent::cost_guard::CostGuard::new(
                 crate::agent::cost_guard::CostGuardConfig::default(),
             )),
-            sse_tx: sse,
+            event_publisher: sse,
             http_interceptor: None,
             transcription: None,
             document_extraction: None,
@@ -8631,8 +8632,8 @@ mod tests {
                 .expect("crypto"),
             )));
         let tool_registry = Arc::new(ToolRegistry::new());
-        let mcp_sm = Arc::new(crate::tools::mcp::session::McpSessionManager::new());
-        let mcp_pm = Arc::new(crate::tools::mcp::process::McpProcessManager::new());
+        let mcp_sm = Arc::new(crate::mcp_client::session::McpSessionManager::new());
+        let mcp_pm = Arc::new(crate::mcp_client::process::McpProcessManager::new());
         let wasm_tools_dir = tempfile::tempdir().expect("temp wasm tools dir");
         let wasm_channels_dir = tempfile::tempdir().expect("temp wasm channels dir");
         let ext_mgr = Arc::new(crate::extensions::ExtensionManager::new(
@@ -8692,9 +8693,9 @@ mod tests {
             sse.subscribe_raw(Some("alice".to_string()), false)
                 .expect("subscribe raw"),
         );
-        let (agent, statuses) = make_router_test_agent(Some(Arc::clone(&sse))).await;
+        let (agent, statuses) = make_router_test_agent(Some(Arc::clone(&sse) as DynEventPublisher)).await;
         let mut state = make_expected_test_state(store);
-        state.sse = Some(Arc::clone(&sse));
+        state.sse = Some(Arc::clone(&sse) as DynEventPublisher);
 
         let thread_id = brassclaw_engine::ThreadId::new();
         let expected_extension_name = "google_oauth_token".to_string();
@@ -8764,9 +8765,9 @@ mod tests {
             sse.subscribe_raw(Some("alice".to_string()), false)
                 .expect("subscribe raw"),
         );
-        let (agent, statuses) = make_router_test_agent(Some(Arc::clone(&sse))).await;
+        let (agent, statuses) = make_router_test_agent(Some(Arc::clone(&sse) as DynEventPublisher)).await;
         let mut state = make_expected_test_state(store);
-        state.sse = Some(Arc::clone(&sse));
+        state.sse = Some(Arc::clone(&sse) as DynEventPublisher);
         state.extension_manager = Some(ext_mgr);
 
         let thread_id = brassclaw_engine::ThreadId::new();
@@ -8825,8 +8826,9 @@ mod tests {
     async fn handle_with_engine_re_emits_pending_approval_on_follow_up() {
         let _guard = ENGINE_STATE_TEST_LOCK.lock().await;
         let store = Arc::new(TestStore::new());
-        let sse = Arc::new(SseManager::new());
-        let _receiver = sse.sender().subscribe();
+        let sse_manager = Arc::new(SseManager::new());
+        let _receiver = sse_manager.sender().subscribe();
+        let sse: DynEventPublisher = sse_manager;
         let (agent, statuses) = make_router_test_agent(Some(Arc::clone(&sse))).await;
         let mut state = make_expected_test_state(store);
         state.sse = Some(Arc::clone(&sse));
@@ -9990,7 +9992,7 @@ mod tests {
             scopes: vec![],
             user_id: "expiry-user".to_string(),
             secrets,
-            sse_manager: None,
+            event_publisher: None,
             gateway_token: None,
             token_exchange_extra_params: std::collections::HashMap::new(),
             client_id_secret_name: None,
@@ -10337,7 +10339,7 @@ mod tests {
             hooks: Arc::new(HookRegistry::new()),
             auth_manager: None,
             cost_guard: Arc::new(CostGuard::new(CostGuardConfig::default())),
-            sse_tx: None,
+            event_publisher: None,
             http_interceptor: None,
             transcription: None,
             document_extraction: None,
@@ -11354,7 +11356,7 @@ mod tests {
             );
 
             let mut state = make_expected_test_state(store);
-            state.sse = Some(Arc::clone(&sse));
+            state.sse = Some(Arc::clone(&sse) as DynEventPublisher);
 
             // Thread deleted / never saved — `state.store.load_thread(tid)`
             // returns `Ok(None)`, mimicking the #2323 race.
@@ -11372,7 +11374,7 @@ mod tests {
 
             *lock.write().await = Some(state);
 
-            let (agent, _statuses) = make_router_test_agent(Some(Arc::clone(&sse))).await;
+            let (agent, _statuses) = make_router_test_agent(Some(Arc::clone(&sse) as DynEventPublisher)).await;
             let message =
                 IncomingMessage::new("web", "alice", "approve").with_thread(thread_id.to_string());
 
@@ -11678,7 +11680,7 @@ mod tests {
         let outcome = with_installed_engine_state(state, async move {
             let (mut agent, statuses) = make_test_agent_with_status_channel("web").await;
 
-            let credential_registry = Arc::new(crate::tools::wasm::SharedCredentialRegistry::new());
+            let credential_registry = Arc::new(crate::wasm_runtime::SharedCredentialRegistry::new());
             credential_registry.add_mappings([crate::secrets::CredentialMapping::bearer(
                 "github_pat",
                 "api.github.com",

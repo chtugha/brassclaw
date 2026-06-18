@@ -6,8 +6,6 @@
 //! grants and approval gates instead.
 
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 /// Stub: All tools are always allowed in v1 legacy code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -24,7 +22,7 @@ pub struct AdminToolPolicy {
 }
 
 /// Stub: Cache for admin tool policy (always returns no restrictions).
-pub type AdminToolPolicyCache = Arc<RwLock<AdminToolPolicyState>>;
+pub type AdminToolPolicyCache = tokio::sync::OnceCell<AdminToolPolicyState>;
 
 /// Stub: Admin tool policy state.
 #[derive(Debug, Clone)]
@@ -54,7 +52,7 @@ pub fn is_valid_admin_tool_name(_name: &str) -> bool {
 
 /// Stub: Returns empty policy (no tools disabled).
 pub async fn load_cached_admin_tool_policy(
-    _db: &dyn crate::db::Database,
+    _db: Option<&std::sync::Arc<dyn crate::db::Database>>,
     _cache: &AdminToolPolicyCache,
 ) -> AdminToolPolicyState {
     AdminToolPolicyState::Missing
@@ -62,12 +60,12 @@ pub async fn load_cached_admin_tool_policy(
 
 /// Stub: Returns all tools unfiltered (no admin restrictions).
 pub fn filter_admin_disabled_tools(
-    tools: Vec<crate::tools::Tool>,
+    tools: Vec<brassclaw_llm::ToolDefinition>,
     _multi_tenant: bool,
     _is_admin: bool,
     _user_id: &str,
-    _policy_state: AdminToolPolicyState,
-) -> Vec<crate::tools::Tool> {
+    _policy_state: &AdminToolPolicyState,
+) -> Vec<brassclaw_llm::ToolDefinition> {
     tools
 }
 
@@ -96,8 +94,6 @@ pub const ADMIN_TOOL_POLICY_KEY: &str = "admin_tool_policy";
 pub const TOOL_PERMISSION_LOCKED_REASON: Option<&str> = None;
 
 /// Stub: Check if tool permission is locked (always returns false).
-pub fn tool_permission_locked(_tool_name: &str) -> bool {
+pub fn tool_permission_locked<T: ?Sized>(_tool: &T) -> bool {
     false
 }
-
-// Made with Bob

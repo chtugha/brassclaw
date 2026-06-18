@@ -310,7 +310,7 @@ impl SecretsCapability {
 ///
 /// Type alias for `ToolRateLimitConfig` from the shared rate limiter module.
 /// WASM capabilities use it to configure per-tool HTTP request limits.
-pub use crate::tools::tool::ToolRateLimitConfig as RateLimitConfig;
+pub use crate::tools::ToolRateLimitConfig as RateLimitConfig;
 
 /// Webhook auth/signature capability configuration for tools.
 #[derive(Debug, Clone, Default)]
@@ -333,7 +333,7 @@ pub struct WebhookCapability {
 
 #[cfg(test)]
 mod tests {
-    use crate::tools::wasm::capabilities::{Capabilities, EndpointPattern, SecretsCapability};
+    use crate::wasm_runtime::capabilities::{Capabilities, EndpointPattern, SecretsCapability};
 
     #[test]
     fn test_capabilities_default_is_none() {

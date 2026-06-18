@@ -12,8 +12,8 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::{Mutex, oneshot};
 use tokio::task::JoinHandle;
 
-use crate::tools::mcp::protocol::{McpRequest, McpResponse};
-use crate::tools::tool::ToolError;
+use crate::mcp_client::protocol::{McpRequest, McpResponse};
+use crate::tools::ToolError;
 
 /// Trait for sending JSON-RPC requests to an MCP server and receiving responses.
 ///

@@ -355,8 +355,8 @@ pub(crate) fn test_ext_mgr(
     secrets: Arc<dyn crate::secrets::SecretsStore + Send + Sync>,
 ) -> (Arc<ExtensionManager>, tempfile::TempDir, tempfile::TempDir) {
     let tool_registry = Arc::new(ToolRegistry::new());
-    let mcp_sm = Arc::new(crate::tools::mcp::session::McpSessionManager::new());
-    let mcp_pm = Arc::new(crate::tools::mcp::process::McpProcessManager::new());
+    let mcp_sm = Arc::new(crate::mcp_client::session::McpSessionManager::new());
+    let mcp_pm = Arc::new(crate::mcp_client::process::McpProcessManager::new());
     let wasm_tools_dir = tempfile::tempdir().expect("temp wasm tools dir"); // safety: cfg(test) fixture
     let wasm_channels_dir = tempfile::tempdir().expect("temp wasm channels dir"); // safety: cfg(test) fixture
     let ext_mgr = Arc::new(ExtensionManager::new(
@@ -385,16 +385,16 @@ pub(crate) async fn test_ext_mgr_with_db() -> (
 ) {
     let secrets = test_secrets_store();
     let tool_registry = Arc::new(ToolRegistry::new());
-    let mcp_sm = Arc::new(crate::tools::mcp::session::McpSessionManager::new());
-    let mcp_pm = Arc::new(crate::tools::mcp::process::McpProcessManager::new());
+    let mcp_sm = Arc::new(crate::mcp_client::session::McpSessionManager::new());
+    let mcp_pm = Arc::new(crate::mcp_client::process::McpProcessManager::new());
     let wasm_tools_dir = tempfile::tempdir().expect("temp wasm tools dir"); // safety: cfg(test) fixture
     let wasm_channels_dir = tempfile::tempdir().expect("temp wasm channels dir"); // safety: cfg(test) fixture
     let (db, db_dir) = crate::testing::test_db().await;
 
     // Pre-seed an empty servers list so the DB-backed loader does not
     // fall back to `~/.brassclaw/mcp-servers.json` on dev machines.
-    let empty_servers = crate::tools::mcp::config::McpServersFile::default();
-    crate::tools::mcp::config::save_mcp_servers_to_db(db.as_ref(), "test", &empty_servers)
+    let empty_servers = crate::mcp_client::config::McpServersFile::default();
+    crate::mcp_client::config::save_mcp_servers_to_db(db.as_ref(), "test", &empty_servers)
         .await
         .expect("seed empty mcp_servers setting"); // safety: cfg(test) fixture
 

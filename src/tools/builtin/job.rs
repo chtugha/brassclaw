@@ -264,7 +264,7 @@ impl CreateJobTool {
     /// MCP filtering silently no-op'd on every typical install.
     async fn load_master_mcp_config(&self, user_id: &str) -> Option<serde_json::Value> {
         let store = self.store.as_ref()?;
-        crate::tools::mcp::config::load_master_mcp_config_value(store.as_ref(), user_id).await
+        crate::mcp_client::config::load_master_mcp_config_value(store.as_ref(), user_id).await
     }
 
     /// Persist a sandbox job record (fire-and-forget).

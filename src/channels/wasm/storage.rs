@@ -1,7 +1,7 @@
 //! WASM channel binary storage with integrity verification.
 //!
 //! Stores compiled WASM channels in the database with BLAKE3 hash verification.
-//! Mirrors the pattern in `crate::tools::wasm::storage` but without capabilities table.
+//! Mirrors the pattern in `crate::wasm_runtime::storage` but without capabilities table.
 //!
 //! # Storage Flow
 //!
@@ -18,7 +18,7 @@ use chrono::{DateTime, Utc};
 use deadpool_postgres::Pool;
 use uuid::Uuid;
 
-use crate::tools::wasm::storage::{compute_binary_hash, verify_binary_integrity};
+use crate::wasm_runtime::storage::{compute_binary_hash, verify_binary_integrity};
 
 /// A stored WASM channel (metadata only, no binary).
 #[derive(Debug, Clone)]

@@ -213,7 +213,7 @@ impl FuelConfig {
 
 #[cfg(test)]
 mod tests {
-    use crate::tools::wasm::limits::{
+    use crate::wasm_runtime::limits::{
         DEFAULT_FUEL_LIMIT, DEFAULT_MEMORY_LIMIT, DEFAULT_TIMEOUT, FuelConfig, ResourceLimits,
         WasmResourceLimiter,
     };

@@ -66,8 +66,7 @@ pub struct Scheduler {
     extension_manager: Option<Arc<ExtensionManager>>,
     store: Option<SystemScope>,
     hooks: Arc<HookRegistry>,
-    /// SSE manager for live job event streaming.
-    sse_tx: Option<Arc<crate::channels::web::sse::SseManager>>,
+    event_publisher: Option<brassclaw_common::DynEventPublisher>,
     /// HTTP interceptor for trace recording/replay (propagated to workers).
     http_interceptor: Option<Arc<dyn brassclaw_llm::recording::HttpInterceptor>>,
     /// Resolved runtime policy propagated to per-job workers so the
@@ -98,7 +97,7 @@ impl Scheduler {
             extension_manager: deps.extension_manager,
             store: deps.store,
             hooks: deps.hooks,
-            sse_tx: None,
+            event_publisher: None,
             http_interceptor: None,
             runtime_policy: None,
             jobs: Arc::new(RwLock::new(HashMap::new())),
@@ -106,9 +105,8 @@ impl Scheduler {
         }
     }
 
-    /// Set the SSE manager for live job event streaming.
-    pub fn set_sse_sender(&mut self, sse: Arc<crate::channels::web::sse::SseManager>) {
-        self.sse_tx = Some(sse);
+    pub fn set_event_publisher(&mut self, ep: brassclaw_common::DynEventPublisher) {
+        self.event_publisher = Some(ep);
     }
 
     /// Set the HTTP interceptor for trace recording/replay.
@@ -325,7 +323,7 @@ impl Scheduler {
                 hooks: self.hooks.clone(),
                 timeout: self.config.job_timeout,
                 use_planning: self.config.use_planning,
-                sse_tx: self.sse_tx.clone(),
+                event_publisher: self.event_publisher.clone(),
                 approval_context,
                 http_interceptor: self.http_interceptor.clone(),
                 multi_tenant: self.config.multi_tenant,

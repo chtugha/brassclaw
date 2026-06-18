@@ -14,9 +14,9 @@ use tokio::net::UnixStream;
 use tokio::sync::{Mutex, oneshot};
 use tokio::task::JoinHandle;
 
-use crate::tools::mcp::protocol::{McpRequest, McpResponse};
-use crate::tools::mcp::transport::{McpTransport, spawn_jsonrpc_reader, stream_transport_send};
-use crate::tools::tool::ToolError;
+use crate::mcp_client::protocol::{McpRequest, McpResponse};
+use crate::mcp_client::transport::{McpTransport, spawn_jsonrpc_reader, stream_transport_send};
+use crate::tools::ToolError;
 
 /// MCP transport that communicates over a Unix domain socket.
 ///

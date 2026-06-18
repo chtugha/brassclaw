@@ -30,6 +30,7 @@ mod session_manager;
 pub mod submission;
 pub mod task;
 mod thread_ops;
+pub mod turn_builder;
 pub mod undo;
 
 #[cfg(all(test, feature = "libsql"))]

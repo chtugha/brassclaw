@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::db::{SettingsStore, UserStore};
 use crate::secrets::{CreateSecretParams, DecryptedSecret, SecretError, SecretsStore};
-use crate::tools::wasm::OAuthRefreshConfig;
-use crate::tools::wasm::{ssrf_safe_client_builder_for_target, validate_and_resolve_http_target};
+use crate::wasm_runtime::OAuthRefreshConfig;
+use crate::wasm_runtime::{ssrf_safe_client_builder_for_target, validate_and_resolve_http_target};
 
 const AUTH_DESCRIPTORS_SETTING_KEY: &str = "auth.descriptors_v1";
 
@@ -115,13 +115,13 @@ pub struct PendingOAuthLaunchParams {
     pub access_token_field: String,
     pub secret_name: String,
     pub provider: Option<String>,
-    pub validation_endpoint: Option<crate::tools::wasm::ValidationEndpointSchema>,
+    pub validation_endpoint: Option<crate::wasm_runtime::ValidationEndpointSchema>,
     pub scopes: Vec<String>,
     pub use_pkce: bool,
     pub extra_params: HashMap<String, String>,
     pub user_id: String,
     pub secrets: Arc<dyn SecretsStore + Send + Sync>,
-    pub sse_manager: Option<Arc<crate::channels::web::sse::SseManager>>,
+    pub event_publisher: Option<brassclaw_common::DynEventPublisher>,
     pub gateway_token: Option<String>,
     pub token_exchange_extra_params: HashMap<String, String>,
     pub client_id_secret_name: Option<String>,
@@ -161,7 +161,7 @@ pub fn build_pending_oauth_launch(
         scopes: params.scopes,
         user_id: params.user_id,
         secrets: params.secrets,
-        sse_manager: params.sse_manager,
+        event_publisher: params.event_publisher,
         gateway_token: params.gateway_token,
         token_exchange_extra_params: params.token_exchange_extra_params,
         client_id_secret_name: params.client_id_secret_name,

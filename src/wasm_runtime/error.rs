@@ -99,7 +99,7 @@ impl From<WasmError> for crate::tools::ToolError {
 
 #[cfg(test)]
 mod tests {
-    use crate::tools::wasm::error::WasmError;
+    use crate::wasm_runtime::error::WasmError;
 
     #[test]
     fn test_error_display() {

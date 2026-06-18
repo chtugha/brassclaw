@@ -45,10 +45,11 @@ use tokio::sync::{Mutex, oneshot};
 use tracing::debug;
 use uuid::Uuid;
 
+use brassclaw_common::DynEventPublisher;
+
 use crate::auth::extension::AuthManager;
 use crate::channels::ChannelManager;
 use crate::channels::StatusUpdate;
-use crate::channels::web::sse::SseManager;
 use crate::extensions::ExtensionManager;
 use crate::gate::pending::PendingGate;
 use crate::gate::store::PendingGateStore;
@@ -201,7 +202,7 @@ impl GateResolutions {
 /// `ThreadExecutionContext` the engine builds for a live execution.
 pub struct BridgeGateController {
     pending_gates: Arc<PendingGateStore>,
-    sse: Option<Arc<SseManager>>,
+    sse: Option<DynEventPublisher>,
     tools: Arc<ToolRegistry>,
     auth_manager: Option<Arc<AuthManager>>,
     extension_manager: Option<Arc<ExtensionManager>>,
@@ -250,7 +251,7 @@ impl BridgeGateController {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         pending_gates: Arc<PendingGateStore>,
-        sse: Option<Arc<SseManager>>,
+        sse: Option<DynEventPublisher>,
         tools: Arc<ToolRegistry>,
         auth_manager: Option<Arc<AuthManager>>,
         extension_manager: Option<Arc<ExtensionManager>>,

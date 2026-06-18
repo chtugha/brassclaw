@@ -216,10 +216,11 @@ async fn mission_notification_cross_user_does_not_leak_owner_thread_id() {
 
     let owner_thread_id = notif.thread_id.to_string();
 
+    let sse_pub: brassclaw_common::DynEventPublisher = Arc::clone(&sse) as brassclaw_common::DynEventPublisher;
     crate::bridge::handle_mission_notification(
         &notif,
         &channels,
-        Some(&sse),
+        Some(&sse_pub),
         Some(&store),
         None,
         None,
@@ -301,10 +302,11 @@ async fn mission_notification_same_user_attaches_owner_thread_id() {
 
     let owner_thread_id = notif.thread_id.to_string();
 
+    let sse_pub: brassclaw_common::DynEventPublisher = Arc::clone(&sse) as brassclaw_common::DynEventPublisher;
     crate::bridge::handle_mission_notification(
         &notif,
         &channels,
-        Some(&sse),
+        Some(&sse_pub),
         Some(&store),
         None,
         None,
@@ -379,10 +381,11 @@ async fn mission_notification_explicit_same_user_attaches_owner_thread_id() {
 
     let owner_thread_id = notif.thread_id.to_string();
 
+    let sse_pub: brassclaw_common::DynEventPublisher = Arc::clone(&sse) as brassclaw_common::DynEventPublisher;
     crate::bridge::handle_mission_notification(
         &notif,
         &channels,
-        Some(&sse),
+        Some(&sse_pub),
         Some(&store),
         None,
         None,

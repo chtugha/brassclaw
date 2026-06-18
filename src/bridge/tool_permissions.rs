@@ -16,7 +16,7 @@ pub(crate) struct ToolPermissionResolution {
 /// Stub: Tool permission snapshot (no permissions enforced).
 #[derive(Clone, Default)]
 pub(crate) struct ToolPermissionSnapshot {
-    overrides: HashMap<String, PermissionState>,
+    _overrides: HashMap<String, PermissionState>,
 }
 
 impl ToolPermissionSnapshot {

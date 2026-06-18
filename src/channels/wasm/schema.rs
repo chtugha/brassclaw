@@ -47,7 +47,7 @@ use crate::channels::wasm::capabilities::{
     ChannelCapabilities, EmitRateLimitConfig, MIN_POLL_INTERVAL_MS,
 };
 use crate::channels::wasm::is_reserved_runtime_config_key;
-use crate::tools::wasm::{CapabilitiesFile as ToolCapabilitiesFile, RateLimitSchema};
+use crate::wasm_runtime::{CapabilitiesFile as ToolCapabilitiesFile, RateLimitSchema};
 
 /// Root schema for a channel capabilities JSON file.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

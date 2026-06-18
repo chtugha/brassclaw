@@ -748,7 +748,7 @@ mod tests {
     };
     use crate::channels::wasm::wrapper::WasmChannel;
     use crate::pairing::PairingStore;
-    use crate::tools::wasm::ResourceLimits;
+    use crate::wasm_runtime::ResourceLimits;
 
     fn create_test_channel(name: &str) -> Arc<WasmChannel> {
         let config = WasmChannelRuntimeConfig::for_testing();

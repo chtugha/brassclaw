@@ -86,8 +86,8 @@ impl WasmConfig {
     }
 
     /// Convert to WasmRuntimeConfig.
-    pub fn to_runtime_config(&self) -> crate::tools::wasm::WasmRuntimeConfig {
-        use crate::tools::wasm::{FuelConfig, ResourceLimits, WasmRuntimeConfig};
+    pub fn to_runtime_config(&self) -> crate::wasm_runtime::WasmRuntimeConfig {
+        use crate::wasm_runtime::{FuelConfig, ResourceLimits, WasmRuntimeConfig};
 
         WasmRuntimeConfig {
             default_limits: ResourceLimits {

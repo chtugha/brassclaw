@@ -14,7 +14,7 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use brassclaw_tui::{SkillCategory, ToolCategory, TuiAppConfig, TuiEvent, TuiLayout, start_tui};
 
-use crate::channels::web::log_layer::LogBroadcaster;
+use crate::logging::LogBroadcaster;
 use crate::channels::{
     AttachmentKind, Channel, IncomingAttachment, IncomingMessage, MessageStream, OutgoingResponse,
     StatusUpdate,

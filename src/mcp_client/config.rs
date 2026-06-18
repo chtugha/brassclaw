@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use tokio::fs;
 
 use crate::bootstrap::brassclaw_base_dir;
-use crate::tools::mcp::McpTool;
-use crate::tools::tool::ToolError;
+use crate::mcp_client::McpTool;
+use crate::tools::ToolError;
 
 /// Transport configuration for an MCP server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1415,7 +1415,7 @@ mod tests {
     #[test]
     fn test_config_roundtrip_preserves_cached_tools() {
         let mut config = McpServerConfig::new("notion", "https://mcp.notion.com");
-        config.cached_tools = vec![crate::tools::mcp::McpTool {
+        config.cached_tools = vec![crate::mcp_client::McpTool {
             name: "search".to_string(),
             description: "Search Notion content".to_string(),
             input_schema: serde_json::json!({

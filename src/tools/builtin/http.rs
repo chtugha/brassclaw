@@ -14,7 +14,7 @@ use crate::context::JobContext;
 use crate::db::UserStore;
 use crate::secrets::SecretsStore;
 use crate::tools::tool::{ApprovalRequirement, Tool, ToolError, ToolOutput, require_str};
-use crate::tools::wasm::{InjectedCredentials, SharedCredentialRegistry, inject_credential};
+use crate::wasm_runtime::{InjectedCredentials, SharedCredentialRegistry, inject_credential};
 use brassclaw_safety::LeakDetector;
 
 #[cfg(feature = "html-to-markdown")]
@@ -1501,7 +1501,7 @@ mod tests {
     #[test]
     fn test_host_with_credential_mapping_returns_unless_auto_approved() {
         use crate::secrets::CredentialMapping;
-        use crate::tools::wasm::SharedCredentialRegistry;
+        use crate::wasm_runtime::SharedCredentialRegistry;
 
         let registry = Arc::new(SharedCredentialRegistry::new());
         registry.add_mappings(vec![CredentialMapping::bearer(
@@ -1527,7 +1527,7 @@ mod tests {
 
     #[test]
     fn test_get_host_without_credential_mapping_returns_never() {
-        use crate::tools::wasm::SharedCredentialRegistry;
+        use crate::wasm_runtime::SharedCredentialRegistry;
 
         let registry = Arc::new(SharedCredentialRegistry::new());
         // Empty registry - no credential mappings
@@ -1659,7 +1659,7 @@ mod tests {
 
     #[test]
     fn test_requires_approval_with_stringified_http_params() {
-        use crate::tools::wasm::SharedCredentialRegistry;
+        use crate::wasm_runtime::SharedCredentialRegistry;
 
         let tool = HttpTool::new().with_credentials(
             Arc::new(SharedCredentialRegistry::new()),
@@ -1730,7 +1730,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn requires_approval_multi_thread_no_panic() {
         use crate::secrets::CredentialMapping;
-        use crate::tools::wasm::SharedCredentialRegistry;
+        use crate::wasm_runtime::SharedCredentialRegistry;
 
         // Test with credential registry (uses std::sync::RwLock - should be safe)
         let registry = Arc::new(SharedCredentialRegistry::new());
@@ -1822,7 +1822,7 @@ mod tests {
         // parse_headers_param is called before the execute() block check,
         // so we test the blocking logic directly by simulating what execute does.
         use crate::secrets::CredentialMapping;
-        use crate::tools::wasm::SharedCredentialRegistry;
+        use crate::wasm_runtime::SharedCredentialRegistry;
 
         let registry = Arc::new(SharedCredentialRegistry::new());
         registry.add_mappings(vec![CredentialMapping::bearer(
@@ -1852,7 +1852,7 @@ mod tests {
     #[test]
     fn test_non_auth_header_allowed_for_registered_host() {
         use crate::secrets::CredentialMapping;
-        use crate::tools::wasm::SharedCredentialRegistry;
+        use crate::wasm_runtime::SharedCredentialRegistry;
 
         let registry = Arc::new(SharedCredentialRegistry::new());
         registry.add_mappings(vec![CredentialMapping::bearer(
@@ -1874,7 +1874,7 @@ mod tests {
 
     #[test]
     fn test_auth_header_allowed_for_unregistered_host() {
-        use crate::tools::wasm::SharedCredentialRegistry;
+        use crate::wasm_runtime::SharedCredentialRegistry;
 
         // Empty registry — no credential mappings registered
         let registry = Arc::new(SharedCredentialRegistry::new());
@@ -1941,7 +1941,7 @@ mod tests {
     #[tokio::test]
     async fn http_tool_interceptor_does_not_see_injected_query_param_credentials() {
         use crate::secrets::{CredentialLocation, CredentialMapping};
-        use crate::tools::wasm::SharedCredentialRegistry;
+        use crate::wasm_runtime::SharedCredentialRegistry;
 
         let registry = Arc::new(SharedCredentialRegistry::new());
         // Use an unusual parameter name that is NOT in SENSITIVE_QUERY_PARAMS,
@@ -2024,7 +2024,7 @@ mod tests {
     #[tokio::test]
     async fn http_tool_interceptor_sees_caller_headers_not_injected() {
         use crate::secrets::CredentialMapping;
-        use crate::tools::wasm::SharedCredentialRegistry;
+        use crate::wasm_runtime::SharedCredentialRegistry;
 
         let registry = Arc::new(SharedCredentialRegistry::new());
         registry.add_mappings(vec![CredentialMapping::bearer(

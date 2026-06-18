@@ -11,7 +11,7 @@ use clap::{Args, Subcommand};
 use crate::config::Config;
 use crate::db::Database;
 use crate::secrets::SecretsStore;
-use crate::tools::mcp::{
+use crate::mcp_client::{
     McpClient, McpProcessManager, McpServerConfig, McpSessionManager, OAuthConfig,
     auth::{authorize_mcp_server, is_authenticated},
     config::{self, EffectiveTransport, McpServersFile},
@@ -468,7 +468,7 @@ async fn auth_server(name: String, user_id: String) -> anyhow::Result<()> {
             println!("  You can now use tools from this server.");
             println!();
         }
-        Err(crate::tools::mcp::auth::AuthError::NotSupported) => {
+        Err(crate::mcp_client::auth::AuthError::NotSupported) => {
             println!();
             println!("  ✗ Server does not support OAuth authentication.");
             println!();
@@ -581,7 +581,7 @@ async fn test_server(name: String, user_id: String) -> anyhow::Result<()> {
         Err(e) => {
             let err_str = e.to_string();
             // Check if server requires auth but we don't have valid tokens
-            if crate::tools::mcp::is_auth_error_message(&err_str) {
+            if crate::mcp_client::is_auth_error_message(&err_str) {
                 if has_tokens {
                     // We had tokens but they failed - need to re-authenticate
                     println!(

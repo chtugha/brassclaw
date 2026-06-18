@@ -37,7 +37,7 @@ pub mod bundled;
 pub use attenuation::{AttenuationResult, attenuate_tools};
 
 use crate::secrets::{CredentialLocation, CredentialMapping};
-use crate::tools::wasm::OAuthRefreshConfig;
+use crate::wasm_runtime::OAuthRefreshConfig;
 use crate::{
     auth::{AuthDescriptor, AuthDescriptorKind, OAuthFlowDescriptor, upsert_auth_descriptor},
     db::SettingsStore,
@@ -62,7 +62,7 @@ fn convert_credential_location(loc: &SkillCredentialLocation) -> CredentialLocat
 }
 
 /// Convert a [`SkillCredentialSpec`] to a [`CredentialMapping`] for the
-/// [`SharedCredentialRegistry`](crate::tools::wasm::SharedCredentialRegistry).
+/// [`SharedCredentialRegistry`](crate::wasm_runtime::SharedCredentialRegistry).
 pub fn credential_spec_to_mapping(spec: &SkillCredentialSpec) -> CredentialMapping {
     CredentialMapping {
         secret_name: spec.name.clone(),
@@ -197,7 +197,7 @@ fn credential_spec_to_auth_descriptor(
 /// Validates each spec before registration; invalid specs are logged and skipped.
 pub fn register_skill_credentials(
     skills: &[LoadedSkill],
-    registry: &crate::tools::wasm::SharedCredentialRegistry,
+    registry: &crate::wasm_runtime::SharedCredentialRegistry,
 ) {
     let mut count = 0usize;
     for skill in skills {
@@ -361,7 +361,7 @@ mod tests {
             lowercased_tags: vec![],
         };
 
-        let registry = crate::tools::wasm::SharedCredentialRegistry::new();
+        let registry = crate::wasm_runtime::SharedCredentialRegistry::new();
         register_skill_credentials(&[skill], &registry);
 
         assert!(registry.has_credentials_for_host("api.test.com"));
@@ -413,7 +413,7 @@ mod tests {
             lowercased_tags: vec![],
         };
 
-        let registry = crate::tools::wasm::SharedCredentialRegistry::new();
+        let registry = crate::wasm_runtime::SharedCredentialRegistry::new();
         register_skill_credentials(&[skill], &registry);
 
         let oauth = registry
@@ -457,7 +457,7 @@ mod tests {
             lowercased_tags: vec![],
         };
 
-        let registry = crate::tools::wasm::SharedCredentialRegistry::new();
+        let registry = crate::wasm_runtime::SharedCredentialRegistry::new();
         register_skill_credentials(&[skill], &registry);
 
         // Invalid spec should be skipped — host should NOT be registered

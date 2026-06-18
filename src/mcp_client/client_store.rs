@@ -283,8 +283,8 @@ impl McpClientStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::mcp::McpClient;
-    use crate::tools::mcp::protocol::{McpTool, McpToolAnnotations};
+    use crate::mcp_client::McpClient;
+    use crate::mcp_client::protocol::{McpTool, McpToolAnnotations};
 
     fn tool_with_annotations(name: &str, annotations: Option<McpToolAnnotations>) -> McpTool {
         McpTool {
