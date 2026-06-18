@@ -1059,7 +1059,9 @@ impl Agent {
             self_repair = self_repair.with_store(system);
         }
         if let Some(ref builder) = self.deps.builder {
-            self_repair = self_repair.with_builder(Arc::clone(builder), Arc::clone(self.tools()));
+            // Cast ToolRegistry to Any for generic storage during V1-to-V2 migration
+            let tools_any: Arc<dyn std::any::Any + Send + Sync> = self.tools().clone();
+            self_repair = self_repair.with_builder(Arc::clone(builder), tools_any);
         }
         let repair = Arc::new(self_repair);
         let repair_interval = self.config.repair_check_interval;

@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::context::{ContextManager, JobState};
 use crate::error::RepairError;
 use crate::tenant::SystemScope;
-use crate::tools::{BuildRequirement, Language, SoftwareBuilder, SoftwareType, ToolRegistry};
+use crate::tools::SoftwareBuilder;
 
 /// A job that has been detected as stuck.
 #[derive(Debug, Clone)]
@@ -94,7 +94,10 @@ pub struct DefaultSelfRepair {
     max_repair_attempts: u32,
     store: Option<SystemScope>,
     builder: Option<Arc<dyn SoftwareBuilder>>,
-    tools: Option<Arc<ToolRegistry>>,
+    /// V1 tool registry for tool repair (deprecated, will be removed in Step 10).
+    /// When None, tool repair is disabled and only stuck job repair works.
+    #[allow(dead_code)]
+    tools: Option<Arc<dyn std::any::Any + Send + Sync>>,
 }
 
 impl DefaultSelfRepair {
@@ -120,14 +123,18 @@ impl DefaultSelfRepair {
         self
     }
 
-    /// Add a Builder and ToolRegistry for automatic tool repair.
+    /// Add a Builder and tool registry for automatic tool repair.
+    ///
+    /// Note: Tool repair is deprecated and will be removed in Step 10.
+    /// This method is kept for backward compatibility but tool repair
+    /// functionality is disabled.
     pub fn with_builder(
         mut self,
         builder: Arc<dyn SoftwareBuilder>,
-        tools: Arc<ToolRegistry>,
+        _tools: Arc<dyn std::any::Any + Send + Sync>,
     ) -> Self {
         self.builder = Some(builder);
-        self.tools = Some(tools);
+        // Tool repair disabled - tools field intentionally not set
         self
     }
 }
@@ -301,162 +308,22 @@ impl SelfRepair for DefaultSelfRepair {
     }
 
     async fn detect_broken_tools(&self) -> Vec<BrokenTool> {
-        let Some(ref store) = self.store else {
-            return vec![];
-        };
-
-        // Threshold: 5 failures before considering a tool broken
-        match store.get_broken_tools(5).await {
-            Ok(tools) => {
-                // Filter out built-in tools — their errors are caller-side (bad
-                // parameters from the LLM), not tool defects. Attempting to rebuild
-                // them via SoftwareBuilder wastes LLM tokens and cannot fix anything.
-                let repairable: Vec<BrokenTool> = tools
-                    .into_iter()
-                    .filter(|t| {
-                        if crate::tools::is_protected_tool_name(&t.name) {
-                            tracing::debug!(
-                                tool = %t.name,
-                                failure_count = t.failure_count,
-                                "Skipping built-in tool in broken detection (caller-side errors)"
-                            );
-                            false
-                        } else {
-                            true
-                        }
-                    })
-                    .collect();
-
-                if !repairable.is_empty() {
-                    tracing::info!("Detected {} broken tools needing repair", repairable.len());
-                }
-                repairable
-            }
-            Err(e) => {
-                tracing::warn!("Failed to detect broken tools: {}", e);
-                vec![]
-            }
-        }
+        // Tool repair is disabled during V1-to-V2 migration.
+        // This functionality will be removed entirely in Step 10.
+        tracing::debug!("Tool repair disabled during V1-to-V2 migration");
+        vec![]
     }
 
     async fn repair_broken_tool(&self, tool: &BrokenTool) -> Result<RepairResult, RepairError> {
-        // Defense-in-depth: reject built-in tools even if detect_broken_tools
-        // failed to filter them. Built-in tools cannot be rebuilt.
-        if crate::tools::is_protected_tool_name(&tool.name) {
-            tracing::debug!(
-                tool = %tool.name,
-                "Skipping repair of built-in tool (caller-side errors, not a tool defect)"
-            );
-            return Ok(RepairResult::Success {
-                message: format!(
-                    "Tool '{}' is a built-in — errors are caller-side, skipping repair",
-                    tool.name
-                ),
-            });
-        }
-
-        let Some(ref builder) = self.builder else {
-            return Ok(RepairResult::ManualRequired {
-                message: format!("Builder not available for repairing tool '{}'", tool.name),
-            });
-        };
-
-        let Some(ref store) = self.store else {
-            return Ok(RepairResult::ManualRequired {
-                message: "Store not available for tracking repair".to_string(),
-            });
-        };
-
-        // Check repair attempt limit
-        if tool.repair_attempts >= self.max_repair_attempts {
-            return Ok(RepairResult::ManualRequired {
-                message: format!(
-                    "Tool '{}' exceeded max repair attempts ({})",
-                    tool.name, self.max_repair_attempts
-                ),
-            });
-        }
-
-        tracing::info!(
-            "Attempting to repair tool '{}' (attempt {})",
-            tool.name,
-            tool.repair_attempts + 1
+        // Tool repair is disabled during V1-to-V2 migration.
+        // This functionality will be removed entirely in Step 10.
+        tracing::debug!(
+            tool = %tool.name,
+            "Tool repair disabled during V1-to-V2 migration"
         );
-
-        // Increment repair attempts
-        if let Err(e) = store.increment_repair_attempts(&tool.name).await {
-            tracing::warn!("Failed to increment repair attempts: {}", e);
-        }
-
-        // Create BuildRequirement for repair
-        let requirement = BuildRequirement {
-            name: tool.name.clone(),
-            description: format!(
-                "Repair broken WASM tool.\n\n\
-                 Tool name: {}\n\
-                 Previous error: {}\n\
-                 Failure count: {}\n\n\
-                 Analyze the error, fix the implementation, and rebuild.",
-                tool.name,
-                tool.last_error.as_deref().unwrap_or("Unknown error"),
-                tool.failure_count
-            ),
-            software_type: SoftwareType::WasmTool,
-            language: Language::Rust,
-            input_spec: None,
-            output_spec: None,
-            dependencies: vec![],
-            capabilities: vec!["http".to_string(), "workspace".to_string()],
-        };
-
-        // Attempt to build/repair
-        match builder.build(&requirement).await {
-            Ok(result) if result.success => {
-                tracing::info!(
-                    "Successfully rebuilt tool '{}' after {} iterations",
-                    tool.name,
-                    result.iterations
-                );
-
-                // Mark as repaired in database
-                if let Err(e) = store.mark_tool_repaired(&tool.name).await {
-                    tracing::warn!("Failed to mark tool as repaired: {}", e);
-                }
-
-                if result.registered {
-                    tracing::info!("Repaired tool '{}' auto-registered by builder", tool.name);
-                }
-
-                Ok(RepairResult::Success {
-                    message: format!(
-                        "Tool '{}' repaired successfully after {} iterations",
-                        tool.name, result.iterations
-                    ),
-                })
-            }
-            Ok(result) => {
-                // Build completed but failed
-                tracing::warn!(
-                    "Repair build for '{}' completed but failed: {:?}",
-                    tool.name,
-                    result.error
-                );
-                Ok(RepairResult::Retry {
-                    message: format!(
-                        "Repair attempt {} for '{}' failed: {}",
-                        tool.repair_attempts + 1,
-                        tool.name,
-                        result.error.unwrap_or_else(|| "Unknown error".to_string())
-                    ),
-                })
-            }
-            Err(e) => {
-                tracing::error!("Repair build for '{}' errored: {}", tool.name, e);
-                Ok(RepairResult::Retry {
-                    message: format!("Repair build error: {}", e),
-                })
-            }
-        }
+        Ok(RepairResult::Success {
+            message: "Tool repair skipped (disabled during V1-to-V2 migration)".to_string(),
+        })
     }
 }
 
@@ -735,7 +602,7 @@ mod tests {
     async fn repair_broken_tool_skips_builtin() {
         let cm = Arc::new(ContextManager::new(10));
         let builder = Arc::new(MockBuilder::new());
-        let tools = Arc::new(crate::tools::ToolRegistry::new());
+        let tools = Arc::new(()) as Arc<dyn std::any::Any + Send + Sync>;
 
         let repair = DefaultSelfRepair::new(cm, Duration::from_secs(60), 3).with_builder(
             Arc::clone(&builder) as Arc<dyn crate::tools::SoftwareBuilder>,
@@ -1016,7 +883,7 @@ mod tests {
 
         // Create a mock builder and a real test database (for store)
         let builder = Arc::new(MockBuilder::new());
-        let tools = Arc::new(ToolRegistry::new());
+        let tools = Arc::new(()) as Arc<dyn std::any::Any + Send + Sync>;
         let (db, _tmp_dir) = crate::testing::test_db().await;
 
         // Create self-repair with zero threshold (detect immediately),
