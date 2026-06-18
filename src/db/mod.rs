@@ -1284,6 +1284,40 @@ pub trait IdentityStore: Send + Sync {
     ) -> Result<(), DatabaseError>;
 }
 
+/// Store for v2 capability permission overrides.
+#[async_trait]
+pub trait CapabilityPermissionStore: Send + Sync {
+    /// Get the permission override for a specific capability.
+    ///
+    /// Returns `None` if no override exists (use descriptor default).
+    async fn get_capability_permission(
+        &self,
+        tenant_id: &str,
+        capability_id: &str,
+    ) -> Result<Option<brassclaw_host_api::PermissionMode>, DatabaseError>;
+
+    /// Set a permission override for a specific capability.
+    async fn set_capability_permission(
+        &self,
+        tenant_id: &str,
+        capability_id: &str,
+        mode: brassclaw_host_api::PermissionMode,
+    ) -> Result<(), DatabaseError>;
+
+    /// Delete a permission override for a specific capability.
+    async fn delete_capability_permission(
+        &self,
+        tenant_id: &str,
+        capability_id: &str,
+    ) -> Result<bool, DatabaseError>;
+
+    /// List all permission overrides for a tenant.
+    async fn list_capability_overrides(
+        &self,
+        tenant_id: &str,
+    ) -> Result<std::collections::HashMap<String, brassclaw_host_api::PermissionMode>, DatabaseError>;
+}
+
 /// Backend-agnostic database supertrait.
 ///
 /// Combines all sub-traits into one. Existing `Arc<dyn Database>` consumers
@@ -1300,6 +1334,7 @@ pub trait Database:
     + UserStore
     + ChannelPairingStore
     + IdentityStore
+    + CapabilityPermissionStore
     + Send
     + Sync
 {

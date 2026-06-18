@@ -1675,4 +1675,110 @@ impl IdentityStore for PgBackend {
         tx.commit().await?;
         Ok(())
     }
+
+// ==================== CapabilityPermissionStore ====================
+
+#[async_trait]
+impl CapabilityPermissionStore for PgBackend {
+    async fn get_capability_permission(
+        &self,
+        tenant_id: &str,
+        capability_id: &str,
+    ) -> Result<Option<brassclaw_host_api::PermissionMode>, DatabaseError> {
+        let conn = self.pool().get().await?;
+        let row = conn
+            .query_opt(
+                "SELECT permission_mode FROM capability_permissions \
+                 WHERE tenant_id = $1 AND capability_id = $2",
+                &[&tenant_id, &capability_id],
+            )
+            .await?;
+
+        match row {
+            Some(row) => {
+                let mode_str: String = row.get(0);
+                let mode = match mode_str.as_str() {
+                    "allow" => brassclaw_host_api::PermissionMode::Allow,
+                    "ask" => brassclaw_host_api::PermissionMode::Ask,
+                    "deny" => brassclaw_host_api::PermissionMode::Deny,
+                    _ => return Err(DatabaseError::Query(format!("invalid permission_mode: {}", mode_str))),
+                };
+                Ok(Some(mode))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn set_capability_permission(
+        &self,
+        tenant_id: &str,
+        capability_id: &str,
+        mode: brassclaw_host_api::PermissionMode,
+    ) -> Result<(), DatabaseError> {
+        let conn = self.pool().get().await?;
+
+        let mode_str = match mode {
+            brassclaw_host_api::PermissionMode::Allow => "allow",
+            brassclaw_host_api::PermissionMode::Ask => "ask",
+            brassclaw_host_api::PermissionMode::Deny => "deny",
+        };
+
+        conn.execute(
+            "INSERT INTO capability_permissions (tenant_id, capability_id, permission_mode, updated_at)
+             VALUES ($1, $2, $3, NOW())
+             ON CONFLICT (tenant_id, capability_id)
+             DO UPDATE SET permission_mode = EXCLUDED.permission_mode, updated_at = NOW()",
+            &[&tenant_id, &capability_id, &mode_str],
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    async fn delete_capability_permission(
+        &self,
+        tenant_id: &str,
+        capability_id: &str,
+    ) -> Result<bool, DatabaseError> {
+        let conn = self.pool().get().await?;
+
+        let rows_affected = conn
+            .execute(
+                "DELETE FROM capability_permissions WHERE tenant_id = $1 AND capability_id = $2",
+                &[&tenant_id, &capability_id],
+            )
+            .await?;
+
+        Ok(rows_affected > 0)
+    }
+
+    async fn list_capability_overrides(
+        &self,
+        tenant_id: &str,
+    ) -> Result<std::collections::HashMap<String, brassclaw_host_api::PermissionMode>, DatabaseError> {
+        let conn = self.pool().get().await?;
+
+        let rows = conn
+            .query(
+                "SELECT capability_id, permission_mode FROM capability_permissions WHERE tenant_id = $1",
+                &[&tenant_id],
+            )
+            .await?;
+
+        let mut overrides = std::collections::HashMap::new();
+        for row in rows {
+            let capability_id: String = row.get(0);
+            let mode_str: String = row.get(1);
+            let mode = match mode_str.as_str() {
+                "allow" => brassclaw_host_api::PermissionMode::Allow,
+                "ask" => brassclaw_host_api::PermissionMode::Ask,
+                "deny" => brassclaw_host_api::PermissionMode::Deny,
+                _ => continue, // Skip invalid modes
+            };
+            overrides.insert(capability_id, mode);
+        }
+
+        Ok(overrides)
+    }
+}
 }

@@ -6,6 +6,7 @@
 //! - Turso cloud with embedded replica (sync to cloud)
 //! - In-memory (for testing)
 
+mod capability_permissions;
 mod conversations;
 mod identities;
 mod jobs;

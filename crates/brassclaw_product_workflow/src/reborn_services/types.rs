@@ -869,3 +869,32 @@ pub struct RebornExtensionSetupField {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub placeholder: Option<String>,
 }
+
+// Capability management types
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RebornCapabilityInfo {
+    pub id: String,
+    pub description: String,
+    pub provider: String,
+    pub effects: Vec<String>,
+    pub permission_mode: String,
+    pub default_permission: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RebornListCapabilitiesResponse {
+    pub capabilities: Vec<RebornCapabilityInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RebornUpdateCapabilityPermissionRequest {
+    pub capability_id: String,
+    pub permission_mode: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RebornUpdateCapabilityPermissionResponse {
+    pub capability_id: String,
+    pub permission_mode: String,
+    pub updated: bool,
+}

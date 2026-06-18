@@ -1,3 +1,4 @@
+pub mod dispatcher;
 pub mod extensions;
 pub mod filesystem;
 pub mod images;
@@ -6,12 +7,17 @@ pub mod memory;
 pub mod messaging;
 pub mod network;
 pub mod pairing;
+pub mod permissions;
+pub mod resolver;
 pub mod routines;
 pub mod secrets;
 pub mod shell;
 pub mod skills;
 pub mod system;
 
+pub use dispatcher::BuiltinCapabilityDispatcher;
+pub use permissions::{CapabilityPermissionStore, DbPermissionStore, InMemoryPermissionStore};
+pub use resolver::PermissionResolver;
 pub use extensions::{
     ExtensionsCapabilityError, ExtensionsContext,
     EXTENSION_INFO_CAPABILITY_ID, TOOL_AUTH_CAPABILITY_ID, TOOL_INFO_CAPABILITY_ID,

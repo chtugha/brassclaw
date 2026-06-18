@@ -70,22 +70,23 @@ pub use llm_config::{
 };
 pub use types::{
     RebornAutomationInfo, RebornAutomationRunStatus, RebornAutomationSource, RebornAutomationState,
-    RebornCancelRunResponse, RebornChannelConnectAction, RebornChannelConnectStrategy,
-    RebornConnectableChannelInfo, RebornConnectableChannelListResponse, RebornCreateThreadResponse,
-    RebornDeleteThreadRequest, RebornDeleteThreadResponse, RebornExtensionActionResponse,
-    RebornExtensionCredentialSetup, RebornExtensionInfo, RebornExtensionListResponse,
-    RebornExtensionOnboardingPayload, RebornExtensionOnboardingState, RebornExtensionRegistryEntry,
-    RebornExtensionRegistryResponse, RebornExtensionSetupField, RebornExtensionSetupSecret,
-    RebornGetRunStateRequest, RebornGetRunStateResponse, RebornListAutomationsResponse,
-    RebornListThreadsResponse, RebornOutboundDeliveryModality,
-    RebornOutboundDeliveryTargetCapabilities, RebornOutboundDeliveryTargetChannel,
-    RebornOutboundDeliveryTargetDescription, RebornOutboundDeliveryTargetDisplayName,
-    RebornOutboundDeliveryTargetId, RebornOutboundDeliveryTargetListResponse,
-    RebornOutboundDeliveryTargetOption, RebornOutboundDeliveryTargetSummary,
-    RebornOutboundPreferencesResponse, RebornResolveGateResponse, RebornResumeGateResponse,
-    RebornSetOutboundPreferencesRequest, RebornSetupExtensionResponse, RebornStreamEventsRequest,
-    RebornStreamEventsResponse, RebornSubmitTurnResponse, RebornTimelineRequest,
-    RebornTimelineResponse,
+    RebornCancelRunResponse, RebornCapabilityInfo, RebornChannelConnectAction,
+    RebornChannelConnectStrategy, RebornConnectableChannelInfo, RebornConnectableChannelListResponse,
+    RebornCreateThreadResponse, RebornDeleteThreadRequest, RebornDeleteThreadResponse,
+    RebornExtensionActionResponse, RebornExtensionCredentialSetup, RebornExtensionInfo,
+    RebornExtensionListResponse, RebornExtensionOnboardingPayload, RebornExtensionOnboardingState,
+    RebornExtensionRegistryEntry, RebornExtensionRegistryResponse, RebornExtensionSetupField,
+    RebornExtensionSetupSecret, RebornGetRunStateRequest, RebornGetRunStateResponse,
+    RebornListAutomationsResponse, RebornListCapabilitiesResponse, RebornListThreadsResponse,
+    RebornOutboundDeliveryModality, RebornOutboundDeliveryTargetCapabilities,
+    RebornOutboundDeliveryTargetChannel, RebornOutboundDeliveryTargetDescription,
+    RebornOutboundDeliveryTargetDisplayName, RebornOutboundDeliveryTargetId,
+    RebornOutboundDeliveryTargetListResponse, RebornOutboundDeliveryTargetOption,
+    RebornOutboundDeliveryTargetSummary, RebornOutboundPreferencesResponse,
+    RebornResolveGateResponse, RebornResumeGateResponse, RebornSetOutboundPreferencesRequest,
+    RebornSetupExtensionResponse, RebornStreamEventsRequest, RebornStreamEventsResponse,
+    RebornSubmitTurnResponse, RebornTimelineRequest, RebornTimelineResponse,
+    RebornUpdateCapabilityPermissionRequest, RebornUpdateCapabilityPermissionResponse,
 };
 
 type SkillActivationRecorder =
@@ -585,6 +586,21 @@ pub trait RebornServicesApi: Send + Sync {
         let _ = caller;
         Err(llm_config::llm_config_unavailable())
     }
+
+    /// List all available capabilities (built-in and extension-provided) with their
+    /// current permission modes and default permissions.
+    async fn list_capabilities(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+    ) -> Result<RebornListCapabilitiesResponse, RebornServicesError>;
+
+    /// Update the permission mode for a specific capability. The permission override
+    /// is scoped to the caller's tenant and persisted in the database.
+    async fn update_capability_permission(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: RebornUpdateCapabilityPermissionRequest,
+    ) -> Result<RebornUpdateCapabilityPermissionResponse, RebornServicesError>;
 }
 
 /// Default facade implementation composed at the WebUI boundary.
@@ -1453,6 +1469,32 @@ impl RebornServicesApi for RebornServices {
             .complete_nearai_wallet_login(caller, request)
             .await
             .map_err(llm_config::map_llm_config_error)
+    }
+
+    async fn list_capabilities(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<RebornListCapabilitiesResponse, RebornServicesError> {
+        // TODO: Wire up ExtensionRegistry and PermissionResolver during bridge layer rewrite
+        // For now, return empty list until the capability infrastructure is fully wired
+        Ok(RebornListCapabilitiesResponse {
+            capabilities: Vec::new(),
+        })
+    }
+
+    async fn update_capability_permission(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: RebornUpdateCapabilityPermissionRequest,
+    ) -> Result<RebornUpdateCapabilityPermissionResponse, RebornServicesError> {
+        // TODO: Wire up CapabilityPermissionStore during bridge layer rewrite
+        // For now, return service unavailable until the capability infrastructure is fully wired
+        Err(RebornServicesError::from_status_kind(
+            RebornServicesErrorCode::ServiceUnavailable,
+            RebornServicesErrorKind::ServiceUnavailable,
+            503,
+            false,
+        ))
     }
 }
 

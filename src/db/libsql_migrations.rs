@@ -674,6 +674,18 @@ CREATE TABLE IF NOT EXISTS pairing_requests (
 );
 CREATE INDEX IF NOT EXISTS idx_pairing_requests_channel ON pairing_requests (channel, external_id);
 
+-- ==================== Capability Permissions (V21) ====================
+
+CREATE TABLE IF NOT EXISTS capability_permissions (
+    tenant_id TEXT NOT NULL,
+    capability_id TEXT NOT NULL,
+    permission_mode TEXT NOT NULL CHECK (permission_mode IN ('allow', 'ask', 'deny')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    PRIMARY KEY (tenant_id, capability_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_capability_permissions_tenant ON capability_permissions(tenant_id);
+
 "#;
 
 /// Incremental migrations applied after the base schema.
