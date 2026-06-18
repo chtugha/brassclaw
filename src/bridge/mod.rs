@@ -8,7 +8,8 @@ mod action_discovery;
 mod action_projector;
 mod capability_projector;
 mod cost_guard_gate;
-mod effect_adapter;
+mod effect_adapter; // TODO: Delete after migration to effect_adapter_v2
+mod effect_adapter_v2;
 mod engine_actions;
 mod external_tools;
 mod gate_controller;
@@ -29,7 +30,8 @@ pub use external_tools::{
 };
 pub use workspace_reader::WorkspaceReaderAdapter;
 
-pub use effect_adapter::EffectBridgeAdapter;
+pub use effect_adapter::EffectBridgeAdapter; // V1 - TODO: Remove after migration
+pub use effect_adapter_v2::EffectBridgeAdapter as EffectBridgeAdapterV2; // V2 - Reborn
 pub use gate_controller::{BridgeGateController, GateResolutions, PerExecutionContext};
 pub use router::{
     // DTO types

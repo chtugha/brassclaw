@@ -1269,6 +1269,7 @@ dependencies = [
  "blake3",
  "bollard",
  "brassclaw_authorization",
+ "brassclaw_capabilities",
  "brassclaw_common",
  "brassclaw_embeddings",
  "brassclaw_engine",

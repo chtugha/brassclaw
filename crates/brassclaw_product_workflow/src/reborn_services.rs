@@ -70,7 +70,7 @@ pub use llm_config::{
 };
 pub use types::{
     RebornAutomationInfo, RebornAutomationRunStatus, RebornAutomationSource, RebornAutomationState,
-    RebornCancelRunResponse, RebornCapabilityInfo, RebornChannelConnectAction,
+    RebornCancelRunResponse, RebornChannelConnectAction,
     RebornChannelConnectStrategy, RebornConnectableChannelInfo, RebornConnectableChannelListResponse,
     RebornCreateThreadResponse, RebornDeleteThreadRequest, RebornDeleteThreadResponse,
     RebornExtensionActionResponse, RebornExtensionCredentialSetup, RebornExtensionInfo,
@@ -1490,7 +1490,7 @@ impl RebornServicesApi for RebornServices {
         // TODO: Wire up CapabilityPermissionStore during bridge layer rewrite
         // For now, return service unavailable until the capability infrastructure is fully wired
         Err(RebornServicesError::from_status_kind(
-            RebornServicesErrorCode::ServiceUnavailable,
+            RebornServicesErrorCode::Unavailable,
             RebornServicesErrorKind::ServiceUnavailable,
             503,
             false,

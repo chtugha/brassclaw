@@ -234,6 +234,12 @@ ed25519-dalek = { version = "2.2.0", features = ["std"] }
 bs58 = "0.5"
 hex = "0.4.3"
 
+# Reborn capability system
+brassclaw_capabilities = { path = "crates/brassclaw_capabilities", version = "0.1.0" }
+brassclaw_extensions = { path = "crates/brassclaw_extensions", version = "0.1.0" }
+brassclaw_authorization = { path = "crates/brassclaw_authorization", version = "0.1.0" }
+brassclaw_trust = { path = "crates/brassclaw_trust", version = "0.1.0" }
+
 # OpenClaw import (feature gated)
 json5 = { version = "0.4", optional = true }
 

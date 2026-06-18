@@ -410,12 +410,8 @@ fn is_workspace_path(path: &str) -> bool {
 
 fn is_excluded_path(path: &Path) -> bool {
     path.components().any(|c| {
-        if let std::path::Component::Normal(name) = c {
-            if let Some(name_str) = name.to_str() {
-                return DEFAULT_EXCLUDED_DIRS.contains(&name_str);
-            }
-        }
-        false
+        matches!(c, std::path::Component::Normal(name)
+            if name.to_str().map_or(false, |s| DEFAULT_EXCLUDED_DIRS.contains(&s)))
     })
 }
 

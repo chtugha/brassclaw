@@ -149,6 +149,7 @@ static LOW_RISK_PATTERNS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     ]
 });
 
+#[allow(dead_code)]
 static MEDIUM_RISK_PATTERNS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     vec![
         "awk", "sed", "find", "mkdir", "rmdir", "touch", "cp", "copy", "mv", "move",
@@ -334,11 +335,6 @@ pub fn classify_command_risk(command: &str) -> RiskLevel {
                 .any(|p| matches_command_pattern(&seg_lower, p))
             {
                 RiskLevel::Low
-            } else if MEDIUM_RISK_PATTERNS
-                .iter()
-                .any(|p| matches_command_pattern(&seg_lower, p))
-            {
-                RiskLevel::Medium
             } else {
                 RiskLevel::Medium
             }

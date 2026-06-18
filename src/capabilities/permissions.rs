@@ -9,7 +9,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use brassclaw_host_api::PermissionMode;
 
-use crate::db::{Database, DatabaseError};
+use crate::db::Database;
+use crate::error::DatabaseError;
 
 /// Store for capability permission overrides.
 ///
@@ -161,10 +162,7 @@ impl CapabilityPermissionStore for DbPermissionStore {
         tenant_id: &str,
         capability_id: &str,
     ) -> Result<Option<PermissionMode>, DatabaseError> {
-        // This will be implemented once we add CapabilityPermissionStore to the Database trait
-        // For now, return None (no override)
-        let _ = (tenant_id, capability_id);
-        Ok(None)
+        self.db.get_capability_permission(tenant_id, capability_id).await
     }
 
     async fn set_permission(
@@ -173,9 +171,7 @@ impl CapabilityPermissionStore for DbPermissionStore {
         capability_id: &str,
         mode: PermissionMode,
     ) -> Result<(), DatabaseError> {
-        // This will be implemented once we add CapabilityPermissionStore to the Database trait
-        let _ = (tenant_id, capability_id, mode);
-        Ok(())
+        self.db.set_capability_permission(tenant_id, capability_id, mode).await
     }
 
     async fn delete_permission(
@@ -183,24 +179,24 @@ impl CapabilityPermissionStore for DbPermissionStore {
         tenant_id: &str,
         capability_id: &str,
     ) -> Result<bool, DatabaseError> {
-        // This will be implemented once we add CapabilityPermissionStore to the Database trait
-        let _ = (tenant_id, capability_id);
-        Ok(false)
+        self.db.delete_capability_permission(tenant_id, capability_id).await
     }
 
     async fn list_overrides(
         &self,
         tenant_id: &str,
     ) -> Result<HashMap<String, PermissionMode>, DatabaseError> {
-        // This will be implemented once we add CapabilityPermissionStore to the Database trait
-        let _ = tenant_id;
-        Ok(HashMap::new())
+        self.db.list_capability_overrides(tenant_id).await
     }
 
     async fn clear_overrides(&self, tenant_id: &str) -> Result<usize, DatabaseError> {
-        // This will be implemented once we add CapabilityPermissionStore to the Database trait
-        let _ = tenant_id;
-        Ok(0)
+        // The Database trait doesn't have clear_overrides, so we need to list and delete each one
+        let overrides = self.db.list_capability_overrides(tenant_id).await?;
+        let count = overrides.len();
+        for capability_id in overrides.keys() {
+            self.db.delete_capability_permission(tenant_id, capability_id).await?;
+        }
+        Ok(count)
     }
 }
 

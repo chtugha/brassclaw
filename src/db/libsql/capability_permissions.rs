@@ -15,7 +15,7 @@ impl CapabilityPermissionStore for LibSqlBackend {
         tenant_id: &str,
         capability_id: &str,
     ) -> Result<Option<PermissionMode>, DatabaseError> {
-        let conn = self.pool.get().await.map_err(|e| {
+        let conn = self.db.connect().map_err(|e| {
             DatabaseError::Pool(format!("failed to get connection: {}", e))
         })?;
 
@@ -53,7 +53,7 @@ impl CapabilityPermissionStore for LibSqlBackend {
         capability_id: &str,
         mode: PermissionMode,
     ) -> Result<(), DatabaseError> {
-        let conn = self.pool.get().await.map_err(|e| {
+        let conn = self.db.connect().map_err(|e| {
             DatabaseError::Pool(format!("failed to get connection: {}", e))
         })?;
 
@@ -81,12 +81,11 @@ impl CapabilityPermissionStore for LibSqlBackend {
         tenant_id: &str,
         capability_id: &str,
     ) -> Result<bool, DatabaseError> {
-        let conn = self.pool.get().await.map_err(|e| {
+        let conn = self.db.connect().map_err(|e| {
             DatabaseError::Pool(format!("failed to get connection: {}", e))
         })?;
 
-        let rows_affected = conn
-            .execute(
+        let rows_affected = conn.execute(
                 "DELETE FROM capability_permissions WHERE tenant_id = ? AND capability_id = ?",
                 libsql::params![tenant_id, capability_id],
             )
@@ -100,7 +99,7 @@ impl CapabilityPermissionStore for LibSqlBackend {
         &self,
         tenant_id: &str,
     ) -> Result<HashMap<String, PermissionMode>, DatabaseError> {
-        let conn = self.pool.get().await.map_err(|e| {
+        let conn = self.db.connect().map_err(|e| {
             DatabaseError::Pool(format!("failed to get connection: {}", e))
         })?;
 
@@ -133,6 +132,7 @@ impl CapabilityPermissionStore for LibSqlBackend {
 
         Ok(overrides)
     }
+
 }
 
 // Made with Bob

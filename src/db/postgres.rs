@@ -16,6 +16,7 @@ use crate::agent::routine::{Routine, RoutineRun, RunStatus};
 use crate::config::DatabaseConfig;
 use crate::context::{ActionRecord, JobContext, JobState};
 use crate::db::{
+    CapabilityPermissionStore,
     ApiTokenRecord, ChannelPairingStore, ConversationStore, Database, IdentityStore, JobStore,
     PairingRequestRecord, RoutineStore, SandboxStore, SettingsStore, ToolFailureStore,
     UserIdentityRecord, UserRecord, UserStore, WorkspaceStore,
@@ -1675,6 +1676,7 @@ impl IdentityStore for PgBackend {
         tx.commit().await?;
         Ok(())
     }
+}
 
 // ==================== CapabilityPermissionStore ====================
 
@@ -1780,5 +1782,5 @@ impl CapabilityPermissionStore for PgBackend {
 
         Ok(overrides)
     }
-}
+
 }

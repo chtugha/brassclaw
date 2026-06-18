@@ -1,5 +1,4 @@
 use serde::{Serialize, Deserialize};
-use serde_json::Value;
 use uuid::Uuid;
 use brassclaw_common::truncate_preview;
 use crate::generated_images::GeneratedImageSentinel;

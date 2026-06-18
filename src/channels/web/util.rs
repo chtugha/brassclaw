@@ -2,14 +2,18 @@
 
 use crate::channels::IncomingMessage;
 use crate::channels::web::types::{
-    AttachmentData, GeneratedImageInfo, ImageData, ToolCallInfo, TurnInfo,
+    AttachmentData, ImageData,
 };
 use crate::channels::{
     MAX_INLINE_ATTACHMENT_BYTES, MAX_INLINE_ATTACHMENTS, MAX_INLINE_TOTAL_ATTACHMENT_BYTES,
 };
-use crate::generated_images::GeneratedImageSentinel;
 
-pub use brassclaw_common::truncate_preview;
+#[cfg(test)]
+use crate::agent::turn_builder::{
+    GeneratedImageInfo, TurnInfo, tool_result_for_display,
+    MAX_HISTORY_IMAGE_DATA_URL_BYTES_PER_IMAGE,
+    MAX_HISTORY_IMAGE_DATA_URL_BYTES_PER_RESPONSE,
+};
 
 fn normalize_mime_type(mime: &str) -> String {
     mime.split(';')
@@ -351,11 +355,6 @@ pub(crate) fn inline_attachments_to_incoming(
     Ok(incoming)
 }
 
-pub use crate::agent::turn_builder::{
-    MAX_HISTORY_IMAGE_DATA_URL_BYTES_PER_IMAGE,
-    MAX_HISTORY_IMAGE_DATA_URL_BYTES_PER_RESPONSE,
-    MAX_TOOL_RESULT_DISPLAY_BYTES,
-};
 
 /// Build an incoming message with the metadata invariants expected by the web
 /// gateway and downstream status routing.
@@ -402,7 +401,7 @@ pub fn web_incoming_message(
 pub use crate::agent::turn_builder::{
     build_turns_from_db_messages, collect_generated_images_from_tool_results,
     enforce_generated_image_history_budget, tool_error_for_display,
-    tool_result_for_display, tool_result_preview,
+    tool_result_preview,
 };
 
 #[cfg(test)]

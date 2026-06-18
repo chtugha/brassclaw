@@ -949,7 +949,7 @@ pub async fn execute_http(
     };
 
     let body: Value = serde_json::from_str(&body_text)
-        .unwrap_or_else(|_| Value::String(body_text));
+        .unwrap_or_else(|_| Value::String(body_text.clone()));
 
     Ok(json!({
         "status": status,

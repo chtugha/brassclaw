@@ -182,18 +182,32 @@ async fn resolve_channel_fallback_target(
         .or_else(|| Some(ctx_user_id.to_string()))
 }
 
-async fn resolve_message_target(
-    extension_manager: Option<&Arc<ExtensionManager>>,
+struct MessageTargetResolution<'a> {
+    extension_manager: Option<&'a Arc<ExtensionManager>>,
     explicit_target: Option<String>,
     metadata_target: Option<String>,
     owner_scope_target: Option<String>,
     default_target: Option<String>,
-    channel: Option<&str>,
-    metadata_channel: Option<&str>,
-    default_channel: Option<&str>,
+    channel: Option<&'a str>,
+    metadata_channel: Option<&'a str>,
+    default_channel: Option<&'a str>,
     has_execution_routing_metadata: bool,
-    ctx_user_id: &str,
-) -> Option<String> {
+    ctx_user_id: &'a str,
+}
+
+async fn resolve_message_target(resolution: MessageTargetResolution<'_>) -> Option<String> {
+    let MessageTargetResolution {
+        extension_manager,
+        explicit_target,
+        metadata_target,
+        owner_scope_target,
+        default_target,
+        channel,
+        metadata_channel,
+        default_channel,
+        has_execution_routing_metadata,
+        ctx_user_id,
+    } = resolution;
     if let Some(target) = explicit_target {
         return Some(target);
     }
@@ -271,18 +285,18 @@ pub async fn execute_message(
         .and_then(|v| v.as_str())
         .map(|value| value.to_string());
 
-    let target = resolve_message_target(
-        ctx.extension_manager.as_ref(),
+    let target = resolve_message_target(MessageTargetResolution {
+        extension_manager: ctx.extension_manager.as_ref(),
         explicit_target,
         metadata_target,
         owner_scope_target,
         default_target,
-        channel.as_deref(),
-        metadata_channel.as_deref(),
-        default_channel.as_deref(),
+        channel: channel.as_deref(),
+        metadata_channel: metadata_channel.as_deref(),
+        default_channel: default_channel.as_deref(),
         has_execution_routing_metadata,
-        &ctx.user_id,
-    )
+        ctx_user_id: &ctx.user_id,
+    })
     .await;
 
     let Some(target) = target else {

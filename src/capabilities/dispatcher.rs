@@ -11,6 +11,7 @@ use brassclaw_host_api::{
     CapabilityDispatchRequest, CapabilityDispatchResult, CapabilityDispatcher, DispatchError,
     ExtensionId, ResourceReceipt, ResourceUsage, RuntimeDispatchErrorKind, RuntimeKind,
 };
+use rust_decimal::Decimal;
 use serde_json::Value;
 
 use super::extensions::ExtensionsContext;
@@ -402,15 +403,24 @@ impl CapabilityDispatcher for BuiltinCapabilityDispatcher {
             .unwrap_or(0);
 
         let usage = ResourceUsage {
-            wall_clock_ms: Some(wall_clock_ms),
-            output_bytes: Some(output_bytes),
-            ..ResourceUsage::default()
+            usd: Decimal::ZERO,
+            input_tokens: 0,
+            output_tokens: 0,
+            wall_clock_ms,
+            output_bytes,
+            network_egress_bytes: 0,
+            process_count: 0,
         };
 
         let receipt = ResourceReceipt {
+            id: request.resource_reservation
+                .as_ref()
+                .map(|r| r.id)
+                .unwrap_or_else(brassclaw_host_api::ResourceReservationId::new),
             scope: request.scope.clone(),
-            usage: usage.clone(),
-            reservation: request.resource_reservation.clone(),
+            status: brassclaw_host_api::ReservationStatus::Reconciled,
+            estimate: request.estimate.clone(),
+            actual: Some(usage.clone()),
         };
 
         Ok(CapabilityDispatchResult {
