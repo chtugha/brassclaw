@@ -56,7 +56,7 @@ impl SkillFetchError {
         }
     }
 
-    fn is_missing_dependency(&self) -> bool {
+    pub fn is_missing_dependency(&self) -> bool {
         matches!(self.status, Some(404 | 410))
     }
 }
