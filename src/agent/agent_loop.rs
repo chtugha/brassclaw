@@ -492,7 +492,6 @@ pub struct AgentDeps {
     /// Falls back to the main `llm` if None.
     pub cheap_llm: Option<Arc<dyn LlmProvider>>,
     pub safety: Arc<SafetyLayer>,
-    pub tools: Arc<ToolRegistry>,
     pub workspace: Option<Arc<Workspace>>,
     pub extension_manager: Option<Arc<ExtensionManager>>,
     pub skill_registry: Option<Arc<std::sync::RwLock<SkillRegistry>>>,
@@ -518,14 +517,9 @@ pub struct AgentDeps {
     pub llm_backend: String,
     /// Per-tenant rate limiting registry (lazily creates rate state per user).
     pub tenant_rates: Arc<crate::tenant::TenantRateRegistry>,
-    /// Resolved runtime policy used to filter the model-facing tool list
-    /// (#3045 PR 4 + PR 5). When `None`, the legacy unfiltered tool list
-    /// is used — appropriate for tests and the bootstrap path before
-    /// `Config::with_runtime_overrides` has run. When `Some`, every
-    /// `tool_definitions` build for the LLM goes through
-    /// `ToolRegistry::tool_definitions_visible_under(policy)` so
-    /// hosted-multi-tenant deployments cannot expose provider-host shell
-    /// affordances to the model.
+    /// Resolved runtime policy for capability filtering.
+    /// When `None`, all registered capabilities are available.
+    /// When `Some`, capabilities are filtered based on runtime policy.
     pub runtime_policy: Option<brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy>,
 }
 
@@ -572,6 +566,7 @@ impl Agent {
     pub fn new(
         config: AgentConfig,
         deps: AgentDeps,
+        tools: Arc<ToolRegistry>,
         channels: Arc<ChannelManager>,
         heartbeat_config: Option<HeartbeatConfig>,
         hygiene_config: Option<crate::config::HygieneConfig>,
@@ -590,7 +585,7 @@ impl Agent {
             deps.llm.clone(),
             deps.safety.clone(),
             SchedulerDeps {
-                tools: deps.tools.clone(),
+                tools: tools.clone(),
                 extension_manager: deps.extension_manager.clone(),
                 store: deps
                     .store
@@ -739,13 +734,16 @@ impl Agent {
         &self.deps.safety
     }
 
-    pub(crate) fn tools(&self) -> &Arc<ToolRegistry> {
-        &self.deps.tools
-    }
 
     pub(crate) fn workspace(&self) -> Option<&Arc<Workspace>> {
         self.deps.workspace.as_ref()
     }
+    /// Temporary accessor for tools via scheduler during v1-to-v2 migration.
+    /// TODO: Remove this once all code uses v2 capabilities directly.
+    pub(crate) fn tools(&self) -> &Arc<crate::tools::ToolRegistry> {
+        self.scheduler.tools()
+    }
+
 
     pub(crate) fn workspace_for_user(&self, user_id: &str) -> Option<Arc<Workspace>> {
         self.workspace().map(|ws| {
@@ -1339,9 +1337,7 @@ impl Agent {
                     let engine = Arc::new(engine);
 
                     // Register routine tools
-                    self.deps
-                        .tools
-                        .register_routine_tools(Arc::clone(store), Arc::clone(&engine));
+                    self.tools().register_routine_tools(Arc::clone(store), Arc::clone(&engine));
 
                     // Load initial event cache
                     engine.refresh_event_cache().await;
@@ -2618,7 +2614,6 @@ mod tests {
                 max_output_length: 100_000,
                 injection_check_enabled: true,
             })),
-            tools: Arc::new(ToolRegistry::new()),
             workspace: None,
             extension_manager: None,
             skill_registry: None,

@@ -1168,7 +1168,6 @@ mod tests {
     use crate::agent::submission::SubmissionResult;
     use crate::config::{AgentConfig, SafetyConfig, SkillsConfig};
     use crate::hooks::HookRegistry;
-    use crate::tools::ToolRegistry;
     use brassclaw_llm::{
         CompletionRequest, CompletionResponse, FinishReason, LlmProvider, ToolCompletionRequest,
         ToolCompletionResponse,
@@ -1233,7 +1232,6 @@ mod tests {
                 max_output_length: 100_000,
                 injection_check_enabled: true,
             })),
-            tools: Arc::new(ToolRegistry::new()),
             workspace: None,
             extension_manager: None,
             skill_registry: None,

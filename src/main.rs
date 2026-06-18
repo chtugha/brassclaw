@@ -1328,7 +1328,6 @@ async fn async_main() -> anyhow::Result<()> {
         llm: components.llm,
         cheap_llm: components.cheap_llm,
         safety: components.safety,
-        tools: components.tools,
         workspace: components.workspace,
         extension_manager: components.extension_manager,
         skill_registry: components.skill_registry,
@@ -1373,6 +1372,7 @@ async fn async_main() -> anyhow::Result<()> {
     let mut agent = Agent::new(
         config.agent.clone(),
         deps,
+        components.tools,
         channels,
         Some(config.heartbeat.clone()),
         Some(config.hygiene.clone()),

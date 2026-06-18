@@ -1952,7 +1952,7 @@ pub async fn init_engine(agent: &Agent) -> Result<(), Error> {
         let db_ref = agent.deps.store.clone();
         let conv_mgr_ref = Arc::clone(&conversation_manager);
         let auth_mgr_ref = agent.deps.auth_manager.clone();
-        let tools_ref = Arc::clone(&agent.deps.tools);
+        let tools_ref = Arc::clone(agent.tools());
         let ext_mgr_ref = agent.deps.extension_manager.clone();
         tokio::spawn(async move {
             loop {

@@ -3114,7 +3114,6 @@ mod tests {
     };
     use crate::hooks::HookRegistry;
     use crate::testing::{StubChannel, StubLlm};
-    use crate::tools::ToolRegistry;
     use chrono::TimeZone;
     use futures::stream;
     use brassclaw_safety::SafetyLayer;
@@ -3213,12 +3212,11 @@ mod tests {
         }
 
         let llm: Arc<dyn brassclaw_llm::LlmProvider> = Arc::new(StaticLlmProvider);
-        make_thread_ops_test_agent_with(llm, Arc::new(crate::tools::ToolRegistry::new())).await
+        make_thread_ops_test_agent_with(llm).await
     }
 
     async fn make_thread_ops_test_agent_with(
         llm: Arc<dyn brassclaw_llm::LlmProvider>,
-        tools: Arc<crate::tools::ToolRegistry>,
     ) -> (Agent, Arc<TokioMutex<Vec<StatusUpdate>>>) {
         let statuses = Arc::new(TokioMutex::new(Vec::new()));
         let channels = Arc::new(crate::channels::ChannelManager::new());
@@ -3241,7 +3239,6 @@ mod tests {
                     injection_check_enabled: true,
                 },
             )),
-            tools,
             workspace: None,
             extension_manager: None,
             skill_registry: None,
@@ -3736,7 +3733,6 @@ mod tests {
                 max_output_length: 100_000,
                 injection_check_enabled: false,
             })),
-            tools: Arc::new(ToolRegistry::new()),
             workspace: None,
             extension_manager: None,
             skill_registry: None,
@@ -3820,7 +3816,6 @@ mod tests {
                 max_output_length: 100_000,
                 injection_check_enabled: false,
             })),
-            tools: Arc::new(ToolRegistry::new()),
             workspace: None,
             extension_manager: None,
             skill_registry: None,
@@ -4669,7 +4664,6 @@ mod tests {
                 max_output_length: 100_000,
                 injection_check_enabled: false,
             })),
-            tools: Arc::new(ToolRegistry::new()),
             workspace: None,
             extension_manager: None,
             skill_registry: None,
@@ -4933,10 +4927,8 @@ mod tests {
         use crate::agent::session::{Session, Thread};
         use uuid::Uuid;
 
-        let tools = Arc::new(ToolRegistry::new());
-        tools.register(Arc::new(GeneratedImageTool)).await;
         let llm: Arc<dyn brassclaw_llm::LlmProvider> = Arc::new(SequencedImageLlm::new());
-        let (agent, statuses) = make_thread_ops_test_agent_with(llm, tools).await;
+        let (agent, statuses) = make_thread_ops_test_agent_with(llm).await;
         let session_id = Uuid::new_v4();
         let thread_id = Uuid::new_v4();
         let thread = Thread::with_id(thread_id, session_id, Some("test"));
@@ -5015,10 +5007,8 @@ mod tests {
             }
         }
 
-        let tools = Arc::new(ToolRegistry::new());
-        tools.register(Arc::new(GeneratedImageTool)).await;
         let llm: Arc<dyn brassclaw_llm::LlmProvider> = Arc::new(SequencedImageLlm::new());
-        let (agent, _statuses) = make_thread_ops_test_agent_with(llm, tools).await;
+        let (agent, _statuses) = make_thread_ops_test_agent_with(llm).await;
         agent
             .hooks()
             .register(Arc::new(RejectGeneratedImageResponseHook))

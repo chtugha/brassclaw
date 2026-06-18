@@ -40,7 +40,6 @@ use crate::channels::{
 };
 use crate::db::Database;
 use crate::error::{ChannelError, LlmError};
-use crate::tools::ToolRegistry;
 use brassclaw_llm::{CompletionRequest, FinishReason, LlmProvider};
 
 /// Create a libSQL-backed test database in a temporary directory.
@@ -282,7 +281,6 @@ pub struct TestHarness {
 pub struct TestHarnessBuilder {
     db: Option<Arc<dyn Database>>,
     llm: Option<Arc<dyn LlmProvider>>,
-    tools: Option<Arc<ToolRegistry>>,
     stub_channel: bool,
 }
 
@@ -292,7 +290,6 @@ impl TestHarnessBuilder {
         Self {
             db: None,
             llm: None,
-            tools: None,
             stub_channel: false,
         }
     }
@@ -306,12 +303,6 @@ impl TestHarnessBuilder {
     /// Override the LLM provider.
     pub fn with_llm(mut self, llm: Arc<dyn LlmProvider>) -> Self {
         self.llm = Some(llm);
-        self
-    }
-
-    /// Override the tool registry.
-    pub fn with_tools(mut self, tools: Arc<ToolRegistry>) -> Self {
-        self.tools = Some(tools);
         self
     }
 
@@ -342,12 +333,6 @@ impl TestHarnessBuilder {
 
         let llm: Arc<dyn LlmProvider> = self.llm.unwrap_or_else(|| Arc::new(StubLlm::default()));
 
-        let tools = self.tools.unwrap_or_else(|| {
-            let t = Arc::new(ToolRegistry::new());
-            t.register_builtin_tools();
-            t
-        });
-
         let safety = Arc::new(SafetyLayer::new(&SafetyConfig {
             max_output_length: 100_000,
             injection_check_enabled: false,
@@ -377,7 +362,6 @@ impl TestHarnessBuilder {
             llm,
             cheap_llm: None,
             safety,
-            tools,
             workspace: None,
             extension_manager: None,
             skill_registry: None,
