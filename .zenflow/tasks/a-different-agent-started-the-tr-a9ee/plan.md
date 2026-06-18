@@ -102,7 +102,8 @@ Each module: `CapabilityDescriptor` + `execute` function + unit tests. Register 
 
 **Verification**: `cargo test` passes for all new capability modules.
 
-### [ ] Step: Create v2 capabilities — jobs, routines, skills, extensions
+### [x] Step: Create v2 capabilities — jobs, routines, skills, extensions
+<!-- chat-id: 33770709-7df4-4e7f-b49d-e9dc6849cd74 -->
 
 Implement the following capability modules:
 
@@ -115,7 +116,8 @@ Each module: `CapabilityDescriptor` + `execute` function + unit tests. Register 
 
 **Verification**: `cargo test` passes for all new capability modules.
 
-### [ ] Step: Create v2 capabilities — secrets, images, system, pairing
+### [x] Step: Create v2 capabilities — secrets, images, system, pairing
+<!-- chat-id: 49c95aa2-78c8-49ef-8d8b-68f33c6aa593 -->
 
 Implement the remaining capability modules:
 
