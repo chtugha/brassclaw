@@ -43,9 +43,9 @@ impl ToolRegistry {
     pub fn register_routine_tools(
         &self,
         _store: std::sync::Arc<crate::db::Database>,
-        _engine: std::sync::Arc<crate::agent::routine_engine::RoutineEngine>,
+        _engine: std::sync::Arc<dyn std::any::Any + Send + Sync>,
     ) {
-        // No-op
+        // No-op - use Any trait to avoid circular dependency
     }
 
     /// Set message tool context (no-op stub)
@@ -81,7 +81,7 @@ impl ToolRegistry {
 
     /// Get a tool by name (stub returns None)
     /// TODO: Remove after V2 migration complete
-    pub fn get(&self, _name: &str) -> Option<Tool> {
+    pub async fn get(&self, _name: &str) -> Option<Tool> {
         None
     }
 }
