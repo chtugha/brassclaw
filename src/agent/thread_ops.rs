@@ -37,7 +37,10 @@ pub trait Tool: Send + Sync {
         _params: serde_json::Value,
         _ctx: Arc<crate::context::JobContext>,
     ) -> Result<String, crate::error::Error> {
-        Err(crate::error::Error::Internal("V1 tool deleted".to_string()))
+        Err(crate::error::ToolError::Disabled {
+            name: "stub_tool".to_string(),
+            reason: "V1 tool deleted".to_string(),
+        }.into())
     }
 }
 
@@ -52,7 +55,8 @@ fn process_tool_result(
         Ok(s) => s.clone(),
         Err(e) => format!("Error: {}", e),
     };
-    let msg = brassclaw_llm::ChatMessage::tool_result(tool_call_id, &content, false);
+    let is_error = result.is_err();
+    let msg = brassclaw_llm::ChatMessage::tool_result(tool_call_id, &content, &is_error.to_string());
     (content, msg)
 }
 
@@ -2777,28 +2781,20 @@ impl Agent {
             }
         }
 
-        let auth_manager = self.deps.auth_manager.clone().or_else(|| {
-            self.tools().secrets_store().cloned().map(|secrets| {
-                Arc::new(crate::auth::extension::AuthManager::new(
-                    secrets,
-                    self.skill_registry().cloned(),
-                    self.deps.extension_manager.clone(),
-                    Some(self.tools().clone()),
-                ))
-            })
-        });
+        // TODO: V1 auth flow - stub for now
+        let auth_manager = self.deps.auth_manager.clone();
 
         let result = if let Some(auth_manager) = auth_manager {
             auth_manager
                 .submit_auth_token(pending.extension_name.as_str(), token, &message.user_id)
                 .await
-        } else if let Some(ext_mgr) = self.deps.extension_manager.as_ref() {
-            ext_mgr
-                .configure_token(pending.extension_name.as_str(), token, &message.user_id)
-                .await
         } else {
-            return Ok(Some("Extension manager not available.".to_string()));
+            // TODO: Stub - ExtensionManager.configure_token doesn't exist
+            Err(crate::extensions::ExtensionError::NotFound(
+                pending.extension_name.to_string(),
+            ))
         };
+
 
         match result {
             Ok(result) if result.activated => {
