@@ -1,6 +1,44 @@
 use std::collections::BTreeSet;
 use std::time::Duration;
 
+
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 ToolError
+#[derive(Debug)]
+pub enum ToolError {
+    InvalidParameters(String),
+    ExecutionFailed(String),
+}
+
+/// Stub for deleted V1 ToolOutput
+pub struct ToolOutput {
+    pub result: serde_json::Value,
+    pub duration: Duration,
+}
+
+impl ToolOutput {
+    pub fn success(result: serde_json::Value, duration: Duration) -> Self {
+        Self { result, duration }
+    }
+}
+
+/// Stub for deleted V1 require_str function
+pub fn require_str(params: &serde_json::Value, key: &str) -> Result<String, ToolError> {
+    params
+        .get(key)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| {
+            ToolError::InvalidParameters(format!("Missing or invalid parameter: {}", key))
+        })
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
 use brassclaw_engine::{ActionDef, ActionDiscoverySummary, ActionInventory};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
