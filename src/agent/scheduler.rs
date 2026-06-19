@@ -20,6 +20,93 @@ use brassclaw_engine::EffectExecutor;
 use brassclaw_llm::LlmProvider;
 use brassclaw_safety::SafetyLayer;
 
+// ============================================================================
+// V1 STUBS - These types were deleted with V1 and need V2 reimplementation
+// ============================================================================
+
+/// Stub for deleted V1 ApprovalContext - needs V2 reimplementation
+#[derive(Debug, Clone)]
+pub struct ApprovalContext {
+    _placeholder: (),
+}
+
+impl ApprovalContext {
+    pub fn autonomous() -> Self {
+        Self { _placeholder: () }
+    }
+    
+    pub fn autonomous_with_tools<I>(_tools: I) -> Self
+    where
+        I: IntoIterator<Item = String>,
+    {
+        Self { _placeholder: () }
+    }
+    
+    pub fn is_blocked_or_default(
+        _ctx: &Option<ApprovalContext>,
+        _tool_name: &str,
+        _requirement: &str,
+    ) -> bool {
+        false // Stub: allow all for now
+    }
+}
+
+/// Stub for deleted V1 ToolRegistry - needs V2 reimplementation
+#[derive(Clone)]
+pub struct ToolRegistry {
+    _placeholder: (),
+}
+
+impl ToolRegistry {
+    #[allow(dead_code)]
+    pub async fn get(&self, _name: &str) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
+        None
+    }
+}
+
+/// Stub for deleted V1 WorkerDeps - needs V2 reimplementation
+#[allow(dead_code)]
+struct WorkerDeps {
+    context_manager: Arc<ContextManager>,
+    llm: Arc<dyn LlmProvider>,
+    safety: Arc<SafetyLayer>,
+    hooks: Arc<HookRegistry>,
+    timeout: Duration,
+    use_planning: bool,
+    approval_context: Option<ApprovalContext>,
+    multi_tenant: bool,
+}
+
+/// Stub for deleted V1 Worker type
+#[allow(dead_code)]
+struct Worker {
+    _placeholder: (),
+}
+
+/// Stub for deleted V1 autonomous_allowed_tool_names function
+async fn autonomous_allowed_tool_names(
+    _extension_manager: Option<&Arc<ExtensionManager>>,
+    _user_id: &str,
+) -> Vec<String> {
+    // Stub: return empty list for now
+    vec![]
+}
+
+/// Stub for deleted V1 prepare_tool_params function
+#[allow(dead_code)]
+fn prepare_tool_params(_tool: &dyn std::any::Any, params: &serde_json::Value) -> serde_json::Value {
+    params.clone()
+}
+
+/// Stub for deleted V1 autonomous_unavailable_error function
+#[allow(dead_code)]
+fn autonomous_unavailable_error(tool_name: &str, _user_id: &str) -> Error {
+    Error::Tool(crate::error::ToolError::ExecutionFailed {
+        name: tool_name.to_string(),
+        reason: "Tool execution unavailable in V2 migration".to_string(),
+    })
+}
+
 /// Message to send to a worker.
 #[derive(Debug)]
 pub enum WorkerMessage {
@@ -47,8 +134,6 @@ struct ScheduledSubtask {
 
 /// Shared scheduler-owned dependencies that are forwarded into autonomous runs.
 pub struct SchedulerDeps {
-    #[deprecated(note = "Use effect_executor instead - will be removed in Step 9.7+")]
-    pub tools: Arc<ToolRegistry>,
     /// V2 effect executor for capability-based tool execution
     pub effect_executor: Option<Arc<dyn EffectExecutor>>,
     pub extension_manager: Option<Arc<ExtensionManager>>,
@@ -62,8 +147,6 @@ pub struct Scheduler {
     context_manager: Arc<ContextManager>,
     llm: Arc<dyn LlmProvider>,
     safety: Arc<SafetyLayer>,
-    #[deprecated(note = "Use effect_executor instead - will be removed in Step 9.7+")]
-    tools: Arc<ToolRegistry>,
     /// V2 effect executor for capability-based tool execution
     effect_executor: Option<Arc<dyn EffectExecutor>>,
     extension_manager: Option<Arc<ExtensionManager>>,
@@ -96,7 +179,6 @@ impl Scheduler {
             context_manager,
             llm,
             safety,
-            tools: deps.tools,
             effect_executor: deps.effect_executor,
             extension_manager: deps.extension_manager,
             store: deps.store,
@@ -255,7 +337,7 @@ impl Scheduler {
 
     async fn autonomous_approval_context(&self, user_id: &str) -> ApprovalContext {
         ApprovalContext::autonomous_with_tools(
-            autonomous_allowed_tool_names(&self.tools, self.extension_manager.as_ref(), user_id)
+            autonomous_allowed_tool_names(self.extension_manager.as_ref(), user_id)
                 .await,
         )
     }
@@ -322,23 +404,30 @@ impl Scheduler {
                 context_manager: self.context_manager.clone(),
                 llm: self.llm.clone(),
                 safety: self.safety.clone(),
-                tools: self.tools.clone(),
-                store: self.store.clone(),
                 hooks: self.hooks.clone(),
                 timeout: self.config.job_timeout,
                 use_planning: self.config.use_planning,
-                event_publisher: self.event_publisher.clone(),
                 approval_context,
-                http_interceptor: self.http_interceptor.clone(),
                 multi_tenant: self.config.multi_tenant,
-                runtime_policy: self.runtime_policy.clone(),
             };
-            let worker = Worker::new(job_id, deps);
+            
+            // TODO: V1 Worker removed - needs V2 reimplementation
+            // Stub worker creation and execution
+            let _worker = Worker { _placeholder: () };
+            let _deps = deps; // Consume deps to avoid unused variable warning
 
-            // Spawn worker task
+            // Spawn worker task (stubbed)
+            let context_manager = self.context_manager.clone();
             let handle = tokio::spawn(async move {
-                if let Err(e) = worker.run(rx).await {
-                    tracing::error!("Worker for job {} failed: {}", job_id, e);
+                // Stub: immediately mark job as failed
+                let _ = rx; // Consume rx to avoid unused variable warning
+                if let Err(e) = context_manager.update_context(job_id, |ctx| {
+                    ctx.transition_to(
+                        JobState::Failed,
+                        Some("Worker execution unavailable during V2 migration".to_string()),
+                    )
+                }).await {
+                    tracing::error!("Failed to mark job {} as failed: {}", job_id, e);
                 }
             });
 
@@ -545,15 +634,18 @@ impl Scheduler {
     ///
     /// Performs scheduler-specific checks (approval, cancellation) then
     /// delegates to either V2 EffectExecutor or V1 tool execution pipeline.
+    ///
+    /// TODO: V1 tool execution removed - needs V2 EffectExecutor implementation
+    #[allow(dead_code)]
     async fn execute_tool_task(
-        tools: Arc<ToolRegistry>,
-        effect_executor: Option<Arc<dyn EffectExecutor>>,
+        _tools: Arc<ToolRegistry>,
+        _effect_executor: Option<Arc<dyn EffectExecutor>>,
         context_manager: Arc<ContextManager>,
-        safety: Arc<SafetyLayer>,
-        approval_context: Option<ApprovalContext>,
+        _safety: Arc<SafetyLayer>,
+        _approval_context: Option<ApprovalContext>,
         job_id: Uuid,
         tool_name: &str,
-        params: serde_json::Value,
+        _params: serde_json::Value,
     ) -> Result<TaskOutput, Error> {
         let start = std::time::Instant::now();
 
@@ -567,64 +659,11 @@ impl Scheduler {
             .into());
         }
 
-        // TODO(Step 9.7+): Implement V2 EffectExecutor path
-        // When effect_executor is Some, use it instead of V1 ToolRegistry.
-        // Requires:
-        // 1. Helper to construct ThreadExecutionContext from JobContext
-        // 2. Helper to create appropriate CapabilityLease
-        // 3. Proper ThreadId, ProjectId, StepId construction
-        // 4. GateController setup
-        //
-        // For now, always use V1 path to maintain compilation and functionality.
-        if effect_executor.is_some() {
-            tracing::debug!(
-                tool_name = %tool_name,
-                job_id = %job_id,
-                "Scheduler: V2 EffectExecutor available but not yet implemented, using V1 fallback"
-            );
-        }
-
-        // V1 execution path
-        tracing::debug!(
-            tool_name = %tool_name,
-            job_id = %job_id,
-            "Scheduler: executing tool via V1 ToolRegistry (fallback)"
-        );
-
-        // Get the tool for approval check
-        let tool = tools.get(tool_name).await.ok_or_else(|| {
-            Error::Tool(crate::error::ToolError::NotFound {
-                name: tool_name.to_string(),
-            })
-        })?;
-
-        let normalized_params = prepare_tool_params(tool.as_ref(), &params);
-
-        // Scheduler-specific approval check
-        let requirement = tool.requires_approval(&normalized_params);
-        let blocked =
-            ApprovalContext::is_blocked_or_default(&approval_context, tool_name, requirement);
-        if blocked {
-            return Err(autonomous_unavailable_error(tool_name, &job_ctx.user_id).into());
-        }
-
-        // Delegate to shared tool execution pipeline
-        let output_str = crate::tools::execute::execute_tool_with_safety(
-            &tools, &safety, tool_name, params, &job_ctx,
-        )
-        .await?;
-
-        // Parse back to Value for TaskOutput; this should be infallible given
-        // `execute_tool_with_safety` uses `serde_json::to_string_pretty`, but if it
-        // ever fails we surface a clear error instead of silently changing types.
-        let result_value: serde_json::Value = serde_json::from_str(&output_str).map_err(|e| {
-            Error::Tool(crate::error::ToolError::ExecutionFailed {
-                name: tool_name.to_string(),
-                reason: format!("Failed to parse tool output as JSON: {}", e),
-            })
-        })?;
-
-        Ok(TaskOutput::new(result_value, start.elapsed()))
+        // V1 tool execution removed - return error for now
+        Err(Error::Tool(crate::error::ToolError::ExecutionFailed {
+            name: tool_name.to_string(),
+            reason: "Tool execution unavailable during V2 migration".to_string(),
+        }))
     }
 
     /// Stop a running job.
@@ -775,10 +814,11 @@ impl Scheduler {
     }
 
     /// Get access to the tools registry.
-    #[deprecated(note = "Use effect_executor() instead - will be removed in Step 9.7+")]
-    pub fn tools(&self) -> &Arc<ToolRegistry> {
-        &self.tools
-    }
+    // V1 ToolRegistry removed - use effect_executor() instead
+    // #[deprecated(note = "Use effect_executor() instead - will be removed in Step 9.7+")]
+    // pub fn tools(&self) -> &Arc<ToolRegistry> {
+    //     &self.tools
+    // }
 
     /// Get access to the V2 effect executor.
     pub fn effect_executor(&self) -> Option<&Arc<dyn EffectExecutor>> {
