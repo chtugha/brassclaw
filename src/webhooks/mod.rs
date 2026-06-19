@@ -19,6 +19,73 @@ use crate::agent::routine_engine::RoutineEngine;
 use crate::context::JobContext;
 use crate::secrets::SecretsStore;
 
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 ToolRegistry type
+pub struct ToolRegistry {
+    // Minimal stub - no fields needed
+}
+
+impl ToolRegistry {
+    /// Stub method to get a tool by name
+    pub fn get(&self, _name: &str) -> Option<Arc<dyn Tool>> {
+        None
+    }
+}
+
+/// Stub trait for deleted V1 Tool
+pub trait Tool: Send + Sync {
+    fn webhook_capability(&self) -> Option<WebhookCapability> {
+        None
+    }
+}
+
+/// Stub for deleted V1 WebhookCapability
+#[derive(Clone)]
+pub struct WebhookCapability {
+    pub auth_method: String,
+    pub hmac_signature_header: Option<String>,
+    pub hmac_prefix: Option<String>,
+}
+
+/// Stub module for deleted V1 channels::wasm::signature
+mod wasm_signature_stubs {
+    pub fn verify_discord_signature(
+        _key: &str,
+        _sig: &str,
+        _ts: &str,
+        _body: &[u8],
+        _now_secs: i64,
+    ) -> bool {
+        false
+    }
+
+    pub fn verify_slack_signature(
+        _secret: &str,
+        _ts: &str,
+        _body: &[u8],
+        _sig: &str,
+        _now_secs: i64,
+    ) -> bool {
+        false
+    }
+
+    pub fn verify_hmac_sha256_prefixed(
+        _secret: &str,
+        _body: &[u8],
+        _sig: &str,
+        _prefix: &str,
+    ) -> bool {
+        false
+    }
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
+
 /// Shared routine engine slot, populated by Agent after startup.
 pub type RoutineEngineSlot = Arc<tokio::sync::RwLock<Option<Arc<RoutineEngine>>>>;
 
@@ -246,7 +313,7 @@ fn header_value<'a>(headers: &'a HeaderMap, key: &str) -> Option<&'a str> {
 }
 
 async fn validate_webhook_auth(
-    tool: &dyn crate::tools::Tool,
+    tool: &dyn Tool,
     secrets_store: Option<&(dyn SecretsStore + Send + Sync)>,
     user_id: &str,
     headers: &HeaderMap,
@@ -309,7 +376,7 @@ async fn validate_webhook_auth(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
-        if !crate::channels::wasm::signature::verify_discord_signature(key, sig, ts, body, now_secs)
+        if !wasm_signature_stubs::verify_discord_signature(key, sig, ts, body, now_secs)
         {
             return Err("Invalid signature".to_string());
         }
@@ -335,7 +402,7 @@ async fn validate_webhook_auth(
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs() as i64;
-            if !crate::channels::wasm::signature::verify_slack_signature(
+            if !wasm_signature_stubs::verify_slack_signature(
                 secret, ts, body, sig, now_secs,
             ) {
                 return Err("Invalid timestamped HMAC signature".to_string());
@@ -348,7 +415,7 @@ async fn validate_webhook_auth(
             let prefix = cfg.hmac_prefix.as_deref().unwrap_or("sha256=");
             let sig = header_value(headers, sig_header)
                 .ok_or_else(|| "Missing HMAC signature header".to_string())?;
-            if !crate::channels::wasm::signature::verify_hmac_sha256_prefixed(
+            if !wasm_signature_stubs::verify_hmac_sha256_prefixed(
                 secret, body, sig, prefix,
             ) {
                 return Err("Invalid HMAC signature".to_string());
