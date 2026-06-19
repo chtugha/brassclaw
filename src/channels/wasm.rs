@@ -55,7 +55,7 @@ impl Channel for WasmChannel {
         &self.name
     }
 
-    async fn start(&self) -> Result<crate::channels::MessageStream, crate::error::ChannelError> {
+    async fn start(&self) -> std::result::Result<crate::channels::MessageStream, crate::error::ChannelError> {
         Err(crate::error::ChannelError::NotSupported("V1 WasmChannel deleted".to_string()))
     }
 
@@ -63,11 +63,11 @@ impl Channel for WasmChannel {
         &self,
         _msg: &IncomingMessage,
         _response: crate::channels::OutgoingResponse,
-    ) -> Result<(), crate::error::ChannelError> {
+    ) -> std::result::Result<(), crate::error::ChannelError> {
         Err(crate::error::ChannelError::NotSupported("V1 WasmChannel deleted".to_string()))
     }
 
-    async fn health_check(&self) -> Result<(), crate::error::ChannelError> {
+    async fn health_check(&self) -> std::result::Result<(), crate::error::ChannelError> {
         Err(crate::error::ChannelError::NotSupported("V1 WasmChannel deleted".to_string()))
     }
 }
