@@ -90,17 +90,10 @@ pub trait Tool: Send + Sync {
     }
 }
 
-/// Stub for deleted V1 ToolRegistry
-#[derive(Clone)]
-#[allow(dead_code)]
-pub struct ToolRegistry {
-    _placeholder: (),
-}
-
 /// Stub for deleted V1 execute_tool_with_safety function
 #[allow(dead_code)]
 async fn execute_tool_with_safety(
-    _tools: &ToolRegistry,
+    _tools: &crate::tools::ToolRegistry,
     _safety: &brassclaw_safety::SafetyLayer,
     _tool_name: &str,
     _params: serde_json::Value,
@@ -543,7 +536,7 @@ impl Agent {
         params: &serde_json::Value,
         job_ctx: &JobContext,
     ) -> Result<String, Error> {
-        execute_chat_tool_standalone(self.tools(), self.safety(), tool_name, params, job_ctx).await
+        execute_chat_tool_standalone(&*self.tools(), self.safety(), tool_name, params, job_ctx).await
     }
 }
 
@@ -1581,7 +1574,7 @@ impl<'a> LoopDelegate for ChatDelegate<'a> {
 /// tasks, which cannot borrow `&self`. Delegates to the shared
 /// `execute_tool_with_safety` pipeline.
 pub(super) async fn execute_chat_tool_standalone(
-    tools: &ToolRegistry,
+    tools: &crate::tools::ToolRegistry,
     safety: &brassclaw_safety::SafetyLayer,
     tool_name: &str,
     params: &serde_json::Value,
