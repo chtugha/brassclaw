@@ -42,7 +42,7 @@ impl ToolRegistry {
     /// TODO: Remove after V2 migration complete
     pub fn register_routine_tools(
         &self,
-        _store: std::sync::Arc<crate::db::Database>,
+        _store: std::sync::Arc<dyn crate::db::Database>,
         _engine: std::sync::Arc<dyn std::any::Any + Send + Sync>,
     ) {
         // No-op - use Any trait to avoid circular dependency

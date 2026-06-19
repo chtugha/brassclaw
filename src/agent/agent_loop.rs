@@ -1354,7 +1354,7 @@ impl Agent {
                     // Register routine tools
                     self.tools().register_routine_tools(
                         Arc::clone(store),
-                        engine as Arc<dyn std::any::Any + Send + Sync>
+                        Arc::clone(&engine) as Arc<dyn std::any::Any + Send + Sync>
                     );
 
                     // Load initial event cache
