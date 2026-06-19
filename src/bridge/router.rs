@@ -25,6 +25,89 @@ use crate::channels::{IncomingMessage, OutgoingResponse, StatusUpdate};
 use crate::db::Database;
 use crate::error::Error;
 use crate::extensions::naming::legacy_extension_alias;
+
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 ToolRegistry
+pub struct ToolRegistry;
+
+impl ToolRegistry {
+    pub fn new() -> Self {
+        Self
+    }
+    
+    pub fn with_credentials(
+        self,
+        _credential_registry: Arc<dyn std::any::Any + Send + Sync>,
+        _secrets: Arc<dyn std::any::Any + Send + Sync>,
+    ) -> Self {
+        self
+    }
+    
+    pub async fn get(&self, _name: &str) -> Option<Arc<dyn Tool>> {
+        None
+    }
+}
+
+/// Stub for deleted V1 Tool trait
+pub trait Tool: Send + Sync {
+    fn name(&self) -> &str;
+}
+
+/// Stub for deleted V1 GATEWAY_CHANNEL_NAME constant
+pub const GATEWAY_CHANNEL_NAME: &str = "web";
+
+/// Stub for deleted V1 ApprovalRequirement
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApprovalRequirement {
+    Never,
+    Always,
+}
+
+/// Stub for deleted V1 redact_params function
+pub fn redact_params(
+    params: &serde_json::Value,
+    _sensitive_params: Vec<String>,
+) -> serde_json::Value {
+    params.clone()
+}
+
+/// Stub module for deleted tools::permissions
+pub mod permissions {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    pub enum PermissionState {
+        Disabled,
+        AlwaysAllow,
+        AskEachTime,
+    }
+    
+    pub fn is_valid_admin_tool_name(_name: &str) -> bool {
+        true
+    }
+}
+
+/// Stub module for deleted channels::web
+pub mod web_stubs {
+    pub mod onboarding {
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        pub enum ConfigureFlowOutcome {
+            Ready,
+            PairingRequired { instructions: String },
+            AuthRequired,
+            RetryAuth,
+        }
+        
+        pub fn classify_configure_result(_result: &serde_json::Value) -> ConfigureFlowOutcome {
+            ConfigureFlowOutcome::Ready
+        }
+    }
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
 use crate::gate::pending::{PendingGate, PendingGateKey};
 
 /// Typed outcome from a v2 bridge handler.
@@ -388,7 +471,7 @@ pub(super) fn gate_display_parameters(pending: &PendingGate) -> serde_json::Valu
 async fn resolve_extension_for_action(
     auth_manager: Option<&AuthManager>,
     extension_manager: Option<&crate::extensions::ExtensionManager>,
-    tools: &crate::tools::ToolRegistry,
+    tools: &ToolRegistry,
     action_name: &str,
     parameters: &serde_json::Value,
     credential_fallback: &str,
@@ -431,7 +514,7 @@ async fn resolve_extension_for_action(
 pub(super) async fn resolve_auth_gate_extension_name(
     auth_manager: Option<&AuthManager>,
     extension_manager: Option<&crate::extensions::ExtensionManager>,
-    tools: &crate::tools::ToolRegistry,
+    tools: &ToolRegistry,
     pending: &PendingGate,
 ) -> Option<brassclaw_common::ExtensionName> {
     let brassclaw_engine::ResumeKind::Authentication {
@@ -717,7 +800,7 @@ fn parse_credential_name(text: &str) -> Option<String> {
 async fn notify_pending_gate(
     agent: &Agent,
     sse: Option<DynEventPublisher>,
-    tools: &crate::tools::ToolRegistry,
+    tools: &ToolRegistry,
     auth_manager: Option<&AuthManager>,
     extension_manager: Option<&crate::extensions::ExtensionManager>,
     message: &IncomingMessage,
@@ -946,7 +1029,7 @@ async fn persist_always_allow_with_store(
     // Validate tool name before using it as a settings key. Reject names
     // that contain dots or other characters that could collide with the
     // dotted-path settings namespace.
-    if !crate::tools::permissions::is_valid_admin_tool_name(&pending.action_name) {
+    if !permissions::is_valid_admin_tool_name(&pending.action_name) {
         debug!(
             tool = %pending.action_name,
             "Skipping AlwaysAllow persist — invalid tool name"
@@ -965,7 +1048,7 @@ async fn persist_always_allow_with_store(
         .map(|t| {
             matches!(
                 t.requires_approval(&pending.parameters),
-                crate::tools::ApprovalRequirement::Always
+                ApprovalRequirement::Always
             )
         })
         .unwrap_or(false);
@@ -1004,7 +1087,7 @@ async fn persist_always_allow_with_store(
         }
     };
 
-    let val = serde_json::to_value(crate::tools::permissions::PermissionState::AlwaysAllow)
+    let val = serde_json::to_value(permissions::PermissionState::AlwaysAllow)
         .unwrap_or(serde_json::json!("always_allow"));
 
     // dispatch-exempt: engine-internal persist mirrors v1 thread_ops write-through
@@ -1285,7 +1368,7 @@ async fn execute_pending_gate_action(
                 .tools()
                 .get(&action_name)
                 .await
-                .map(|tool| crate::tools::redact_params(&parameters, tool.sensitive_params()));
+                .map(|tool| redact_params(&parameters, tool.sensitive_params()));
             let pending_gate = PendingGate {
                 request_id: uuid::Uuid::new_v4(),
                 gate_name,
@@ -3522,8 +3605,8 @@ pub async fn resolve_gate(
                 {
                     Ok(PendingAuthCredentialSubmission::Stored(result))
                         if matches!(
-                            crate::channels::web::onboarding::classify_configure_result(&result),
-                            crate::channels::web::onboarding::ConfigureFlowOutcome::Ready
+                            web_stubs::onboarding::classify_configure_result(&result),
+                            web_stubs::onboarding::ConfigureFlowOutcome::Ready
                         ) =>
                     {
                         let _ = agent
@@ -3539,10 +3622,10 @@ pub async fn resolve_gate(
                             )
                             .await;
                     }
-                    Ok(PendingAuthCredentialSubmission::Stored(result)) => match crate::channels::web::onboarding::classify_configure_result(
+                    Ok(PendingAuthCredentialSubmission::Stored(result)) => match web_stubs::onboarding::classify_configure_result(
                         &result,
                     ) {
-                        crate::channels::web::onboarding::ConfigureFlowOutcome::PairingRequired {
+                        web_stubs::onboarding::ConfigureFlowOutcome::PairingRequired {
                             instructions,
                             onboarding,
                         } => {
@@ -3564,8 +3647,8 @@ pub async fn resolve_gate(
                             }
                             return Ok(BridgeOutcome::Pending);
                         }
-                        crate::channels::web::onboarding::ConfigureFlowOutcome::AuthRequired
-                        | crate::channels::web::onboarding::ConfigureFlowOutcome::RetryAuth => {
+                        web_stubs::onboarding::ConfigureFlowOutcome::AuthRequired
+                        | web_stubs::onboarding::ConfigureFlowOutcome::RetryAuth => {
                             return requeue_auth_pending_gate(
                                 agent,
                                 state,
@@ -3576,7 +3659,7 @@ pub async fn resolve_gate(
                             )
                             .await;
                         }
-                        crate::channels::web::onboarding::ConfigureFlowOutcome::Ready => {}
+                        web_stubs::onboarding::ConfigureFlowOutcome::Ready => {}
                     },
                     // Bare test-harness path: no backend exists, but the
                     // gate carries a staged `resume_output` (set when the
@@ -5070,7 +5153,7 @@ fn spawn_post_park_continuation(
                 // response text to deliver yet.
                 let redacted_params =
                     if let Some(tool) = effect_adapter.tools().get(action_name).await {
-                        crate::tools::redact_params(parameters, tool.sensitive_params())
+                        redact_params(parameters, tool.sensitive_params())
                     } else {
                         parameters.clone()
                     };
@@ -5679,7 +5762,7 @@ async fn await_thread_outcome(
             // Redact sensitive params before storing/broadcasting
             let redacted_params =
                 if let Some(tool) = state.effect_adapter.tools().get(&action_name).await {
-                    crate::tools::redact_params(&parameters, tool.sensitive_params())
+                    redact_params(&parameters, tool.sensitive_params())
                 } else {
                     parameters.clone()
                 };
@@ -5861,7 +5944,7 @@ pub(crate) async fn handle_mission_notification(
     db: Option<&Arc<dyn Database>>,
     conv_mgr: Option<&brassclaw_engine::ConversationManager>,
     auth_manager: Option<&AuthManager>,
-    tools: Option<&Arc<crate::tools::ToolRegistry>>,
+    tools: Option<&Arc<ToolRegistry>>,
     extension_manager: Option<&crate::extensions::ExtensionManager>,
 ) {
     let Some(ref text) = notif.response else {
@@ -7844,7 +7927,7 @@ pub(crate) mod test_support {
         let store_dyn: Arc<dyn Store> = store;
 
         let effect_adapter = Arc::new(crate::bridge::EffectBridgeAdapter::new(
-            Arc::new(crate::tools::ToolRegistry::new()),
+            Arc::new(ToolRegistry::new()),
             Arc::new(brassclaw_safety::SafetyLayer::new(
                 &brassclaw_safety::SafetyConfig {
                     max_output_length: 10_000,
@@ -7885,7 +7968,7 @@ pub(crate) mod test_support {
             gate_controller: Arc::new(crate::bridge::gate_controller::BridgeGateController::new(
                 Arc::new(crate::gate::store::PendingGateStore::in_memory()),
                 None,
-                Arc::new(crate::tools::ToolRegistry::new()),
+                Arc::new(ToolRegistry::new()),
                 None,
                 None,
                 Arc::new(crate::channels::ChannelManager::new()),
@@ -8061,7 +8144,7 @@ mod tests {
     use crate::error::ChannelError;
     use crate::hooks::HookRegistry;
     use crate::testing::{StubChannel, StubLlm};
-    use crate::tools::ToolRegistry;
+    use ToolRegistry;
     use futures::{FutureExt, StreamExt, stream};
     use brassclaw_safety::SafetyLayer;
     use rust_decimal::Decimal;
@@ -8545,7 +8628,7 @@ mod tests {
                     injection_check_enabled: true,
                 },
             )),
-            tools: Arc::new(crate::tools::ToolRegistry::new()),
+            tools: Arc::new(ToolRegistry::new()),
             workspace: None,
             extension_manager: None,
             skill_registry: None,
@@ -10257,7 +10340,7 @@ mod tests {
 
         let store_dyn: Arc<dyn Store> = store;
         let effect_adapter = Arc::new(EffectBridgeAdapter::new(
-            Arc::new(crate::tools::ToolRegistry::new()),
+            Arc::new(ToolRegistry::new()),
             Arc::new(brassclaw_safety::SafetyLayer::new(
                 &brassclaw_safety::SafetyConfig {
                     max_output_length: 10_000,
@@ -10298,7 +10381,7 @@ mod tests {
             gate_controller: Arc::new(crate::bridge::gate_controller::BridgeGateController::new(
                 Arc::new(crate::gate::store::PendingGateStore::in_memory()),
                 None,
-                Arc::new(crate::tools::ToolRegistry::new()),
+                Arc::new(ToolRegistry::new()),
                 None,
                 None,
                 Arc::new(crate::channels::ChannelManager::new()),
@@ -10425,7 +10508,7 @@ mod tests {
 
         let store_dyn: Arc<dyn Store> = store;
         let effect_adapter = Arc::new(EffectBridgeAdapter::new(
-            Arc::new(crate::tools::ToolRegistry::new()),
+            Arc::new(ToolRegistry::new()),
             Arc::new(brassclaw_safety::SafetyLayer::new(
                 &brassclaw_safety::SafetyConfig {
                     max_output_length: 10_000,
@@ -10466,7 +10549,7 @@ mod tests {
             gate_controller: Arc::new(crate::bridge::gate_controller::BridgeGateController::new(
                 Arc::new(crate::gate::store::PendingGateStore::in_memory()),
                 None,
-                Arc::new(crate::tools::ToolRegistry::new()),
+                Arc::new(ToolRegistry::new()),
                 None,
                 None,
                 Arc::new(crate::channels::ChannelManager::new()),
@@ -11687,7 +11770,7 @@ mod tests {
             let secrets: Arc<dyn crate::secrets::SecretsStore + Send + Sync> =
                 Arc::new(crate::testing::credentials::test_secrets_store());
             agent.deps.tools = Arc::new(
-                crate::tools::ToolRegistry::new().with_credentials(credential_registry, secrets),
+                ToolRegistry::new().with_credentials(credential_registry, secrets),
             );
 
             let message = IncomingMessage::new("web", "alice", "call the github api");
@@ -12363,7 +12446,7 @@ mod tests {
             gate_controller: Arc::new(crate::bridge::gate_controller::BridgeGateController::new(
                 Arc::new(crate::gate::store::PendingGateStore::in_memory()),
                 None,
-                Arc::new(crate::tools::ToolRegistry::new()),
+                Arc::new(ToolRegistry::new()),
                 None,
                 None,
                 Arc::new(crate::channels::ChannelManager::new()),
@@ -12416,7 +12499,7 @@ mod tests {
     /// (defense-in-depth — even if a crafted client sends always:true).
     #[tokio::test]
     async fn test_persist_always_allow_skips_locked_tools() {
-        use crate::tools::ApprovalRequirement;
+        use ApprovalRequirement;
 
         let settings = Arc::new(InMemorySettings::new());
         let mut agent = make_router_test_agent(None).await.0;
@@ -13388,7 +13471,7 @@ mod tests {
             let controller = Arc::new(crate::bridge::gate_controller::BridgeGateController::new(
                 Arc::clone(&pending_gates),
                 None,
-                Arc::new(crate::tools::ToolRegistry::new()),
+                Arc::new(ToolRegistry::new()),
                 None,
                 None,
                 Arc::new(crate::channels::ChannelManager::new()),
@@ -13600,7 +13683,7 @@ mod tests {
         let controller = Arc::new(crate::bridge::gate_controller::BridgeGateController::new(
             Arc::clone(&pending_gates),
             None,
-            Arc::new(crate::tools::ToolRegistry::new()),
+            Arc::new(ToolRegistry::new()),
             None,
             None,
             Arc::new(crate::channels::ChannelManager::new()),
