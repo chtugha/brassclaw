@@ -57,7 +57,7 @@ impl RoutinesCapabilityError {
 
 pub struct RoutinesContext {
     pub store: Arc<dyn Database>,
-    pub engine: Arc<RoutineEngine>,
+    pub engine: Arc<tokio::sync::RwLock<Option<Arc<RoutineEngine>>>>,
     pub user_id: String,
     pub metadata: Value,
 }
@@ -855,7 +855,9 @@ pub async fn execute_routine_create(
         routine.trigger,
         Trigger::Event { .. } | Trigger::SystemEvent { .. }
     ) {
-        ctx.engine.refresh_event_cache().await;
+        if let Some(engine) = ctx.engine.read().await.as_ref() {
+            engine.refresh_event_cache().await;
+        }
     }
 
     let verification = verification_result_payload(&routine, false);
@@ -973,8 +975,10 @@ pub async fn execute_routine_update(
         .update_routine(&routine)
         .await
         .map_err(|e| RoutinesCapabilityError::operation(format!("failed to update: {e}")))?;
+if let Some(engine) = ctx.engine.read().await.as_ref() {
+    engine.refresh_event_cache().await;
+}
 
-    ctx.engine.refresh_event_cache().await;
 
     let verification = verification_result_payload(&routine, verification_reset);
     Ok(json!({
@@ -1005,8 +1009,10 @@ pub async fn execute_routine_delete(
         .delete_routine(routine.id)
         .await
         .map_err(|e| RoutinesCapabilityError::operation(format!("failed to delete: {e}")))?;
+if let Some(engine) = ctx.engine.read().await.as_ref() {
+    engine.refresh_event_cache().await;
+}
 
-    ctx.engine.refresh_event_cache().await;
 
     Ok(json!({
         "name": name,
@@ -1158,8 +1164,15 @@ pub async fn execute_routine_fire(
         .map_err(|e| RoutinesCapabilityError::operation(format!("DB error: {e}")))?
         .ok_or_else(|| RoutinesCapabilityError::operation(format!("routine '{}' not found", name)))?;
 
-    let run_id = ctx
+    let engine = ctx
         .engine
+        .read()
+        .await
+        .as_ref()
+        .ok_or_else(|| RoutinesCapabilityError::operation("routine engine not initialized".to_string()))?
+        .clone();
+    
+    let run_id = engine
         .fire_manual(routine.id, None)
         .await
         .map_err(|e| {
@@ -1194,8 +1207,15 @@ pub async fn execute_event_emit(
         .cloned()
         .unwrap_or_else(|| json!({}));
 
-    let fired = ctx
+    let engine = ctx
         .engine
+        .read()
+        .await
+        .as_ref()
+        .ok_or_else(|| RoutinesCapabilityError::operation("routine engine not initialized".to_string()))?
+        .clone();
+    
+    let fired = engine
         .emit_system_event(&source, &event_type, &payload, Some(&ctx.user_id))
         .await;
 

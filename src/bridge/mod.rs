@@ -32,6 +32,9 @@ pub use workspace_reader::WorkspaceReaderAdapter;
 
 pub use effect_adapter::EffectBridgeAdapter; // V1 - TODO: Remove after migration
 pub use effect_adapter_v2::EffectBridgeAdapter as EffectBridgeAdapterV2; // V2 - Reborn
+
+// Re-export engine types needed by consumers
+pub use brassclaw_engine::{EffectExecutor, ThreadExecutionContext};
 pub use gate_controller::{BridgeGateController, GateResolutions, PerExecutionContext};
 pub use router::{
     // DTO types

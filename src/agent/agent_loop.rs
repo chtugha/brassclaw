@@ -521,6 +521,8 @@ pub struct AgentDeps {
     /// When `None`, all registered capabilities are available.
     /// When `Some`, capabilities are filtered based on runtime policy.
     pub runtime_policy: Option<brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy>,
+    /// V2 capability dispatcher for routine engine and other V2 consumers.
+    pub dispatcher: Arc<crate::capabilities::dispatcher::BuiltinCapabilityDispatcher>,
 }
 
 /// The main agent that coordinates all components.
@@ -1326,7 +1328,7 @@ impl Agent {
                         notify_tx,
                         Some(self.scheduler.clone()),
                         self.deps.extension_manager.clone(),
-                        self.tools().clone(),
+                        self.deps.dispatcher.clone(),
                         self.safety().clone(),
                         self.deps.sandbox_readiness,
                         self.deps.http_interceptor.clone(),
@@ -1337,6 +1339,9 @@ impl Agent {
                         engine.set_runtime_policy(policy.clone());
                     }
                     let engine = Arc::new(engine);
+
+                    // Fill the RoutinesContext.engine slot to complete the circular dependency
+                    *self.routine_engine_slot.write().await = Some(Arc::clone(&engine));
 
                     // Register routine tools
                     self.tools().register_routine_tools(Arc::clone(store), Arc::clone(&engine));

@@ -33,15 +33,144 @@ use crate::error::RoutineError;
 use crate::extensions::ExtensionManager;
 use crate::ownership::Owned;
 use crate::tenant::SystemScope;
+use crate::capabilities::dispatcher::BuiltinCapabilityDispatcher;
 use crate::tools::{
-    ToolError, ToolRegistry, autonomous_allowed_tool_names, autonomous_unavailable_message,
-    prepare_tool_params,
+    autonomous_unavailable_message,
 };
 use crate::workspace::Workspace;
 use brassclaw_llm::{
     ChatMessage, CompletionRequest, FinishReason, LlmProvider, ToolCall, ToolCompletionRequest,
 };
 use brassclaw_safety::SafetyLayer;
+/// Returns all V2 capability IDs with their descriptions for LLM tool definitions.
+fn list_all_v2_capabilities() -> Vec<(String, String)> {
+    use crate::capabilities::*;
+    
+    vec![
+        // Filesystem
+        (filesystem::READ_FILE_CAPABILITY_ID.to_string(), "Read file contents".to_string()),
+        (filesystem::WRITE_FILE_CAPABILITY_ID.to_string(), "Write content to a file".to_string()),
+        (filesystem::LIST_DIR_CAPABILITY_ID.to_string(), "List directory contents".to_string()),
+        (filesystem::APPLY_PATCH_CAPABILITY_ID.to_string(), "Apply a patch to a file".to_string()),
+        (filesystem::GLOB_CAPABILITY_ID.to_string(), "Search files using glob patterns".to_string()),
+        (filesystem::GREP_CAPABILITY_ID.to_string(), "Search file contents using regex".to_string()),
+        (filesystem::FILE_UNDO_CAPABILITY_ID.to_string(), "Undo file changes".to_string()),
+        
+        // Shell
+        (shell::SHELL_CAPABILITY_ID.to_string(), "Execute shell commands".to_string()),
+        
+        // Network
+        (network::HTTP_CAPABILITY_ID.to_string(), "Make HTTP requests".to_string()),
+        
+        // Memory
+        (memory::MEMORY_READ_CAPABILITY_ID.to_string(), "Read from memory".to_string()),
+        (memory::MEMORY_WRITE_CAPABILITY_ID.to_string(), "Write to memory".to_string()),
+        (memory::MEMORY_SEARCH_CAPABILITY_ID.to_string(), "Search memory".to_string()),
+        (memory::MEMORY_TREE_CAPABILITY_ID.to_string(), "Get memory tree structure".to_string()),
+        
+        // Messaging
+        (messaging::MESSAGE_CAPABILITY_ID.to_string(), "Send messages".to_string()),
+        
+        // Jobs
+        (jobs::CREATE_JOB_CAPABILITY_ID.to_string(), "Create a new job".to_string()),
+        (jobs::CANCEL_JOB_CAPABILITY_ID.to_string(), "Cancel a job".to_string()),
+        (jobs::LIST_JOBS_CAPABILITY_ID.to_string(), "List jobs".to_string()),
+        (jobs::JOB_STATUS_CAPABILITY_ID.to_string(), "Get job status".to_string()),
+        (jobs::JOB_EVENTS_CAPABILITY_ID.to_string(), "Get job events".to_string()),
+        (jobs::JOB_PROMPT_CAPABILITY_ID.to_string(), "Prompt for job input".to_string()),
+        
+        // Routines
+        (routines::ROUTINE_CREATE_CAPABILITY_ID.to_string(), "Create a routine".to_string()),
+        (routines::ROUTINE_UPDATE_CAPABILITY_ID.to_string(), "Update a routine".to_string()),
+        (routines::ROUTINE_DELETE_CAPABILITY_ID.to_string(), "Delete a routine".to_string()),
+        (routines::ROUTINE_LIST_CAPABILITY_ID.to_string(), "List routines".to_string()),
+        (routines::ROUTINE_HISTORY_CAPABILITY_ID.to_string(), "Get routine history".to_string()),
+        (routines::ROUTINE_FIRE_CAPABILITY_ID.to_string(), "Fire a routine".to_string()),
+        (routines::EVENT_EMIT_CAPABILITY_ID.to_string(), "Emit an event".to_string()),
+        
+        // Skills
+        (skills::SKILL_INSTALL_CAPABILITY_ID.to_string(), "Install a skill".to_string()),
+        (skills::SKILL_REMOVE_CAPABILITY_ID.to_string(), "Remove a skill".to_string()),
+        (skills::SKILL_LIST_CAPABILITY_ID.to_string(), "List skills".to_string()),
+        (skills::SKILL_SEARCH_CAPABILITY_ID.to_string(), "Search for skills".to_string()),
+        
+        // Extensions
+        (extensions::TOOL_INSTALL_CAPABILITY_ID.to_string(), "Install a tool".to_string()),
+        (extensions::TOOL_REMOVE_CAPABILITY_ID.to_string(), "Remove a tool".to_string()),
+        (extensions::TOOL_LIST_CAPABILITY_ID.to_string(), "List tools".to_string()),
+        (extensions::TOOL_SEARCH_CAPABILITY_ID.to_string(), "Search for tools".to_string()),
+        (extensions::TOOL_UPGRADE_CAPABILITY_ID.to_string(), "Upgrade a tool".to_string()),
+        (extensions::TOOL_AUTH_CAPABILITY_ID.to_string(), "Authenticate a tool".to_string()),
+        (extensions::TOOL_INFO_CAPABILITY_ID.to_string(), "Get tool info".to_string()),
+        (extensions::EXTENSION_INFO_CAPABILITY_ID.to_string(), "Get extension info".to_string()),
+        (extensions::TOOL_PERMISSION_SET_CAPABILITY_ID.to_string(), "Set tool permissions".to_string()),
+        
+        // Secrets
+        (secrets::SECRET_LIST_CAPABILITY_ID.to_string(), "List secrets".to_string()),
+        (secrets::SECRET_DELETE_CAPABILITY_ID.to_string(), "Delete a secret".to_string()),
+        
+        // Images
+        (images::IMAGE_GENERATE_CAPABILITY_ID.to_string(), "Generate an image".to_string()),
+        (images::IMAGE_ANALYZE_CAPABILITY_ID.to_string(), "Analyze an image".to_string()),
+        (images::IMAGE_EDIT_CAPABILITY_ID.to_string(), "Edit an image".to_string()),
+        
+        // System
+        (system::ECHO_CAPABILITY_ID.to_string(), "Echo a message".to_string()),
+        (system::TIME_CAPABILITY_ID.to_string(), "Get current time".to_string()),
+        (system::JSON_CAPABILITY_ID.to_string(), "Parse JSON".to_string()),
+        (system::PLAN_UPDATE_CAPABILITY_ID.to_string(), "Update plan".to_string()),
+        (system::RESTART_CAPABILITY_ID.to_string(), "Restart system".to_string()),
+        (system::SYSTEM_VERSION_CAPABILITY_ID.to_string(), "Get system version".to_string()),
+        (system::SYSTEM_TOOLS_LIST_CAPABILITY_ID.to_string(), "List system tools".to_string()),
+        
+        // Pairing
+        (pairing::PAIRING_APPROVE_CAPABILITY_ID.to_string(), "Approve pairing request".to_string()),
+    ]
+}
+
+/// Get the list of V2 capabilities allowed for autonomous execution.
+/// This replaces the V1 `autonomous_allowed_tool_names` function.
+async fn get_autonomous_allowed_capabilities(
+    extension_manager: Option<&Arc<ExtensionManager>>,
+    owner_id: &str,
+) -> std::collections::HashSet<String> {
+    use std::collections::HashSet;
+    
+    // Get all builtin capability IDs
+    let mut allowed: HashSet<String> = list_all_v2_capabilities()
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
+    
+    // Filter out denylisted capabilities (same logic as V1)
+    allowed.retain(|name| !is_autonomous_capability_denylisted(name));
+    
+    // Add extension capabilities if available
+    if let Some(extension_manager) = extension_manager
+        && extension_manager.owner_id() == owner_id
+    {
+        allowed.extend(
+            extension_manager
+                .active_tool_names()
+                .await
+                .into_iter()
+                .filter(|name| !is_autonomous_capability_denylisted(name)),
+        );
+    }
+    
+    allowed
+}
+
+/// Check if a capability is denylisted for autonomous execution.
+/// This replaces the V1 `is_autonomous_tool_denylisted` function.
+fn is_autonomous_capability_denylisted(capability_id: &str) -> bool {
+    // Denylist capabilities that should not be used autonomously
+    matches!(
+        capability_id,
+        "builtin.restart" | "builtin.pairing_approve"
+    )
+}
+
 
 enum EventMatcher {
     Message { routine: Routine, regex: Regex },
@@ -118,8 +247,8 @@ pub struct RoutineEngine {
     scheduler: Option<Arc<Scheduler>>,
     /// Owner-scoped extension activation state for autonomous tool resolution.
     extension_manager: Option<Arc<ExtensionManager>>,
-    /// Tool registry for lightweight routine tool execution.
-    tools: Arc<ToolRegistry>,
+    /// V2 capability dispatcher (replaces ToolRegistry).
+    dispatcher: Arc<BuiltinCapabilityDispatcher>,
     /// Safety layer for tool output sanitization.
     safety: Arc<SafetyLayer>,
     /// Sandbox readiness state — only `DockerUnavailable` blocks full-job dispatch.
@@ -151,7 +280,7 @@ impl RoutineEngine {
         notify_tx: mpsc::Sender<OutgoingResponse>,
         scheduler: Option<Arc<Scheduler>>,
         extension_manager: Option<Arc<ExtensionManager>>,
-        tools: Arc<ToolRegistry>,
+        dispatcher: Arc<BuiltinCapabilityDispatcher>,
         safety: Arc<SafetyLayer>,
         sandbox_readiness: SandboxReadiness,
         http_interceptor: Option<Arc<dyn brassclaw_llm::recording::HttpInterceptor>>,
@@ -166,7 +295,7 @@ impl RoutineEngine {
             event_cache: Arc::new(RwLock::new(Vec::new())),
             scheduler,
             extension_manager,
-            tools,
+            dispatcher,
             safety,
             sandbox_readiness,
             http_interceptor,
@@ -850,7 +979,7 @@ impl RoutineEngine {
             running_count: self.running_count.clone(),
             scheduler: self.scheduler.clone(),
             extension_manager: self.extension_manager.clone(),
-            tools: self.tools.clone(),
+            dispatcher: self.dispatcher.clone(),
             safety: self.safety.clone(),
             sandbox_readiness: self.sandbox_readiness,
             event_cache: Arc::clone(&self.event_cache),
@@ -938,7 +1067,7 @@ impl RoutineEngine {
             running_count: self.running_count.clone(),
             scheduler: self.scheduler.clone(),
             extension_manager: self.extension_manager.clone(),
-            tools: self.tools.clone(),
+            dispatcher: self.dispatcher.clone(),
             safety: self.safety.clone(),
             sandbox_readiness: self.sandbox_readiness,
             event_cache: Arc::clone(&self.event_cache),
@@ -992,7 +1121,7 @@ impl RoutineEngine {
             running_count: self.running_count.clone(),
             scheduler: self.scheduler.clone(),
             extension_manager: self.extension_manager.clone(),
-            tools: self.tools.clone(),
+            dispatcher: self.dispatcher.clone(),
             safety: self.safety.clone(),
             sandbox_readiness: self.sandbox_readiness,
             event_cache: Arc::clone(&self.event_cache),
@@ -1133,7 +1262,7 @@ struct EngineContext {
     running_count: Arc<AtomicUsize>,
     scheduler: Option<Arc<Scheduler>>,
     extension_manager: Option<Arc<ExtensionManager>>,
-    tools: Arc<ToolRegistry>,
+    dispatcher: Arc<BuiltinCapabilityDispatcher>,
     safety: Arc<SafetyLayer>,
     sandbox_readiness: SandboxReadiness,
     event_cache: Arc<RwLock<Vec<EventMatcher>>>,
@@ -1885,9 +2014,12 @@ async fn execute_lightweight_with_tools(
         http_interceptor: ctx.http_interceptor.clone(),
         ..Default::default()
     };
-    let allowed_tools =
-        autonomous_allowed_tool_names(&ctx.tools, ctx.extension_manager.as_ref(), &routine.user_id)
-            .await;
+    // Get list of all V2 capability IDs that are allowed for autonomous execution
+    let allowed_tools = get_autonomous_allowed_capabilities(
+        ctx.extension_manager.as_ref(),
+        &routine.user_id,
+    )
+    .await;
 
     loop {
         iteration += 1;
@@ -1923,17 +2055,16 @@ async fn execute_lightweight_with_tools(
                 total_output_tokens,
             );
         } else {
-            // Tool-enabled iteration. Use the policy-filtered variant
-            // when configured so routine-driven LLM iterations see the
-            // same model-facing tool surface as the dispatcher
-            // (#3243 HIGH iteration-2 gap).
-            let tool_defs = match &ctx.runtime_policy {
-                Some(policy) => ctx.tools.tool_definitions_visible_under(policy).await,
-                None => ctx.tools.tool_definitions().await,
-            }
-            .into_iter()
-            .filter(|tool| allowed_tools.contains(&tool.name))
-            .collect();
+            // Tool-enabled iteration. Get all V2 capabilities and convert to LLM tool definitions
+            let tool_defs: Vec<_> = list_all_v2_capabilities()
+                .into_iter()
+                .filter(|(cap_id, _)| allowed_tools.contains(cap_id))
+                .map(|(cap_id, description)| brassclaw_llm::ToolDefinition {
+                    name: cap_id,
+                    description,
+                    parameters: serde_json::json!({}), // TODO: Add proper parameter schemas
+                })
+                .collect();
 
             let request_messages = snapshot_messages_for_tool_iteration(&messages);
             let request = ToolCompletionRequest::new(request_messages, tool_defs)
@@ -2038,7 +2169,7 @@ fn snapshot_messages_for_tool_iteration(messages: &[ChatMessage]) -> Vec<ChatMes
     snapshot
 }
 
-/// Execute a single tool for a lightweight routine.
+/// Execute a single capability for a lightweight routine using V2 system.
 async fn execute_routine_tool(
     ctx: &EngineContext,
     job_ctx: &JobContext,
@@ -2050,76 +2181,65 @@ async fn execute_routine_tool(
         return Err(message.into());
     }
 
-    // Check if tool exists
-    let tool = ctx
-        .tools
-        .get(&tc.name)
-        .await
-        .ok_or_else(|| format!("Tool '{}' not found", tc.name))?;
-    let normalized_params = prepare_tool_params(tool.as_ref(), &tc.arguments);
+    // Build V2 capability dispatch request
+    use brassclaw_host_api::{CapabilityId, ResourceScope, ResourceEstimate, UserId, InvocationId};
+    
+    let capability_id = CapabilityId::new(&tc.name)
+        .map_err(|e| format!("Invalid capability ID: {}", e))?;
+    
+    let user_id = UserId::new(&job_ctx.user_id)
+        .map_err(|e| format!("Invalid user ID: {}", e))?;
+    
+    let invocation_id = InvocationId::new();
+    
+    let scope = ResourceScope::local_default(user_id, invocation_id)
+        .map_err(|e| format!("Failed to create resource scope: {}", e))?;
+    
+    let request = brassclaw_host_api::CapabilityDispatchRequest {
+        capability_id,
+        scope,
+        estimate: ResourceEstimate::default(),
+        mounts: None,
+        resource_reservation: None,
+        input: tc.arguments.clone(),
+    };
 
-    // Validate tool parameters
-    let validation = ctx
-        .safety
-        .validator()
-        .validate_tool_params(&normalized_params);
-    if !validation.is_valid {
-        let details = validation
-            .errors
-            .iter()
-            .map(|e| format!("{}: {}", e.field, e.message))
-            .collect::<Vec<_>>()
-            .join("; ");
-        return Err(format!("Invalid tool parameters: {}", details).into());
-    }
-
-    // Execute with per-tool timeout
-    let timeout = tool.execution_timeout();
+    // Execute capability through V2 dispatcher using CapabilityDispatcher trait
     let start = std::time::Instant::now();
-    let result = tokio::time::timeout(timeout, async {
-        tool.execute(normalized_params.clone(), job_ctx).await
-    })
-    .await;
+    let result = {
+        use brassclaw_host_api::CapabilityDispatcher;
+        ctx.dispatcher.dispatch_json(request).await
+    };
     let elapsed = start.elapsed();
 
-    // Log tool execution result (single consolidated log)
+    // Log execution result
     match &result {
-        Ok(Ok(_)) => {
+        Ok(_) => {
             tracing::debug!(
-                tool = %tc.name,
+                action = %tc.name,
                 elapsed_ms = elapsed.as_millis() as u64,
                 status = "succeeded",
-                "Lightweight routine tool execution completed"
+                "Lightweight routine capability execution completed"
             );
         }
-        Ok(Err(e)) => {
+        Err(e) => {
             tracing::debug!(
-                tool = %tc.name,
+                action = %tc.name,
                 elapsed_ms = elapsed.as_millis() as u64,
                 error = %e,
                 status = "failed",
-                "Lightweight routine tool execution completed"
-            );
-        }
-        Err(_) => {
-            tracing::debug!(
-                tool = %tc.name,
-                elapsed_ms = elapsed.as_millis() as u64,
-                timeout_secs = timeout.as_secs(),
-                status = "timeout",
-                "Lightweight routine tool execution completed"
+                "Lightweight routine capability execution completed"
             );
         }
     }
 
-    let result = result
-        .map_err(|_| ToolError::Timeout(timeout))
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?
+    // Convert CapabilityDispatchResult to JSON string
+    let dispatch_result = result
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-
-    // Serialize result to JSON string
-    let result_str =
-        serde_json::to_string(&result.result).unwrap_or_else(|_| "<serialize error>".to_string());
+    
+    let result_str = serde_json::to_string(&dispatch_result.output)
+        .unwrap_or_else(|_| "<serialize error>".to_string());
+    
     Ok(result_str)
 }
 

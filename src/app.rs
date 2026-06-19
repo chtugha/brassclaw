@@ -79,6 +79,12 @@ pub struct AppComponents {
     /// Populated by the pairing flow (Task 8). Pre-allocated here so all
     /// subsystems can hold an `Arc` to the same cache instance.
     pub ownership_cache: Arc<crate::ownership::OwnershipCache>,
+    /// V2 capability dispatcher for routing capability calls to built-in implementations.
+    pub capability_dispatcher: Arc<crate::capabilities::dispatcher::BuiltinCapabilityDispatcher>,
+    /// V2 effect executor placeholder - will be properly initialized when CapabilityHost is set up.
+    pub effect_executor: Arc<dyn std::any::Any + Send + Sync>,
+    /// Routine engine slot that gets filled after RoutineEngine initialization to break circular dependency.
+    pub routine_engine_slot: Arc<tokio::sync::RwLock<Option<Arc<crate::agent::routine_engine::RoutineEngine>>>>,
 }
 
 /// Options that control optional init phases.
@@ -1167,6 +1173,8 @@ impl AppBuilder {
             http_interceptor,
             workspace_resolver,
         ) = self.init_tools(&llm, cheap_llm.as_ref()).await?;
+        // TODO: V2 Reborn Capability System will be created after init_extensions()
+        // where all required variables (tools, hooks, mcp managers, etc.) are available
 
         // Create hook registry early so runtime extension activation can register hooks.
         let hooks = Arc::new(HookRegistry::new());
@@ -1355,6 +1363,147 @@ impl AppBuilder {
         // construction and `resolve_permission` can trust its value.
         cleanup_ghost_seeded_tool_permissions(self.db.as_ref(), &self.config.owner_id).await;
 
+        // Initialize V2 Reborn Capability System
+        // Create a workspace resolver for memory context
+        let workspace_resolver: Arc<dyn crate::tools::builtin::memory::WorkspaceResolver> =
+            if let Some(ws) = workspace.clone() {
+                Arc::new(crate::tools::builtin::memory::FixedWorkspaceResolver::new(ws))
+            } else {
+                // Create a no-op resolver that returns a dummy workspace
+                // This will be replaced with proper multi-tenant resolver in the future
+                Arc::new(crate::tools::builtin::memory::FixedWorkspaceResolver::new(
+                    Arc::new(crate::workspace::Workspace::new_with_db(
+                        "default",
+                        self.db.clone().expect("Database required for workspace"),
+                    ))
+                ))
+            };
+
+        // Initialize all 13 context structs for the capability dispatcher
+        let filesystem_ctx = Arc::new(crate::capabilities::filesystem::FilesystemContext {
+            base_dir: workspace.as_ref()
+                .map(|_| std::path::PathBuf::from("."))
+                .unwrap_or_else(|| std::path::PathBuf::from(".")),
+            state: Default::default(),
+        });
+
+        let shell_ctx = Arc::new(crate::capabilities::shell::ShellContext {
+            working_dir: workspace.as_ref().map(|_| std::path::PathBuf::from(".")),
+            timeout: std::time::Duration::from_secs(120),
+            allow_dangerous: false,
+            sandbox: None, // Will be set by sandbox initialization if enabled
+            sandbox_policy: crate::sandbox::SandboxPolicy::ReadOnly,
+            extra_env: std::collections::HashMap::new(),
+        });
+
+        let network_ctx = Arc::new(crate::capabilities::network::NetworkContext {
+            credential_registry: Some(Arc::clone(&credential_registry)),
+            secrets_store: self.secrets_store.clone(),
+            role_lookup: self.db.clone().map(|db| db as Arc<dyn crate::db::UserStore>),
+            user_id: self.config.owner_id.clone(),
+            http_interceptor: http_interceptor.clone(),
+        });
+
+        let memory_ctx = Arc::new(crate::capabilities::memory::MemoryContext {
+            resolver: workspace_resolver,
+            user_id: self.config.owner_id.clone(),
+            user_timezone: "UTC".to_string(), // Default timezone, will be overridden per-session
+            llm: Some(Arc::clone(&llm)),
+            reasoning_enabled: false, // Default to false, can be enabled per-session
+        });
+
+        let messaging_ctx = Arc::new(crate::capabilities::messaging::MessagingContext {
+            channel_manager: Arc::new(crate::channels::ChannelManager::new()),
+            extension_manager: extension_manager.clone(),
+            default_channel: Arc::new(std::sync::RwLock::new(None)),
+            default_target: Arc::new(std::sync::RwLock::new(None)),
+            base_dir: std::path::PathBuf::from("."),
+            user_id: self.config.owner_id.clone(),
+            metadata: serde_json::json!({}),
+        });
+
+        let jobs_ctx = Arc::new(crate::capabilities::jobs::JobsContext {
+            context_manager: Arc::clone(&context_manager),
+            scheduler_slot: None, // Will be set after Agent initialization
+            job_manager: None, // Will be set by sandbox initialization if enabled
+            store: self.db.clone(),
+            event_tx: None, // Will be set by event system initialization
+            inject_tx: None, // Will be set by channel initialization
+            secrets_store: self.secrets_store.clone(),
+            prompt_queue: None, // Will be set by orchestrator initialization
+            user_id: self.config.owner_id.clone(),
+            metadata: serde_json::json!({}),
+        });
+
+        let routine_engine_slot = Arc::new(tokio::sync::RwLock::new(None));
+        let routines_ctx = Arc::new(crate::capabilities::routines::RoutinesContext {
+            store: self.db.clone().expect("Database required for routines"),
+            engine: routine_engine_slot.clone(), // Will be set after RoutineEngine initialization
+            user_id: self.config.owner_id.clone(),
+            metadata: serde_json::json!({}),
+        });
+
+        let skills_ctx = Arc::new(crate::capabilities::skills::SkillsContext {
+            registry: skill_registry.clone().expect("Skill registry required"),
+            catalog: skill_catalog.clone().expect("Skill catalog required"),
+        });
+
+        let extensions_ctx = Arc::new(crate::capabilities::extensions::ExtensionsContext {
+            manager: extension_manager.clone().expect("Extension manager required"),
+            user_id: self.config.owner_id.clone(),
+        });
+
+        let secrets_ctx = Arc::new(crate::capabilities::secrets::SecretsContext {
+            store: self.secrets_store.clone().expect("Secrets store required"),
+            user_id: self.config.owner_id.clone(),
+        });
+
+        let images_ctx = Arc::new(crate::capabilities::images::ImagesContext {
+            api_base_url: "https://api.openai.com/v1".to_string(),
+            api_key: secrecy::SecretString::new("".into()), // Will be populated from secrets store
+            gen_model: "dall-e-3".to_string(),
+            vision_model: "gpt-4-vision-preview".to_string(),
+            client: reqwest::Client::new(),
+            base_dir: None, // Will use current directory
+        });
+
+        let system_ctx = Arc::new(crate::capabilities::system::SystemContext {
+            event_publisher: None, // Will be set by event system initialization
+            tool_output_stash: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            user_timezone: "UTC".to_string(), // Default timezone
+            conversation_id: None, // Will be set per-conversation
+            registered_capability_names: Vec::new(), // Will be populated by capability registration
+        });
+
+        let pairing_ctx = Arc::new(crate::capabilities::pairing::PairingContext {
+            store: Arc::new(crate::pairing::PairingStore::new(
+                self.db.clone().expect("Database required for pairing"),
+                Arc::clone(&ownership_cache),
+            )),
+            user_id: self.config.owner_id.clone(),
+        });
+
+        // Create the V2 capability dispatcher
+        let capability_dispatcher = Arc::new(crate::capabilities::dispatcher::BuiltinCapabilityDispatcher::new(
+            filesystem_ctx,
+            shell_ctx,
+            network_ctx,
+            memory_ctx,
+            messaging_ctx,
+            jobs_ctx,
+            routines_ctx,
+            skills_ctx,
+            extensions_ctx,
+            secrets_ctx,
+            images_ctx,
+            system_ctx,
+            pairing_ctx,
+        ));
+
+        // Create the V2 effect executor - uses EffectBridgeAdapter from bridge module
+        // This will be properly initialized when CapabilityHost is set up
+        let effect_executor = Arc::new(()) as Arc<dyn std::any::Any + Send + Sync>;
+
         Ok(AppComponents {
             config: self.config,
             db: self.db,
@@ -1386,6 +1535,9 @@ impl AppBuilder {
             dev_loaded_tool_names,
             builder,
             ownership_cache,
+            capability_dispatcher,
+            effect_executor,
+            routine_engine_slot,
         })
     }
 }

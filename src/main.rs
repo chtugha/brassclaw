@@ -660,8 +660,9 @@ async fn async_main() -> anyhow::Result<()> {
     }
 
     // Shared routine engine slot for gateway + generic webhook ingress.
-    let shared_routine_engine_slot: brassclaw::channels::web::platform::state::RoutineEngineSlot =
-        Arc::new(tokio::sync::RwLock::new(None));
+    // This is the same slot used by RoutinesContext, so when the engine is created,
+    // both the agent and the RoutinesContext will have access to it.
+    let shared_routine_engine_slot = components.routine_engine_slot.clone();
 
     // Collect webhook route fragments; a single WebhookServer hosts them all.
     let mut webhook_routes: Vec<axum::Router> = Vec::new();
@@ -1366,6 +1367,8 @@ async fn async_main() -> anyhow::Result<()> {
         // capabilities (e.g. provider-host shell under hosted multi-tenant)
         // are hidden before the model call. (#3045 PR 4 + PR 5).
         runtime_policy: Some(config.runtime.effective_policy.clone()),
+        // V2 capability dispatcher for routine engine and other V2 consumers
+        dispatcher: components.capability_dispatcher,
     };
 
     let channels_for_warnings = Arc::clone(&channels);
