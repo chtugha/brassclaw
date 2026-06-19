@@ -244,6 +244,30 @@ impl ExtensionManager {
     pub fn channel_manager(&self) -> &ChannelManager {
         &self.channel_manager
     }
+
+    /// Get notification target for a channel (V1 stub)
+    /// TODO: Remove after V2 migration complete
+    pub async fn notification_target_for_channel(&self, _channel_name: &str) -> Option<String> {
+        None
+    }
+
+    /// Get owner ID (V1 stub)
+    /// TODO: Remove after V2 migration complete
+    pub fn owner_id(&self) -> &str {
+        "stub_owner"
+    }
+
+    /// Get active tool names (V1 stub)
+    /// TODO: Remove after V2 migration complete
+    pub fn active_tool_names(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Get pending OAuth flows (V1 stub)
+    /// TODO: Remove after V2 migration complete
+    pub fn pending_oauth_flows(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 // Made with Bob
