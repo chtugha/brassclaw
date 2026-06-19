@@ -81,7 +81,7 @@ impl ToolRegistry {
 
     /// Get a tool by name (stub returns None)
     /// TODO: Remove after V2 migration complete
-    pub async fn get(&self, _name: &str) -> Option<Tool> {
+    pub async fn get(&self, _name: &str) -> Option<ToolStub> {
         None
     }
 }
@@ -100,14 +100,20 @@ pub enum ApprovalRequirement {
     Always,
 }
 
-/// Stub for deleted V1 Tool
+/// Trait for V1 Tool compatibility
+/// TODO: Remove after V2 migration complete
+pub trait Tool {
+    fn sensitive_params(&self) -> &[&str];
+}
+
+/// Stub for deleted V1 Tool struct
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Tool {
+pub struct ToolStub {
     pub name: String,
     pub description: String,
 }
 
-impl Tool {
+impl ToolStub {
     /// Create a new tool stub
     pub fn new(name: String, description: String) -> Self {
         Self { name, description }
@@ -123,6 +129,12 @@ impl Tool {
     /// TODO: Remove after V2 migration complete
     pub fn sensitive_params(&self) -> &[&str] {
         &[]
+    }
+}
+
+impl Tool for ToolStub {
+    fn sensitive_params(&self) -> &[&str] {
+        ToolStub::sensitive_params(self)
     }
 }
 
