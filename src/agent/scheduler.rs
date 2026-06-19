@@ -627,19 +627,21 @@ impl Scheduler {
     /// Execute a single tool as a subtask.
     ///
     /// Performs scheduler-specific checks (approval, cancellation) then
-    /// delegates to either V2 EffectExecutor or V1 tool execution pipeline.
+    /// delegates to V2 EffectExecutor for capability-based tool execution.
     ///
-    /// TODO: V1 tool execution removed - needs V2 EffectExecutor implementation
+    /// P0.1: Basic wiring complete - calls EffectExecutor with minimal context
+    /// P0.2: TODO - Add full tool execution with proper error handling
+    /// P0.3: TODO - Integrate approval flow
     #[allow(dead_code)]
     async fn execute_tool_task(
         _tools: Arc<crate::tools::ToolRegistry>,
-        _effect_executor: Option<Arc<dyn EffectExecutor>>,
+        effect_executor: Option<Arc<dyn EffectExecutor>>,
         context_manager: Arc<ContextManager>,
         _safety: Arc<SafetyLayer>,
         _approval_context: Option<ApprovalContext>,
         job_id: Uuid,
         tool_name: &str,
-        _params: serde_json::Value,
+        params: serde_json::Value,
     ) -> Result<TaskOutput, Error> {
         let start = std::time::Instant::now();
 
@@ -653,11 +655,326 @@ impl Scheduler {
             .into());
         }
 
-        // V1 tool execution removed - return error for now
-        Err(Error::Tool(crate::error::ToolError::ExecutionFailed {
-            name: tool_name.to_string(),
-            reason: "Tool execution unavailable during V2 migration".to_string(),
-        }))
+        // P0.1: Wire EffectExecutor - check if available
+        let executor = match effect_executor {
+            Some(exec) => exec,
+            None => {
+                return Err(Error::Tool(crate::error::ToolError::ExecutionFailed {
+                    name: tool_name.to_string(),
+                    reason: "EffectExecutor not available - V2 migration incomplete".to_string(),
+                }));
+            }
+        };
+
+        // P0.2: Create ThreadExecutionContext with real values from job context
+        let mut thread_context = Self::create_thread_execution_context(&job_ctx, job_id);
+
+        // P0.2: Create minimal CapabilityLease (stub for now)
+        // P0.3: TODO - Implement proper lease management with approval flow
+        use brassclaw_engine::{CapabilityLease, LeaseId, GrantedActions};
+        use chrono::Utc;
+        
+        let lease = CapabilityLease {
+            id: LeaseId::new(),
+            thread_id: thread_context.thread_id,
+            capability_name: tool_name.to_string(),
+            granted_actions: GrantedActions::All, // P0.3: TODO - Restrict based on approval
+            granted_at: Utc::now(),
+            expires_at: None,
+            max_uses: None,
+            uses_remaining: None,
+            revoked: false,
+            revoked_reason: None,
+        };
+
+        // P0.2: Populate action inventory snapshots from EffectExecutor
+        // This provides the context with available actions for this execution
+        match executor.available_actions(&[lease.clone()], &thread_context).await {
+            Ok(actions) => {
+                tracing::debug!(
+                    job_id = %job_id,
+                    action_count = actions.len(),
+                    "Populated action inventory snapshot"
+                );
+                thread_context.available_actions_snapshot = Some(actions.into());
+            }
+            Err(e) => {
+                // Log warning but don't fail - action inventory is optional context
+                tracing::warn!(
+                    job_id = %job_id,
+                    error = ?e,
+                    "Failed to populate action inventory snapshot"
+                );
+            }
+        }
+
+        // P0.2: Populate full action inventory (V2) if available
+        match executor.available_action_inventory(&[lease.clone()], &thread_context).await {
+            Ok(inventory) => {
+                tracing::debug!(
+                    job_id = %job_id,
+                    inline_count = inventory.inline.len(),
+                    discoverable_count = inventory.discoverable.len(),
+                    "Populated action inventory V2 snapshot"
+                );
+                thread_context.available_action_inventory_snapshot = Some(std::sync::Arc::new(inventory));
+            }
+            Err(e) => {
+                // Log warning but don't fail - action inventory is optional context
+                tracing::warn!(
+                    job_id = %job_id,
+                    error = ?e,
+                    "Failed to populate action inventory V2 snapshot"
+                );
+            }
+        }
+
+        // P0.2: Execute action via EffectExecutor
+        tracing::debug!(
+            job_id = %job_id,
+            tool_name = %tool_name,
+            thread_type = ?thread_context.thread_type,
+            project_id = ?thread_context.project_id,
+            "Executing tool via EffectExecutor"
+        );
+
+        match executor.execute_action(tool_name, params.clone(), &lease, &thread_context).await {
+            Ok(action_result) => {
+                let duration = start.elapsed();
+                
+                tracing::debug!(
+                    job_id = %job_id,
+                    tool_name = %tool_name,
+                    duration_ms = ?duration.as_millis(),
+                    is_error = action_result.is_error,
+                    "Tool execution completed"
+                );
+
+                // P0.2: Convert ActionResult to TaskOutput
+                Ok(TaskOutput {
+                    result: action_result.output,
+                    duration,
+                })
+            }
+            Err(engine_error) => {
+                let duration = start.elapsed();
+                
+                // P0.2: Enhanced error handling with specific error mapping
+                use brassclaw_engine::EngineError;
+                
+                let error_message = match &engine_error {
+                    EngineError::Capability(cap_err) => {
+                        format!("Capability error: {}", cap_err)
+                    }
+                    EngineError::Step(step_err) => {
+                        format!("Step execution error: {}", step_err)
+                    }
+                    EngineError::Thread(thread_err) => {
+                        format!("Thread error: {}", thread_err)
+                    }
+                    EngineError::Store { reason } => {
+                        format!("Storage error: {}", reason)
+                    }
+                    EngineError::Llm { reason } => {
+                        format!("LLM error: {}", reason)
+                    }
+                    EngineError::Effect { reason } => {
+                        format!("Effect execution error: {}", reason)
+                    }
+                    EngineError::InvalidInput { reason } => {
+                        format!("Invalid input: {}", reason)
+                    }
+                    EngineError::AccessDenied { user_id, entity } => {
+                        format!("Access denied: user '{}' cannot access {}", user_id, entity)
+                    }
+                    EngineError::ThreadNotFound(thread_id) => {
+                        format!("Thread not found: {}", thread_id)
+                    }
+                    EngineError::ProjectNotFound(project_id) => {
+                        format!("Project not found: {}", project_id)
+                    }
+                    EngineError::LeaseExpired { capability_name } => {
+                        format!("Lease expired for capability: {}", capability_name)
+                    }
+                    EngineError::LeaseDenied { reason } => {
+                        format!("Lease denied: {}", reason)
+                    }
+                    EngineError::MaxIterations { limit } => {
+                        format!("Max iterations reached: {}", limit)
+                    }
+                    EngineError::TokenLimitExceeded { used, limit } => {
+                        format!("Token limit exceeded: {} of {}", used, limit)
+                    }
+                    EngineError::Timeout { elapsed, limit } => {
+                        format!("Thread timeout: {:?} of {:?}", elapsed, limit)
+                    }
+                    _ => {
+                        format!("{}", engine_error)
+                    }
+                };
+                
+                tracing::warn!(
+                    job_id = %job_id,
+                    tool_name = %tool_name,
+                    user_id = %job_ctx.user_id,
+                    error = %error_message,
+                    params = ?params,
+                    duration_ms = ?duration.as_millis(),
+                    "Tool execution failed via EffectExecutor"
+                );
+
+                // P0.2: Convert EngineError to Error with enhanced context
+                Err(Error::Tool(crate::error::ToolError::ExecutionFailed {
+                    name: tool_name.to_string(),
+                    reason: error_message,
+                }))
+            }
+        }
+    }
+
+    /// Create a ThreadExecutionContext for tool execution.
+    ///
+    /// P0.2: Enhanced implementation with real values from job context
+    fn create_thread_execution_context(
+        job_ctx: &JobContext,
+        job_id: Uuid,
+    ) -> brassclaw_engine::ThreadExecutionContext {
+        use brassclaw_engine::{ThreadExecutionContext, ThreadType, ProjectId, StepId, ThreadId, ValidTimezone};
+
+        // Extract user_id from metadata or use job's user_id
+        let user_id = job_ctx
+            .metadata
+            .as_object()
+            .and_then(|obj| obj.get("user_id"))
+            .and_then(|v| v.as_str())
+            .unwrap_or(&job_ctx.user_id)
+            .to_string();
+
+        // Extract description from metadata if available, fallback to job description
+        let thread_goal = job_ctx
+            .metadata
+            .as_object()
+            .and_then(|obj| obj.get("description"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| Some(job_ctx.description.clone()));
+
+        // P0.2: Extract project_id from job metadata
+        // Look for "project_id" in metadata, default to nil UUID if not found
+        let project_id = job_ctx
+            .metadata
+            .as_object()
+            .and_then(|obj| obj.get("project_id"))
+            .and_then(|v| v.as_str())
+            .and_then(|s| uuid::Uuid::parse_str(s).ok())
+            .map(ProjectId)
+            .unwrap_or_else(|| {
+                tracing::debug!(
+                    job_id = %job_id,
+                    "No project_id in job metadata, using nil UUID"
+                );
+                ProjectId(uuid::Uuid::nil())
+            });
+
+        // P0.2: Determine ThreadType from job metadata
+        // Look for "thread_type" or "job_type" in metadata
+        let thread_type = job_ctx
+            .metadata
+            .as_object()
+            .and_then(|obj| {
+                obj.get("thread_type")
+                    .or_else(|| obj.get("job_type"))
+            })
+            .and_then(|v| v.as_str())
+            .and_then(|s| match s.to_lowercase().as_str() {
+                "foreground" | "conversation" | "interactive" => Some(ThreadType::Foreground),
+                "research" | "background" => Some(ThreadType::Research),
+                "routine" | "mission" | "scheduled" => Some(ThreadType::Mission),
+                _ => None,
+            })
+            .unwrap_or_else(|| {
+                // Default to Research for general agent tasks
+                tracing::debug!(
+                    job_id = %job_id,
+                    "No thread_type in job metadata, defaulting to Research"
+                );
+                ThreadType::Research
+            });
+
+        // P0.2: Extract step_id from job metadata if available
+        // This allows tracking of specific execution steps
+        let step_id = job_ctx
+            .metadata
+            .as_object()
+            .and_then(|obj| obj.get("step_id"))
+            .and_then(|v| v.as_str())
+            .and_then(|s| uuid::Uuid::parse_str(s).ok())
+            .map(StepId)
+            .unwrap_or_else(|| {
+                // Generate a new step_id for this execution
+                StepId(uuid::Uuid::new_v4())
+            });
+
+        // P0.2: Get user timezone from JobContext
+        // JobContext already has user_timezone field populated
+        let user_timezone = if !job_ctx.user_timezone.is_empty() && job_ctx.user_timezone != "UTC" {
+            // Try to parse as ValidTimezone using parse() method
+            ValidTimezone::parse(&job_ctx.user_timezone)
+                .or_else(|| {
+                    tracing::warn!(
+                        job_id = %job_id,
+                        timezone = %job_ctx.user_timezone,
+                        "Invalid timezone in JobContext, falling back to None"
+                    );
+                    None
+                })
+        } else {
+            None
+        };
+
+        // P0.2: Extract source_channel from job metadata
+        // This indicates where the job originated (e.g., "signal", "telegram", "web", "repl")
+        let source_channel = job_ctx
+            .metadata
+            .as_object()
+            .and_then(|obj| obj.get("source_channel").or_else(|| obj.get("channel")))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // P0.2: Extract conversation_id from JobContext
+        // JobContext already has conversation_id field
+        let conversation_id = job_ctx.conversation_id.map(|id| {
+            use brassclaw_engine::ConversationId;
+            ConversationId(id)
+        });
+
+        // P0.2: Extract conversation_scope from job metadata
+        // This is used for per-conversation state lookup
+        let conversation_scope = job_ctx
+            .metadata
+            .as_object()
+            .and_then(|obj| obj.get("conversation_scope"))
+            .and_then(|v| v.as_str())
+            .and_then(|s| uuid::Uuid::parse_str(s).ok())
+            .or(job_ctx.conversation_id); // Fallback to conversation_id if scope not specified
+
+        ThreadExecutionContext {
+            thread_id: ThreadId(job_id),
+            thread_type,
+            project_id,
+            user_id,
+            step_id,
+            current_call_id: Some(format!("call_{}", uuid::Uuid::new_v4().simple())),
+            source_channel,
+            user_timezone,
+            thread_goal,
+            available_actions_snapshot: None, // P0.2: Will be populated in execute_tool_task
+            available_action_inventory_snapshot: None, // P0.2: Will be populated in execute_tool_task
+            conversation_scope,
+            gate_controller: brassclaw_engine::gate::CancellingGateController::arc(), // P0.3: TODO - Real approval gate
+            call_approval_granted: false, // P0.3: TODO - Check approval status
+            conversation_id,
+        }
     }
 
     /// Stop a running job.
