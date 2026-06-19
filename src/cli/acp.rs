@@ -11,6 +11,54 @@ use clap::{Args, Subcommand};
 use crate::config::acp::{self, AcpAgentConfig, AcpAgentsFile};
 use crate::db::Database;
 
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub module for deleted V1 acp_bridge
+mod acp_bridge {
+    use serde_json::Value;
+
+    /// Stub for deleted V1 JobEventPayload type
+    #[derive(Debug, Clone)]
+    pub struct JobEventPayload {
+        pub event_type: String,
+        pub data: Value,
+    }
+
+    /// Stub trait for deleted V1 AcpEventSink
+    pub trait AcpEventSink: Send + Sync {
+        async fn emit_event(&self, payload: &JobEventPayload);
+    }
+
+    /// Stub for deleted V1 BrassClawAcpClient
+    pub struct BrassClawAcpClient<S> {
+        _sink: S,
+    }
+
+    impl<S: AcpEventSink> BrassClawAcpClient<S> {
+        pub fn new(_sink: S) -> Self {
+            Self { _sink }
+        }
+    }
+
+    /// Stub for deleted V1 brassclaw_init_request function
+    pub fn brassclaw_init_request() -> Value {
+        serde_json::json!({
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {
+                "name": "brassclaw",
+                "version": env!("CARGO_PKG_VERSION")
+            }
+        })
+    }
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
+
 /// Arguments for the `acp add` subcommand.
 #[derive(Args, Debug, Clone)]
 pub struct AcpAddArgs {
@@ -173,7 +221,7 @@ async fn test_agent(name: &str) -> anyhow::Result<()> {
     struct PrintEventSink;
 
     impl acp_bridge::AcpEventSink for PrintEventSink {
-        async fn emit_event(&self, payload: &JobEventPayload) {
+        async fn emit_event(&self, payload: &acp_bridge::JobEventPayload) {
             match payload.event_type.as_str() {
                 "message" => {
                     if let Some(content) = payload.data["content"].as_str() {
