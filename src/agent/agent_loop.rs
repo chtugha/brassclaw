@@ -510,8 +510,8 @@ pub struct AgentDeps {
     /// Sandbox readiness state for full-job routine dispatch.
     pub sandbox_readiness: crate::agent::routine_engine::SandboxReadiness,
     /// Software builder for self-repair tool rebuilding.
-    // TODO: V1 tools module removed - SoftwareBuilder needs V2 reimplementation
-    // pub builder: Option<Arc<dyn crate::tools::SoftwareBuilder>>,
+    /// TODO: V1 tools module removed - SoftwareBuilder needs V2 reimplementation
+    pub builder: Option<Arc<dyn crate::agent::self_repair::SoftwareBuilder>>,
     /// Resolved LLM backend identifier (e.g., "nearai", "openai", "groq").
     /// Used by `/model` persistence to determine which env var to update.
     pub llm_backend: String,
