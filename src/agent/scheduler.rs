@@ -301,8 +301,10 @@ impl Scheduler {
                     if max_tokens > 0 {
                         ctx.max_tokens = max_tokens;
                     }
-                    if let Some(ref approval) = approval_context {
-                        ctx.approval_context = Some(approval.clone());
+                    // TODO: Remove after V2 migration complete
+                    // Type mismatch: scheduler::ApprovalContext vs context::state::ApprovalContext
+                    if let Some(_approval) = approval_context.as_ref() {
+                        // Stubbed - cannot convert between stub and real ApprovalContext
                     }
                 })
                 .await?
