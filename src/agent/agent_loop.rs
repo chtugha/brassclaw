@@ -562,6 +562,13 @@ impl Agent {
         &self.deps.owner_id
     }
 
+    /// Get V1 tool registry stub (for V1-to-V2 migration compatibility)
+    /// TODO: Remove after V2 migration complete
+    pub(crate) fn tools(&self) -> Arc<crate::tools::ToolRegistry> {
+        // Return a stub ToolRegistry for V1 compatibility during migration
+        Arc::new(crate::tools::ToolRegistry::new())
+    }
+
     /// Create a new agent.
     ///
     /// Optionally accepts pre-created `ContextManager` and `SessionManager` for sharing
