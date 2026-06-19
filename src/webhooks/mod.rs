@@ -18,7 +18,6 @@ use subtle::ConstantTimeEq;
 use crate::agent::routine_engine::RoutineEngine;
 use crate::context::JobContext;
 use crate::secrets::SecretsStore;
-use crate::tools::ToolRegistry;
 
 /// Shared routine engine slot, populated by Agent after startup.
 pub type RoutineEngineSlot = Arc<tokio::sync::RwLock<Option<Arc<RoutineEngine>>>>;

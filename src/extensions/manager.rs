@@ -43,7 +43,6 @@ use crate::extensions::{
 use crate::hooks::HookRegistry;
 use crate::pairing::PairingStore;
 use crate::secrets::{CreateSecretParams, SecretsStore};
-use crate::tools::ToolRegistry;
 use crate::mcp_client::auth::{
     authorize_mcp_server, canonical_resource_uri, discover_full_oauth_metadata,
     find_available_port, is_authenticated, register_client,

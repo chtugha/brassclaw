@@ -9,8 +9,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use brassclaw_engine::gate::{ExecutionGate, ExecutionMode, GateContext, GateDecision, ResumeKind};
 
-use crate::tools::rate_limiter::RateLimiter;
-use crate::tools::{ApprovalRequirement, ToolRegistry};
+// TODO: Extract rate limiter and approval types from deleted V1 code
 
 /// Gate that checks `Tool::requires_approval()` and emits `Pause(Approval)`
 /// or `Deny` depending on execution mode.

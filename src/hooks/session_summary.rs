@@ -12,7 +12,7 @@ use crate::db::ConversationStore;
 use crate::hooks::hook::{
     Hook, HookContext, HookError, HookEvent, HookFailureMode, HookOutcome, HookPoint,
 };
-use crate::tools::builtin::memory::WorkspaceResolver;
+// TODO: Extract WorkspaceResolver from deleted V1 code
 use brassclaw_llm::{ChatMessage, CompletionRequest, LlmProvider};
 
 /// Maximum number of concurrent LLM summarization calls.
