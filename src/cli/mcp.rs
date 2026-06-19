@@ -11,6 +11,298 @@ use clap::{Args, Subcommand};
 use crate::config::Config;
 use crate::db::Database;
 use crate::secrets::SecretsStore;
+
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 OAuthConfig
+#[derive(Debug, Clone)]
+pub struct OAuthConfig {
+    pub client_id: String,
+    pub auth_url: Option<String>,
+    pub token_url: Option<String>,
+    pub scopes: Vec<String>,
+}
+
+impl OAuthConfig {
+    pub fn new(client_id: String) -> Self {
+        Self {
+            client_id,
+            auth_url: None,
+            token_url: None,
+            scopes: Vec::new(),
+        }
+    }
+
+    pub fn with_endpoints(mut self, auth_url: String, token_url: String) -> Self {
+        self.auth_url = Some(auth_url);
+        self.token_url = Some(token_url);
+        self
+    }
+
+    pub fn with_scopes(mut self, scopes: Vec<String>) -> Self {
+        self.scopes = scopes;
+        self
+    }
+}
+
+/// Stub for deleted V1 McpServerConfig
+#[derive(Debug, Clone)]
+pub struct McpServerConfig {
+    pub name: String,
+    pub url: String,
+    pub enabled: bool,
+    pub description: Option<String>,
+    pub headers: HashMap<String, String>,
+    pub oauth: Option<OAuthConfig>,
+    pub transport: Option<String>,
+    pub command: Option<String>,
+    pub args: Vec<String>,
+    pub env: HashMap<String, String>,
+    pub socket_path: Option<String>,
+}
+
+impl McpServerConfig {
+    pub fn new(name: &str, url: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            url: url.to_string(),
+            enabled: true,
+            description: None,
+            headers: HashMap::new(),
+            oauth: None,
+            transport: Some("http".to_string()),
+            command: None,
+            args: Vec::new(),
+            env: HashMap::new(),
+            socket_path: None,
+        }
+    }
+
+    pub fn new_stdio(name: &str, command: &str, args: Vec<String>, env: HashMap<String, String>) -> Self {
+        Self {
+            name: name.to_string(),
+            url: String::new(),
+            enabled: true,
+            description: None,
+            headers: HashMap::new(),
+            oauth: None,
+            transport: Some("stdio".to_string()),
+            command: Some(command.to_string()),
+            args,
+            env,
+            socket_path: None,
+        }
+    }
+
+    pub fn new_unix(name: &str, socket_path: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            url: String::new(),
+            enabled: true,
+            description: None,
+            headers: HashMap::new(),
+            oauth: None,
+            transport: Some("unix".to_string()),
+            command: None,
+            args: Vec::new(),
+            env: HashMap::new(),
+            socket_path: Some(socket_path.to_string()),
+        }
+    }
+
+    pub fn with_headers(mut self, headers: HashMap<String, String>) -> Self {
+        self.headers = headers;
+        self
+    }
+
+    pub fn with_description(mut self, description: String) -> Self {
+        self.description = Some(description);
+        self
+    }
+
+    pub fn with_oauth(mut self, oauth: OAuthConfig) -> Self {
+        self.oauth = Some(oauth);
+        self
+    }
+
+    pub fn requires_auth(&self) -> bool {
+        self.oauth.is_some()
+    }
+
+    pub fn has_custom_auth_header(&self) -> bool {
+        self.headers.keys().any(|k| k.eq_ignore_ascii_case("authorization"))
+    }
+
+    pub fn effective_transport(&self) -> EffectiveTransport {
+        match self.transport.as_deref() {
+            Some("stdio") => EffectiveTransport::Stdio {
+                command: self.command.clone().unwrap_or_default(),
+                args: self.args.clone(),
+                env: self.env.clone(),
+            },
+            Some("unix") => EffectiveTransport::Unix {
+                socket_path: self.socket_path.clone().unwrap_or_default(),
+            },
+            _ => EffectiveTransport::Http,
+        }
+    }
+}
+
+/// Stub for deleted V1 EffectiveTransport
+#[derive(Debug, Clone)]
+pub enum EffectiveTransport {
+    Http,
+    Stdio {
+        command: String,
+        args: Vec<String>,
+        env: HashMap<String, String>,
+    },
+    Unix {
+        socket_path: String,
+    },
+}
+
+/// Stub for deleted V1 McpServersFile
+#[derive(Debug, Clone)]
+pub struct McpServersFile {
+    pub servers: Vec<McpServerConfig>,
+}
+
+impl McpServersFile {
+    pub fn get(&self, name: &str) -> Option<McpServerConfig> {
+        self.servers.iter().find(|s| s.name == name).cloned()
+    }
+}
+
+/// Stub for deleted V1 McpSessionManager
+pub struct McpSessionManager;
+
+impl McpSessionManager {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+/// Stub for deleted V1 McpClient
+pub struct McpClient;
+
+impl McpClient {
+    pub fn new_authenticated(
+        _config: McpServerConfig,
+        _session_manager: Arc<McpSessionManager>,
+        _secrets: Arc<dyn SecretsStore + Send + Sync>,
+        _user_id: String,
+    ) -> Self {
+        Self
+    }
+}
+
+/// Stub for deleted V1 McpProcessManager
+pub struct McpProcessManager;
+
+impl McpProcessManager {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+/// Stub for deleted V1 is_authenticated function
+async fn is_authenticated(
+    _server: &McpServerConfig,
+    _secrets: &Arc<dyn SecretsStore + Send + Sync>,
+    _user_id: &str,
+) -> bool {
+    false
+}
+
+/// Stub for deleted V1 authorize_mcp_server function
+async fn authorize_mcp_server(
+    _server: &McpServerConfig,
+    _secrets: &Arc<dyn SecretsStore + Send + Sync>,
+    _user_id: &str,
+) -> Result<String, AuthError> {
+    Err(AuthError::NotSupported)
+}
+
+/// Stub for deleted V1 AuthError
+#[derive(Debug)]
+pub enum AuthError {
+    NotSupported,
+}
+
+impl std::fmt::Display for AuthError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuthError::NotSupported => write!(f, "Authentication not supported in V1 stub"),
+        }
+    }
+}
+
+impl std::error::Error for AuthError {}
+
+/// Stub for deleted V1 create_client_from_config function
+async fn create_client_from_config(
+    _config: McpServerConfig,
+    _session_manager: &Arc<McpSessionManager>,
+    _process_manager: &Arc<McpProcessManager>,
+    _secrets: Option<Arc<dyn SecretsStore + Send + Sync>>,
+    _owner_id: &str,
+) -> Result<McpClient, anyhow::Error> {
+    Err(anyhow::anyhow!("V1 MCP client creation not supported"))
+}
+
+/// Stub module for deleted V1 config functions
+pub mod config {
+    use super::*;
+
+    #[derive(Debug)]
+    pub enum ConfigError {
+        NotSupported(String),
+    }
+
+    impl std::fmt::Display for ConfigError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                ConfigError::NotSupported(msg) => write!(f, "Config operation not supported: {}", msg),
+            }
+        }
+    }
+
+    impl std::error::Error for ConfigError {}
+
+    pub async fn load_mcp_servers_ready(
+        _db: Option<&dyn Database>,
+        _owner_id: &str,
+    ) -> Result<McpServersFile, ConfigError> {
+        Ok(McpServersFile { servers: Vec::new() })
+    }
+
+    pub async fn save_mcp_servers_to_db(
+        _db: &dyn Database,
+        _owner_id: &str,
+        _servers: &McpServersFile,
+    ) -> Result<(), ConfigError> {
+        Err(ConfigError::NotSupported("V1 config save not supported".to_string()))
+    }
+
+    pub async fn save_mcp_servers(_servers: &McpServersFile) -> Result<(), ConfigError> {
+        Err(ConfigError::NotSupported("V1 config save not supported".to_string()))
+    }
+}
+
+/// Stub module for deleted V1 mcp_client
+pub mod mcp_client {
+    /// Stub for deleted V1 is_auth_error_message function
+    pub fn is_auth_error_message(_err_str: &str) -> bool {
+        false
+    }
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
 // TODO: V1 mcp_client module removed - MCP CLI commands need V2 reimplementation
 
 /// Arguments for the `mcp add` subcommand.
@@ -463,7 +755,7 @@ async fn auth_server(name: String, user_id: String) -> anyhow::Result<()> {
             println!("  You can now use tools from this server.");
             println!();
         }
-        Err(crate::mcp_client::auth::AuthError::NotSupported) => {
+        Err(AuthError::NotSupported) => {
             println!();
             println!("  ✗ Server does not support OAuth authentication.");
             println!();
@@ -576,7 +868,7 @@ async fn test_server(name: String, user_id: String) -> anyhow::Result<()> {
         Err(e) => {
             let err_str = e.to_string();
             // Check if server requires auth but we don't have valid tokens
-            if crate::mcp_client::is_auth_error_message(&err_str) {
+            if mcp_client::is_auth_error_message(&err_str) {
                 if has_tokens {
                     // We had tokens but they failed - need to re-authenticate
                     println!(
