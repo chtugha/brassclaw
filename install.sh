@@ -8,12 +8,14 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
 REPO="chtugha/brassclaw"
 BINARY_NAME="brassclaw"
 INSTALL_DIR="${HOME}/.local/bin"
+CONFIG_DIR="${HOME}/.brassclaw"
 
 # Detect OS
 detect_os() {
@@ -41,14 +43,103 @@ get_latest_release() {
         sed -E 's/.*"([^"]+)".*/\1/'
 }
 
+# Install systemd service (Linux only)
+install_systemd_service() {
+    if [ "$OS" != "linux" ]; then
+        return
+    fi
+    
+    echo ""
+    echo "${BLUE}═══════════════════════════════════════════════════${NC}"
+    echo "${BLUE}  Systemd Service Installation (Optional)${NC}"
+    echo "${BLUE}═══════════════════════════════════════════════════${NC}"
+    echo ""
+    echo "Would you like to install BrassClaw as a systemd user service?"
+    echo "This will allow BrassClaw to:"
+    echo "  • Start automatically on login"
+    echo "  • Run in the background"
+    echo "  • Restart automatically if it crashes"
+    echo ""
+    printf "Install systemd service? (y/N): "
+    read -r response
+    
+    if [ "$response" = "y" ] || [ "$response" = "Y" ]; then
+        SERVICE_DIR="${HOME}/.config/systemd/user"
+        mkdir -p "$SERVICE_DIR"
+        
+        cat > "$SERVICE_DIR/brassclaw.service" << 'SERVICE'
+[Unit]
+Description=BrassClaw Agent
+Documentation=https://github.com/chtugha/brassclaw
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/brassclaw
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.brassclaw %h/.local/share/brassclaw
+
+[Install]
+WantedBy=default.target
+SERVICE
+        
+        systemctl --user daemon-reload
+        
+        echo ""
+        echo "${GREEN}✓ Systemd service installed successfully!${NC}"
+        echo ""
+        echo "${BLUE}Service Management Commands:${NC}"
+        echo "  Start service:        ${GREEN}systemctl --user start brassclaw${NC}"
+        echo "  Stop service:         ${GREEN}systemctl --user stop brassclaw${NC}"
+        echo "  Enable auto-start:    ${GREEN}systemctl --user enable brassclaw${NC}"
+        echo "  Disable auto-start:   ${GREEN}systemctl --user disable brassclaw${NC}"
+        echo "  Check status:         ${GREEN}systemctl --user status brassclaw${NC}"
+        echo "  View logs:            ${GREEN}journalctl --user -u brassclaw -f${NC}"
+        echo ""
+        
+        printf "Would you like to start the service now? (y/N): "
+        read -r start_response
+        
+        if [ "$start_response" = "y" ] || [ "$start_response" = "Y" ]; then
+            systemctl --user start brassclaw
+            echo "${GREEN}✓ Service started${NC}"
+            
+            printf "Enable auto-start on login? (y/N): "
+            read -r enable_response
+            
+            if [ "$enable_response" = "y" ] || [ "$enable_response" = "Y" ]; then
+                systemctl --user enable brassclaw
+                echo "${GREEN}✓ Auto-start enabled${NC}"
+            fi
+        fi
+    else
+        echo "${YELLOW}Skipping systemd service installation${NC}"
+    fi
+}
+
 # Download and install
 install_brassclaw() {
     OS=$(detect_os)
     ARCH=$(detect_arch)
     
+    echo "${BLUE}═══════════════════════════════════════════════════${NC}"
+    echo "${BLUE}  BrassClaw Installer${NC}"
+    echo "${BLUE}═══════════════════════════════════════════════════${NC}"
+    echo ""
     echo "${GREEN}Detecting platform...${NC}"
-    echo "OS: ${OS}"
-    echo "Architecture: ${ARCH}"
+    echo "  OS: ${BLUE}${OS}${NC}"
+    echo "  Architecture: ${BLUE}${ARCH}${NC}"
+    echo ""
     
     if [ "$OS" = "unknown" ] || [ "$ARCH" = "unknown" ]; then
         echo "${RED}Error: Unsupported platform${NC}"
@@ -67,6 +158,7 @@ install_brassclaw() {
     fi
     
     echo "${GREEN}Installing BrassClaw ${VERSION}...${NC}"
+    echo ""
     
     # Construct download URL based on platform
     case "$OS" in
@@ -98,8 +190,9 @@ install_brassclaw() {
     
     DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE}"
     
-    echo "${GREEN}Attempting to download pre-compiled binary...${NC}"
-    echo "URL: ${DOWNLOAD_URL}"
+    echo "${GREEN}Downloading from:${NC}"
+    echo "  ${BLUE}${DOWNLOAD_URL}${NC}"
+    echo ""
     
     # Create temporary directory
     TMP_DIR=$(mktemp -d)
@@ -182,6 +275,7 @@ install_brassclaw() {
     
     # Create install directory if it doesn't exist
     mkdir -p "$INSTALL_DIR"
+    mkdir -p "$CONFIG_DIR"
     
     # Install binary
     echo "${GREEN}Installing to ${INSTALL_DIR}...${NC}"
@@ -192,46 +286,53 @@ install_brassclaw() {
     cd - > /dev/null
     rm -rf "$TMP_DIR"
     
+    echo ""
     echo "${GREEN}✓ BrassClaw ${VERSION} installed successfully!${NC}"
     echo ""
-    echo "Binary location: ${INSTALL_DIR}/${BINARY_NAME}"
+    echo "${BLUE}Installation Details:${NC}"
+    echo "  Binary: ${GREEN}${INSTALL_DIR}/${BINARY_NAME}${NC}"
+    echo "  Config: ${GREEN}${CONFIG_DIR}${NC}"
     echo ""
     
     # Check if install directory is in PATH
     case ":$PATH:" in
         *":${INSTALL_DIR}:"*) 
-            echo "${GREEN}✓ ${INSTALL_DIR} is already in your PATH${NC}"
+            echo "${GREEN}✓ ${INSTALL_DIR} is in your PATH${NC}"
             ;;
         *)
             echo "${YELLOW}⚠ ${INSTALL_DIR} is not in your PATH${NC}"
             echo ""
             echo "Add it to your PATH by adding this line to your shell profile:"
-            echo "  export PATH=\"\$PATH:${INSTALL_DIR}\""
+            echo "  ${GREEN}export PATH=\"\$PATH:${INSTALL_DIR}\"${NC}"
             echo ""
             case "$(basename "$SHELL")" in
                 bash)
-                    echo "For bash, add to ~/.bashrc or ~/.bash_profile"
+                    echo "For bash, add to ${BLUE}~/.bashrc${NC} or ${BLUE}~/.bash_profile${NC}"
                     ;;
                 zsh)
-                    echo "For zsh, add to ~/.zshrc"
+                    echo "For zsh, add to ${BLUE}~/.zshrc${NC}"
                     ;;
                 fish)
-                    echo "For fish, run: fish_add_path ${INSTALL_DIR}"
+                    echo "For fish, run: ${GREEN}fish_add_path ${INSTALL_DIR}${NC}"
                     ;;
             esac
+            echo ""
             ;;
     esac
     
+    # Install systemd service (Linux only, optional)
+    install_systemd_service
+    
     echo ""
-    echo "Run 'brassclaw --help' to get started!"
+    echo "${BLUE}═══════════════════════════════════════════════════${NC}"
+    echo "${GREEN}Installation complete!${NC}"
+    echo ""
+    echo "Run '${GREEN}brassclaw --help${NC}' to get started!"
+    echo "${BLUE}═══════════════════════════════════════════════════${NC}"
 }
 
 # Main execution
 main() {
-    echo "${GREEN}BrassClaw Installer${NC}"
-    echo "===================="
-    echo ""
-    
     # Check for required commands
     for cmd in curl tar; do
         if ! command -v $cmd > /dev/null 2>&1; then
