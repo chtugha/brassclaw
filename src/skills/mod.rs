@@ -37,12 +37,44 @@ pub mod bundled;
 pub use attenuation::{AttenuationResult, attenuate_tools};
 
 use crate::secrets::{CredentialLocation, CredentialMapping};
-// TODO: V1 wasm_runtime module removed - OAuthRefreshConfig needs V2 reimplementation
 use crate::{
     auth::{AuthDescriptor, AuthDescriptorKind, OAuthFlowDescriptor, upsert_auth_descriptor},
     db::SettingsStore,
 };
 use brassclaw_skills::{LoadedSkill, SkillCredentialLocation, SkillCredentialSpec};
+
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 OAuthRefreshConfig type
+#[derive(Debug, Clone)]
+pub struct OAuthRefreshConfig {
+    pub token_url: String,
+    pub client_id: String,
+    pub client_secret: String,
+    pub exchange_proxy_url: Option<String>,
+    pub gateway_token: Option<String>,
+    pub secret_name: String,
+    pub provider: Option<String>,
+    pub extra_refresh_params: std::collections::HashMap<String, String>,
+}
+
+/// Stub for deleted V1 SharedCredentialRegistry type
+pub struct SharedCredentialRegistry {
+    // Minimal stub - no fields needed
+}
+
+impl SharedCredentialRegistry {
+    /// Stub method to register a credential mapping
+    pub fn register(&self, _mapping: CredentialMapping) {
+        // No-op stub - credential registration not supported in V1 stub
+    }
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
 
 /// Convert a skill credential location to the main crate's [`CredentialLocation`].
 fn convert_credential_location(loc: &SkillCredentialLocation) -> CredentialLocation {
@@ -197,7 +229,7 @@ fn credential_spec_to_auth_descriptor(
 /// Validates each spec before registration; invalid specs are logged and skipped.
 pub fn register_skill_credentials(
     skills: &[LoadedSkill],
-    registry: &crate::wasm_runtime::SharedCredentialRegistry,
+    registry: &SharedCredentialRegistry,
 ) {
     let mut count = 0usize;
     for skill in skills {
