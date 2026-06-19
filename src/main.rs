@@ -1377,7 +1377,6 @@ async fn async_main() -> anyhow::Result<()> {
     let mut agent = Agent::new(
         config.agent.clone(),
         deps,
-        components.tools,
         channels,
         Some(config.heartbeat.clone()),
         Some(config.hygiene.clone()),

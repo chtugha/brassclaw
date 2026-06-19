@@ -570,7 +570,6 @@ impl Agent {
     pub fn new(
         config: AgentConfig,
         deps: AgentDeps,
-        tools: Arc<ToolRegistry>,
         channels: Arc<ChannelManager>,
         heartbeat_config: Option<HeartbeatConfig>,
         hygiene_config: Option<crate::config::HygieneConfig>,
@@ -589,7 +588,6 @@ impl Agent {
             deps.llm.clone(),
             deps.safety.clone(),
             SchedulerDeps {
-                tools: tools.clone(),
                 effect_executor: deps.effect_executor.clone(),
                 extension_manager: deps.extension_manager.clone(),
                 store: deps
@@ -744,10 +742,10 @@ impl Agent {
         self.deps.workspace.as_ref()
     }
     /// Temporary accessor for tools via scheduler during v1-to-v2 migration.
-    /// TODO: Remove this once all code uses v2 capabilities directly.
-    pub(crate) fn tools(&self) -> &Arc<crate::tools::ToolRegistry> {
-        self.scheduler.tools()
-    }
+    // TODO: V1 ToolRegistry removed - use effect_executor via deps instead
+    // pub(crate) fn tools(&self) -> &Arc<crate::tools::ToolRegistry> {
+    //     self.scheduler.tools()
+    // }
 
 
     pub(crate) fn workspace_for_user(&self, user_id: &str) -> Option<Arc<Workspace>> {
@@ -2558,7 +2556,8 @@ mod tests {
     use crate::config::{AgentConfig, SafetyConfig, SkillsConfig};
     use crate::error::ChannelError;
     use crate::hooks::HookRegistry;
-    use crate::tools::ToolRegistry;
+    // V1 ToolRegistry removed
+    // use crate::tools::ToolRegistry;
     use brassclaw_llm::{
         CompletionRequest, CompletionResponse, FinishReason, LlmProvider, ToolCompletionRequest,
         ToolCompletionResponse,
