@@ -37,6 +37,45 @@ impl ToolRegistry {
     pub fn tools(&self) -> &HashMap<String, String> {
         &self.tools
     }
+
+    /// Register routine tools (no-op stub)
+    /// TODO: Remove after V2 migration complete
+    pub async fn register_routine_tools(&self) -> Result<()> {
+        Ok(())
+    }
+
+    /// Set message tool context (no-op stub)
+    /// TODO: Remove after V2 migration complete
+    pub fn set_message_tool_context(&self, _message_id: &str) {
+        // No-op
+    }
+
+    /// List all tool names (stub returns empty list)
+    /// TODO: Remove after V2 migration complete
+    pub fn list(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Get tool definitions visible under a policy (stub returns empty list)
+    /// TODO: Remove after V2 migration complete
+    pub async fn tool_definitions_visible_under(
+        &self,
+        _policy: &crate::authorization::EffectiveRuntimePolicy,
+    ) -> Vec<brassclaw_llm::ToolDefinition> {
+        Vec::new()
+    }
+
+    /// Get all tool definitions (stub returns empty list)
+    /// TODO: Remove after V2 migration complete
+    pub async fn tool_definitions(&self) -> Vec<brassclaw_llm::ToolDefinition> {
+        Vec::new()
+    }
+
+    /// Get a tool by name (stub returns None)
+    /// TODO: Remove after V2 migration complete
+    pub fn get(&self, _name: &str) -> Option<Tool> {
+        None
+    }
 }
 
 impl Default for ToolRegistry {
