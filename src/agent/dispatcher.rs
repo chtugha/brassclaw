@@ -23,6 +23,85 @@ use crate::agent::agentic_loop::{
 use crate::generated_images::GeneratedImageSentinel;
 use brassclaw_llm::{ChatMessage, Reasoning, ReasoningContext, TokenUsage};
 
+// ============================================================================
+// V1 STUBS - These types were deleted with V1 and need V2 reimplementation
+// ============================================================================
+
+/// Stub for deleted V1 PermissionState
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum PermissionState {
+    Allowed,
+    Denied,
+    RequiresApproval,
+}
+
+/// Stub for deleted V1 ApprovalRequirement
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum ApprovalRequirement {
+    Never,
+    Always,
+    Conditional(String),
+}
+
+/// Stub for deleted V1 AdminToolPolicyCache
+#[derive(Clone)]
+#[allow(dead_code)]
+pub struct AdminToolPolicyCache {
+    _placeholder: (),
+}
+
+impl AdminToolPolicyCache {
+    #[allow(dead_code)]
+    pub fn new() -> Self {
+        Self { _placeholder: () }
+    }
+}
+
+/// Stub for deleted V1 effective_permission function
+#[allow(dead_code)]
+fn effective_permission(
+    _tool_name: &str,
+    _user_id: &str,
+    _cache: &AdminToolPolicyCache,
+) -> PermissionState {
+    PermissionState::Allowed // Stub: allow all for now
+}
+
+/// Stub for deleted V1 redact_params function
+#[allow(dead_code)]
+fn redact_params(_params: &serde_json::Value) -> serde_json::Value {
+    serde_json::json!({"redacted": true})
+}
+
+/// Stub for deleted V1 Store type
+#[allow(dead_code)]
+pub struct Store {
+    _placeholder: (),
+}
+
+/// Stub for deleted V1 load_cached_admin_tool_policy function
+#[allow(dead_code)]
+async fn load_cached_admin_tool_policy(
+    _store: Option<&Arc<Store>>,
+    _cache: &AdminToolPolicyCache,
+) -> std::collections::HashMap<String, String> {
+    std::collections::HashMap::new()
+}
+
+/// Stub for deleted V1 filter_admin_disabled_tools function
+#[allow(dead_code)]
+fn filter_admin_disabled_tools<T>(
+    tools: T,
+    _multi_tenant: bool,
+    _is_admin: bool,
+    _user_id: &str,
+    _policy: &std::collections::HashMap<String, String>,
+) -> T {
+    tools // Stub: return tools unchanged
+}
+
 fn selected_model_override(value: &serde_json::Value) -> Option<String> {
     brassclaw_llm::normalized_model_override(value.as_str()).map(str::to_string)
 }
@@ -444,7 +523,7 @@ struct ChatDelegate<'a> {
     force_text_at: usize,
     user_tz: chrono_tz::Tz,
     turn_usage: std::sync::Mutex<TurnUsageSummary>,
-    cached_admin_tool_policy: crate::tools::permissions::AdminToolPolicyCache,
+    cached_admin_tool_policy: AdminToolPolicyCache,
 }
 
 impl ChatDelegate<'_> {
@@ -534,12 +613,12 @@ impl<'a> LoopDelegate for ChatDelegate<'a> {
         // Apply admin tool policy first so admin-disabled tools are removed
         // before per-user permission filtering and session auto-approval.
         let is_admin = self.tenant.identity().is_admin();
-        let admin_policy = crate::tools::permissions::load_cached_admin_tool_policy(
+        let admin_policy = load_cached_admin_tool_policy(
             self.agent.store(),
             &self.cached_admin_tool_policy,
         )
         .await;
-        let tool_defs = crate::tools::permissions::filter_admin_disabled_tools(
+        let tool_defs = filter_admin_disabled_tools(
             tool_defs,
             self.agent.config.multi_tenant,
             is_admin,
