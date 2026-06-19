@@ -17,9 +17,7 @@ use crate::db::{Database, UserStore};
 use crate::extensions::ExtensionManager;
 use crate::hooks::HookRegistry;
 use crate::secrets::SecretsStore;
-use crate::mcp_client::{McpProcessManager, McpSessionManager};
-use crate::wasm_runtime::SharedCredentialRegistry;
-use crate::wasm_runtime::WasmToolRuntime;
+// TODO: MCP and WASM infrastructure removed - needs V2 reimplementation
 use crate::workspace::Workspace;
 use brassclaw_embeddings::{EmbeddingCacheConfig, EmbeddingProvider};
 use brassclaw_llm::recording::HttpInterceptor;
@@ -42,7 +40,7 @@ pub struct AppComponents {
     /// chain was not built from config in the first place.
     pub llm_reload: Option<Arc<LlmReloadHandle>>,
     pub safety: Arc<SafetyLayer>,
-    pub tools: Arc<ToolRegistry>,
+    // TODO: V1 tools field removed - use effect_executor instead
     pub embeddings: Option<Arc<dyn EmbeddingProvider>>,
     pub workspace: Option<Arc<Workspace>>,
     /// Workspace-backed `SettingsStore` adapter that dual-writes settings to
@@ -57,9 +55,7 @@ pub struct AppComponents {
     /// Same instance backing `settings_store` when a cache is active.
     pub settings_cache: Option<Arc<crate::db::cached_settings::CachedSettingsStore>>,
     pub extension_manager: Option<Arc<ExtensionManager>>,
-    pub mcp_session_manager: Arc<McpSessionManager>,
-    pub mcp_process_manager: Arc<McpProcessManager>,
-    pub wasm_tool_runtime: Option<Arc<WasmToolRuntime>>,
+    // TODO: V1 MCP and WASM fields removed - needs V2 reimplementation
     pub log_broadcaster: Arc<LogBroadcaster>,
     pub context_manager: Arc<ContextManager>,
     pub hooks: Arc<HookRegistry>,
@@ -73,7 +69,7 @@ pub struct AppComponents {
     pub session: Arc<SessionManager>,
     pub catalog_entries: Vec<crate::extensions::RegistryEntry>,
     pub dev_loaded_tool_names: Vec<String>,
-    pub builder: Option<Arc<dyn crate::tools::SoftwareBuilder>>,
+    // TODO: V1 builder field removed - needs V2 reimplementation
     /// In-process write-through cache: `(channel, external_id)` → `Identity`.
     /// Populated by the pairing flow (Task 8). Pre-allocated here so all
     /// subsystems can hold an `Arc` to the same cache instance.
@@ -500,64 +496,34 @@ impl AppBuilder {
     }
 
     /// Phase 4: Initialize safety, tools, embeddings, and workspace.
+    /// TODO: V1 tool system removed - this method is stubbed out
+    /// Returns minimal values needed for V2 system initialization
     pub async fn init_tools(
         &self,
-        llm: &Arc<dyn LlmProvider>,
-        cheap_llm: Option<&Arc<dyn LlmProvider>>,
+        _llm: &Arc<dyn LlmProvider>,
+        _cheap_llm: Option<&Arc<dyn LlmProvider>>,
     ) -> Result<
         (
             Arc<SafetyLayer>,
-            Arc<ToolRegistry>,
             Option<Arc<dyn EmbeddingProvider>>,
             Option<Arc<Workspace>>,
-            Option<Arc<dyn crate::tools::SoftwareBuilder>>,
-            Arc<SharedCredentialRegistry>,
             Option<Arc<dyn HttpInterceptor>>,
             Option<Arc<dyn crate::tools::builtin::memory::WorkspaceResolver>>,
         ),
         anyhow::Error,
     > {
+        // Initialize safety layer
         let safety = Arc::new(SafetyLayer::new(&self.config.safety));
         tracing::debug!("Safety layer initialized");
 
-        // Initialize tool registry with credential injection support
-        let credential_registry = Arc::new(SharedCredentialRegistry::new());
-        let engine_version = if crate::bridge::is_engine_v2_enabled() {
-            crate::tools::EngineVersion::V2
-        } else {
-            crate::tools::EngineVersion::V1
-        };
-        let mut registry = ToolRegistry::new().with_engine_version(engine_version);
-        if let Some(ref db) = self.db {
-            registry = registry.with_database(Arc::clone(db));
-        }
-        if let Some(ref ss) = self.secrets_store {
-            registry = registry.with_credentials(Arc::clone(&credential_registry), Arc::clone(ss));
-        }
-        // Test-only HTTP host remapping. Gated to debug/test builds so a stray
-        // `BRASSCLAW_TEST_HTTP_REMAP` env var on a release deployment cannot
-        // silently redirect outbound HTTP from production to a test endpoint.
+        // Test-only HTTP host remapping
         let http_interceptor = if cfg!(any(test, debug_assertions)) {
             crate::http_intercept::remap_from_env()
         } else {
             None
         };
-        if let Some(ref interceptor) = http_interceptor {
-            registry = registry.with_http_interceptor(Arc::clone(interceptor));
-        }
-        let tools = Arc::new(registry);
-        tools.register_builtin_tools();
-        tools.register_tool_info();
-        tools.register_system_tools();
 
-        if let Some(ref ss) = self.secrets_store {
-            tools.register_secrets_tools(Arc::clone(ss));
-        }
-
-        // Create embeddings provider using the unified method.
-        // Translate the LLM-side `BedrockConfig` into the embeddings-side
-        // `BedrockEmbeddingSetup` at the boundary so the embeddings layer
-        // does not depend on `brassclaw_llm` config types.
+        // Create embeddings provider
         let bedrock_setup =
             self.config
                 .llm
@@ -576,7 +542,7 @@ impl AppBuilder {
         )
         .await;
 
-        // Register memory tools if database is available
+        // Create workspace if database is available
         let workspace_user_id = self.config.owner_id.as_str();
         let (workspace, workspace_resolver) = if let Some(ref db) = self.db {
             let emb_cache_config = EmbeddingCacheConfig {
@@ -600,18 +566,7 @@ impl AppBuilder {
             }
             ws = ws.with_memory_layers(self.config.workspace.memory_layers.clone());
 
-            // Memory tools must resolve by `ctx.user_id`, not a fixed startup
-            // workspace. Even outside authenticated multi-tenant mode, some
-            // channels and test harnesses route non-owner users through
-            // per-user tenant workspaces seeded on demand.
-            //
-            // Whether the deployment is multi-tenant is configuration, not a
-            // property we should infer from the current DB contents. An admin
-            // may start in multi-tenant mode before creating any tenant users.
             let is_multi_tenant = self.config.is_multi_tenant_deployment();
-
-            // In multi-tenant mode, enable admin system prompt on the owner
-            // workspace so the dispatcher reads SYSTEM.md from __admin__ scope.
             if is_multi_tenant {
                 ws = ws.with_admin_prompt();
             }
@@ -625,107 +580,37 @@ impl AppBuilder {
                     self.config.search.clone(),
                     self.config.workspace.clone(),
                 ));
-            let pool_for_hooks = Arc::clone(&pool);
-            let reasoning_llm: Option<Arc<dyn LlmProvider>> =
-                cheap_llm.map(Arc::clone).or_else(|| Some(Arc::clone(llm)));
-            tools.register_memory_tools_with_resolver(
-                pool,
-                reasoning_llm,
-                self.config.search.reasoning_enabled,
-            );
+            
             tracing::debug!(
                 multi_tenant = is_multi_tenant,
-                "Memory tools configured with per-user workspace resolver"
+                "Workspace configured for V2 capability system"
             );
 
-            (Some(ws), Some(pool_for_hooks))
+            (Some(ws), Some(pool))
         } else {
             (None, None)
         };
 
-        // Register image/vision tools if we have a workspace and LLM API credentials
-        if workspace.is_some() {
-            let (api_base, api_key_opt) = if let Some(ref provider) = self.config.llm.provider {
-                (
-                    provider.base_url.clone(),
-                    provider.api_key.as_ref().map(|s| {
-                        use secrecy::ExposeSecret;
-                        s.expose_secret().to_string()
-                    }),
-                )
-            } else {
-                (
-                    self.config.llm.nearai.base_url.clone(),
-                    self.config.llm.nearai.api_key.as_ref().map(|s| {
-                        use secrecy::ExposeSecret;
-                        s.expose_secret().to_string()
-                    }),
-                )
-            };
-
-            if let Some(api_key) = api_key_opt {
-                // Check for image generation models
-                let model_name = self
-                    .config
-                    .llm
-                    .provider
-                    .as_ref()
-                    .map(|p| p.model.clone())
-                    .unwrap_or_else(|| self.config.llm.nearai.model.clone());
-                let models = vec![model_name.clone()];
-                let gen_model = brassclaw_llm::image_models::suggest_image_model(&models)
-                    .unwrap_or("black-forest-labs/FLUX.2-klein-4B")
-                    .to_string();
-                tools.register_image_tools(api_base.clone(), api_key.clone(), gen_model, None);
-
-                // Check for vision models
-                let vision_model = brassclaw_llm::vision_models::suggest_vision_model(&models)
-                    .unwrap_or(&model_name)
-                    .to_string();
-                tools.register_vision_tools(api_base, api_key, vision_model, None);
-            }
-        }
-
-        // Register builder tool if enabled
-        let builder = if self.config.builder.enabled
-            && (self.config.agent.allow_local_tools || !self.config.sandbox.enabled)
-        {
-            let b = tools
-                .register_builder_tool(llm.clone(), Some(self.config.builder.to_builder_config()))
-                .await;
-            tracing::debug!("Builder mode enabled");
-            Some(b)
-        } else {
-            None
-        };
-
         Ok((
             safety,
-            tools,
             embeddings,
             workspace,
-            builder,
-            credential_registry,
             http_interceptor,
             workspace_resolver,
         ))
     }
 
-    /// Phase 5: Load WASM tools, MCP servers, and create extension manager.
+    /// TODO: V1 extension system removed - this method is stubbed out
+    /// Returns minimal values needed for V2 system initialization
     pub async fn init_extensions(
         &self,
-        tools: &Arc<ToolRegistry>,
-        hooks: &Arc<HookRegistry>,
-        settings_store_override: Option<Arc<dyn crate::db::SettingsStore + Send + Sync>>,
-        ownership_cache: Arc<crate::ownership::OwnershipCache>,
+        _hooks: &Arc<HookRegistry>,
+        _settings_store_override: Option<Arc<dyn crate::db::SettingsStore + Send + Sync>>,
+        _ownership_cache: Arc<crate::ownership::OwnershipCache>,
     ) -> Result<
         (
-            Arc<McpSessionManager>,
-            Arc<McpProcessManager>,
-            Option<Arc<WasmToolRuntime>>,
             Option<Arc<ExtensionManager>>,
             Vec<crate::extensions::RegistryEntry>,
-            Vec<String>,
         ),
         anyhow::Error,
     > {
