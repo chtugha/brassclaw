@@ -34,6 +34,138 @@ use crate::context::JobContext;
 use crate::extensions::InstalledExtension;
 use crate::hooks::{HookEvent, HookOutcome, HookRegistry};
 use brassclaw_safety::SafetyLayer;
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 ToolRegistry
+pub struct ToolRegistry;
+
+impl ToolRegistry {
+    pub async fn all(&self) -> Vec<Arc<dyn Tool>> {
+        Vec::new()
+    }
+    
+    pub async fn get(&self, _name: &str) -> Option<Arc<dyn Tool>> {
+        None
+    }
+}
+
+/// Stub for deleted V1 Tool trait
+pub trait Tool: Send + Sync {
+    fn name(&self) -> &str;
+    fn requires_approval(&self, _params: &serde_json::Value) -> ApprovalRequirement {
+        ApprovalRequirement::Never
+    }
+    fn provider_extension(&self) -> Option<&str> {
+        None
+    }
+    fn discovery_schema(&self) -> serde_json::Value {
+        serde_json::json!({})
+    }
+    fn sensitive_params(&self) -> Vec<String> {
+        Vec::new()
+    }
+}
+
+/// Stub for deleted V1 RateLimiter
+pub struct RateLimiter;
+
+impl RateLimiter {
+    pub fn new() -> Self {
+        Self
+    }
+    
+    pub async fn check_and_record(
+        &self,
+        _user_id: &str,
+        _tool_name: &str,
+        _config: &serde_json::Value,
+    ) -> RateLimitResult {
+        RateLimitResult::Allowed
+    }
+}
+
+/// Stub for deleted V1 RateLimitResult
+pub enum RateLimitResult {
+    Allowed,
+    Limited {
+        retry_after: std::time::Duration,
+    },
+}
+
+/// Stub for deleted V1 ToolPermissionResolution
+#[derive(Clone, Copy)]
+pub struct ToolPermissionResolution {
+    pub effective: PermissionState,
+    pub explicit: Option<PermissionState>,
+}
+
+/// Stub for deleted V1 ToolPermissionSnapshot
+pub struct ToolPermissionSnapshot;
+
+impl ToolPermissionSnapshot {
+    pub async fn load(_tools: &ToolRegistry, _user_id: &str) -> Self {
+        Self
+    }
+    
+    pub fn resolve_permission(&self, _tool_name: &str) -> ToolPermissionResolution {
+        ToolPermissionResolution {
+            effective: PermissionState::AskEachTime,
+            explicit: None,
+        }
+    }
+}
+
+/// Stub for deleted V1 PermissionState
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PermissionState {
+    Disabled,
+    AlwaysAllow,
+    AskEachTime,
+}
+
+/// Stub for deleted V1 ApprovalRequirement
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApprovalRequirement {
+    Never,
+    Always,
+}
+
+/// Stub for deleted V1 prepare_params_for_schema function
+pub fn prepare_params_for_schema(
+    params: &serde_json::Value,
+    _schema: &serde_json::Value,
+) -> serde_json::Value {
+    params.clone()
+}
+
+/// Stub for deleted V1 redact_params function
+pub fn redact_params(
+    params: &serde_json::Value,
+    _sensitive_params: Vec<String>,
+) -> serde_json::Value {
+    params.clone()
+}
+
+/// Stub for deleted V1 execute_tool_with_safety function
+pub async fn execute_tool_with_safety(
+    _tools: &ToolRegistry,
+    _safety: &brassclaw_safety::SafetyLayer,
+    _tool_name: &str,
+    _params: serde_json::Value,
+    _ctx: &crate::context::JobContext,
+) -> Result<serde_json::Value, crate::error::ToolError> {
+    Err(crate::error::ToolError::ExecutionFailed {
+        name: _tool_name.to_string(),
+        reason: "V1 tool execution deleted".to_string(),
+    })
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
+
 
 /// Wraps the existing tool pipeline to implement the engine's `EffectExecutor`.
 ///
@@ -1230,9 +1362,9 @@ impl EffectBridgeAdapter {
             })
             .or_else(|| engine_action_schema(canonical_action_name));
         let parameters = if let Some(schema) = action_schema {
-            crate::tools::prepare_params_for_schema(&parameters, &schema)
+            prepare_params_for_schema(&parameters, &schema)
         } else if let Some(tool) = self.tools.get(&lookup_name).await {
-            crate::tools::prepare_params_for_schema(&parameters, &tool.discovery_schema())
+            prepare_params_for_schema(&parameters, &tool.discovery_schema())
         } else {
             parameters
         };
@@ -1368,7 +1500,7 @@ impl EffectBridgeAdapter {
                 .rate_limiter
                 .check_and_record(&context.user_id, &lookup_name, &rl_config)
                 .await;
-            if let crate::tools::rate_limiter::RateLimitResult::Limited { retry_after, .. } = result
+            if let RateLimitResult::Limited { retry_after, .. } = result
             {
                 return Err(EngineError::Effect {
                     reason: format!(
@@ -1493,7 +1625,7 @@ impl EffectBridgeAdapter {
         }
 
         let redacted_params = if let Some(tool) = self.tools.get(&lookup_name).await {
-            crate::tools::redact_params(&parameters, tool.sensitive_params())
+            redact_params(&parameters, tool.sensitive_params())
         } else {
             parameters.clone()
         };
@@ -1604,7 +1736,7 @@ impl EffectBridgeAdapter {
         let result = if let Some(intercepted) = sandbox_result {
             intercepted
         } else {
-            crate::tools::execute::execute_tool_with_safety(
+            execute_tool_with_safety(
                 &self.tools,
                 &self.safety,
                 &lookup_name,
