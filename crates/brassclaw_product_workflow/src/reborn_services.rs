@@ -608,9 +608,10 @@ pub trait RebornServicesApi: Send + Sync {
         &self,
         _caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
-        Err(RebornServicesError::new(
-            RebornServicesErrorKind::NotImplemented,
-            "Safety configuration not implemented",
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
         ))
     }
 
@@ -619,9 +620,10 @@ pub trait RebornServicesApi: Send + Sync {
         _caller: WebUiAuthenticatedCaller,
         _request: crate::safety_config::UpdateSafetyConfigRequest,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
-        Err(RebornServicesError::new(
-            RebornServicesErrorKind::NotImplemented,
-            "Safety configuration not implemented",
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
         ))
     }
 
@@ -629,9 +631,10 @@ pub trait RebornServicesApi: Send + Sync {
         &self,
         _caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
-        Err(RebornServicesError::new(
-            RebornServicesErrorKind::NotImplemented,
-            "Safety configuration not implemented",
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
         ))
     }
 
@@ -640,9 +643,10 @@ pub trait RebornServicesApi: Send + Sync {
         _caller: WebUiAuthenticatedCaller,
         _request: crate::safety_config::UpdateSafetyConfigRequest,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
-        Err(RebornServicesError::new(
-            RebornServicesErrorKind::NotImplemented,
-            "Safety configuration not implemented",
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
         ))
     }
 
@@ -650,9 +654,10 @@ pub trait RebornServicesApi: Send + Sync {
         &self,
         _caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
-        Err(RebornServicesError::new(
-            RebornServicesErrorKind::NotImplemented,
-            "Safety configuration not implemented",
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
         ))
     }
 
@@ -661,9 +666,10 @@ pub trait RebornServicesApi: Send + Sync {
         _caller: WebUiAuthenticatedCaller,
         _request: crate::safety_config::UpdateSafetyConfigRequest,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
-        Err(RebornServicesError::new(
-            RebornServicesErrorKind::NotImplemented,
-            "Safety configuration not implemented",
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
         ))
     }
 }
