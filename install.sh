@@ -98,41 +98,90 @@ install_brassclaw() {
     
     DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE}"
     
-    echo "${GREEN}Downloading from: ${DOWNLOAD_URL}${NC}"
+    echo "${GREEN}Attempting to download pre-compiled binary...${NC}"
+    echo "URL: ${DOWNLOAD_URL}"
     
     # Create temporary directory
     TMP_DIR=$(mktemp -d)
     cd "$TMP_DIR"
     
-    # Download archive
-    if ! curl -L -o "$ARCHIVE" "$DOWNLOAD_URL"; then
-        echo "${RED}Error: Download failed${NC}"
+    # Try to download pre-compiled binary
+    BINARY_AVAILABLE=0
+    if curl -L -f -o "$ARCHIVE" "$DOWNLOAD_URL" 2>/dev/null; then
+        BINARY_AVAILABLE=1
+        echo "${GREEN}✓ Pre-compiled binary downloaded${NC}"
+    else
+        echo "${YELLOW}⚠ Pre-compiled binary not available${NC}"
+        echo "${GREEN}Falling back to building from source...${NC}"
+        
+        # Check for required build tools
+        if ! command -v cargo > /dev/null 2>&1; then
+            echo "${RED}Error: cargo not found. Please install Rust from https://rustup.rs/${NC}"
+            rm -rf "$TMP_DIR"
+            exit 1
+        fi
+        
+        # Clone and build from source
+        echo "${GREEN}Cloning repository...${NC}"
+        if ! git clone --depth 1 --branch "${VERSION}" "https://github.com/${REPO}.git" brassclaw-src; then
+            echo "${RED}Error: Failed to clone repository${NC}"
+            rm -rf "$TMP_DIR"
+            exit 1
+        fi
+        
+        cd brassclaw-src
+        echo "${GREEN}Building BrassClaw (this may take a few minutes)...${NC}"
+        if ! cargo build --release; then
+            echo "${RED}Error: Build failed${NC}"
+            cd ..
+            rm -rf "$TMP_DIR"
+            exit 1
+        fi
+        
+        # Copy built binary to temp directory
+        cp target/release/brassclaw ../"$BINARY_NAME"
+        cd ..
+        BINARY_AVAILABLE=2  # Built from source
+    fi
+    
+    if [ "$BINARY_AVAILABLE" -eq 0 ]; then
+        echo "${RED}Error: Could not obtain binary${NC}"
         rm -rf "$TMP_DIR"
         exit 1
     fi
     
-    # Extract archive
-    echo "${GREEN}Extracting archive...${NC}"
-    case "$ARCHIVE" in
-        *.tar.gz)
-            tar -xzf "$ARCHIVE"
-            ;;
-        *.zip)
-            unzip -q "$ARCHIVE"
-            ;;
-    esac
+    # Extract archive if we downloaded one
+    if [ "$BINARY_AVAILABLE" -eq 1 ]; then
+        echo "${GREEN}Extracting archive...${NC}"
+        case "$ARCHIVE" in
+            *.tar.gz)
+                tar -xzf "$ARCHIVE"
+                ;;
+            *.zip)
+                unzip -q "$ARCHIVE"
+                ;;
+        esac
+        
+        # Find binary in extracted archive
+        BINARY_PATH=$(find . -name "$BINARY_NAME" -o -name "${BINARY_NAME}.exe" | head -n 1)
+        
+        if [ -z "$BINARY_PATH" ]; then
+            echo "${RED}Error: Binary not found in archive${NC}"
+            rm -rf "$TMP_DIR"
+            exit 1
+        fi
+    else
+        # Binary was built from source, already in place
+        BINARY_PATH="./$BINARY_NAME"
+        if [ ! -f "$BINARY_PATH" ]; then
+            echo "${RED}Error: Built binary not found${NC}"
+            rm -rf "$TMP_DIR"
+            exit 1
+        fi
+    fi
     
     # Create install directory if it doesn't exist
     mkdir -p "$INSTALL_DIR"
-    
-    # Find and install binary
-    BINARY_PATH=$(find . -name "$BINARY_NAME" -o -name "${BINARY_NAME}.exe" | head -n 1)
-    
-    if [ -z "$BINARY_PATH" ]; then
-        echo "${RED}Error: Binary not found in archive${NC}"
-        rm -rf "$TMP_DIR"
-        exit 1
-    fi
     
     # Install binary
     echo "${GREEN}Installing to ${INSTALL_DIR}...${NC}"
@@ -190,6 +239,8 @@ main() {
             exit 1
         fi
     done
+    
+    # Note: git and cargo are checked later if needed for building from source
     
     install_brassclaw
 }
