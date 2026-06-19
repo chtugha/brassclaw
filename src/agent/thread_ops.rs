@@ -5,6 +5,78 @@
 
 use std::sync::Arc;
 
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 ApprovalRequirement enum
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApprovalRequirement {
+    Never,
+    UnlessAutoApproved,
+    Always,
+}
+
+/// Stub for deleted V1 PermissionState enum
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum PermissionState {
+    AlwaysAllow,
+    AlwaysDeny,
+    AskEveryTime,
+}
+
+/// Stub for deleted V1 Tool trait
+#[async_trait::async_trait]
+pub trait Tool: Send + Sync {
+    fn name(&self) -> &str {
+        "stub_tool"
+    }
+    fn description(&self) -> &str {
+        "Stub tool - V1 deleted"
+    }
+    fn requires_approval(&self, _params: &serde_json::Value) -> ApprovalRequirement {
+        ApprovalRequirement::Always
+    }
+    fn sensitive_params(&self) -> Vec<String> {
+        Vec::new()
+    }
+    async fn execute(
+        &self,
+        _params: serde_json::Value,
+        _ctx: Arc<crate::context::JobContext>,
+    ) -> Result<String, crate::error::Error> {
+        Err(crate::error::Error::ToolNotFound("V1 tool deleted".to_string()))
+    }
+}
+
+/// Stub for deleted V1 process_tool_result function
+fn process_tool_result(
+    _safety: &brassclaw_safety::SafetyLayer,
+    _tool_name: &str,
+    _tool_call_id: &str,
+    result: &Result<String, crate::error::Error>,
+) -> (String, brassclaw_llm::ChatMessage) {
+    let content = match result {
+        Ok(s) => s.clone(),
+        Err(e) => format!("Error: {}", e),
+    };
+    let msg = brassclaw_llm::ChatMessage::tool_result(_tool_call_id, &content);
+    (content, msg)
+}
+
+/// Stub for deleted V1 redact_params function
+fn redact_params(
+    params: &serde_json::Value,
+    _sensitive_keys: Vec<String>,
+) -> serde_json::Value {
+    // TODO: Implement proper redaction in V2
+    params.clone()
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
+
 use chrono::{DateTime, Utc};
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
@@ -1808,7 +1880,7 @@ impl Agent {
                     .map(|t| {
                         matches!(
                             t.requires_approval(&serde_json::json!({})),
-                            crate::tools::ApprovalRequirement::Always
+                            ApprovalRequirement::Always
                         )
                     })
                     .unwrap_or(false);
@@ -1826,7 +1898,7 @@ impl Agent {
                     if let Some(store) = tenant.store() {
                         let key = format!("tool_permissions.{}", pending.tool_name);
                         let val = serde_json::to_value(
-                            crate::tools::permissions::PermissionState::AlwaysAllow,
+                            PermissionState::AlwaysAllow,
                         )
                         .unwrap_or(serde_json::Value::String("always_allow".to_string()));
                         match store.set_setting(&key, &val).await {
@@ -1962,7 +2034,7 @@ impl Agent {
             // Sanitize tool result, then record the cleaned version in the
             // thread. Must happen before auth intercept check which may return early.
             let is_tool_error = tool_result.is_err();
-            let (result_content, _) = crate::tools::execute::process_tool_result(
+            let (result_content, _) = process_tool_result(
                 self.safety(),
                 &pending.tool_name,
                 &pending.tool_call_id,
@@ -2029,7 +2101,7 @@ impl Agent {
             let mut approval_needed: Option<(
                 usize,
                 brassclaw_llm::ToolCall,
-                Arc<dyn crate::tools::Tool>,
+                Arc<dyn Tool>,
                 bool, // allow_always
             )> = None;
 
@@ -2040,7 +2112,6 @@ impl Agent {
                     let (needs_approval, allow_always) = if self.config.auto_approve_tools {
                         (false, true)
                     } else {
-                        use crate::tools::ApprovalRequirement;
                         let requirement = tool.requires_approval(&tc.arguments);
                         let needs = match requirement {
                             ApprovalRequirement::Never => false,
@@ -2228,7 +2299,7 @@ impl Agent {
                 // Sanitize first, then record the cleaned version in thread.
                 // Must happen before auth detection which may set deferred_auth.
                 let is_deferred_error = deferred_result.is_err();
-                let (deferred_content, _) = crate::tools::execute::process_tool_result(
+                let (deferred_content, _) = process_tool_result(
                     self.safety(),
                     &tc.name,
                     &tc.id,
