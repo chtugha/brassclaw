@@ -12,6 +12,105 @@ use tokio::fs;
 
 use crate::bootstrap::brassclaw_base_dir;
 use crate::secrets::{CreateSecretParams, SecretsStore};
+
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+use serde::{Deserialize, Serialize};
+
+/// Stub for deleted V1 OAuthConfigSchema
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OAuthConfigSchema {
+    pub client_id: String,
+    pub auth_url: Option<String>,
+    pub token_url: Option<String>,
+    pub scopes: Vec<String>,
+    #[serde(default)]
+    pub access_token_field: String,
+}
+
+/// Stub for deleted V1 ValidationEndpointSchema
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidationEndpointSchema {
+    pub url: String,
+    pub method: Option<String>,
+}
+
+/// Stub for deleted V1 AuthCapabilitySchema
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthCapabilitySchema {
+    pub secret_name: String,
+    pub display_name: Option<String>,
+    pub oauth: Option<OAuthConfigSchema>,
+    pub instructions: Option<String>,
+    pub provider: Option<String>,
+    pub validation: Option<ValidationEndpointSchema>,
+}
+
+/// Stub for deleted V1 CapabilitiesFile
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CapabilitiesFile {
+    pub name: String,
+    pub version: String,
+    pub description: Option<String>,
+    pub capabilities: Vec<String>,
+    pub auth: Option<AuthCapabilitySchema>,
+}
+
+impl CapabilitiesFile {
+    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
+    }
+}
+
+/// Stub for deleted V1 compute_binary_hash function
+fn compute_binary_hash(data: &[u8]) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    let result = hasher.finalize();
+    let mut hash = [0u8; 32];
+    hash.copy_from_slice(&result);
+    hash
+}
+
+/// Stub module for deleted V1 wasm_runtime
+pub mod wasm_runtime {
+    use super::*;
+    use std::path::Path;
+
+    // Re-export types so they can be used as crate::wasm_runtime::Type
+    pub use super::{AuthCapabilitySchema, OAuthConfigSchema, ValidationEndpointSchema};
+
+    /// Stub for deleted V1 WasmRuntime
+    pub struct WasmRuntime;
+
+    impl WasmRuntime {
+        pub async fn new(_wasm_path: &Path, _caps: Option<CapabilitiesFile>) -> Result<Self, anyhow::Error> {
+            Err(anyhow::anyhow!("V1 WASM runtime not supported"))
+        }
+
+        pub fn capabilities(&self) -> Option<&CapabilitiesFile> {
+            None
+        }
+
+        pub async fn list_tools(&self) -> Result<Vec<ToolInfo>, anyhow::Error> {
+            Err(anyhow::anyhow!("V1 WASM runtime not supported"))
+        }
+    }
+
+    /// Stub for deleted V1 ToolInfo
+    #[derive(Debug, Clone)]
+    pub struct ToolInfo {
+        pub name: String,
+        pub description: Option<String>,
+    }
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
 // TODO: V1 wasm_runtime module removed - tool CLI commands need V2 reimplementation
 
 /// Default tools directory.
@@ -836,8 +935,8 @@ async fn auth_tool(name: String, dir: Option<PathBuf>, user_id: String) -> anyho
 async fn combine_provider_scopes(
     tools_dir: &Path,
     secret_name: &str,
-    base_oauth: &crate::wasm_runtime::OAuthConfigSchema,
-) -> crate::wasm_runtime::OAuthConfigSchema {
+    base_oauth: &wasm_runtime::OAuthConfigSchema,
+) -> wasm_runtime::OAuthConfigSchema {
     let mut all_scopes: HashSet<String> = base_oauth.scopes.iter().cloned().collect();
 
     if let Ok(mut entries) = tokio::fs::read_dir(tools_dir).await {
@@ -875,8 +974,8 @@ async fn combine_provider_scopes(
 async fn auth_tool_oauth(
     store: &(dyn SecretsStore + Send + Sync),
     user_id: &str,
-    auth: &crate::wasm_runtime::AuthCapabilitySchema,
-    oauth: &crate::wasm_runtime::OAuthConfigSchema,
+    auth: &wasm_runtime::AuthCapabilitySchema,
+    oauth: &wasm_runtime::OAuthConfigSchema,
 ) -> anyhow::Result<()> {
     use crate::auth::oauth;
 
@@ -999,7 +1098,7 @@ async fn auth_tool_oauth(
 async fn auth_tool_manual(
     store: &(dyn SecretsStore + Send + Sync),
     user_id: &str,
-    auth: &crate::wasm_runtime::AuthCapabilitySchema,
+    auth: &wasm_runtime::AuthCapabilitySchema,
 ) -> anyhow::Result<()> {
     let display_name = auth.display_name.as_deref().unwrap_or(&auth.secret_name);
 
@@ -1128,7 +1227,7 @@ fn read_hidden_input() -> anyhow::Result<String> {
 /// Validate a token against the validation endpoint.
 async fn validate_token(
     token: &str,
-    validation: &crate::wasm_runtime::ValidationEndpointSchema,
+    validation: &wasm_runtime::ValidationEndpointSchema,
     _secret_name: &str,
 ) -> anyhow::Result<()> {
     crate::auth::oauth::validate_oauth_token(token, validation)
@@ -1143,7 +1242,7 @@ async fn validate_token(
 async fn save_token(
     store: &(dyn SecretsStore + Send + Sync),
     user_id: &str,
-    auth: &crate::wasm_runtime::AuthCapabilitySchema,
+    auth: &wasm_runtime::AuthCapabilitySchema,
     token: &str,
     refresh_token: Option<&str>,
     expires_in: Option<u64>,
