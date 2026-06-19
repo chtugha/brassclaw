@@ -34,6 +34,42 @@ use brassclaw_llm::auth::AuthPrompt;
 use brassclaw_llm::models::{ModelFetchOptions, build_nearai_model_fetch_config, fetch_models_for};
 use brassclaw_llm::{SessionConfig, SessionManager};
 
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 ChannelCapabilitiesFile type
+#[derive(Debug, Clone)]
+pub struct ChannelCapabilitiesFile {
+    // Minimal stub - no fields needed for compilation
+}
+
+impl ChannelCapabilitiesFile {
+    /// Stub method for parsing capabilities file
+    pub fn from_bytes(_bytes: &[u8]) -> Result<Self, String> {
+        Err("V1 ChannelCapabilitiesFile deleted - V2 migration needed".to_string())
+    }
+}
+
+/// Stub for deleted V1 available_channel_names function
+fn available_channel_names() -> Vec<&'static str> {
+    // Return empty list - bundled channels not available in V1 stub
+    Vec::new()
+}
+
+/// Stub for deleted V1 install_bundled_channel function
+async fn install_bundled_channel(
+    _name: &str,
+    _channels_dir: &std::path::Path,
+    _force: bool,
+) -> Result<(), String> {
+    Err("V1 install_bundled_channel deleted - V2 migration needed".to_string())
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
+
 /// `AuthPrompt` impl for the interactive setup wizard: prints the device
 /// code to stdout and tries to open the verification URL in a browser.
 struct WizardAuthPrompt;
