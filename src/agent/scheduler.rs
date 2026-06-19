@@ -52,18 +52,6 @@ impl ApprovalContext {
 }
 
 /// Stub for deleted V1 ToolRegistry - needs V2 reimplementation
-#[derive(Clone)]
-pub struct ToolRegistry {
-    _placeholder: (),
-}
-
-impl ToolRegistry {
-    #[allow(dead_code)]
-    pub async fn get(&self, _name: &str) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
-        None
-    }
-}
-
 /// Stub for deleted V1 WorkerDeps - needs V2 reimplementation
 #[allow(dead_code)]
 struct WorkerDeps {
@@ -159,6 +147,9 @@ pub struct Scheduler {
     /// model-facing tool list filter applies to background jobs too.
     /// `None` in tests / before `Config::with_runtime_overrides` runs.
     runtime_policy: Option<brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy>,
+    /// V1 tool registry (stub for V2 migration)
+    /// TODO: Remove after V2 migration complete
+    tools: Arc<crate::tools::ToolRegistry>,
     /// Running jobs (main LLM-driven jobs).
     jobs: Arc<RwLock<HashMap<Uuid, ScheduledJob>>>,
     /// Running sub-tasks (tool executions, background tasks).
@@ -638,7 +629,7 @@ impl Scheduler {
     /// TODO: V1 tool execution removed - needs V2 EffectExecutor implementation
     #[allow(dead_code)]
     async fn execute_tool_task(
-        _tools: Arc<ToolRegistry>,
+        _tools: Arc<crate::tools::ToolRegistry>,
         _effect_executor: Option<Arc<dyn EffectExecutor>>,
         context_manager: Arc<ContextManager>,
         _safety: Arc<SafetyLayer>,
