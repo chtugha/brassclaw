@@ -1880,7 +1880,7 @@ impl Agent {
                     .map(|t| {
                         matches!(
                             t.requires_approval(&serde_json::json!({})),
-                            ApprovalRequirement::Always
+                            crate::tools::ApprovalRequirement::Always
                         )
                     })
                     .unwrap_or(false);
