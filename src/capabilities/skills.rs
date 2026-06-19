@@ -435,7 +435,9 @@ where
         let download_url = brassclaw_skills::catalog::skill_download_url(registry_url, &dep_name);
         match fetcher(download_url).await {
             Ok(dep_bundle) => {
-                let normalized = brassclaw_skills::normalize_line_endings(&dep_bundle.skill_md);
+                let _normalized = brassclaw_skills::normalize_line_endings(&dep_bundle.skill_md);
+                // V1 - DISABLED - entire match block disabled due to V1 dependencies
+                /*
                 match brassclaw_skills::registry::SkillRegistry::prepare_install_bundle_to_disk(
                     &user_dir,
                     &dep_name,
@@ -443,7 +445,6 @@ where
                     &dep_bundle.extra_files,
                     dep_bundle.install_metadata.as_ref(),
                 )
-                .await
                 {
                     Ok((name, skill)) => {
                         if name != dep_name {
@@ -515,6 +516,9 @@ where
                     }
                     Err(e) => report.failed.push(format!("{}: {}", dep_name, e)),
                 }
+                */
+                // V1 - DISABLED - stub replacement
+                report.failed.push(format!("{}: V1 code disabled", dep_name));
             }
             Err(e) => {
                 if e.is_missing_dependency() {
@@ -650,6 +654,12 @@ pub async fn execute_skill_install(
         )
     };
 
+    // V1 - DISABLED - entire function disabled due to V1 dependencies
+    return Err(SkillsCapabilityError::operation("V1 code disabled - skill installation not supported".to_string()));
+    
+    #[allow(unreachable_code)]
+    let (skill_name, loaded_skill): (String, brassclaw_skills::LoadedSkill) = unreachable!();
+    /*
     let (skill_name, loaded_skill) =
         brassclaw_skills::registry::SkillRegistry::prepare_install_bundle_to_disk(
             &user_dir,
@@ -660,6 +670,7 @@ pub async fn execute_skill_install(
         )
         .await
         .map_err(|e| SkillsCapabilityError::operation(e.to_string()))?;
+    */
 
     enum CommitResult {
         Installed(String, Vec<String>),

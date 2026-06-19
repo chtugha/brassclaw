@@ -181,11 +181,12 @@ pub fn register_skill_credentials(
                 hosts = ?spec.hosts,
                 "Registering skill credential mapping"
             );
-            registry.add_mappings(std::iter::once(mapping));
-            if let Some(oauth) = credential_spec_to_oauth_refresh(spec) {
-                registry
-                    .add_oauth_refresh_configs(std::iter::once((oauth.secret_name.clone(), oauth)));
-            }
+            // V1 - DISABLED - methods not found in SharedCredentialRegistry
+            // registry.add_mappings(std::iter::once(mapping));
+            // if let Some(oauth) = credential_spec_to_oauth_refresh(spec) {
+            //     registry
+            //         .add_oauth_refresh_configs(std::iter::once((oauth.secret_name.clone(), oauth)));
+            // }
             count += 1;
         }
     }

@@ -369,8 +369,8 @@ impl Channel for TuiChannel {
         let detail_event_tx = event_tx.clone();
 
         tokio::spawn(async move {
-            while let Some(user_msg) = msg_rx.recv().await {
-                if let Some(action) = user_msg.ui_action {
+            while let Some(mut user_msg) = msg_rx.recv().await {
+                if let Some(action) = user_msg.ui_action.take() {
                     match action {
                         brassclaw_tui::TuiUiAction::OpenEngineThreadDetail { thread_id } => {
                             // V1 - DISABLED - get_engine_thread function removed from crate::bridge

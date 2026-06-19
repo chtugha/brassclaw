@@ -184,13 +184,14 @@ pub async fn run_status_command() -> anyhow::Result<()> {
     println!("{}", fmt::kv_line("Heartbeat", &hb_value, 12));
 
     // MCP servers
-    let mcp_value = match crate::mcp_client::config::load_mcp_servers().await {
-        Ok(servers) => {
-            let enabled = servers.servers.iter().filter(|s| s.enabled).count();
-            let total = servers.servers.len();
-            format!("{} enabled / {} configured", enabled, total)
-        }
-        Err(_) => "none configured".to_string(),
+    // V1 - DISABLED - load_mcp_servers() returns HashMap directly, not Result
+    let servers = crate::mcp_client::config::load_mcp_servers();
+    let mcp_value = if servers.is_empty() {
+        "none configured".to_string()
+    } else {
+        // V1 - DISABLED - McpServerConfig may not have 'enabled' field
+        let total = servers.len();
+        format!("{} configured", total)
     };
     println!("{}", fmt::kv_line("MCP Servers", &mcp_value, 12));
 

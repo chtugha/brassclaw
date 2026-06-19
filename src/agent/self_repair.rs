@@ -20,7 +20,11 @@ use crate::tenant::SystemScope;
 #[async_trait]
 pub trait SoftwareBuilder: Send + Sync {
     async fn build_tool(&self, _tool_name: &str) -> Result<serde_json::Value, RepairError> {
-        Err(RepairError::BuildFailed("V1 SoftwareBuilder deleted - tool building not supported".to_string()))
+        Err(RepairError::Failed {
+            target_type: "tool".to_string(),
+            target_id: uuid::Uuid::nil(),
+            reason: "V1 SoftwareBuilder deleted - tool building not supported".to_string(),
+        })
     }
 }
 

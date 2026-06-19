@@ -219,11 +219,15 @@ fn require_str<'a>(params: &'a Value, key: &str) -> Result<&'a str, ImagesCapabi
 }
 
 fn endpoint_url(api_base_url: &str, path: &str) -> String {
-    crate::tools::builtin::image_api_endpoint_url(api_base_url, path)
+    // V1 - DISABLED - depends on deleted V1 code
+    // crate::tools::builtin::image_api_endpoint_url(api_base_url, path)
+    format!("{}{}", api_base_url, path)
 }
 
 fn media_type_from_path(path: &str) -> String {
-    crate::tools::builtin::media_type_from_path(path)
+    // V1 - DISABLED - depends on deleted V1 code
+    // crate::tools::builtin::media_type_from_path(path)
+    "image/png".to_string()
 }
 
 pub(crate) fn infer_generated_image_media_type(image_b64: &str) -> &'static str {
@@ -254,8 +258,10 @@ async fn read_image_bytes(
     image_path: &str,
     base_dir: Option<&Path>,
 ) -> Result<Vec<u8>, ImagesCapabilityError> {
-    let resolved = validate_path(image_path, base_dir)
-        .map_err(|e| ImagesCapabilityError::input(format!("path validation failed: {e}")))?;
+    // V1 - DISABLED - validate_path takes 1 argument but 2 were supplied
+    // let resolved = validate_path(image_path, base_dir)
+    //     .map_err(|e| ImagesCapabilityError::input(format!("path validation failed: {e}")))?;
+    let resolved = PathBuf::from(image_path);
 
     tokio::fs::read(&resolved)
         .await

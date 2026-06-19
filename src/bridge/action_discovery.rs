@@ -78,8 +78,8 @@ impl ActionDiscovery {
     ) -> Result<Option<ToolOutput>, ToolError> {
         let name = require_str(params, "name")?;
         let detail = ActionInfoDetail::parse(params)?;
-        let action = Self::resolve(&inventory.inline, name)
-            .or_else(|| Self::resolve(&inventory.discoverable, name));
+        let action = Self::resolve(&inventory.inline, &name)
+            .or_else(|| Self::resolve(&inventory.discoverable, &name));
         let Some(action) = action else {
             return Ok(None);
         };
@@ -93,7 +93,7 @@ impl ActionDiscovery {
     ) -> Result<Option<ToolOutput>, ToolError> {
         let name = require_str(params, "name")?;
         let detail = ActionInfoDetail::parse(params)?;
-        let Some(action) = Self::resolve(actions, name) else {
+        let Some(action) = Self::resolve(actions, &name) else {
             return Ok(None);
         };
 

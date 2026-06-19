@@ -170,6 +170,7 @@ impl Scheduler {
             context_manager,
             llm,
             safety,
+            tools: Arc::new(crate::tools::ToolRegistry::new()), // V1 - stub for V2 migration
             effect_executor: deps.effect_executor,
             extension_manager: deps.extension_manager,
             store: deps.store,

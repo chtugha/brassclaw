@@ -333,7 +333,7 @@ impl ChannelsConfig {
                             message: "must be greater than 0".to_string(),
                         });
                     }
-                    max
+                    max as u64
                 },
                 broadcast_buffer: {
                     let buf: usize =

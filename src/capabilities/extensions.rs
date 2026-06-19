@@ -463,10 +463,10 @@ pub async fn execute_tool_list(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    // V1 - DISABLED - list() takes 2 args not 3
+    // V1 - DISABLED - list() takes 2 args not 3, kind_filter removed due to type issues
     let extensions = ctx
         .manager
-        .list(kind_filter, include_available) // , &ctx.user_id)
+        .list(&ctx.user_id, include_available)
         .await
         .map_err(|e| ExtensionsCapabilityError::operation(e.to_string()))?;
 

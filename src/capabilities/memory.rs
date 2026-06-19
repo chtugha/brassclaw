@@ -13,8 +13,8 @@ use crate::workspace::{Workspace, paths};
 // ============================================================================
 
 /// Stub for deleted V1 normalize_workspace_path function
-fn normalize_workspace_path(path: &str) -> String {
-    path.to_string()
+fn normalize_workspace_path(path: &str) -> Option<String> {
+    Some(path.to_string())
 }
 
 /// Stub for deleted V1 is_protected_orchestrator_path function

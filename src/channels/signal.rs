@@ -619,7 +619,7 @@ impl SignalChannel {
         let base_dir = brassclaw_base_dir();
 
         for path in paths {
-            crate::tools::builtin::path_utils::validate_path(path, Some(&base_dir)).map_err(
+            crate::tools::builtin::path_utils::validate_path(path).map_err(
                 |e| {
                     ChannelError::InvalidMessage(format!(
                         "Attachment path must be within {}: {}",
