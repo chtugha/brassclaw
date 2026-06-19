@@ -9,14 +9,6 @@ use std::sync::Arc;
 // V1 STUBS - TODO: Remove after V2 migration complete
 // ============================================================================
 
-/// Stub for deleted V1 ApprovalRequirement enum
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ApprovalRequirement {
-    Never,
-    UnlessAutoApproved,
-    Always,
-}
-
 /// Stub for deleted V1 PermissionState enum
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum PermissionState {
@@ -34,8 +26,8 @@ pub trait Tool: Send + Sync {
     fn description(&self) -> &str {
         "Stub tool - V1 deleted"
     }
-    fn requires_approval(&self, _params: &serde_json::Value) -> ApprovalRequirement {
-        ApprovalRequirement::Always
+    fn requires_approval(&self, _params: &serde_json::Value) -> crate::tools::ApprovalRequirement {
+        crate::tools::ApprovalRequirement::Always
     }
     fn sensitive_params(&self) -> Vec<String> {
         Vec::new()
@@ -45,7 +37,7 @@ pub trait Tool: Send + Sync {
         _params: serde_json::Value,
         _ctx: Arc<crate::context::JobContext>,
     ) -> Result<String, crate::error::Error> {
-        Err(crate::error::Error::ToolNotFound("V1 tool deleted".to_string()))
+        Err(crate::error::Error::Internal("V1 tool deleted".to_string()))
     }
 }
 
@@ -53,21 +45,21 @@ pub trait Tool: Send + Sync {
 fn process_tool_result(
     _safety: &brassclaw_safety::SafetyLayer,
     _tool_name: &str,
-    _tool_call_id: &str,
+    tool_call_id: &str,
     result: &Result<String, crate::error::Error>,
 ) -> (String, brassclaw_llm::ChatMessage) {
     let content = match result {
         Ok(s) => s.clone(),
         Err(e) => format!("Error: {}", e),
     };
-    let msg = brassclaw_llm::ChatMessage::tool_result(_tool_call_id, &content);
+    let msg = brassclaw_llm::ChatMessage::tool_result(tool_call_id, &content, false);
     (content, msg)
 }
 
 /// Stub for deleted V1 redact_params function
 fn redact_params(
     params: &serde_json::Value,
-    _sensitive_keys: Vec<String>,
+    _sensitive_keys: &[&str],
 ) -> serde_json::Value {
     // TODO: Implement proper redaction in V2
     params.clone()
@@ -2096,7 +2088,6 @@ impl Agent {
             let mut approval_needed: Option<(
                 usize,
                 brassclaw_llm::ToolCall,
-                Arc<dyn Tool>,
                 bool, // allow_always
             )> = None;
 
@@ -2109,18 +2100,18 @@ impl Agent {
                     } else {
                         let requirement = tool.requires_approval(&tc.arguments);
                         let needs = match requirement {
-                            ApprovalRequirement::Never => false,
-                            ApprovalRequirement::UnlessAutoApproved => {
+                            crate::tools::ApprovalRequirement::Never => false,
+                            crate::tools::ApprovalRequirement::UnlessAutoApproved => {
                                 let sess = session.lock().await;
                                 !sess.is_tool_auto_approved(&tc.name)
                             }
-                            ApprovalRequirement::Always => true,
+                            crate::tools::ApprovalRequirement::Always => true,
                         };
-                        (needs, !matches!(requirement, ApprovalRequirement::Always))
+                        (needs, !matches!(requirement, crate::tools::ApprovalRequirement::Always))
                     };
 
                     if needs_approval {
-                        approval_needed = Some((idx, tc.clone(), tool, allow_always));
+                        approval_needed = Some((idx, tc.clone(), allow_always));
                         break; // remaining tools stay deferred
                     }
                 }
@@ -2333,7 +2324,7 @@ impl Agent {
             }
 
             // Handle approval if a tool needed it
-            if let Some((approval_idx, tc, tool, allow_always)) = approval_needed {
+            if let Some((approval_idx, tc, allow_always)) = approval_needed {
                 // Emit auth prompt alongside the approval card so the user
                 // sees the connect button without waiting for approval to resolve.
                 if let Some((ref ext_name, ref auth_data)) = selected_auth_prompt {
@@ -2353,8 +2344,8 @@ impl Agent {
                     request_id: Uuid::new_v4(),
                     tool_name: tc.name.clone(),
                     parameters: tc.arguments.clone(),
-                    display_parameters: redact_params(&tc.arguments, tool.sensitive_params()),
-                    description: tool.description().to_string(),
+                    display_parameters: redact_params(&tc.arguments, &[]),
+                    description: "Tool pending approval".to_string(),
                     tool_call_id: tc.id.clone(),
                     context_messages: context_messages.clone(),
                     deferred_tool_calls: deferred_tool_calls[approval_idx + 1..].to_vec(),
