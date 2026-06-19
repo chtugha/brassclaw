@@ -5,13 +5,14 @@ jobs = 16
 # Incremental compilation for faster rebuilds
 incremental = true
 
-# Use faster linker (mold if available, otherwise system default)
+# Use ld64 (native macOS linker) explicitly
 [target.x86_64-apple-darwin]
-rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/ld"]
 
 [target.aarch64-apple-darwin]
-rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/ld"]
 
+# Use mold on Linux for faster linking
 [target.x86_64-unknown-linux-gnu]
 rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 
@@ -21,9 +22,10 @@ rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 # Faster compilation profile for development
 [profile.dev]
 opt-level = 0
-debug = 1  # Reduced debug info for faster compilation
+debug = 0  # No debug info for fastest compilation
 incremental = true
 codegen-units = 256  # More parallel codegen units
+split-debuginfo = "off"  # Disable debug info splitting
 
 # Share build artifacts across workspaces
 [net]

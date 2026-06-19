@@ -346,6 +346,14 @@ required-features = ["libsql", "integration"]
 name = "html_to_markdown"
 required-features = ["html-to-markdown"]
 
+[profile.dev]
+# Optimize dev builds for faster compilation
+opt-level = 0           # No optimization for fastest compilation
+debug = 0               # No debug info for fastest compilation
+incremental = true      # Incremental compilation
+codegen-units = 256     # Maximum parallelism
+split-debuginfo = "off" # Disable debug info splitting
+
 [profile.release]
 strip = true          # Remove debug symbols from release binaries
 
