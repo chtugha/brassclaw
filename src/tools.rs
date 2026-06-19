@@ -118,6 +118,12 @@ impl Tool {
     pub fn requires_approval(&self, _params: &serde_json::Value) -> ApprovalRequirement {
         ApprovalRequirement::Never
     }
+
+    /// Get sensitive parameter names (stub returns empty slice)
+    /// TODO: Remove after V2 migration complete
+    pub fn sensitive_params(&self) -> &[&str] {
+        &[]
+    }
 }
 
 /// Stub for deleted V1 ToolCall
