@@ -12,8 +12,10 @@ use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
 use tokio::sync::RwLock;
 
-use crate::tools::builtin::path_utils::{DEFAULT_EXCLUDED_DIRS, normalize_lexical, validate_path};
 use crate::workspace::paths as ws_paths;
+
+// TODO: Extract path utilities from deleted V1 code
+// const DEFAULT_EXCLUDED_DIRS: &[&str] = &[".git", "node_modules", "target"];
 
 pub const PROVIDER_ID: &str = "builtin";
 

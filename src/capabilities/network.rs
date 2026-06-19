@@ -17,8 +17,9 @@ use crate::db::UserStore;
 use crate::secrets::SecretsStore;
 use crate::wasm_runtime::{InjectedCredentials, SharedCredentialRegistry, inject_credential};
 
-#[cfg(feature = "html-to-markdown")]
-use crate::tools::builtin::convert_html_to_markdown;
+// TODO: Extract HTML conversion from deleted V1 code
+// #[cfg(feature = "html-to-markdown")]
+// use crate::tools::builtin::convert_html_to_markdown;
 
 pub const PROVIDER_ID: &str = "builtin";
 pub const HTTP_CAPABILITY_ID: &str = "builtin.http";

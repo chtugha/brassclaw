@@ -9,7 +9,7 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::tools::builtin::path_utils::validate_path;
+// TODO: Extract path validation from deleted V1 code
 
 pub const PROVIDER_ID: &str = "builtin";
 pub const IMAGE_GENERATE_CAPABILITY_ID: &str = "builtin.image_generate";

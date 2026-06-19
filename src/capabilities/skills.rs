@@ -11,7 +11,8 @@ use serde_json::{Value, json};
 use brassclaw_skills::catalog::{SkillCatalog, catalog_entry_is_installed, resolve_catalog_slug_for_name};
 use brassclaw_skills::registry::SkillRegistry;
 
-use crate::tools::builtin::skill_tools::{SkillFetchError, SkillInstallPayload, fetch_skill_payload};
+// TODO: Extract skill utilities from deleted V1 code
+// use crate::tools::builtin::skill_tools::{SkillFetchError, SkillInstallPayload, fetch_skill_payload};
 
 pub const PROVIDER_ID: &str = "builtin";
 pub const SKILL_INSTALL_CAPABILITY_ID: &str = "builtin.skill_install";

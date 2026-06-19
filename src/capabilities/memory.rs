@@ -6,9 +6,9 @@ use brassclaw_host_api::{
     ResourceEstimate, ResourceProfile, RuntimeKind, TrustClass,
 };
 use serde_json::{Value, json};
-
-use crate::tools::builtin::memory::{WorkspaceResolver, is_protected_orchestrator_path, normalize_workspace_path};
+// TODO: Extract memory utilities from deleted V1 code
 use crate::workspace::{Workspace, paths};
+
 
 pub const PROVIDER_ID: &str = "builtin";
 pub const MEMORY_READ_CAPABILITY_ID: &str = "builtin.memory_read";
