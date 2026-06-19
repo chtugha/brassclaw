@@ -27,7 +27,7 @@ use crate::channels::ChannelManager;
 pub struct ExtensionManager {
     registry: Arc<ExtensionRegistry>,
     discovery: Arc<OnlineDiscovery>,
-    secrets: Arc<SecretsStore>,
+    secrets: Arc<dyn SecretsStore>,
     hooks: Arc<HookRegistry>,
     pairing: Arc<PairingStore>,
     channel_manager: Arc<ChannelManager>,
