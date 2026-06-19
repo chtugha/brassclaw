@@ -44,6 +44,7 @@ mod lifecycle;
 mod outbound_delivery;
 mod policy;
 mod reborn_services;
+mod safety_config;
 mod webui_inbound;
 mod workflow;
 
@@ -123,6 +124,7 @@ pub use policy::{
     BeforeInboundPolicy, BeforeInboundPolicyOutcome, BeforeInboundPolicyRequest,
     NoopBeforeInboundPolicy,
 };
+pub use safety_config::{SafetyConfigResponse, SafetyEntry, UpdateSafetyConfigRequest};
 // Projection/event types that route handlers need to thread through SSE
 // (parse the resume cursor, render browser-safe event payloads). Re-exported
 // so `brassclaw_webui_v2` consumes them via the facade crate and does not need
@@ -143,14 +145,16 @@ pub use reborn_services::{
     NearAiWalletLoginRequest, NearAiWalletLoginResult, OutboundPreferencesProductFacade,
     ProductAgentBoundCaller, RebornAutomationInfo, RebornAutomationRunStatus,
     RebornAutomationSource, RebornAutomationState, RebornCancelRunResponse,
-    RebornChannelConnectAction, RebornChannelConnectStrategy, RebornConnectableChannelInfo,
+    RebornCapabilityInfo, RebornChannelConnectAction, RebornChannelConnectStrategy,
+    RebornConnectableChannelInfo,
     RebornConnectableChannelListResponse, RebornCreateThreadResponse, RebornDeleteThreadRequest,
     RebornDeleteThreadResponse, RebornExtensionActionResponse, RebornExtensionCredentialSetup,
     RebornExtensionInfo, RebornExtensionListResponse, RebornExtensionOnboardingPayload,
     RebornExtensionOnboardingState, RebornExtensionRegistryEntry, RebornExtensionRegistryResponse,
     RebornExtensionSetupField, RebornExtensionSetupSecret, RebornGetRunStateRequest,
-    RebornGetRunStateResponse, RebornListAutomationsResponse, RebornListThreadsResponse,
-    RebornOutboundDeliveryModality, RebornOutboundDeliveryTargetCapabilities,
+    RebornGetRunStateResponse, RebornListAutomationsResponse, RebornListCapabilitiesResponse,
+    RebornListThreadsResponse, RebornOutboundDeliveryModality,
+    RebornOutboundDeliveryTargetCapabilities,
     RebornOutboundDeliveryTargetChannel, RebornOutboundDeliveryTargetDescription,
     RebornOutboundDeliveryTargetDisplayName, RebornOutboundDeliveryTargetId,
     RebornOutboundDeliveryTargetListResponse, RebornOutboundDeliveryTargetOption,
@@ -159,9 +163,10 @@ pub use reborn_services::{
     RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind,
     RebornSetOutboundPreferencesRequest, RebornSetupExtensionResponse, RebornStreamEventsRequest,
     RebornStreamEventsResponse, RebornSubmitTurnResponse, RebornTimelineRequest,
-    RebornTimelineResponse, SetActiveLlmRequest, StaticConnectableChannelsProductFacade,
-    UnsupportedAutomationProductFacade, UnsupportedOutboundPreferencesProductFacade,
-    UpsertLlmProviderRequest,
+    RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
+    RebornUpdateCapabilityPermissionResponse, SetActiveLlmRequest,
+    StaticConnectableChannelsProductFacade, UnsupportedAutomationProductFacade,
+    UnsupportedOutboundPreferencesProductFacade, UpsertLlmProviderRequest,
 };
 
 pub use webui_inbound::{

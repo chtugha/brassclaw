@@ -444,6 +444,46 @@ registerPack("en", {
   "tools.noMatch": "No tools match the filter.",
   "tools.failedLoad": "Failed to load tools: {message}",
 
+  // Settings — tools tab
+  "settings.tools.title": "Tool Capabilities",
+  "settings.tools.empty": "No tools registered",
+  "settings.tools.emptyDesc": "Tool capabilities will appear here once extensions or MCP servers are connected.",
+  "settings.tools.failedLoad": "Failed to load tools: {message}",
+  "settings.tools.updateFailed": "Failed to update tool permission",
+  "settings.tools.permission.allow": "Allow",
+  "settings.tools.permission.ask": "Ask",
+  "settings.tools.permission.deny": "Deny",
+  "settings.tools.effects": "Effects",
+  "settings.tools.effects.read": "Read access to files or data",
+  "settings.tools.effects.write": "Write or modify files or data",
+  "settings.tools.effects.execute": "Execute commands or code",
+  "settings.tools.effects.network": "Network access",
+  "settings.tools.effects.system": "System-level operations",
+
+  // Settings — safety tab
+  "settings.safety.title": "Safety Configuration",
+  "settings.safety.failedLoad": "Failed to load safety configuration: {message}",
+  "settings.safety.updateFailed": "Failed to update safety configuration",
+  "settings.safety.add_entry": "Add entry",
+  "settings.safety.add_entry_placeholder": "Enter pattern...",
+  "settings.safety.remove_entry": "Remove entry",
+  "settings.safety.default_entry": "Default",
+  "settings.safety.user_entry": "User",
+  "settings.safety.default_entries": "Default entries",
+  "settings.safety.user_entries": "User entries",
+  
+  "settings.safety.sensitive_paths.title": "Sensitive Path Blocking",
+  "settings.safety.sensitive_paths.description": "Block access to credential files and sensitive directories (e.g., .env, SSH keys, credential stores)",
+  "settings.safety.sensitive_paths.empty": "No sensitive path patterns configured",
+  
+  "settings.safety.workspace_rules.title": "Workspace File Rules",
+  "settings.safety.workspace_rules.description": "Protect workspace-specific files from modification (e.g., MEMORY.md, HEARTBEAT.md, IDENTITY.md)",
+  "settings.safety.workspace_rules.empty": "No workspace rules configured",
+  
+  "settings.safety.blocked_paths.title": "Device/Process Path Blocking",
+  "settings.safety.blocked_paths.description": "Block access to device files and process information (e.g., /dev/zero, /dev/urandom, /proc/kcore)",
+  "settings.safety.blocked_paths.empty": "No blocked paths configured",
+
   // Settings — skills tab
   "skills.installed": "Installed skills",
   "skills.noInstalled": "No skills installed",

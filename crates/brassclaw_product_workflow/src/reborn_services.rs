@@ -70,7 +70,7 @@ pub use llm_config::{
 };
 pub use types::{
     RebornAutomationInfo, RebornAutomationRunStatus, RebornAutomationSource, RebornAutomationState,
-    RebornCancelRunResponse, RebornChannelConnectAction,
+    RebornCancelRunResponse, RebornCapabilityInfo, RebornChannelConnectAction,
     RebornChannelConnectStrategy, RebornConnectableChannelInfo, RebornConnectableChannelListResponse,
     RebornCreateThreadResponse, RebornDeleteThreadRequest, RebornDeleteThreadResponse,
     RebornExtensionActionResponse, RebornExtensionCredentialSetup, RebornExtensionInfo,
@@ -601,6 +601,71 @@ pub trait RebornServicesApi: Send + Sync {
         caller: WebUiAuthenticatedCaller,
         request: RebornUpdateCapabilityPermissionRequest,
     ) -> Result<RebornUpdateCapabilityPermissionResponse, RebornServicesError>;
+
+    /// Safety configuration methods - default to "not implemented" so facades that
+    /// don't wire safety config inherit a safe surface.
+    async fn get_safety_sensitive_paths(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
+        Err(RebornServicesError::new(
+            RebornServicesErrorKind::NotImplemented,
+            "Safety configuration not implemented",
+        ))
+    }
+
+    async fn update_safety_sensitive_paths(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: crate::safety_config::UpdateSafetyConfigRequest,
+    ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
+        Err(RebornServicesError::new(
+            RebornServicesErrorKind::NotImplemented,
+            "Safety configuration not implemented",
+        ))
+    }
+
+    async fn get_safety_workspace_rules(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
+        Err(RebornServicesError::new(
+            RebornServicesErrorKind::NotImplemented,
+            "Safety configuration not implemented",
+        ))
+    }
+
+    async fn update_safety_workspace_rules(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: crate::safety_config::UpdateSafetyConfigRequest,
+    ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
+        Err(RebornServicesError::new(
+            RebornServicesErrorKind::NotImplemented,
+            "Safety configuration not implemented",
+        ))
+    }
+
+    async fn get_safety_blocked_paths(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
+        Err(RebornServicesError::new(
+            RebornServicesErrorKind::NotImplemented,
+            "Safety configuration not implemented",
+        ))
+    }
+
+    async fn update_safety_blocked_paths(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: crate::safety_config::UpdateSafetyConfigRequest,
+    ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
+        Err(RebornServicesError::new(
+            RebornServicesErrorKind::NotImplemented,
+            "Safety configuration not implemented",
+        ))
+    }
 }
 
 /// Default facade implementation composed at the WebUI boundary.

@@ -85,6 +85,16 @@ export function fetchExtensions() {
 export function fetchExtensionRegistry() {
   return apiFetch("/api/webchat/v2/extensions/registry");
 }
+// Tools/capabilities management — v2 native endpoints
+export function fetchTools() {
+  return apiFetch("/api/webchat/v2/tools");
+}
+export function updateToolPermission(toolId, mode) {
+  return apiFetch(`/api/webchat/v2/tools/${encodeURIComponent(toolId)}/permission`, {
+    method: "PUT",
+    body: JSON.stringify({ mode }),
+  });
+}
 export function fetchSkills() {
   return Promise.resolve({ skills: [], todo: true });
 }
@@ -102,4 +112,33 @@ export function createUser(_payload) {
 }
 export function updateUser(_id, _payload) {
   return Promise.resolve({ success: false, message: "TODO: requires v2 users endpoint" });
+}
+
+// Safety configuration — v2 native endpoints
+export function fetchSafetySensitivePaths() {
+  return apiFetch("/api/webchat/v2/safety/sensitive-paths");
+}
+export function updateSafetySensitivePaths(payload) {
+  return apiFetch("/api/webchat/v2/safety/sensitive-paths", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+export function fetchSafetyWorkspaceRules() {
+  return apiFetch("/api/webchat/v2/safety/workspace-rules");
+}
+export function updateSafetyWorkspaceRules(payload) {
+  return apiFetch("/api/webchat/v2/safety/workspace-rules", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+export function fetchSafetyBlockedPaths() {
+  return apiFetch("/api/webchat/v2/safety/blocked-paths");
+}
+export function updateSafetyBlockedPaths(payload) {
+  return apiFetch("/api/webchat/v2/safety/blocked-paths", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
 }

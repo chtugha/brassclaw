@@ -81,7 +81,6 @@ pub mod skills;
 pub mod mcp_client;
 pub mod tenant;
 pub mod timezone;
-pub mod tools;
 pub mod trace_client;
 pub mod trace_contribution;
 pub mod tracing_fmt;

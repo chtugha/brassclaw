@@ -28,10 +28,11 @@ use brassclaw_product_workflow::{
     RebornCancelRunResponse, RebornConnectableChannelListResponse, RebornCreateThreadResponse,
     RebornDeleteThreadRequest, RebornDeleteThreadResponse, RebornExtensionActionResponse,
     RebornExtensionListResponse, RebornExtensionRegistryResponse, RebornListAutomationsResponse,
-    RebornListThreadsResponse, RebornResolveGateResponse, RebornServicesApi, RebornServicesError,
-    RebornServicesErrorCode, RebornServicesErrorKind, RebornSetupExtensionResponse,
-    RebornStreamEventsRequest, RebornSubmitTurnResponse, RebornTimelineRequest,
-    RebornTimelineResponse, SetActiveLlmRequest, UpsertLlmProviderRequest,
+    RebornListCapabilitiesResponse, RebornListThreadsResponse, RebornResolveGateResponse,
+    RebornServicesApi, RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind,
+    RebornSetupExtensionResponse, RebornStreamEventsRequest, RebornSubmitTurnResponse,
+    RebornTimelineRequest, RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
+    RebornUpdateCapabilityPermissionResponse, SetActiveLlmRequest, UpsertLlmProviderRequest,
     WebUiAuthenticatedCaller, WebUiCancelRunRequest, WebUiCreateThreadRequest,
     WebUiInboundValidationCode, WebUiInboundValidationError, WebUiListAutomationsRequest,
     WebUiListThreadsRequest, WebUiResolveGateRequest, WebUiSendMessageRequest,
@@ -895,5 +896,40 @@ async fn ws_send_with_timeout(
         }
     }
 }
+/// `GET /api/webchat/v2/tools`
+///
+/// List all registered capabilities with their current permission modes.
+/// Returns capability metadata including ID, description, provider, effects,
+/// and permission settings.
+pub async fn list_tools(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<RebornListCapabilitiesResponse>, WebUiV2HttpError> {
+    let response = state.services().list_capabilities(caller).await?;
+    Ok(Json(response))
+}
+
+/// `PUT /api/webchat/v2/tools/{capability_id}/permission`
+///
+/// Update the permission mode for a specific capability. The permission
+/// override is scoped to the caller's tenant and persisted in the database.
+///
+/// Body shape: [`RebornUpdateCapabilityPermissionRequest`] (path `capability_id`
+/// overrides body value).
+pub async fn update_tool_permission(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(capability_id): Path<String>,
+    Json(mut body): Json<RebornUpdateCapabilityPermissionRequest>,
+) -> Result<Json<RebornUpdateCapabilityPermissionResponse>, WebUiV2HttpError> {
+    body.capability_id = capability_id;
+    let response = state
+        .services()
+        .update_capability_permission(caller, body)
+        .await?;
+    Ok(Json(response))
+}
+
+pub mod safety;
 
 // Made with Bob

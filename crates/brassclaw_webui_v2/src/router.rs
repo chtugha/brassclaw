@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use brassclaw_product_workflow::RebornServicesApi;
 
 use crate::descriptors::{
@@ -20,12 +20,13 @@ use crate::descriptors::{
     WEBUI_V2_PATTERN_INSTALL_EXTENSION,
     WEBUI_V2_PATTERN_LIST_AUTOMATIONS, WEBUI_V2_PATTERN_LIST_CONNECTABLE_CHANNELS,
     WEBUI_V2_PATTERN_LIST_EXTENSION_REGISTRY, WEBUI_V2_PATTERN_LIST_EXTENSIONS,
-    WEBUI_V2_PATTERN_LIST_LLM_MODELS, WEBUI_V2_PATTERN_REMOVE_EXTENSION,
-    WEBUI_V2_PATTERN_RESOLVE_GATE, WEBUI_V2_PATTERN_SEND_MESSAGE,
-    WEBUI_V2_PATTERN_SET_ACTIVE_LLM, WEBUI_V2_PATTERN_SETUP_EXTENSION,
-    WEBUI_V2_PATTERN_START_CODEX_LOGIN, WEBUI_V2_PATTERN_START_NEARAI_LOGIN,
-    WEBUI_V2_PATTERN_STREAM_EVENTS, WEBUI_V2_PATTERN_STREAM_EVENTS_WS,
-    WEBUI_V2_PATTERN_TEST_LLM_CONNECTION,
+    WEBUI_V2_PATTERN_LIST_LLM_MODELS, WEBUI_V2_PATTERN_LIST_TOOLS,
+    WEBUI_V2_PATTERN_REMOVE_EXTENSION, WEBUI_V2_PATTERN_RESOLVE_GATE,
+    WEBUI_V2_PATTERN_SEND_MESSAGE, WEBUI_V2_PATTERN_SET_ACTIVE_LLM,
+    WEBUI_V2_PATTERN_SETUP_EXTENSION, WEBUI_V2_PATTERN_START_CODEX_LOGIN,
+    WEBUI_V2_PATTERN_START_NEARAI_LOGIN, WEBUI_V2_PATTERN_STREAM_EVENTS,
+    WEBUI_V2_PATTERN_STREAM_EVENTS_WS, WEBUI_V2_PATTERN_TEST_LLM_CONNECTION,
+    WEBUI_V2_PATTERN_UPDATE_TOOL_PERMISSION,
 };
 use crate::handlers;
 use crate::sse_capacity::{DEFAULT_SSE_MAX_CONCURRENT_PER_CALLER, SseCapacity};
@@ -153,6 +154,24 @@ pub fn webui_v2_router_with_options(state: WebUiV2State, options: WebUiV2RouteOp
         .route(
             WEBUI_V2_PATTERN_SETUP_EXTENSION,
             get(handlers::get_extension_setup).post(handlers::setup_extension),
+        )
+        .route(WEBUI_V2_PATTERN_LIST_TOOLS, get(handlers::list_tools))
+        .route(
+            WEBUI_V2_PATTERN_UPDATE_TOOL_PERMISSION,
+            put(handlers::update_tool_permission),
+        )
+        // Safety configuration endpoints
+        .route(
+            "/api/webchat/v2/safety/sensitive-paths",
+            get(handlers::safety::get_sensitive_paths).put(handlers::safety::update_sensitive_paths),
+        )
+        .route(
+            "/api/webchat/v2/safety/workspace-rules",
+            get(handlers::safety::get_workspace_rules).put(handlers::safety::update_workspace_rules),
+        )
+        .route(
+            "/api/webchat/v2/safety/blocked-paths",
+            get(handlers::safety::get_blocked_paths).put(handlers::safety::update_blocked_paths),
         );
     if options.mount_llm_config_routes {
         router = router

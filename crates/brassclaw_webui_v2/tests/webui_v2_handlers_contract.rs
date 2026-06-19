@@ -566,6 +566,46 @@ impl RebornServicesApi for StubServices {
             message: String::new(),
         })
     }
+
+    async fn list_capabilities(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<brassclaw_product_workflow::RebornListCapabilitiesResponse, RebornServicesError> {
+        use brassclaw_product_workflow::{RebornCapabilityInfo, RebornListCapabilitiesResponse};
+        Ok(RebornListCapabilitiesResponse {
+            capabilities: vec![
+                RebornCapabilityInfo {
+                    id: "web_search".to_string(),
+                    description: "Search the web".to_string(),
+                    provider: "builtin".to_string(),
+                    effects: vec!["network".to_string()],
+                    permission_mode: "allowed".to_string(),
+                    default_permission: "allowed".to_string(),
+                },
+                RebornCapabilityInfo {
+                    id: "file_read".to_string(),
+                    description: "Read files".to_string(),
+                    provider: "builtin".to_string(),
+                    effects: vec!["filesystem".to_string()],
+                    permission_mode: "prompt".to_string(),
+                    default_permission: "prompt".to_string(),
+                },
+            ],
+        })
+    }
+
+    async fn update_capability_permission(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        request: brassclaw_product_workflow::RebornUpdateCapabilityPermissionRequest,
+    ) -> Result<brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse, RebornServicesError> {
+        use brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse;
+        Ok(RebornUpdateCapabilityPermissionResponse {
+            capability_id: request.capability_id,
+            permission_mode: request.permission_mode,
+            updated: true,
+        })
+    }
 }
 
 fn extension_action_response(message: &str) -> RebornExtensionActionResponse {
@@ -1854,6 +1894,19 @@ async fn stream_events_releases_slot_when_facade_drain_stalls_past_max_lifetime(
         ) -> Result<RebornSetupExtensionResponse, RebornServicesError> {
             unreachable!("not exercised by this test")
         }
+        async fn list_capabilities(
+            &self,
+            _caller: WebUiAuthenticatedCaller,
+        ) -> Result<brassclaw_product_workflow::RebornListCapabilitiesResponse, RebornServicesError> {
+            unreachable!("not exercised by this test")
+        }
+        async fn update_capability_permission(
+            &self,
+            _caller: WebUiAuthenticatedCaller,
+            _request: brassclaw_product_workflow::RebornUpdateCapabilityPermissionRequest,
+        ) -> Result<brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse, RebornServicesError> {
+            unreachable!("not exercised by this test")
+        }
     }
 
     // Cap of 1 so we can observe slot release directly: a second open
@@ -2612,4 +2665,75 @@ async fn stream_events_ws_releases_slot_on_peer_close() {
     let mut ws_two = recovered.0;
     let _ = ws_two.close(None).await;
     serve_handle.abort();
+}
+
+#[tokio::test]
+async fn list_tools_returns_capabilities() {
+    let services: Arc<dyn RebornServicesApi> = Arc::new(StubServices::default());
+    let router = router_with(services);
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/webchat/v2/tools")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body_bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body bytes");
+    let body: Value = serde_json::from_slice(&body_bytes).expect("json");
+
+    assert!(body.get("capabilities").is_some());
+    let capabilities = body["capabilities"].as_array().expect("capabilities array");
+    assert_eq!(capabilities.len(), 2);
+    
+    // Verify first capability
+    assert_eq!(capabilities[0]["id"], "web_search");
+    assert_eq!(capabilities[0]["provider"], "builtin");
+    assert_eq!(capabilities[0]["permission_mode"], "allowed");
+    
+    // Verify second capability
+    assert_eq!(capabilities[1]["id"], "file_read");
+    assert_eq!(capabilities[1]["permission_mode"], "prompt");
+}
+
+#[tokio::test]
+async fn update_tool_permission_updates_capability() {
+    let services: Arc<dyn RebornServicesApi> = Arc::new(StubServices::default());
+    let router = router_with(services);
+
+    let request_body = serde_json::json!({
+        "capability_id": "web_search",
+        "permission_mode": "denied"
+    });
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/api/webchat/v2/tools/web_search/permission")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&request_body).expect("json")))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body_bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body bytes");
+    let body: Value = serde_json::from_slice(&body_bytes).expect("json");
+
+    assert_eq!(body["capability_id"], "web_search");
+    assert_eq!(body["permission_mode"], "denied");
+    assert_eq!(body["updated"], true);
 }
