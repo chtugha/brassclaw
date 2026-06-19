@@ -14,6 +14,26 @@ use crate::db::{SettingsStore, UserStore};
 use crate::secrets::{CreateSecretParams, DecryptedSecret, SecretError, SecretsStore};
 // TODO: V1 wasm_runtime module removed - OAuthRefreshConfig and SSRF protection functions need V2 reimplementation
 
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 ValidationEndpointSchema type (re-exported from extension.rs)
+pub use crate::auth::extension::ValidationEndpointSchema;
+
+/// Stub for deleted V1 OAuthRefreshConfig type
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct OAuthRefreshConfig {
+    pub secret_name: String,
+    pub token_url: String,
+    pub client_id: String,
+    pub client_secret: Option<String>,
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
+
 const AUTH_DESCRIPTORS_SETTING_KEY: &str = "auth.descriptors_v1";
 
 /// TTL for cached auth-descriptor maps. Bounded so that:
@@ -114,7 +134,7 @@ pub struct PendingOAuthLaunchParams {
     pub access_token_field: String,
     pub secret_name: String,
     pub provider: Option<String>,
-    pub validation_endpoint: Option<crate::wasm_runtime::ValidationEndpointSchema>,
+    pub validation_endpoint: Option<ValidationEndpointSchema>,
     pub scopes: Vec<String>,
     pub use_pkce: bool,
     pub extra_params: HashMap<String, String>,
