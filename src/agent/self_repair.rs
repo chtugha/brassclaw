@@ -11,6 +11,23 @@ use crate::context::{ContextManager, JobState};
 use crate::error::RepairError;
 use crate::tenant::SystemScope;
 
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 SoftwareBuilder trait
+/// This trait was used for building WASM tools, which is deprecated in V2
+#[async_trait]
+pub trait SoftwareBuilder: Send + Sync {
+    async fn build_tool(&self, _tool_name: &str) -> Result<serde_json::Value, RepairError> {
+        Err(RepairError::BuildFailed("V1 SoftwareBuilder deleted - tool building not supported".to_string()))
+    }
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
+
 /// A job that has been detected as stuck.
 #[derive(Debug, Clone)]
 pub struct StuckJob {
