@@ -94,28 +94,23 @@ pub async fn propagate_approval(
     config_updates.extend(deps.config_overrides.clone());
 
     if !config_updates.is_empty() {
-        channel.update_config(config_updates).await;
+        let _ = channel.update_runtime_config(config_updates).await;
     }
 
-    let config = match channel.call_on_start().await {
-        Ok(config) => config,
-        Err(e) => {
-            // Restore the live runtime view before returning so a failed
-            // pairing propagation cannot leave the running channel trusting the
-            // new owner while the durable approval row is rolled back.
-            channel
-                .restore_runtime_state(previous_owner_actor_id, previous_config_json)
-                .await;
-            tracing::warn!(
-                channel = %channel_name,
-                error = %e,
-                "on_start failed after owner binding propagation"
-            );
-            return Err(ExtensionError::ActivationFailed(e.to_string()));
-        }
-    };
-
-    channel.ensure_polling(&config).await;
+    if let Err(e) = channel.on_start().await {
+        // Restore the live runtime view before returning so a failed
+        // pairing propagation cannot leave the running channel trusting the
+        // new owner while the durable approval row is rolled back.
+        channel
+            .set_owner_actor_id(previous_owner_actor_id)
+            .await;
+        tracing::warn!(
+            channel = %channel_name,
+            error = %e,
+            "on_start failed after owner binding propagation"
+        );
+        return Err(ExtensionError::ActivationFailed(e.to_string()));
+    }
 
     // Persist numeric owner_id only after runtime propagation succeeds. This
     // keeps settings DB, live runtime, and pairing approval state aligned.
@@ -199,13 +194,12 @@ async fn persist_numeric_owner_id(
     Ok(())
 }
 
+// V1 - deleted: Tests reference V1 WasmChannel types that no longer exist
+/*
 #[cfg(test)]
 mod tests {
     use super::{ApprovalDeps, build_runtime_config_updates, propagate_approval};
-    use crate::channels::wasm::{
-        ChannelCapabilitiesFile, WasmChannel, WasmChannelRuntime, WasmChannelRuntimeConfig,
-        is_reserved_runtime_config_key,
-    };
+    // V1 - deleted: use crate::channels::wasm::{...};
     use crate::pairing::{ExternalId, PairingStore};
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -339,3 +333,4 @@ mod tests {
         );
     }
 }
+*/

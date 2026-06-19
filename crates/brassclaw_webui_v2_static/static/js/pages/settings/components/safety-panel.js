@@ -322,4 +322,3 @@ function SafetyEntry({ entry, onToggle, onRemove, isUpdating, t }) {
   `;
 }
 
-// Made with Bob

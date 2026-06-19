@@ -1,3 +1,5 @@
+#![cfg(disabled)] // V1 - entire file disabled due to dispatcher dependencies
+
 //! Thread and session operations for the agent.
 //!
 //! Extracted from `agent_loop.rs` to isolate thread management (user input
@@ -80,11 +82,12 @@ use uuid::Uuid;
 
 use crate::agent::Agent;
 use crate::agent::compaction::ContextCompactor;
-use crate::agent::dispatcher::{
-    AgenticLoopResult, ParsedAuthData, TurnUsageSummary, auth_instructions_or_default,
-    capture_auth_prompt, emit_auth_required_status, execute_chat_tool_standalone,
-    persist_selected_auth_prompt, restore_selected_auth_prompt,
-};
+// V1 - dispatcher module disabled
+// use crate::agent::dispatcher::{
+//     AgenticLoopResult, ParsedAuthData, TurnUsageSummary, auth_instructions_or_default,
+//     capture_auth_prompt, emit_auth_required_status, execute_chat_tool_standalone,
+//     persist_selected_auth_prompt, restore_selected_auth_prompt,
+// };
 use crate::agent::session::{
     MAX_PENDING_MESSAGES, PendingApproval, Session, ThreadState, TurnOutcome, TurnToolCall,
 };
@@ -1991,7 +1994,7 @@ impl Agent {
                         Some(pending.tool_call_id.clone()),
                         &tool_result,
                         &pending.display_parameters,
-                        tool_ref.as_ref().map(|t| t as &dyn crate::tools::Tool),
+                        None, // V1 Tool trait removed
                         Some(duration_ms),
                     ),
                     &message.metadata,
@@ -2160,7 +2163,7 @@ impl Agent {
                                 Some(tc.id.clone()),
                                 &result,
                                 &tc.arguments,
-                                deferred_tool.as_ref().map(|t| t as &dyn crate::tools::Tool),
+                                None, // V1 Tool trait removed
                                 Some(duration_ms),
                             ),
                             &message.metadata,
@@ -2217,7 +2220,7 @@ impl Agent {
                                     Some(tc.id.clone()),
                                     &result,
                                     &tc.arguments,
-                                    par_tool.as_ref().map(|t| t as &dyn crate::tools::Tool),
+                                    None, // V1 Tool trait removed
                                     Some(duration_ms),
                                 ),
                                 &metadata,

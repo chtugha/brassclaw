@@ -29,25 +29,51 @@ pub struct ToolRegistry {
 }
 
 impl ToolRegistry {
-    /// Stub method to get a tool by name
-    pub fn get(&self, _name: &str) -> Option<Arc<dyn Tool>> {
-        None
-    }
+    // V1 - async trait not dyn-compatible - commented out
+    // /// Stub method to get a tool by name
+    // pub fn get(&self, _name: &str) -> Option<Arc<dyn Tool>> {
+    //     None
+    // }
 }
 
-/// Stub trait for deleted V1 Tool
-pub trait Tool: Send + Sync {
-    fn webhook_capability(&self) -> Option<WebhookCapability> {
-        None
+// V1 - async trait not dyn-compatible - commented out entire Tool trait
+// pub trait Tool: Send + Sync {
+//     fn webhook_capability(&self) -> Option<WebhookCapability> {
+//         None
+//     }
+//
+//     // V1 - stub for execute method
+//     async fn execute(
+//         &self,
+//         _params: serde_json::Value,
+//         _ctx: &JobContext,
+//     ) -> Result<ToolOutput, String> {
+//         Err("V1 Tool execute not implemented".to_string())
+//     }
+// }
+
+/// Stub for deleted V1 ToolOutput
+pub struct ToolOutput {
+    pub result: serde_json::Value,
+}
+
+impl ToolOutput {
+    pub fn success(result: serde_json::Value, _duration: std::time::Duration) -> Self {
+        Self { result }
     }
 }
 
 /// Stub for deleted V1 WebhookCapability
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct WebhookCapability {
     pub auth_method: String,
     pub hmac_signature_header: Option<String>,
     pub hmac_prefix: Option<String>,
+    pub secret_name: Option<String>,
+    pub secret_header: Option<String>,
+    pub signature_key_secret_name: Option<String>,
+    pub hmac_secret_name: Option<String>,
+    pub hmac_timestamp_header: Option<String>,
 }
 
 /// Stub module for deleted V1 channels::wasm::signature
@@ -135,25 +161,26 @@ pub fn routes(state: ToolWebhookState) -> Router {
         .with_state(state)
 }
 
+// V1 - async trait not dyn-compatible - commented out
 async fn tool_webhook_health(
     Path(tool): Path<String>,
-    State(state): State<ToolWebhookState>,
+    State(_state): State<ToolWebhookState>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let Some(tool_impl) = state.tools.get(&tool).await else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": format!("Tool not found: {tool}") })),
-        );
-    };
-    if tool_impl.webhook_capability().is_none() {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": format!("Tool does not support webhooks: {tool}") })),
-        );
-    }
+    // let Some(tool_impl) = state.tools.get(&tool) else {
+    //     return (
+    //         StatusCode::NOT_FOUND,
+    //         Json(serde_json::json!({ "error": format!("Tool not found: {tool}") })),
+    //     );
+    // };
+    // if tool_impl.webhook_capability().is_none() {
+    //     return (
+    //         StatusCode::NOT_FOUND,
+    //         Json(serde_json::json!({ "error": format!("Tool does not support webhooks: {tool}") })),
+    //     );
+    // }
     (
-        StatusCode::OK,
-        Json(serde_json::json!({ "status": "ok", "tool": tool })),
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(serde_json::json!({ "error": format!("V1 webhook system disabled: {tool}") })),
     )
 }
 
@@ -179,132 +206,21 @@ async fn tool_webhook_with_rest_handler(
     tool_webhook_handler_inner(tool, Some(rest), state, method, headers, query, body).await
 }
 
+// V1 - async trait not dyn-compatible - commented out
 async fn tool_webhook_handler_inner(
     tool: String,
-    rest: Option<String>,
-    state: ToolWebhookState,
-    method: Method,
-    headers: HeaderMap,
-    query: HashMap<String, String>,
-    body: axum::body::Bytes,
+    _rest: Option<String>,
+    _state: ToolWebhookState,
+    _method: Method,
+    _headers: HeaderMap,
+    _query: HashMap<String, String>,
+    _body: axum::body::Bytes,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    if body.len() > MAX_WEBHOOK_BODY_BYTES {
-        return (
-            StatusCode::PAYLOAD_TOO_LARGE,
-            Json(serde_json::json!({
-                "error": format!("Webhook body exceeds {} bytes", MAX_WEBHOOK_BODY_BYTES)
-            })),
-        );
-    }
-
-    let Some(tool_impl) = state.tools.get(&tool).await else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": format!("Tool not found: {tool}") })),
-        );
-    };
-
-    if let Err(msg) = validate_webhook_auth(
-        &*tool_impl,
-        state.secrets_store.as_deref(),
-        &state.user_id,
-        &headers,
-        &body,
+    // V1 webhook system disabled
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(serde_json::json!({ "error": format!("V1 webhook system disabled: {tool}") })),
     )
-    .await
-    {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(serde_json::json!({ "error": msg })),
-        );
-    }
-
-    let body_json: Option<serde_json::Value> = serde_json::from_slice(&body).ok();
-    let headers_map: HashMap<String, String> = headers
-        .iter()
-        .filter_map(|(k, v)| {
-            v.to_str()
-                .ok()
-                .map(|v| (k.as_str().to_string(), v.to_string()))
-        })
-        .collect();
-
-    let path = if let Some(rest) = rest.filter(|r| !r.is_empty()) {
-        format!("/webhook/tools/{tool}/{rest}")
-    } else {
-        format!("/webhook/tools/{tool}")
-    };
-
-    let params = serde_json::json!({
-        "action": "handle_webhook",
-        "webhook": {
-            "method": method.as_str(),
-            "path": path,
-            "query": query,
-            "headers": headers_map,
-            "body_json": body_json,
-            "body_raw": String::from_utf8_lossy(&body),
-        }
-    });
-
-    let ctx = JobContext::with_user(
-        state.user_id.clone(),
-        format!("webhook:{tool}"),
-        "Process external webhook",
-    );
-
-    let output = match tool_impl.execute(params, &ctx).await {
-        Ok(out) => out,
-        Err(e) => {
-            tracing::warn!(tool = %tool, error = %e, "Webhook tool execution failed");
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({ "error": "Tool execution failed" })),
-            );
-        }
-    };
-
-    let parsed: ToolWebhookOutput = match serde_json::from_value(output.result) {
-        Ok(v) => v,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({
-                    "error": "Tool webhook response must be a JSON object (optionally with 'emit_events' array)"
-                })),
-            );
-        }
-    };
-
-    let emitted_events = parsed.emit_events.len();
-    let mut fired_routines = 0usize;
-    if emitted_events > 0 {
-        let Some(engine) = state.routine_engine.read().await.as_ref().cloned() else {
-            return (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(serde_json::json!({ "error": "Routine engine not available" })),
-            );
-        };
-
-        for event in parsed.emit_events {
-            fired_routines += engine
-                .emit_system_event(
-                    &event.source,
-                    &event.event_type,
-                    &event.payload,
-                    Some(&state.user_id),
-                )
-                .await;
-        }
-    }
-
-    let response = ToolWebhookResponse {
-        status: "accepted",
-        tool,
-        emitted_events,
-        fired_routines,
-    };
-    (StatusCode::ACCEPTED, Json(serde_json::json!(response)))
 }
 
 fn header_value<'a>(headers: &'a HeaderMap, key: &str) -> Option<&'a str> {
@@ -312,120 +228,19 @@ fn header_value<'a>(headers: &'a HeaderMap, key: &str) -> Option<&'a str> {
     headers.get(key).and_then(|v| v.to_str().ok())
 }
 
-async fn validate_webhook_auth(
-    tool: &dyn Tool,
-    secrets_store: Option<&(dyn SecretsStore + Send + Sync)>,
-    user_id: &str,
-    headers: &HeaderMap,
-    body: &[u8],
-) -> Result<(), String> {
-    let Some(cfg) = tool.webhook_capability() else {
-        return Err(
-            "Tool does not declare a webhook capability; webhook access denied".to_string(),
-        );
-    };
+// V1 - async trait not dyn-compatible - commented out
+// async fn validate_webhook_auth(
+//     tool: &dyn Tool,
+//     secrets_store: Option<&(dyn SecretsStore + Send + Sync)>,
+//     user_id: &str,
+//     headers: &HeaderMap,
+//     body: &[u8],
+// ) -> Result<(), String> {
+//     Err("V1 webhook auth disabled".to_string())
+// }
 
-    // Require at least one authentication mechanism to be configured.
-    if cfg.secret_name.is_none()
-        && cfg.signature_key_secret_name.is_none()
-        && cfg.hmac_secret_name.is_none()
-    {
-        return Err(
-            "Webhook capability misconfigured: at least one auth mechanism must be configured"
-                .to_string(),
-        );
-    }
-
-    let Some(store) = secrets_store else {
-        return Err("Secrets store not available for webhook verification".to_string());
-    };
-
-    if let Some(secret_name) = cfg.secret_name.as_deref() {
-        let expected = store
-            .get_decrypted(user_id, secret_name)
-            .await
-            .map_err(|_| format!("Missing webhook secret '{secret_name}'"))?;
-        let expected = expected.expose();
-        let secret_header = cfg.secret_header.as_deref().unwrap_or("x-webhook-secret");
-        let provided = header_value(headers, secret_header)
-            .or_else(|| {
-                if secret_header != "x-webhook-secret" {
-                    header_value(headers, "x-webhook-secret")
-                } else {
-                    None
-                }
-            })
-            .ok_or_else(|| "Webhook secret required".to_string())?;
-
-        if !bool::from(expected.as_bytes().ct_eq(provided.as_bytes())) {
-            return Err("Invalid webhook secret".to_string());
-        }
-    }
-
-    if let Some(public_key_name) = cfg.signature_key_secret_name.as_deref() {
-        let key = store
-            .get_decrypted(user_id, public_key_name)
-            .await
-            .map_err(|_| format!("Missing signature key secret '{public_key_name}'"))?;
-        let key = key.expose();
-        let sig = header_value(headers, "x-signature-ed25519")
-            .ok_or_else(|| "Missing signature header".to_string())?;
-        let ts = header_value(headers, "x-signature-timestamp")
-            .ok_or_else(|| "Missing signature timestamp header".to_string())?;
-        let now_secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
-        if !wasm_signature_stubs::verify_discord_signature(key, sig, ts, body, now_secs)
-        {
-            return Err("Invalid signature".to_string());
-        }
-    }
-
-    if let Some(hmac_secret_name) = cfg.hmac_secret_name.as_deref() {
-        let secret = store
-            .get_decrypted(user_id, hmac_secret_name)
-            .await
-            .map_err(|_| format!("Missing HMAC secret '{hmac_secret_name}'"))?;
-        let secret = secret.expose();
-
-        if let Some(timestamp_header) = cfg.hmac_timestamp_header.as_deref() {
-            let sig_header = cfg
-                .hmac_signature_header
-                .as_deref()
-                .unwrap_or("x-slack-signature");
-            let sig = header_value(headers, sig_header)
-                .ok_or_else(|| "Missing HMAC signature header".to_string())?;
-            let ts = header_value(headers, timestamp_header)
-                .ok_or_else(|| "Missing HMAC timestamp header".to_string())?;
-            let now_secs = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as i64;
-            if !wasm_signature_stubs::verify_slack_signature(
-                secret, ts, body, sig, now_secs,
-            ) {
-                return Err("Invalid timestamped HMAC signature".to_string());
-            }
-        } else {
-            let sig_header = cfg
-                .hmac_signature_header
-                .as_deref()
-                .unwrap_or("x-hub-signature-256");
-            let prefix = cfg.hmac_prefix.as_deref().unwrap_or("sha256=");
-            let sig = header_value(headers, sig_header)
-                .ok_or_else(|| "Missing HMAC signature header".to_string())?;
-            if !wasm_signature_stubs::verify_hmac_sha256_prefixed(
-                secret, body, sig, prefix,
-            ) {
-                return Err("Invalid HMAC signature".to_string());
-            }
-        }
-    }
-
-    Ok(())
-}
-
+// V1 - deleted: Tests reference V1 types that no longer exist
+/*
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -437,7 +252,7 @@ mod tests {
 
     use crate::context::JobContext;
     use crate::secrets::{CreateSecretParams, InMemorySecretsStore, SecretsCrypto};
-    use crate::tools::{Tool, ToolError, ToolOutput, ToolRegistry};
+    // V1 - deleted: use crate::tools::{Tool, ToolError, ToolOutput, ToolRegistry};
 
     use super::*;
 
@@ -776,3 +591,4 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 }
+*/

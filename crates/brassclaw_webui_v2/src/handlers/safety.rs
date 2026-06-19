@@ -101,4 +101,3 @@ pub async fn update_blocked_paths(
     Ok(Json(response))
 }
 
-// Made with Bob

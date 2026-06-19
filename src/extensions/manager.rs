@@ -38,7 +38,7 @@ impl ExtensionManager {
     pub fn new(
         registry: Arc<ExtensionRegistry>,
         discovery: Arc<OnlineDiscovery>,
-        secrets: Arc<SecretsStore>,
+        secrets: Arc<dyn SecretsStore>,
         hooks: Arc<HookRegistry>,
         pairing: Arc<PairingStore>,
         channel_manager: Arc<ChannelManager>,
@@ -60,7 +60,7 @@ impl ExtensionManager {
         _user_id: &str,
     ) -> Result<Vec<SearchResult>, ExtensionError> {
         // Search local registry
-        let local_results = self.registry.search(query);
+        let local_results = self.registry.search(query).await;
         
         // TODO: Add online discovery when reimplemented
         
@@ -159,8 +159,8 @@ impl ExtensionManager {
         _name: &str,
         _user_id: &str,
     ) -> Result<ToolAuthState, ExtensionError> {
-        // Return unauthenticated state for all tools
-        Ok(ToolAuthState::Unauthenticated)
+        // V1 - Return stub state for all tools during V2 migration
+        Ok(ToolAuthState::NoAuth)
     }
 
     pub async fn start_interactive_login(
@@ -202,7 +202,7 @@ impl ExtensionManager {
         _user_id: &str,
     ) -> Result<Option<InstalledExtension>, ExtensionError> {
         // Check if extension exists in registry
-        if self.registry.get(name).is_some() {
+        if self.registry.get(name).await.is_some() {
             // Return None to indicate not installed
             Ok(None)
         } else {
@@ -229,8 +229,8 @@ impl ExtensionManager {
         &self.discovery
     }
 
-    pub fn secrets(&self) -> &SecretsStore {
-        &self.secrets
+    pub fn secrets(&self) -> &dyn SecretsStore {
+        &*self.secrets
     }
 
     pub fn hooks(&self) -> &HookRegistry {
@@ -268,6 +268,77 @@ impl ExtensionManager {
     pub fn pending_oauth_flows(&self) -> Vec<String> {
         Vec::new()
     }
-}
+    /// Get extension info (V1 stub - alias for get_extension_info)
+    /// TODO: Remove after V2 migration complete
+    pub async fn extension_info(
+        &self,
+        name: &str,
+        user_id: &str,
+    ) -> Result<Option<InstalledExtension>, ExtensionError> {
+        self.get_extension_info(name, user_id).await
+    }
 
-// Made with Bob
+    /// Get latent provider actions for default user (V1 stub)
+    /// TODO: Remove after V2 migration complete
+    pub async fn latent_provider_actions_default_user(
+        &self,
+    ) -> Result<Vec<LatentProviderAction>, ExtensionError> {
+        Ok(Vec::new())
+    }
+
+    /// Get latent provider actions (V1 stub - alias)
+    /// TODO: Remove after V2 migration complete
+    pub async fn latent_provider_actions(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<LatentProviderAction>, ExtensionError> {
+        self.get_latent_provider_actions(user_id).await
+    }
+
+    /// Get a specific latent provider action (V1 stub)
+    /// TODO: Remove after V2 migration complete
+    pub async fn latent_provider_action(
+        &self,
+        _name: &str,
+        _user_id: &str,
+    ) -> Result<Option<LatentProviderAction>, ExtensionError> {
+        Ok(None)
+    }
+
+    /// Get provider action names (V1 stub)
+    /// TODO: Remove after V2 migration complete
+    pub async fn provider_action_names(&self, _user_id: &str) -> Result<Vec<String>, ExtensionError> {
+        Ok(Vec::new())
+    }
+
+    /// Configure token (V1 stub)
+    /// TODO: Remove after V2 migration complete
+    pub async fn configure_token(
+        &self,
+        _name: &str,
+        _token: String,
+        _user_id: &str,
+    ) -> Result<ConfigureResult, ExtensionError> {
+        Err(ExtensionError::NotImplemented(
+            "Token configuration not yet available in V2".to_string()
+        ))
+    }
+
+    /// Get event publisher (V1 stub)
+    /// TODO: Remove after V2 migration complete
+    pub fn event_publisher(&self) -> Option<()> {
+        None
+    }
+
+    /// Start hosted OAuth flow (V1 stub)
+    /// TODO: Remove after V2 migration complete
+    pub async fn start_hosted_oauth_flow(
+        &self,
+        _name: &str,
+        _user_id: &str,
+    ) -> Result<InteractiveLoginStartResult, ExtensionError> {
+        Err(ExtensionError::NotImplemented(
+            "Hosted OAuth flow not yet available in V2".to_string()
+        ))
+    }
+}

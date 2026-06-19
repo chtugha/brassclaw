@@ -14,19 +14,29 @@ use crate::hooks::registry::HookRegistry;
 // V1 STUBS - TODO: Remove after V2 migration complete
 // ============================================================================
 
+/// Stub for deleted V1 DiscoveredTool type
+struct DiscoveredTool {
+    capabilities_path: Option<std::path::PathBuf>,
+}
+
+/// Stub for deleted V1 DiscoveredChannel type
+struct DiscoveredChannel {
+    capabilities_path: Option<std::path::PathBuf>,
+}
+
 /// Stub for deleted V1 discover_tools function
-async fn discover_tools(_dir: &Path) -> Vec<String> {
-    Vec::new()
+async fn discover_tools(_dir: &Path) -> Result<Vec<(String, DiscoveredTool)>, String> {
+    Ok(Vec::new())
 }
 
 /// Stub for deleted V1 discover_dev_tools function
-async fn discover_dev_tools(_dir: &Path) -> Vec<String> {
-    Vec::new()
+async fn discover_dev_tools() -> Result<Vec<(String, DiscoveredTool)>, String> {
+    Ok(Vec::new())
 }
 
 /// Stub for deleted V1 discover_channels function
-async fn discover_channels(_dir: &Path) -> Vec<String> {
-    Vec::new()
+async fn discover_channels(_dir: &Path) -> Result<Vec<(String, DiscoveredChannel)>, String> {
+    Ok(Vec::new())
 }
 
 // ============================================================================

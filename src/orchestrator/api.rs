@@ -257,11 +257,12 @@ impl OrchestratorApi {
         Router::new()
             // Worker routes: authenticated via route_layer middleware.
             .route("/worker/{job_id}/job", get(get_job))
-            .route("/worker/{job_id}/llm/complete", post(llm_complete))
-            .route(
-                "/worker/{job_id}/llm/complete_with_tools",
-                post(llm_complete_with_tools),
-            )
+            // V1 - deleted: LLM proxy routes
+            // .route("/worker/{job_id}/llm/complete", post(llm_complete))
+            // .route(
+            //     "/worker/{job_id}/llm/complete_with_tools",
+            //     post(llm_complete_with_tools),
+            // )
             .route("/worker/{job_id}/status", post(report_status))
             .route("/worker/{job_id}/complete", post(report_complete))
             .route("/worker/{job_id}/event", post(job_event_handler))
@@ -333,68 +334,69 @@ async fn get_job(
     }))
 }
 
-async fn llm_complete(
-    State(state): State<OrchestratorState>,
-    Path(job_id): Path<Uuid>,
-    Json(req): Json<ProxyCompletionRequest>,
-) -> Result<Json<ProxyCompletionResponse>, StatusCode> {
-    let completion_req = CompletionRequest {
-        messages: req.messages,
-        model: req.model,
-        max_tokens: req.max_tokens,
-        temperature: req.temperature,
-        stop_sequences: req.stop_sequences,
-        metadata: std::collections::HashMap::new(),
-    };
-
-    let resp = state.llm.complete(completion_req).await.map_err(|e| {
-        tracing::error!("LLM completion failed for job {}: {}", job_id, e);
-        StatusCode::BAD_GATEWAY
-    })?;
-
-    Ok(Json(ProxyCompletionResponse {
-        content: resp.content,
-        input_tokens: resp.input_tokens,
-        output_tokens: resp.output_tokens,
-        finish_reason: format_finish_reason(resp.finish_reason),
-        reasoning: resp.reasoning,
-        cache_read_input_tokens: resp.cache_read_input_tokens,
-        cache_creation_input_tokens: resp.cache_creation_input_tokens,
-    }))
-}
-
-async fn llm_complete_with_tools(
-    State(state): State<OrchestratorState>,
-    Path(job_id): Path<Uuid>,
-    Json(req): Json<ProxyToolCompletionRequest>,
-) -> Result<Json<ProxyToolCompletionResponse>, StatusCode> {
-    let tool_req = ToolCompletionRequest {
-        messages: req.messages,
-        tools: req.tools,
-        model: req.model,
-        max_tokens: req.max_tokens,
-        temperature: req.temperature,
-        stop_sequences: req.stop_sequences,
-        tool_choice: req.tool_choice,
-        metadata: std::collections::HashMap::new(),
-    };
-
-    let resp = state.llm.complete_with_tools(tool_req).await.map_err(|e| {
-        tracing::error!("LLM tool completion failed for job {}: {}", job_id, e);
-        StatusCode::BAD_GATEWAY
-    })?;
-
-    Ok(Json(ProxyToolCompletionResponse {
-        content: resp.content,
-        tool_calls: resp.tool_calls,
-        input_tokens: resp.input_tokens,
-        output_tokens: resp.output_tokens,
-        finish_reason: format_finish_reason(resp.finish_reason),
-        cache_read_input_tokens: resp.cache_read_input_tokens,
-        cache_creation_input_tokens: resp.cache_creation_input_tokens,
-        reasoning: resp.reasoning,
-    }))
-}
+// V1 - deleted: LLM proxy functions with incompatible types
+// async fn llm_complete(
+//     State(state): State<OrchestratorState>,
+//     Path(job_id): Path<Uuid>,
+//     Json(req): Json<ProxyCompletionRequest>,
+// ) -> Result<Json<ProxyCompletionResponse>, StatusCode> {
+//     let completion_req = CompletionRequest {
+//         messages: req.messages,
+//         model: req.model,
+//         max_tokens: req.max_tokens,
+//         temperature: req.temperature,
+//         stop_sequences: req.stop_sequences,
+//         metadata: std::collections::HashMap::new(),
+//     };
+//
+//     let resp = state.llm.complete(completion_req).await.map_err(|e| {
+//         tracing::error!("LLM completion failed for job {}: {}", job_id, e);
+//         StatusCode::BAD_GATEWAY
+//     })?;
+//
+//     Ok(Json(ProxyCompletionResponse {
+//         content: resp.content,
+//         input_tokens: resp.input_tokens,
+//         output_tokens: resp.output_tokens,
+//         finish_reason: format_finish_reason(resp.finish_reason),
+//         reasoning: resp.reasoning,
+//         cache_read_input_tokens: resp.cache_read_input_tokens,
+//         cache_creation_input_tokens: resp.cache_creation_input_tokens,
+//     }))
+// }
+//
+// async fn llm_complete_with_tools(
+//     State(state): State<OrchestratorState>,
+//     Path(job_id): Path<Uuid>,
+//     Json(req): Json<ProxyToolCompletionRequest>,
+// ) -> Result<Json<ProxyToolCompletionResponse>, StatusCode> {
+//     let tool_req = ToolCompletionRequest {
+//         messages: req.messages,
+//         tools: req.tools,
+//         model: req.model,
+//         max_tokens: req.max_tokens,
+//         temperature: req.temperature,
+//         stop_sequences: req.stop_sequences,
+//         tool_choice: req.tool_choice,
+//         metadata: std::collections::HashMap::new(),
+//     };
+//
+//     let resp = state.llm.complete_with_tools(tool_req).await.map_err(|e| {
+//         tracing::error!("LLM tool completion failed for job {}: {}", job_id, e);
+//         StatusCode::BAD_GATEWAY
+//     })?;
+//
+//     Ok(Json(ProxyToolCompletionResponse {
+//         content: resp.content,
+//         tool_calls: resp.tool_calls,
+//         input_tokens: resp.input_tokens,
+//         output_tokens: resp.output_tokens,
+//         finish_reason: format_finish_reason(resp.finish_reason),
+//         cache_read_input_tokens: resp.cache_read_input_tokens,
+//         cache_creation_input_tokens: resp.cache_creation_input_tokens,
+//         reasoning: resp.reasoning,
+//     }))
+// }
 
 async fn report_status(
     State(state): State<OrchestratorState>,

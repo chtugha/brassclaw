@@ -25,4 +25,3 @@ pub struct UpdateSafetyConfigRequest {
     pub entries: Vec<SafetyEntry>,
 }
 
-// Made with Bob

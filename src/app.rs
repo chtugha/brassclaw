@@ -571,21 +571,22 @@ impl AppBuilder {
             }
 
             let ws = Arc::new(ws);
-            let pool: Arc<dyn crate::capabilities::memory::WorkspaceResolver> =
-                Arc::new(crate::channels::web::platform::state::WorkspacePool::new(
-                    Arc::clone(db),
-                    embeddings.clone(),
-                    emb_cache_config,
-                    self.config.search.clone(),
-                    self.config.workspace.clone(),
-                ));
+            // V1 - WorkspacePool deleted with channels::web
+            // let pool: Arc<dyn crate::capabilities::memory::WorkspaceResolver> =
+            //     Arc::new(crate::channels::web::platform::state::WorkspacePool::new(
+            //         Arc::clone(db),
+            //         embeddings.clone(),
+            //         emb_cache_config,
+            //         self.config.search.clone(),
+            //         self.config.workspace.clone(),
+            //     ));
             
             tracing::debug!(
                 multi_tenant = is_multi_tenant,
                 "Workspace configured for V2 capability system"
             );
 
-            (Some(ws), Some(pool))
+            (Some(ws), None) // V1 - pool disabled
         } else {
             (None, None)
         };
@@ -639,18 +640,19 @@ impl AppBuilder {
             }
         }
 
-        // Create minimal extension manager stub
-        let extension_manager = if let Some(ref secrets) = self.secrets_store {
-            let em = ExtensionManager::new_stub(
-                Arc::clone(secrets),
-                self.config.owner_id.clone(),
-                self.db.clone(),
-                catalog_entries.clone(),
-            );
-            Some(Arc::new(em))
-        } else {
-            None
-        };
+        // V1 - ExtensionManager::new_stub deleted - comment out for now
+        let extension_manager: Option<Arc<ExtensionManager>> = None;
+        // let extension_manager = if let Some(ref secrets) = self.secrets_store {
+        //     let em = ExtensionManager::new_stub(
+        //         Arc::clone(secrets),
+        //         self.config.owner_id.clone(),
+        //         self.db.clone(),
+        //         catalog_entries.clone(),
+        //     );
+        //     Some(Arc::new(em))
+        // } else {
+        //     None
+        // };
 
         tracing::debug!("Extension manager stub initialized for V2 capability system");
 
@@ -712,7 +714,7 @@ impl AppBuilder {
             hooks
                 .register(Arc::new(crate::hooks::SessionSummaryHook::new(
                     Arc::clone(db) as Arc<dyn crate::db::ConversationStore>,
-                    Arc::clone(ws_resolver),
+                    Arc::clone(ws_resolver) as Arc<dyn crate::session_summary::WorkspaceResolver>,
                     summary_llm,
                 )))
                 .await;
@@ -837,14 +839,15 @@ impl AppBuilder {
 
             // TODO: V1 credential registry removed - skill credential registration needs V2 reimplementation
             // crate::skills::register_skill_credentials(registry.skills(), &credential_registry);
-            if let Some(db) = self.db.as_ref() {
-                crate::skills::persist_skill_auth_descriptors(
-                    registry.skills(),
-                    Some(db.as_ref()),
-                    &self.config.owner_id,
-                )
-                .await;
-            }
+            // V1 - persist_skill_auth_descriptors deleted
+            // if let Some(db) = self.db.as_ref() {
+            //     crate::skills::persist_skill_auth_descriptors(
+            //         registry.skills(),
+            //         Some(db.as_ref()),
+            //         &self.config.owner_id,
+            //     )
+            //     .await;
+            // }
 
             let registry = Arc::new(std::sync::RwLock::new(registry));
             let catalog = brassclaw_skills::catalog::shared_catalog();
@@ -865,18 +868,7 @@ impl AppBuilder {
 
         tracing::debug!("V2 capability system initialization starting");
 
-        // One-shot cleanup of ghost-seeded tool permission rows for the
-        // owner. Pre-#3559, `seed_tool_permissions` wrote the code-level
-        // defaults (e.g. `tool_install` → `AskEachTime`) into the DB so
-        // the permissions panel could render them. Those rows were
-        // indistinguishable from user-explicit overrides, so a user
-        // could not be told from someone who never touched the setting,
-        // and `AGENT_AUTO_APPROVE_TOOLS=true` ended up bypassing
-        // user-explicit `AskEachTime` choices (#3559 security review).
-        // The seeder is gone; this migration deletes ghost rows once,
-        // after which any remaining row is user-explicit by
-        // construction and `resolve_permission` can trust its value.
-        cleanup_ghost_seeded_tool_permissions(self.db.as_ref(), &self.config.owner_id).await;
+        // V1 cleanup removed - V2 permission system uses capability_permissions table
 
         // Initialize V2 Reborn Capability System
         // Create a workspace resolver for memory context
@@ -1243,107 +1235,8 @@ async fn migrate_session_credential(
         }
     }
 }
+// V1 cleanup function removed - V2 uses capability_permissions table
 
-/// Sentinel settings key marking that ghost-seeded tool permission rows
-/// have been cleaned up for this owner. Reads/writes are idempotent and
-/// scoped per-user, so the migration is safe to re-run.
-const TOOL_PERMISSION_CLEANUP_SENTINEL: &str = "_internal.tool_permissions_seed_cleanup_v1";
-
-/// One-shot migration that removes ghost-seeded `tool_permissions.<name>`
-/// rows whose value matches `seeded_default_permission(name)` from the
-/// owner's settings. After this runs, any surviving DB row is a
-/// user-explicit choice — which lets `ToolPermissionSnapshot` treat all
-/// DB rows as explicit again. See `cleanup_ghost_seeded_tool_permissions`
-/// call site for context and the #3559 security review.
-async fn cleanup_ghost_seeded_tool_permissions(db: Option<&Arc<dyn Database>>, owner_id: &str) {
-    let db = match db {
-        Some(db) => db,
-        None => {
-            tracing::debug!(
-                "cleanup_ghost_seeded_tool_permissions: no database available, skipping"
-            );
-            return;
-        }
-    };
-
-    // Skip if migration already ran for this owner.
-    match db
-        .get_setting(owner_id, TOOL_PERMISSION_CLEANUP_SENTINEL)
-        .await
-    {
-        Ok(Some(_)) => {
-            tracing::debug!("cleanup_ghost_seeded_tool_permissions: sentinel present, skipping");
-            return;
-        }
-        Ok(None) => {}
-        Err(e) => {
-            tracing::warn!(
-                "cleanup_ghost_seeded_tool_permissions: failed to read sentinel: {}",
-                e
-            );
-            return;
-        }
-    }
-
-    let db_map = match db.get_all_settings(owner_id).await {
-        Ok(m) => m,
-        Err(e) => {
-            tracing::warn!(
-                "cleanup_ghost_seeded_tool_permissions: failed to load settings: {}",
-                e
-            );
-            return;
-        }
-    };
-    let existing = crate::settings::Settings::from_db_map(&db_map).tool_permissions;
-
-    let mut deleted = 0u32;
-    for (tool_name, state) in &existing {
-        let Some(seeded) = crate::tools::permissions::seeded_default_permission(tool_name) else {
-            continue;
-        };
-        if *state != seeded {
-            continue;
-        }
-        match db
-            .delete_setting(owner_id, &format!("tool_permissions.{}", tool_name))
-            .await
-        {
-            Ok(_) => deleted += 1,
-            Err(e) => {
-                tracing::warn!(
-                    "cleanup_ghost_seeded_tool_permissions: failed to delete '{}': {}",
-                    tool_name,
-                    e
-                );
-            }
-        }
-    }
-
-    // Record the sentinel even on partial failures so we don't re-scan
-    // every startup. The deletes are idempotent if a future run does
-    // re-process the same row.
-    if let Err(e) = db
-        .set_setting(
-            owner_id,
-            TOOL_PERMISSION_CLEANUP_SENTINEL,
-            &serde_json::json!(true),
-        )
-        .await
-    {
-        tracing::warn!(
-            "cleanup_ghost_seeded_tool_permissions: failed to write sentinel: {}",
-            e
-        );
-    }
-
-    if deleted > 0 {
-        tracing::info!(
-            count = deleted,
-            "Cleaned up ghost-seeded tool permission rows for owner"
-        );
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -1439,88 +1332,6 @@ mod tests {
         assert!(!session_id.is_empty());
     }
 
-    /// #3559 security review: ghost-seeded rows whose value matches the
-    /// code-level seeded default are deleted on first run. After cleanup,
-    /// the row no longer exists in DB and `effective_permission` falls
-    /// back to the code-level default at read time. Genuine user
-    /// overrides (value != seeded default) survive untouched. The
-    /// migration is idempotent — re-running after the sentinel is
-    /// written is a no-op.
-    #[cfg(feature = "libsql")]
-    #[tokio::test]
-    async fn cleanup_ghost_seeded_tool_permissions_removes_seed_matching_rows() {
-        use crate::db::Database;
-        use crate::db::libsql::LibSqlBackend;
-        use crate::tools::permissions::PermissionState;
-
-        let dir = tempfile::tempdir().unwrap();
-        let db_path = dir.path().join("test_cleanup.db");
-        let backend = LibSqlBackend::new_local(&db_path).await.unwrap();
-        backend.run_migrations().await.unwrap();
-        let db: Arc<dyn Database> = Arc::new(backend);
-
-        let owner = "test-user";
-
-        // 1. Simulate the old seeder's effect: write seeded-default rows
-        //    for `tool_install` (AskEachTime) and `echo` (AlwaysAllow),
-        //    plus a real user override for `shell` (AlwaysAllow, diverges
-        //    from the seeded AskEachTime).
-        let install_seed = serde_json::to_value(PermissionState::AskEachTime).unwrap();
-        let echo_seed = serde_json::to_value(PermissionState::AlwaysAllow).unwrap();
-        let shell_override = serde_json::to_value(PermissionState::AlwaysAllow).unwrap();
-        db.set_setting(owner, "tool_permissions.tool_install", &install_seed)
-            .await
-            .unwrap();
-        db.set_setting(owner, "tool_permissions.echo", &echo_seed)
-            .await
-            .unwrap();
-        db.set_setting(owner, "tool_permissions.shell", &shell_override)
-            .await
-            .unwrap();
-
-        // 2. Run the cleanup migration.
-        super::cleanup_ghost_seeded_tool_permissions(Some(&db), owner).await;
-
-        let map = db.get_all_settings(owner).await.unwrap();
-        let settings = crate::settings::Settings::from_db_map(&map);
-
-        // Ghost-seeded rows are gone.
-        assert!(
-            !settings.tool_permissions.contains_key("tool_install"),
-            "tool_install row matching the seeded default must be removed"
-        );
-        assert!(
-            !settings.tool_permissions.contains_key("echo"),
-            "echo row matching the seeded default must be removed"
-        );
-
-        // Genuine user override survives.
-        assert_eq!(
-            settings.tool_permissions.get("shell"),
-            Some(&PermissionState::AlwaysAllow),
-            "shell override diverging from the seeded default must survive cleanup"
-        );
-
-        // Sentinel is set so subsequent runs are no-ops.
-        let sentinel = db
-            .get_setting(owner, super::TOOL_PERMISSION_CLEANUP_SENTINEL)
-            .await
-            .unwrap();
-        assert!(sentinel.is_some(), "cleanup sentinel must be written");
-
-        // 3. Re-running the migration after the sentinel is a no-op:
-        //    re-seed a ghost row and assert it survives the second pass.
-        db.set_setting(owner, "tool_permissions.tool_install", &install_seed)
-            .await
-            .unwrap();
-        super::cleanup_ghost_seeded_tool_permissions(Some(&db), owner).await;
-        let map = db.get_all_settings(owner).await.unwrap();
-        let settings = crate::settings::Settings::from_db_map(&map);
-        assert_eq!(
-            settings.tool_permissions.get("tool_install"),
-            Some(&PermissionState::AskEachTime),
-            "after sentinel is written, a manually re-inserted row must NOT be cleaned up; \
-             the migration is one-shot per owner"
-        );
-    }
+    // V1 cleanup test removed - V2 uses capability_permissions table
+    // #3559 security review: ghost-seeded rows whose value matches the
 }

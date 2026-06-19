@@ -35,7 +35,7 @@ pub mod relay;
 mod repl;
 mod signal;
 pub mod wasm;
-pub mod web;
+// pub mod web; // V1 web channel removed - replaced by brassclaw_webui_v2
 #[cfg(feature = "tui")]
 pub mod tui;
 

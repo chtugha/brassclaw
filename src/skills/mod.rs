@@ -38,7 +38,8 @@ pub use attenuation::{AttenuationResult, attenuate_tools};
 
 use crate::secrets::{CredentialLocation, CredentialMapping};
 use crate::{
-    auth::{AuthDescriptor, AuthDescriptorKind, OAuthFlowDescriptor, upsert_auth_descriptor},
+    // V1 - deleted: auth module no longer exists
+    // auth::{AuthDescriptor, AuthDescriptorKind, OAuthFlowDescriptor, upsert_auth_descriptor},
     db::SettingsStore,
 };
 use brassclaw_skills::{LoadedSkill, SkillCredentialLocation, SkillCredentialSpec};
@@ -107,122 +108,51 @@ pub fn credential_spec_to_mapping(spec: &SkillCredentialSpec) -> CredentialMappi
     }
 }
 
-fn credential_spec_to_oauth_refresh(spec: &SkillCredentialSpec) -> Option<OAuthRefreshConfig> {
-    let oauth = spec.oauth.as_ref()?;
-    match &oauth.refresh {
-        brassclaw_skills::ProviderRefreshStrategy::ReauthorizeOnly => return None,
-        brassclaw_skills::ProviderRefreshStrategy::Standard => {}
-        brassclaw_skills::ProviderRefreshStrategy::Custom {
-            refresh_url,
-            extra_params,
-        } => {
-            let builtin = crate::auth::oauth::builtin_credentials(&spec.name);
-            let exchange_proxy_url = crate::auth::oauth::exchange_proxy_url();
-            let client_id = oauth
-                .client_id
-                .clone()
-                .or_else(|| {
-                    oauth
-                        .client_id_env
-                        .as_ref()
-                        .and_then(|env| std::env::var(env).ok())
-                })
-                .or_else(|| builtin.as_ref().map(|c| c.client_id.to_string()))?;
-            let client_secret = oauth
-                .client_secret
-                .clone()
-                .or_else(|| {
-                    oauth
-                        .client_secret_env
-                        .as_ref()
-                        .and_then(|env| std::env::var(env).ok())
-                })
-                .or_else(|| builtin.as_ref().map(|c| c.client_secret.to_string()));
-            let client_secret = crate::auth::oauth::hosted_proxy_client_secret(
-                &client_secret,
-                builtin.as_ref(),
-                exchange_proxy_url.is_some(),
-            );
-
-            return Some(OAuthRefreshConfig {
-                token_url: refresh_url.clone(),
-                client_id,
-                client_secret,
-                exchange_proxy_url,
-                gateway_token: crate::auth::oauth::oauth_proxy_auth_token(),
-                secret_name: spec.name.clone(),
-                provider: Some(spec.provider.clone()),
-                extra_refresh_params: extra_params.clone(),
-            });
-        }
-    }
-
-    let builtin = crate::auth::oauth::builtin_credentials(&spec.name);
-    let exchange_proxy_url = crate::auth::oauth::exchange_proxy_url();
-    let client_id = oauth
-        .client_id
-        .clone()
-        .or_else(|| {
-            oauth
-                .client_id_env
-                .as_ref()
-                .and_then(|env| std::env::var(env).ok())
-        })
-        .or_else(|| builtin.as_ref().map(|c| c.client_id.to_string()))?;
-    let client_secret = oauth
-        .client_secret
-        .clone()
-        .or_else(|| {
-            oauth
-                .client_secret_env
-                .as_ref()
-                .and_then(|env| std::env::var(env).ok())
-        })
-        .or_else(|| builtin.as_ref().map(|c| c.client_secret.to_string()));
-    let client_secret = crate::auth::oauth::hosted_proxy_client_secret(
-        &client_secret,
-        builtin.as_ref(),
-        exchange_proxy_url.is_some(),
-    );
-
-    Some(OAuthRefreshConfig {
-        token_url: oauth.token_url.clone(),
-        client_id,
-        client_secret,
-        exchange_proxy_url,
-        gateway_token: crate::auth::oauth::oauth_proxy_auth_token(),
-        secret_name: spec.name.clone(),
-        provider: Some(spec.provider.clone()),
-        extra_refresh_params: std::collections::HashMap::new(),
-    })
+// V1 - deleted: OAuth refresh config conversion depends on V1 auth
+fn credential_spec_to_oauth_refresh(_spec: &SkillCredentialSpec) -> Option<OAuthRefreshConfig> {
+    // let oauth = spec.oauth.as_ref()?;
+    // match &oauth.refresh {
+    //     brassclaw_skills::ProviderRefreshStrategy::ReauthorizeOnly => return None,
+    //     brassclaw_skills::ProviderRefreshStrategy::Standard => {}
+    //     brassclaw_skills::ProviderRefreshStrategy::Custom {
+    //         refresh_url,
+    //         extra_params,
+    //     } => {
+    //         let builtin = crate::auth::oauth::builtin_credentials(&spec.name);
+    //         let exchange_proxy_url = crate::auth::oauth::exchange_proxy_url();
+    //         ...
+    //     }
+    // }
+    None
 }
 
-fn credential_spec_to_auth_descriptor(
-    skill_name: &str,
-    spec: &SkillCredentialSpec,
-) -> AuthDescriptor {
-    AuthDescriptor {
-        kind: AuthDescriptorKind::SkillCredential,
-        secret_name: spec.name.clone(),
-        integration_name: skill_name.to_string(),
-        display_name: Some(spec.provider.clone()),
-        provider: Some(spec.provider.clone()),
-        setup_url: None,
-        oauth: spec.oauth.as_ref().map(|oauth| OAuthFlowDescriptor {
-            authorization_url: oauth.authorization_url.clone(),
-            token_url: oauth.token_url.clone(),
-            client_id: oauth.client_id.clone(),
-            client_id_env: oauth.client_id_env.clone(),
-            client_secret: oauth.client_secret.clone(),
-            client_secret_env: oauth.client_secret_env.clone(),
-            scopes: oauth.scopes.clone(),
-            use_pkce: oauth.use_pkce,
-            extra_params: oauth.extra_params.clone(),
-            access_token_field: "access_token".to_string(),
-            validation_url: oauth.test_url.clone(),
-        }),
-    }
-}
+// V1 - deleted: AuthDescriptor type no longer exists
+// fn credential_spec_to_auth_descriptor(
+//     skill_name: &str,
+//     spec: &SkillCredentialSpec,
+// ) -> AuthDescriptor {
+//     AuthDescriptor {
+//         kind: AuthDescriptorKind::SkillCredential,
+//         secret_name: spec.name.clone(),
+//         integration_name: skill_name.to_string(),
+//         display_name: Some(spec.provider.clone()),
+//         provider: Some(spec.provider.clone()),
+//         setup_url: None,
+//         oauth: spec.oauth.as_ref().map(|oauth| OAuthFlowDescriptor {
+//             authorization_url: oauth.authorization_url.clone(),
+//             token_url: oauth.token_url.clone(),
+//             client_id: oauth.client_id.clone(),
+//             client_id_env: oauth.client_id_env.clone(),
+//             client_secret: oauth.client_secret.clone(),
+//             client_secret_env: oauth.client_secret_env.clone(),
+//             scopes: oauth.scopes.clone(),
+//             use_pkce: oauth.use_pkce,
+//             extra_params: oauth.extra_params.clone(),
+//             access_token_field: "access_token".to_string(),
+//             validation_url: oauth.test_url.clone(),
+//         }),
+//     }
+// }
 
 /// Register credential mappings from loaded skills into the shared registry.
 ///
@@ -264,23 +194,24 @@ pub fn register_skill_credentials(
     }
 }
 
-pub async fn persist_skill_auth_descriptors(
-    skills: &[LoadedSkill],
-    store: Option<&dyn SettingsStore>,
-    user_id: &str,
-) {
-    for skill in skills {
-        for spec in &skill.manifest.credentials {
-            let errors = brassclaw_skills::validation::validate_credential_spec(spec);
-            if !errors.is_empty() {
-                continue;
-            }
-
-            let descriptor = credential_spec_to_auth_descriptor(skill.name(), spec);
-            upsert_auth_descriptor(store, user_id, descriptor).await;
-        }
-    }
-}
+// V1 - deleted: Auth descriptor persistence no longer needed
+// pub async fn persist_skill_auth_descriptors(
+//     skills: &[LoadedSkill],
+//     store: Option<&dyn SettingsStore>,
+//     user_id: &str,
+// ) {
+//     for skill in skills {
+//         for spec in &skill.manifest.credentials {
+//             let errors = brassclaw_skills::validation::validate_credential_spec(spec);
+//             if !errors.is_empty() {
+//                 continue;
+//             }
+//
+//             let descriptor = credential_spec_to_auth_descriptor(skill.name(), spec);
+//             upsert_auth_descriptor(store, user_id, descriptor).await;
+//         }
+//     }
+// }
 
 #[cfg(test)]
 mod tests {

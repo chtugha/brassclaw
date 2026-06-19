@@ -932,4 +932,3 @@ pub async fn update_tool_permission(
 
 pub mod safety;
 
-// Made with Bob

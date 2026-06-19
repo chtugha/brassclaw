@@ -40,7 +40,7 @@
 
 pub mod agent;
 pub mod app;
-pub mod auth;
+// pub mod auth; // V1 auth bridge module - depends on deleted V1 types. V2 uses brassclaw_auth crate.
 pub mod boot_screen;
 pub mod bootstrap;
 pub mod bridge;
@@ -81,7 +81,7 @@ pub mod service;
 pub mod settings;
 pub mod setup;
 pub mod skills;
-pub mod tools;
+pub mod tools; // V1 tools stub module - provides compatibility types
 pub mod tenant;
 pub mod timezone;
 pub mod trace_client;

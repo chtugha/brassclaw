@@ -11,8 +11,68 @@ use crate::error::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-pub mod builtin;
-pub mod permissions;
+// V1 submodules - minimal stubs for compatibility
+pub mod builtin {
+    //! V1 builtin tools stub module
+    
+    pub mod path_utils {
+        //! Path utilities stub
+        use crate::error::Result;
+        
+        /// Stub for normalize_workspace_path function
+        pub fn normalize_workspace_path(path: &str) -> String {
+            path.to_string()
+        }
+        
+        /// Stub for validate_path function
+        pub fn validate_path(_path: &str) -> Result<()> {
+            Ok(())
+        }
+    }
+    
+    /// Stub for image_api_endpoint_url function
+    pub fn image_api_endpoint_url() -> String {
+        String::new()
+    }
+    
+    /// Stub for media_type_from_path function
+    pub fn media_type_from_path(_path: &str) -> Option<String> {
+        None
+    }
+}
+
+pub mod permissions {
+    //! V1 permissions stub module
+    use serde::{Deserialize, Serialize};
+    
+    /// Stub for V1 PermissionState
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub enum PermissionState {
+        Allowed,
+        Denied,
+        RequiresApproval,
+    }
+    
+    impl Default for PermissionState {
+        fn default() -> Self {
+            Self::RequiresApproval
+        }
+    }
+    
+    /// Stub for V1 AdminToolPolicy
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub enum AdminToolPolicy {
+        AllowAll,
+        DenyAll,
+        RequireApproval,
+    }
+    
+    impl Default for AdminToolPolicy {
+        fn default() -> Self {
+            Self::RequireApproval
+        }
+    }
+}
 
 /// Stub for deleted V1 ToolRegistry
 #[derive(Debug, Clone)]
@@ -173,4 +233,3 @@ pub fn redact_params(_params: &serde_json::Value) -> serde_json::Value {
 // END V1 STUBS
 // ============================================================================
 
-// Made with Bob

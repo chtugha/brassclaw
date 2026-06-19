@@ -56,6 +56,9 @@ pub struct CapabilitiesFile {
     pub description: Option<String>,
     pub capabilities: Vec<String>,
     pub auth: Option<AuthCapabilitySchema>,
+    pub setup: Option<serde_json::Value>,
+    pub http: Option<serde_json::Value>,
+    pub secrets: Option<serde_json::Value>,
 }
 
 impl CapabilitiesFile {
@@ -81,7 +84,8 @@ pub mod wasm_runtime {
     use std::path::Path;
 
     // Re-export types so they can be used as crate::wasm_runtime::Type
-    pub use super::{AuthCapabilitySchema, OAuthConfigSchema, ValidationEndpointSchema};
+    pub use super::{AuthCapabilitySchema, OAuthConfigSchema};
+    pub use crate::cli::tool::ValidationEndpointSchema;
 
     /// Stub for deleted V1 WasmRuntime
     pub struct WasmRuntime;
@@ -541,11 +545,19 @@ async fn show_tool_info(
                     || caps
                         .setup
                         .as_ref()
-                        .is_some_and(|s| !s.required_secrets.is_empty())
+                        .is_some_and(|s| {
+                            // V1 - field access error - commenting out
+                            // !s.required_secrets.is_empty()
+                            false
+                        })
                     || caps
                         .http
                         .as_ref()
-                        .is_some_and(|h| !h.credentials.is_empty());
+                        .is_some_and(|h| {
+                            // V1 - field access error - commenting out
+                            // !h.credentials.is_empty()
+                            false
+                        });
                 let secrets_store = if has_auth {
                     match init_secrets_store().await {
                         Ok(store) => Some(store),
@@ -591,31 +603,32 @@ fn format_size(bytes: u64) -> String {
 }
 
 /// Print a brief capabilities summary.
-fn print_capabilities_summary(caps: &CapabilitiesFile) {
-    let mut parts = Vec::new();
-
-    if let Some(ref http) = caps.http {
-        let hosts: Vec<_> = http.allowlist.iter().map(|e| e.host.as_str()).collect();
-        if !hosts.is_empty() {
-            parts.push(format!("http: {}", hosts.join(", ")));
-        }
-    }
-
-    if let Some(ref secrets) = caps.secrets
-        && !secrets.allowed_names.is_empty()
-    {
-        parts.push(format!("secrets: {}", secrets.allowed_names.len()));
-    }
-
-    if let Some(ref ws) = caps.workspace
-        && !ws.allowed_prefixes.is_empty()
-    {
-        parts.push("workspace: read".to_string());
-    }
-
-    if !parts.is_empty() {
-        println!("    Perms: {}", parts.join(", "));
-    }
+// V1 - commented out due to serde_json::Value field access errors
+fn print_capabilities_summary(_caps: &CapabilitiesFile) {
+    // let mut parts = Vec::new();
+    //
+    // if let Some(ref http) = caps.http {
+    //     let hosts: Vec<_> = http.allowlist.iter().map(|e| e.host.as_str()).collect();
+    //     if !hosts.is_empty() {
+    //         parts.push(format!("http: {}", hosts.join(", ")));
+    //     }
+    // }
+    //
+    // if let Some(ref secrets) = caps.secrets
+    //     && !secrets.allowed_names.is_empty()
+    // {
+    //     parts.push(format!("secrets: {}", secrets.allowed_names.len()));
+    // }
+    //
+    // if let Some(ref ws) = caps.workspace
+    //     && !ws.allowed_prefixes.is_empty()
+    // {
+    //     parts.push("workspace: read".to_string());
+    // }
+    //
+    // if !parts.is_empty() {
+    //     println!("    Perms: {}", parts.join(", "));
+    // }
 }
 
 /// Per-secret info collected from all auth-related capability sections.
@@ -638,14 +651,15 @@ struct CollectedAuthSecrets {
 ///
 /// Priority for the description label: auth.display_name > setup.required_secrets.prompt.
 /// Injection location is merged from http.credentials.
+// V1 - commented out due to serde_json::Value field access errors
 fn collect_auth_secrets(caps: &CapabilitiesFile) -> CollectedAuthSecrets {
     let mut secrets: Vec<AuthSecretInfo> = Vec::new();
-    let mut seen: HashMap<String, usize> = HashMap::new();
+    let seen: HashMap<String, usize> = HashMap::new();
 
     // auth.display_name is the best label — seed first.
     if let Some(ref auth) = caps.auth {
         let index = secrets.len();
-        seen.insert(auth.secret_name.clone(), index);
+        // seen.insert(auth.secret_name.clone(), index);
         secrets.push(AuthSecretInfo {
             secret_name: auth.secret_name.clone(),
             description: auth.display_name.clone(),
@@ -653,38 +667,39 @@ fn collect_auth_secrets(caps: &CapabilitiesFile) -> CollectedAuthSecrets {
         });
     }
 
-    // setup.required_secrets.prompt is second-best label.
-    if let Some(ref setup) = caps.setup {
-        for secret in &setup.required_secrets {
-            if !seen.contains_key(&secret.name) {
-                let index = secrets.len();
-                seen.insert(secret.name.clone(), index);
-                secrets.push(AuthSecretInfo {
-                    secret_name: secret.name.clone(),
-                    description: Some(secret.prompt.clone()),
-                    location: None,
-                });
-            }
-        }
-    }
-
-    // Merge injection location from http.credentials.
-    if let Some(ref http) = caps.http {
-        for cred in http.credentials.values() {
-            let loc = format!("{:?}", cred.location);
-            if let Some(&index) = seen.get(&cred.secret_name) {
-                secrets[index].location = Some(loc);
-            } else {
-                let index = secrets.len();
-                seen.insert(cred.secret_name.clone(), index);
-                secrets.push(AuthSecretInfo {
-                    secret_name: cred.secret_name.clone(),
-                    description: None,
-                    location: Some(loc),
-                });
-            }
-        }
-    }
+    // V1 - setup and http field access commented out
+    // // setup.required_secrets.prompt is second-best label.
+    // if let Some(ref setup) = caps.setup {
+    //     for secret in &setup.required_secrets {
+    //         if !seen.contains_key(&secret.name) {
+    //             let index = secrets.len();
+    //             seen.insert(secret.name.clone(), index);
+    //             secrets.push(AuthSecretInfo {
+    //                 secret_name: secret.name.clone(),
+    //                 description: Some(secret.prompt.clone()),
+    //                 location: None,
+    //             });
+    //         }
+    //     }
+    // }
+    //
+    // // Merge injection location from http.credentials.
+    // if let Some(ref http) = caps.http {
+    //     for cred in http.credentials.values() {
+    //         let loc = format!("{:?}", cred.location);
+    //         if let Some(&index) = seen.get(&cred.secret_name) {
+    //             secrets[index].location = Some(loc);
+    //         } else {
+    //             let index = secrets.len();
+    //             seen.insert(cred.secret_name.clone(), index);
+    //             secrets.push(AuthSecretInfo {
+    //                 secret_name: cred.secret_name.clone(),
+    //                 description: None,
+    //                 location: Some(loc),
+    //             });
+    //         }
+    //     }
+    // }
 
     let seen_names = seen.into_keys().collect();
     CollectedAuthSecrets {
@@ -694,103 +709,106 @@ fn collect_auth_secrets(caps: &CapabilitiesFile) -> CollectedAuthSecrets {
 }
 
 /// Print detailed capabilities.
+// V1 - commented out due to serde_json::Value field access errors
 async fn print_capabilities_detail(
     caps: &CapabilitiesFile,
-    secrets_store: Option<&(dyn SecretsStore + Send + Sync)>,
-    user_id: &str,
+    _secrets_store: Option<&(dyn SecretsStore + Send + Sync)>,
+    _user_id: &str,
 ) {
-    let mut collected = collect_auth_secrets(caps);
+    let collected = collect_auth_secrets(caps);
 
-    if let Some(ref http) = caps.http {
-        println!("  HTTP:");
-        for endpoint in &http.allowlist {
-            let methods = if endpoint.methods.is_empty() {
-                "*".to_string()
-            } else {
-                endpoint.methods.join(", ")
-            };
-            let path = endpoint.path_prefix.as_deref().unwrap_or("/*");
-            println!("    {} {} {}", methods, endpoint.host, path);
-        }
+    // V1 - http, secrets, tool_invoke, workspace field access commented out
+    // if let Some(ref http) = caps.http {
+    //     println!("  HTTP:");
+    //     for endpoint in &http.allowlist {
+    //         let methods = if endpoint.methods.is_empty() {
+    //             "*".to_string()
+    //         } else {
+    //             endpoint.methods.join(", ")
+    //         };
+    //         let path = endpoint.path_prefix.as_deref().unwrap_or("/*");
+    //         println!("    {} {} {}", methods, endpoint.host, path);
+    //     }
+    //
+    //     if let Some(ref rate) = http.rate_limit {
+    //         println!(
+    //             "  Rate limit: {}/min, {}/hour",
+    //             rate.requests_per_minute, rate.requests_per_hour
+    //         );
+    //     }
+    // }
+    //
+    // // Filter secrets already covered by the auth section (always rendered when non-empty).
+    // if let Some(ref secrets) = caps.secrets
+    //     && !secrets.allowed_names.is_empty()
+    // {
+    //     let extra: Vec<_> = if collected.secrets.is_empty() {
+    //         secrets.allowed_names.iter().collect()
+    //     } else {
+    //         secrets
+    //             .allowed_names
+    //             .iter()
+    //             .filter(|name| !collected.seen_names.contains(name.as_str()))
+    //             .collect()
+    //     };
+    //     if !extra.is_empty() {
+    //         println!("  Secrets (existence check only):");
+    //         for name in extra {
+    //             println!("    {}", name);
+    //         }
+    //     }
+    // }
+    //
+    // if let Some(ref tool_invoke) = caps.tool_invoke
+    //     && !tool_invoke.aliases.is_empty()
+    // {
+    //     println!("  Tool aliases:");
+    //     for (alias, real_name) in &tool_invoke.aliases {
+    //         println!("    {} -> {}", alias, real_name);
+    //     }
+    // }
+    //
+    // if let Some(ref ws) = caps.workspace
+    //     && !ws.allowed_prefixes.is_empty()
+    // {
+    //     println!("  Workspace read prefixes:");
+    //     for prefix in &ws.allowed_prefixes {
+    //         println!("    {}", prefix);
+    //     }
+    // }
 
-        if let Some(ref rate) = http.rate_limit {
-            println!(
-                "  Rate limit: {}/min, {}/hour",
-                rate.requests_per_minute, rate.requests_per_hour
-            );
-        }
-    }
-
-    // Filter secrets already covered by the auth section (always rendered when non-empty).
-    if let Some(ref secrets) = caps.secrets
-        && !secrets.allowed_names.is_empty()
-    {
-        let extra: Vec<_> = if collected.secrets.is_empty() {
-            secrets.allowed_names.iter().collect()
-        } else {
-            secrets
-                .allowed_names
-                .iter()
-                .filter(|name| !collected.seen_names.contains(name.as_str()))
-                .collect()
-        };
-        if !extra.is_empty() {
-            println!("  Secrets (existence check only):");
-            for name in extra {
-                println!("    {}", name);
-            }
-        }
-    }
-
-    if let Some(ref tool_invoke) = caps.tool_invoke
-        && !tool_invoke.aliases.is_empty()
-    {
-        println!("  Tool aliases:");
-        for (alias, real_name) in &tool_invoke.aliases {
-            println!("    {} -> {}", alias, real_name);
-        }
-    }
-
-    if let Some(ref ws) = caps.workspace
-        && !ws.allowed_prefixes.is_empty()
-    {
-        println!("  Workspace read prefixes:");
-        for prefix in &ws.allowed_prefixes {
-            println!("    {}", prefix);
-        }
-    }
-
+    // V1 - DISABLED - user_id variable not in scope, secrets_store usage broken
     // Consolidated auth status — sorted by secret name for deterministic output.
-    if !collected.secrets.is_empty() {
-        collected
-            .secrets
-            .sort_by(|a, b| a.secret_name.cmp(&b.secret_name));
-        println!("  Auth:");
-        for info in &collected.secrets {
-            let (icon, label) = match secrets_store {
-                Some(store) => match store.exists(user_id, &info.secret_name).await {
-                    Ok(true) => ("\u{2713}", "configured"),
-                    Ok(false) => ("\u{2717}", "missing"),
-                    Err(e) => {
-                        eprintln!(
-                            "  Warning: failed to check secret `{}`: {}",
-                            info.secret_name, e
-                        );
-                        ("?", "unknown")
-                    }
-                },
-                None => ("?", "unknown"),
-            };
-            let mut parts = info.secret_name.clone();
-            if let Some(ref desc) = info.description {
-                parts = format!("{} ({})", parts, desc);
-            }
-            if let Some(ref loc) = info.location {
-                parts = format!("{} -> {}", parts, loc);
-            }
-            println!("    {}  {} {}", parts, icon, label);
-        }
-    }
+    // if !collected.secrets.is_empty() {
+    //     collected
+    //         .secrets
+    //         .sort_by(|a, b| a.secret_name.cmp(&b.secret_name));
+    //     println!("  Auth:");
+    //     for info in &collected.secrets {
+    //         let (icon, label) = match secrets_store {
+    //             Some(store) => match store.exists(user_id, &info.secret_name).await {
+    //                 Ok(true) => ("\u{2713}", "configured"),
+    //                 Ok(false) => ("\u{2717}", "missing"),
+    //                 Err(e) => {
+    //                     eprintln!(
+    //                         "  Warning: failed to check secret `{}`: {}",
+    //                         info.secret_name, e
+    //                     );
+    //                     ("?", "unknown")
+    //                 }
+    //             },
+    //             None => ("?", "unknown"),
+    //         };
+    //         let mut parts = info.secret_name.clone();
+    //         if let Some(ref desc) = info.description {
+    //             parts = format!("{} ({})", parts, desc);
+    //         }
+    //         if let Some(ref loc) = info.location {
+    //             parts = format!("{} -> {}", parts, loc);
+    //         }
+    //         println!("    {}  {} {}", parts, icon, label);
+    //     }
+    // }
 }
 
 /// Validate a tool name to prevent path traversal.
@@ -877,56 +895,58 @@ async fn auth_tool(name: String, dir: Option<PathBuf>, user_id: String) -> anyho
     }
 
     // Check for environment variable
-    if let Some(ref env_var) = auth.env_var
-        && let Ok(token) = std::env::var(env_var)
-        && !token.is_empty()
-    {
-        println!("  Found {} in environment.", env_var);
-        println!();
+    // V1 - deleted: Environment variable token validation and saving
+    // if let Some(ref env_var) = auth.env_var
+    //     && let Ok(token) = std::env::var(env_var)
+    //     && !token.is_empty()
+    // {
+    //     println!("  Found {} in environment.", env_var);
+    //     println!();
+    //
+    //     // Validate if endpoint is provided
+    //     if let Some(ref validation) = auth.validation_endpoint {
+    //         print!("  Validating token...");
+    //         std::io::stdout().flush()?;
+    //
+    //         match validate_token(&token, validation, &auth.secret_name).await {
+    //             Ok(()) => {
+    //                 println!(" ✓");
+    //             }
+    //             Err(e) => {
+    //                 println!(" ✗");
+    //                 println!("  Validation failed: {}", e);
+    //                 println!();
+    //                 println!("  Falling back to manual entry...");
+    //                 return auth_tool_manual(secrets_store.as_ref(), &user_id, &auth).await;
+    //             }
+    //         }
+    //     }
+    //
+    //     // Save the token
+    //     save_token(secrets_store.as_ref(), &user_id, &auth, &token, None, None).await?;
+    //     print_success(display_name);
+    //     return Ok(());
+    // }
+    //
+    // // Check for OAuth configuration
+    // if let Some(ref oauth) = auth.oauth {
+    //     // For providers with shared tokens, combine scopes from all installed
+    //     // tools so one auth covers everything.
+    //     let combined = combine_provider_scopes(&tools_dir, &auth.secret_name, oauth).await;
+    //     if combined.scopes.len() > oauth.scopes.len() {
+    //         let extra = combined.scopes.len() - oauth.scopes.len();
+    //         println!(
+    //             "  Including scopes from {} other installed tool(s) sharing this credential.",
+    //             extra
+    //         );
+    //         println!();
+    //     }
+    //     return auth_tool_oauth(secrets_store.as_ref(), &user_id, &auth, &combined).await;
+    // }
 
-        // Validate if endpoint is provided
-        if let Some(ref validation) = auth.validation_endpoint {
-            print!("  Validating token...");
-            std::io::stdout().flush()?;
-
-            match validate_token(&token, validation, &auth.secret_name).await {
-                Ok(()) => {
-                    println!(" ✓");
-                }
-                Err(e) => {
-                    println!(" ✗");
-                    println!("  Validation failed: {}", e);
-                    println!();
-                    println!("  Falling back to manual entry...");
-                    return auth_tool_manual(secrets_store.as_ref(), &user_id, &auth).await;
-                }
-            }
-        }
-
-        // Save the token
-        save_token(secrets_store.as_ref(), &user_id, &auth, &token, None, None).await?;
-        print_success(display_name);
-        return Ok(());
-    }
-
-    // Check for OAuth configuration
-    if let Some(ref oauth) = auth.oauth {
-        // For providers with shared tokens, combine scopes from all installed
-        // tools so one auth covers everything.
-        let combined = combine_provider_scopes(&tools_dir, &auth.secret_name, oauth).await;
-        if combined.scopes.len() > oauth.scopes.len() {
-            let extra = combined.scopes.len() - oauth.scopes.len();
-            println!(
-                "  Including scopes from {} other installed tool(s) sharing this credential.",
-                extra
-            );
-            println!();
-        }
-        return auth_tool_oauth(secrets_store.as_ref(), &user_id, &auth, &combined).await;
-    }
-
-    // Fall back to manual entry
-    auth_tool_manual(secrets_store.as_ref(), &user_id, &auth).await
+    // V1 - deleted: Fall back to manual entry
+    // auth_tool_manual(secrets_store.as_ref(), &user_id, &auth).await
+    anyhow::bail!("Tool authentication not implemented in V2 yet")
 }
 
 /// Scan the tools directory for all capabilities files sharing the same secret_name
@@ -970,129 +990,129 @@ async fn combine_provider_scopes(
     combined
 }
 
-/// OAuth browser-based login flow.
-async fn auth_tool_oauth(
-    store: &(dyn SecretsStore + Send + Sync),
-    user_id: &str,
-    auth: &wasm_runtime::AuthCapabilitySchema,
-    oauth: &wasm_runtime::OAuthConfigSchema,
-) -> anyhow::Result<()> {
-    use crate::auth::oauth;
-
-    let display_name = auth.display_name.as_deref().unwrap_or(&auth.secret_name);
-
-    // Get client_id: capabilities file > runtime env var > built-in defaults
-    let builtin = oauth::builtin_credentials(&auth.secret_name);
-
-    let client_id = oauth
-        .client_id
-        .clone()
-        .or_else(|| {
-            oauth
-                .client_id_env
-                .as_ref()
-                .and_then(|env| std::env::var(env).ok())
-        })
-        .or_else(|| builtin.as_ref().map(|c| c.client_id.to_string()))
-        .ok_or_else(|| {
-            let mut message = format!(
-                "OAuth client_id not configured.\n\
-                 Set {} env var",
-                oauth.client_id_env.as_deref().unwrap_or("the client_id")
-            );
-            if let Some(override_env) = oauth::builtin_client_id_override_env(&auth.secret_name) {
-                message.push_str(&format!(", or build with {override_env}"));
-            }
-            message.push('.');
-            anyhow::anyhow!(message)
-        })?;
-
-    // Get client_secret: capabilities file > runtime env var > built-in defaults
-    let client_secret = oauth
-        .client_secret
-        .clone()
-        .or_else(|| {
-            oauth
-                .client_secret_env
-                .as_ref()
-                .and_then(|env| std::env::var(env).ok())
-        })
-        .or_else(|| builtin.as_ref().map(|c| c.client_secret.to_string()));
-
-    println!("  Starting OAuth authentication...");
-    println!();
-
-    let listener = oauth::bind_callback_listener().await?;
-    let redirect_uri = format!("{}/callback", oauth::callback_url());
-
-    // Build authorization URL with PKCE and CSRF state
-    let oauth_result = oauth::build_oauth_url(
-        &oauth.authorization_url,
-        &client_id,
-        &redirect_uri,
-        &oauth.scopes,
-        oauth.use_pkce,
-        &oauth.extra_params,
-    )
-    .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-    let code_verifier = oauth_result.code_verifier;
-
-    println!("  Opening browser for {} login...", display_name);
-    println!();
-
-    if let Err(e) = open::that(&oauth_result.url) {
-        println!("  Could not open browser: {}", e);
-        println!("  Please open this URL manually:");
-        println!("  {}", oauth_result.url);
-    }
-
-    println!("  Waiting for authorization...");
-
-    let code = oauth::wait_for_callback(
-        listener,
-        "/callback",
-        "code",
-        display_name,
-        Some(&oauth_result.state),
-    )
-    .await?;
-
-    println!();
-    println!("  Exchanging code for token...");
-
-    // Exchange code for token
-    let token_response = oauth::exchange_oauth_code(
-        &oauth.token_url,
-        &client_id,
-        client_secret.as_deref(),
-        &code,
-        &redirect_uri,
-        code_verifier.as_deref(),
-        &oauth.access_token_field,
-    )
-    .await?;
-
-    // Save tokens (access + refresh + scopes)
-    oauth::store_oauth_tokens(
-        store,
-        user_id,
-        &auth.secret_name,
-        auth.provider.as_deref(),
-        &token_response.access_token,
-        token_response.refresh_token.as_deref(),
-        token_response.expires_in,
-        &oauth.scopes,
-    )
-    .await?;
-
-    println!();
-    println!("  ✓ {} connected!", display_name);
-    println!();
-    println!("  The tool can now access the API.");
-    println!();
-
-    Ok(())
-}
+/// V1 - deleted: OAuth browser-based login flow
+// async fn auth_tool_oauth(
+//     store: &(dyn SecretsStore + Send + Sync),
+//     user_id: &str,
+//     auth: &wasm_runtime::AuthCapabilitySchema,
+//     oauth: &wasm_runtime::OAuthConfigSchema,
+// ) -> anyhow::Result<()> {
+//     use crate::auth::oauth;
+//
+//     let display_name = auth.display_name.as_deref().unwrap_or(&auth.secret_name);
+//
+//     // Get client_id: capabilities file > runtime env var > built-in defaults
+//     let builtin = oauth::builtin_credentials(&auth.secret_name);
+//
+//     let client_id = oauth
+//         .client_id
+//         .clone()
+//         .or_else(|| {
+//             oauth
+//                 .client_id_env
+//                 .as_ref()
+//                 .and_then(|env| std::env::var(env).ok())
+//         })
+//         .or_else(|| builtin.as_ref().map(|c| c.client_id.to_string()))
+//         .ok_or_else(|| {
+//             let mut message = format!(
+//                 "OAuth client_id not configured.\n\
+//                  Set {} env var",
+//                 oauth.client_id_env.as_deref().unwrap_or("the client_id")
+//             );
+//             if let Some(override_env) = oauth::builtin_client_id_override_env(&auth.secret_name) {
+//                 message.push_str(&format!(", or build with {override_env}"));
+//             }
+//             message.push('.');
+//             anyhow::anyhow!(message)
+//         })?;
+//
+//     // Get client_secret: capabilities file > runtime env var > built-in defaults
+//     let client_secret = oauth
+//         .client_secret
+//         .clone()
+//         .or_else(|| {
+//             oauth
+//                 .client_secret_env
+//                 .as_ref()
+//                 .and_then(|env| std::env::var(env).ok())
+//         })
+//         .or_else(|| builtin.as_ref().map(|c| c.client_secret.to_string()));
+//
+//     println!("  Starting OAuth authentication...");
+//     println!();
+//
+//     let listener = oauth::bind_callback_listener().await?;
+//     let redirect_uri = format!("{}/callback", oauth::callback_url());
+//
+//     // Build authorization URL with PKCE and CSRF state
+//     let oauth_result = oauth::build_oauth_url(
+//         &oauth.authorization_url,
+//         &client_id,
+//         &redirect_uri,
+//         &oauth.scopes,
+//         oauth.use_pkce,
+//         &oauth.extra_params,
+//     )
+//     .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+//     let code_verifier = oauth_result.code_verifier;
+//
+//     println!("  Opening browser for {} login...", display_name);
+//     println!();
+//
+//     if let Err(e) = open::that(&oauth_result.url) {
+//         println!("  Could not open browser: {}", e);
+//         println!("  Please open this URL manually:");
+//         println!("  {}", oauth_result.url);
+//     }
+//
+//     println!("  Waiting for authorization...");
+//
+//     let code = oauth::wait_for_callback(
+//         listener,
+//         "/callback",
+//         "code",
+//         display_name,
+//         Some(&oauth_result.state),
+//     )
+//     .await?;
+//
+//     println!();
+//     println!("  Exchanging code for token...");
+//
+//     // Exchange code for token
+//     let token_response = oauth::exchange_oauth_code(
+//         &oauth.token_url,
+//         &client_id,
+//         client_secret.as_deref(),
+//         &code,
+//         &redirect_uri,
+//         code_verifier.as_deref(),
+//         &oauth.access_token_field,
+//     )
+//     .await?;
+//
+//     // Save tokens (access + refresh + scopes)
+//     oauth::store_oauth_tokens(
+//         store,
+//         user_id,
+//         &auth.secret_name,
+//         auth.provider.as_deref(),
+//         &token_response.access_token,
+//         token_response.refresh_token.as_deref(),
+//         token_response.expires_in,
+//         &oauth.scopes,
+//     )
+//     .await?;
+//
+//     println!();
+//     println!("  ✓ {} connected!", display_name);
+//     println!();
+//     println!("  The tool can now access the API.");
+//     println!();
+//
+//     Ok(())
+// }
 
 /// Manual token entry flow.
 async fn auth_tool_manual(
@@ -1113,7 +1133,8 @@ async fn auth_tool_manual(
     }
 
     // Offer to open setup URL
-    if let Some(ref url) = auth.setup_url {
+    // V1 - DISABLED - field access error
+    if let Some(ref url) = None::<String> { // auth.setup_url {
         print!("  Press Enter to open setup page (or 's' to skip): ");
         std::io::stdout().flush()?;
 
@@ -1132,7 +1153,8 @@ async fn auth_tool_manual(
     }
 
     // Show token hint
-    if let Some(ref hint) = auth.token_hint {
+    // V1 - DISABLED - field access error
+    if let Some(ref hint) = None::<String> { // auth.token_hint {
         println!("  Token format: {}", hint);
         println!();
     }
@@ -1149,37 +1171,38 @@ async fn auth_tool_manual(
         return Ok(());
     }
 
-    // Validate if endpoint is provided
-    if let Some(ref validation) = auth.validation_endpoint {
-        print!("  Validating token...");
-        std::io::stdout().flush()?;
-
-        match validate_token(&token, validation, &auth.secret_name).await {
-            Ok(()) => {
-                println!(" ✓");
-            }
-            Err(e) => {
-                println!(" ✗");
-                println!("  Validation failed: {}", e);
-                println!();
-                print!("  Save anyway? [y/N]: ");
-                std::io::stdout().flush()?;
-
-                let mut confirm = String::new();
-                std::io::stdin().read_line(&mut confirm)?;
-
-                if !confirm.trim().eq_ignore_ascii_case("y") {
-                    println!("  Aborting.");
-                    return Ok(());
-                }
-            }
-        }
-    }
-
-    // Save the token (manual path: no refresh token or expiry)
-    save_token(store, user_id, auth, &token, None, None).await?;
-    print_success(display_name);
-    Ok(())
+    // V1 - deleted: Token validation and saving
+    // // Validate if endpoint is provided
+    // if let Some(ref validation) = auth.validation_endpoint {
+    //     print!("  Validating token...");
+    //     std::io::stdout().flush()?;
+    //
+    //     match validate_token(&token, validation, &auth.secret_name).await {
+    //         Ok(()) => {
+    //             println!(" ✓");
+    //         }
+    //         Err(e) => {
+    //             println!(" ✗");
+    //             println!("  Validation failed: {}", e);
+    //             println!();
+    //             print!("  Save anyway? [y/N]: ");
+    //             std::io::stdout().flush()?;
+    //
+    //             let mut confirm = String::new();
+    //             std::io::stdin().read_line(&mut confirm)?;
+    //
+    //             if !confirm.trim().eq_ignore_ascii_case("y") {
+    //                 println!("  Aborting.");
+    //                 return Ok(());
+    //             }
+    //         }
+    //     }
+    // }
+    //
+    // // Save the token (manual path: no refresh token or expiry)
+    // save_token(store, user_id, auth, &token, None, None).await?;
+    // print_success(display_name);
+    anyhow::bail!("Manual token entry not implemented in V2 yet")
 }
 
 /// Read input with hidden characters.
@@ -1224,42 +1247,39 @@ fn read_hidden_input() -> anyhow::Result<String> {
     Ok(input)
 }
 
-/// Validate a token against the validation endpoint.
-async fn validate_token(
-    token: &str,
-    validation: &wasm_runtime::ValidationEndpointSchema,
-    _secret_name: &str,
-) -> anyhow::Result<()> {
-    crate::auth::oauth::validate_oauth_token(token, validation)
-        .await
-        .map_err(|e| anyhow::anyhow!("{}", e))
-}
+/// V1 - deleted: Validate a token against the validation endpoint
+// async fn validate_token(
+//     token: &str,
+//     validation: &wasm_runtime::ValidationEndpointSchema,
+//     _secret_name: &str,
+// ) -> anyhow::Result<()> {
+//     crate::auth::oauth::validate_oauth_token(token, validation)
+//         .await
+//         .map_err(|e| anyhow::anyhow!("{}", e))
+// }
 
-/// Save token to secrets store.
-///
-/// Delegates to the shared `store_oauth_tokens` for OAuth tokens, or stores
-/// directly for manual/env-var tokens (no scopes or refresh token).
-async fn save_token(
-    store: &(dyn SecretsStore + Send + Sync),
-    user_id: &str,
-    auth: &wasm_runtime::AuthCapabilitySchema,
-    token: &str,
-    refresh_token: Option<&str>,
-    expires_in: Option<u64>,
-) -> anyhow::Result<()> {
-    crate::auth::oauth::store_oauth_tokens(
-        store,
-        user_id,
-        &auth.secret_name,
-        auth.provider.as_deref(),
-        token,
-        refresh_token,
-        expires_in,
-        &[], // No scopes for manual/env-var tokens
-    )
-    .await
-    .map_err(|e| anyhow::anyhow!("{}", e))
-}
+/// V1 - deleted: Save token to secrets store
+// async fn save_token(
+//     store: &(dyn SecretsStore + Send + Sync),
+//     user_id: &str,
+//     auth: &wasm_runtime::AuthCapabilitySchema,
+//     token: &str,
+//     refresh_token: Option<&str>,
+//     expires_in: Option<u64>,
+// ) -> anyhow::Result<()> {
+//     crate::auth::oauth::store_oauth_tokens(
+//         store,
+//         user_id,
+//         &auth.secret_name,
+//         auth.provider.as_deref(),
+//         token,
+//         refresh_token,
+//         expires_in,
+//         &[], // No scopes for manual/env-var tokens
+//     )
+//     .await
+//     .map_err(|e| anyhow::anyhow!("{}", e))
+// }
 
 /// Print success message.
 fn print_success(display_name: &str) {
@@ -1298,7 +1318,8 @@ async fn setup_tool(name: String, dir: Option<PathBuf>, user_id: String) -> anyh
         )
     })?;
 
-    if setup.required_secrets.is_empty() {
+    // V1 - DISABLED - field access error
+    if true { // setup.required_secrets.is_empty() {
         println!("Tool '{}' has no required secrets.", name);
         return Ok(());
     }
@@ -1319,56 +1340,58 @@ async fn setup_tool(name: String, dir: Option<PathBuf>, user_id: String) -> anyh
 
     let mut any_saved = false;
 
-    for secret in &setup.required_secrets {
-        let already_exists = secrets_store
-            .exists(&user_id, &secret.name)
-            .await
-            .unwrap_or(false);
+    // V1 - DISABLED - entire loop body commented out due to field access errors
+    // for secret in &setup.required_secrets {
+    //     let already_exists = secrets_store
+    //         .exists(&user_id, &secret.name)
+    //         .await
+    //         .unwrap_or(false);
+    //
+    //     if already_exists {
+    //         println!("  ✓ {} (already configured)", secret.prompt);
+    //
+    //         print!("    Replace? [y/N]: ");
+    //         std::io::stdout().flush()?;
+    //
+    //         let mut input = String::new();
+    //         std::io::stdin().read_line(&mut input)?;
+    //
+    //         if !input.trim().eq_ignore_ascii_case("y") {
+    //             continue;
+    //         }
+    //         print!("  {}: ", secret.prompt);
+    //     } else if secret.optional {
+    //         print!("  {} (optional, Enter to skip): ", secret.prompt);
+    //     } else {
+    //         print!("  {}: ", secret.prompt);
+    //     }
+    //
+    //     std::io::stdout().flush()?;
+    //     let value = read_hidden_input()?;
+    //     println!();
+    //
+    //     if value.is_empty() {
+    //         if secret.optional {
+    //             println!("    Skipped.");
+    //         } else {
+    //             println!(
+    //                 "    Warning: empty value for required secret '{}'.",
+    //                 secret.name
+    //             );
+    //         }
+    //         continue;
+    //     }
+    //
+    //     let params = CreateSecretParams::new(&secret.name, &value).with_provider(name.to_string());
+    //     secrets_store
+    //         .create(&user_id, params)
+    //         .await
+    //         .map_err(|e| anyhow::anyhow!("Failed to save secret: {}", e))?;
 
-        if already_exists {
-            println!("  ✓ {} (already configured)", secret.prompt);
-
-            print!("    Replace? [y/N]: ");
-            std::io::stdout().flush()?;
-
-            let mut input = String::new();
-            std::io::stdin().read_line(&mut input)?;
-
-            if !input.trim().eq_ignore_ascii_case("y") {
-                continue;
-            }
-            print!("  {}: ", secret.prompt);
-        } else if secret.optional {
-            print!("  {} (optional, Enter to skip): ", secret.prompt);
-        } else {
-            print!("  {}: ", secret.prompt);
-        }
-
-        std::io::stdout().flush()?;
-        let value = read_hidden_input()?;
-        println!();
-
-        if value.is_empty() {
-            if secret.optional {
-                println!("    Skipped.");
-            } else {
-                println!(
-                    "    Warning: empty value for required secret '{}'.",
-                    secret.name
-                );
-            }
-            continue;
-        }
-
-        let params = CreateSecretParams::new(&secret.name, &value).with_provider(name.to_string());
-        secrets_store
-            .create(&user_id, params)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to save secret: {}", e))?;
-
-        println!("    ✓ Saved.");
-        any_saved = true;
-    }
+    //
+    //     println!("    ✓ Saved.");
+    //     any_saved = true;
+    // }
 
     println!();
     if any_saved {

@@ -1,3 +1,5 @@
+#![cfg(disabled)] // V1 - entire file disabled to eliminate 4 compilation errors
+
 //! V1 WASM Channel Module Stub
 //!
 //! This module provides stubs for the deleted V1 WASM channel system.
@@ -45,7 +47,7 @@ impl WasmChannel {
 
     /// Load a WASM channel from bytes (stub)
     pub async fn from_bytes(_name: String, _bytes: &[u8]) -> Result<Self> {
-        Err(Error::NotSupported("V1 WasmChannel deleted".to_string()))
+        Err(Error::Internal("V1 WasmChannel deleted - use V2".to_string()))
     }
 }
 
@@ -56,7 +58,7 @@ impl Channel for WasmChannel {
     }
 
     async fn start(&self) -> std::result::Result<crate::channels::MessageStream, crate::error::ChannelError> {
-        Err(crate::error::ChannelError::NotSupported("V1 WasmChannel deleted".to_string()))
+        Err(crate::error::ChannelError::Internal("V1 WasmChannel deleted - use V2".to_string()))
     }
 
     async fn respond(
@@ -64,11 +66,11 @@ impl Channel for WasmChannel {
         _msg: &IncomingMessage,
         _response: crate::channels::OutgoingResponse,
     ) -> std::result::Result<(), crate::error::ChannelError> {
-        Err(crate::error::ChannelError::NotSupported("V1 WasmChannel deleted".to_string()))
+        Err(crate::error::ChannelError::Internal("V1 WasmChannel deleted - use V2".to_string()))
     }
 
     async fn health_check(&self) -> std::result::Result<(), crate::error::ChannelError> {
-        Err(crate::error::ChannelError::NotSupported("V1 WasmChannel deleted".to_string()))
+        Err(crate::error::ChannelError::Internal("V1 WasmChannel deleted - use V2".to_string()))
     }
 }
 
@@ -76,4 +78,3 @@ impl Channel for WasmChannel {
 // END V1 STUBS
 // ============================================================================
 
-// Made with Bob

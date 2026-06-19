@@ -54,4 +54,3 @@ impl Channel for WebChannel {
 // END V1 STUBS
 // ============================================================================
 
-// Made with Bob

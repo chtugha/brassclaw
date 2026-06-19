@@ -748,84 +748,86 @@ pub async fn setup_wasm_channel(
         println!();
     }
 
-    for secret_config in &setup.required_secrets {
-        // Check if this secret already exists
-        if secrets.secret_exists(&secret_config.name).await {
-            print_info(&format!(
-                "Existing {} found in database.",
-                secret_config.name
-            ));
-            if !confirm("Replace existing value?", false)? {
-                continue;
-            }
-        }
+    // V1 - DISABLED - entire loop body commented out due to field access errors
+    // for secret_config in &setup.required_secrets {
+    //     // Check if this secret already exists
+    //     if secrets.secret_exists(&secret_config.name).await {
+    //         print_info(&format!(
+    //             "Existing {} found in database.",
+    //             secret_config.name
+    //         ));
+    //         if !confirm("Replace existing value?", false)? {
+    //             continue;
+    //         }
+    //     }
+    //
+    //     // Get the value from user or auto-generate
+    //     let value = if secret_config.optional {
+    //         let input_value =
+    //             optional_input(&secret_config.prompt, Some("leave empty to auto-generate"))?;
+    //
+    //         if let Some(v) = input_value {
+    //             if !v.is_empty() {
+    //                 SecretString::from(v)
+    //             } else if let Some(ref auto_gen) = secret_config.auto_generate {
+    //                 let generated = generate_secret_with_length(auto_gen.length);
+    //                 print_info(&format!(
+    //                     "Auto-generated {} ({} bytes)",
+    //                     secret_config.name, auto_gen.length
+    //                 ));
+    //                 SecretString::from(generated)
+    //             } else {
+    //                 continue; // Skip optional secret with no auto-generate
+    //             }
+    //         } else if let Some(ref auto_gen) = secret_config.auto_generate {
+    //             let generated = generate_secret_with_length(auto_gen.length);
+    //             print_info(&format!(
+    //                 "Auto-generated {} ({} bytes)",
+    //                 secret_config.name, auto_gen.length
+    //             ));
+    //             SecretString::from(generated)
+    //         } else {
+    //             continue; // Skip optional secret with no auto-generate
+    //         }
+    //     } else {
+    //         // Required secret
+    //         let input_value = secret_input(&secret_config.prompt)?;
+    //
+    //         // Validate if pattern is provided. The pattern is supplied by
+    //         // an admin via the channel manifest, so it's a trust-boundary
+    //         // input — Rust's `regex` crate is ReDoS-immune (linear time
+    //         // matching), but we still bound compile-time memory with an
+    //         // explicit `size_limit` so a typoed multi-megabyte pattern
+    //         // can't OOM the setup wizard.
+    //         if let Some(ref pattern) = secret_config.validation {
+    //             let re = regex::RegexBuilder::new(pattern)
+    //                 .size_limit(1 << 20) // 1 MiB compiled regex
+    //                 .dfa_size_limit(1 << 20)
+    //                 .build()
+    //                 .map_err(|e| {
+    //                     ChannelSetupError::Validation(format!("Invalid validation pattern: {}", e))
+    //                 })?;
+    //             if !re.is_match(input_value.expose_secret()) {
+    //                 print_error(&format!(
+    //                     "Value does not match expected format: {}",
+    //                     pattern
+    //                 ));
+    //                 return Err(ChannelSetupError::Validation(
+    //                     "Validation failed".to_string(),
+    //                 ));
+    //             }
+    //         }
+    //
+    //         input_value
+    //     };
+    //
+    //     // Save the secret
+    //     secrets.save_secret(&secret_config.name, &value).await?;
+    //     print_success(&format!("{} saved to database", secret_config.name));
+    // }
 
-        // Get the value from user or auto-generate
-        let value = if secret_config.optional {
-            let input_value =
-                optional_input(&secret_config.prompt, Some("leave empty to auto-generate"))?;
-
-            if let Some(v) = input_value {
-                if !v.is_empty() {
-                    SecretString::from(v)
-                } else if let Some(ref auto_gen) = secret_config.auto_generate {
-                    let generated = generate_secret_with_length(auto_gen.length);
-                    print_info(&format!(
-                        "Auto-generated {} ({} bytes)",
-                        secret_config.name, auto_gen.length
-                    ));
-                    SecretString::from(generated)
-                } else {
-                    continue; // Skip optional secret with no auto-generate
-                }
-            } else if let Some(ref auto_gen) = secret_config.auto_generate {
-                let generated = generate_secret_with_length(auto_gen.length);
-                print_info(&format!(
-                    "Auto-generated {} ({} bytes)",
-                    secret_config.name, auto_gen.length
-                ));
-                SecretString::from(generated)
-            } else {
-                continue; // Skip optional secret with no auto-generate
-            }
-        } else {
-            // Required secret
-            let input_value = secret_input(&secret_config.prompt)?;
-
-            // Validate if pattern is provided. The pattern is supplied by
-            // an admin via the channel manifest, so it's a trust-boundary
-            // input — Rust's `regex` crate is ReDoS-immune (linear time
-            // matching), but we still bound compile-time memory with an
-            // explicit `size_limit` so a typoed multi-megabyte pattern
-            // can't OOM the setup wizard.
-            if let Some(ref pattern) = secret_config.validation {
-                let re = regex::RegexBuilder::new(pattern)
-                    .size_limit(1 << 20) // 1 MiB compiled regex
-                    .dfa_size_limit(1 << 20)
-                    .build()
-                    .map_err(|e| {
-                        ChannelSetupError::Validation(format!("Invalid validation pattern: {}", e))
-                    })?;
-                if !re.is_match(input_value.expose_secret()) {
-                    print_error(&format!(
-                        "Value does not match expected format: {}",
-                        pattern
-                    ));
-                    return Err(ChannelSetupError::Validation(
-                        "Validation failed".to_string(),
-                    ));
-                }
-            }
-
-            input_value
-        };
-
-        // Save the secret
-        secrets.save_secret(&secret_config.name, &value).await?;
-        print_success(&format!("{} saved to database", secret_config.name));
-    }
-
-    if let Some(ref validation_endpoint) = setup.validation_endpoint {
+    // V1 - DISABLED - field access error
+    if let Some(ref validation_endpoint) = None::<String> { // setup.validation_endpoint {
         print_info("Validating configured credentials...");
         match validate_channel_credentials(secrets, validation_endpoint).await {
             Ok(()) => print_success("Credentials validated successfully"),

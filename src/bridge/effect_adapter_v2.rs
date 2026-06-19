@@ -308,4 +308,3 @@ mod tests {
     // TODO: Add integration tests with mock CapabilityHost
 }
 
-// Made with Bob

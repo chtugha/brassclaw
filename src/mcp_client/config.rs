@@ -41,4 +41,3 @@ pub fn load_mcp_servers() -> HashMap<String, McpServerConfig> {
 // END V1 STUBS
 // ============================================================================
 
-// Made with Bob

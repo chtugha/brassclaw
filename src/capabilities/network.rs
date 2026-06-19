@@ -611,21 +611,22 @@ pub async fn execute_http(
     let caller_headers: Vec<(String, String)> = headers_vec.clone();
     let caller_url = parsed_url.clone();
 
-    if let Some(registry) = ctx.credential_registry.as_ref() {
-        let cred_host = parsed_url.host_str().unwrap_or("");
-        if registry.has_credentials_for_host(cred_host) {
-            let forbidden: &[&str] = &["authorization", "x-api-key", "api-key", "x-auth-token"];
-            for (name, _) in &headers_vec {
-                if forbidden.iter().any(|f| name.eq_ignore_ascii_case(f)) {
-                    return Err(NetworkCapabilityError::not_authorized(format!(
-                        "Manual '{}' header blocked for host '{}': \
-                         credentials are auto-injected by the credential system",
-                        name, cred_host
-                    )));
-                }
-            }
-        }
-    }
+    // V1 - deleted: credential registry validation
+    // if let Some(registry) = ctx.credential_registry.as_ref() {
+    //     let cred_host = parsed_url.host_str().unwrap_or("");
+    //     if registry.has_credentials_for_host(cred_host) {
+    //         let forbidden: &[&str] = &["authorization", "x-api-key", "api-key", "x-auth-token"];
+    //         for (name, _) in &headers_vec {
+    //             if forbidden.iter().any(|f| name.eq_ignore_ascii_case(f)) {
+    //                 return Err(NetworkCapabilityError::not_authorized(format!(
+    //                     "Manual '{}' header blocked for host '{}': \
+    //                      credentials are auto-injected by the credential system",
+    //                     name, cred_host
+    //                 )));
+    //             }
+    //         }
+    //     }
+    // }
 
     let timeout_secs = parse_timeout_secs_param(params.get("timeout_secs"))?;
     let save_to = parse_save_to_param(params.get("save_to"))?;
@@ -684,63 +685,64 @@ pub async fn execute_http(
         .scan_http_request(parsed_url.as_str(), &headers_vec, body_bytes.as_deref())
         .map_err(|e| NetworkCapabilityError::not_authorized(format!("{}", e)))?;
 
-    #[derive(Clone, Copy, Debug)]
-    enum MissingReason {
-        NotConfigured,
-        RefreshFailed,
-    }
-    let mut missing_credential: Option<(String, MissingReason)> = None;
-    if let (Some(registry), Some(store)) = (
-        ctx.credential_registry.as_ref(),
-        ctx.secrets_store.as_ref(),
-    ) {
-        let cred_host = parsed_url.host_str().unwrap_or("").to_string();
-        let cred_path = parsed_url.path();
-        let matched: Vec<crate::secrets::CredentialMapping> =
-            registry.find_for_url(&cred_host, cred_path);
-        let dedup_matched = dedup_credential_mappings(matched);
-        for mapping in &dedup_matched {
-            let oauth_refresh = registry.oauth_refresh_for_secret(&mapping.secret_name);
-            match resolve_secret_for_runtime(
-                store.as_ref(),
-                &ctx.user_id,
-                &mapping.secret_name,
-                ctx.role_lookup.as_deref(),
-                oauth_refresh.as_ref(),
-                crate::auth::DefaultFallback::AdminOnly,
-            )
-            .await
-            {
-                Ok(secret) => {
-                    let mut injected = InjectedCredentials::empty();
-                    inject_credential(&mut injected, &mapping.location, &secret);
-                    for (name, value) in &injected.headers {
-                        request = request.header(name.as_str(), value.as_str());
-                        headers_vec.push((name.clone(), value.clone()));
-                    }
-                    for (name, value) in &injected.query_params {
-                        parsed_url.query_pairs_mut().append_pair(name, value);
-                        request = request.query(&[(name.as_str(), value.as_str())]);
-                    }
-                }
-                Err(error) if error.requires_authentication() => {
-                    if mapping.optional {
-                        continue;
-                    }
-                    let reason = match error {
-                        crate::auth::CredentialResolutionError::RefreshFailed => {
-                            MissingReason::RefreshFailed
-                        }
-                        _ => MissingReason::NotConfigured,
-                    };
-                    if missing_credential.is_none() {
-                        missing_credential = Some((mapping.secret_name.clone(), reason));
-                    }
-                }
-                Err(_) => {}
-            }
-        }
-    }
+    // V1 - deleted: credential injection logic
+    // #[derive(Clone, Copy, Debug)]
+    // enum MissingReason {
+    //     NotConfigured,
+    //     RefreshFailed,
+    // }
+    // let mut missing_credential: Option<(String, MissingReason)> = None;
+    // if let (Some(registry), Some(store)) = (
+    //     ctx.credential_registry.as_ref(),
+    //     ctx.secrets_store.as_ref(),
+    // ) {
+    //     let cred_host = parsed_url.host_str().unwrap_or("").to_string();
+    //     let cred_path = parsed_url.path();
+    //     let matched: Vec<crate::secrets::CredentialMapping> =
+    //         registry.find_for_url(&cred_host, cred_path);
+    //     let dedup_matched = dedup_credential_mappings(matched);
+    //     for mapping in &dedup_matched {
+    //         let oauth_refresh = registry.oauth_refresh_for_secret(&mapping.secret_name);
+    //         match resolve_secret_for_runtime(
+    //             store.as_ref(),
+    //             &ctx.user_id,
+    //             &mapping.secret_name,
+    //             ctx.role_lookup.as_deref(),
+    //             oauth_refresh.as_ref(),
+    //             crate::auth::DefaultFallback::AdminOnly,
+    //         )
+    //         .await
+    //         {
+    //             Ok(secret) => {
+    //                 let mut injected = InjectedCredentials::empty();
+    //                 inject_credential(&mut injected, &mapping.location, &secret);
+    //                 for (name, value) in &injected.headers {
+    //                     request = request.header(name.as_str(), value.as_str());
+    //                     headers_vec.push((name.clone(), value.clone()));
+    //                 }
+    //                 for (name, value) in &injected.query_params {
+    //                     parsed_url.query_pairs_mut().append_pair(name, value);
+    //                     request = request.query(&[(name.as_str(), value.as_str())]);
+    //                 }
+    //             }
+    //             Err(error) if error.requires_authentication() => {
+    //                 if mapping.optional {
+    //                     continue;
+    //                 }
+    //                 let reason = match error {
+    //                     crate::auth::CredentialResolutionError::RefreshFailed => {
+    //                         MissingReason::RefreshFailed
+    //                     }
+    //                     _ => MissingReason::NotConfigured,
+    //                 };
+    //                 if missing_credential.is_none() {
+    //                     missing_credential = Some((mapping.secret_name.clone(), reason));
+    //                 }
+    //             }
+    //             Err(_) => {}
+    //         }
+    //     }
+    // }
 
     let intercept_req = brassclaw_llm::recording::HttpExchangeRequest {
         method: method_upper,
@@ -873,36 +875,37 @@ pub async fn execute_http(
 
     let status = response.status().as_u16();
 
-    if matches!(status, 401 | 403)
-        && let Some((cred_name, reason)) = missing_credential.as_ref()
-    {
-        let (error_kind, message) = match reason {
-            MissingReason::NotConfigured => (
-                "authentication_required",
-                format!(
-                    "Credential '{}' is not configured. \
-                     The server returned HTTP {}. Set up credentials to access this endpoint.",
-                    cred_name, status
-                ),
-            ),
-            MissingReason::RefreshFailed => (
-                "authentication_refresh_failed",
-                format!(
-                    "Credential '{}' exists but its OAuth refresh failed. \
-                     The server returned HTTP {}. Re-authenticate this credential to repair the stored tokens.",
-                    cred_name, status
-                ),
-            ),
-        };
-        return Err(NetworkCapabilityError::operation(
-            json!({
-                "error": error_kind,
-                "credential_name": cred_name,
-                "message": message,
-            })
-            .to_string(),
-        ));
-    }
+    // V1 - deleted: credential error handling
+    // if matches!(status, 401 | 403)
+    //     && let Some((cred_name, reason)) = missing_credential.as_ref()
+    // {
+    //     let (error_kind, message) = match reason {
+    //         MissingReason::NotConfigured => (
+    //             "authentication_required",
+    //             format!(
+    //                 "Credential '{}' is not configured. \
+    //                  The server returned HTTP {}. Set up credentials to access this endpoint.",
+    //                 cred_name, status
+    //             ),
+    //         ),
+    //         MissingReason::RefreshFailed => (
+    //             "authentication_refresh_failed",
+    //             format!(
+    //                 "Credential '{}' exists but its OAuth refresh failed. \
+    //                  The server returned HTTP {}. Re-authenticate this credential to repair the stored tokens.",
+    //                 cred_name, status
+    //             ),
+    //         ),
+    //     };
+    //     return Err(NetworkCapabilityError::operation(
+    //         json!({
+    //             "error": error_kind,
+    //             "credential_name": cred_name,
+    //             "message": message,
+    //         })
+    //         .to_string(),
+    //     ));
+    // }
 
     let headers: HashMap<String, String> = response
         .headers()

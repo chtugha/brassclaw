@@ -117,9 +117,7 @@ impl WasmConfig {
 
     /// Convert to WasmRuntimeConfig.
     // TODO: V1 wasm_runtime module removed - config conversion needs V2 reimplementation
-    pub fn to_runtime_config(&self) -> () {
-        // use crate::wasm_runtime::{FuelConfig, ResourceLimits, WasmRuntimeConfig};
-
+    pub fn to_runtime_config(&self) -> WasmRuntimeConfig {
         WasmRuntimeConfig {
             default_limits: ResourceLimits {
                 memory_bytes: self.default_memory_limit,
@@ -128,11 +126,7 @@ impl WasmConfig {
             },
             fuel_config: FuelConfig {
                 initial_fuel: self.default_fuel_limit,
-                enabled: true,
             },
-            cache_compiled: self.cache_compiled,
-            cache_dir: self.cache_dir.clone(),
-            optimization_level: wasmtime::OptLevel::Speed,
         }
     }
 }

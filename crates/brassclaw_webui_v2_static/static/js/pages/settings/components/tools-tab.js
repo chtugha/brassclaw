@@ -231,4 +231,3 @@ function EffectBadge({ effect, t }) {
   `;
 }
 
-// Made with Bob

@@ -10,14 +10,14 @@
 //! - Turn-based session management with undo
 //! - Context compaction for long conversations
 
-mod agent_loop;
+// mod agent_loop; // V1 - disabled entire file
 pub mod agentic_loop;
 mod attachments;
 mod commands;
 pub mod compaction;
 pub mod context_monitor;
 pub mod cost_guard;
-mod dispatcher;
+// mod dispatcher; // V1 - disabled entire file
 mod heartbeat;
 pub mod job_monitor;
 mod router;
@@ -29,7 +29,7 @@ pub mod session;
 mod session_manager;
 pub mod submission;
 pub mod task;
-mod thread_ops;
+// mod thread_ops; // V1 - disabled entire file
 pub mod turn_builder;
 pub mod undo;
 
@@ -53,12 +53,12 @@ pub(crate) mod test_support {
     }
 }
 
-pub(crate) use agent_loop::truncate_for_preview;
-pub use agent_loop::{Agent, AgentDeps};
+// pub(crate) use agent_loop::truncate_for_preview; // V1 - agent_loop disabled
+// pub use agent_loop::{Agent, AgentDeps}; // V1 - agent_loop disabled
 pub(crate) use attachments::augment_with_attachments;
 pub use compaction::{CompactionResult, ContextCompactor};
 pub use context_monitor::{CompactionStrategy, ContextBreakdown, ContextMonitor};
-pub(crate) use dispatcher::strip_suggestions;
+// pub(crate) use dispatcher::strip_suggestions; // V1 - dispatcher disabled
 pub use heartbeat::{
     HeartbeatConfig, HeartbeatResult, HeartbeatRunner, spawn_heartbeat, spawn_multi_user_heartbeat,
 };

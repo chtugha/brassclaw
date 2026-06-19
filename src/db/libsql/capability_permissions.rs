@@ -135,4 +135,3 @@ impl CapabilityPermissionStore for LibSqlBackend {
 
 }
 
-// Made with Bob

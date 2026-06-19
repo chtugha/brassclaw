@@ -18,6 +18,8 @@ use crate::db::Database;
 /// Stub module for deleted V1 acp_bridge
 mod acp_bridge {
     use serde_json::Value;
+    use std::future::Future;
+    use std::pin::Pin;
 
     /// Stub for deleted V1 JobEventPayload type
     #[derive(Debug, Clone)]
@@ -28,7 +30,9 @@ mod acp_bridge {
 
     /// Stub trait for deleted V1 AcpEventSink
     pub trait AcpEventSink: Send + Sync {
-        async fn emit_event(&self, payload: &JobEventPayload);
+        fn emit_event<'a>(&'a self, payload: &'a JobEventPayload) -> Pin<Box<dyn Future<Output = ()> + 'a>> {
+            Box::pin(async move { let _ = payload; })
+        }
     }
 
     /// Stub for deleted V1 BrassClawAcpClient
@@ -211,117 +215,120 @@ async fn toggle_agent(name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn test_agent(name: &str) -> anyhow::Result<()> {
-    use agent_client_protocol::{self as acp, Agent as _};
-    use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
-
-    // TODO: V1 worker module removed - ACP bridge needs V2 reimplementation
-
-    /// Event sink that prints agent output to stdout during `brassclaw acp test`.
-    struct PrintEventSink;
-
-    impl acp_bridge::AcpEventSink for PrintEventSink {
-        async fn emit_event(&self, payload: &acp_bridge::JobEventPayload) {
-            match payload.event_type.as_str() {
-                "message" => {
-                    if let Some(content) = payload.data["content"].as_str() {
-                        println!("    | {}", content);
-                    }
-                }
-                "tool_use" => {
-                    if let Some(tool) = payload.data["tool_name"].as_str() {
-                        println!("    [tool: {}]", tool);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    let storage = resolve_storage().await;
-    let agent = crate::config::acp::get_enabled_acp_agent_for_user(
-        storage.db.as_deref(),
-        &storage.owner_id,
-        name,
-    )
-    .await
-    .map_err(|e| anyhow::anyhow!("{}", e))?;
-
-    println!();
-    println!("  Testing ACP agent '{}'...", name);
-    println!("  Command: {} {}", agent.command, agent.args.join(" "));
-
-    // Spawn the agent subprocess
-    let mut child = tokio::process::Command::new(&agent.command)
-        .args(&agent.args)
-        .envs(&agent.env)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| anyhow::anyhow!("Failed to spawn '{}': {}", agent.command, e))?;
-
-    let child_stdin = child
-        .stdin
-        .take()
-        .ok_or_else(|| anyhow::anyhow!("failed to capture agent stdin"))?;
-    let child_stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| anyhow::anyhow!("failed to capture agent stdout"))?;
-
-    // Run ACP handshake inside a LocalSet (!Send futures).
-    // Uses BrassClawAcpClient with a PrintEventSink so the test exercises
-    // the same permission auto-approval and event translation as real jobs.
-    let local_set = tokio::task::LocalSet::new();
-    let result = local_set
-        .run_until(async move {
-            let outgoing = child_stdin.compat_write();
-            let incoming = child_stdout.compat();
-
-            let client = acp_bridge::BrassClawAcpClient::new(PrintEventSink);
-
-            let (conn, handle_io) =
-                acp::ClientSideConnection::new(client, outgoing, incoming, |fut| {
-                    tokio::task::spawn_local(fut);
-                });
-            tokio::task::spawn_local(handle_io);
-
-            let handshake = tokio::time::timeout(
-                std::time::Duration::from_secs(15),
-                conn.initialize(acp_bridge::brassclaw_init_request()),
-            )
-            .await;
-
-            match handshake {
-                Ok(Ok(resp)) => {
-                    println!("  \u{2713} ACP handshake successful!");
-                    println!();
-                    println!("  Agent info:");
-                    if let Some(ref info) = resp.agent_info {
-                        println!("    Name: {}", info.name);
-                        println!("    Version: {}", info.version);
-                    }
-                    println!("    Protocol: {}", resp.protocol_version);
-                    Ok(())
-                }
-                Ok(Err(e)) => {
-                    println!("  \u{2717} ACP handshake failed: {}", e);
-                    Err(anyhow::anyhow!("handshake failed: {}", e))
-                }
-                Err(_) => {
-                    println!("  \u{2717} ACP handshake timed out (15s)");
-                    Err(anyhow::anyhow!("handshake timed out"))
-                }
-            }
-        })
-        .await;
-
-    // Clean up child process
-    let _ = child.kill().await;
-    println!();
-    result
+// V1 - commented out due to AcpEventSink trait mismatch with agent_client_protocol::Client
+async fn test_agent(_name: &str) -> anyhow::Result<()> {
+    // use agent_client_protocol::{self as acp, Agent as _};
+    // use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
+    //
+    // // TODO: V1 worker module removed - ACP bridge needs V2 reimplementation
+    //
+    // /// Event sink that prints agent output to stdout during `brassclaw acp test`.
+    // struct PrintEventSink;
+    //
+    // impl acp_bridge::AcpEventSink for PrintEventSink {
+    //     async fn emit_event(&self, payload: &acp_bridge::JobEventPayload) {
+    //         match payload.event_type.as_str() {
+    //             "message" => {
+    //                 if let Some(content) = payload.data["content"].as_str() {
+    //                     println!("    | {}", content);
+    //                 }
+    //             }
+    //             "tool_use" => {
+    //                 if let Some(tool) = payload.data["tool_name"].as_str() {
+    //                     println!("    [tool: {}]", tool);
+    //                 }
+    //             }
+    //             _ => {}
+    //         }
+    //     }
+    // }
+    //
+    // let storage = resolve_storage().await;
+    // let agent = crate::config::acp::get_enabled_acp_agent_for_user(
+    //     storage.db.as_deref(),
+    //     &storage.owner_id,
+    //     name,
+    // )
+    // .await
+    // .map_err(|e| anyhow::anyhow!("{}", e))?;
+    //
+    // println!();
+    // println!("  Testing ACP agent '{}'...", name);
+    // println!("  Command: {} {}", agent.command, agent.args.join(" "));
+    //
+    // // Spawn the agent subprocess
+    // let mut child = tokio::process::Command::new(&agent.command)
+    //     .args(&agent.args)
+    //     .envs(&agent.env)
+    //     .stdin(std::process::Stdio::piped())
+    //     .stdout(std::process::Stdio::piped())
+    //     .stderr(std::process::Stdio::null())
+    //     .kill_on_drop(true)
+    //     .spawn()
+    //     .map_err(|e| anyhow::anyhow!("Failed to spawn '{}': {}", agent.command, e))?;
+    //
+    // let child_stdin = child
+    //     .stdin
+    //     .take()
+    //     .ok_or_else(|| anyhow::anyhow!("failed to capture agent stdin"))?;
+    // let child_stdout = child
+    //     .stdout
+    //     .take()
+    //     .ok_or_else(|| anyhow::anyhow!("failed to capture agent stdout"))?;
+    //
+    // // Run ACP handshake inside a LocalSet (!Send futures).
+    // // Uses BrassClawAcpClient with a PrintEventSink so the test exercises
+    // // the same permission auto-approval and event translation as real jobs.
+    // let local_set = tokio::task::LocalSet::new();
+    // let result = local_set
+    //     .run_until(async move {
+    //         let outgoing = child_stdin.compat_write();
+    //         let incoming = child_stdout.compat();
+    //
+    //         let client = acp_bridge::BrassClawAcpClient::new(PrintEventSink);
+    //
+    //         let (conn, handle_io) =
+    //             acp::ClientSideConnection::new(client, outgoing, incoming, |fut| {
+    //                 tokio::task::spawn_local(fut);
+    //             });
+    //         tokio::task::spawn_local(handle_io);
+    //
+    //         let handshake = tokio::time::timeout(
+    //             std::time::Duration::from_secs(15),
+    //             conn.initialize(acp_bridge::brassclaw_init_request()),
+    //         )
+    //         .await;
+    //
+    //         match handshake {
+    //             Ok(Ok(resp)) => {
+    //                 println!("  \u{2713} ACP handshake successful!");
+    //                 println!();
+    //                 println!("  Agent info:");
+    //                 if let Some(ref info) = resp.agent_info {
+    //                     println!("    Name: {}", info.name);
+    //                     println!("    Version: {}", info.version);
+    //                 }
+    //                 println!("    Protocol: {}", resp.protocol_version);
+    //                 Ok(())
+    //             }
+    //             Ok(Err(e)) => {
+    //                 println!("  \u{2717} ACP handshake failed: {}", e);
+    //                 Err(anyhow::anyhow!("handshake failed: {}", e))
+    //             }
+    //             Err(_) => {
+    //                 println!("  \u{2717} ACP handshake timed out (15s)");
+    //                 Err(anyhow::anyhow!("handshake timed out"))
+    //             }
+    //         }
+    //     })
+    //     .await;
+    //
+    // // Clean up child process
+    // let _ = child.kill().await;
+    // println!();
+    // result
+    
+    Err(anyhow::anyhow!("V1 ACP test not implemented - use V2 ACP bridge"))
 }
 
 // ==================== DB / disk persistence helpers ====================
