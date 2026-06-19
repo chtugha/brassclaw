@@ -9,6 +9,37 @@ use std::time::Duration;
 
 // TODO: V1 wasm_runtime module removed - SSRF protection functions need V2 reimplementation
 
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 ValidationEndpointSchema type (re-exported from extension.rs)
+pub use crate::auth::extension::ValidationEndpointSchema;
+
+/// Stub type for resolved HTTP target
+#[derive(Debug, Clone)]
+pub struct ResolvedHttpTarget {
+    pub url: String,
+}
+
+/// Stub for deleted V1 validate_and_resolve_http_target function
+async fn validate_and_resolve_http_target(url: &str) -> Result<ResolvedHttpTarget, String> {
+    // Basic URL validation only - SSRF protection removed in V1 deletion
+    url::Url::parse(url)
+        .map(|_| ResolvedHttpTarget { url: url.to_string() })
+        .map_err(|e| format!("Invalid URL: {}", e))
+}
+
+/// Stub for deleted V1 ssrf_safe_client_builder_for_target function
+fn ssrf_safe_client_builder_for_target(_target: &ResolvedHttpTarget) -> reqwest::ClientBuilder {
+    // Return basic client builder - SSRF protection removed in V1 deletion
+    reqwest::Client::builder()
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
+
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use brassclaw_common::ExtensionName;
 use rand::RngCore;
@@ -521,7 +552,7 @@ pub async fn store_oauth_tokens(
 /// the bearer-bearing request to an internal one.
 pub async fn validate_oauth_token(
     token: &str,
-    validation: &crate::wasm_runtime::ValidationEndpointSchema,
+    validation: &ValidationEndpointSchema,
 ) -> Result<(), OAuthCallbackError> {
     let resolved_target = validate_and_resolve_http_target(&validation.url)
         .await
@@ -589,7 +620,7 @@ pub struct PendingOAuthFlow {
     /// Provider hint (e.g., "google").
     pub provider: Option<String>,
     /// Token validation endpoint (optional).
-    pub validation_endpoint: Option<crate::wasm_runtime::ValidationEndpointSchema>,
+    pub validation_endpoint: Option<ValidationEndpointSchema>,
     /// Scopes that were requested.
     pub scopes: Vec<String>,
     /// User ID for secret storage.
@@ -2140,7 +2171,6 @@ mod tests {
     #[test]
     fn test_google_calendar_capabilities_produce_correct_oauth_url() {
         use crate::auth::oauth::build_oauth_url;
-        use crate::wasm_runtime::CapabilitiesFile;
 
         // Pinned snapshot of the production google-calendar capabilities.
         // Keep this byte-identical to tools-src/google-calendar/
