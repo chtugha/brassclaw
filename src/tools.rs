@@ -105,10 +105,10 @@ impl Tool {
         Self { name, description }
     }
 
-    /// Check if tool requires approval (stub always returns false)
+    /// Check if tool requires approval (stub always returns Never)
     /// TODO: Remove after V2 migration complete
-    pub fn requires_approval(&self) -> bool {
-        false
+    pub fn requires_approval(&self, _params: &serde_json::Value) -> crate::agent::thread_ops::ApprovalRequirement {
+        crate::agent::thread_ops::ApprovalRequirement::Never
     }
 }
 
