@@ -10,7 +10,8 @@ use uuid::Uuid;
 
 use crate::agent::session::Session;
 use crate::agent::submission::SubmissionResult;
-use crate::agent::{Agent, MessageIntent};
+// V1 - DISABLED: Agent struct and entire impl block commented out
+// use crate::agent::MessageIntent;
 use crate::channels::{IncomingMessage, StatusUpdate};
 use crate::context::JobState;
 use crate::error::Error;
@@ -40,6 +41,8 @@ fn format_vertical_list(title: &str, items: &[String]) -> String {
     out.trim_end().to_string()
 }
 
+// V1 - DISABLED: Entire impl Agent block commented out (lines 44-1141)
+/*
 impl Agent {
     /// Handle job-related intents without turn tracking.
     pub(super) async fn handle_job_or_command(
@@ -1138,6 +1141,7 @@ impl Agent {
         }
     }
 }
+*/
 
 #[cfg(test)]
 mod tests {

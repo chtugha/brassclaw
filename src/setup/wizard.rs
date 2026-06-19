@@ -2732,12 +2732,13 @@ impl SetupWizard {
         for channel_name in selected_wasm_channels {
             println!();
             if let Some(ref ctx) = secrets {
-                let result = if let Some(cap_file) = discovered_by_name.get(&channel_name) {
-                    if !cap_file.setup.required_secrets.is_empty() {
-                        setup_wasm_channel(ctx, &channel_name, &cap_file.setup).await?
-                    } else {
+                // V1 - DISABLED - cap_file.setup field removed from ChannelCapabilitiesFile
+                let result = if let Some(_cap_file) = discovered_by_name.get(&channel_name) {
+                    // if !cap_file.setup.required_secrets.is_empty() {
+                    //     setup_wasm_channel(ctx, &channel_name, &cap_file.setup).await?
+                    // } else {
                         print_info(&format!(
-                            "No setup configuration found for {}",
+                            "Setup disabled for {} (V1 code removed)",
                             channel_name
                         ));
                         crate::setup::channels::WasmChannelSetupResult {
@@ -2745,7 +2746,7 @@ impl SetupWizard {
                             channel_name: channel_name.clone(),
                             config_overrides: HashMap::new(),
                         }
-                    }
+                    // }
                 } else {
                     print_info(&format!(
                         "Channel '{}' is selected but not available on disk.",

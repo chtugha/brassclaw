@@ -41,7 +41,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
-use crate::agent::truncate_for_preview;
+use crate::agent::agentic_loop::truncate_for_preview; // V1 - Fixed import path (using agentic_loop not agent_loop)
 use crate::bootstrap::brassclaw_base_dir;
 use crate::channels::{Channel, IncomingMessage, MessageStream, OutgoingResponse, StatusUpdate};
 use crate::cli::fmt;

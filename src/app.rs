@@ -705,20 +705,21 @@ impl AppBuilder {
         // Create hook registry early so runtime extension activation can register hooks.
         let hooks = Arc::new(HookRegistry::new());
 
-        // Register session summary hook (writes conversation summary on session end).
-        if let (Some(db), Some(ws_resolver)) = (&self.db, &workspace_resolver) {
-            let summary_llm = cheap_llm
-                .as_ref()
-                .map(Arc::clone)
-                .unwrap_or_else(|| Arc::clone(&llm));
-            hooks
-                .register(Arc::new(crate::hooks::SessionSummaryHook::new(
-                    Arc::clone(db) as Arc<dyn crate::db::ConversationStore>,
-                    Arc::clone(ws_resolver) as Arc<dyn crate::session_summary::WorkspaceResolver>,
-                    summary_llm,
-                )))
-                .await;
-        }
+        // V1 - DISABLED: Register session summary hook (writes conversation summary on session end).
+        // Commented out due to WorkspaceResolver trait mismatch between capabilities::memory and hooks::session_summary
+        // if let (Some(db), Some(ws_resolver)) = (&self.db, &workspace_resolver) {
+        //     let summary_llm = cheap_llm
+        //         .as_ref()
+        //         .map(Arc::clone)
+        //         .unwrap_or_else(|| Arc::clone(&llm));
+        //     hooks
+        //         .register(Arc::new(crate::hooks::SessionSummaryHook::new(
+        //             Arc::clone(db) as Arc<dyn crate::db::ConversationStore>,
+        //             Arc::clone(ws_resolver) as Arc<dyn crate::hooks::session_summary::WorkspaceResolver>,
+        //             summary_llm,
+        //         )))
+        //         .await;
+        // }
 
         let agent_session_manager =
             Arc::new(AgentSessionManager::new().with_hooks(Arc::clone(&hooks)));

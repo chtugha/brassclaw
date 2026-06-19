@@ -410,9 +410,10 @@ async fn report_status(
         "Worker status update"
     );
 
+    // V1 - DISABLED - update.iteration is Option<u32> but expects u32
     state
         .job_manager
-        .update_worker_status(job_id, update.message, update.iteration)
+        .update_worker_status(job_id, update.message, update.iteration.unwrap_or(0))
         .await;
 
     Ok(StatusCode::OK)
@@ -563,7 +564,8 @@ async fn job_event_handler(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let decisions = ToolDecisionDto::from_json_array(&payload.data["decisions"]);
+            // V1 - DISABLED - type mismatch between api::ToolDecisionDto and brassclaw_common::ToolDecisionDto
+            let decisions = brassclaw_common::ToolDecisionDto::from_json_array(&payload.data["decisions"]);
             AppEvent::JobReasoning {
                 job_id: job_id_str,
                 narrative,

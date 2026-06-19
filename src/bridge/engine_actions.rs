@@ -1,6 +1,7 @@
-use brassclaw_engine::{ActionDef, ActionDiscoveryMetadata, ActionDiscoverySummary};
+use brassclaw_engine::{ActionDef, ActionDiscoveryMetadata, ActionDiscoverySummary, ModelToolSurface};
 
-use crate::bridge::action_projector::default_model_tool_surface;
+// V1 - deleted: action_projector module no longer exists
+// use crate::bridge::action_projector::default_model_tool_surface;
 
 fn action_discovery_summary(
     always_required: &[&str],
@@ -38,7 +39,7 @@ fn mission_action(
         parameters_schema,
         effects: vec![],
         requires_approval: false,
-        model_tool_surface: default_model_tool_surface(name),
+        model_tool_surface: ModelToolSurface::FullSchema, // V1 - was default_model_tool_surface(name)
         discovery,
     }
 }

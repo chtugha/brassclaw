@@ -12,7 +12,8 @@ use futures::StreamExt;
 use reqwest::Client;
 use serde_json::{Value, json};
 
-use crate::auth::resolve_secret_for_runtime;
+// V1 - deleted: auth module no longer exists
+// use crate::auth::resolve_secret_for_runtime;
 use crate::db::UserStore;
 use crate::secrets::SecretsStore;
 

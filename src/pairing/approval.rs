@@ -37,12 +37,14 @@ impl WasmChannel {
 
     /// Stub method to update runtime config
     pub async fn update_runtime_config(&self, _updates: HashMap<String, serde_json::Value>) -> Result<(), ExtensionError> {
-        Err(ExtensionError::NotSupported("V1 WasmChannel deleted - V2 migration needed".to_string()))
+        // V1 - DISABLED - NotSupported variant removed from ExtensionError
+        Err(ExtensionError::Other("V1 WasmChannel deleted - V2 migration needed".to_string()))
     }
 
     /// Stub method to call on_start
     pub async fn on_start(&self) -> Result<(), ExtensionError> {
-        Err(ExtensionError::NotSupported("V1 WasmChannel deleted - V2 migration needed".to_string()))
+        // V1 - DISABLED - NotSupported variant removed from ExtensionError
+        Err(ExtensionError::Other("V1 WasmChannel deleted - V2 migration needed".to_string()))
     }
 }
 

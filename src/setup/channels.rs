@@ -9,6 +9,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+// V1 - STUB: wasm module deleted, create minimal stub for SetupSchema
+mod wasm_stub {
+    pub struct SetupSchema;
+}
+
 use base64::Engine;
 use secrecy::{ExposeSecret, SecretString};
 use url::Url;
@@ -739,7 +744,7 @@ pub struct WasmChannelSetupResult {
 pub async fn setup_wasm_channel(
     secrets: &SecretsContext,
     channel_name: &str,
-    setup: &crate::channels::wasm::SetupSchema,
+    setup: &wasm_stub::SetupSchema, // V1 - using stub instead of crate::channels::wasm
 ) -> Result<WasmChannelSetupResult, ChannelSetupError> {
     println!("{} Setup:", channel_name);
     println!();
