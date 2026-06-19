@@ -8,6 +8,32 @@ use brassclaw_host_api::{
 use serde_json::{Value, json};
 // TODO: Extract memory utilities from deleted V1 code
 use crate::workspace::{Workspace, paths};
+use async_trait::async_trait;
+
+/// Trait for resolving workspace based on user ID (multi-tenant support)
+#[async_trait]
+pub trait WorkspaceResolver: Send + Sync {
+    async fn resolve(&self, user_id: &str) -> Arc<Workspace>;
+}
+
+/// Returns a fixed workspace regardless of user ID (single-user mode).
+pub struct FixedWorkspaceResolver {
+    workspace: Arc<Workspace>,
+}
+
+impl FixedWorkspaceResolver {
+    pub fn new(workspace: Arc<Workspace>) -> Self {
+        Self { workspace }
+    }
+}
+
+#[async_trait]
+impl WorkspaceResolver for FixedWorkspaceResolver {
+    async fn resolve(&self, _user_id: &str) -> Arc<Workspace> {
+        Arc::clone(&self.workspace)
+    }
+}
+
 
 
 pub const PROVIDER_ID: &str = "builtin";

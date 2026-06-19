@@ -507,7 +507,7 @@ impl AppBuilder {
             Option<Arc<dyn EmbeddingProvider>>,
             Option<Arc<Workspace>>,
             Option<Arc<dyn HttpInterceptor>>,
-            Option<Arc<dyn crate::tools::builtin::memory::WorkspaceResolver>>,
+            Option<Arc<dyn crate::capabilities::memory::WorkspaceResolver>>,
         ),
         anyhow::Error,
     > {
@@ -571,7 +571,7 @@ impl AppBuilder {
             }
 
             let ws = Arc::new(ws);
-            let pool: Arc<dyn crate::tools::builtin::memory::WorkspaceResolver> =
+            let pool: Arc<dyn crate::capabilities::memory::WorkspaceResolver> =
                 Arc::new(crate::channels::web::platform::state::WorkspacePool::new(
                     Arc::clone(db),
                     embeddings.clone(),
@@ -656,12 +656,8 @@ impl AppBuilder {
 
 
         Ok((
-            mcp_session_manager,
-            mcp_process_manager,
-            wasm_tool_runtime,
             extension_manager,
             catalog_entries,
-            dev_loaded_tool_names,
         ))
     }
 
@@ -839,9 +835,8 @@ impl AppBuilder {
                 tracing::debug!("Loaded {} skill(s): {}", loaded.len(), loaded.join(", "));
             }
 
-            // Register credential mappings from skill frontmatter into the
-            // shared registry so the HTTP tool can auto-inject credentials.
-            crate::skills::register_skill_credentials(registry.skills(), &credential_registry);
+            // TODO: V1 credential registry removed - skill credential registration needs V2 reimplementation
+            // crate::skills::register_skill_credentials(registry.skills(), &credential_registry);
             if let Some(db) = self.db.as_ref() {
                 crate::skills::persist_skill_auth_descriptors(
                     registry.skills(),
@@ -885,13 +880,13 @@ impl AppBuilder {
 
         // Initialize V2 Reborn Capability System
         // Create a workspace resolver for memory context
-        let workspace_resolver: Arc<dyn crate::tools::builtin::memory::WorkspaceResolver> =
+        let workspace_resolver: Arc<dyn crate::capabilities::memory::WorkspaceResolver> =
             if let Some(ws) = workspace.clone() {
-                Arc::new(crate::tools::builtin::memory::FixedWorkspaceResolver::new(ws))
+                Arc::new(crate::capabilities::memory::FixedWorkspaceResolver::new(ws))
             } else {
                 // Create a no-op resolver that returns a dummy workspace
                 // This will be replaced with proper multi-tenant resolver in the future
-                Arc::new(crate::tools::builtin::memory::FixedWorkspaceResolver::new(
+                Arc::new(crate::capabilities::memory::FixedWorkspaceResolver::new(
                     Arc::new(crate::workspace::Workspace::new_with_db(
                         "default",
                         self.db.clone().expect("Database required for workspace"),
@@ -917,7 +912,7 @@ impl AppBuilder {
         });
 
         let network_ctx = Arc::new(crate::capabilities::network::NetworkContext {
-            credential_registry: Some(Arc::clone(&credential_registry)),
+            credential_registry: None, // TODO: V1 credential registry removed - needs V2 reimplementation
             secrets_store: self.secrets_store.clone(),
             role_lookup: self.db.clone().map(|db| db as Arc<dyn crate::db::UserStore>),
             user_id: self.config.owner_id.clone(),
