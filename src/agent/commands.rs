@@ -786,7 +786,7 @@ impl Agent {
             ))),
 
             "tools" => {
-                let tools = self.tools().list().await;
+                let tools = self.tools().list();
                 Ok(SubmissionResult::response(format_vertical_list(
                     "Available tools",
                     &tools,
