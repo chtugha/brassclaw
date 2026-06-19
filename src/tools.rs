@@ -104,6 +104,12 @@ impl Tool {
     pub fn new(name: String, description: String) -> Self {
         Self { name, description }
     }
+
+    /// Check if tool requires approval (stub always returns false)
+    /// TODO: Remove after V2 migration complete
+    pub fn requires_approval(&self) -> bool {
+        false
+    }
 }
 
 /// Stub for deleted V1 ToolCall
