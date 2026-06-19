@@ -163,7 +163,6 @@ async fn get_autonomous_allowed_capabilities(
         allowed.extend(
             extension_manager
                 .active_tool_names()
-                .await
                 .into_iter()
                 .filter(|name| !is_autonomous_capability_denylisted(name)),
         );
@@ -2188,7 +2187,7 @@ async fn execute_routine_tool(
     tc: &ToolCall,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     if !allowed_tools.contains(&tc.name) {
-        let message = autonomous_unavailable_message(&tc.name, &job_ctx.user_id);
+        let message = autonomous_unavailable_message();
         return Err(message.into());
     }
 
