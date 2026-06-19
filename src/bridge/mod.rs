@@ -18,7 +18,6 @@ mod router;
 pub mod sandbox;
 pub mod skill_migration;
 mod store_adapter;
-mod tool_permissions;
 mod tool_surface;
 mod user_facing_errors;
 mod workspace_reader;

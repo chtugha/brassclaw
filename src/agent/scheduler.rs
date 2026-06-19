@@ -15,10 +15,6 @@ use crate::error::{Error, JobError};
 use crate::extensions::ExtensionManager;
 use crate::hooks::HookRegistry;
 use crate::tenant::SystemScope;
-use crate::tools::{
-    ApprovalContext, ToolRegistry, autonomous_allowed_tool_names, autonomous_unavailable_error,
-    prepare_tool_params,
-};
 use crate::worker::job::{Worker, WorkerDeps};
 use brassclaw_engine::EffectExecutor;
 use brassclaw_llm::LlmProvider;

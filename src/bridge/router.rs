@@ -20,7 +20,6 @@ use crate::bridge::effect_adapter::EffectBridgeAdapter;
 use crate::bridge::engine_actions::mission_capability_actions;
 use crate::bridge::llm_adapter::LlmBridgeAdapter;
 use crate::bridge::store_adapter::HybridStore;
-use crate::channels::web::GATEWAY_CHANNEL_NAME;
 use brassclaw_common::DynEventPublisher;
 use crate::channels::{IncomingMessage, OutgoingResponse, StatusUpdate};
 use crate::db::Database;

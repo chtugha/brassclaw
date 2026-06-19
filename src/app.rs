@@ -17,7 +17,6 @@ use crate::db::{Database, UserStore};
 use crate::extensions::ExtensionManager;
 use crate::hooks::HookRegistry;
 use crate::secrets::SecretsStore;
-use crate::tools::ToolRegistry;
 use crate::mcp_client::{McpProcessManager, McpSessionManager};
 use crate::wasm_runtime::SharedCredentialRegistry;
 use crate::wasm_runtime::WasmToolRuntime;

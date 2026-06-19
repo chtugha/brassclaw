@@ -12,14 +12,11 @@ use crate::auth::extension::AuthManager;
 use crate::bridge::capability_projector::{
     capability_status_for_extension, capability_surface_subject_for_extension,
 };
-use crate::bridge::tool_permissions::ToolPermissionSnapshot;
 use crate::bridge::tool_surface::{
     InvocationMode, SurfacePolicyInput, SurfaceSubjectKind, assign_surface,
 };
 use crate::extensions::naming::extension_name_candidates;
 use crate::extensions::{InstalledExtension, LatentProviderAction};
-use crate::tools::ToolRegistry;
-use crate::tools::permissions::PermissionState;
 
 pub(crate) struct ActionProjector;
 

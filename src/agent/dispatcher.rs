@@ -21,8 +21,6 @@ use crate::agent::agentic_loop::{
     AgenticLoopConfig, LoopDelegate, LoopOutcome, LoopSignal, TextAction,
 };
 use crate::generated_images::GeneratedImageSentinel;
-use crate::tools::permissions::{PermissionState, effective_permission};
-use crate::tools::redact_params;
 use brassclaw_llm::{ChatMessage, Reasoning, ReasoningContext, TokenUsage};
 
 fn selected_model_override(value: &serde_json::Value) -> Option<String> {

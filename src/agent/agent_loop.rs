@@ -32,7 +32,6 @@ use crate::error::{ChannelError, Error};
 use crate::extensions::ExtensionManager;
 use crate::generated_images::GeneratedImageSentinel;
 use crate::hooks::HookRegistry;
-use crate::tools::ToolRegistry;
 use crate::workspace::Workspace;
 use brassclaw_llm::LlmProvider;
 use brassclaw_safety::SafetyLayer;
