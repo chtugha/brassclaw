@@ -770,33 +770,13 @@ impl Agent {
                     ));
                 }
 
-                // Execute restart tool directly (don't dispatch as a job for LLM planning)
-                // This ensures the tool runs immediately without LLM involvement
                 // TODO: Implement restart via V2 capability system
-                let params = serde_json::json!({});
-
-                // Create a minimal JobContext for the tool
-                let dummy_ctx =
-                    crate::context::JobContext::with_user("system", "Restart", "Graceful restart");
-
-                match tool.execute(params, &dummy_ctx).await {
-                    Ok(output) => {
-                        tracing::info!("[commands::restart] RestartTool executed successfully");
-                        // Extract text from the ToolOutput result
-                        let response = match output.result {
-                            serde_json::Value::String(s) => s,
-                            _ => output.result.to_string(),
-                        };
-                        Ok(SubmissionResult::response(response))
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            "[commands::restart] RestartTool execution failed: {:?}",
-                            e
-                        );
-                        Ok(SubmissionResult::error(format!("Restart failed: {}", e)))
-                    }
-                }
+                // V1 RestartTool was deleted - needs reimplementation using V2 capabilities
+                tracing::warn!("[commands::restart] Restart functionality temporarily disabled - needs V2 implementation");
+                Ok(SubmissionResult::error(
+                    "Restart functionality is temporarily unavailable during V1 to V2 migration. \
+                     This will be restored using the V2 capability system.".to_string()
+                ))
             }
 
             "version" => Ok(SubmissionResult::response(format!(
