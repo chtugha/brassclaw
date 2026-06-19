@@ -92,6 +92,14 @@ impl Default for ToolRegistry {
     }
 }
 
+/// Stub for deleted V1 ApprovalRequirement
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApprovalRequirement {
+    Never,
+    UnlessAutoApproved,
+    Always,
+}
+
 /// Stub for deleted V1 Tool
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tool {
@@ -107,8 +115,8 @@ impl Tool {
 
     /// Check if tool requires approval (stub always returns Never)
     /// TODO: Remove after V2 migration complete
-    pub fn requires_approval(&self, _params: &serde_json::Value) -> crate::agent::thread_ops::ApprovalRequirement {
-        crate::agent::thread_ops::ApprovalRequirement::Never
+    pub fn requires_approval(&self, _params: &serde_json::Value) -> ApprovalRequirement {
+        ApprovalRequirement::Never
     }
 }
 
