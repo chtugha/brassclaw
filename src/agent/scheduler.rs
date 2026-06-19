@@ -15,7 +15,7 @@ use crate::error::{Error, JobError};
 use crate::extensions::ExtensionManager;
 use crate::hooks::HookRegistry;
 use crate::tenant::SystemScope;
-use crate::worker::job::{Worker, WorkerDeps};
+// TODO: V1 worker module removed - Worker/WorkerDeps types need V2 reimplementation
 use brassclaw_engine::EffectExecutor;
 use brassclaw_llm::LlmProvider;
 use brassclaw_safety::SafetyLayer;
