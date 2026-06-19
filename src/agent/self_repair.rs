@@ -10,7 +10,6 @@ use uuid::Uuid;
 use crate::context::{ContextManager, JobState};
 use crate::error::RepairError;
 use crate::tenant::SystemScope;
-use crate::tools::SoftwareBuilder;
 
 /// A job that has been detected as stuck.
 #[derive(Debug, Clone)]

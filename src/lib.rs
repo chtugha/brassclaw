@@ -103,7 +103,6 @@ pub mod prelude {
     pub use crate::config::Config;
     pub use crate::context::{JobContext, JobState};
     pub use crate::error::{Error, Result};
-    pub use crate::tools::{Tool, ToolOutput, ToolRegistry};
     pub use crate::workspace::{MemoryDocument, Workspace};
     pub use brassclaw_llm::LlmProvider;
     pub use brassclaw_safety::{SanitizedOutput, Sanitizer};

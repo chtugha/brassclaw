@@ -9,7 +9,6 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::tools::ApprovalContext;
 use brassclaw_llm::recording::HttpInterceptor;
 
 /// Error returned when a job exceeds its token budget.

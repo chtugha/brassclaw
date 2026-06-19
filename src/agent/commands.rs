@@ -772,8 +772,7 @@ impl Agent {
 
                 // Execute restart tool directly (don't dispatch as a job for LLM planning)
                 // This ensures the tool runs immediately without LLM involvement
-                use crate::tools::Tool;
-                let tool = crate::tools::builtin::RestartTool;
+                // TODO: Implement restart via V2 capability system
                 let params = serde_json::json!({});
 
                 // Create a minimal JobContext for the tool

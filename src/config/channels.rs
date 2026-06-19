@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use crate::bootstrap::brassclaw_base_dir;
-use crate::channels::web::sse::{DEFAULT_BROADCAST_BUFFER, DEFAULT_MAX_CONNECTIONS};
 use crate::config::helpers::{
     db_first_bool, db_first_optional_string, db_first_or_default, optional_env, parse_bool_env,
     parse_optional_env,

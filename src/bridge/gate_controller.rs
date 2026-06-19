@@ -53,7 +53,6 @@ use crate::channels::StatusUpdate;
 use crate::extensions::ExtensionManager;
 use crate::gate::pending::PendingGate;
 use crate::gate::store::PendingGateStore;
-use crate::tools::ToolRegistry;
 
 /// Per-execution data the controller needs to build a `PendingGate`.
 /// Populated by the bridge before invoking the engine for a turn,

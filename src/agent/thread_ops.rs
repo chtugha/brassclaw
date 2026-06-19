@@ -25,7 +25,6 @@ use crate::channels::{ChatApprovalPrompt, HistoryMessage, IncomingMessage, Statu
 use crate::context::JobContext;
 use crate::error::Error;
 use crate::generated_images::{GeneratedImageSentinel, stage_generated_image_data_url};
-use crate::tools::redact_params;
 use brassclaw_common::truncate_preview;
 use brassclaw_llm::{ChatMessage, ToolCall};
 use brassclaw_safety::{PolicyAction, SafetyLayer, ValidationResult};

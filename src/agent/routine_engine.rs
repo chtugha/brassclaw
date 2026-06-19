@@ -34,9 +34,6 @@ use crate::extensions::ExtensionManager;
 use crate::ownership::Owned;
 use crate::tenant::SystemScope;
 use crate::capabilities::dispatcher::BuiltinCapabilityDispatcher;
-use crate::tools::{
-    autonomous_unavailable_message,
-};
 use crate::workspace::Workspace;
 use brassclaw_llm::{
     ChatMessage, CompletionRequest, FinishReason, LlmProvider, ToolCall, ToolCompletionRequest,

@@ -21,8 +21,6 @@ use crate::extensions::{
     ConfigureResult, ExtensionError, InstalledExtension, LatentProviderAction,
 };
 use crate::secrets::SecretsStore;
-use crate::tools::ToolRegistry;
-use crate::tools::builtin::{extract_host_from_params, extract_path_from_params};
 use crate::wasm_runtime::SharedCredentialRegistry;
 use brassclaw_common::{CredentialName, ExtensionName as CommonExtensionName};
 use brassclaw_skills::{SkillCredentialSpec, SkillRegistry};
