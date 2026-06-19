@@ -36,7 +36,10 @@ mod repl;
 mod signal;
 #[cfg(feature = "tui")]
 pub mod tui;
-pub mod wasm;
+
+// TODO: WASM channel depends on wasm_runtime - needs V2 integration
+// pub mod wasm;
+
 mod webhook_server;
 
 #[cfg(feature = "tui")]
