@@ -446,7 +446,7 @@ impl Agent {
             force_text_at,
             user_tz,
             turn_usage: std::sync::Mutex::new(TurnUsageSummary::default()),
-            cached_admin_tool_policy: tokio::sync::OnceCell::new(),
+            cached_admin_tool_policy: AdminToolPolicyCache { _placeholder: () },
         };
 
         // If /skill-name mentions were expanded, rewrite the last user message
