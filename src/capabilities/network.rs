@@ -15,11 +15,77 @@ use serde_json::{Value, json};
 use crate::auth::resolve_secret_for_runtime;
 use crate::db::UserStore;
 use crate::secrets::SecretsStore;
-// TODO: V1 wasm_runtime module removed - credential injection needs V2 reimplementation
 
-// TODO: Extract HTML conversion from deleted V1 code
-// #[cfg(feature = "html-to-markdown")]
-// use crate::tools::builtin::convert_html_to_markdown;
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 SharedCredentialRegistry type
+pub struct SharedCredentialRegistry {
+    // Minimal stub - no fields needed
+}
+
+/// Stub for deleted V1 InjectedCredentials type
+#[derive(Default)]
+pub struct InjectedCredentials {
+    pub headers: HashMap<String, String>,
+    pub query_params: HashMap<String, String>,
+}
+
+impl InjectedCredentials {
+    pub fn empty() -> Self {
+        Self::default()
+    }
+}
+
+/// Stub for deleted V1 inject_credential function
+fn inject_credential(
+    _injected: &mut InjectedCredentials,
+    _location: &crate::secrets::CredentialLocation,
+    _secret: &str,
+) {
+    // No-op stub - credential injection not supported in V1 stub
+}
+
+/// Stub for deleted V1 convert_html_to_markdown function
+#[cfg(feature = "html-to-markdown")]
+fn convert_html_to_markdown(html: &str, _base_url: &str) -> Result<String, String> {
+    // Return HTML as-is - no conversion in V1 stub
+    Ok(html.to_string())
+}
+
+/// Stub module for deleted V1 path_utils
+mod path_utils_stub {
+    use std::path::{Path, PathBuf};
+    
+    pub fn validate_path(raw: &str, base: Option<&Path>) -> Result<PathBuf, String> {
+        let path = Path::new(raw);
+        
+        if raw.is_empty() {
+            return Err("empty path".to_string());
+        }
+        
+        let resolved = if path.is_absolute() {
+            path.to_path_buf()
+        } else if let Some(base) = base {
+            base.join(path)
+        } else {
+            path.to_path_buf()
+        };
+        
+        if let Some(base) = base {
+            if !resolved.starts_with(base) {
+                return Err(format!("path escapes base directory: {}", raw));
+            }
+        }
+        
+        Ok(resolved)
+    }
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
 
 pub const PROVIDER_ID: &str = "builtin";
 pub const HTTP_CAPABILITY_ID: &str = "builtin.http";
@@ -489,7 +555,7 @@ fn validate_save_to_path(
     }
     let tmp_base = std::path::Path::new("/tmp");
     let validated =
-        crate::tools::builtin::path_utils::validate_path(save_to, Some(tmp_base)).map_err(
+        path_utils_stub::validate_path(save_to, Some(tmp_base)).map_err(
             |e| NetworkCapabilityError::operation(format!("save_to path validation failed: {}", e)),
         )?;
     if let Some(parent) = validated.parent() {
