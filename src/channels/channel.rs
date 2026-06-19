@@ -739,13 +739,13 @@ impl StatusUpdate {
         call_id: Option<String>,
         result: &Result<String, crate::error::Error>,
         params: &serde_json::Value,
-        tool: Option<&dyn crate::tools::Tool>,
+        _tool: Option<()>, // TODO: Restore Tool trait after V2 migration
         duration_ms: Option<u64>,
     ) -> Self {
         let success = result.is_ok();
-        let sensitive = tool.map(|t| t.sensitive_params()).unwrap_or(&[]);
+        // Stub: V1 Tool system deleted, no sensitive param redaction
         let parameters = if !success {
-            let safe = crate::tools::redact_params(params, sensitive);
+            let safe = crate::tools::redact_params(params);
             Some(serde_json::to_string_pretty(&safe).unwrap_or_else(|_| safe.to_string()))
         } else {
             None

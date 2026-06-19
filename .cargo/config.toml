@@ -1,0 +1,30 @@
+[build]
+# Use all available CPU cores for parallel compilation
+jobs = 16
+
+# Incremental compilation for faster rebuilds
+incremental = true
+
+# Use faster linker (mold if available, otherwise system default)
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+# Faster compilation profile for development
+[profile.dev]
+opt-level = 0
+debug = 1  # Reduced debug info for faster compilation
+incremental = true
+codegen-units = 256  # More parallel codegen units
+
+# Share build artifacts across workspaces
+[net]
+git-fetch-with-cli = true
