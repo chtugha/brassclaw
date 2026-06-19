@@ -68,7 +68,6 @@ pub struct AppComponents {
     pub http_interceptor: Option<Arc<dyn HttpInterceptor>>,
     pub session: Arc<SessionManager>,
     pub catalog_entries: Vec<crate::extensions::RegistryEntry>,
-    pub dev_loaded_tool_names: Vec<String>,
     // TODO: V1 builder field removed - needs V2 reimplementation
     /// In-process write-through cache: `(channel, external_id)` → `Identity`.
     /// Populated by the pairing flow (Task 8). Pre-allocated here so all
@@ -614,229 +613,8 @@ impl AppBuilder {
         ),
         anyhow::Error,
     > {
-        use crate::wasm_runtime::{WasmToolLoader, load_dev_tools};
-
-        // `McpSessionManager::new()` hardcodes the 1800s idle timeout
-        // (see `src/tools/mcp/session.rs`). There is no session-count
-        // cap yet — if that's needed for a large deployment, add a
-        // `max_sessions` field to the manager and a real knob here;
-        // a prior `MCP_MAX_SESSIONS` env var was wired in but never
-        // reached the struct and has been removed.
-        let mcp_session_manager = Arc::new(McpSessionManager::new());
-        let mcp_process_manager = Arc::new(McpProcessManager::new());
-
-        // Create WASM tool runtime eagerly so extensions installed after startup
-        // (e.g. via the web UI) can still be activated. The tools directory is only
-        // needed when loading modules, not for engine initialisation.
-        let wasm_tool_runtime: Option<Arc<WasmToolRuntime>> = if self.config.wasm.enabled {
-            WasmToolRuntime::new(self.config.wasm.to_runtime_config())
-                .map(Arc::new)
-                .map_err(|e| tracing::warn!("Failed to initialize WASM runtime: {}", e))
-                .ok()
-        } else {
-            None
-        };
-
-        // Load WASM tools and MCP servers concurrently
-        let wasm_tools_future = {
-            let wasm_tool_runtime = wasm_tool_runtime.clone();
-            let secrets_store = self.secrets_store.clone();
-            let tools = Arc::clone(tools);
-            let wasm_config = self.config.wasm.clone();
-            let db = self.db.clone();
-            async move {
-                let mut dev_loaded_tool_names: Vec<String> = Vec::new();
-
-                if let Some(ref runtime) = wasm_tool_runtime {
-                    let mut loader = WasmToolLoader::new(Arc::clone(runtime), Arc::clone(&tools));
-                    if let Some(ref secrets) = secrets_store {
-                        loader = loader.with_secrets_store(Arc::clone(secrets));
-                    }
-                    if let Some(ref db) = db {
-                        let role_lookup: Arc<dyn UserStore> = db.clone();
-                        loader = loader.with_role_lookup(role_lookup);
-                    }
-
-                    match loader.load_from_dir(&wasm_config.tools_dir).await {
-                        Ok(results) => {
-                            if !results.loaded.is_empty() {
-                                tracing::debug!(
-                                    "Loaded {} WASM tools from {}",
-                                    results.loaded.len(),
-                                    wasm_config.tools_dir.display()
-                                );
-                            }
-                            for (path, err) in &results.errors {
-                                tracing::warn!(
-                                    "Failed to load WASM tool {}: {}",
-                                    path.display(),
-                                    err
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!("Failed to scan WASM tools directory: {}", e);
-                        }
-                    }
-
-                    match load_dev_tools(&loader, &wasm_config.tools_dir).await {
-                        Ok(results) => {
-                            dev_loaded_tool_names.extend(results.loaded.iter().cloned());
-                            if !dev_loaded_tool_names.is_empty() {
-                                tracing::debug!(
-                                    "Loaded {} dev WASM tools from build artifacts",
-                                    dev_loaded_tool_names.len()
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            tracing::debug!("No dev WASM tools found: {}", e);
-                        }
-                    }
-                }
-
-                dev_loaded_tool_names
-            }
-        };
-
-        let mcp_servers_future = {
-            let secrets_store = self.secrets_store.clone();
-            let db = self.db.clone();
-            let mcp_sm = Arc::clone(&mcp_session_manager);
-            let pm = Arc::clone(&mcp_process_manager);
-            let owner_id = self.config.owner_id.clone();
-            async move {
-                let servers_result =
-                    crate::mcp_client::config::load_mcp_servers_ready(db.as_deref(), &owner_id)
-                        .await;
-                match servers_result {
-                    Ok(servers) => {
-                        let enabled: Vec<_> = servers.enabled_servers().cloned().collect();
-                        if !enabled.is_empty() {
-                            tracing::debug!(
-                                "Loading {} configured MCP server(s)...",
-                                enabled.len()
-                            );
-                        }
-
-                        let mut join_set = tokio::task::JoinSet::new();
-                        for server in enabled {
-                            let mcp_sm = Arc::clone(&mcp_sm);
-                            let secrets = secrets_store.clone();
-                            let pm = Arc::clone(&pm);
-                            let owner_id = owner_id.clone();
-
-                            join_set.spawn(async move {
-                                let server_name = server.name.clone();
-                                let has_custom_auth_header = server.has_custom_auth_header();
-
-                                let client = match crate::mcp_client::create_client_from_config(
-                                    server,
-                                    &mcp_sm,
-                                    &pm,
-                                    secrets,
-                                    &owner_id,
-                                )
-                                .await
-                                {
-                                    Ok(c) => c,
-                                    Err(e) => {
-                                        tracing::warn!(
-                                            "Failed to create MCP client for '{}': {}",
-                                            server_name,
-                                            e
-                                        );
-                                        return None;
-                                    }
-                                };
-
-                                match client.list_tools().await {
-                                    Ok(mcp_tools) => {
-                                        let tool_count = mcp_tools.len();
-                                        tracing::debug!(
-                                            "Connected to MCP server '{}' ({} tools); \
-                                             deferring wrapper registration until manager init",
-                                            server_name,
-                                            tool_count
-                                        );
-                                        // Tool wrappers need an `Arc<McpClientStore>` so
-                                        // dispatch can resolve the caller's client per user
-                                        // at execute time. The store is owned by the
-                                        // ExtensionManager, which isn't built yet — defer
-                                        // registration to `manager.inject_mcp_client` below.
-                                        return Some((server_name, Arc::new(client)));
-                                    }
-                                    Err(e) => {
-                                        let err_str = e.to_string();
-                                        if crate::mcp_client::is_auth_error_message(&err_str)
-                                        {
-                                            if has_custom_auth_header {
-                                                tracing::warn!(
-                                                    "MCP server '{}' rejected its configured Authorization header. Update the configured credential and try again.",
-                                                    server_name
-                                                );
-                                            } else {
-                                                tracing::warn!(
-                                                    "MCP server '{}' requires authentication. \
-                                                     Run: brassclaw mcp auth {}",
-                                                    server_name,
-                                                    server_name
-                                                );
-                                            }
-                                        } else {
-                                            tracing::warn!(
-                                                "Failed to connect to MCP server '{}': {}",
-                                                server_name,
-                                                e
-                                            );
-                                        }
-                                    }
-                                }
-                                None
-                            });
-                        }
-
-                        let mut startup_clients = Vec::new();
-                        while let Some(result) = join_set.join_next().await {
-                            match result {
-                                Ok(Some(client_pair)) => {
-                                    startup_clients.push(client_pair);
-                                }
-                                Ok(None) => {}
-                                Err(e) => {
-                                    if e.is_panic() {
-                                        tracing::error!("MCP server loading task panicked: {}", e);
-                                    } else {
-                                        tracing::warn!("MCP server loading task failed: {}", e);
-                                    }
-                                }
-                            }
-                        }
-                        return startup_clients;
-                    }
-                    Err(e) => {
-                        if matches!(
-                            e,
-                            crate::mcp_client::config::ConfigError::InvalidConfig { .. }
-                                | crate::mcp_client::config::ConfigError::Json(_)
-                        ) {
-                            tracing::warn!(
-                                "MCP server configuration is invalid: {}. \
-                                 Fix or remove the corrupted config.",
-                                e
-                            );
-                        } else {
-                            tracing::debug!("No MCP servers configured ({})", e);
-                        }
-                    }
-                }
-                Vec::new()
-            }
-        };
-
-        let (dev_loaded_tool_names, startup_mcp_clients) =
-            tokio::join!(wasm_tools_future, mcp_servers_future);
-
+        // TODO: V1 WASM/MCP infrastructure removed - extension system needs V2 reimplementation
+        
         // Load registry catalog entries for extension discovery
         let mut catalog_entries = match crate::registry::RegistryCatalog::load_or_embedded() {
             Ok(catalog) => {
@@ -853,8 +631,7 @@ impl AppBuilder {
             }
         };
 
-        // Append builtin entries (e.g. channel-relay integrations) so they appear
-        // in the web UI's available extensions list.
+        // Append builtin entries
         let builtin = crate::extensions::registry::builtin_entries();
         for entry in builtin {
             if !catalog_entries.iter().any(|e| e.name == entry.name) {
@@ -862,151 +639,21 @@ impl AppBuilder {
             }
         }
 
-        // Create extension manager. `init_secrets` guarantees
-        // `self.secrets_store` is Some — either a persistent store or an
-        // ephemeral in-memory fallback — so the extension manager, WASM tool
-        // loader, and WASM channel setup all share the same store instance.
-        // See #1537 for the hosted-TEE regression that motivated unconditional
-        // wiring.
-        let ext_secrets: Arc<dyn crate::secrets::SecretsStore + Send + Sync> = match self
-            .secrets_store
-            .as_ref()
-        {
-            Some(s) => Arc::clone(s),
-            None => {
-                return Err(anyhow::anyhow!(
-                    "secrets store not initialized; call init_secrets() before init_extensions()"
-                ));
-            }
-        };
-        let extension_manager = {
-            let mut em = ExtensionManager::new(
-                Arc::clone(&mcp_session_manager),
-                Arc::clone(&mcp_process_manager),
-                ext_secrets,
-                Arc::clone(tools),
-                Some(Arc::clone(hooks)),
-                wasm_tool_runtime.clone(),
-                self.config.wasm.tools_dir.clone(),
-                self.config.channels.wasm_channels_dir.clone(),
-                self.config.tunnel.public_url.clone(),
+        // Create minimal extension manager stub
+        let extension_manager = if let Some(ref secrets) = self.secrets_store {
+            let em = ExtensionManager::new_stub(
+                Arc::clone(secrets),
                 self.config.owner_id.clone(),
                 self.db.clone(),
                 catalog_entries.clone(),
             );
-            if let Some(ref ss) = settings_store_override {
-                em = em.with_settings_store(Arc::clone(ss));
-            }
-            let pairing_store = if let Some(ref db) = self.db {
-                let ps = Arc::new(crate::pairing::PairingStore::new(
-                    Arc::clone(db),
-                    Arc::clone(&ownership_cache),
-                ));
-                em = em.with_pairing_store(Arc::clone(&ps));
-                Some(ps)
-            } else {
-                None
-            };
-            // Wire the Reborn Telegram v2 feature flag so the manager
-            // can reject hot-activation of the legacy `telegram` WASM
-            // channel when v2 owns the webhook installation (Henry's
-            // review on PR #3356 — startup guard alone is not enough).
-            em.set_reborn_telegram_v2_enabled(self.config.channels.reborn_telegram_v2_enabled);
-            let manager = Arc::new(em);
-            tools.register_extension_tools(Arc::clone(&manager));
-            if let Some(ps) = pairing_store {
-                tools.register_sync(Arc::new(crate::tools::builtin::PairingApproveTool::new(ps)));
-            }
-
-            // Register permission management tool and upgrade tool_list with
-            // builtin registry support. Prefer the workspace-backed adapter
-            // when the caller provides one (production wiring) so settings
-            // writes flow through schema validation; fall back to the raw db
-            // for test harnesses that don't have a workspace.
-            let settings_store_for_perms: Option<Arc<dyn crate::db::SettingsStore + Send + Sync>> =
-                settings_store_override.clone().or_else(|| {
-                    self.db
-                        .as_ref()
-                        .map(|db| Arc::clone(db) as Arc<dyn crate::db::SettingsStore + Send + Sync>)
-                });
-            tools.register_permission_tools(settings_store_for_perms.clone());
-            tools.upgrade_tool_list(Arc::clone(&manager), settings_store_for_perms);
-
-            tracing::debug!("Extension manager initialized with in-chat discovery tools");
-
-            if !startup_mcp_clients.is_empty() {
-                tracing::info!(
-                    count = startup_mcp_clients.len(),
-                    "Injecting startup MCP clients into extension manager"
-                );
-                for (name, client) in startup_mcp_clients {
-                    // `name` here is the raw config row's `server.name`
-                    // captured before `create_client_from_config()`
-                    // normalized hyphens to underscores. The client
-                    // itself, the generated wrappers, and the session /
-                    // process managers all use the NORMALIZED name.
-                    // Using the raw `name` here would insert the client
-                    // into `McpClientStore` under `"my-mcp-server"`
-                    // while the wrappers look up `"my_mcp_server"` at
-                    // dispatch, silently failing every call with
-                    // "MCP server '…' is not active for this user"
-                    // until manual reactivation. Source the name from
-                    // the client's canonical field to guarantee the
-                    // insert key matches the dispatch-time lookup key.
-                    let normalized_name = client.server_name().to_string();
-                    let registered = manager
-                        .inject_mcp_client(normalized_name.clone(), &self.config.owner_id, client)
-                        .await;
-                    if name != normalized_name {
-                        tracing::debug!(
-                            raw_name = %name,
-                            normalized = %normalized_name,
-                            "Startup MCP server name normalized (hyphens -> underscores) for client-store injection"
-                        );
-                    }
-                    tracing::debug!(
-                        server = %normalized_name,
-                        count = registered.len(),
-                        "Registered tools for startup MCP server"
-                    );
-                }
-            }
-
-            Some(manager)
+            Some(Arc::new(em))
+        } else {
+            None
         };
 
-        // Validate ACP agent configs at startup (lightweight — no connections, just config check).
-        {
-            let acp_agents = if let Some(ref d) = self.db {
-                crate::config::acp::load_acp_agents_from_db(d.as_ref(), &self.config.owner_id).await
-            } else {
-                crate::config::acp::load_acp_agents().await
-            };
-            match acp_agents {
-                Ok(file) => {
-                    let enabled: Vec<_> = file.enabled_agents().collect();
-                    if !enabled.is_empty() {
-                        let names: Vec<&str> = enabled.iter().map(|a| a.name.as_str()).collect();
-                        tracing::info!(
-                            "ACP agents configured: {} ({} enabled)",
-                            names.join(", "),
-                            enabled.len()
-                        );
-                    }
-                }
-                Err(e) => {
-                    tracing::debug!("No ACP agents configured ({})", e);
-                }
-            }
-        }
+        tracing::debug!("Extension manager stub initialized for V2 capability system");
 
-        // register_builder_tool() already calls register_dev_tools() internally,
-        // so only register them here when the builder didn't already do it.
-        let builder_registered_dev_tools = self.config.builder.enabled
-            && (self.config.agent.allow_local_tools || !self.config.sandbox.enabled);
-        if self.config.agent.allow_local_tools && !builder_registered_dev_tools {
-            tools.register_dev_tools();
-        }
 
         Ok((
             mcp_session_manager,
@@ -1049,11 +696,8 @@ impl AppBuilder {
             };
         let (
             safety,
-            tools,
             embeddings,
             workspace,
-            builder,
-            credential_registry,
             http_interceptor,
             workspace_resolver,
         ) = self.init_tools(&llm, cheap_llm.as_ref()).await?;
@@ -1113,15 +757,10 @@ impl AppBuilder {
 
         let ownership_cache = Arc::new(crate::ownership::OwnershipCache::new());
         let (
-            mcp_session_manager,
-            mcp_process_manager,
-            wasm_tool_runtime,
             extension_manager,
             catalog_entries,
-            dev_loaded_tool_names,
         ) = self
             .init_extensions(
-                &tools,
                 &hooks,
                 settings_store.clone(),
                 Arc::clone(&ownership_cache),
@@ -1214,7 +853,7 @@ impl AppBuilder {
 
             let registry = Arc::new(std::sync::RwLock::new(registry));
             let catalog = brassclaw_skills::catalog::shared_catalog();
-            tools.register_skill_tools(Arc::clone(&registry), Arc::clone(&catalog));
+            // TODO: V1 tools.register_skill_tools removed - needs V2 reimplementation
             (Some(registry), Some(catalog))
         } else {
             (None, None)
@@ -1229,10 +868,7 @@ impl AppBuilder {
             },
         ));
 
-        tracing::debug!(
-            "Tool registry initialized with {} total tools",
-            tools.count()
-        );
+        tracing::debug!("V2 capability system initialization starting");
 
         // One-shot cleanup of ghost-seeded tool permission rows for the
         // owner. Pre-#3559, `seed_tool_permissions` wrote the code-level
@@ -1434,15 +1070,11 @@ impl AppBuilder {
             cheap_llm,
             llm_reload,
             safety,
-            tools,
             embeddings,
             workspace,
             settings_store,
             settings_cache,
             extension_manager,
-            mcp_session_manager,
-            mcp_process_manager,
-            wasm_tool_runtime,
             log_broadcaster: self.log_broadcaster,
             context_manager,
             hooks,
@@ -1454,8 +1086,6 @@ impl AppBuilder {
             http_interceptor,
             session: self.session,
             catalog_entries,
-            dev_loaded_tool_names,
-            builder,
             ownership_cache,
             capability_dispatcher,
             effect_executor,
