@@ -16,12 +16,65 @@ use crate::bridge::tool_surface::{
     InvocationMode, SurfacePolicyInput, SurfaceSubjectKind, assign_surface,
 };
 use crate::extensions::naming::extension_name_candidates;
+
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 ToolRegistry
+pub struct ToolRegistry;
+
+impl ToolRegistry {
+    pub async fn all(&self) -> Vec<Arc<dyn Tool>> {
+        Vec::new()
+    }
+}
+
+/// Stub for deleted V1 Tool trait
+pub trait Tool: Send + Sync {
+    fn name(&self) -> &str;
+    fn provider_extension(&self) -> Option<&str> {
+        None
+    }
+}
+
+/// Stub for deleted V1 ToolPermissionSnapshot
+pub struct ToolPermissionSnapshot;
+
+impl ToolPermissionSnapshot {
+    pub async fn load(_tools: &ToolRegistry, _user_id: &str) -> Self {
+        Self
+    }
+    
+    pub fn resolve_permission(&self, _tool_name: &str) -> ToolPermissionResolution {
+        ToolPermissionResolution {
+            effective: PermissionState::AskEachTime,
+        }
+    }
+}
+
+/// Stub for deleted V1 ToolPermissionResolution
+pub struct ToolPermissionResolution {
+    pub effective: PermissionState,
+}
+
+/// Stub for deleted V1 PermissionState
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PermissionState {
+    Disabled,
+    AlwaysAllow,
+    AskEachTime,
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
 use crate::extensions::{InstalledExtension, LatentProviderAction};
 
 pub(crate) struct ActionProjector;
 
 struct InventoryInputs {
-    tool_defs: Vec<Arc<dyn crate::tools::Tool>>,
+    tool_defs: Vec<Arc<dyn Tool>>,
     extension_statuses: Option<HashMap<String, InstalledExtension>>,
     latent_actions: Vec<LatentProviderAction>,
     tool_permissions: ToolPermissionSnapshot,
@@ -191,7 +244,7 @@ enum ProjectedAction {
 }
 
 fn classify_registered_tool(
-    tool: &dyn crate::tools::Tool,
+    tool: &dyn Tool,
     extension_statuses: Option<&HashMap<String, InstalledExtension>>,
     tool_permissions: &ToolPermissionSnapshot,
 ) -> ProjectedAction {
@@ -253,7 +306,7 @@ fn supports_pre_activation_discovery(
     )
 }
 
-fn project_tool_action(tool: &dyn crate::tools::Tool) -> ActionDef {
+fn project_tool_action(tool: &dyn Tool) -> ActionDef {
     let callable_name = tool.name().replace('-', "_");
     let callable_schema = tool.parameters_schema();
     let discovery_schema = tool.discovery_schema();
@@ -343,7 +396,7 @@ mod tests {
         ActionProjector, default_model_tool_surface, project_tool_action, provider_extension_status,
     };
     use crate::extensions::{ExtensionKind, InstalledExtension};
-    use crate::tools::ToolRegistry;
+    use ToolRegistry;
 
     fn installed_extension(name: &str) -> InstalledExtension {
         InstalledExtension {
@@ -400,7 +453,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl crate::tools::Tool for ProviderTool {
+    impl Tool for ProviderTool {
         fn name(&self) -> &str {
             self.name
         }
@@ -417,8 +470,8 @@ mod tests {
             &self,
             _: serde_json::Value,
             _: &crate::context::JobContext,
-        ) -> Result<crate::tools::ToolOutput, crate::tools::ToolError> {
-            Ok(crate::tools::ToolOutput::success(
+        ) -> Result<ToolOutput, ToolError> {
+            Ok(ToolOutput::success(
                 serde_json::json!({}),
                 std::time::Duration::from_millis(1),
             ))
@@ -436,7 +489,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl crate::tools::Tool for DiscoveryTool {
+    impl Tool for DiscoveryTool {
         fn name(&self) -> &str {
             "mission_helper"
         }
@@ -460,8 +513,8 @@ mod tests {
             })
         }
 
-        fn discovery_summary(&self) -> Option<crate::tools::ToolDiscoverySummary> {
-            Some(crate::tools::ToolDiscoverySummary {
+        fn discovery_summary(&self) -> Option<ToolDiscoverySummary> {
+            Some(ToolDiscoverySummary {
                 always_required: vec!["id".to_string()],
                 conditional_requirements: vec!["mode is needed when updating".to_string()],
                 notes: vec!["Use for mission inspection".to_string()],
@@ -473,13 +526,13 @@ mod tests {
             &self,
             _: serde_json::Value,
             _: &crate::context::JobContext,
-        ) -> Result<crate::tools::ToolOutput, crate::tools::ToolError> {
+        ) -> Result<ToolOutput, ToolError> {
             unreachable!("not needed")
         }
     }
 
     #[async_trait]
-    impl crate::tools::Tool for PlainTool {
+    impl Tool for PlainTool {
         fn name(&self) -> &str {
             "plain_helper"
         }
@@ -496,13 +549,13 @@ mod tests {
             &self,
             _: serde_json::Value,
             _: &crate::context::JobContext,
-        ) -> Result<crate::tools::ToolOutput, crate::tools::ToolError> {
+        ) -> Result<ToolOutput, ToolError> {
             unreachable!("not needed")
         }
     }
 
     #[async_trait]
-    impl crate::tools::Tool for BuiltinTool {
+    impl Tool for BuiltinTool {
         fn name(&self) -> &str {
             self.name
         }
@@ -519,7 +572,7 @@ mod tests {
             &self,
             _: serde_json::Value,
             _: &crate::context::JobContext,
-        ) -> Result<crate::tools::ToolOutput, crate::tools::ToolError> {
+        ) -> Result<ToolOutput, ToolError> {
             unreachable!("not needed")
         }
     }
