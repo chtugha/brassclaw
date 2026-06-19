@@ -10,6 +10,29 @@ use crate::hooks::bundled::{
 };
 use crate::hooks::registry::HookRegistry;
 // TODO: V1 wasm_runtime module removed - tool discovery needs V2 reimplementation
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 discover_tools function
+async fn discover_tools(_dir: &Path) -> Vec<String> {
+    Vec::new()
+}
+
+/// Stub for deleted V1 discover_dev_tools function
+async fn discover_dev_tools(_dir: &Path) -> Vec<String> {
+    Vec::new()
+}
+
+/// Stub for deleted V1 discover_channels function
+async fn discover_channels(_dir: &Path) -> Vec<String> {
+    Vec::new()
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
+
 use crate::workspace::Workspace;
 
 /// Summary of hook bootstrap work done at startup.

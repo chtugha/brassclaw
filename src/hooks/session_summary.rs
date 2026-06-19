@@ -12,6 +12,23 @@ use crate::db::ConversationStore;
 use crate::hooks::hook::{
     Hook, HookContext, HookError, HookEvent, HookFailureMode, HookOutcome, HookPoint,
 };
+
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+use crate::workspace::Workspace;
+
+/// Stub for deleted V1 WorkspaceResolver trait
+#[async_trait]
+pub trait WorkspaceResolver: Send + Sync {
+    async fn resolve(&self, user_id: &str) -> Arc<Workspace>;
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
+
 // TODO: Extract WorkspaceResolver from deleted V1 code
 use brassclaw_llm::{ChatMessage, CompletionRequest, LlmProvider};
 

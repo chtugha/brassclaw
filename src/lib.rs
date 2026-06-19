@@ -66,6 +66,7 @@ pub mod http_intercept;
 #[cfg(feature = "import")]
 pub mod import;
 pub mod llm_host;
+pub mod mcp_client;
 pub mod logging;
 pub mod observability;
 pub mod orchestrator;
@@ -80,7 +81,7 @@ pub mod service;
 pub mod settings;
 pub mod setup;
 pub mod skills;
-
+pub mod tools;
 pub mod tenant;
 pub mod timezone;
 pub mod trace_client;

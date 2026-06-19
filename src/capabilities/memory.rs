@@ -8,6 +8,24 @@ use brassclaw_host_api::{
 use serde_json::{Value, json};
 // TODO: Extract memory utilities from deleted V1 code
 use crate::workspace::{Workspace, paths};
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 normalize_workspace_path function
+fn normalize_workspace_path(path: &str) -> String {
+    path.to_string()
+}
+
+/// Stub for deleted V1 is_protected_orchestrator_path function
+fn is_protected_orchestrator_path(_path: &str) -> bool {
+    false
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
+
 use async_trait::async_trait;
 
 /// Trait for resolving workspace based on user ID (multi-tenant support)

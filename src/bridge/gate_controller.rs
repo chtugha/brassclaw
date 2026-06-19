@@ -52,6 +52,7 @@ use crate::channels::ChannelManager;
 use crate::channels::StatusUpdate;
 use crate::extensions::ExtensionManager;
 use crate::gate::pending::PendingGate;
+use crate::tools::ToolRegistry;
 use crate::gate::store::PendingGateStore;
 
 /// Per-execution data the controller needs to build a `PendingGate`.

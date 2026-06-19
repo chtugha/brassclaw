@@ -3,6 +3,36 @@ use std::time::Duration;
 
 use crate::bootstrap::brassclaw_base_dir;
 use crate::config::helpers::{db_first_bool, db_first_or_default, optional_env};
+
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 WasmRuntimeConfig type
+#[derive(Debug, Clone)]
+pub struct WasmRuntimeConfig {
+    pub default_limits: ResourceLimits,
+    pub fuel_config: FuelConfig,
+}
+
+/// Stub for deleted V1 ResourceLimits type
+#[derive(Debug, Clone)]
+pub struct ResourceLimits {
+    pub memory_bytes: u64,
+    pub fuel: u64,
+    pub timeout: Duration,
+}
+
+/// Stub for deleted V1 FuelConfig type
+#[derive(Debug, Clone)]
+pub struct FuelConfig {
+    pub initial_fuel: u64,
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
+
 use crate::error::ConfigError;
 
 /// WASM sandbox configuration.

@@ -9,6 +9,19 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 validate_path function
+fn validate_path(_path: &str) -> Result<PathBuf, ImagesCapabilityError> {
+    Err(ImagesCapabilityError::input("V1 path validation deleted"))
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
+
 // TODO: Extract path validation from deleted V1 code
 
 pub const PROVIDER_ID: &str = "builtin";

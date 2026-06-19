@@ -38,6 +38,20 @@ use crate::workspace::Workspace;
 use brassclaw_llm::{
     ChatMessage, CompletionRequest, FinishReason, LlmProvider, ToolCall, ToolCompletionRequest,
 };
+
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 autonomous_unavailable_message function
+fn autonomous_unavailable_message() -> String {
+    "Autonomous mode is not available in V1 compatibility mode".to_string()
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
+
 use brassclaw_safety::SafetyLayer;
 /// Returns all V2 capability IDs with their descriptions for LLM tool definitions.
 fn list_all_v2_capabilities() -> Vec<(String, String)> {

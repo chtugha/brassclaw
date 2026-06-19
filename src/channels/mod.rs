@@ -34,6 +34,8 @@ mod manager;
 pub mod relay;
 mod repl;
 mod signal;
+pub mod wasm;
+pub mod web;
 #[cfg(feature = "tui")]
 pub mod tui;
 

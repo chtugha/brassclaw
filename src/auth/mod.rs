@@ -28,6 +28,31 @@ pub struct OAuthRefreshConfig {
     pub token_url: String,
     pub client_id: String,
     pub client_secret: Option<String>,
+    pub exchange_proxy_url: Option<String>,
+    pub provider: Option<String>,
+}
+
+impl OAuthRefreshConfig {
+    pub fn oauth_proxy_auth_token(&self) -> Option<String> {
+        None
+    }
+}
+
+/// Stub for deleted V1 ResolvedTarget type
+#[derive(Debug, Clone)]
+pub struct ResolvedTarget {
+    pub url: String,
+    pub ip: std::net::IpAddr,
+}
+
+/// Stub for deleted V1 validate_and_resolve_http_target function
+async fn validate_and_resolve_http_target(url: &str) -> crate::Result<ResolvedTarget> {
+    Err(crate::Error::NotSupported("V1 SSRF validation deleted".to_string()))
+}
+
+/// Stub for deleted V1 ssrf_safe_client_builder_for_target function
+fn ssrf_safe_client_builder_for_target(_target: &ResolvedTarget) -> reqwest::ClientBuilder {
+    reqwest::Client::builder()
 }
 
 // ============================================================================
