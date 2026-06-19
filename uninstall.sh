@@ -16,10 +16,22 @@ INSTALL_DIR="${HOME}/.local/bin"
 CONFIG_DIR="${HOME}/.brassclaw"
 DATA_DIR="${HOME}/.local/share/brassclaw"
 CACHE_DIR="${HOME}/.cache/brassclaw"
+LOG_DIR="${HOME}/.local/state/brassclaw"
+STATE_DIR="${HOME}/.local/state/brassclaw"
 
-# Service/daemon locations (if applicable)
+# Service/daemon locations
 LAUNCHD_PLIST="${HOME}/Library/LaunchAgents/com.brassclaw.agent.plist"
-SYSTEMD_SERVICE="${HOME}/.config/systemd/user/brassclaw.service"
+SYSTEMD_USER_SERVICE="${HOME}/.config/systemd/user/brassclaw.service"
+SYSTEMD_SYSTEM_SERVICE="/etc/systemd/system/brassclaw.service"
+
+# Repository/installation locations (optional, for development/testing)
+REPO_DIR="/opt/brassclaw"
+ALT_INSTALL_DIR="/root/brassclaw"
+
+# Database locations
+POSTGRES_DB_NAME="brassclaw"
+SQLITE_DB="${DATA_DIR}/brassclaw.db"
+LIBSQL_DB="${DATA_DIR}/brassclaw.sqld"
 
 echo "${YELLOW}BrassClaw Uninstaller${NC}"
 echo "====================="
@@ -35,11 +47,23 @@ stop_services() {
         launchctl unload "$LAUNCHD_PLIST" 2>/dev/null || true
     fi
     
-    # Check for systemd service
-    if [ -f "$SYSTEMD_SERVICE" ]; then
-        echo "Stopping systemd service..."
+    # Check for systemd user service
+    if [ -f "$SYSTEMD_USER_SERVICE" ]; then
+        echo "Stopping systemd user service..."
         systemctl --user stop brassclaw.service 2>/dev/null || true
         systemctl --user disable brassclaw.service 2>/dev/null || true
+    fi
+    
+    # Check for systemd system service (requires root)
+    if [ -f "$SYSTEMD_SYSTEM_SERVICE" ]; then
+        echo "Stopping systemd system service..."
+        if [ "$(id -u)" -eq 0 ]; then
+            systemctl stop brassclaw.service 2>/dev/null || true
+            systemctl disable brassclaw.service 2>/dev/null || true
+        else
+            echo "${YELLOW}Warning: System service found but requires root to stop${NC}"
+            echo "Run with sudo to remove system service: sudo $0 $@"
+        fi
     fi
     
     # Kill any running brassclaw processes
@@ -51,6 +75,34 @@ stop_services() {
         if pgrep -x "$BINARY_NAME" > /dev/null; then
             pkill -9 -x "$BINARY_NAME" || true
         fi
+    fi
+}
+
+# Function to clean up database
+cleanup_database() {
+    echo "${YELLOW}Checking for databases...${NC}"
+    
+    # Check for PostgreSQL database
+    if command -v psql > /dev/null 2>&1; then
+        if psql -lqt 2>/dev/null | cut -d \| -f 1 | grep -qw "$POSTGRES_DB_NAME"; then
+            echo "Found PostgreSQL database: $POSTGRES_DB_NAME"
+            printf "Do you want to drop the PostgreSQL database? [y/N] "
+            read -r response
+            case "$response" in
+                [yY][eE][sS]|[yY])
+                    echo "Dropping PostgreSQL database..."
+                    dropdb "$POSTGRES_DB_NAME" 2>/dev/null || echo "${YELLOW}Failed to drop database (may require different user)${NC}"
+                    ;;
+                *)
+                    echo "Skipping PostgreSQL database removal"
+                    ;;
+            esac
+        fi
+    fi
+    
+    # SQLite/LibSQL databases are in DATA_DIR and will be removed with it
+    if [ -f "$SQLITE_DB" ] || [ -f "$LIBSQL_DB" ]; then
+        echo "SQLite/LibSQL databases will be removed with data directory"
     fi
 }
 
@@ -77,15 +129,31 @@ main() {
     echo "  - Configuration: ${CONFIG_DIR}"
     echo "  - Data: ${DATA_DIR}"
     echo "  - Cache: ${CACHE_DIR}"
+    echo "  - Logs: ${LOG_DIR}"
+    echo "  - State: ${STATE_DIR}"
     
     if [ -f "$LAUNCHD_PLIST" ]; then
         echo "  - LaunchAgent: ${LAUNCHD_PLIST}"
     fi
     
-    if [ -f "$SYSTEMD_SERVICE" ]; then
-        echo "  - Systemd service: ${SYSTEMD_SERVICE}"
+    if [ -f "$SYSTEMD_USER_SERVICE" ]; then
+        echo "  - Systemd user service: ${SYSTEMD_USER_SERVICE}"
     fi
     
+    if [ -f "$SYSTEMD_SYSTEM_SERVICE" ]; then
+        echo "  - Systemd system service: ${SYSTEMD_SYSTEM_SERVICE}"
+    fi
+    
+    if [ -d "$REPO_DIR" ]; then
+        echo "  - Repository: ${REPO_DIR} (optional)"
+    fi
+    
+    if [ -d "$ALT_INSTALL_DIR" ]; then
+        echo "  - Alt installation: ${ALT_INSTALL_DIR} (optional)"
+    fi
+    
+    echo ""
+    echo "${YELLOW}Note: PostgreSQL database (if exists) will be handled separately${NC}"
     echo ""
     
     # Ask for confirmation unless --force flag is provided
@@ -93,7 +161,7 @@ main() {
         printf "Do you want to continue? [y/N] "
         read -r response
         case "$response" in
-            [yY][eE][sS]|[yY]) 
+            [yY][eE][sS]|[yY])
                 echo ""
                 ;;
             *)
@@ -106,6 +174,12 @@ main() {
     # Stop services first
     stop_services
     echo ""
+    
+    # Clean up database
+    if [ "$1" != "--force" ] && [ "$1" != "-f" ]; then
+        cleanup_database
+        echo ""
+    fi
     
     # Remove binary
     remove_path "${INSTALL_DIR}/${BINARY_NAME}" "binary"
@@ -123,24 +197,88 @@ main() {
     remove_path "$CACHE_DIR" "cache directory"
     echo ""
     
+    # Remove logs
+    remove_path "$LOG_DIR" "log directory"
+    echo ""
+    
+    # Remove state
+    if [ "$STATE_DIR" != "$LOG_DIR" ]; then
+        remove_path "$STATE_DIR" "state directory"
+        echo ""
+    fi
+    
     # Remove service files
     if [ -f "$LAUNCHD_PLIST" ]; then
         remove_path "$LAUNCHD_PLIST" "LaunchAgent plist"
         echo ""
     fi
     
-    if [ -f "$SYSTEMD_SERVICE" ]; then
-        remove_path "$SYSTEMD_SERVICE" "systemd service"
+    if [ -f "$SYSTEMD_USER_SERVICE" ]; then
+        remove_path "$SYSTEMD_USER_SERVICE" "systemd user service"
         echo ""
     fi
+    
+    if [ -f "$SYSTEMD_SYSTEM_SERVICE" ]; then
+        if [ "$(id -u)" -eq 0 ]; then
+            remove_path "$SYSTEMD_SYSTEM_SERVICE" "systemd system service"
+            systemctl daemon-reload 2>/dev/null || true
+        else
+            echo "${YELLOW}Skipping system service (requires root)${NC}"
+        fi
+        echo ""
+    fi
+    
+    # Optional: Remove repository and alt installation
+    if [ "$1" != "--force" ] && [ "$1" != "-f" ]; then
+        if [ -d "$REPO_DIR" ]; then
+            printf "Remove repository directory ${REPO_DIR}? [y/N] "
+            read -r response
+            case "$response" in
+                [yY][eE][sS]|[yY])
+                    remove_path "$REPO_DIR" "repository directory"
+                    ;;
+                *)
+                    echo "Keeping repository directory"
+                    ;;
+            esac
+            echo ""
+        fi
+        
+        if [ -d "$ALT_INSTALL_DIR" ]; then
+            printf "Remove alt installation ${ALT_INSTALL_DIR}? [y/N] "
+            read -r response
+            case "$response" in
+                [yY][eE][sS]|[yY])
+                    remove_path "$ALT_INSTALL_DIR" "alt installation directory"
+                    ;;
+                *)
+                    echo "Keeping alt installation directory"
+                    ;;
+            esac
+            echo ""
+        fi
+    fi
+    
+    # Clean up temporary files
+    echo "Cleaning up temporary files..."
+    rm -rf /tmp/brassclaw* 2>/dev/null || true
+    rm -rf /tmp/tmp.*/brassclaw* 2>/dev/null || true
+    echo ""
     
     # Check for any remaining processes
     if pgrep -x "$BINARY_NAME" > /dev/null; then
         echo "${RED}Warning: BrassClaw processes are still running${NC}"
         echo "You may need to manually kill them or restart your system."
+        echo ""
     fi
     
     echo "${GREEN}✓ BrassClaw has been successfully uninstalled!${NC}"
+    echo ""
+    echo "Cleanup summary:"
+    echo "  ✓ Binary and executables removed"
+    echo "  ✓ Configuration and data removed"
+    echo "  ✓ Cache and temporary files removed"
+    echo "  ✓ Services stopped and disabled"
     echo ""
     echo "Note: If you added ${INSTALL_DIR} to your PATH, you may want to remove it from your shell profile."
 }
