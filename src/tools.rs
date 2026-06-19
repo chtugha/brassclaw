@@ -60,7 +60,7 @@ impl ToolRegistry {
     /// TODO: Remove after V2 migration complete
     pub async fn tool_definitions_visible_under(
         &self,
-        _policy: &crate::authorization::EffectiveRuntimePolicy,
+        _policy: &brassclaw_host_api::EffectiveRuntimePolicy,
     ) -> Vec<brassclaw_llm::ToolDefinition> {
         Vec::new()
     }
