@@ -12,7 +12,8 @@ use brassclaw_common::McpServerName;
 use crate::mcp_client::protocol::{McpRequest, McpResponse};
 use crate::mcp_client::session::McpSessionManager;
 use crate::mcp_client::transport::McpTransport;
-use crate::tools::ToolError;
+
+// TODO: Extract ToolError from deleted V1 code
 
 /// MCP transport that communicates with a server over HTTP.
 ///

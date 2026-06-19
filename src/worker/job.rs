@@ -23,9 +23,9 @@ use crate::context::{ContextManager, JobState};
 use crate::error::Error;
 use crate::hooks::HookRegistry;
 use crate::tenant::SystemScope;
-use crate::tools::execute::process_tool_result;
-use crate::tools::rate_limiter::RateLimitResult;
-use crate::tools::{ApprovalContext, ToolRegistry, prepare_tool_params, redact_params};
+
+// TODO: Extract tool execution utilities, rate limiter, ToolRegistry from deleted V1 code
+
 use crate::worker::autonomous_recovery::{
     AutonomousRecoveryAction, AutonomousRecoveryState, EMPTY_TOOL_COMPLETION_FAILURE,
     EMPTY_TOOL_COMPLETION_NUDGE, FORCE_TEXT_RECOVERY_PROMPT,

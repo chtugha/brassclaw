@@ -15,7 +15,8 @@ use tokio::task::JoinHandle;
 
 use crate::mcp_client::protocol::{McpRequest, McpResponse};
 use crate::mcp_client::transport::{McpTransport, spawn_jsonrpc_reader, stream_transport_send};
-use crate::tools::ToolError;
+
+// TODO: Extract ToolError from deleted V1 code
 
 /// MCP transport that communicates with a child process over stdin/stdout.
 ///

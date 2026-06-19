@@ -22,7 +22,8 @@ use crate::mcp_client::protocol::{
 };
 use crate::mcp_client::session::McpSessionManager;
 use crate::mcp_client::transport::McpTransport;
-use crate::tools::{ApprovalRequirement, Tool, ToolError, ToolOutput};
+
+// TODO: Extract Tool trait and error types from deleted V1 code
 
 /// Tag identifying which constructor produced an `McpClient`.
 ///

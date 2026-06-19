@@ -21,8 +21,9 @@ use crate::agent::agentic_loop::{
 use crate::config::SafetyConfig;
 use crate::context::JobContext;
 use crate::error::WorkerError;
-use crate::tools::ToolRegistry;
-use crate::tools::execute::{execute_tool_simple, process_tool_result};
+
+// TODO: Extract ToolRegistry and tool execution utilities from deleted V1 code
+
 use crate::worker::api::{CompletionReport, JobEventPayload, StatusUpdate, WorkerHttpClient};
 use crate::worker::autonomous_recovery::{
     AutonomousRecoveryAction, AutonomousRecoveryState, EMPTY_TOOL_COMPLETION_FAILURE,

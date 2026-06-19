@@ -12,7 +12,8 @@ use tokio::fs;
 
 use crate::bootstrap::brassclaw_base_dir;
 use crate::mcp_client::McpTool;
-use crate::tools::ToolError;
+
+// TODO: Extract ToolError from deleted V1 code
 
 /// Transport configuration for an MCP server.
 #[derive(Debug, Clone, Serialize, Deserialize)]

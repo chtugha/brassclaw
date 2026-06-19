@@ -33,7 +33,9 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::secrets::{CredentialLocation, CredentialMapping};
-use crate::tools::ToolDiscoverySummary;
+
+// TODO: Extract ToolDiscoverySummary from deleted V1 code
+
 use crate::wasm_runtime::{
     Capabilities, EndpointPattern, HttpCapability, RateLimitConfig, SecretsCapability,
     ToolInvokeCapability, WebhookCapability, WorkspaceCapability,

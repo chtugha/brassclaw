@@ -21,7 +21,9 @@ use crate::context::JobContext;
 use crate::db::UserStore;
 use crate::secrets::SecretsStore;
 use crate::secrets::host_matches_pattern;
-use crate::tools::{Tool, ToolDiscoverySummary, ToolError, ToolOutput};
+
+// TODO: Extract Tool, ToolDiscoverySummary, ToolError, ToolOutput from deleted V1 code
+
 use crate::wasm_runtime::capabilities::Capabilities;
 use crate::wasm_runtime::credential_injector::{InjectedCredentials, inject_credential};
 use crate::wasm_runtime::error::WasmError;

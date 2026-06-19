@@ -41,7 +41,9 @@ use tokio::fs;
 
 use crate::db::UserStore;
 use crate::secrets::SecretsStore;
-use crate::tools::{ToolRegistry, WasmRegistrationError, WasmToolRegistration};
+
+// TODO: Extract ToolRegistry, WasmRegistrationError, WasmToolRegistration from deleted V1 code
+
 use crate::wasm_runtime::capabilities_schema::CapabilitiesFile;
 use crate::wasm_runtime::{
     Capabilities, OAuthRefreshConfig, WasmError, WasmStorageError, WasmToolRuntime, WasmToolStore,

@@ -13,7 +13,8 @@ use tokio::sync::{Mutex, oneshot};
 use tokio::task::JoinHandle;
 
 use crate::mcp_client::protocol::{McpRequest, McpResponse};
-use crate::tools::ToolError;
+
+// TODO: Extract ToolError from deleted V1 code
 
 /// Trait for sending JSON-RPC requests to an MCP server and receiving responses.
 ///
