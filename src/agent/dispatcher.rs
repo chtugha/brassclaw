@@ -81,6 +81,37 @@ pub struct Store {
     _placeholder: (),
 }
 
+/// Stub for deleted V1 Tool trait
+#[allow(dead_code)]
+pub trait Tool: Send + Sync {
+    fn name(&self) -> &str;
+    fn requires_approval(&self, _params: &serde_json::Value) -> &str {
+        "never"
+    }
+}
+
+/// Stub for deleted V1 ToolRegistry
+#[derive(Clone)]
+#[allow(dead_code)]
+pub struct ToolRegistry {
+    _placeholder: (),
+}
+
+/// Stub for deleted V1 execute_tool_with_safety function
+#[allow(dead_code)]
+async fn execute_tool_with_safety(
+    _tools: &ToolRegistry,
+    _safety: &brassclaw_safety::SafetyLayer,
+    _tool_name: &str,
+    _params: serde_json::Value,
+    _job_ctx: &crate::context::JobContext,
+) -> Result<String, Error> {
+    Err(Error::Tool(crate::error::ToolError::ExecutionFailed {
+        name: _tool_name.to_string(),
+        reason: "Tool execution unavailable during V2 migration".to_string(),
+    }))
+}
+
 /// Stub for deleted V1 load_cached_admin_tool_policy function
 #[allow(dead_code)]
 async fn load_cached_admin_tool_policy(
@@ -100,6 +131,19 @@ fn filter_admin_disabled_tools<T>(
     _policy: &std::collections::HashMap<String, String>,
 ) -> T {
     tools // Stub: return tools unchanged
+}
+
+/// Stub for deleted V1 process_tool_result function
+#[allow(dead_code)]
+fn process_tool_result(
+    _safety: &brassclaw_safety::SafetyLayer,
+    _tool_name: &str,
+    _tool_id: &str,
+    _result: &Result<String, crate::error::Error>,
+) -> (String, ChatMessage) {
+    let content = "Tool execution unavailable during V2 migration".to_string();
+    let message = ChatMessage::tool(_tool_id, content.clone());
+    (content, message)
 }
 
 fn selected_model_override(value: &serde_json::Value) -> Option<String> {
@@ -1028,7 +1072,7 @@ impl<'a> LoopDelegate for ChatDelegate<'a> {
         let mut approval_needed: Option<(
             usize,
             brassclaw_llm::ToolCall,
-            Arc<dyn crate::tools::Tool>,
+            Arc<dyn Tool>,
             bool, // allow_always
         )> = None;
 
@@ -1424,7 +1468,7 @@ impl<'a> LoopDelegate for ChatDelegate<'a> {
                                 ),
                             )
                         } else {
-                            crate::tools::execute::process_tool_result(
+                            process_tool_result(
                                 self.agent.safety(),
                                 &tc.name,
                                 &tc.id,
@@ -1537,13 +1581,13 @@ impl<'a> LoopDelegate for ChatDelegate<'a> {
 /// tasks, which cannot borrow `&self`. Delegates to the shared
 /// `execute_tool_with_safety` pipeline.
 pub(super) async fn execute_chat_tool_standalone(
-    tools: &crate::tools::ToolRegistry,
+    tools: &ToolRegistry,
     safety: &brassclaw_safety::SafetyLayer,
     tool_name: &str,
     params: &serde_json::Value,
     job_ctx: &crate::context::JobContext,
 ) -> Result<String, Error> {
-    crate::tools::execute::execute_tool_with_safety(
+    execute_tool_with_safety(
         tools,
         safety,
         tool_name,
@@ -1757,7 +1801,7 @@ fn preflight_rejection_tool_message(
     error_msg: &str,
 ) -> (String, ChatMessage) {
     let result: Result<String, &str> = Err(error_msg);
-    crate::tools::execute::process_tool_result(safety, tool_name, tool_call_id, &result)
+    process_tool_result(safety, tool_name, tool_call_id, &result)
 }
 
 /// Build a contextual thinking message based on tool names.
