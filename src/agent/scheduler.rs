@@ -20,6 +20,7 @@ use crate::tools::{
     prepare_tool_params,
 };
 use crate::worker::job::{Worker, WorkerDeps};
+use brassclaw_engine::EffectExecutor;
 use brassclaw_llm::LlmProvider;
 use brassclaw_safety::SafetyLayer;
 
@@ -50,7 +51,10 @@ struct ScheduledSubtask {
 
 /// Shared scheduler-owned dependencies that are forwarded into autonomous runs.
 pub struct SchedulerDeps {
+    #[deprecated(note = "Use effect_executor instead - will be removed in Step 9.7+")]
     pub tools: Arc<ToolRegistry>,
+    /// V2 effect executor for capability-based tool execution
+    pub effect_executor: Option<Arc<dyn EffectExecutor>>,
     pub extension_manager: Option<Arc<ExtensionManager>>,
     pub store: Option<SystemScope>,
     pub hooks: Arc<HookRegistry>,
@@ -62,7 +66,10 @@ pub struct Scheduler {
     context_manager: Arc<ContextManager>,
     llm: Arc<dyn LlmProvider>,
     safety: Arc<SafetyLayer>,
+    #[deprecated(note = "Use effect_executor instead - will be removed in Step 9.7+")]
     tools: Arc<ToolRegistry>,
+    /// V2 effect executor for capability-based tool execution
+    effect_executor: Option<Arc<dyn EffectExecutor>>,
     extension_manager: Option<Arc<ExtensionManager>>,
     store: Option<SystemScope>,
     hooks: Arc<HookRegistry>,
@@ -94,6 +101,7 @@ impl Scheduler {
             llm,
             safety,
             tools: deps.tools,
+            effect_executor: deps.effect_executor,
             extension_manager: deps.extension_manager,
             store: deps.store,
             hooks: deps.hooks,
@@ -401,6 +409,7 @@ impl Scheduler {
                 params,
             } => {
                 let tools = self.tools.clone();
+                let effect_executor = self.effect_executor.clone();
                 let context_manager = self.context_manager.clone();
                 let safety = self.safety.clone();
 
@@ -409,6 +418,7 @@ impl Scheduler {
                 tokio::spawn(async move {
                     let result = Self::execute_tool_task(
                         tools,
+                        effect_executor,
                         context_manager,
                         safety,
                         None,
@@ -538,9 +548,10 @@ impl Scheduler {
     /// Execute a single tool as a subtask.
     ///
     /// Performs scheduler-specific checks (approval, cancellation) then
-    /// delegates to the shared `execute_tool_with_safety` pipeline.
+    /// delegates to either V2 EffectExecutor or V1 tool execution pipeline.
     async fn execute_tool_task(
         tools: Arc<ToolRegistry>,
+        effect_executor: Option<Arc<dyn EffectExecutor>>,
         context_manager: Arc<ContextManager>,
         safety: Arc<SafetyLayer>,
         approval_context: Option<ApprovalContext>,
@@ -550,14 +561,7 @@ impl Scheduler {
     ) -> Result<TaskOutput, Error> {
         let start = std::time::Instant::now();
 
-        // Get the tool for approval check
-        let tool = tools.get(tool_name).await.ok_or_else(|| {
-            Error::Tool(crate::error::ToolError::NotFound {
-                name: tool_name.to_string(),
-            })
-        })?;
-
-        // Get job context
+        // Get job context for cancellation check
         let job_ctx: JobContext = context_manager.get_context(job_id).await?;
         if job_ctx.state == JobState::Cancelled {
             return Err(crate::error::ToolError::ExecutionFailed {
@@ -566,6 +570,37 @@ impl Scheduler {
             }
             .into());
         }
+
+        // TODO(Step 9.7+): Implement V2 EffectExecutor path
+        // When effect_executor is Some, use it instead of V1 ToolRegistry.
+        // Requires:
+        // 1. Helper to construct ThreadExecutionContext from JobContext
+        // 2. Helper to create appropriate CapabilityLease
+        // 3. Proper ThreadId, ProjectId, StepId construction
+        // 4. GateController setup
+        //
+        // For now, always use V1 path to maintain compilation and functionality.
+        if effect_executor.is_some() {
+            tracing::debug!(
+                tool_name = %tool_name,
+                job_id = %job_id,
+                "Scheduler: V2 EffectExecutor available but not yet implemented, using V1 fallback"
+            );
+        }
+
+        // V1 execution path
+        tracing::debug!(
+            tool_name = %tool_name,
+            job_id = %job_id,
+            "Scheduler: executing tool via V1 ToolRegistry (fallback)"
+        );
+
+        // Get the tool for approval check
+        let tool = tools.get(tool_name).await.ok_or_else(|| {
+            Error::Tool(crate::error::ToolError::NotFound {
+                name: tool_name.to_string(),
+            })
+        })?;
 
         let normalized_params = prepare_tool_params(tool.as_ref(), &params);
 
@@ -744,8 +779,14 @@ impl Scheduler {
     }
 
     /// Get access to the tools registry.
+    #[deprecated(note = "Use effect_executor() instead - will be removed in Step 9.7+")]
     pub fn tools(&self) -> &Arc<ToolRegistry> {
         &self.tools
+    }
+
+    /// Get access to the V2 effect executor.
+    pub fn effect_executor(&self) -> Option<&Arc<dyn EffectExecutor>> {
+        self.effect_executor.as_ref()
     }
 
     /// Get access to the context manager.
@@ -838,6 +879,7 @@ mod tests {
             safety,
             SchedulerDeps {
                 tools,
+                effect_executor: None, // Tests use V1 path for now
                 extension_manager: None,
                 store: None,
                 hooks,

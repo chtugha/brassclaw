@@ -523,6 +523,8 @@ pub struct AgentDeps {
     pub runtime_policy: Option<brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy>,
     /// V2 capability dispatcher for routine engine and other V2 consumers.
     pub dispatcher: Arc<crate::capabilities::dispatcher::BuiltinCapabilityDispatcher>,
+    /// V2 effect executor for Scheduler and other components that need capability execution.
+    pub effect_executor: Option<Arc<dyn brassclaw_engine::EffectExecutor>>,
 }
 
 /// The main agent that coordinates all components.
@@ -588,6 +590,7 @@ impl Agent {
             deps.safety.clone(),
             SchedulerDeps {
                 tools: tools.clone(),
+                effect_executor: deps.effect_executor.clone(),
                 extension_manager: deps.extension_manager.clone(),
                 store: deps
                     .store

@@ -81,8 +81,8 @@ pub struct AppComponents {
     pub ownership_cache: Arc<crate::ownership::OwnershipCache>,
     /// V2 capability dispatcher for routing capability calls to built-in implementations.
     pub capability_dispatcher: Arc<crate::capabilities::dispatcher::BuiltinCapabilityDispatcher>,
-    /// V2 effect executor placeholder - will be properly initialized when CapabilityHost is set up.
-    pub effect_executor: Arc<dyn std::any::Any + Send + Sync>,
+    /// V2 effect executor for capability-based tool execution via EffectBridgeAdapter.
+    pub effect_executor: Arc<dyn brassclaw_engine::EffectExecutor>,
     /// Routine engine slot that gets filled after RoutineEngine initialization to break circular dependency.
     pub routine_engine_slot: Arc<tokio::sync::RwLock<Option<Arc<crate::agent::routine_engine::RoutineEngine>>>>,
 }
@@ -1500,9 +1500,47 @@ impl AppBuilder {
             pairing_ctx,
         ));
 
-        // Create the V2 effect executor - uses EffectBridgeAdapter from bridge module
-        // This will be properly initialized when CapabilityHost is set up
-        let effect_executor = Arc::new(()) as Arc<dyn std::any::Any + Send + Sync>;
+        // Create the V2 effect executor using EffectBridgeAdapter
+        // 1. Create SharedExtensionRegistry (empty for now, will be populated by extension system)
+        let extension_registry = Arc::new(brassclaw_extensions::SharedExtensionRegistry::new(
+            brassclaw_extensions::ExtensionRegistry::new()
+        ));
+
+        // 2. Create TrustAwareCapabilityDispatchAuthorizer (using GrantAuthorizer for now)
+        let authorizer = brassclaw_authorization::GrantAuthorizer::new();
+
+        // 3. Create CapabilityHost with the dispatcher and authorizer
+        // Note: We're using a 'static lifetime by leaking the references, which is acceptable
+        // for application-lifetime components that live for the entire program duration.
+        let capability_host = {
+            // Leak the registry snapshot to get a 'static reference
+            let registry_ref: &'static brassclaw_extensions::ExtensionRegistry =
+                Box::leak(Box::new(extension_registry.snapshot()));
+            
+            // Leak the dispatcher to get a 'static reference
+            // Safety: These components live for the entire application lifetime
+            let dispatcher_ref: &'static crate::capabilities::dispatcher::BuiltinCapabilityDispatcher =
+                unsafe { &*(Arc::as_ptr(&capability_dispatcher)) };
+            
+            // Leak the authorizer to get a 'static reference
+            let authorizer_ref: &'static brassclaw_authorization::GrantAuthorizer =
+                Box::leak(Box::new(authorizer));
+            
+            Arc::new(brassclaw_capabilities::CapabilityHost::new(
+                registry_ref,
+                dispatcher_ref,
+                authorizer_ref,
+            ))
+        };
+
+        // 4. Create EffectBridgeAdapter wrapping the CapabilityHost
+        let effect_executor: Arc<dyn brassclaw_engine::EffectExecutor> = Arc::new(
+            crate::bridge::EffectBridgeAdapterV2::new(
+                capability_host,
+                extension_registry,
+                safety.clone(),
+            )
+        );
 
         Ok(AppComponents {
             config: self.config,

@@ -1369,6 +1369,8 @@ async fn async_main() -> anyhow::Result<()> {
         runtime_policy: Some(config.runtime.effective_policy.clone()),
         // V2 capability dispatcher for routine engine and other V2 consumers
         dispatcher: components.capability_dispatcher,
+        // V2 effect executor for capability-based tool execution
+        effect_executor: Some(components.effect_executor),
     };
 
     let channels_for_warnings = Arc::clone(&channels);
