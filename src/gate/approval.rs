@@ -9,7 +9,115 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use brassclaw_engine::gate::{ExecutionGate, ExecutionMode, GateContext, GateDecision, ResumeKind};
 
-// TODO: Extract rate limiter and approval types from deleted V1 code
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 ToolRegistry
+pub struct ToolRegistry;
+
+impl ToolRegistry {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub async fn get_resolved(&self, _name: &str) -> Option<(String, Arc<dyn Tool>)> {
+        None
+    }
+
+    pub async fn get(&self, _name: &str) -> Option<Arc<dyn Tool>> {
+        None
+    }
+
+    pub fn credential_registry(&self) -> Option<&CredentialRegistry> {
+        None
+    }
+
+    pub async fn register(&self, _tool: Arc<dyn Tool>) {}
+}
+
+/// Stub for deleted V1 Tool trait
+pub trait Tool: Send + Sync {
+    fn name(&self) -> &str;
+    fn description(&self) -> &str;
+    fn parameters_schema(&self) -> serde_json::Value;
+    fn requires_approval(&self, _params: &serde_json::Value) -> ApprovalRequirement {
+        ApprovalRequirement::Never
+    }
+    fn sensitive_params(&self) -> &[&str] {
+        &[]
+    }
+    fn rate_limit_config(&self) -> Option<RateLimitConfig> {
+        None
+    }
+}
+
+/// Stub for deleted V1 ApprovalRequirement
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ApprovalRequirement {
+    Never,
+    UnlessAutoApproved,
+    Always,
+}
+
+/// Stub for deleted V1 RateLimiter
+#[derive(Clone)]
+pub struct RateLimiter;
+
+impl RateLimiter {
+    pub async fn check_and_record(
+        &self,
+        _user_id: &str,
+        _tool_name: &str,
+        _config: &RateLimitConfig,
+    ) -> RateLimitResult {
+        RateLimitResult::Allowed
+    }
+}
+
+/// Stub for deleted V1 RateLimitConfig
+pub struct RateLimitConfig;
+
+/// Stub for deleted V1 RateLimitResult
+pub enum RateLimitResult {
+    Allowed,
+    Limited {
+        retry_after: std::time::Duration,
+    },
+}
+
+/// Stub for deleted V1 CredentialRegistry
+pub struct CredentialRegistry;
+
+impl CredentialRegistry {
+    pub fn has_credentials_for_host(&self, _host: &str) -> bool {
+        false
+    }
+}
+
+/// Stub namespace for deleted V1 tools module
+pub mod tools {
+    pub mod builtin {
+        pub fn extract_host_from_params(_params: &serde_json::Value) -> Option<String> {
+            None
+        }
+    }
+
+    pub mod rate_limiter {
+        pub use super::super::{RateLimitResult, RateLimitConfig};
+    }
+
+    pub fn redact_params(
+        params: serde_json::Value,
+        _sensitive: &[&str],
+    ) -> serde_json::Value {
+        params
+    }
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
 
 /// Gate that checks `Tool::requires_approval()` and emits `Pause(Approval)`
 /// or `Deny` depending on execution mode.
@@ -66,7 +174,7 @@ impl ExecutionGate for ApprovalGate {
                         // Check credential-backed HTTP auto-approve
                         if (ctx.action_name == "http" || ctx.action_name == "http_request")
                             && let Some(reg) = self.tools.credential_registry()
-                            && crate::tools::builtin::extract_host_from_params(ctx.parameters)
+                            && tools::builtin::extract_host_from_params(ctx.parameters)
                                 .is_some_and(|host| reg.has_credentials_for_host(&host))
                         {
                             return GateDecision::Allow;
@@ -178,7 +286,7 @@ impl ExecutionGate for HookGate {
 
     async fn evaluate(&self, ctx: &GateContext<'_>) -> GateDecision {
         let redacted_params = if let Some(tool) = self.tools.get(ctx.action_name).await {
-            crate::tools::redact_params(ctx.parameters, tool.sensitive_params())
+            tools::redact_params(ctx.parameters.clone(), tool.sensitive_params())
         } else {
             ctx.parameters.clone()
         };
@@ -253,7 +361,7 @@ impl ExecutionGate for RateLimitGate {
             .check_and_record(ctx.user_id, ctx.action_name, &rl_config)
             .await;
 
-        if let crate::tools::rate_limiter::RateLimitResult::Limited { retry_after, .. } = result {
+        if let tools::rate_limiter::RateLimitResult::Limited { retry_after, .. } = result {
             GateDecision::Deny {
                 reason: format!(
                     "Tool '{}' is rate limited. Try again in {:.0}s.",
