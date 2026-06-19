@@ -722,6 +722,9 @@ pub enum ExtensionError {
     #[error("Token validation failed: {0}")]
     ValidationFailed(String),
 
+    #[error("Feature not yet implemented in V2: {0}")]
+    NotImplemented(String),
+
     #[error("{0}")]
     Other(String),
 }
