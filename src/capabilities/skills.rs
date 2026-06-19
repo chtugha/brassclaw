@@ -11,8 +11,44 @@ use serde_json::{Value, json};
 use brassclaw_skills::catalog::{SkillCatalog, catalog_entry_is_installed, resolve_catalog_slug_for_name};
 use brassclaw_skills::registry::SkillRegistry;
 
-// TODO: Extract skill utilities from deleted V1 code
-// use crate::tools::builtin::skill_tools::{SkillFetchError, SkillInstallPayload, fetch_skill_payload};
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 SkillFetchError
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("{message}")]
+pub struct SkillFetchError {
+    pub message: String,
+    pub is_missing: bool,
+}
+
+impl SkillFetchError {
+    pub fn is_missing_dependency(&self) -> bool {
+        self.is_missing
+    }
+}
+
+/// Stub for deleted V1 SkillInstallPayload
+#[derive(Debug, Clone, Default)]
+pub struct SkillInstallPayload {
+    pub skill_md: String,
+    pub extra_files: Vec<(String, Vec<u8>)>,
+    pub install_metadata: Option<serde_json::Value>,
+}
+
+/// Stub for deleted V1 fetch_skill_payload function
+async fn fetch_skill_payload(url: &str) -> Result<SkillInstallPayload, SkillFetchError> {
+    // Minimal stub that returns an error
+    Err(SkillFetchError {
+        message: format!("V1 fetch_skill_payload deleted; cannot fetch from {}", url),
+        is_missing: false,
+    })
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
 
 pub const PROVIDER_ID: &str = "builtin";
 pub const SKILL_INSTALL_CAPABILITY_ID: &str = "builtin.skill_install";
