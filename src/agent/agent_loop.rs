@@ -1352,8 +1352,10 @@ impl Agent {
                     *self.routine_engine_slot.write().await = Some(Arc::clone(&engine));
 
                     // Register routine tools
-                    let engine_any: Arc<dyn std::any::Any + Send + Sync> = Arc::clone(&engine);
-                    self.tools().register_routine_tools(Arc::clone(store), engine_any);
+                    self.tools().register_routine_tools(
+                        Arc::clone(store),
+                        engine as Arc<dyn std::any::Any + Send + Sync>
+                    );
 
                     // Load initial event cache
                     engine.refresh_event_cache().await;
