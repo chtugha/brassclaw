@@ -46,7 +46,6 @@ pub mod bootstrap;
 pub mod bridge;
 pub mod capabilities;
 
-// TODO: channels/wasm depends on wasm_runtime - needs V2 integration
 pub mod channels;
 
 pub mod cli;
@@ -82,9 +81,6 @@ pub mod settings;
 pub mod setup;
 pub mod skills;
 
-// TODO: MCP client needs V2 integration - currently disabled due to V1 ToolError dependencies
-// pub mod mcp_client;
-
 pub mod tenant;
 pub mod timezone;
 pub mod trace_client;
@@ -93,13 +89,7 @@ pub mod tracing_fmt;
 pub mod tunnel;
 pub mod util;
 
-// TODO: WASM runtime needs V2 integration - currently disabled due to V1 Tool trait dependencies
-// pub mod wasm_runtime;
-
 pub mod webhooks;
-
-// TODO: Worker module needs V2 integration - currently disabled due to V1 ToolRegistry dependencies
-// pub mod worker;
 
 pub mod workspace;
 
