@@ -25,6 +25,55 @@ use crate::secrets::SecretsStore;
 use brassclaw_common::{CredentialName, ExtensionName as CommonExtensionName};
 use brassclaw_skills::{SkillCredentialSpec, SkillRegistry};
 
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 ToolRegistry type
+pub struct ToolRegistry;
+
+/// Stub for deleted V1 SharedCredentialRegistry type
+#[derive(Clone)]
+pub struct SharedCredentialRegistry;
+
+impl SharedCredentialRegistry {
+    pub fn new() -> Self {
+        Self
+    }
+    
+    pub fn find_for_url(&self, _host: &str, _path: &str) -> Option<String> {
+        None
+    }
+}
+
+/// Stub for deleted V1 ValidationEndpointSchema type
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ValidationEndpointSchema {
+    pub url: String,
+    pub method: String,
+}
+
+/// Stub for deleted V1 extract_host_from_params function
+fn extract_host_from_params(parameters: &serde_json::Value) -> Option<String> {
+    parameters.get("url")
+        .or_else(|| parameters.get("host"))
+        .and_then(|v| v.as_str())
+        .and_then(|s| url::Url::parse(s).ok())
+        .and_then(|u| u.host_str().map(|h| h.to_string()))
+}
+
+/// Stub for deleted V1 extract_path_from_params function
+fn extract_path_from_params(parameters: &serde_json::Value) -> Option<String> {
+    parameters.get("url")
+        .and_then(|v| v.as_str())
+        .and_then(|s| url::Url::parse(s).ok())
+        .map(|u| u.path().to_string())
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
+
 /// Result of checking whether a tool call has the credentials it needs.
 #[derive(Debug)]
 pub enum AuthCheckResult {
@@ -812,7 +861,7 @@ impl AuthManager {
             oauth
                 .test_url
                 .as_ref()
-                .map(|url| crate::wasm_runtime::ValidationEndpointSchema {
+                .map(|url| ValidationEndpointSchema {
                     url: url.clone(),
                     method: "GET".to_string(),
                     success_status: 200,
@@ -1567,7 +1616,7 @@ Test skill
             .to_string(),
         )
         .expect("write channel caps");
-        let credential_registry = crate::wasm_runtime::SharedCredentialRegistry::new();
+        let credential_registry = SharedCredentialRegistry::new();
         {
             let guard = skill_registry.read().expect("skill registry");
             crate::skills::register_skill_credentials(guard.skills(), &credential_registry);
@@ -1667,7 +1716,7 @@ Test skill
         )
         .expect("write channel caps");
 
-        let credential_registry = crate::wasm_runtime::SharedCredentialRegistry::new();
+        let credential_registry = SharedCredentialRegistry::new();
         {
             let guard = skill_registry.read().expect("skill registry");
             crate::skills::register_skill_credentials(guard.skills(), &credential_registry);
