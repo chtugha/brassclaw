@@ -14,8 +14,64 @@ use tokio::sync::RwLock;
 
 use crate::workspace::paths as ws_paths;
 
-// TODO: Extract path utilities from deleted V1 code
-// const DEFAULT_EXCLUDED_DIRS: &[&str] = &[".git", "node_modules", "target"];
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 DEFAULT_EXCLUDED_DIRS constant
+const DEFAULT_EXCLUDED_DIRS: &[&str] = &[".git", "node_modules", "target"];
+
+/// Stub for deleted V1 normalize_lexical function
+fn normalize_lexical(path: &Path) -> PathBuf {
+    // Simple lexical normalization without filesystem access
+    let mut components = Vec::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                if !components.is_empty() {
+                    components.pop();
+                }
+            }
+            std::path::Component::CurDir => {}
+            _ => components.push(component),
+        }
+    }
+    components.iter().collect()
+}
+
+/// Stub for deleted V1 validate_path function
+fn validate_path(raw: &str, base: Option<&Path>) -> Result<PathBuf, String> {
+    let path = Path::new(raw);
+    
+    // Basic validation
+    if raw.is_empty() {
+        return Err("empty path".to_string());
+    }
+    
+    // Resolve relative to base if provided
+    let resolved = if path.is_absolute() {
+        path.to_path_buf()
+    } else if let Some(base) = base {
+        base.join(path)
+    } else {
+        path.to_path_buf()
+    };
+    
+    // Normalize and check for path traversal
+    let normalized = normalize_lexical(&resolved);
+    if let Some(base) = base {
+        let base_normalized = normalize_lexical(base);
+        if !normalized.starts_with(&base_normalized) {
+            return Err(format!("path escapes base directory: {}", raw));
+        }
+    }
+    
+    Ok(normalized)
+}
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
 
 pub const PROVIDER_ID: &str = "builtin";
 
