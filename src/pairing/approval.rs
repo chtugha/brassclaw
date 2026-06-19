@@ -7,9 +7,53 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-// TODO: V1 channels::wasm module removed - pairing approval needs V2 reimplementation
 use crate::extensions::ExtensionError;
 use crate::pairing::ExternalId;
+
+// ============================================================================
+// V1 STUBS - TODO: Remove after V2 migration complete
+// ============================================================================
+
+/// Stub for deleted V1 WasmChannel type
+pub struct WasmChannel {
+    // Minimal stub - no fields needed
+}
+
+impl WasmChannel {
+    /// Stub method to get owner actor ID
+    pub async fn owner_actor_id(&self) -> Option<String> {
+        None
+    }
+
+    /// Stub method to get config JSON snapshot
+    pub async fn config_json_snapshot(&self) -> serde_json::Value {
+        serde_json::Value::Null
+    }
+
+    /// Stub method to set owner actor ID
+    pub async fn set_owner_actor_id(&self, _owner_actor_id: Option<String>) {
+        // No-op stub
+    }
+
+    /// Stub method to update runtime config
+    pub async fn update_runtime_config(&self, _updates: HashMap<String, serde_json::Value>) -> Result<(), ExtensionError> {
+        Err(ExtensionError::NotSupported("V1 WasmChannel deleted - V2 migration needed".to_string()))
+    }
+
+    /// Stub method to call on_start
+    pub async fn on_start(&self) -> Result<(), ExtensionError> {
+        Err(ExtensionError::NotSupported("V1 WasmChannel deleted - V2 migration needed".to_string()))
+    }
+}
+
+/// Stub constants for deleted V1 runtime config keys
+const RUNTIME_CONFIG_KEY_TUNNEL_URL: &str = "tunnel_url";
+const RUNTIME_CONFIG_KEY_WEBHOOK_SECRET: &str = "webhook_secret";
+const RUNTIME_CONFIG_KEY_OWNER_ID: &str = "owner_id";
+
+// ============================================================================
+// END V1 STUBS
+// ============================================================================
 
 /// Dependencies needed to propagate a pairing approval to a running channel.
 pub struct ApprovalDeps<'a> {
