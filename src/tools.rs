@@ -40,13 +40,21 @@ impl ToolRegistry {
 
     /// Register routine tools (no-op stub)
     /// TODO: Remove after V2 migration complete
-    pub async fn register_routine_tools(&self) -> Result<()> {
-        Ok(())
+    pub fn register_routine_tools(
+        &self,
+        _store: std::sync::Arc<crate::db::Database>,
+        _engine: std::sync::Arc<crate::agent::routine_engine::RoutineEngine>,
+    ) {
+        // No-op
     }
 
     /// Set message tool context (no-op stub)
     /// TODO: Remove after V2 migration complete
-    pub fn set_message_tool_context(&self, _message_id: &str) {
+    pub async fn set_message_tool_context(
+        &self,
+        _channel: Option<String>,
+        _target: Option<String>,
+    ) {
         // No-op
     }
 
