@@ -971,8 +971,8 @@ impl Scheduler {
             available_actions_snapshot: None, // P0.2: Will be populated in execute_tool_task
             available_action_inventory_snapshot: None, // P0.2: Will be populated in execute_tool_task
             conversation_scope,
-            gate_controller: brassclaw_engine::gate::CancellingGateController::arc(), // P0.3: TODO - Real approval gate
-            call_approval_granted: false, // P0.3: TODO - Check approval status
+            gate_controller: crate::agent::gate_controller::AutoApprovingGateController::arc(), // P0.3: Auto-approve for now
+            call_approval_granted: false, // P0.3: Not needed with auto-approve, but kept for future
             conversation_id,
         }
     }

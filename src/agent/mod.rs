@@ -18,6 +18,7 @@ pub mod compaction;
 pub mod context_monitor;
 pub mod cost_guard;
 // mod dispatcher; // V1 - disabled entire file
+pub mod gate_controller;
 mod heartbeat;
 pub mod job_monitor;
 mod router;
@@ -59,6 +60,7 @@ pub(crate) use attachments::augment_with_attachments;
 pub use compaction::{CompactionResult, ContextCompactor};
 pub use context_monitor::{CompactionStrategy, ContextBreakdown, ContextMonitor};
 // pub(crate) use dispatcher::strip_suggestions; // V1 - dispatcher disabled
+pub use gate_controller::{AutoApprovingGateController, GateMode};
 pub use heartbeat::{
     HeartbeatConfig, HeartbeatResult, HeartbeatRunner, spawn_heartbeat, spawn_multi_user_heartbeat,
 };
