@@ -19,9 +19,7 @@ use deadpool_postgres::Config as PoolConfig;
 use secrecy::{ExposeSecret, SecretString};
 
 use crate::bootstrap::brassclaw_base_dir;
-use crate::channels::wasm::{
-    ChannelCapabilitiesFile, available_channel_names, install_bundled_channel,
-};
+// TODO: V1 channels::wasm module removed - setup wizard needs V2 reimplementation
 use crate::config::OAUTH_PLACEHOLDER;
 use crate::secrets::{SecretsCrypto, SecretsStore};
 use crate::settings::{KeySource, Settings};

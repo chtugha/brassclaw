@@ -4,12 +4,12 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::channels::wasm::discover_channels;
+// TODO: V1 channels::wasm module removed - channel discovery needs V2 reimplementation
 use crate::hooks::bundled::{
     HookBundleConfig, HookRegistrationSummary, register_bundle, register_bundled_hooks,
 };
 use crate::hooks::registry::HookRegistry;
-use crate::wasm_runtime::{discover_dev_tools, discover_tools};
+// TODO: V1 wasm_runtime module removed - tool discovery needs V2 reimplementation
 use crate::workspace::Workspace;
 
 /// Summary of hook bootstrap work done at startup.

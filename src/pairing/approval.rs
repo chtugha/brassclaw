@@ -7,10 +7,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::channels::wasm::{
-    RUNTIME_CONFIG_KEY_OWNER_ID, RUNTIME_CONFIG_KEY_TUNNEL_URL, RUNTIME_CONFIG_KEY_WEBHOOK_SECRET,
-    WasmChannel,
-};
+// TODO: V1 channels::wasm module removed - pairing approval needs V2 reimplementation
 use crate::extensions::ExtensionError;
 use crate::pairing::ExternalId;
 

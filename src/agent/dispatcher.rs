@@ -1019,7 +1019,8 @@ impl<'a> LoopDelegate for ChatDelegate<'a> {
             if !self.agent.config.auto_approve_tools
                 && let Some(tool) = tool_opt
             {
-                use crate::tools::ApprovalRequirement;
+                // TODO: V1 tools module removed - approval logic needs V2 reimplementation
+                // use crate::tools::ApprovalRequirement;
                 let requirement = tool.requires_approval(&tc.arguments);
                 let needs_approval = match requirement {
                     ApprovalRequirement::Never => false,

@@ -19,11 +19,7 @@ use crate::db::Database;
 use crate::orchestrator::auth::{TokenStore, worker_auth_middleware};
 use crate::orchestrator::job_manager::ContainerJobManager;
 use crate::secrets::SecretsStore;
-use crate::worker::api::JobEventPayload;
-use crate::worker::api::{
-    CompletionReport, CredentialResponse, JobDescription, ProxyCompletionRequest,
-    ProxyCompletionResponse, ProxyToolCompletionRequest, ProxyToolCompletionResponse, StatusUpdate,
-};
+// TODO: V1 worker module removed - orchestrator API needs V2 reimplementation
 use brassclaw_common::{AppEvent, JobResultStatus};
 use brassclaw_llm::{CompletionRequest, LlmProvider, ToolCompletionRequest};
 

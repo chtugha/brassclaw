@@ -37,7 +37,7 @@ pub mod bundled;
 pub use attenuation::{AttenuationResult, attenuate_tools};
 
 use crate::secrets::{CredentialLocation, CredentialMapping};
-use crate::wasm_runtime::OAuthRefreshConfig;
+// TODO: V1 wasm_runtime module removed - OAuthRefreshConfig needs V2 reimplementation
 use crate::{
     auth::{AuthDescriptor, AuthDescriptorKind, OAuthFlowDescriptor, upsert_auth_descriptor},
     db::SettingsStore,

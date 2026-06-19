@@ -21,7 +21,7 @@ use crate::extensions::{
     ConfigureResult, ExtensionError, InstalledExtension, LatentProviderAction,
 };
 use crate::secrets::SecretsStore;
-use crate::wasm_runtime::SharedCredentialRegistry;
+// TODO: V1 wasm_runtime module removed - SharedCredentialRegistry needs V2 reimplementation
 use brassclaw_common::{CredentialName, ExtensionName as CommonExtensionName};
 use brassclaw_skills::{SkillCredentialSpec, SkillRegistry};
 

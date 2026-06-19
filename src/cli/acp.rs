@@ -167,8 +167,7 @@ async fn test_agent(name: &str) -> anyhow::Result<()> {
     use agent_client_protocol::{self as acp, Agent as _};
     use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-    use crate::worker::acp_bridge;
-    use crate::worker::api::JobEventPayload;
+    // TODO: V1 worker module removed - ACP bridge needs V2 reimplementation
 
     /// Event sink that prints agent output to stdout during `brassclaw acp test`.
     struct PrintEventSink;

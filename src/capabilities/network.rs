@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use crate::auth::resolve_secret_for_runtime;
 use crate::db::UserStore;
 use crate::secrets::SecretsStore;
-use crate::wasm_runtime::{InjectedCredentials, SharedCredentialRegistry, inject_credential};
+// TODO: V1 wasm_runtime module removed - credential injection needs V2 reimplementation
 
 // TODO: Extract HTML conversion from deleted V1 code
 // #[cfg(feature = "html-to-markdown")]

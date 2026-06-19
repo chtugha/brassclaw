@@ -12,7 +12,7 @@ use tokio::fs;
 
 use crate::bootstrap::brassclaw_base_dir;
 use crate::secrets::{CreateSecretParams, SecretsStore};
-use crate::wasm_runtime::{CapabilitiesFile, compute_binary_hash};
+// TODO: V1 wasm_runtime module removed - tool CLI commands need V2 reimplementation
 
 /// Default tools directory.
 fn default_tools_dir() -> PathBuf {

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::wasm_runtime::{ssrf_safe_client_builder_for_target, validate_and_resolve_http_target};
+// TODO: V1 wasm_runtime module removed - SSRF protection functions need V2 reimplementation
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use brassclaw_common::ExtensionName;
