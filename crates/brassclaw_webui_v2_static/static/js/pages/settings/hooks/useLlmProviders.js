@@ -106,6 +106,14 @@ export function useLlmProviders({ settings: _settings, gatewayStatus }) {
     onSuccess: refresh,
   });
 
+  const deactivateMutation = useMutation({
+    mutationFn: async () => {
+      // Deactivate by setting empty provider_id
+      await setActiveLlm({ provider_id: "", model: "" });
+    },
+    onSuccess: refresh,
+  });
+
   return {
     providers,
     builtinProviders,
@@ -117,6 +125,7 @@ export function useLlmProviders({ settings: _settings, gatewayStatus }) {
     isLoading: providersQuery.isLoading,
     error: providersQuery.error,
     setActiveProvider: (provider) => setActiveMutation.mutateAsync(provider),
+    deactivateProvider: () => deactivateMutation.mutateAsync(),
     saveCustomProvider: (payload) => saveProviderMutation.mutateAsync(payload),
     saveBuiltinProvider: (payload) => saveProviderMutation.mutateAsync(payload),
     deleteCustomProvider: (provider) => deleteCustomMutation.mutateAsync(provider),
@@ -125,6 +134,7 @@ export function useLlmProviders({ settings: _settings, gatewayStatus }) {
     isBusy:
       setActiveMutation.isPending ||
       saveProviderMutation.isPending ||
-      deleteCustomMutation.isPending,
+      deleteCustomMutation.isPending ||
+      deactivateMutation.isPending,
   };
 }

@@ -92,7 +92,11 @@ export function useProviderDialogForm({
       const result = await onTest(providerPayload(provider, form, apiKey, builtinOverrides));
       setMessage({ tone: result.ok ? "success" : "error", text: result.message });
     } catch (err) {
-      setMessage({ tone: "error", text: err.message });
+      // Extract user-friendly error message from API error payload
+      const errorText = err.payload?.field
+        ? `${err.payload.field}: ${err.payload.validation_code || 'invalid'}`
+        : err.body || err.message || t("llm.connectionTestFailed");
+      setMessage({ tone: "error", text: errorText });
     } finally {
       setBusy("");
     }

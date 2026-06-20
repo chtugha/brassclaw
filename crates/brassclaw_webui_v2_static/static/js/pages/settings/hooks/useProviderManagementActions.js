@@ -67,10 +67,33 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
     [providerState, showMessage, t]
   );
 
+  const handleDeactivate = React.useCallback(
+    async (provider) => {
+      if (!window.confirm(t("llm.confirmDeactivate", { name: provider.name || provider.id }))) return;
+      try {
+        await providerState.deactivateProvider();
+        showMessage("success", t("llm.providerDeactivated"));
+      } catch (err) {
+        showMessage("error", err.message);
+      }
+    },
+    [providerState, showMessage, t]
+  );
+
   const handleDelete = React.useCallback(
     async (provider) => {
-      if (!window.confirm(t("llm.confirmDelete", { id: provider.id }))) return;
+      const isActive = provider.id === providerState.activeProviderId;
+      const confirmMsg = isActive
+        ? t("llm.confirmDeleteActive", { id: provider.id })
+        : t("llm.confirmDelete", { id: provider.id });
+      
+      if (!window.confirm(confirmMsg)) return;
+      
       try {
+        // If active, deactivate first
+        if (isActive) {
+          await providerState.deactivateProvider();
+        }
         await providerState.deleteCustomProvider(provider);
         showMessage("success", t("llm.providerDeleted"));
       } catch (err) {
@@ -93,6 +116,7 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
     closeDialog: () => setIsDialogOpen(false),
     handleUse,
     handleSave,
+    handleDeactivate,
     handleDelete,
   };
 }

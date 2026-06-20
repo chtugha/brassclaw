@@ -284,13 +284,10 @@ impl RebornLlmConfigService {
             {
                 apply_stored_api_key(&mut config, stored);
             }
-        } else {
-            return Err(LlmConfigServiceError::InvalidRequest {
-                field: Some("api_key".to_string()),
-                reason: "inline api_key is required when probing an overridden provider endpoint"
-                    .to_string(),
-            });
         }
+        // If no API key is available, continue anyway - the provider will fail
+        // with a proper authentication error, which is more useful than blocking
+        // the test entirely
 
         let session = brassclaw_llm::create_session_manager(config.session.clone()).await;
         brassclaw_llm::build_static_provider_chain(&config, session)
@@ -526,7 +523,12 @@ impl LlmConfigService for RebornLlmConfigService {
         caller: WebUiAuthenticatedCaller,
         request: SetActiveLlmRequest,
     ) -> Result<LlmConfigSnapshot, LlmConfigServiceError> {
-        let id = validate_provider_id(&request.provider_id)?;
+        // Allow empty provider_id to deactivate the current provider
+        let id = if request.provider_id.trim().is_empty() {
+            String::new()
+        } else {
+            validate_provider_id(&request.provider_id)?
+        };
         self.set_provider_async(id, request.model)
             .await
             .map_err(map_admin_error)?;

@@ -283,7 +283,12 @@ registerPack("en", {
   "onboarding.codexFailed": "ChatGPT sign-in failed. Please try again.",
   "llm.testConnection": "Test connection",
   "llm.testing": "Testing...",
+  "llm.connectionTestFailed": "Connection test failed",
   "llm.use": "Use",
+  "llm.clickToDeactivate": "Click to deactivate this provider",
+  "llm.confirmDeactivate": "Deactivate {name}? You can reactivate it later by clicking 'Use'.",
+  "llm.providerDeactivated": "Provider deactivated successfully",
+  "llm.confirmDeleteActive": "Delete active provider '{id}'? This will disconnect it first.",
   // Settings — LLM providers (progressive disclosure)
   "llm.groupActive": "Active",
   "llm.groupReady": "Ready to use",
