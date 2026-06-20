@@ -98,7 +98,44 @@ export VLLM_PORT=8000
 sudo bash deploy/dietpi-setup.sh
 ```
 
-### Option B: Build from source
+### Option B: Precompiled binaries (Linux)
+
+Download and install the latest release:
+
+```bash
+# Download the install script
+curl -fsSL https://raw.githubusercontent.com/chtugha/brassclaw/main/install.sh -o install.sh
+
+# Review the script (recommended)
+less install.sh
+
+# Run as root to install systemd service
+sudo bash install.sh
+```
+
+The installer will:
+- Download the latest binary from GitHub releases
+- Verify checksums
+- Install to `/usr/local/bin/brassclaw-reborn`
+- Create systemd service at `/etc/systemd/system/brassclaw-reborn.service`
+- Preserve existing configuration during updates
+
+**Uninstallation:**
+
+```bash
+# Download the uninstall script
+curl -fsSL https://raw.githubusercontent.com/chtugha/brassclaw/main/uninstall.sh -o uninstall.sh
+
+# Run as root
+sudo bash uninstall.sh
+```
+
+The uninstaller will:
+- Stop and disable the systemd service
+- Remove the binary and service file
+- Optionally remove configuration (you'll be prompted)
+
+### Option C: Build from source
 
 Requires [Rust 1.92+](https://rustup.rs).
 
@@ -106,12 +143,12 @@ Requires [Rust 1.92+](https://rustup.rs).
 cd /opt
 git clone https://github.com/chtugha/brassclaw.git
 cd brassclaw
-cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn --features webui-v2-beta
+cargo build --release -p brassclaw_reborn_cli
 ```
 
 The binary is at `target/release/brassclaw-reborn`.
 
-### Option C: Interactive REPL
+### Option D: Interactive REPL
 
 ```bash
 export LLM_BACKEND=openai_compatible
@@ -292,7 +329,17 @@ Skills interact with the LLM through built-in tools including `echo`, `time`, `h
 
 ## Architecture
 
-BrassClaw uses the **Reborn** architecture — a layered design of ~70 Rust crates with clear authority boundaries:
+### V2 Architecture (Current)
+
+BrassClaw v0.29.3 features the **Reborn V2** architecture with complete V1 to V2 transition:
+
+- **47 capabilities** across 13 domains (filesystem, memory, network, processes, etc.)
+- **WebUI v2** - Modern React-based interface at `/v2` endpoint
+- **Enhanced LLM provider management** - Improved configuration and testing
+- **Path validation** - Restored security checks for file operations
+- **Skill installation** - Re-enabled with proper validation
+
+The architecture uses a layered design of ~70 Rust crates with clear authority boundaries:
 
 ```mermaid
 graph TD
