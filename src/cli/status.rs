@@ -176,8 +176,8 @@ pub async fn run_status_command() -> anyhow::Result<()> {
     println!("{}", fmt::kv_line("Heartbeat", &hb_value, 12));
 
     // MCP servers
-    // V1 - DISABLED - load_mcp_servers() returns HashMap directly, not Result
-    let servers = crate::mcp_client::config::load_mcp_servers();
+    // V1 - DISABLED - MCP server configuration removed
+    let servers: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
     let mcp_value = if servers.is_empty() {
         "none configured".to_string()
     } else {

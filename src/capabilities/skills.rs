@@ -716,7 +716,6 @@ pub async fn execute_skill_install(
         )
     };
 
-    // V1 - DISABLED - entire function disabled due to V1 dependencies
     return Err(SkillsCapabilityError::operation("V1 code disabled - skill installation not supported".to_string()));
     
     #[allow(unreachable_code)]

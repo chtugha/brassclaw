@@ -21,146 +21,43 @@ use crate::secrets::SecretsStore;
 use brassclaw_common::{AppEvent, JobResultStatus};
 use brassclaw_llm::LlmProvider;
 
-// ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
-// ============================================================================
-
-/// Stub for deleted V1 LLM Message type
+// V1 - Minimal stubs for compilation of disabled functions
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Message {
-    pub role: String,
-    pub content: String,
+#[allow(dead_code)]
+struct JobDescription {
+    title: String,
+    description: String,
+    project_dir: Option<String>,
 }
 
-/// Stub for deleted V1 LLM Tool type
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Tool {
-    pub name: String,
-    pub description: String,
-    pub input_schema: serde_json::Value,
+#[allow(dead_code)]
+struct StatusUpdate {
+    state: String,
+    message: Option<String>,
+    iteration: Option<u32>,
 }
 
-/// Stub for deleted V1 LLM ToolChoice type
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolChoice {
-    pub r#type: String,
+#[allow(dead_code)]
+struct CompletionReport {
+    success: bool,
+    message: Option<String>,
 }
 
-/// Stub for deleted V1 LLM ToolCall type
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolCall {
-    pub id: String,
-    pub name: String,
-    pub input: serde_json::Value,
+#[allow(dead_code)]
+struct JobEventPayload {
+    event_type: String,
+    data: serde_json::Value,
 }
 
-/// Stub for deleted V1 JobDescription
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct JobDescription {
-    pub title: String,
-    pub description: String,
-    pub project_dir: Option<String>,
+#[allow(dead_code)]
+struct CredentialResponse {
+    env_var: String,
+    value: String,
 }
-
-/// Stub for deleted V1 ProxyCompletionRequest
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProxyCompletionRequest {
-    pub messages: Vec<Message>,
-    pub model: Option<String>,
-    pub max_tokens: Option<u32>,
-    pub temperature: Option<f32>,
-    pub stop_sequences: Option<Vec<String>>,
-}
-
-/// Stub for deleted V1 ProxyCompletionResponse
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProxyCompletionResponse {
-    pub content: String,
-    pub input_tokens: u32,
-    pub output_tokens: u32,
-    pub finish_reason: String,
-    pub reasoning: Option<String>,
-    pub cache_read_input_tokens: Option<u32>,
-    pub cache_creation_input_tokens: Option<u32>,
-}
-
-/// Stub for deleted V1 ProxyToolCompletionRequest
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProxyToolCompletionRequest {
-    pub messages: Vec<Message>,
-    pub tools: Vec<Tool>,
-    pub model: Option<String>,
-    pub max_tokens: Option<u32>,
-    pub temperature: Option<f32>,
-    pub stop_sequences: Option<Vec<String>>,
-    pub tool_choice: Option<ToolChoice>,
-}
-
-/// Stub for deleted V1 ProxyToolCompletionResponse
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProxyToolCompletionResponse {
-    pub content: String,
-    pub tool_calls: Vec<ToolCall>,
-    pub input_tokens: u32,
-    pub output_tokens: u32,
-    pub finish_reason: String,
-    pub reasoning: Option<String>,
-    pub cache_read_input_tokens: Option<u32>,
-    pub cache_creation_input_tokens: Option<u32>,
-}
-
-/// Stub for deleted V1 StatusUpdate
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StatusUpdate {
-    pub state: String,
-    pub message: Option<String>,
-    pub iteration: Option<u32>,
-}
-
-/// Stub for deleted V1 CompletionReport
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CompletionReport {
-    pub success: bool,
-    pub message: Option<String>,
-}
-
-/// Stub for deleted V1 JobEventPayload
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct JobEventPayload {
-    pub event_type: String,
-    pub data: serde_json::Value,
-}
-
-/// Stub for deleted V1 CredentialResponse
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CredentialResponse {
-    pub env_var: String,
-    pub value: String,
-}
-
-/// Stub for deleted V1 ToolDecisionDto
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolDecisionDto {
-    pub tool_name: String,
-    pub reasoning: String,
-}
-
-impl ToolDecisionDto {
-    pub fn from_json_array(value: &serde_json::Value) -> Vec<Self> {
-        value
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| serde_json::from_value(v.clone()).ok())
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-}
-
-// ============================================================================
-// END V1 STUBS
-// ============================================================================
 
 /// A follow-up prompt queued for a Claude Code bridge.
 #[derive(Debug, Clone, Serialize, Deserialize)]

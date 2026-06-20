@@ -4,7 +4,7 @@
 //! route through the engine instead of the existing agentic loop. All
 //! existing behavior is unchanged when the flag is off.
 
-mod action_discovery;
+// mod action_discovery; // V1 - deleted (entire file removed)
 // mod action_projector; // V1 - deleted
 // mod capability_projector; // V1 - deleted
 mod cost_guard_gate;

@@ -15,61 +15,43 @@ use tokio::fs;
 use crate::bootstrap::brassclaw_base_dir;
 use crate::secrets::SecretsStore;
 
-// ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
-// ============================================================================
-
-use serde::{Deserialize, Serialize};
-
-/// Stub for deleted V1 OAuthConfigSchema
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OAuthConfigSchema {
-    pub client_id: String,
-    pub auth_url: Option<String>,
-    pub token_url: Option<String>,
-    pub scopes: Vec<String>,
-    #[serde(default)]
-    pub access_token_field: String,
+// V1 - Minimal stubs for compilation of disabled functions
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct CapabilitiesFile {
+    auth: Option<AuthStub>,
+    setup: Option<()>,
+    http: Option<()>,
 }
 
-/// Stub for deleted V1 ValidationEndpointSchema
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ValidationEndpointSchema {
-    pub url: String,
-    pub method: Option<String>,
-}
-
-/// Stub for deleted V1 AuthCapabilitySchema
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuthCapabilitySchema {
-    pub secret_name: String,
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct AuthStub {
     pub display_name: Option<String>,
+    pub secret_name: String,
     pub oauth: Option<OAuthConfigSchema>,
     pub instructions: Option<String>,
-    pub provider: Option<String>,
-    pub validation: Option<ValidationEndpointSchema>,
 }
 
-/// Stub for deleted V1 CapabilitiesFile
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CapabilitiesFile {
-    pub name: String,
-    pub version: String,
-    pub description: Option<String>,
-    pub capabilities: Vec<String>,
-    pub auth: Option<AuthCapabilitySchema>,
-    pub setup: Option<serde_json::Value>,
-    pub http: Option<serde_json::Value>,
-    pub secrets: Option<serde_json::Value>,
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct OAuthConfigSchema {
+    pub client_id: String,
+    pub scopes: Vec<String>,
 }
 
 impl CapabilitiesFile {
-    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(json)
+    #[allow(dead_code)]
+    fn from_json(_json: &str) -> Result<Self, serde_json::Error> {
+        Ok(Self {
+            auth: None,
+            setup: None,
+            http: None,
+        })
     }
 }
 
-/// Stub for deleted V1 compute_binary_hash function
+#[allow(dead_code)]
 fn compute_binary_hash(data: &[u8]) -> [u8; 32] {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
@@ -80,43 +62,12 @@ fn compute_binary_hash(data: &[u8]) -> [u8; 32] {
     hash
 }
 
-/// Stub module for deleted V1 wasm_runtime
-pub mod wasm_runtime {
-    use super::*;
-    use std::path::Path;
-
-    // Re-export types so they can be used as crate::wasm_runtime::Type
-    pub use super::{AuthCapabilitySchema, OAuthConfigSchema};
-    
-
-    /// Stub for deleted V1 WasmRuntime
-    pub struct WasmRuntime;
-
-    impl WasmRuntime {
-        pub async fn new(_wasm_path: &Path, _caps: Option<CapabilitiesFile>) -> Result<Self, anyhow::Error> {
-            Err(anyhow::anyhow!("V1 WASM runtime not supported"))
-        }
-
-        pub fn capabilities(&self) -> Option<&CapabilitiesFile> {
-            None
-        }
-
-        pub async fn list_tools(&self) -> Result<Vec<ToolInfo>, anyhow::Error> {
-            Err(anyhow::anyhow!("V1 WASM runtime not supported"))
-        }
-    }
-
-    /// Stub for deleted V1 ToolInfo
-    #[derive(Debug, Clone)]
-    pub struct ToolInfo {
-        pub name: String,
-        pub description: Option<String>,
-    }
+// V1 - Minimal wasm_runtime module stub
+#[allow(dead_code)]
+mod wasm_runtime {
+    pub use super::{AuthStub as AuthCapabilitySchema, OAuthConfigSchema};
 }
 
-// ============================================================================
-// END V1 STUBS
-// ============================================================================
 // TODO: V1 wasm_runtime module removed - tool CLI commands need V2 reimplementation
 
 /// Default tools directory.

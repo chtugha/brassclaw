@@ -743,7 +743,6 @@ impl StatusUpdate {
         duration_ms: Option<u64>,
     ) -> Self {
         let success = result.is_ok();
-        // V1 redact_params removed - V2 uses brassclaw_host_api for sensitive data handling
         let parameters = if !success {
             // For failed tools, include parameters for debugging (V2 handles redaction at effect level)
             Some(serde_json::to_string_pretty(params).unwrap_or_else(|_| params.to_string()))

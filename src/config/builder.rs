@@ -1,29 +1,7 @@
 use std::path::PathBuf;
-use std::time::Duration;
 
 use crate::config::helpers::{db_first_bool, db_first_or_default, optional_env};
 use crate::error::ConfigError;
-
-// ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
-// ============================================================================
-
-/// Stub for deleted V1 BuilderConfig type
-#[derive(Debug, Clone)]
-pub struct BuilderConfig {
-    pub build_dir: PathBuf,
-    pub max_iterations: u32,
-    pub timeout: Duration,
-    pub cleanup_on_failure: bool,
-    pub validate_wasm: bool,
-    pub run_tests: bool,
-    pub auto_register: bool,
-    pub wasm_output_dir: Option<PathBuf>,
-}
-
-// ============================================================================
-// END V1 STUBS
-// ============================================================================
 
 /// Builder mode configuration.
 #[derive(Debug, Clone)]
@@ -79,20 +57,6 @@ impl BuilderModeConfig {
                 "BUILDER_AUTO_REGISTER",
             )?,
         })
-    }
-
-    /// Convert to BuilderConfig for the builder tool.
-    pub fn to_builder_config(&self) -> BuilderConfig {
-        BuilderConfig {
-            build_dir: self.build_dir.clone().unwrap_or_else(std::env::temp_dir),
-            max_iterations: self.max_iterations,
-            timeout: Duration::from_secs(self.timeout_secs),
-            cleanup_on_failure: true,
-            validate_wasm: true,
-            run_tests: true,
-            auto_register: self.auto_register,
-            wasm_output_dir: None,
-        }
     }
 }
 

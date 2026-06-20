@@ -17,7 +17,6 @@ use crate::db::Database;
 use crate::extensions::ExtensionManager;
 use crate::hooks::HookRegistry;
 use crate::secrets::SecretsStore;
-// TODO: MCP and WASM infrastructure removed - needs V2 reimplementation
 use crate::workspace::Workspace;
 use brassclaw_embeddings::{EmbeddingCacheConfig, EmbeddingProvider};
 use brassclaw_llm::recording::HttpInterceptor;
@@ -40,7 +39,6 @@ pub struct AppComponents {
     /// chain was not built from config in the first place.
     pub llm_reload: Option<Arc<LlmReloadHandle>>,
     pub safety: Arc<SafetyLayer>,
-    // TODO: V1 tools field removed - use effect_executor instead
     pub embeddings: Option<Arc<dyn EmbeddingProvider>>,
     pub workspace: Option<Arc<Workspace>>,
     /// Workspace-backed `SettingsStore` adapter that dual-writes settings to
@@ -55,7 +53,6 @@ pub struct AppComponents {
     /// Same instance backing `settings_store` when a cache is active.
     pub settings_cache: Option<Arc<crate::db::cached_settings::CachedSettingsStore>>,
     pub extension_manager: Option<Arc<ExtensionManager>>,
-    // TODO: V1 MCP and WASM fields removed - needs V2 reimplementation
     pub log_broadcaster: Arc<LogBroadcaster>,
     pub context_manager: Arc<ContextManager>,
     pub hooks: Arc<HookRegistry>,
@@ -68,7 +65,6 @@ pub struct AppComponents {
     pub http_interceptor: Option<Arc<dyn HttpInterceptor>>,
     pub session: Arc<SessionManager>,
     pub catalog_entries: Vec<crate::extensions::RegistryEntry>,
-    // TODO: V1 builder field removed - needs V2 reimplementation
     /// In-process write-through cache: `(channel, external_id)` → `Identity`.
     /// Populated by the pairing flow (Task 8). Pre-allocated here so all
     /// subsystems can hold an `Arc` to the same cache instance.
@@ -495,8 +491,6 @@ impl AppBuilder {
     }
 
     /// Phase 4: Initialize safety, tools, embeddings, and workspace.
-    /// TODO: V1 tool system removed - this method is stubbed out
-    /// Returns minimal values needed for V2 system initialization
     pub async fn init_tools(
         &self,
         _llm: &Arc<dyn LlmProvider>,
@@ -600,8 +594,6 @@ impl AppBuilder {
         ))
     }
 
-    /// TODO: V1 extension system removed - this method is stubbed out
-    /// Returns minimal values needed for V2 system initialization
     pub async fn init_extensions(
         &self,
         _hooks: &Arc<HookRegistry>,
@@ -614,8 +606,6 @@ impl AppBuilder {
         ),
         anyhow::Error,
     > {
-        // TODO: V1 WASM/MCP infrastructure removed - extension system needs V2 reimplementation
-        
         // Load registry catalog entries for extension discovery
         let mut catalog_entries = match crate::registry::RegistryCatalog::load_or_embedded() {
             Ok(catalog) => {
@@ -699,8 +689,6 @@ impl AppBuilder {
             http_interceptor,
             _workspace_resolver,
         ) = self.init_tools(&llm, cheap_llm.as_ref()).await?;
-        // TODO: V2 Reborn Capability System will be created after init_extensions()
-        // where all required variables (tools, hooks, mcp managers, etc.) are available
 
         // Create hook registry early so runtime extension activation can register hooks.
         let hooks = Arc::new(HookRegistry::new());

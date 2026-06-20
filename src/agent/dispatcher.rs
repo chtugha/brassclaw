@@ -103,7 +103,7 @@ async fn execute_tool_with_safety(
 ) -> Result<String, Error> {
     Err(Error::Tool(crate::error::ToolError::ExecutionFailed {
         name: _tool_name.to_string(),
-        reason: "Tool execution unavailable during V2 migration".to_string(),
+        reason: "Tool execution unavailable".to_string(),
     }))
 }
 
@@ -136,7 +136,7 @@ fn process_tool_result(
     _tool_id: &str,
     _result: &Result<String, crate::error::Error>,
 ) -> (String, ChatMessage) {
-    let content = "Tool execution unavailable during V2 migration".to_string();
+    let content = "Tool execution unavailable".to_string();
     let message = ChatMessage::tool(_tool_id, content.clone());
     (content, message)
 }
@@ -1137,8 +1137,6 @@ impl<'a> LoopDelegate for ChatDelegate<'a> {
             if !self.agent.config.auto_approve_tools
                 && let Some(tool) = tool_opt
             {
-                // TODO: V1 tools module removed - approval logic needs V2 reimplementation
-                // use crate::tools::ApprovalRequirement;
                 let requirement = tool.requires_approval(&tc.arguments);
                 let needs_approval = match requirement {
                     ApprovalRequirement::Never => false,

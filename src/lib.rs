@@ -66,7 +66,6 @@ pub mod http_intercept;
 #[cfg(feature = "import")]
 pub mod import;
 pub mod llm_host;
-pub mod mcp_client;
 pub mod logging;
 pub mod observability;
 pub mod orchestrator;
@@ -81,7 +80,6 @@ pub mod service;
 pub mod settings;
 pub mod setup;
 pub mod skills;
-// pub mod tools; // V1 tools stub module - DELETED - V2 migration complete
 pub mod tenant;
 pub mod timezone;
 pub mod trace_client;
@@ -89,8 +87,6 @@ pub mod trace_contribution;
 pub mod tracing_fmt;
 pub mod tunnel;
 pub mod util;
-
-pub mod webhooks;
 
 pub mod workspace;
 

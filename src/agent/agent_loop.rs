@@ -513,7 +513,6 @@ pub struct AgentDeps {
     /// Sandbox readiness state for full-job routine dispatch.
     pub sandbox_readiness: crate::agent::routine_engine::SandboxReadiness,
     /// Software builder for self-repair tool rebuilding.
-    /// TODO: V1 tools module removed - SoftwareBuilder needs V2 reimplementation
     pub builder: Option<Arc<dyn crate::agent::self_repair::SoftwareBuilder>>,
     /// Resolved LLM backend identifier (e.g., "nearai", "openai", "groq").
     /// Used by `/model` persistence to determine which env var to update.
@@ -565,8 +564,6 @@ impl Agent {
         &self.deps.owner_id
     }
 
-    /// Get V1 tool registry stub (for V1-to-V2 migration compatibility)
-    /// TODO: Remove after V2 migration complete
     pub(crate) fn tools(&self) -> Arc<crate::tools::ToolRegistry> {
         // Return a stub ToolRegistry for V1 compatibility during migration
         Arc::new(crate::tools::ToolRegistry::new())
@@ -751,12 +748,6 @@ impl Agent {
     pub(crate) fn workspace(&self) -> Option<&Arc<Workspace>> {
         self.deps.workspace.as_ref()
     }
-    /// Temporary accessor for tools via scheduler during v1-to-v2 migration.
-    // TODO: V1 ToolRegistry removed - use effect_executor via deps instead
-    // pub(crate) fn tools(&self) -> &Arc<crate::tools::ToolRegistry> {
-    //     self.scheduler.tools()
-    // }
-
 
     pub(crate) fn workspace_for_user(&self, user_id: &str) -> Option<Arc<Workspace>> {
         self.workspace().map(|ws| {
@@ -1071,7 +1062,6 @@ impl Agent {
             self_repair = self_repair.with_store(system);
         }
         if let Some(ref builder) = self.deps.builder {
-            // Cast ToolRegistry to Any for generic storage during V1-to-V2 migration
             let tools_any: Arc<dyn std::any::Any + Send + Sync> = self.tools().clone();
             self_repair = self_repair.with_builder(Arc::clone(builder), tools_any);
         }

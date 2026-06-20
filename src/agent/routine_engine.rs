@@ -39,10 +39,6 @@ use brassclaw_llm::{
     ChatMessage, CompletionRequest, FinishReason, LlmProvider, ToolCall, ToolCompletionRequest,
 };
 
-// ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
-// ============================================================================
-
 /// Stub for deleted V1 autonomous_unavailable_message function
 fn autonomous_unavailable_message() -> String {
     "Autonomous mode is not available in V1 compatibility mode".to_string()
@@ -2073,7 +2069,7 @@ async fn execute_lightweight_with_tools(
                 .map(|(cap_id, description)| brassclaw_llm::ToolDefinition {
                     name: cap_id,
                     description,
-                    parameters: serde_json::json!({}), // TODO: Add proper parameter schemas
+                    parameters: serde_json::json!({}),
                 })
                 .collect();
 

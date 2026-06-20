@@ -534,8 +534,8 @@ fn check_gateway_config(settings: &Settings) -> CheckResult {
 // ── MCP servers ─────────────────────────────────────────────
 
 async fn check_mcp_config() -> CheckResult {
-    // V1 - DISABLED - load_mcp_servers() returns HashMap directly, not Result
-    let servers = crate::mcp_client::config::load_mcp_servers();
+    // V1 - DISABLED - MCP server configuration removed
+    let servers: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
     
     if servers.is_empty() {
         return CheckResult::Skip("no MCP servers configured".into());

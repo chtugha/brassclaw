@@ -9,24 +9,6 @@
 //! `brassclaw_llm::ToolDefinition` together with main-crate trust state, so it
 //! sits at the seam between the two.
 //!
-//! # V1 migration notes
-//!
-//! The following items in this module exist **only for the v1 agent** (`src/agent/`).
-//! Once the v1 agent is removed and all users are on ENGINE_V2, they can be deleted:
-//!
-//! - **`attenuation` module** — Trust-based tool filtering. In v2, the Python
-//!   orchestrator handles skill trust via the `format_skills()` function and
-//!   the policy engine handles tool access via capability leases.
-//! - **`register_skill_credentials()`** — Registers credential mappings from v1
-//!   `LoadedSkill` into `SharedCredentialRegistry`. In v2, credentials are declared
-//!   in the SKILL.md frontmatter and registered at migration time in `skill_migration.rs`.
-//! - **`credential_spec_to_mapping()` / `convert_credential_location()`** — Conversion
-//!   helpers used by `register_skill_credentials()`. Same lifecycle.
-//! - **This entire module** — Once v1 is gone, the remaining local items
-//!   can be deleted and this file removed.
-//!
-//! The `brassclaw_skills` crate itself remains (types, parser, validation, v2 types).
-
 pub mod attenuation;
 pub mod bundled;
 
@@ -40,10 +22,6 @@ use crate::secrets::{CredentialLocation, CredentialMapping};
 // V1 - deleted: auth module no longer exists
 // auth::{AuthDescriptor, AuthDescriptorKind, OAuthFlowDescriptor, upsert_auth_descriptor},
 use brassclaw_skills::{LoadedSkill, SkillCredentialLocation, SkillCredentialSpec};
-
-// ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
-// ============================================================================
 
 /// Stub for deleted V1 OAuthRefreshConfig type
 #[derive(Debug, Clone)]
@@ -69,10 +47,6 @@ impl SharedCredentialRegistry {
         // No-op stub - credential registration not supported in V1 stub
     }
 }
-
-// ============================================================================
-// END V1 STUBS
-// ============================================================================
 
 /// Convert a skill credential location to the main crate's [`CredentialLocation`].
 fn convert_credential_location(loc: &SkillCredentialLocation) -> CredentialLocation {
@@ -105,53 +79,6 @@ pub fn credential_spec_to_mapping(spec: &SkillCredentialSpec) -> CredentialMappi
     }
 }
 
-// V1 - deleted: OAuth refresh config conversion depends on V1 auth
-#[allow(dead_code)]
-fn credential_spec_to_oauth_refresh(_spec: &SkillCredentialSpec) -> Option<OAuthRefreshConfig> {
-    // let oauth = spec.oauth.as_ref()?;
-    // match &oauth.refresh {
-    //     brassclaw_skills::ProviderRefreshStrategy::ReauthorizeOnly => return None,
-    //     brassclaw_skills::ProviderRefreshStrategy::Standard => {}
-    //     brassclaw_skills::ProviderRefreshStrategy::Custom {
-    //         refresh_url,
-    //         extra_params,
-    //     } => {
-    //         let builtin = crate::auth::oauth::builtin_credentials(&spec.name);
-    //         let exchange_proxy_url = crate::auth::oauth::exchange_proxy_url();
-    //         ...
-    //     }
-    // }
-    None
-}
-
-// V1 - deleted: AuthDescriptor type no longer exists
-// fn credential_spec_to_auth_descriptor(
-//     skill_name: &str,
-//     spec: &SkillCredentialSpec,
-// ) -> AuthDescriptor {
-//     AuthDescriptor {
-//         kind: AuthDescriptorKind::SkillCredential,
-//         secret_name: spec.name.clone(),
-//         integration_name: skill_name.to_string(),
-//         display_name: Some(spec.provider.clone()),
-//         provider: Some(spec.provider.clone()),
-//         setup_url: None,
-//         oauth: spec.oauth.as_ref().map(|oauth| OAuthFlowDescriptor {
-//             authorization_url: oauth.authorization_url.clone(),
-//             token_url: oauth.token_url.clone(),
-//             client_id: oauth.client_id.clone(),
-//             client_id_env: oauth.client_id_env.clone(),
-//             client_secret: oauth.client_secret.clone(),
-//             client_secret_env: oauth.client_secret_env.clone(),
-//             scopes: oauth.scopes.clone(),
-//             use_pkce: oauth.use_pkce,
-//             extra_params: oauth.extra_params.clone(),
-//             access_token_field: "access_token".to_string(),
-//             validation_url: oauth.test_url.clone(),
-//         }),
-//     }
-// }
-
 /// Register credential mappings from loaded skills into the shared registry.
 ///
 /// Validates each spec before registration; invalid specs are logged and skipped.
@@ -179,12 +106,6 @@ pub fn register_skill_credentials(
                 hosts = ?spec.hosts,
                 "Registering skill credential mapping"
             );
-            // V1 - DISABLED - methods not found in SharedCredentialRegistry
-            // registry.add_mappings(std::iter::once(mapping));
-            // if let Some(oauth) = credential_spec_to_oauth_refresh(spec) {
-            //     registry
-            //         .add_oauth_refresh_configs(std::iter::once((oauth.secret_name.clone(), oauth)));
-            // }
             count += 1;
         }
     }

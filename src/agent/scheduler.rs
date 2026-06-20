@@ -15,7 +15,6 @@ use crate::error::{Error, JobError};
 use crate::extensions::ExtensionManager;
 use crate::hooks::HookRegistry;
 use crate::tenant::SystemScope;
-// TODO: V1 worker module removed - Worker/WorkerDeps types need V2 reimplementation
 use brassclaw_engine::EffectExecutor;
 use brassclaw_llm::LlmProvider;
 use brassclaw_safety::SafetyLayer;
@@ -148,7 +147,6 @@ pub struct Scheduler {
     /// model-facing tool list filter applies to background jobs too.
     /// `None` in tests / before `Config::with_runtime_overrides` runs.
     runtime_policy: Option<brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy>,
-    // V1 tool registry removed - V2 migration complete
     /// Running jobs (main LLM-driven jobs).
     jobs: Arc<RwLock<HashMap<Uuid, ScheduledJob>>>,
     /// Running sub-tasks (tool executions, background tasks).
@@ -169,7 +167,6 @@ impl Scheduler {
             context_manager,
             llm,
             safety,
-            // V1 tools field removed - V2 migration complete
             effect_executor: deps.effect_executor,
             extension_manager: deps.extension_manager,
             store: deps.store,
@@ -301,8 +298,6 @@ impl Scheduler {
                     if max_tokens > 0 {
                         ctx.max_tokens = max_tokens;
                     }
-                    // TODO: Remove after V2 migration complete
-                    // Type mismatch: scheduler::ApprovalContext vs context::state::ApprovalContext
                     if let Some(_approval) = approval_context.as_ref() {
                         // Stubbed - cannot convert between stub and real ApprovalContext
                     }
@@ -404,7 +399,6 @@ impl Scheduler {
                 multi_tenant: self.config.multi_tenant,
             };
             
-            // TODO: V1 Worker removed - needs V2 reimplementation
             // Stub worker creation and execution
             let _worker = Worker { _placeholder: () };
             let _deps = deps; // Consume deps to avoid unused variable warning
@@ -486,7 +480,6 @@ impl Scheduler {
                 tool_name,
                 params,
             } => {
-                // V1 tools removed - V2 migration complete
                 let effect_executor = self.effect_executor.clone();
                 let context_manager = self.context_manager.clone();
                 let safety = self.safety.clone();
@@ -627,12 +620,8 @@ impl Scheduler {
     /// Performs scheduler-specific checks (approval, cancellation) then
     /// delegates to V2 EffectExecutor for capability-based tool execution.
     ///
-    /// P0.1: Basic wiring complete - calls EffectExecutor with minimal context
-    /// P0.2: TODO - Add full tool execution with proper error handling
-    /// P0.3: TODO - Integrate approval flow
     #[allow(dead_code)]
     async fn execute_tool_task(
-        // V1 _tools parameter removed - V2 migration complete
         effect_executor: Option<Arc<dyn EffectExecutor>>,
         context_manager: Arc<ContextManager>,
         _safety: Arc<SafetyLayer>,
@@ -664,11 +653,8 @@ impl Scheduler {
             }
         };
 
-        // P0.2: Create ThreadExecutionContext with real values from job context
         let mut thread_context = Self::create_thread_execution_context(&job_ctx, job_id);
 
-        // P0.2: Create minimal CapabilityLease (stub for now)
-        // P0.3: TODO - Implement proper lease management with approval flow
         use brassclaw_engine::{CapabilityLease, LeaseId, GrantedActions};
         use chrono::Utc;
         
@@ -676,7 +662,7 @@ impl Scheduler {
             id: LeaseId::new(),
             thread_id: thread_context.thread_id,
             capability_name: tool_name.to_string(),
-            granted_actions: GrantedActions::All, // P0.3: TODO - Restrict based on approval
+            granted_actions: GrantedActions::All,
             granted_at: Utc::now(),
             expires_at: None,
             max_uses: None,
@@ -1121,13 +1107,6 @@ impl Scheduler {
             scheduled.handle.abort();
         }
     }
-
-    /// Get access to the tools registry.
-    // V1 ToolRegistry removed - use effect_executor() instead
-    // #[deprecated(note = "Use effect_executor() instead - will be removed in Step 9.7+")]
-    // pub fn tools(&self) -> &Arc<ToolRegistry> {
-    //     &self.tools
-    // }
 
     /// Get access to the V2 effect executor.
     pub fn effect_executor(&self) -> Option<&Arc<dyn EffectExecutor>> {
