@@ -222,6 +222,7 @@ impl PendingAuthPrompt {
     /// Create a new `PendingAuthPrompt` from an already-validated
     /// [`ExtensionName`]. Infallible — the identity type carries the
     /// non-empty invariant that this constructor used to check.
+    #[allow(dead_code)]
     pub(crate) fn new(
         extension_name: ExtensionName,
         instructions: Option<String>,

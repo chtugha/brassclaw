@@ -37,6 +37,7 @@ exclude = [
 [workspace.lints.rust]
 unreachable_pub = "warn"
 dead_code = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(disabled)'] }
 
 [package]
 name = "brassclaw"

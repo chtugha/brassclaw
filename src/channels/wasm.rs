@@ -1,3 +1,4 @@
+#![allow(unexpected_cfgs)]
 #![cfg(disabled)] // V1 - entire file disabled to eliminate 4 compilation errors
 
 //! V1 WASM Channel Module Stub

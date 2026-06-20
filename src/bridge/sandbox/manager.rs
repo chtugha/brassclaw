@@ -35,6 +35,7 @@ impl std::fmt::Debug for ProjectSandboxManager {
 }
 
 impl ProjectSandboxManager {
+    #[allow(dead_code)]
     pub fn new(docker: Docker) -> Self {
         Self {
             docker,

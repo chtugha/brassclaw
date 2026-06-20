@@ -340,6 +340,7 @@ pub(crate) fn match_specificity(path_patterns: &[String], req_path: &str) -> usi
 /// failure, returns an empty string and logs at debug level — an empty
 /// string cannot match any non-empty prefix, so path-scoped credentials
 /// fail closed (safe) rather than silently injecting on malformed URLs.
+#[allow(dead_code)]
 pub(crate) fn extract_url_path_for_matching(url: &str) -> String {
     match url::Url::parse(url) {
         Ok(parsed) => parsed.path().to_string(),

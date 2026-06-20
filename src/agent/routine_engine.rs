@@ -1288,6 +1288,7 @@ struct EngineContext {
     /// for routine-driven LLM iterations (#3243 HIGH iteration-2 gap).
     /// Routines run on the agent's own loop and need the same visibility
     /// guarantees as chat turns. `None` is the legacy unfiltered path.
+    #[allow(dead_code)]
     runtime_policy: Option<brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy>,
 }
 

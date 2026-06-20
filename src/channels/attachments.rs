@@ -7,10 +7,12 @@ pub(crate) const MAX_INLINE_TOTAL_ATTACHMENT_BYTES: usize = 10 * 1024 * 1024;
 /// Maximum number of inline attachments in a single message.
 pub(crate) const MAX_INLINE_ATTACHMENTS: usize = 5;
 
+#[allow(dead_code)]
 fn base_mime_type(mime: &str) -> &str {
     mime.split(';').next().unwrap_or(mime).trim()
 }
 
+#[allow(dead_code)]
 pub(crate) fn attachment_extension_for_mime(mime: &str) -> &'static str {
     match base_mime_type(mime) {
         "image/png" => "png",

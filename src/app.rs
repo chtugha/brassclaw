@@ -13,7 +13,7 @@ use crate::agent::SessionManager as AgentSessionManager;
 use crate::logging::LogBroadcaster;
 use crate::config::Config;
 use crate::context::ContextManager;
-use crate::db::{Database, UserStore};
+use crate::db::Database;
 use crate::extensions::ExtensionManager;
 use crate::hooks::HookRegistry;
 use crate::secrets::SecretsStore;

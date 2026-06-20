@@ -717,6 +717,7 @@ async fn get_credentials_handler(
     ))
 }
 
+#[allow(dead_code)]
 fn format_finish_reason(reason: brassclaw_llm::FinishReason) -> String {
     match reason {
         brassclaw_llm::FinishReason::Stop => "stop".to_string(),

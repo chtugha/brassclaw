@@ -3,6 +3,7 @@ use brassclaw_engine::{ActionDef, ActionDiscoveryMetadata, ActionDiscoverySummar
 // V1 - deleted: action_projector module no longer exists
 // use crate::bridge::action_projector::default_model_tool_surface;
 
+#[allow(dead_code)]
 fn action_discovery_summary(
     always_required: &[&str],
     conditional_requirements: &[&str],
@@ -22,6 +23,7 @@ fn action_discovery_summary(
     }
 }
 
+#[allow(dead_code)]
 fn mission_action(
     name: &str,
     description: &str,
@@ -44,6 +46,7 @@ fn mission_action(
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn mission_capability_actions() -> Vec<ActionDef> {
     vec![
         mission_action(

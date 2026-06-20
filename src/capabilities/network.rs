@@ -40,6 +40,7 @@ impl InjectedCredentials {
 }
 
 /// Stub for deleted V1 inject_credential function
+#[allow(dead_code)]
 fn inject_credential(
     _injected: &mut InjectedCredentials,
     _location: &crate::secrets::CredentialLocation,
@@ -575,6 +576,7 @@ pub fn extract_host_from_params(params: &Value) -> Option<String> {
         .and_then(|u| u.host_str().map(|h| h.to_string()))
 }
 
+#[allow(dead_code)]
 pub(crate) fn dedup_credential_mappings(
     mappings: Vec<crate::secrets::CredentialMapping>,
 ) -> Vec<crate::secrets::CredentialMapping> {

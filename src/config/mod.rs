@@ -561,6 +561,7 @@ impl Config {
     /// Strict mode also disables the NearAI fallback: a broken save produces
     /// `Err` rather than a silent demotion, which is the signal the caller
     /// needs to trigger rollback and preserve the user's explicit selection.
+    #[allow(dead_code)]
     pub(crate) async fn resolve_llm_with_secrets_strict(
         store: Option<&(dyn crate::db::SettingsStore + Sync)>,
         user_id: &str,

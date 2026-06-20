@@ -97,6 +97,7 @@ fn autonomous_unavailable_error(tool_name: &str, _user_id: &str) -> Error {
 
 /// Message to send to a worker.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum WorkerMessage {
     /// Start working on the job.
     Start,

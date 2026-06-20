@@ -295,6 +295,7 @@ pub mod config {
 /// Stub module for deleted V1 mcp_client
 pub mod mcp_client {
     /// Stub for deleted V1 is_auth_error_message function
+    #[allow(dead_code)]
     pub fn is_auth_error_message(_err_str: &str) -> bool {
         false
     }
@@ -771,6 +772,7 @@ async fn auth_server(name: String, user_id: String) -> anyhow::Result<()> {
             );
             println!();
         }
+        #[allow(unreachable_patterns)]
         Err(e) => {
             println!();
             println!("  ✗ Authentication failed: {}", e);
@@ -979,6 +981,7 @@ async fn get_secrets_store() -> anyhow::Result<Arc<dyn SecretsStore + Send + Syn
 
 /// Truncate a description to at most 57 display chars, appending "..." if needed.
 /// Uses char-safe boundary to avoid panicking on multi-byte UTF-8.
+#[allow(dead_code)]
 fn truncate_description(s: &str) -> String {
     if s.len() <= 60 {
         return s.to_string();

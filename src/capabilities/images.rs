@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 // ============================================================================
 
 /// Stub for deleted V1 validate_path function
+#[allow(dead_code)]
 fn validate_path(_path: &str) -> Result<PathBuf, ImagesCapabilityError> {
     Err(ImagesCapabilityError::input("V1 path validation deleted"))
 }

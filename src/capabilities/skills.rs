@@ -62,6 +62,7 @@ const DEFAULT_WALL_CLOCK_MS: u64 = 2_000;
 const MAX_WALL_CLOCK_MS: u64 = 30_000;
 
 const MAX_CHAIN_DEPS: usize = 10;
+#[allow(dead_code)]
 const MAX_CHAIN_QUEUE: usize = MAX_CHAIN_DEPS * 10;
 
 #[derive(Debug, Clone, thiserror::Error)]

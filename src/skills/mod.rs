@@ -37,11 +37,8 @@ pub mod bundled;
 pub use attenuation::{AttenuationResult, attenuate_tools};
 
 use crate::secrets::{CredentialLocation, CredentialMapping};
-use crate::{
-    // V1 - deleted: auth module no longer exists
-    // auth::{AuthDescriptor, AuthDescriptorKind, OAuthFlowDescriptor, upsert_auth_descriptor},
-    db::SettingsStore,
-};
+// V1 - deleted: auth module no longer exists
+// auth::{AuthDescriptor, AuthDescriptorKind, OAuthFlowDescriptor, upsert_auth_descriptor},
 use brassclaw_skills::{LoadedSkill, SkillCredentialLocation, SkillCredentialSpec};
 
 // ============================================================================
@@ -109,6 +106,7 @@ pub fn credential_spec_to_mapping(spec: &SkillCredentialSpec) -> CredentialMappi
 }
 
 // V1 - deleted: OAuth refresh config conversion depends on V1 auth
+#[allow(dead_code)]
 fn credential_spec_to_oauth_refresh(_spec: &SkillCredentialSpec) -> Option<OAuthRefreshConfig> {
     // let oauth = spec.oauth.as_ref()?;
     // match &oauth.refresh {
