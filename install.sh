@@ -88,10 +88,11 @@ download_binary() {
     local download_url="https://github.com/$GITHUB_REPO/releases/download/v$VERSION/brassclaw-reborn-linux-amd64"
     local checksum_url="https://github.com/$GITHUB_REPO/releases/download/v$VERSION/brassclaw-reborn-linux-amd64.sha256"
     local temp_dir=$(mktemp -d)
+    local download_name="brassclaw-reborn-linux-amd64"
     
     log_step "Downloading brassclaw-reborn v$VERSION..."
     
-    if ! curl -L -f -o "$temp_dir/$BINARY_NAME" "$download_url" 2>/dev/null; then
+    if ! curl -L -f -o "$temp_dir/$download_name" "$download_url" 2>/dev/null; then
         log_error "Failed to download binary from $download_url"
         log_info "Please check if the release exists at: https://github.com/$GITHUB_REPO/releases/tag/v$VERSION"
         rm -rf "$temp_dir"
@@ -101,12 +102,12 @@ download_binary() {
     log_info "Binary downloaded successfully"
     
     log_step "Downloading checksum..."
-    if ! curl -L -f -o "$temp_dir/$BINARY_NAME.sha256" "$checksum_url" 2>/dev/null; then
+    if ! curl -L -f -o "$temp_dir/$download_name.sha256" "$checksum_url" 2>/dev/null; then
         log_warn "Checksum file not available, skipping verification"
     else
         log_step "Verifying checksum..."
         cd "$temp_dir"
-        if sha256sum -c "$BINARY_NAME.sha256" 2>/dev/null; then
+        if sha256sum -c "$download_name.sha256" 2>/dev/null; then
             log_info "Checksum verification passed"
         else
             log_error "Checksum verification failed"
@@ -118,8 +119,8 @@ download_binary() {
     fi
     
     log_step "Installing binary to $INSTALL_DIR..."
-    chmod +x "$temp_dir/$BINARY_NAME"
-    mv "$temp_dir/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+    chmod +x "$temp_dir/$download_name"
+    mv "$temp_dir/$download_name" "$INSTALL_DIR/$BINARY_NAME"
     log_info "Binary installed successfully"
     
     rm -rf "$temp_dir"
@@ -160,7 +161,7 @@ Type=simple
 User=$service_user
 Group=$service_group
 WorkingDirectory=$CONFIG_DIR
-ExecStart=$INSTALL_DIR/$BINARY_NAME serve --port 3000
+ExecStart=$INSTALL_DIR/$BINARY_NAME run --host 0.0.0.0
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
