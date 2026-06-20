@@ -34,9 +34,6 @@ mod manager;
 pub mod relay;
 mod repl;
 mod signal;
-// V1 - WASM channel disabled (entire file uses #![cfg(disabled)])
-// pub mod wasm;
-// pub mod web; // V1 web channel removed - replaced by brassclaw_webui_v2
 #[cfg(feature = "tui")]
 pub mod tui;
 

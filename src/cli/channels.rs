@@ -128,24 +128,6 @@ async fn cmd_list(
         });
     }
 
-    // WASM channels: scan directory
-    if config.wasm_channels_enabled {
-        let wasm_channels = discover_wasm_channels(&config.wasm_channels_dir).await;
-        for name in wasm_channels {
-            let owner = config.wasm_channel_owner_ids.get(&name);
-            let mut details = vec![];
-            if let Some(id) = owner {
-                details.push(("owner_id", id.to_string()));
-            }
-            channels.push(ChannelInfo {
-                name,
-                kind: "wasm",
-                enabled: true,
-                details,
-            });
-        }
-    }
-
     if json {
         let entries: Vec<serde_json::Value> = channels
             .iter()
@@ -217,54 +199,9 @@ async fn cmd_list(
     Ok(())
 }
 
-/// Discover WASM channel names by scanning the channels directory for `*.wasm` files.
-///
-/// Matches the real loader's discovery logic (`WasmChannelLoader::load_from_dir`):
-/// scans only top-level `*.wasm` files in the directory.
-async fn discover_wasm_channels(dir: &Path) -> Vec<String> {
-    let mut names = Vec::new();
-    let mut entries = match tokio::fs::read_dir(dir).await {
-        Ok(entries) => entries,
-        Err(_) => return names,
-    };
-
-    while let Ok(Some(entry)) = entries.next_entry().await {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("wasm")
-            && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
-        {
-            names.push(stem.to_string());
-        }
-    }
-
-    names.sort();
-    names
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
-    async fn discover_wasm_channels_empty_on_missing_dir() {
-        let result = discover_wasm_channels(Path::new("/nonexistent/path")).await;
-        assert!(result.is_empty());
-    }
-
-    #[tokio::test]
-    async fn discover_wasm_channels_finds_flat_wasm_files() {
-        let tmp = tempfile::tempdir().unwrap();
-        // Flat .wasm files — matches real loader (load_from_dir)
-        std::fs::File::create(tmp.path().join("slack.wasm")).unwrap();
-        std::fs::File::create(tmp.path().join("telegram.wasm")).unwrap();
-        // Non-.wasm files should be skipped
-        std::fs::File::create(tmp.path().join("readme.txt")).unwrap();
-        // Directories should be skipped
-        std::fs::create_dir(tmp.path().join("somedir")).unwrap();
-
-        let result = discover_wasm_channels(tmp.path()).await;
-        assert_eq!(result, vec!["slack", "telegram"]);
-    }
 
     #[test]
     fn channel_info_struct() {

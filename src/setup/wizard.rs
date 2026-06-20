@@ -2595,9 +2595,10 @@ impl SetupWizard {
 
         let non_wasm_count = options.len();
 
+        // V1 WASM channels removed - this section is disabled
         // Add available WASM channels (installed + bundled + registry)
         for name in &wasm_channel_names {
-            let is_enabled = self.settings.channels.wasm_channels.contains(name);
+            let is_enabled = false; // V1: self.settings.channels.wasm_channels.contains(name);
             let label = if installed_names.contains(name) {
                 format!("{} (installed)", capitalize_first(name))
             } else {
@@ -2723,11 +2724,8 @@ impl SetupWizard {
 
         // Process selected WASM channels
         let mut enabled_wasm_channels = Vec::new();
-        let existing_runtime_overrides = self
-            .settings
-            .channels
-            .wasm_channel_runtime_overrides
-            .clone();
+        // V1: let existing_runtime_overrides = self.settings.channels.wasm_channel_runtime_overrides.clone();
+        let existing_runtime_overrides: HashMap<String, serde_json::Value> = HashMap::new();
         let mut enabled_runtime_overrides: HashMap<String, serde_json::Value> = HashMap::new();
         for channel_name in selected_wasm_channels {
             println!();
@@ -2790,8 +2788,10 @@ impl SetupWizard {
             }
         }
 
-        self.settings.channels.wasm_channels = enabled_wasm_channels;
-        self.settings.channels.wasm_channel_runtime_overrides = enabled_runtime_overrides;
+        // V1: self.settings.channels.wasm_channels = enabled_wasm_channels;
+        // V1: self.settings.channels.wasm_channel_runtime_overrides = enabled_runtime_overrides;
+        let _ = enabled_wasm_channels; // Suppress unused warning
+        let _ = enabled_runtime_overrides; // Suppress unused warning
 
         Ok(())
     }

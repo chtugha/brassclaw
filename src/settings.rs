@@ -470,35 +470,6 @@ pub struct ChannelSettings {
     #[serde(default)]
     pub signal_group_allow_from: Option<String>,
 
-    /// Per-channel owner user IDs. When set, the channel only responds to this user.
-    /// Key: channel name (e.g., "telegram"), Value: owner user ID.
-    #[serde(default)]
-    pub wasm_channel_owner_ids: std::collections::HashMap<String, i64>,
-
-    /// Runtime config overrides for WASM channels.
-    ///
-    /// Keys use `<channel>:<config_key>` format (for example,
-    /// `wecom:allow_from`), and values are passed to the channel config as
-    /// JSON values.
-    #[serde(default)]
-    pub wasm_channel_runtime_overrides: std::collections::HashMap<String, serde_json::Value>,
-
-    /// Enabled WASM channels by name.
-    /// Primarily used by the setup wizard to track which channels were configured.
-    ///
-    /// Startup treats this as a fallback restore source only until
-    /// `activated_channels` has been persisted by the runtime.
-    #[serde(default)]
-    pub wasm_channels: Vec<String>,
-
-    /// Whether WASM channels are enabled.
-    #[serde(default = "default_true")]
-    pub wasm_channels_enabled: bool,
-
-    /// Directory containing WASM channel modules.
-    #[serde(default)]
-    pub wasm_channels_dir: Option<PathBuf>,
-
     /// CLI mode: "tui" for rich terminal UI, empty/absent for simple REPL.
     #[serde(default)]
     pub cli_mode: Option<String>,
@@ -523,11 +494,6 @@ impl Default for ChannelSettings {
             signal_dm_policy: None,
             signal_group_policy: None,
             signal_group_allow_from: None,
-            wasm_channel_owner_ids: std::collections::HashMap::new(),
-            wasm_channel_runtime_overrides: std::collections::HashMap::new(),
-            wasm_channels: Vec::new(),
-            wasm_channels_enabled: true,
-            wasm_channels_dir: None,
             cli_mode: Some("tui".to_string()),
         }
     }

@@ -153,21 +153,13 @@ pub async fn run_status_command() -> anyhow::Result<()> {
     };
     println!("{}", fmt::kv_line("WASM Tools", &tools_value, 12));
 
-    // WASM channels
-    let channels_dir = settings
-        .channels
-        .wasm_channels_dir
-        .clone()
-        .unwrap_or_else(default_channels_dir);
+    // Channels
     let mut channel_info = vec!["cli".to_string()];
     if settings.channels.http_enabled {
         channel_info.push(format!(
             "http:{}",
             settings.channels.http_port.unwrap_or(3000)
         ));
-    }
-    if let Some(wasm_summary) = format_wasm_channels_summary(&settings, &channels_dir) {
-        channel_info.push(wasm_summary);
     }
     println!("{}", fmt::kv_line("Channels", &channel_info.join(", "), 12));
 
@@ -261,38 +253,8 @@ fn count_wasm_files(dir: &std::path::Path) -> usize {
         .unwrap_or(0)
 }
 
-fn format_wasm_channels_summary(
-    settings: &Settings,
-    channels_dir: &std::path::Path,
-) -> Option<String> {
-    if settings.channels.wasm_channels_enabled && !settings.channels.wasm_channels.is_empty() {
-        let mut channels = settings.channels.wasm_channels.clone();
-        channels.sort();
-        return Some(format!("{} wasm ({})", channels.len(), channels.join(", ")));
-    }
-
-    let wasm_count = count_wasm_files(channels_dir);
-    if wasm_count > 0 {
-        if settings.channels.wasm_channels_enabled {
-            return Some(format!("{} wasm", wasm_count));
-        } else {
-            return Some(format!(
-                "{} wasm installed ({})",
-                wasm_count,
-                channels_dir.display()
-            ));
-        }
-    }
-
-    None
-}
-
 fn default_tools_dir() -> PathBuf {
     brassclaw_base_dir().join("tools")
-}
-
-fn default_channels_dir() -> PathBuf {
-    brassclaw_base_dir().join("channels")
 }
 
 #[cfg(test)]

@@ -1,38 +1,7 @@
 use std::path::PathBuf;
-use std::time::Duration;
 
 use crate::bootstrap::brassclaw_base_dir;
 use crate::config::helpers::{db_first_bool, db_first_or_default, optional_env};
-
-// ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
-// ============================================================================
-
-/// Stub for deleted V1 WasmRuntimeConfig type
-#[derive(Debug, Clone)]
-pub struct WasmRuntimeConfig {
-    pub default_limits: ResourceLimits,
-    pub fuel_config: FuelConfig,
-}
-
-/// Stub for deleted V1 ResourceLimits type
-#[derive(Debug, Clone)]
-pub struct ResourceLimits {
-    pub memory_bytes: u64,
-    pub fuel: u64,
-    pub timeout: Duration,
-}
-
-/// Stub for deleted V1 FuelConfig type
-#[derive(Debug, Clone)]
-pub struct FuelConfig {
-    pub initial_fuel: u64,
-}
-
-// ============================================================================
-// END V1 STUBS
-// ============================================================================
-
 use crate::error::ConfigError;
 
 /// WASM sandbox configuration.
@@ -113,21 +82,6 @@ impl WasmConfig {
                 optional_env("WASM_CACHE_DIR")?.map(PathBuf::from)
             },
         })
-    }
-
-    /// Convert to WasmRuntimeConfig.
-    // TODO: V1 wasm_runtime module removed - config conversion needs V2 reimplementation
-    pub fn to_runtime_config(&self) -> WasmRuntimeConfig {
-        WasmRuntimeConfig {
-            default_limits: ResourceLimits {
-                memory_bytes: self.default_memory_limit,
-                fuel: self.default_fuel_limit,
-                timeout: Duration::from_secs(self.default_timeout_secs),
-            },
-            fuel_config: FuelConfig {
-                initial_fuel: self.default_fuel_limit,
-            },
-        }
     }
 }
 
