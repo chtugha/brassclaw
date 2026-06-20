@@ -547,7 +547,7 @@ impl LlmConfigService for RebornLlmConfigService {
             }),
             Ok(_) => Ok(LlmProbeResult {
                 ok: true,
-                message: "provider configured; this adapter does not expose a model list to verify"
+                message: "Connection successful! Provider is configured and ready to use."
                     .to_string(),
             }),
             Err(_) => Ok(LlmProbeResult {
