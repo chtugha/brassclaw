@@ -3,20 +3,10 @@
 //! Extracted from `agent_loop.rs` to isolate the /help, /model, /status,
 //! and other command processing from the core agent loop.
 
-use std::sync::Arc;
 
-use tokio::sync::Mutex;
-use uuid::Uuid;
 
-use crate::agent::session::Session;
-use crate::agent::submission::SubmissionResult;
 // V1 - DISABLED: Agent struct and entire impl block commented out
 // use crate::agent::MessageIntent;
-use crate::channels::{IncomingMessage, StatusUpdate};
-use crate::context::JobState;
-use crate::error::Error;
-use crate::ownership::Owned;
-use brassclaw_llm::{ChatMessage, Reasoning};
 
 /// Format a count with a suffix, using K/M abbreviations for large numbers.
 fn format_count(n: u64, suffix: &str) -> String {

@@ -53,11 +53,6 @@ fn is_truthy(value: Option<&str>) -> bool {
         .unwrap_or(false)
 }
 
-pub(crate) use containerized_factory::ContainerizedMountFactory;
-pub(crate) use filesystem_factory::{FilesystemMountFactory, ProjectPathResolver};
-pub(crate) use intercept::{InterceptOutcome, maybe_intercept};
-pub(crate) use manager::ProjectSandboxManager;
-pub(crate) use workspace_path::ensure_project_workspace_dir;
 
 #[cfg(test)]
 mod env_tests {

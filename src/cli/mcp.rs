@@ -540,7 +540,7 @@ async fn add_server(args: McpAddArgs) -> anyhow::Result<()> {
 
     // Save (DB if available, else disk)
     let (db, owner_id) = connect_db().await;
-    let mut servers = load_servers(db.as_deref(), &owner_id).await?;
+    let servers = load_servers(db.as_deref(), &owner_id).await?;
     // servers.upsert(config);
     save_servers(db.as_deref(), &owner_id, &servers).await?;
 
@@ -578,7 +578,7 @@ async fn add_server(args: McpAddArgs) -> anyhow::Result<()> {
 /// Remove an MCP server.
 async fn remove_server(name: String) -> anyhow::Result<()> {
     let (db, owner_id) = connect_db().await;
-    let mut servers = load_servers(db.as_deref(), &owner_id).await?;
+    let servers = load_servers(db.as_deref(), &owner_id).await?;
     // V1 - DISABLED - missing remove() method
     if false { // !servers.remove(&name) {
         anyhow::bail!("Server '{}' not found", name);
@@ -803,7 +803,7 @@ async fn test_server(name: String, user_id: String) -> anyhow::Result<()> {
     let secrets = get_secrets_store().await?;
     let has_tokens = is_authenticated(&server, &secrets, &user_id).await;
 
-    let client = if has_tokens {
+    let _client = if has_tokens {
         // We have stored tokens, use authenticated client
         McpClient::new_authenticated(server.clone(), session_manager.clone(), secrets, user_id)
     } else if server.has_custom_auth_header() {
@@ -907,9 +907,9 @@ async fn test_server(name: String, user_id: String) -> anyhow::Result<()> {
 }
 
 /// Toggle server enabled/disabled state.
-async fn toggle_server(name: String, enable: bool, disable: bool) -> anyhow::Result<()> {
+async fn toggle_server(name: String, enable: bool, _disable: bool) -> anyhow::Result<()> {
     let (db, owner_id) = connect_db().await;
-    let mut servers = load_servers(db.as_deref(), &owner_id).await?;
+    let servers = load_servers(db.as_deref(), &owner_id).await?;
 
     // V1 - DISABLED - entire toggle function depends on mutable access
     // let server = servers

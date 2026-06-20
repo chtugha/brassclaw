@@ -19,7 +19,7 @@ use crate::orchestrator::auth::{TokenStore, worker_auth_middleware};
 use crate::orchestrator::job_manager::ContainerJobManager;
 use crate::secrets::SecretsStore;
 use brassclaw_common::{AppEvent, JobResultStatus};
-use brassclaw_llm::{CompletionRequest, LlmProvider, ToolCompletionRequest};
+use brassclaw_llm::LlmProvider;
 
 // ============================================================================
 // V1 STUBS - TODO: Remove after V2 migration complete

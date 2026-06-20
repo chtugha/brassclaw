@@ -448,7 +448,7 @@ pub async fn execute_tool_list(
     params: &Value,
     ctx: &ExtensionsContext,
 ) -> Result<Value, ExtensionsCapabilityError> {
-    let kind_filter = params
+    let _kind_filter = params
         .get("kind")
         .and_then(|v| v.as_str())
         .and_then(|k| match k {

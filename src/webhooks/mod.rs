@@ -13,10 +13,8 @@ use axum::{
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
-use subtle::ConstantTimeEq;
 
 use crate::agent::routine_engine::RoutineEngine;
-use crate::context::JobContext;
 use crate::secrets::SecretsStore;
 
 // ============================================================================

@@ -11,10 +11,10 @@ use tokio::sync::RwLock;
 
 use crate::extensions::{
     ActivateResult, AuthResult, ConfigureResult, EnsureReadyIntent, EnsureReadyOutcome,
-    ExtensionError, ExtensionKind, ExtensionPhase, ExtensionSource, InstallResult,
+    ExtensionError, ExtensionKind, InstallResult,
     InstalledExtension, InteractiveLoginInfo, InteractiveLoginPollResult,
-    InteractiveLoginStartResult, LatentProviderAction, RegistryEntry, ResultSource, SearchResult,
-    ToolAuthState, UpgradeOutcome, UpgradeResult,
+    InteractiveLoginStartResult, LatentProviderAction, SearchResult,
+    ToolAuthState, UpgradeResult,
 };
 use crate::extensions::discovery::OnlineDiscovery;
 use crate::extensions::registry::ExtensionRegistry;

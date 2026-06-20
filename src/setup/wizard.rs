@@ -24,7 +24,7 @@ use crate::config::OAUTH_PLACEHOLDER;
 use crate::secrets::{SecretsCrypto, SecretsStore};
 use crate::settings::{KeySource, Settings};
 use crate::setup::channels::{
-    SecretsContext, setup_http, setup_signal, setup_tunnel, setup_wasm_channel,
+    SecretsContext, setup_http, setup_signal, setup_tunnel,
 };
 use crate::setup::prompts::{
     confirm, input, optional_input, print_banner, print_error, print_header, print_info,
@@ -2731,7 +2731,7 @@ impl SetupWizard {
         let mut enabled_runtime_overrides: HashMap<String, serde_json::Value> = HashMap::new();
         for channel_name in selected_wasm_channels {
             println!();
-            if let Some(ref ctx) = secrets {
+            if let Some(ref _ctx) = secrets {
                 // V1 - DISABLED - cap_file.setup field removed from ChannelCapabilitiesFile
                 let result = if let Some(_cap_file) = discovered_by_name.get(&channel_name) {
                     // if !cap_file.setup.required_secrets.is_empty() {

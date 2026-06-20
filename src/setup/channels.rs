@@ -744,7 +744,7 @@ pub struct WasmChannelSetupResult {
 pub async fn setup_wasm_channel(
     secrets: &SecretsContext,
     channel_name: &str,
-    setup: &wasm_stub::SetupSchema, // V1 - using stub instead of crate::channels::wasm
+    _setup: &wasm_stub::SetupSchema, // V1 - using stub instead of crate::channels::wasm
 ) -> Result<WasmChannelSetupResult, ChannelSetupError> {
     println!("{} Setup:", channel_name);
     println!();

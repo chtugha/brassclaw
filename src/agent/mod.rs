@@ -56,7 +56,6 @@ pub(crate) mod test_support {
 
 // pub(crate) use agent_loop::truncate_for_preview; // V1 - agent_loop disabled
 // pub use agent_loop::{Agent, AgentDeps}; // V1 - agent_loop disabled
-pub(crate) use attachments::augment_with_attachments;
 pub use compaction::{CompactionResult, ContextCompactor};
 pub use context_monitor::{CompactionStrategy, ContextBreakdown, ContextMonitor};
 // pub(crate) use dispatcher::strip_suggestions; // V1 - dispatcher disabled

@@ -697,7 +697,7 @@ impl AppBuilder {
             embeddings,
             workspace,
             http_interceptor,
-            workspace_resolver,
+            _workspace_resolver,
         ) = self.init_tools(&llm, cheap_llm.as_ref()).await?;
         // TODO: V2 Reborn Capability System will be created after init_extensions()
         // where all required variables (tools, hooks, mcp managers, etc.) are available

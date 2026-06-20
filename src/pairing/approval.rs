@@ -82,7 +82,7 @@ pub async fn propagate_approval(
 ) -> Result<(), ExtensionError> {
     let numeric_id: Option<i64> = external_id.as_str().parse().ok();
     let previous_owner_actor_id = channel.owner_actor_id().await;
-    let previous_config_json = channel.config_json_snapshot().await;
+    let _previous_config_json = channel.config_json_snapshot().await;
 
     // Update the live channel binding first, but restore it if the restart
     // path fails so the running channel never keeps a claimed owner that the

@@ -541,8 +541,8 @@ async fn check_mcp_config() -> CheckResult {
         return CheckResult::Skip("no MCP servers configured".into());
     }
 
-    let mut invalid: Vec<String> = Vec::new();
-    for (name, server) in &servers {
+    let invalid: Vec<String> = Vec::new();
+    for (_name, _server) in &servers {
         // V1 - DISABLED - validate() method may not exist on McpServerConfig
         // if let Err(e) = server.validate() {
         //     invalid.push(format!("{}: {}", name, e));

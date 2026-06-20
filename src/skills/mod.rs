@@ -159,7 +159,7 @@ fn credential_spec_to_oauth_refresh(_spec: &SkillCredentialSpec) -> Option<OAuth
 /// Validates each spec before registration; invalid specs are logged and skipped.
 pub fn register_skill_credentials(
     skills: &[LoadedSkill],
-    registry: &SharedCredentialRegistry,
+    _registry: &SharedCredentialRegistry,
 ) {
     let mut count = 0usize;
     for skill in skills {
@@ -174,7 +174,7 @@ pub fn register_skill_credentials(
                 );
                 continue;
             }
-            let mapping = credential_spec_to_mapping(spec);
+            let _mapping = credential_spec_to_mapping(spec);
             tracing::debug!(
                 skill = %skill.name(),
                 credential = %spec.name,

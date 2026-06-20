@@ -608,7 +608,7 @@ pub async fn execute_http(
         reqwest::redirect::Policy::none(),
     )?;
 
-    let mut headers_vec = parse_headers_param(params.get("headers"))?;
+    let headers_vec = parse_headers_param(params.get("headers"))?;
     let caller_headers: Vec<(String, String)> = headers_vec.clone();
     let caller_url = parsed_url.clone();
 

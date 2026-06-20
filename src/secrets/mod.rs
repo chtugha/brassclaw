@@ -73,9 +73,7 @@ pub use types::{
     CreateSecretParams, CredentialLocation, CredentialMapping, DecryptedSecret, Secret,
     SecretError, SecretRef,
 };
-pub(crate) use types::{
-    extract_url_path_for_matching, host_matches_pattern, match_specificity, path_matches_prefix,
-};
+pub(crate) use types::match_specificity;
 
 pub use store::in_memory::InMemorySecretsStore;
 

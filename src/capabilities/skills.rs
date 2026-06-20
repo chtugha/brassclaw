@@ -396,7 +396,7 @@ where
     F: Fn(String) -> Fut,
     Fut: Future<Output = Result<SkillInstallPayload, SkillFetchError>>,
 {
-    let (user_dir, initial_missing) = {
+    let (_user_dir, initial_missing) = {
         let guard = registry_read(registry);
         let missing = required_skills
             .into_iter()
@@ -407,7 +407,7 @@ where
 
     let mut report = ChainInstallReport::default();
     let mut queue: VecDeque<String> = initial_missing.into_iter().collect();
-    let mut queued_or_seen: HashSet<String> = queue.iter().cloned().collect();
+    let _queued_or_seen: HashSet<String> = queue.iter().cloned().collect();
     let mut attempted = 0usize;
 
     while let Some(dep_name) = queue.pop_front() {
@@ -632,6 +632,7 @@ pub async fn execute_skill_install(
 
     let normalized = brassclaw_skills::normalize_line_endings(&install_payload.skill_md);
 
+    #[allow(unused_variables)]
     let (user_dir, skill_name_from_parse, install_content) = {
         let guard = registry_read(&ctx.registry);
 

@@ -11,7 +11,7 @@ use clap::Subcommand;
 use tokio::fs;
 
 use crate::bootstrap::brassclaw_base_dir;
-use crate::secrets::{CreateSecretParams, SecretsStore};
+use crate::secrets::SecretsStore;
 
 // ============================================================================
 // V1 STUBS - TODO: Remove after V2 migration complete
@@ -85,7 +85,7 @@ pub mod wasm_runtime {
 
     // Re-export types so they can be used as crate::wasm_runtime::Type
     pub use super::{AuthCapabilitySchema, OAuthConfigSchema};
-    pub use crate::cli::tool::ValidationEndpointSchema;
+    
 
     /// Stub for deleted V1 WasmRuntime
     pub struct WasmRuntime;
@@ -545,7 +545,7 @@ async fn show_tool_info(
                     || caps
                         .setup
                         .as_ref()
-                        .is_some_and(|s| {
+                        .is_some_and(|_s| {
                             // V1 - field access error - commenting out
                             // !s.required_secrets.is_empty()
                             false
@@ -553,7 +553,7 @@ async fn show_tool_info(
                     || caps
                         .http
                         .as_ref()
-                        .is_some_and(|h| {
+                        .is_some_and(|_h| {
                             // V1 - field access error - commenting out
                             // !h.credentials.is_empty()
                             false
@@ -658,7 +658,7 @@ fn collect_auth_secrets(caps: &CapabilitiesFile) -> CollectedAuthSecrets {
 
     // auth.display_name is the best label — seed first.
     if let Some(ref auth) = caps.auth {
-        let index = secrets.len();
+        let _index = secrets.len();
         // seen.insert(auth.secret_name.clone(), index);
         secrets.push(AuthSecretInfo {
             secret_name: auth.secret_name.clone(),
@@ -715,7 +715,7 @@ async fn print_capabilities_detail(
     _secrets_store: Option<&(dyn SecretsStore + Send + Sync)>,
     _user_id: &str,
 ) {
-    let collected = collect_auth_secrets(caps);
+    let _collected = collect_auth_secrets(caps);
 
     // V1 - http, secrets, tool_invoke, workspace field access commented out
     // if let Some(ref http) = caps.http {
@@ -1116,11 +1116,11 @@ async fn combine_provider_scopes(
 
 /// Manual token entry flow.
 async fn auth_tool_manual(
-    store: &(dyn SecretsStore + Send + Sync),
-    user_id: &str,
+    _store: &(dyn SecretsStore + Send + Sync),
+    _user_id: &str,
     auth: &wasm_runtime::AuthCapabilitySchema,
 ) -> anyhow::Result<()> {
-    let display_name = auth.display_name.as_deref().unwrap_or(&auth.secret_name);
+    let _display_name = auth.display_name.as_deref().unwrap_or(&auth.secret_name);
 
     // Show instructions
     if let Some(ref instructions) = auth.instructions {
@@ -1291,7 +1291,7 @@ fn print_success(display_name: &str) {
 }
 
 /// Configure required secrets for a tool via its `setup.required_secrets` schema.
-async fn setup_tool(name: String, dir: Option<PathBuf>, user_id: String) -> anyhow::Result<()> {
+async fn setup_tool(name: String, dir: Option<PathBuf>, _user_id: String) -> anyhow::Result<()> {
     validate_tool_name(&name)?;
     let tools_dir = dir.unwrap_or_else(default_tools_dir);
     let caps_path = tools_dir.join(format!("{}.capabilities.json", name));
@@ -1308,7 +1308,7 @@ async fn setup_tool(name: String, dir: Option<PathBuf>, user_id: String) -> anyh
     let caps = CapabilitiesFile::from_json(&content)
         .map_err(|e| anyhow::anyhow!("Invalid capabilities file: {}", e))?;
 
-    let setup = caps.setup.ok_or_else(|| {
+    let _setup = caps.setup.ok_or_else(|| {
         anyhow::anyhow!(
             "Tool '{}' has no setup configuration.\n\
              The tool may not require setup, or setup is not defined.\n\
@@ -1336,9 +1336,9 @@ async fn setup_tool(name: String, dir: Option<PathBuf>, user_id: String) -> anyh
     println!("╚════════════════════════════════════════════════════════════════╝");
     println!();
 
-    let secrets_store = init_secrets_store().await?;
+    let _secrets_store = init_secrets_store().await?;
 
-    let mut any_saved = false;
+    let any_saved = false;
 
     // V1 - DISABLED - entire loop body commented out due to field access errors
     // for secret in &setup.required_secrets {
