@@ -2,6 +2,9 @@
 //!
 //! Extracted from `agent_loop.rs` to isolate the /help, /model, /status,
 //! and other command processing from the core agent loop.
+//!
+//! V1 - Command formatting functions unused in V2
+#![allow(dead_code)]
 
 
 

@@ -1,3 +1,6 @@
+//! V1 - Action discovery stubs - unused in V2
+#![allow(dead_code)]
+
 use std::collections::BTreeSet;
 use std::time::Duration;
 

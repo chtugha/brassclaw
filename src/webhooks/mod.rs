@@ -2,6 +2,8 @@
 //!
 //! Exposes `/webhook/tools/{tool}` so external webhook providers can POST
 //! payloads that are normalized by the target tool into `system_event`s.
+//! V1 - Webhook functionality - partially unused in V2
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::sync::Arc;

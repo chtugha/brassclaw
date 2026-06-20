@@ -1,3 +1,6 @@
+// V1 - WeChat login functionality - entire module unused in V2
+#![allow(dead_code)]
+
 use std::time::{Duration, Instant};
 
 use reqwest::Client;

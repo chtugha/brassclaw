@@ -1,4 +1,6 @@
 //! Self-repair for stuck jobs and broken tools.
+//! V1 - Self-repair functionality unused in V2
+#![allow(dead_code)]
 
 use std::sync::Arc;
 use std::time::Duration;

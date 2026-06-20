@@ -9,6 +9,9 @@
 //!   (`Traceback ... File "orchestrator.py", line 907, in ...`)
 //! - Raw upstream failures (`HTTP 502 Bad Gateway`, JSON payloads)
 //!
+//! V1 - Error sanitization functions unused in V2
+#![allow(dead_code)]
+//!
 //! Issue #2546 tracked a case where a 502 from the LLM provider surfaced
 //! the full traceback to a user on staging. The fix is two-sided:
 //!

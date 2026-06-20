@@ -1,4 +1,6 @@
 //! Augment user message content with structured attachment context.
+//! V1 - Attachment augmentation - unused in V2
+#![allow(dead_code)]
 
 use base64::Engine;
 

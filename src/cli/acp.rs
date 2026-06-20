@@ -2,6 +2,9 @@
 //!
 //! Commands for adding, removing, listing, toggling, and testing ACP agents.
 //! Mirrors the MCP server management CLI (`src/cli/mcp.rs`).
+//!
+//! V1 - ACP client functionality unused in V2
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::sync::Arc;

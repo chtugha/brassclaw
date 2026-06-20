@@ -7,6 +7,9 @@
 //! machine-managed state (`.system/settings/`, `.system/extensions/`,
 //! `.system/skills/`).
 //!
+//! V1 - Many storage functions unused in V2
+#![allow(dead_code)]
+//!
 //! ## Workspace layout
 //!
 //! ```text
