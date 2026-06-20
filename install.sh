@@ -92,7 +92,7 @@ download_binary() {
     
     log_step "Downloading brassclaw-reborn v$VERSION..."
     
-    if ! curl -L -f -o "$temp_dir/$download_name" "$download_url" 2>&1; then
+    if ! curl -L -f -o "$temp_dir/$download_name" "$download_url" 2>&1 >/dev/null; then
         log_error "Failed to download binary from $download_url"
         log_info "Please check if the release exists at: https://github.com/$GITHUB_REPO/releases/tag/v$VERSION"
         rm -rf "$temp_dir"
@@ -102,12 +102,12 @@ download_binary() {
     log_info "Binary downloaded successfully"
     
     log_step "Downloading checksum..."
-    if ! curl -L -f -o "$temp_dir/$download_name.sha256" "$checksum_url" 2>&1; then
+    if ! curl -L -f -o "$temp_dir/$download_name.sha256" "$checksum_url" 2>&1 >/dev/null; then
         log_warn "Checksum file not available, skipping verification"
     else
         log_step "Verifying checksum..."
         cd "$temp_dir"
-        if sha256sum -c "$download_name.sha256" 2>&1; then
+        if sha256sum -c "$download_name.sha256" >/dev/null 2>&1; then
             log_info "Checksum verification passed"
         else
             log_error "Checksum verification failed"
