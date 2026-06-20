@@ -130,7 +130,31 @@ Each module: `CapabilityDescriptor` + `execute` function + unit tests. Register 
 
 **Verification**: `cargo test` passes for all new capability modules.
 
-### [ ] Step: Rewrite EffectBridgeAdapter and bridge layer
+### [-] Step: Rewrite EffectBridgeAdapter and bridge layer + V2 permission storage
+
+**Note**: Steps 7 and 8 are interdependent and should be implemented together as one unit of work.
+
+**Part A: V2 Permission Storage**
+
+Implement per-user permission persistence:
+
+- Create a database migration (e.g. `./migrations/YYYYMMDD_capability_permissions.sql` or integrate into the settings DB startup/initialization routine) to add the `capability_permissions` table/collection (composite key: `tenant_id`, `capability_id`; columns: `permission_mode`, `updated_at`). Ensure the migration runs automatically on application startup.
+- Extend `CapabilityHost` with dynamic registration API: `register()`, `unregister()`, `list_registered()`.
+- Implement permission resolution: check `CapabilityPermissionOverride` for tenant → fall back to `CapabilityDescriptor::default_permission`.
+- Add `RebornCapabilityInfo` DTO to `brassclaw_product_workflow`.
+- Add `list_capabilities()` and `update_capability_permission()` methods to `RebornServicesApi` trait and implement them.
+- Write tests for permission resolution order and CRUD operations.
+
+**Part B: Built-in Capability Dispatcher**
+
+Create `CapabilityDispatcher` implementation for v2 capabilities:
+
+- Create `./src/capabilities/dispatcher.rs` that implements `brassclaw_host_api::CapabilityDispatcher` trait
+- Route capability IDs to corresponding `execute_*` functions in each capability module
+- Handle context passing (filesystem base dir, shell config, etc.)
+- Return proper `CapabilityDispatchResult` with usage tracking
+
+**Part C: Bridge Layer Rewrite**
 
 Rewrite the bridge to use v2 capabilities instead of v1 `ToolRegistry`:
 
@@ -139,9 +163,9 @@ Rewrite the bridge to use v2 capabilities instead of v1 `ToolRegistry`:
 - `./src/bridge/action_projector.rs` — remove v1 tool permission references, use `CapabilityLease` checks.
 - `./src/bridge/tool_permissions.rs` — delete this file entirely; permissions handled by `CapabilityHost`.
 
-**Verification**: `cargo build` succeeds. No imports from `./src/tools/` remain in `./src/bridge/`.
+**Verification**: `cargo build` succeeds. `cargo test` passes. Permission overrides persist and resolve correctly. No imports from `./src/tools/` remain in `./src/bridge/`.
 
-### [ ] Step: V2 permission storage and CapabilityHost extensions
+### [ ] Step: V2 permission storage and CapabilityHost extensions (MERGED INTO STEP 7)
 
 Implement per-user permission persistence:
 
