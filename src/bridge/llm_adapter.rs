@@ -1,4 +1,6 @@
 //! LLM bridge adapter — wraps `LlmProvider` as `brassclaw_engine::LlmBackend`.
+//! V1 - LLM adapter functions unused in V2
+#![allow(dead_code)]
 
 use std::sync::Arc;
 

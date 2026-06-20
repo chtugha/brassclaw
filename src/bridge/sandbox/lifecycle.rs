@@ -6,6 +6,9 @@
 //! (`brassclaw-sandbox-<project_id>`) so multiple BrassClaw runs against the
 //! same project re-use the same container — that's how installed
 //! dependencies and build caches accumulate over the project's lifetime.
+//!
+//! V1 - Sandbox lifecycle unused in V2
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::path::Path;

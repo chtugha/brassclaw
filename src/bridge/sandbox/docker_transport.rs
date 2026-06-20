@@ -5,6 +5,9 @@
 //! managed by [`super::lifecycle`]; this module just owns the exec stream
 //! and the request/response correlation.
 //!
+//! V1 - Docker transport unused in V2
+#![allow(dead_code)]
+//!
 //! # v1 concurrency model
 //!
 //! Calls are serialized through a single `tokio::Mutex`. The daemon also

@@ -1,6 +1,8 @@
 //! Tool management CLI commands.
 //!
 //! Commands for installing, listing, removing, and authenticating WASM tools.
+//! V1 - WASM tool management unused in V2
+#![allow(dead_code)]
 
 use std::collections::{HashMap, HashSet};
 use std::io::Write;

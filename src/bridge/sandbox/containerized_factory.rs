@@ -8,6 +8,9 @@
 //! Like [`super::filesystem_factory::FilesystemMountFactory`] it takes a
 //! [`ProjectPathResolver`] so it stays decoupled from the engine `Store` and
 //! testable without one.
+//!
+//! V1 - Containerized factory unused in V2
+#![allow(dead_code)]
 
 use std::sync::Arc;
 

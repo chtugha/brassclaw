@@ -9,6 +9,9 @@
 //! closure so it can be unit-tested without a full store mock and so the
 //! same factory works whether the project record is loaded from the engine
 //! store, computed from a default, or stubbed in tests.
+//!
+//! V1 - Filesystem factory unused in V2
+#![allow(dead_code)]
 
 use std::future::Future;
 use std::path::PathBuf;

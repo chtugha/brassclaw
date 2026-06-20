@@ -5,6 +5,9 @@
 //! 2. Collects configuration (tokens, ports, etc.)
 //! 3. Validates the configuration
 //! 4. Saves secrets to the database
+//!
+//! V1 - Many channel setup functions unused in V2
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::sync::Arc;

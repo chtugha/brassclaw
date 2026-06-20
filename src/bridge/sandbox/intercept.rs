@@ -1,6 +1,8 @@
 //! Tool dispatch interception for the per-project sandbox.
 //!
 //! See [`maybe_intercept`].
+//! V1 - Sandbox interception unused in V2
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::path::Path;

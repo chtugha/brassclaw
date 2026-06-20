@@ -11,6 +11,9 @@
 //! the `/project/` prefix before calling). The daemon's tools are configured
 //! with `base_dir = /project/`, so the relative path is re-anchored at
 //! `/project/<rel>` inside the container.
+//!
+//! V1 - Containerized backend unused in V2
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
