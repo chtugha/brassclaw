@@ -1,6 +1,7 @@
 //! MCP server management CLI commands.
 //!
 //! Commands for adding, removing, authenticating, and testing MCP servers.
+//! Note: MCP CLI commands are stubs - use brassclaw_mcp crate for V2 implementation.
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -12,11 +13,7 @@ use crate::config::Config;
 use crate::db::Database;
 use crate::secrets::SecretsStore;
 
-// ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
-// ============================================================================
-
-/// Stub for deleted V1 OAuthConfig
+// Minimal type stubs needed for CLI compilation
 #[derive(Debug, Clone)]
 pub struct OAuthConfig {
     pub client_id: String,
@@ -47,7 +44,6 @@ impl OAuthConfig {
     }
 }
 
-/// Stub for deleted V1 McpServerConfig
 #[derive(Debug, Clone)]
 pub struct McpServerConfig {
     pub name: String,
@@ -150,7 +146,6 @@ impl McpServerConfig {
     }
 }
 
-/// Stub for deleted V1 EffectiveTransport
 #[derive(Debug, Clone)]
 pub enum EffectiveTransport {
     Http,
@@ -164,7 +159,55 @@ pub enum EffectiveTransport {
     },
 }
 
-/// Stub for deleted V1 McpServersFile
+#[derive(Debug)]
+pub enum AuthError {
+    NotSupported,
+}
+
+impl std::fmt::Display for AuthError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuthError::NotSupported => write!(f, "Authentication not supported in stub"),
+        }
+    }
+}
+
+impl std::error::Error for AuthError {}
+
+async fn is_authenticated(
+    _server: &McpServerConfig,
+    _secrets: &Arc<dyn SecretsStore + Send + Sync>,
+    _user_id: &str,
+) -> bool {
+    false
+}
+
+async fn authorize_mcp_server(
+    _server: &McpServerConfig,
+    _secrets: &Arc<dyn SecretsStore + Send + Sync>,
+    _user_id: &str,
+) -> Result<String, AuthError> {
+    Err(AuthError::NotSupported)
+}
+
+pub struct McpProcessManager;
+
+impl McpProcessManager {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+async fn create_client_from_config(
+    _config: McpServerConfig,
+    _session_manager: &Arc<McpSessionManager>,
+    _process_manager: &Arc<McpProcessManager>,
+    _secrets: Option<Arc<dyn SecretsStore + Send + Sync>>,
+    _owner_id: &str,
+) -> Result<McpClient, anyhow::Error> {
+    Err(anyhow::anyhow!("MCP client creation not yet implemented in V2"))
+}
+
 #[derive(Debug, Clone)]
 pub struct McpServersFile {
     pub servers: Vec<McpServerConfig>,
@@ -176,7 +219,6 @@ impl McpServersFile {
     }
 }
 
-/// Stub for deleted V1 McpSessionManager
 pub struct McpSessionManager;
 
 impl McpSessionManager {
@@ -185,7 +227,6 @@ impl McpSessionManager {
     }
 }
 
-/// Stub for deleted V1 McpClient
 pub struct McpClient;
 
 impl McpClient {
@@ -199,61 +240,6 @@ impl McpClient {
     }
 }
 
-/// Stub for deleted V1 McpProcessManager
-pub struct McpProcessManager;
-
-impl McpProcessManager {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-/// Stub for deleted V1 is_authenticated function
-async fn is_authenticated(
-    _server: &McpServerConfig,
-    _secrets: &Arc<dyn SecretsStore + Send + Sync>,
-    _user_id: &str,
-) -> bool {
-    false
-}
-
-/// Stub for deleted V1 authorize_mcp_server function
-async fn authorize_mcp_server(
-    _server: &McpServerConfig,
-    _secrets: &Arc<dyn SecretsStore + Send + Sync>,
-    _user_id: &str,
-) -> Result<String, AuthError> {
-    Err(AuthError::NotSupported)
-}
-
-/// Stub for deleted V1 AuthError
-#[derive(Debug)]
-pub enum AuthError {
-    NotSupported,
-}
-
-impl std::fmt::Display for AuthError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AuthError::NotSupported => write!(f, "Authentication not supported in V1 stub"),
-        }
-    }
-}
-
-impl std::error::Error for AuthError {}
-
-/// Stub for deleted V1 create_client_from_config function
-async fn create_client_from_config(
-    _config: McpServerConfig,
-    _session_manager: &Arc<McpSessionManager>,
-    _process_manager: &Arc<McpProcessManager>,
-    _secrets: Option<Arc<dyn SecretsStore + Send + Sync>>,
-    _owner_id: &str,
-) -> Result<McpClient, anyhow::Error> {
-    Err(anyhow::anyhow!("V1 MCP client creation not supported"))
-}
-
-/// Stub module for deleted V1 config functions
 pub mod config {
     use super::*;
 
@@ -284,27 +270,13 @@ pub mod config {
         _owner_id: &str,
         _servers: &McpServersFile,
     ) -> Result<(), ConfigError> {
-        Err(ConfigError::NotSupported("V1 config save not supported".to_string()))
+        Err(ConfigError::NotSupported("MCP config save not yet implemented in V2".to_string()))
     }
 
     pub async fn save_mcp_servers(_servers: &McpServersFile) -> Result<(), ConfigError> {
-        Err(ConfigError::NotSupported("V1 config save not supported".to_string()))
+        Err(ConfigError::NotSupported("MCP config save not yet implemented in V2".to_string()))
     }
 }
-
-/// Stub module for deleted V1 mcp_client
-pub mod mcp_client {
-    /// Stub for deleted V1 is_auth_error_message function
-    #[allow(dead_code)]
-    pub fn is_auth_error_message(_err_str: &str) -> bool {
-        false
-    }
-}
-
-// ============================================================================
-// END V1 STUBS
-// ============================================================================
-// TODO: V1 mcp_client module removed - MCP CLI commands need V2 reimplementation
 
 /// Arguments for the `mcp add` subcommand.
 #[derive(Args, Debug, Clone)]
@@ -910,33 +882,11 @@ async fn test_server(name: String, user_id: String) -> anyhow::Result<()> {
 
 /// Toggle server enabled/disabled state.
 async fn toggle_server(name: String, enable: bool, _disable: bool) -> anyhow::Result<()> {
-    let (db, owner_id) = connect_db().await;
-    let servers = load_servers(db.as_deref(), &owner_id).await?;
-
-    // V1 - DISABLED - entire toggle function depends on mutable access
-    // let server = servers
-    //     .get_mut(&name)
-    //     .ok_or_else(|| anyhow::anyhow!("Server '{}' not found", name))?;
-    //
-    // let new_state = if enable {
-    //     true
-    // } else if disable {
-    //     false
-    // } else {
-    //     !server.enabled // Toggle if neither specified
-    // };
-    //
-    // server.enabled = new_state;
+    let (_db, _owner_id) = connect_db().await;
+    let _ = (name, enable); // Suppress unused warnings
     
-    // Stub implementation - V1 functionality removed
-    println!("  ⚠ Server toggle disabled (V1 code removed)");
-    println!("  Use V2 brassclaw_mcp crate for MCP server management");
-    let new_state = enable;
-    save_servers(db.as_deref(), &owner_id, &servers).await?;
-
-    let status = if new_state { "enabled" } else { "disabled" };
-    println!();
-    println!("  ✓ Server '{}' is now {}.", name, status);
+    println!("  ⚠ MCP server toggle not yet implemented in V2");
+    println!("  Use brassclaw_mcp crate for MCP server management");
     println!();
 
     Ok(())

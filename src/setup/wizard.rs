@@ -19,7 +19,6 @@ use deadpool_postgres::Config as PoolConfig;
 use secrecy::{ExposeSecret, SecretString};
 
 use crate::bootstrap::brassclaw_base_dir;
-// TODO: V1 channels::wasm module removed - setup wizard needs V2 reimplementation
 use crate::config::OAUTH_PLACEHOLDER;
 use crate::secrets::{SecretsCrypto, SecretsStore};
 use crate::settings::{KeySource, Settings};
@@ -34,41 +33,30 @@ use brassclaw_llm::auth::AuthPrompt;
 use brassclaw_llm::models::{ModelFetchOptions, build_nearai_model_fetch_config, fetch_models_for};
 use brassclaw_llm::{SessionConfig, SessionManager};
 
-// ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
-// ============================================================================
-
-/// Stub for deleted V1 ChannelCapabilitiesFile type
+// Minimal type stub needed for compilation
 #[derive(Debug, Clone)]
 pub struct ChannelCapabilitiesFile {
     // Minimal stub - no fields needed for compilation
 }
 
 impl ChannelCapabilitiesFile {
-    /// Stub method for parsing capabilities file
     pub fn from_bytes(_bytes: &[u8]) -> Result<Self, String> {
-        Err("V1 ChannelCapabilitiesFile deleted - V2 migration needed".to_string())
+        Err("Channel capabilities parsing not yet implemented in V2".to_string())
     }
 }
 
-/// Stub for deleted V1 available_channel_names function
 fn available_channel_names() -> Vec<&'static str> {
-    // Return empty list - bundled channels not available in V1 stub
+    // Return empty list - bundled channels not yet fully implemented in V2
     Vec::new()
 }
 
-/// Stub for deleted V1 install_bundled_channel function
 async fn install_bundled_channel(
     _name: &str,
     _channels_dir: &std::path::Path,
     _force: bool,
 ) -> Result<(), String> {
-    Err("V1 install_bundled_channel deleted - V2 migration needed".to_string())
+    Err("Bundled channel installation not yet implemented in V2".to_string())
 }
-
-// ============================================================================
-// END V1 STUBS
-// ============================================================================
 
 /// `AuthPrompt` impl for the interactive setup wizard: prints the device
 /// code to stdout and tries to open the verification URL in a browser.
@@ -2595,10 +2583,10 @@ impl SetupWizard {
 
         let non_wasm_count = options.len();
 
-        // V1 WASM channels removed - this section is disabled
+        // WASM channels - not yet fully implemented in V2
         // Add available WASM channels (installed + bundled + registry)
         for name in &wasm_channel_names {
-            let is_enabled = false; // V1: self.settings.channels.wasm_channels.contains(name);
+            let is_enabled = false;
             let label = if installed_names.contains(name) {
                 format!("{} (installed)", capitalize_first(name))
             } else {
@@ -2719,55 +2707,21 @@ impl SetupWizard {
             self.settings.channels.signal_group_allow_from = None;
         }
 
-        let discovered_by_name: HashMap<String, ChannelCapabilitiesFile> =
+        let _discovered_by_name: HashMap<String, _> =
             discovered_channels.into_iter().collect();
 
-        // Process selected WASM channels
+        // Process selected WASM channels - not yet fully implemented in V2
         let mut enabled_wasm_channels = Vec::new();
-        // V1: let existing_runtime_overrides = self.settings.channels.wasm_channel_runtime_overrides.clone();
         let existing_runtime_overrides: HashMap<String, serde_json::Value> = HashMap::new();
         let mut enabled_runtime_overrides: HashMap<String, serde_json::Value> = HashMap::new();
         for channel_name in selected_wasm_channels {
             println!();
             if let Some(ref _ctx) = secrets {
-                // V1 - DISABLED - cap_file.setup field removed from ChannelCapabilitiesFile
-                let result = if let Some(_cap_file) = discovered_by_name.get(&channel_name) {
-                    // if !cap_file.setup.required_secrets.is_empty() {
-                    //     setup_wasm_channel(ctx, &channel_name, &cap_file.setup).await?
-                    // } else {
-                        print_info(&format!(
-                            "Setup disabled for {} (V1 code removed)",
-                            channel_name
-                        ));
-                        crate::setup::channels::WasmChannelSetupResult {
-                            enabled: true,
-                            channel_name: channel_name.clone(),
-                            config_overrides: HashMap::new(),
-                        }
-                    // }
-                } else {
-                    print_info(&format!(
-                        "Channel '{}' is selected but not available on disk.",
-                        channel_name
-                    ));
-                    continue;
-                };
-
-                if result.enabled {
-                    let channel_name = result.channel_name;
-                    enabled_wasm_channels.push(channel_name.clone());
-                    let channel_overrides = merge_wasm_channel_runtime_overrides_for_channel(
-                        &existing_runtime_overrides,
-                        &channel_name,
-                        result.config_overrides,
-                    );
-                    for (config_key, value) in channel_overrides {
-                        enabled_runtime_overrides.insert(
-                            wasm_channel_runtime_override_key(&channel_name, &config_key),
-                            value,
-                        );
-                    }
-                }
+                print_info(&format!(
+                    "Setup for {} not yet fully implemented in V2",
+                    channel_name
+                ));
+                enabled_wasm_channels.push(channel_name.clone());
             } else {
                 // No secrets context, just enable the channel
                 print_info(&format!(
@@ -2788,8 +2742,7 @@ impl SetupWizard {
             }
         }
 
-        // V1: self.settings.channels.wasm_channels = enabled_wasm_channels;
-        // V1: self.settings.channels.wasm_channel_runtime_overrides = enabled_runtime_overrides;
+        // WASM channel configuration not yet fully implemented in V2
         let _ = enabled_wasm_channels; // Suppress unused warning
         let _ = enabled_runtime_overrides; // Suppress unused warning
 

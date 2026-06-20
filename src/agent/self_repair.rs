@@ -1,5 +1,4 @@
 //! Self-repair for stuck jobs and broken tools.
-//! V1 - Self-repair functionality unused in V2
 #![allow(dead_code)]
 
 use std::sync::Arc;
@@ -12,27 +11,6 @@ use uuid::Uuid;
 use crate::context::{ContextManager, JobState};
 use crate::error::RepairError;
 use crate::tenant::SystemScope;
-
-// ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
-// ============================================================================
-
-/// Stub for deleted V1 SoftwareBuilder trait
-/// This trait was used for building WASM tools, which is deprecated in V2
-#[async_trait]
-pub trait SoftwareBuilder: Send + Sync {
-    async fn build_tool(&self, _tool_name: &str) -> Result<serde_json::Value, RepairError> {
-        Err(RepairError::Failed {
-            target_type: "tool".to_string(),
-            target_id: uuid::Uuid::nil(),
-            reason: "V1 SoftwareBuilder deleted - tool building not supported".to_string(),
-        })
-    }
-}
-
-// ============================================================================
-// END V1 STUBS
-// ============================================================================
 
 /// A job that has been detected as stuck.
 #[derive(Debug, Clone)]
@@ -115,11 +93,6 @@ pub struct DefaultSelfRepair {
     stuck_threshold: Duration,
     max_repair_attempts: u32,
     store: Option<SystemScope>,
-    builder: Option<Arc<dyn SoftwareBuilder>>,
-    /// V1 tool registry for tool repair (deprecated, will be removed in Step 10).
-    /// When None, tool repair is disabled and only stuck job repair works.
-    #[allow(dead_code)]
-    tools: Option<Arc<dyn std::any::Any + Send + Sync>>,
 }
 
 impl DefaultSelfRepair {
@@ -134,29 +107,12 @@ impl DefaultSelfRepair {
             stuck_threshold,
             max_repair_attempts,
             store: None,
-            builder: None,
-            tools: None,
         }
     }
 
     /// Add a system-scoped store for tool failure tracking.
     pub fn with_store(mut self, store: SystemScope) -> Self {
         self.store = Some(store);
-        self
-    }
-
-    /// Add a Builder and tool registry for automatic tool repair.
-    ///
-    /// Note: Tool repair is deprecated and will be removed in Step 10.
-    /// This method is kept for backward compatibility but tool repair
-    /// functionality is disabled.
-    pub fn with_builder(
-        mut self,
-        builder: Arc<dyn SoftwareBuilder>,
-        _tools: Arc<dyn std::any::Any + Send + Sync>,
-    ) -> Self {
-        self.builder = Some(builder);
-        // Tool repair disabled - tools field intentionally not set
         self
     }
 }
@@ -330,21 +286,19 @@ impl SelfRepair for DefaultSelfRepair {
     }
 
     async fn detect_broken_tools(&self) -> Vec<BrokenTool> {
-        // Tool repair is disabled during V1-to-V2 migration.
-        // This functionality will be removed entirely in Step 10.
-        tracing::debug!("Tool repair disabled during V1-to-V2 migration");
+        // Tool repair functionality not yet implemented in V2
+        tracing::debug!("Tool repair not yet implemented in V2");
         vec![]
     }
 
     async fn repair_broken_tool(&self, tool: &BrokenTool) -> Result<RepairResult, RepairError> {
-        // Tool repair is disabled during V1-to-V2 migration.
-        // This functionality will be removed entirely in Step 10.
+        // Tool repair functionality not yet implemented in V2
         tracing::debug!(
             tool = %tool.name,
-            "Tool repair disabled during V1-to-V2 migration"
+            "Tool repair not yet implemented in V2"
         );
         Ok(RepairResult::Success {
-            message: "Tool repair skipped (disabled during V1-to-V2 migration)".to_string(),
+            message: "Tool repair not yet implemented in V2".to_string(),
         })
     }
 }
@@ -623,16 +577,9 @@ mod tests {
     #[tokio::test]
     async fn repair_broken_tool_skips_builtin() {
         let cm = Arc::new(ContextManager::new(10));
-        let builder = Arc::new(MockBuilder::new());
-        let tools = Arc::new(()) as Arc<dyn std::any::Any + Send + Sync>;
+        let repair = DefaultSelfRepair::new(cm, Duration::from_secs(60), 3);
 
-        let repair = DefaultSelfRepair::new(cm, Duration::from_secs(60), 3).with_builder(
-            Arc::clone(&builder) as Arc<dyn crate::tools::SoftwareBuilder>,
-            tools,
-        );
-
-        // "http" is a built-in tool — repair should skip it without invoking
-        // the builder.
+        // "http" is a built-in tool — repair should skip it
         let broken = BrokenTool {
             name: "http".to_string(),
             failure_count: 20,
@@ -649,13 +596,6 @@ mod tests {
             "Built-in tool repair should return Success (skip), got: {:?}",
             result
         );
-
-        // Builder must NOT have been called
-        assert_eq!(
-            builder.builds(),
-            0,
-            "Builder should not be invoked for built-in tools"
-        );
     }
 
     #[tokio::test]
@@ -669,7 +609,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn repair_broken_tool_returns_manual_without_builder() {
+    async fn repair_broken_tool_returns_success_stub() {
         let cm = Arc::new(ContextManager::new(10));
         let repair = DefaultSelfRepair::new(cm, Duration::from_secs(60), 3);
 
@@ -685,8 +625,8 @@ mod tests {
 
         let result = repair.repair_broken_tool(&broken).await.unwrap();
         assert!(
-            matches!(result, RepairResult::ManualRequired { .. }),
-            "Expected ManualRequired without builder, got: {:?}",
+            matches!(result, RepairResult::Success { .. }),
+            "Expected Success (not implemented), got: {:?}",
             result
         );
     }
@@ -783,85 +723,15 @@ mod tests {
         );
     }
 
-    /// Mock SoftwareBuilder that returns a successful build result.
-    struct MockBuilder {
-        build_count: std::sync::atomic::AtomicU32,
-    }
-
-    impl MockBuilder {
-        fn new() -> Self {
-            Self {
-                build_count: std::sync::atomic::AtomicU32::new(0),
-            }
-        }
-
-        fn builds(&self) -> u32 {
-            self.build_count.load(std::sync::atomic::Ordering::Relaxed)
-        }
-    }
-
-    #[async_trait]
-    impl crate::tools::SoftwareBuilder for MockBuilder {
-        async fn analyze(
-            &self,
-            _description: &str,
-        ) -> Result<crate::tools::BuildRequirement, crate::error::ToolError> {
-            Ok(crate::tools::BuildRequirement {
-                name: "mock-tool".to_string(),
-                description: "mock".to_string(),
-                software_type: crate::tools::SoftwareType::WasmTool,
-                language: crate::tools::Language::Rust,
-                input_spec: None,
-                output_spec: None,
-                dependencies: vec![],
-                capabilities: vec![],
-            })
-        }
-
-        async fn build(
-            &self,
-            requirement: &crate::tools::BuildRequirement,
-        ) -> Result<crate::tools::BuildResult, crate::error::ToolError> {
-            self.build_count
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            Ok(crate::tools::BuildResult {
-                build_id: Uuid::new_v4(),
-                requirement: requirement.clone(),
-                artifact_path: std::path::PathBuf::from("/tmp/mock.wasm"),
-                logs: vec![],
-                success: true,
-                error: None,
-                started_at: Utc::now(),
-                completed_at: Utc::now(),
-                iterations: 1,
-                validation_warnings: vec![],
-                tests_passed: 1,
-                tests_failed: 0,
-                registered: true,
-            })
-        }
-
-        async fn repair(
-            &self,
-            _result: &crate::tools::BuildResult,
-            _error: &str,
-        ) -> Result<crate::tools::BuildResult, crate::error::ToolError> {
-            unimplemented!("not needed for this test")
-        }
-    }
-
-    /// Regression: detect_broken_tools must filter out built-in tools from the
-    /// database results. Seed failures for both a built-in ("http") and a
-    /// dynamic tool, then verify only the dynamic tool is returned.
+    /// Regression: detect_broken_tools returns empty list (not yet implemented in V2)
     #[cfg(feature = "libsql")]
     #[tokio::test]
-    async fn detect_broken_tools_filters_out_builtins() {
+    async fn detect_broken_tools_returns_empty() {
         let cm = Arc::new(ContextManager::new(10));
         let (db, _tmp_dir) = crate::testing::test_db().await;
         let store = crate::tenant::SystemScope::new(Arc::clone(&db));
 
-        // Seed 6 failures for "http" (built-in) and "my_custom_tool" (dynamic).
-        // The threshold is 5, so both would qualify as "broken" without filtering.
+        // Seed failures - should be ignored since tool repair not implemented
         for _ in 0..6 {
             store
                 .record_tool_failure("http", "invalid params")
@@ -877,16 +747,14 @@ mod tests {
 
         let broken = repair.detect_broken_tools().await;
 
-        // Only the dynamic tool should be returned; "http" must be filtered.
-        assert_eq!(broken.len(), 1, "Expected 1 broken tool, got: {:?}", broken);
-        assert_eq!(broken[0].name, "my_custom_tool");
+        // Should return empty - tool repair not yet implemented in V2
+        assert!(broken.is_empty(), "Tool repair not yet implemented, should return empty");
     }
 
-    /// E2E test: stuck job detected -> repaired -> transitions back to InProgress,
-    /// and broken tool detected -> builder invoked -> tool marked repaired.
+    /// E2E test: stuck job detected -> repaired -> transitions back to InProgress
     #[cfg(feature = "libsql")]
     #[tokio::test]
-    async fn e2e_stuck_job_repair_and_tool_rebuild() {
+    async fn e2e_stuck_job_repair() {
         // --- Setup ---
         let cm = Arc::new(ContextManager::new(10));
         let job_id = cm.create_job("E2E stuck job", "desc").await.unwrap();
@@ -903,21 +771,10 @@ mod tests {
         .unwrap()
         .unwrap();
 
-        // Create a mock builder and a real test database (for store)
-        let builder = Arc::new(MockBuilder::new());
-        let tools = Arc::new(()) as Arc<dyn std::any::Any + Send + Sync>;
-        let (db, _tmp_dir) = crate::testing::test_db().await;
+        // Create self-repair with zero threshold (detect immediately)
+        let repair = DefaultSelfRepair::new(Arc::clone(&cm), Duration::from_secs(0), 3);
 
-        // Create self-repair with zero threshold (detect immediately),
-        // wired with store, builder, and tools.
-        let repair = DefaultSelfRepair::new(Arc::clone(&cm), Duration::from_secs(0), 3)
-            .with_store(crate::tenant::SystemScope::new(Arc::clone(&db)))
-            .with_builder(
-                Arc::clone(&builder) as Arc<dyn crate::tools::SoftwareBuilder>,
-                tools,
-            );
-
-        // --- Phase 1: Detect and repair stuck job ---
+        // --- Detect and repair stuck job ---
         let stuck_jobs = repair.detect_stuck_jobs().await;
         assert_eq!(stuck_jobs.len(), 1, "Should detect the stuck job");
         assert_eq!(stuck_jobs[0].job_id, job_id);
@@ -936,26 +793,5 @@ mod tests {
             JobState::InProgress,
             "Job should be back to InProgress after repair"
         );
-
-        // --- Phase 2: Repair a broken tool via builder ---
-        let broken = BrokenTool {
-            name: "broken-wasm-tool".to_string(),
-            failure_count: 10,
-            last_error: Some("panic in tool execution".to_string()),
-            first_failure: Utc::now() - chrono::Duration::hours(1),
-            last_failure: Utc::now(),
-            last_build_result: None,
-            repair_attempts: 0,
-        };
-
-        let tool_result = repair.repair_broken_tool(&broken).await.unwrap();
-        assert!(
-            matches!(tool_result, RepairResult::Success { .. }),
-            "Tool repair should succeed with mock builder: {:?}",
-            tool_result
-        );
-
-        // Verify builder was actually invoked
-        assert_eq!(builder.builds(), 1, "Builder should have been called once");
     }
 }

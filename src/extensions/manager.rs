@@ -159,7 +159,7 @@ impl ExtensionManager {
         _name: &str,
         _user_id: &str,
     ) -> Result<ToolAuthState, ExtensionError> {
-        // V1 - Return stub state for all tools during V2 migration
+        // Return stub state for all tools - not yet implemented in V2
         Ok(ToolAuthState::NoAuth)
     }
 
@@ -245,100 +245,27 @@ impl ExtensionManager {
         &self.channel_manager
     }
 
-    /// Get notification target for a channel (V1 stub)
-    /// TODO: Remove after V2 migration complete
+    /// Get notification target for a channel (stub)
     pub async fn notification_target_for_channel(&self, _channel_name: &str) -> Option<String> {
         None
     }
 
-    /// Get owner ID (V1 stub)
-    /// TODO: Remove after V2 migration complete
+    /// Get owner ID (stub)
     pub fn owner_id(&self) -> &str {
         "stub_owner"
     }
 
-    /// Get active tool names (V1 stub)
-    /// TODO: Remove after V2 migration complete
+    /// Get active tool names (stub)
     pub fn active_tool_names(&self) -> Vec<String> {
         Vec::new()
     }
 
-    /// Get pending OAuth flows (V1 stub)
-    /// TODO: Remove after V2 migration complete
-    pub fn pending_oauth_flows(&self) -> Vec<String> {
-        Vec::new()
-    }
-    /// Get extension info (V1 stub - alias for get_extension_info)
-    /// TODO: Remove after V2 migration complete
+    /// Get extension info (stub - alias for get_extension_info)
     pub async fn extension_info(
         &self,
         name: &str,
         user_id: &str,
     ) -> Result<Option<InstalledExtension>, ExtensionError> {
         self.get_extension_info(name, user_id).await
-    }
-
-    /// Get latent provider actions for default user (V1 stub)
-    /// TODO: Remove after V2 migration complete
-    pub async fn latent_provider_actions_default_user(
-        &self,
-    ) -> Result<Vec<LatentProviderAction>, ExtensionError> {
-        Ok(Vec::new())
-    }
-
-    /// Get latent provider actions (V1 stub - alias)
-    /// TODO: Remove after V2 migration complete
-    pub async fn latent_provider_actions(
-        &self,
-        user_id: &str,
-    ) -> Result<Vec<LatentProviderAction>, ExtensionError> {
-        self.get_latent_provider_actions(user_id).await
-    }
-
-    /// Get a specific latent provider action (V1 stub)
-    /// TODO: Remove after V2 migration complete
-    pub async fn latent_provider_action(
-        &self,
-        _name: &str,
-        _user_id: &str,
-    ) -> Result<Option<LatentProviderAction>, ExtensionError> {
-        Ok(None)
-    }
-
-    /// Get provider action names (V1 stub)
-    /// TODO: Remove after V2 migration complete
-    pub async fn provider_action_names(&self, _user_id: &str) -> Result<Vec<String>, ExtensionError> {
-        Ok(Vec::new())
-    }
-
-    /// Configure token (V1 stub)
-    /// TODO: Remove after V2 migration complete
-    pub async fn configure_token(
-        &self,
-        _name: &str,
-        _token: String,
-        _user_id: &str,
-    ) -> Result<ConfigureResult, ExtensionError> {
-        Err(ExtensionError::NotImplemented(
-            "Token configuration not yet available in V2".to_string()
-        ))
-    }
-
-    /// Get event publisher (V1 stub)
-    /// TODO: Remove after V2 migration complete
-    pub fn event_publisher(&self) -> Option<()> {
-        None
-    }
-
-    /// Start hosted OAuth flow (V1 stub)
-    /// TODO: Remove after V2 migration complete
-    pub async fn start_hosted_oauth_flow(
-        &self,
-        _name: &str,
-        _user_id: &str,
-    ) -> Result<InteractiveLoginStartResult, ExtensionError> {
-        Err(ExtensionError::NotImplemented(
-            "Hosted OAuth flow not yet available in V2".to_string()
-        ))
     }
 }
