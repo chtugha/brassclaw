@@ -1,8 +1,17 @@
-#!/bin/sh
-# BrassClaw Installation Script
-# Detects platform and architecture, downloads and installs the appropriate binary
+#!/usr/bin/env bash
+set -euo pipefail
 
-set -e
+# BrassClaw Reborn Installation Script
+# Supports both fresh installation and updates
+# Preserves configuration and database during updates
+
+VERSION="0.29.1"
+GITHUB_REPO="chtugha/brassclaw"
+BINARY_NAME="brassclaw-reborn"
+INSTALL_DIR="/usr/local/bin"
+CONFIG_DIR="$HOME/.brassclaw/reborn"
+SERVICE_NAME="brassclaw-reborn"
+SYSTEMD_DIR="/etc/systemd/system"
 
 # Colors for output
 RED='\033[0;31m'
@@ -11,341 +20,279 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-REPO="chtugha/brassclaw"
-BINARY_NAME="brassclaw"
-INSTALL_DIR="${HOME}/.local/bin"
-CONFIG_DIR="${HOME}/.brassclaw"
-
-# Detect OS
-detect_os() {
-    case "$(uname -s)" in
-        Linux*)     echo "linux";;
-        Darwin*)    echo "macos";;
-        MINGW*|MSYS*|CYGWIN*) echo "windows";;
-        *)          echo "unknown";;
-    esac
+# Helper functions
+log_info() {
+    echo -e "${GREEN}[INFO]${NC} $1"
 }
 
-# Detect Architecture
-detect_arch() {
-    case "$(uname -m)" in
-        x86_64|amd64)   echo "x86_64";;
-        aarch64|arm64)  echo "aarch64";;
-        *)              echo "unknown";;
-    esac
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
-# Get latest release tag
-get_latest_release() {
-    curl -s "https://api.github.com/repos/${REPO}/releases/latest" | \
-        grep '"tag_name":' | \
-        sed -E 's/.*"([^"]+)".*/\1/'
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Install systemd service (Linux only)
-install_systemd_service() {
-    if [ "$OS" != "linux" ]; then
-        return
+log_step() {
+    echo -e "${BLUE}[STEP]${NC} $1"
+}
+
+# Check if running as root for systemd service
+check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        log_error "This script must be run as root for systemd service installation"
+        log_info "Please run: sudo $0"
+        exit 1
+    fi
+}
+
+# Detect if this is an update
+is_update() {
+    if [[ -f "$INSTALL_DIR/$BINARY_NAME" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Get installed version
+get_installed_version() {
+    if [[ -f "$INSTALL_DIR/$BINARY_NAME" ]]; then
+        "$INSTALL_DIR/$BINARY_NAME" --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' || echo "unknown"
+    else
+        echo "none"
+    fi
+}
+
+# Stop service if running
+stop_service() {
+    if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+        log_step "Stopping $SERVICE_NAME service..."
+        systemctl stop "$SERVICE_NAME"
+        log_info "Service stopped"
+    fi
+}
+
+# Backup existing binary
+backup_binary() {
+    if [[ -f "$INSTALL_DIR/$BINARY_NAME" ]]; then
+        local backup_file="$INSTALL_DIR/$BINARY_NAME.backup.$(date +%Y%m%d_%H%M%S)"
+        log_step "Backing up existing binary to $backup_file..."
+        cp "$INSTALL_DIR/$BINARY_NAME" "$backup_file"
+        log_info "Backup created"
+    fi
+}
+
+# Download binary from GitHub release
+download_binary() {
+    local download_url="https://github.com/$GITHUB_REPO/releases/download/v$VERSION/brassclaw-reborn-linux-amd64"
+    local checksum_url="https://github.com/$GITHUB_REPO/releases/download/v$VERSION/brassclaw-reborn-linux-amd64.sha256"
+    local temp_dir=$(mktemp -d)
+    
+    log_step "Downloading brassclaw-reborn v$VERSION..."
+    
+    if ! curl -L -f -o "$temp_dir/$BINARY_NAME" "$download_url" 2>/dev/null; then
+        log_error "Failed to download binary from $download_url"
+        log_info "Please check if the release exists at: https://github.com/$GITHUB_REPO/releases/tag/v$VERSION"
+        rm -rf "$temp_dir"
+        exit 1
     fi
     
-    echo ""
-    echo "${BLUE}═══════════════════════════════════════════════════${NC}"
-    echo "${BLUE}  Systemd Service Installation (Optional)${NC}"
-    echo "${BLUE}═══════════════════════════════════════════════════${NC}"
-    echo ""
-    echo "Would you like to install BrassClaw as a systemd user service?"
-    echo "This will allow BrassClaw to:"
-    echo "  • Start automatically on login"
-    echo "  • Run in the background"
-    echo "  • Restart automatically if it crashes"
-    echo ""
-    printf "Install systemd service? (y/N): "
-    read -r response
+    log_info "Binary downloaded successfully"
     
-    if [ "$response" = "y" ] || [ "$response" = "Y" ]; then
-        SERVICE_DIR="${HOME}/.config/systemd/user"
-        mkdir -p "$SERVICE_DIR"
-        
-        cat > "$SERVICE_DIR/brassclaw.service" << 'SERVICE'
+    log_step "Downloading checksum..."
+    if ! curl -L -f -o "$temp_dir/$BINARY_NAME.sha256" "$checksum_url" 2>/dev/null; then
+        log_warn "Checksum file not available, skipping verification"
+    else
+        log_step "Verifying checksum..."
+        cd "$temp_dir"
+        if sha256sum -c "$BINARY_NAME.sha256" 2>/dev/null; then
+            log_info "Checksum verification passed"
+        else
+            log_error "Checksum verification failed"
+            cd - > /dev/null
+            rm -rf "$temp_dir"
+            exit 1
+        fi
+        cd - > /dev/null
+    fi
+    
+    log_step "Installing binary to $INSTALL_DIR..."
+    chmod +x "$temp_dir/$BINARY_NAME"
+    mv "$temp_dir/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+    log_info "Binary installed successfully"
+    
+    rm -rf "$temp_dir"
+}
+
+# Create config directory if it doesn't exist
+create_config_dir() {
+    if [[ ! -d "$CONFIG_DIR" ]]; then
+        log_step "Creating configuration directory at $CONFIG_DIR..."
+        mkdir -p "$CONFIG_DIR"
+        # Set ownership to the user who invoked sudo
+        if [[ -n "${SUDO_USER:-}" ]]; then
+            chown -R "$SUDO_USER:$SUDO_USER" "$CONFIG_DIR"
+        fi
+        log_info "Configuration directory created"
+    else
+        log_info "Configuration directory already exists (preserving existing data)"
+    fi
+}
+
+# Create systemd service file
+create_systemd_service() {
+    log_step "Creating systemd service at $SYSTEMD_DIR/$SERVICE_NAME.service..."
+    
+    # Determine the user to run the service as
+    local service_user="${SUDO_USER:-$USER}"
+    local service_group="${SUDO_USER:-$USER}"
+    
+    cat > "$SYSTEMD_DIR/$SERVICE_NAME.service" <<EOF
 [Unit]
-Description=BrassClaw Agent
+Description=BrassClaw Reborn AI Agent
 Documentation=https://github.com/chtugha/brassclaw
-After=network-online.target
+After=network.target network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/brassclaw
+User=$service_user
+Group=$service_group
+WorkingDirectory=$CONFIG_DIR
+ExecStart=$INSTALL_DIR/$BINARY_NAME serve --port 3000
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
+
+# Environment variables (customize as needed)
+Environment="BRASSCLAW_REBORN_WEBUI_TOKEN=change-me-$(openssl rand -hex 16)"
+Environment="BRASSCLAW_REBORN_WEBUI_USER_ID=default-user"
 
 # Security hardening
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/.brassclaw %h/.local/share/brassclaw
+ReadWritePaths=$CONFIG_DIR
 
 [Install]
-WantedBy=default.target
-SERVICE
-        
-        systemctl --user daemon-reload
-        
-        echo ""
-        echo "${GREEN}✓ Systemd service installed successfully!${NC}"
-        echo ""
-        echo "${BLUE}Service Management Commands:${NC}"
-        echo "  Start service:        ${GREEN}systemctl --user start brassclaw${NC}"
-        echo "  Stop service:         ${GREEN}systemctl --user stop brassclaw${NC}"
-        echo "  Enable auto-start:    ${GREEN}systemctl --user enable brassclaw${NC}"
-        echo "  Disable auto-start:   ${GREEN}systemctl --user disable brassclaw${NC}"
-        echo "  Check status:         ${GREEN}systemctl --user status brassclaw${NC}"
-        echo "  View logs:            ${GREEN}journalctl --user -u brassclaw -f${NC}"
-        echo ""
-        
-        printf "Would you like to start the service now? (y/N): "
-        read -r start_response
-        
-        if [ "$start_response" = "y" ] || [ "$start_response" = "Y" ]; then
-            systemctl --user start brassclaw
-            echo "${GREEN}✓ Service started${NC}"
-            
-            printf "Enable auto-start on login? (y/N): "
-            read -r enable_response
-            
-            if [ "$enable_response" = "y" ] || [ "$enable_response" = "Y" ]; then
-                systemctl --user enable brassclaw
-                echo "${GREEN}✓ Auto-start enabled${NC}"
-            fi
-        fi
+WantedBy=multi-user.target
+EOF
+
+    chmod 644 "$SYSTEMD_DIR/$SERVICE_NAME.service"
+    log_info "Systemd service file created"
+}
+
+# Reload systemd and enable service
+enable_service() {
+    log_step "Reloading systemd daemon..."
+    systemctl daemon-reload
+    
+    log_step "Enabling $SERVICE_NAME service..."
+    systemctl enable "$SERVICE_NAME"
+    log_info "Service enabled (will start on boot)"
+}
+
+# Start service
+start_service() {
+    log_step "Starting $SERVICE_NAME service..."
+    systemctl start "$SERVICE_NAME"
+    
+    sleep 2
+    
+    if systemctl is-active --quiet "$SERVICE_NAME"; then
+        log_info "Service started successfully"
     else
-        echo "${YELLOW}Skipping systemd service installation${NC}"
+        log_error "Service failed to start"
+        log_info "Check logs with: journalctl -u $SERVICE_NAME -n 50"
+        exit 1
     fi
 }
 
-# Download and install
-install_brassclaw() {
-    OS=$(detect_os)
-    ARCH=$(detect_arch)
-    
-    echo "${BLUE}═══════════════════════════════════════════════════${NC}"
-    echo "${BLUE}  BrassClaw Installer${NC}"
-    echo "${BLUE}═══════════════════════════════════════════════════${NC}"
+# Show status
+show_status() {
     echo ""
-    echo "${GREEN}Detecting platform...${NC}"
-    echo "  OS: ${BLUE}${OS}${NC}"
-    echo "  Architecture: ${BLUE}${ARCH}${NC}"
-    echo ""
-    
-    if [ "$OS" = "unknown" ] || [ "$ARCH" = "unknown" ]; then
-        echo "${RED}Error: Unsupported platform${NC}"
-        echo "OS: $OS, Architecture: $ARCH"
-        exit 1
-    fi
-    
-    # Get latest release or use provided version
-    if [ -z "$VERSION" ]; then
-        echo "${GREEN}Fetching latest release...${NC}"
-        VERSION=$(get_latest_release)
-        if [ -z "$VERSION" ]; then
-            echo "${RED}Error: Could not determine latest version${NC}"
-            exit 1
-        fi
-    fi
-    
-    echo "${GREEN}Installing BrassClaw ${VERSION}...${NC}"
-    echo ""
-    
-    # Construct download URL based on platform
-    case "$OS" in
-        linux)
-            if [ "$ARCH" = "x86_64" ]; then
-                ARCHIVE="brassclaw-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-            elif [ "$ARCH" = "aarch64" ]; then
-                ARCHIVE="brassclaw-${VERSION}-aarch64-unknown-linux-gnu.tar.gz"
-            fi
-            ;;
-        macos)
-            if [ "$ARCH" = "x86_64" ]; then
-                ARCHIVE="brassclaw-${VERSION}-x86_64-apple-darwin.tar.gz"
-            elif [ "$ARCH" = "aarch64" ]; then
-                ARCHIVE="brassclaw-${VERSION}-aarch64-apple-darwin.tar.gz"
-            fi
-            ;;
-        windows)
-            if [ "$ARCH" = "x86_64" ]; then
-                ARCHIVE="brassclaw-${VERSION}-x86_64-pc-windows-msvc.zip"
-            fi
-            ;;
-    esac
-    
-    if [ -z "$ARCHIVE" ]; then
-        echo "${RED}Error: No binary available for ${OS}-${ARCH}${NC}"
-        exit 1
-    fi
-    
-    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE}"
-    
-    echo "${GREEN}Downloading from:${NC}"
-    echo "  ${BLUE}${DOWNLOAD_URL}${NC}"
-    echo ""
-    
-    # Create temporary directory
-    TMP_DIR=$(mktemp -d)
-    cd "$TMP_DIR"
-    
-    # Try to download pre-compiled binary
-    BINARY_AVAILABLE=0
-    if curl -L -f -o "$ARCHIVE" "$DOWNLOAD_URL" 2>/dev/null; then
-        BINARY_AVAILABLE=1
-        echo "${GREEN}✓ Pre-compiled binary downloaded${NC}"
-    else
-        echo "${YELLOW}⚠ Pre-compiled binary not available${NC}"
-        echo "${GREEN}Falling back to building from source...${NC}"
-        
-        # Check for required build tools
-        if ! command -v cargo > /dev/null 2>&1; then
-            echo "${RED}Error: cargo not found. Please install Rust from https://rustup.rs/${NC}"
-            rm -rf "$TMP_DIR"
-            exit 1
-        fi
-        
-        # Clone and build from source
-        echo "${GREEN}Cloning repository...${NC}"
-        if ! git clone --depth 1 --branch "${VERSION}" "https://github.com/${REPO}.git" brassclaw-src; then
-            echo "${RED}Error: Failed to clone repository${NC}"
-            rm -rf "$TMP_DIR"
-            exit 1
-        fi
-        
-        cd brassclaw-src
-        echo "${GREEN}Building BrassClaw (this may take a few minutes)...${NC}"
-        if ! cargo build --release; then
-            echo "${RED}Error: Build failed${NC}"
-            cd ..
-            rm -rf "$TMP_DIR"
-            exit 1
-        fi
-        
-        # Copy built binary to temp directory
-        cp target/release/brassclaw ../"$BINARY_NAME"
-        cd ..
-        BINARY_AVAILABLE=2  # Built from source
-    fi
-    
-    if [ "$BINARY_AVAILABLE" -eq 0 ]; then
-        echo "${RED}Error: Could not obtain binary${NC}"
-        rm -rf "$TMP_DIR"
-        exit 1
-    fi
-    
-    # Extract archive if we downloaded one
-    if [ "$BINARY_AVAILABLE" -eq 1 ]; then
-        echo "${GREEN}Extracting archive...${NC}"
-        case "$ARCHIVE" in
-            *.tar.gz)
-                tar -xzf "$ARCHIVE"
-                ;;
-            *.zip)
-                unzip -q "$ARCHIVE"
-                ;;
-        esac
-        
-        # Find binary in extracted archive
-        BINARY_PATH=$(find . -name "$BINARY_NAME" -o -name "${BINARY_NAME}.exe" | head -n 1)
-        
-        if [ -z "$BINARY_PATH" ]; then
-            echo "${RED}Error: Binary not found in archive${NC}"
-            rm -rf "$TMP_DIR"
-            exit 1
-        fi
-    else
-        # Binary was built from source, already in place
-        BINARY_PATH="./$BINARY_NAME"
-        if [ ! -f "$BINARY_PATH" ]; then
-            echo "${RED}Error: Built binary not found${NC}"
-            rm -rf "$TMP_DIR"
-            exit 1
-        fi
-    fi
-    
-    # Create install directory if it doesn't exist
-    mkdir -p "$INSTALL_DIR"
-    mkdir -p "$CONFIG_DIR"
-    
-    # Install binary
-    echo "${GREEN}Installing to ${INSTALL_DIR}...${NC}"
-    cp "$BINARY_PATH" "$INSTALL_DIR/"
-    chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
-    
-    # Cleanup
-    cd - > /dev/null
-    rm -rf "$TMP_DIR"
-    
-    echo ""
-    echo "${GREEN}✓ BrassClaw ${VERSION} installed successfully!${NC}"
-    echo ""
-    echo "${BLUE}Installation Details:${NC}"
-    echo "  Binary: ${GREEN}${INSTALL_DIR}/${BINARY_NAME}${NC}"
-    echo "  Config: ${GREEN}${CONFIG_DIR}${NC}"
-    echo ""
-    
-    # Check if install directory is in PATH
-    case ":$PATH:" in
-        *":${INSTALL_DIR}:"*) 
-            echo "${GREEN}✓ ${INSTALL_DIR} is in your PATH${NC}"
-            ;;
-        *)
-            echo "${YELLOW}⚠ ${INSTALL_DIR} is not in your PATH${NC}"
-            echo ""
-            echo "Add it to your PATH by adding this line to your shell profile:"
-            echo "  ${GREEN}export PATH=\"\$PATH:${INSTALL_DIR}\"${NC}"
-            echo ""
-            case "$(basename "$SHELL")" in
-                bash)
-                    echo "For bash, add to ${BLUE}~/.bashrc${NC} or ${BLUE}~/.bash_profile${NC}"
-                    ;;
-                zsh)
-                    echo "For zsh, add to ${BLUE}~/.zshrc${NC}"
-                    ;;
-                fish)
-                    echo "For fish, run: ${GREEN}fish_add_path ${INSTALL_DIR}${NC}"
-                    ;;
-            esac
-            echo ""
-            ;;
-    esac
-    
-    # Install systemd service (Linux only, optional)
-    install_systemd_service
-    
-    echo ""
-    echo "${BLUE}═══════════════════════════════════════════════════${NC}"
-    echo "${GREEN}Installation complete!${NC}"
-    echo ""
-    echo "Run '${GREEN}brassclaw --help${NC}' to get started!"
-    echo "${BLUE}═══════════════════════════════════════════════════${NC}"
+    log_step "Service status:"
+    systemctl status "$SERVICE_NAME" --no-pager -l || true
 }
 
-# Main execution
+# Print post-installation instructions
+print_instructions() {
+    echo ""
+    echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}  Installation Complete!${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "${BLUE}Installation Details:${NC}"
+    echo -e "  Binary:        ${GREEN}$INSTALL_DIR/$BINARY_NAME${NC}"
+    echo -e "  Config Dir:    ${GREEN}$CONFIG_DIR${NC}"
+    echo -e "  Service:       ${GREEN}$SERVICE_NAME${NC}"
+    echo -e "  Service File:  ${GREEN}$SYSTEMD_DIR/$SERVICE_NAME.service${NC}"
+    echo ""
+    echo -e "${BLUE}Useful Commands:${NC}"
+    echo -e "  ${GREEN}sudo systemctl status $SERVICE_NAME${NC}     # Check service status"
+    echo -e "  ${GREEN}sudo systemctl restart $SERVICE_NAME${NC}    # Restart service"
+    echo -e "  ${GREEN}sudo systemctl stop $SERVICE_NAME${NC}       # Stop service"
+    echo -e "  ${GREEN}sudo systemctl start $SERVICE_NAME${NC}      # Start service"
+    echo -e "  ${GREEN}sudo journalctl -u $SERVICE_NAME -f${NC}     # View live logs"
+    echo -e "  ${GREEN}sudo journalctl -u $SERVICE_NAME -n 50${NC}  # View last 50 log lines"
+    echo ""
+    echo -e "${YELLOW}⚠ IMPORTANT SECURITY NOTICE:${NC}"
+    echo -e "  The service has been created with a random authentication token."
+    echo -e "  To customize authentication and other settings:"
+    echo ""
+    echo -e "  1. Edit the service file:"
+    echo -e "     ${GREEN}sudo nano $SYSTEMD_DIR/$SERVICE_NAME.service${NC}"
+    echo ""
+    echo -e "  2. Update the Environment variables as needed"
+    echo ""
+    echo -e "  3. Reload and restart the service:"
+    echo -e "     ${GREEN}sudo systemctl daemon-reload${NC}"
+    echo -e "     ${GREEN}sudo systemctl restart $SERVICE_NAME${NC}"
+    echo ""
+    echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+    echo ""
+}
+
+# Main installation flow
 main() {
-    # Check for required commands
-    for cmd in curl tar; do
-        if ! command -v $cmd > /dev/null 2>&1; then
-            echo "${RED}Error: Required command '$cmd' not found${NC}"
-            exit 1
-        fi
-    done
+    echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}  BrassClaw Reborn Installation Script${NC}"
+    echo -e "${BLUE}  Version: $VERSION${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+    echo ""
     
-    # Note: git and cargo are checked later if needed for building from source
+    check_root
     
-    install_brassclaw
+    local installed_version=$(get_installed_version)
+    
+    if is_update; then
+        echo -e "${YELLOW}Existing installation detected${NC}"
+        echo -e "  Current version: ${BLUE}$installed_version${NC}"
+        echo -e "  New version:     ${BLUE}$VERSION${NC}"
+        echo ""
+        log_info "Performing update (configuration and data will be preserved)"
+        echo ""
+        stop_service
+        backup_binary
+    else
+        log_info "Performing fresh installation"
+        echo ""
+    fi
+    
+    download_binary
+    create_config_dir
+    create_systemd_service
+    enable_service
+    start_service
+    
+    print_instructions
+    show_status
 }
 
+# Run main function
 main "$@"
 
 # Made with Bob
