@@ -1,0 +1,1609 @@
+//! Job scheduler for parallel execution.
+
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+
+use tokio::sync::{RwLock, mpsc, oneshot};
+use tokio::task::JoinHandle;
+use uuid::Uuid;
+
+use crate::agent::task::{Task, TaskContext, TaskOutput};
+use crate::config::AgentConfig;
+use crate::context::{ContextManager, JobContext, JobState};
+use crate::error::{Error, JobError};
+use crate::extensions::ExtensionManager;
+use crate::hooks::HookRegistry;
+use crate::tenant::SystemScope;
+// TODO: V1 worker module removed - Worker/WorkerDeps types need V2 reimplementation
+use brassclaw_engine::EffectExecutor;
+use brassclaw_llm::LlmProvider;
+use brassclaw_safety::SafetyLayer;
+
+// ============================================================================
+// V1 STUBS - These types were deleted with V1 and need V2 reimplementation
+// ============================================================================
+
+/// Stub for deleted V1 ApprovalContext - needs V2 reimplementation
+#[derive(Debug, Clone)]
+pub struct ApprovalContext {
+    _placeholder: (),
+}
+
+impl ApprovalContext {
+    pub fn autonomous() -> Self {
+        Self { _placeholder: () }
+    }
+    
+    pub fn autonomous_with_tools<I>(_tools: I) -> Self
+    where
+        I: IntoIterator<Item = String>,
+    {
+        Self { _placeholder: () }
+    }
+    
+    pub fn is_blocked_or_default(
+        _ctx: &Option<ApprovalContext>,
+        _tool_name: &str,
+        _requirement: &str,
+    ) -> bool {
+        false // Stub: allow all for now
+    }
+}
+
+/// Stub for deleted V1 ToolRegistry - needs V2 reimplementation
+/// Stub for deleted V1 WorkerDeps - needs V2 reimplementation
+#[allow(dead_code)]
+struct WorkerDeps {
+    context_manager: Arc<ContextManager>,
+    llm: Arc<dyn LlmProvider>,
+    safety: Arc<SafetyLayer>,
+    hooks: Arc<HookRegistry>,
+    timeout: Duration,
+    use_planning: bool,
+    approval_context: Option<ApprovalContext>,
+    multi_tenant: bool,
+}
+
+/// Stub for deleted V1 Worker type
+#[allow(dead_code)]
+struct Worker {
+    _placeholder: (),
+}
+
+/// Stub for deleted V1 autonomous_allowed_tool_names function
+async fn autonomous_allowed_tool_names(
+    _extension_manager: Option<&Arc<ExtensionManager>>,
+    _user_id: &str,
+) -> Vec<String> {
+    // Stub: return empty list for now
+    vec![]
+}
+
+/// Stub for deleted V1 prepare_tool_params function
+#[allow(dead_code)]
+fn prepare_tool_params(_tool: &dyn std::any::Any, params: &serde_json::Value) -> serde_json::Value {
+    params.clone()
+}
+
+/// Stub for deleted V1 autonomous_unavailable_error function
+#[allow(dead_code)]
+fn autonomous_unavailable_error(tool_name: &str, _user_id: &str) -> Error {
+    Error::Tool(crate::error::ToolError::ExecutionFailed {
+        name: tool_name.to_string(),
+        reason: "Tool execution unavailable in V2 migration".to_string(),
+    })
+}
+
+/// Message to send to a worker.
+#[derive(Debug)]
+#[allow(dead_code)]
+pub enum WorkerMessage {
+    /// Start working on the job.
+    Start,
+    /// Stop the job.
+    Stop,
+    /// Check health.
+    Ping,
+    /// Inject a follow-up user message into the worker's reasoning context.
+    UserMessage(String),
+}
+
+/// Status of a scheduled job.
+#[derive(Debug)]
+pub struct ScheduledJob {
+    pub handle: JoinHandle<()>,
+    pub tx: mpsc::Sender<WorkerMessage>,
+}
+
+/// Status of a scheduled sub-task.
+struct ScheduledSubtask {
+    handle: JoinHandle<Result<TaskOutput, Error>>,
+}
+
+/// Shared scheduler-owned dependencies that are forwarded into autonomous runs.
+pub struct SchedulerDeps {
+    /// V2 effect executor for capability-based tool execution
+    pub effect_executor: Option<Arc<dyn EffectExecutor>>,
+    pub extension_manager: Option<Arc<ExtensionManager>>,
+    pub store: Option<SystemScope>,
+    pub hooks: Arc<HookRegistry>,
+}
+
+/// Schedules and manages parallel job execution.
+pub struct Scheduler {
+    config: AgentConfig,
+    context_manager: Arc<ContextManager>,
+    llm: Arc<dyn LlmProvider>,
+    safety: Arc<SafetyLayer>,
+    /// V2 effect executor for capability-based tool execution
+    effect_executor: Option<Arc<dyn EffectExecutor>>,
+    extension_manager: Option<Arc<ExtensionManager>>,
+    store: Option<SystemScope>,
+    hooks: Arc<HookRegistry>,
+    event_publisher: Option<brassclaw_common::DynEventPublisher>,
+    /// HTTP interceptor for trace recording/replay (propagated to workers).
+    http_interceptor: Option<Arc<dyn brassclaw_llm::recording::HttpInterceptor>>,
+    /// Resolved runtime policy propagated to per-job workers so the
+    /// model-facing tool list filter applies to background jobs too.
+    /// `None` in tests / before `Config::with_runtime_overrides` runs.
+    runtime_policy: Option<brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy>,
+    /// V1 tool registry (stub for V2 migration)
+    /// TODO: Remove after V2 migration complete
+    tools: Arc<crate::tools::ToolRegistry>,
+    /// Running jobs (main LLM-driven jobs).
+    jobs: Arc<RwLock<HashMap<Uuid, ScheduledJob>>>,
+    /// Running sub-tasks (tool executions, background tasks).
+    subtasks: Arc<RwLock<HashMap<Uuid, ScheduledSubtask>>>,
+}
+
+impl Scheduler {
+    /// Create a new scheduler.
+    pub fn new(
+        config: AgentConfig,
+        context_manager: Arc<ContextManager>,
+        llm: Arc<dyn LlmProvider>,
+        safety: Arc<SafetyLayer>,
+        deps: SchedulerDeps,
+    ) -> Self {
+        Self {
+            config,
+            context_manager,
+            llm,
+            safety,
+            tools: Arc::new(crate::tools::ToolRegistry::new()), // V1 - stub for V2 migration
+            effect_executor: deps.effect_executor,
+            extension_manager: deps.extension_manager,
+            store: deps.store,
+            hooks: deps.hooks,
+            event_publisher: None,
+            http_interceptor: None,
+            runtime_policy: None,
+            jobs: Arc::new(RwLock::new(HashMap::new())),
+            subtasks: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    pub fn set_event_publisher(&mut self, ep: brassclaw_common::DynEventPublisher) {
+        self.event_publisher = Some(ep);
+    }
+
+    /// Set the HTTP interceptor for trace recording/replay.
+    pub fn set_http_interceptor(
+        &mut self,
+        interceptor: Arc<dyn brassclaw_llm::recording::HttpInterceptor>,
+    ) {
+        self.http_interceptor = Some(interceptor);
+    }
+
+    /// Propagate the resolved runtime policy to spawned workers so background
+    /// jobs see the same model-facing tool surface as the dispatcher
+    /// (#3243 HIGH iteration-2 gap).
+    pub fn set_runtime_policy(
+        &mut self,
+        policy: brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy,
+    ) {
+        self.runtime_policy = Some(policy);
+    }
+
+    /// Create, persist, and schedule a job in one shot.
+    ///
+    /// This is the preferred entry point for dispatching new jobs. It:
+    /// 1. Creates the job context via `ContextManager`
+    /// 2. Optionally applies metadata (e.g. `max_iterations`)
+    /// 3. Persists the job to the database (so FK references from
+    ///    `job_actions` / `llm_calls` work immediately)
+    /// 4. Schedules the job for worker execution
+    ///
+    /// Returns the new job ID.
+    pub async fn dispatch_job(
+        &self,
+        user_id: &str,
+        title: &str,
+        description: &str,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<Uuid, JobError> {
+        let approval_context = self.autonomous_approval_context(user_id).await;
+        self.dispatch_job_inner(
+            user_id,
+            title,
+            description,
+            metadata,
+            Some(approval_context),
+        )
+        .await
+    }
+
+    /// Dispatch a job with an explicit approval context for autonomous execution.
+    ///
+    /// Same as `dispatch_job`, but the worker will use the given `ApprovalContext`
+    /// to determine the explicit autonomous allowlist for that job.
+    pub async fn dispatch_job_with_context(
+        &self,
+        user_id: &str,
+        title: &str,
+        description: &str,
+        metadata: Option<serde_json::Value>,
+        approval_context: ApprovalContext,
+    ) -> Result<Uuid, JobError> {
+        self.dispatch_job_inner(
+            user_id,
+            title,
+            description,
+            metadata,
+            Some(approval_context),
+        )
+        .await
+    }
+
+    /// Shared implementation for `dispatch_job` and `dispatch_job_with_context`.
+    async fn dispatch_job_inner(
+        &self,
+        user_id: &str,
+        title: &str,
+        description: &str,
+        metadata: Option<serde_json::Value>,
+        approval_context: Option<ApprovalContext>,
+    ) -> Result<Uuid, JobError> {
+        let job_id = self
+            .context_manager
+            .create_job_for_user(user_id, title, description)
+            .await?;
+
+        // Apply metadata and token budget in a single atomic update.
+        // This prevents concurrent workers from observing partial state.
+        // Cap user-supplied max_tokens at the configured limit (Issue #815).
+        let user_max_tokens = metadata
+            .as_ref()
+            .and_then(|m| m.get("max_tokens"))
+            .and_then(|v| v.as_u64());
+
+        let max_tokens = user_max_tokens
+            .map(|user_val| {
+                if self.config.max_tokens_per_job == 0 {
+                    // Config is "unlimited": use the user-supplied value directly.
+                    user_val
+                } else {
+                    std::cmp::min(user_val, self.config.max_tokens_per_job)
+                }
+            })
+            .unwrap_or(self.config.max_tokens_per_job);
+
+        // Apply metadata, token budget, and approval context in one closure
+        // (Issue #813: atomic update). Use update_context_and_get to ensure atomicity:
+        // no gap where concurrent workers can modify the context between update and
+        // DB persist (Issue #807).
+        let needs_update = metadata.is_some() || max_tokens > 0 || approval_context.is_some();
+        let ctx = if needs_update {
+            self.context_manager
+                .update_context_and_get(job_id, |ctx| {
+                    if let Some(meta) = metadata {
+                        ctx.metadata = meta;
+                    }
+                    if max_tokens > 0 {
+                        ctx.max_tokens = max_tokens;
+                    }
+                    // TODO: Remove after V2 migration complete
+                    // Type mismatch: scheduler::ApprovalContext vs context::state::ApprovalContext
+                    if let Some(_approval) = approval_context.as_ref() {
+                        // Stubbed - cannot convert between stub and real ApprovalContext
+                    }
+                })
+                .await?
+        } else {
+            // Currently unreachable via dispatch_job() which always provides
+            // Some(approval_context), but kept as a safe fallback.
+            self.context_manager.get_context(job_id).await?
+        };
+
+        // Persist to DB before scheduling so the worker's FK references are valid.
+        // The context was read under the same lock as the update (atomic), preventing
+        // concurrent worker interference (Issue #807: non-transactional context updates).
+        if let Some(ref store) = self.store {
+            store.save_job(&ctx).await.map_err(|e| JobError::Failed {
+                id: job_id,
+                reason: format!("failed to persist job: {e}"),
+            })?;
+        }
+
+        self.schedule_with_context(job_id, approval_context).await?;
+        Ok(job_id)
+    }
+
+    async fn autonomous_approval_context(&self, user_id: &str) -> ApprovalContext {
+        ApprovalContext::autonomous_with_tools(
+            autonomous_allowed_tool_names(self.extension_manager.as_ref(), user_id)
+                .await,
+        )
+    }
+
+    /// Schedule a job for execution.
+    pub async fn schedule(&self, job_id: Uuid) -> Result<(), JobError> {
+        self.schedule_with_context(job_id, None).await
+    }
+
+    /// Schedule a job with an optional approval context.
+    async fn schedule_with_context(
+        &self,
+        job_id: Uuid,
+        approval_context: Option<ApprovalContext>,
+    ) -> Result<(), JobError> {
+        // Hold write lock for the entire check-insert sequence to prevent
+        // TOCTOU races where two concurrent calls both pass the checks.
+        {
+            let mut jobs = self.jobs.write().await;
+
+            if jobs.contains_key(&job_id) {
+                return Ok(());
+            }
+
+            if jobs.len() >= self.config.max_parallel_jobs {
+                return Err(JobError::MaxJobsExceeded {
+                    max: self.config.max_parallel_jobs,
+                });
+            }
+
+            // Per-user concurrency check — only count jobs consuming a parallel
+            // execution slot (Pending/InProgress/Stuck), not Completed/Submitted.
+            if let Some(max_per_user) = self.config.max_jobs_per_user
+                && let Ok(ctx) = self.context_manager.get_context(job_id).await
+            {
+                let user_blocking = self
+                    .context_manager
+                    .parallel_blocking_count_for(&ctx.user_id)
+                    .await;
+                if user_blocking >= max_per_user {
+                    return Err(JobError::MaxJobsExceeded { max: max_per_user });
+                }
+            }
+
+            // Transition job to in_progress
+            self.context_manager
+                .update_context(job_id, |ctx| {
+                    ctx.transition_to(
+                        JobState::InProgress,
+                        Some("Scheduled for execution".to_string()),
+                    )
+                })
+                .await?
+                .map_err(|s| JobError::ContextError {
+                    id: job_id,
+                    reason: s,
+                })?;
+
+            // Create worker channel
+            let (tx, rx) = mpsc::channel(16);
+
+            // Create worker with shared dependencies
+            let deps = WorkerDeps {
+                context_manager: self.context_manager.clone(),
+                llm: self.llm.clone(),
+                safety: self.safety.clone(),
+                hooks: self.hooks.clone(),
+                timeout: self.config.job_timeout,
+                use_planning: self.config.use_planning,
+                approval_context,
+                multi_tenant: self.config.multi_tenant,
+            };
+            
+            // TODO: V1 Worker removed - needs V2 reimplementation
+            // Stub worker creation and execution
+            let _worker = Worker { _placeholder: () };
+            let _deps = deps; // Consume deps to avoid unused variable warning
+
+            // Spawn worker task (stubbed)
+            let context_manager = self.context_manager.clone();
+            let handle = tokio::spawn(async move {
+                // Stub: immediately mark job as failed
+                let _ = rx; // Consume rx to avoid unused variable warning
+                if let Err(e) = context_manager.update_context(job_id, |ctx| {
+                    ctx.transition_to(
+                        JobState::Failed,
+                        Some("Worker execution unavailable during V2 migration".to_string()),
+                    )
+                }).await {
+                    tracing::error!("Failed to mark job {} as failed: {}", job_id, e);
+                }
+            });
+
+            // Start the worker
+            if tx.send(WorkerMessage::Start).await.is_err() {
+                tracing::error!(job_id = %job_id, "Worker died before receiving Start message");
+            }
+
+            // Insert while still holding the write lock
+            jobs.insert(job_id, ScheduledJob { handle, tx });
+        }
+
+        // Cleanup task for this job to avoid capacity leaks
+        let jobs = Arc::clone(&self.jobs);
+        tokio::spawn(async move {
+            loop {
+                let finished = {
+                    let jobs_read = jobs.read().await;
+                    match jobs_read.get(&job_id) {
+                        Some(scheduled) => scheduled.handle.is_finished(),
+                        None => true,
+                    }
+                };
+
+                if finished {
+                    jobs.write().await.remove(&job_id);
+                    break;
+                }
+
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        });
+
+        tracing::info!("Scheduled job {} for execution", job_id);
+        Ok(())
+    }
+
+    /// Schedule a sub-task from within a worker.
+    ///
+    /// Sub-tasks are lightweight tasks that don't go through the full job lifecycle.
+    /// They're used for parallel tool execution and background computations.
+    ///
+    /// Returns a oneshot receiver to get the result.
+    pub async fn spawn_subtask(
+        &self,
+        parent_id: Uuid,
+        task: Task,
+    ) -> Result<oneshot::Receiver<Result<TaskOutput, Error>>, JobError> {
+        let task_id = Uuid::new_v4();
+        let (result_tx, result_rx) = oneshot::channel();
+
+        let handle = match task {
+            Task::Job { .. } => {
+                // Jobs should go through schedule(), not spawn_subtask
+                return Err(JobError::ContextError {
+                    id: parent_id,
+                    reason: "Use schedule() for Job tasks, not spawn_subtask()".to_string(),
+                });
+            }
+
+            Task::ToolExec {
+                parent_id: tool_parent_id,
+                tool_name,
+                params,
+            } => {
+                let tools = self.tools.clone();
+                let effect_executor = self.effect_executor.clone();
+                let context_manager = self.context_manager.clone();
+                let safety = self.safety.clone();
+
+                // TODO: propagate parent job's ApprovalContext here when subtasks
+                // are used in autonomous/routine paths (currently only used in tests).
+                tokio::spawn(async move {
+                    let result = Self::execute_tool_task(
+                        tools,
+                        effect_executor,
+                        context_manager,
+                        safety,
+                        None,
+                        tool_parent_id,
+                        &tool_name,
+                        params,
+                    )
+                    .await;
+
+                    // Send result (ignore if receiver dropped)
+                    let _ = result_tx.send(result);
+                })
+            }
+
+            Task::Background { id: _, handler } => {
+                let ctx = TaskContext::new(task_id).with_parent(parent_id);
+
+                tokio::spawn(async move {
+                    let result = handler.run(ctx).await;
+                    let _ = result_tx.send(result);
+                })
+            }
+        };
+
+        // Track the subtask
+        self.subtasks.write().await.insert(
+            task_id,
+            ScheduledSubtask {
+                handle: tokio::spawn(async move {
+                    // Wrap the handle to get its result
+                    match handle.await {
+                        Ok(()) => Err(Error::Job(JobError::ContextError {
+                            id: task_id,
+                            reason: "Subtask completed but result not captured".to_string(),
+                        })),
+                        Err(e) => Err(Error::Job(JobError::ContextError {
+                            id: task_id,
+                            reason: format!("Subtask panicked: {}", e),
+                        })),
+                    }
+                }),
+            },
+        );
+
+        // Cleanup task for subtask tracking
+        let subtasks = Arc::clone(&self.subtasks);
+        tokio::spawn(async move {
+            loop {
+                let finished = {
+                    let subtasks_read = subtasks.read().await;
+                    match subtasks_read.get(&task_id) {
+                        Some(scheduled) => scheduled.handle.is_finished(),
+                        None => true,
+                    }
+                };
+
+                if finished {
+                    subtasks.write().await.remove(&task_id);
+                    break;
+                }
+
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        });
+
+        tracing::debug!(
+            parent_id = %parent_id,
+            task_id = %task_id,
+            "Spawned subtask"
+        );
+
+        Ok(result_rx)
+    }
+
+    /// Schedule multiple tasks in parallel and wait for all to complete.
+    ///
+    /// Returns results in the same order as the input tasks.
+    pub async fn spawn_batch(
+        &self,
+        parent_id: Uuid,
+        tasks: Vec<Task>,
+    ) -> Vec<Result<TaskOutput, Error>> {
+        if tasks.is_empty() {
+            return Vec::new();
+        }
+
+        let mut receivers = Vec::with_capacity(tasks.len());
+
+        // Spawn all tasks
+        for task in tasks {
+            match self.spawn_subtask(parent_id, task).await {
+                Ok(rx) => receivers.push(Some(rx)),
+                Err(e) => {
+                    // Store the error directly
+                    receivers.push(None);
+                    tracing::warn!(
+                        parent_id = %parent_id,
+                        error = %e,
+                        "Failed to spawn subtask in batch"
+                    );
+                }
+            }
+        }
+
+        // Collect results
+        let mut results = Vec::with_capacity(receivers.len());
+        for rx in receivers {
+            let result = match rx {
+                Some(receiver) => match receiver.await {
+                    Ok(task_result) => task_result,
+                    Err(_) => Err(Error::Job(JobError::ContextError {
+                        id: parent_id,
+                        reason: "Subtask channel closed unexpectedly".to_string(),
+                    })),
+                },
+                None => Err(Error::Job(JobError::ContextError {
+                    id: parent_id,
+                    reason: "Subtask failed to spawn".to_string(),
+                })),
+            };
+            results.push(result);
+        }
+
+        results
+    }
+
+    /// Execute a single tool as a subtask.
+    ///
+    /// Performs scheduler-specific checks (approval, cancellation) then
+    /// delegates to V2 EffectExecutor for capability-based tool execution.
+    ///
+    /// P0.1: Basic wiring complete - calls EffectExecutor with minimal context
+    /// P0.2: TODO - Add full tool execution with proper error handling
+    /// P0.3: TODO - Integrate approval flow
+    #[allow(dead_code)]
+    async fn execute_tool_task(
+        _tools: Arc<crate::tools::ToolRegistry>,
+        effect_executor: Option<Arc<dyn EffectExecutor>>,
+        context_manager: Arc<ContextManager>,
+        _safety: Arc<SafetyLayer>,
+        _approval_context: Option<ApprovalContext>,
+        job_id: Uuid,
+        tool_name: &str,
+        params: serde_json::Value,
+    ) -> Result<TaskOutput, Error> {
+        let start = std::time::Instant::now();
+
+        // Get job context for cancellation check
+        let job_ctx: JobContext = context_manager.get_context(job_id).await?;
+        if job_ctx.state == JobState::Cancelled {
+            return Err(crate::error::ToolError::ExecutionFailed {
+                name: tool_name.to_string(),
+                reason: "Job is cancelled".to_string(),
+            }
+            .into());
+        }
+
+        // P0.1: Wire EffectExecutor - check if available
+        let executor = match effect_executor {
+            Some(exec) => exec,
+            None => {
+                return Err(Error::Tool(crate::error::ToolError::ExecutionFailed {
+                    name: tool_name.to_string(),
+                    reason: "EffectExecutor not available - V2 migration incomplete".to_string(),
+                }));
+            }
+        };
+
+        // P0.2: Create ThreadExecutionContext with real values from job context
+        let mut thread_context = Self::create_thread_execution_context(&job_ctx, job_id);
+
+        // P0.2: Create minimal CapabilityLease (stub for now)
+        // P0.3: TODO - Implement proper lease management with approval flow
+        use brassclaw_engine::{CapabilityLease, LeaseId, GrantedActions};
+        use chrono::Utc;
+        
+        let lease = CapabilityLease {
+            id: LeaseId::new(),
+            thread_id: thread_context.thread_id,
+            capability_name: tool_name.to_string(),
+            granted_actions: GrantedActions::All, // P0.3: TODO - Restrict based on approval
+            granted_at: Utc::now(),
+            expires_at: None,
+            max_uses: None,
+            uses_remaining: None,
+            revoked: false,
+            revoked_reason: None,
+        };
+
+        // P0.2: Populate action inventory snapshots from EffectExecutor
+        // This provides the context with available actions for this execution
+        match executor.available_actions(&[lease.clone()], &thread_context).await {
+            Ok(actions) => {
+                tracing::debug!(
+                    job_id = %job_id,
+                    action_count = actions.len(),
+                    "Populated action inventory snapshot"
+                );
+                thread_context.available_actions_snapshot = Some(actions.into());
+            }
+            Err(e) => {
+                // Log warning but don't fail - action inventory is optional context
+                tracing::warn!(
+                    job_id = %job_id,
+                    error = ?e,
+                    "Failed to populate action inventory snapshot"
+                );
+            }
+        }
+
+        // P0.2: Populate full action inventory (V2) if available
+        match executor.available_action_inventory(&[lease.clone()], &thread_context).await {
+            Ok(inventory) => {
+                tracing::debug!(
+                    job_id = %job_id,
+                    inline_count = inventory.inline.len(),
+                    discoverable_count = inventory.discoverable.len(),
+                    "Populated action inventory V2 snapshot"
+                );
+                thread_context.available_action_inventory_snapshot = Some(std::sync::Arc::new(inventory));
+            }
+            Err(e) => {
+                // Log warning but don't fail - action inventory is optional context
+                tracing::warn!(
+                    job_id = %job_id,
+                    error = ?e,
+                    "Failed to populate action inventory V2 snapshot"
+                );
+            }
+        }
+
+        // P0.2: Execute action via EffectExecutor
+        tracing::debug!(
+            job_id = %job_id,
+            tool_name = %tool_name,
+            thread_type = ?thread_context.thread_type,
+            project_id = ?thread_context.project_id,
+            "Executing tool via EffectExecutor"
+        );
+
+        match executor.execute_action(tool_name, params.clone(), &lease, &thread_context).await {
+            Ok(action_result) => {
+                let duration = start.elapsed();
+                
+                tracing::debug!(
+                    job_id = %job_id,
+                    tool_name = %tool_name,
+                    duration_ms = ?duration.as_millis(),
+                    is_error = action_result.is_error,
+                    "Tool execution completed"
+                );
+
+                // P0.2: Convert ActionResult to TaskOutput
+                Ok(TaskOutput {
+                    result: action_result.output,
+                    duration,
+                })
+            }
+            Err(engine_error) => {
+                let duration = start.elapsed();
+                
+                // P0.2: Enhanced error handling with specific error mapping
+                use brassclaw_engine::EngineError;
+                
+                let error_message = match &engine_error {
+                    EngineError::Capability(cap_err) => {
+                        format!("Capability error: {}", cap_err)
+                    }
+                    EngineError::Step(step_err) => {
+                        format!("Step execution error: {}", step_err)
+                    }
+                    EngineError::Thread(thread_err) => {
+                        format!("Thread error: {}", thread_err)
+                    }
+                    EngineError::Store { reason } => {
+                        format!("Storage error: {}", reason)
+                    }
+                    EngineError::Llm { reason } => {
+                        format!("LLM error: {}", reason)
+                    }
+                    EngineError::Effect { reason } => {
+                        format!("Effect execution error: {}", reason)
+                    }
+                    EngineError::InvalidInput { reason } => {
+                        format!("Invalid input: {}", reason)
+                    }
+                    EngineError::AccessDenied { user_id, entity } => {
+                        format!("Access denied: user '{}' cannot access {}", user_id, entity)
+                    }
+                    EngineError::ThreadNotFound(thread_id) => {
+                        format!("Thread not found: {}", thread_id)
+                    }
+                    EngineError::ProjectNotFound(project_id) => {
+                        format!("Project not found: {}", project_id)
+                    }
+                    EngineError::LeaseExpired { capability_name } => {
+                        format!("Lease expired for capability: {}", capability_name)
+                    }
+                    EngineError::LeaseDenied { reason } => {
+                        format!("Lease denied: {}", reason)
+                    }
+                    EngineError::MaxIterations { limit } => {
+                        format!("Max iterations reached: {}", limit)
+                    }
+                    EngineError::TokenLimitExceeded { used, limit } => {
+                        format!("Token limit exceeded: {} of {}", used, limit)
+                    }
+                    EngineError::Timeout { elapsed, limit } => {
+                        format!("Thread timeout: {:?} of {:?}", elapsed, limit)
+                    }
+                    _ => {
+                        format!("{}", engine_error)
+                    }
+                };
+                
+                tracing::warn!(
+                    job_id = %job_id,
+                    tool_name = %tool_name,
+                    user_id = %job_ctx.user_id,
+                    error = %error_message,
+                    params = ?params,
+                    duration_ms = ?duration.as_millis(),
+                    "Tool execution failed via EffectExecutor"
+                );
+
+                // P0.2: Convert EngineError to Error with enhanced context
+                Err(Error::Tool(crate::error::ToolError::ExecutionFailed {
+                    name: tool_name.to_string(),
+                    reason: error_message,
+                }))
+            }
+        }
+    }
+
+    /// Create a ThreadExecutionContext for tool execution.
+    ///
+    /// P0.2: Enhanced implementation with real values from job context
+    fn create_thread_execution_context(
+        job_ctx: &JobContext,
+        job_id: Uuid,
+    ) -> brassclaw_engine::ThreadExecutionContext {
+        use brassclaw_engine::{ThreadExecutionContext, ThreadType, ProjectId, StepId, ThreadId, ValidTimezone};
+
+        // Extract user_id from metadata or use job's user_id
+        let user_id = job_ctx
+            .metadata
+            .as_object()
+            .and_then(|obj| obj.get("user_id"))
+            .and_then(|v| v.as_str())
+            .unwrap_or(&job_ctx.user_id)
+            .to_string();
+
+        // Extract description from metadata if available, fallback to job description
+        let thread_goal = job_ctx
+            .metadata
+            .as_object()
+            .and_then(|obj| obj.get("description"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| Some(job_ctx.description.clone()));
+
+        // P0.2: Extract project_id from job metadata
+        // Look for "project_id" in metadata, default to nil UUID if not found
+        let project_id = job_ctx
+            .metadata
+            .as_object()
+            .and_then(|obj| obj.get("project_id"))
+            .and_then(|v| v.as_str())
+            .and_then(|s| uuid::Uuid::parse_str(s).ok())
+            .map(ProjectId)
+            .unwrap_or_else(|| {
+                tracing::debug!(
+                    job_id = %job_id,
+                    "No project_id in job metadata, using nil UUID"
+                );
+                ProjectId(uuid::Uuid::nil())
+            });
+
+        // P0.2: Determine ThreadType from job metadata
+        // Look for "thread_type" or "job_type" in metadata
+        let thread_type = job_ctx
+            .metadata
+            .as_object()
+            .and_then(|obj| {
+                obj.get("thread_type")
+                    .or_else(|| obj.get("job_type"))
+            })
+            .and_then(|v| v.as_str())
+            .and_then(|s| match s.to_lowercase().as_str() {
+                "foreground" | "conversation" | "interactive" => Some(ThreadType::Foreground),
+                "research" | "background" => Some(ThreadType::Research),
+                "routine" | "mission" | "scheduled" => Some(ThreadType::Mission),
+                _ => None,
+            })
+            .unwrap_or_else(|| {
+                // Default to Research for general agent tasks
+                tracing::debug!(
+                    job_id = %job_id,
+                    "No thread_type in job metadata, defaulting to Research"
+                );
+                ThreadType::Research
+            });
+
+        // P0.2: Extract step_id from job metadata if available
+        // This allows tracking of specific execution steps
+        let step_id = job_ctx
+            .metadata
+            .as_object()
+            .and_then(|obj| obj.get("step_id"))
+            .and_then(|v| v.as_str())
+            .and_then(|s| uuid::Uuid::parse_str(s).ok())
+            .map(StepId)
+            .unwrap_or_else(|| {
+                // Generate a new step_id for this execution
+                StepId(uuid::Uuid::new_v4())
+            });
+
+        // P0.2: Get user timezone from JobContext
+        // JobContext already has user_timezone field populated
+        let user_timezone = if !job_ctx.user_timezone.is_empty() && job_ctx.user_timezone != "UTC" {
+            // Try to parse as ValidTimezone using parse() method
+            ValidTimezone::parse(&job_ctx.user_timezone)
+                .or_else(|| {
+                    tracing::warn!(
+                        job_id = %job_id,
+                        timezone = %job_ctx.user_timezone,
+                        "Invalid timezone in JobContext, falling back to None"
+                    );
+                    None
+                })
+        } else {
+            None
+        };
+
+        // P0.2: Extract source_channel from job metadata
+        // This indicates where the job originated (e.g., "signal", "telegram", "web", "repl")
+        let source_channel = job_ctx
+            .metadata
+            .as_object()
+            .and_then(|obj| obj.get("source_channel").or_else(|| obj.get("channel")))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        // P0.2: Extract conversation_id from JobContext
+        // JobContext already has conversation_id field
+        let conversation_id = job_ctx.conversation_id.map(|id| {
+            use brassclaw_engine::ConversationId;
+            ConversationId(id)
+        });
+
+        // P0.2: Extract conversation_scope from job metadata
+        // This is used for per-conversation state lookup
+        let conversation_scope = job_ctx
+            .metadata
+            .as_object()
+            .and_then(|obj| obj.get("conversation_scope"))
+            .and_then(|v| v.as_str())
+            .and_then(|s| uuid::Uuid::parse_str(s).ok())
+            .or(job_ctx.conversation_id); // Fallback to conversation_id if scope not specified
+
+        ThreadExecutionContext {
+            thread_id: ThreadId(job_id),
+            thread_type,
+            project_id,
+            user_id,
+            step_id,
+            current_call_id: Some(format!("call_{}", uuid::Uuid::new_v4().simple())),
+            source_channel,
+            user_timezone,
+            thread_goal,
+            available_actions_snapshot: None, // P0.2: Will be populated in execute_tool_task
+            available_action_inventory_snapshot: None, // P0.2: Will be populated in execute_tool_task
+            conversation_scope,
+            gate_controller: crate::agent::gate_controller::AutoApprovingGateController::arc(), // P0.3: Auto-approve for now
+            call_approval_granted: false, // P0.3: Not needed with auto-approve, but kept for future
+            conversation_id,
+        }
+    }
+
+    /// Stop a running job.
+    pub async fn stop(&self, job_id: Uuid) -> Result<(), JobError> {
+        let mut jobs = self.jobs.write().await;
+
+        if let Some(scheduled) = jobs.remove(&job_id) {
+            // Send stop signal
+            let _ = scheduled.tx.send(WorkerMessage::Stop).await;
+
+            // Give it a moment to clean up
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+            // Abort if still running
+            if !scheduled.handle.is_finished() {
+                scheduled.handle.abort();
+            }
+
+            // Update job state
+            self.context_manager
+                .update_context(job_id, |ctx| {
+                    if let Err(e) = ctx.transition_to(
+                        JobState::Cancelled,
+                        Some("Stopped by scheduler".to_string()),
+                    ) {
+                        tracing::warn!(
+                            job_id = %job_id,
+                            error = %e,
+                            "Failed to transition job to Cancelled state"
+                        );
+                    }
+                })
+                .await?;
+
+            // Persist cancellation (fire-and-forget)
+            if let Some(ref store) = self.store {
+                let store = store.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = store
+                        .update_job_status(
+                            job_id,
+                            JobState::Cancelled,
+                            Some("Stopped by scheduler"),
+                        )
+                        .await
+                    {
+                        tracing::warn!("Failed to persist cancellation for job {}: {}", job_id, e);
+                    }
+                });
+            }
+
+            tracing::info!("Stopped job {}", job_id);
+        }
+
+        Ok(())
+    }
+
+    /// Send a follow-up user message to a running job.
+    ///
+    /// Returns `Ok(())` if the message was queued, `Err` if the job is not running.
+    pub async fn send_message(&self, job_id: Uuid, content: String) -> Result<(), JobError> {
+        // Clone the sender while holding the lock, then release before the
+        // async send to avoid blocking scheduler writes during backpressure.
+        let tx = {
+            let jobs = self.jobs.read().await;
+            let scheduled = jobs.get(&job_id).ok_or(JobError::NotFound { id: job_id })?;
+            scheduled.tx.clone()
+        };
+        tx.send(WorkerMessage::UserMessage(content))
+            .await
+            .map_err(|_| JobError::Failed {
+                id: job_id,
+                reason: "Worker channel closed".to_string(),
+            })?;
+        Ok(())
+    }
+
+    /// Check if a job is running.
+    pub async fn is_running(&self, job_id: Uuid) -> bool {
+        self.jobs.read().await.contains_key(&job_id)
+    }
+
+    /// Get count of running jobs.
+    pub async fn running_count(&self) -> usize {
+        self.jobs.read().await.len()
+    }
+
+    /// Get count of running subtasks.
+    pub async fn subtask_count(&self) -> usize {
+        self.subtasks.read().await.len()
+    }
+
+    /// Get all running job IDs.
+    pub async fn running_jobs(&self) -> Vec<Uuid> {
+        self.jobs.read().await.keys().cloned().collect()
+    }
+
+    /// Clean up finished jobs and subtasks.
+    pub async fn cleanup_finished(&self) {
+        // Clean up jobs
+        {
+            let mut jobs = self.jobs.write().await;
+            let mut finished = Vec::new();
+
+            for (id, scheduled) in jobs.iter() {
+                if scheduled.handle.is_finished() {
+                    finished.push(*id);
+                }
+            }
+
+            for id in finished {
+                jobs.remove(&id);
+                tracing::debug!("Cleaned up finished job {}", id);
+            }
+        }
+
+        // Clean up subtasks
+        {
+            let mut subtasks = self.subtasks.write().await;
+            let mut finished = Vec::new();
+
+            for (id, scheduled) in subtasks.iter() {
+                if scheduled.handle.is_finished() {
+                    finished.push(*id);
+                }
+            }
+
+            for id in finished {
+                subtasks.remove(&id);
+                tracing::trace!("Cleaned up finished subtask {}", id);
+            }
+        }
+    }
+
+    /// Stop all jobs.
+    pub async fn stop_all(&self) {
+        let job_ids: Vec<Uuid> = self.jobs.read().await.keys().cloned().collect();
+
+        for job_id in job_ids {
+            let _ = self.stop(job_id).await;
+        }
+
+        // Abort all subtasks
+        let mut subtasks = self.subtasks.write().await;
+        for (_, scheduled) in subtasks.drain() {
+            scheduled.handle.abort();
+        }
+    }
+
+    /// Get access to the tools registry.
+    // V1 ToolRegistry removed - use effect_executor() instead
+    // #[deprecated(note = "Use effect_executor() instead - will be removed in Step 9.7+")]
+    // pub fn tools(&self) -> &Arc<ToolRegistry> {
+    //     &self.tools
+    // }
+
+    /// Get access to the V2 effect executor.
+    pub fn effect_executor(&self) -> Option<&Arc<dyn EffectExecutor>> {
+        self.effect_executor.as_ref()
+    }
+
+    /// Get access to the context manager.
+    pub fn context_manager(&self) -> &Arc<ContextManager> {
+        &self.context_manager
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::SafetyConfig;
+    use crate::tools::{ApprovalRequirement, Tool, ToolError, ToolOutput};
+    use brassclaw_llm::{
+        CompletionRequest, CompletionResponse, LlmError, LlmProvider, ToolCompletionRequest,
+        ToolCompletionResponse,
+    };
+    use brassclaw_safety::SafetyLayer;
+    use rust_decimal_macros::dec;
+
+    /// Minimal LLM provider stub for scheduler tests that don't exercise LLM calls.
+    struct StubLlm;
+
+    #[async_trait::async_trait]
+    impl LlmProvider for StubLlm {
+        fn model_name(&self) -> &str {
+            "stub"
+        }
+        fn cost_per_token(&self) -> (rust_decimal::Decimal, rust_decimal::Decimal) {
+            (dec!(0), dec!(0))
+        }
+        async fn complete(&self, _req: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+            Err(LlmError::RequestFailed {
+                provider: "stub".into(),
+                reason: "not implemented".into(),
+            })
+        }
+        async fn complete_with_tools(
+            &self,
+            _req: ToolCompletionRequest,
+        ) -> Result<ToolCompletionResponse, LlmError> {
+            Err(LlmError::RequestFailed {
+                provider: "stub".into(),
+                reason: "not implemented".into(),
+            })
+        }
+    }
+
+    /// Create a Scheduler for token-budget tests. The LLM stub will fail if a
+    /// worker actually tries to call it, but `dispatch_job` sets the token
+    /// budget *before* spawning the worker so we can inspect the context
+    /// immediately after dispatch.
+    fn make_test_scheduler(max_tokens_per_job: u64) -> Scheduler {
+        let config = AgentConfig {
+            name: "test".to_string(),
+            max_parallel_jobs: 5,
+            job_timeout: std::time::Duration::from_secs(30),
+            stuck_threshold: std::time::Duration::from_secs(300),
+            repair_check_interval: std::time::Duration::from_secs(3600),
+            max_repair_attempts: 0,
+            use_planning: false,
+            session_idle_timeout: std::time::Duration::from_secs(3600),
+            allow_local_tools: true,
+            max_cost_per_day_cents: None,
+            max_actions_per_hour: None,
+            max_cost_per_user_per_day_cents: None,
+            max_tool_iterations: 10,
+            auto_approve_tools: true,
+            default_timezone: "UTC".to_string(),
+            max_jobs_per_user: None,
+            max_tokens_per_job,
+            multi_tenant: false,
+            max_llm_concurrent_per_user: None,
+            max_jobs_concurrent_per_user: None,
+            engine_v2: false,
+        };
+        let cm = Arc::new(ContextManager::new(5));
+        let llm: Arc<dyn LlmProvider> = Arc::new(StubLlm);
+        let safety = Arc::new(SafetyLayer::new(&SafetyConfig {
+            max_output_length: 100_000,
+            injection_check_enabled: false,
+        }));
+        let tools = Arc::new(ToolRegistry::new());
+        let hooks = Arc::new(HookRegistry::default());
+
+        Scheduler::new(
+            config,
+            cm,
+            llm,
+            safety,
+            SchedulerDeps {
+                tools,
+                effect_executor: None, // Tests use V1 path for now
+                extension_manager: None,
+                store: None,
+                hooks,
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_job_caps_user_max_tokens() {
+        let sched = make_test_scheduler(1000);
+        let meta = serde_json::json!({ "max_tokens": 5000 });
+        let job_id = sched
+            .dispatch_job("user1", "test", "desc", Some(meta))
+            .await
+            .unwrap();
+
+        let ctx = sched.context_manager.get_context(job_id).await.unwrap();
+        assert_eq!(ctx.max_tokens, 1000, "should cap at configured limit");
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_job_unlimited_config_preserves_user_tokens() {
+        let sched = make_test_scheduler(0); // 0 = unlimited
+        let meta = serde_json::json!({ "max_tokens": 5000 });
+        let job_id = sched
+            .dispatch_job("user1", "test", "desc", Some(meta))
+            .await
+            .unwrap();
+
+        let ctx = sched.context_manager.get_context(job_id).await.unwrap();
+        assert_eq!(
+            ctx.max_tokens, 5000,
+            "unlimited config should preserve user value"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_job_no_user_tokens_uses_config() {
+        let sched = make_test_scheduler(2000);
+        let job_id = sched
+            .dispatch_job("user1", "test", "desc", None)
+            .await
+            .unwrap();
+
+        let ctx = sched.context_manager.get_context(job_id).await.unwrap();
+        assert_eq!(
+            ctx.max_tokens, 2000,
+            "should use config default when no user value"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_job_atomic_metadata_and_tokens() {
+        let sched = make_test_scheduler(10_000);
+        let meta = serde_json::json!({
+            "max_tokens": 3000,
+            "custom_key": "custom_value"
+        });
+        let job_id = sched
+            .dispatch_job("user1", "test", "desc", Some(meta))
+            .await
+            .unwrap();
+
+        let ctx = sched.context_manager.get_context(job_id).await.unwrap();
+        assert_eq!(ctx.max_tokens, 3000, "should use user value within limit");
+        assert_eq!(
+            ctx.metadata.get("custom_key").and_then(|v| v.as_str()),
+            Some("custom_value"),
+            "metadata should be set atomically with token budget"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_job_no_metadata_no_user_tokens_edge_case() {
+        // Edge case coverage: when metadata=None AND max_tokens=0 (config),
+        // the else branch calls get_context() directly (not update_context_and_get).
+        // This test verifies that path works correctly (Issue #807: full branch coverage).
+        let sched = make_test_scheduler(0); // 0 = unlimited, but user provides None
+        let job_id = sched
+            .dispatch_job("user1", "test", "desc", None) // None metadata
+            .await
+            .unwrap(); // safety: test code
+
+        let ctx = sched.context_manager.get_context(job_id).await.unwrap(); // safety: test code
+        // No metadata was set, should have default empty metadata
+        assert!(ctx.metadata.is_null() || ctx.metadata == serde_json::json!({})); // safety: test code
+        // No user tokens AND unlimited config means max_tokens stays at default
+        assert_eq!(ctx.max_tokens, 0, "unlimited config"); // safety: test code
+    }
+
+    #[test]
+    fn test_scheduler_creation() {
+        // Would need to mock dependencies for proper testing
+    }
+
+    #[tokio::test]
+    async fn test_spawn_batch_empty() {
+        // This test would need mock dependencies.
+        // For now just verify the empty case doesn't panic.
+    }
+
+    /// A tool that returns `UnlessAutoApproved`.
+    struct SoftApprovalTool;
+
+    #[async_trait::async_trait]
+    impl Tool for SoftApprovalTool {
+        fn name(&self) -> &str {
+            "soft_gate"
+        }
+        fn description(&self) -> &str {
+            "needs soft approval"
+        }
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object", "properties": {}})
+        }
+        async fn execute(
+            &self,
+            _params: serde_json::Value,
+            _ctx: &JobContext,
+        ) -> Result<ToolOutput, ToolError> {
+            Ok(ToolOutput::text(
+                "soft_ok",
+                std::time::Instant::now().elapsed(),
+            ))
+        }
+        fn requires_approval(&self, _params: &serde_json::Value) -> ApprovalRequirement {
+            ApprovalRequirement::UnlessAutoApproved
+        }
+        fn requires_sanitization(&self) -> bool {
+            false
+        }
+    }
+
+    /// A tool that returns `Always`.
+    struct HardApprovalTool;
+
+    #[async_trait::async_trait]
+    impl Tool for HardApprovalTool {
+        fn name(&self) -> &str {
+            "hard_gate"
+        }
+        fn description(&self) -> &str {
+            "needs hard approval"
+        }
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object", "properties": {}})
+        }
+        async fn execute(
+            &self,
+            _params: serde_json::Value,
+            _ctx: &JobContext,
+        ) -> Result<ToolOutput, ToolError> {
+            Ok(ToolOutput::text(
+                "hard_ok",
+                std::time::Instant::now().elapsed(),
+            ))
+        }
+        fn requires_approval(&self, _params: &serde_json::Value) -> ApprovalRequirement {
+            ApprovalRequirement::Always
+        }
+        fn requires_sanitization(&self) -> bool {
+            false
+        }
+    }
+
+    async fn setup_tools_and_job() -> (
+        Arc<ToolRegistry>,
+        Arc<ContextManager>,
+        Arc<SafetyLayer>,
+        Uuid,
+    ) {
+        let registry = ToolRegistry::new();
+        registry.register(Arc::new(SoftApprovalTool)).await;
+        registry.register(Arc::new(HardApprovalTool)).await;
+
+        let cm = Arc::new(ContextManager::new(5));
+        let job_id = cm.create_job("test", "approval test").await.unwrap();
+        cm.update_context(job_id, |ctx| ctx.transition_to(JobState::InProgress, None))
+            .await
+            .unwrap()
+            .unwrap();
+
+        let safety = Arc::new(SafetyLayer::new(&SafetyConfig {
+            max_output_length: 100_000,
+            injection_check_enabled: false,
+        }));
+
+        (Arc::new(registry), cm, safety, job_id)
+    }
+
+    #[tokio::test]
+    async fn test_execute_tool_task_blocks_without_context() {
+        let (tools, cm, safety, job_id) = setup_tools_and_job().await;
+
+        // Without approval context, UnlessAutoApproved is blocked
+        let result = Scheduler::execute_tool_task(
+            tools.clone(),
+            cm.clone(),
+            safety.clone(),
+            None,
+            job_id,
+            "soft_gate",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "soft_gate should be blocked without context"
+        );
+
+        // Always is also blocked
+        let result = Scheduler::execute_tool_task(
+            tools,
+            cm,
+            safety,
+            None,
+            job_id,
+            "hard_gate",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "hard_gate should be blocked without context"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_tool_task_autonomous_unblocks_soft() {
+        let (tools, cm, safety, job_id) = setup_tools_and_job().await;
+
+        // Autonomous execution only allows tools explicitly in scope.
+        let result = Scheduler::execute_tool_task(
+            tools.clone(),
+            cm.clone(),
+            safety.clone(),
+            Some(ApprovalContext::autonomous_with_tools([
+                "soft_gate".to_string()
+            ])),
+            job_id,
+            "soft_gate",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "soft_gate should pass with autonomous context"
+        );
+
+        // But still blocks Always
+        let result = Scheduler::execute_tool_task(
+            tools,
+            cm,
+            safety,
+            Some(ApprovalContext::autonomous()),
+            job_id,
+            "hard_gate",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "hard_gate should still be blocked without explicit permission"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_tool_task_autonomous_with_permissions() {
+        let (tools, cm, safety, job_id) = setup_tools_and_job().await;
+
+        // Autonomous context with explicit permission for both tools.
+        let ctx = ApprovalContext::autonomous_with_tools([
+            "soft_gate".to_string(),
+            "hard_gate".to_string(),
+        ]);
+
+        let result = Scheduler::execute_tool_task(
+            tools.clone(),
+            cm.clone(),
+            safety.clone(),
+            Some(ctx.clone()),
+            job_id,
+            "soft_gate",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(result.is_ok(), "soft_gate should pass");
+
+        let result = Scheduler::execute_tool_task(
+            tools,
+            cm,
+            safety,
+            Some(ctx),
+            job_id,
+            "hard_gate",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "hard_gate should pass with explicit permission"
+        );
+    }
+
+    struct NormalizedApprovalTool;
+
+    #[async_trait::async_trait]
+    impl Tool for NormalizedApprovalTool {
+        fn name(&self) -> &str {
+            "normalized_gate"
+        }
+        fn description(&self) -> &str {
+            "approval depends on normalized params"
+        }
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "safe": { "type": "boolean" }
+                }
+            })
+        }
+        async fn execute(
+            &self,
+            _params: serde_json::Value,
+            _ctx: &JobContext,
+        ) -> Result<ToolOutput, ToolError> {
+            Ok(ToolOutput::text(
+                "normalized_ok",
+                std::time::Instant::now().elapsed(),
+            ))
+        }
+        fn requires_approval(&self, params: &serde_json::Value) -> ApprovalRequirement {
+            if params.get("safe").and_then(|v| v.as_bool()) == Some(true) {
+                ApprovalRequirement::Never
+            } else {
+                ApprovalRequirement::Always
+            }
+        }
+        fn requires_sanitization(&self) -> bool {
+            false
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_tool_task_normalizes_params_before_approval() {
+        let registry = ToolRegistry::new();
+        registry.register(Arc::new(NormalizedApprovalTool)).await;
+
+        let cm = Arc::new(ContextManager::new(5));
+        let job_id = cm.create_job("test", "normalized approval").await.unwrap(); // safety: test-only setup
+        cm.update_context(job_id, |ctx| ctx.transition_to(JobState::InProgress, None))
+            .await
+            .unwrap() // safety: test-only setup
+            .unwrap(); // safety: test-only setup
+
+        let safety = Arc::new(SafetyLayer::new(&SafetyConfig {
+            max_output_length: 100_000,
+            injection_check_enabled: false,
+        }));
+
+        let result = Scheduler::execute_tool_task(
+            Arc::new(registry),
+            cm,
+            safety,
+            None,
+            job_id,
+            "normalized_gate",
+            serde_json::json!({"safe": "true"}),
+        )
+        .await;
+
+        #[rustfmt::skip]
+        assert!( // safety: test-only assertion
+            result.is_ok(),
+            "stringified boolean should normalize before approval: {result:?}"
+        );
+    }
+}

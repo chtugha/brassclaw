@@ -1,0 +1,34 @@
+# BrassClaw Profile: local
+#
+# Configuration for solo developers working locally.
+# Disables server-oriented gateway and Docker sandbox features while keeping
+# personal-assistant background tasks enabled.
+#
+# Usage: set BRASSCLAW_PROFILE=local in your environment or .env file.
+#
+# You can override any setting here via ~/.brassclaw/config.toml or
+# environment variables.
+
+database_backend = "libsql"
+
+[agent]
+max_prompt_tokens = 8192
+
+[skills]
+max_context_tokens = 2048
+
+[channels]
+gateway_enabled = false
+cli_mode = "tui"
+
+[sandbox]
+enabled = false
+
+[heartbeat]
+enabled = true
+
+[routines]
+enabled = true
+
+[hygiene]
+enabled = true

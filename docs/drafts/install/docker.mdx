@@ -1,0 +1,249 @@
+---
+title: Docker Installation
+sidebarTitle: Docker
+description: Run BrassClaw in a Docker container
+---
+
+Run BrassClaw inside a Docker container. This provides isolation and consistency across environments.
+
+<Warning>
+**Important distinction:** BrassClaw runs **alongside** Docker (for job sandboxing), not inside Docker by default. This page covers running BrassClaw itself in a container — a different use case from the default installation.
+</Warning>
+
+## When to Use Docker
+
+- **Testing**: Quick experiments without modifying your system
+- **Consistent environments**: Same configuration across dev/staging/prod
+- **Multi-tenant**: Run multiple BrassClaw instances on one host
+- **CI/CD**: Automated deployments
+
+## Quick Start
+
+```bash
+# Create data directory
+mkdir -p ~/.brassclaw
+
+# Run BrassClaw
+docker run -d \
+  --name brassclaw \
+  -v ~/.brassclaw:/home/brassclaw/.brassclaw \
+  # enabling this mount will allow the container to control the docker daemon, use at own risk
+  # -v /var/run/docker.sock:/var/run/docker.sock \
+  -p 3000:3000 \
+  -p 8080:8080 \
+  # Replace :latest with a specific version tag for reproducible, rollback-friendly deployments.
+  nearaidev/brassclaw:latest
+```
+
+## Docker Compose
+
+Save as `docker-compose.yml`:
+
+```yaml
+version: '3.8'
+
+services:
+  brassclaw:
+    # Replace :latest with a specific version tag for reproducible, rollback-friendly deployments.
+    image: nearaidev/brassclaw:latest
+    container_name: brassclaw
+    restart: unless-stopped
+
+    volumes:
+      # Persistent data
+      - ~/.brassclaw:/home/brassclaw/.brassclaw
+
+      # Docker socket for sandbox jobs, also exposes your docker host to this container!
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    ports:
+      # Web Gateway
+      - "3000:3000"
+      # HTTP Webhook
+      - "8080:8080"
+
+    environment:
+      # Required: database backend
+      - DATABASE_BACKEND=libsql
+
+      # Optional: LLM backend
+      - LLM_BACKEND=nearai
+      - NEARAI_SESSION_TOKEN=${NEARAI_SESSION_TOKEN}
+
+      # Optional: Web Gateway
+      - GATEWAY_ENABLED=true
+      - GATEWAY_HOST=0.0.0.0
+      - GATEWAY_PORT=3000
+
+      # Optional: HTTP Webhook
+      - HTTP_ENABLED=true
+      - HTTP_HOST=0.0.0.0
+      - HTTP_PORT=8080
+
+# Optional: PostgreSQL instead of libSQL
+#  postgres:
+#    image: pgvector/pgvector:pg15
+#    environment:
+#      POSTGRES_USER: brassclaw
+#      POSTGRES_PASSWORD: changeme
+#      POSTGRES_DB: brassclaw
+#    volumes:
+#      - postgres_data:/var/lib/postgresql/data
+#
+#volumes:
+#  postgres_data:
+```
+
+Start:
+
+```bash
+docker compose up -d
+```
+
+## Volume Mounts
+
+| Host Path | Container Path | Purpose |
+|-----------|---------------|---------|
+| `~/.brassclaw` | `/home/brassclaw/.brassclaw` | Config, database, logs |
+| `/var/run/docker.sock` | `/var/run/docker.sock` | Launch sandbox containers |
+
+## Environment Variables
+
+Pass configuration via environment variables:
+
+```bash
+docker run -d \
+  --name brassclaw \
+  -e DATABASE_BACKEND=libsql \
+  -e LLM_BACKEND=nearai \
+  -e NEARAI_SESSION_TOKEN=sess_xxx \
+  -e GATEWAY_ENABLED=true \
+  -v ~/.brassclaw:/home/brassclaw/.brassclaw \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -p 3000:3000 \
+  nearaidev/brassclaw:latest
+```
+
+See [Configuration Reference](/setup/configuration) for all options.
+
+## Docker-in-Docker Considerations
+
+BrassClaw can launch sandbox containers. In Docker, this requires:
+
+1. **Docker socket mount** (shown above): Allows BrassClaw to launch sibling containers
+2. **Privileged mode** (optional): Only if sandbox jobs need elevated permissions
+
+```bash
+# With privileged mode (not recommended unless needed)
+docker run -d \
+  --name brassclaw \
+  --privileged \
+  -v ~/.brassclaw:/home/brassclaw/.brassclaw \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  ...
+```
+
+## Custom Data Directory
+
+To use a different data location:
+
+```bash
+mkdir -p /opt/brassclaw/data
+
+docker run -d \
+  --name brassclaw \
+  -e BRASSCLAW_BASE_DIR=/data \
+  -v /opt/brassclaw/data:/data \
+  ...
+```
+
+## Reverse Proxy (HTTPS)
+
+For external access, put a reverse proxy in front:
+
+### Caddy
+
+```caddy
+# Caddyfile
+webg.example.com {
+  reverse_proxy localhost:3000
+}
+```
+
+### nginx
+
+```nginx
+server {
+  listen 443 ssl;
+  server_name webg.example.com;
+
+  ssl_certificate /path/to/cert.pem;
+  ssl_certificate_key /path/to/key.pem;
+
+  location / {
+    proxy_pass http://localhost:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+  }
+}
+```
+
+## Updating
+
+```bash
+# Pull latest image
+docker pull nearaidev/brassclaw:latest
+
+# Recreate container
+docker stop brassclaw
+docker rm brassclaw
+docker run -d \
+  --name brassclaw \
+  -v ~/.brassclaw:/home/brassclaw/.brassclaw \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -p 3000:3000 \
+  nearaidev/brassclaw:latest
+
+# Or with docker compose
+docker compose pull
+docker compose up -d
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Cannot connect to Docker daemon" icon="x-circle">
+    Ensure Docker socket is mounted:
+    ```bash
+    docker run ... -v /var/run/docker.sock:/var/run/docker.sock ...
+    ```
+  </Accordion>
+
+  <Accordion title="Permission denied on data directory" icon="lock">
+    Fix ownership:
+    ```bash
+    sudo chown -R 1000:1000 ~/.brassclaw
+    ```
+  </Accordion>
+
+  <Accordion title="Port already in use" icon="network">
+    Change port mapping:
+    ```bash
+    -p 3002:3000  # Maps host port 3002 to container port 3000
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="settings" href="/setup/configuration">
+    Full environment variable reference
+  </Card>
+  <Card title="VPS Install" icon="server" href="/install/vps">
+    Production deployment guide
+  </Card>
+</CardGroup>

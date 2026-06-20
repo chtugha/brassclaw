@@ -1,0 +1,26 @@
+[package]
+name = "brassclaw_capabilities"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+async-trait = "0.1"
+brassclaw_authorization = { path = "../brassclaw_authorization" }
+brassclaw_extensions = { path = "../brassclaw_extensions" }
+brassclaw_host_api = { path = "../brassclaw_host_api" }
+brassclaw_processes = { path = "../brassclaw_processes" }
+brassclaw_run_state = { path = "../brassclaw_run_state" }
+brassclaw_trust = { path = "../brassclaw_trust" }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+
+[dev-dependencies]
+chrono = "0.4"
+brassclaw_approvals = { path = "../brassclaw_approvals" }
+brassclaw_dispatcher = { path = "../brassclaw_dispatcher" }
+brassclaw_events = { path = "../brassclaw_events" }
+brassclaw_filesystem = { path = "../brassclaw_filesystem" }
+brassclaw_resources = { path = "../brassclaw_resources" }
+tokio = { version = "1", features = ["macros", "rt"] }

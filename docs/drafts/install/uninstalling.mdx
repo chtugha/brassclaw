@@ -1,0 +1,123 @@
+---
+title: Uninstalling BrassClaw
+sidebarTitle: Uninstalling
+description: Completely remove BrassClaw from your system
+---
+
+How to completely remove BrassClaw from your system.
+
+## Stop BrassClaw
+
+```bash
+# If running in terminal
+Ctrl+C
+
+# If running as a service
+sudo systemctl stop brassclaw   # systemd
+brew services stop brassclaw    # Homebrew
+```
+
+## Remove Binary
+
+<Tabs>
+  <Tab title="Linux/macOS">
+    ```bash
+    # Remove binary
+    rm ~/.local/bin/brassclaw
+
+    # Or if installed system-wide
+    sudo rm /usr/local/bin/brassclaw
+    ```
+  </Tab>
+
+  <Tab title="Ubuntu/Debian (APT)">
+    ```bash
+    sudo apt remove brassclaw
+    sudo apt autoremove
+    ```
+  </Tab>
+
+  <Tab title="macOS (Homebrew)">
+    ```bash
+    brew uninstall brassclaw
+    brew untap brassclaw-ai/tap
+    ```
+  </Tab>
+
+  <Tab title="Docker">
+    ```bash
+    # Stop and remove container
+    docker stop brassclaw
+    docker rm brassclaw
+
+    # Remove image
+    docker rmi nearaidev/brassclaw:latest
+    ```
+  </Tab>
+</Tabs>
+
+## Remove Data
+
+<Warning>
+This permanently deletes all BrassClaw data including conversations, memory, and settings. This cannot be undone.
+</Warning>
+
+```bash
+# Remove data directory
+rm -rf ~/.brassclaw
+
+# Remove service files
+sudo rm -f /etc/systemd/system/brassclaw.service
+sudo systemctl daemon-reload
+
+# Remove launchd service (macOS)
+rm -f ~/Library/LaunchAgents/ai.brassclaw.service.plist
+
+# Remove logs
+sudo rm -rf /var/log/brassclaw
+```
+
+## Remove PostgreSQL Database
+
+If you used PostgreSQL:
+
+```bash
+# Remove database (optional)
+sudo -u postgres psql <<EOF
+DROP DATABASE brassclaw;
+DROP USER brassclaw;
+EOF
+```
+
+## Verify Removal
+
+```bash
+# Check binary removed
+which brassclaw
+# Should return nothing
+
+# Check data removed
+ls -la ~/.brassclaw
+# Should return: No such file or directory
+
+# Check service removed
+sudo systemctl status brassclaw
+# Should return: Unit brassclaw.service could not be found
+```
+
+## Partial Removal
+
+To keep your data but remove the binary:
+
+```bash
+# Just remove binary
+rm ~/.local/bin/brassclaw
+
+# Data remains at ~/.brassclaw/
+# Reinstall later and your data will be intact
+```
+
+## Next Steps
+
+- [Install BrassClaw](/install) again if needed
+- Your data can be restored if you kept `~/.brassclaw/`

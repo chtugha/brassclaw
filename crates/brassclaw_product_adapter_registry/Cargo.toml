@@ -1,0 +1,24 @@
+[package]
+name = "brassclaw_product_adapter_registry"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+description = "ProductAdapter host-api projection for BrassClaw Reborn extension manifests"
+authors = ["NEAR AI <support@near.ai>"]
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/chtugha/brassclaw"
+repository = "https://github.com/chtugha/brassclaw"
+publish = false
+
+[dependencies]
+brassclaw_extensions = { path = "../brassclaw_extensions", version = "0.1.0" }
+brassclaw_host_api = { path = "../brassclaw_host_api", version = "0.1.0" }
+brassclaw_product_adapters = { path = "../brassclaw_product_adapters", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+toml = "0.8"
+
+[dev-dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt", "sync"] }

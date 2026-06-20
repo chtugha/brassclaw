@@ -1,0 +1,25 @@
+[package]
+name = "brassclaw_first_party_extension_ports"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+description = "Loop-facing ports for first-party BrassClaw extensions"
+authors = ["NEAR AI <support@near.ai>"]
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/chtugha/brassclaw"
+repository = "https://github.com/chtugha/brassclaw"
+publish = false
+
+[dependencies]
+async-trait = "0.1"
+futures = "0.3"
+brassclaw_filesystem = { path = "../brassclaw_filesystem" }
+brassclaw_host_api = { path = "../brassclaw_host_api" }
+brassclaw_loop_support = { path = "../brassclaw_loop_support" }
+brassclaw_skills = { path = "../brassclaw_skills" }
+brassclaw_turns = { path = "../brassclaw_turns" }
+thiserror = "2"
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }
