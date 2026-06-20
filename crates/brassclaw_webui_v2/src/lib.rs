@@ -1,8 +1,7 @@
 //! Reborn WebChat v2 HTTP route surface.
 //!
 //! This crate ships the minimal native WebUI v2 route set on top of the
-//! [`brassclaw_product_workflow::RebornServicesApi`] facade. It is off by
-//! default — enable the `webui-v2-beta` Cargo feature to compile it in.
+//! [`brassclaw_product_workflow::RebornServicesApi`] facade.
 //!
 //! ## Boundaries
 //!
@@ -41,20 +40,13 @@
 
 #![forbid(unsafe_code)]
 
-#[cfg(feature = "webui-v2-beta")]
 mod descriptors;
-#[cfg(feature = "webui-v2-beta")]
 mod error;
-#[cfg(feature = "webui-v2-beta")]
 mod handlers;
-#[cfg(feature = "webui-v2-beta")]
 mod router;
-#[cfg(feature = "webui-v2-beta")]
 mod schema;
-#[cfg(feature = "webui-v2-beta")]
 mod sse_capacity;
 
-#[cfg(feature = "webui-v2-beta")]
 pub use descriptors::{
     WEBUI_V2_ROUTE_ACTIVATE_EXTENSION, WEBUI_V2_ROUTE_CANCEL_RUN,
     WEBUI_V2_ROUTE_COMPLETE_NEARAI_WALLET_LOGIN, WEBUI_V2_ROUTE_CREATE_THREAD,
@@ -70,9 +62,7 @@ pub use descriptors::{
     WEBUI_V2_ROUTE_TEST_LLM_CONNECTION, WEBUI_V2_ROUTE_UPSERT_LLM_PROVIDER,
     is_webui_v2_llm_config_route_id, webui_v2_routes,
 };
-#[cfg(feature = "webui-v2-beta")]
 pub use error::{WebUiV2HttpError, WebUiV2HttpErrorBody};
-#[cfg(feature = "webui-v2-beta")]
 pub use handlers::{
     activate_extension, cancel_run, complete_nearai_wallet_login, create_thread,
     delete_llm_provider, delete_thread, get_extension_setup, get_llm_config, get_timeline,
@@ -81,9 +71,7 @@ pub use handlers::{
     set_active_llm, setup_extension, start_codex_login, start_nearai_login, stream_events,
     stream_events_ws, test_llm_connection, upsert_llm_provider,
 };
-#[cfg(feature = "webui-v2-beta")]
 pub use router::{
     WebUiV2RouteOptions, WebUiV2State, webui_v2_router, webui_v2_router_with_options,
 };
-#[cfg(feature = "webui-v2-beta")]
 pub use schema::{WebChatV2Event, WebChatV2EventFrame};

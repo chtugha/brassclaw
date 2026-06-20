@@ -55,7 +55,7 @@ mod local_runtime_profile;
 mod manual_token_flow;
 mod mcp;
 mod mcp_discovery;
-#[cfg(all(feature = "root-llm-provider", feature = "webui-v2-beta"))]
+#[cfg(feature = "root-llm-provider")]
 mod nearai_login_serve;
 mod nearai_mcp;
 mod notion_oauth;
@@ -66,7 +66,6 @@ mod oauth_provider_client;
 mod product_auth_durable;
 mod product_auth_providers;
 mod product_auth_runtime_credentials;
-#[cfg(feature = "webui-v2-beta")]
 mod product_auth_serve;
 mod product_live_adapters;
 #[cfg(any(feature = "libsql", feature = "postgres"))]
@@ -116,16 +115,11 @@ mod trigger_poller;
 mod trigger_poller_trusted_submit;
 mod web_access;
 mod webui;
-#[cfg(feature = "webui-v2-beta")]
 mod webui_body_limit;
 mod webui_extension_credentials;
-#[cfg(feature = "webui-v2-beta")]
 mod webui_rate_limit;
-#[cfg(feature = "webui-v2-beta")]
 mod webui_route_match;
-#[cfg(feature = "webui-v2-beta")]
 mod webui_serve;
-#[cfg(feature = "webui-v2-beta")]
 mod webui_ws_origin;
 
 pub use auth::{
@@ -153,7 +147,6 @@ pub use hooks::{
     tenant_extension_root,
 };
 pub use input::{OAuthClientConfig, RebornBuildInput, RebornRuntimeProcessBinding};
-#[cfg(feature = "webui-v2-beta")]
 pub use brassclaw_auth::GoogleOAuthRouteConfig;
 pub use brassclaw_product_workflow::{
     LifecycleExtensionSource, LifecycleExtensionSummary, LifecyclePhase, LifecycleProductPayload,
@@ -278,9 +271,7 @@ pub use slack_serve::{
     slack_events_route_mount,
 };
 pub use webui::{RebornWebuiBundle, build_webui_services};
-#[cfg(feature = "webui-v2-beta")]
 pub use webui_rate_limit::RateLimitConfigError;
-#[cfg(feature = "webui-v2-beta")]
 pub use webui_serve::{
     PublicRouteDrain, PublicRouteDrains, PublicRouteMount, WebuiAuthenticator, WebuiServeConfig,
     WebuiServeConfigError, WebuiServeError, WebuiV2App, webui_v2_app, webui_v2_app_with_lifecycle,
@@ -291,7 +282,6 @@ pub use webui_serve::{
 /// signature mentions a host-api identity). Kept narrow on purpose —
 /// the composition CLAUDE.md says "Expose facade-shaped handles only";
 /// these four newtypes are the WebUI gateway's host-identity facade.
-#[cfg(feature = "webui-v2-beta")]
 pub mod host_api {
     pub use brassclaw_host_api::{AgentId, ProjectId, TenantId, UserId};
 }
@@ -303,14 +293,12 @@ pub mod host_api {
 /// boundary forbids that). The store is a reborn-owned repository;
 /// [`open_local_trigger_access_store`] opens it so the libSQL substrate handle
 /// stays private to this facade and callers never construct one.
-#[cfg(feature = "webui-v2-beta")]
 pub use brassclaw_reborn::local_trigger_access::{
     LocalTriggerAccessReconciliation, LocalTriggerAccessRole, LocalTriggerAccessSeed,
     LocalTriggerAccessSource, RebornLibSqlLocalTriggerAccessStore,
     RebornLocalTriggerAccessStoreError,
 };
 
-#[cfg(feature = "webui-v2-beta")]
 #[async_trait::async_trait]
 impl runtime_input::TriggerFireAccessChecker for RebornLibSqlLocalTriggerAccessStore {
     async fn check_trigger_fire_access(
@@ -350,7 +338,6 @@ impl runtime_input::TriggerFireAccessChecker for RebornLibSqlLocalTriggerAccessS
 /// `brassclaw_reborn_identity` directly. The concrete filesystem-backed store
 /// stays private to this composition layer (composition CLAUDE.md: "keep
 /// lower substrate handles private").
-#[cfg(feature = "webui-v2-beta")]
 pub use brassclaw_reborn_identity::{
     ExternalSubjectId, IdentityKeyError, ProviderInstanceId, ProviderKind, RebornIdentityError,
     RebornIdentityResolver, ResolveExternalIdentity, SurfaceKind,
@@ -366,7 +353,7 @@ pub use brassclaw_reborn_identity::{
 /// function exists only so tests (and downstream integration crates via
 /// `test-support`) can build a resolver without standing up a full runtime.
 /// Gated so it ships zero bytes in production binaries.
-#[cfg(all(feature = "webui-v2-beta", any(test, feature = "test-support")))]
+#[cfg(any(test, feature = "test-support"))]
 pub fn open_reborn_identity_resolver(
     tenant_id: &brassclaw_host_api::TenantId,
 ) -> std::sync::Arc<dyn RebornIdentityResolver> {
@@ -398,7 +385,6 @@ pub fn open_reborn_identity_resolver(
 /// Open the reborn-owned local trigger access store on the substrate DB at
 /// `path`, creating the parent directory and running its idempotent
 /// migrations.
-#[cfg(feature = "webui-v2-beta")]
 pub async fn open_local_trigger_access_store(
     path: &std::path::Path,
 ) -> Result<std::sync::Arc<RebornLibSqlLocalTriggerAccessStore>, RebornLocalTriggerAccessStoreError>
@@ -418,7 +404,7 @@ pub async fn open_local_trigger_access_store(
     ))
 }
 
-#[cfg(all(test, feature = "webui-v2-beta"))]
+#[cfg(test)]
 mod webui_user_access_checker_tests {
     use super::*;
     use crate::runtime_input::{

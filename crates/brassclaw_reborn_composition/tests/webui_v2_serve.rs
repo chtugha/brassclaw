@@ -9,7 +9,6 @@
 //! facade is mocked so the regression target stays the gateway-layer
 //! composition.
 
-#![cfg(feature = "webui-v2-beta")]
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

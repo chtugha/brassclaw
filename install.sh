@@ -5,7 +5,7 @@ set -euo pipefail
 # Supports both fresh installation and updates
 # Preserves configuration and database during updates
 
-VERSION="0.29.4"
+VERSION="0.29.5"
 GITHUB_REPO="chtugha/brassclaw"
 BINARY_NAME="brassclaw-reborn"
 INSTALL_DIR="/usr/local/bin"

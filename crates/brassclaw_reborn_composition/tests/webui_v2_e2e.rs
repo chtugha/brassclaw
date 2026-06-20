@@ -23,7 +23,7 @@
 //! PR with proper investigation of the projection adapter's drain
 //! semantics.
 
-#![cfg(all(feature = "webui-v2-beta", feature = "test-support"))]
+#![cfg(feature = "test-support")]
 
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};

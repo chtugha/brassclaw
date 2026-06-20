@@ -75,7 +75,7 @@ export CXX=clang++
 export RUSTFLAGS=""
 ./scripts/build-wasm-extensions.sh --first-party
 export RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=mold"
-cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn --features webui-v2-beta
+cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn 
 ln -sf "$BRASSCLAW_DIR/target/release/brassclaw-reborn" /usr/local/bin/brassclaw-reborn
 echo "  Done."
 

@@ -29,7 +29,7 @@ Successfully cross-compiled brassclaw-reborn for Linux AMD64 from macOS using th
 
 ### Build Command
 ```bash
-cargo build --release --target x86_64-unknown-linux-musl -p brassclaw_reborn_cli --features webui-v2-beta
+cargo build --release --target x86_64-unknown-linux-musl -p brassclaw_reborn_cli 
 ```
 
 ### Linker Configuration

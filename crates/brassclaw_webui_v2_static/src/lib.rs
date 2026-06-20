@@ -14,16 +14,8 @@
 //! `/v2`. Bearer auth, CORS, body limits, and rate limits stay in the
 //! composition middleware stack — this crate only emits asset bytes
 //! and substitutes a per-request CSP nonce into the SPA shell.
-//!
-//! Off by default; compile in with the `webui-v2-beta` feature.
 
-#![cfg_attr(not(feature = "webui-v2-beta"), allow(dead_code))]
-
-#[cfg(feature = "webui-v2-beta")]
 mod assets;
-
-#[cfg(feature = "webui-v2-beta")]
 mod router;
 
-#[cfg(feature = "webui-v2-beta")]
 pub use router::{mount_at_prefix, serve_root, serve_wildcard, static_router};

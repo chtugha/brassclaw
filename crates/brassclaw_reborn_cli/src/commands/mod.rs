@@ -11,17 +11,12 @@ pub(crate) mod models;
 pub(crate) mod profile;
 pub(crate) mod repl;
 pub(crate) mod run;
-#[cfg(feature = "webui-v2-beta")]
 pub(crate) mod serve;
-#[cfg(feature = "webui-v2-beta")]
 pub(crate) mod serve_slack;
-#[cfg(feature = "webui-v2-beta")]
 pub(crate) mod serve_sso;
 pub(crate) mod skills;
 pub(crate) mod traces;
-#[cfg(feature = "webui-v2-beta")]
 pub(crate) mod user_directory;
-#[cfg(feature = "webui-v2-beta")]
 pub(crate) mod webui_auth;
 
 #[derive(Debug, Subcommand)]
@@ -48,11 +43,7 @@ pub(crate) enum Command {
     Repl(repl::ReplCommand),
     /// Initialize the minimal Reborn runtime shell and exit.
     Run(run::RunCommand),
-    /// Start the Reborn WebUI service. Available only when the binary
-    /// is built with the `webui-v2-beta` Cargo feature; off by default
-    /// because the beta HTTP/auth gateway requires explicit opt-in
-    /// before being linked into a production binary.
-    #[cfg(feature = "webui-v2-beta")]
+    /// Start the Reborn WebUI service.
     Serve(serve::ServeCommand),
     /// Inspect configured Reborn skills.
     Skills(skills::SkillsCommand),
@@ -84,7 +75,6 @@ impl Command {
             Self::Run(command) => {
                 command.execute(crate::context::RebornCliContext::resolve_from_env()?)
             }
-            #[cfg(feature = "webui-v2-beta")]
             Self::Serve(command) => {
                 command.execute(crate::context::RebornCliContext::resolve_from_env()?)
             }

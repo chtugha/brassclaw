@@ -1,6 +1,5 @@
 //! Caller-level tests for Reborn WebUI v2 product-auth OAuth routes.
 
-#![cfg(feature = "webui-v2-beta")]
 
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};

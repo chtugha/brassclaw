@@ -25,32 +25,15 @@ default = ["root-llm-provider"]
 root-llm-provider = [
     "brassclaw_reborn_composition/root-llm-provider",
 ]
-# Compile in the WebChat v2 beta HTTP gateway subcommand
-# (`brassclaw-reborn serve`). Off by default so a default binary build
-# does not link the auth/HTTP middleware stack at all — production
-# binaries that genuinely expose v2 over HTTP must opt in. Pulls in
-# `webui-v2-beta` on the composition crate plus the ingress crate
-# that owns the serve loop. Also enables the WebChat v2 SSO login
-# surface (Google / GitHub OAuth): the CLI reads provider env config
-# (`commands/serve_sso.rs`) and hands it to the ingress crate's
-# `build_signed_session_login`, which owns the stateless HMAC-signed
-# session store — so the login surface works in a normal build with no
-# dev-only feature required.
-webui-v2-beta = [
-    "brassclaw_reborn_composition/webui-v2-beta",
-    "dep:brassclaw_reborn_webui_ingress",
-    "dep:async-trait",
-]
 # Compile in the Slack Events API host-beta mount for `brassclaw-reborn serve`.
 # Still requires `[slack].enabled = true` at runtime before the route is
 # mounted; ambient Slack env vars alone do not enable it.
 slack-v2-host-beta = [
-    "webui-v2-beta",
     "brassclaw_reborn_composition/slack-v2-host-beta",
 ]
 [dependencies]
 anyhow = "1"
-async-trait = { version = "0.1", optional = true }
+async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4.3"
 clap = { version = "4", features = ["derive", "env"] }
@@ -59,7 +42,7 @@ dotenvy = "0.15"
 brassclaw_reborn_composition = { path = "../brassclaw_reborn_composition", version = "0.1.0" }
 brassclaw_reborn_config = { path = "../brassclaw_reborn_config", version = "0.1.0" }
 brassclaw_reborn_traces = { path = "../brassclaw_reborn_traces", version = "0.1.0" }
-brassclaw_reborn_webui_ingress = { path = "../brassclaw_reborn_webui_ingress", version = "0.1.0", optional = true }
+brassclaw_reborn_webui_ingress = { path = "../brassclaw_reborn_webui_ingress", version = "0.1.0" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls-native-roots", "stream"] }
 secrecy = "0.10"
 serde = { version = "1", features = ["derive"] }

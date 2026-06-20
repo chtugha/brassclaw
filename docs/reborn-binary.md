@@ -7,10 +7,10 @@ This binary is available as the workspace package `brassclaw_reborn_cli` and bui
 ## Build
 
 ```bash
-cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn --features webui-v2-beta
+cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn 
 ```
 
-Without `--features webui-v2-beta`, the binary builds without the embedded WebUI v2 assets. The `serve` command still starts but the `/v2` route returns a placeholder.
+Without ``, the binary builds without the embedded WebUI v2 assets. The `serve` command still starts but the `/v2` route returns a placeholder.
 
 ## Current status
 
@@ -323,7 +323,7 @@ brassclaw-reborn doctor
 
 ## WebUI v2
 
-WebUI v2 is a React SPA served at `/v2` when the binary is built with `--features webui-v2-beta`.
+WebUI v2 is a React SPA served at `/v2` when the binary is built with ``.
 
 Start the server:
 

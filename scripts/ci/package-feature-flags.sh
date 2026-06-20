@@ -8,7 +8,7 @@ fi
 
 case "$1" in
   brassclaw_reborn_cli)
-    printf '%s\n' "--features webui-v2-beta,slack-v2-host-beta"
+    printf '%s\n' "--features slack-v2-host-beta"
     ;;
   brassclaw_product_adapters)
     printf '%s\n' "--features test-support,host-auth-mint"
@@ -20,7 +20,7 @@ case "$1" in
     printf '%s\n' "--features libsql"
     ;;
   brassclaw_reborn_composition)
-    printf '%s\n' "--features test-support,webui-v2-beta,slack-v2-host-beta,libsql"
+    printf '%s\n' "--features test-support,slack-v2-host-beta,libsql"
     ;;
   brassclaw_reborn)
     printf '%s\n' "--features root-llm-provider,libsql-secrets,libsql-restart-tests,webui-user-store"
@@ -30,9 +30,6 @@ case "$1" in
     ;;
   brassclaw_reborn_webui_ingress)
     printf '%s\n' "--features dev-in-memory-session"
-    ;;
-  brassclaw_webui_v2 | brassclaw_webui_v2_static)
-    printf '%s\n' "--features webui-v2-beta"
     ;;
   *)
     ;;

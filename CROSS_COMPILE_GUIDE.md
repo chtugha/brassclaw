@@ -24,7 +24,7 @@ EOF
 ### Build Command
 
 ```bash
-cargo build --release --target x86_64-unknown-linux-musl -p brassclaw_reborn_cli --features webui-v2-beta
+cargo build --release --target x86_64-unknown-linux-musl -p brassclaw_reborn_cli 
 ```
 
 ### Output Location
@@ -57,7 +57,7 @@ If Docker is available, you can use the `cross` tool:
 cargo install cross
 
 # Build for Linux AMD64
-cross build --release --target x86_64-unknown-linux-gnu -p brassclaw_reborn_cli --features webui-v2-beta
+cross build --release --target x86_64-unknown-linux-gnu -p brassclaw_reborn_cli 
 ```
 
 ## Supported Targets

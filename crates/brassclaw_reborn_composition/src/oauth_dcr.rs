@@ -1063,7 +1063,6 @@ impl DcrOAuthCallbackState {
     }
 }
 
-#[cfg(any(test, feature = "webui-v2-beta"))]
 impl DcrOAuthCallbackState {
     pub(crate) fn has_prefix(raw: &str) -> bool {
         raw.starts_with(Self::PREFIX)

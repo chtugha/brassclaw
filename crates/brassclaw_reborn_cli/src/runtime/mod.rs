@@ -4,9 +4,9 @@ use std::time::Duration;
 use std::{future::Future, thread};
 
 use anyhow::Context;
-#[cfg(feature = "webui-v2-beta")]
+
 use brassclaw_reborn_composition::host_api::{AgentId, TenantId, UserId};
-#[cfg(feature = "webui-v2-beta")]
+
 use brassclaw_reborn_composition::{
     LocalTriggerAccessReconciliation, LocalTriggerAccessRole, LocalTriggerAccessSource,
     open_local_trigger_access_store,
@@ -107,13 +107,13 @@ async fn with_run_local_trigger_fire_access_checker(
     runtime_input: RebornRuntimeInput,
     config: &RebornBootConfig,
 ) -> anyhow::Result<RebornRuntimeInput> {
-    #[cfg(not(feature = "webui-v2-beta"))]
+    
     {
         let _ = config;
         return Ok(runtime_input);
     }
 
-    #[cfg(feature = "webui-v2-beta")]
+    
     {
         if !runtime_input.trigger_poller.enabled {
             return Ok(runtime_input);
@@ -684,12 +684,12 @@ mod tests {
     use std::collections::HashMap;
 
     use brassclaw_reborn_composition::RebornCompositionProfile;
-    #[cfg(feature = "webui-v2-beta")]
+    
     use brassclaw_reborn_composition::{LocalTriggerAccessRole, LocalTriggerAccessSource};
     use brassclaw_reborn_config::RebornBootConfig;
 
     use super::test_env::{EnvGuard, lock_trigger_env};
-    #[cfg(feature = "webui-v2-beta")]
+    
     use super::with_run_local_trigger_fire_access_checker;
     use super::{
         RuntimeInputCaller, RuntimeInputOptions, block_on_cli, build_runtime_input,
@@ -909,7 +909,7 @@ enabled = true
         );
     }
 
-    #[cfg(feature = "webui-v2-beta")]
+    
     #[allow(clippy::await_holding_lock, reason = "serializes env guards")]
     #[tokio::test]
     async fn run_trigger_poller_bootstrap_seeds_local_access_checker() {

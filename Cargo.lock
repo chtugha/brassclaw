@@ -2772,7 +2772,6 @@ dependencies = [
  "brassclaw_product_workflow",
  "brassclaw_threads",
  "brassclaw_turns",
- "brassclaw_webui_v2",
  "chrono",
  "futures",
  "http 1.4.1",
@@ -2790,7 +2789,6 @@ name = "brassclaw_webui_v2_static"
 version = "0.1.0"
 dependencies = [
  "axum 0.8.9",
- "brassclaw_webui_v2_static",
  "http 1.4.1",
  "http-body-util",
  "rand 0.8.6",

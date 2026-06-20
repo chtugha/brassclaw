@@ -113,7 +113,7 @@ When a task touches only `crates/` and makes no reference to v1 behavior, do not
 
 ```bash
 # Build the Reborn binary with WebUI v2
-cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn --features webui-v2-beta
+cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn 
 
 # Format
 cargo fmt

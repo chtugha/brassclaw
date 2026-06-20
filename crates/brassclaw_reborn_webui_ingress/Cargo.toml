@@ -28,7 +28,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 hex = "0.4.3"
 hmac = "0.12"
 brassclaw_host_api = { path = "../brassclaw_host_api" }
-brassclaw_reborn_composition = { path = "../brassclaw_reborn_composition", features = ["webui-v2-beta"] }
+brassclaw_reborn_composition = { path = "../brassclaw_reborn_composition" }
 jsonwebtoken = "9"
 parking_lot = "0.12"
 rand = "0.8"

@@ -566,7 +566,7 @@ fn approval_turn_locator_unavailable() -> brassclaw_product_workflow::ProductWor
 /// into the filesystem-backed store so an existing SSO user keeps their
 /// `UserId` across upgrade. Idempotent (bind re-points to the same user) and
 /// a no-op when the legacy table is absent (fresh installs).
-#[cfg(feature = "webui-v2-beta")]
+
 async fn fold_legacy_webui_identities<R>(
     db: &libsql::Database,
     tenant_id: &TenantId,
@@ -706,7 +706,7 @@ impl RebornRuntime {
     /// [`crate::webui_serve::WebuiServeConfig::with_public_route_mount`]. Built
     /// from the runtime's private session/reload/boot so those stay internal.
     /// `None` when no LLM seam or boot config was wired.
-    #[cfg(all(feature = "root-llm-provider", feature = "webui-v2-beta"))]
+    #[cfg(feature = "root-llm-provider")]
     pub fn nearai_login_callback_mount(&self) -> Option<crate::webui_serve::PublicRouteMount> {
         let boot = self.boot.clone()?;
         let session = self.webui_llm_session()?;
@@ -782,7 +782,7 @@ impl RebornRuntime {
     /// Returns `None` when the runtime was built without a local-runtime
     /// substrate (production-shape profiles not yet wired), so callers fail
     /// closed.
-    #[cfg(feature = "webui-v2-beta")]
+    
     pub async fn open_reborn_identity_resolver(
         &self,
         tenant_id: &TenantId,
@@ -4725,7 +4725,7 @@ mod tests {
         runtime.shutdown().await.expect("runtime shutdown");
     }
 
-    #[cfg(feature = "webui-v2-beta")]
+    
     #[tokio::test]
     async fn webui_route_rejects_list_automations_without_agent_binding() {
         use axum::body::Body;
@@ -4784,7 +4784,7 @@ mod tests {
         runtime.shutdown().await.expect("runtime shutdown");
     }
 
-    #[cfg(feature = "webui-v2-beta")]
+    
     #[tokio::test]
     async fn open_reborn_identity_resolver_migrates_legacy_webui_identities_through_runtime() {
         use brassclaw_reborn_identity::{
@@ -4880,7 +4880,7 @@ mod tests {
         runtime.shutdown().await.expect("runtime shutdown");
     }
 
-    #[cfg(feature = "webui-v2-beta")]
+    
     #[tokio::test]
     async fn open_reborn_identity_resolver_migrates_legacy_verified_email_linking() {
         use brassclaw_reborn_identity::{

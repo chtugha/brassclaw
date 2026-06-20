@@ -11,7 +11,7 @@ cargo test                                                             # unit te
 cargo test --features integration                                      # + PostgreSQL tests
 
 # Build the Reborn binary with WebUI v2
-cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn --features webui-v2-beta
+cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn 
 
 # Run with logging
 BRASSCLAW_REBORN_LOG=brassclaw=debug cargo run -p brassclaw_reborn_cli --bin brassclaw-reborn

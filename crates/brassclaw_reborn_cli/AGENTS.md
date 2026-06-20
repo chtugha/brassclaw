@@ -39,9 +39,9 @@ auth middleware, or HTTP/SSE/WS stack at all. Producing a binary that
 exposes the v2 surface is an explicit opt-in:
 
 ```bash
-cargo install --path crates/brassclaw_reborn_cli --features webui-v2-beta
+cargo install --path crates/brassclaw_reborn_cli 
 # or, from a workspace checkout
-cargo build -p brassclaw_reborn_cli --features webui-v2-beta --release
+cargo build -p brassclaw_reborn_cli  --release
 ```
 
 When the feature is off, `brassclaw-reborn --help` does not list `serve`

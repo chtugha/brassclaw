@@ -41,6 +41,6 @@
 
 ## Validation
 
-- Fast: `cargo test -p brassclaw_webui_v2 --features webui-v2-beta`
+- Fast: `cargo test -p brassclaw_webui_v2 `
 - Lint: `cargo clippy -p brassclaw_webui_v2 --all-features --tests -- -D warnings`
 - Boundary: `cargo test -p brassclaw_architecture reborn_crate_dependency_boundaries_hold`
