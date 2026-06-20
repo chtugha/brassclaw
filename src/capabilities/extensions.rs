@@ -511,7 +511,7 @@ pub async fn execute_tool_upgrade(
     // V1 - DISABLED - upgrade() expects &str not Option<&str>
     let result = ctx
         .manager
-        .upgrade(name.as_deref().unwrap_or(""), &ctx.user_id)
+        .upgrade(name.unwrap_or(""), &ctx.user_id)
         .await
         .map_err(|e| ExtensionsCapabilityError::operation(e.to_string()))?;
 

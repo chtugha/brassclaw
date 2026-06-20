@@ -387,6 +387,7 @@ fn append_chain_install_report_fields(output: &mut Value, report: &ChainInstallR
     }
 }
 
+#[allow(dead_code)]
 fn build_skill_install_output(installed_name: &str, report: &ChainInstallReport) -> Value {
     let status = if report.has_warnings() {
         "installed_with_warnings"
@@ -716,11 +717,11 @@ pub async fn execute_skill_install(
         )
     };
 
-    return Err(SkillsCapabilityError::operation("V1 code disabled - skill installation not supported".to_string()));
+    Err(SkillsCapabilityError::operation("V1 code disabled - skill installation not supported".to_string()))
     
-    #[allow(unreachable_code)]
-    let (skill_name, loaded_skill): (String, brassclaw_skills::LoadedSkill) = unreachable!();
     /*
+    // V1 - DISABLED - All code below is unreachable after the return statement above
+    
     let (skill_name, loaded_skill) =
         brassclaw_skills::registry::SkillRegistry::prepare_install_bundle_to_disk(
             &user_dir,
@@ -731,7 +732,6 @@ pub async fn execute_skill_install(
         )
         .await
         .map_err(|e| SkillsCapabilityError::operation(e.to_string()))?;
-    */
 
     enum CommitResult {
         Installed(String, Vec<String>),
@@ -799,6 +799,7 @@ pub async fn execute_skill_install(
     };
 
     Ok(build_skill_install_output(&installed_name, &chain_report))
+    */
 }
 
 pub async fn execute_skill_remove(

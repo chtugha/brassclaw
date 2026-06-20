@@ -58,11 +58,10 @@ mod path_utils_stub {
             path.to_path_buf()
         };
         
-        if let Some(base) = base {
-            if !resolved.starts_with(base) {
+        if let Some(base) = base
+            && !resolved.starts_with(base) {
                 return Err(format!("path escapes base directory: {}", raw));
             }
-        }
         
         Ok(resolved)
     }
@@ -132,22 +131,12 @@ impl NetworkCapabilityError {
     }
 }
 
+#[derive(Default)]
 pub struct NetworkContext {
     pub secrets_store: Option<Arc<dyn SecretsStore + Send + Sync>>,
     pub role_lookup: Option<Arc<dyn UserStore>>,
     pub user_id: String,
     pub http_interceptor: Option<Arc<dyn brassclaw_llm::recording::HttpInterceptor>>,
-}
-
-impl Default for NetworkContext {
-    fn default() -> Self {
-        Self {
-            secrets_store: None,
-            role_lookup: None,
-            user_id: String::new(),
-            http_interceptor: None,
-        }
-    }
 }
 
 fn resource_profile() -> Option<ResourceProfile> {

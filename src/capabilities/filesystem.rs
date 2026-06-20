@@ -488,7 +488,7 @@ fn is_workspace_path(path: &str) -> bool {
 fn is_excluded_path(path: &Path) -> bool {
     path.components().any(|c| {
         matches!(c, std::path::Component::Normal(name)
-            if name.to_str().map_or(false, |s| DEFAULT_EXCLUDED_DIRS.contains(&s)))
+            if name.to_str().is_some_and(|s| DEFAULT_EXCLUDED_DIRS.contains(&s)))
     })
 }
 

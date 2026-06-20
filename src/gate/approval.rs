@@ -14,6 +14,7 @@ use brassclaw_engine::gate::{ExecutionGate, ExecutionMode, GateContext, GateDeci
 // ============================================================================
 
 /// Stub for deleted V1 ToolRegistry
+#[derive(Default)]
 pub struct ToolRegistry;
 
 impl ToolRegistry {

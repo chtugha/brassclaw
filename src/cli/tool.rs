@@ -1066,7 +1066,6 @@ async fn combine_provider_scopes(
 //
 //     Ok(())
 // }
-
 /// Manual token entry flow.
 async fn auth_tool_manual(
     _store: &(dyn SecretsStore + Send + Sync),
@@ -1210,7 +1209,6 @@ fn read_hidden_input() -> anyhow::Result<String> {
 //         .await
 //         .map_err(|e| anyhow::anyhow!("{}", e))
 // }
-
 /// V1 - deleted: Save token to secrets store
 // async fn save_token(
 //     store: &(dyn SecretsStore + Send + Sync),
@@ -1233,7 +1231,6 @@ fn read_hidden_input() -> anyhow::Result<String> {
 //     .await
 //     .map_err(|e| anyhow::anyhow!("{}", e))
 // }
-
 /// Print success message.
 fn print_success(display_name: &str) {
     println!();
@@ -1261,7 +1258,7 @@ async fn setup_tool(name: String, dir: Option<PathBuf>, _user_id: String) -> any
     let caps = CapabilitiesFile::from_json(&content)
         .map_err(|e| anyhow::anyhow!("Invalid capabilities file: {}", e))?;
 
-    let _setup = caps.setup.ok_or_else(|| {
+    caps.setup.ok_or_else(|| {
         anyhow::anyhow!(
             "Tool '{}' has no setup configuration.\n\
              The tool may not require setup, or setup is not defined.\n\

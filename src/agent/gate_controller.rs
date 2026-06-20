@@ -103,21 +103,16 @@ impl GateController for AutoApprovingGateController {
 ///
 /// Allows switching between different gate controller behaviors
 /// for testing and development.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GateMode {
     /// Auto-approve all requests (P0.3 default).
+    #[default]
     AutoApprove,
     /// Cancel all requests (P0.2 behavior).
     Cancel,
     /// Real approval flow (future: P0.4+).
     #[allow(dead_code)]
     Real,
-}
-
-impl Default for GateMode {
-    fn default() -> Self {
-        Self::AutoApprove
-    }
 }
 
 impl GateMode {

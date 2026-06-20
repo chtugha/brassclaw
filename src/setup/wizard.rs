@@ -3750,6 +3750,7 @@ fn collect_wasm_channel_runtime_overrides_for_channel(
     result
 }
 
+#[cfg(test)]
 fn merge_wasm_channel_runtime_overrides_for_channel(
     stored: &HashMap<String, serde_json::Value>,
     channel_name: &str,

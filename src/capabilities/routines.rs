@@ -854,11 +854,10 @@ pub async fn execute_routine_create(
     if matches!(
         routine.trigger,
         Trigger::Event { .. } | Trigger::SystemEvent { .. }
-    ) {
-        if let Some(engine) = ctx.engine.read().await.as_ref() {
+    )
+        && let Some(engine) = ctx.engine.read().await.as_ref() {
             engine.refresh_event_cache().await;
         }
-    }
 
     let verification = verification_result_payload(&routine, false);
     Ok(json!({

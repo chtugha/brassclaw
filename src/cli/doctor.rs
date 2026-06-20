@@ -542,7 +542,7 @@ async fn check_mcp_config() -> CheckResult {
     }
 
     let invalid: Vec<String> = Vec::new();
-    for (_name, _server) in &servers {
+    for _server in servers.values() {
         // V1 - DISABLED - validate() method may not exist on McpServerConfig
         // if let Err(e) = server.validate() {
         //     invalid.push(format!("{}: {}", name, e));

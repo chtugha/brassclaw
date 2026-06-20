@@ -416,7 +416,7 @@ impl CapabilityDispatcher for BuiltinCapabilityDispatcher {
             id: request.resource_reservation
                 .as_ref()
                 .map(|r| r.id)
-                .unwrap_or_else(brassclaw_host_api::ResourceReservationId::new),
+                .unwrap_or_default(),
             scope: request.scope.clone(),
             status: brassclaw_host_api::ReservationStatus::Reconciled,
             estimate: request.estimate.clone(),

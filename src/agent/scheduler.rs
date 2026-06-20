@@ -673,7 +673,7 @@ impl Scheduler {
 
         // P0.2: Populate action inventory snapshots from EffectExecutor
         // This provides the context with available actions for this execution
-        match executor.available_actions(&[lease.clone()], &thread_context).await {
+        match executor.available_actions(std::slice::from_ref(&lease), &thread_context).await {
             Ok(actions) => {
                 tracing::debug!(
                     job_id = %job_id,
@@ -693,7 +693,7 @@ impl Scheduler {
         }
 
         // P0.2: Populate full action inventory (V2) if available
-        match executor.available_action_inventory(&[lease.clone()], &thread_context).await {
+        match executor.available_action_inventory(std::slice::from_ref(&lease), &thread_context).await {
             Ok(inventory) => {
                 tracing::debug!(
                     job_id = %job_id,

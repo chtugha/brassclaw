@@ -1,0 +1,11 @@
+   Compiling brassclaw v0.29.7 (/Volumes/SSDE/brassclaw)
+warning: function `merge_wasm_channel_runtime_overrides_for_channel` is never used
+    --> src/setup/wizard.rs:3753:4
+     |
+3753 | fn merge_wasm_channel_runtime_overrides_for_channel(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `brassclaw` (lib) generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 16.39s
