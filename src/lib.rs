@@ -81,7 +81,7 @@ pub mod service;
 pub mod settings;
 pub mod setup;
 pub mod skills;
-pub mod tools; // V1 tools stub module - provides compatibility types
+// pub mod tools; // V1 tools stub module - DELETED - V2 migration complete
 pub mod tenant;
 pub mod timezone;
 pub mod trace_client;

@@ -575,20 +575,7 @@ impl SystemScope {
         Workspace::new_with_db(user_id, Arc::clone(&self.inner))
     }
 
-    /// Stub: Load admin tool policy (always returns None).
-    pub async fn get_admin_tool_policy(
-        &self,
-    ) -> Result<Option<crate::tools::permissions::AdminToolPolicy>, DatabaseError> {
-        Ok(None)
-    }
-
-    /// Stub: Set admin tool policy (no-op).
-    pub async fn set_admin_tool_policy(
-        &self,
-        _policy: &crate::tools::permissions::AdminToolPolicy,
-    ) -> Result<(), DatabaseError> {
-        Ok(())
-    }
+    // V1 admin tool policy methods removed - V2 uses brassclaw_host_api runtime policies
 
     /// Read a user's role for system-process authorization decisions.
     pub async fn get_user_role(

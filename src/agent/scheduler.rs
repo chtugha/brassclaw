@@ -148,9 +148,7 @@ pub struct Scheduler {
     /// model-facing tool list filter applies to background jobs too.
     /// `None` in tests / before `Config::with_runtime_overrides` runs.
     runtime_policy: Option<brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy>,
-    /// V1 tool registry (stub for V2 migration)
-    /// TODO: Remove after V2 migration complete
-    tools: Arc<crate::tools::ToolRegistry>,
+    // V1 tool registry removed - V2 migration complete
     /// Running jobs (main LLM-driven jobs).
     jobs: Arc<RwLock<HashMap<Uuid, ScheduledJob>>>,
     /// Running sub-tasks (tool executions, background tasks).
@@ -171,7 +169,7 @@ impl Scheduler {
             context_manager,
             llm,
             safety,
-            tools: Arc::new(crate::tools::ToolRegistry::new()), // V1 - stub for V2 migration
+            // V1 tools field removed - V2 migration complete
             effect_executor: deps.effect_executor,
             extension_manager: deps.extension_manager,
             store: deps.store,
@@ -488,7 +486,7 @@ impl Scheduler {
                 tool_name,
                 params,
             } => {
-                let tools = self.tools.clone();
+                // V1 tools removed - V2 migration complete
                 let effect_executor = self.effect_executor.clone();
                 let context_manager = self.context_manager.clone();
                 let safety = self.safety.clone();
@@ -497,7 +495,6 @@ impl Scheduler {
                 // are used in autonomous/routine paths (currently only used in tests).
                 tokio::spawn(async move {
                     let result = Self::execute_tool_task(
-                        tools,
                         effect_executor,
                         context_manager,
                         safety,
@@ -635,7 +632,7 @@ impl Scheduler {
     /// P0.3: TODO - Integrate approval flow
     #[allow(dead_code)]
     async fn execute_tool_task(
-        _tools: Arc<crate::tools::ToolRegistry>,
+        // V1 _tools parameter removed - V2 migration complete
         effect_executor: Option<Arc<dyn EffectExecutor>>,
         context_manager: Arc<ContextManager>,
         _safety: Arc<SafetyLayer>,

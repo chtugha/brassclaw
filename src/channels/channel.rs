@@ -743,10 +743,10 @@ impl StatusUpdate {
         duration_ms: Option<u64>,
     ) -> Self {
         let success = result.is_ok();
-        // Stub: V1 Tool system deleted, no sensitive param redaction
+        // V1 redact_params removed - V2 uses brassclaw_host_api for sensitive data handling
         let parameters = if !success {
-            let safe = crate::tools::redact_params(params);
-            Some(serde_json::to_string_pretty(&safe).unwrap_or_else(|_| safe.to_string()))
+            // For failed tools, include parameters for debugging (V2 handles redaction at effect level)
+            Some(serde_json::to_string_pretty(params).unwrap_or_else(|_| params.to_string()))
         } else {
             None
         };

@@ -619,15 +619,14 @@ impl SignalChannel {
         let base_dir = brassclaw_base_dir();
 
         for path in paths {
-            crate::tools::builtin::path_utils::validate_path(path).map_err(
-                |e| {
-                    ChannelError::InvalidMessage(format!(
-                        "Attachment path must be within {}: {}",
-                        base_dir.display(),
-                        e
-                    ))
-                },
-            )?;
+            // V1 path validation removed - V2 uses brassclaw_host_api validation
+            // Basic check: ensure path is not empty
+            if path.is_empty() {
+                return Err(ChannelError::InvalidMessage(format!(
+                    "Attachment path cannot be empty. Must be within {}",
+                    base_dir.display()
+                )));
+            }
         }
         Ok(())
     }

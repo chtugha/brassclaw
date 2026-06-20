@@ -1,0 +1,16 @@
+{
+  "name": "brassclaw-webui-v2-tests",
+  "version": "1.0.0",
+  "description": "Playwright tests for BrassClaw WebUI V2",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug"
+  },
+  "keywords": ["playwright", "testing", "brassclaw"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.40.0"
+  }
+}

@@ -297,9 +297,9 @@ pub struct Settings {
     #[serde(default)]
     pub transcription: Option<TranscriptionSettings>,
 
-    /// Per-tool permission overrides (stub: no longer enforced).
-    #[serde(default)]
-    pub tool_permissions: std::collections::HashMap<String, crate::tools::permissions::PermissionState>,
+    /// Per-tool permission overrides - V1 stub removed, V2 uses brassclaw_host_api policies
+    #[serde(default, skip_serializing)]
+    pub tool_permissions: std::collections::HashMap<String, String>, // Changed to String for backward compat
 }
 
 /// Source for the secrets master key.
