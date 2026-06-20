@@ -396,8 +396,13 @@ pub(crate) fn build_services_input_with_options(
 
     let local_dev_root: PathBuf = config.home().path().join("local-dev");
 
-    let workspace_root = std::env::current_dir()
-        .context("failed to resolve current directory for local-dev workspace")?;
+    // Use a safe default workspace location to avoid overlap with skill storage.
+    // Allow override via environment variable for advanced use cases.
+    let workspace_root = if let Ok(custom_workspace) = std::env::var("BRASSCLAW_WORKSPACE_ROOT") {
+        PathBuf::from(custom_workspace)
+    } else {
+        local_dev_root.join("workspace")
+    };
     let profile = effective_profile(config, config_file.as_ref())?;
     let mut services_input = local_runtime_build_input_with_options(
         composition_profile(profile),
