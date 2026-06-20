@@ -12,10 +12,10 @@ use brassclaw_skills::catalog::{SkillCatalog, catalog_entry_is_installed, resolv
 use brassclaw_skills::registry::SkillRegistry;
 
 // ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
+// V2 Skill Fetching
 // ============================================================================
 
-/// Stub for deleted V1 SkillFetchError
+/// Error type for skill fetching operations.
 #[derive(Debug, Clone, thiserror::Error)]
 #[error("{message}")]
 pub struct SkillFetchError {
@@ -27,9 +27,23 @@ impl SkillFetchError {
     pub fn is_missing_dependency(&self) -> bool {
         self.is_missing
     }
+    
+    fn network(msg: impl Into<String>) -> Self {
+        Self {
+            message: msg.into(),
+            is_missing: false,
+        }
+    }
+    
+    fn not_found(msg: impl Into<String>) -> Self {
+        Self {
+            message: msg.into(),
+            is_missing: true,
+        }
+    }
 }
 
-/// Stub for deleted V1 SkillInstallPayload
+/// Payload for skill installation containing the skill content and metadata.
 #[derive(Debug, Clone, Default)]
 pub struct SkillInstallPayload {
     pub skill_md: String,
@@ -37,17 +51,63 @@ pub struct SkillInstallPayload {
     pub install_metadata: Option<serde_json::Value>,
 }
 
-/// Stub for deleted V1 fetch_skill_payload function
+/// Fetch a skill payload from a URL.
+///
+/// This function downloads the skill markdown content from the given URL.
+/// In V2, skills are typically fetched from the skill registry or provided
+/// directly as content.
+///
+/// # Arguments
+/// * `url` - The URL to fetch the skill from (typically a registry URL)
+///
+/// # Returns
+/// * `Ok(SkillInstallPayload)` - The fetched skill content
+/// * `Err(SkillFetchError)` - If the fetch fails (network error, 404, etc.)
 async fn fetch_skill_payload(url: &str) -> Result<SkillInstallPayload, SkillFetchError> {
-    // Minimal stub that returns an error
-    Err(SkillFetchError {
-        message: format!("V1 fetch_skill_payload deleted; cannot fetch from {}", url),
-        is_missing: false,
+    // Create a reqwest client with reasonable timeout
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| SkillFetchError::network(format!("Failed to create HTTP client: {}", e)))?;
+    
+    // Fetch the skill content
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| SkillFetchError::network(format!("Failed to fetch skill from {}: {}", url, e)))?;
+    
+    // Check for 404 (missing skill)
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err(SkillFetchError::not_found(format!("Skill not found at {}", url)));
+    }
+    
+    // Check for other HTTP errors
+    if !response.status().is_success() {
+        return Err(SkillFetchError::network(format!(
+            "HTTP error {} fetching skill from {}",
+            response.status(),
+            url
+        )));
+    }
+    
+    // Read the response body as text
+    let skill_md = response
+        .text()
+        .await
+        .map_err(|e| SkillFetchError::network(format!("Failed to read skill content: {}", e)))?;
+    
+    // V2: Skills are simple markdown files, no extra files or metadata in the payload
+    // (metadata is extracted from the markdown frontmatter during parsing)
+    Ok(SkillInstallPayload {
+        skill_md,
+        extra_files: Vec::new(),
+        install_metadata: None,
     })
 }
 
 // ============================================================================
-// END V1 STUBS
+// END V2 Skill Fetching
 // ============================================================================
 
 pub const PROVIDER_ID: &str = "builtin";

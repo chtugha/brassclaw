@@ -12,51 +12,34 @@ use futures::StreamExt;
 use reqwest::Client;
 use serde_json::{Value, json};
 
-// V1 - deleted: auth module no longer exists
-// use crate::auth::resolve_secret_for_runtime;
 use crate::db::UserStore;
 use crate::secrets::SecretsStore;
 
 // ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
+// V2 HTML-to-Markdown Conversion
 // ============================================================================
 
-/// Stub for deleted V1 SharedCredentialRegistry type
-pub struct SharedCredentialRegistry {
-    // Minimal stub - no fields needed
-}
-
-/// Stub for deleted V1 InjectedCredentials type
-#[derive(Default)]
-pub struct InjectedCredentials {
-    pub headers: HashMap<String, String>,
-    pub query_params: HashMap<String, String>,
-}
-
-impl InjectedCredentials {
-    pub fn empty() -> Self {
-        Self::default()
-    }
-}
-
-/// Stub for deleted V1 inject_credential function
-#[allow(dead_code)]
-fn inject_credential(
-    _injected: &mut InjectedCredentials,
-    _location: &crate::secrets::CredentialLocation,
-    _secret: &str,
-) {
-    // No-op stub - credential injection not supported in V1 stub
-}
-
-/// Stub for deleted V1 convert_html_to_markdown function
+/// Convert HTML to Markdown for better LLM consumption.
+///
+/// **Current Implementation**: Returns HTML as-is (pass-through).
+///
+/// **Future Enhancement**: This could be implemented using a library like
+/// `html2md` or `htmd` to convert HTML responses to Markdown format, which
+/// is more token-efficient and easier for LLMs to process.
+///
+/// The function is only compiled when the `html-to-markdown` feature is enabled.
 #[cfg(feature = "html-to-markdown")]
 fn convert_html_to_markdown(html: &str, _base_url: &str) -> Result<String, String> {
-    // Return HTML as-is - no conversion in V1 stub
+    // TODO: Implement proper HTML-to-Markdown conversion
+    // For now, return HTML as-is (safe fallback)
     Ok(html.to_string())
 }
 
-/// Stub module for deleted V1 path_utils
+// ============================================================================
+// V2 Path Validation (from filesystem.rs pattern)
+// ============================================================================
+
+/// Stub module for path validation (matches filesystem.rs pattern)
 mod path_utils_stub {
     use std::path::{Path, PathBuf};
     
@@ -150,7 +133,6 @@ impl NetworkCapabilityError {
 }
 
 pub struct NetworkContext {
-    pub credential_registry: Option<Arc<SharedCredentialRegistry>>,
     pub secrets_store: Option<Arc<dyn SecretsStore + Send + Sync>>,
     pub role_lookup: Option<Arc<dyn UserStore>>,
     pub user_id: String,
@@ -160,7 +142,6 @@ pub struct NetworkContext {
 impl Default for NetworkContext {
     fn default() -> Self {
         Self {
-            credential_registry: None,
             secrets_store: None,
             role_lookup: None,
             user_id: String::new(),
@@ -688,64 +669,10 @@ pub async fn execute_http(
         .scan_http_request(parsed_url.as_str(), &headers_vec, body_bytes.as_deref())
         .map_err(|e| NetworkCapabilityError::not_authorized(format!("{}", e)))?;
 
-    // V1 - deleted: credential injection logic
-    // #[derive(Clone, Copy, Debug)]
-    // enum MissingReason {
-    //     NotConfigured,
-    //     RefreshFailed,
-    // }
-    // let mut missing_credential: Option<(String, MissingReason)> = None;
-    // if let (Some(registry), Some(store)) = (
-    //     ctx.credential_registry.as_ref(),
-    //     ctx.secrets_store.as_ref(),
-    // ) {
-    //     let cred_host = parsed_url.host_str().unwrap_or("").to_string();
-    //     let cred_path = parsed_url.path();
-    //     let matched: Vec<crate::secrets::CredentialMapping> =
-    //         registry.find_for_url(&cred_host, cred_path);
-    //     let dedup_matched = dedup_credential_mappings(matched);
-    //     for mapping in &dedup_matched {
-    //         let oauth_refresh = registry.oauth_refresh_for_secret(&mapping.secret_name);
-    //         match resolve_secret_for_runtime(
-    //             store.as_ref(),
-    //             &ctx.user_id,
-    //             &mapping.secret_name,
-    //             ctx.role_lookup.as_deref(),
-    //             oauth_refresh.as_ref(),
-    //             crate::auth::DefaultFallback::AdminOnly,
-    //         )
-    //         .await
-    //         {
-    //             Ok(secret) => {
-    //                 let mut injected = InjectedCredentials::empty();
-    //                 inject_credential(&mut injected, &mapping.location, &secret);
-    //                 for (name, value) in &injected.headers {
-    //                     request = request.header(name.as_str(), value.as_str());
-    //                     headers_vec.push((name.clone(), value.clone()));
-    //                 }
-    //                 for (name, value) in &injected.query_params {
-    //                     parsed_url.query_pairs_mut().append_pair(name, value);
-    //                     request = request.query(&[(name.as_str(), value.as_str())]);
-    //                 }
-    //             }
-    //             Err(error) if error.requires_authentication() => {
-    //                 if mapping.optional {
-    //                     continue;
-    //                 }
-    //                 let reason = match error {
-    //                     crate::auth::CredentialResolutionError::RefreshFailed => {
-    //                         MissingReason::RefreshFailed
-    //                     }
-    //                     _ => MissingReason::NotConfigured,
-    //                 };
-    //                 if missing_credential.is_none() {
-    //                     missing_credential = Some((mapping.secret_name.clone(), reason));
-    //                 }
-    //             }
-    //             Err(_) => {}
-    //         }
-    //     }
-    // }
+    // V2: Credential injection removed - V1 feature not migrated to V2
+    // If credential injection is needed in the future, it should be implemented
+    // using the V2 secrets system (ctx.secrets_store) with proper OAuth refresh
+    // support and security controls.
 
     let intercept_req = brassclaw_llm::recording::HttpExchangeRequest {
         method: method_upper,

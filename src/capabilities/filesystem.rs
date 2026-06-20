@@ -15,15 +15,21 @@ use tokio::sync::RwLock;
 use crate::workspace::paths as ws_paths;
 
 // ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
+// V2 Path Validation and Utilities
 // ============================================================================
 
-/// Stub for deleted V1 DEFAULT_EXCLUDED_DIRS constant
+/// Default directories to exclude from recursive operations.
+///
+/// These are common directories that should be skipped during file traversal
+/// operations like grep or glob to avoid performance issues and irrelevant results.
 const DEFAULT_EXCLUDED_DIRS: &[&str] = &[".git", "node_modules", "target"];
 
-/// Stub for deleted V1 normalize_lexical function
+/// Normalize a path lexically without filesystem access.
+///
+/// This function resolves "." and ".." components in a path without touching
+/// the filesystem. It's used for security checks to prevent directory traversal
+/// attacks.
 fn normalize_lexical(path: &Path) -> PathBuf {
-    // Simple lexical normalization without filesystem access
     let mut components = Vec::new();
     for component in path.components() {
         match component {
@@ -39,11 +45,24 @@ fn normalize_lexical(path: &Path) -> PathBuf {
     components.iter().collect()
 }
 
-/// Stub for deleted V1 validate_path function
+/// Validate and resolve a path relative to a base directory.
+///
+/// This function performs security checks to prevent directory traversal attacks:
+/// 1. Rejects empty paths
+/// 2. Resolves relative paths against the base directory
+/// 3. Normalizes the path lexically
+/// 4. Ensures the normalized path doesn't escape the base directory
+///
+/// # Arguments
+/// * `raw` - The raw path string to validate
+/// * `base` - Optional base directory to resolve relative paths against
+///
+/// # Returns
+/// * `Ok(PathBuf)` - The validated and normalized path
+/// * `Err(String)` - Error message if validation fails
 fn validate_path(raw: &str, base: Option<&Path>) -> Result<PathBuf, String> {
     let path = Path::new(raw);
     
-    // Basic validation
     if raw.is_empty() {
         return Err("empty path".to_string());
     }
@@ -70,7 +89,7 @@ fn validate_path(raw: &str, base: Option<&Path>) -> Result<PathBuf, String> {
 }
 
 // ============================================================================
-// END V1 STUBS
+// END V2 Path Validation and Utilities
 // ============================================================================
 
 pub const PROVIDER_ID: &str = "builtin";

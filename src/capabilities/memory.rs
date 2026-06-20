@@ -6,24 +6,46 @@ use brassclaw_host_api::{
     ResourceEstimate, ResourceProfile, RuntimeKind, TrustClass,
 };
 use serde_json::{Value, json};
-// TODO: Extract memory utilities from deleted V1 code
 use crate::workspace::{Workspace, paths};
+
 // ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
+// V2 Path Validation
 // ============================================================================
 
-/// Stub for deleted V1 normalize_workspace_path function
+/// Normalize a workspace path and check for parent directory traversal.
+///
+/// Returns `Some(normalized_path)` if the path is valid (no ".." segments),
+/// or `None` if the path contains parent directory traversal.
+///
+/// This is a simple string-based check that doesn't access the filesystem.
 fn normalize_workspace_path(path: &str) -> Option<String> {
-    Some(path.to_string())
+    // Check for ".." segments which indicate parent directory traversal
+    if path.contains("..") {
+        return None;
+    }
+    
+    // Normalize by removing redundant slashes and "." segments
+    let parts: Vec<&str> = path
+        .split('/')
+        .filter(|p| !p.is_empty() && *p != ".")
+        .collect();
+    
+    Some(parts.join("/"))
 }
 
-/// Stub for deleted V1 is_protected_orchestrator_path function
-fn is_protected_orchestrator_path(_path: &str) -> bool {
-    false
+/// Check if a path is in a protected orchestrator directory.
+///
+/// Protected paths are those under `.system/engine/orchestrator/` or the
+/// legacy `engine/orchestrator/` directory. These paths should only be
+/// modified when orchestrator self-modification is explicitly enabled.
+fn is_protected_orchestrator_path(path: &str) -> bool {
+    let normalized = normalize_workspace_path(path).unwrap_or_default();
+    normalized.starts_with(".system/engine/orchestrator/")
+        || normalized.starts_with("engine/orchestrator/")
 }
 
 // ============================================================================
-// END V1 STUBS
+// END V2 Path Validation
 // ============================================================================
 
 use async_trait::async_trait;

@@ -905,7 +905,8 @@ impl AppBuilder {
         });
 
         let network_ctx = Arc::new(crate::capabilities::network::NetworkContext {
-            credential_registry: None, // TODO: V1 credential registry removed - needs V2 reimplementation
+            // V2: Credential injection removed - V2 uses skill-declared credentials
+            // in SKILL.md frontmatter instead of a central registry
             secrets_store: self.secrets_store.clone(),
             role_lookup: self.db.clone().map(|db| db as Arc<dyn crate::db::UserStore>),
             user_id: self.config.owner_id.clone(),

@@ -10,20 +10,73 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 // ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
+// V2 Path Validation
 // ============================================================================
 
-/// Stub for deleted V1 validate_path function
-#[allow(dead_code)]
-fn validate_path(_path: &str) -> Result<PathBuf, ImagesCapabilityError> {
-    Err(ImagesCapabilityError::input("V1 path validation deleted"))
+/// Validate and resolve a path relative to a base directory.
+///
+/// This function:
+/// 1. Checks for empty paths
+/// 2. Resolves relative paths against the base directory
+/// 3. Normalizes the path lexically
+/// 4. Ensures the resolved path doesn't escape the base directory
+///
+/// Returns the validated absolute path or an error.
+fn validate_path(raw: &str, base: Option<&Path>) -> Result<PathBuf, ImagesCapabilityError> {
+    if raw.is_empty() {
+        return Err(ImagesCapabilityError::input("empty path"));
+    }
+    
+    let path = Path::new(raw);
+    
+    // Resolve relative to base if provided
+    let resolved = if path.is_absolute() {
+        path.to_path_buf()
+    } else if let Some(base) = base {
+        base.join(path)
+    } else {
+        path.to_path_buf()
+    };
+    
+    // Normalize lexically to handle ".." and "." components
+    let normalized = normalize_lexical(&resolved);
+    
+    // If base is provided, ensure the normalized path doesn't escape it
+    if let Some(base) = base {
+        let base_normalized = normalize_lexical(base);
+        if !normalized.starts_with(&base_normalized) {
+            return Err(ImagesCapabilityError::input(format!(
+                "path escapes base directory: {}",
+                raw
+            )));
+        }
+    }
+    
+    Ok(normalized)
+}
+
+/// Normalize a path lexically without filesystem access.
+///
+/// Removes "." components and resolves ".." by popping the previous component.
+fn normalize_lexical(path: &Path) -> PathBuf {
+    let mut components = Vec::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                if !components.is_empty() {
+                    components.pop();
+                }
+            }
+            std::path::Component::CurDir => {}
+            _ => components.push(component),
+        }
+    }
+    components.iter().collect()
 }
 
 // ============================================================================
-// END V1 STUBS
+// END V2 Path Validation
 // ============================================================================
-
-// TODO: Extract path validation from deleted V1 code
 
 pub const PROVIDER_ID: &str = "builtin";
 pub const IMAGE_GENERATE_CAPABILITY_ID: &str = "builtin.image_generate";
@@ -257,12 +310,10 @@ pub(crate) fn infer_generated_image_media_type(image_b64: &str) -> &'static str 
 
 async fn read_image_bytes(
     image_path: &str,
-    _base_dir: Option<&Path>,
+    base_dir: Option<&Path>,
 ) -> Result<Vec<u8>, ImagesCapabilityError> {
-    // V1 - DISABLED - validate_path takes 1 argument but 2 were supplied
-    // let resolved = validate_path(image_path, base_dir)
-    //     .map_err(|e| ImagesCapabilityError::input(format!("path validation failed: {e}")))?;
-    let resolved = PathBuf::from(image_path);
+    // V2: Validate path to prevent directory traversal attacks
+    let resolved = validate_path(image_path, base_dir)?;
 
     tokio::fs::read(&resolved)
         .await
