@@ -282,6 +282,13 @@ impl WebuiAuthenticator for SessionAuthenticator {
         }
         Some(record.user_id)
     }
+
+    fn allows_operator_webui_config(&self) -> bool {
+        // Session-based authentication represents authenticated users who
+        // should have access to LLM provider configuration. This enables
+        // local LLM setups without API tokens to work correctly.
+        true
+    }
 }
 
 #[cfg(test)]

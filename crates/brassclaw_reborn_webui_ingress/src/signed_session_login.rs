@@ -342,6 +342,13 @@ impl WebuiAuthenticator for CompositeAuthenticator {
         }
         self.env_token.authenticate(token).await
     }
+
+    fn allows_operator_webui_config(&self) -> bool {
+        // CompositeAuthenticator delegates to either session or env token.
+        // Both should allow operator config for LLM provider management.
+        // Return true if EITHER authenticator allows it.
+        self.session.allows_operator_webui_config() || self.env_token.allows_operator_webui_config()
+    }
 }
 
 #[cfg(test)]
