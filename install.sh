@@ -3,15 +3,24 @@ set -euo pipefail
 
 # BrassClaw Reborn Installation Script
 # Supports both fresh installation and updates
-# Preserves configuration and database during updates
+# Works with or without root privileges
+# Systemd service is optional (only with root)
 
 VERSION="0.29.6"
 GITHUB_REPO="chtugha/brassclaw"
 BINARY_NAME="brassclaw-reborn"
-INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="$HOME/.brassclaw/reborn"
 SERVICE_NAME="brassclaw-reborn"
 SYSTEMD_DIR="/etc/systemd/system"
+
+# Determine install directory based on privileges
+if [[ $EUID -eq 0 ]]; then
+    INSTALL_DIR="/usr/local/bin"
+    INSTALL_MODE="system"
+else
+    INSTALL_DIR="$HOME/.local/bin"
+    INSTALL_MODE="user"
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -37,15 +46,6 @@ log_step() {
     echo -e "${BLUE}[STEP]${NC} $1"
 }
 
-# Check if running as root for systemd service
-check_root() {
-    if [[ $EUID -ne 0 ]]; then
-        log_error "This script must be run as root for systemd service installation"
-        log_info "Please run: sudo $0"
-        exit 1
-    fi
-}
-
 # Detect if this is an update
 is_update() {
     if [[ -f "$INSTALL_DIR/$BINARY_NAME" ]]; then
@@ -64,9 +64,9 @@ get_installed_version() {
     fi
 }
 
-# Stop service if running
+# Stop service if running (only for root)
 stop_service() {
-    if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+    if [[ $INSTALL_MODE == "system" ]] && systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
         log_step "Stopping $SERVICE_NAME service..."
         systemctl stop "$SERVICE_NAME"
         log_info "Service stopped"
@@ -91,8 +91,9 @@ download_binary() {
     local download_name="brassclaw-reborn-linux-amd64"
     
     log_step "Downloading brassclaw-reborn v$VERSION..."
+    log_info "Download URL: $download_url"
     
-    if ! curl -L -f -o "$temp_dir/$download_name" "$download_url" 2>&1 >/dev/null; then
+    if ! curl -L -f -o "$temp_dir/$download_name" "$download_url" 2>&1; then
         log_error "Failed to download binary from $download_url"
         log_info "Please check if the release exists at: https://github.com/$GITHUB_REPO/releases/tag/v$VERSION"
         rm -rf "$temp_dir"
@@ -102,7 +103,7 @@ download_binary() {
     log_info "Binary downloaded successfully"
     
     log_step "Downloading checksum..."
-    if ! curl -L -f -o "$temp_dir/$download_name.sha256" "$checksum_url" 2>&1 >/dev/null; then
+    if ! curl -L -f -o "$temp_dir/$download_name.sha256" "$checksum_url" 2>&1; then
         log_warn "Checksum file not available, skipping verification"
     else
         log_step "Verifying checksum..."
@@ -118,6 +119,13 @@ download_binary() {
         cd - > /dev/null
     fi
     
+    # Create install directory if it doesn't exist (for user mode)
+    if [[ ! -d "$INSTALL_DIR" ]]; then
+        log_step "Creating installation directory at $INSTALL_DIR..."
+        mkdir -p "$INSTALL_DIR"
+        log_info "Installation directory created"
+    fi
+    
     log_step "Installing binary to $INSTALL_DIR..."
     chmod +x "$temp_dir/$download_name"
     mv "$temp_dir/$download_name" "$INSTALL_DIR/$BINARY_NAME"
@@ -131,18 +139,18 @@ create_config_dir() {
     if [[ ! -d "$CONFIG_DIR" ]]; then
         log_step "Creating configuration directory at $CONFIG_DIR..."
         mkdir -p "$CONFIG_DIR"
-        # Set ownership to the user who invoked sudo
-        if [[ -n "${SUDO_USER:-}" ]]; then
-            chown -R "$SUDO_USER:$SUDO_USER" "$CONFIG_DIR"
-        fi
         log_info "Configuration directory created"
     else
         log_info "Configuration directory already exists (preserving existing data)"
     fi
 }
 
-# Create systemd service file
+# Create systemd service file (only for root)
 create_systemd_service() {
+    if [[ $INSTALL_MODE != "system" ]]; then
+        return 0
+    fi
+    
     log_step "Creating systemd service at $SYSTEMD_DIR/$SERVICE_NAME.service..."
     
     # Determine the user to run the service as
@@ -186,8 +194,12 @@ EOF
     log_info "Systemd service file created"
 }
 
-# Reload systemd and enable service
+# Reload systemd and enable service (only for root)
 enable_service() {
+    if [[ $INSTALL_MODE != "system" ]]; then
+        return 0
+    fi
+    
     log_step "Reloading systemd daemon..."
     systemctl daemon-reload
     
@@ -196,8 +208,12 @@ enable_service() {
     log_info "Service enabled (will start on boot)"
 }
 
-# Start service
+# Start service (only for root)
 start_service() {
+    if [[ $INSTALL_MODE != "system" ]]; then
+        return 0
+    fi
+    
     log_step "Starting $SERVICE_NAME service..."
     systemctl start "$SERVICE_NAME"
     
@@ -212,8 +228,12 @@ start_service() {
     fi
 }
 
-# Show status
+# Show status (only for root)
 show_status() {
+    if [[ $INSTALL_MODE != "system" ]]; then
+        return 0
+    fi
+    
     echo ""
     log_step "Service status:"
     systemctl status "$SERVICE_NAME" --no-pager -l || true
@@ -227,31 +247,62 @@ print_instructions() {
     echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
     echo ""
     echo -e "${BLUE}Installation Details:${NC}"
+    echo -e "  Mode:          ${GREEN}$INSTALL_MODE${NC}"
     echo -e "  Binary:        ${GREEN}$INSTALL_DIR/$BINARY_NAME${NC}"
     echo -e "  Config Dir:    ${GREEN}$CONFIG_DIR${NC}"
-    echo -e "  Service:       ${GREEN}$SERVICE_NAME${NC}"
-    echo -e "  Service File:  ${GREEN}$SYSTEMD_DIR/$SERVICE_NAME.service${NC}"
-    echo ""
-    echo -e "${BLUE}Useful Commands:${NC}"
-    echo -e "  ${GREEN}sudo systemctl status $SERVICE_NAME${NC}     # Check service status"
-    echo -e "  ${GREEN}sudo systemctl restart $SERVICE_NAME${NC}    # Restart service"
-    echo -e "  ${GREEN}sudo systemctl stop $SERVICE_NAME${NC}       # Stop service"
-    echo -e "  ${GREEN}sudo systemctl start $SERVICE_NAME${NC}      # Start service"
-    echo -e "  ${GREEN}sudo journalctl -u $SERVICE_NAME -f${NC}     # View live logs"
-    echo -e "  ${GREEN}sudo journalctl -u $SERVICE_NAME -n 50${NC}  # View last 50 log lines"
-    echo ""
-    echo -e "${YELLOW}⚠ IMPORTANT SECURITY NOTICE:${NC}"
-    echo -e "  The service has been created with a random authentication token."
-    echo -e "  To customize authentication and other settings:"
-    echo ""
-    echo -e "  1. Edit the service file:"
-    echo -e "     ${GREEN}sudo nano $SYSTEMD_DIR/$SERVICE_NAME.service${NC}"
-    echo ""
-    echo -e "  2. Update the Environment variables as needed"
-    echo ""
-    echo -e "  3. Reload and restart the service:"
-    echo -e "     ${GREEN}sudo systemctl daemon-reload${NC}"
-    echo -e "     ${GREEN}sudo systemctl restart $SERVICE_NAME${NC}"
+    
+    if [[ $INSTALL_MODE == "system" ]]; then
+        echo -e "  Service:       ${GREEN}$SERVICE_NAME${NC}"
+        echo -e "  Service File:  ${GREEN}$SYSTEMD_DIR/$SERVICE_NAME.service${NC}"
+        echo ""
+        echo -e "${BLUE}Useful Commands:${NC}"
+        echo -e "  ${GREEN}sudo systemctl status $SERVICE_NAME${NC}     # Check service status"
+        echo -e "  ${GREEN}sudo systemctl restart $SERVICE_NAME${NC}    # Restart service"
+        echo -e "  ${GREEN}sudo systemctl stop $SERVICE_NAME${NC}       # Stop service"
+        echo -e "  ${GREEN}sudo systemctl start $SERVICE_NAME${NC}      # Start service"
+        echo -e "  ${GREEN}sudo journalctl -u $SERVICE_NAME -f${NC}     # View live logs"
+        echo -e "  ${GREEN}sudo journalctl -u $SERVICE_NAME -n 50${NC}  # View last 50 log lines"
+        echo ""
+        echo -e "${YELLOW}⚠ IMPORTANT SECURITY NOTICE:${NC}"
+        echo -e "  The service has been created with a random authentication token."
+        echo -e "  To customize authentication and other settings:"
+        echo ""
+        echo -e "  1. Edit the service file:"
+        echo -e "     ${GREEN}sudo nano $SYSTEMD_DIR/$SERVICE_NAME.service${NC}"
+        echo ""
+        echo -e "  2. Update the Environment variables as needed"
+        echo ""
+        echo -e "  3. Reload and restart the service:"
+        echo -e "     ${GREEN}sudo systemctl daemon-reload${NC}"
+        echo -e "     ${GREEN}sudo systemctl restart $SERVICE_NAME${NC}"
+    else
+        echo ""
+        echo -e "${BLUE}Running BrassClaw:${NC}"
+        echo -e "  ${GREEN}$BINARY_NAME serve${NC}                    # Start server on localhost:8080"
+        echo -e "  ${GREEN}$BINARY_NAME serve --host 0.0.0.0${NC}     # Start server on all interfaces"
+        echo -e "  ${GREEN}$BINARY_NAME --help${NC}                   # Show all available commands"
+        echo ""
+        echo -e "${YELLOW}⚠ PATH Configuration:${NC}"
+        if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+            echo -e "  ${YELLOW}$INSTALL_DIR is not in your PATH${NC}"
+            echo -e "  Add it to your shell profile (~/.bashrc or ~/.zshrc):"
+            echo -e "  ${GREEN}export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
+            echo ""
+            echo -e "  Then reload your shell:"
+            echo -e "  ${GREEN}source ~/.bashrc${NC}  # or source ~/.zshrc"
+            echo ""
+            echo -e "  Or run directly:"
+            echo -e "  ${GREEN}$INSTALL_DIR/$BINARY_NAME serve${NC}"
+        else
+            echo -e "  ${GREEN}✓ $INSTALL_DIR is already in your PATH${NC}"
+            echo -e "  You can run: ${GREEN}$BINARY_NAME serve${NC}"
+        fi
+        echo ""
+        echo -e "${BLUE}To install as a system service:${NC}"
+        echo -e "  Run this script with sudo:"
+        echo -e "  ${GREEN}sudo bash install.sh${NC}"
+    fi
+    
     echo ""
     echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
     echo ""
@@ -265,7 +316,15 @@ main() {
     echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
     echo ""
     
-    check_root
+    if [[ $INSTALL_MODE == "system" ]]; then
+        log_info "Running in SYSTEM mode (with root privileges)"
+        log_info "Will install to $INSTALL_DIR and create systemd service"
+    else
+        log_info "Running in USER mode (without root privileges)"
+        log_info "Will install to $INSTALL_DIR (no systemd service)"
+        log_warn "For system-wide installation with systemd service, run: sudo bash install.sh"
+    fi
+    echo ""
     
     local installed_version=$(get_installed_version)
     
