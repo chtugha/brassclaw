@@ -35,32 +35,27 @@ export class BrassClawTestHelper {
   async waitForServer() {
     // Wait for server to be ready
     await this.page.waitForTimeout(2000);
+    
+    // Get token from environment
+    const token = process.env.BRASSCLAW_REBORN_WEBUI_TOKEN || process.env.BRASSCLAW_GATEWAY_TOKEN;
+    if (!token) {
+      throw new Error('Authentication token not found in environment variables. Please set BRASSCLAW_REBORN_WEBUI_TOKEN or BRASSCLAW_GATEWAY_TOKEN.');
+    }
+    
+    // Navigate to homepage first
     await this.page.goto('/');
     await expect(this.page).toHaveTitle(/BrassClaw|Brass Claw/i);
     
-    // Check if we need to authenticate
-    const tokenInput = this.page.locator('input[placeholder*="token"], input[placeholder*="auth"]');
-    const isLoginPage = await tokenInput.isVisible().catch(() => false);
+    // Inject token into sessionStorage
+    await this.page.evaluate((tokenValue) => {
+      sessionStorage.setItem('brassclaw_token', tokenValue);
+    }, token);
     
-    if (isLoginPage) {
-      // Get token from environment variable
-      const token = process.env.BRASSCLAW_REBORN_WEBUI_TOKEN || process.env.BRASSCLAW_GATEWAY_TOKEN;
-      if (!token) {
-        throw new Error('Authentication token not found. Please set BRASSCLAW_REBORN_WEBUI_TOKEN or BRASSCLAW_GATEWAY_TOKEN environment variable.');
-      }
-      await tokenInput.fill(token);
-      
-      // Click connect button
-      const connectButton = this.page.locator('button:has-text("Connect")');
-      await connectButton.click();
-      
-      // Wait for navigation after login
-      await this.page.waitForTimeout(3000);
-    }
+    // Reload to apply the token
+    await this.page.reload();
     
-    // Verify we're logged in by checking for main app elements
-    // Look for Settings link (could be /settings or /settings/inference)
-    await this.page.waitForSelector('a[href*="/settings"], button:has-text("Settings")', { timeout: 10000 });
+    // Verify we're logged in by checking for settings link
+    await this.page.waitForSelector('a[href*="/settings"]', { timeout: 10000 });
   }
 
   async navigateToSettings() {
