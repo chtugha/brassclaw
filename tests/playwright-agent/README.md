@@ -50,15 +50,17 @@ The tests are configured to use the following LLM:
 - **Endpoint:** http://192.168.10.223:8000/v1
 - **Model:** Qwen/Qwen2.5-7B-Instruct-AWQ
 - **API Key:** None required
-- **Gateway Token:** doom
+- **Gateway Token:** Set via environment variable
 
 ### Environment Variables
 
-The following environment variables are automatically set in `playwright.config.ts`:
+The following environment variables must be set before running tests:
 
 ```bash
-export BRASSCLAW_GATEWAY_TOKEN=doom
+export BRASSCLAW_GATEWAY_TOKEN=your-token-here
 ```
+
+The token is read from the environment variable in `playwright.config.ts`.
 
 ### Running Tests with LLM
 
@@ -82,7 +84,7 @@ If you need to manually configure the LLM provider in the UI:
 
 1. Start the server with gateway token:
    ```bash
-   export BRASSCLAW_GATEWAY_TOKEN=doom
+   export BRASSCLAW_GATEWAY_TOKEN=your-token-here
    cd ../.. && cargo run --release -p brassclaw_reborn_cli --bin brassclaw-reborn -- serve --host 127.0.0.1 --port 3000
    ```
 

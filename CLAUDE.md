@@ -34,16 +34,16 @@ When running Playwright tests or manual testing, use the following LLM configura
 
 **Gateway Token:**
 ```bash
-export BRASSCLAW_GATEWAY_TOKEN=doom
+export BRASSCLAW_GATEWAY_TOKEN=your-token-here
 ```
 
-This token is required for authentication with the brassclaw-reborn server during testing.
+This token is required for authentication with the brassclaw-reborn server during testing. Set it to your actual gateway token value.
 
 ### Quick Test Setup
 
 ```bash
 # Set gateway token
-export BRASSCLAW_GATEWAY_TOKEN=doom
+export BRASSCLAW_GATEWAY_TOKEN=your-token-here
 
 # Start server
 cd /Volumes/SSDE/brassclaw
@@ -58,7 +58,7 @@ npm test
 
 1. Start the server with gateway token:
    ```bash
-   export BRASSCLAW_GATEWAY_TOKEN=doom
+   export BRASSCLAW_GATEWAY_TOKEN=your-token-here
    cargo run --release -p brassclaw_reborn_cli --bin brassclaw-reborn -- serve --host 127.0.0.1 --port 3000
    ```
 

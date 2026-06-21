@@ -41,7 +41,7 @@ export default defineConfig({
     env: {
       BRASSCLAW_REBORN_WEBUI_TOKEN: 'test-playwright-token',
       BRASSCLAW_REBORN_WEBUI_USER_ID: 'test-playwright-user',
-      BRASSCLAW_GATEWAY_TOKEN: 'doom',
+      BRASSCLAW_GATEWAY_TOKEN: process.env.BRASSCLAW_GATEWAY_TOKEN || 'test-token',
     },
   },
 });

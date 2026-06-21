@@ -5,7 +5,7 @@
 - **LLM Endpoint:** http://192.168.10.223:8000/v1
 - **Model:** Qwen/Qwen2.5-7B-Instruct-AWQ
 - **API Key:** None required
-- **Gateway Token:** doom
+- **Gateway Token:** Set via environment variable
 
 ## Test Execution Date
 
@@ -124,7 +124,7 @@ None identified yet.
 
 ```bash
 cd /Volumes/SSDE/brassclaw/tests/playwright-agent
-export BRASSCLAW_GATEWAY_TOKEN=doom
+export BRASSCLAW_GATEWAY_TOKEN=your-token-here
 npm test
 ```
 
