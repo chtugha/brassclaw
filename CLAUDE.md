@@ -19,6 +19,67 @@ BRASSCLAW_REBORN_LOG=brassclaw=debug cargo run -p brassclaw_reborn_cli --bin bra
 
 E2E tests: see `tests/e2e/CLAUDE.md`.
 
+## Testing Configuration
+
+### LLM Configuration for Tests
+
+When running Playwright tests or manual testing, use the following LLM configuration:
+
+**OpenAI-Compatible Provider:**
+- **Name:** Qwen-Test (or any name)
+- **Type:** openai-compatible
+- **Base URL:** http://192.168.10.223:8000/v1
+- **Model:** Qwen/Qwen2.5-7B-Instruct-AWQ
+- **API Key:** None required (leave empty)
+
+**Gateway Token:**
+```bash
+export BRASSCLAW_GATEWAY_TOKEN=doom
+```
+
+This token is required for authentication with the brassclaw-reborn server during testing.
+
+### Quick Test Setup
+
+```bash
+# Set gateway token
+export BRASSCLAW_GATEWAY_TOKEN=doom
+
+# Start server
+cd /Volumes/SSDE/brassclaw
+cargo run --release -p brassclaw_reborn_cli --bin brassclaw-reborn -- serve --host 127.0.0.1 --port 3000
+
+# In another terminal, run tests
+cd /Volumes/SSDE/brassclaw/tests/playwright-agent
+npm test
+```
+
+### Manual Testing via WebUI
+
+1. Start the server with gateway token:
+   ```bash
+   export BRASSCLAW_GATEWAY_TOKEN=doom
+   cargo run --release -p brassclaw_reborn_cli --bin brassclaw-reborn -- serve --host 127.0.0.1 --port 3000
+   ```
+
+2. Open browser to http://127.0.0.1:3000
+
+3. Configure LLM provider:
+   - Go to Settings → Providers
+   - Add new provider with above configuration
+   - Test connection
+
+4. Start chatting with the agent
+
+### Playwright Agent Tests
+
+The Playwright test suite in `tests/playwright-agent/` includes:
+- **01-connection.spec.ts** - Connection and authentication tests
+- **02-llm-config.spec.ts** - LLM configuration tests
+- **03-agent-interaction.spec.ts** - Agent interaction and conversation tests
+
+See `tests/playwright-agent/README.md` for detailed test documentation.
+
 ## Creating Releases
 
 ### Automated Release Process
@@ -80,6 +141,18 @@ See `CICD_SETUP_DOCUMENTATION.md` for comprehensive documentation on:
 - Multi-line prompt strings (mission goals, system prompts, CodeAct preambles) go in `crates/brassclaw_engine/prompts/*.md` and are loaded via `include_str!()`. Never inline large prompt templates as Rust string constants — they are hard to read, review, and iterate on. Single-line format strings are fine inline.
 - `info!` and `warn!` output appears in the REPL and corrupts the terminal UI. Use `debug!` for internal diagnostics (trace analysis, reflection results, engine internals). Reserve `info!` for user-facing status that the REPL intentionally renders. Background tasks must never use `info!`.
 - Test through the caller, not just the helper: when a predicate/classifier/transform helper gates a side effect (HTTP, DB write, OAuth, UI mutation, tool execution) and has any wrapper or computed input between it and that side effect, a unit test on the helper alone is not sufficient regression coverage. Add a test that drives the call site at the integration tier or higher. See `.claude/rules/testing.md` for the full rule.
+
+## Tool Usage Guidelines
+
+### Ripgrep (rg) Searches
+
+When performing ripgrep searches across the codebase, delegate these tasks to the large-file-reading mode instead of executing them directly. This prevents process termination issues and ensures proper handling of large search results.
+
+Example delegation:
+- Task: Search for patterns across codebase
+- Mode: large-file-reading
+- Reason: Handles large output and prevents SIGKILL issues
+
 
 ## Architecture
 

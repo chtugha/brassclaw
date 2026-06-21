@@ -1,0 +1,363 @@
+{
+  "config": {
+    "argv": [
+      "/opt/homebrew/Cellar/node/25.6.1/bin/node",
+      "/Volumes/SSDE/brassclaw/tests/playwright-agent/node_modules/.bin/playwright",
+      "test",
+      "--list"
+    ],
+    "configFile": "/Volumes/SSDE/brassclaw/tests/playwright-agent/playwright.config.ts",
+    "rootDir": "/Volumes/SSDE/brassclaw/tests/playwright-agent/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {},
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/Volumes/SSDE/brassclaw/tests/playwright-agent/test-results",
+        "repeatEach": 1,
+        "retries": 1,
+        "metadata": {},
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/Volumes/SSDE/brassclaw/tests/playwright-agent/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "html",
+        {
+          "outputFolder": "playwright-report"
+        }
+      ],
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.61.0",
+    "workers": 1,
+    "webServer": {
+      "command": "cd ../.. && cargo run --release -p brassclaw_reborn_cli --bin brassclaw-reborn -- serve --host 127.0.0.1 --port 3000",
+      "url": "http://127.0.0.1:3000",
+      "reuseExistingServer": true,
+      "timeout": 120000,
+      "stdout": "pipe",
+      "stderr": "pipe",
+      "env": {
+        "BRASSCLAW_REBORN_WEBUI_TOKEN": "test-playwright-token",
+        "BRASSCLAW_REBORN_WEBUI_USER_ID": "test-playwright-user",
+        "BRASSCLAW_GATEWAY_TOKEN": "doom"
+      }
+    }
+  },
+  "suites": [
+    {
+      "title": "01-connection.spec.ts",
+      "file": "01-connection.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "BrassClaw Connection Tests",
+          "file": "01-connection.spec.ts",
+          "line": 4,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should connect to brassclaw webfrontend-ui",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "7a59a40db8c08474e647-562e4e457be08f72bb04",
+              "file": "01-connection.spec.ts",
+              "line": 5,
+              "column": 7
+            },
+            {
+              "title": "should have navigation elements",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "7a59a40db8c08474e647-6f2322fa7b72cf03aff7",
+              "file": "01-connection.spec.ts",
+              "line": 15,
+              "column": 7
+            },
+            {
+              "title": "should load without console errors",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "7a59a40db8c08474e647-63ca643f61b0c0070cd5",
+              "file": "01-connection.spec.ts",
+              "line": 26,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "02-llm-config.spec.ts",
+      "file": "02-llm-config.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "LLM Configuration Tests",
+          "file": "02-llm-config.spec.ts",
+          "line": 4,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should configure OpenAI-compatible LLM provider",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ae21c7c4c4bd1967aea-6b2c6fd67cc8a9818b84",
+              "file": "02-llm-config.spec.ts",
+              "line": 5,
+              "column": 7
+            },
+            {
+              "title": "should test LLM connection",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ae21c7c4c4bd1967aea-078af2078b5ee8b4857e",
+              "file": "02-llm-config.spec.ts",
+              "line": 32,
+              "column": 7
+            },
+            {
+              "title": "should display LLM provider in list",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "9ae21c7c4c4bd1967aea-9a8de4f6d2de0caa7f04",
+              "file": "02-llm-config.spec.ts",
+              "line": 51,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "03-agent-interaction.spec.ts",
+      "file": "03-agent-interaction.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Agent Interaction Tests",
+          "file": "03-agent-interaction.spec.ts",
+          "line": 4,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should send message to agent and receive response",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c449f86fc3bebd192427-333ab406ec5414737bae",
+              "file": "03-agent-interaction.spec.ts",
+              "line": 5,
+              "column": 7
+            },
+            {
+              "title": "should handle tool execution request",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c449f86fc3bebd192427-2953b45332f64b1f09c0",
+              "file": "03-agent-interaction.spec.ts",
+              "line": 28,
+              "column": 7
+            },
+            {
+              "title": "should display agent thinking process",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c449f86fc3bebd192427-74d116bcf0f2e8f61b6d",
+              "file": "03-agent-interaction.spec.ts",
+              "line": 46,
+              "column": 7
+            },
+            {
+              "title": "should handle multi-turn conversation",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c449f86fc3bebd192427-1be85166e51e4828af7c",
+              "file": "03-agent-interaction.spec.ts",
+              "line": 68,
+              "column": 7
+            },
+            {
+              "title": "should handle code generation request",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c449f86fc3bebd192427-8914b8fe0367fa5665cf",
+              "file": "03-agent-interaction.spec.ts",
+              "line": 88,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-06-21T01:06:41.822Z",
+    "duration": 20.625999999999976,
+    "expected": 0,
+    "skipped": 11,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

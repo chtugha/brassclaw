@@ -1,0 +1,19 @@
+{
+  "name": "brassclaw-agent-tests",
+  "version": "1.0.0",
+  "description": "Playwright tests for BrassClaw agent functionality",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui"
+  },
+  "keywords": ["brassclaw", "playwright", "e2e", "testing"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "typescript": "^5.3.0",
+    "@types/node": "^20.10.0"
+  }
+}
