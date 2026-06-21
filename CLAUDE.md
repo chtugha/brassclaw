@@ -19,6 +19,54 @@ BRASSCLAW_REBORN_LOG=brassclaw=debug cargo run -p brassclaw_reborn_cli --bin bra
 
 E2E tests: see `tests/e2e/CLAUDE.md`.
 
+## Creating Releases
+
+### Automated Release Process
+
+This project uses GitHub Actions for automated releases. **Do not build binaries manually.**
+
+### How to Create a Release
+
+Simply push a version tag:
+
+```bash
+git tag v0.29.9
+git push origin v0.29.9
+```
+
+GitHub Actions will automatically:
+1. Build binaries for all platforms (Linux x86_64, macOS ARM64, macOS x86_64)
+2. Generate SHA256 checksums for each binary
+3. Create a GitHub release with auto-generated release notes
+4. Upload all artifacts (binaries + checksums) to the release
+
+### Monitoring Builds
+
+- **Workflow runs**: https://github.com/chtugha/brassclaw/actions/workflows/release.yml
+- **All actions**: https://github.com/chtugha/brassclaw/actions
+
+### Supported Platforms
+
+- **Linux x86_64**: `x86_64-unknown-linux-musl` (statically linked)
+- **macOS ARM64**: `aarch64-apple-darwin` (Apple Silicon)
+- **macOS x86_64**: `x86_64-apple-darwin` (Intel)
+
+### Release Workflow Details
+
+See `CICD_SETUP_DOCUMENTATION.md` for comprehensive documentation on:
+- Workflow architecture
+- Build process details
+- Testing procedures
+- Troubleshooting guide
+- Maintenance instructions
+
+### Important Notes
+
+- **Never manually build and upload binaries** - always use the automated workflow
+- **Tag format**: Use semantic versioning with `v` prefix (e.g., `v0.29.9`, `v1.0.0`)
+- **Build time**: Expect 10-15 minutes for all platforms to build
+- **Artifacts**: Each release includes 6 files (3 binaries + 3 checksums)
+
 ## Code Style
 
 - Prefer `crate::` for cross-module imports; `super::` is fine in tests and intra-module refs
