@@ -107,56 +107,47 @@ async fn with_run_local_trigger_fire_access_checker(
     runtime_input: RebornRuntimeInput,
     config: &RebornBootConfig,
 ) -> anyhow::Result<RebornRuntimeInput> {
-    
-    {
-        let _ = config;
+    if !runtime_input.trigger_poller.enabled {
         return Ok(runtime_input);
     }
 
-    
-    {
-        if !runtime_input.trigger_poller.enabled {
-            return Ok(runtime_input);
-        }
+    let config_file = read_config_file(config)?;
+    let tenant_id = TenantId::new(&runtime_input.identity.tenant_id).with_context(|| {
+        format!(
+            "[identity].tenant `{}` is invalid",
+            runtime_input.identity.tenant_id
+        )
+    })?;
+    let user_id = UserId::new(default_owner_id(config_file.as_ref()))
+        .context("[identity].default_owner is invalid")?;
+    let agent_id = AgentId::new(&runtime_input.identity.agent_id).with_context(|| {
+        format!(
+            "[identity].default_agent `{}` is invalid",
+            runtime_input.identity.agent_id
+        )
+    })?;
+    let user_store_path = config
+        .home()
+        .path()
+        .join("local-dev")
+        .join("reborn-local-dev.db");
+    let access_store = open_local_trigger_access_store(&user_store_path)
+        .await
+        .context("failed to initialize local trigger-fire access store for `run`")?;
+    let user_ids = [user_id];
+    access_store
+        .reconcile_local_access(LocalTriggerAccessReconciliation {
+            tenant_id: &tenant_id,
+            user_ids: &user_ids,
+            agent_id: Some(&agent_id),
+            project_id: None,
+            role: LocalTriggerAccessRole::Owner,
+            source: LocalTriggerAccessSource::LocalDevRunBootstrap,
+        })
+        .await
+        .context("failed to reconcile local trigger-fire access for `run`")?;
 
-        let config_file = read_config_file(config)?;
-        let tenant_id = TenantId::new(&runtime_input.identity.tenant_id).with_context(|| {
-            format!(
-                "[identity].tenant `{}` is invalid",
-                runtime_input.identity.tenant_id
-            )
-        })?;
-        let user_id = UserId::new(default_owner_id(config_file.as_ref()))
-            .context("[identity].default_owner is invalid")?;
-        let agent_id = AgentId::new(&runtime_input.identity.agent_id).with_context(|| {
-            format!(
-                "[identity].default_agent `{}` is invalid",
-                runtime_input.identity.agent_id
-            )
-        })?;
-        let user_store_path = config
-            .home()
-            .path()
-            .join("local-dev")
-            .join("reborn-local-dev.db");
-        let access_store = open_local_trigger_access_store(&user_store_path)
-            .await
-            .context("failed to initialize local trigger-fire access store for `run`")?;
-        let user_ids = [user_id];
-        access_store
-            .reconcile_local_access(LocalTriggerAccessReconciliation {
-                tenant_id: &tenant_id,
-                user_ids: &user_ids,
-                agent_id: Some(&agent_id),
-                project_id: None,
-                role: LocalTriggerAccessRole::Owner,
-                source: LocalTriggerAccessSource::LocalDevRunBootstrap,
-            })
-            .await
-            .context("failed to reconcile local trigger-fire access for `run`")?;
-
-        Ok(runtime_input.with_trigger_fire_access_checker(access_store))
-    }
+    Ok(runtime_input.with_trigger_fire_access_checker(access_store))
 }
 
 fn print_runtime_banner(config: &RebornBootConfig) {
@@ -363,6 +354,9 @@ pub(crate) fn build_runtime_input_with_options(
                 );
             }
         }
+        // Carry the boot config so the WebUI facade can compose the operator
+        // LLM-config settings service over `providers.json` / `config.toml`.
+        runtime_input = runtime_input.with_boot_config(config.clone());
     }
 
     Ok(runtime_input)

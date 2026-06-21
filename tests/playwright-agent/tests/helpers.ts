@@ -2,21 +2,22 @@ import { Page, expect } from '@playwright/test';
 
 export const SELECTORS = {
   // Navigation
-  homeLink: 'a[href="/"]',
-  settingsLink: 'a[href="/settings"]',
+  homeLink: 'a[href="/chat"], a[href="/"]',
+  settingsLink: 'a[href*="/settings"]',
   agentsLink: 'a[href="/agents"]',
   
   // Chat interface
-  chatInput: 'textarea[placeholder*="message"], input[placeholder*="message"]',
-  sendButton: 'button[type="submit"], button:has-text("Send")',
+  chatInput: 'textarea, input[type="text"]:not([placeholder*="token"]):not([placeholder*="auth"])',
+  sendButton: 'button[type="submit"], button:has-text("Send"), button[aria-label*="Send"]',
   messageList: '.messages, .chat-messages, [role="log"]',
   
   // Settings
   settingsTab: '[data-tab="settings"], a:has-text("Settings")',
-  providersTab: '[data-tab="providers"], a:has-text("Providers")',
+  // Note: There is no separate Providers tab - providers are on the Inference settings page
+  providersTab: 'a[href="/settings/inference"]',
   
   // LLM Providers
-  addProviderButton: 'button:has-text("Add Provider")',
+  addProviderButton: 'button:has-text("Add provider")',
   providerNameInput: 'input[name="name"], input[placeholder*="name"]',
   providerTypeSelect: 'select[name="type"], select[name="provider_type"]',
   providerApiKeyInput: 'input[name="api_key"], input[type="password"]',
@@ -36,6 +37,30 @@ export class BrassClawTestHelper {
     await this.page.waitForTimeout(2000);
     await this.page.goto('/');
     await expect(this.page).toHaveTitle(/BrassClaw|Brass Claw/i);
+    
+    // Check if we need to authenticate
+    const tokenInput = this.page.locator('input[placeholder*="token"], input[placeholder*="auth"]');
+    const isLoginPage = await tokenInput.isVisible().catch(() => false);
+    
+    if (isLoginPage) {
+      // Get token from environment variable
+      const token = process.env.BRASSCLAW_REBORN_WEBUI_TOKEN || process.env.BRASSCLAW_GATEWAY_TOKEN;
+      if (!token) {
+        throw new Error('Authentication token not found. Please set BRASSCLAW_REBORN_WEBUI_TOKEN or BRASSCLAW_GATEWAY_TOKEN environment variable.');
+      }
+      await tokenInput.fill(token);
+      
+      // Click connect button
+      const connectButton = this.page.locator('button:has-text("Connect")');
+      await connectButton.click();
+      
+      // Wait for navigation after login
+      await this.page.waitForTimeout(3000);
+    }
+    
+    // Verify we're logged in by checking for main app elements
+    // Look for Settings link (could be /settings or /settings/inference)
+    await this.page.waitForSelector('a[href*="/settings"], button:has-text("Settings")', { timeout: 10000 });
   }
 
   async navigateToSettings() {
@@ -49,8 +74,23 @@ export class BrassClawTestHelper {
   }
 
   async sendChatMessage(message: string) {
-    await this.page.fill(SELECTORS.chatInput, message);
-    await this.page.click(SELECTORS.sendButton);
+    // Fill the input
+    const input = this.page.locator(SELECTORS.chatInput).first();
+    await input.fill(message);
+    
+    // Trigger input event to enable the send button
+    await input.dispatchEvent('input');
+    await input.dispatchEvent('change');
+    
+    // Wait a moment for the button to become enabled
+    await this.page.waitForTimeout(500);
+    
+    // Wait for send button to be enabled
+    const sendButton = this.page.locator(SELECTORS.sendButton).first();
+    await sendButton.waitFor({ state: 'visible', timeout: 5000 });
+    
+    // Click when enabled
+    await sendButton.click({ force: false });
   }
 
   async waitForResponse(timeout = 30000) {
