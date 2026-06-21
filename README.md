@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/chtugha/brassclaw/releases/latest"><img src="https://img.shields.io/github/v/release/chtugha/brassclaw?label=latest%20release" alt="Latest Release" /></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache%202.0-blue.svg" alt="License: MIT OR Apache-2.0" /></a>
 </p>
 
@@ -98,9 +99,16 @@ export VLLM_PORT=8000
 sudo bash deploy/dietpi-setup.sh
 ```
 
-### Option B: Precompiled binaries (Linux)
+### Option B: Precompiled binaries
 
-Download and install the latest release:
+Pre-built binaries are automatically compiled by GitHub Actions CI for each release and are available for:
+- **Linux x86_64** (statically linked with musl)
+- **macOS ARM64** (Apple Silicon)
+- **macOS x86_64** (Intel)
+
+Download the latest release from [GitHub Releases](https://github.com/chtugha/brassclaw/releases/latest).
+
+**Linux installation:**
 
 ```bash
 # Download the install script
@@ -115,10 +123,25 @@ sudo bash install.sh
 
 The installer will:
 - Download the latest binary from GitHub releases
-- Verify checksums
-- Install to `/usr/local/bin/brassclaw-reborn`
-- Create systemd service at `/etc/systemd/system/brassclaw-reborn.service`
+- Verify SHA256 checksums
+- Install to `/usr/local/bin/brassclaw`
+- Create systemd service at `/etc/systemd/system/brassclaw.service`
 - Preserve existing configuration during updates
+
+**macOS installation:**
+
+```bash
+# Download the appropriate binary for your architecture
+# For Apple Silicon (M1/M2/M3):
+curl -LO https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-macos-arm64
+
+# For Intel Macs:
+curl -LO https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-macos-amd64
+
+# Make executable and move to PATH
+chmod +x brassclaw-macos-*
+sudo mv brassclaw-macos-* /usr/local/bin/brassclaw
+```
 
 **Uninstallation:**
 
