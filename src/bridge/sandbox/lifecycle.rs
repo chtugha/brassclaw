@@ -23,19 +23,19 @@ use brassclaw_engine::{MountError, ProjectId};
 use tracing::{debug, warn};
 
 /// Default image. Override with `BRASSCLAW_SANDBOX_IMAGE`.
-pub const DEFAULT_IMAGE: &str = "brassclaw/sandbox:dev";
+pub(super) const DEFAULT_IMAGE: &str = "brassclaw/sandbox:dev";
 
 /// Stop timeout in seconds before SIGKILL.
 #[allow(dead_code)]
 const STOP_TIMEOUT_SECS: i64 = 10;
 
 /// Resolve the configured sandbox image, falling back to the default.
-pub fn sandbox_image() -> String {
+pub(super) fn sandbox_image() -> String {
     std::env::var("BRASSCLAW_SANDBOX_IMAGE").unwrap_or_else(|_| DEFAULT_IMAGE.to_string())
 }
 
 /// Build the deterministic container name for a project.
-pub fn container_name_for(project_id: ProjectId) -> String {
+pub(super) fn container_name_for(project_id: ProjectId) -> String {
     format!("brassclaw-sandbox-{}", project_id.0)
 }
 
@@ -44,7 +44,7 @@ pub fn container_name_for(project_id: ProjectId) -> String {
 /// either way. The bind-mount source is `host_workspace_path` and is
 /// expected to already exist on disk (the caller — the mount factory in
 /// Phase 6 — runs `ensure_project_workspace_dir` first).
-pub async fn ensure_running(
+pub(super) async fn ensure_running(
     docker: &Docker,
     project_id: ProjectId,
     host_workspace_path: &Path,
@@ -157,7 +157,7 @@ async fn create_container(
 /// logged but not propagated — stop is best-effort and the next start
 /// (which goes through `ensure_running`) will recover regardless.
 #[allow(dead_code)]
-pub async fn stop(docker: &Docker, project_id: ProjectId) {
+pub(super) async fn stop(docker: &Docker, project_id: ProjectId) {
     let name = container_name_for(project_id);
     if let Err(e) = docker
         .stop_container(
@@ -175,7 +175,7 @@ pub async fn stop(docker: &Docker, project_id: ProjectId) {
 /// Remove a project's container entirely. Used by `project delete` /
 /// "reset environment". The bind-mounted host directory is left untouched.
 #[allow(dead_code)]
-pub async fn remove(docker: &Docker, project_id: ProjectId) {
+pub(super) async fn remove(docker: &Docker, project_id: ProjectId) {
     let name = container_name_for(project_id);
     if let Err(e) = docker
         .remove_container(

@@ -52,21 +52,21 @@ pub mod paths {
 /// cleaned by hygiene. By default they ARE versioned for audit trail;
 /// individual files may opt out by setting `skip_versioning: true` on
 /// their own document metadata.
-pub mod system_paths {
+pub(super) mod system_paths {
     /// Root prefix for all machine-managed system state.
     #[allow(dead_code)] // Documents the convention; consumed via subdirectory constants
-    pub const SYSTEM_PREFIX: &str = ".system/";
+    pub(crate) const SYSTEM_PREFIX: &str = ".system/";
     /// Settings documents directory.
-    pub const SETTINGS_PREFIX: &str = ".system/settings/";
+    pub(crate) const SETTINGS_PREFIX: &str = ".system/settings/";
     /// Extension state directory.
-    pub const EXTENSIONS_PREFIX: &str = ".system/extensions/";
+    pub(crate) const EXTENSIONS_PREFIX: &str = ".system/extensions/";
     /// Skill state directory.
-    pub const SKILLS_PREFIX: &str = ".system/skills/";
+    pub(crate) const SKILLS_PREFIX: &str = ".system/skills/";
     /// v2 engine state root. The bridge `store_adapter` defines its own
     /// per-subdirectory constants under this prefix; this constant exists
     /// as the canonical declaration of the convention.
     #[allow(dead_code)]
-    pub const ENGINE_PREFIX: &str = ".system/engine/";
+    pub(crate) const ENGINE_PREFIX: &str = ".system/engine/";
 }
 
 /// Name of the folder-level configuration document.

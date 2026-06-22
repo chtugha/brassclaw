@@ -43,7 +43,7 @@ fn convert_html_to_markdown(html: &str, _base_url: &str) -> Result<String, Strin
 mod path_utils_stub {
     use std::path::{Path, PathBuf};
     
-    pub fn validate_path(raw: &str, base: Option<&Path>) -> Result<PathBuf, String> {
+    pub(super) fn validate_path(raw: &str, base: Option<&Path>) -> Result<PathBuf, String> {
         let path = Path::new(raw);
         
         if raw.is_empty() {

@@ -26,7 +26,7 @@ struct CapabilitiesFile {
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-pub struct AuthStub {
+pub(super) struct AuthStub {
     pub display_name: Option<String>,
     pub secret_name: String,
     pub oauth: Option<OAuthConfigSchema>,
@@ -35,7 +35,7 @@ pub struct AuthStub {
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-pub struct OAuthConfigSchema {
+pub(super) struct OAuthConfigSchema {
     pub client_id: String,
     pub scopes: Vec<String>,
 }
@@ -65,7 +65,7 @@ fn compute_binary_hash(data: &[u8]) -> [u8; 32] {
 // V1 - Minimal wasm_runtime module stub
 #[allow(dead_code)]
 mod wasm_runtime {
-    pub use super::{AuthStub as AuthCapabilitySchema, OAuthConfigSchema};
+    pub(super) use super::{AuthStub as AuthCapabilitySchema, OAuthConfigSchema};
 }
 
 // TODO: V1 wasm_runtime module removed - tool CLI commands need V2 reimplementation

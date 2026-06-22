@@ -1,6 +1,6 @@
 [package]
 name = "brassclaw_reborn_cli"
-version = "0.1.0"
+version = "0.30.2"
 edition = "2024"
 rust-version = "1.92"
 description = "Standalone BrassClaw Reborn binary"
@@ -63,6 +63,6 @@ uuid = { version = "1", features = ["v4", "v5", "serde"] }
 # instead. Feature-unifies with the `[dependencies]` entry above.
 brassclaw_reborn_composition = { path = "../brassclaw_reborn_composition", version = "0.1.0", features = ["test-support"] }
 
-[[bin]]
-name = "brassclaw-reborn"
-path = "src/main.rs"
+[lib]
+name = "brassclaw_reborn_cli"
+path = "src/lib.rs"

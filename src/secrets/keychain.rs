@@ -55,7 +55,7 @@ mod platform {
     use super::*;
 
     /// Store the master key in the macOS Keychain.
-    pub async fn store_master_key(key: &[u8]) -> Result<(), SecretError> {
+    pub(super) async fn store_master_key(key: &[u8]) -> Result<(), SecretError> {
         // Convert to hex for storage (keychain prefers strings)
         let key_hex: String = key.iter().map(|b| format!("{:02x}", b)).collect();
 
@@ -64,7 +64,7 @@ mod platform {
     }
 
     /// Retrieve the master key from the macOS Keychain.
-    pub async fn get_master_key() -> Result<Vec<u8>, SecretError> {
+    pub(super) async fn get_master_key() -> Result<Vec<u8>, SecretError> {
         let password = get_generic_password(SERVICE_NAME, MASTER_KEY_ACCOUNT).map_err(|e| {
             SecretError::KeychainError(format!("Failed to get from keychain: {}", e))
         })?;
@@ -77,14 +77,14 @@ mod platform {
     }
 
     /// Delete the master key from the macOS Keychain.
-    pub async fn delete_master_key() -> Result<(), SecretError> {
+    pub(super) async fn delete_master_key() -> Result<(), SecretError> {
         delete_generic_password(SERVICE_NAME, MASTER_KEY_ACCOUNT).map_err(|e| {
             SecretError::KeychainError(format!("Failed to delete from keychain: {}", e))
         })
     }
 
     /// Check if a master key exists in the keychain.
-    pub async fn has_master_key() -> bool {
+    pub(super) async fn has_master_key() -> bool {
         get_generic_password(SERVICE_NAME, MASTER_KEY_ACCOUNT).is_ok()
     }
 }

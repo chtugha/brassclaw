@@ -4,8 +4,8 @@ use crate::commands::Command;
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "brassclaw-reborn",
-    about = "Standalone BrassClaw Reborn runtime",
+    name = "brassclaw",
+    about = "BrassClaw V2 - Reborn Runtime",
     version
 )]
 pub(crate) struct Cli {

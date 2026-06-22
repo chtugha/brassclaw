@@ -863,7 +863,7 @@ fn libsql_row_to_secret(row: &libsql::Row) -> Result<Secret, SecretError> {
 /// In-memory secrets store. Used for testing and as a fallback when no
 /// persistent secrets backend is configured (extension listing/install still
 /// works, but stored secrets won't survive a restart).
-pub mod in_memory {
+pub(super) mod in_memory {
     use std::collections::HashMap;
     use std::sync::Arc;
 

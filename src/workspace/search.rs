@@ -312,7 +312,7 @@ pub fn reciprocal_rank_fusion(
 /// The combined scores are then normalized to [0,1] by dividing by the
 /// maximum score; post-processing (normalization, min_score filter, sort,
 /// truncate) matches RRF.
-pub fn weighted_score_fusion(
+pub(super) fn weighted_score_fusion(
     fts_results: Vec<RankedResult>,
     vector_results: Vec<RankedResult>,
     config: &SearchConfig,

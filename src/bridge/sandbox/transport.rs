@@ -23,7 +23,7 @@ use super::protocol::{Request, Response};
 /// expected to be `Arc<dyn ...>`-shareable across the per-project mount
 /// table.
 #[async_trait]
-pub trait SandboxTransport: Send + Sync + std::fmt::Debug {
+pub(super) trait SandboxTransport: Send + Sync + std::fmt::Debug {
     /// Dispatch a request and wait for the matching response. Errors here
     /// are infrastructure failures (container down, daemon crashed, IPC
     /// broken) and surface to the engine as [`MountError::Backend`].

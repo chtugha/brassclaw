@@ -35,12 +35,12 @@ use brassclaw_llm::{SessionConfig, SessionManager};
 
 // Minimal type stub needed for compilation
 #[derive(Debug, Clone)]
-pub struct ChannelCapabilitiesFile {
+pub(super) struct ChannelCapabilitiesFile {
     // Minimal stub - no fields needed for compilation
 }
 
 impl ChannelCapabilitiesFile {
-    pub fn from_bytes(_bytes: &[u8]) -> Result<Self, String> {
+    pub(super) fn from_bytes(_bytes: &[u8]) -> Result<Self, String> {
         Err("Channel capabilities parsing not yet implemented in V2".to_string())
     }
 }

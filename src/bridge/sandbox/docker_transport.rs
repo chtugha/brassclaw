@@ -39,11 +39,11 @@ use super::protocol::{Request, Response};
 use super::transport::SandboxTransport;
 
 /// Default per-call timeout. Long enough for `cargo build` and friends.
-pub const DEFAULT_CALL_TIMEOUT: Duration = Duration::from_secs(600);
+pub(super) const DEFAULT_CALL_TIMEOUT: Duration = Duration::from_secs(600);
 
 /// A Docker exec session into one running container, with serialized
 /// dispatch.
-pub struct DockerTransport {
+pub(super) struct DockerTransport {
     docker: Docker,
     container_id: String,
     /// Holds the exec session state. Lazily created on the first call so
@@ -72,7 +72,7 @@ struct ExecSession {
 }
 
 impl DockerTransport {
-    pub fn new(docker: Docker, container_id: impl Into<String>) -> Self {
+    pub(super) fn new(docker: Docker, container_id: impl Into<String>) -> Self {
         Self {
             docker,
             container_id: container_id.into(),
@@ -82,13 +82,13 @@ impl DockerTransport {
     }
 
     #[allow(dead_code)]
-    pub fn with_call_timeout(mut self, timeout: Duration) -> Self {
+    pub(super) fn with_call_timeout(mut self, timeout: Duration) -> Self {
         self.call_timeout = timeout;
         self
     }
 
     #[allow(dead_code)]
-    pub fn container_id(&self) -> &str {
+    pub(super) fn container_id(&self) -> &str {
         &self.container_id
     }
 

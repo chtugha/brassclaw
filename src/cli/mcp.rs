@@ -15,7 +15,7 @@ use crate::secrets::SecretsStore;
 
 // Minimal type stubs needed for CLI compilation
 #[derive(Debug, Clone)]
-pub struct OAuthConfig {
+pub(super) struct OAuthConfig {
     pub client_id: String,
     pub auth_url: Option<String>,
     pub token_url: Option<String>,
@@ -23,7 +23,7 @@ pub struct OAuthConfig {
 }
 
 impl OAuthConfig {
-    pub fn new(client_id: String) -> Self {
+    pub(super) fn new(client_id: String) -> Self {
         Self {
             client_id,
             auth_url: None,
@@ -32,20 +32,20 @@ impl OAuthConfig {
         }
     }
 
-    pub fn with_endpoints(mut self, auth_url: String, token_url: String) -> Self {
+    pub(super) fn with_endpoints(mut self, auth_url: String, token_url: String) -> Self {
         self.auth_url = Some(auth_url);
         self.token_url = Some(token_url);
         self
     }
 
-    pub fn with_scopes(mut self, scopes: Vec<String>) -> Self {
+    pub(super) fn with_scopes(mut self, scopes: Vec<String>) -> Self {
         self.scopes = scopes;
         self
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct McpServerConfig {
+pub(super) struct McpServerConfig {
     pub name: String,
     pub url: String,
     pub enabled: bool,
@@ -60,7 +60,7 @@ pub struct McpServerConfig {
 }
 
 impl McpServerConfig {
-    pub fn new(name: &str, url: &str) -> Self {
+    pub(super) fn new(name: &str, url: &str) -> Self {
         Self {
             name: name.to_string(),
             url: url.to_string(),
@@ -76,7 +76,7 @@ impl McpServerConfig {
         }
     }
 
-    pub fn new_stdio(name: &str, command: &str, args: Vec<String>, env: HashMap<String, String>) -> Self {
+    pub(super) fn new_stdio(name: &str, command: &str, args: Vec<String>, env: HashMap<String, String>) -> Self {
         Self {
             name: name.to_string(),
             url: String::new(),
@@ -92,7 +92,7 @@ impl McpServerConfig {
         }
     }
 
-    pub fn new_unix(name: &str, socket_path: &str) -> Self {
+    pub(super) fn new_unix(name: &str, socket_path: &str) -> Self {
         Self {
             name: name.to_string(),
             url: String::new(),
@@ -108,30 +108,30 @@ impl McpServerConfig {
         }
     }
 
-    pub fn with_headers(mut self, headers: HashMap<String, String>) -> Self {
+    pub(super) fn with_headers(mut self, headers: HashMap<String, String>) -> Self {
         self.headers = headers;
         self
     }
 
-    pub fn with_description(mut self, description: String) -> Self {
+    pub(super) fn with_description(mut self, description: String) -> Self {
         self.description = Some(description);
         self
     }
 
-    pub fn with_oauth(mut self, oauth: OAuthConfig) -> Self {
+    pub(super) fn with_oauth(mut self, oauth: OAuthConfig) -> Self {
         self.oauth = Some(oauth);
         self
     }
 
-    pub fn requires_auth(&self) -> bool {
+    pub(super) fn requires_auth(&self) -> bool {
         self.oauth.is_some()
     }
 
-    pub fn has_custom_auth_header(&self) -> bool {
+    pub(super) fn has_custom_auth_header(&self) -> bool {
         self.headers.keys().any(|k| k.eq_ignore_ascii_case("authorization"))
     }
 
-    pub fn effective_transport(&self) -> EffectiveTransport {
+    pub(super) fn effective_transport(&self) -> EffectiveTransport {
         match self.transport.as_deref() {
             Some("stdio") => EffectiveTransport::Stdio {
                 command: self.command.clone().unwrap_or_default(),
@@ -147,7 +147,7 @@ impl McpServerConfig {
 }
 
 #[derive(Debug, Clone)]
-pub enum EffectiveTransport {
+pub(super) enum EffectiveTransport {
     Http,
     Stdio {
         command: String,
@@ -160,7 +160,7 @@ pub enum EffectiveTransport {
 }
 
 #[derive(Debug)]
-pub enum AuthError {
+pub(super) enum AuthError {
     NotSupported,
 }
 
@@ -190,10 +190,10 @@ async fn authorize_mcp_server(
     Err(AuthError::NotSupported)
 }
 
-pub struct McpProcessManager;
+pub(super) struct McpProcessManager;
 
 impl McpProcessManager {
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self
     }
 }
@@ -209,28 +209,28 @@ async fn create_client_from_config(
 }
 
 #[derive(Debug, Clone)]
-pub struct McpServersFile {
+pub(super) struct McpServersFile {
     pub servers: Vec<McpServerConfig>,
 }
 
 impl McpServersFile {
-    pub fn get(&self, name: &str) -> Option<McpServerConfig> {
+    pub(super) fn get(&self, name: &str) -> Option<McpServerConfig> {
         self.servers.iter().find(|s| s.name == name).cloned()
     }
 }
 
-pub struct McpSessionManager;
+pub(super) struct McpSessionManager;
 
 impl McpSessionManager {
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self
     }
 }
 
-pub struct McpClient;
+pub(super) struct McpClient;
 
 impl McpClient {
-    pub fn new_authenticated(
+    pub(super) fn new_authenticated(
         _config: McpServerConfig,
         _session_manager: Arc<McpSessionManager>,
         _secrets: Arc<dyn SecretsStore + Send + Sync>,
@@ -240,11 +240,11 @@ impl McpClient {
     }
 }
 
-pub mod config {
+pub(super) mod config {
     use super::*;
 
     #[derive(Debug)]
-    pub enum ConfigError {
+    pub(crate) enum ConfigError {
         NotSupported(String),
     }
 
@@ -258,14 +258,14 @@ pub mod config {
 
     impl std::error::Error for ConfigError {}
 
-    pub async fn load_mcp_servers_ready(
+    pub(crate) async fn load_mcp_servers_ready(
         _db: Option<&dyn Database>,
         _owner_id: &str,
     ) -> Result<McpServersFile, ConfigError> {
         Ok(McpServersFile { servers: Vec::new() })
     }
 
-    pub async fn save_mcp_servers_to_db(
+    pub(crate) async fn save_mcp_servers_to_db(
         _db: &dyn Database,
         _owner_id: &str,
         _servers: &McpServersFile,
@@ -273,7 +273,7 @@ pub mod config {
         Err(ConfigError::NotSupported("MCP config save not yet implemented in V2".to_string()))
     }
 
-    pub async fn save_mcp_servers(_servers: &McpServersFile) -> Result<(), ConfigError> {
+    pub(crate) async fn save_mcp_servers(_servers: &McpServersFile) -> Result<(), ConfigError> {
         Err(ConfigError::NotSupported("MCP config save not yet implemented in V2".to_string()))
     }
 }

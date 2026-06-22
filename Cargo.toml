@@ -41,7 +41,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(disabled)'] }
 
 [package]
 name = "brassclaw"
-version = "0.29.8"
+version = "0.30.2"
 edition = "2024"
 rust-version = "1.92"
 description = "Secure personal AI assistant that protects your data and expands its capabilities on the fly"
@@ -49,6 +49,10 @@ authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
 homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
+default-run = "brassclaw"
+
+[lints]
+workspace = true
 
 [package.metadata.wix]
 upgrade-guid = "D0156E61-BA37-451E-8AB9-1A2ECCCFA48F"
@@ -140,6 +144,9 @@ brassclaw_memory = { path = "crates/brassclaw_memory", version = "0.1.0" }
 brassclaw_resources = { path = "crates/brassclaw_resources", version = "0.1.0" }
 brassclaw_runtime_policy = { path = "crates/brassclaw_runtime_policy", version = "0.1.0" }
 brassclaw_turns = { path = "crates/brassclaw_turns", version = "0.1.0" }
+
+# V2 Reborn CLI
+brassclaw_reborn_cli = { path = "crates/brassclaw_reborn_cli", version = "0.30.2" }
 
 # Safety/sanitization
 brassclaw_engine = { path = "crates/brassclaw_engine", version = "0.1.0" }

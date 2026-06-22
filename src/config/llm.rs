@@ -22,7 +22,7 @@ fn selected_model_override(settings: &Settings) -> Option<String> {
 
 /// Create a test-friendly config without reading env vars.
 #[cfg(feature = "libsql")]
-pub fn for_testing() -> LlmConfig {
+pub(crate) fn for_testing() -> LlmConfig {
     LlmConfig {
         backend: "nearai".to_string(),
         session: SessionConfig {
@@ -74,7 +74,7 @@ pub fn for_testing() -> LlmConfig {
 /// secrets are not yet hydrated — use [`resolve`] instead, otherwise
 /// the fallback fires spuriously and gets overridden by the later
 /// re-resolve, spamming operators with misleading error logs.
-pub fn resolve_with_fallback(settings: &Settings) -> Result<LlmConfig, ConfigError> {
+pub(crate) fn resolve_with_fallback(settings: &Settings) -> Result<LlmConfig, ConfigError> {
     match resolve(settings) {
         Ok(cfg) => {
             if let Some(reason) = unusable_reason(&cfg, settings) {
@@ -197,7 +197,7 @@ fn resolve_nearai_fallback(
 ///
 /// The top-level `AppBuilder` path calls [`resolve_with_fallback`] after
 /// hydrating secrets, which handles #2514-style crash-loop prevention.
-pub fn resolve(settings: &Settings) -> Result<LlmConfig, ConfigError> {
+pub(crate) fn resolve(settings: &Settings) -> Result<LlmConfig, ConfigError> {
     let registry = ProviderRegistry::load();
 
     // Determine backend: db settings > env var > default ("nearai")

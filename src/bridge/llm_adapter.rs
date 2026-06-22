@@ -71,14 +71,14 @@ fn cost_usd_from(
 }
 
 /// Wraps an existing `LlmProvider` to implement the engine's `LlmBackend` trait.
-pub struct LlmBridgeAdapter {
+pub(super) struct LlmBridgeAdapter {
     provider: Arc<dyn LlmProvider>,
     /// Optional cheaper provider for sub-calls (depth > 0).
     cheap_provider: Option<Arc<dyn LlmProvider>>,
 }
 
 impl LlmBridgeAdapter {
-    pub fn new(
+    pub(super) fn new(
         provider: Arc<dyn LlmProvider>,
         cheap_provider: Option<Arc<dyn LlmProvider>>,
     ) -> Self {

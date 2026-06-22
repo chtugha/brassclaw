@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 // V1 - STUB: wasm module deleted, create minimal stub for SetupSchema
 mod wasm_stub {
-    pub struct SetupSchema;
+    pub(crate) struct SetupSchema;
 }
 
 use base64::Engine;
@@ -490,7 +490,7 @@ pub struct HttpSetupResult {
 
 /// Result of Signal channel setup.
 #[derive(Debug, Clone)]
-pub struct SignalSetupResult {
+pub(super) struct SignalSetupResult {
     pub enabled: bool,
     pub http_url: String,
     pub account: String,
@@ -542,7 +542,7 @@ pub async fn setup_http(secrets: &SecretsContext) -> Result<HttpSetupResult, Cha
 }
 
 /// Generate a random webhook secret.
-pub fn generate_webhook_secret() -> String {
+pub(super) fn generate_webhook_secret() -> String {
     generate_secret_with_length(32)
 }
 
@@ -626,7 +626,7 @@ fn validate_allow_from_groups_list(list: &str) -> Result<(), String> {
 
 /// Set up Signal channel.
 /// `Settings` is reserved for future use
-pub async fn setup_signal(_settings: &Settings) -> Result<SignalSetupResult, ChannelSetupError> {
+pub(super) async fn setup_signal(_settings: &Settings) -> Result<SignalSetupResult, ChannelSetupError> {
     println!("Signal Channel Setup:");
     println!();
     print_info("Signal channel connects to a signal-cli daemon running in HTTP mode.");
@@ -734,7 +734,7 @@ pub async fn setup_signal(_settings: &Settings) -> Result<SignalSetupResult, Cha
 
 /// Result of WASM channel setup.
 #[derive(Debug, Clone)]
-pub struct WasmChannelSetupResult {
+pub(super) struct WasmChannelSetupResult {
     pub enabled: bool,
     pub channel_name: String,
     pub config_overrides: HashMap<String, serde_json::Value>,
@@ -744,7 +744,7 @@ pub struct WasmChannelSetupResult {
 ///
 /// Reads setup requirements from the channel's capabilities file and
 /// prompts the user for each required secret.
-pub async fn setup_wasm_channel(
+pub(super) async fn setup_wasm_channel(
     secrets: &SecretsContext,
     channel_name: &str,
     _setup: &wasm_stub::SetupSchema, // V1 - using stub instead of crate::channels::wasm

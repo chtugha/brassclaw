@@ -18,7 +18,7 @@ use crate::workspace::{Workspace, paths};
 /// or `None` if the path contains parent directory traversal.
 ///
 /// This is a simple string-based check that doesn't access the filesystem.
-fn normalize_workspace_path(path: &str) -> Option<String> {
+pub(crate) fn normalize_workspace_path(path: &str) -> Option<String> {
     // Check for ".." segments which indicate parent directory traversal
     if path.contains("..") {
         return None;

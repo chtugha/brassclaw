@@ -143,6 +143,12 @@ pub(crate) fn build_webui_services_with_connectable_channels(
         api = api.with_llm_config_service(Arc::new(llm_config));
     }
 
+    // Wire the safety configuration store when available (local-dev with libsql)
+    #[cfg(feature = "libsql")]
+    if let Some(safety_config_store) = &services.safety_config_store {
+        api = api.with_safety_config_store(Arc::clone(safety_config_store));
+    }
+
     Ok(RebornWebuiBundle {
         api: Arc::new(api),
         product_auth: services.product_auth.clone(),

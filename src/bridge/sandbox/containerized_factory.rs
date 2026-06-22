@@ -24,7 +24,7 @@ use super::manager::ProjectSandboxManager;
 
 /// [`ProjectMountFactory`] that asks a shared [`ProjectSandboxManager`] for
 /// a transport per project and wraps it in a [`ContainerizedFilesystemBackend`].
-pub struct ContainerizedMountFactory {
+pub(super) struct ContainerizedMountFactory {
     manager: Arc<ProjectSandboxManager>,
     resolver: ProjectPathResolver,
 }
@@ -36,7 +36,7 @@ impl std::fmt::Debug for ContainerizedMountFactory {
 }
 
 impl ContainerizedMountFactory {
-    pub fn new(manager: Arc<ProjectSandboxManager>, resolver: ProjectPathResolver) -> Self {
+    pub(super) fn new(manager: Arc<ProjectSandboxManager>, resolver: ProjectPathResolver) -> Self {
         Self { manager, resolver }
     }
 }

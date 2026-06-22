@@ -26,19 +26,19 @@ use tracing::debug;
 /// `/project/` is the canonical agent-facing prefix for the user's project
 /// files. The same name is used by every backend (filesystem today,
 /// containerized in Phase 5+) so swapping backends is invisible to the agent.
-pub const PROJECT_MOUNT_PREFIX: &str = "/project/";
+pub(super) const PROJECT_MOUNT_PREFIX: &str = "/project/";
 
 /// Resolves a project id to a host filesystem path. Implementations are
 /// responsible for any directory creation. Returning an error short-circuits
 /// the factory and the engine surfaces a backend error.
-pub type ProjectPathResolver = Arc<
+pub(super) type ProjectPathResolver = Arc<
     dyn Fn(ProjectId) -> Pin<Box<dyn Future<Output = Result<PathBuf, MountError>> + Send>>
         + Send
         + Sync,
 >;
 
 /// Builds [`ProjectMounts`] backed by the host filesystem.
-pub struct FilesystemMountFactory {
+pub(super) struct FilesystemMountFactory {
     resolver: ProjectPathResolver,
 }
 
@@ -49,7 +49,7 @@ impl std::fmt::Debug for FilesystemMountFactory {
 }
 
 impl FilesystemMountFactory {
-    pub fn new(resolver: ProjectPathResolver) -> Self {
+    pub(super) fn new(resolver: ProjectPathResolver) -> Self {
         Self { resolver }
     }
 }

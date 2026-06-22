@@ -23,7 +23,7 @@ use super::lifecycle;
 use super::transport::SandboxTransport;
 
 /// One process-wide manager that vends sandbox transports per project.
-pub struct ProjectSandboxManager {
+pub(super) struct ProjectSandboxManager {
     docker: Docker,
     transports: Mutex<HashMap<ProjectId, Arc<DockerTransport>>>,
 }
@@ -36,7 +36,7 @@ impl std::fmt::Debug for ProjectSandboxManager {
 
 impl ProjectSandboxManager {
     #[allow(dead_code)]
-    pub fn new(docker: Docker) -> Self {
+    pub(super) fn new(docker: Docker) -> Self {
         Self {
             docker,
             transports: Mutex::new(HashMap::new()),
@@ -52,7 +52,7 @@ impl ProjectSandboxManager {
     /// containers. This does head-of-line-block other projects during
     /// container creation (~1-2s), but avoids orphan containers that would
     /// accumulate until the idle reaper (not yet implemented) cleans them.
-    pub async fn transport_for(
+    pub(super) async fn transport_for(
         &self,
         project_id: ProjectId,
         host_workspace_path: PathBuf,
@@ -83,7 +83,7 @@ impl ProjectSandboxManager {
     /// itself is left around (still on disk) so the next call resumes
     /// quickly. Use [`Self::reset_project`] for full removal.
     #[allow(dead_code)]
-    pub async fn shutdown_project(&self, project_id: ProjectId) {
+    pub(super) async fn shutdown_project(&self, project_id: ProjectId) {
         let mut guard = self.transports.lock().await;
         if guard.remove(&project_id).is_some() {
             lifecycle::stop(&self.docker, project_id).await;
@@ -94,7 +94,7 @@ impl ProjectSandboxManager {
     /// deletion / explicit user reset. The host workspace directory stays
     /// untouched — it's the user's data, not the sandbox's.
     #[allow(dead_code)]
-    pub async fn reset_project(&self, project_id: ProjectId) {
+    pub(super) async fn reset_project(&self, project_id: ProjectId) {
         let mut guard = self.transports.lock().await;
         guard.remove(&project_id);
         lifecycle::stop(&self.docker, project_id).await;
@@ -103,7 +103,7 @@ impl ProjectSandboxManager {
 
     /// Stop every cached transport. Called at engine teardown.
     #[allow(dead_code)]
-    pub async fn shutdown_all(&self) {
+    pub(super) async fn shutdown_all(&self) {
         let mut guard = self.transports.lock().await;
         let pids: Vec<ProjectId> = guard.keys().copied().collect();
         guard.clear();

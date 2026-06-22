@@ -8,7 +8,7 @@ use crate::channels::{AttachmentKind, IncomingAttachment};
 use brassclaw_llm::{ContentPart, ImageUrl};
 
 /// Result of processing attachments for the LLM pipeline.
-pub struct AugmentResult {
+pub(super) struct AugmentResult {
     /// Augmented text content with attachment metadata appended.
     pub text: String,
     /// Image content parts to include as multimodal input.
@@ -21,7 +21,7 @@ pub struct AugmentResult {
 /// Returns `Some(AugmentResult)` with:
 /// - `text`: original content + `<attachments>` block (metadata, transcripts, etc.)
 /// - `image_parts`: `ContentPart::ImageUrl` entries for images with data
-pub fn augment_with_attachments(
+pub(super) fn augment_with_attachments(
     content: &str,
     attachments: &[IncomingAttachment],
 ) -> Option<AugmentResult> {

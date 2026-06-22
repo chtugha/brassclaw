@@ -34,7 +34,8 @@ use async_trait::async_trait;
 use rust_decimal::Decimal;
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
 
-use crate::agent::AgentDeps;
+// V1 - AgentDeps deleted
+// use crate::agent::AgentDeps;
 use crate::channels::{
     Channel, ChannelManager, IncomingMessage, MessageStream, OutgoingResponse, StatusUpdate,
 };

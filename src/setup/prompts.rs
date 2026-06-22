@@ -300,7 +300,7 @@ pub fn confirm(prompt: &str, default: bool) -> io::Result<bool> {
 }
 
 /// Print a minimal wordmark banner.
-pub fn print_banner() {
+pub(super) fn print_banner() {
     use crate::cli::fmt;
     println!();
     println!("  {}brassclaw{}", fmt::bold_accent(), fmt::reset());
@@ -373,7 +373,7 @@ pub fn print_error(message: &str) {
 }
 
 /// Print a warning message with yellow exclamation.
-pub fn print_warning(message: &str) {
+pub(super) fn print_warning(message: &str) {
     let mut stdout = io::stdout();
     let _ = execute!(stdout, SetForegroundColor(Color::Yellow));
     print!("!");

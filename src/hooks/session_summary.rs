@@ -516,7 +516,7 @@ mod tests {
             messages: vec![],
         });
         let resolver: Arc<dyn WorkspaceResolver> = Arc::new(
-            crate::tools::builtin::memory::FixedWorkspaceResolver::new(ws),
+            crate::capabilities::memory::FixedWorkspaceResolver::new(ws),
         );
         let hook = make_mock_hook(store, resolver);
 
@@ -534,7 +534,7 @@ mod tests {
             messages: vec![],
         });
         let resolver: Arc<dyn WorkspaceResolver> = Arc::new(
-            crate::tools::builtin::memory::FixedWorkspaceResolver::new(ws),
+            crate::capabilities::memory::FixedWorkspaceResolver::new(ws),
         );
         let hook = make_mock_hook(store, resolver);
 
@@ -555,7 +555,7 @@ mod tests {
             messages: vec![],
         });
         let resolver: Arc<dyn WorkspaceResolver> = Arc::new(
-            crate::tools::builtin::memory::FixedWorkspaceResolver::new(ws),
+            brassclaw_capabilities::memory::FixedWorkspaceResolver::new(ws),
         );
         let hook = make_mock_hook(store, resolver);
 
@@ -601,7 +601,7 @@ mod tests {
             ],
         });
         let resolver: Arc<dyn WorkspaceResolver> = Arc::new(
-            crate::tools::builtin::memory::FixedWorkspaceResolver::new(ws),
+            crate::capabilities::memory::FixedWorkspaceResolver::new(ws),
         );
         let hook = make_mock_hook(store, resolver);
 
@@ -750,7 +750,7 @@ mod tests {
         let llm: Arc<dyn LlmProvider> = Arc::new(FailingMockLlm);
         let ws = Arc::new(Workspace::new_with_db("test_user", Arc::clone(&db)));
         let resolver: Arc<dyn WorkspaceResolver> = Arc::new(
-            crate::tools::builtin::memory::FixedWorkspaceResolver::new(ws),
+            crate::capabilities::memory::FixedWorkspaceResolver::new(ws),
         );
 
         let hook = SessionSummaryHook::new(store, resolver, llm);

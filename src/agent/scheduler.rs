@@ -23,7 +23,7 @@ use brassclaw_safety::SafetyLayer;
 
 /// Message that can be sent to a running job.
 #[derive(Debug, Clone)]
-pub enum JobMessage {
+pub(crate) enum JobMessage {
     /// User message to be processed by the job
     UserMessage(String),
     /// Request to cancel the job

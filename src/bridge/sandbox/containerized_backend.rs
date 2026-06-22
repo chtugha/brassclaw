@@ -35,12 +35,12 @@ const CONTAINER_PROJECT_ROOT: &str = "/project";
 
 /// [`MountBackend`] backed by a per-project sandbox container.
 #[derive(Debug, Clone)]
-pub struct ContainerizedFilesystemBackend {
+pub(super) struct ContainerizedFilesystemBackend {
     transport: Arc<dyn SandboxTransport>,
 }
 
 impl ContainerizedFilesystemBackend {
-    pub fn new(transport: Arc<dyn SandboxTransport>) -> Self {
+    pub(super) fn new(transport: Arc<dyn SandboxTransport>) -> Self {
         Self { transport }
     }
 

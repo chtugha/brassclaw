@@ -328,6 +328,10 @@ pub struct RebornServices {
     /// rather than standing up a second authority.
     #[cfg(feature = "root-llm-provider")]
     pub(crate) secret_store: Arc<dyn SecretStore>,
+    /// Safety configuration store for managing safety rules and settings.
+    /// Available when libsql feature is enabled for local-dev mode.
+    #[cfg(feature = "libsql")]
+    pub(crate) safety_config_store: Option<Arc<brassclaw_product_workflow::SqliteSafetyConfigStore>>,
 }
 
 impl RebornServices {
@@ -378,6 +382,9 @@ pub(crate) struct RebornLocalRuntimeServices {
     /// stream".
     #[allow(dead_code)]
     pub(crate) budget_event_sink: Arc<dyn brassclaw_resources::BudgetEventSink>,
+    /// Safety configuration store for managing safety rules and settings.
+    #[cfg(feature = "libsql")]
+    pub(crate) safety_config_store: Arc<brassclaw_product_workflow::SqliteSafetyConfigStore>,
     /// Same sink as `budget_event_sink` but typed as the concrete
     /// `InMemoryBudgetEventSink` so the runtime can expose `drain()` /
     /// `snapshot()` to tests without leaking the concrete type into the
@@ -494,6 +501,8 @@ impl RebornServices {
             local_runtime: None,
             #[cfg(feature = "root-llm-provider")]
             secret_store: Arc::new(brassclaw_secrets::InMemorySecretStore::new()),
+            #[cfg(feature = "libsql")]
+            safety_config_store: None,
         }
     }
 }
@@ -880,9 +889,11 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
         // the caller does not inject one; readiness tracks the assembled facade.
         product_auth: Some(product_auth),
         readiness: readiness_for(profile, true, true, true),
-        local_runtime: Some(store_graph.local_runtime),
+        local_runtime: Some(Arc::clone(&store_graph.local_runtime)),
         #[cfg(feature = "root-llm-provider")]
         secret_store,
+        #[cfg(feature = "libsql")]
+        safety_config_store: Some(Arc::clone(&store_graph.local_runtime.safety_config_store)),
     })
 }
 
@@ -947,6 +958,14 @@ fn build_local_dev_store_graph(
     let host_state_filesystem = local_dev_slack_host_state_filesystem(Arc::clone(&filesystem));
     let skill_management =
         build_local_skill_management_port(owner_user_id, Arc::clone(&filesystem))?;
+    
+    // Create the safety configuration store using the identity_substrate_db
+    let safety_config_store = Arc::new(
+        brassclaw_product_workflow::SqliteSafetyConfigStore::new(
+            Arc::clone(&identity_substrate_db)
+        )
+    );
+    
     let local_runtime = Arc::new(RebornLocalRuntimeServices {
         approval_requests: Arc::clone(&approval_requests),
         capability_leases: Arc::clone(&capability_leases),
@@ -985,6 +1004,7 @@ fn build_local_dev_store_graph(
         event_log,
         audit_log,
         extension_registry: Arc::new(ExtensionRegistry::new()),
+        safety_config_store,
     });
     let process_services = ProcessServices::filesystem(Arc::clone(&scoped_filesystem));
 
@@ -2523,6 +2543,8 @@ where
         local_runtime: None,
         #[cfg(feature = "root-llm-provider")]
         secret_store,
+        #[cfg(feature = "libsql")]
+        safety_config_store: None,
     })
 }
 

@@ -36,7 +36,7 @@ pub(crate) struct PendingWechatLogin {
 }
 
 impl PendingWechatLogin {
-    pub fn is_fresh(&self) -> bool {
+    pub(crate) fn is_fresh(&self) -> bool {
         self.started_at.elapsed() < LOGIN_SESSION_TTL
     }
 }

@@ -22,7 +22,7 @@ use tracing::debug;
 /// interceptor catches calls regardless of which alias the agent uses. The
 /// daemon also accepts both on the container side, keeping the pair fully
 /// symmetric.
-pub const SANDBOX_TOOL_NAMES: &[&str] = &[
+pub(super) const SANDBOX_TOOL_NAMES: &[&str] = &[
     "file_read",
     "file_write",
     "read_file",
@@ -45,7 +45,7 @@ pub const SANDBOX_TOOL_NAMES: &[&str] = &[
 /// recognizable path in params, path doesn't resolve to any mount, or the
 /// matched backend returned [`MountError::Unsupported`].
 #[derive(Debug)]
-pub enum InterceptOutcome {
+pub(super) enum InterceptOutcome {
     Handled(String),
     FellThrough,
 }
@@ -65,7 +65,7 @@ pub enum InterceptOutcome {
 /// the bridge falls back to host execution gracefully — that's how the
 /// `FilesystemBackend` Phase 1 stubs for `apply_patch` and `shell` keep
 /// working without breaking the agent.
-pub async fn maybe_intercept(
+pub(super) async fn maybe_intercept(
     action_name: &str,
     parameters: &Value,
     project_id: ProjectId,
