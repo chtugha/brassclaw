@@ -25,6 +25,7 @@ brassclaw_approvals = { path = "../brassclaw_approvals", version = "0.1.0" }
 brassclaw_authorization = { path = "../brassclaw_authorization", version = "0.1.0" }
 brassclaw_auth = { path = "../brassclaw_auth", version = "0.1.0" }
 brassclaw_events = { path = "../brassclaw_events", version = "0.1.0" }
+brassclaw_extensions = { path = "../brassclaw_extensions", version = "0.1.0" }
 brassclaw_host_api = { path = "../brassclaw_host_api", version = "0.1.0" }
 brassclaw_conversations = { path = "../brassclaw_conversations", version = "0.1.0" }
 brassclaw_outbound = { path = "../brassclaw_outbound", version = "0.1.0" }
@@ -32,6 +33,7 @@ brassclaw_product_adapters = { path = "../brassclaw_product_adapters", version =
 brassclaw_run_state = { path = "../brassclaw_run_state", version = "0.1.0" }
 brassclaw_threads = { path = "../brassclaw_threads", version = "0.1.0" }
 brassclaw_turns = { path = "../brassclaw_turns", version = "0.1.0" }
+libsql = { version = "0.6", default-features = false, features = ["core", "replication", "remote", "tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 secrecy = { version = "0.10", features = ["serde"] }

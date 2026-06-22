@@ -15,7 +15,7 @@ use brassclaw_auth::{
     AuthProductScope, AuthProviderId, CredentialAccountId, CredentialAccountProjection,
     CredentialAccountUpdateBinding, ProviderScope,
 };
-use brassclaw_host_api::{AgentId, ExtensionId, ProjectId, TenantId, ThreadId, UserId};
+use brassclaw_host_api::{AgentId, ExtensionId, ProjectId, TenantId, ThreadId, UserId, PermissionMode};
 use brassclaw_product_adapters::{
     ProductAdapterError, ProductWorkflowRejectionKind, ProjectionStream,
     ProjectionSubscriptionRequest,
@@ -60,6 +60,41 @@ mod extensions;
 mod lifecycle_setup;
 mod llm_config;
 mod types;
+
+/// Trait for storing and retrieving capability permission overrides.
+///
+/// This trait abstracts the database layer for V2 capability permissions,
+/// allowing different storage backends (LibSQL, Postgres, etc.) to be used.
+#[async_trait]
+pub trait CapabilityPermissionStore: Send + Sync {
+    /// Get the permission override for a specific capability.
+    async fn get_capability_permission(
+        &self,
+        tenant_id: &str,
+        capability_id: &str,
+    ) -> Result<Option<PermissionMode>, Box<dyn std::error::Error + Send + Sync>>;
+
+    /// Set a permission override for a specific capability.
+    async fn set_capability_permission(
+        &self,
+        tenant_id: &str,
+        capability_id: &str,
+        mode: PermissionMode,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
+    /// Delete a permission override for a specific capability.
+    async fn delete_capability_permission(
+        &self,
+        tenant_id: &str,
+        capability_id: &str,
+    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>>;
+
+    /// List all permission overrides for a tenant.
+    async fn list_capability_overrides(
+        &self,
+        tenant_id: &str,
+    ) -> Result<HashMap<String, PermissionMode>, Box<dyn std::error::Error + Send + Sync>>;
+}
 
 pub use error::{RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind};
 pub use llm_config::{
@@ -691,6 +726,9 @@ pub struct RebornServices {
     skill_activation_clearer: Option<Arc<SkillActivationClearer>>,
     llm_config: Option<Arc<dyn LlmConfigService>>,
     thread_operation_locks: Arc<ThreadOperationLocks>,
+    extension_registry: Option<Arc<brassclaw_extensions::ExtensionRegistry>>,
+    capability_permission_store: Option<Arc<dyn CapabilityPermissionStore>>,
+    safety_config_store: Option<Arc<crate::safety_config_store::SqliteSafetyConfigStore>>,
 }
 
 impl RebornServices {
@@ -717,6 +755,9 @@ impl RebornServices {
             skill_activation_clearer: None,
             llm_config: None,
             thread_operation_locks: Arc::new(StdMutex::new(HashMap::new())),
+            extension_registry: None,
+            capability_permission_store: None,
+            safety_config_store: None,
         }
     }
 
@@ -810,6 +851,33 @@ impl RebornServices {
     {
         self.skill_activation_recorder = Some(Arc::new(recorder));
         self.skill_activation_clearer = Some(Arc::new(clearer));
+        self
+    }
+
+    /// Attach the extension registry for listing available capabilities.
+    pub fn with_extension_registry(
+        mut self,
+        extension_registry: Arc<brassclaw_extensions::ExtensionRegistry>,
+    ) -> Self {
+        self.extension_registry = Some(extension_registry);
+        self
+    }
+
+    /// Attach the capability permission store for managing permission overrides.
+    pub fn with_capability_permission_store(
+        mut self,
+        capability_permission_store: Arc<dyn CapabilityPermissionStore>,
+    ) -> Self {
+        self.capability_permission_store = Some(capability_permission_store);
+        self
+    }
+
+    /// Attach the safety configuration store for managing safety rules.
+    pub fn with_safety_config_store(
+        mut self,
+        safety_config_store: Arc<crate::safety_config_store::SqliteSafetyConfigStore>,
+    ) -> Self {
+        self.safety_config_store = Some(safety_config_store);
         self
     }
 
@@ -1544,28 +1612,335 @@ impl RebornServicesApi for RebornServices {
 
     async fn list_capabilities(
         &self,
-        _caller: WebUiAuthenticatedCaller,
+        caller: WebUiAuthenticatedCaller,
     ) -> Result<RebornListCapabilitiesResponse, RebornServicesError> {
-        // TODO: Wire up ExtensionRegistry and PermissionResolver during bridge layer rewrite
-        // For now, return empty list until the capability infrastructure is fully wired
-        Ok(RebornListCapabilitiesResponse {
-            capabilities: Vec::new(),
-        })
+        use brassclaw_host_api::PermissionMode;
+
+        // If extension registry is not wired, return empty list
+        let Some(registry) = &self.extension_registry else {
+            return Ok(RebornListCapabilitiesResponse {
+                capabilities: Vec::new(),
+            });
+        };
+
+        let tenant_id = caller.tenant_id.to_string();
+
+        // Load permission overrides from the database if available
+        let permission_overrides = if let Some(store) = &self.capability_permission_store {
+            store
+                .list_capability_overrides(&tenant_id)
+                .await
+                .map_err(|_e| {
+                    RebornServicesError::from_status_kind(
+                        RebornServicesErrorCode::Internal,
+                        RebornServicesErrorKind::Internal,
+                        500,
+                        false,
+                    )
+                })?
+        } else {
+            std::collections::HashMap::new()
+        };
+
+        // Build capability info list from registry
+        let mut capabilities = Vec::new();
+        for descriptor in registry.capabilities() {
+            let default_permission = match descriptor.default_permission {
+                PermissionMode::Allow => "allow",
+                PermissionMode::Ask => "ask",
+                PermissionMode::Deny => "deny",
+            };
+
+            let permission_mode = permission_overrides
+                .get(&descriptor.id.to_string())
+                .map(|mode| match mode {
+                    PermissionMode::Allow => "allow",
+                    PermissionMode::Ask => "ask",
+                    PermissionMode::Deny => "deny",
+                })
+                .unwrap_or(default_permission);
+
+            capabilities.push(RebornCapabilityInfo {
+                id: descriptor.id.to_string(),
+                description: descriptor.description.clone(),
+                provider: descriptor.provider.to_string(),
+                effects: descriptor
+                    .effects
+                    .iter()
+                    .map(|e| format!("{:?}", e))
+                    .collect(),
+                permission_mode: permission_mode.to_string(),
+                default_permission: default_permission.to_string(),
+            });
+        }
+
+        Ok(RebornListCapabilitiesResponse { capabilities })
     }
 
     async fn update_capability_permission(
         &self,
-        _caller: WebUiAuthenticatedCaller,
-        _request: RebornUpdateCapabilityPermissionRequest,
+        caller: WebUiAuthenticatedCaller,
+        request: RebornUpdateCapabilityPermissionRequest,
     ) -> Result<RebornUpdateCapabilityPermissionResponse, RebornServicesError> {
-        // TODO: Wire up CapabilityPermissionStore during bridge layer rewrite
-        // For now, return service unavailable until the capability infrastructure is fully wired
-        Err(RebornServicesError::from_status_kind(
-            RebornServicesErrorCode::Unavailable,
-            RebornServicesErrorKind::ServiceUnavailable,
-            503,
-            false,
-        ))
+        use brassclaw_host_api::PermissionMode;
+
+        // Require capability permission store to be wired
+        let Some(store) = &self.capability_permission_store else {
+            return Err(RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            ));
+        };
+
+        // Validate and parse permission mode
+        let permission_mode = match request.permission_mode.as_str() {
+            "allow" => PermissionMode::Allow,
+            "ask" => PermissionMode::Ask,
+            "deny" => PermissionMode::Deny,
+            _ => {
+                return Err(RebornServicesError::from_status_kind(
+                    RebornServicesErrorCode::InvalidRequest,
+                    RebornServicesErrorKind::Validation,
+                    400,
+                    false,
+                ));
+            }
+        };
+
+        let tenant_id = caller.tenant_id.to_string();
+        let capability_id = request.capability_id.clone();
+
+        // Verify capability exists in registry if available
+        if let Some(registry) = &self.extension_registry {
+            let cap_id = brassclaw_host_api::CapabilityId::new(&capability_id)
+                .map_err(|_| {
+                    RebornServicesError::from_status_kind(
+                        RebornServicesErrorCode::InvalidRequest,
+                        RebornServicesErrorKind::Validation,
+                        400,
+                        false,
+                    )
+                })?;
+            
+            if registry.get_capability(&cap_id).is_none() {
+                return Err(RebornServicesError::from_status_kind(
+                    RebornServicesErrorCode::NotFound,
+                    RebornServicesErrorKind::NotFound,
+                    404,
+                    false,
+                ));
+            }
+        }
+
+        // Store the permission override
+        store
+            .set_capability_permission(&tenant_id, &capability_id, permission_mode)
+            .await
+            .map_err(|_e| {
+                RebornServicesError::from_status_kind(
+                    RebornServicesErrorCode::Internal,
+                    RebornServicesErrorKind::Internal,
+                    500,
+                    false,
+                )
+            })?;
+
+        Ok(RebornUpdateCapabilityPermissionResponse {
+            capability_id,
+            permission_mode: request.permission_mode,
+            updated: true,
+        })
+    }
+
+    async fn get_safety_sensitive_paths(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
+        use crate::safety_config_store::SafetyConfigStore;
+        
+        let Some(store) = &self.safety_config_store else {
+            return Err(RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            ));
+        };
+
+        let user_id = caller.user_id.to_string();
+        store
+            .get_config(&user_id, crate::safety_config_store::SafetyCategory::SensitivePaths)
+            .await
+            .map_err(|_e| {
+                RebornServicesError::from_status_kind(
+                    RebornServicesErrorCode::Internal,
+                    RebornServicesErrorKind::Internal,
+                    500,
+                    false,
+                )
+            })
+    }
+
+    async fn update_safety_sensitive_paths(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: crate::safety_config::UpdateSafetyConfigRequest,
+    ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
+        use crate::safety_config_store::SafetyConfigStore;
+        
+        let Some(store) = &self.safety_config_store else {
+            return Err(RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            ));
+        };
+
+        let user_id = caller.user_id.to_string();
+        store
+            .update_config(
+                &user_id,
+                crate::safety_config_store::SafetyCategory::SensitivePaths,
+                request.entries,
+            )
+            .await
+            .map_err(|_e| {
+                RebornServicesError::from_status_kind(
+                    RebornServicesErrorCode::Internal,
+                    RebornServicesErrorKind::Internal,
+                    500,
+                    false,
+                )
+            })
+    }
+
+    async fn get_safety_workspace_rules(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
+        use crate::safety_config_store::SafetyConfigStore;
+        
+        let Some(store) = &self.safety_config_store else {
+            return Err(RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            ));
+        };
+
+        let user_id = caller.user_id.to_string();
+        store
+            .get_config(&user_id, crate::safety_config_store::SafetyCategory::WorkspaceRules)
+            .await
+            .map_err(|_e| {
+                RebornServicesError::from_status_kind(
+                    RebornServicesErrorCode::Internal,
+                    RebornServicesErrorKind::Internal,
+                    500,
+                    false,
+                )
+            })
+    }
+
+    async fn update_safety_workspace_rules(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: crate::safety_config::UpdateSafetyConfigRequest,
+    ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
+        use crate::safety_config_store::SafetyConfigStore;
+        
+        let Some(store) = &self.safety_config_store else {
+            return Err(RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            ));
+        };
+
+        let user_id = caller.user_id.to_string();
+        store
+            .update_config(
+                &user_id,
+                crate::safety_config_store::SafetyCategory::WorkspaceRules,
+                request.entries,
+            )
+            .await
+            .map_err(|_e| {
+                RebornServicesError::from_status_kind(
+                    RebornServicesErrorCode::Internal,
+                    RebornServicesErrorKind::Internal,
+                    500,
+                    false,
+                )
+            })
+    }
+
+    async fn get_safety_blocked_paths(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
+        use crate::safety_config_store::SafetyConfigStore;
+        
+        let Some(store) = &self.safety_config_store else {
+            return Err(RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            ));
+        };
+
+        let user_id = caller.user_id.to_string();
+        store
+            .get_config(&user_id, crate::safety_config_store::SafetyCategory::BlockedPaths)
+            .await
+            .map_err(|_e| {
+                RebornServicesError::from_status_kind(
+                    RebornServicesErrorCode::Internal,
+                    RebornServicesErrorKind::Internal,
+                    500,
+                    false,
+                )
+            })
+    }
+
+    async fn update_safety_blocked_paths(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: crate::safety_config::UpdateSafetyConfigRequest,
+    ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
+        use crate::safety_config_store::SafetyConfigStore;
+        
+        let Some(store) = &self.safety_config_store else {
+            return Err(RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            ));
+        };
+
+        let user_id = caller.user_id.to_string();
+        store
+            .update_config(
+                &user_id,
+                crate::safety_config_store::SafetyCategory::BlockedPaths,
+                request.entries,
+            )
+            .await
+            .map_err(|_e| {
+                RebornServicesError::from_status_kind(
+                    RebornServicesErrorCode::Internal,
+                    RebornServicesErrorKind::Internal,
+                    500,
+                    false,
+                )
+            })
     }
 }
 

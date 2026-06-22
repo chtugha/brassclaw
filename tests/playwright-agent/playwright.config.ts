@@ -1,5 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Set default environment variables for tests
+process.env.BRASSCLAW_REBORN_WEBUI_TOKEN = process.env.BRASSCLAW_REBORN_WEBUI_TOKEN || 'test-playwright-token';
+process.env.BRASSCLAW_REBORN_WEBUI_USER_ID = process.env.BRASSCLAW_REBORN_WEBUI_USER_ID || 'test-playwright-user';
+process.env.BRASSCLAW_GATEWAY_TOKEN = process.env.BRASSCLAW_GATEWAY_TOKEN || 'test-token';
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: false, // Run tests sequentially for agent testing
@@ -20,6 +25,10 @@ export default defineConfig({
     actionTimeout: 30000,
     navigationTimeout: 30000,
   },
+
+  // Make environment variables available to tests
+  globalSetup: undefined,
+  globalTeardown: undefined,
 
   timeout: 60000, // 60 seconds per test
 

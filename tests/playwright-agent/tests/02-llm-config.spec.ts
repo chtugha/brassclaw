@@ -9,9 +9,9 @@ test.describe('LLM Configuration Tests', () => {
 
   // Helper function to create a provider
   async function createProvider(page: any) {
-    // Navigate to settings
-    await page.click(SELECTORS.settingsLink);
-    await page.waitForURL('**/settings**');
+    // Navigate to settings/inference page directly
+    await page.goto('/settings/inference');
+    await page.waitForLoadState('networkidle');
     
     // Wait for the page to load and check for Add provider button
     await page.waitForSelector(SELECTORS.addProviderButton, { timeout: 10000 });
@@ -25,27 +25,42 @@ test.describe('LLM Configuration Tests', () => {
     // Fill in provider details
     await page.getByLabel('Display name').fill(providerName);
     await page.getByLabel('Provider ID').fill(providerId);
+    
+    // Adapter defaults to "open_ai_completions" (OpenAI Compatible), which is what we want
+    // No need to select it explicitly
+    
     await page.getByLabel('Base URL').fill('http://192.168.10.223:8000/v1');
     await page.getByLabel('Default model').fill('Qwen/Qwen2.5-7B-Instruct-AWQ');
     
     // Save
     await page.getByRole('button', { name: 'Save' }).click();
     
-    // The dialog might not close automatically if there's an error or it stays open
-    // Try to close it with Escape key if it's still visible
+    // Wait for the dialog to close (it should close on successful save)
     await page.waitForTimeout(2000);
     
-    // Check if dialog is still open and close it
+    // Check if there's an error message displayed
+    const errorMessage = page.locator('text=/error|failed/i').first();
+    const hasError = await errorMessage.isVisible().catch(() => false);
+    
+    if (hasError) {
+      console.log('Error detected after saving provider');
+      // Close dialog with Escape if there's an error
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(1000);
+      throw new Error('Failed to create provider - validation error');
+    }
+    
+    // Check if dialog is still open (shouldn't be if save was successful)
     const displayNameInput = page.getByLabel('Display name');
     const isStillVisible = await displayNameInput.isVisible().catch(() => false);
     if (isStillVisible) {
-      // Press Escape to close the dialog
+      // Dialog is still open, close it
       await page.keyboard.press('Escape');
       await page.waitForTimeout(1000);
     }
     
-    // Wait for provider to appear in the list
-    await page.waitForTimeout(1000);
+    // Wait for provider list to refresh
+    await page.waitForTimeout(2000);
   }
 
   test('should configure OpenAI-compatible LLM provider', async ({ page }) => {

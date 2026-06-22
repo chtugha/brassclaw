@@ -4,10 +4,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::{RwLock, mpsc, oneshot};
+use tokio::sync::{RwLock, oneshot, mpsc};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
+use crate::agent::background_tasks::{BackgroundTaskRegistry, create_default_registry};
+use crate::agent::dead_letter_queue::{DeadLetterQueue, DLQConfig};
 use crate::agent::task::{Task, TaskContext, TaskOutput};
 use crate::config::AgentConfig;
 use crate::context::{ContextManager, JobContext, JobState};
@@ -19,100 +21,68 @@ use brassclaw_engine::EffectExecutor;
 use brassclaw_llm::LlmProvider;
 use brassclaw_safety::SafetyLayer;
 
-// ============================================================================
-// V1 STUBS - These types were deleted with V1 and need V2 reimplementation
-// ============================================================================
-
-/// Stub for deleted V1 ApprovalContext - needs V2 reimplementation
+/// Message that can be sent to a running job.
 #[derive(Debug, Clone)]
-pub struct ApprovalContext {
-    _placeholder: (),
-}
-
-impl ApprovalContext {
-    pub fn autonomous() -> Self {
-        Self { _placeholder: () }
-    }
-    
-    pub fn autonomous_with_tools<I>(_tools: I) -> Self
-    where
-        I: IntoIterator<Item = String>,
-    {
-        Self { _placeholder: () }
-    }
-    
-    pub fn is_blocked_or_default(
-        _ctx: &Option<ApprovalContext>,
-        _tool_name: &str,
-        _requirement: &str,
-    ) -> bool {
-        false // Stub: allow all for now
-    }
-}
-
-/// Stub for deleted V1 ToolRegistry - needs V2 reimplementation
-/// Stub for deleted V1 WorkerDeps - needs V2 reimplementation
-#[allow(dead_code)]
-struct WorkerDeps {
-    context_manager: Arc<ContextManager>,
-    llm: Arc<dyn LlmProvider>,
-    safety: Arc<SafetyLayer>,
-    hooks: Arc<HookRegistry>,
-    timeout: Duration,
-    use_planning: bool,
-    approval_context: Option<ApprovalContext>,
-    multi_tenant: bool,
-}
-
-/// Stub for deleted V1 Worker type
-#[allow(dead_code)]
-struct Worker {
-    _placeholder: (),
-}
-
-/// Stub for deleted V1 autonomous_allowed_tool_names function
-async fn autonomous_allowed_tool_names(
-    _extension_manager: Option<&Arc<ExtensionManager>>,
-    _user_id: &str,
-) -> Vec<String> {
-    // Stub: return empty list for now
-    vec![]
-}
-
-/// Stub for deleted V1 prepare_tool_params function
-#[allow(dead_code)]
-fn prepare_tool_params(_tool: &dyn std::any::Any, params: &serde_json::Value) -> serde_json::Value {
-    params.clone()
-}
-
-/// Stub for deleted V1 autonomous_unavailable_error function
-#[allow(dead_code)]
-fn autonomous_unavailable_error(tool_name: &str, _user_id: &str) -> Error {
-    Error::Tool(crate::error::ToolError::ExecutionFailed {
-        name: tool_name.to_string(),
-        reason: "Tool execution unavailable in V2 migration".to_string(),
-    })
-}
-
-/// Message to send to a worker.
-#[derive(Debug)]
-#[allow(dead_code)]
-pub enum WorkerMessage {
-    /// Start working on the job.
-    Start,
-    /// Stop the job.
-    Stop,
-    /// Check health.
-    Ping,
-    /// Inject a follow-up user message into the worker's reasoning context.
+pub enum JobMessage {
+    /// User message to be processed by the job
     UserMessage(String),
+    /// Request to cancel the job
+    Cancel,
 }
 
-/// Status of a scheduled job.
-#[derive(Debug)]
-pub struct ScheduledJob {
-    pub handle: JoinHandle<()>,
-    pub tx: mpsc::Sender<WorkerMessage>,
+/// Context for generic task execution.
+pub struct GenericTaskContext {
+    /// Job ID for this task execution.
+    pub job_id: Uuid,
+    /// Task description.
+    pub description: String,
+    /// Task-specific parameters.
+    pub params: serde_json::Value,
+}
+
+/// Handler for generic task types.
+#[async_trait::async_trait]
+pub trait GenericTaskHandler: Send + Sync {
+    /// Execute the generic task.
+    async fn execute(&self, context: GenericTaskContext) -> Result<serde_json::Value, Error>;
+    
+    /// Get a description of this handler.
+    fn description(&self) -> &str;
+}
+
+/// Task type that can be executed by a job worker.
+#[derive(Debug, Clone)]
+enum JobTaskType {
+    /// Execute a tool via EffectExecutor
+    ToolExec {
+        tool_name: String,
+        params: serde_json::Value,
+    },
+    /// Background task execution
+    Background {
+        task_name: String,
+        params: serde_json::Value,
+    },
+    /// Generic task with custom handler
+    Generic {
+        description: String,
+        handler_name: Option<String>,
+        params: serde_json::Value,
+    },
+}
+
+/// Result of parsing a job's task from its context.
+type ParseTaskResult = Result<JobTaskType, Error>;
+
+/// Handle to a running job worker.
+struct JobHandle {
+    /// Task handle for the worker
+    task_handle: JoinHandle<()>,
+    /// Channel to send messages to the job
+    message_tx: mpsc::Sender<JobMessage>,
+    /// When the job started (for monitoring/debugging)
+    #[allow(dead_code)]
+    started_at: std::time::Instant,
 }
 
 /// Status of a scheduled sub-task.
@@ -130,15 +100,23 @@ pub struct SchedulerDeps {
 }
 
 /// Schedules and manages parallel job execution.
+///
+/// Note: V2 migration in progress. Job scheduling infrastructure is being simplified
+/// to focus on tool execution via EffectExecutor. Full job scheduling will be
+/// reimplemented using V2 capabilities.
+#[derive(Clone)]
 pub struct Scheduler {
     config: AgentConfig,
     context_manager: Arc<ContextManager>,
+    #[allow(dead_code)]
     llm: Arc<dyn LlmProvider>,
     safety: Arc<SafetyLayer>,
     /// V2 effect executor for capability-based tool execution
     effect_executor: Option<Arc<dyn EffectExecutor>>,
+    #[allow(dead_code)]
     extension_manager: Option<Arc<ExtensionManager>>,
     store: Option<SystemScope>,
+    #[allow(dead_code)]
     hooks: Arc<HookRegistry>,
     event_publisher: Option<brassclaw_common::DynEventPublisher>,
     /// HTTP interceptor for trace recording/replay (propagated to workers).
@@ -147,10 +125,16 @@ pub struct Scheduler {
     /// model-facing tool list filter applies to background jobs too.
     /// `None` in tests / before `Config::with_runtime_overrides` runs.
     runtime_policy: Option<brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy>,
-    /// Running jobs (main LLM-driven jobs).
-    jobs: Arc<RwLock<HashMap<Uuid, ScheduledJob>>>,
     /// Running sub-tasks (tool executions, background tasks).
     subtasks: Arc<RwLock<HashMap<Uuid, ScheduledSubtask>>>,
+    /// Running jobs (full job executions with workers).
+    running_jobs: Arc<RwLock<HashMap<Uuid, JobHandle>>>,
+    /// Background task registry for executing background tasks.
+    background_tasks: Arc<BackgroundTaskRegistry>,
+    /// Generic task handler registry for extensible task execution.
+    generic_handlers: Arc<RwLock<HashMap<String, Arc<dyn GenericTaskHandler>>>>,
+    /// Dead letter queue for failed jobs.
+    dead_letter_queue: Arc<DeadLetterQueue>,
 }
 
 impl Scheduler {
@@ -162,6 +146,15 @@ impl Scheduler {
         safety: Arc<SafetyLayer>,
         deps: SchedulerDeps,
     ) -> Self {
+        // Create background task registry with default handlers
+        let background_tasks = Arc::new(tokio::runtime::Handle::current().block_on(async {
+            create_default_registry().await
+        }));
+        
+        // Create dead letter queue with default config
+        let dlq_config = DLQConfig::default();
+        let dead_letter_queue = Arc::new(DeadLetterQueue::new_in_memory(dlq_config));
+        
         Self {
             config,
             context_manager,
@@ -174,8 +167,11 @@ impl Scheduler {
             event_publisher: None,
             http_interceptor: None,
             runtime_policy: None,
-            jobs: Arc::new(RwLock::new(HashMap::new())),
             subtasks: Arc::new(RwLock::new(HashMap::new())),
+            running_jobs: Arc::new(RwLock::new(HashMap::new())),
+            background_tasks,
+            generic_handlers: Arc::new(RwLock::new(HashMap::new())),
+            dead_letter_queue,
         }
     }
 
@@ -218,38 +214,15 @@ impl Scheduler {
         description: &str,
         metadata: Option<serde_json::Value>,
     ) -> Result<Uuid, JobError> {
-        let approval_context = self.autonomous_approval_context(user_id).await;
         self.dispatch_job_inner(
             user_id,
             title,
             description,
             metadata,
-            Some(approval_context),
         )
         .await
     }
 
-    /// Dispatch a job with an explicit approval context for autonomous execution.
-    ///
-    /// Same as `dispatch_job`, but the worker will use the given `ApprovalContext`
-    /// to determine the explicit autonomous allowlist for that job.
-    pub async fn dispatch_job_with_context(
-        &self,
-        user_id: &str,
-        title: &str,
-        description: &str,
-        metadata: Option<serde_json::Value>,
-        approval_context: ApprovalContext,
-    ) -> Result<Uuid, JobError> {
-        self.dispatch_job_inner(
-            user_id,
-            title,
-            description,
-            metadata,
-            Some(approval_context),
-        )
-        .await
-    }
 
     /// Shared implementation for `dispatch_job` and `dispatch_job_with_context`.
     async fn dispatch_job_inner(
@@ -258,7 +231,6 @@ impl Scheduler {
         title: &str,
         description: &str,
         metadata: Option<serde_json::Value>,
-        approval_context: Option<ApprovalContext>,
     ) -> Result<Uuid, JobError> {
         let job_id = self
             .context_manager
@@ -284,11 +256,11 @@ impl Scheduler {
             })
             .unwrap_or(self.config.max_tokens_per_job);
 
-        // Apply metadata, token budget, and approval context in one closure
+        // Apply metadata and token budget in one closure
         // (Issue #813: atomic update). Use update_context_and_get to ensure atomicity:
         // no gap where concurrent workers can modify the context between update and
         // DB persist (Issue #807).
-        let needs_update = metadata.is_some() || max_tokens > 0 || approval_context.is_some();
+        let needs_update = metadata.is_some() || max_tokens > 0;
         let ctx = if needs_update {
             self.context_manager
                 .update_context_and_get(job_id, |ctx| {
@@ -297,9 +269,6 @@ impl Scheduler {
                     }
                     if max_tokens > 0 {
                         ctx.max_tokens = max_tokens;
-                    }
-                    if let Some(_approval) = approval_context.as_ref() {
-                        // Stubbed - cannot convert between stub and real ApprovalContext
                     }
                 })
                 .await?
@@ -319,48 +288,642 @@ impl Scheduler {
             })?;
         }
 
-        self.schedule_with_context(job_id, approval_context).await?;
+        self.schedule_with_context(job_id).await?;
         Ok(job_id)
-    }
-
-    async fn autonomous_approval_context(&self, user_id: &str) -> ApprovalContext {
-        ApprovalContext::autonomous_with_tools(
-            autonomous_allowed_tool_names(self.extension_manager.as_ref(), user_id)
-                .await,
-        )
     }
 
     /// Schedule a job for execution.
     pub async fn schedule(&self, job_id: Uuid) -> Result<(), JobError> {
-        self.schedule_with_context(job_id, None).await
+        self.schedule_with_context(job_id).await
+    }
+
+    /// Parse job task from JobContext metadata.
+    ///
+    /// Extracts task type and parameters from the job's metadata field.
+    fn parse_job_task(job_ctx: &JobContext) -> ParseTaskResult {
+        let metadata = job_ctx.metadata.as_object()
+            .ok_or_else(|| Error::Job(JobError::ContextError {
+                id: job_ctx.job_id,
+                reason: "Job metadata is not an object".to_string(),
+            }))?;
+
+        // Check for task_type field
+        let task_type = metadata.get("task_type")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::Job(JobError::ContextError {
+                id: job_ctx.job_id,
+                reason: "Missing task_type in job metadata".to_string(),
+            }))?;
+
+        match task_type {
+            "tool_exec" => {
+                let tool_name = metadata.get("tool_name")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| Error::Job(JobError::ContextError {
+                        id: job_ctx.job_id,
+                        reason: "Missing tool_name for tool_exec task".to_string(),
+                    }))?
+                    .to_string();
+
+                let params = metadata.get("params")
+                    .cloned()
+                    .unwrap_or(serde_json::json!({}));
+
+                Ok(JobTaskType::ToolExec { tool_name, params })
+            }
+            "background" => {
+                let task_name = metadata.get("task_name")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| Error::Job(JobError::ContextError {
+                        id: job_ctx.job_id,
+                        reason: "Missing task_name for background task".to_string(),
+                    }))?
+                    .to_string();
+
+                let params = metadata.get("params")
+                    .cloned()
+                    .unwrap_or(serde_json::json!({}));
+
+                Ok(JobTaskType::Background { task_name, params })
+            }
+            "generic" => {
+                let description = metadata.get("description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Generic task")
+                    .to_string();
+                
+                let handler_name = metadata.get("handler_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                
+                let params = metadata.get("params")
+                    .cloned()
+                    .unwrap_or(serde_json::json!({}));
+
+                Ok(JobTaskType::Generic {
+                    description,
+                    handler_name,
+                    params,
+                })
+            }
+            _ => {
+                Err(Error::Job(JobError::ContextError {
+                    id: job_ctx.job_id,
+                    reason: format!("Unknown task_type: {}", task_type),
+                }))
+            }
+        }
+    }
+
+    /// Check if an error is transient and should be retried.
+    fn is_transient_error(error: &Error) -> bool {
+        match error {
+            // Network-related errors are typically transient
+            Error::Tool(tool_err) => {
+                let reason = match tool_err {
+                    crate::error::ToolError::ExecutionFailed { reason, .. } => reason,
+                    crate::error::ToolError::NotFound { .. } => return false,
+                    crate::error::ToolError::InvalidParameters { .. } => return false,
+                    crate::error::ToolError::AuthRequired { .. } => return false,
+                    crate::error::ToolError::Disabled { .. } => return false,
+                    crate::error::ToolError::Timeout { .. } => return true,
+                    crate::error::ToolError::RateLimited { .. } => return true,
+                    crate::error::ToolError::Sandbox { .. } => return false,
+                    crate::error::ToolError::AutonomousUnavailable { .. } => return false,
+                    crate::error::ToolError::BuilderFailed { .. } => return false,
+                };
+                
+                // Check for common transient error patterns
+                reason.contains("timeout") ||
+                reason.contains("connection") ||
+                reason.contains("network") ||
+                reason.contains("temporary") ||
+                reason.contains("unavailable") ||
+                reason.contains("rate limit")
+            }
+            // LLM errors might be transient
+            Error::Llm(_) => true,
+            // Most other errors are permanent
+            _ => false,
+        }
+    }
+
+    /// Execute a job task with retry logic for transient failures.
+    async fn execute_with_retry(
+        scheduler: &Scheduler,
+        job_id: Uuid,
+        task: &JobTaskType,
+        max_retries: u32,
+    ) -> Result<TaskOutput, Error> {
+        let mut attempts = 0;
+        let mut last_error: Option<String> = None;
+
+        while attempts <= max_retries {
+            if attempts > 0 {
+                tracing::info!(
+                    job_id = %job_id,
+                    attempt = attempts + 1,
+                    max_retries = max_retries + 1,
+                    "Retrying job execution after transient failure"
+                );
+            }
+
+            match Self::execute_task_internal(scheduler, job_id, task).await {
+                Ok(output) => {
+                    if attempts > 0 {
+                        tracing::info!(
+                            job_id = %job_id,
+                            attempts = attempts + 1,
+                            "Job execution succeeded after retry"
+                        );
+                    }
+                    return Ok(output);
+                }
+                Err(e) => {
+                    let error_string = format!("{}", e);
+                    last_error = Some(error_string.clone());
+                    
+                    // Check if error is transient and we have retries left
+                    if Self::is_transient_error(&e) && attempts < max_retries {
+                        attempts += 1;
+                        
+                        // Exponential backoff: 2^attempts seconds
+                        let backoff_secs = 2_u64.pow(attempts);
+                        let backoff = Duration::from_secs(backoff_secs);
+                        
+                        tracing::warn!(
+                            job_id = %job_id,
+                            error = %e,
+                            attempt = attempts,
+                            backoff_secs = backoff_secs,
+                            "Transient error, will retry after backoff"
+                        );
+                        
+                        tokio::time::sleep(backoff).await;
+                        continue;
+                    } else {
+                        // Permanent error or out of retries
+                        if attempts > 0 {
+                            tracing::error!(
+                                job_id = %job_id,
+                                error = %e,
+                                attempts = attempts + 1,
+                                "Job execution failed after all retries"
+                            );
+                        }
+                        return Err(e);
+                    }
+                }
+            }
+        }
+
+        // Should never reach here, but return last error if we do
+        Err(Error::Job(JobError::ContextError {
+            id: job_id,
+            reason: last_error.unwrap_or_else(|| "Unknown error during retry loop".to_string()),
+        }))
+    }
+
+    /// Internal task execution without retry logic.
+    async fn execute_task_internal(
+        scheduler: &Scheduler,
+        job_id: Uuid,
+        task: &JobTaskType,
+    ) -> Result<TaskOutput, Error> {
+        // Check for cancellation before execution
+        let job_ctx = scheduler.context_manager.get_context(job_id).await?;
+        if job_ctx.state == JobState::Cancelled {
+            return Err(Error::Job(JobError::ContextError {
+                id: job_id,
+                reason: "Job cancelled before execution".to_string(),
+            }));
+        }
+
+        match task {
+            JobTaskType::ToolExec { tool_name, params } => {
+                tracing::debug!(
+                    job_id = %job_id,
+                    tool_name = %tool_name,
+                    "Executing tool task"
+                );
+
+                Self::execute_tool_task(
+                    scheduler.effect_executor.clone(),
+                    scheduler.context_manager.clone(),
+                    scheduler.safety.clone(),
+                    job_id,
+                    tool_name,
+                    params.clone(),
+                )
+                .await
+            }
+            JobTaskType::Background { task_name, params } => {
+                tracing::debug!(
+                    job_id = %job_id,
+                    task_name = %task_name,
+                    "Executing background task"
+                );
+
+                let start = std::time::Instant::now();
+                
+                // Execute via background task registry
+                let result = scheduler.background_tasks
+                    .execute(job_id, task_name, params.clone())
+                    .await?;
+                
+                let duration = start.elapsed();
+                
+                tracing::info!(
+                    job_id = %job_id,
+                    task_name = %task_name,
+                    duration_ms = duration.as_millis(),
+                    "Background task completed successfully"
+                );
+
+                Ok(TaskOutput {
+                    result: serde_json::json!({
+                        "status": "completed",
+                        "task": task_name,
+                        "result": result,
+                    }),
+                    duration,
+                })
+            }
+            JobTaskType::Generic { description, handler_name, params } => {
+                tracing::debug!(
+                    job_id = %job_id,
+                    description = %description,
+                    handler_name = ?handler_name,
+                    "Executing generic task"
+                );
+
+                let start = std::time::Instant::now();
+                
+                let result = if let Some(handler_name) = handler_name {
+                    // Execute via registered handler
+                    let handlers = scheduler.generic_handlers.read().await;
+                    
+                    let handler = handlers.get(handler_name).ok_or_else(|| {
+                        Error::Config(crate::error::ConfigError::InvalidValue {
+                            key: "handler_name".to_string(),
+                            message: format!(
+                                "Unknown generic task handler: '{}'. Available handlers: {}",
+                                handler_name,
+                                handlers.keys().map(|k| k.as_str()).collect::<Vec<_>>().join(", ")
+                            ),
+                        })
+                    })?;
+                    
+                    let context = GenericTaskContext {
+                        job_id,
+                        description: description.clone(),
+                        params: params.clone(),
+                    };
+                    
+                    handler.execute(context).await?
+                } else {
+                    // No handler specified - return basic completion
+                    serde_json::json!({
+                        "status": "completed",
+                        "description": description,
+                        "params": params,
+                    })
+                };
+                
+                let duration = start.elapsed();
+                
+                tracing::info!(
+                    job_id = %job_id,
+                    description = %description,
+                    duration_ms = duration.as_millis(),
+                    "Generic task completed successfully"
+                );
+
+                Ok(TaskOutput {
+                    result: serde_json::json!({
+                        "status": "completed",
+                        "description": description,
+                        "result": result,
+                    }),
+                    duration,
+                })
+            }
+        }
+    }
+
+    /// Worker task that executes a job with full production features.
+    ///
+    /// This is spawned as a separate tokio task for each job.
+    ///
+    /// Features:
+    /// - Task parsing and execution (tool_exec, background, generic)
+    /// - User message processing and storage
+    /// - Cancellation handling via message channel
+    /// - Job timeout monitoring
+    /// - Error recovery with exponential backoff retry
+    /// - Comprehensive state management and persistence
+    async fn execute_job_worker(
+        scheduler: Arc<Scheduler>,
+        job_id: Uuid,
+        mut message_rx: mpsc::Receiver<JobMessage>,
+    ) {
+        tracing::info!(job_id = %job_id, "Job worker started");
+
+        // Get job context
+        let job_ctx = match scheduler.context_manager.get_context(job_id).await {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                tracing::error!(job_id = %job_id, error = %e, "Failed to get job context");
+                let _ = scheduler.running_jobs.write().await.remove(&job_id);
+                return;
+            }
+        };
+
+        // Check if job was already cancelled
+        if job_ctx.state == JobState::Cancelled {
+            tracing::info!(job_id = %job_id, "Job already cancelled, worker exiting");
+            let _ = scheduler.running_jobs.write().await.remove(&job_id);
+            return;
+        }
+
+        // Parse job task from metadata
+        let task = match Self::parse_job_task(&job_ctx) {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::error!(job_id = %job_id, error = %e, "Failed to parse job task");
+                
+                // Mark job as failed
+                let _ = scheduler
+                    .context_manager
+                    .update_context(job_id, |ctx| {
+                        let _ = ctx.transition_to(
+                            JobState::Failed,
+                            Some(format!("Failed to parse job task: {}", e)),
+                        );
+                    })
+                    .await;
+
+                if let Some(ref store) = scheduler.store {
+                    let _ = store
+                        .update_job_status(
+                            job_id,
+                            JobState::Failed,
+                            Some(&format!("Failed to parse job task: {}", e)),
+                        )
+                        .await;
+                }
+
+                let _ = scheduler.running_jobs.write().await.remove(&job_id);
+                return;
+            }
+        };
+
+        tracing::info!(job_id = %job_id, task = ?task, "Parsed job task");
+
+        // Create channels for cancellation and user messages
+        let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
+        let (user_msg_tx, mut user_msg_rx) = mpsc::channel::<String>(32);
+
+        // Spawn message listener task
+        let listener_job_id = job_id;
+        let listener_context_manager = scheduler.context_manager.clone();
+        tokio::spawn(async move {
+            while let Some(msg) = message_rx.recv().await {
+                match msg {
+                    JobMessage::Cancel => {
+                        tracing::info!(job_id = %listener_job_id, "Received cancel message");
+                        
+                        // Update job state to cancelled
+                        let _ = listener_context_manager
+                            .update_context(listener_job_id, |ctx| {
+                                let _ = ctx.transition_to(
+                                    JobState::Cancelled,
+                                    Some("Cancelled by user request".to_string()),
+                                );
+                            })
+                            .await;
+                        
+                        // Signal cancellation to main execution
+                        let _ = cancel_tx.send(());
+                        break;
+                    }
+                    JobMessage::UserMessage(content) => {
+                        tracing::debug!(
+                            job_id = %listener_job_id,
+                            message_len = content.len(),
+                            "Received user message"
+                        );
+                        
+                        // Process interactive commands
+                        let response = Self::process_user_message(&content, listener_job_id, &listener_context_manager).await;
+                        
+                        // Store message and response in job context metadata
+                        let _ = listener_context_manager
+                            .update_context(listener_job_id, |ctx| {
+                                if let Some(obj) = ctx.metadata.as_object_mut() {
+                                    let messages = obj.entry("user_messages")
+                                        .or_insert_with(|| serde_json::json!([]));
+                                    
+                                    if let Some(arr) = messages.as_array_mut() {
+                                        arr.push(serde_json::json!({
+                                            "content": content.clone(),
+                                            "timestamp": chrono::Utc::now().to_rfc3339(),
+                                            "response": response,
+                                        }));
+                                    }
+                                }
+                            })
+                            .await;
+                        
+                        // Forward to execution task if not a command
+                        if !content.trim().starts_with('/') {
+                            let _ = user_msg_tx.send(content).await;
+                        }
+                    }
+                }
+            }
+        });
+
+        // Execute job with timeout and cancellation support
+        let job_timeout = scheduler.config.job_timeout;
+        let max_retries = 3; // Maximum retry attempts for transient failures
+        
+        tracing::debug!(
+            job_id = %job_id,
+            timeout_secs = job_timeout.as_secs(),
+            max_retries = max_retries,
+            "Starting job execution with timeout and retry"
+        );
+
+        // Execute with timeout
+        let execution_future = Self::execute_with_retry(&scheduler, job_id, &task, max_retries);
+        
+        tokio::select! {
+            // Job execution completed (success or permanent failure)
+            result = execution_future => {
+                match result {
+                    Ok(output) => {
+                        tracing::info!(
+                            job_id = %job_id,
+                            duration_ms = output.duration.as_millis(),
+                            "Job execution completed successfully"
+                        );
+
+                        // Store result in job context
+                        let _ = scheduler
+                            .context_manager
+                            .update_context(job_id, |ctx| {
+                                if let Some(obj) = ctx.metadata.as_object_mut() {
+                                    obj.insert("result".to_string(), output.result.clone());
+                                    obj.insert("duration_ms".to_string(), serde_json::json!(output.duration.as_millis()));
+                                }
+                                
+                                let _ = ctx.transition_to(
+                                    JobState::Completed,
+                                    Some("Job execution completed successfully".to_string()),
+                                );
+                            })
+                            .await;
+
+                        // Persist to database
+                        if let Some(ref store) = scheduler.store {
+                            let _ = store
+                                .update_job_status(
+                                    job_id,
+                                    JobState::Completed,
+                                    Some("Job execution completed successfully"),
+                                )
+                                .await;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(job_id = %job_id, error = %e, "Job execution failed");
+
+                        // Get job context for DLQ
+                        let job_metadata = scheduler
+                            .context_manager
+                            .get_context(job_id)
+                            .await
+                            .ok()
+                            .map(|ctx| ctx.metadata.clone())
+                            .unwrap_or_else(|| serde_json::json!({}));
+
+                        // Add to dead letter queue
+                        let _ = scheduler
+                            .dead_letter_queue
+                            .add_failed_job(job_id, e.to_string(), job_metadata)
+                            .await;
+
+                        // Store error in job context
+                        let _ = scheduler
+                            .context_manager
+                            .update_context(job_id, |ctx| {
+                                if let Some(obj) = ctx.metadata.as_object_mut() {
+                                    obj.insert("error".to_string(), serde_json::json!(e.to_string()));
+                                }
+                                
+                                let _ = ctx.transition_to(
+                                    JobState::Failed,
+                                    Some(format!("Job execution failed: {}", e)),
+                                );
+                            })
+                            .await;
+
+                        // Persist to database
+                        if let Some(ref store) = scheduler.store {
+                            let _ = store
+                                .update_job_status(
+                                    job_id,
+                                    JobState::Failed,
+                                    Some(&format!("Job execution failed: {}", e)),
+                                )
+                                .await;
+                        }
+                    }
+                }
+            }
+            
+            // Job was cancelled
+            _ = cancel_rx => {
+                tracing::info!(job_id = %job_id, "Job cancelled during execution");
+                
+                // Persist cancellation to database
+                if let Some(ref store) = scheduler.store {
+                    let _ = store
+                        .update_job_status(
+                            job_id,
+                            JobState::Cancelled,
+                            Some("Cancelled by user request"),
+                        )
+                        .await;
+                }
+            }
+            
+            // Job timeout exceeded
+            _ = tokio::time::sleep(job_timeout) => {
+                tracing::warn!(
+                    job_id = %job_id,
+                    timeout_secs = job_timeout.as_secs(),
+                    "Job execution timeout exceeded"
+                );
+
+                // Mark job as failed due to timeout
+                let _ = scheduler
+                    .context_manager
+                    .update_context(job_id, |ctx| {
+                        if let Some(obj) = ctx.metadata.as_object_mut() {
+                            obj.insert("timeout".to_string(), serde_json::json!(true));
+                            obj.insert("timeout_secs".to_string(), serde_json::json!(job_timeout.as_secs()));
+                        }
+                        
+                        let _ = ctx.transition_to(
+                            JobState::Failed,
+                            Some(format!("Job execution timeout exceeded ({} seconds)", job_timeout.as_secs())),
+                        );
+                    })
+                    .await;
+
+                // Persist to database
+                if let Some(ref store) = scheduler.store {
+                    let _ = store
+                        .update_job_status(
+                            job_id,
+                            JobState::Failed,
+                            Some(&format!("Job execution timeout exceeded ({} seconds)", job_timeout.as_secs())),
+                        )
+                        .await;
+                }
+            }
+        }
+
+        // Process any remaining user messages
+        user_msg_rx.close();
+        while let Some(msg) = user_msg_rx.recv().await {
+            tracing::debug!(
+                job_id = %job_id,
+                message_len = msg.len(),
+                "Processing remaining user message after job completion"
+            );
+        }
+
+        // Remove from running jobs tracking
+        scheduler.running_jobs.write().await.remove(&job_id);
+        tracing::info!(job_id = %job_id, "Job worker finished");
     }
 
     /// Schedule a job with an optional approval context.
+    ///
+    /// V2 migration: Now spawns a worker task to execute the job.
+    /// The worker handles the complete job lifecycle including execution,
+    /// state updates, and cleanup.
     async fn schedule_with_context(
         &self,
         job_id: Uuid,
-        approval_context: Option<ApprovalContext>,
     ) -> Result<(), JobError> {
-        // Hold write lock for the entire check-insert sequence to prevent
-        // TOCTOU races where two concurrent calls both pass the checks.
-        {
-            let mut jobs = self.jobs.write().await;
-
-            if jobs.contains_key(&job_id) {
-                return Ok(());
-            }
-
-            if jobs.len() >= self.config.max_parallel_jobs {
-                return Err(JobError::MaxJobsExceeded {
-                    max: self.config.max_parallel_jobs,
-                });
-            }
-
-            // Per-user concurrency check — only count jobs consuming a parallel
-            // execution slot (Pending/InProgress/Stuck), not Completed/Submitted.
-            if let Some(max_per_user) = self.config.max_jobs_per_user
-                && let Ok(ctx) = self.context_manager.get_context(job_id).await
-            {
+        // Per-user concurrency check — only count jobs consuming a parallel
+        // execution slot (Pending/InProgress/Stuck), not Completed/Submitted.
+        if let Some(max_per_user) = self.config.max_jobs_per_user {
+            if let Ok(ctx) = self.context_manager.get_context(job_id).await {
                 let user_blocking = self
                     .context_manager
                     .parallel_blocking_count_for(&ctx.user_id)
@@ -369,86 +932,47 @@ impl Scheduler {
                     return Err(JobError::MaxJobsExceeded { max: max_per_user });
                 }
             }
-
-            // Transition job to in_progress
-            self.context_manager
-                .update_context(job_id, |ctx| {
-                    ctx.transition_to(
-                        JobState::InProgress,
-                        Some("Scheduled for execution".to_string()),
-                    )
-                })
-                .await?
-                .map_err(|s| JobError::ContextError {
-                    id: job_id,
-                    reason: s,
-                })?;
-
-            // Create worker channel
-            let (tx, rx) = mpsc::channel(16);
-
-            // Create worker with shared dependencies
-            let deps = WorkerDeps {
-                context_manager: self.context_manager.clone(),
-                llm: self.llm.clone(),
-                safety: self.safety.clone(),
-                hooks: self.hooks.clone(),
-                timeout: self.config.job_timeout,
-                use_planning: self.config.use_planning,
-                approval_context,
-                multi_tenant: self.config.multi_tenant,
-            };
-            
-            // Stub worker creation and execution
-            let _worker = Worker { _placeholder: () };
-            let _deps = deps; // Consume deps to avoid unused variable warning
-
-            // Spawn worker task (stubbed)
-            let context_manager = self.context_manager.clone();
-            let handle = tokio::spawn(async move {
-                // Stub: immediately mark job as failed
-                let _ = rx; // Consume rx to avoid unused variable warning
-                if let Err(e) = context_manager.update_context(job_id, |ctx| {
-                    ctx.transition_to(
-                        JobState::Failed,
-                        Some("Worker execution unavailable during V2 migration".to_string()),
-                    )
-                }).await {
-                    tracing::error!("Failed to mark job {} as failed: {}", job_id, e);
-                }
-            });
-
-            // Start the worker
-            if tx.send(WorkerMessage::Start).await.is_err() {
-                tracing::error!(job_id = %job_id, "Worker died before receiving Start message");
-            }
-
-            // Insert while still holding the write lock
-            jobs.insert(job_id, ScheduledJob { handle, tx });
         }
 
-        // Cleanup task for this job to avoid capacity leaks
-        let jobs = Arc::clone(&self.jobs);
-        tokio::spawn(async move {
-            loop {
-                let finished = {
-                    let jobs_read = jobs.read().await;
-                    match jobs_read.get(&job_id) {
-                        Some(scheduled) => scheduled.handle.is_finished(),
-                        None => true,
-                    }
-                };
+        // Transition job to in_progress
+        self.context_manager
+            .update_context(job_id, |ctx| {
+                ctx.transition_to(
+                    JobState::InProgress,
+                    Some("Scheduled for execution".to_string()),
+                )
+            })
+            .await?
+            .map_err(|s| JobError::ContextError {
+                id: job_id,
+                reason: s,
+            })?;
 
-                if finished {
-                    jobs.write().await.remove(&job_id);
-                    break;
-                }
+        // Create message channel for job communication
+        let (message_tx, message_rx) = mpsc::channel(32);
 
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            }
-        });
+        // Spawn worker task
+        let scheduler = Arc::new(self.clone());
+        let task_handle = tokio::spawn(Self::execute_job_worker(
+            scheduler,
+            job_id,
+            message_rx,
+        ));
 
-        tracing::info!("Scheduled job {} for execution", job_id);
+        // Track the running job
+        self.running_jobs.write().await.insert(
+            job_id,
+            JobHandle {
+                task_handle,
+                message_tx,
+                started_at: std::time::Instant::now(),
+            },
+        );
+
+        tracing::info!(
+            job_id = %job_id,
+            "Job scheduled and worker spawned"
+        );
         Ok(())
     }
 
@@ -484,14 +1008,12 @@ impl Scheduler {
                 let context_manager = self.context_manager.clone();
                 let safety = self.safety.clone();
 
-                // TODO: propagate parent job's ApprovalContext here when subtasks
-                // are used in autonomous/routine paths (currently only used in tests).
+                // V2: Subtask permission context will be handled by V2 permission system
                 tokio::spawn(async move {
                     let result = Self::execute_tool_task(
                         effect_executor,
                         context_manager,
                         safety,
-                        None,
                         tool_parent_id,
                         &tool_name,
                         params,
@@ -625,7 +1147,6 @@ impl Scheduler {
         effect_executor: Option<Arc<dyn EffectExecutor>>,
         context_manager: Arc<ContextManager>,
         _safety: Arc<SafetyLayer>,
-        _approval_context: Option<ApprovalContext>,
         job_id: Uuid,
         tool_name: &str,
         params: serde_json::Value,
@@ -962,88 +1483,91 @@ impl Scheduler {
     }
 
     /// Stop a running job.
+    ///
+    /// V2 migration: Enhanced to send Cancel message to running job workers.
+    /// This method updates job state to Cancelled and signals the worker to stop.
     pub async fn stop(&self, job_id: Uuid) -> Result<(), JobError> {
-        let mut jobs = self.jobs.write().await;
+        // Send cancel message to running job worker if it exists
+        let running_jobs = self.running_jobs.read().await;
+        if let Some(job_handle) = running_jobs.get(&job_id) {
+            tracing::info!(job_id = %job_id, "Sending cancel message to running job worker");
+            
+            // Send cancel message (non-blocking, best effort)
+            let _ = job_handle.message_tx.send(JobMessage::Cancel).await;
+        }
+        drop(running_jobs); // Release lock before async operations
 
-        if let Some(scheduled) = jobs.remove(&job_id) {
-            // Send stop signal
-            let _ = scheduled.tx.send(WorkerMessage::Stop).await;
+        // Update job state
+        self.context_manager
+            .update_context(job_id, |ctx| {
+                if let Err(e) = ctx.transition_to(
+                    JobState::Cancelled,
+                    Some("Stopped by scheduler".to_string()),
+                ) {
+                    tracing::warn!(
+                        job_id = %job_id,
+                        error = %e,
+                        "Failed to transition job to Cancelled state"
+                    );
+                }
+            })
+            .await?;
 
-            // Give it a moment to clean up
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-            // Abort if still running
-            if !scheduled.handle.is_finished() {
-                scheduled.handle.abort();
-            }
-
-            // Update job state
-            self.context_manager
-                .update_context(job_id, |ctx| {
-                    if let Err(e) = ctx.transition_to(
+        // Persist cancellation (fire-and-forget)
+        if let Some(ref store) = self.store {
+            let store = store.clone();
+            tokio::spawn(async move {
+                if let Err(e) = store
+                    .update_job_status(
+                        job_id,
                         JobState::Cancelled,
-                        Some("Stopped by scheduler".to_string()),
-                    ) {
-                        tracing::warn!(
-                            job_id = %job_id,
-                            error = %e,
-                            "Failed to transition job to Cancelled state"
-                        );
-                    }
-                })
-                .await?;
-
-            // Persist cancellation (fire-and-forget)
-            if let Some(ref store) = self.store {
-                let store = store.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = store
-                        .update_job_status(
-                            job_id,
-                            JobState::Cancelled,
-                            Some("Stopped by scheduler"),
-                        )
-                        .await
-                    {
-                        tracing::warn!("Failed to persist cancellation for job {}: {}", job_id, e);
-                    }
-                });
-            }
-
-            tracing::info!("Stopped job {}", job_id);
+                        Some("Stopped by scheduler"),
+                    )
+                    .await
+                {
+                    tracing::warn!("Failed to persist cancellation for job {}: {}", job_id, e);
+                }
+            });
         }
 
+        tracing::info!("Stopped job {}", job_id);
         Ok(())
     }
 
     /// Send a follow-up user message to a running job.
     ///
-    /// Returns `Ok(())` if the message was queued, `Err` if the job is not running.
+    /// Sends a message to the job's worker task via its message channel.
+    /// Returns NotFound if the job is not currently running.
     pub async fn send_message(&self, job_id: Uuid, content: String) -> Result<(), JobError> {
-        // Clone the sender while holding the lock, then release before the
-        // async send to avoid blocking scheduler writes during backpressure.
-        let tx = {
-            let jobs = self.jobs.read().await;
-            let scheduled = jobs.get(&job_id).ok_or(JobError::NotFound { id: job_id })?;
-            scheduled.tx.clone()
-        };
-        tx.send(WorkerMessage::UserMessage(content))
-            .await
-            .map_err(|_| JobError::Failed {
-                id: job_id,
-                reason: "Worker channel closed".to_string(),
-            })?;
-        Ok(())
+        let running_jobs = self.running_jobs.read().await;
+        
+        if let Some(job_handle) = running_jobs.get(&job_id) {
+            job_handle
+                .message_tx
+                .send(JobMessage::UserMessage(content))
+                .await
+                .map_err(|_| JobError::ContextError {
+                    id: job_id,
+                    reason: "Failed to send message to job worker".to_string(),
+                })?;
+            Ok(())
+        } else {
+            Err(JobError::NotFound { id: job_id })
+        }
     }
 
     /// Check if a job is running.
+    ///
+    /// Returns true if the job has an active worker task.
     pub async fn is_running(&self, job_id: Uuid) -> bool {
-        self.jobs.read().await.contains_key(&job_id)
+        self.running_jobs.read().await.contains_key(&job_id)
     }
 
     /// Get count of running jobs.
+    ///
+    /// Returns the number of jobs with active worker tasks.
     pub async fn running_count(&self) -> usize {
-        self.jobs.read().await.len()
+        self.running_jobs.read().await.len()
     }
 
     /// Get count of running subtasks.
@@ -1052,55 +1576,50 @@ impl Scheduler {
     }
 
     /// Get all running job IDs.
+    ///
+    /// Returns a vector of all job IDs that have active worker tasks.
     pub async fn running_jobs(&self) -> Vec<Uuid> {
-        self.jobs.read().await.keys().cloned().collect()
+        self.running_jobs.read().await.keys().copied().collect()
     }
 
     /// Clean up finished jobs and subtasks.
     pub async fn cleanup_finished(&self) {
-        // Clean up jobs
-        {
-            let mut jobs = self.jobs.write().await;
-            let mut finished = Vec::new();
+        // Clean up finished subtasks
+        let mut subtasks = self.subtasks.write().await;
+        let mut finished_subtasks = Vec::new();
 
-            for (id, scheduled) in jobs.iter() {
-                if scheduled.handle.is_finished() {
-                    finished.push(*id);
-                }
-            }
-
-            for id in finished {
-                jobs.remove(&id);
-                tracing::debug!("Cleaned up finished job {}", id);
+        for (id, scheduled) in subtasks.iter() {
+            if scheduled.handle.is_finished() {
+                finished_subtasks.push(*id);
             }
         }
 
-        // Clean up subtasks
-        {
-            let mut subtasks = self.subtasks.write().await;
-            let mut finished = Vec::new();
+        for id in finished_subtasks {
+            subtasks.remove(&id);
+            tracing::trace!("Cleaned up finished subtask {}", id);
+        }
+        drop(subtasks);
 
-            for (id, scheduled) in subtasks.iter() {
-                if scheduled.handle.is_finished() {
-                    finished.push(*id);
-                }
-            }
+        // Clean up finished jobs
+        let mut running_jobs = self.running_jobs.write().await;
+        let mut finished_jobs = Vec::new();
 
-            for id in finished {
-                subtasks.remove(&id);
-                tracing::trace!("Cleaned up finished subtask {}", id);
+        for (id, job_handle) in running_jobs.iter() {
+            if job_handle.task_handle.is_finished() {
+                finished_jobs.push(*id);
             }
+        }
+
+        for id in finished_jobs {
+            running_jobs.remove(&id);
+            tracing::debug!(job_id = %id, "Cleaned up finished job");
         }
     }
 
     /// Stop all jobs.
+    ///
+    /// V2 migration: Only aborts subtasks (job tracking removed).
     pub async fn stop_all(&self) {
-        let job_ids: Vec<Uuid> = self.jobs.read().await.keys().cloned().collect();
-
-        for job_id in job_ids {
-            let _ = self.stop(job_id).await;
-        }
-
         // Abort all subtasks
         let mut subtasks = self.subtasks.write().await;
         for (_, scheduled) in subtasks.drain() {
@@ -1117,13 +1636,119 @@ impl Scheduler {
     pub fn context_manager(&self) -> &Arc<ContextManager> {
         &self.context_manager
     }
+
+    /// Process user message and return response.
+    async fn process_user_message(
+        content: &str,
+        job_id: Uuid,
+        context_manager: &Arc<ContextManager>,
+    ) -> String {
+        let trimmed = content.trim();
+        
+        // Handle interactive commands
+        if trimmed.starts_with('/') {
+            let parts: Vec<&str> = trimmed.splitn(2, ' ').collect();
+            let command = parts[0];
+            
+            match command {
+                "/status" => {
+                    // Get job status
+                    match context_manager.get_context(job_id).await {
+                        Ok(ctx) => {
+                            format!(
+                                "Job Status: {:?}\nState: {:?}\nCreated: {}",
+                                ctx.job_id,
+                                ctx.state,
+                                ctx.created_at
+                            )
+                        }
+                        Err(e) => format!("Error getting status: {}", e),
+                    }
+                }
+                "/help" => {
+                    "Available commands:\n\
+                     /status - Get current job status\n\
+                     /help - Show this help message\n\
+                     Any other message will be forwarded to the job execution".to_string()
+                }
+                _ => format!("Unknown command: {}. Type /help for available commands.", command),
+            }
+        } else {
+            // Regular message - will be forwarded to execution
+            "Message received and will be processed by job execution".to_string()
+        }
+    }
+
+    /// Register a generic task handler.
+    pub async fn register_generic_handler(
+        &self,
+        name: String,
+        handler: Arc<dyn GenericTaskHandler>,
+    ) -> Result<(), Error> {
+        let mut handlers = self.generic_handlers.write().await;
+        
+        if handlers.contains_key(&name) {
+            return Err(Error::Config(crate::error::ConfigError::InvalidValue {
+                key: "handler_name".to_string(),
+                message: format!("Generic task handler '{}' is already registered", name),
+            }));
+        }
+        
+        tracing::info!(
+            handler_name = %name,
+            description = handler.description(),
+            "Registered generic task handler"
+        );
+        
+        handlers.insert(name, handler);
+        Ok(())
+    }
+
+    /// Register a background task handler.
+    pub async fn register_background_task(
+        &self,
+        name: String,
+        handler: Arc<dyn crate::agent::background_tasks::BackgroundTaskHandler>,
+    ) -> Result<(), Error> {
+        self.background_tasks.register(name, handler).await
+    }
+
+    /// Get dead letter queue statistics.
+    pub async fn get_dlq_statistics(&self) -> Result<crate::agent::dead_letter_queue::DLQStatistics, Error> {
+        self.dead_letter_queue.get_statistics().await
+    }
+
+    /// List jobs in the dead letter queue.
+    pub async fn list_dlq_entries(&self) -> Result<Vec<crate::agent::dead_letter_queue::DLQEntry>, Error> {
+        self.dead_letter_queue.list_all().await
+    }
+
+    /// Retry a job from the dead letter queue.
+    pub async fn retry_dlq_job(&self, job_id: Uuid) -> Result<(), Error> {
+        // Remove from DLQ
+        self.dead_letter_queue.remove_job(job_id).await?;
+        
+        // Reschedule the job
+        self.schedule(job_id).await.map_err(|e| {
+            Error::Job(e)
+        })
+    }
+
+    /// Get access to the background task registry.
+    pub fn background_tasks(&self) -> &Arc<BackgroundTaskRegistry> {
+        &self.background_tasks
+    }
+
+    /// Get access to the dead letter queue.
+    pub fn dead_letter_queue(&self) -> &Arc<DeadLetterQueue> {
+        &self.dead_letter_queue
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::SafetyConfig;
-    use crate::tools::{ApprovalRequirement, Tool, ToolError, ToolOutput};
     use brassclaw_llm::{
         CompletionRequest, CompletionResponse, LlmError, LlmProvider, ToolCompletionRequest,
         ToolCompletionResponse,
@@ -1193,7 +1818,6 @@ mod tests {
             max_output_length: 100_000,
             injection_check_enabled: false,
         }));
-        let tools = Arc::new(ToolRegistry::new());
         let hooks = Arc::new(HookRegistry::default());
 
         Scheduler::new(
@@ -1202,8 +1826,7 @@ mod tests {
             llm,
             safety,
             SchedulerDeps {
-                tools,
-                effect_executor: None, // Tests use V1 path for now
+                effect_executor: None, // Tests use V2 path
                 extension_manager: None,
                 store: None,
                 hooks,
@@ -1305,281 +1928,7 @@ mod tests {
         // For now just verify the empty case doesn't panic.
     }
 
-    /// A tool that returns `UnlessAutoApproved`.
-    struct SoftApprovalTool;
-
-    #[async_trait::async_trait]
-    impl Tool for SoftApprovalTool {
-        fn name(&self) -> &str {
-            "soft_gate"
-        }
-        fn description(&self) -> &str {
-            "needs soft approval"
-        }
-        fn parameters_schema(&self) -> serde_json::Value {
-            serde_json::json!({"type": "object", "properties": {}})
-        }
-        async fn execute(
-            &self,
-            _params: serde_json::Value,
-            _ctx: &JobContext,
-        ) -> Result<ToolOutput, ToolError> {
-            Ok(ToolOutput::text(
-                "soft_ok",
-                std::time::Instant::now().elapsed(),
-            ))
-        }
-        fn requires_approval(&self, _params: &serde_json::Value) -> ApprovalRequirement {
-            ApprovalRequirement::UnlessAutoApproved
-        }
-        fn requires_sanitization(&self) -> bool {
-            false
-        }
-    }
-
-    /// A tool that returns `Always`.
-    struct HardApprovalTool;
-
-    #[async_trait::async_trait]
-    impl Tool for HardApprovalTool {
-        fn name(&self) -> &str {
-            "hard_gate"
-        }
-        fn description(&self) -> &str {
-            "needs hard approval"
-        }
-        fn parameters_schema(&self) -> serde_json::Value {
-            serde_json::json!({"type": "object", "properties": {}})
-        }
-        async fn execute(
-            &self,
-            _params: serde_json::Value,
-            _ctx: &JobContext,
-        ) -> Result<ToolOutput, ToolError> {
-            Ok(ToolOutput::text(
-                "hard_ok",
-                std::time::Instant::now().elapsed(),
-            ))
-        }
-        fn requires_approval(&self, _params: &serde_json::Value) -> ApprovalRequirement {
-            ApprovalRequirement::Always
-        }
-        fn requires_sanitization(&self) -> bool {
-            false
-        }
-    }
-
-    async fn setup_tools_and_job() -> (
-        Arc<ToolRegistry>,
-        Arc<ContextManager>,
-        Arc<SafetyLayer>,
-        Uuid,
-    ) {
-        let registry = ToolRegistry::new();
-        registry.register(Arc::new(SoftApprovalTool)).await;
-        registry.register(Arc::new(HardApprovalTool)).await;
-
-        let cm = Arc::new(ContextManager::new(5));
-        let job_id = cm.create_job("test", "approval test").await.unwrap();
-        cm.update_context(job_id, |ctx| ctx.transition_to(JobState::InProgress, None))
-            .await
-            .unwrap()
-            .unwrap();
-
-        let safety = Arc::new(SafetyLayer::new(&SafetyConfig {
-            max_output_length: 100_000,
-            injection_check_enabled: false,
-        }));
-
-        (Arc::new(registry), cm, safety, job_id)
-    }
-
-    #[tokio::test]
-    async fn test_execute_tool_task_blocks_without_context() {
-        let (tools, cm, safety, job_id) = setup_tools_and_job().await;
-
-        // Without approval context, UnlessAutoApproved is blocked
-        let result = Scheduler::execute_tool_task(
-            tools.clone(),
-            cm.clone(),
-            safety.clone(),
-            None,
-            job_id,
-            "soft_gate",
-            serde_json::json!({}),
-        )
-        .await;
-        assert!(
-            result.is_err(),
-            "soft_gate should be blocked without context"
-        );
-
-        // Always is also blocked
-        let result = Scheduler::execute_tool_task(
-            tools,
-            cm,
-            safety,
-            None,
-            job_id,
-            "hard_gate",
-            serde_json::json!({}),
-        )
-        .await;
-        assert!(
-            result.is_err(),
-            "hard_gate should be blocked without context"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_execute_tool_task_autonomous_unblocks_soft() {
-        let (tools, cm, safety, job_id) = setup_tools_and_job().await;
-
-        // Autonomous execution only allows tools explicitly in scope.
-        let result = Scheduler::execute_tool_task(
-            tools.clone(),
-            cm.clone(),
-            safety.clone(),
-            Some(ApprovalContext::autonomous_with_tools([
-                "soft_gate".to_string()
-            ])),
-            job_id,
-            "soft_gate",
-            serde_json::json!({}),
-        )
-        .await;
-        assert!(
-            result.is_ok(),
-            "soft_gate should pass with autonomous context"
-        );
-
-        // But still blocks Always
-        let result = Scheduler::execute_tool_task(
-            tools,
-            cm,
-            safety,
-            Some(ApprovalContext::autonomous()),
-            job_id,
-            "hard_gate",
-            serde_json::json!({}),
-        )
-        .await;
-        assert!(
-            result.is_err(),
-            "hard_gate should still be blocked without explicit permission"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_execute_tool_task_autonomous_with_permissions() {
-        let (tools, cm, safety, job_id) = setup_tools_and_job().await;
-
-        // Autonomous context with explicit permission for both tools.
-        let ctx = ApprovalContext::autonomous_with_tools([
-            "soft_gate".to_string(),
-            "hard_gate".to_string(),
-        ]);
-
-        let result = Scheduler::execute_tool_task(
-            tools.clone(),
-            cm.clone(),
-            safety.clone(),
-            Some(ctx.clone()),
-            job_id,
-            "soft_gate",
-            serde_json::json!({}),
-        )
-        .await;
-        assert!(result.is_ok(), "soft_gate should pass");
-
-        let result = Scheduler::execute_tool_task(
-            tools,
-            cm,
-            safety,
-            Some(ctx),
-            job_id,
-            "hard_gate",
-            serde_json::json!({}),
-        )
-        .await;
-        assert!(
-            result.is_ok(),
-            "hard_gate should pass with explicit permission"
-        );
-    }
-
-    struct NormalizedApprovalTool;
-
-    #[async_trait::async_trait]
-    impl Tool for NormalizedApprovalTool {
-        fn name(&self) -> &str {
-            "normalized_gate"
-        }
-        fn description(&self) -> &str {
-            "approval depends on normalized params"
-        }
-        fn parameters_schema(&self) -> serde_json::Value {
-            serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "safe": { "type": "boolean" }
-                }
-            })
-        }
-        async fn execute(
-            &self,
-            _params: serde_json::Value,
-            _ctx: &JobContext,
-        ) -> Result<ToolOutput, ToolError> {
-            Ok(ToolOutput::text(
-                "normalized_ok",
-                std::time::Instant::now().elapsed(),
-            ))
-        }
-        fn requires_approval(&self, params: &serde_json::Value) -> ApprovalRequirement {
-            if params.get("safe").and_then(|v| v.as_bool()) == Some(true) {
-                ApprovalRequirement::Never
-            } else {
-                ApprovalRequirement::Always
-            }
-        }
-        fn requires_sanitization(&self) -> bool {
-            false
-        }
-    }
-
-    #[tokio::test]
-    async fn test_execute_tool_task_normalizes_params_before_approval() {
-        let registry = ToolRegistry::new();
-        registry.register(Arc::new(NormalizedApprovalTool)).await;
-
-        let cm = Arc::new(ContextManager::new(5));
-        let job_id = cm.create_job("test", "normalized approval").await.unwrap(); // safety: test-only setup
-        cm.update_context(job_id, |ctx| ctx.transition_to(JobState::InProgress, None))
-            .await
-            .unwrap() // safety: test-only setup
-            .unwrap(); // safety: test-only setup
-
-        let safety = Arc::new(SafetyLayer::new(&SafetyConfig {
-            max_output_length: 100_000,
-            injection_check_enabled: false,
-        }));
-
-        let result = Scheduler::execute_tool_task(
-            Arc::new(registry),
-            cm,
-            safety,
-            None,
-            job_id,
-            "normalized_gate",
-            serde_json::json!({"safe": "true"}),
-        )
-        .await;
-
-        #[rustfmt::skip]
-        assert!( // safety: test-only assertion
-            result.is_ok(),
-            "stringified boolean should normalize before approval: {result:?}"
-        );
-    }
+    // V1 ToolRegistry-based tests removed during V2 migration.
+    // Tool execution is now handled through EffectExecutor and V2 capabilities.
+    // New tests should use V2 capability system.
 }

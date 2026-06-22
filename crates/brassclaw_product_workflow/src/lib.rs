@@ -45,6 +45,7 @@ mod outbound_delivery;
 mod policy;
 mod reborn_services;
 mod safety_config;
+mod safety_config_store;
 mod webui_inbound;
 mod workflow;
 
@@ -125,6 +126,7 @@ pub use policy::{
     NoopBeforeInboundPolicy,
 };
 pub use safety_config::{SafetyConfigResponse, SafetyEntry, UpdateSafetyConfigRequest};
+pub use safety_config_store::{SafetyCategory, SafetyConfigStore, SqliteSafetyConfigStore};
 // Projection/event types that route handlers need to thread through SSE
 // (parse the resume cursor, render browser-safe event payloads). Re-exported
 // so `brassclaw_webui_v2` consumes them via the facade crate and does not need

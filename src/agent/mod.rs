@@ -13,10 +13,12 @@
 // mod agent_loop; // V1 - disabled entire file
 pub mod agentic_loop;
 mod attachments;
+pub mod background_tasks;
 mod commands;
 pub mod compaction;
 pub mod context_monitor;
 pub mod cost_guard;
+pub mod dead_letter_queue;
 // mod dispatcher; // V1 - disabled entire file
 pub mod gate_controller;
 mod heartbeat;

@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "description": "Playwright tests for BrassClaw agent functionality",
   "scripts": {
-    "test": "playwright test",
-    "test:headed": "playwright test --headed",
-    "test:debug": "playwright test --debug",
-    "test:ui": "playwright test --ui"
+    "test": "BRASSCLAW_REBORN_WEBUI_TOKEN=test-playwright-token BRASSCLAW_GATEWAY_TOKEN=test-token playwright test",
+    "test:headed": "BRASSCLAW_REBORN_WEBUI_TOKEN=test-playwright-token BRASSCLAW_GATEWAY_TOKEN=test-token playwright test --headed",
+    "test:debug": "BRASSCLAW_REBORN_WEBUI_TOKEN=test-playwright-token BRASSCLAW_GATEWAY_TOKEN=test-token playwright test --debug",
+    "test:ui": "BRASSCLAW_REBORN_WEBUI_TOKEN=test-playwright-token BRASSCLAW_GATEWAY_TOKEN=test-token playwright test --ui"
   },
   "keywords": ["brassclaw", "playwright", "e2e", "testing"],
   "author": "",

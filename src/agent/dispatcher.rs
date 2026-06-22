@@ -2268,7 +2268,6 @@ mod tests {
                 max_output_length: 100_000,
                 injection_check_enabled: true,
             })),
-            tools: Arc::new(ToolRegistry::new()),
             workspace: None,
             extension_manager: None,
             skill_registry: None,
@@ -2286,6 +2285,15 @@ mod tests {
             llm_backend: "nearai".to_string(),
             tenant_rates: Arc::new(crate::tenant::TenantRateRegistry::new(4, 3)),
             runtime_policy: None,
+            dispatcher: Arc::new(crate::capabilities::dispatcher::BuiltinCapabilityDispatcher::new(
+                crate::capabilities::dispatcher::DispatcherContext {
+                    extensions_ctx: crate::capabilities::extensions::ExtensionsContext {
+                        extension_manager: None,
+                        secrets: None,
+                    },
+                },
+            )),
+            effect_executor: None,
         };
 
         Agent::new(
@@ -2564,10 +2572,6 @@ mod tests {
         use brassclaw_llm::ChatMessage;
         use tokio::sync::Mutex;
 
-        let registry = Arc::new(ToolRegistry::new());
-        registry.register_sync(Arc::new(OAuthPromptTool));
-        registry.register_sync(Arc::new(ApprovalTool));
-
         let deps = AgentDeps {
             owner_id: "default".to_string(),
             store: None,
@@ -2578,7 +2582,6 @@ mod tests {
                 max_output_length: 100_000,
                 injection_check_enabled: false,
             })),
-            tools: registry,
             workspace: None,
             extension_manager: None,
             skill_registry: None,
@@ -2596,6 +2599,15 @@ mod tests {
             llm_backend: "nearai".to_string(),
             tenant_rates: Arc::new(crate::tenant::TenantRateRegistry::new(4, 3)),
             runtime_policy: None,
+            dispatcher: Arc::new(crate::capabilities::dispatcher::BuiltinCapabilityDispatcher::new(
+                crate::capabilities::dispatcher::DispatcherContext {
+                    extensions_ctx: crate::capabilities::extensions::ExtensionsContext {
+                        extension_manager: None,
+                        secrets: None,
+                    },
+                },
+            )),
+            effect_executor: None,
         };
 
         let agent = Agent::new(
@@ -3698,7 +3710,6 @@ mod tests {
                 max_output_length: 100_000,
                 injection_check_enabled: false,
             })),
-            tools: Arc::new(ToolRegistry::new()),
             workspace: None,
             extension_manager: None,
             skill_registry: None,
@@ -3716,6 +3727,15 @@ mod tests {
             llm_backend: "nearai".to_string(),
             tenant_rates: Arc::new(crate::tenant::TenantRateRegistry::new(4, 3)),
             runtime_policy: None,
+            dispatcher: Arc::new(crate::capabilities::dispatcher::BuiltinCapabilityDispatcher::new(
+                crate::capabilities::dispatcher::DispatcherContext {
+                    extensions_ctx: crate::capabilities::extensions::ExtensionsContext {
+                        extension_manager: None,
+                        secrets: None,
+                    },
+                },
+            )),
+            effect_executor: None,
         };
 
         Agent::new(
@@ -3834,10 +3854,6 @@ mod tests {
 
         let llm = Arc::new(RecordingToolsProvider::default());
         let llm_for_assert = Arc::clone(&llm);
-        let tools = Arc::new(ToolRegistry::new());
-        tools.register_sync(Arc::new(EchoTool));
-        tools.register_sync(Arc::new(TimeTool));
-
         let deps = AgentDeps {
             owner_id: "default".to_string(),
             store: Some(db),
@@ -3848,7 +3864,6 @@ mod tests {
                 max_output_length: 100_000,
                 injection_check_enabled: false,
             })),
-            tools,
             workspace: None,
             extension_manager: None,
             skill_registry: None,
@@ -3866,6 +3881,15 @@ mod tests {
             llm_backend: "nearai".to_string(),
             tenant_rates: Arc::new(crate::tenant::TenantRateRegistry::new(4, 3)),
             runtime_policy: None,
+            dispatcher: Arc::new(crate::capabilities::dispatcher::BuiltinCapabilityDispatcher::new(
+                crate::capabilities::dispatcher::DispatcherContext {
+                    extensions_ctx: crate::capabilities::extensions::ExtensionsContext {
+                        extension_manager: None,
+                        secrets: None,
+                    },
+                },
+            )),
+            effect_executor: None,
         };
 
         let agent = Agent::new(

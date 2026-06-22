@@ -2594,7 +2594,7 @@ mod tests {
     #[test]
     fn test_approval_requirement_pattern_matching() {
         // Test the approval requirement logic (Never, UnlessAutoApproved, Always)
-        use crate::tools::ApprovalRequirement;
+        use crate::gate::approval::ApprovalRequirement;
 
         let requirements = vec![
             (ApprovalRequirement::Never, "auto-approved"),

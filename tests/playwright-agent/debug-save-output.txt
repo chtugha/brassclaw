@@ -1,0 +1,32 @@
+
+Running 1 test using 1 worker
+
+
+=== BEFORE CLICKING SAVE ===
+
+=== AFTER CLICKING SAVE ===
+
+=== FULL PAGE TEXT ===
+
+    NewAutomationsExtensionsSettingsInferenceLanguageConversationsRecentHello, what is 2+2?BBrassClawGateway sessionSettingsInferenceLLM providerBackend—Model—LLM providersManage built-in and custom inference providers.Add providerFailed to load LLM providers: {"error":"invalid_request","kind":"validation","retryable":false}New providerDisplay nameProvider IDAdapterOpenAI CompatibleAnthropicOllamaNEAR AIBase URLAPI keyDefault modelFetch modelsTest connectionCancelSaveEmbeddingsEnable embeddingsSemantic search over workspace memoryProviderEmbedding model providerdefaultopenainearaiModelEmbedding model identifierSamplingTemperatureDefault sampling temperature (0.0–2.0)
+    
+  
+
+
+
+=== CHECKING ERROR ELEMENTS ===
+
+Found 1 elements matching "text=/error/i":
+  1. Visible: true, Text: "Failed to load LLM providers: {"error":"invalid_request","kind":"validation","retryable":false}"
+
+Found 1 elements matching "text=/failed/i":
+  1. Visible: true, Text: "Failed to load LLM providers: {"error":"invalid_request","kind":"validation","retryable":false}"
+
+Found 1 elements matching "text=/invalid/i":
+  1. Visible: true, Text: "Failed to load LLM providers: {"error":"invalid_request","kind":"validation","retryable":false}"
+
+=== DIALOG STATUS ===
+Dialog still open: true
+  ✓  1 [chromium] › tests/debug-save-response.spec.ts:5:7 › Debug Save Response › capture page state after clicking save (6.5s)
+
+  1 passed (6.8s)
