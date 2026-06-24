@@ -1,11 +1,11 @@
 # Brassclaw Reborn - Linux AMD64 Release
 
-This directory contains the precompiled Linux AMD64 binary for brassclaw-reborn.
+This directory contains the precompiled Linux AMD64 binary for brassclaw.
 
 ## Files
 
-- `brassclaw-reborn-linux-amd64` - The main executable binary (80 MB)
-- `brassclaw-reborn-linux-amd64.sha256` - SHA256 checksum for verification
+- `brassclaw-linux-amd64` - The main executable binary (80 MB)
+- `brassclaw-linux-amd64.sha256` - SHA256 checksum for verification
 
 ## System Requirements
 
@@ -19,37 +19,37 @@ This directory contains the precompiled Linux AMD64 binary for brassclaw-reborn.
 ### 1. Download the Binary
 
 Download both files:
-- `brassclaw-reborn-linux-amd64`
-- `brassclaw-reborn-linux-amd64.sha256`
+- `brassclaw-linux-amd64`
+- `brassclaw-linux-amd64.sha256`
 
 ### 2. Verify Checksum (Recommended)
 
 ```bash
-sha256sum -c brassclaw-reborn-linux-amd64.sha256
+sha256sum -c brassclaw-linux-amd64.sha256
 ```
 
 Expected output:
 ```
-brassclaw-reborn-linux-amd64: OK
+brassclaw-linux-amd64: OK
 ```
 
 ### 3. Make Executable
 
 ```bash
-chmod +x brassclaw-reborn-linux-amd64
+chmod +x brassclaw-linux-amd64
 ```
 
 ### 4. Run
 
 ```bash
-./brassclaw-reborn-linux-amd64 --help
+./brassclaw-linux-amd64 --help
 ```
 
 Or move to a directory in your PATH:
 
 ```bash
-sudo mv brassclaw-reborn-linux-amd64 /usr/local/bin/brassclaw-reborn
-brassclaw-reborn --help
+sudo mv brassclaw-linux-amd64 /usr/local/bin/brassclaw
+brassclaw --help
 ```
 
 ## Binary Details
@@ -78,18 +78,18 @@ No additional runtime dependencies are required.
 To verify the binary type:
 
 ```bash
-file brassclaw-reborn-linux-amd64
+file brassclaw-linux-amd64
 ```
 
 Expected output:
 ```
-brassclaw-reborn-linux-amd64: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), static-pie linked, stripped
+brassclaw-linux-amd64: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), static-pie linked, stripped
 ```
 
 To check for dependencies (should show "statically linked"):
 
 ```bash
-ldd brassclaw-reborn-linux-amd64
+ldd brassclaw-linux-amd64
 ```
 
 Expected output:

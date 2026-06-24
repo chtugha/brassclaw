@@ -94,8 +94,8 @@ INFO brassclaw_llm::registry: Loaded user provider definitions count=79
 WARN brassclaw_llm: No API key configured for openai_compatible. 
      Requests will likely fail with 401. Check your .env or secrets store.
      
-brassclaw-reborn: WebChat v2 listener
-  binary    : brassclaw-reborn
+brassclaw: WebChat v2 listener
+  binary    : brassclaw
   version   : 0.1.0
   listen    : http://127.0.0.1:3000
   auth      : env-bearer (token $BRASSCLAW_REBORN_WEBUI_TOKEN, user $BRASSCLAW_REBORN_WEBUI_USER_ID)
@@ -116,7 +116,7 @@ INFO brassclaw_reborn_webui_ingress: WebChat v2 listener bound bound=127.0.0.1:3
    cd /Volumes/SSDE/brassclaw
    BRASSCLAW_REBORN_WEBUI_TOKEN=test-token \
    BRASSCLAW_REBORN_WEBUI_USER_ID=test-user \
-   cargo run --release -p brassclaw_reborn_cli --bin brassclaw-reborn -- \
+   cargo run --release -- \
      serve --host 127.0.0.1 --port 3000
    ```
 

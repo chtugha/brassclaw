@@ -55,7 +55,7 @@ cargo test                                                             # unit te
 cargo test --features integration                                      # + PostgreSQL tests
 
 # Build the Reborn binary
-cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn 
+cargo build --release --bin brassclaw 
 ```
 
 These commands are for day-to-day iteration while you are developing locally. The pre-submission checks below are intentionally stricter and use CI-style flags so you can catch formatting drift and clippy warnings before requesting review.

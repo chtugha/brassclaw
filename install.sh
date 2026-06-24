@@ -6,11 +6,11 @@ set -euo pipefail
 # Works with or without root privileges
 # Systemd service is optional (only with root)
 
-VERSION="0.29.6"
+VERSION="0.30.2"
 GITHUB_REPO="chtugha/brassclaw"
-BINARY_NAME="brassclaw-reborn"
+BINARY_NAME="brassclaw"
 CONFIG_DIR="$HOME/.brassclaw/reborn"
-SERVICE_NAME="brassclaw-reborn"
+SERVICE_NAME="brassclaw"
 SYSTEMD_DIR="/etc/systemd/system"
 
 # Determine install directory based on privileges
@@ -85,12 +85,12 @@ backup_binary() {
 
 # Download binary from GitHub release
 download_binary() {
-    local download_url="https://github.com/$GITHUB_REPO/releases/download/v$VERSION/brassclaw-reborn-linux-amd64"
-    local checksum_url="https://github.com/$GITHUB_REPO/releases/download/v$VERSION/brassclaw-reborn-linux-amd64.sha256"
+    local download_url="https://github.com/$GITHUB_REPO/releases/download/v$VERSION/brassclaw-linux-amd64"
+    local checksum_url="https://github.com/$GITHUB_REPO/releases/download/v$VERSION/brassclaw-linux-amd64.sha256"
     local temp_dir=$(mktemp -d)
-    local download_name="brassclaw-reborn-linux-amd64"
+    local download_name="brassclaw-linux-amd64"
     
-    log_step "Downloading brassclaw-reborn v$VERSION..."
+    log_step "Downloading brassclaw v$VERSION..."
     log_info "Download URL: $download_url"
     
     if ! curl -L -f -o "$temp_dir/$download_name" "$download_url" 2>&1; then

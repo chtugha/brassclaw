@@ -14,7 +14,7 @@ the axum serve loop with the `Router` it gets handed.
   from owning server lifecycle, and this crate is host-owned ingress
   code, not product/API.
 - Provide concrete `WebuiAuthenticator` implementations the standalone
-  `brassclaw-reborn` binary can wire (env-bearer first; DB / OIDC are
+  `brassclaw` binary can wire (env-bearer first; DB / OIDC are
   follow-ups). Token comparison must be constant-time (`subtle::ConstantTimeEq`).
 - Do not touch `ProductAdapter`, `ExternalActorRef`, `ProtocolAuthEvidence`,
   or other external-protocol shims — WebUI is a Path A native host

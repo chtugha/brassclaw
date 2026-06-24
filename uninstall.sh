@@ -4,10 +4,10 @@ set -euo pipefail
 # BrassClaw Reborn Uninstallation Script
 # Removes binary, systemd service, and optionally configuration/data
 
-BINARY_NAME="brassclaw-reborn"
+BINARY_NAME="brassclaw"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="$HOME/.brassclaw/reborn"
-SERVICE_NAME="brassclaw-reborn"
+SERVICE_NAME="brassclaw"
 SYSTEMD_DIR="/etc/systemd/system"
 
 # Colors for output

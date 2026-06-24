@@ -169,7 +169,7 @@ cd brassclaw
 cargo build --release -p brassclaw_reborn_cli
 ```
 
-The binary is at `target/release/brassclaw-reborn`.
+The binary is at `target/release/brassclaw`.
 
 ### Option D: Interactive REPL
 
@@ -179,7 +179,7 @@ export LLM_BASE_URL=http://localhost:8000/v1
 export LLM_API_KEY=none
 export LLM_MODEL=Qwen/Qwen2.5-7B-Instruct-AWQ
 
-./target/release/brassclaw-reborn repl
+./target/release/brassclaw repl
 ```
 
 ---
@@ -297,7 +297,7 @@ The React SPA is served at the `/v2` path. Authenticate with a bearer token:
 
 ```bash
 # Start the server
-BRASSCLAW_REBORN_WEBUI_TOKEN=mytoken ./brassclaw-reborn serve --host 0.0.0.0 --port 3000
+BRASSCLAW_REBORN_WEBUI_TOKEN=mytoken ./brassclaw serve --host 0.0.0.0 --port 3000
 
 # Access the UI
 open http://localhost:3000/v2

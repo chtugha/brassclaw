@@ -123,17 +123,26 @@ impl SafetyConfigStore for SqliteSafetyConfigStore {
             0
         };
 
-        // If no entries exist, initialize defaults
+        // If no entries exist, initialize defaults inline using the same connection
         if count == 0 {
-            self.initialize_defaults(user_id).await?;
+            let defaults = Self::get_default_patterns(category);
+            for (pattern, enabled) in defaults {
+                conn.execute(
+                    "INSERT OR IGNORE INTO safety_config
+                     (user_id, category, pattern, is_enabled, is_default)
+                     VALUES (?1, ?2, ?3, ?4, 1)",
+                    params![user_id, category.as_str(), pattern, if enabled { 1 } else { 0 }],
+                )
+                .await?;
+            }
         }
 
         // Fetch all entries for this category
         let mut rows = conn
             .query(
-                "SELECT pattern, is_enabled, is_default 
-                 FROM safety_config 
-                 WHERE user_id = ?1 AND category = ?2 
+                "SELECT pattern, is_enabled, is_default
+                 FROM safety_config
+                 WHERE user_id = ?1 AND category = ?2
                  ORDER BY is_default DESC, pattern ASC",
                 params![user_id, category.as_str()],
             )

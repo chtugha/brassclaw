@@ -85,7 +85,7 @@ If you need to manually configure the LLM provider in the UI:
 1. Start the server with gateway token:
    ```bash
    export BRASSCLAW_GATEWAY_TOKEN=your-token-here
-   cd ../.. && cargo run --release -p brassclaw_reborn_cli --bin brassclaw-reborn -- serve --host 127.0.0.1 --port 3000
+   cd ../.. && cargo run --release -- serve --host 127.0.0.1 --port 3000
    ```
 
 2. Open browser to http://127.0.0.1:3000
@@ -135,7 +135,7 @@ Screenshots are automatically captured on test failures and saved to the `screen
 ### Server doesn't start
 
 If the webServer fails to start, ensure:
-1. BrassClaw is built: `cd ../.. && cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn`
+1. BrassClaw is built: `cd ../.. && cargo build --release --bin brassclaw`
 2. Port 3000 is available
 3. Check server logs in test output
 

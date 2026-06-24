@@ -75,8 +75,8 @@ export CXX=clang++
 export RUSTFLAGS=""
 ./scripts/build-wasm-extensions.sh --first-party
 export RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=mold"
-cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn 
-ln -sf "$BRASSCLAW_DIR/target/release/brassclaw-reborn" /usr/local/bin/brassclaw-reborn
+cargo build --release --bin brassclaw
+ln -sf "$BRASSCLAW_DIR/target/release/brassclaw" /usr/local/bin/brassclaw
 echo "  Done."
 
 echo "[7/7] Configuring BrassClaw..."
@@ -123,7 +123,7 @@ Environment=LLM_BASE_URL=http://${VLLM_HOST}:${VLLM_PORT}/v1
 Environment=LLM_API_KEY=none
 Environment=LLM_MODEL=Qwen/Qwen2.5-7B-Instruct-AWQ
 Environment=BRASSCLAW_VLLM_KEY=none
-ExecStart=/usr/local/bin/brassclaw-reborn serve --host 0.0.0.0 --port 3000
+ExecStart=/usr/local/bin/brassclaw serve --host 0.0.0.0 --port 3000
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -165,4 +165,4 @@ echo "  LLM_BACKEND=openai_compatible \\"
 echo "  LLM_BASE_URL=http://${VLLM_HOST}:${VLLM_PORT}/v1 \\"
 echo "  LLM_API_KEY=none \\"
 echo "  LLM_MODEL=Qwen/Qwen2.5-7B-Instruct-AWQ \\"
-echo "  brassclaw-reborn repl"
+echo "  brassclaw repl"

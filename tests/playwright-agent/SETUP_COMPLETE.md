@@ -139,7 +139,7 @@ The testing environment is ready for:
    - `06-session-management.spec.ts` - Session handling
 
 2. **Running Tests**:
-   - Tests will automatically start the brassclaw-reborn server
+   - Tests will automatically start the brassclaw server
    - Server runs on http://127.0.0.1:3000
    - Tests run sequentially to maintain state consistency
 

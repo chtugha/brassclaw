@@ -16,7 +16,7 @@ publish = false
 dist = false
 
 [features]
-default = ["root-llm-provider"]
+default = ["root-llm-provider", "libsql"]
 # Wire a real LLM provider into the assembled runtime. Mirrors the same
 # `root-llm-provider` feature on `brassclaw_reborn_composition` /
 # `brassclaw_reborn`, so building without it produces a CLI binary that
@@ -25,11 +25,16 @@ default = ["root-llm-provider"]
 root-llm-provider = [
     "brassclaw_reborn_composition/root-llm-provider",
 ]
-# Compile in the Slack Events API host-beta mount for `brassclaw-reborn serve`.
+# Compile in the Slack Events API host-beta mount for `brassclaw serve`.
 # Still requires `[slack].enabled = true` at runtime before the route is
 # mounted; ambient Slack env vars alone do not enable it.
 slack-v2-host-beta = [
     "brassclaw_reborn_composition/slack-v2-host-beta",
+]
+# Enable libSQL database support for local-dev storage, including the
+# safety configuration store and other local-dev features.
+libsql = [
+    "brassclaw_reborn_composition/libsql",
 ]
 [dependencies]
 anyhow = "1"

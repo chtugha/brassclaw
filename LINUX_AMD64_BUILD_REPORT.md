@@ -8,7 +8,7 @@
 
 ## Build Summary
 
-Successfully cross-compiled brassclaw-reborn for Linux AMD64 from macOS using the musl toolchain. The resulting binary is a statically-linked, portable executable suitable for deployment on any x86_64 Linux system.
+Successfully cross-compiled brassclaw for Linux AMD64 from macOS using the musl toolchain. The resulting binary is a statically-linked, portable executable suitable for deployment on any x86_64 Linux system.
 
 ## Build Method
 
@@ -56,8 +56,8 @@ linker = "x86_64-linux-musl-gcc"
 ## Binary Details
 
 ### Location
-- **Build Output:** `target/x86_64-unknown-linux-musl/release/brassclaw-reborn`
-- **Release Artifact:** `release-artifacts/brassclaw-reborn-linux-amd64`
+- **Build Output:** `target/x86_64-unknown-linux-musl/release/brassclaw`
+- **Release Artifact:** `release-artifacts/brassclaw-linux-amd64`
 
 ### Binary Properties
 ```
@@ -77,18 +77,18 @@ Permissions: -rwxr-xr-x
 
 ### SHA256
 ```
-902a0c2f4a61e123fbf158876051ab1b79f976271dd016d8a772897f2ee7f9de  brassclaw-reborn-linux-amd64
+902a0c2f4a61e123fbf158876051ab1b79f976271dd016d8a772897f2ee7f9de  brassclaw-linux-amd64
 ```
 
-**Checksum File:** `release-artifacts/brassclaw-reborn-linux-amd64.sha256`
+**Checksum File:** `release-artifacts/brassclaw-linux-amd64.sha256`
 
 ## Release Artifacts
 
 Located in: `/Volumes/SSDE/brassclaw/release-artifacts/`
 
 ```
-brassclaw-reborn-linux-amd64          (80 MB) - Linux AMD64 binary
-brassclaw-reborn-linux-amd64.sha256   (95 B)  - SHA256 checksum
+brassclaw-linux-amd64          (80 MB) - Linux AMD64 binary
+brassclaw-linux-amd64.sha256   (95 B)  - SHA256 checksum
 ```
 
 ## Build Features
@@ -105,10 +105,10 @@ This binary should run on any x86_64 Linux system because:
 3. **No external runtime requirements:** Self-contained executable
 
 ### Recommended Deployment
-1. Download `brassclaw-reborn-linux-amd64`
-2. Verify checksum against `brassclaw-reborn-linux-amd64.sha256`
-3. Make executable: `chmod +x brassclaw-reborn-linux-amd64`
-4. Run: `./brassclaw-reborn-linux-amd64`
+1. Download `brassclaw-linux-amd64`
+2. Verify checksum against `brassclaw-linux-amd64.sha256`
+3. Make executable: `chmod +x brassclaw-linux-amd64`
+4. Run: `./brassclaw-linux-amd64`
 
 ### System Requirements
 - **Architecture:** x86_64 (AMD64)
@@ -155,17 +155,17 @@ To verify the binary on a Linux system:
 
 ```bash
 # Verify checksum
-sha256sum -c brassclaw-reborn-linux-amd64.sha256
+sha256sum -c brassclaw-linux-amd64.sha256
 
 # Check binary type
-file brassclaw-reborn-linux-amd64
+file brassclaw-linux-amd64
 
 # Check dependencies (should show "statically linked")
-ldd brassclaw-reborn-linux-amd64
+ldd brassclaw-linux-amd64
 
 # Make executable and test
-chmod +x brassclaw-reborn-linux-amd64
-./brassclaw-reborn-linux-amd64 --version
+chmod +x brassclaw-linux-amd64
+./brassclaw-linux-amd64 --version
 ```
 
 ## Success Criteria - All Met ✅
@@ -200,4 +200,4 @@ Cross-compilation from macOS to Linux AMD64 completed successfully using the mus
 
 **Build Status:** ✅ SUCCESS  
 **Binary Ready for Release:** YES  
-**Location:** `/Volumes/SSDE/brassclaw/release-artifacts/brassclaw-reborn-linux-amd64`
+**Location:** `/Volumes/SSDE/brassclaw/release-artifacts/brassclaw-linux-amd64`

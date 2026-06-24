@@ -893,7 +893,10 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
         #[cfg(feature = "root-llm-provider")]
         secret_store,
         #[cfg(feature = "libsql")]
-        safety_config_store: Some(Arc::clone(&store_graph.local_runtime.safety_config_store)),
+        safety_config_store: {
+            tracing::info!("✅ Wiring SafetyConfigStore into RebornServices");
+            Some(Arc::clone(&store_graph.local_runtime.safety_config_store))
+        },
     })
 }
 
@@ -965,6 +968,7 @@ fn build_local_dev_store_graph(
             Arc::clone(&identity_substrate_db)
         )
     );
+    tracing::info!("✅ SafetyConfigStore created successfully in build_local_dev_store_graph");
     
     let local_runtime = Arc::new(RebornLocalRuntimeServices {
         approval_requests: Arc::clone(&approval_requests),

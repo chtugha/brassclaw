@@ -178,6 +178,7 @@ registerPack("en", {
   "settings.networking": "Networking",
   "settings.tools": "Tools",
   "settings.skills": "Skills",
+  "settings.safety": "Safety",
   "settings.users": "Users",
   "settings.language": "Language",
 

@@ -146,8 +146,14 @@ pub(crate) fn build_webui_services_with_connectable_channels(
     // Wire the safety configuration store when available (local-dev with libsql)
     #[cfg(feature = "libsql")]
     if let Some(safety_config_store) = &services.safety_config_store {
+        tracing::info!("✅ Wiring SafetyConfigStore into WebUI API");
         api = api.with_safety_config_store(Arc::clone(safety_config_store));
+    } else {
+        tracing::warn!("⚠️ SafetyConfigStore is None - safety endpoints will not work");
     }
+    
+    #[cfg(not(feature = "libsql"))]
+    tracing::warn!("⚠️ libsql feature not enabled - SafetyConfigStore not available");
 
     Ok(RebornWebuiBundle {
         api: Arc::new(api),

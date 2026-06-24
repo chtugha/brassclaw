@@ -11,10 +11,10 @@ cargo test                                                             # unit te
 cargo test --features integration                                      # + PostgreSQL tests
 
 # Build the Reborn binary with WebUI v2
-cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn 
+cargo build --release --bin brassclaw 
 
 # Run with logging
-BRASSCLAW_REBORN_LOG=brassclaw=debug cargo run -p brassclaw_reborn_cli --bin brassclaw-reborn
+BRASSCLAW_REBORN_LOG=brassclaw=debug cargo run
 ```
 
 E2E tests: see `tests/e2e/CLAUDE.md`.
@@ -37,7 +37,7 @@ When running Playwright tests or manual testing, use the following LLM configura
 export BRASSCLAW_GATEWAY_TOKEN=your-token-here
 ```
 
-This token is required for authentication with the brassclaw-reborn server during testing. Set it to your actual gateway token value.
+This token is required for authentication with the brassclaw server during testing. Set it to your actual gateway token value.
 
 ### Quick Test Setup
 
@@ -47,7 +47,7 @@ export BRASSCLAW_GATEWAY_TOKEN=your-token-here
 
 # Start server
 cd /Volumes/SSDE/brassclaw
-cargo run --release -p brassclaw_reborn_cli --bin brassclaw-reborn -- serve --host 127.0.0.1 --port 3000
+cargo run --release -- serve --host 127.0.0.1 --port 3000
 
 # In another terminal, run tests
 cd /Volumes/SSDE/brassclaw/tests/playwright-agent
@@ -59,7 +59,7 @@ npm test
 1. Start the server with gateway token:
    ```bash
    export BRASSCLAW_GATEWAY_TOKEN=your-token-here
-   cargo run --release -p brassclaw_reborn_cli --bin brassclaw-reborn -- serve --host 127.0.0.1 --port 3000
+   cargo run --release -- serve --host 127.0.0.1 --port 3000
    ```
 
 2. Open browser to http://127.0.0.1:3000
@@ -205,7 +205,7 @@ Rules:
 crates/
 ├── Reborn runtime
 │   ├── brassclaw_reborn/           # Runtime, driver registry, boot orchestration
-│   ├── brassclaw_reborn_cli/       # brassclaw-reborn binary (commands, dispatch)
+│   ├── brassclaw_reborn_cli/       # brassclaw binary (commands, dispatch)
 │   ├── brassclaw_reborn_composition/  # Wiring: capabilities, loops, host access
 │   ├── brassclaw_reborn_config/    # Config resolution, profiles, home resolution
 │   └── brassclaw_reborn_webui_ingress/  # WebUI v2 gateway adapter and ingress
@@ -355,13 +355,13 @@ See `src/db/CLAUDE.md` and `.claude/rules/database.md`.
 
 ## WebUI v2
 
-WebUI v2 is a React SPA served at `/v2` from the `brassclaw-reborn` binary.
+WebUI v2 is a React SPA served at `/v2` from the `brassclaw` binary.
 
 - Built with the `webui-v2-beta` cargo feature flag
 - Static assets embedded via `crates/brassclaw_webui_v2_static/`
 - Server routes and bearer-token auth live in `crates/brassclaw_webui_v2/`
 - Gateway adapter in `crates/brassclaw_reborn_webui_ingress/`
-- Start with `brassclaw-reborn serve` (default: `127.0.0.1:3000`)
+- Start with `brassclaw serve` (default: `127.0.0.1:3000`)
 - For non-loopback listeners, use `serve --host 0.0.0.0` only with a non-yolo profile; `local-dev-yolo` with `--confirm-host-access` refuses non-loopback binds
 
 ## Job State Machine
@@ -376,8 +376,8 @@ Pending -> InProgress -> Completed -> Submitted -> Accepted
 ## Debugging
 
 ```bash
-BRASSCLAW_REBORN_LOG=brassclaw=trace cargo run -p brassclaw_reborn_cli --bin brassclaw-reborn
-BRASSCLAW_REBORN_LOG=brassclaw::agent=debug cargo run -p brassclaw_reborn_cli --bin brassclaw-reborn
+BRASSCLAW_REBORN_LOG=brassclaw=trace cargo run
+BRASSCLAW_REBORN_LOG=brassclaw::agent=debug cargo run
 RUST_LOG=brassclaw=debug,tower_http=debug cargo run   # v1 with HTTP request logging
 ```
 
@@ -390,4 +390,4 @@ RUST_LOG=brassclaw=debug,tower_http=debug cargo run   # v1 with HTTP request log
 5. Built tools get empty capabilities; no UX for granting access
 6. No tool versioning or rollback
 7. Observability: only `log` and `noop` backends (no OpenTelemetry)
-8. `brassclaw-reborn` not yet included in cargo-dist release artifacts (see issue #3483)
+8. `brassclaw` not yet included in cargo-dist release artifacts (see issue #3483)

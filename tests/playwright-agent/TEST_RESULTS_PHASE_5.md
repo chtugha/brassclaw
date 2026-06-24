@@ -4,7 +4,7 @@
 
 **Date:** 2026-06-21 02:54 CEST  
 **Environment:** macOS, Node.js v25.6.1  
-**BrassClaw Version:** v0.1.0 (brassclaw-reborn)  
+**BrassClaw Version:** v0.30.2 (brassclaw)  
 **Playwright Version:** 1.61.0  
 **Test Duration:** 31.6 seconds
 
@@ -34,7 +34,7 @@
 ### Server Output
 ```
 brassclaw-reborn: WebChat v2 listener
-  binary    : brassclaw-reborn
+  binary    : brassclaw
   version   : 0.1.0
   listen    : http://127.0.0.1:3000
   auth      : env-bearer (token $BRASSCLAW_REBORN_WEBUI_TOKEN, user $BRASSCLAW_REBORN_WEBUI_USER_ID)
@@ -118,7 +118,7 @@ Error: element(s) not found
 
 ### What Worked ✅
 
-1. **Server Startup:** The brassclaw-reborn server starts successfully with proper configuration
+1. **Server Startup:** The brassclaw server starts successfully with proper configuration
 2. **Environment Variables:** The `BRASSCLAW_REBORN_WEBUI_TOKEN` and `BRASSCLAW_REBORN_WEBUI_USER_ID` environment variables are correctly passed to the server
 3. **Page Loading:** The webfrontend-ui loads successfully and displays the authentication page
 4. **No Console Errors:** The application runs without JavaScript errors
@@ -199,7 +199,7 @@ The Phase 5 initial connection tests were **partially successful**:
 
 ### Key Findings
 
-1. **Server is Healthy:** The brassclaw-reborn server starts successfully and serves the webfrontend-ui
+1. **Server is Healthy:** The brassclaw server starts successfully and serves the webfrontend-ui
 2. **UI Requires Authentication:** The webfrontend-ui correctly displays an authentication page before allowing access
 3. **Test Suite Needs Update:** Tests need to be updated to handle the authentication flow
 
@@ -216,7 +216,7 @@ The Phase 5 initial connection tests were **partially successful**:
 
 **Status:** ✅ **ACCEPTABLE**
 
-The test results indicate that the brassclaw-reborn server and webfrontend-ui are working correctly. The single test failure is due to the test not accounting for the authentication flow, which is expected and correct behavior for the UI. The system is ready for Phase 6 authentication flow testing.
+The test results indicate that the brassclaw server and webfrontend-ui are working correctly. The single test failure is due to the test not accounting for the authentication flow, which is expected and correct behavior for the UI. The system is ready for Phase 6 authentication flow testing.
 
 ---
 

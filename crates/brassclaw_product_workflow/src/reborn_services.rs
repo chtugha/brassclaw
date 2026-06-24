@@ -1773,7 +1773,8 @@ impl RebornServicesApi for RebornServices {
         store
             .get_config(&user_id, crate::safety_config_store::SafetyCategory::SensitivePaths)
             .await
-            .map_err(|_e| {
+            .map_err(|e| {
+                tracing::error!("❌ Failed to get safety config: {:?}", e);
                 RebornServicesError::from_status_kind(
                     RebornServicesErrorCode::Internal,
                     RebornServicesErrorKind::Internal,

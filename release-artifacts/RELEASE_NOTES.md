@@ -14,23 +14,23 @@ This release marks the completion of the V1 to V2 architecture transition. The b
 
 ### 📦 What's Included
 
-- `brassclaw-reborn-linux-amd64`: Precompiled binary for Linux AMD64
-- `brassclaw-reborn-linux-amd64.sha256`: SHA256 checksum for verification
+- `brassclaw-linux-amd64`: Precompiled binary for Linux AMD64
+- `brassclaw-linux-amd64.sha256`: SHA256 checksum for verification
 
 ### 🚀 Quick Start
 
 ```bash
 # Download and verify
-wget https://github.com/chtugha/brassclaw/releases/download/v0.29.1/brassclaw-reborn-linux-amd64
-wget https://github.com/chtugha/brassclaw/releases/download/v0.29.1/brassclaw-reborn-linux-amd64.sha256
-sha256sum -c brassclaw-reborn-linux-amd64.sha256
+wget https://github.com/chtugha/brassclaw/releases/download/v0.29.1/brassclaw-linux-amd64
+wget https://github.com/chtugha/brassclaw/releases/download/v0.29.1/brassclaw-linux-amd64.sha256
+sha256sum -c brassclaw-linux-amd64.sha256
 
 # Install
-chmod +x brassclaw-reborn-linux-amd64
-sudo mv brassclaw-reborn-linux-amd64 /usr/local/bin/brassclaw-reborn
+chmod +x brassclaw-linux-amd64
+sudo mv brassclaw-linux-amd64 /usr/local/bin/brassclaw
 
 # Run
-brassclaw-reborn serve --port 3000
+brassclaw serve --port 3000
 ```
 
 ### 📋 System Requirements

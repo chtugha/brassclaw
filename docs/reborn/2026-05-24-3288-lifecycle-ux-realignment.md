@@ -44,7 +44,7 @@ of truth remains the owning service.
   surface. Local-dev lifecycle composition now calls the same underlying skill
   management implementation; keep the built-in bridge until production product
   lifecycle command routing replaces it.
-- The standalone `brassclaw-reborn` CLI still reports several catalog surfaces as
+- The standalone `brassclaw` CLI still reports several catalog surfaces as
   not wired; do not read CLI command availability as lifecycle migration
   completion.
 - WebUI setup now returns a Reborn lifecycle projection, but it intentionally

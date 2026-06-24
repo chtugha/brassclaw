@@ -36,7 +36,7 @@ The legacy v1 runtime in `src/` follows a different model (Channel/Agent/AppBuil
 
 | Area | Location |
 |------|----------|
-| brassclaw-reborn CLI binary | `crates/brassclaw_reborn_cli/` |
+| brassclaw CLI binary | `crates/brassclaw_reborn_cli/` |
 | Reborn runtime and driver registry | `crates/brassclaw_reborn/` |
 | Composition and wiring | `crates/brassclaw_reborn_composition/` |
 | Config resolution and profiles | `crates/brassclaw_reborn_config/` |
@@ -113,7 +113,7 @@ When a task touches only `crates/` and makes no reference to v1 behavior, do not
 
 ```bash
 # Build the Reborn binary with WebUI v2
-cargo build --release -p brassclaw_reborn_cli --bin brassclaw-reborn 
+cargo build --release --bin brassclaw 
 
 # Format
 cargo fmt

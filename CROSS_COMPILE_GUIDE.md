@@ -1,6 +1,6 @@
 # Cross-Compilation Quick Reference Guide
 
-This guide provides quick reference for cross-compiling brassclaw-reborn for different platforms.
+This guide provides quick reference for cross-compiling brassclaw for different platforms.
 
 ## Linux AMD64 (from macOS)
 
@@ -30,7 +30,7 @@ cargo build --release --target x86_64-unknown-linux-musl -p brassclaw_reborn_cli
 ### Output Location
 
 ```
-target/x86_64-unknown-linux-musl/release/brassclaw-reborn
+target/x86_64-unknown-linux-musl/release/brassclaw
 ```
 
 ### Create Release Artifacts
@@ -40,12 +40,12 @@ target/x86_64-unknown-linux-musl/release/brassclaw-reborn
 mkdir -p release-artifacts
 
 # Copy binary
-cp target/x86_64-unknown-linux-musl/release/brassclaw-reborn \
-   release-artifacts/brassclaw-reborn-linux-amd64
+cp target/x86_64-unknown-linux-musl/release/brassclaw \
+   release-artifacts/brassclaw-linux-amd64
 
 # Generate checksum
 cd release-artifacts
-shasum -a 256 brassclaw-reborn-linux-amd64 > brassclaw-reborn-linux-amd64.sha256
+shasum -a 256 brassclaw-linux-amd64 > brassclaw-linux-amd64.sha256
 ```
 
 ## Alternative: Using cross (requires Docker)
@@ -80,13 +80,13 @@ cross build --release --target x86_64-unknown-linux-gnu -p brassclaw_reborn_cli
 
 ```bash
 # Check binary type
-file brassclaw-reborn-linux-amd64
+file brassclaw-linux-amd64
 
 # Check dependencies (for musl builds, should show "statically linked")
-ldd brassclaw-reborn-linux-amd64
+ldd brassclaw-linux-amd64
 
 # Verify checksum
-sha256sum -c brassclaw-reborn-linux-amd64.sha256
+sha256sum -c brassclaw-linux-amd64.sha256
 ```
 
 ## Troubleshooting
