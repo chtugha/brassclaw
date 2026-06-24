@@ -288,15 +288,30 @@ function SafetyEntry({ entry, onToggle, onRemove, isUpdating, t }) {
   return html`
     <div className="flex items-center justify-between rounded-lg border border-[var(--v2-panel-border)] bg-[var(--v2-surface-muted)] px-3 py-2">
       <div className="flex items-center gap-3 flex-1 min-w-0">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked=${entry.enabled}
-            onChange=${(e) => onToggle(entry.pattern, e.target.checked)}
-            disabled=${isUpdating}
-            className="h-4 w-4 rounded border-[var(--v2-panel-border)] bg-[var(--v2-surface)] text-[var(--v2-accent-bg)] focus:ring-2 focus:ring-[var(--v2-accent-border)] focus:ring-offset-0 disabled:opacity-50"
+        <button
+          type="button"
+          role="switch"
+          aria-checked=${entry.enabled}
+          aria-label=${`Toggle ${entry.pattern}`}
+          onClick=${() => onToggle(entry.pattern, !entry.enabled)}
+          disabled=${isUpdating}
+          className=${[
+            "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border transition-colors",
+            entry.enabled
+              ? "border-signal/40 bg-signal/30"
+              : "border-white/15 bg-white/[0.06]",
+            isUpdating && "opacity-50 cursor-not-allowed"
+          ].filter(Boolean).join(" ")}
+        >
+          <span
+            className=${[
+              "pointer-events-none inline-block h-5 w-5 rounded-full transition-transform",
+              entry.enabled
+                ? "translate-x-5 bg-signal"
+                : "translate-x-0 bg-iron-300",
+            ].join(" ")}
           />
-        </label>
+        </button>
         <code className="text-sm font-mono text-[var(--v2-text-strong)] truncate">
           ${entry.pattern}
         </code>

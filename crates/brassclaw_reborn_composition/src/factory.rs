@@ -471,6 +471,7 @@ struct RebornLocalDevStoreGraphInput {
     local_dev_storage_root: PathBuf,
     default_system_prompt_path: PathBuf,
     trigger_repository: Arc<dyn TriggerRepository>,
+    extension_registry: Arc<ExtensionRegistry>,
     /// Raw libSQL substrate handle, carried so the canonical Reborn identity
     /// store rides the same `reborn-local-dev.db` instead of opening a second
     /// handle (see `RebornRuntime::open_reborn_identity_resolver`).
@@ -662,6 +663,11 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
     let owner_user_id = UserId::new(owner_id).map_err(|error| RebornBuildError::InvalidConfig {
         reason: error.to_string(),
     })?;
+    
+    // Create extension_registry BEFORE store_graph so it can be passed in
+    let extension_registry = Arc::new(local_dev_builtin_extension_registry()?);
+    tracing::info!("✅ Created extension_registry with {} capabilities", extension_registry.capabilities().count());
+    
     let mut store_graph = build_local_dev_store_graph(RebornLocalDevStoreGraphInput {
         filesystem: Arc::clone(&filesystem),
         owner_user_id,
@@ -671,6 +677,7 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
         local_dev_storage_root: root.clone(),
         default_system_prompt_path,
         trigger_repository,
+        extension_registry: Arc::clone(&extension_registry),
         #[cfg(feature = "libsql")]
         identity_substrate_db,
     })?;
@@ -689,7 +696,6 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
     let secret_store: Arc<dyn SecretStore> = Arc::new(brassclaw_secrets::InMemorySecretStore::new());
     let local_dev_trust_policy = Arc::new(local_dev_first_party_trust_policy()?);
     let local_dev_trust_invalidation_bus = Arc::new(brassclaw_trust::InvalidationBus::new());
-    let extension_registry = Arc::new(local_dev_builtin_extension_registry()?);
     let mut services = HostRuntimeServices::new(
         Arc::clone(&extension_registry),
         Arc::clone(&filesystem),
@@ -840,7 +846,7 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
     if let Some(local_runtime) = Arc::get_mut(&mut store_graph.local_runtime) {
         local_runtime.extension_management = Some(Arc::clone(&extension_management));
         local_runtime.runtime_http_egress = Some(product_auth_runtime_ports.runtime_http_egress());
-        local_runtime.extension_registry = Arc::clone(&extension_registry);
+        // extension_registry is now set during store_graph creation, no need to set it here
         let host_runtime_http_egress = services.host_runtime_http_egress_port();
         #[cfg(all(test, feature = "slack-v2-host-beta"))]
         let host_runtime_http_egress =
@@ -913,6 +919,7 @@ fn build_local_dev_store_graph(
         local_dev_storage_root,
         default_system_prompt_path,
         trigger_repository,
+        extension_registry,
         identity_substrate_db,
     } = input;
     let scoped_filesystem = local_dev_scoped_filesystem(Arc::clone(&filesystem));
@@ -1007,7 +1014,7 @@ fn build_local_dev_store_graph(
         default_system_prompt_path,
         event_log,
         audit_log,
-        extension_registry: Arc::new(ExtensionRegistry::new()),
+        extension_registry,
         safety_config_store,
     });
     let process_services = ProcessServices::filesystem(Arc::clone(&scoped_filesystem));
