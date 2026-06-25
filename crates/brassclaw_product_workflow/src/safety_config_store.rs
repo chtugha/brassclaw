@@ -9,6 +9,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::safety_config::{SafetyConfigResponse, SafetyEntry};
+use crate::CapabilityPermissionStore;
 
 /// Categories for safety configuration entries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -260,6 +261,112 @@ impl SafetyConfigStore for SqliteSafetyConfigStore {
         }
 
         Ok(())
+    }
+}
+
+// Implement CapabilityPermissionStore for SqliteSafetyConfigStore
+#[async_trait]
+impl CapabilityPermissionStore for SqliteSafetyConfigStore {
+    async fn get_capability_permission(
+        &self,
+        tenant_id: &str,
+        capability_id: &str,
+    ) -> Result<Option<brassclaw_host_api::PermissionMode>, Box<dyn std::error::Error + Send + Sync>> {
+        let conn = self.connect().await?;
+        
+        let mut rows = conn
+            .query(
+                "SELECT permission_mode FROM capability_permissions WHERE tenant_id = ?1 AND capability_id = ?2",
+                params![tenant_id, capability_id],
+            )
+            .await?;
+        
+        if let Some(row) = rows.next().await? {
+            let mode_str: String = row.get(0)?;
+            let mode = match mode_str.as_str() {
+                "allow" => brassclaw_host_api::PermissionMode::Allow,
+                "ask" => brassclaw_host_api::PermissionMode::Ask,
+                "deny" => brassclaw_host_api::PermissionMode::Deny,
+                _ => return Err("Invalid permission mode in database".into()),
+            };
+            Ok(Some(mode))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn set_capability_permission(
+        &self,
+        tenant_id: &str,
+        capability_id: &str,
+        mode: brassclaw_host_api::PermissionMode,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let _lock = self.write_lock.lock().await;
+        let conn = self.connect().await?;
+        
+        let mode_str = match mode {
+            brassclaw_host_api::PermissionMode::Allow => "allow",
+            brassclaw_host_api::PermissionMode::Ask => "ask",
+            brassclaw_host_api::PermissionMode::Deny => "deny",
+        };
+        
+        conn.execute(
+            "INSERT INTO capability_permissions (tenant_id, capability_id, permission_mode) 
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(tenant_id, capability_id) 
+             DO UPDATE SET permission_mode = excluded.permission_mode, updated_at = CURRENT_TIMESTAMP",
+            params![tenant_id, capability_id, mode_str],
+        )
+        .await?;
+        
+        Ok(())
+    }
+
+    async fn delete_capability_permission(
+        &self,
+        tenant_id: &str,
+        capability_id: &str,
+    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+        let _lock = self.write_lock.lock().await;
+        let conn = self.connect().await?;
+        
+        let rows_affected = conn
+            .execute(
+                "DELETE FROM capability_permissions WHERE tenant_id = ?1 AND capability_id = ?2",
+                params![tenant_id, capability_id],
+            )
+            .await?;
+        
+        Ok(rows_affected > 0)
+    }
+
+    async fn list_capability_overrides(
+        &self,
+        tenant_id: &str,
+    ) -> Result<std::collections::HashMap<String, brassclaw_host_api::PermissionMode>, Box<dyn std::error::Error + Send + Sync>> {
+        let conn = self.connect().await?;
+        
+        let mut rows = conn
+            .query(
+                "SELECT capability_id, permission_mode FROM capability_permissions WHERE tenant_id = ?1",
+                params![tenant_id],
+            )
+            .await?;
+        
+        let mut result = std::collections::HashMap::new();
+        while let Some(row) = rows.next().await? {
+            let capability_id: String = row.get(0)?;
+            let mode_str: String = row.get(1)?;
+            let mode = match mode_str.as_str() {
+                "allow" => brassclaw_host_api::PermissionMode::Allow,
+                "ask" => brassclaw_host_api::PermissionMode::Ask,
+                "deny" => brassclaw_host_api::PermissionMode::Deny,
+                _ => continue, // Skip invalid entries
+            };
+            result.insert(capability_id, mode);
+        }
+        
+        Ok(result)
     }
 }
 

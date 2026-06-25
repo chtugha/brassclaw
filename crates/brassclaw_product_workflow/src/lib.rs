@@ -125,6 +125,7 @@ pub use policy::{
     BeforeInboundPolicy, BeforeInboundPolicyOutcome, BeforeInboundPolicyRequest,
     NoopBeforeInboundPolicy,
 };
+pub use reborn_services::CapabilityPermissionStore;
 pub use safety_config::{SafetyConfigResponse, SafetyEntry, UpdateSafetyConfigRequest};
 pub use safety_config_store::{SafetyCategory, SafetyConfigStore, SqliteSafetyConfigStore};
 // Projection/event types that route handlers need to thread through SSE

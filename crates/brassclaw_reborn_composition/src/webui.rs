@@ -155,6 +155,21 @@ pub(crate) fn build_webui_services_with_connectable_channels(
     #[cfg(not(feature = "libsql"))]
     tracing::warn!("⚠️ libsql feature not enabled - SafetyConfigStore not available");
 
+    // Wire the extension registry and capability permission store for Tools API
+    if let Some(local_runtime) = &services.local_runtime {
+        tracing::info!("✅ Wiring ExtensionRegistry into WebUI API");
+        api = api.with_extension_registry(Arc::clone(&local_runtime.extension_registry));
+        
+        // Wire capability permission store when available (local-dev with libsql)
+        #[cfg(feature = "libsql")]
+        if let Some(safety_config_store) = &services.safety_config_store {
+            tracing::info!("✅ Wiring CapabilityPermissionStore into WebUI API");
+            api = api.with_capability_permission_store(Arc::clone(safety_config_store) as Arc<dyn brassclaw_product_workflow::CapabilityPermissionStore>);
+        }
+    } else {
+        tracing::warn!("⚠️ ExtensionRegistry is None - tools endpoints will return empty list");
+    }
+
     Ok(RebornWebuiBundle {
         api: Arc::new(api),
         product_auth: services.product_auth.clone(),

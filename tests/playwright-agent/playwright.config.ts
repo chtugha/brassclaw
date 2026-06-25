@@ -41,18 +41,12 @@ export default defineConfig({
 
   // Start brassclaw server before tests
   webServer: {
-    command: 'cd ../.. && cargo run --bin brassclaw --release --features libsql -- serve --host 127.0.0.1 --port 3000',
+    command: './start-server.sh',
     url: 'http://127.0.0.1:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120000, // 2 minutes to start server
     stdout: 'pipe',
     stderr: 'pipe',
-    env: {
-      BRASSCLAW_REBORN_PROFILE: 'local-dev',
-      BRASSCLAW_REBORN_WEBUI_TOKEN: 'test-playwright-token',
-      BRASSCLAW_REBORN_WEBUI_USER_ID: 'test-playwright-user',
-      BRASSCLAW_GATEWAY_TOKEN: process.env.BRASSCLAW_GATEWAY_TOKEN || 'test-token',
-    },
   },
 });
 

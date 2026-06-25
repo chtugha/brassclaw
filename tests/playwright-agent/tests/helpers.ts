@@ -135,6 +135,13 @@ export class BrassClawTestHelper {
     await this.page.waitForTimeout(1000);
   }
 
+  async navigateToToolsTab() {
+    // Click on Tools tab in settings
+    const toolsTab = this.page.locator('a[href="/settings/tools"], button:has-text("Tools"), [data-tab="tools"]').first();
+    await toolsTab.click();
+    await this.page.waitForTimeout(1000);
+  }
+
   async takeScreenshot(name: string) {
     await this.page.screenshot({ 
       path: `screenshots/${name}.png`,
