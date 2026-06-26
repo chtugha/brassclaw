@@ -51,12 +51,6 @@ pub fn schema_for_key(key: &str) -> Option<Value> {
                 "type": "object"
             }
         })),
-        // Tool permission keys (tool_permissions.*)
-        key if key.starts_with("tool_permissions.") => Some(json!({
-            "type": "string",
-            "enum": ["always_allow", "ask_each_time", "disabled"],
-            "description": "Permission state for a tool"
-        })),
         _ => None,
     }
 }
@@ -118,7 +112,6 @@ mod tests {
         assert!(schema_for_key("llm_backend").is_some());
         assert!(schema_for_key("selected_model").is_some());
         assert!(schema_for_key("llm_custom_providers").is_some());
-        assert!(schema_for_key("tool_permissions.shell").is_some());
     }
 
     #[test]
@@ -139,7 +132,6 @@ mod tests {
     fn validate_settings_key_accepts_normal_keys() {
         assert!(validate_settings_key("llm_backend").is_ok());
         assert!(validate_settings_key("selected_model").is_ok());
-        assert!(validate_settings_key("tool_permissions.shell").is_ok());
         assert!(validate_settings_key("a-b-c").is_ok());
     }
 

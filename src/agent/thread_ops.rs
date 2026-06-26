@@ -7,73 +7,7 @@
 
 use std::sync::Arc;
 
-// ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
-// ============================================================================
-
-/// Stub for deleted V1 PermissionState enum
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub enum PermissionState {
-    AlwaysAllow,
-    AlwaysDeny,
-    AskEveryTime,
-}
-
-/// Stub for deleted V1 Tool trait
-#[async_trait::async_trait]
-pub trait Tool: Send + Sync {
-    fn name(&self) -> &str {
-        "stub_tool"
-    }
-    fn description(&self) -> &str {
-        "Stub tool - V1 deleted"
-    }
-    fn requires_approval(&self, _params: &serde_json::Value) -> crate::tools::ApprovalRequirement {
-        crate::tools::ApprovalRequirement::Always
-    }
-    fn sensitive_params(&self) -> Vec<String> {
-        Vec::new()
-    }
-    async fn execute(
-        &self,
-        _params: serde_json::Value,
-        _ctx: Arc<crate::context::JobContext>,
-    ) -> Result<String, crate::error::Error> {
-        Err(crate::error::ToolError::Disabled {
-            name: "stub_tool".to_string(),
-            reason: "V1 tool deleted".to_string(),
-        }.into())
-    }
-}
-
-/// Stub for deleted V1 process_tool_result function
-fn process_tool_result(
-    _safety: &brassclaw_safety::SafetyLayer,
-    _tool_name: &str,
-    tool_call_id: &str,
-    result: &Result<String, crate::error::Error>,
-) -> (String, brassclaw_llm::ChatMessage) {
-    let content = match result {
-        Ok(s) => s.clone(),
-        Err(e) => format!("Error: {}", e),
-    };
-    let is_error = result.is_err();
-    let msg = brassclaw_llm::ChatMessage::tool_result(tool_call_id, &content, &is_error.to_string());
-    (content, msg)
-}
-
-/// Stub for deleted V1 redact_params function
-fn redact_params(
-    params: &serde_json::Value,
-    _sensitive_keys: &[&str],
-) -> serde_json::Value {
-    // TODO: Implement proper redaction in V2
-    params.clone()
-}
-
-// ============================================================================
-// END V1 STUBS
-// ============================================================================
+// V1 stubs removed (PermissionState, Tool trait, process_tool_result, redact_params)
 
 use chrono::{DateTime, Utc};
 use tokio::sync::Mutex;
@@ -1864,50 +1798,7 @@ impl Agent {
                 );
                 drop(sess);
 
-                // Defense-in-depth: don't persist AlwaysAllow for tools that
-                // declare ApprovalRequirement::Always (the UI hides the
-                // "Always" button for locked tools, but a crafted client
-                // could send it).
-                let tool_ref = self.tools().get(&pending.tool_name).await;
-                let is_locked = tool_ref
-                    .as_ref()
-                    .map(|t| {
-                        matches!(
-                            t.requires_approval(&serde_json::json!({})),
-                            crate::tools::ApprovalRequirement::Always
-                        )
-                    })
-                    .unwrap_or(false);
-
-                if is_locked {
-                    tracing::warn!(
-                        tool = %pending.tool_name,
-                        "Skipping AlwaysAllow persist — tool declares ApprovalRequirement::Always"
-                    );
-                } else {
-                    // Persist AlwaysAllow to the per-user DB settings so the
-                    // preference survives process restarts. Uses the same
-                    // set_setting path as tool_permission_set and the web UI.
-                    let tenant = self.tenant_ctx(&message.user_id).await;
-                    if let Some(store) = tenant.store() {
-                        let key = format!("tool_permissions.{}", pending.tool_name);
-                        let val = serde_json::to_value(
-                            PermissionState::AlwaysAllow,
-                        )
-                        .unwrap_or(serde_json::Value::String("always_allow".to_string()));
-                        match store.set_setting(&key, &val).await {
-                            Ok(()) => tracing::debug!(
-                                tool = %pending.tool_name,
-                                "Persisted AlwaysAllow permission to DB settings"
-                            ),
-                            Err(e) => tracing::warn!(
-                                "process_approval: failed to persist AlwaysAllow for '{}': {}",
-                                pending.tool_name,
-                                e
-                            ),
-                        }
-                    }
-                } // else (not locked)
+                // V1 tool_permissions AlwaysAllow persistence removed (V2 uses CapabilityHost)
             }
 
             // Reset thread state to processing
@@ -2099,30 +1990,8 @@ impl Agent {
             )> = None;
 
             for (idx, tc) in deferred_tool_calls.iter().enumerate() {
-                if let Some(tool) = self.tools().get(&tc.name).await {
-                    // Match dispatcher.rs: when auto_approve_tools is true, skip
-                    // all approval checks (including ApprovalRequirement::Always).
-                    let (needs_approval, allow_always) = if self.config.auto_approve_tools {
-                        (false, true)
-                    } else {
-                        let requirement = tool.requires_approval(&tc.arguments);
-                        let needs = match requirement {
-                            crate::tools::ApprovalRequirement::Never => false,
-                            crate::tools::ApprovalRequirement::UnlessAutoApproved => {
-                                let sess = session.lock().await;
-                                !sess.is_tool_auto_approved(&tc.name)
-                            }
-                            crate::tools::ApprovalRequirement::Always => true,
-                        };
-                        (needs, !matches!(requirement, crate::tools::ApprovalRequirement::Always))
-                    };
-
-                    if needs_approval {
-                        approval_needed = Some((idx, tc.clone(), allow_always));
-                        break; // remaining tools stay deferred
-                    }
-                }
-
+                // V1 ApprovalRequirement check removed — V2 uses CapabilityLease / CapabilityHost
+                let _ = idx;
                 runnable.push(tc.clone());
             }
 
@@ -3429,43 +3298,7 @@ mod tests {
         }
     }
 
-    struct GeneratedImageTool;
-
-    #[async_trait::async_trait]
-    impl crate::tools::Tool for GeneratedImageTool {
-        fn name(&self) -> &str {
-            "image_generate"
-        }
-
-        fn description(&self) -> &str {
-            "Generate an image for tests"
-        }
-
-        fn parameters_schema(&self) -> serde_json::Value {
-            serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "prompt": {"type": "string"}
-                },
-                "required": ["prompt"]
-            })
-        }
-
-        async fn execute(
-            &self,
-            _params: serde_json::Value,
-            _ctx: &JobContext,
-        ) -> Result<crate::tools::ToolOutput, crate::tools::ToolError> {
-            Ok(crate::tools::ToolOutput::success(
-                serde_json::json!({
-                    "type": "image_generated",
-                    "data": TEST_IMAGE_DATA_URL,
-                    "media_type": "image/png"
-                }),
-                Duration::from_millis(1),
-            ))
-        }
-    }
+    // V1 GeneratedImageTool test struct removed (crate::tools deleted)
 
     #[cfg(feature = "libsql")]
     #[tokio::test]

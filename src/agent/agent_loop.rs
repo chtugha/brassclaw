@@ -564,11 +564,6 @@ impl Agent {
         &self.deps.owner_id
     }
 
-    pub(crate) fn tools(&self) -> Arc<crate::tools::ToolRegistry> {
-        // Return a stub ToolRegistry for V1 compatibility during migration
-        Arc::new(crate::tools::ToolRegistry::new())
-    }
-
     /// Create a new agent.
     ///
     /// Optionally accepts pre-created `ContextManager` and `SessionManager` for sharing
@@ -1062,8 +1057,8 @@ impl Agent {
             self_repair = self_repair.with_store(system);
         }
         if let Some(ref builder) = self.deps.builder {
-            let tools_any: Arc<dyn std::any::Any + Send + Sync> = self.tools().clone();
-            self_repair = self_repair.with_builder(Arc::clone(builder), tools_any);
+            // V1 ToolRegistry removed — self_repair builder wiring omitted
+            let _ = builder;
         }
         let repair = Arc::new(self_repair);
         let repair_interval = self.config.repair_check_interval;
@@ -1343,11 +1338,7 @@ impl Agent {
                     // Fill the RoutinesContext.engine slot to complete the circular dependency
                     *self.routine_engine_slot.write().await = Some(Arc::clone(&engine));
 
-                    // Register routine tools
-                    self.tools().register_routine_tools(
-                        Arc::clone(store),
-                        Arc::clone(&engine) as Arc<dyn std::any::Any + Send + Sync>
-                    );
+                    // V1 register_routine_tools removed
 
                     // Load initial event cache
                     engine.refresh_event_cache().await;
@@ -1720,9 +1711,7 @@ impl Agent {
         let target = message
             .routing_target()
             .unwrap_or_else(|| message.user_id.clone());
-        self.tools()
-            .set_message_tool_context(Some(message.channel.clone()), Some(target))
-            .await;
+        // V1 set_message_tool_context removed
 
         // Parse submission type first
         let mut submission = message
