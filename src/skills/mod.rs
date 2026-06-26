@@ -9,14 +9,11 @@
 //! `brassclaw_llm::ToolDefinition` together with main-crate trust state, so it
 //! sits at the seam between the two.
 //!
-pub mod attenuation;
 pub mod bundled;
 
 // Items from `brassclaw_skills` are no longer glob-re-exported.
 // Callers should import from `brassclaw_skills` directly.
 
-// Re-export attenuation at the same path as before.
-pub use attenuation::{AttenuationResult, attenuate_tools};
 
 use crate::secrets::{CredentialLocation, CredentialMapping};
 use brassclaw_skills::{LoadedSkill, SkillCredentialLocation, SkillCredentialSpec};

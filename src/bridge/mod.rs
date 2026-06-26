@@ -13,13 +13,11 @@ mod effect_adapter_v2;
 mod engine_actions;
 // mod external_tools; // V1 - deleted
 // mod gate_controller; // V1 - deleted
-mod llm_adapter;
 // mod router; // V1 - deleted
 pub mod sandbox;
 pub mod skill_migration;
 mod store_adapter;
 // mod tool_surface; // V1 - deleted
-mod user_facing_errors;
 mod workspace_reader;
 
 pub use cost_guard_gate::CostGuardBudgetGate;

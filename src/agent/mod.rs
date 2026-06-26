@@ -10,11 +10,8 @@
 //! - Turn-based session management with undo
 //! - Context compaction for long conversations
 
-// mod agent_loop; // V1 - disabled entire file
 pub mod agentic_loop;
-mod attachments;
 pub mod background_tasks;
-mod commands;
 pub mod compaction;
 pub mod context_monitor;
 pub mod cost_guard;
@@ -31,7 +28,6 @@ pub mod session;
 mod session_manager;
 pub mod submission;
 pub mod task;
-// mod thread_ops; // V1 - disabled entire file
 pub mod turn_builder;
 pub mod undo;
 
@@ -55,8 +51,6 @@ pub(crate) mod test_support {
     }
 }
 
-// pub(crate) use agent_loop::truncate_for_preview; // V1 - agent_loop disabled
-// pub use agent_loop::{Agent, AgentDeps}; // V1 - agent_loop disabled
 pub use compaction::{CompactionResult, ContextCompactor};
 pub use context_monitor::{CompactionStrategy, ContextBreakdown, ContextMonitor};
 // pub(crate) use dispatcher::strip_suggestions; // V1 - dispatcher disabled

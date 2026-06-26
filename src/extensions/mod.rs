@@ -23,7 +23,6 @@ pub mod discovery;
 pub mod manager;
 pub mod naming;
 pub mod registry;
-pub(crate) mod wechat_login;
 
 pub use discovery::OnlineDiscovery;
 pub use manager::ExtensionManager;

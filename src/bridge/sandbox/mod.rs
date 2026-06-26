@@ -27,13 +27,6 @@
 //! [`EffectBridgeAdapter`]: super::EffectBridgeAdapter
 //! [`WorkspaceMounts`]: brassclaw_engine::WorkspaceMounts
 
-mod containerized_backend;
-mod containerized_factory;
-mod docker_transport;
-mod filesystem_factory;
-mod intercept;
-mod lifecycle;
-mod manager;
 pub mod protocol;
 mod transport;
 pub mod workspace_path;

@@ -2054,40 +2054,6 @@ mod tests {
     /// add a cross-check test. Shared extraction would pull the store
     /// adapter into the tools tree or vice versa; a parity test is the
     /// lighter, more local guard.
-    // V1 test disabled - depends on deleted tools module
-    #[test]
-    #[ignore = "V1 tools module deleted"]
-    fn normalize_path_parity_with_memory_tool() {
-        // use crate::tools::builtin::memory::normalize_workspace_path;
-
-        // Canonical input set covering every transformation we care about:
-        // pass-through, dot segments, double slashes, leading `./`, trailing
-        // slash, traversal (must reject), bare `..`, empty input, logical
-        // aliases (which are passed through unchanged).
-        let cases = [
-            "engine/orchestrator/v3.py",
-            ".system/engine/orchestrator/v0.py",
-            "engine/./orchestrator/v3.py",
-            "engine//orchestrator//v3.py",
-            "./engine/orchestrator/v3.py",
-            "engine/orchestrator/",
-            "engine/knowledge/../orchestrator/v3.py",
-            "../escape",
-            "..",
-            "",
-            "orchestrator:main",
-            "prompt:codeact_preamble",
-            "daily/2026-04-14.md",
-        ];
-
-        for input in cases {
-            assert_eq!(
-                normalize_path(input),
-                crate::capabilities::memory::normalize_workspace_path(input),
-                "normalize_path and normalize_workspace_path must agree on {input:?}"
-            );
-        }
-    }
 
     // ── synthesize_orchestrator_doc_from_py ────────────────────
 
