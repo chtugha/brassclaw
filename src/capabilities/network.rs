@@ -35,12 +35,7 @@ fn convert_html_to_markdown(html: &str, _base_url: &str) -> Result<String, Strin
     Ok(html.to_string())
 }
 
-// ============================================================================
-// V2 Path Validation (from filesystem.rs pattern)
-// ============================================================================
-
-/// Stub module for path validation (matches filesystem.rs pattern)
-mod path_utils_stub {
+mod path_utils {
     use std::path::{Path, PathBuf};
     
     pub(super) fn validate_path(raw: &str, base: Option<&Path>) -> Result<PathBuf, String> {
@@ -66,10 +61,6 @@ mod path_utils_stub {
         Ok(resolved)
     }
 }
-
-// ============================================================================
-// END V1 STUBS
-// ============================================================================
 
 pub const PROVIDER_ID: &str = "builtin";
 pub const HTTP_CAPABILITY_ID: &str = "builtin.http";
@@ -527,7 +518,7 @@ fn validate_save_to_path(
     }
     let tmp_base = std::path::Path::new("/tmp");
     let validated =
-        path_utils_stub::validate_path(save_to, Some(tmp_base)).map_err(
+        path_utils::validate_path(save_to, Some(tmp_base)).map_err(
             |e| NetworkCapabilityError::operation(format!("save_to path validation failed: {}", e)),
         )?;
     if let Some(parent) = validated.parent() {

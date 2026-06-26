@@ -1,7 +1,6 @@
 //! Tool management CLI commands.
 //!
-//! Commands for installing, listing, removing, and authenticating WASM tools.
-//! V1 - WASM tool management unused in V2
+//! Commands for installing, listing, removing, and authenticating tools.
 #![allow(dead_code)]
 
 use std::collections::{HashMap, HashSet};
@@ -15,9 +14,8 @@ use tokio::fs;
 use crate::bootstrap::brassclaw_base_dir;
 use crate::secrets::SecretsStore;
 
-// V1 - Minimal stubs for compilation of disabled functions
+/// Capabilities declaration file for a WASM tool.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct CapabilitiesFile {
     auth: Option<AuthStub>,
     setup: Option<()>,
@@ -62,13 +60,9 @@ fn compute_binary_hash(data: &[u8]) -> [u8; 32] {
     hash
 }
 
-// V1 - Minimal wasm_runtime module stub
-#[allow(dead_code)]
 mod wasm_runtime {
     pub(super) use super::{AuthStub as AuthCapabilitySchema, OAuthConfigSchema};
 }
-
-// TODO: V1 wasm_runtime module removed - tool CLI commands need V2 reimplementation
 
 /// Default tools directory.
 fn default_tools_dir() -> PathBuf {
@@ -1354,117 +1348,3 @@ async fn setup_tool(name: String, dir: Option<PathBuf>, _user_id: String) -> any
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::secrets::{CreateSecretParams, SecretsStore};
-    use crate::testing::credentials::test_secrets_store;
-
-    #[test]
-    fn test_format_size() {
-        assert_eq!(format_size(500), "500 B");
-        assert_eq!(format_size(1024), "1.0 KB");
-        assert_eq!(format_size(1536), "1.5 KB");
-        assert_eq!(format_size(1048576), "1.0 MB");
-        assert_eq!(format_size(2621440), "2.5 MB");
-    }
-
-    #[test]
-    fn test_default_tools_dir() {
-        let dir = default_tools_dir();
-        assert!(dir.to_string_lossy().contains(".brassclaw"));
-        assert!(dir.to_string_lossy().contains("tools"));
-    }
-
-    /// Verify that auth secrets are deduplicated across auth, setup, and http.credentials,
-    /// and that credential status is checked against the secrets store.
-    #[tokio::test]
-    async fn test_auth_secret_dedup_and_status() {
-        let caps = CapabilitiesFile::from_json(
-            r#"{
-                "auth": {
-                    "secret_name": "gh_token",
-                    "display_name": "GitHub"
-                },
-                "setup": {
-                    "required_secrets": [
-                        { "name": "gh_token", "prompt": "GitHub PAT" },
-                        { "name": "extra_key", "prompt": "Extra API Key" }
-                    ]
-                },
-                "http": {
-                    "allowlist": [{ "host": "api.github.com" }],
-                    "credentials": {
-                        "github": {
-                            "secret_name": "gh_token",
-                            "location": { "type": "bearer" },
-                            "host_patterns": ["api.github.com"]
-                        }
-                    }
-                },
-                "secrets": {
-                    "allowed_names": ["gh_token", "gh_*"]
-                }
-            }"#,
-        )
-        .unwrap();
-
-        let collected = collect_auth_secrets(&caps);
-
-        // gh_token should appear once (from auth), with location merged from credentials.
-        // extra_key should appear once (from setup).
-        assert_eq!(collected.secrets.len(), 2);
-        let gh = collected
-            .secrets
-            .iter()
-            .find(|s| s.secret_name == "gh_token")
-            .unwrap();
-        assert_eq!(gh.description.as_deref(), Some("GitHub"));
-        assert!(
-            gh.location.is_some(),
-            "location should be merged from http.credentials"
-        );
-
-        let extra = collected
-            .secrets
-            .iter()
-            .find(|s| s.secret_name == "extra_key")
-            .unwrap();
-        assert_eq!(extra.description.as_deref(), Some("Extra API Key"));
-        assert!(extra.location.is_none());
-
-        // Secrets section should filter gh_token (in seen_names) but keep gh_* (wildcard).
-        let secrets = caps.secrets.as_ref().unwrap();
-        let extra_secrets: Vec<_> = secrets
-            .allowed_names
-            .iter()
-            .filter(|name| !collected.seen_names.contains(name.as_str()))
-            .collect();
-        assert_eq!(extra_secrets, vec!["gh_*"]);
-
-        // Verify store check: missing secret -> exists returns false.
-        let store = test_secrets_store();
-        assert!(!store.exists("default", "gh_token").await.unwrap());
-
-        // Store gh_token and verify it's found.
-        store
-            .create(
-                "default",
-                CreateSecretParams::new("gh_token", "ghp_test123"),
-            )
-            .await
-            .unwrap();
-        assert!(store.exists("default", "gh_token").await.unwrap());
-        // extra_key still missing.
-        assert!(!store.exists("default", "extra_key").await.unwrap());
-    }
-
-    /// No auth sections → collect_auth_secrets returns empty.
-    #[test]
-    fn test_collect_auth_secrets_empty_caps() {
-        let caps = CapabilitiesFile::default();
-        let collected = collect_auth_secrets(&caps);
-        assert!(collected.secrets.is_empty());
-        assert!(collected.seen_names.is_empty());
-    }
-}

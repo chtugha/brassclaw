@@ -5,19 +5,8 @@ use crate::config::helpers::{
 use crate::error::ConfigError;
 use crate::settings::{ChannelSettings, Settings};
 
-// ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
-// ============================================================================
-
-/// Stub for deleted V1 DEFAULT_MAX_CONNECTIONS constant
 const DEFAULT_MAX_CONNECTIONS: usize = 100;
-
-/// Stub for deleted V1 DEFAULT_BROADCAST_BUFFER constant
 const DEFAULT_BROADCAST_BUFFER: usize = 1000;
-
-// ============================================================================
-// END V1 STUBS
-// ============================================================================
 
 use secrecy::SecretString;
 

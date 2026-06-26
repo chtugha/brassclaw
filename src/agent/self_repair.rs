@@ -542,37 +542,6 @@ mod tests {
         assert_eq!(ctx.state, JobState::InProgress);
     }
 
-    /// Regression: built-in tools (http, shell, json, etc.) must be filtered
-    /// out of broken tool detection. Errors on built-in tools are caller-side
-    /// (bad LLM parameters), not tool defects. Attempting to rebuild them via
-    /// SoftwareBuilder wastes LLM tokens and cannot fix anything.
-    // V1 test disabled - depends on deleted tools module
-    #[test]
-    #[ignore = "V1 tools module deleted"]
-    fn is_protected_tool_name_covers_common_builtins() {
-        // use crate::tools::is_protected_tool_name;
-
-        // Built-in tools that triggered the original bug
-        assert!(is_protected_tool_name("http"));
-        assert!(is_protected_tool_name("shell"));
-        assert!(is_protected_tool_name("json"));
-        assert!(is_protected_tool_name("message"));
-        assert!(is_protected_tool_name("read_file"));
-        assert!(is_protected_tool_name("memory_write"));
-
-        // Job, extension, skill, secret tools
-        assert!(is_protected_tool_name("job_events"));
-        assert!(is_protected_tool_name("extension_info"));
-        assert!(is_protected_tool_name("skill_list"));
-        assert!(is_protected_tool_name("secret_list"));
-        assert!(is_protected_tool_name("tool_upgrade"));
-        assert!(is_protected_tool_name("routine_fire"));
-
-        // Dynamic tools should NOT be protected
-        assert!(!is_protected_tool_name("my_custom_tool"));
-        assert!(!is_protected_tool_name("weather_fetcher"));
-    }
-
     /// Regression: repair_broken_tool must reject built-in tools as a
     /// defense-in-depth measure, even if detect_broken_tools failed to
     /// filter them out.

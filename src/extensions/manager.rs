@@ -1,8 +1,4 @@
-//! Minimal ExtensionManager stub for V2 migration.
-//!
-//! This is a temporary implementation that maintains API compatibility
-//! while the underlying MCP client, WASM runtime, and WASM channel
-//! infrastructure is being reimplemented for V2.
+//! Extension manager — coordinates MCP servers, skill extensions, and hook registrations.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -23,7 +19,6 @@ use crate::pairing::PairingStore;
 use crate::secrets::SecretsStore;
 use crate::channels::ChannelManager;
 
-/// Minimal ExtensionManager that maintains API compatibility during V2 migration.
 pub struct ExtensionManager {
     registry: Arc<ExtensionRegistry>,
     discovery: Arc<OnlineDiscovery>,
@@ -95,8 +90,9 @@ impl ExtensionManager {
 
     pub async fn list(
         &self,
-        _user_id: &str,
+        _kind_filter: Option<ExtensionKind>,
         _include_inactive: bool,
+        _user_id: &str,
     ) -> Result<Vec<InstalledExtension>, ExtensionError> {
         // Return empty list - no extensions installed in V2 yet
         Ok(Vec::new())
@@ -159,7 +155,6 @@ impl ExtensionManager {
         _name: &str,
         _user_id: &str,
     ) -> Result<ToolAuthState, ExtensionError> {
-        // Return stub state for all tools - not yet implemented in V2
         Ok(ToolAuthState::NoAuth)
     }
 
@@ -245,22 +240,20 @@ impl ExtensionManager {
         &self.channel_manager
     }
 
-    /// Get notification target for a channel (stub)
     pub async fn notification_target_for_channel(&self, _channel_name: &str) -> Option<String> {
         None
     }
 
-    /// Get owner ID (stub)
     pub fn owner_id(&self) -> &str {
-        "stub_owner"
+        // The extension manager doesn't own a single owner ID in V2;
+        // callers should pass their own user/owner IDs.
+        ""
     }
 
-    /// Get active tool names (stub)
     pub fn active_tool_names(&self) -> Vec<String> {
         Vec::new()
     }
 
-    /// Get extension info (stub - alias for get_extension_info)
     pub async fn extension_info(
         &self,
         name: &str,

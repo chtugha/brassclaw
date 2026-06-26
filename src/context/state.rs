@@ -10,33 +10,13 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 
-// ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
-// ============================================================================
+use brassclaw_llm::recording::HttpInterceptor;
 
-/// Stub for deleted V1 ApprovalContext type
-#[derive(Debug, Clone)]
+/// Per-turn approval context, carried through the job state.
+#[derive(Debug, Clone, Default)]
 pub struct ApprovalContext {
     pub approved: bool,
 }
-
-impl ApprovalContext {
-    pub fn new() -> Self {
-        Self { approved: false }
-    }
-}
-
-impl Default for ApprovalContext {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-// ============================================================================
-// END V1 STUBS
-// ============================================================================
-
-use brassclaw_llm::recording::HttpInterceptor;
 
 /// Error returned when a job exceeds its token budget.
 #[derive(Debug, thiserror::Error)]

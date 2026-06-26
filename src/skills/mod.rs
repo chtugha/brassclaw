@@ -19,34 +19,8 @@ pub mod bundled;
 pub use attenuation::{AttenuationResult, attenuate_tools};
 
 use crate::secrets::{CredentialLocation, CredentialMapping};
-// V1 - deleted: auth module no longer exists
-// auth::{AuthDescriptor, AuthDescriptorKind, OAuthFlowDescriptor, upsert_auth_descriptor},
 use brassclaw_skills::{LoadedSkill, SkillCredentialLocation, SkillCredentialSpec};
-
-/// Stub for deleted V1 OAuthRefreshConfig type
-#[derive(Debug, Clone)]
-pub struct OAuthRefreshConfig {
-    pub token_url: String,
-    pub client_id: String,
-    pub client_secret: String,
-    pub exchange_proxy_url: Option<String>,
-    pub gateway_token: Option<String>,
-    pub secret_name: String,
-    pub provider: Option<String>,
-    pub extra_refresh_params: std::collections::HashMap<String, String>,
-}
-
-/// Stub for deleted V1 SharedCredentialRegistry type
-pub struct SharedCredentialRegistry {
-    // Minimal stub - no fields needed
-}
-
-impl SharedCredentialRegistry {
-    /// Stub method to register a credential mapping
-    pub fn register(&self, _mapping: CredentialMapping) {
-        // No-op stub - credential registration not supported in V1 stub
-    }
-}
+// CredentialMapping is used in credential_spec_to_mapping
 
 /// Convert a skill credential location to the main crate's [`CredentialLocation`].
 fn convert_credential_location(loc: &SkillCredentialLocation) -> CredentialLocation {
@@ -65,8 +39,7 @@ fn convert_credential_location(loc: &SkillCredentialLocation) -> CredentialLocat
     }
 }
 
-/// Convert a [`SkillCredentialSpec`] to a [`CredentialMapping`] for the
-/// [`SharedCredentialRegistry`](crate::wasm_runtime::SharedCredentialRegistry).
+/// Convert a [`SkillCredentialSpec`] to a [`CredentialMapping`].
 pub fn credential_spec_to_mapping(spec: &SkillCredentialSpec) -> CredentialMapping {
     CredentialMapping {
         secret_name: spec.name.clone(),
@@ -79,13 +52,10 @@ pub fn credential_spec_to_mapping(spec: &SkillCredentialSpec) -> CredentialMappi
     }
 }
 
-/// Register credential mappings from loaded skills into the shared registry.
+/// Validate and log credential mappings from loaded skills.
 ///
-/// Validates each spec before registration; invalid specs are logged and skipped.
-pub fn register_skill_credentials(
-    skills: &[LoadedSkill],
-    _registry: &SharedCredentialRegistry,
-) {
+/// Validates each spec; invalid specs are logged and skipped.
+pub fn register_skill_credentials(skills: &[LoadedSkill]) {
     let mut count = 0usize;
     for skill in skills {
         for spec in &skill.manifest.credentials {
@@ -113,25 +83,6 @@ pub fn register_skill_credentials(
         tracing::debug!(count, "Registered skill credential mappings");
     }
 }
-
-// V1 - deleted: Auth descriptor persistence no longer needed
-// pub async fn persist_skill_auth_descriptors(
-//     skills: &[LoadedSkill],
-//     store: Option<&dyn SettingsStore>,
-//     user_id: &str,
-// ) {
-//     for skill in skills {
-//         for spec in &skill.manifest.credentials {
-//             let errors = brassclaw_skills::validation::validate_credential_spec(spec);
-//             if !errors.is_empty() {
-//                 continue;
-//             }
-//
-//             let descriptor = credential_spec_to_auth_descriptor(skill.name(), spec);
-//             upsert_auth_descriptor(store, user_id, descriptor).await;
-//         }
-//     }
-// }
 
 #[cfg(test)]
 mod tests {
@@ -210,143 +161,5 @@ mod tests {
         ));
         assert_eq!(mapping.host_patterns.len(), 2);
         assert_eq!(mapping.host_patterns[0], "api.github.com");
-    }
-
-    #[test]
-    #[ignore] // V1 test - depends on deleted wasm_runtime module
-    fn test_register_skill_credentials_valid() {
-        use brassclaw_skills::types::*;
-        use std::path::PathBuf;
-
-        let skill = brassclaw_skills::LoadedSkill {
-            manifest: SkillManifest {
-                name: "test-api".to_string(),
-                version: "1.0.0".to_string(),
-                description: "Test".to_string(),
-                activation: ActivationCriteria::default(),
-                credentials: vec![SkillCredentialSpec {
-                    name: "test_token".to_string(),
-                    provider: "test".to_string(),
-                    location: SkillCredentialLocation::Bearer,
-                    hosts: vec!["api.test.com".to_string()],
-                    path_patterns: Vec::new(),
-                    oauth: None,
-                    setup_instructions: None,
-                }],
-                requires: GatingRequirements::default(),
-            },
-            prompt_content: "test".to_string(),
-            trust: SkillTrust::Trusted,
-            source: SkillSource::User(PathBuf::from("/tmp/test")), // safety: dummy path in test, not used for I/O
-            content_hash: "sha256:000".to_string(),
-            compiled_patterns: vec![],
-            lowercased_keywords: vec![],
-            lowercased_exclude_keywords: vec![],
-            lowercased_tags: vec![],
-        };
-
-        let registry = crate::wasm_runtime::SharedCredentialRegistry::new();
-        register_skill_credentials(&[skill], &registry);
-
-        assert!(registry.has_credentials_for_host("api.test.com"));
-        assert!(!registry.has_credentials_for_host("other.host.com"));
-    }
-
-    #[test]
-    #[ignore] // V1 test - depends on deleted wasm_runtime module
-    fn test_register_skill_credentials_registers_oauth_refresh_config() {
-        use brassclaw_skills::types::*;
-        use std::path::PathBuf;
-
-        let skill = brassclaw_skills::LoadedSkill {
-            manifest: SkillManifest {
-                name: "gmail".to_string(),
-                version: "1.0.0".to_string(),
-                description: "Test".to_string(),
-                activation: ActivationCriteria::default(),
-                credentials: vec![SkillCredentialSpec {
-                    name: "google_oauth_token".to_string(),
-                    provider: "google".to_string(),
-                    location: SkillCredentialLocation::Bearer,
-                    hosts: vec!["www.googleapis.com".to_string()],
-                    path_patterns: Vec::new(),
-                    oauth: Some(SkillOAuthConfig {
-                        authorization_url: "https://accounts.google.com/o/oauth2/v2/auth"
-                            .to_string(),
-                        token_url: "https://oauth2.googleapis.com/token".to_string(),
-                        client_id: Some("client-id".to_string()),
-                        client_id_env: None,
-                        client_secret: Some("client-secret".to_string()),
-                        client_secret_env: None,
-                        scopes: vec![],
-                        use_pkce: true,
-                        extra_params: std::collections::HashMap::new(),
-                        refresh: ProviderRefreshStrategy::Standard,
-                        test_url: None,
-                    }),
-                    setup_instructions: None,
-                }],
-                requires: GatingRequirements::default(),
-            },
-            prompt_content: "test".to_string(),
-            trust: SkillTrust::Trusted,
-            source: SkillSource::User(PathBuf::from("/tmp/test")),
-            content_hash: "sha256:000".to_string(),
-            compiled_patterns: vec![],
-            lowercased_keywords: vec![],
-            lowercased_exclude_keywords: vec![],
-            lowercased_tags: vec![],
-        };
-
-        let registry = crate::wasm_runtime::SharedCredentialRegistry::new();
-        register_skill_credentials(&[skill], &registry);
-
-        let oauth = registry
-            .oauth_refresh_for_secret("google_oauth_token")
-            .expect("oauth refresh config");
-        assert_eq!(oauth.secret_name, "google_oauth_token");
-        assert_eq!(oauth.token_url, "https://oauth2.googleapis.com/token");
-        assert_eq!(oauth.client_id, "client-id");
-        assert_eq!(oauth.client_secret.as_deref(), Some("client-secret"));
-    }
-
-    #[test]
-    #[ignore] // V1 test - depends on deleted wasm_runtime module
-    fn test_register_skill_credentials_invalid_skipped() {
-        use brassclaw_skills::types::*;
-        use std::path::PathBuf;
-
-        let skill = brassclaw_skills::LoadedSkill {
-            manifest: SkillManifest {
-                name: "bad-skill".to_string(),
-                version: "1.0.0".to_string(),
-                description: "Test".to_string(),
-                activation: ActivationCriteria::default(),
-                credentials: vec![SkillCredentialSpec {
-                    name: "INVALID_NAME".to_string(), // uppercase = invalid
-                    provider: "test".to_string(),
-                    location: SkillCredentialLocation::Bearer,
-                    hosts: vec!["api.test.com".to_string()],
-                    path_patterns: Vec::new(),
-                    oauth: None,
-                    setup_instructions: None,
-                }],
-                requires: GatingRequirements::default(),
-            },
-            prompt_content: "test".to_string(),
-            trust: SkillTrust::Trusted,
-            source: SkillSource::User(PathBuf::from("/tmp/test")), // safety: dummy path in test, not used for I/O
-            content_hash: "sha256:000".to_string(),
-            compiled_patterns: vec![],
-            lowercased_keywords: vec![],
-            lowercased_exclude_keywords: vec![],
-            lowercased_tags: vec![],
-        };
-
-        let registry = crate::wasm_runtime::SharedCredentialRegistry::new();
-        register_skill_credentials(&[skill], &registry);
-
-        // Invalid spec should be skipped — host should NOT be registered
-        assert!(!registry.has_credentials_for_host("api.test.com"));
     }
 }

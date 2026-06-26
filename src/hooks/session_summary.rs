@@ -13,23 +13,8 @@ use crate::hooks::hook::{
     Hook, HookContext, HookError, HookEvent, HookFailureMode, HookOutcome, HookPoint,
 };
 
-// ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
-// ============================================================================
+pub use crate::capabilities::memory::WorkspaceResolver;
 
-use crate::workspace::Workspace;
-
-/// Stub for deleted V1 WorkspaceResolver trait
-#[async_trait]
-pub trait WorkspaceResolver: Send + Sync {
-    async fn resolve(&self, user_id: &str) -> Arc<Workspace>;
-}
-
-// ============================================================================
-// END V1 STUBS
-// ============================================================================
-
-// TODO: Extract WorkspaceResolver from deleted V1 code
 use brassclaw_llm::{ChatMessage, CompletionRequest, LlmProvider};
 
 /// Maximum number of concurrent LLM summarization calls.
@@ -555,7 +540,7 @@ mod tests {
             messages: vec![],
         });
         let resolver: Arc<dyn WorkspaceResolver> = Arc::new(
-            brassclaw_capabilities::memory::FixedWorkspaceResolver::new(ws),
+            crate::capabilities::memory::FixedWorkspaceResolver::new(ws),
         );
         let hook = make_mock_hook(store, resolver);
 
@@ -669,7 +654,7 @@ mod tests {
 
         let ws = Arc::new(Workspace::new_with_db("test_user", Arc::clone(&db)));
         let resolver: Arc<dyn WorkspaceResolver> = Arc::new(
-            crate::tools::builtin::memory::FixedWorkspaceResolver::new(ws.clone()),
+            crate::capabilities::memory::FixedWorkspaceResolver::new(ws.clone()),
         );
 
         let hook = SessionSummaryHook::new(store, resolver, llm);

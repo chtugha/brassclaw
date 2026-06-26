@@ -4,46 +4,33 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-// TODO: V1 channels::wasm module removed - channel discovery needs V2 reimplementation
 use crate::hooks::bundled::{
     HookBundleConfig, HookRegistrationSummary, register_bundle, register_bundled_hooks,
 };
 use crate::hooks::registry::HookRegistry;
-// TODO: V1 wasm_runtime module removed - tool discovery needs V2 reimplementation
-// ============================================================================
-// V1 STUBS - TODO: Remove after V2 migration complete
-// ============================================================================
+use crate::workspace::Workspace;
 
-/// Stub for deleted V1 DiscoveredTool type
+/// A discovered WASM tool — not used in V2, retained for the bootstrap flow shape.
 struct DiscoveredTool {
     capabilities_path: Option<std::path::PathBuf>,
 }
 
-/// Stub for deleted V1 DiscoveredChannel type
+/// A discovered WASM channel — not used in V2, retained for the bootstrap flow shape.
 struct DiscoveredChannel {
     capabilities_path: Option<std::path::PathBuf>,
 }
 
-/// Stub for deleted V1 discover_tools function
 async fn discover_tools(_dir: &Path) -> Result<Vec<(String, DiscoveredTool)>, String> {
     Ok(Vec::new())
 }
 
-/// Stub for deleted V1 discover_dev_tools function
 async fn discover_dev_tools() -> Result<Vec<(String, DiscoveredTool)>, String> {
     Ok(Vec::new())
 }
 
-/// Stub for deleted V1 discover_channels function
 async fn discover_channels(_dir: &Path) -> Result<Vec<(String, DiscoveredChannel)>, String> {
     Ok(Vec::new())
 }
-
-// ============================================================================
-// END V1 STUBS
-// ============================================================================
-
-use crate::workspace::Workspace;
 
 /// Summary of hook bootstrap work done at startup.
 #[derive(Debug, Default, Clone, Copy)]

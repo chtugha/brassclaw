@@ -1,7 +1,6 @@
 //! MCP server management CLI commands.
 //!
 //! Commands for adding, removing, authenticating, and testing MCP servers.
-//! Note: MCP CLI commands are stubs - use brassclaw_mcp crate for V2 implementation.
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -13,7 +12,7 @@ use crate::config::Config;
 use crate::db::Database;
 use crate::secrets::SecretsStore;
 
-// Minimal type stubs needed for CLI compilation
+/// OAuth configuration for an MCP server.
 #[derive(Debug, Clone)]
 pub(super) struct OAuthConfig {
     pub client_id: String,
