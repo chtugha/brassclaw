@@ -739,7 +739,6 @@ impl StatusUpdate {
         call_id: Option<String>,
         result: &Result<String, crate::error::Error>,
         params: &serde_json::Value,
-        _tool: Option<()>, // TODO: Restore Tool trait after V2 migration
         duration_ms: Option<u64>,
     ) -> Self {
         let success = result.is_ok();

@@ -486,10 +486,9 @@ pub async fn execute_tool_search(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    // V1 - DISABLED - search() expects &str not bool
     let results = ctx
         .manager
-        .search(query, if discover { "true" } else { "false" }) // discover)
+        .search(query, &ctx.user_id)
         .await
         .map_err(|e| ExtensionsCapabilityError::operation(e.to_string()))?;
 
@@ -507,7 +506,6 @@ pub async fn execute_tool_upgrade(
 ) -> Result<Value, ExtensionsCapabilityError> {
     let name = params.get("name").and_then(|v| v.as_str());
 
-    // V1 - DISABLED - upgrade() expects &str not Option<&str>
     let result = ctx
         .manager
         .upgrade(name.unwrap_or(""), &ctx.user_id)
@@ -545,7 +543,6 @@ pub async fn execute_tool_info(
         .await
         .map_err(|e| ExtensionsCapabilityError::operation(e.to_string()))?;
 
-    // V1 - DISABLED - return type mismatch
     Ok(serde_json::to_value(info).unwrap_or(serde_json::Value::Null))
 }
 
@@ -561,7 +558,6 @@ pub async fn execute_extension_info(
         .await
         .map_err(|e| ExtensionsCapabilityError::operation(e.to_string()))?;
 
-    // V1 - DISABLED - return type mismatch
     Ok(serde_json::to_value(info).unwrap_or(serde_json::Value::Null))
 }
 

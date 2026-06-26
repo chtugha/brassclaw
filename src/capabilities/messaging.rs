@@ -315,28 +315,24 @@ pub async fn execute_message(
 
     let attachment_count = attachments.len();
 
-    // V1 - DISABLED - validate_path signature changed, attachment validation removed
-    // for path in &attachments {
-    //     let tmp_dir = PathBuf::from("/tmp");
-    //     let resolved =
-    //         crate::tools::builtin::path_utils::validate_path(path, Some(&ctx.base_dir))
-    //             .or_else(|_| {
-    //                 crate::tools::builtin::path_utils::validate_path(path, Some(&tmp_dir))
-    //             })
-    //             .map_err(|e| {
-    //                 MessagingCapabilityError::operation(format!(
-    //                     "Attachment path must be within {} or /tmp/: {}",
-    //                     ctx.base_dir.display(),
-    //                     e
-    //                 ))
-    //             })?;
-    //     if !resolved.exists() {
-    //         return Err(MessagingCapabilityError::operation(format!(
-    //             "Attachment file not found: {}",
-    //             path
-    //         )));
-    //     }
-    // }
+    for path in &attachments {
+        let p = std::path::Path::new(path);
+        let in_base = p.starts_with(&ctx.base_dir);
+        let in_tmp = p.starts_with("/tmp");
+        if !in_base && !in_tmp {
+            return Err(MessagingCapabilityError::operation(format!(
+                "Attachment path must be within {} or /tmp/: {}",
+                ctx.base_dir.display(),
+                path
+            )));
+        }
+        if !p.exists() {
+            return Err(MessagingCapabilityError::operation(format!(
+                "Attachment file not found: {}",
+                path
+            )));
+        }
+    }
 
     let mut response = OutgoingResponse::text(content);
     if !attachments.is_empty() {
