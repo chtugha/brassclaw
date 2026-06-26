@@ -161,6 +161,10 @@ pub async fn run_status_command() -> anyhow::Result<()> {
             settings.channels.http_port.unwrap_or(3000)
         ));
     }
+    // Include enabled WASM channel names (e.g. telegram, signal).
+    for name in &settings.channels.wasm_channels {
+        channel_info.push(name.clone());
+    }
     println!("{}", fmt::kv_line("Channels", &channel_info.join(", "), 12));
 
     // Heartbeat

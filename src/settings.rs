@@ -473,6 +473,10 @@ pub struct ChannelSettings {
     /// CLI mode: "tui" for rich terminal UI, empty/absent for simple REPL.
     #[serde(default)]
     pub cli_mode: Option<String>,
+
+    /// Named WASM channels that are enabled (e.g. "telegram", "signal").
+    #[serde(default)]
+    pub wasm_channels: Vec<String>,
 }
 
 impl Default for ChannelSettings {
@@ -495,6 +499,7 @@ impl Default for ChannelSettings {
             signal_group_policy: None,
             signal_group_allow_from: None,
             cli_mode: Some("tui".to_string()),
+            wasm_channels: Vec::new(),
         }
     }
 }

@@ -1029,9 +1029,14 @@ pub async fn execute_file_undo(
 
     let mut history = ctx.state.undo_history.write().await;
 
+    // Canonicalize the lookup path so it matches the canonicalized path stored
+    // during snapshot (which uses path.canonicalize()). On macOS, /tmp resolves
+    // to /private/tmp, so a lexical match would fail without this step.
+    let canonical_lookup = path.canonicalize().unwrap_or(path.clone());
+
     let snapshot_idx = history
         .iter()
-        .rposition(|s| s.path == path)
+        .rposition(|s| s.path == canonical_lookup)
         .ok_or_else(|| {
             FilesystemCapabilityError::operation(format!(
                 "no undo history found for '{}'",

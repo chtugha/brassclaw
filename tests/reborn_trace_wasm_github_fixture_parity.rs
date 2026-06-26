@@ -390,7 +390,7 @@ fn github_capability_calls() -> Vec<RebornScriptedProviderToolCall> {
 
 fn expected_github_http_requests() -> Vec<ExpectedGithubHttpRequest> {
     vec![
-        get("https://api.github.com/repos/chtugha/brassclaw"),
+        get("https://api.github.com/repos/nearai/brassclaw"),
         request(
             "POST",
             "https://api.github.com/orgs/nearai/repos",
@@ -403,23 +403,23 @@ fn expected_github_http_requests() -> Vec<ExpectedGithubHttpRequest> {
                 "license_template": "mit"
             }),
         ),
-        get("https://api.github.com/repos/chtugha/brassclaw/issues?state=closed&per_page=7&page=2"),
+        get("https://api.github.com/repos/nearai/brassclaw/issues?state=closed&per_page=7&page=2"),
         request(
             "POST",
-            "https://api.github.com/repos/chtugha/brassclaw/issues",
+            "https://api.github.com/repos/nearai/brassclaw/issues",
             json!({"title": "matrix issue", "body": "body", "labels": ["qa", "reborn"]}),
         ),
-        get("https://api.github.com/repos/chtugha/brassclaw/issues/42"),
-        get("https://api.github.com/repos/chtugha/brassclaw/issues/42/comments?per_page=5&page=3"),
+        get("https://api.github.com/repos/nearai/brassclaw/issues/42"),
+        get("https://api.github.com/repos/nearai/brassclaw/issues/42/comments?per_page=5&page=3"),
         request(
             "POST",
-            "https://api.github.com/repos/chtugha/brassclaw/issues/42/comments",
+            "https://api.github.com/repos/nearai/brassclaw/issues/42/comments",
             json!({"body": "matrix comment"}),
         ),
-        get("https://api.github.com/repos/chtugha/brassclaw/pulls?state=all&per_page=9&page=4"),
+        get("https://api.github.com/repos/nearai/brassclaw/pulls?state=all&per_page=9&page=4"),
         request(
             "POST",
-            "https://api.github.com/repos/chtugha/brassclaw/pulls",
+            "https://api.github.com/repos/nearai/brassclaw/pulls",
             json!({
                 "title": "matrix pr",
                 "head": "feature/matrix",
@@ -428,24 +428,24 @@ fn expected_github_http_requests() -> Vec<ExpectedGithubHttpRequest> {
                 "draft": true
             }),
         ),
-        get("https://api.github.com/repos/chtugha/brassclaw/pulls/4280"),
-        get("https://api.github.com/repos/chtugha/brassclaw/pulls/4280/files"),
+        get("https://api.github.com/repos/nearai/brassclaw/pulls/4280"),
+        get("https://api.github.com/repos/nearai/brassclaw/pulls/4280/files"),
         request(
             "POST",
-            "https://api.github.com/repos/chtugha/brassclaw/pulls/4280/reviews",
+            "https://api.github.com/repos/nearai/brassclaw/pulls/4280/reviews",
             json!({"body": "review body", "event": "COMMENT"}),
         ),
-        get("https://api.github.com/repos/chtugha/brassclaw/pulls/4280/comments?per_page=6&page=2"),
+        get("https://api.github.com/repos/nearai/brassclaw/pulls/4280/comments?per_page=6&page=2"),
         request(
             "POST",
-            "https://api.github.com/repos/chtugha/brassclaw/pulls/4280/comments/123456789/replies",
+            "https://api.github.com/repos/nearai/brassclaw/pulls/4280/comments/123456789/replies",
             json!({"body": "reply"}),
         ),
-        get("https://api.github.com/repos/chtugha/brassclaw/pulls/4280/reviews?per_page=8&page=3"),
-        get("https://api.github.com/repos/chtugha/brassclaw/commits/feature%2Fmatrix/status"),
+        get("https://api.github.com/repos/nearai/brassclaw/pulls/4280/reviews?per_page=8&page=3"),
+        get("https://api.github.com/repos/nearai/brassclaw/commits/feature%2Fmatrix/status"),
         request(
             "PUT",
-            "https://api.github.com/repos/chtugha/brassclaw/pulls/4280/merge",
+            "https://api.github.com/repos/nearai/brassclaw/pulls/4280/merge",
             json!({
                 "merge_method": "squash",
                 "commit_title": "merge title",
@@ -457,26 +457,26 @@ fn expected_github_http_requests() -> Vec<ExpectedGithubHttpRequest> {
             "https://api.github.com/search/repositories?q=org%3Anearai%20brassclaw&per_page=12&page=3&sort=updated&order=desc",
         ),
         get(
-            "https://api.github.com/search/code?q=repo%3Anearai%2Fbrassclaw%20path%3Asrc%20Tool&per_page=12&page=3&sort=updated&order=desc",
+            "https://api.github.com/search/code?q=repo%3Achtugha%2Fbrassclaw%20path%3Asrc%20Tool&per_page=12&page=3&sort=updated&order=desc",
         ),
         get(
-            "https://api.github.com/search/issues?q=repo%3Anearai%2Fbrassclaw%20is%3Apr&per_page=12&page=3&sort=updated&order=desc",
+            "https://api.github.com/search/issues?q=repo%3Achtugha%2Fbrassclaw%20is%3Apr&per_page=12&page=3&sort=updated&order=desc",
         ),
         get(
-            "https://api.github.com/repos/chtugha/brassclaw/branches?per_page=13&protected=true&page=2",
+            "https://api.github.com/repos/nearai/brassclaw/branches?per_page=13&protected=true&page=2",
         ),
-        get("https://api.github.com/repos/chtugha/brassclaw/git/ref/heads/main"),
+        get("https://api.github.com/repos/nearai/brassclaw/git/ref/heads/main"),
         request(
             "POST",
-            "https://api.github.com/repos/chtugha/brassclaw/git/refs",
+            "https://api.github.com/repos/nearai/brassclaw/git/refs",
             json!({"ref": "refs/heads/feature/matrix", "sha": "abc123def4567890abc123def4567890abc123de"}),
         ),
         get(
-            "https://api.github.com/repos/chtugha/brassclaw/contents/docs/replay.md?ref=feature%2Fmatrix",
+            "https://api.github.com/repos/nearai/brassclaw/contents/docs/replay.md?ref=feature%2Fmatrix",
         ),
         request(
             "PUT",
-            "https://api.github.com/repos/chtugha/brassclaw/contents/docs/replay.md",
+            "https://api.github.com/repos/nearai/brassclaw/contents/docs/replay.md",
             json!({
                 "message": "write replay",
                 "content": "aGVsbG8=",
@@ -488,7 +488,7 @@ fn expected_github_http_requests() -> Vec<ExpectedGithubHttpRequest> {
         ),
         request(
             "DELETE",
-            "https://api.github.com/repos/chtugha/brassclaw/contents/docs/replay.md",
+            "https://api.github.com/repos/nearai/brassclaw/contents/docs/replay.md",
             json!({
                 "message": "delete replay",
                 "sha": "abc123",
@@ -497,10 +497,10 @@ fn expected_github_http_requests() -> Vec<ExpectedGithubHttpRequest> {
                 "author": {"name": "Author Bot", "email": "author@example.com"}
             }),
         ),
-        get("https://api.github.com/repos/chtugha/brassclaw/releases?per_page=14&page=2"),
+        get("https://api.github.com/repos/nearai/brassclaw/releases?per_page=14&page=2"),
         request(
             "POST",
-            "https://api.github.com/repos/chtugha/brassclaw/releases",
+            "https://api.github.com/repos/nearai/brassclaw/releases",
             json!({
                 "tag_name": "v1.2.3",
                 "target_commitish": "main",
@@ -513,15 +513,15 @@ fn expected_github_http_requests() -> Vec<ExpectedGithubHttpRequest> {
         ),
         request(
             "POST",
-            "https://api.github.com/repos/chtugha/brassclaw/actions/workflows/ci.yml/dispatches",
+            "https://api.github.com/repos/nearai/brassclaw/actions/workflows/ci.yml/dispatches",
             json!({"ref": "main", "inputs": {"suite": "smoke"}}),
         ),
         get(
-            "https://api.github.com/repos/chtugha/brassclaw/actions/workflows/ci.yml/runs?per_page=15&page=2",
+            "https://api.github.com/repos/nearai/brassclaw/actions/workflows/ci.yml/runs?per_page=15&page=2",
         ),
         request(
             "POST",
-            "https://api.github.com/repos/chtugha/brassclaw/forks",
+            "https://api.github.com/repos/nearai/brassclaw/forks",
             json!({
                 "organization": "nearai-labs",
                 "name": "brassclaw-fork",

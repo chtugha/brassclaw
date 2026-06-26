@@ -129,6 +129,20 @@ impl BackgroundTaskRegistry {
         }
     }
 
+    /// Create a registry pre-populated with the built-in task handlers.
+    ///
+    /// This is a synchronous constructor — it avoids the async `register` path
+    /// so it can be called from synchronous contexts (e.g., `Scheduler::new`).
+    pub fn with_defaults() -> Self {
+        let mut handlers: HashMap<String, Arc<dyn BackgroundTaskHandler>> = HashMap::new();
+        handlers.insert("data_processing".to_string(), Arc::new(DataProcessingTask));
+        handlers.insert("maintenance".to_string(), Arc::new(MaintenanceTask));
+        handlers.insert("report_generation".to_string(), Arc::new(ReportGenerationTask));
+        Self {
+            handlers: RwLock::new(handlers),
+        }
+    }
+
     /// Register a background task handler.
     pub async fn register(
         &self,

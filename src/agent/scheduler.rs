@@ -8,7 +8,7 @@ use tokio::sync::{RwLock, oneshot, mpsc};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
-use crate::agent::background_tasks::{BackgroundTaskRegistry, create_default_registry};
+use crate::agent::background_tasks::BackgroundTaskRegistry;
 use crate::agent::dead_letter_queue::{DeadLetterQueue, DLQConfig};
 use crate::agent::task::{Task, TaskContext, TaskOutput};
 use crate::config::AgentConfig;
@@ -146,10 +146,9 @@ impl Scheduler {
         safety: Arc<SafetyLayer>,
         deps: SchedulerDeps,
     ) -> Self {
-        // Create background task registry with default handlers
-        let background_tasks = Arc::new(tokio::runtime::Handle::current().block_on(async {
-            create_default_registry().await
-        }));
+        // Create background task registry with built-in handlers.
+        // Uses the sync constructor to avoid async runtime nesting issues.
+        let background_tasks = Arc::new(BackgroundTaskRegistry::with_defaults());
         
         // Create dead letter queue with default config
         let dlq_config = DLQConfig::default();

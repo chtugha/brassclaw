@@ -615,15 +615,56 @@ impl SignalChannel {
     /// - Paths are canonicalized and symlinks resolved
     /// - All paths are within ~/.brassclaw/ sandbox
     fn validate_attachment_paths(paths: &[String]) -> Result<(), ChannelError> {
-        // Get the sandbox base directory (same as MessageTool uses)
         let base_dir = brassclaw_base_dir();
 
         for path in paths {
-            // V1 path validation removed - V2 uses brassclaw_host_api validation
-            // Basic check: ensure path is not empty
+            // Reject empty paths.
             if path.is_empty() {
+                return Err(ChannelError::InvalidMessage(
+                    "Attachment path cannot be empty".to_string(),
+                ));
+            }
+
+            // Reject null bytes (POSIX path injection).
+            if path.contains('\0') {
                 return Err(ChannelError::InvalidMessage(format!(
-                    "Attachment path cannot be empty. Must be within {}",
+                    "Attachment path contains forbidden null byte: {path}"
+                )));
+            }
+
+            // Reject URL-encoded traversal sequences (%2e%2e, %2f, etc.).
+            let lower = path.to_ascii_lowercase();
+            if lower.contains("%2e") || lower.contains("%2f") || lower.contains("%5c") {
+                return Err(ChannelError::InvalidMessage(format!(
+                    "Attachment path contains forbidden URL-encoded sequence: {path}"
+                )));
+            }
+
+            // Reject literal path traversal components.
+            let p = std::path::Path::new(path.as_str());
+            for component in p.components() {
+                if component == std::path::Component::ParentDir {
+                    return Err(ChannelError::InvalidMessage(format!(
+                        "Attachment path contains forbidden '..' component: {path}"
+                    )));
+                }
+            }
+
+            // Ensure the path is within the sandbox after canonicalization.
+            // We canonicalize base_dir and compare the canonical form of the
+            // attachment path (resolving symlinks so /tmp == /private/tmp on macOS).
+            let canonical_base = base_dir
+                .canonicalize()
+                .unwrap_or_else(|_| base_dir.clone());
+            let full = if std::path::Path::new(path.as_str()).is_absolute() {
+                std::path::PathBuf::from(path)
+            } else {
+                base_dir.join(path)
+            };
+            let canonical_full = full.canonicalize().unwrap_or(full);
+            if !canonical_full.starts_with(&canonical_base) {
+                return Err(ChannelError::InvalidMessage(format!(
+                    "Attachment path is outside the sandbox (must be within {}): {path}",
                     base_dir.display()
                 )));
             }

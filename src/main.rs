@@ -12,38 +12,23 @@
 
 use std::process;
 
-fn main() {
-    // Delegate to the brassclaw-reborn CLI binary
-    // This provides a seamless experience where `cargo run` works out of the box
+#[tokio::main]
+async fn main() {
     let args: Vec<String> = std::env::args().collect();
-    
-    // If no subcommand provided, show help
-    if args.len() == 1 {
-        eprintln!("BrassClaw V2 - Reborn Runtime");
-        eprintln!();
-        eprintln!("Usage: cargo run -- <COMMAND>");
-        eprintln!();
-        eprintln!("Commands:");
-        eprintln!("  serve      Start the Reborn WebUI service (recommended)");
-        eprintln!("  run        Start the CLI REPL");
-        eprintln!("  repl       Start the composed Reborn CLI REPL");
-        eprintln!("  doctor     Check Reborn binary configuration");
-        eprintln!("  config     Inspect Reborn configuration paths");
-        eprintln!("  models     Inspect Reborn model slots and route status");
-        eprintln!("  skills     Inspect configured Reborn skills");
-        eprintln!("  extension  Manage local Reborn extension lifecycle");
-        eprintln!();
-        eprintln!("Examples:");
-        eprintln!("  cargo run -- serve              # Start WebUI server");
-        eprintln!("  cargo run -- run                # Start CLI REPL");
-        eprintln!("  cargo run -- doctor             # Check configuration");
-        eprintln!();
-        eprintln!("For more information, run: cargo run -- --help");
-        process::exit(1);
+
+    // Handle legacy subcommands that are implemented in the brassclaw lib crate
+    // but not (yet) in brassclaw_reborn_cli.
+    if args.get(1).map(String::as_str) == Some("status") {
+        match brassclaw::cli::run_status_command().await {
+            Ok(()) => process::exit(0),
+            Err(e) => {
+                eprintln!("Error: {:#}", e);
+                process::exit(1);
+            }
+        }
     }
-    
-    // Forward to brassclaw_reborn_cli
-    // This is implemented as a library that we can call directly
+
+    // Forward everything else to the Reborn CLI.
     match brassclaw_reborn_cli::run() {
         Ok(()) => process::exit(0),
         Err(e) => {

@@ -161,10 +161,19 @@ async fn get_autonomous_allowed_capabilities(
 /// Check if a capability is denylisted for autonomous execution.
 /// This replaces the V1 `is_autonomous_tool_denylisted` function.
 fn is_autonomous_capability_denylisted(capability_id: &str) -> bool {
-    // Denylist capabilities that should not be used autonomously
+    // Capabilities that must never be invoked autonomously by a routine:
+    // - Routine self-management (prevent infinite loops / self-modification)
+    // - Restart (would kill the running agent)
+    // - Pairing approval (requires explicit human interaction)
     matches!(
         capability_id,
-        "builtin.restart" | "builtin.pairing_approve"
+        "builtin.restart"
+            | "builtin.pairing_approve"
+            | "routine_create"
+            | "routine_update"
+            | "routine_delete"
+            | "routine_fire"
+            | "restart"
     )
 }
 
@@ -2731,8 +2740,8 @@ mod tests {
         ];
         for tool in &denylisted {
             assert!(
-                false, // V1 - tools module deleted, assume not in denylist
-                "Tool '{}' should be in AUTONOMOUS_TOOL_DENYLIST",
+                super::is_autonomous_capability_denylisted(tool),
+                "Tool '{}' should be in the autonomous capability denylist",
                 tool
             );
         }
