@@ -1,6 +1,4 @@
 //! Shared helpers for image-generation sentinel payloads.
-//! V1 - Image generation functionality - mostly unused in V2
-#![allow(dead_code)]
 
 use std::borrow::Cow;
 
