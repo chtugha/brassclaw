@@ -199,7 +199,7 @@ mod tests {
             "GitHub",
             LifecyclePhase::Installed,
             vec![manual_requirement("github_runtime_token", "github")],
-            LifecycleExtensionRuntimeKind::WasmTool,
+            LifecycleExtensionRuntimeKind::FirstParty,
             Some(LifecycleExtensionOnboarding {
                 instructions: "GitHub needs a personal access token before its repository and pull request tools can run.".to_string(),
                 credential_instructions: Some("Create a GitHub personal access token with the repository permissions you want BrassClaw to use, then paste it here.".to_string()),
@@ -304,7 +304,7 @@ mod tests {
             "GitHub",
             LifecyclePhase::Configured,
             vec![manual_requirement("github_runtime_token", "github")],
-            LifecycleExtensionRuntimeKind::WasmTool,
+            LifecycleExtensionRuntimeKind::FirstParty,
             Some(LifecycleExtensionOnboarding {
                 instructions: "GitHub needs a personal access token before its repository and pull request tools can run.".to_string(),
                 credential_instructions: Some("Create a GitHub personal access token with the repository permissions you want BrassClaw to use, then paste it here.".to_string()),

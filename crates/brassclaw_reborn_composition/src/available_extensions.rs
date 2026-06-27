@@ -120,10 +120,11 @@ fn onboarding_message(
 fn runtime_kind(runtime: &ExtensionRuntime) -> LifecycleExtensionRuntimeKind {
     match runtime {
         ExtensionRuntime::Mcp { .. } => LifecycleExtensionRuntimeKind::McpServer,
-        ExtensionRuntime::Wasm { .. } => LifecycleExtensionRuntimeKind::WasmTool,
         ExtensionRuntime::FirstParty { .. } => LifecycleExtensionRuntimeKind::FirstParty,
         ExtensionRuntime::System { .. } => LifecycleExtensionRuntimeKind::System,
-        ExtensionRuntime::Script { .. } => LifecycleExtensionRuntimeKind::Script,
+        ExtensionRuntime::Wasm { .. } | ExtensionRuntime::Script { .. } => {
+            panic!("WASM/Script extensions are not supported in the available catalog")
+        }
     }
 }
 
@@ -1048,15 +1049,6 @@ where
             path: "manifest.toml".to_string(),
             content: AvailableExtensionAssetContent::Bytes(manifest_toml.as_bytes().to_vec()),
         }];
-        if let ExtensionRuntime::Wasm { module } = &package.manifest.runtime {
-            let module_path = module
-                .resolve_under(&package.root)
-                .map_err(map_binding_error)?;
-            assets.push(AvailableExtensionAsset {
-                path: module.as_str().to_string(),
-                content: AvailableExtensionAssetContent::Filesystem(module_path),
-            });
-        }
         packages.push(AvailableExtensionPackage {
             package_ref: LifecyclePackageRef::new(
                 LifecyclePackageKind::Extension,

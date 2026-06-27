@@ -403,7 +403,7 @@ mod tests {
             version: "1.0.0".to_string(),
             description: "test extension".to_string(),
             source: LifecycleExtensionSource::HostBundled,
-            runtime_kind: LifecycleExtensionRuntimeKind::WasmTool,
+            runtime_kind: LifecycleExtensionRuntimeKind::FirstParty,
             visible_capability_ids: Vec::new(),
             visible_read_only_capability_ids: Vec::new(),
             credential_requirements: vec![LifecycleExtensionCredentialRequirement {

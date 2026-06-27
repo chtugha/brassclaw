@@ -392,11 +392,9 @@ pub enum LifecycleExtensionSource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LifecycleExtensionRuntimeKind {
-    WasmTool,
     McpServer,
     FirstParty,
     System,
-    Script,
 }
 
 impl LifecycleExtensionRuntimeKind {
@@ -405,7 +403,6 @@ impl LifecycleExtensionRuntimeKind {
             Self::McpServer => "mcp_server",
             Self::FirstParty => "first_party",
             Self::System => "system",
-            Self::WasmTool | Self::Script => "wasm_tool",
         }
     }
 }

@@ -233,7 +233,7 @@ mod tests {
                     description: "line\rrewrite".to_string(),
                     source: LifecycleExtensionSource::HostBundled,
                     runtime_kind:
-                        brassclaw_product_workflow::LifecycleExtensionRuntimeKind::WasmTool,
+                        brassclaw_product_workflow::LifecycleExtensionRuntimeKind::FirstParty,
                     visible_capability_ids: Vec::new(),
                     visible_read_only_capability_ids: Vec::new(),
                     credential_requirements: Vec::new(),
