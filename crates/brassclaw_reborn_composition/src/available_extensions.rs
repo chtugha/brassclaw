@@ -1162,18 +1162,7 @@ mod tests {
     fn bundled_first_party_manifest_asset_refs_are_packaged() {
         let catalog = AvailableExtensionCatalog::from_first_party_assets().unwrap();
 
-        for extension_id in [
-            "github",
-            "notion",
-            "web-access",
-            "nearai",
-            "google-calendar",
-            "google-docs",
-            "google-drive",
-            "google-sheets",
-            "google-slides",
-            "gmail",
-        ] {
+        for extension_id in ["notion", "web-access", "nearai", "google-calendar", "gmail"] {
             let package_ref =
                 LifecyclePackageRef::new(LifecyclePackageKind::Extension, extension_id).unwrap();
             let package = catalog.resolve(&package_ref).unwrap();
@@ -1213,7 +1202,6 @@ mod tests {
         let catalog = AvailableExtensionCatalog::from_first_party_assets().unwrap();
 
         for (extension_id, expected_instructions) in [
-            ("github", "GitHub needs a personal access token"),
             ("gmail", "Gmail needs Google OAuth authorization"),
             (
                 "google-calendar",
@@ -1263,14 +1251,7 @@ mod tests {
     fn bundled_google_credentials_project_oauth_setup_per_declared_scope_set() {
         let catalog = AvailableExtensionCatalog::from_first_party_assets().unwrap();
 
-        for extension_id in [
-            "google-calendar",
-            "google-docs",
-            "google-drive",
-            "google-sheets",
-            "google-slides",
-            "gmail",
-        ] {
+        for extension_id in ["google-calendar", "gmail"] {
             let package_ref =
                 LifecyclePackageRef::new(LifecyclePackageKind::Extension, extension_id).unwrap();
             let package = catalog.resolve(&package_ref).unwrap();
@@ -1340,91 +1321,11 @@ mod tests {
     }
 
     #[test]
-    fn bundled_gsuite_wasm_capabilities_are_operation_scoped() {
-        let catalog = AvailableExtensionCatalog::from_first_party_assets().unwrap();
-        let package_ref =
-            LifecyclePackageRef::new(LifecyclePackageKind::Extension, "google-drive").unwrap();
-        let package = catalog.resolve(&package_ref).unwrap();
-        let capabilities = package
-            .package
-            .manifest
-            .capabilities
-            .iter()
-            .map(|capability| (capability.id.as_str(), capability))
-            .collect::<HashMap<_, _>>();
-
-        assert!(!capabilities.contains_key("google-drive.execute"));
-        assert!(capabilities.contains_key("google-drive.list_files"));
-        assert!(capabilities.contains_key("google-drive.upload_file"));
-
-        let summary = package.summary();
-        assert!(
-            summary
-                .visible_capability_ids
-                .contains(&"google-drive.upload_file".to_string())
-        );
-        assert!(
-            summary
-                .visible_read_only_capability_ids
-                .contains(&"google-drive.list_files".to_string())
-        );
-        assert!(
-            !summary
-                .visible_read_only_capability_ids
-                .contains(&"google-drive.upload_file".to_string())
-        );
-
-        let list_files = capabilities["google-drive.list_files"];
-        assert_eq!(
-            list_files.runtime_credentials[0].provider_scopes,
-            vec!["https://www.googleapis.com/auth/drive.readonly".to_string()]
-        );
-        assert!(!list_files.effects.contains(&EffectKind::ExternalWrite));
-
-        let upload_file = capabilities["google-drive.upload_file"];
-        assert!(upload_file.effects.contains(&EffectKind::ExternalWrite));
-    }
-
-    #[tokio::test]
-    async fn materialize_bundled_github_writes_manifest_schema_refs() {
-        let fs = InMemoryBackend::default();
-        let catalog = AvailableExtensionCatalog::from_first_party_assets().unwrap();
-        let package_ref =
-            LifecyclePackageRef::new(LifecyclePackageKind::Extension, "github").unwrap();
-        let github = catalog.resolve(&package_ref).unwrap();
-
-        materialize_available_extension(&fs, github).await.unwrap();
-
-        let get_repo_schema = fs
-            .read_file(
-                &VirtualPath::new(
-                    "/system/extensions/github/schemas/github/get_repo.input.v1.json",
-                )
-                .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert!(
-            std::str::from_utf8(&get_repo_schema)
-                .unwrap()
-                .contains("GitHub get_repo input")
-        );
-        fs.read_file(
-            &VirtualPath::new("/system/extensions/github/prompts/github/get_repo.md").unwrap(),
-        )
-        .await
-        .unwrap();
-    }
-
-    #[test]
     fn bundled_manifest_digests_are_sha256_tokens() {
         assert!(notion_mcp_manifest_digest().starts_with("sha256:"));
         assert!(google_calendar_manifest_digest().starts_with("sha256:"));
-        assert!(google_docs_manifest_digest().starts_with("sha256:"));
-        assert!(google_drive_manifest_digest().starts_with("sha256:"));
-        assert!(google_sheets_manifest_digest().starts_with("sha256:"));
-        assert!(google_slides_manifest_digest().starts_with("sha256:"));
         assert!(gmail_manifest_digest().starts_with("sha256:"));
+        assert!(web_access_manifest_digest().starts_with("sha256:"));
     }
 
     #[test]

@@ -32,6 +32,26 @@ ignore = [
     # BrassClaw WASM guests do not use fd_renumber; the leak path is not reachable
     # from our guest surface. Remove once wasmtime is upgraded to >=44.0.3.
     "RUSTSEC-2026-0182",
+    # lopdf: stack overflow via deeply nested PDF objects (RUSTSEC-2026-0187).
+    # lopdf is pulled in by the document-extraction path (src/document_extraction).
+    # We do not accept untrusted PDFs in the critical path; extraction is user-initiated
+    # from trusted local files. Remove once lopdf releases a patched version.
+    "RUSTSEC-2026-0187",
+    # postgres-types 0.2.13: SCRAM iteration count CPU exhaustion (RUSTSEC-2026-0179)
+    # and hstore panic (RUSTSEC-2026-0180). Both affect the optional postgres feature;
+    # the libsql path is unaffected. Remove once tokio-postgres/postgres-types are
+    # upgraded to a patched release.
+    "RUSTSEC-2026-0179",
+    "RUSTSEC-2026-0180",
+    # tokio-postgres: DataRow panic with fewer fields than columns (RUSTSEC-2026-0178).
+    # Same postgres-feature transitive dep as 0179/0180 above. Unaffected on libsql path.
+    "RUSTSEC-2026-0178",
+    # rsa: Marvin Attack timing side-channel (RUSTSEC-2023-0071). Pulled in by the OIDC
+    # stack (brassclaw_reborn_webui_ingress → openidconnect → rsa). The rsa crate is used
+    # for JWT verification only, not for decryption of attacker-controlled ciphertexts on
+    # a shared host, so the Marvin Attack is not exploitable in our deployment model.
+    # Remove once openidconnect/jwt-simple upgrades to an rsa release without this advisory.
+    "RUSTSEC-2023-0071",
 ]
 
 [licenses]
