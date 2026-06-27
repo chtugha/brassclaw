@@ -133,22 +133,28 @@ function ProviderGroup({ provider, tools, onPermissionChange, isUpdating, t }) {
 
   return html`
     <${Card} padding="md">
-      <button
-        onClick=${() => setIsExpanded(!isExpanded)}
-        className="mb-4 flex w-full items-center justify-between text-left"
-      >
-        <h3 className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--v2-accent-text)]">
-          ${provider} (${tools.length})
-        </h3>
-        <svg
-          className=${`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-sm text-[var(--v2-text-strong)]">${provider}</span>
+          <span className="inline-flex items-center rounded border border-[var(--v2-panel-border)] bg-[var(--v2-surface-muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--v2-text-muted)]">
+            ${tools.length}
+          </span>
+        </div>
+        <button
+          onClick=${() => setIsExpanded(!isExpanded)}
+          className="text-[var(--v2-text-muted)] hover:text-[var(--v2-text-strong)] transition-colors"
+          aria-label=${isExpanded ? "Collapse" : "Expand"}
         >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
+          <svg
+            className=${`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </div>
       ${isExpanded && html`
         <div className="space-y-0">
           ${tools.map((tool) => html`

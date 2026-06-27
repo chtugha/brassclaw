@@ -151,8 +151,6 @@ function SafetySection({ title, description, data, mutation, emptyText, onError,
   const [isAdding, setIsAdding] = React.useState(false);
 
   const entries = data?.entries || [];
-  const defaultEntries = entries.filter((e) => e.is_default);
-  const userEntries = entries.filter((e) => !e.is_default);
 
   const handleToggle = React.useCallback(async (pattern, enabled) => {
     onError("");
@@ -198,25 +196,26 @@ function SafetySection({ title, description, data, mutation, emptyText, onError,
 
   return html`
     <${Card} padding="md">
-      <button
-        onClick=${() => setIsExpanded(!isExpanded)}
-        className="mb-2 flex w-full items-center justify-between text-left"
-      >
-        <div>
-          <h3 className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--v2-accent-text)]">
-            ${title}
-          </h3>
-          <p className="mt-1 text-sm text-[var(--v2-text-muted)]">${description}</p>
+      <div className="mb-2 flex items-start justify-between">
+        <div className="flex-1 pr-4">
+          <h3 className="font-medium text-sm text-[var(--v2-text-strong)]">${title}</h3>
+          <p className="mt-0.5 text-sm text-[var(--v2-text-muted)]">${description}</p>
         </div>
-        <svg
-          className=${`h-4 w-4 flex-shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
+        <button
+          onClick=${() => setIsExpanded(!isExpanded)}
+          className="flex-shrink-0 text-[var(--v2-text-muted)] hover:text-[var(--v2-text-strong)] transition-colors"
+          aria-label=${isExpanded ? "Collapse" : "Expand"}
         >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
+          <svg
+            className=${`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </div>
 
       ${isExpanded && html`
         <div className="mt-4 space-y-4">
@@ -224,40 +223,16 @@ function SafetySection({ title, description, data, mutation, emptyText, onError,
             <p className="text-sm text-[var(--v2-text-muted)]">${emptyText}</p>
           ` : html`
             <div className="space-y-2">
-              ${defaultEntries.length > 0 && html`
-                <div className="space-y-2">
-                  <h4 className="text-xs font-medium uppercase tracking-wider text-[var(--v2-text-muted)]">
-                    ${t("settings.safety.default_entries")}
-                  </h4>
-                  ${defaultEntries.map((entry) => html`
-                    <${SafetyEntry}
-                      key=${entry.pattern}
-                      entry=${entry}
-                      onToggle=${handleToggle}
-                      onRemove=${null}
-                      isUpdating=${mutation.isPending}
-                      t=${t}
-                    />
-                  `)}
-                </div>
-              `}
-              ${userEntries.length > 0 && html`
-                <div className="space-y-2">
-                  <h4 className="text-xs font-medium uppercase tracking-wider text-[var(--v2-text-muted)]">
-                    ${t("settings.safety.user_entries")}
-                  </h4>
-                  ${userEntries.map((entry) => html`
-                    <${SafetyEntry}
-                      key=${entry.pattern}
-                      entry=${entry}
-                      onToggle=${handleToggle}
-                      onRemove=${handleRemove}
-                      isUpdating=${mutation.isPending}
-                      t=${t}
-                    />
-                  `)}
-                </div>
-              `}
+              ${entries.map((entry) => html`
+                <${SafetyEntry}
+                  key=${entry.pattern}
+                  entry=${entry}
+                  onToggle=${handleToggle}
+                  onRemove=${handleRemove}
+                  isUpdating=${mutation.isPending}
+                  t=${t}
+                />
+              `)}
             </div>
           `}
 
@@ -296,19 +271,17 @@ function SafetyEntry({ entry, onToggle, onRemove, isUpdating, t }) {
           onClick=${() => onToggle(entry.pattern, !entry.enabled)}
           disabled=${isUpdating}
           className=${[
-            "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border transition-colors",
+            "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 transition-colors duration-200",
             entry.enabled
-              ? "border-signal/40 bg-signal/30"
-              : "border-white/15 bg-white/[0.06]",
+              ? "border-[var(--v2-accent-border,#3b82d4)] bg-[var(--v2-accent-bg,#3b82d4)]"
+              : "border-[var(--v2-panel-border)] bg-[var(--v2-surface)]",
             isUpdating && "opacity-50 cursor-not-allowed"
           ].filter(Boolean).join(" ")}
         >
           <span
             className=${[
-              "pointer-events-none inline-block h-5 w-5 rounded-full transition-transform",
-              entry.enabled
-                ? "translate-x-5 bg-signal"
-                : "translate-x-0 bg-iron-300",
+              "pointer-events-none absolute top-0.5 inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200",
+              entry.enabled ? "translate-x-4" : "translate-x-0",
             ].join(" ")}
           />
         </button>
@@ -316,23 +289,21 @@ function SafetyEntry({ entry, onToggle, onRemove, isUpdating, t }) {
           ${entry.pattern}
         </code>
         ${entry.is_default && html`
-          <span className="inline-flex items-center rounded-full border border-blue-400/30 bg-blue-500/20 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-blue-200">
+          <span className="shrink-0 inline-flex items-center rounded border border-[var(--v2-panel-border)] bg-[var(--v2-surface-muted)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--v2-text-muted)]">
             ${t("settings.safety.default_entry")}
           </span>
         `}
       </div>
-      ${onRemove && html`
-        <button
-          onClick=${() => onRemove(entry.pattern)}
-          disabled=${isUpdating}
-          className="ml-2 flex-shrink-0 text-[var(--v2-text-muted)] transition-colors hover:text-[var(--v2-danger-text)] disabled:opacity-50"
-          title=${t("settings.safety.remove_entry")}
-        >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      `}
+      <button
+        onClick=${() => onRemove(entry.pattern)}
+        disabled=${isUpdating}
+        className="ml-3 flex-shrink-0 text-[var(--v2-text-muted)] transition-colors hover:text-[var(--v2-danger-text)] disabled:opacity-50"
+        title=${t("settings.safety.remove_entry")}
+      >
+        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
     </div>
   `;
 }
