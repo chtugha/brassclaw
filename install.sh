@@ -162,7 +162,7 @@ create_systemd_service() {
     home_dir=$(eval echo "~$service_user")
     local reborn_home="${home_dir}/.brassclaw/reborn"
     local webui_token
-    webui_token=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 40)
+    webui_token=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 40 || true)
 
     log_step "Writing $SYSTEMD_DIR/$SERVICE_NAME.service"
     cat > "$SYSTEMD_DIR/$SERVICE_NAME.service" <<EOF
