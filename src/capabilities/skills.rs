@@ -458,7 +458,7 @@ where
     F: Fn(String) -> Fut,
     Fut: Future<Output = Result<SkillInstallPayload, SkillFetchError>>,
 {
-    let (_user_dir, initial_missing) = {
+    let (user_dir, initial_missing) = {
         let guard = registry_read(registry);
         let missing = required_skills
             .into_iter()
@@ -469,7 +469,7 @@ where
 
     let mut report = ChainInstallReport::default();
     let mut queue: VecDeque<String> = initial_missing.into_iter().collect();
-    let _queued_or_seen: HashSet<String> = queue.iter().cloned().collect();
+    let mut queued_or_seen: HashSet<String> = queue.iter().cloned().collect();
     let mut attempted = 0usize;
 
     while let Some(dep_name) = queue.pop_front() {
@@ -497,16 +497,29 @@ where
         let download_url = brassclaw_skills::catalog::skill_download_url(registry_url, &dep_name);
         match fetcher(download_url).await {
             Ok(dep_bundle) => {
-                let _normalized = brassclaw_skills::normalize_line_endings(&dep_bundle.skill_md);
-                // V1 - DISABLED - entire match block disabled due to V1 dependencies
-                /*
+                let normalized = brassclaw_skills::normalize_line_endings(&dep_bundle.skill_md);
+                let extra_files: Vec<brassclaw_skills::registry::InstallFile> = dep_bundle
+                    .extra_files
+                    .iter()
+                    .map(|(path, contents)| brassclaw_skills::registry::InstallFile {
+                        relative_path: std::path::PathBuf::from(path),
+                        contents: contents.clone(),
+                    })
+                    .collect();
+                let install_metadata: Option<brassclaw_skills::registry::InstalledSkillMetadata> =
+                    dep_bundle
+                        .install_metadata
+                        .as_ref()
+                        .and_then(|v| serde_json::from_value(v.clone()).ok());
+
                 match brassclaw_skills::registry::SkillRegistry::prepare_install_bundle_to_disk(
                     &user_dir,
                     &dep_name,
                     &normalized,
-                    &dep_bundle.extra_files,
-                    dep_bundle.install_metadata.as_ref(),
+                    &extra_files,
+                    install_metadata.as_ref(),
                 )
+                .await
                 {
                     Ok((name, skill)) => {
                         if name != dep_name {
@@ -578,9 +591,6 @@ where
                     }
                     Err(e) => report.failed.push(format!("{}: {}", dep_name, e)),
                 }
-                */
-                // V1 - DISABLED - stub replacement
-                report.failed.push(format!("{}: V1 code disabled", dep_name));
             }
             Err(e) => {
                 if e.is_missing_dependency() {
@@ -694,7 +704,6 @@ pub async fn execute_skill_install(
 
     let normalized = brassclaw_skills::normalize_line_endings(&install_payload.skill_md);
 
-    #[allow(unused_variables)]
     let (user_dir, skill_name_from_parse, install_content) = {
         let guard = registry_read(&ctx.registry);
 
@@ -717,18 +726,29 @@ pub async fn execute_skill_install(
         )
     };
 
-    Err(SkillsCapabilityError::operation("V1 code disabled - skill installation not supported".to_string()))
-    
-    /*
-    // V1 - DISABLED - All code below is unreachable after the return statement above
-    
+    // Convert extra_files from (String, Vec<u8>) tuples to InstallFile structs
+    let extra_files: Vec<brassclaw_skills::registry::InstallFile> = install_payload
+        .extra_files
+        .iter()
+        .map(|(path, contents)| brassclaw_skills::registry::InstallFile {
+            relative_path: std::path::PathBuf::from(path),
+            contents: contents.clone(),
+        })
+        .collect();
+
+    let install_metadata: Option<brassclaw_skills::registry::InstalledSkillMetadata> =
+        install_payload
+            .install_metadata
+            .as_ref()
+            .and_then(|v| serde_json::from_value(v.clone()).ok());
+
     let (skill_name, loaded_skill) =
         brassclaw_skills::registry::SkillRegistry::prepare_install_bundle_to_disk(
             &user_dir,
             &skill_name_from_parse,
             &install_content,
-            &install_payload.extra_files,
-            install_payload.install_metadata.as_ref(),
+            &extra_files,
+            install_metadata.as_ref(),
         )
         .await
         .map_err(|e| SkillsCapabilityError::operation(e.to_string()))?;
@@ -753,42 +773,14 @@ pub async fn execute_skill_install(
     let (installed_name, required_skills) = match commit_result {
         CommitResult::Installed(name, skills) => (name, skills),
         CommitResult::AlreadyInstalled => {
-            let orphan_dir = user_dir.join(&skill_name_from_parse);
-            if let Err(cleanup_err) = tokio::fs::remove_dir_all(&orphan_dir).await {
-                tracing::debug!(
-                    "skill_install: failed to clean up orphan skill dir {}: {}",
-                    orphan_dir.display(),
-                    cleanup_err
-                );
-            }
-            return Ok(json!({
-                "name": skill_name_from_parse,
-                "status": "already_installed",
-                "trust": "installed",
-                "message": format!(
-                    "Skill '{}' was already installed by a concurrent call — no install needed.",
-                    skill_name_from_parse
-                ),
-            }));
+            // Race condition: another thread installed between our check and commit
+            let report = ChainInstallReport::default();
+            return Ok(build_already_installed_output(&skill_name_from_parse, &report));
         }
     };
 
-    let chain_report = if required_skills.is_empty() {
-        ChainInstallReport::default()
-    } else if !install_dependencies {
-        let missing_required_skills = {
-            let guard = registry_read(&ctx.registry);
-            required_skills
-                .into_iter()
-                .filter(|skill| !guard.has(skill))
-                .collect::<Vec<_>>()
-        };
-
-        ChainInstallReport {
-            pending_explicit_install: missing_required_skills,
-            ..Default::default()
-        }
-    } else {
+    // Install dependencies if requested
+    let chain_report = if install_dependencies && !required_skills.is_empty() {
         install_missing_skill_dependencies(
             &ctx.registry,
             ctx.catalog.registry_url(),
@@ -796,10 +788,11 @@ pub async fn execute_skill_install(
             |url| async move { fetch_skill_payload(&url).await },
         )
         .await?
+    } else {
+        ChainInstallReport::default()
     };
 
     Ok(build_skill_install_output(&installed_name, &chain_report))
-    */
 }
 
 pub async fn execute_skill_remove(
