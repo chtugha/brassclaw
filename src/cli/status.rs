@@ -180,14 +180,21 @@ pub async fn run_status_command() -> anyhow::Result<()> {
     println!("{}", fmt::kv_line("Heartbeat", &hb_value, 12));
 
     // MCP servers
-    // V1 - DISABLED - MCP server configuration removed
-    let servers: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
-    let mcp_value = if servers.is_empty() {
-        "none configured".to_string()
-    } else {
-        // V1 - DISABLED - McpServerConfig may not have 'enabled' field
-        let total = servers.len();
-        format!("{} configured", total)
+    let mcp_value = {
+        let (db, owner_id) = crate::cli::mcp::connect_db().await;
+        match crate::cli::mcp::load_servers(db.as_deref(), &owner_id).await {
+            Ok(servers) if servers.servers.is_empty() => "none configured".to_string(),
+            Ok(servers) => {
+                let enabled = servers.servers.iter().filter(|s| s.enabled).count();
+                let total = servers.servers.len();
+                if enabled == total {
+                    format!("{} configured", total)
+                } else {
+                    format!("{} enabled / {} configured", enabled, total)
+                }
+            }
+            Err(_) => "none configured".to_string(),
+        }
     };
     println!("{}", fmt::kv_line("MCP Servers", &mcp_value, 12));
 

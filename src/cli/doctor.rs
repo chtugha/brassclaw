@@ -534,29 +534,30 @@ fn check_gateway_config(settings: &Settings) -> CheckResult {
 // ── MCP servers ─────────────────────────────────────────────
 
 async fn check_mcp_config() -> CheckResult {
-    // V1 - DISABLED - MCP server configuration removed
-    let servers: std::collections::HashMap<String, ()> = std::collections::HashMap::new();
-    
-    if servers.is_empty() {
+    let (db, owner_id) = crate::cli::mcp::connect_db().await;
+    let servers = match crate::cli::mcp::load_servers(db.as_deref(), &owner_id).await {
+        Ok(s) => s,
+        Err(e) => return CheckResult::Fail(format!("could not load MCP config: {e}")),
+    };
+
+    if servers.servers.is_empty() {
         return CheckResult::Skip("no MCP servers configured".into());
     }
 
-    let invalid: Vec<String> = Vec::new();
-    for _server in servers.values() {
-        // V1 - DISABLED - validate() method may not exist on McpServerConfig
-        // if let Err(e) = server.validate() {
-        //     invalid.push(format!("{}: {}", name, e));
-        // }
+    let mut invalid: Vec<String> = Vec::new();
+    for server in &servers.servers {
+        if let Err(e) = server.validate() {
+            invalid.push(format!("{}: {}", server.name, e));
+        }
     }
 
     if invalid.is_empty() {
-        CheckResult::Pass(format!("{} server(s) configured", servers.len()))
+        CheckResult::Pass(format!("{} server(s) configured", servers.servers.len()))
     } else {
         CheckResult::Fail(format!(
-            "{} server(s), {} invalid: {}",
-            servers.len(),
+            "{} invalid server(s): {}",
             invalid.len(),
-            invalid.join("; ")
+            invalid.join(", ")
         ))
     }
 }

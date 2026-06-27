@@ -59,6 +59,30 @@ pub(super) struct McpServerConfig {
 }
 
 impl McpServerConfig {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if self.name.is_empty() {
+            return Err("name is empty".to_string());
+        }
+        match self.transport.as_deref() {
+            Some("stdio") => {
+                if self.command.as_deref().unwrap_or("").is_empty() {
+                    return Err("stdio transport requires a command".to_string());
+                }
+            }
+            Some("unix") => {
+                if self.socket_path.as_deref().unwrap_or("").is_empty() {
+                    return Err("unix transport requires a socket_path".to_string());
+                }
+            }
+            _ => {
+                if self.url.is_empty() {
+                    return Err("http transport requires a url".to_string());
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn new(name: &str, url: &str) -> Self {
         Self {
             name: name.to_string(),
@@ -215,6 +239,23 @@ pub(super) struct McpServersFile {
 impl McpServersFile {
     pub(super) fn get(&self, name: &str) -> Option<McpServerConfig> {
         self.servers.iter().find(|s| s.name == name).cloned()
+    }
+
+    pub(super) fn upsert(&mut self, config: McpServerConfig) {
+        if let Some(pos) = self.servers.iter().position(|s| s.name == config.name) {
+            self.servers[pos] = config;
+        } else {
+            self.servers.push(config);
+        }
+    }
+
+    pub(super) fn remove(&mut self, name: &str) -> bool {
+        if let Some(pos) = self.servers.iter().position(|s| s.name == name) {
+            self.servers.remove(pos);
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -506,14 +547,12 @@ async fn add_server(args: McpAddArgs) -> anyhow::Result<()> {
         config = config.with_oauth(oauth);
     }
 
-    // V1 - DISABLED - missing validate() and upsert() methods
-    // config.validate()?;
     let has_custom_auth_header = config.has_custom_auth_header();
 
     // Save (DB if available, else disk)
     let (db, owner_id) = connect_db().await;
-    let servers = load_servers(db.as_deref(), &owner_id).await?;
-    // servers.upsert(config);
+    let mut servers = load_servers(db.as_deref(), &owner_id).await?;
+    servers.upsert(config);
     save_servers(db.as_deref(), &owner_id, &servers).await?;
 
     println!();
@@ -550,9 +589,8 @@ async fn add_server(args: McpAddArgs) -> anyhow::Result<()> {
 /// Remove an MCP server.
 async fn remove_server(name: String) -> anyhow::Result<()> {
     let (db, owner_id) = connect_db().await;
-    let servers = load_servers(db.as_deref(), &owner_id).await?;
-    // V1 - DISABLED - missing remove() method
-    if false { // !servers.remove(&name) {
+    let mut servers = load_servers(db.as_deref(), &owner_id).await?;
+    if !servers.remove(&name) {
         anyhow::bail!("Server '{}' not found", name);
     }
     save_servers(db.as_deref(), &owner_id, &servers).await?;
@@ -674,10 +712,8 @@ async fn auth_server(name: String, user_id: String) -> anyhow::Result<()> {
     // Get server config
     let (db, owner_id) = connect_db().await;
     let servers = load_servers(db.as_deref(), &owner_id).await?;
-    // V1 - DISABLED - cloned() not available
     let server = servers
         .get(&name)
-        .clone() // .cloned()
         .ok_or_else(|| anyhow::anyhow!("Server '{}' not found", name))?;
 
     if server.has_custom_auth_header() {
@@ -760,10 +796,8 @@ async fn test_server(name: String, user_id: String) -> anyhow::Result<()> {
     // Get server config
     let (db, owner_id) = connect_db().await;
     let servers = load_servers(db.as_deref(), &owner_id).await?;
-    // V1 - DISABLED - cloned() not available
     let server = servers
         .get(&name)
-        .clone() // .cloned()
         .ok_or_else(|| anyhow::anyhow!("Server '{}' not found", name))?;
 
     println!();
@@ -813,66 +847,9 @@ async fn test_server(name: String, user_id: String) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("{}", e))?
     };
 
-    // V1 - DISABLED - test_connection() and list_tools() methods removed from V1 McpClient
-    // Test connection
-    // match client.test_connection().await {
-    //     Ok(()) => {
-    //         println!("  ✓ Connection successful!");
-    //         println!();
-    //
-    //         // List tools
-    //         match client.list_tools().await {
-    //             Ok(tools) => {
-    //                 println!("  Available tools ({}):", tools.len());
-    //                 for tool in tools {
-    //                     let approval = if tool.requires_approval() {
-    //                         " [approval required]"
-    //                     } else {
-    //                         ""
-    //                     };
-    //                     println!("    • {}{}", tool.name, approval);
-    //                     if !tool.description.is_empty() {
-    //                         let desc = truncate_description(&tool.description);
-    //                         println!("      {}", desc);
-    //                     }
-    //                 }
-    //             }
-    //             Err(e) => {
-    //                 println!("  ✗ Failed to list tools: {}", e);
-    //             }
-    //         }
-    //     }
-    //     Err(e) => {
-    println!("  ⚠ Connection test disabled (V1 code removed)");
+    println!("  ⚠ MCP connection testing is not yet available in this build.");
+    println!("    Use 'brassclaw mcp list' to verify the server is configured.");
     println!();
-    // V1 - DISABLED - error handling code removed
-    // {
-    //     let e = "V1 functionality removed";
-    //     let err_str = e.to_string();
-    //     // Check if server requires auth but we don't have valid tokens
-    //     if mcp_client::is_auth_error_message(&err_str) {
-    //         if has_tokens {
-    //             // We had tokens but they failed - need to re-authenticate
-    //             println!(
-    //                 "  ✗ Authentication failed (token may be expired). Try re-authenticating:"
-    //             );
-    //             println!("    brassclaw mcp auth {}", name);
-    //         } else if server.has_custom_auth_header() {
-    //             println!("  ✗ Authentication failed.");
-    //             println!();
-    //             println!(
-    //                 "  Check the configured Authorization header or API key for this server."
-    //             );
-    //         } else {
-    //             // No tokens - server requires auth
-    //             println!("  ✗ Server requires authentication.");
-    //             println!();
-    //             println!("  Run 'brassclaw mcp auth {}' to authenticate.", name);
-    //         }
-    //     } else {
-    //         println!("  ✗ Connection failed: {}", e);
-    //     }
-    // }
 
     println!();
 
@@ -893,7 +870,7 @@ async fn toggle_server(name: String, enable: bool, _disable: bool) -> anyhow::Re
 
 /// Try to connect to the database (backend-agnostic).
 /// Returns both the optional database handle and the resolved owner_id.
-async fn connect_db() -> (Option<Arc<dyn Database>>, String) {
+pub(crate) async fn connect_db() -> (Option<Arc<dyn Database>>, String) {
     let Ok(config) = Config::from_env().await else {
         return (None, "<unset>".to_string());
     };
@@ -903,7 +880,7 @@ async fn connect_db() -> (Option<Arc<dyn Database>>, String) {
 }
 
 /// Load MCP servers (DB if available, else disk), after NEAR AI MCP server env bootstrap when applicable.
-async fn load_servers(
+pub(crate) async fn load_servers(
     db: Option<&dyn Database>,
     owner_id: &str,
 ) -> Result<McpServersFile, config::ConfigError> {
