@@ -117,11 +117,11 @@ async fn run_projection(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
     use brassclaw_host_api::{TenantId, UserId};
     use brassclaw_resources::{
         BudgetEventSink, BudgetWarning, ResourceAccount, ResourceDimension, ResourceValue,
     };
+    use chrono::Utc;
     use rust_decimal::Decimal;
     use std::sync::Mutex;
     use std::time::Duration;

@@ -67,12 +67,12 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
-use deadpool_postgres::Pool;
 use brassclaw_hooks::predicate_state::{
     InvocationKey, MAX_KEYS_PER_TENANT, MAX_SAMPLES_PER_KEY, PredicateBackendError,
     PredicateEventId, PredicateStateBackend, ValueKey, window_cutoff,
 };
+use chrono::{DateTime, Utc};
+use deadpool_postgres::Pool;
 use rust_decimal::Decimal;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio_postgres::IsolationLevel;

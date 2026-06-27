@@ -476,8 +476,8 @@ mod tests {
         AuthProviderId, CredentialAccountId, CredentialAccountLabel, CredentialAccountStatus,
         OAuthAuthorizationCode, OAuthProviderExchange, PkceVerifierSecret, ProviderScope,
     };
-    use chrono::Utc;
     use brassclaw_host_api::{InvocationId, ResourceScope, SecretHandle, UserId};
+    use chrono::Utc;
     use secrecy::SecretString;
 
     #[test]

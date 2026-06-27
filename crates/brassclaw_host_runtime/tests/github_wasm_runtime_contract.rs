@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_authorization::TrustAwareCapabilityDispatchAuthorizer;
-use brassclaw_extensions::{ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource};
+use brassclaw_extensions::{
+    ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource,
+};
 use brassclaw_filesystem::LocalFilesystem;
 use brassclaw_host_api::{
     AgentId, CapabilityDescriptor, CapabilityGrant, CapabilityGrantId, CapabilityId, CapabilitySet,
@@ -35,6 +36,7 @@ use brassclaw_wasm::{
     RecordingWasmHostHttp, WasmHostError, WasmHttpResponse, WitToolExecution, WitToolHost,
     WitToolRequest, WitToolRuntime, WitToolRuntimeConfig,
 };
+use chrono::Utc;
 use serde_json::json;
 
 macro_rules! google_wasm_services_for_test {

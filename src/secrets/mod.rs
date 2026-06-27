@@ -69,11 +69,11 @@ pub use store::LibSqlSecretsStore;
 #[cfg(feature = "postgres")]
 pub use store::PostgresSecretsStore;
 pub use store::{SecretConsumeResult, SecretsStore};
+pub(crate) use types::match_specificity;
 pub use types::{
     CreateSecretParams, CredentialLocation, CredentialMapping, DecryptedSecret, Secret,
     SecretError, SecretRef,
 };
-pub(crate) use types::match_specificity;
 
 pub use store::in_memory::InMemorySecretsStore;
 

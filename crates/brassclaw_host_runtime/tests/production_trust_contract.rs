@@ -5,9 +5,10 @@ use support::legacy_capability_fixture_to_v2;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_authorization::{GrantAuthorizer, TrustAwareCapabilityDispatchAuthorizer};
-use brassclaw_extensions::{ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource};
+use brassclaw_extensions::{
+    ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource,
+};
 use brassclaw_host_api::*;
 use brassclaw_host_runtime::{
     CapabilitySurfaceVersion, DefaultHostRuntime, HostRuntime, RuntimeCapabilityOutcome,
@@ -18,6 +19,7 @@ use brassclaw_trust::{
     HostTrustPolicy, InvalidationBus, TrustDecision, TrustPolicy, TrustPolicyInput,
     TrustProvenance,
 };
+use chrono::Utc;
 use serde_json::json;
 
 fn local_test_runtime_policy() -> brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy {

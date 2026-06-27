@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use brassclaw_extensions::{ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource};
+use brassclaw_extensions::{
+    ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource,
+};
 use brassclaw_host_api::{
     CapabilityId, EffectKind, ExtensionId, NetworkPolicy, NetworkScheme, NetworkTargetPattern,
     SecretHandle, VirtualPath,

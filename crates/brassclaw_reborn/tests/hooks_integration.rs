@@ -34,7 +34,6 @@ use std::time::{Duration, Instant};
 use tokio::sync::Notify;
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_events::{
     DurableEventLog, DurableEventSink, EventCursor as RuntimeEventCursor, EventSink,
     EventStreamKey, InMemoryDurableEventLog, InMemorySecurityAuditSink, ReadScope, RuntimeEvent,
@@ -106,6 +105,7 @@ use brassclaw_turns::{
     },
     runner::ClaimedTurnRun,
 };
+use chrono::Utc;
 
 // ─── Static turn state store ──────────────────────────────────────────────
 //

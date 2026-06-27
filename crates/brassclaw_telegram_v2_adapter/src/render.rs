@@ -211,8 +211,8 @@ fn build_egress_request(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
     use brassclaw_turns::TurnRunId;
+    use chrono::Utc;
 
     fn handle() -> EgressCredentialHandle {
         EgressCredentialHandle::new("telegram_bot_token").expect("valid")

@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use chrono::{Duration, Utc};
 use brassclaw_auth::{
     AuthChallenge, AuthContinuationEvent, AuthContinuationRef, AuthErrorCode, AuthFlowId,
     AuthFlowManager, AuthFlowRecord, AuthFlowStatus, AuthInteractionId, AuthInteractionService,
@@ -18,6 +17,7 @@ use brassclaw_reborn_composition::{
     RebornAuthContinuationDispatcher, RebornManualTokenError, RebornManualTokenSetupRequest,
     RebornManualTokenSubmitRequest, RebornManualTokenSubmitResponse, RebornProductAuthServices,
 };
+use chrono::{Duration, Utc};
 use secrecy::SecretString;
 
 const RAW_TOKEN: &str = "super-secret-manual-token";

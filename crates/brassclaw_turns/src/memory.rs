@@ -5,8 +5,8 @@ use std::{
     sync::{Arc, Condvar, Mutex, MutexGuard},
 };
 
-use chrono::{Duration as ChronoDuration, Utc};
 use brassclaw_host_api::UserId;
+use chrono::{Duration as ChronoDuration, Utc};
 
 use crate::{
     AcceptedMessageRef, AdmissionRejection, AdmissionRejectionReason,

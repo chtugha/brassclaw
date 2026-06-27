@@ -1,5 +1,5 @@
-use chrono::{DateTime, Utc};
 use brassclaw_host_api::{CapabilityId, InvocationId};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 const CAPABILITY_DISPLAY_SUMMARY_MAX_BYTES: usize = 2 * 1024;
@@ -182,8 +182,8 @@ fn validate_output_kind(value: Option<&str>) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
     use brassclaw_host_api::{CapabilityId, InvocationId};
+    use chrono::Utc;
 
     use crate::{
         CapabilityDisplayPreviewEnvelope, CapabilityDisplayPreviewEnvelopeInput,

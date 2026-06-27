@@ -21,8 +21,8 @@ use bollard::{
     },
     models::HostConfig,
 };
-use futures_util::StreamExt;
 use brassclaw_host_api::ResourceScope;
+use futures_util::StreamExt;
 
 use crate::{
     CommandExecutionOutput, CommandExecutionRequest, RuntimeProcessError, SandboxCommandTransport,

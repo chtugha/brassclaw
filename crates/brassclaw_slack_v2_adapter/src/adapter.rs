@@ -474,13 +474,13 @@ fn slack_error_kind(error: &str) -> SlackDeliveryFailureKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
     use brassclaw_product_adapters::auth::mark_request_signature_verified;
     use brassclaw_product_adapters::{
         DeliveryStatus, ExternalConversationRef, FakeOutboundDeliverySink, FakeProtocolHttpEgress,
         FinalReplyView, ProductOutboundTarget,
     };
     use brassclaw_turns::{ReplyTargetBindingRef, TurnRunId};
+    use chrono::Utc;
 
     fn config() -> SlackV2AdapterConfig {
         SlackV2AdapterConfig {

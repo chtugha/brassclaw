@@ -391,7 +391,10 @@ fn next_container_name(phase: SandboxProcessPhase) -> String {
         SandboxProcessPhase::Run => "run",
     };
     let sequence = CONTAINER_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    format!("brassclaw-sandbox-{phase}-{}-{sequence}", std::process::id())
+    format!(
+        "brassclaw-sandbox-{phase}-{}-{sequence}",
+        std::process::id()
+    )
 }
 
 struct DockerPhaseSpec<'a> {

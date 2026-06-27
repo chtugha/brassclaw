@@ -1024,7 +1024,8 @@ mod tests {
             "demo",
             "tools-src/demo",
             Some(
-                "http://github.com/chtugha/brassclaw/releases/latest/download/demo.wasm".to_string(),
+                "http://github.com/chtugha/brassclaw/releases/latest/download/demo.wasm"
+                    .to_string(),
             ),
             None,
         );

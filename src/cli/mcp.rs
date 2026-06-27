@@ -99,7 +99,12 @@ impl McpServerConfig {
         }
     }
 
-    pub(super) fn new_stdio(name: &str, command: &str, args: Vec<String>, env: HashMap<String, String>) -> Self {
+    pub(super) fn new_stdio(
+        name: &str,
+        command: &str,
+        args: Vec<String>,
+        env: HashMap<String, String>,
+    ) -> Self {
         Self {
             name: name.to_string(),
             url: String::new(),
@@ -151,7 +156,9 @@ impl McpServerConfig {
     }
 
     pub(super) fn has_custom_auth_header(&self) -> bool {
-        self.headers.keys().any(|k| k.eq_ignore_ascii_case("authorization"))
+        self.headers
+            .keys()
+            .any(|k| k.eq_ignore_ascii_case("authorization"))
     }
 
     pub(super) fn effective_transport(&self) -> EffectiveTransport {
@@ -228,7 +235,9 @@ async fn create_client_from_config(
     _secrets: Option<Arc<dyn SecretsStore + Send + Sync>>,
     _owner_id: &str,
 ) -> Result<McpClient, anyhow::Error> {
-    Err(anyhow::anyhow!("MCP client creation not yet implemented in V2"))
+    Err(anyhow::anyhow!(
+        "MCP client creation not yet implemented in V2"
+    ))
 }
 
 #[derive(Debug, Clone)]
@@ -291,7 +300,9 @@ pub(super) mod config {
     impl std::fmt::Display for ConfigError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
-                ConfigError::NotSupported(msg) => write!(f, "Config operation not supported: {}", msg),
+                ConfigError::NotSupported(msg) => {
+                    write!(f, "Config operation not supported: {}", msg)
+                }
             }
         }
     }
@@ -302,7 +313,9 @@ pub(super) mod config {
         _db: Option<&dyn Database>,
         _owner_id: &str,
     ) -> Result<McpServersFile, ConfigError> {
-        Ok(McpServersFile { servers: Vec::new() })
+        Ok(McpServersFile {
+            servers: Vec::new(),
+        })
     }
 
     pub(crate) async fn save_mcp_servers_to_db(
@@ -310,11 +323,15 @@ pub(super) mod config {
         _owner_id: &str,
         _servers: &McpServersFile,
     ) -> Result<(), ConfigError> {
-        Err(ConfigError::NotSupported("MCP config save not yet implemented in V2".to_string()))
+        Err(ConfigError::NotSupported(
+            "MCP config save not yet implemented in V2".to_string(),
+        ))
     }
 
     pub(crate) async fn save_mcp_servers(_servers: &McpServersFile) -> Result<(), ConfigError> {
-        Err(ConfigError::NotSupported("MCP config save not yet implemented in V2".to_string()))
+        Err(ConfigError::NotSupported(
+            "MCP config save not yet implemented in V2".to_string(),
+        ))
     }
 }
 
@@ -860,7 +877,7 @@ async fn test_server(name: String, user_id: String) -> anyhow::Result<()> {
 async fn toggle_server(name: String, enable: bool, _disable: bool) -> anyhow::Result<()> {
     let (_db, _owner_id) = connect_db().await;
     let _ = (name, enable); // Suppress unused warnings
-    
+
     println!("  ⚠ MCP server toggle not yet implemented in V2");
     println!("  Use brassclaw_mcp crate for MCP server management");
     println!();

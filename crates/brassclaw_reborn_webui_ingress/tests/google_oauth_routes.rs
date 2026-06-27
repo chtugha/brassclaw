@@ -20,13 +20,13 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
-use chrono::Duration as ChronoDuration;
-use http_body_util::BodyExt;
 use brassclaw_host_api::TenantId;
 use brassclaw_reborn_webui_ingress::{
     EmailUserDirectory, InMemorySessionStore, OAuthError, OAuthProvider, OAuthProviderName,
     OAuthRouterConfig, OAuthUserProfile, SessionStore, webui_v2_auth_router,
 };
+use chrono::Duration as ChronoDuration;
+use http_body_util::BodyExt;
 use parking_lot::Mutex;
 use serde::Deserialize;
 use tower::ServiceExt;
@@ -1131,11 +1131,11 @@ mod user_directory_branches {
 mod session_store_failure {
     use super::*;
     use async_trait::async_trait;
-    use chrono::Duration as ChronoDuration;
     use brassclaw_host_api::{TenantId, UserId};
     use brassclaw_reborn_webui_ingress::{
         SessionRecord, SessionStore, SessionStoreError, UserDirectory,
     };
+    use chrono::Duration as ChronoDuration;
     use secrecy::SecretString;
 
     struct AlwaysFailCreate;
@@ -1232,11 +1232,11 @@ mod session_store_failure {
 mod logout_revoke_failure {
     use super::*;
     use async_trait::async_trait;
-    use chrono::Duration as ChronoDuration;
     use brassclaw_host_api::{TenantId, UserId};
     use brassclaw_reborn_webui_ingress::{
         SessionRecord, SessionStore, SessionStoreError, UserDirectory,
     };
+    use chrono::Duration as ChronoDuration;
     use secrecy::SecretString;
 
     struct RevokeAlwaysFails;

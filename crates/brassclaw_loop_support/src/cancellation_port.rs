@@ -8,7 +8,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_turns::{
     GetRunStateRequest, TurnRunId, TurnRunWake, TurnRunWakeNotifier, TurnScope, TurnStateStore,
     TurnStatus,
@@ -17,6 +16,7 @@ use brassclaw_turns::{
         LoopCancellationSignal,
     },
 };
+use chrono::Utc;
 use parking_lot::RwLock;
 use tokio::sync::Notify;
 
@@ -501,7 +501,6 @@ mod tests {
     use std::time::Duration;
 
     use async_trait::async_trait;
-    use chrono::Utc;
     use brassclaw_host_api::{AgentId, ProjectId, TenantId, ThreadId, UserId};
     use brassclaw_turns::run_profile::{LoopCancelReasonKind, LoopCancellationPort};
     use brassclaw_turns::{
@@ -512,6 +511,7 @@ mod tests {
         TurnRunState, TurnRunWake, TurnRunWakeNotifier, TurnScope, TurnStateStore, TurnStatus,
         run_profile::AgentLoopHostError,
     };
+    use chrono::Utc;
 
     use super::{
         AlwaysAliveLoopCancellationPort, AlwaysAliveRunCancellationFactory, RunCancellationFactory,

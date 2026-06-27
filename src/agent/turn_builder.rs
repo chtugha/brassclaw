@@ -1,8 +1,8 @@
-use serde::{Serialize, Deserialize};
-use uuid::Uuid;
-use brassclaw_common::truncate_preview;
 use crate::generated_images::GeneratedImageSentinel;
 use crate::history::ConversationMessage;
+use brassclaw_common::truncate_preview;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 pub const MAX_HISTORY_IMAGE_DATA_URL_BYTES_PER_IMAGE: usize = 512 * 1024;
 pub const MAX_HISTORY_IMAGE_DATA_URL_BYTES_PER_RESPONSE: usize = 1024 * 1024;
@@ -158,9 +158,7 @@ pub fn tool_result_preview(result: Option<&serde_json::Value>) -> Option<String>
 }
 
 /// Build TurnInfo pairs from flat DB messages (user/tool_calls/assistant triples).
-pub fn build_turns_from_db_messages(
-    messages: &[ConversationMessage],
-) -> Vec<TurnInfo> {
+pub fn build_turns_from_db_messages(messages: &[ConversationMessage]) -> Vec<TurnInfo> {
     let mut turns = Vec::new();
     let mut turn_number = 0;
     let mut iter = messages.iter().peekable();

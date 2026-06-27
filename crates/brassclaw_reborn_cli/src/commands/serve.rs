@@ -4,7 +4,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::{Context, anyhow};
-use clap::Args;
 #[cfg(not(feature = "slack-v2-host-beta"))]
 use brassclaw_reborn_composition::build_webui_services;
 use brassclaw_reborn_composition::host_api::{AgentId, ProjectId, TenantId, UserId};
@@ -23,6 +22,7 @@ use brassclaw_reborn_config::IdentitySection;
 use brassclaw_reborn_webui_ingress::{
     EnvBearerAuthenticator, RebornWebuiServeOptions, serve_webui_v2,
 };
+use clap::Args;
 use secrecy::SecretString;
 
 use crate::context::RebornCliContext;
@@ -833,14 +833,13 @@ mod tests {
             })
             .await
             .expect("seed stale local trigger access");
-        let runtime_input =
-            RebornRuntimeInput::from_services(RebornBuildInput::local_dev(
-                "serve-trigger-owner",
-                dir.path().join("runtime"),
-            ))
-            .with_trigger_poller_settings(
-                brassclaw_reborn_composition::TriggerPollerSettings::enabled(),
-            );
+        let runtime_input = RebornRuntimeInput::from_services(RebornBuildInput::local_dev(
+            "serve-trigger-owner",
+            dir.path().join("runtime"),
+        ))
+        .with_trigger_poller_settings(
+            brassclaw_reborn_composition::TriggerPollerSettings::enabled(),
+        );
 
         let runtime_input = with_local_trigger_fire_access_checker(
             runtime_input,
@@ -902,14 +901,13 @@ mod tests {
         let agent_id = AgentId::new("serve-trigger-no-project-agent").expect("agent id");
         let project_id = ProjectId::new("serve-trigger-no-project-project").expect("project id");
         let user_store_path = dir.path().join("reborn-local-dev.db");
-        let runtime_input =
-            RebornRuntimeInput::from_services(RebornBuildInput::local_dev(
-                "serve-trigger-owner",
-                dir.path().join("runtime"),
-            ))
-            .with_trigger_poller_settings(
-                brassclaw_reborn_composition::TriggerPollerSettings::enabled(),
-            );
+        let runtime_input = RebornRuntimeInput::from_services(RebornBuildInput::local_dev(
+            "serve-trigger-owner",
+            dir.path().join("runtime"),
+        ))
+        .with_trigger_poller_settings(
+            brassclaw_reborn_composition::TriggerPollerSettings::enabled(),
+        );
 
         let runtime_input = with_local_trigger_fire_access_checker(
             runtime_input,

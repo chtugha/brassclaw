@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use std::pin::Pin;
 
 use async_trait::async_trait;
+use brassclaw_common::{ExtensionName, ExternalThreadId, ExternalThreadIdError, JobResultStatus};
 use chrono::{DateTime, Utc};
 use futures::Stream;
-use brassclaw_common::{ExtensionName, ExternalThreadId, ExternalThreadIdError, JobResultStatus};
 use uuid::Uuid;
 
 use crate::error::ChannelError;
@@ -973,4 +973,3 @@ pub trait ChannelSecretUpdater: Send + Sync {
     /// The secret is optional (may be None if secret is no longer configured).
     async fn update_secret(&self, new_secret: Option<secrecy::SecretString>);
 }
-

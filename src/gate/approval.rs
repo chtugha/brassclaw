@@ -78,4 +78,3 @@ impl ExecutionGate for RelayChannelGate {
         }
     }
 }
-

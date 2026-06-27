@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::{Duration as ChronoDuration, Utc};
 use brassclaw_auth::{
     AuthContinuationRef, AuthErrorCode, AuthProductError, CredentialAccountLabel,
     CredentialAccountSelectionRequest,
@@ -11,6 +10,7 @@ use brassclaw_product_workflow::{
     ExtensionCredentialSubmitRequest, RebornServicesError, RebornServicesErrorCode,
     RebornServicesErrorKind,
 };
+use chrono::{Duration as ChronoDuration, Utc};
 
 use crate::{
     RebornManualTokenSetupRequest, RebornManualTokenSubmitRequest, RebornProductAuthServices,

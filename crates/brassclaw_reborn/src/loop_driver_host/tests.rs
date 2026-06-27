@@ -148,7 +148,8 @@ async fn checkpoint_port_load_payload_rejects_schema_version_mismatch() {
         .expect("write checkpoint metadata");
 
     // Load with a bumped schema version — stored = N, expected = N+1.
-    let bumped_version = brassclaw_turns::RunProfileVersion::new(stored_schema_version.as_u64() + 1);
+    let bumped_version =
+        brassclaw_turns::RunProfileVersion::new(stored_schema_version.as_u64() + 1);
 
     let error = port
         .load_checkpoint_payload(LoadCheckpointPayloadRequest {

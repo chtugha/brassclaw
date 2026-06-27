@@ -212,7 +212,8 @@ mod tests {
 
         // Bob uses UserId with Admin role — still cannot see Alice's setting
         let bob_identity = UserId::from_trusted("bob".into(), UserRole::Admin);
-        let bob_scope = brassclaw::tenant::TenantScope::with_identity(bob_identity, Arc::clone(&db));
+        let bob_scope =
+            brassclaw::tenant::TenantScope::with_identity(bob_identity, Arc::clone(&db));
         let result = bob_scope.get_setting("lang").await.unwrap();
         assert!(
             result.is_none(),

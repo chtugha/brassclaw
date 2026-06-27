@@ -4,7 +4,6 @@ use std::sync::{
 };
 
 use async_trait::async_trait;
-use chrono::{Duration, Utc};
 use brassclaw_auth::{
     AuthChallenge, AuthContinuationEvent, AuthContinuationRef, AuthErrorCode, AuthFlowId,
     AuthFlowKind, AuthProductError, AuthProductScope, AuthProviderClient, AuthProviderId,
@@ -19,6 +18,7 @@ use brassclaw_reborn_composition::{
     RebornAuthContinuationDispatcher, RebornOAuthCallbackOutcome, RebornOAuthCallbackRequest,
     RebornOAuthCallbackResponse, RebornProductAuthServices,
 };
+use chrono::{Duration, Utc};
 use secrecy::SecretString;
 
 #[derive(Default)]

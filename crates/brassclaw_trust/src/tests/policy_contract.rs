@@ -34,11 +34,11 @@ use crate::{
     HostTrustPolicy, InvalidationBus, TrustDecision, TrustError, TrustPolicy, TrustPolicyInput,
     TrustProvenance,
 };
-use chrono::Utc;
 use brassclaw_host_api::{
     CapabilityId, EffectKind, PackageId, PackageIdentity, PackageSource, RequestedTrustClass,
     ResourceCeiling, TrustClass,
 };
+use chrono::Utc;
 use static_assertions::assert_not_impl_any;
 
 // ---------------------------------------------------------------------------

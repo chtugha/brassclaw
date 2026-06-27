@@ -1044,12 +1044,14 @@ mod tests {
         let a = CapabilityInvocation {
             surface_version: surface.clone(),
             capability_id: cap_id.clone(),
-            input_ref: brassclaw_turns::run_profile::CapabilityInputRef::new("input:a").expect("ok"),
+            input_ref: brassclaw_turns::run_profile::CapabilityInputRef::new("input:a")
+                .expect("ok"),
         };
         let b = CapabilityInvocation {
             surface_version: surface,
             capability_id: cap_id,
-            input_ref: brassclaw_turns::run_profile::CapabilityInputRef::new("input:b").expect("ok"),
+            input_ref: brassclaw_turns::run_profile::CapabilityInputRef::new("input:b")
+                .expect("ok"),
         };
         assert_ne!(
             invocation_arguments_digest(&a),

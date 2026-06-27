@@ -295,7 +295,6 @@ mod tests {
     use std::sync::Mutex;
 
     use async_trait::async_trait;
-    use chrono::Utc;
     use brassclaw_auth::{
         AuthContinuationEvent, AuthContinuationRef, AuthErrorCode, AuthFlowId, AuthGateRef,
         AuthProductError, AuthProductScope, AuthSessionId, AuthSurface, LifecyclePackageRef,
@@ -314,6 +313,7 @@ mod tests {
         TurnStatus,
         runner::{BlockRunRequest, ClaimRunRequest, TurnRunTransitionPort},
     };
+    use chrono::Utc;
 
     use super::*;
 

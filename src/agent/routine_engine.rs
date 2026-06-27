@@ -26,6 +26,7 @@ use crate::agent::routine::{
     NotifyConfig, Routine, RoutineAction, RoutineRun, RunStatus, Trigger,
     apply_routine_verification_result, next_cron_fire, routine_verification_fingerprint,
 };
+use crate::capabilities::dispatcher::BuiltinCapabilityDispatcher;
 use crate::channels::{IncomingMessage, OutgoingResponse};
 use crate::config::RoutineConfig;
 use crate::context::{JobContext, JobState};
@@ -33,7 +34,6 @@ use crate::error::RoutineError;
 use crate::extensions::ExtensionManager;
 use crate::ownership::Owned;
 use crate::tenant::SystemScope;
-use crate::capabilities::dispatcher::BuiltinCapabilityDispatcher;
 use crate::workspace::Workspace;
 use brassclaw_llm::{
     ChatMessage, CompletionRequest, FinishReason, LlmProvider, ToolCall, ToolCompletionRequest,
@@ -43,86 +43,233 @@ use brassclaw_safety::SafetyLayer;
 /// Returns all V2 capability IDs with their descriptions for LLM tool definitions.
 fn list_all_v2_capabilities() -> Vec<(String, String)> {
     use crate::capabilities::*;
-    
+
     vec![
         // Filesystem
-        (filesystem::READ_FILE_CAPABILITY_ID.to_string(), "Read file contents".to_string()),
-        (filesystem::WRITE_FILE_CAPABILITY_ID.to_string(), "Write content to a file".to_string()),
-        (filesystem::LIST_DIR_CAPABILITY_ID.to_string(), "List directory contents".to_string()),
-        (filesystem::APPLY_PATCH_CAPABILITY_ID.to_string(), "Apply a patch to a file".to_string()),
-        (filesystem::GLOB_CAPABILITY_ID.to_string(), "Search files using glob patterns".to_string()),
-        (filesystem::GREP_CAPABILITY_ID.to_string(), "Search file contents using regex".to_string()),
-        (filesystem::FILE_UNDO_CAPABILITY_ID.to_string(), "Undo file changes".to_string()),
-        
+        (
+            filesystem::READ_FILE_CAPABILITY_ID.to_string(),
+            "Read file contents".to_string(),
+        ),
+        (
+            filesystem::WRITE_FILE_CAPABILITY_ID.to_string(),
+            "Write content to a file".to_string(),
+        ),
+        (
+            filesystem::LIST_DIR_CAPABILITY_ID.to_string(),
+            "List directory contents".to_string(),
+        ),
+        (
+            filesystem::APPLY_PATCH_CAPABILITY_ID.to_string(),
+            "Apply a patch to a file".to_string(),
+        ),
+        (
+            filesystem::GLOB_CAPABILITY_ID.to_string(),
+            "Search files using glob patterns".to_string(),
+        ),
+        (
+            filesystem::GREP_CAPABILITY_ID.to_string(),
+            "Search file contents using regex".to_string(),
+        ),
+        (
+            filesystem::FILE_UNDO_CAPABILITY_ID.to_string(),
+            "Undo file changes".to_string(),
+        ),
         // Shell
-        (shell::SHELL_CAPABILITY_ID.to_string(), "Execute shell commands".to_string()),
-        
+        (
+            shell::SHELL_CAPABILITY_ID.to_string(),
+            "Execute shell commands".to_string(),
+        ),
         // Network
-        (network::HTTP_CAPABILITY_ID.to_string(), "Make HTTP requests".to_string()),
-        
+        (
+            network::HTTP_CAPABILITY_ID.to_string(),
+            "Make HTTP requests".to_string(),
+        ),
         // Memory
-        (memory::MEMORY_READ_CAPABILITY_ID.to_string(), "Read from memory".to_string()),
-        (memory::MEMORY_WRITE_CAPABILITY_ID.to_string(), "Write to memory".to_string()),
-        (memory::MEMORY_SEARCH_CAPABILITY_ID.to_string(), "Search memory".to_string()),
-        (memory::MEMORY_TREE_CAPABILITY_ID.to_string(), "Get memory tree structure".to_string()),
-        
+        (
+            memory::MEMORY_READ_CAPABILITY_ID.to_string(),
+            "Read from memory".to_string(),
+        ),
+        (
+            memory::MEMORY_WRITE_CAPABILITY_ID.to_string(),
+            "Write to memory".to_string(),
+        ),
+        (
+            memory::MEMORY_SEARCH_CAPABILITY_ID.to_string(),
+            "Search memory".to_string(),
+        ),
+        (
+            memory::MEMORY_TREE_CAPABILITY_ID.to_string(),
+            "Get memory tree structure".to_string(),
+        ),
         // Messaging
-        (messaging::MESSAGE_CAPABILITY_ID.to_string(), "Send messages".to_string()),
-        
+        (
+            messaging::MESSAGE_CAPABILITY_ID.to_string(),
+            "Send messages".to_string(),
+        ),
         // Jobs
-        (jobs::CREATE_JOB_CAPABILITY_ID.to_string(), "Create a new job".to_string()),
-        (jobs::CANCEL_JOB_CAPABILITY_ID.to_string(), "Cancel a job".to_string()),
-        (jobs::LIST_JOBS_CAPABILITY_ID.to_string(), "List jobs".to_string()),
-        (jobs::JOB_STATUS_CAPABILITY_ID.to_string(), "Get job status".to_string()),
-        (jobs::JOB_EVENTS_CAPABILITY_ID.to_string(), "Get job events".to_string()),
-        (jobs::JOB_PROMPT_CAPABILITY_ID.to_string(), "Prompt for job input".to_string()),
-        
+        (
+            jobs::CREATE_JOB_CAPABILITY_ID.to_string(),
+            "Create a new job".to_string(),
+        ),
+        (
+            jobs::CANCEL_JOB_CAPABILITY_ID.to_string(),
+            "Cancel a job".to_string(),
+        ),
+        (
+            jobs::LIST_JOBS_CAPABILITY_ID.to_string(),
+            "List jobs".to_string(),
+        ),
+        (
+            jobs::JOB_STATUS_CAPABILITY_ID.to_string(),
+            "Get job status".to_string(),
+        ),
+        (
+            jobs::JOB_EVENTS_CAPABILITY_ID.to_string(),
+            "Get job events".to_string(),
+        ),
+        (
+            jobs::JOB_PROMPT_CAPABILITY_ID.to_string(),
+            "Prompt for job input".to_string(),
+        ),
         // Routines
-        (routines::ROUTINE_CREATE_CAPABILITY_ID.to_string(), "Create a routine".to_string()),
-        (routines::ROUTINE_UPDATE_CAPABILITY_ID.to_string(), "Update a routine".to_string()),
-        (routines::ROUTINE_DELETE_CAPABILITY_ID.to_string(), "Delete a routine".to_string()),
-        (routines::ROUTINE_LIST_CAPABILITY_ID.to_string(), "List routines".to_string()),
-        (routines::ROUTINE_HISTORY_CAPABILITY_ID.to_string(), "Get routine history".to_string()),
-        (routines::ROUTINE_FIRE_CAPABILITY_ID.to_string(), "Fire a routine".to_string()),
-        (routines::EVENT_EMIT_CAPABILITY_ID.to_string(), "Emit an event".to_string()),
-        
+        (
+            routines::ROUTINE_CREATE_CAPABILITY_ID.to_string(),
+            "Create a routine".to_string(),
+        ),
+        (
+            routines::ROUTINE_UPDATE_CAPABILITY_ID.to_string(),
+            "Update a routine".to_string(),
+        ),
+        (
+            routines::ROUTINE_DELETE_CAPABILITY_ID.to_string(),
+            "Delete a routine".to_string(),
+        ),
+        (
+            routines::ROUTINE_LIST_CAPABILITY_ID.to_string(),
+            "List routines".to_string(),
+        ),
+        (
+            routines::ROUTINE_HISTORY_CAPABILITY_ID.to_string(),
+            "Get routine history".to_string(),
+        ),
+        (
+            routines::ROUTINE_FIRE_CAPABILITY_ID.to_string(),
+            "Fire a routine".to_string(),
+        ),
+        (
+            routines::EVENT_EMIT_CAPABILITY_ID.to_string(),
+            "Emit an event".to_string(),
+        ),
         // Skills
-        (skills::SKILL_INSTALL_CAPABILITY_ID.to_string(), "Install a skill".to_string()),
-        (skills::SKILL_REMOVE_CAPABILITY_ID.to_string(), "Remove a skill".to_string()),
-        (skills::SKILL_LIST_CAPABILITY_ID.to_string(), "List skills".to_string()),
-        (skills::SKILL_SEARCH_CAPABILITY_ID.to_string(), "Search for skills".to_string()),
-        
+        (
+            skills::SKILL_INSTALL_CAPABILITY_ID.to_string(),
+            "Install a skill".to_string(),
+        ),
+        (
+            skills::SKILL_REMOVE_CAPABILITY_ID.to_string(),
+            "Remove a skill".to_string(),
+        ),
+        (
+            skills::SKILL_LIST_CAPABILITY_ID.to_string(),
+            "List skills".to_string(),
+        ),
+        (
+            skills::SKILL_SEARCH_CAPABILITY_ID.to_string(),
+            "Search for skills".to_string(),
+        ),
         // Extensions
-        (extensions::TOOL_INSTALL_CAPABILITY_ID.to_string(), "Install a tool".to_string()),
-        (extensions::TOOL_REMOVE_CAPABILITY_ID.to_string(), "Remove a tool".to_string()),
-        (extensions::TOOL_LIST_CAPABILITY_ID.to_string(), "List tools".to_string()),
-        (extensions::TOOL_SEARCH_CAPABILITY_ID.to_string(), "Search for tools".to_string()),
-        (extensions::TOOL_UPGRADE_CAPABILITY_ID.to_string(), "Upgrade a tool".to_string()),
-        (extensions::TOOL_AUTH_CAPABILITY_ID.to_string(), "Authenticate a tool".to_string()),
-        (extensions::TOOL_INFO_CAPABILITY_ID.to_string(), "Get tool info".to_string()),
-        (extensions::EXTENSION_INFO_CAPABILITY_ID.to_string(), "Get extension info".to_string()),
-        (extensions::TOOL_PERMISSION_SET_CAPABILITY_ID.to_string(), "Set tool permissions".to_string()),
-        
+        (
+            extensions::TOOL_INSTALL_CAPABILITY_ID.to_string(),
+            "Install a tool".to_string(),
+        ),
+        (
+            extensions::TOOL_REMOVE_CAPABILITY_ID.to_string(),
+            "Remove a tool".to_string(),
+        ),
+        (
+            extensions::TOOL_LIST_CAPABILITY_ID.to_string(),
+            "List tools".to_string(),
+        ),
+        (
+            extensions::TOOL_SEARCH_CAPABILITY_ID.to_string(),
+            "Search for tools".to_string(),
+        ),
+        (
+            extensions::TOOL_UPGRADE_CAPABILITY_ID.to_string(),
+            "Upgrade a tool".to_string(),
+        ),
+        (
+            extensions::TOOL_AUTH_CAPABILITY_ID.to_string(),
+            "Authenticate a tool".to_string(),
+        ),
+        (
+            extensions::TOOL_INFO_CAPABILITY_ID.to_string(),
+            "Get tool info".to_string(),
+        ),
+        (
+            extensions::EXTENSION_INFO_CAPABILITY_ID.to_string(),
+            "Get extension info".to_string(),
+        ),
+        (
+            extensions::TOOL_PERMISSION_SET_CAPABILITY_ID.to_string(),
+            "Set tool permissions".to_string(),
+        ),
         // Secrets
-        (secrets::SECRET_LIST_CAPABILITY_ID.to_string(), "List secrets".to_string()),
-        (secrets::SECRET_DELETE_CAPABILITY_ID.to_string(), "Delete a secret".to_string()),
-        
+        (
+            secrets::SECRET_LIST_CAPABILITY_ID.to_string(),
+            "List secrets".to_string(),
+        ),
+        (
+            secrets::SECRET_DELETE_CAPABILITY_ID.to_string(),
+            "Delete a secret".to_string(),
+        ),
         // Images
-        (images::IMAGE_GENERATE_CAPABILITY_ID.to_string(), "Generate an image".to_string()),
-        (images::IMAGE_ANALYZE_CAPABILITY_ID.to_string(), "Analyze an image".to_string()),
-        (images::IMAGE_EDIT_CAPABILITY_ID.to_string(), "Edit an image".to_string()),
-        
+        (
+            images::IMAGE_GENERATE_CAPABILITY_ID.to_string(),
+            "Generate an image".to_string(),
+        ),
+        (
+            images::IMAGE_ANALYZE_CAPABILITY_ID.to_string(),
+            "Analyze an image".to_string(),
+        ),
+        (
+            images::IMAGE_EDIT_CAPABILITY_ID.to_string(),
+            "Edit an image".to_string(),
+        ),
         // System
-        (system::ECHO_CAPABILITY_ID.to_string(), "Echo a message".to_string()),
-        (system::TIME_CAPABILITY_ID.to_string(), "Get current time".to_string()),
-        (system::JSON_CAPABILITY_ID.to_string(), "Parse JSON".to_string()),
-        (system::PLAN_UPDATE_CAPABILITY_ID.to_string(), "Update plan".to_string()),
-        (system::RESTART_CAPABILITY_ID.to_string(), "Restart system".to_string()),
-        (system::SYSTEM_VERSION_CAPABILITY_ID.to_string(), "Get system version".to_string()),
-        (system::SYSTEM_TOOLS_LIST_CAPABILITY_ID.to_string(), "List system tools".to_string()),
-        
+        (
+            system::ECHO_CAPABILITY_ID.to_string(),
+            "Echo a message".to_string(),
+        ),
+        (
+            system::TIME_CAPABILITY_ID.to_string(),
+            "Get current time".to_string(),
+        ),
+        (
+            system::JSON_CAPABILITY_ID.to_string(),
+            "Parse JSON".to_string(),
+        ),
+        (
+            system::PLAN_UPDATE_CAPABILITY_ID.to_string(),
+            "Update plan".to_string(),
+        ),
+        (
+            system::RESTART_CAPABILITY_ID.to_string(),
+            "Restart system".to_string(),
+        ),
+        (
+            system::SYSTEM_VERSION_CAPABILITY_ID.to_string(),
+            "Get system version".to_string(),
+        ),
+        (
+            system::SYSTEM_TOOLS_LIST_CAPABILITY_ID.to_string(),
+            "List system tools".to_string(),
+        ),
         // Pairing
-        (pairing::PAIRING_APPROVE_CAPABILITY_ID.to_string(), "Approve pairing request".to_string()),
+        (
+            pairing::PAIRING_APPROVE_CAPABILITY_ID.to_string(),
+            "Approve pairing request".to_string(),
+        ),
     ]
 }
 
@@ -133,16 +280,16 @@ async fn get_autonomous_allowed_capabilities(
     owner_id: &str,
 ) -> std::collections::HashSet<String> {
     use std::collections::HashSet;
-    
+
     // Get all builtin capability IDs
     let mut allowed: HashSet<String> = list_all_v2_capabilities()
         .into_iter()
         .map(|(id, _)| id)
         .collect();
-    
+
     // Filter out denylisted capabilities (same logic as V1)
     allowed.retain(|name| !is_autonomous_capability_denylisted(name));
-    
+
     // Add extension capabilities if available
     if let Some(extension_manager) = extension_manager
         && extension_manager.owner_id() == owner_id
@@ -154,7 +301,7 @@ async fn get_autonomous_allowed_capabilities(
                 .filter(|name| !is_autonomous_capability_denylisted(name)),
         );
     }
-    
+
     allowed
 }
 
@@ -176,7 +323,6 @@ fn is_autonomous_capability_denylisted(capability_id: &str) -> bool {
             | "restart"
     )
 }
-
 
 enum EventMatcher {
     Message { routine: Routine, regex: Regex },
@@ -2022,11 +2168,8 @@ async fn execute_lightweight_with_tools(
         ..Default::default()
     };
     // Get list of all V2 capability IDs that are allowed for autonomous execution
-    let allowed_tools = get_autonomous_allowed_capabilities(
-        ctx.extension_manager.as_ref(),
-        &routine.user_id,
-    )
-    .await;
+    let allowed_tools =
+        get_autonomous_allowed_capabilities(ctx.extension_manager.as_ref(), &routine.user_id).await;
 
     loop {
         iteration += 1;
@@ -2184,24 +2327,26 @@ async fn execute_routine_tool(
     tc: &ToolCall,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     if !allowed_tools.contains(&tc.name) {
-        let message = format!("tool '{}' is not in the allowed set for this routine", &tc.name);
+        let message = format!(
+            "tool '{}' is not in the allowed set for this routine",
+            &tc.name
+        );
         return Err(message.into());
     }
 
     // Build V2 capability dispatch request
-    use brassclaw_host_api::{CapabilityId, ResourceScope, ResourceEstimate, UserId, InvocationId};
-    
-    let capability_id = CapabilityId::new(&tc.name)
-        .map_err(|e| format!("Invalid capability ID: {}", e))?;
-    
-    let user_id = UserId::new(&job_ctx.user_id)
-        .map_err(|e| format!("Invalid user ID: {}", e))?;
-    
+    use brassclaw_host_api::{CapabilityId, InvocationId, ResourceEstimate, ResourceScope, UserId};
+
+    let capability_id =
+        CapabilityId::new(&tc.name).map_err(|e| format!("Invalid capability ID: {}", e))?;
+
+    let user_id = UserId::new(&job_ctx.user_id).map_err(|e| format!("Invalid user ID: {}", e))?;
+
     let invocation_id = InvocationId::new();
-    
+
     let scope = ResourceScope::local_default(user_id, invocation_id)
         .map_err(|e| format!("Failed to create resource scope: {}", e))?;
-    
+
     let request = brassclaw_host_api::CapabilityDispatchRequest {
         capability_id,
         scope,
@@ -2241,12 +2386,12 @@ async fn execute_routine_tool(
     }
 
     // Convert CapabilityDispatchResult to JSON string
-    let dispatch_result = result
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-    
+    let dispatch_result =
+        result.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+
     let result_str = serde_json::to_string(&dispatch_result.output)
         .unwrap_or_else(|_| "<serialize error>".to_string());
-    
+
     Ok(result_str)
 }
 

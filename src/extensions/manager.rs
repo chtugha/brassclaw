@@ -5,19 +5,18 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
-use crate::extensions::{
-    ActivateResult, AuthResult, ConfigureResult, EnsureReadyIntent, EnsureReadyOutcome,
-    ExtensionError, ExtensionKind, InstallResult,
-    InstalledExtension, InteractiveLoginInfo, InteractiveLoginPollResult,
-    InteractiveLoginStartResult, LatentProviderAction, SearchResult,
-    ToolAuthState, UpgradeResult,
-};
+use crate::channels::ChannelManager;
 use crate::extensions::discovery::OnlineDiscovery;
 use crate::extensions::registry::ExtensionRegistry;
+use crate::extensions::{
+    ActivateResult, AuthResult, ConfigureResult, EnsureReadyIntent, EnsureReadyOutcome,
+    ExtensionError, ExtensionKind, InstallResult, InstalledExtension, InteractiveLoginInfo,
+    InteractiveLoginPollResult, InteractiveLoginStartResult, LatentProviderAction, SearchResult,
+    ToolAuthState, UpgradeResult,
+};
 use crate::hooks::HookRegistry;
 use crate::pairing::PairingStore;
 use crate::secrets::SecretsStore;
-use crate::channels::ChannelManager;
 
 pub struct ExtensionManager {
     registry: Arc<ExtensionRegistry>,
@@ -56,9 +55,9 @@ impl ExtensionManager {
     ) -> Result<Vec<SearchResult>, ExtensionError> {
         // Search local registry
         let local_results = self.registry.search(query).await;
-        
+
         // TODO: Add online discovery when reimplemented
-        
+
         Ok(local_results)
     }
 

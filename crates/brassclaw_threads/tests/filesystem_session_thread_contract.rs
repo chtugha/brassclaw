@@ -9,7 +9,6 @@
 
 use std::sync::Arc;
 
-use chrono::Utc;
 use brassclaw_filesystem::{InMemoryBackend, RootFilesystem, ScopedFilesystem};
 use brassclaw_host_api::{
     AgentId, CapabilityId, InvocationId, MountAlias, MountGrant, MountPermissions, MountView,
@@ -25,6 +24,7 @@ use brassclaw_threads::{
     SessionThreadService, SummaryKind, SummaryModelContextPolicy, ThreadHistoryRequest,
     ThreadScope, UpdateAssistantDraftRequest,
 };
+use chrono::Utc;
 
 #[tokio::test]
 async fn filesystem_delete_thread_removes_owned_thread_and_hides_missing_or_wrong_scope() {

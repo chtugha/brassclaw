@@ -1,4 +1,3 @@
-pub use chrono::{Duration, Utc};
 pub use brassclaw_auth::{
     AuthChallenge, AuthContinuationRef, AuthErrorCode, AuthFlowKind, AuthFlowManager,
     AuthFlowStatus, AuthGateRef, AuthInteractionService, AuthProductError, AuthProductScope,
@@ -19,6 +18,7 @@ pub use brassclaw_auth::{
     TurnRunRef,
 };
 pub use brassclaw_host_api::{ExtensionId, InvocationId, ResourceScope, SecretHandle, UserId};
+pub use chrono::{Duration, Utc};
 pub use secrecy::SecretString;
 
 pub fn scope(user: &str) -> AuthProductScope {

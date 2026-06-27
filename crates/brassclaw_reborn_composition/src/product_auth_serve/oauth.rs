@@ -688,7 +688,9 @@ mod tests {
     use crate::oauth_gate::{GoogleOAuthGateProvider, GoogleOAuthGateProviderRegistry};
     use async_trait::async_trait;
     use brassclaw_auth::{GOOGLE_CALENDAR_READONLY_SCOPE, InMemoryAuthProductServices};
-    use brassclaw_host_api::{RuntimeCredentialAccountProviderId, RuntimeCredentialAuthRequirement};
+    use brassclaw_host_api::{
+        RuntimeCredentialAccountProviderId, RuntimeCredentialAuthRequirement,
+    };
     use brassclaw_secrets::{InMemorySecretStore, SecretStore};
     use brassclaw_turns::{TurnRunId, TurnScope};
     use std::sync::{Arc, Mutex};

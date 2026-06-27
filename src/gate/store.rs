@@ -447,8 +447,8 @@ impl PendingGateStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{Duration, Utc};
     use brassclaw_engine::{ConversationId, ResumeKind, ThreadId};
+    use chrono::{Duration, Utc};
 
     fn sample_gate_with(
         user_id: &str,

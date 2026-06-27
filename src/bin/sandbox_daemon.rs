@@ -166,11 +166,7 @@ async fn main() {
 
                 match result {
                     Ok(output) => {
-                        respond(
-                            Some(&req.id),
-                            Some(json!({ "output": output })),
-                            None,
-                        );
+                        respond(Some(&req.id), Some(json!({ "output": output })), None);
                     }
                     Err(e) => {
                         tool_error(&req.id, e);

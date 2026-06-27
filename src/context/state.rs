@@ -9,7 +9,6 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-
 use brassclaw_llm::recording::HttpInterceptor;
 
 /// Per-turn approval context, carried through the job state.

@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_host_api::{
     AgentId, CapabilityId, InvocationId, ProjectId, TenantId, ThreadId, UserId,
 };
@@ -22,6 +21,7 @@ use brassclaw_turns::run_profile::{
     LoopCompactionRequest, LoopSafeSummary, SystemInferenceError, SystemInferencePort,
     SystemInferenceRequest, SystemInferenceResponse, SystemInferenceTaskId,
 };
+use chrono::Utc;
 
 #[tokio::test]
 async fn compaction_port_rejects_visible_prompt_injection() {

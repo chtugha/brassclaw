@@ -13,7 +13,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures_util::FutureExt as _;
 use brassclaw_extensions::{ExtensionPackage, ExtensionRuntime};
 use brassclaw_host_api::{
     CapabilityId, ExtensionId, MountView, ResourceEstimate, ResourceReservation,
@@ -21,6 +20,7 @@ use brassclaw_host_api::{
     RuntimeHttpEgressRequest, RuntimeHttpEgressResponse, RuntimeKind,
 };
 use brassclaw_resources::{ResourceError, ResourceGovernor, ResourceReceipt};
+use futures_util::FutureExt as _;
 use serde_json::Value;
 use thiserror::Error;
 

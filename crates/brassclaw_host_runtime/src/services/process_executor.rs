@@ -44,7 +44,8 @@ impl ProcessExecutor for HostProcessExecutor {
 
 fn is_process_sandbox_request(request: &ProcessExecutionRequest) -> bool {
     request.runtime == RuntimeKind::System
-        && request.capability_id.as_str() == brassclaw_process_sandbox::PROCESS_SANDBOX_CAPABILITY_ID
+        && request.capability_id.as_str()
+            == brassclaw_process_sandbox::PROCESS_SANDBOX_CAPABILITY_ID
 }
 
 #[derive(Clone)]

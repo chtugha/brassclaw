@@ -7,8 +7,8 @@
 //! runs.
 #![allow(dead_code)] // Scaffolding; some items kept for future use.
 
-use chrono::{DateTime, Utc};
 use brassclaw_host_api::Timestamp;
+use chrono::{DateTime, Utc};
 
 /// Time source consumed by `HostTrustPolicy`.
 pub trait Clock: Send + Sync {

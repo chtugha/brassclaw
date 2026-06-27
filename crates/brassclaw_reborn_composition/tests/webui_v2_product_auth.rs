@@ -1,6 +1,5 @@
 //! Caller-level tests for Reborn WebUI v2 product-auth OAuth routes.
 
-
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
@@ -8,7 +7,6 @@ use async_trait::async_trait;
 use axum::body::{Body, to_bytes};
 use axum::extract::ConnectInfo;
 use axum::http::{HeaderValue, Method, Request, StatusCode, header};
-use chrono::{Duration as ChronoDuration, Utc};
 use brassclaw_auth::{
     AuthChallenge, AuthContinuationEvent, AuthFlowId, AuthFlowManager, AuthInteractionId,
     AuthInteractionService, AuthProductError, AuthProductScope, AuthProviderClient, AuthProviderId,
@@ -40,6 +38,7 @@ use brassclaw_reborn_composition::{
     GoogleOAuthRouteConfig, RebornAuthContinuationDispatcher, RebornProductAuthServices,
     RebornReadiness, RebornWebuiBundle, WebuiAuthenticator, WebuiServeConfig, webui_v2_app,
 };
+use chrono::{Duration as ChronoDuration, Utc};
 use serde_json::json;
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -390,14 +389,18 @@ impl RebornServicesApi for UnusedServices {
     async fn list_capabilities(
         &self,
         _caller: WebUiAuthenticatedCaller,
-    ) -> Result<brassclaw_product_workflow::RebornListCapabilitiesResponse, RebornServicesError> {
+    ) -> Result<brassclaw_product_workflow::RebornListCapabilitiesResponse, RebornServicesError>
+    {
         Err(rejecting_reborn_services_error())
     }
     async fn update_capability_permission(
         &self,
         _caller: WebUiAuthenticatedCaller,
         _request: brassclaw_product_workflow::RebornUpdateCapabilityPermissionRequest,
-    ) -> Result<brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse, RebornServicesError> {
+    ) -> Result<
+        brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse,
+        RebornServicesError,
+    > {
         Err(rejecting_reborn_services_error())
     }
     async fn list_skills(

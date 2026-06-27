@@ -389,7 +389,10 @@ mod tests {
         // Supplying the allowlist makes the same caller succeed.
         // SAFETY: serialized by ENV_LOCK.
         unsafe {
-            std::env::set_var("BRASSCLAW_REBORN_WEBUI_ALLOWED_EMAIL_DOMAINS", "example.com");
+            std::env::set_var(
+                "BRASSCLAW_REBORN_WEBUI_ALLOWED_EMAIL_DOMAINS",
+                "example.com",
+            );
         }
         let ok = sso_startup_config_from_env(addr("127.0.0.1:3000"))
             .expect("a configured provider WITH an allowlist must start")

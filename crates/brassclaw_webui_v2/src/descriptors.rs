@@ -79,7 +79,8 @@ pub const WEBUI_V2_PATTERN_START_NEARAI_LOGIN: &str = "/api/webchat/v2/llm/neara
 pub const WEBUI_V2_PATTERN_COMPLETE_NEARAI_WALLET_LOGIN: &str = "/api/webchat/v2/llm/nearai/wallet";
 pub const WEBUI_V2_PATTERN_START_CODEX_LOGIN: &str = "/api/webchat/v2/llm/codex/login";
 pub const WEBUI_V2_PATTERN_LIST_TOOLS: &str = "/api/webchat/v2/tools";
-pub const WEBUI_V2_PATTERN_UPDATE_TOOL_PERMISSION: &str = "/api/webchat/v2/tools/{capability_id}/permission";
+pub const WEBUI_V2_PATTERN_UPDATE_TOOL_PERMISSION: &str =
+    "/api/webchat/v2/tools/{capability_id}/permission";
 pub const WEBUI_V2_PATTERN_LIST_SKILLS: &str = "/api/webchat/v2/skills";
 pub const WEBUI_V2_PATTERN_INSTALL_SKILL: &str = "/api/webchat/v2/skills/install";
 pub const WEBUI_V2_PATTERN_REMOVE_SKILL: &str = "/api/webchat/v2/skills/{name}";

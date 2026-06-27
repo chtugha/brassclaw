@@ -6,8 +6,8 @@ pub mod env_helpers;
 mod event;
 mod event_publisher;
 pub mod hashing;
-mod onboarding;
 mod identity;
+mod onboarding;
 pub mod paths;
 pub mod pkce;
 mod platform;
@@ -23,11 +23,11 @@ pub use event::{
     SelfImprovementPhase, ToolDecisionDto,
 };
 pub use event_publisher::{DynEventPublisher, EventPublisher};
-pub use onboarding::{ChannelOnboardingInfo, ChannelOnboardingState};
 pub use identity::{
     CredentialName, ExtensionName, ExternalThreadId, ExternalThreadIdError,
     MAX_MCP_SERVER_NAME_LEN, MAX_NAME_LEN, McpServerName,
 };
+pub use onboarding::{ChannelOnboardingInfo, ChannelOnboardingState};
 pub use paths::brassclaw_base_dir;
 pub use platform::PlatformInfo;
 pub use timezone::{ValidTimezone, deserialize_option_lenient};

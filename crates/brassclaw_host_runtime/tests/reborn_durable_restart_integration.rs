@@ -5,7 +5,6 @@ use support::legacy_capability_fixture_to_v2;
 use std::{path::Path, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_approvals::LeaseApproval;
 use brassclaw_authorization::{
     CapabilityLeaseStatus, CapabilityLeaseStore, FilesystemCapabilityLeaseStore, GrantAuthorizer,
@@ -14,7 +13,9 @@ use brassclaw_authorization::{
 use brassclaw_events::{
     DurableAuditSink, DurableEventSink, EventStreamKey, ReadScope, RuntimeEventKind,
 };
-use brassclaw_extensions::{ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource};
+use brassclaw_extensions::{
+    ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource,
+};
 use brassclaw_filesystem::{LocalFilesystem, ScopedFilesystem};
 use brassclaw_host_api::*;
 use brassclaw_host_runtime::{
@@ -41,6 +42,7 @@ use brassclaw_trust::{
     AdminConfig, AdminEntry, AuthorityCeiling, EffectiveTrustClass, HostTrustAssignment,
     HostTrustPolicy, TrustDecision, TrustProvenance,
 };
+use chrono::Utc;
 use serde_json::{Value, json};
 
 #[tokio::test]

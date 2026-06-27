@@ -10,9 +10,9 @@
 //!
 //! [`Digest`]: brassclaw_hooks::predicate_hash::Digest
 
-use chrono::{DateTime, Utc};
 use brassclaw_hooks::predicate_hash;
 use brassclaw_hooks::predicate_state::{InvocationKey, ValueKey, window_cutoff};
+use chrono::{DateTime, Utc};
 
 /// `scope_hash` for a tenant — the trust boundary and per-tenant LRU-quota
 /// grain (`COUNT(DISTINCT key_hash) WHERE scope_hash = ?`).

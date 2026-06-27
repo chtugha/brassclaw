@@ -11,11 +11,11 @@ use std::{
 };
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_filesystem::{
     CasExpectation, ContentType, Entry, FileType, FilesystemError, IndexKey, IndexKind, IndexName,
     IndexSpec, IndexValue, RecordVersion, RootFilesystem, ScopedFilesystem,
 };
+use chrono::Utc;
 
 /// Bounded retry budget for compare-and-swap loops on lease writes.
 ///

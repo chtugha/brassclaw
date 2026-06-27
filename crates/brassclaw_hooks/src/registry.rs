@@ -558,7 +558,8 @@ mod tests {
         let mut binding =
             installed_binding("alpha", HookPhase::Policy, HookPointSpec::BeforePrompt);
         binding.scope = HookBindingScope::OwnCapabilities;
-        binding.owning_extension = Some(brassclaw_host_api::ExtensionId::new("ext").expect("valid"));
+        binding.owning_extension =
+            Some(brassclaw_host_api::ExtensionId::new("ext").expect("valid"));
         match registry.insert(binding) {
             Err(HookError::RegistryConstruction(msg)) => {
                 assert!(msg.contains("OwnCapabilities"), "unexpected msg: {msg}");
@@ -576,7 +577,8 @@ mod tests {
         let mut binding =
             installed_binding("alpha", HookPhase::Telemetry, HookPointSpec::AfterModel);
         binding.scope = HookBindingScope::OwnCapabilities;
-        binding.owning_extension = Some(brassclaw_host_api::ExtensionId::new("ext").expect("valid"));
+        binding.owning_extension =
+            Some(brassclaw_host_api::ExtensionId::new("ext").expect("valid"));
         assert!(matches!(
             registry.insert(binding),
             Err(HookError::RegistryConstruction(_))
@@ -590,7 +592,8 @@ mod tests {
         let mut binding =
             installed_binding("alpha", HookPhase::Policy, HookPointSpec::BeforeCapability);
         binding.scope = HookBindingScope::OwnCapabilities;
-        binding.owning_extension = Some(brassclaw_host_api::ExtensionId::new("ext").expect("valid"));
+        binding.owning_extension =
+            Some(brassclaw_host_api::ExtensionId::new("ext").expect("valid"));
         registry.insert(binding).expect("ok at before_capability");
         assert_eq!(registry.len(), 1);
     }

@@ -15,19 +15,38 @@ use std::process;
 /// Known reborn subcommands. When the first arg is one of these, pass
 /// straight through to the reborn CLI without any compat translation.
 const REBORN_SUBCOMMANDS: &[&str] = &[
-    "serve", "run", "onboard", "config", "registry", "channels", "routines", "mcp", "memory",
-    "pairing", "profile", "service", "skills", "hooks", "models", "doctor", "logs", "status",
-    "completion", "import", "login", "acp", "help", "--help", "-h", "--version", "-V",
+    "serve",
+    "run",
+    "onboard",
+    "config",
+    "registry",
+    "channels",
+    "routines",
+    "mcp",
+    "memory",
+    "pairing",
+    "profile",
+    "service",
+    "skills",
+    "hooks",
+    "models",
+    "doctor",
+    "logs",
+    "status",
+    "completion",
+    "import",
+    "login",
+    "acp",
+    "help",
+    "--help",
+    "-h",
+    "--version",
+    "-V",
 ];
 
 /// Legacy top-level flags that the v1 binary accepted when running as a server.
 /// Strip these when translating a bare invocation into `brassclaw serve`.
-const LEGACY_SERVER_FLAGS: &[&str] = &[
-    "--no-onboard",
-    "--cli-only",
-    "--no-db",
-    "--auto-approve",
-];
+const LEGACY_SERVER_FLAGS: &[&str] = &["--no-onboard", "--cli-only", "--no-db", "--auto-approve"];
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -53,9 +72,7 @@ fn main() {
     // legacy top-level flags with no subcommand) into `brassclaw serve`.
     // This preserves E2E test fixtures that were written against the v1
     // binary interface where the gateway started by default.
-    let first_non_flag = args[1..]
-        .iter()
-        .find(|a| !a.starts_with('-'));
+    let first_non_flag = args[1..].iter().find(|a| !a.starts_with('-'));
     let is_reborn_subcommand = first_non_flag
         .map(|a| REBORN_SUBCOMMANDS.contains(&a.as_str()))
         .unwrap_or(false);
@@ -88,4 +105,3 @@ fn main() {
         }
     }
 }
-

@@ -46,7 +46,7 @@ pub struct DefaultContextStrategy {
     /// Max messages to ask the host to include in the bundle. Default
     /// [`Self::DEFAULT_MAX_MESSAGES`].
     pub max_messages: u32,
-    
+
     /// Max tokens to allow in the context. If set, the strategy will
     /// reduce `max_messages` to stay within this budget. Default is
     /// [`Self::DEFAULT_MAX_CONTEXT_TOKENS`] (8000 tokens).
@@ -56,11 +56,11 @@ pub struct DefaultContextStrategy {
 impl DefaultContextStrategy {
     /// Default ceiling on transcript messages requested per turn.
     pub const DEFAULT_MAX_MESSAGES: u32 = 16;
-    
+
     /// Default maximum context tokens (8000 tokens ≈ 32KB of text).
     /// This is a conservative limit that works well with most models.
     pub const DEFAULT_MAX_CONTEXT_TOKENS: usize = 8000;
-    
+
     /// Create a new strategy with custom message and token limits.
     pub fn new(max_messages: u32, max_context_tokens: Option<usize>) -> Self {
         Self {
@@ -68,7 +68,7 @@ impl DefaultContextStrategy {
             max_context_tokens,
         }
     }
-    
+
     /// Create a strategy with token budgeting enabled.
     pub fn with_token_budget(max_messages: u32, max_context_tokens: usize) -> Self {
         Self {
@@ -91,7 +91,7 @@ impl Default for DefaultContextStrategy {
 impl ContextStrategy for DefaultContextStrategy {
     async fn plan_context_request(&self, state: &LoopExecutionState) -> ContextPlan {
         let loop_control = loop_control_inline_messages(state);
-        
+
         // Token-aware message limit adjustment
         let max_messages = if let Some(max_tokens) = self.max_context_tokens {
             // Estimate tokens from inline control messages
@@ -100,22 +100,22 @@ impl ContextStrategy for DefaultContextStrategy {
                 .iter()
                 .map(|msg| crate::token_budget::estimate_tokens(msg.safe_body.as_str()))
                 .sum();
-            
+
             // Reserve tokens for system instructions (skills, memory, etc.)
             // Assume ~50% of budget goes to conversation, rest to instructions
             let conversation_budget = max_tokens.saturating_sub(control_tokens) / 2;
-            
+
             // Estimate average tokens per message (~200 tokens per message)
             // This is a rough heuristic; actual messages vary widely
             const AVG_TOKENS_PER_MESSAGE: usize = 200;
             let estimated_messages = conversation_budget / AVG_TOKENS_PER_MESSAGE.max(1);
-            
+
             // Use the smaller of configured max_messages or token-based estimate
             self.max_messages.min(estimated_messages as u32)
         } else {
             self.max_messages
         };
-        
+
         // `max(1)` keeps the host's "zero is rejected" invariant from
         // `LoopPromptBundleRequest` even if a loop family overrides
         // `max_messages` to zero by accident or token budget is exhausted.

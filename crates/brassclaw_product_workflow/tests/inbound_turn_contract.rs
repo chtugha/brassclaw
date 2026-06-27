@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_host_api::{AgentId, TenantId, ThreadId, UserId};
 use brassclaw_loop_support::{
     CapabilityAllowSet, CapabilityResolveError, CapabilityResultWrite,
@@ -54,6 +53,7 @@ use brassclaw_turns::{
         LoopRunContext, NoOpBudgetAccountant, NoOpPolicyGuard, PromptMode,
     },
 };
+use chrono::Utc;
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 

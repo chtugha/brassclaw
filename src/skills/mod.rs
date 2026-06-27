@@ -14,7 +14,6 @@ pub mod bundled;
 // Items from `brassclaw_skills` are no longer glob-re-exported.
 // Callers should import from `brassclaw_skills` directly.
 
-
 use crate::secrets::{CredentialLocation, CredentialMapping};
 use brassclaw_skills::{LoadedSkill, SkillCredentialLocation, SkillCredentialSpec};
 // CredentialMapping is used in credential_spec_to_mapping

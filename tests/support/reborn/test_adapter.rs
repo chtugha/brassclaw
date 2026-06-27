@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_product_adapters::{
     AdapterInstallationId, AuthRequirement, DeliveryStatus, ExternalActorRef,
     ExternalConversationRef, ExternalEventId, OutboundDeliverySink, ParsedProductInbound,
@@ -9,6 +8,7 @@ use brassclaw_product_adapters::{
     ProjectionSubscriptionPayload, ProtocolAuthEvidence, ProtocolAuthFailure, ProtocolHttpEgress,
     TrustedInboundContext, UserMessagePayload,
 };
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]

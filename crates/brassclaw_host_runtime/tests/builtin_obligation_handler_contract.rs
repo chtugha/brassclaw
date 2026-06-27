@@ -12,7 +12,9 @@ use brassclaw_capabilities::{
     CapabilityObligationRequest,
 };
 use brassclaw_events::InMemoryAuditSink;
-use brassclaw_extensions::{ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource};
+use brassclaw_extensions::{
+    ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource,
+};
 use brassclaw_host_api::*;
 use brassclaw_host_runtime::{
     BuiltinObligationHandler, BuiltinObligationServices, CapabilitySurfaceVersion,

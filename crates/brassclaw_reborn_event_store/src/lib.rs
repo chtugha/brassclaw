@@ -466,8 +466,8 @@ mod postgres_backed {
 
     use std::sync::Arc;
 
-    use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Runtime};
     use brassclaw_filesystem::PostgresRootFilesystem;
+    use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Runtime};
     use secrecy::{ExposeSecret, SecretString};
     use tokio_postgres::config::{Host, SslMode};
     use tokio_postgres::{Config, NoTls};

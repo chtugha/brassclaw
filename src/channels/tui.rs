@@ -14,12 +14,12 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use brassclaw_tui::{SkillCategory, ToolCategory, TuiAppConfig, TuiEvent, TuiLayout, start_tui};
 
-use crate::logging::LogBroadcaster;
 use crate::channels::{
     AttachmentKind, Channel, IncomingAttachment, IncomingMessage, MessageStream, OutgoingResponse,
     StatusUpdate,
 };
 use crate::error::ChannelError;
+use crate::logging::LogBroadcaster;
 
 /// Group tool names by their prefix (text before the first `_`).
 ///

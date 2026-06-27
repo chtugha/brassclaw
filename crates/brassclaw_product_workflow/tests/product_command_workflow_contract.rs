@@ -3,7 +3,6 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_product_adapters::{
     AdapterInstallationId, AuthRequirement, ExternalActorRef, ExternalConversationRef,
     ExternalEventId, InboundCommandPayload, ProductAdapterId, ProductInboundAck,
@@ -19,6 +18,7 @@ use brassclaw_product_workflow::{
     ProductCommandService, ProductModelCommand, ProductWorkflowError,
 };
 use brassclaw_turns::{AcceptedMessageRef, TurnRunId};
+use chrono::Utc;
 
 fn sample_command_envelope(
     event_suffix: &str,

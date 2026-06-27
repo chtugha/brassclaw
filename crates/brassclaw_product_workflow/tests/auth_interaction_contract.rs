@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use chrono::{Duration, Utc};
 use brassclaw_auth::{
     AuthChallenge, AuthContinuationRef, AuthFlowId, AuthFlowKind, AuthFlowManager, AuthFlowRecord,
     AuthFlowStatus, AuthGateRef, AuthProductError, AuthProductScope, AuthSurface,
@@ -27,6 +26,7 @@ use brassclaw_turns::{
     SubmitTurnRequest, SubmitTurnResponse, TurnActor, TurnCoordinator, TurnError, TurnId,
     TurnRunId, TurnRunState, TurnScope, TurnStatus,
 };
+use chrono::{Duration, Utc};
 
 #[derive(Default)]
 struct FakeAuthReadModel {

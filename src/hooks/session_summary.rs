@@ -211,10 +211,10 @@ mod tests {
     use crate::db::ConversationStore;
     use crate::history::{ConversationMessage, ConversationSummary};
     use crate::workspace::Workspace;
-    use chrono::Utc;
     use brassclaw_llm::{
         CompletionResponse, FinishReason, LlmError, ToolCompletionRequest, ToolCompletionResponse,
     };
+    use chrono::Utc;
     use rust_decimal::Decimal;
     use uuid::Uuid;
 
@@ -500,9 +500,8 @@ mod tests {
             conversations: vec![],
             messages: vec![],
         });
-        let resolver: Arc<dyn WorkspaceResolver> = Arc::new(
-            crate::capabilities::memory::FixedWorkspaceResolver::new(ws),
-        );
+        let resolver: Arc<dyn WorkspaceResolver> =
+            Arc::new(crate::capabilities::memory::FixedWorkspaceResolver::new(ws));
         let hook = make_mock_hook(store, resolver);
 
         assert_eq!(hook.name(), "session_summary");
@@ -518,9 +517,8 @@ mod tests {
             conversations: vec![],
             messages: vec![],
         });
-        let resolver: Arc<dyn WorkspaceResolver> = Arc::new(
-            crate::capabilities::memory::FixedWorkspaceResolver::new(ws),
-        );
+        let resolver: Arc<dyn WorkspaceResolver> =
+            Arc::new(crate::capabilities::memory::FixedWorkspaceResolver::new(ws));
         let hook = make_mock_hook(store, resolver);
 
         let event = HookEvent::SessionStart {
@@ -539,9 +537,8 @@ mod tests {
             conversations: vec![],
             messages: vec![],
         });
-        let resolver: Arc<dyn WorkspaceResolver> = Arc::new(
-            crate::capabilities::memory::FixedWorkspaceResolver::new(ws),
-        );
+        let resolver: Arc<dyn WorkspaceResolver> =
+            Arc::new(crate::capabilities::memory::FixedWorkspaceResolver::new(ws));
         let hook = make_mock_hook(store, resolver);
 
         let event = HookEvent::SessionEnd {
@@ -585,9 +582,8 @@ mod tests {
                 },
             ],
         });
-        let resolver: Arc<dyn WorkspaceResolver> = Arc::new(
-            crate::capabilities::memory::FixedWorkspaceResolver::new(ws),
-        );
+        let resolver: Arc<dyn WorkspaceResolver> =
+            Arc::new(crate::capabilities::memory::FixedWorkspaceResolver::new(ws));
         let hook = make_mock_hook(store, resolver);
 
         let event = HookEvent::SessionEnd {
@@ -734,9 +730,8 @@ mod tests {
 
         let llm: Arc<dyn LlmProvider> = Arc::new(FailingMockLlm);
         let ws = Arc::new(Workspace::new_with_db("test_user", Arc::clone(&db)));
-        let resolver: Arc<dyn WorkspaceResolver> = Arc::new(
-            crate::capabilities::memory::FixedWorkspaceResolver::new(ws),
-        );
+        let resolver: Arc<dyn WorkspaceResolver> =
+            Arc::new(crate::capabilities::memory::FixedWorkspaceResolver::new(ws));
 
         let hook = SessionSummaryHook::new(store, resolver, llm);
 

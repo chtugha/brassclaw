@@ -984,13 +984,13 @@ fn rejection_kind_for_approval_interaction(
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
     use brassclaw_product_adapters::{
         AdapterInstallationId, AuthRequirement, ExternalActorRef, ExternalConversationRef,
         ExternalEventId, ParsedProductInbound, ProductAdapterId, ProductInboundAck,
         ProductInboundEnvelope, ProductInboundPayload, ProtocolAuthEvidence, TrustedInboundContext,
     };
     use brassclaw_turns::{AcceptedMessageRef, AdmissionRejection, TurnRunId};
+    use chrono::Utc;
 
     use super::*;
 

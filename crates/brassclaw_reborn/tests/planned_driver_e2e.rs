@@ -3,7 +3,6 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use chrono::Utc;
 use brassclaw_agent_loop::{
     state::CheckpointKind,
     test_support::{
@@ -35,6 +34,7 @@ use brassclaw_turns::{
         VisibleCapabilitySurface,
     },
 };
+use chrono::Utc;
 
 fn run_request(
     driver: &PlannedDriver,

@@ -140,34 +140,126 @@ pub(crate) const SAFE_ENV_VARS: &[&str] = &[
 
 static LOW_RISK_PATTERNS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     vec![
-        "ls", "ll", "la", "dir", "cat", "less", "more", "head", "tail", "grep", "rg", "ag",
-        "fd", "locate", "echo", "printf", "pwd", "cd", "env", "printenv", "which", "whereis",
-        "type", "date", "cal", "uptime", "uname", "df", "du", "free", "top", "htop", "ps",
-        "git status", "git log", "git diff", "git show", "git branch", "git remote", "git fetch",
-        "cargo check", "cargo clippy", "curl --head", "curl -I", "ping", "wc", "sort", "uniq",
-        "tr", "cut", "jq", "yq", "file", "stat", "man",
+        "ls",
+        "ll",
+        "la",
+        "dir",
+        "cat",
+        "less",
+        "more",
+        "head",
+        "tail",
+        "grep",
+        "rg",
+        "ag",
+        "fd",
+        "locate",
+        "echo",
+        "printf",
+        "pwd",
+        "cd",
+        "env",
+        "printenv",
+        "which",
+        "whereis",
+        "type",
+        "date",
+        "cal",
+        "uptime",
+        "uname",
+        "df",
+        "du",
+        "free",
+        "top",
+        "htop",
+        "ps",
+        "git status",
+        "git log",
+        "git diff",
+        "git show",
+        "git branch",
+        "git remote",
+        "git fetch",
+        "cargo check",
+        "cargo clippy",
+        "curl --head",
+        "curl -I",
+        "ping",
+        "wc",
+        "sort",
+        "uniq",
+        "tr",
+        "cut",
+        "jq",
+        "yq",
+        "file",
+        "stat",
+        "man",
     ]
 });
 
 #[allow(dead_code)]
 static MEDIUM_RISK_PATTERNS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     vec![
-        "awk", "sed", "find", "mkdir", "rmdir", "touch", "cp", "copy", "mv", "move",
-        "git commit", "git add", "git push", "git checkout", "git switch", "git merge",
-        "git rebase", "git stash", "git tag", "cargo build", "cargo run", "cargo test",
-        "npm test", "npm run test", "yarn test", "npm install", "npm ci", "npm update",
-        "pip install", "pip uninstall", "brew install", "brew uninstall", "apt install",
-        "apt remove", "make", "cmake", "tar", "zip", "unzip", "gzip", "gunzip", "ssh", "scp",
-        "rsync", "curl", "wget", "docker build", "docker pull", "docker run",
-        "kubectl apply", "kubectl create",
+        "awk",
+        "sed",
+        "find",
+        "mkdir",
+        "rmdir",
+        "touch",
+        "cp",
+        "copy",
+        "mv",
+        "move",
+        "git commit",
+        "git add",
+        "git push",
+        "git checkout",
+        "git switch",
+        "git merge",
+        "git rebase",
+        "git stash",
+        "git tag",
+        "cargo build",
+        "cargo run",
+        "cargo test",
+        "npm test",
+        "npm run test",
+        "yarn test",
+        "npm install",
+        "npm ci",
+        "npm update",
+        "pip install",
+        "pip uninstall",
+        "brew install",
+        "brew uninstall",
+        "apt install",
+        "apt remove",
+        "make",
+        "cmake",
+        "tar",
+        "zip",
+        "unzip",
+        "gzip",
+        "gunzip",
+        "ssh",
+        "scp",
+        "rsync",
+        "curl",
+        "wget",
+        "docker build",
+        "docker pull",
+        "docker run",
+        "kubectl apply",
+        "kubectl create",
     ]
 });
 
 const FILE_READ_COMMANDS: &[&str] = &[
     "cat", "head", "tail", "less", "more", "tac", "nl", "bat", "batcat", "cp", "mv", "scp",
-    "rsync", "source", ".",
-    "vim", "vi", "nano", "code", "strings", "xxd", "hexdump", "od", "file", "stat", "wc", "diff",
-    "cmp", "tar", "zip", "gzip", "bzip2", "xz", "zstd", "base64", "grep", "awk", "sed",
+    "rsync", "source", ".", "vim", "vi", "nano", "code", "strings", "xxd", "hexdump", "od", "file",
+    "stat", "wc", "diff", "cmp", "tar", "zip", "gzip", "bzip2", "xz", "zstd", "base64", "grep",
+    "awk", "sed",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -661,12 +753,7 @@ async fn execute_sandboxed(
 ) -> Result<(String, i64), ShellCapabilityError> {
     let result = tokio::time::timeout(timeout, async {
         sandbox
-            .execute_with_policy(
-                cmd,
-                workdir,
-                sandbox_policy,
-                HashMap::new(),
-            )
+            .execute_with_policy(cmd, workdir, sandbox_policy, HashMap::new())
             .await
     })
     .await;
@@ -676,7 +763,10 @@ async fn execute_sandboxed(
             let combined = truncate_output(&output.output);
             Ok((combined, output.exit_code))
         }
-        Ok(Err(e)) => Err(ShellCapabilityError::operation(format!("Sandbox error: {}", e))),
+        Ok(Err(e)) => Err(ShellCapabilityError::operation(format!(
+            "Sandbox error: {}",
+            e
+        ))),
         Err(_) => Err(ShellCapabilityError::operation(format!(
             "Command timed out after {} seconds",
             timeout.as_secs()
@@ -855,7 +945,8 @@ pub async fn execute_shell(
         if sandbox.is_initialized() || sandbox.config().enabled {
             execute_sandboxed(sandbox, command, &cwd, timeout_duration, ctx.sandbox_policy).await?
         } else {
-            let (out, code) = execute_direct(command, &cwd, timeout_duration, &ctx.extra_env).await?;
+            let (out, code) =
+                execute_direct(command, &cwd, timeout_duration, &ctx.extra_env).await?;
             (out, code as i64)
         }
     } else {

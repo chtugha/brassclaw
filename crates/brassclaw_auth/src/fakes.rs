@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, MutexGuard};
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_host_api::{ExtensionId, SecretHandle};
+use chrono::Utc;
 
 use crate::{
     AuthChallenge, AuthContinuationEvent, AuthFlowId, AuthFlowManager, AuthFlowRecord,

@@ -9,9 +9,9 @@ pub mod family;
 pub mod planner;
 pub mod state;
 pub(crate) mod strategies;
-pub mod token_budget;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
+pub mod token_budget;
 
 /// Public re-exports for progress-detection primitives. The internal
 /// strategy machinery stays crate-private; downstream consumers (turns,

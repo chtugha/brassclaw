@@ -17,7 +17,12 @@ use rust_decimal::Decimal;
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
 
 use crate::channels::{
-    Channel, ChannelManager, IncomingMessage, MessageStream, OutgoingResponse, StatusUpdate,  // ChannelManager needed by RecordingBroadcastChannel
+    Channel,
+    ChannelManager,
+    IncomingMessage,
+    MessageStream,
+    OutgoingResponse,
+    StatusUpdate, // ChannelManager needed by RecordingBroadcastChannel
 };
 use crate::db::Database;
 use crate::error::{ChannelError, LlmError};
@@ -235,5 +240,3 @@ impl Channel for RecordingBroadcastChannel {
         Ok(())
     }
 }
-
-

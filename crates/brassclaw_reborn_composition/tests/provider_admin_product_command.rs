@@ -2,7 +2,6 @@
 
 use std::sync::Arc;
 
-use chrono::Utc;
 use brassclaw_product_adapters::{
     AdapterInstallationId, AuthRequirement, ExternalActorRef, ExternalConversationRef,
     ExternalEventId, InboundCommandPayload, ProductAdapterError, ProductAdapterId,
@@ -16,6 +15,7 @@ use brassclaw_product_workflow::{
 };
 use brassclaw_reborn_composition::{RebornProviderAdmin, RebornProviderAdminProductCommandService};
 use brassclaw_reborn_config::{RebornBootConfig, RebornHome, RebornProfile};
+use chrono::Utc;
 
 fn sample_command_envelope(
     event_suffix: &str,

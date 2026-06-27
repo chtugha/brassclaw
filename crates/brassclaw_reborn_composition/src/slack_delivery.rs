@@ -12,7 +12,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_outbound::{
     CommunicationDeliveryIntent, CommunicationDeliveryResolutionRequest, CommunicationModality,
     CommunicationPreferenceRepository, OutboundError, OutboundPolicyService, OutboundStateStore,
@@ -38,6 +37,7 @@ use brassclaw_turns::{
     TurnScope, TurnStatus,
 };
 use brassclaw_wasm_product_adapters::ImmediateAckWorkflowObserver;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 

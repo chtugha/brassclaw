@@ -9,14 +9,12 @@
 //! facade is mocked so the regression target stays the gateway-layer
 //! composition.
 
-
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use axum::body::{Body, to_bytes};
 use axum::http::{HeaderValue, Method, Request, StatusCode, header};
-use http_body_util::BodyExt;
 use brassclaw_host_api::{AgentId, NetworkMethod, ProjectId, TenantId, ThreadId, UserId};
 use brassclaw_product_workflow::{
     LifecyclePackageRef, LifecyclePhase, RebornCancelRunResponse, RebornCreateThreadResponse,
@@ -37,6 +35,7 @@ use brassclaw_reborn_composition::{
 };
 use brassclaw_threads::{SessionThreadRecord, ThreadScope};
 use brassclaw_turns::{EventCursor, RunProfileId, RunProfileVersion, TurnRunId, TurnStatus};
+use http_body_util::BodyExt;
 use serde_json::json;
 use tower::ServiceExt;
 
@@ -295,7 +294,8 @@ impl RebornServicesApi for StubServices {
         Ok(RebornSubmitTurnResponse::Submitted {
             thread_id: ThreadId::new(request.thread_id.clone().unwrap_or_default())
                 .expect("thread id"),
-            accepted_message_ref: brassclaw_turns::AcceptedMessageRef::new("msg.fake").expect("ref"),
+            accepted_message_ref: brassclaw_turns::AcceptedMessageRef::new("msg.fake")
+                .expect("ref"),
             turn_id: "turn.fake".to_string(),
             run_id: TurnRunId::new(),
             status: TurnStatus::Queued,
@@ -502,14 +502,18 @@ impl RebornServicesApi for StubServices {
     async fn list_capabilities(
         &self,
         _caller: WebUiAuthenticatedCaller,
-    ) -> Result<brassclaw_product_workflow::RebornListCapabilitiesResponse, RebornServicesError> {
+    ) -> Result<brassclaw_product_workflow::RebornListCapabilitiesResponse, RebornServicesError>
+    {
         Err(unused_services_error())
     }
     async fn update_capability_permission(
         &self,
         _caller: WebUiAuthenticatedCaller,
         _request: brassclaw_product_workflow::RebornUpdateCapabilityPermissionRequest,
-    ) -> Result<brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse, RebornServicesError> {
+    ) -> Result<
+        brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse,
+        RebornServicesError,
+    > {
         Err(unused_services_error())
     }
     async fn list_skills(

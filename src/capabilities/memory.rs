@@ -1,12 +1,12 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::workspace::{Workspace, paths};
 use brassclaw_host_api::{
     CapabilityDescriptor, CapabilityId, EffectKind, ExtensionId, PermissionMode, ResourceCeiling,
     ResourceEstimate, ResourceProfile, RuntimeKind, TrustClass,
 };
 use serde_json::{Value, json};
-use crate::workspace::{Workspace, paths};
 
 // ============================================================================
 // V2 Path Validation
@@ -23,13 +23,13 @@ pub(crate) fn normalize_workspace_path(path: &str) -> Option<String> {
     if path.contains("..") {
         return None;
     }
-    
+
     // Normalize by removing redundant slashes and "." segments
     let parts: Vec<&str> = path
         .split('/')
         .filter(|p| !p.is_empty() && *p != ".")
         .collect();
-    
+
     Some(parts.join("/"))
 }
 
@@ -73,8 +73,6 @@ impl WorkspaceResolver for FixedWorkspaceResolver {
         Arc::clone(&self.workspace)
     }
 }
-
-
 
 pub const PROVIDER_ID: &str = "builtin";
 pub const MEMORY_READ_CAPABILITY_ID: &str = "builtin.memory_read";
@@ -414,10 +412,9 @@ pub async fn execute_memory_read(
         .map_err(|e| MemoryCapabilityError::operation(format!("Read failed: {}", e)))?;
 
     if list_versions {
-        let versions = workspace
-            .list_versions(doc.id, 50)
-            .await
-            .map_err(|e| MemoryCapabilityError::operation(format!("List versions failed: {}", e)))?;
+        let versions = workspace.list_versions(doc.id, 50).await.map_err(|e| {
+            MemoryCapabilityError::operation(format!("List versions failed: {}", e))
+        })?;
 
         return Ok(json!({
             "path": doc.path,
@@ -843,8 +840,13 @@ async fn build_tree(
         };
 
         if entry.is_directory && current_depth < max_depth {
-            let children =
-                Box::pin(build_tree(workspace, &entry.path, current_depth + 1, max_depth)).await?;
+            let children = Box::pin(build_tree(
+                workspace,
+                &entry.path,
+                current_depth + 1,
+                max_depth,
+            ))
+            .await?;
             if children.is_empty() {
                 result.push(Value::String(display_path));
             } else {

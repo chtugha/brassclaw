@@ -755,5 +755,4 @@ mod tests {
         assert!(notify.on_failure); // safety: test-only assertion
         assert!(!notify.on_success); // safety: test-only assertion
     }
-
 }

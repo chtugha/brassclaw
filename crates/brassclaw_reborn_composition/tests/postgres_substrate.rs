@@ -2,7 +2,6 @@
 
 use std::{sync::Arc, time::Duration};
 
-use deadpool_postgres::tokio_postgres;
 use brassclaw_host_api::{
     AuditMode, DeploymentMode, FilesystemBackendKind, NetworkMode, ProcessBackendKind,
     RuntimeProfile, SecretMode,
@@ -18,6 +17,7 @@ use brassclaw_reborn_composition::{
 };
 use brassclaw_reborn_event_store::RebornEventStoreConfig;
 use brassclaw_turns::{TurnRunWake, TurnRunWakeNotifier, TurnRunWakeNotifyError};
+use deadpool_postgres::tokio_postgres;
 use secrecy::SecretString;
 use tokio::sync::Mutex;
 

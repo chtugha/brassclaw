@@ -304,9 +304,9 @@ fn looks_like_slack_id(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
     use brassclaw_product_adapters::{ExternalConversationRef, ProductOutboundTarget};
     use brassclaw_turns::{ReplyTargetBindingRef, TurnRunId};
+    use chrono::Utc;
 
     fn handle() -> EgressCredentialHandle {
         EgressCredentialHandle::new("slack_bot_token").expect("valid")

@@ -40,12 +40,12 @@ use std::{
 };
 
 use async_trait::async_trait;
-use futures::{StreamExt, future::join_all};
 use brassclaw_filesystem::{
     CasExpectation, ContentType, Entry, FileType, FilesystemError, FilesystemOperation,
     RecordVersion, RootFilesystem, ScopedFilesystem,
 };
 use brassclaw_host_api::{HostApiError, InvocationId, ResourceScope, ScopedPath, ThreadId};
+use futures::{StreamExt, future::join_all};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;

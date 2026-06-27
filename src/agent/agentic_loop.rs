@@ -674,9 +674,10 @@ mod tests {
 
         assert!(matches!(outcome, LoopOutcome::Response(_)));
         assert!(
-            ctx.messages.iter().any(
-                |m| m.role == brassclaw_llm::Role::User && m.content.contains("injected prompt")
-            ),
+            ctx.messages
+                .iter()
+                .any(|m| m.role == brassclaw_llm::Role::User
+                    && m.content.contains("injected prompt")),
             "Injected message should appear in context"
         );
     }

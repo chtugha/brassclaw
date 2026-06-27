@@ -10,12 +10,12 @@
 use std::sync::Arc;
 
 use crate::agent::SessionManager as AgentSessionManager;
-use crate::logging::LogBroadcaster;
 use crate::config::Config;
 use crate::context::ContextManager;
 use crate::db::Database;
 use crate::extensions::ExtensionManager;
 use crate::hooks::HookRegistry;
+use crate::logging::LogBroadcaster;
 use crate::secrets::SecretsStore;
 use crate::workspace::Workspace;
 use brassclaw_embeddings::{EmbeddingCacheConfig, EmbeddingProvider};
@@ -74,7 +74,8 @@ pub struct AppComponents {
     /// V2 effect executor for capability-based tool execution via EffectBridgeAdapter.
     pub effect_executor: Arc<dyn brassclaw_engine::EffectExecutor>,
     /// Routine engine slot that gets filled after RoutineEngine initialization to break circular dependency.
-    pub routine_engine_slot: Arc<tokio::sync::RwLock<Option<Arc<crate::agent::routine_engine::RoutineEngine>>>>,
+    pub routine_engine_slot:
+        Arc<tokio::sync::RwLock<Option<Arc<crate::agent::routine_engine::RoutineEngine>>>>,
 }
 
 /// Options that control optional init phases.
@@ -622,9 +623,9 @@ impl AppBuilder {
 
         let extension_manager: Option<Arc<ExtensionManager>> =
             if let Some(ref secrets) = self.secrets_store {
-                let registry = Arc::new(
-                    crate::extensions::ExtensionRegistry::new_with_catalog(catalog_entries.clone()),
-                );
+                let registry = Arc::new(crate::extensions::ExtensionRegistry::new_with_catalog(
+                    catalog_entries.clone(),
+                ));
                 let discovery = Arc::new(crate::extensions::OnlineDiscovery::new());
                 let pairing = Arc::new(crate::pairing::PairingStore::new_noop());
                 let channel_manager = Arc::new(crate::channels::ChannelManager::new());
@@ -643,11 +644,7 @@ impl AppBuilder {
 
         tracing::debug!("Extension manager initialized");
 
-
-        Ok((
-            extension_manager,
-            catalog_entries,
-        ))
+        Ok((extension_manager, catalog_entries))
     }
 
     /// Run all init phases in order and return the assembled components.
@@ -679,13 +676,8 @@ impl AppBuilder {
                 let (llm, cheap, recording, reload) = self.init_llm().await?;
                 (llm, cheap, recording, Some(reload))
             };
-        let (
-            safety,
-            embeddings,
-            workspace,
-            http_interceptor,
-            _workspace_resolver,
-        ) = self.init_tools(&llm, cheap_llm.as_ref()).await?;
+        let (safety, embeddings, workspace, http_interceptor, _workspace_resolver) =
+            self.init_tools(&llm, cheap_llm.as_ref()).await?;
 
         // Create hook registry early so runtime extension activation can register hooks.
         let hooks = Arc::new(HookRegistry::new());
@@ -695,8 +687,9 @@ impl AppBuilder {
                 .as_ref()
                 .map(Arc::clone)
                 .unwrap_or_else(|| Arc::clone(&llm));
-            let resolver: Arc<dyn crate::capabilities::memory::WorkspaceResolver> =
-                Arc::new(crate::capabilities::memory::FixedWorkspaceResolver::new(Arc::clone(ws)));
+            let resolver: Arc<dyn crate::capabilities::memory::WorkspaceResolver> = Arc::new(
+                crate::capabilities::memory::FixedWorkspaceResolver::new(Arc::clone(ws)),
+            );
             hooks
                 .register(Arc::new(crate::hooks::SessionSummaryHook::new(
                     Arc::clone(db) as Arc<dyn crate::db::ConversationStore>,
@@ -740,15 +733,8 @@ impl AppBuilder {
         };
 
         let ownership_cache = Arc::new(crate::ownership::OwnershipCache::new());
-        let (
-            extension_manager,
-            catalog_entries,
-        ) = self
-            .init_extensions(
-                &hooks,
-                settings_store.clone(),
-                Arc::clone(&ownership_cache),
-            )
+        let (extension_manager, catalog_entries) = self
+            .init_extensions(&hooks, settings_store.clone(), Arc::clone(&ownership_cache))
             .await?;
 
         // Load bootstrap-completed flag from settings so that existing users
@@ -857,13 +843,14 @@ impl AppBuilder {
                     Arc::new(crate::workspace::Workspace::new_with_db(
                         "default",
                         self.db.clone().expect("Database required for workspace"),
-                    ))
+                    )),
                 ))
             };
 
         // Initialize all 13 context structs for the capability dispatcher
         let filesystem_ctx = Arc::new(crate::capabilities::filesystem::FilesystemContext {
-            base_dir: workspace.as_ref()
+            base_dir: workspace
+                .as_ref()
                 .map(|_| std::path::PathBuf::from("."))
                 .unwrap_or_else(|| std::path::PathBuf::from(".")),
             state: Default::default(),
@@ -882,7 +869,10 @@ impl AppBuilder {
             // V2: Credential injection removed - V2 uses skill-declared credentials
             // in SKILL.md frontmatter instead of a central registry
             secrets_store: self.secrets_store.clone(),
-            role_lookup: self.db.clone().map(|db| db as Arc<dyn crate::db::UserStore>),
+            role_lookup: self
+                .db
+                .clone()
+                .map(|db| db as Arc<dyn crate::db::UserStore>),
             user_id: self.config.owner_id.clone(),
             http_interceptor: http_interceptor.clone(),
         });
@@ -908,9 +898,9 @@ impl AppBuilder {
         let jobs_ctx = Arc::new(crate::capabilities::jobs::JobsContext {
             context_manager: Arc::clone(&context_manager),
             scheduler_slot: None, // Will be set after Agent initialization
-            job_manager: None, // Will be set by sandbox initialization if enabled
+            job_manager: None,    // Will be set by sandbox initialization if enabled
             store: self.db.clone(),
-            event_tx: None, // Will be set by event system initialization
+            event_tx: None,  // Will be set by event system initialization
             inject_tx: None, // Will be set by channel initialization
             secrets_store: self.secrets_store.clone(),
             prompt_queue: None, // Will be set by orchestrator initialization
@@ -932,7 +922,9 @@ impl AppBuilder {
         });
 
         let extensions_ctx = Arc::new(crate::capabilities::extensions::ExtensionsContext {
-            manager: extension_manager.clone().expect("Extension manager required"),
+            manager: extension_manager
+                .clone()
+                .expect("Extension manager required"),
             user_id: self.config.owner_id.clone(),
         });
 
@@ -954,7 +946,7 @@ impl AppBuilder {
             event_publisher: None, // Will be set by event system initialization
             tool_output_stash: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
             user_timezone: "UTC".to_string(), // Default timezone
-            conversation_id: None, // Will be set per-conversation
+            conversation_id: None,            // Will be set per-conversation
             registered_capability_names: Vec::new(), // Will be populated by capability registration
         });
 
@@ -967,26 +959,28 @@ impl AppBuilder {
         });
 
         // Create the V2 capability dispatcher
-        let capability_dispatcher = Arc::new(crate::capabilities::dispatcher::BuiltinCapabilityDispatcher::new(
-            filesystem_ctx,
-            shell_ctx,
-            network_ctx,
-            memory_ctx,
-            messaging_ctx,
-            jobs_ctx,
-            routines_ctx,
-            skills_ctx,
-            extensions_ctx,
-            secrets_ctx,
-            images_ctx,
-            system_ctx,
-            pairing_ctx,
-        ));
+        let capability_dispatcher = Arc::new(
+            crate::capabilities::dispatcher::BuiltinCapabilityDispatcher::new(
+                filesystem_ctx,
+                shell_ctx,
+                network_ctx,
+                memory_ctx,
+                messaging_ctx,
+                jobs_ctx,
+                routines_ctx,
+                skills_ctx,
+                extensions_ctx,
+                secrets_ctx,
+                images_ctx,
+                system_ctx,
+                pairing_ctx,
+            ),
+        );
 
         // Create the V2 effect executor using EffectBridgeAdapter
         // 1. Create SharedExtensionRegistry (empty for now, will be populated by extension system)
         let extension_registry = Arc::new(brassclaw_extensions::SharedExtensionRegistry::new(
-            brassclaw_extensions::ExtensionRegistry::new()
+            brassclaw_extensions::ExtensionRegistry::new(),
         ));
 
         // 2. Create TrustAwareCapabilityDispatchAuthorizer (using GrantAuthorizer for now)
@@ -999,16 +993,16 @@ impl AppBuilder {
             // Leak the registry snapshot to get a 'static reference
             let registry_ref: &'static brassclaw_extensions::ExtensionRegistry =
                 Box::leak(Box::new(extension_registry.snapshot()));
-            
+
             // Leak the dispatcher to get a 'static reference
             // Safety: These components live for the entire application lifetime
             let dispatcher_ref: &'static crate::capabilities::dispatcher::BuiltinCapabilityDispatcher =
                 unsafe { &*(Arc::as_ptr(&capability_dispatcher)) };
-            
+
             // Leak the authorizer to get a 'static reference
             let authorizer_ref: &'static brassclaw_authorization::GrantAuthorizer =
                 Box::leak(Box::new(authorizer));
-            
+
             Arc::new(brassclaw_capabilities::CapabilityHost::new(
                 registry_ref,
                 dispatcher_ref,
@@ -1017,13 +1011,12 @@ impl AppBuilder {
         };
 
         // 4. Create EffectBridgeAdapter wrapping the CapabilityHost
-        let effect_executor: Arc<dyn brassclaw_engine::EffectExecutor> = Arc::new(
-            crate::bridge::EffectBridgeAdapterV2::new(
+        let effect_executor: Arc<dyn brassclaw_engine::EffectExecutor> =
+            Arc::new(crate::bridge::EffectBridgeAdapterV2::new(
                 capability_host,
                 extension_registry,
                 safety.clone(),
-            )
-        );
+            ));
 
         Ok(AppComponents {
             config: self.config,
@@ -1212,7 +1205,6 @@ async fn migrate_session_credential(
     }
 }
 // V1 cleanup function removed - V2 uses capability_permissions table
-
 
 #[cfg(test)]
 mod tests {

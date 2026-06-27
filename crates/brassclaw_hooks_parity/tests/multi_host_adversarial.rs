@@ -35,13 +35,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
 use brassclaw_hooks::identity::{ExtensionId, HookId, HookLocalId, HookVersion};
 use brassclaw_hooks::predicate_state::{
     InvocationKey, MAX_KEYS_PER_TENANT, MAX_SAMPLES_PER_KEY, PredicateBackendError,
     PredicateEventId, PredicateStateBackend, ValueKey,
 };
 use brassclaw_host_api::TenantId;
+use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 
 // ---------------------------------------------------------------------------
@@ -611,8 +611,8 @@ async fn libsql_clock_skew_follows_caller_clock() {
 #[cfg(feature = "postgres")]
 mod postgres_cluster {
     use super::*;
-    use deadpool_postgres::Pool;
     use brassclaw_hooks_postgres::PostgresPredicateStateBackend;
+    use deadpool_postgres::Pool;
 
     /// Process-global serialization: the Postgres legs share fixed keys against
     /// one table, so they must not interleave with each other.

@@ -327,10 +327,7 @@ pub fn execute_echo(params: &Value) -> Result<Value, SystemCapabilityError> {
     Ok(Value::String(message.to_string()))
 }
 
-pub fn execute_time(
-    params: &Value,
-    user_timezone: &str,
-) -> Result<Value, SystemCapabilityError> {
+pub fn execute_time(params: &Value, user_timezone: &str) -> Result<Value, SystemCapabilityError> {
     let operation = params
         .get("operation")
         .and_then(|v| v.as_str())
@@ -387,8 +384,9 @@ pub async fn execute_json(
             } else {
                 data_value
             };
-            let json_str = serde_json::to_string_pretty(&value)
-                .map_err(|e| SystemCapabilityError::operation(format!("failed to stringify: {e}")))?;
+            let json_str = serde_json::to_string_pretty(&value).map_err(|e| {
+                SystemCapabilityError::operation(format!("failed to stringify: {e}"))
+            })?;
             Ok(Value::String(json_str))
         }
         "query" => {
@@ -642,9 +640,7 @@ fn require_input(params: &Value) -> Result<&str, SystemCapabilityError> {
         .and_then(|v| v.as_str())
         .or_else(|| params.get("timestamp").and_then(|v| v.as_str()))
         .ok_or_else(|| {
-            SystemCapabilityError::input(
-                "missing 'input' (or legacy 'timestamp') parameter",
-            )
+            SystemCapabilityError::input("missing 'input' (or legacy 'timestamp') parameter")
         })
 }
 
@@ -683,10 +679,7 @@ fn context_timezone(user_timezone: &str) -> Result<Option<(Tz, String)>, SystemC
     Ok(None)
 }
 
-fn optional_timezone(
-    params: &Value,
-    keys: &[&str],
-) -> Result<Option<Tz>, SystemCapabilityError> {
+fn optional_timezone(params: &Value, keys: &[&str]) -> Result<Option<Tz>, SystemCapabilityError> {
     for key in keys {
         if let Some(value) = params
             .get(*key)
@@ -926,10 +919,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(result["timezone"].as_str(), Some("America/New_York"));
-        assert_eq!(
-            result["output"].as_str(),
-            Some("2026-03-08T03:30:00-04:00")
-        );
+        assert_eq!(result["output"].as_str(), Some("2026-03-08T03:30:00-04:00"));
     }
 
     #[test]
@@ -962,10 +952,7 @@ mod tests {
 
     #[test]
     fn test_time_empty_timezone_string() {
-        let result = execute_time(
-            &json!({"operation": "now", "timezone": ""}),
-            "UTC",
-        );
+        let result = execute_time(&json!({"operation": "now", "timezone": ""}), "UTC");
         assert!(result.is_ok());
     }
 
@@ -977,18 +964,9 @@ mod tests {
                 "baz": "hello"
             }
         });
-        assert_eq!(
-            json_query(&data, "foo.baz").unwrap(),
-            json!("hello")
-        );
-        assert_eq!(
-            json_query(&data, "foo.bar[0]").unwrap(),
-            json!(1)
-        );
-        assert_eq!(
-            json_query(&data, "foo.bar[2]").unwrap(),
-            json!(3)
-        );
+        assert_eq!(json_query(&data, "foo.baz").unwrap(), json!("hello"));
+        assert_eq!(json_query(&data, "foo.bar[0]").unwrap(), json!(1));
+        assert_eq!(json_query(&data, "foo.bar[2]").unwrap(), json!(3));
     }
 
     #[test]
@@ -1029,10 +1007,7 @@ mod tests {
         stash
             .write()
             .await
-            .insert(
-                "call_01".to_string(),
-                r#"{"key": "value"}"#.to_string(),
-            );
+            .insert("call_01".to_string(), r#"{"key": "value"}"#.to_string());
         let ctx = SystemContext {
             event_publisher: None,
             tool_output_stash: stash,

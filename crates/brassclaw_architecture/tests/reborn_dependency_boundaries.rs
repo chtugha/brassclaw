@@ -123,8 +123,9 @@ fn conversation_trusted_trigger_submitter_stays_conversation_or_composition_owne
 #[test]
 fn conversation_trusted_trigger_submitter_stays_out_of_root_exports() {
     let root = workspace_root();
-    let lib_source = std::fs::read_to_string(root.join("crates/brassclaw_conversations/src/lib.rs"))
-        .expect("conversation lib source must be readable");
+    let lib_source =
+        std::fs::read_to_string(root.join("crates/brassclaw_conversations/src/lib.rs"))
+            .expect("conversation lib source must be readable");
 
     assert!(
         !lib_source.contains("ConversationTrustedTriggerSubmitter"),
@@ -136,8 +137,9 @@ fn conversation_trusted_trigger_submitter_stays_out_of_root_exports() {
 #[test]
 fn conversation_trusted_trigger_classifier_stays_out_of_root_exports() {
     let root = workspace_root();
-    let lib_source = std::fs::read_to_string(root.join("crates/brassclaw_conversations/src/lib.rs"))
-        .expect("conversation lib source must be readable");
+    let lib_source =
+        std::fs::read_to_string(root.join("crates/brassclaw_conversations/src/lib.rs"))
+            .expect("conversation lib source must be readable");
 
     assert!(
         !lib_source.contains("classify_trusted_trigger_inbound_error"),
@@ -350,8 +352,9 @@ fn reborn_cli_binary_crate_stays_separate_from_v1_root() {
         );
     }
 
-    let agent_contract = std::fs::read_to_string(root.join("crates/brassclaw_reborn_cli/AGENTS.md"))
-        .expect("Reborn CLI crate-local AGENTS.md must be readable");
+    let agent_contract =
+        std::fs::read_to_string(root.join("crates/brassclaw_reborn_cli/AGENTS.md"))
+            .expect("Reborn CLI crate-local AGENTS.md must be readable");
     for required_phrase in [
         "one command per file",
         "RebornCliContext",
@@ -419,8 +422,9 @@ fn reborn_host_runtime_services_do_not_expose_lower_substrate_handles() {
             .expect("host runtime contract must be readable");
     let scripts = std::fs::read_to_string(root.join("crates/brassclaw_scripts/src/lib.rs"))
         .expect("script runtime lib.rs must be readable");
-    let scripts_manifest = std::fs::read_to_string(root.join("crates/brassclaw_scripts/Cargo.toml"))
-        .expect("script runtime Cargo.toml must be readable");
+    let scripts_manifest =
+        std::fs::read_to_string(root.join("crates/brassclaw_scripts/Cargo.toml"))
+            .expect("script runtime Cargo.toml must be readable");
     let mcp = std::fs::read_to_string(root.join("crates/brassclaw_mcp/src/lib.rs"))
         .expect("MCP runtime lib.rs must be readable");
     let mcp_manifest = std::fs::read_to_string(root.join("crates/brassclaw_mcp/Cargo.toml"))
@@ -767,8 +771,9 @@ fn reborn_internal_crate_keeps_directory_of_modules_lib_rs() {
 fn reborn_boot_config_file_layout_is_pinned() {
     let root = workspace_root();
 
-    let config_lib = std::fs::read_to_string(root.join("crates/brassclaw_reborn_config/src/lib.rs"))
-        .expect("reborn config lib.rs must be readable");
+    let config_lib =
+        std::fs::read_to_string(root.join("crates/brassclaw_reborn_config/src/lib.rs"))
+            .expect("reborn config lib.rs must be readable");
     for required_export in [
         "pub use config_file::",
         "RebornConfigFile",
@@ -2820,7 +2825,8 @@ fn collect_forbidden_reborn_auth_file_uses(
 }
 
 fn is_reborn_tracing_target_line(line: &str) -> bool {
-    line.contains("target: \"brassclaw::reborn::") || line.contains("target = \"brassclaw::reborn::")
+    line.contains("target: \"brassclaw::reborn::")
+        || line.contains("target = \"brassclaw::reborn::")
 }
 
 #[test]

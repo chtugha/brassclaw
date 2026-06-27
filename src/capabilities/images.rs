@@ -26,9 +26,9 @@ fn validate_path(raw: &str, base: Option<&Path>) -> Result<PathBuf, ImagesCapabi
     if raw.is_empty() {
         return Err(ImagesCapabilityError::input("empty path"));
     }
-    
+
     let path = Path::new(raw);
-    
+
     // Resolve relative to base if provided
     let resolved = if path.is_absolute() {
         path.to_path_buf()
@@ -37,10 +37,10 @@ fn validate_path(raw: &str, base: Option<&Path>) -> Result<PathBuf, ImagesCapabi
     } else {
         path.to_path_buf()
     };
-    
+
     // Normalize lexically to handle ".." and "." components
     let normalized = normalize_lexical(&resolved);
-    
+
     // If base is provided, ensure the normalized path doesn't escape it
     if let Some(base) = base {
         let base_normalized = normalize_lexical(base);
@@ -51,7 +51,7 @@ fn validate_path(raw: &str, base: Option<&Path>) -> Result<PathBuf, ImagesCapabi
             )));
         }
     }
-    
+
     Ok(normalized)
 }
 
@@ -277,7 +277,12 @@ fn endpoint_url(api_base_url: &str, path: &str) -> String {
 }
 
 fn media_type_from_path(path: &str) -> String {
-    match path.rsplit('.').next().map(|e| e.to_ascii_lowercase()).as_deref() {
+    match path
+        .rsplit('.')
+        .next()
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
         Some("jpg") | Some("jpeg") => "image/jpeg".to_string(),
         Some("gif") => "image/gif".to_string(),
         Some("webp") => "image/webp".to_string(),
@@ -362,7 +367,9 @@ pub async fn execute_image_generate(
         .json(&request_body)
         .send()
         .await
-        .map_err(|e| ImagesCapabilityError::operation(format!("Image generation request failed: {e}")))?;
+        .map_err(|e| {
+            ImagesCapabilityError::operation(format!("Image generation request failed: {e}"))
+        })?;
 
     if !response.status().is_success() {
         let status = response.status();
@@ -579,9 +586,7 @@ async fn fallback_generate(
     let image_data = resp
         .pointer("/data/0/b64_json")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            ImagesCapabilityError::operation("No image data in fallback response")
-        })?;
+        .ok_or_else(|| ImagesCapabilityError::operation("No image data in fallback response"))?;
     let generated_media_type = infer_generated_image_media_type(image_data);
 
     Ok(json!({

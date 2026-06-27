@@ -44,14 +44,9 @@ impl PermissionResolver {
     /// 1. Check storage for tenant override
     /// 2. Use descriptor default if no override
     /// 3. Return Deny if capability not found (fail-closed)
-    pub async fn resolve_permission(
-        &self,
-        tenant_id: &str,
-        capability_id: &str,
-    ) -> PermissionMode {
+    pub async fn resolve_permission(&self, tenant_id: &str, capability_id: &str) -> PermissionMode {
         // 1. Check for override
-        if let Ok(Some(override_mode)) = self.store.get_permission(tenant_id, capability_id).await
-        {
+        if let Ok(Some(override_mode)) = self.store.get_permission(tenant_id, capability_id).await {
             return override_mode;
         }
 
@@ -260,12 +255,8 @@ mod tests {
 
         let builtin_caps = resolver.list_provider_capabilities("builtin").await;
         assert_eq!(builtin_caps.len(), 2);
-        assert!(builtin_caps
-            .iter()
-            .any(|id| id.as_str() == "builtin.read"));
-        assert!(builtin_caps
-            .iter()
-            .any(|id| id.as_str() == "builtin.write"));
+        assert!(builtin_caps.iter().any(|id| id.as_str() == "builtin.read"));
+        assert!(builtin_caps.iter().any(|id| id.as_str() == "builtin.write"));
 
         let ext_caps = resolver.list_provider_capabilities("extension").await;
         assert_eq!(ext_caps.len(), 1);
@@ -313,4 +304,3 @@ mod tests {
         );
     }
 }
-

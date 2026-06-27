@@ -15,7 +15,6 @@ use async_trait::async_trait;
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Method, Request, StatusCode};
-use http_body_util::BodyExt;
 use brassclaw_host_api::{
     AgentId, CapabilityId, ExtensionId, InvocationId, ProjectId, RuntimeKind, TenantId, ThreadId,
     UserId,
@@ -49,6 +48,7 @@ use brassclaw_turns::{
     EventCursor, ReplyTargetBindingRef, RunProfileId, RunProfileVersion, TurnRunId, TurnStatus,
 };
 use brassclaw_webui_v2::{WebUiV2State, webui_v2_router};
+use http_body_util::BodyExt;
 use serde_json::Value;
 use tokio::sync::Notify;
 use tower::ServiceExt;
@@ -202,7 +202,8 @@ impl RebornServicesApi for StubServices {
                 request.thread_id.clone().unwrap_or_default(),
             )
             .expect("thread id"),
-            accepted_message_ref: brassclaw_turns::AcceptedMessageRef::new("msg:fake").expect("ref"),
+            accepted_message_ref: brassclaw_turns::AcceptedMessageRef::new("msg:fake")
+                .expect("ref"),
             turn_id: "turn:fake".to_string(),
             run_id: TurnRunId::new(),
             status: TurnStatus::Queued,
@@ -570,7 +571,8 @@ impl RebornServicesApi for StubServices {
     async fn list_capabilities(
         &self,
         _caller: WebUiAuthenticatedCaller,
-    ) -> Result<brassclaw_product_workflow::RebornListCapabilitiesResponse, RebornServicesError> {
+    ) -> Result<brassclaw_product_workflow::RebornListCapabilitiesResponse, RebornServicesError>
+    {
         use brassclaw_product_workflow::{RebornCapabilityInfo, RebornListCapabilitiesResponse};
         Ok(RebornListCapabilitiesResponse {
             capabilities: vec![
@@ -598,7 +600,10 @@ impl RebornServicesApi for StubServices {
         &self,
         _caller: WebUiAuthenticatedCaller,
         request: brassclaw_product_workflow::RebornUpdateCapabilityPermissionRequest,
-    ) -> Result<brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse, RebornServicesError> {
+    ) -> Result<
+        brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse,
+        RebornServicesError,
+    > {
         use brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse;
         Ok(RebornUpdateCapabilityPermissionResponse {
             capability_id: request.capability_id,
@@ -613,17 +618,15 @@ impl RebornServicesApi for StubServices {
     ) -> Result<brassclaw_product_workflow::RebornListSkillsResponse, RebornServicesError> {
         use brassclaw_product_workflow::{RebornListSkillsResponse, RebornSkillInfo};
         Ok(RebornListSkillsResponse {
-            skills: vec![
-                RebornSkillInfo {
-                    name: "test-skill".to_string(),
-                    version: "1.0.0".to_string(),
-                    description: "A test skill".to_string(),
-                    source: "system".to_string(),
-                    keywords: vec!["test".to_string()],
-                    tags: vec![],
-                    requires_skills: vec![],
-                },
-            ],
+            skills: vec![RebornSkillInfo {
+                name: "test-skill".to_string(),
+                version: "1.0.0".to_string(),
+                description: "A test skill".to_string(),
+                source: "system".to_string(),
+                keywords: vec!["test".to_string()],
+                tags: vec![],
+                requires_skills: vec![],
+            }],
         })
     }
 
@@ -1945,20 +1948,25 @@ async fn stream_events_releases_slot_when_facade_drain_stalls_past_max_lifetime(
         async fn list_capabilities(
             &self,
             _caller: WebUiAuthenticatedCaller,
-        ) -> Result<brassclaw_product_workflow::RebornListCapabilitiesResponse, RebornServicesError> {
+        ) -> Result<brassclaw_product_workflow::RebornListCapabilitiesResponse, RebornServicesError>
+        {
             unreachable!("not exercised by this test")
         }
         async fn update_capability_permission(
             &self,
             _caller: WebUiAuthenticatedCaller,
             _request: brassclaw_product_workflow::RebornUpdateCapabilityPermissionRequest,
-        ) -> Result<brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse, RebornServicesError> {
+        ) -> Result<
+            brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse,
+            RebornServicesError,
+        > {
             unreachable!("not exercised by this test")
         }
         async fn list_skills(
             &self,
             _caller: WebUiAuthenticatedCaller,
-        ) -> Result<brassclaw_product_workflow::RebornListSkillsResponse, RebornServicesError> {
+        ) -> Result<brassclaw_product_workflow::RebornListSkillsResponse, RebornServicesError>
+        {
             unreachable!("not exercised by this test")
         }
         async fn install_skill(
@@ -1966,14 +1974,16 @@ async fn stream_events_releases_slot_when_facade_drain_stalls_past_max_lifetime(
             _caller: WebUiAuthenticatedCaller,
             _content: String,
             _source_url: Option<String>,
-        ) -> Result<brassclaw_product_workflow::RebornSkillInstallResult, RebornServicesError> {
+        ) -> Result<brassclaw_product_workflow::RebornSkillInstallResult, RebornServicesError>
+        {
             unreachable!("not exercised by this test")
         }
         async fn remove_skill(
             &self,
             _caller: WebUiAuthenticatedCaller,
             _name: String,
-        ) -> Result<brassclaw_product_workflow::RebornSkillRemoveResult, RebornServicesError> {
+        ) -> Result<brassclaw_product_workflow::RebornSkillRemoveResult, RebornServicesError>
+        {
             unreachable!("not exercised by this test")
         }
     }
@@ -2762,12 +2772,12 @@ async fn list_tools_returns_capabilities() {
     assert!(body.get("capabilities").is_some());
     let capabilities = body["capabilities"].as_array().expect("capabilities array");
     assert_eq!(capabilities.len(), 2);
-    
+
     // Verify first capability
     assert_eq!(capabilities[0]["id"], "web_search");
     assert_eq!(capabilities[0]["provider"], "builtin");
     assert_eq!(capabilities[0]["permission_mode"], "allowed");
-    
+
     // Verify second capability
     assert_eq!(capabilities[1]["id"], "file_read");
     assert_eq!(capabilities[1]["permission_mode"], "prompt");

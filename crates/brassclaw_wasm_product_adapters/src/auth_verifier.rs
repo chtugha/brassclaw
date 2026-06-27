@@ -19,9 +19,9 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use hmac::{Hmac, Mac};
 use brassclaw_product_adapters::ProtocolAuthFailure;
 use brassclaw_product_adapters::redaction::RedactedString;
+use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 

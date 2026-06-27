@@ -417,8 +417,6 @@ mod tests {
     use std::time::Duration;
 
     use async_trait::async_trait;
-    use http::HeaderMap;
-    use http::header::HeaderValue;
     use brassclaw_product_adapters::capabilities::ProductAdapterCapabilities;
     use brassclaw_product_adapters::external::{
         ExternalActorRef, ExternalConversationRef, ExternalEventId,
@@ -432,6 +430,8 @@ mod tests {
         ProductTriggerReason, ProjectionSubscriptionRequest, ProtocolHttpEgress,
         UserMessagePayload,
     };
+    use http::HeaderMap;
+    use http::header::HeaderValue;
     use tokio::sync::Notify;
 
     use super::*;

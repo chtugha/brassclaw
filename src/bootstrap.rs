@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 // Base-directory resolution lives in `brassclaw_common::paths`. Re-exported
 // from this module's path for back-compat with existing callers.
-pub use brassclaw_common::paths::{compute_brassclaw_base_dir, brassclaw_base_dir};
+pub use brassclaw_common::paths::{brassclaw_base_dir, compute_brassclaw_base_dir};
 
 /// Path to the BrassClaw-specific `.env` file: `~/.brassclaw/.env`.
 pub fn brassclaw_env_path() -> PathBuf {

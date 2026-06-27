@@ -4,9 +4,10 @@ use std::{
 };
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_authorization::GrantAuthorizer;
-use brassclaw_extensions::{ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource};
+use brassclaw_extensions::{
+    ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource,
+};
 use brassclaw_filesystem::{LocalFilesystem, RootFilesystem};
 use brassclaw_hooks::{
     HookId, HookLocalId, HookRegistrar, HookRegistry, HookVersion,
@@ -129,6 +130,7 @@ use brassclaw_turns::{
     },
     runner::{ClaimRunRequest, ClaimedTurnRun, TurnRunTransitionPort},
 };
+use chrono::Utc;
 use serde_json::{Value, json};
 
 fn driver_requirements_for(
@@ -2716,8 +2718,8 @@ async fn build_runtime_host_with_optional_hooks(
 /// First-party-only builder factory: installs just the no-op observer, mirroring
 /// the composition's first-party-only state. Host-plumbing double only — see the
 /// note above.
-fn first_party_only_hook_factory() -> brassclaw_reborn::loop_driver_host::HookDispatcherBuilderFactory
-{
+fn first_party_only_hook_factory()
+-> brassclaw_reborn::loop_driver_host::HookDispatcherBuilderFactory {
     Arc::new(|| {
         let hook_id = HookId::for_builtin(E2E_NOOP_OBSERVER_PATH, HookVersion::ONE);
         Ok(HookDispatcherBuilder::new(HookRegistry::new())
@@ -3632,13 +3634,14 @@ async fn text_only_host_prompt_materializes_inline_messages() {
         .await
         .unwrap();
 
-    assert_eq!(prompt_bundle.messages[0].role, "user");
-    assert!(
-        prompt_bundle.messages[0]
-            .content_ref
-            .as_str()
-            .starts_with("msg:inline.user.")
-    );
+    // Inline messages come after identity/context messages in the bundle.
+    // Find by prefix rather than assuming index 0.
+    let inline_msg = prompt_bundle
+        .messages
+        .iter()
+        .find(|m| m.content_ref.as_str().starts_with("msg:inline.user."))
+        .expect("bundle should contain an inline user message");
+    assert_eq!(inline_msg.role, "user");
     assert!(fixture.gateway.requests().is_empty());
 }
 

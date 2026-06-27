@@ -571,10 +571,12 @@ fn show_policy_status(json: bool, user_scope: Option<&str>) -> anyhow::Result<()
         policy.credit_notice_interval_hours
     );
     let queued_count = match normalized_scope.as_deref() {
-        Some(scope) => brassclaw_reborn_traces::contribution::queued_trace_envelope_paths_for_scope(
-            Some(scope),
-        )?
-        .len(),
+        Some(scope) => {
+            brassclaw_reborn_traces::contribution::queued_trace_envelope_paths_for_scope(Some(
+                scope,
+            ))?
+            .len()
+        }
         None => queued_envelope_paths()?.len(),
     };
     println!("  queued envelopes: {queued_count}");

@@ -1,8 +1,8 @@
 //! Pending gate state — unified type replacing `PendingApproval` and `PendingAuth`.
 
-use chrono::{DateTime, Utc};
 use brassclaw_common::ExternalThreadId;
 use brassclaw_engine::{CapabilityLease, ResumeKind, ThreadId};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

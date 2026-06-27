@@ -15,8 +15,8 @@
 //! transactional store backed by `ScopedFilesystem` or, for tests, an
 //! in-memory map.
 
-use chrono::{DateTime, Utc};
 use brassclaw_host_api::{ResourceScope, UserId};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;

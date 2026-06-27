@@ -62,11 +62,11 @@ fn normalize_lexical(path: &Path) -> PathBuf {
 /// * `Err(String)` - Error message if validation fails
 fn validate_path(raw: &str, base: Option<&Path>) -> Result<PathBuf, String> {
     let path = Path::new(raw);
-    
+
     if raw.is_empty() {
         return Err("empty path".to_string());
     }
-    
+
     // Resolve relative to base if provided
     let resolved = if path.is_absolute() {
         path.to_path_buf()
@@ -75,7 +75,7 @@ fn validate_path(raw: &str, base: Option<&Path>) -> Result<PathBuf, String> {
     } else {
         path.to_path_buf()
     };
-    
+
     // Normalize and check for path traversal
     let normalized = normalize_lexical(&resolved);
     if let Some(base) = base {
@@ -84,7 +84,7 @@ fn validate_path(raw: &str, base: Option<&Path>) -> Result<PathBuf, String> {
             return Err(format!("path escapes base directory: {}", raw));
         }
     }
-    
+
     Ok(normalized)
 }
 
@@ -423,16 +423,12 @@ pub fn descriptors() -> Vec<CapabilityDescriptor> {
 }
 
 fn require_str<'a>(params: &'a Value, key: &str) -> Result<&'a str, FilesystemCapabilityError> {
-    params
-        .get(key)
-        .and_then(Value::as_str)
-        .ok_or_else(|| FilesystemCapabilityError::input(format!("missing required parameter: {key}")))
+    params.get(key).and_then(Value::as_str).ok_or_else(|| {
+        FilesystemCapabilityError::input(format!("missing required parameter: {key}"))
+    })
 }
 
-fn resolve_path(
-    base: &Path,
-    raw: &str,
-) -> Result<PathBuf, FilesystemCapabilityError> {
+fn resolve_path(base: &Path, raw: &str) -> Result<PathBuf, FilesystemCapabilityError> {
     validate_path(raw, Some(base)).map_err(|e| {
         FilesystemCapabilityError::operation(format!("path validation failed for '{}': {}", raw, e))
     })
@@ -451,7 +447,9 @@ fn check_sensitive(path: &Path) -> Result<(), FilesystemCapabilityError> {
 
 fn check_blocked_device(path: &Path) -> Result<(), FilesystemCapabilityError> {
     let resolved_str = path.to_string_lossy();
-    if BLOCKED_DEVICE_PATHS.iter().any(|p| resolved_str.starts_with(p))
+    if BLOCKED_DEVICE_PATHS
+        .iter()
+        .any(|p| resolved_str.starts_with(p))
         || (resolved_str.starts_with("/proc/") && resolved_str.contains("/fd/"))
     {
         return Err(FilesystemCapabilityError::operation(format!(
@@ -502,9 +500,9 @@ pub async fn execute_read_file(
     check_sensitive(&path)?;
     check_blocked_device(&path)?;
 
-    let metadata = tokio::fs::metadata(&path)
-        .await
-        .map_err(|e| FilesystemCapabilityError::operation(format!("cannot read '{}': {}", path_str, e)))?;
+    let metadata = tokio::fs::metadata(&path).await.map_err(|e| {
+        FilesystemCapabilityError::operation(format!("cannot read '{}': {}", path_str, e))
+    })?;
 
     if metadata.len() > MAX_READ_SIZE {
         return Err(FilesystemCapabilityError::operation(format!(
@@ -517,28 +515,34 @@ pub async fn execute_read_file(
     {
         let probe_size = 8192u64.min(metadata.len()) as usize;
         if probe_size > 0 {
-            let mut f = tokio::fs::File::open(&path)
-                .await
-                .map_err(|e| FilesystemCapabilityError::operation(format!("cannot open '{}': {}", path_str, e)))?;
+            let mut f = tokio::fs::File::open(&path).await.map_err(|e| {
+                FilesystemCapabilityError::operation(format!("cannot open '{}': {}", path_str, e))
+            })?;
             let mut probe = vec![0u8; probe_size];
-            let n = f
-                .read(&mut probe)
-                .await
-                .map_err(|e| FilesystemCapabilityError::operation(format!("cannot read '{}': {}", path_str, e)))?;
+            let n = f.read(&mut probe).await.map_err(|e| {
+                FilesystemCapabilityError::operation(format!("cannot read '{}': {}", path_str, e))
+            })?;
             check_binary(&probe[..n])?;
         }
     }
 
-    let content = tokio::fs::read_to_string(&path)
-        .await
-        .map_err(|e| FilesystemCapabilityError::operation(format!("failed to read '{}': {}", path_str, e)))?;
+    let content = tokio::fs::read_to_string(&path).await.map_err(|e| {
+        FilesystemCapabilityError::operation(format!("failed to read '{}': {}", path_str, e))
+    })?;
 
     let offset = params.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize;
-    let limit = params.get("limit").and_then(Value::as_u64).map(|v| v as usize);
+    let limit = params
+        .get("limit")
+        .and_then(Value::as_u64)
+        .map(|v| v as usize);
 
     let lines: Vec<&str> = content.lines().collect();
     let total_lines = lines.len();
-    let start = if offset > 0 { offset.saturating_sub(1) } else { 0 };
+    let start = if offset > 0 {
+        offset.saturating_sub(1)
+    } else {
+        0
+    };
     let end = match limit {
         Some(l) => (start + l).min(total_lines),
         None => (start + DEFAULT_LINE_LIMIT).min(total_lines),
@@ -588,10 +592,14 @@ pub async fn execute_write_file(
             ctx.base_dir.join(path_str)
         };
         let normalized = normalize_lexical(&p);
-        let base_canonical = ctx.base_dir.canonicalize().unwrap_or_else(|_| normalize_lexical(&ctx.base_dir));
+        let base_canonical = ctx
+            .base_dir
+            .canonicalize()
+            .unwrap_or_else(|_| normalize_lexical(&ctx.base_dir));
         if !normalized.starts_with(&base_canonical) {
             return Err(FilesystemCapabilityError::operation(format!(
-                "path escapes sandbox: {}", path_str
+                "path escapes sandbox: {}",
+                path_str
             )));
         }
         Ok(normalized)
@@ -602,14 +610,14 @@ pub async fn execute_write_file(
     ctx.state.snapshot(&path, "write_file").await;
 
     if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(|e| FilesystemCapabilityError::operation(format!("failed to create directories: {}", e)))?;
+        tokio::fs::create_dir_all(parent).await.map_err(|e| {
+            FilesystemCapabilityError::operation(format!("failed to create directories: {}", e))
+        })?;
     }
 
-    tokio::fs::write(&path, content)
-        .await
-        .map_err(|e| FilesystemCapabilityError::operation(format!("failed to write '{}': {}", path_str, e)))?;
+    tokio::fs::write(&path, content).await.map_err(|e| {
+        FilesystemCapabilityError::operation(format!("failed to write '{}': {}", path_str, e))
+    })?;
 
     Ok(json!({
         "status": "ok",
@@ -623,14 +631,28 @@ pub async fn execute_list_dir(
     ctx: &FilesystemContext,
 ) -> Result<Value, FilesystemCapabilityError> {
     let path_str = params.get("path").and_then(Value::as_str).unwrap_or(".");
-    let recursive = params.get("recursive").and_then(Value::as_bool).unwrap_or(false);
-    let max_depth = params.get("max_depth").and_then(Value::as_u64).map(|v| v as usize);
+    let recursive = params
+        .get("recursive")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let max_depth = params
+        .get("max_depth")
+        .and_then(Value::as_u64)
+        .map(|v| v as usize);
     let path = resolve_path(&ctx.base_dir, path_str)?;
 
     check_sensitive(&path)?;
 
     let mut entries = Vec::new();
-    list_dir_recursive(&path, &path, recursive, max_depth.unwrap_or(3), 0, &mut entries).await;
+    list_dir_recursive(
+        &path,
+        &path,
+        recursive,
+        max_depth.unwrap_or(3),
+        0,
+        &mut entries,
+    )
+    .await;
 
     entries.sort_by(|a, b| {
         let a_name = a.get("name").and_then(Value::as_str).unwrap_or("");
@@ -680,7 +702,15 @@ async fn list_dir_recursive(
         }));
 
         if recursive && is_dir && current_depth < max_depth {
-            Box::pin(list_dir_recursive(root, &entry_path, recursive, max_depth, current_depth + 1, entries)).await;
+            Box::pin(list_dir_recursive(
+                root,
+                &entry_path,
+                recursive,
+                max_depth,
+                current_depth + 1,
+                entries,
+            ))
+            .await;
         }
     }
 }
@@ -692,15 +722,18 @@ pub async fn execute_apply_patch(
     let path_str = require_str(params, "path")?;
     let old_string = require_str(params, "old_string")?;
     let new_string = require_str(params, "new_string")?;
-    let replace_all = params.get("replace_all").and_then(Value::as_bool).unwrap_or(false);
+    let replace_all = params
+        .get("replace_all")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
 
     let path = resolve_path(&ctx.base_dir, path_str)?;
 
     check_sensitive(&path)?;
 
-    let content = tokio::fs::read_to_string(&path)
-        .await
-        .map_err(|e| FilesystemCapabilityError::operation(format!("failed to read '{}': {}", path_str, e)))?;
+    let content = tokio::fs::read_to_string(&path).await.map_err(|e| {
+        FilesystemCapabilityError::operation(format!("failed to read '{}': {}", path_str, e))
+    })?;
 
     if !content.contains(old_string) {
         return Err(FilesystemCapabilityError::operation(
@@ -722,9 +755,9 @@ pub async fn execute_apply_patch(
         1
     };
 
-    tokio::fs::write(&path, &new_content)
-        .await
-        .map_err(|e| FilesystemCapabilityError::operation(format!("failed to write '{}': {}", path_str, e)))?;
+    tokio::fs::write(&path, &new_content).await.map_err(|e| {
+        FilesystemCapabilityError::operation(format!("failed to write '{}': {}", path_str, e))
+    })?;
 
     Ok(json!({
         "status": "ok",
@@ -738,10 +771,7 @@ pub async fn execute_glob(
     ctx: &FilesystemContext,
 ) -> Result<Value, FilesystemCapabilityError> {
     let pattern = require_str(params, "pattern")?;
-    let root = params
-        .get("path")
-        .and_then(Value::as_str)
-        .unwrap_or(".");
+    let root = params.get("path").and_then(Value::as_str).unwrap_or(".");
     let max_results = params
         .get("max_results")
         .and_then(Value::as_u64)
@@ -757,7 +787,8 @@ pub async fn execute_glob(
         .any(|c| matches!(c, std::path::Component::ParentDir))
     {
         return Err(FilesystemCapabilityError::input(
-            "Glob patterns containing parent directory traversal ('..') are not allowed.".to_string(),
+            "Glob patterns containing parent directory traversal ('..') are not allowed."
+                .to_string(),
         ));
     }
 
@@ -881,9 +912,15 @@ pub async fn execute_grep(
     cmd.arg("--glob").arg("!target");
 
     match output_mode {
-        "files_with_matches" => { cmd.arg("--files-with-matches"); }
-        "count" => { cmd.arg("--count"); }
-        "content" => { cmd.arg("-n"); }
+        "files_with_matches" => {
+            cmd.arg("--files-with-matches");
+        }
+        "count" => {
+            cmd.arg("--count");
+        }
+        "content" => {
+            cmd.arg("-n");
+        }
         _ => {
             return Err(FilesystemCapabilityError::input(format!(
                 "Invalid output_mode '{}'. Must be: content, files_with_matches, or count",
@@ -926,9 +963,7 @@ pub async fn execute_grep(
         .map_err(|_| FilesystemCapabilityError::operation("grep timed out after 30s".to_string()))?
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
-                FilesystemCapabilityError::operation(
-                    "ripgrep (rg) is not installed".to_string(),
-                )
+                FilesystemCapabilityError::operation("ripgrep (rg) is not installed".to_string())
             } else {
                 FilesystemCapabilityError::operation(format!("failed to execute rg: {}", e))
             }
@@ -1049,7 +1084,10 @@ pub async fn execute_file_undo(
     match &snapshot.content_before {
         Some(content) => {
             tokio::fs::write(&path, content).await.map_err(|e| {
-                FilesystemCapabilityError::operation(format!("failed to restore '{}': {}", path_str, e))
+                FilesystemCapabilityError::operation(format!(
+                    "failed to restore '{}': {}",
+                    path_str, e
+                ))
             })?;
             Ok(json!({
                 "status": "ok",
@@ -1062,7 +1100,10 @@ pub async fn execute_file_undo(
         None => {
             if path.exists() {
                 tokio::fs::remove_file(&path).await.map_err(|e| {
-                    FilesystemCapabilityError::operation(format!("failed to remove '{}': {}", path_str, e))
+                    FilesystemCapabilityError::operation(format!(
+                        "failed to remove '{}': {}",
+                        path_str, e
+                    ))
                 })?;
             }
             Ok(json!({
@@ -1144,7 +1185,12 @@ mod tests {
         assert_eq!(d.effects.len(), 1);
         assert_eq!(d.default_permission, PermissionMode::Allow);
 
-        let required = d.parameters_schema.get("required").unwrap().as_array().unwrap();
+        let required = d
+            .parameters_schema
+            .get("required")
+            .unwrap()
+            .as_array()
+            .unwrap();
         assert!(required.contains(&json!("path")));
         assert!(required.contains(&json!("content")));
     }
@@ -1167,7 +1213,12 @@ mod tests {
         assert_effects_contain(&d, EffectKind::WriteFilesystem);
         assert_eq!(d.effects.len(), 2);
 
-        let required = d.parameters_schema.get("required").unwrap().as_array().unwrap();
+        let required = d
+            .parameters_schema
+            .get("required")
+            .unwrap()
+            .as_array()
+            .unwrap();
         assert!(required.contains(&json!("path")));
         assert!(required.contains(&json!("old_string")));
         assert!(required.contains(&json!("new_string")));
@@ -1181,7 +1232,12 @@ mod tests {
         assert_effects_contain(&d, EffectKind::ReadFilesystem);
         assert_eq!(d.effects.len(), 1);
 
-        let required = d.parameters_schema.get("required").unwrap().as_array().unwrap();
+        let required = d
+            .parameters_schema
+            .get("required")
+            .unwrap()
+            .as_array()
+            .unwrap();
         assert!(required.contains(&json!("pattern")));
     }
 
@@ -1193,7 +1249,12 @@ mod tests {
         assert_effects_contain(&d, EffectKind::ReadFilesystem);
         assert_eq!(d.effects.len(), 1);
 
-        let required = d.parameters_schema.get("required").unwrap().as_array().unwrap();
+        let required = d
+            .parameters_schema
+            .get("required")
+            .unwrap()
+            .as_array()
+            .unwrap();
         assert!(required.contains(&json!("pattern")));
     }
 
@@ -1205,7 +1266,12 @@ mod tests {
         assert_effects_contain(&d, EffectKind::WriteFilesystem);
         assert_eq!(d.effects.len(), 1);
 
-        let required = d.parameters_schema.get("required").unwrap().as_array().unwrap();
+        let required = d
+            .parameters_schema
+            .get("required")
+            .unwrap()
+            .as_array()
+            .unwrap();
         assert!(required.contains(&json!("path")));
     }
 
@@ -1218,14 +1284,19 @@ mod tests {
     #[test]
     fn all_descriptors_have_unique_ids() {
         let all = descriptors();
-        let ids: std::collections::HashSet<_> = all.iter().map(|d| d.id.as_str().to_string()).collect();
+        let ids: std::collections::HashSet<_> =
+            all.iter().map(|d| d.id.as_str().to_string()).collect();
         assert_eq!(ids.len(), all.len());
     }
 
     #[test]
     fn all_descriptors_have_resource_profiles() {
         for d in descriptors() {
-            assert!(d.resource_profile.is_some(), "descriptor {} missing resource profile", d.id);
+            assert!(
+                d.resource_profile.is_some(),
+                "descriptor {} missing resource profile",
+                d.id
+            );
         }
     }
 
@@ -1233,7 +1304,9 @@ mod tests {
     async fn execute_read_file_happy_path() {
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("test.txt");
-        tokio::fs::write(&file_path, "line1\nline2\nline3\n").await.unwrap();
+        tokio::fs::write(&file_path, "line1\nline2\nline3\n")
+            .await
+            .unwrap();
 
         let state = Arc::new(FilesystemCapabilityState::new());
         let ctx = FilesystemContext {
@@ -1241,12 +1314,9 @@ mod tests {
             state,
         };
 
-        let result = execute_read_file(
-            &json!({"path": file_path.to_str().unwrap()}),
-            &ctx,
-        )
-        .await
-        .unwrap();
+        let result = execute_read_file(&json!({"path": file_path.to_str().unwrap()}), &ctx)
+            .await
+            .unwrap();
 
         assert_eq!(result.get("total_lines").unwrap().as_u64().unwrap(), 3);
         assert_eq!(result.get("lines_shown").unwrap().as_u64().unwrap(), 3);
@@ -1305,9 +1375,15 @@ mod tests {
     #[tokio::test]
     async fn execute_list_dir_happy_path() {
         let dir = tempfile::tempdir().unwrap();
-        tokio::fs::write(dir.path().join("a.txt"), "a").await.unwrap();
-        tokio::fs::write(dir.path().join("b.txt"), "b").await.unwrap();
-        tokio::fs::create_dir(dir.path().join("subdir")).await.unwrap();
+        tokio::fs::write(dir.path().join("a.txt"), "a")
+            .await
+            .unwrap();
+        tokio::fs::write(dir.path().join("b.txt"), "b")
+            .await
+            .unwrap();
+        tokio::fs::create_dir(dir.path().join("subdir"))
+            .await
+            .unwrap();
 
         let state = Arc::new(FilesystemCapabilityState::new());
         let ctx = FilesystemContext {
@@ -1324,7 +1400,9 @@ mod tests {
     async fn execute_apply_patch_happy_path() {
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("code.rs");
-        tokio::fs::write(&file_path, "fn hello() { println!(\"old\"); }").await.unwrap();
+        tokio::fs::write(&file_path, "fn hello() { println!(\"old\"); }")
+            .await
+            .unwrap();
 
         let state = Arc::new(FilesystemCapabilityState::new());
         let ctx = FilesystemContext {
@@ -1356,7 +1434,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         tokio::fs::write(dir.path().join("a.rs"), "").await.unwrap();
         tokio::fs::write(dir.path().join("b.rs"), "").await.unwrap();
-        tokio::fs::write(dir.path().join("c.txt"), "").await.unwrap();
+        tokio::fs::write(dir.path().join("c.txt"), "")
+            .await
+            .unwrap();
 
         let state = Arc::new(FilesystemCapabilityState::new());
         let ctx = FilesystemContext {
@@ -1364,12 +1444,9 @@ mod tests {
             state,
         };
 
-        let result = execute_glob(
-            &json!({"pattern": "*.rs", "path": "."}),
-            &ctx,
-        )
-        .await
-        .unwrap();
+        let result = execute_glob(&json!({"pattern": "*.rs", "path": "."}), &ctx)
+            .await
+            .unwrap();
 
         assert_eq!(result.get("count").unwrap().as_u64().unwrap(), 2);
     }
@@ -1377,14 +1454,21 @@ mod tests {
     #[tokio::test]
     async fn execute_grep_happy_path() {
         // Skip when ripgrep is not installed (CI environments without rg).
-        if std::process::Command::new("rg").arg("--version").output().is_err() {
+        if std::process::Command::new("rg")
+            .arg("--version")
+            .output()
+            .is_err()
+        {
             return;
         }
 
         let dir = tempfile::tempdir().unwrap();
-        tokio::fs::write(dir.path().join("a.txt"), "hello world\nfoo bar\nhello again\n")
-            .await
-            .unwrap();
+        tokio::fs::write(
+            dir.path().join("a.txt"),
+            "hello world\nfoo bar\nhello again\n",
+        )
+        .await
+        .unwrap();
 
         let state = Arc::new(FilesystemCapabilityState::new());
         let ctx = FilesystemContext {
@@ -1406,7 +1490,9 @@ mod tests {
     async fn execute_file_undo_happy_path() {
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("data.txt");
-        tokio::fs::write(&file_path, "original content").await.unwrap();
+        tokio::fs::write(&file_path, "original content")
+            .await
+            .unwrap();
 
         let state = Arc::new(FilesystemCapabilityState::new());
         let ctx = FilesystemContext {
@@ -1424,12 +1510,9 @@ mod tests {
         let modified = tokio::fs::read_to_string(&file_path).await.unwrap();
         assert_eq!(modified, "modified content");
 
-        let result = execute_file_undo(
-            &json!({"path": file_path.to_str().unwrap()}),
-            &ctx,
-        )
-        .await
-        .unwrap();
+        let result = execute_file_undo(&json!({"path": file_path.to_str().unwrap()}), &ctx)
+            .await
+            .unwrap();
 
         assert_eq!(result.get("status").unwrap().as_str().unwrap(), "ok");
         assert_eq!(result.get("action").unwrap().as_str().unwrap(), "restored");
@@ -1458,12 +1541,9 @@ mod tests {
 
         assert!(file_path.exists());
 
-        let result = execute_file_undo(
-            &json!({"path": file_path.to_str().unwrap()}),
-            &ctx,
-        )
-        .await
-        .unwrap();
+        let result = execute_file_undo(&json!({"path": file_path.to_str().unwrap()}), &ctx)
+            .await
+            .unwrap();
 
         assert_eq!(result.get("action").unwrap().as_str().unwrap(), "removed");
         assert!(!file_path.exists());
@@ -1516,13 +1596,14 @@ mod tests {
             state,
         };
 
-        let err = execute_read_file(
-            &json!({"path": "../../etc/passwd"}),
-            &ctx,
-        )
-        .await
-        .unwrap_err();
-        assert!(err.message.contains("sandbox") || err.message.contains("escapes") || err.message.contains("validation failed"));
+        let err = execute_read_file(&json!({"path": "../../etc/passwd"}), &ctx)
+            .await
+            .unwrap_err();
+        assert!(
+            err.message.contains("sandbox")
+                || err.message.contains("escapes")
+                || err.message.contains("validation failed")
+        );
     }
 
     #[tokio::test]
@@ -1540,7 +1621,11 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert!(err.message.contains("sandbox") || err.message.contains("escapes") || err.message.contains("validation failed"));
+        assert!(
+            err.message.contains("sandbox")
+                || err.message.contains("escapes")
+                || err.message.contains("validation failed")
+        );
     }
 
     #[tokio::test]
@@ -1552,12 +1637,9 @@ mod tests {
             state,
         };
 
-        let err = execute_write_file(
-            &json!({"path": "MEMORY.md", "content": "overwrite"}),
-            &ctx,
-        )
-        .await
-        .unwrap_err();
+        let err = execute_write_file(&json!({"path": "MEMORY.md", "content": "overwrite"}), &ctx)
+            .await
+            .unwrap_err();
         assert!(err.message.contains("workspace") || err.message.contains("memory_write"));
     }
 
@@ -1586,10 +1668,16 @@ mod tests {
     #[tokio::test]
     async fn list_dir_excludes_default_dirs() {
         let dir = tempfile::tempdir().unwrap();
-        tokio::fs::create_dir(dir.path().join("node_modules")).await.unwrap();
-        tokio::fs::create_dir(dir.path().join(".git")).await.unwrap();
+        tokio::fs::create_dir(dir.path().join("node_modules"))
+            .await
+            .unwrap();
+        tokio::fs::create_dir(dir.path().join(".git"))
+            .await
+            .unwrap();
         tokio::fs::create_dir(dir.path().join("src")).await.unwrap();
-        tokio::fs::write(dir.path().join("file.txt"), "").await.unwrap();
+        tokio::fs::write(dir.path().join("file.txt"), "")
+            .await
+            .unwrap();
 
         let state = Arc::new(FilesystemCapabilityState::new());
         let ctx = FilesystemContext {
@@ -1599,7 +1687,10 @@ mod tests {
 
         let result = execute_list_dir(&json!({"path": "."}), &ctx).await.unwrap();
         let entries = result.get("entries").unwrap().as_array().unwrap();
-        let names: Vec<&str> = entries.iter().filter_map(|e| e.get("name").and_then(Value::as_str)).collect();
+        let names: Vec<&str> = entries
+            .iter()
+            .filter_map(|e| e.get("name").and_then(Value::as_str))
+            .collect();
         assert!(!names.contains(&"node_modules"));
         assert!(!names.contains(&".git"));
         assert!(names.contains(&"src"));
@@ -1609,9 +1700,15 @@ mod tests {
     #[tokio::test]
     async fn glob_excludes_node_modules() {
         let dir = tempfile::tempdir().unwrap();
-        tokio::fs::create_dir_all(dir.path().join("node_modules/pkg")).await.unwrap();
-        tokio::fs::write(dir.path().join("node_modules/pkg/index.js"), "module").await.unwrap();
-        tokio::fs::write(dir.path().join("index.js"), "main").await.unwrap();
+        tokio::fs::create_dir_all(dir.path().join("node_modules/pkg"))
+            .await
+            .unwrap();
+        tokio::fs::write(dir.path().join("node_modules/pkg/index.js"), "module")
+            .await
+            .unwrap();
+        tokio::fs::write(dir.path().join("index.js"), "main")
+            .await
+            .unwrap();
 
         let state = Arc::new(FilesystemCapabilityState::new());
         let ctx = FilesystemContext {
@@ -1619,12 +1716,9 @@ mod tests {
             state,
         };
 
-        let result = execute_glob(
-            &json!({"pattern": "**/*.js", "path": "."}),
-            &ctx,
-        )
-        .await
-        .unwrap();
+        let result = execute_glob(&json!({"pattern": "**/*.js", "path": "."}), &ctx)
+            .await
+            .unwrap();
 
         let files = result.get("files").unwrap().as_array().unwrap();
         assert_eq!(files.len(), 1);
@@ -1640,12 +1734,9 @@ mod tests {
             state,
         };
 
-        let err = execute_glob(
-            &json!({"pattern": "/etc/**/*"}),
-            &ctx,
-        )
-        .await
-        .unwrap_err();
+        let err = execute_glob(&json!({"pattern": "/etc/**/*"}), &ctx)
+            .await
+            .unwrap_err();
         assert!(err.is_input_error);
     }
 
@@ -1658,12 +1749,9 @@ mod tests {
             state,
         };
 
-        let err = execute_glob(
-            &json!({"pattern": "../../**/*"}),
-            &ctx,
-        )
-        .await
-        .unwrap_err();
+        let err = execute_glob(&json!({"pattern": "../../**/*"}), &ctx)
+            .await
+            .unwrap_err();
         assert!(err.is_input_error);
     }
 }

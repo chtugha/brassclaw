@@ -4,7 +4,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use futures::{StreamExt, stream};
 use brassclaw_product_adapters::{
     GatePromptView, ProductAdapterError, ProductOutboundPayload, ProductProjectionItem,
     ProductProjectionState, ProductWorkflowRejectionKind, RedactedString,
@@ -20,6 +19,7 @@ use brassclaw_turns::{
         sanitize_model_visible_text,
     },
 };
+use futures::{StreamExt, stream};
 use tokio::sync::{Mutex, OnceCell, Semaphore};
 
 use brassclaw_reborn::failure_categories::MODEL_CREDITS_EXHAUSTED_CATEGORY;

@@ -268,7 +268,8 @@ impl From<&brassclaw_host_api::ExtensionId> for ExtensionId {
         // and `extension_id_from_host_api_round_trips_grammar_corners` below;
         // if the two grammars ever diverge those tests will fail before this
         // call site can panic in production.
-        let msg = "brassclaw_host_api::ExtensionId is pre-validated and shares the identity grammar";
+        let msg =
+            "brassclaw_host_api::ExtensionId is pre-validated and shares the identity grammar";
         Self::new(host.as_str().to_string()).expect(msg) // safety: host-api ExtensionId shares identity grammar; round-trip covered by unit tests above.
     }
 }

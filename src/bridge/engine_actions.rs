@@ -1,4 +1,6 @@
-use brassclaw_engine::{ActionDef, ActionDiscoveryMetadata, ActionDiscoverySummary, ModelToolSurface};
+use brassclaw_engine::{
+    ActionDef, ActionDiscoveryMetadata, ActionDiscoverySummary, ModelToolSurface,
+};
 
 fn action_discovery_summary(
     always_required: &[&str],

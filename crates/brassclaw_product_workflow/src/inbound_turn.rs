@@ -9,7 +9,6 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 #[cfg(test)]
 use brassclaw_host_api::UserId;
 use brassclaw_product_adapters::{
@@ -24,6 +23,7 @@ use brassclaw_turns::{
     AcceptedMessageRef, SubmitTurnRequest, SubmitTurnResponse, TurnActor, TurnCoordinator,
     TurnError, TurnRunId, TurnScope,
 };
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::binding::{
@@ -762,13 +762,13 @@ mod tests {
     use std::future::pending;
 
     use async_trait::async_trait;
-    use chrono::TimeZone;
     use brassclaw_host_api::{AgentId, TenantId, ThreadId, UserId};
     use brassclaw_product_adapters::{
         AdapterInstallationId, ExternalActorRef, ExternalConversationRef, ProductAdapterId,
         ProductTriggerReason, UserMessagePayload,
     };
     use brassclaw_threads::ThreadScope;
+    use chrono::TimeZone;
 
     use crate::action::SourceBindingKey;
 

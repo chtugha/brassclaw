@@ -5,8 +5,8 @@
 //! - Workspace-protected files (MEMORY.md, IDENTITY.md, etc.)
 //! - Blocked device/process paths (/dev/zero, /proc/kcore, etc.)
 
-use axum::extract::{Extension, State};
 use axum::Json;
+use axum::extract::{Extension, State};
 use brassclaw_product_workflow::{
     SafetyConfigResponse, UpdateSafetyConfigRequest, WebUiAuthenticatedCaller,
 };
@@ -21,10 +21,7 @@ pub async fn get_sensitive_paths(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<SafetyConfigResponse>, WebUiV2HttpError> {
-    let response = state
-        .services()
-        .get_safety_sensitive_paths(caller)
-        .await?;
+    let response = state.services().get_safety_sensitive_paths(caller).await?;
     Ok(Json(response))
 }
 
@@ -50,10 +47,7 @@ pub async fn get_workspace_rules(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<SafetyConfigResponse>, WebUiV2HttpError> {
-    let response = state
-        .services()
-        .get_safety_workspace_rules(caller)
-        .await?;
+    let response = state.services().get_safety_workspace_rules(caller).await?;
     Ok(Json(response))
 }
 
@@ -79,10 +73,7 @@ pub async fn get_blocked_paths(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<SafetyConfigResponse>, WebUiV2HttpError> {
-    let response = state
-        .services()
-        .get_safety_blocked_paths(caller)
-        .await?;
+    let response = state.services().get_safety_blocked_paths(caller).await?;
     Ok(Json(response))
 }
 
@@ -100,4 +91,3 @@ pub async fn update_blocked_paths(
         .await?;
     Ok(Json(response))
 }
-

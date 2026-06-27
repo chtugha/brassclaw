@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use futures::{StreamExt, TryStreamExt, stream};
 use brassclaw_loop_support::{
     HostSkillContextBuildError, HostSkillContextCandidate, HostSkillContextSource,
     SkillBundleDescriptor, SkillBundleId, SkillBundleSource, SkillBundleSourceError,
@@ -16,6 +15,7 @@ use brassclaw_skills::{
 };
 use brassclaw_turns::run_profile::{LoopRunContext, SkillVisibility};
 use brassclaw_turns::{AcceptedMessageRef, TurnRunId, TurnScope};
+use futures::{StreamExt, TryStreamExt, stream};
 use thiserror::Error;
 
 /// Maximum number of first-party skills selected for one turn by default.

@@ -1,5 +1,5 @@
-use clap::{Args, Subcommand};
 use brassclaw_reborn_config::{REBORN_PROFILE_ENV, RebornProfile};
+use clap::{Args, Subcommand};
 
 #[derive(Debug, Args)]
 pub(crate) struct ProfileCommand {

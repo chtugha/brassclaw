@@ -44,7 +44,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use async_trait::async_trait;
-use chrono::{Duration, Utc};
 use brassclaw_filesystem::{
     CasExpectation, ContentType, Entry, FilesystemError, IndexKey, IndexKind, IndexName, IndexSpec,
     IndexValue, RootFilesystem, ScopedFilesystem,
@@ -53,6 +52,7 @@ use brassclaw_host_api::{
     AgentId, HostApiError, MissionId, ProjectId, ResourceScope, ScopedPath, SecretHandle, ThreadId,
     Timestamp,
 };
+use chrono::{Duration, Utc};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 
@@ -1532,13 +1532,13 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use chrono::Utc;
     use brassclaw_filesystem::{InMemoryBackend, ScopedFilesystem};
     use brassclaw_host_api::{
         AgentId, CapabilityId, ExtensionId, InvocationId, MissionId, MountAlias, MountGrant,
         MountPermissions, MountView, NetworkMethod, ProjectId, ResourceScope, SecretHandle,
         TenantId, ThreadId, UserId, VirtualPath,
     };
+    use chrono::Utc;
     use secrecy::ExposeSecret;
     use serde_json::json;
 

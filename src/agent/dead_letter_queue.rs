@@ -66,8 +66,9 @@ impl DLQEntry {
         let backoff_multiplier = 2u32.pow(self.failure_count.saturating_sub(1));
         let delay = base_delay * backoff_multiplier;
         let capped_delay = delay.min(max_delay);
-        
-        Utc::now() + chrono::Duration::from_std(capped_delay).unwrap_or(chrono::Duration::seconds(60))
+
+        Utc::now()
+            + chrono::Duration::from_std(capped_delay).unwrap_or(chrono::Duration::seconds(60))
     }
 
     /// Check if this entry is ready for retry.
@@ -75,7 +76,7 @@ impl DLQEntry {
         if self.permanent_failure {
             return false;
         }
-        
+
         match self.retry_after {
             Some(retry_time) => Utc::now() >= retry_time,
             None => false,
@@ -88,22 +89,22 @@ impl DLQEntry {
 pub trait DLQStorage: Send + Sync {
     /// Add a job to the DLQ.
     async fn add_entry(&self, entry: DLQEntry) -> Result<(), Error>;
-    
+
     /// Update an existing DLQ entry.
     async fn update_entry(&self, entry: DLQEntry) -> Result<(), Error>;
-    
+
     /// Get a DLQ entry by job ID.
     async fn get_entry(&self, job_id: Uuid) -> Result<Option<DLQEntry>, Error>;
-    
+
     /// Remove a job from the DLQ.
     async fn remove_entry(&self, job_id: Uuid) -> Result<(), Error>;
-    
+
     /// List all entries in the DLQ.
     async fn list_entries(&self) -> Result<Vec<DLQEntry>, Error>;
-    
+
     /// List entries ready for retry.
     async fn list_ready_for_retry(&self) -> Result<Vec<DLQEntry>, Error>;
-    
+
     /// Get statistics about the DLQ.
     async fn get_statistics(&self) -> Result<DLQStatistics, Error>;
 }
@@ -145,7 +146,7 @@ impl Default for InMemoryDLQStorage {
 impl DLQStorage for InMemoryDLQStorage {
     async fn add_entry(&self, entry: DLQEntry) -> Result<(), Error> {
         let mut entries = self.entries.write().await;
-        
+
         // Check if entry already exists
         if entries.iter().any(|e| e.job_id == entry.job_id) {
             return Err(Error::Config(crate::error::ConfigError::InvalidValue {
@@ -153,14 +154,14 @@ impl DLQStorage for InMemoryDLQStorage {
                 message: format!("DLQ entry for job {} already exists", entry.job_id),
             }));
         }
-        
+
         entries.push(entry);
         Ok(())
     }
 
     async fn update_entry(&self, entry: DLQEntry) -> Result<(), Error> {
         let mut entries = self.entries.write().await;
-        
+
         if let Some(existing) = entries.iter_mut().find(|e| e.job_id == entry.job_id) {
             *existing = entry;
             Ok(())
@@ -199,12 +200,15 @@ impl DLQStorage for InMemoryDLQStorage {
 
     async fn get_statistics(&self) -> Result<DLQStatistics, Error> {
         let entries = self.entries.read().await;
-        
+
         let total_entries = entries.len();
-        let scheduled_retries = entries.iter().filter(|e| e.retry_after.is_some() && !e.permanent_failure).count();
+        let scheduled_retries = entries
+            .iter()
+            .filter(|e| e.retry_after.is_some() && !e.permanent_failure)
+            .count();
         let permanent_failures = entries.iter().filter(|e| e.permanent_failure).count();
         let ready_for_retry = entries.iter().filter(|e| e.is_ready_for_retry()).count();
-        
+
         Ok(DLQStatistics {
             total_entries,
             scheduled_retries,
@@ -231,8 +235,8 @@ impl Default for DLQConfig {
     fn default() -> Self {
         Self {
             max_retries: 5,
-            base_retry_delay: Duration::from_secs(60),      // 1 minute
-            max_retry_delay: Duration::from_secs(3600),     // 1 hour
+            base_retry_delay: Duration::from_secs(60), // 1 minute
+            max_retry_delay: Duration::from_secs(3600), // 1 hour
             auto_retry: true,
         }
     }
@@ -272,12 +276,12 @@ impl DeadLetterQueue {
         if let Some(mut entry) = self.storage.get_entry(job_id).await? {
             // Update existing entry
             entry.record_failure(error);
-            
+
             if entry.failure_count >= self.config.max_retries {
                 // Mark as permanent failure
                 entry.permanent_failure = true;
                 entry.retry_after = None;
-                
+
                 tracing::error!(
                     job_id = %job_id,
                     failure_count = entry.failure_count,
@@ -289,7 +293,7 @@ impl DeadLetterQueue {
                     self.config.base_retry_delay,
                     self.config.max_retry_delay,
                 ));
-                
+
                 tracing::info!(
                     job_id = %job_id,
                     failure_count = entry.failure_count,
@@ -297,19 +301,19 @@ impl DeadLetterQueue {
                     "Scheduled job for retry"
                 );
             }
-            
+
             self.storage.update_entry(entry).await?;
         } else {
             // Create new entry
             let mut entry = DLQEntry::new(job_id, error, job_metadata);
-            
+
             if self.config.auto_retry && entry.failure_count < self.config.max_retries {
                 entry.retry_after = Some(entry.calculate_retry_time(
                     self.config.base_retry_delay,
                     self.config.max_retry_delay,
                 ));
             }
-            
+
             self.storage.add_entry(entry).await?;
         }
 
@@ -343,7 +347,11 @@ impl DeadLetterQueue {
     }
 
     /// Manually schedule a job for retry.
-    pub async fn schedule_retry(&self, job_id: Uuid, retry_after: DateTime<Utc>) -> Result<(), Error> {
+    pub async fn schedule_retry(
+        &self,
+        job_id: Uuid,
+        retry_after: DateTime<Utc>,
+    ) -> Result<(), Error> {
         if let Some(mut entry) = self.storage.get_entry(job_id).await? {
             if entry.permanent_failure {
                 return Err(Error::Config(crate::error::ConfigError::InvalidValue {
@@ -351,16 +359,16 @@ impl DeadLetterQueue {
                     message: format!("Cannot retry job {} marked as permanent failure", job_id),
                 }));
             }
-            
+
             entry.retry_after = Some(retry_after);
             self.storage.update_entry(entry).await?;
-            
+
             tracing::info!(
                 job_id = %job_id,
                 retry_after = %retry_after,
                 "Manually scheduled job for retry"
             );
-            
+
             Ok(())
         } else {
             Err(Error::Config(crate::error::ConfigError::InvalidValue {
@@ -376,12 +384,12 @@ impl DeadLetterQueue {
             entry.permanent_failure = true;
             entry.retry_after = None;
             self.storage.update_entry(entry).await?;
-            
+
             tracing::warn!(
                 job_id = %job_id,
                 "Marked job as permanent failure"
             );
-            
+
             Ok(())
         } else {
             Err(Error::Config(crate::error::ConfigError::InvalidValue {
@@ -404,7 +412,7 @@ mod tests {
             "Test error".to_string(),
             serde_json::json!({"test": true}),
         );
-        
+
         assert_eq!(entry.job_id, job_id);
         assert_eq!(entry.failure_count, 1);
         assert_eq!(entry.last_error, "Test error");
@@ -415,13 +423,11 @@ mod tests {
     async fn test_dlq_add_and_retrieve() {
         let dlq = DeadLetterQueue::new_in_memory(DLQConfig::default());
         let job_id = Uuid::new_v4();
-        
-        dlq.add_failed_job(
-            job_id,
-            "Test error".to_string(),
-            serde_json::json!({}),
-        ).await.unwrap();
-        
+
+        dlq.add_failed_job(job_id, "Test error".to_string(), serde_json::json!({}))
+            .await
+            .unwrap();
+
         let entry = dlq.get_entry(job_id).await.unwrap().unwrap();
         assert_eq!(entry.job_id, job_id);
         assert_eq!(entry.failure_count, 1);
@@ -435,23 +441,29 @@ mod tests {
             max_retry_delay: Duration::from_secs(60),
             auto_retry: true,
         };
-        
+
         let dlq = DeadLetterQueue::new_in_memory(config);
         let job_id = Uuid::new_v4();
-        
+
         // First failure - should schedule retry
-        dlq.add_failed_job(job_id, "Error 1".to_string(), serde_json::json!({})).await.unwrap();
+        dlq.add_failed_job(job_id, "Error 1".to_string(), serde_json::json!({}))
+            .await
+            .unwrap();
         let entry = dlq.get_entry(job_id).await.unwrap().unwrap();
         assert!(entry.retry_after.is_some());
         assert!(!entry.permanent_failure);
-        
+
         // Second failure
-        dlq.add_failed_job(job_id, "Error 2".to_string(), serde_json::json!({})).await.unwrap();
+        dlq.add_failed_job(job_id, "Error 2".to_string(), serde_json::json!({}))
+            .await
+            .unwrap();
         let entry = dlq.get_entry(job_id).await.unwrap().unwrap();
         assert_eq!(entry.failure_count, 2);
-        
+
         // Third failure - should mark as permanent
-        dlq.add_failed_job(job_id, "Error 3".to_string(), serde_json::json!({})).await.unwrap();
+        dlq.add_failed_job(job_id, "Error 3".to_string(), serde_json::json!({}))
+            .await
+            .unwrap();
         let entry = dlq.get_entry(job_id).await.unwrap().unwrap();
         assert_eq!(entry.failure_count, 3);
         assert!(entry.permanent_failure);
@@ -461,17 +473,15 @@ mod tests {
     #[tokio::test]
     async fn test_dlq_statistics() {
         let dlq = DeadLetterQueue::new_in_memory(DLQConfig::default());
-        
+
         // Add some entries
         for i in 0..5 {
             let job_id = Uuid::new_v4();
-            dlq.add_failed_job(
-                job_id,
-                format!("Error {}", i),
-                serde_json::json!({}),
-            ).await.unwrap();
+            dlq.add_failed_job(job_id, format!("Error {}", i), serde_json::json!({}))
+                .await
+                .unwrap();
         }
-        
+
         let stats = dlq.get_statistics().await.unwrap();
         assert_eq!(stats.total_entries, 5);
     }

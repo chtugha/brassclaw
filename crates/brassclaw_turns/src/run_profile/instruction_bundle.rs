@@ -822,7 +822,6 @@ pub(crate) fn estimate_section_tokens(snippets: &[LoopContextSnippet]) -> usize 
         .sum()
 }
 
-
 fn validate_context_ref(value: String, label: &'static str) -> Result<String, AgentLoopHostError> {
     if value.is_empty()
         || value.len() > 128

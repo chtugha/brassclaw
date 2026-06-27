@@ -797,7 +797,9 @@ fn conversation_route_kind(
     }
 }
 
-fn map_conversation_error(error: brassclaw_conversations::InboundTurnError) -> ProductWorkflowError {
+fn map_conversation_error(
+    error: brassclaw_conversations::InboundTurnError,
+) -> ProductWorkflowError {
     match error {
         brassclaw_conversations::InboundTurnError::InvalidExternalRef { reason, .. }
         | brassclaw_conversations::InboundTurnError::InvalidCanonicalRef { reason } => {

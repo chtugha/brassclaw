@@ -44,7 +44,9 @@ pub fn run_serve() -> anyhow::Result<()> {
     // Parse with a synthetic argv of ["brassclaw", "serve"] so clap
     // constructs a default ServeCommand with no extra flags.
     use clap::Parser as _;
-    cli::Cli::parse_from(["brassclaw", "serve"]).command.execute()
+    cli::Cli::parse_from(["brassclaw", "serve"])
+        .command
+        .execute()
 }
 
 // Made with Bob

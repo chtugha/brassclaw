@@ -335,10 +335,8 @@ impl BuiltinCapabilityDispatcher {
             }
 
             // System capabilities (mix of sync and async)
-            super::system::ECHO_CAPABILITY_ID => {
-                super::system::execute_echo(params)
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-            }
+            super::system::ECHO_CAPABILITY_ID => super::system::execute_echo(params)
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
             super::system::JSON_CAPABILITY_ID => {
                 super::system::execute_json(params, &self.system_ctx)
                     .await
@@ -348,10 +346,8 @@ impl BuiltinCapabilityDispatcher {
                 super::system::execute_time(params, &self.system_ctx.user_timezone)
                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
             }
-            super::system::SYSTEM_VERSION_CAPABILITY_ID => {
-                super::system::execute_system_version()
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-            }
+            super::system::SYSTEM_VERSION_CAPABILITY_ID => super::system::execute_system_version()
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
             super::system::SYSTEM_TOOLS_LIST_CAPABILITY_ID => {
                 super::system::execute_system_tools_list(&self.system_ctx)
                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
@@ -360,10 +356,8 @@ impl BuiltinCapabilityDispatcher {
                 super::system::execute_plan_update(params, &self.system_ctx)
                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
             }
-            super::system::RESTART_CAPABILITY_ID => {
-                super::system::execute_restart(params)
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
-            }
+            super::system::RESTART_CAPABILITY_ID => super::system::execute_restart(params)
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
 
             // Pairing capabilities
             super::pairing::PAIRING_APPROVE_CAPABILITY_ID => {
@@ -387,13 +381,13 @@ impl CapabilityDispatcher for BuiltinCapabilityDispatcher {
         let capability_id = request.capability_id.clone();
 
         // Execute the capability
-        let output = self
-            .dispatch_internal(&request)
-            .await
-            .map_err(|e| DispatchError::FirstParty {
-                kind: RuntimeDispatchErrorKind::OperationFailed,
-                safe_summary: Some(e.to_string()),
-            })?;
+        let output =
+            self.dispatch_internal(&request)
+                .await
+                .map_err(|e| DispatchError::FirstParty {
+                    kind: RuntimeDispatchErrorKind::OperationFailed,
+                    safe_summary: Some(e.to_string()),
+                })?;
 
         // Calculate resource usage
         let elapsed = start.elapsed();
@@ -413,7 +407,8 @@ impl CapabilityDispatcher for BuiltinCapabilityDispatcher {
         };
 
         let receipt = ResourceReceipt {
-            id: request.resource_reservation
+            id: request
+                .resource_reservation
                 .as_ref()
                 .map(|r| r.id)
                 .unwrap_or_default(),
@@ -434,4 +429,3 @@ impl CapabilityDispatcher for BuiltinCapabilityDispatcher {
         })
     }
 }
-

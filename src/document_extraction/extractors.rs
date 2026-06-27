@@ -24,7 +24,11 @@ enum ExtractionError {
 }
 
 /// Extract text from document bytes based on MIME type and optional filename.
-pub(super) fn extract_text(data: &[u8], mime: &str, filename: Option<&str>) -> Result<String, String> {
+pub(super) fn extract_text(
+    data: &[u8],
+    mime: &str,
+    filename: Option<&str>,
+) -> Result<String, String> {
     let base_mime = mime.split(';').next().unwrap_or(mime).trim();
 
     match base_mime {

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use chrono::Utc;
 use brassclaw_extensions::{
     ExtensionActivationState, ExtensionCredentialBinding, ExtensionCredentialHandle,
     ExtensionHealthMessage, ExtensionHealthSnapshot, ExtensionHealthStatus, ExtensionInstallation,
@@ -13,6 +12,7 @@ use brassclaw_product_adapter_registry::{
     ManifestHash, RegistryError, list_enabled_product_adapter_entries,
     parse_product_adapter_manifest_record, product_adapter_sections,
 };
+use chrono::Utc;
 
 fn extension_id() -> ExtensionId {
     ExtensionId::new("telegram-v2").unwrap()

@@ -9,7 +9,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_host_api::{CapabilityId, InvocationId, RuntimeKind, ThreadId};
 use brassclaw_threads::{
     AcceptInboundMessageRequest, EnsureThreadRequest, MessageContent, SessionThreadService,
@@ -30,6 +29,7 @@ use brassclaw_turns::{
         VisibleCapabilitySurface, sanitize_model_visible_text,
     },
 };
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use crate::{

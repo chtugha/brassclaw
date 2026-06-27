@@ -1,4 +1,3 @@
-use chrono::{TimeZone, Utc};
 use brassclaw_agent_loop::{
     executor::{AgentLoopExecutor, CanonicalAgentLoopExecutor},
     families,
@@ -9,6 +8,7 @@ use brassclaw_turns::{
     LoopCancelledReasonKind, LoopExit,
     run_profile::{LoopCancelReasonKind, LoopCancellationSignal, LoopRunInfoPort},
 };
+use chrono::{TimeZone, Utc};
 
 #[tokio::test]
 async fn cancellation_accessor_short_circuits_loop_when_ws13_lands() {

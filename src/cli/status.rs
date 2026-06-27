@@ -267,4 +267,3 @@ fn count_wasm_files(dir: &std::path::Path) -> usize {
 fn default_tools_dir() -> PathBuf {
     brassclaw_base_dir().join("tools")
 }
-

@@ -124,7 +124,9 @@ fn asset_manifest(extension_id: &str) -> brassclaw_extensions::ExtensionManifest
                 "../../brassclaw_first_party_extensions/assets/google-calendar/manifest.toml"
             )
         }
-        "gmail" => include_str!("../../brassclaw_first_party_extensions/assets/gmail/manifest.toml"),
+        "gmail" => {
+            include_str!("../../brassclaw_first_party_extensions/assets/gmail/manifest.toml")
+        }
         other => panic!("unknown GSuite asset manifest {other}"),
     };
     brassclaw_extensions::ExtensionManifest::parse(

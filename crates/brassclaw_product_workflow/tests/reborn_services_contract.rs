@@ -9,7 +9,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_auth::{CredentialAccountId, CredentialAccountProjection};
 use brassclaw_host_api::{AgentId, ApprovalRequestId, ProjectId, TenantId, ThreadId, UserId};
 use brassclaw_product_adapters::{
@@ -64,6 +63,7 @@ use brassclaw_turns::{
     SubmitTurnResponse, TurnActor, TurnCapacityResource, TurnCoordinator, TurnError, TurnId,
     TurnRunId, TurnRunState, TurnScope, TurnStatus,
 };
+use chrono::Utc;
 use serde_json::json;
 use tokio::sync::{Notify, oneshot};
 
@@ -514,7 +514,8 @@ impl ApprovalInteractionService for RecordingApprovalInteractionService {
     async fn list_pending(
         &self,
         _request: ListPendingApprovalsRequest,
-    ) -> Result<ListPendingApprovalsResponse, brassclaw_product_workflow::ProductWorkflowError> {
+    ) -> Result<ListPendingApprovalsResponse, brassclaw_product_workflow::ProductWorkflowError>
+    {
         Ok(ListPendingApprovalsResponse { approvals: vec![] })
     }
 

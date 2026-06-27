@@ -6,9 +6,9 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use glob::Pattern;
 use brassclaw_filesystem::{FileStat, FileType, FilesystemOperation};
 use brassclaw_host_api::{RuntimeDispatchErrorKind, ScopedPath, VirtualPath};
+use glob::Pattern;
 use regex::RegexBuilder;
 use serde_json::{Value, json};
 

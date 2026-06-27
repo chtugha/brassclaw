@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_auth::{
     AuthChallenge, AuthContinuationEvent, AuthContinuationRef, AuthErrorCode, AuthFlowId,
     AuthFlowKind, AuthFlowManager, AuthFlowOwnerScope, AuthFlowRecord, AuthFlowRecordSource,
@@ -21,6 +20,7 @@ use brassclaw_auth::{
 };
 use brassclaw_product_adapters::AuthPromptChallengeKind;
 use brassclaw_product_workflow::ProductAuthTurnGateResumeDispatcher;
+use chrono::Utc;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 

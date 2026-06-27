@@ -580,7 +580,8 @@ pub enum RuntimeBlockedReason {
 /// details, or credential-shaped text. Keep this disabled unless debugging a
 /// trusted `LocalDev` or `LocalYolo` run. Hosted and enterprise deployments
 /// never enable raw diagnostics from this environment variable alone.
-pub(crate) const UNSAFE_RAW_HTTP_EGRESS_ERRORS_ENV: &str = "BRASSCLAW_UNSAFE_RAW_HTTP_EGRESS_ERRORS";
+pub(crate) const UNSAFE_RAW_HTTP_EGRESS_ERRORS_ENV: &str =
+    "BRASSCLAW_UNSAFE_RAW_HTTP_EGRESS_ERRORS";
 
 pub(crate) fn runtime_policy_allows_unsafe_raw_http_diagnostics(
     policy: Option<&EffectiveRuntimePolicy>,

@@ -16,10 +16,9 @@ use crate::agent::routine::{Routine, RoutineRun, RunStatus};
 use crate::config::DatabaseConfig;
 use crate::context::{ActionRecord, JobContext, JobState};
 use crate::db::{
-    CapabilityPermissionStore,
-    ApiTokenRecord, ChannelPairingStore, ConversationStore, Database, IdentityStore, JobStore,
-    PairingRequestRecord, RoutineStore, SandboxStore, SettingsStore, ToolFailureStore,
-    UserIdentityRecord, UserRecord, UserStore, WorkspaceStore,
+    ApiTokenRecord, CapabilityPermissionStore, ChannelPairingStore, ConversationStore, Database,
+    IdentityStore, JobStore, PairingRequestRecord, RoutineStore, SandboxStore, SettingsStore,
+    ToolFailureStore, UserIdentityRecord, UserRecord, UserStore, WorkspaceStore,
 };
 use crate::error::{DatabaseError, WorkspaceError};
 use crate::history::{
@@ -1703,7 +1702,12 @@ impl CapabilityPermissionStore for PgBackend {
                     "allow" => brassclaw_host_api::PermissionMode::Allow,
                     "ask" => brassclaw_host_api::PermissionMode::Ask,
                     "deny" => brassclaw_host_api::PermissionMode::Deny,
-                    _ => return Err(DatabaseError::Query(format!("invalid permission_mode: {}", mode_str))),
+                    _ => {
+                        return Err(DatabaseError::Query(format!(
+                            "invalid permission_mode: {}",
+                            mode_str
+                        )));
+                    }
                 };
                 Ok(Some(mode))
             }
@@ -1757,7 +1761,8 @@ impl CapabilityPermissionStore for PgBackend {
     async fn list_capability_overrides(
         &self,
         tenant_id: &str,
-    ) -> Result<std::collections::HashMap<String, brassclaw_host_api::PermissionMode>, DatabaseError> {
+    ) -> Result<std::collections::HashMap<String, brassclaw_host_api::PermissionMode>, DatabaseError>
+    {
         let conn = self.pool().get().await?;
 
         let rows = conn
@@ -1782,5 +1787,4 @@ impl CapabilityPermissionStore for PgBackend {
 
         Ok(overrides)
     }
-
 }

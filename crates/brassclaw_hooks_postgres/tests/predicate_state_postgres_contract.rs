@@ -26,8 +26,8 @@
 
 use std::sync::Arc;
 
-use deadpool_postgres::Pool;
 use brassclaw_hooks_postgres::PostgresPredicateStateBackend;
+use deadpool_postgres::Pool;
 
 /// Process-global serialization lock. The contract suite reuses fixed
 /// keys ("alpha", "beta"), so tests must not interleave against a shared
@@ -152,7 +152,8 @@ impl brassclaw_hooks::predicate_state::PredicateStateBackend for PgBackendHandle
         now: chrono::DateTime<chrono::Utc>,
         value: rust_decimal::Decimal,
         window: std::time::Duration,
-    ) -> Result<rust_decimal::Decimal, brassclaw_hooks::predicate_state::PredicateBackendError> {
+    ) -> Result<rust_decimal::Decimal, brassclaw_hooks::predicate_state::PredicateBackendError>
+    {
         self.0.record_value(key, event_id, now, value, window).await
     }
 

@@ -22,9 +22,7 @@ use crate::bootstrap::brassclaw_base_dir;
 use crate::config::OAUTH_PLACEHOLDER;
 use crate::secrets::{SecretsCrypto, SecretsStore};
 use crate::settings::{KeySource, Settings};
-use crate::setup::channels::{
-    SecretsContext, setup_http, setup_signal, setup_tunnel,
-};
+use crate::setup::channels::{SecretsContext, setup_http, setup_signal, setup_tunnel};
 use crate::setup::prompts::{
     confirm, input, optional_input, print_banner, print_error, print_header, print_info,
     print_step, print_success, secret_input, select_many, select_one,
@@ -1658,9 +1656,12 @@ impl SetupWizard {
             return Err(SetupError::Auth("No token provided".to_string()));
         }
 
-        brassclaw_llm::auth::validate_token(brassclaw_llm::auth::AuthBackend::GithubCopilot, &token)
-            .await
-            .map_err(|e| SetupError::Auth(e.to_string()))?;
+        brassclaw_llm::auth::validate_token(
+            brassclaw_llm::auth::AuthBackend::GithubCopilot,
+            &token,
+        )
+        .await
+        .map_err(|e| SetupError::Auth(e.to_string()))?;
 
         self.save_github_copilot_token(&token).await
     }
@@ -2708,8 +2709,7 @@ impl SetupWizard {
             self.settings.channels.signal_group_allow_from = None;
         }
 
-        let _discovered_by_name: HashMap<String, _> =
-            discovered_channels.into_iter().collect();
+        let _discovered_by_name: HashMap<String, _> = discovered_channels.into_iter().collect();
 
         // Process selected WASM channels - not yet fully implemented in V2
         let mut enabled_wasm_channels = Vec::new();
@@ -3907,4 +3907,3 @@ async fn install_selected_bundled_channels(
     installed.sort();
     Ok(Some(installed))
 }
-

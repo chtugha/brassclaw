@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use brassclaw_host_api::PermissionMode;
 
-use crate::db::{CapabilityPermissionStore, DatabaseError};
 use crate::db::libsql::LibSqlBackend;
+use crate::db::{CapabilityPermissionStore, DatabaseError};
 
 #[async_trait]
 impl CapabilityPermissionStore for LibSqlBackend {
@@ -15,9 +15,10 @@ impl CapabilityPermissionStore for LibSqlBackend {
         tenant_id: &str,
         capability_id: &str,
     ) -> Result<Option<PermissionMode>, DatabaseError> {
-        let conn = self.db.connect().map_err(|e| {
-            DatabaseError::Pool(format!("failed to get connection: {}", e))
-        })?;
+        let conn = self
+            .db
+            .connect()
+            .map_err(|e| DatabaseError::Pool(format!("failed to get connection: {}", e)))?;
 
         let row = conn
             .query(
@@ -32,14 +33,19 @@ impl CapabilityPermissionStore for LibSqlBackend {
 
         match row {
             Some(row) => {
-                let mode_str: String = row.get(0).map_err(|e| {
-                    DatabaseError::Query(format!("get permission_mode: {}", e))
-                })?;
+                let mode_str: String = row
+                    .get(0)
+                    .map_err(|e| DatabaseError::Query(format!("get permission_mode: {}", e)))?;
                 let mode = match mode_str.as_str() {
                     "allow" => PermissionMode::Allow,
                     "ask" => PermissionMode::Ask,
                     "deny" => PermissionMode::Deny,
-                    _ => return Err(DatabaseError::Query(format!("invalid permission_mode: {}", mode_str))),
+                    _ => {
+                        return Err(DatabaseError::Query(format!(
+                            "invalid permission_mode: {}",
+                            mode_str
+                        )));
+                    }
                 };
                 Ok(Some(mode))
             }
@@ -53,9 +59,10 @@ impl CapabilityPermissionStore for LibSqlBackend {
         capability_id: &str,
         mode: PermissionMode,
     ) -> Result<(), DatabaseError> {
-        let conn = self.db.connect().map_err(|e| {
-            DatabaseError::Pool(format!("failed to get connection: {}", e))
-        })?;
+        let conn = self
+            .db
+            .connect()
+            .map_err(|e| DatabaseError::Pool(format!("failed to get connection: {}", e)))?;
 
         let mode_str = match mode {
             PermissionMode::Allow => "allow",
@@ -81,11 +88,13 @@ impl CapabilityPermissionStore for LibSqlBackend {
         tenant_id: &str,
         capability_id: &str,
     ) -> Result<bool, DatabaseError> {
-        let conn = self.db.connect().map_err(|e| {
-            DatabaseError::Pool(format!("failed to get connection: {}", e))
-        })?;
+        let conn = self
+            .db
+            .connect()
+            .map_err(|e| DatabaseError::Pool(format!("failed to get connection: {}", e)))?;
 
-        let rows_affected = conn.execute(
+        let rows_affected = conn
+            .execute(
                 "DELETE FROM capability_permissions WHERE tenant_id = ? AND capability_id = ?",
                 libsql::params![tenant_id, capability_id],
             )
@@ -99,9 +108,10 @@ impl CapabilityPermissionStore for LibSqlBackend {
         &self,
         tenant_id: &str,
     ) -> Result<HashMap<String, PermissionMode>, DatabaseError> {
-        let conn = self.db.connect().map_err(|e| {
-            DatabaseError::Pool(format!("failed to get connection: {}", e))
-        })?;
+        let conn = self
+            .db
+            .connect()
+            .map_err(|e| DatabaseError::Pool(format!("failed to get connection: {}", e)))?;
 
         let mut rows = conn
             .query(
@@ -112,15 +122,17 @@ impl CapabilityPermissionStore for LibSqlBackend {
             .map_err(|e| DatabaseError::Query(format!("list_capability_overrides: {}", e)))?;
 
         let mut overrides = HashMap::new();
-        while let Some(row) = rows.next().await.map_err(|e| {
-            DatabaseError::Query(format!("list_capability_overrides next: {}", e))
-        })? {
-            let capability_id: String = row.get(0).map_err(|e| {
-                DatabaseError::Query(format!("get capability_id: {}", e))
-            })?;
-            let mode_str: String = row.get(1).map_err(|e| {
-                DatabaseError::Query(format!("get permission_mode: {}", e))
-            })?;
+        while let Some(row) = rows
+            .next()
+            .await
+            .map_err(|e| DatabaseError::Query(format!("list_capability_overrides next: {}", e)))?
+        {
+            let capability_id: String = row
+                .get(0)
+                .map_err(|e| DatabaseError::Query(format!("get capability_id: {}", e)))?;
+            let mode_str: String = row
+                .get(1)
+                .map_err(|e| DatabaseError::Query(format!("get permission_mode: {}", e)))?;
             let mode = match mode_str.as_str() {
                 "allow" => PermissionMode::Allow,
                 "ask" => PermissionMode::Ask,
@@ -132,6 +144,4 @@ impl CapabilityPermissionStore for LibSqlBackend {
 
         Ok(overrides)
     }
-
 }
-

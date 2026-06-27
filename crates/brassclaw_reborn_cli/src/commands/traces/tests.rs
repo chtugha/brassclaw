@@ -1,13 +1,13 @@
 use super::*;
 use crate::cli::Cli;
 use crate::commands::Command;
-use clap::Parser;
 use brassclaw_reborn_traces::contribution::{
-    ConsentMetadata, ContributorMetadata, DETERMINISTIC_REDACTION_PIPELINE_VERSION,
-    BrassclawTraceMetadata, OutcomeMetadata, PrivacyMetadata, ReplayMetadata, ResidualPiiRisk,
-    TRACE_CONTRIBUTION_POLICY_VERSION, TRACE_CONTRIBUTION_SCHEMA_VERSION, TraceCard,
-    TraceValueCard, ValueMetadata,
+    BrassclawTraceMetadata, ConsentMetadata, ContributorMetadata,
+    DETERMINISTIC_REDACTION_PIPELINE_VERSION, OutcomeMetadata, PrivacyMetadata, ReplayMetadata,
+    ResidualPiiRisk, TRACE_CONTRIBUTION_POLICY_VERSION, TRACE_CONTRIBUTION_SCHEMA_VERSION,
+    TraceCard, TraceValueCard, ValueMetadata,
 };
+use clap::Parser;
 
 fn unwrap_traces_command(cli: Cli) -> TracesSubcommand {
     let Command::Traces(command) = cli.command else {
@@ -233,7 +233,12 @@ fn cli_enqueue_accepts_policy_matching_envelope_capture() {
 
 #[test]
 fn list_submissions_summary_flag_parses_through_cli() {
-    let cli = parse_cli(["brassclaw-reborn", "traces", "list-submissions", "--summary"]);
+    let cli = parse_cli([
+        "brassclaw-reborn",
+        "traces",
+        "list-submissions",
+        "--summary",
+    ]);
 
     let TracesSubcommand::ListSubmissions { json, summary } = unwrap_traces_command(cli) else {
         panic!("expected traces list-submissions command");

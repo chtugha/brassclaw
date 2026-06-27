@@ -1500,7 +1500,8 @@ mod tests {
         async fn load_context_window(
             &self,
             _request: brassclaw_threads::LoadContextWindowRequest,
-        ) -> Result<brassclaw_threads::ContextWindow, brassclaw_threads::SessionThreadError> {
+        ) -> Result<brassclaw_threads::ContextWindow, brassclaw_threads::SessionThreadError>
+        {
             Err(brassclaw_threads::SessionThreadError::Backend(
                 "not used".to_string(),
             ))
@@ -1519,7 +1520,8 @@ mod tests {
         async fn list_thread_history(
             &self,
             _request: ThreadHistoryRequest,
-        ) -> Result<brassclaw_threads::ThreadHistory, brassclaw_threads::SessionThreadError> {
+        ) -> Result<brassclaw_threads::ThreadHistory, brassclaw_threads::SessionThreadError>
+        {
             Err(brassclaw_threads::SessionThreadError::Backend(
                 "not used".to_string(),
             ))
@@ -2988,7 +2990,8 @@ mod tests {
         parent_context.scope = parent_scope.clone();
         parent_context.thread_id = parent_scope.thread_id.clone();
         parent_context.run_id = parent_run_id;
-        let mut child_context = brassclaw_agent_loop::test_support::test_run_context("legacy-child");
+        let mut child_context =
+            brassclaw_agent_loop::test_support::test_run_context("legacy-child");
         child_context.scope = child_scope;
         child_context.thread_id = ThreadId::new("legacy-child-thread").unwrap();
         child_context.run_id = child_run_id;

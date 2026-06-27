@@ -1,5 +1,3 @@
-use chrono::Utc;
-use futures::future::join_all;
 use brassclaw_host_api::{
     AgentId, CapabilityId, InvocationId, ProjectId, TenantId, ThreadId, UserId,
 };
@@ -15,6 +13,8 @@ use brassclaw_threads::{
     ThreadMessageId, ThreadMessageRangeRequest, ThreadScope, ToolResultReferenceEnvelope,
     ToolResultSafeSummary, UpdateAssistantDraftRequest, UpdateToolResultReferenceRequest,
 };
+use chrono::Utc;
+use futures::future::join_all;
 
 fn scope(label: &str) -> ThreadScope {
     ThreadScope {

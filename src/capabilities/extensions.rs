@@ -327,12 +327,9 @@ pub fn descriptors() -> Vec<CapabilityDescriptor> {
 }
 
 fn require_str<'a>(params: &'a Value, key: &str) -> Result<&'a str, ExtensionsCapabilityError> {
-    params
-        .get(key)
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            ExtensionsCapabilityError::input(format!("missing required parameter: {key}"))
-        })
+    params.get(key).and_then(Value::as_str).ok_or_else(|| {
+        ExtensionsCapabilityError::input(format!("missing required parameter: {key}"))
+    })
 }
 
 fn output_from_ensure_ready(outcome: EnsureReadyOutcome) -> Value {
@@ -574,13 +571,11 @@ pub async fn execute_tool_permission_set(
             "tool_name": tool_name,
             "message": "Permission state management is handled by the capability host permission system in v2.",
         })),
-        Some(s) if matches!(s, "always_allow" | "ask_each_time" | "disabled") => {
-            Ok(json!({
-                "tool_name": tool_name,
-                "requested_state": s,
-                "message": "Permission state management is handled by the capability host permission system in v2.",
-            }))
-        }
+        Some(s) if matches!(s, "always_allow" | "ask_each_time" | "disabled") => Ok(json!({
+            "tool_name": tool_name,
+            "requested_state": s,
+            "message": "Permission state management is handled by the capability host permission system in v2.",
+        })),
         Some(other) => Err(ExtensionsCapabilityError::input(format!(
             "Invalid state '{other}'; expected always_allow, ask_each_time, or disabled"
         ))),

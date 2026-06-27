@@ -782,7 +782,7 @@ impl RebornRuntime {
     /// Returns `None` when the runtime was built without a local-runtime
     /// substrate (production-shape profiles not yet wired), so callers fail
     /// closed.
-    
+
     pub async fn open_reborn_identity_resolver(
         &self,
         tenant_id: &TenantId,
@@ -812,9 +812,10 @@ impl RebornRuntime {
         {
             return Some(Err(err));
         }
-        Some(Ok(
-            Arc::new(store) as Arc<dyn brassclaw_reborn_identity::RebornIdentityResolver>
-        ))
+        Some(Ok(Arc::new(store)
+            as Arc<
+                dyn brassclaw_reborn_identity::RebornIdentityResolver,
+            >))
     }
 
     pub(crate) fn webui_thread_service(&self) -> Arc<dyn SessionThreadService> {
@@ -1634,8 +1635,9 @@ pub async fn build_reborn_runtime(
     // accountant doesn't get built (no spend, no cascade). The test
     // override (when set) wins over the LLM-derived table — the test is
     // being explicit about the prices it wants.
-    let llm_cost_table_arc: Option<Arc<dyn brassclaw_loop_support::ModelCostTable>> = llm_cost_table
-        .map(|table| Arc::new(table) as Arc<dyn brassclaw_loop_support::ModelCostTable>);
+    let llm_cost_table_arc: Option<Arc<dyn brassclaw_loop_support::ModelCostTable>> =
+        llm_cost_table
+            .map(|table| Arc::new(table) as Arc<dyn brassclaw_loop_support::ModelCostTable>);
     #[cfg(any(test, feature = "test-support"))]
     let resolved_cost_table = model_cost_table_override.or(llm_cost_table_arc);
     #[cfg(not(any(test, feature = "test-support")))]
@@ -2460,8 +2462,8 @@ mod tests {
     use std::time::Duration;
 
     use async_trait::async_trait;
-    use chrono::Utc;
     use brassclaw_auth::{GOOGLE_CALENDAR_EVENTS_SCOPE, GOOGLE_CALENDAR_READONLY_SCOPE};
+    use chrono::Utc;
 
     /// Wiring guard: the `regex_skill_activation_enabled` flag from
     /// [`RebornRuntimeInput`] must reach
@@ -2933,8 +2935,10 @@ mod tests {
     #[cfg(feature = "root-llm-provider")]
     fn nearai_gateway_test_request() -> HostManagedModelRequest {
         HostManagedModelRequest {
-            model_profile_id: brassclaw_turns::run_profile::ModelProfileId::new("interactive_model")
-                .expect("model profile id"),
+            model_profile_id: brassclaw_turns::run_profile::ModelProfileId::new(
+                "interactive_model",
+            )
+            .expect("model profile id"),
             messages: vec![brassclaw_loop_support::HostManagedModelMessage {
                 role: HostManagedModelMessageRole::User,
                 content: "hello model".to_string(),
@@ -4725,7 +4729,6 @@ mod tests {
         runtime.shutdown().await.expect("runtime shutdown");
     }
 
-    
     #[tokio::test]
     async fn webui_route_rejects_list_automations_without_agent_binding() {
         use axum::body::Body;
@@ -4784,7 +4787,6 @@ mod tests {
         runtime.shutdown().await.expect("runtime shutdown");
     }
 
-    
     #[tokio::test]
     async fn open_reborn_identity_resolver_migrates_legacy_webui_identities_through_runtime() {
         use brassclaw_reborn_identity::{
@@ -4880,7 +4882,6 @@ mod tests {
         runtime.shutdown().await.expect("runtime shutdown");
     }
 
-    
     #[tokio::test]
     async fn open_reborn_identity_resolver_migrates_legacy_verified_email_linking() {
         use brassclaw_reborn_identity::{

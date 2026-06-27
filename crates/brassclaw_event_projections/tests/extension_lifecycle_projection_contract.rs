@@ -1,7 +1,6 @@
 use std::{fs, path::Path, sync::Arc};
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_event_projections::{
     AuditProjectionRequest, AuditProjectionService, AuditProjectionStage, ProjectionScope,
     ReplayAuditProjectionService,
@@ -20,6 +19,7 @@ use brassclaw_host_api::{
 use brassclaw_reborn_event_store::{
     RebornEventStoreConfig, RebornProfile, build_reborn_event_stores,
 };
+use chrono::Utc;
 
 #[tokio::test]
 async fn extension_lifecycle_projects_metadata_only_from_durable_audit_log() {

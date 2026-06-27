@@ -6,8 +6,9 @@ use std::{
 };
 
 use async_trait::async_trait;
-use futures_util::FutureExt;
-use brassclaw_events::{DurableEventLog, EventCursor, EventStreamKey, ReadScope, SecurityAuditSink};
+use brassclaw_events::{
+    DurableEventLog, EventCursor, EventStreamKey, ReadScope, SecurityAuditSink,
+};
 use brassclaw_hooks::dispatch::{HookDispatcher, HookDispatcherBuilder};
 use brassclaw_hooks::middleware::{
     CapabilityInputResolver as HookCapabilityInputResolver,
@@ -27,6 +28,7 @@ use brassclaw_loop_support::{
     default_host_managed_loop_compaction_port,
 };
 use brassclaw_threads::{SessionThreadService, ThreadScope};
+use futures_util::FutureExt;
 
 use crate::driver_registry::{DriverRequirements, LoopDriverRegistryKey, RequirementLevel};
 use crate::hook_gate_refs::HookGateInvocationScopePort;

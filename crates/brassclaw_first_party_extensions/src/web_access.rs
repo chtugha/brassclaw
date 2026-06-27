@@ -3,12 +3,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use futures_util::FutureExt as _;
 use brassclaw_host_api::{
     CapabilityId, InvocationId, NetworkMethod, NetworkPolicy, NetworkScheme, NetworkTargetPattern,
     ResourceScope, ResourceUsage, RuntimeDispatchErrorKind, RuntimeHttpEgress,
     RuntimeHttpEgressError, RuntimeHttpEgressReasonCode, RuntimeHttpEgressRequest, RuntimeKind,
 };
+use futures_util::FutureExt as _;
 use serde_json::{Value, json};
 
 pub const WEB_ACCESS_EXTENSION_ID: &str = "web-access";

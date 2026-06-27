@@ -1,6 +1,6 @@
-use futures::future::join_all;
 use brassclaw_filesystem::{CasExpectation, ContentType, Entry, RootFilesystem, ScopedFilesystem};
 use brassclaw_host_api::{ScopedPath, ThreadId};
+use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 
 use crate::{SessionThreadError, ThreadMessageId, ThreadMessageRecord, ThreadScope};

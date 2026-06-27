@@ -6,7 +6,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_capabilities::{
     CapabilityObligationAbortRequest, CapabilityObligationCompletionRequest,
     CapabilityObligationError, CapabilityObligationFailureKind, CapabilityObligationHandler,
@@ -31,6 +30,7 @@ use brassclaw_safety::LeakDetector;
 use brassclaw_secrets::{
     SecretLease, SecretLeaseId, SecretMaterial, SecretMetadata, SecretStore, SecretStoreError,
 };
+use chrono::Utc;
 
 use crate::{
     ToolCallHttpEgress,

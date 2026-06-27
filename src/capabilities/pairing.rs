@@ -136,9 +136,8 @@ pub async fn execute_pairing_approve(
             Ok(json!({ "status": "approved", "message": msg }))
         }
         Err(e) => {
-            let msg = format!(
-                "Pairing failed: {e}. Make sure the code is correct and hasn't expired."
-            );
+            let msg =
+                format!("Pairing failed: {e}. Make sure the code is correct and hasn't expired.");
             Ok(json!({ "status": "failed", "message": msg }))
         }
     }

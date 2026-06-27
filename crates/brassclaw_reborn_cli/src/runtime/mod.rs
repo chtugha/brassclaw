@@ -678,12 +678,12 @@ mod tests {
     use std::collections::HashMap;
 
     use brassclaw_reborn_composition::RebornCompositionProfile;
-    
+
     use brassclaw_reborn_composition::{LocalTriggerAccessRole, LocalTriggerAccessSource};
     use brassclaw_reborn_config::RebornBootConfig;
 
     use super::test_env::{EnvGuard, lock_trigger_env};
-    
+
     use super::with_run_local_trigger_fire_access_checker;
     use super::{
         RuntimeInputCaller, RuntimeInputOptions, block_on_cli, build_runtime_input,
@@ -903,7 +903,6 @@ enabled = true
         );
     }
 
-    
     #[allow(clippy::await_holding_lock, reason = "serializes env guards")]
     #[tokio::test]
     async fn run_trigger_poller_bootstrap_seeds_local_access_checker() {
@@ -940,8 +939,9 @@ enabled = true
             .expect("tenant id");
         let user_id = brassclaw_reborn_composition::host_api::UserId::new("run-trigger-user")
             .expect("user id");
-        let stale_user_id = brassclaw_reborn_composition::host_api::UserId::new("run-trigger-stale")
-            .expect("stale user id");
+        let stale_user_id =
+            brassclaw_reborn_composition::host_api::UserId::new("run-trigger-stale")
+                .expect("stale user id");
         let agent_id = brassclaw_reborn_composition::host_api::AgentId::new("run-trigger-agent")
             .expect("agent id");
         let project_id =

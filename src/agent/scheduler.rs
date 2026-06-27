@@ -4,12 +4,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::{RwLock, oneshot, mpsc};
+use tokio::sync::{RwLock, mpsc, oneshot};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::agent::background_tasks::BackgroundTaskRegistry;
-use crate::agent::dead_letter_queue::{DeadLetterQueue, DLQConfig};
+use crate::agent::dead_letter_queue::{DLQConfig, DeadLetterQueue};
 use crate::agent::task::{Task, TaskContext, TaskOutput};
 use crate::config::AgentConfig;
 use crate::context::{ContextManager, JobContext, JobState};
@@ -45,7 +45,7 @@ pub struct GenericTaskContext {
 pub trait GenericTaskHandler: Send + Sync {
     /// Execute the generic task.
     async fn execute(&self, context: GenericTaskContext) -> Result<serde_json::Value, Error>;
-    
+
     /// Get a description of this handler.
     fn description(&self) -> &str;
 }
@@ -149,11 +149,11 @@ impl Scheduler {
         // Create background task registry with built-in handlers.
         // Uses the sync constructor to avoid async runtime nesting issues.
         let background_tasks = Arc::new(BackgroundTaskRegistry::with_defaults());
-        
+
         // Create dead letter queue with default config
         let dlq_config = DLQConfig::default();
         let dead_letter_queue = Arc::new(DeadLetterQueue::new_in_memory(dlq_config));
-        
+
         Self {
             config,
             context_manager,
@@ -213,15 +213,9 @@ impl Scheduler {
         description: &str,
         metadata: Option<serde_json::Value>,
     ) -> Result<Uuid, JobError> {
-        self.dispatch_job_inner(
-            user_id,
-            title,
-            description,
-            metadata,
-        )
-        .await
+        self.dispatch_job_inner(user_id, title, description, metadata)
+            .await
     }
-
 
     /// Shared implementation for `dispatch_job` and `dispatch_job_with_context`.
     async fn dispatch_job_inner(
@@ -300,62 +294,77 @@ impl Scheduler {
     ///
     /// Extracts task type and parameters from the job's metadata field.
     fn parse_job_task(job_ctx: &JobContext) -> ParseTaskResult {
-        let metadata = job_ctx.metadata.as_object()
-            .ok_or_else(|| Error::Job(JobError::ContextError {
+        let metadata = job_ctx.metadata.as_object().ok_or_else(|| {
+            Error::Job(JobError::ContextError {
                 id: job_ctx.job_id,
                 reason: "Job metadata is not an object".to_string(),
-            }))?;
+            })
+        })?;
 
         // Check for task_type field
-        let task_type = metadata.get("task_type")
+        let task_type = metadata
+            .get("task_type")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| Error::Job(JobError::ContextError {
-                id: job_ctx.job_id,
-                reason: "Missing task_type in job metadata".to_string(),
-            }))?;
+            .ok_or_else(|| {
+                Error::Job(JobError::ContextError {
+                    id: job_ctx.job_id,
+                    reason: "Missing task_type in job metadata".to_string(),
+                })
+            })?;
 
         match task_type {
             "tool_exec" => {
-                let tool_name = metadata.get("tool_name")
+                let tool_name = metadata
+                    .get("tool_name")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| Error::Job(JobError::ContextError {
-                        id: job_ctx.job_id,
-                        reason: "Missing tool_name for tool_exec task".to_string(),
-                    }))?
+                    .ok_or_else(|| {
+                        Error::Job(JobError::ContextError {
+                            id: job_ctx.job_id,
+                            reason: "Missing tool_name for tool_exec task".to_string(),
+                        })
+                    })?
                     .to_string();
 
-                let params = metadata.get("params")
+                let params = metadata
+                    .get("params")
                     .cloned()
                     .unwrap_or(serde_json::json!({}));
 
                 Ok(JobTaskType::ToolExec { tool_name, params })
             }
             "background" => {
-                let task_name = metadata.get("task_name")
+                let task_name = metadata
+                    .get("task_name")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| Error::Job(JobError::ContextError {
-                        id: job_ctx.job_id,
-                        reason: "Missing task_name for background task".to_string(),
-                    }))?
+                    .ok_or_else(|| {
+                        Error::Job(JobError::ContextError {
+                            id: job_ctx.job_id,
+                            reason: "Missing task_name for background task".to_string(),
+                        })
+                    })?
                     .to_string();
 
-                let params = metadata.get("params")
+                let params = metadata
+                    .get("params")
                     .cloned()
                     .unwrap_or(serde_json::json!({}));
 
                 Ok(JobTaskType::Background { task_name, params })
             }
             "generic" => {
-                let description = metadata.get("description")
+                let description = metadata
+                    .get("description")
                     .and_then(|v| v.as_str())
                     .unwrap_or("Generic task")
                     .to_string();
-                
-                let handler_name = metadata.get("handler_name")
+
+                let handler_name = metadata
+                    .get("handler_name")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
-                
-                let params = metadata.get("params")
+
+                let params = metadata
+                    .get("params")
                     .cloned()
                     .unwrap_or(serde_json::json!({}));
 
@@ -365,12 +374,10 @@ impl Scheduler {
                     params,
                 })
             }
-            _ => {
-                Err(Error::Job(JobError::ContextError {
-                    id: job_ctx.job_id,
-                    reason: format!("Unknown task_type: {}", task_type),
-                }))
-            }
+            _ => Err(Error::Job(JobError::ContextError {
+                id: job_ctx.job_id,
+                reason: format!("Unknown task_type: {}", task_type),
+            })),
         }
     }
 
@@ -391,14 +398,14 @@ impl Scheduler {
                     crate::error::ToolError::AutonomousUnavailable { .. } => return false,
                     crate::error::ToolError::BuilderFailed { .. } => return false,
                 };
-                
+
                 // Check for common transient error patterns
-                reason.contains("timeout") ||
-                reason.contains("connection") ||
-                reason.contains("network") ||
-                reason.contains("temporary") ||
-                reason.contains("unavailable") ||
-                reason.contains("rate limit")
+                reason.contains("timeout")
+                    || reason.contains("connection")
+                    || reason.contains("network")
+                    || reason.contains("temporary")
+                    || reason.contains("unavailable")
+                    || reason.contains("rate limit")
             }
             // LLM errors might be transient
             Error::Llm(_) => true,
@@ -441,15 +448,15 @@ impl Scheduler {
                 Err(e) => {
                     let error_string = format!("{}", e);
                     last_error = Some(error_string.clone());
-                    
+
                     // Check if error is transient and we have retries left
                     if Self::is_transient_error(&e) && attempts < max_retries {
                         attempts += 1;
-                        
+
                         // Exponential backoff: 2^attempts seconds
                         let backoff_secs = 2_u64.pow(attempts);
                         let backoff = Duration::from_secs(backoff_secs);
-                        
+
                         tracing::warn!(
                             job_id = %job_id,
                             error = %e,
@@ -457,7 +464,7 @@ impl Scheduler {
                             backoff_secs = backoff_secs,
                             "Transient error, will retry after backoff"
                         );
-                        
+
                         tokio::time::sleep(backoff).await;
                         continue;
                     } else {
@@ -524,14 +531,15 @@ impl Scheduler {
                 );
 
                 let start = std::time::Instant::now();
-                
+
                 // Execute via background task registry
-                let result = scheduler.background_tasks
+                let result = scheduler
+                    .background_tasks
                     .execute(job_id, task_name, params.clone())
                     .await?;
-                
+
                 let duration = start.elapsed();
-                
+
                 tracing::info!(
                     job_id = %job_id,
                     task_name = %task_name,
@@ -548,7 +556,11 @@ impl Scheduler {
                     duration,
                 })
             }
-            JobTaskType::Generic { description, handler_name, params } => {
+            JobTaskType::Generic {
+                description,
+                handler_name,
+                params,
+            } => {
                 tracing::debug!(
                     job_id = %job_id,
                     description = %description,
@@ -557,28 +569,32 @@ impl Scheduler {
                 );
 
                 let start = std::time::Instant::now();
-                
+
                 let result = if let Some(handler_name) = handler_name {
                     // Execute via registered handler
                     let handlers = scheduler.generic_handlers.read().await;
-                    
+
                     let handler = handlers.get(handler_name).ok_or_else(|| {
                         Error::Config(crate::error::ConfigError::InvalidValue {
                             key: "handler_name".to_string(),
                             message: format!(
                                 "Unknown generic task handler: '{}'. Available handlers: {}",
                                 handler_name,
-                                handlers.keys().map(|k| k.as_str()).collect::<Vec<_>>().join(", ")
+                                handlers
+                                    .keys()
+                                    .map(|k| k.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
                             ),
                         })
                     })?;
-                    
+
                     let context = GenericTaskContext {
                         job_id,
                         description: description.clone(),
                         params: params.clone(),
                     };
-                    
+
                     handler.execute(context).await?
                 } else {
                     // No handler specified - return basic completion
@@ -588,9 +604,9 @@ impl Scheduler {
                         "params": params,
                     })
                 };
-                
+
                 let duration = start.elapsed();
-                
+
                 tracing::info!(
                     job_id = %job_id,
                     description = %description,
@@ -650,7 +666,7 @@ impl Scheduler {
             Ok(t) => t,
             Err(e) => {
                 tracing::error!(job_id = %job_id, error = %e, "Failed to parse job task");
-                
+
                 // Mark job as failed
                 let _ = scheduler
                     .context_manager
@@ -691,7 +707,7 @@ impl Scheduler {
                 match msg {
                     JobMessage::Cancel => {
                         tracing::info!(job_id = %listener_job_id, "Received cancel message");
-                        
+
                         // Update job state to cancelled
                         let _ = listener_context_manager
                             .update_context(listener_job_id, |ctx| {
@@ -701,7 +717,7 @@ impl Scheduler {
                                 );
                             })
                             .await;
-                        
+
                         // Signal cancellation to main execution
                         let _ = cancel_tx.send(());
                         break;
@@ -712,17 +728,23 @@ impl Scheduler {
                             message_len = content.len(),
                             "Received user message"
                         );
-                        
+
                         // Process interactive commands
-                        let response = Self::process_user_message(&content, listener_job_id, &listener_context_manager).await;
-                        
+                        let response = Self::process_user_message(
+                            &content,
+                            listener_job_id,
+                            &listener_context_manager,
+                        )
+                        .await;
+
                         // Store message and response in job context metadata
                         let _ = listener_context_manager
                             .update_context(listener_job_id, |ctx| {
                                 if let Some(obj) = ctx.metadata.as_object_mut() {
-                                    let messages = obj.entry("user_messages")
+                                    let messages = obj
+                                        .entry("user_messages")
                                         .or_insert_with(|| serde_json::json!([]));
-                                    
+
                                     if let Some(arr) = messages.as_array_mut() {
                                         arr.push(serde_json::json!({
                                             "content": content.clone(),
@@ -733,7 +755,7 @@ impl Scheduler {
                                 }
                             })
                             .await;
-                        
+
                         // Forward to execution task if not a command
                         if !content.trim().starts_with('/') {
                             let _ = user_msg_tx.send(content).await;
@@ -746,7 +768,7 @@ impl Scheduler {
         // Execute job with timeout and cancellation support
         let job_timeout = scheduler.config.job_timeout;
         let max_retries = 3; // Maximum retry attempts for transient failures
-        
+
         tracing::debug!(
             job_id = %job_id,
             timeout_secs = job_timeout.as_secs(),
@@ -756,7 +778,7 @@ impl Scheduler {
 
         // Execute with timeout
         let execution_future = Self::execute_with_retry(&scheduler, job_id, &task, max_retries);
-        
+
         tokio::select! {
             // Job execution completed (success or permanent failure)
             result = execution_future => {
@@ -776,7 +798,7 @@ impl Scheduler {
                                     obj.insert("result".to_string(), output.result.clone());
                                     obj.insert("duration_ms".to_string(), serde_json::json!(output.duration.as_millis()));
                                 }
-                                
+
                                 let _ = ctx.transition_to(
                                     JobState::Completed,
                                     Some("Job execution completed successfully".to_string()),
@@ -820,7 +842,7 @@ impl Scheduler {
                                 if let Some(obj) = ctx.metadata.as_object_mut() {
                                     obj.insert("error".to_string(), serde_json::json!(e.to_string()));
                                 }
-                                
+
                                 let _ = ctx.transition_to(
                                     JobState::Failed,
                                     Some(format!("Job execution failed: {}", e)),
@@ -841,11 +863,11 @@ impl Scheduler {
                     }
                 }
             }
-            
+
             // Job was cancelled
             _ = cancel_rx => {
                 tracing::info!(job_id = %job_id, "Job cancelled during execution");
-                
+
                 // Persist cancellation to database
                 if let Some(ref store) = scheduler.store {
                     let _ = store
@@ -857,7 +879,7 @@ impl Scheduler {
                         .await;
                 }
             }
-            
+
             // Job timeout exceeded
             _ = tokio::time::sleep(job_timeout) => {
                 tracing::warn!(
@@ -874,7 +896,7 @@ impl Scheduler {
                             obj.insert("timeout".to_string(), serde_json::json!(true));
                             obj.insert("timeout_secs".to_string(), serde_json::json!(job_timeout.as_secs()));
                         }
-                        
+
                         let _ = ctx.transition_to(
                             JobState::Failed,
                             Some(format!("Job execution timeout exceeded ({} seconds)", job_timeout.as_secs())),
@@ -915,10 +937,7 @@ impl Scheduler {
     /// V2 migration: Now spawns a worker task to execute the job.
     /// The worker handles the complete job lifecycle including execution,
     /// state updates, and cleanup.
-    async fn schedule_with_context(
-        &self,
-        job_id: Uuid,
-    ) -> Result<(), JobError> {
+    async fn schedule_with_context(&self, job_id: Uuid) -> Result<(), JobError> {
         // Per-user concurrency check — only count jobs consuming a parallel
         // execution slot (Pending/InProgress/Stuck), not Completed/Submitted.
         if let Some(max_per_user) = self.config.max_jobs_per_user {
@@ -952,11 +971,7 @@ impl Scheduler {
 
         // Spawn worker task
         let scheduler = Arc::new(self.clone());
-        let task_handle = tokio::spawn(Self::execute_job_worker(
-            scheduler,
-            job_id,
-            message_rx,
-        ));
+        let task_handle = tokio::spawn(Self::execute_job_worker(scheduler, job_id, message_rx));
 
         // Track the running job
         self.running_jobs.write().await.insert(
@@ -1175,9 +1190,9 @@ impl Scheduler {
 
         let mut thread_context = Self::create_thread_execution_context(&job_ctx, job_id);
 
-        use brassclaw_engine::{CapabilityLease, LeaseId, GrantedActions};
+        use brassclaw_engine::{CapabilityLease, GrantedActions, LeaseId};
         use chrono::Utc;
-        
+
         let lease = CapabilityLease {
             id: LeaseId::new(),
             thread_id: thread_context.thread_id,
@@ -1193,7 +1208,10 @@ impl Scheduler {
 
         // P0.2: Populate action inventory snapshots from EffectExecutor
         // This provides the context with available actions for this execution
-        match executor.available_actions(std::slice::from_ref(&lease), &thread_context).await {
+        match executor
+            .available_actions(std::slice::from_ref(&lease), &thread_context)
+            .await
+        {
             Ok(actions) => {
                 tracing::debug!(
                     job_id = %job_id,
@@ -1213,7 +1231,10 @@ impl Scheduler {
         }
 
         // P0.2: Populate full action inventory (V2) if available
-        match executor.available_action_inventory(std::slice::from_ref(&lease), &thread_context).await {
+        match executor
+            .available_action_inventory(std::slice::from_ref(&lease), &thread_context)
+            .await
+        {
             Ok(inventory) => {
                 tracing::debug!(
                     job_id = %job_id,
@@ -1221,7 +1242,8 @@ impl Scheduler {
                     discoverable_count = inventory.discoverable.len(),
                     "Populated action inventory V2 snapshot"
                 );
-                thread_context.available_action_inventory_snapshot = Some(std::sync::Arc::new(inventory));
+                thread_context.available_action_inventory_snapshot =
+                    Some(std::sync::Arc::new(inventory));
             }
             Err(e) => {
                 // Log warning but don't fail - action inventory is optional context
@@ -1242,10 +1264,13 @@ impl Scheduler {
             "Executing tool via EffectExecutor"
         );
 
-        match executor.execute_action(tool_name, params.clone(), &lease, &thread_context).await {
+        match executor
+            .execute_action(tool_name, params.clone(), &lease, &thread_context)
+            .await
+        {
             Ok(action_result) => {
                 let duration = start.elapsed();
-                
+
                 tracing::debug!(
                     job_id = %job_id,
                     tool_name = %tool_name,
@@ -1262,10 +1287,10 @@ impl Scheduler {
             }
             Err(engine_error) => {
                 let duration = start.elapsed();
-                
+
                 // P0.2: Enhanced error handling with specific error mapping
                 use brassclaw_engine::EngineError;
-                
+
                 let error_message = match &engine_error {
                     EngineError::Capability(cap_err) => {
                         format!("Capability error: {}", cap_err)
@@ -1316,7 +1341,7 @@ impl Scheduler {
                         format!("{}", engine_error)
                     }
                 };
-                
+
                 tracing::warn!(
                     job_id = %job_id,
                     tool_name = %tool_name,
@@ -1343,7 +1368,9 @@ impl Scheduler {
         job_ctx: &JobContext,
         job_id: Uuid,
     ) -> brassclaw_engine::ThreadExecutionContext {
-        use brassclaw_engine::{ThreadExecutionContext, ThreadType, ProjectId, StepId, ThreadId, ValidTimezone};
+        use brassclaw_engine::{
+            ProjectId, StepId, ThreadExecutionContext, ThreadId, ThreadType, ValidTimezone,
+        };
 
         // Extract user_id from metadata or use job's user_id
         let user_id = job_ctx
@@ -1385,10 +1412,7 @@ impl Scheduler {
         let thread_type = job_ctx
             .metadata
             .as_object()
-            .and_then(|obj| {
-                obj.get("thread_type")
-                    .or_else(|| obj.get("job_type"))
-            })
+            .and_then(|obj| obj.get("thread_type").or_else(|| obj.get("job_type")))
             .and_then(|v| v.as_str())
             .and_then(|s| match s.to_lowercase().as_str() {
                 "foreground" | "conversation" | "interactive" => Some(ThreadType::Foreground),
@@ -1423,15 +1447,14 @@ impl Scheduler {
         // JobContext already has user_timezone field populated
         let user_timezone = if !job_ctx.user_timezone.is_empty() && job_ctx.user_timezone != "UTC" {
             // Try to parse as ValidTimezone using parse() method
-            ValidTimezone::parse(&job_ctx.user_timezone)
-                .or_else(|| {
-                    tracing::warn!(
-                        job_id = %job_id,
-                        timezone = %job_ctx.user_timezone,
-                        "Invalid timezone in JobContext, falling back to None"
-                    );
-                    None
-                })
+            ValidTimezone::parse(&job_ctx.user_timezone).or_else(|| {
+                tracing::warn!(
+                    job_id = %job_id,
+                    timezone = %job_ctx.user_timezone,
+                    "Invalid timezone in JobContext, falling back to None"
+                );
+                None
+            })
         } else {
             None
         };
@@ -1490,7 +1513,7 @@ impl Scheduler {
         let running_jobs = self.running_jobs.read().await;
         if let Some(job_handle) = running_jobs.get(&job_id) {
             tracing::info!(job_id = %job_id, "Sending cancel message to running job worker");
-            
+
             // Send cancel message (non-blocking, best effort)
             let _ = job_handle.message_tx.send(JobMessage::Cancel).await;
         }
@@ -1517,11 +1540,7 @@ impl Scheduler {
             let store = store.clone();
             tokio::spawn(async move {
                 if let Err(e) = store
-                    .update_job_status(
-                        job_id,
-                        JobState::Cancelled,
-                        Some("Stopped by scheduler"),
-                    )
+                    .update_job_status(job_id, JobState::Cancelled, Some("Stopped by scheduler"))
                     .await
                 {
                     tracing::warn!("Failed to persist cancellation for job {}: {}", job_id, e);
@@ -1539,7 +1558,7 @@ impl Scheduler {
     /// Returns NotFound if the job is not currently running.
     pub async fn send_message(&self, job_id: Uuid, content: String) -> Result<(), JobError> {
         let running_jobs = self.running_jobs.read().await;
-        
+
         if let Some(job_handle) = running_jobs.get(&job_id) {
             job_handle
                 .message_tx
@@ -1643,12 +1662,12 @@ impl Scheduler {
         context_manager: &Arc<ContextManager>,
     ) -> String {
         let trimmed = content.trim();
-        
+
         // Handle interactive commands
         if trimmed.starts_with('/') {
             let parts: Vec<&str> = trimmed.splitn(2, ' ').collect();
             let command = parts[0];
-            
+
             match command {
                 "/status" => {
                     // Get job status
@@ -1656,21 +1675,21 @@ impl Scheduler {
                         Ok(ctx) => {
                             format!(
                                 "Job Status: {:?}\nState: {:?}\nCreated: {}",
-                                ctx.job_id,
-                                ctx.state,
-                                ctx.created_at
+                                ctx.job_id, ctx.state, ctx.created_at
                             )
                         }
                         Err(e) => format!("Error getting status: {}", e),
                     }
                 }
-                "/help" => {
-                    "Available commands:\n\
+                "/help" => "Available commands:\n\
                      /status - Get current job status\n\
                      /help - Show this help message\n\
-                     Any other message will be forwarded to the job execution".to_string()
-                }
-                _ => format!("Unknown command: {}. Type /help for available commands.", command),
+                     Any other message will be forwarded to the job execution"
+                    .to_string(),
+                _ => format!(
+                    "Unknown command: {}. Type /help for available commands.",
+                    command
+                ),
             }
         } else {
             // Regular message - will be forwarded to execution
@@ -1685,20 +1704,20 @@ impl Scheduler {
         handler: Arc<dyn GenericTaskHandler>,
     ) -> Result<(), Error> {
         let mut handlers = self.generic_handlers.write().await;
-        
+
         if handlers.contains_key(&name) {
             return Err(Error::Config(crate::error::ConfigError::InvalidValue {
                 key: "handler_name".to_string(),
                 message: format!("Generic task handler '{}' is already registered", name),
             }));
         }
-        
+
         tracing::info!(
             handler_name = %name,
             description = handler.description(),
             "Registered generic task handler"
         );
-        
+
         handlers.insert(name, handler);
         Ok(())
     }
@@ -1713,12 +1732,16 @@ impl Scheduler {
     }
 
     /// Get dead letter queue statistics.
-    pub async fn get_dlq_statistics(&self) -> Result<crate::agent::dead_letter_queue::DLQStatistics, Error> {
+    pub async fn get_dlq_statistics(
+        &self,
+    ) -> Result<crate::agent::dead_letter_queue::DLQStatistics, Error> {
         self.dead_letter_queue.get_statistics().await
     }
 
     /// List jobs in the dead letter queue.
-    pub async fn list_dlq_entries(&self) -> Result<Vec<crate::agent::dead_letter_queue::DLQEntry>, Error> {
+    pub async fn list_dlq_entries(
+        &self,
+    ) -> Result<Vec<crate::agent::dead_letter_queue::DLQEntry>, Error> {
         self.dead_letter_queue.list_all().await
     }
 
@@ -1726,11 +1749,9 @@ impl Scheduler {
     pub async fn retry_dlq_job(&self, job_id: Uuid) -> Result<(), Error> {
         // Remove from DLQ
         self.dead_letter_queue.remove_job(job_id).await?;
-        
+
         // Reschedule the job
-        self.schedule(job_id).await.map_err(|e| {
-            Error::Job(e)
-        })
+        self.schedule(job_id).await.map_err(|e| Error::Job(e))
     }
 
     /// Get access to the background task registry.

@@ -32,11 +32,11 @@ mod provider_name;
 mod routes;
 mod user_directory;
 
+pub use brassclaw_reborn_composition::PublicRouteMount;
 pub use config::{GitHubOAuthConfig, GoogleOAuthConfig};
 pub use error::{OAuthError, ProviderInitError};
 pub use github::GitHubProvider;
 pub use google::GoogleProvider;
-pub use brassclaw_reborn_composition::PublicRouteMount;
 pub use profile::OAuthUserProfile;
 pub use provider::OAuthProvider;
 pub use provider_name::{OAuthProviderName, OAuthProviderNameError};

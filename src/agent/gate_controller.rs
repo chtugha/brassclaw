@@ -6,8 +6,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
 use brassclaw_engine::gate::{GateController, GatePauseRequest, GateResolution};
+use tokio::sync::RwLock;
 
 /// Auto-approving gate controller for P0.3.
 ///
@@ -123,7 +123,9 @@ impl GateMode {
             Self::Cancel => brassclaw_engine::gate::CancellingGateController::arc(),
             Self::Real => {
                 // Future: implement real approval controller
-                tracing::warn!("Real approval mode not yet implemented, falling back to auto-approve");
+                tracing::warn!(
+                    "Real approval mode not yet implemented, falling back to auto-approve"
+                );
                 AutoApprovingGateController::arc()
             }
         }
@@ -134,7 +136,7 @@ impl GateMode {
 mod tests {
     use super::*;
     use brassclaw_engine::gate::ResumeKind;
-    use brassclaw_engine::{ThreadId, ConversationId};
+    use brassclaw_engine::{ConversationId, ThreadId};
 
     #[tokio::test]
     async fn test_auto_approve_controller() {

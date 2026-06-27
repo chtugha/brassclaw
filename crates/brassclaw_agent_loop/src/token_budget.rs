@@ -174,15 +174,15 @@ mod tests {
     #[test]
     fn test_budget_tracker_consume() {
         let mut tracker = TokenBudgetTracker::new(100);
-        
+
         assert!(tracker.consume(30));
         assert_eq!(tracker.used(), 30);
         assert_eq!(tracker.remaining(), 70);
-        
+
         assert!(tracker.consume(50));
         assert_eq!(tracker.used(), 80);
         assert_eq!(tracker.remaining(), 20);
-        
+
         assert!(!tracker.consume(30)); // Exceeds budget
         assert_eq!(tracker.used(), 110);
         assert!(tracker.is_exceeded());
@@ -192,7 +192,7 @@ mod tests {
     fn test_budget_tracker_would_exceed() {
         let mut tracker = TokenBudgetTracker::new(100);
         tracker.consume(80);
-        
+
         assert!(!tracker.would_exceed(20));
         assert!(tracker.would_exceed(21));
         assert!(tracker.would_exceed(100));
@@ -201,15 +201,15 @@ mod tests {
     #[test]
     fn test_budget_tracker_utilization() {
         let mut tracker = TokenBudgetTracker::new(100);
-        
+
         assert_eq!(tracker.utilization(), 0.0);
-        
+
         tracker.consume(50);
         assert_eq!(tracker.utilization(), 0.5);
-        
+
         tracker.consume(50);
         assert_eq!(tracker.utilization(), 1.0);
-        
+
         tracker.consume(10);
         assert_eq!(tracker.utilization(), 1.1);
     }
@@ -221,4 +221,3 @@ mod tests {
         assert!(tracker.would_exceed(1));
     }
 }
-

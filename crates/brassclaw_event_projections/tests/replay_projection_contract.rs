@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_event_projections::{
     AuditProjectionCursor, AuditProjectionError, AuditProjectionRequest, AuditProjectionService,
     AuditProjectionStage, AuditStreamResume, CapabilityActivityStatus, EventProjectionService,
@@ -19,6 +18,7 @@ use brassclaw_host_api::{
     CapabilitySet, CorrelationId, DenyReason, ExtensionId, InvocationId, MountView, ProcessId,
     ProjectId, ResourceScope, RuntimeKind, ScopedPath, TenantId, ThreadId, TrustClass, UserId,
 };
+use chrono::Utc;
 
 #[tokio::test]
 async fn replay_audit_projection_preserves_valid_capability_targets() {

@@ -653,9 +653,7 @@ impl SignalChannel {
             // Ensure the path is within the sandbox after canonicalization.
             // We canonicalize base_dir and compare the canonical form of the
             // attachment path (resolving symlinks so /tmp == /private/tmp on macOS).
-            let canonical_base = base_dir
-                .canonicalize()
-                .unwrap_or_else(|_| base_dir.clone());
+            let canonical_base = base_dir.canonicalize().unwrap_or_else(|_| base_dir.clone());
             let full = if std::path::Path::new(path.as_str()).is_absolute() {
                 std::path::PathBuf::from(path)
             } else {

@@ -326,7 +326,9 @@ mod tests {
             team_id: Some("T123".to_string()),
             api_app_id: Some("A123".to_string()),
             slack_user_id: Some("U123".to_string()),
-            signing_secret_env: Some("BRASSCLAW_TEST_SLACK_SIGNING_SECRET_DEFAULT_USER".to_string()),
+            signing_secret_env: Some(
+                "BRASSCLAW_TEST_SLACK_SIGNING_SECRET_DEFAULT_USER".to_string(),
+            ),
             bot_token_env: Some("BRASSCLAW_TEST_SLACK_BOT_TOKEN_DEFAULT_USER".to_string()),
             ..Default::default()
         };
@@ -361,7 +363,10 @@ mod tests {
             "BRASSCLAW_TEST_SLACK_SIGNING_SECRET_NO_STATIC_USER",
             "signing-secret",
         );
-        let _bot = EnvGuard::set("BRASSCLAW_TEST_SLACK_BOT_TOKEN_NO_STATIC_USER", "xoxb-token");
+        let _bot = EnvGuard::set(
+            "BRASSCLAW_TEST_SLACK_BOT_TOKEN_NO_STATIC_USER",
+            "xoxb-token",
+        );
         let section = brassclaw_reborn_config::SlackSection {
             enabled: Some(true),
             installation_id: Some("install-alpha".to_string()),
@@ -497,7 +502,10 @@ mod tests {
             "BRASSCLAW_TEST_SLACK_SIGNING_SECRET_DIVERGENT_USER",
             "signing-secret",
         );
-        let _bot = EnvGuard::set("BRASSCLAW_TEST_SLACK_BOT_TOKEN_DIVERGENT_USER", "xoxb-token");
+        let _bot = EnvGuard::set(
+            "BRASSCLAW_TEST_SLACK_BOT_TOKEN_DIVERGENT_USER",
+            "xoxb-token",
+        );
         let section = brassclaw_reborn_config::SlackSection {
             enabled: Some(true),
             installation_id: Some("install-alpha".to_string()),
@@ -539,7 +547,10 @@ mod tests {
             "BRASSCLAW_TEST_SLACK_SIGNING_SECRET_CHANNEL_ROUTES",
             "signing-secret",
         );
-        let _bot = EnvGuard::set("BRASSCLAW_TEST_SLACK_BOT_TOKEN_CHANNEL_ROUTES", "xoxb-token");
+        let _bot = EnvGuard::set(
+            "BRASSCLAW_TEST_SLACK_BOT_TOKEN_CHANNEL_ROUTES",
+            "xoxb-token",
+        );
         let section = brassclaw_reborn_config::SlackSection {
             enabled: Some(true),
             installation_id: Some("install-alpha".to_string()),
@@ -725,7 +736,9 @@ mod tests {
             user_id: Some("invalid\nuser".to_string()),
             shared_subject_user_id: None,
             channel_routes: Vec::new(),
-            signing_secret_env: Some("BRASSCLAW_TEST_SLACK_SIGNING_SECRET_INVALID_USER".to_string()),
+            signing_secret_env: Some(
+                "BRASSCLAW_TEST_SLACK_SIGNING_SECRET_INVALID_USER".to_string(),
+            ),
             bot_token_env: Some("BRASSCLAW_TEST_SLACK_BOT_TOKEN_INVALID_USER".to_string()),
         };
 

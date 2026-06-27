@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use chrono::{Duration as ChronoDuration, TimeZone, Utc};
 use brassclaw_host_api::{AgentId, ProjectId, TenantId, ThreadId, UserId};
 use brassclaw_loop_support::EventPublishingTurnRunTransitionPort;
 use brassclaw_turns::{
@@ -14,6 +13,7 @@ use brassclaw_turns::{
         TurnRunTransitionPort,
     },
 };
+use chrono::{Duration as ChronoDuration, TimeZone, Utc};
 
 fn scope(thread: &str) -> TurnScope {
     TurnScope::new(

@@ -21,7 +21,9 @@
 
 use std::collections::BTreeSet;
 
-use brassclaw_product_adapters::{DeclaredEgressHost, DeclaredEgressTarget, EgressCredentialHandle};
+use brassclaw_product_adapters::{
+    DeclaredEgressHost, DeclaredEgressTarget, EgressCredentialHandle,
+};
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

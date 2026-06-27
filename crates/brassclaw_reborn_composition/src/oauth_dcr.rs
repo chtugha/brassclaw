@@ -5,7 +5,6 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use chrono::{Duration as ChronoDuration, Utc};
 use brassclaw_auth::{
     AuthChallenge, AuthContinuationRef, AuthFlowId, AuthFlowKind, AuthFlowManager,
     AuthFlowOwnerScope, AuthFlowRecordSource, AuthGateRef, AuthProductError, AuthProductScope,
@@ -23,6 +22,7 @@ use brassclaw_host_api::{
 use brassclaw_product_adapters::AuthPromptChallengeKind;
 use brassclaw_secrets::{SecretMaterial, SecretStore};
 use brassclaw_turns::{TurnRunId, TurnScope};
+use chrono::{Duration as ChronoDuration, Utc};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
@@ -1847,7 +1847,8 @@ mod tests {
             scope: ResourceScope,
             handle: SecretHandle,
             material: SecretMaterial,
-        ) -> Result<brassclaw_secrets::SecretMetadata, brassclaw_secrets::SecretStoreError> {
+        ) -> Result<brassclaw_secrets::SecretMetadata, brassclaw_secrets::SecretStoreError>
+        {
             self.put_handles
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())

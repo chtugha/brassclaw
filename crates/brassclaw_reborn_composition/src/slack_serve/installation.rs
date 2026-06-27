@@ -8,11 +8,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::http::HeaderMap;
-use futures::future::join_all;
 use brassclaw_host_api::TenantId;
 use brassclaw_product_adapters::{AdapterInstallationId, ProtocolAuthEvidence};
 use brassclaw_slack_v2_adapter::SlackPayloadParseError;
 use brassclaw_wasm_product_adapters::{ImmediateAckWorkflowObserver, RunnerError};
+use futures::future::join_all;
 use serde::Deserialize;
 use thiserror::Error;
 

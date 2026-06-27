@@ -12,8 +12,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use hmac::{Hmac, Mac};
-use http_body_util::BodyExt;
 use brassclaw_conversations::InMemoryConversationServices;
 use brassclaw_host_api::{AgentId, ApprovalRequestId, ProjectId, TenantId, UserId};
 use brassclaw_outbound::{
@@ -52,6 +50,8 @@ use brassclaw_turns::{
 use brassclaw_wasm_product_adapters::{
     HmacWebhookAuth, NativeProductAdapterRunner, NativeProductAdapterRunnerConfig, WebhookAuth,
 };
+use hmac::{Hmac, Mac};
+use http_body_util::BodyExt;
 use tower::ServiceExt;
 
 use super::*;
@@ -211,7 +211,8 @@ async fn build_harness_with_actor_user_resolver_and_auth_challenges(
     let actor_pairings: Arc<dyn brassclaw_conversations::ConversationActorPairingService> =
         conversations.clone();
 
-    let adapter_id = brassclaw_product_adapters::ProductAdapterId::new(ADAPTER).expect("adapter id"); // safety: static test adapter id is valid.
+    let adapter_id =
+        brassclaw_product_adapters::ProductAdapterId::new(ADAPTER).expect("adapter id"); // safety: static test adapter id is valid.
     let installation_id = AdapterInstallationId::new(INSTALLATION).expect("installation id"); // safety: static test installation id is valid.
     let adapter: Arc<dyn ProductAdapter> = Arc::new(SlackV2Adapter::new(SlackV2AdapterConfig {
         adapter_id: adapter_id.clone(),

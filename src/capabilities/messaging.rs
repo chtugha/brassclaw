@@ -130,12 +130,9 @@ pub fn descriptors() -> Vec<CapabilityDescriptor> {
 }
 
 fn require_str<'a>(params: &'a Value, key: &str) -> Result<&'a str, MessagingCapabilityError> {
-    params
-        .get(key)
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            MessagingCapabilityError::input(format!("missing required parameter: {key}"))
-        })
+    params.get(key).and_then(Value::as_str).ok_or_else(|| {
+        MessagingCapabilityError::input(format!("missing required parameter: {key}"))
+    })
 }
 
 fn metadata_string(metadata: &Value, key: &str) -> Option<String> {
@@ -246,9 +243,8 @@ pub async fn execute_message(
     ctx: &MessagingContext,
 ) -> Result<Value, MessagingCapabilityError> {
     let content = require_str(params, "content").or_else(|_| {
-        require_str(params, "message").map_err(|_| {
-            MessagingCapabilityError::input("missing 'content' parameter".to_string())
-        })
+        require_str(params, "message")
+            .map_err(|_| MessagingCapabilityError::input("missing 'content' parameter".to_string()))
     })?;
 
     let explicit_channel = params
@@ -352,7 +348,9 @@ pub async fn execute_message(
         {
             Ok(()) => {
                 let msg = format!("Sent message to {}:{}", channel, target);
-                Ok(json!({"status": "sent", "channel": channel, "target": target, "attachments": attachment_count, "message": msg}))
+                Ok(
+                    json!({"status": "sent", "channel": channel, "target": target, "attachments": attachment_count, "message": msg}),
+                )
             }
             Err(e) => {
                 let available = ctx.channel_manager.channel_names().await.join(", ");
@@ -395,7 +393,9 @@ pub async fn execute_message(
                 succeeded.join(", "),
                 target
             );
-            Ok(json!({"status": "broadcast", "channels": succeeded, "target": target, "attachments": attachment_count, "message": msg}))
+            Ok(
+                json!({"status": "broadcast", "channels": succeeded, "target": target, "attachments": attachment_count, "message": msg}),
+            )
         }
     }
 }
@@ -464,7 +464,8 @@ mod tests {
             metadata: json!({}),
         };
 
-        let result = execute_message(&json!({"channel": "signal", "target": "+1234567890"}), &ctx).await;
+        let result =
+            execute_message(&json!({"channel": "signal", "target": "+1234567890"}), &ctx).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().message.contains("content"));
     }

@@ -261,9 +261,9 @@ mod tests {
     use std::sync::Mutex;
 
     use async_trait::async_trait;
-    use chrono::Utc;
     use brassclaw_host_api::{AgentId, ProjectId, TenantId, ThreadId, UserId};
     use brassclaw_turns::{ReplyTargetBindingRef, TurnActor, TurnScope};
+    use chrono::Utc;
 
     use super::*;
     use crate::{

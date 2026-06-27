@@ -22,7 +22,6 @@ mod trigger_management;
 use std::{future::Future, panic::AssertUnwindSafe, sync::Arc, time::Instant};
 
 use async_trait::async_trait;
-use futures_util::FutureExt as _;
 use brassclaw_extensions::{
     CapabilityManifest, CapabilityVisibility, ExtensionError, ExtensionManifest, ExtensionPackage,
     ExtensionRuntime, MANIFEST_SCHEMA_VERSION, ManifestSource,
@@ -36,6 +35,7 @@ use brassclaw_host_api::{
     ResourceUsage, RuntimeDispatchErrorKind, RuntimeHttpEgressError, RuntimeHttpEgressResponse,
     TrustClass, VirtualPath,
 };
+use futures_util::FutureExt as _;
 
 use crate::{
     FirstPartyCapabilityError, FirstPartyCapabilityHandler, FirstPartyCapabilityRegistry,

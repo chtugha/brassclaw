@@ -6,7 +6,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration as StdDuration;
 
 use async_trait::async_trait;
-use chrono::{Duration, Utc};
 use brassclaw_auth::{AuthFlowId, CredentialAccountId};
 use brassclaw_conversations::{
     ConversationBindingService as ConversationBindingPort, InMemoryConversationServices,
@@ -50,6 +49,7 @@ use brassclaw_turns::{
     RunProfileVersion, SubmitTurnRequest, SubmitTurnResponse, ThreadBusy, TurnActor,
     TurnCoordinator, TurnError, TurnId, TurnRunId, TurnRunState, TurnScope, TurnStatus,
 };
+use chrono::{Duration, Utc};
 
 fn sample_envelope(event_suffix: &str) -> ProductInboundEnvelope {
     sample_envelope_with_payload(
@@ -4440,8 +4440,10 @@ impl brassclaw_conversations::ConversationBindingService for CountingConversatio
     async fn validate_reply_target(
         &self,
         request: brassclaw_conversations::ValidateReplyTargetRequest,
-    ) -> Result<brassclaw_conversations::ReplyTargetBinding, brassclaw_conversations::InboundTurnError>
-    {
+    ) -> Result<
+        brassclaw_conversations::ReplyTargetBinding,
+        brassclaw_conversations::InboundTurnError,
+    > {
         self.inner.validate_reply_target(request).await
     }
 }
@@ -4737,9 +4739,11 @@ async fn retryable_turn_submission_failure_releases_for_retry() {
 #[tokio::test]
 async fn settle_failure_does_not_return_success_ack() {
     let (workflow, inbound, ledger) = build_workflow();
-    ledger.force_settle_failure(brassclaw_product_workflow::ProductWorkflowError::Transient {
-        reason: "settle timeout".into(),
-    });
+    ledger.force_settle_failure(
+        brassclaw_product_workflow::ProductWorkflowError::Transient {
+            reason: "settle timeout".into(),
+        },
+    );
 
     let envelope = sample_envelope("settle-fail");
     let err = workflow
@@ -4796,9 +4800,11 @@ async fn unsupported_action_is_settled_as_terminal_rejection() {
 #[tokio::test]
 async fn ledger_transient_failure_surfaces_retryable_error() {
     let (workflow, _inbound, ledger) = build_workflow();
-    ledger.force_failure(brassclaw_product_workflow::ProductWorkflowError::Transient {
-        reason: "db timeout".into(),
-    });
+    ledger.force_failure(
+        brassclaw_product_workflow::ProductWorkflowError::Transient {
+            reason: "db timeout".into(),
+        },
+    );
 
     let envelope = sample_envelope("fail1");
     let err = workflow

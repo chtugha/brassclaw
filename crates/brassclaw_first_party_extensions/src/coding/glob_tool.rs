@@ -1,7 +1,7 @@
 //! Reborn first-party port of the v1 glob coding tool.
 
-use glob::Pattern;
 use brassclaw_filesystem::{DirEntry, FileType, FilesystemOperation};
+use glob::Pattern;
 use serde_json::{Value, json};
 use std::{cmp::Reverse, time::UNIX_EPOCH};
 

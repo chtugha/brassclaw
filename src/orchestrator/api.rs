@@ -460,7 +460,8 @@ async fn job_event_handler(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let decisions = brassclaw_common::ToolDecisionDto::from_json_array(&payload.data["decisions"]);
+            let decisions =
+                brassclaw_common::ToolDecisionDto::from_json_array(&payload.data["decisions"]);
             AppEvent::JobReasoning {
                 job_id: job_id_str,
                 narrative,

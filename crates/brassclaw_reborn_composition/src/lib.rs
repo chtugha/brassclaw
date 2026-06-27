@@ -130,6 +130,16 @@ pub use auth::{
     RebornProductAuthServicePorts, RebornProductAuthServices,
 };
 pub use automation::RebornWebuiAutomationFacade;
+pub use brassclaw_auth::GoogleOAuthRouteConfig;
+pub use brassclaw_product_workflow::{
+    LifecycleExtensionSource, LifecycleExtensionSummary, LifecyclePhase, LifecycleProductPayload,
+    LifecycleProductResponse,
+};
+pub use brassclaw_skills::{
+    ManagedSkillSource as RebornSkillSource, SkillSummary as RebornSkillSummary,
+    skill_summary_json as reborn_skill_summary_json,
+};
+pub use brassclaw_triggers::TriggerId;
 pub use budget::build_default_budget_accountant;
 pub use budget_events::{BudgetEventObserver, TracingBudgetEventObserver};
 pub use error::RebornBuildError;
@@ -147,16 +157,6 @@ pub use hooks::{
     tenant_extension_root,
 };
 pub use input::{OAuthClientConfig, RebornBuildInput, RebornRuntimeProcessBinding};
-pub use brassclaw_auth::GoogleOAuthRouteConfig;
-pub use brassclaw_product_workflow::{
-    LifecycleExtensionSource, LifecycleExtensionSummary, LifecyclePhase, LifecycleProductPayload,
-    LifecycleProductResponse,
-};
-pub use brassclaw_skills::{
-    ManagedSkillSource as RebornSkillSource, SkillSummary as RebornSkillSummary,
-    skill_summary_json as reborn_skill_summary_json,
-};
-pub use brassclaw_triggers::TriggerId;
 #[cfg(feature = "root-llm-provider")]
 pub use llm_catalog::{
     RebornLlmCatalogError, resolve_against_registry, resolve_llm_selection_against_catalog,

@@ -1,9 +1,9 @@
 use anyhow::Context;
-use clap::{Args, Subcommand};
 use brassclaw_reborn_composition::{
     LifecycleProductResponse, RebornExtensionLifecycleCommand, build_reborn_services,
     execute_reborn_extension_lifecycle_command, render_reborn_extension_lifecycle_response,
 };
+use clap::{Args, Subcommand};
 
 use crate::context::RebornCliContext;
 use crate::runtime::{RuntimeInputCaller, RuntimeInputOptions};

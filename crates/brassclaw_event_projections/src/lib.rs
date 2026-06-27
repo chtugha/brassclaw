@@ -9,7 +9,6 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_events::{
     AuditSink, DurableAuditLog, DurableEventLog, EventError, EventLogEntry, EventStreamKey,
     ReadScope, RuntimeEvent, RuntimeEventKind, UNCLASSIFIED_ERROR_KIND, sanitize_error_kind,
@@ -27,6 +26,7 @@ use brassclaw_memory::{
     PromptWriteSafetyEventSink,
 };
 use brassclaw_turns::EventCursor as TurnEventCursor;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 

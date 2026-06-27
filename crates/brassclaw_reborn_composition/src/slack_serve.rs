@@ -390,7 +390,6 @@ mod tests {
     use async_trait::async_trait;
     use axum::body::Body;
     use axum::http::Request;
-    use http_body_util::BodyExt;
     use brassclaw_host_api::TenantId;
     use brassclaw_product_adapters::auth::mark_request_signature_verified;
     use brassclaw_product_adapters::capabilities::ProductAdapterCapabilities;
@@ -411,6 +410,7 @@ mod tests {
     use brassclaw_wasm_product_adapters::{
         NativeProductAdapterRunnerConfig, SharedSecretHeaderAuth, WebhookAuth,
     };
+    use http_body_util::BodyExt;
     use tower::ServiceExt;
 
     use super::*;

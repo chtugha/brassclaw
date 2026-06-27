@@ -207,7 +207,9 @@ fn auth_guidance(provider: &str) -> String {
         ),
     };
     if extra.is_empty() {
-        format!("{env_hint}. Or run `brassclaw onboard --step provider` to configure interactively.")
+        format!(
+            "{env_hint}. Or run `brassclaw onboard --step provider` to configure interactively."
+        )
     } else {
         format!(
             "{env_hint}. {extra} Or run `brassclaw onboard --step provider` to configure interactively."

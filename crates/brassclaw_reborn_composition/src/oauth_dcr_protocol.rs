@@ -1,6 +1,8 @@
 use std::fmt;
 
-use brassclaw_auth::{AuthFlowId, AuthProductError, OAuthClientId, OAuthRedirectUri, ProviderScope};
+use brassclaw_auth::{
+    AuthFlowId, AuthProductError, OAuthClientId, OAuthRedirectUri, ProviderScope,
+};
 use brassclaw_common::hashing::sha256_hex;
 use brassclaw_host_api::SecretHandle;
 use secrecy::{ExposeSecret, SecretString};

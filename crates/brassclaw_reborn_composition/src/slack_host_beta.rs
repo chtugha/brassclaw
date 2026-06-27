@@ -576,8 +576,6 @@ mod tests {
     use async_trait::async_trait;
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
-    use hmac::{Hmac, Mac};
-    use http_body_util::BodyExt;
     use brassclaw_authorization::GrantAuthorizer;
     use brassclaw_extensions::ExtensionRegistry;
     use brassclaw_filesystem::LocalFilesystem;
@@ -603,6 +601,8 @@ mod tests {
         GetRunStateRequest, TurnCoordinator, TurnRunId, TurnScope, TurnStatus,
         run_profile::LoopCapabilityPort,
     };
+    use hmac::{Hmac, Mac};
+    use http_body_util::BodyExt;
     use secrecy::ExposeSecret;
     use tower::ServiceExt;
 

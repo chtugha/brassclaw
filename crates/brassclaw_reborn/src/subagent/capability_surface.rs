@@ -78,7 +78,9 @@ mod tests {
         CapabilityAllowSet, CapabilityResolveError, SubagentPromptMaterial,
         SubagentPromptMaterialSource,
     };
-    use brassclaw_turns::run_profile::{AgentLoopHostError, AgentLoopHostErrorKind, LoopRunContext};
+    use brassclaw_turns::run_profile::{
+        AgentLoopHostError, AgentLoopHostErrorKind, LoopRunContext,
+    };
     use brassclaw_turns::{RunProfileId, RunProfileVersion};
 
     use crate::planned_driver_factory::{

@@ -10,7 +10,9 @@ use brassclaw_capabilities::{
     CapabilityObligationFailureKind, CapabilityObligationHandler, CapabilityObligationPhase,
     CapabilityObligationRequest,
 };
-use brassclaw_extensions::{ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource};
+use brassclaw_extensions::{
+    ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource,
+};
 use brassclaw_filesystem::LocalFilesystem;
 use brassclaw_host_api::{
     AgentId, CapabilityDescriptor, CapabilityDispatchResult, CapabilityId, CapabilitySet,

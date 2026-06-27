@@ -905,7 +905,9 @@ fn wasm_error_kind(error: &brassclaw_wasm::WasmError) -> RuntimeDispatchErrorKin
         brassclaw_wasm::WasmError::CompilationFailed(_) => RuntimeDispatchErrorKind::Manifest,
         brassclaw_wasm::WasmError::StoreConfiguration(_) => RuntimeDispatchErrorKind::Executor,
         brassclaw_wasm::WasmError::LinkerConfiguration(_) => RuntimeDispatchErrorKind::Executor,
-        brassclaw_wasm::WasmError::InstantiationFailed(_) => RuntimeDispatchErrorKind::MethodMissing,
+        brassclaw_wasm::WasmError::InstantiationFailed(_) => {
+            RuntimeDispatchErrorKind::MethodMissing
+        }
         brassclaw_wasm::WasmError::ExecutionFailed { .. } => RuntimeDispatchErrorKind::Guest,
         brassclaw_wasm::WasmError::InvalidSchema(_) => RuntimeDispatchErrorKind::Manifest,
     }

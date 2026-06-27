@@ -4,12 +4,12 @@
 //! configuration entries (sensitive paths, workspace rules, blocked paths).
 
 use async_trait::async_trait;
-use libsql::{params, Connection, Database};
+use libsql::{Connection, Database, params};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::safety_config::{SafetyConfigResponse, SafetyEntry};
 use crate::CapabilityPermissionStore;
+use crate::safety_config::{SafetyConfigResponse, SafetyEntry};
 
 /// Categories for safety configuration entries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -175,7 +175,12 @@ impl SafetyConfigStore for SqliteSafetyConfigStore {
                     "INSERT OR IGNORE INTO safety_config
                      (user_id, category, pattern, is_enabled, is_default)
                      VALUES (?1, ?2, ?3, ?4, 1)",
-                    params![user_id, category.as_str(), pattern, if enabled { 1 } else { 0 }],
+                    params![
+                        user_id,
+                        category.as_str(),
+                        pattern,
+                        if enabled { 1 } else { 0 }
+                    ],
                 )
                 .await?;
             }
@@ -211,10 +216,10 @@ impl SafetyConfigStore for SqliteSafetyConfigStore {
         entries: Vec<SafetyEntry>,
     ) -> Result<SafetyConfigResponse, Box<dyn std::error::Error + Send + Sync>> {
         let conn = self.connect().await?;
-        
+
         // Serialize writes
         let _guard = self.write_lock.lock().await;
-        
+
         conn.execute("BEGIN IMMEDIATE", ()).await?;
 
         let result = async {
@@ -281,7 +286,7 @@ impl SafetyConfigStore for SqliteSafetyConfigStore {
         user_id: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let conn = self.connect().await?;
-        
+
         let categories = [
             SafetyCategory::SensitivePaths,
             SafetyCategory::WorkspaceRules,
@@ -297,7 +302,12 @@ impl SafetyConfigStore for SqliteSafetyConfigStore {
                     "INSERT OR IGNORE INTO safety_config 
                      (user_id, category, pattern, is_enabled, is_default) 
                      VALUES (?1, ?2, ?3, ?4, 1)",
-                    params![user_id, category.as_str(), pattern, if enabled { 1 } else { 0 }],
+                    params![
+                        user_id,
+                        category.as_str(),
+                        pattern,
+                        if enabled { 1 } else { 0 }
+                    ],
                 )
                 .await?;
             }
@@ -314,16 +324,17 @@ impl CapabilityPermissionStore for SqliteSafetyConfigStore {
         &self,
         tenant_id: &str,
         capability_id: &str,
-    ) -> Result<Option<brassclaw_host_api::PermissionMode>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Option<brassclaw_host_api::PermissionMode>, Box<dyn std::error::Error + Send + Sync>>
+    {
         let conn = self.connect().await?;
-        
+
         let mut rows = conn
             .query(
                 "SELECT permission_mode FROM capability_permissions WHERE tenant_id = ?1 AND capability_id = ?2",
                 params![tenant_id, capability_id],
             )
             .await?;
-        
+
         if let Some(row) = rows.next().await? {
             let mode_str: String = row.get(0)?;
             let mode = match mode_str.as_str() {
@@ -346,13 +357,13 @@ impl CapabilityPermissionStore for SqliteSafetyConfigStore {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let _lock = self.write_lock.lock().await;
         let conn = self.connect().await?;
-        
+
         let mode_str = match mode {
             brassclaw_host_api::PermissionMode::Allow => "allow",
             brassclaw_host_api::PermissionMode::Ask => "ask",
             brassclaw_host_api::PermissionMode::Deny => "deny",
         };
-        
+
         conn.execute(
             "INSERT INTO capability_permissions (tenant_id, capability_id, permission_mode) 
              VALUES (?1, ?2, ?3)
@@ -361,7 +372,7 @@ impl CapabilityPermissionStore for SqliteSafetyConfigStore {
             params![tenant_id, capability_id, mode_str],
         )
         .await?;
-        
+
         Ok(())
     }
 
@@ -372,30 +383,33 @@ impl CapabilityPermissionStore for SqliteSafetyConfigStore {
     ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
         let _lock = self.write_lock.lock().await;
         let conn = self.connect().await?;
-        
+
         let rows_affected = conn
             .execute(
                 "DELETE FROM capability_permissions WHERE tenant_id = ?1 AND capability_id = ?2",
                 params![tenant_id, capability_id],
             )
             .await?;
-        
+
         Ok(rows_affected > 0)
     }
 
     async fn list_capability_overrides(
         &self,
         tenant_id: &str,
-    ) -> Result<std::collections::HashMap<String, brassclaw_host_api::PermissionMode>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<
+        std::collections::HashMap<String, brassclaw_host_api::PermissionMode>,
+        Box<dyn std::error::Error + Send + Sync>,
+    > {
         let conn = self.connect().await?;
-        
+
         let mut rows = conn
             .query(
                 "SELECT capability_id, permission_mode FROM capability_permissions WHERE tenant_id = ?1",
                 params![tenant_id],
             )
             .await?;
-        
+
         let mut result = std::collections::HashMap::new();
         while let Some(row) = rows.next().await? {
             let capability_id: String = row.get(0)?;
@@ -408,7 +422,7 @@ impl CapabilityPermissionStore for SqliteSafetyConfigStore {
             };
             result.insert(capability_id, mode);
         }
-        
+
         Ok(result)
     }
 }
@@ -426,11 +440,13 @@ mod tests {
 
     #[test]
     fn test_default_patterns_exist() {
-        let sensitive = SqliteSafetyConfigStore::get_default_patterns(SafetyCategory::SensitivePaths);
+        let sensitive =
+            SqliteSafetyConfigStore::get_default_patterns(SafetyCategory::SensitivePaths);
         assert!(!sensitive.is_empty());
         assert!(sensitive.iter().any(|(p, _)| *p == "*.env"));
 
-        let workspace = SqliteSafetyConfigStore::get_default_patterns(SafetyCategory::WorkspaceRules);
+        let workspace =
+            SqliteSafetyConfigStore::get_default_patterns(SafetyCategory::WorkspaceRules);
         assert!(!workspace.is_empty());
         assert!(workspace.iter().any(|(p, _)| *p == "MEMORY.md"));
 

@@ -7,7 +7,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use futures_util::FutureExt as _;
 use brassclaw_auth::{
     CredentialAccountRecordSource, CredentialAccountService, CredentialRecoveryKind,
     CredentialRecoveryProjection, ProviderScope,
@@ -18,6 +17,7 @@ use brassclaw_host_api::{
     RuntimeDispatchErrorKind, RuntimeHttpEgress, RuntimeHttpEgressError,
     RuntimeHttpEgressReasonCode, RuntimeHttpEgressRequest, RuntimeKind,
 };
+use futures_util::FutureExt as _;
 use serde_json::{Value, json};
 
 use crate::gsuite::{

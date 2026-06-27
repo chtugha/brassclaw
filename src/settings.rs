@@ -296,7 +296,6 @@ pub struct Settings {
     /// Transcription configuration.
     #[serde(default)]
     pub transcription: Option<TranscriptionSettings>,
-
 }
 
 /// Source for the secrets master key.
@@ -1610,11 +1609,6 @@ mod tests {
         assert_eq!(settings.embeddings.model, "text-embedding-3-small");
     }
 
-
-
-
-
-
     #[test]
     fn test_llm_backend_round_trip() {
         let dir = tempfile::tempdir().unwrap();
@@ -2047,7 +2041,6 @@ mod tests {
         // Step 1's choice applied
         assert_eq!(current.database_backend, Some("libsql".to_string()));
     }
-
 
     #[test]
     fn toml_json_db_all_agree() {

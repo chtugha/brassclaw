@@ -2843,9 +2843,11 @@ impl LoopCapabilityPort for GatewayCapabilityPort {
         brassclaw_turns::run_profile::AgentLoopHostError,
     > {
         self.validate_provider_tool_call(&tool_call)?;
-        let input_ref =
-            brassclaw_turns::run_profile::CapabilityInputRef::new(format!("input:{}", tool_call.id))
-                .unwrap();
+        let input_ref = brassclaw_turns::run_profile::CapabilityInputRef::new(format!(
+            "input:{}",
+            tool_call.id
+        ))
+        .unwrap();
         self.registered.lock().unwrap().push(tool_call.clone());
         Ok(brassclaw_turns::run_profile::CapabilityCallCandidate {
             surface_version: CapabilitySurfaceVersion::new("surface-v1").unwrap(),

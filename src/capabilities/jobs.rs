@@ -502,16 +502,9 @@ pub async fn execute_job_events(
     let job_id_str = require_str(params, "job_id")?;
     let job_id = resolve_job_id(job_id_str, &ctx.context_manager).await?;
 
-    let job_ctx = ctx
-        .context_manager
-        .get_context(job_id)
-        .await
-        .map_err(|_| {
-            JobsCapabilityError::operation(format!(
-                "job {} not found or context unavailable",
-                job_id
-            ))
-        })?;
+    let job_ctx = ctx.context_manager.get_context(job_id).await.map_err(|_| {
+        JobsCapabilityError::operation(format!("job {} not found or context unavailable", job_id))
+    })?;
 
     if !job_ctx.is_owned_by(&ctx.user_id) {
         return Err(JobsCapabilityError::operation(format!(
@@ -534,9 +527,7 @@ pub async fn execute_job_events(
     let events = store
         .list_job_events(job_id, Some(limit))
         .await
-        .map_err(|e| {
-            JobsCapabilityError::operation(format!("failed to load job events: {}", e))
-        })?;
+        .map_err(|e| JobsCapabilityError::operation(format!("failed to load job events: {}", e)))?;
 
     let recent: Vec<Value> = events
         .iter()
@@ -564,16 +555,9 @@ pub async fn execute_job_prompt(
     let job_id_str = require_str(params, "job_id")?;
     let job_id = resolve_job_id(job_id_str, &ctx.context_manager).await?;
 
-    let job_ctx = ctx
-        .context_manager
-        .get_context(job_id)
-        .await
-        .map_err(|_| {
-            JobsCapabilityError::operation(format!(
-                "job {} not found or context unavailable",
-                job_id
-            ))
-        })?;
+    let job_ctx = ctx.context_manager.get_context(job_id).await.map_err(|_| {
+        JobsCapabilityError::operation(format!("job {} not found or context unavailable", job_id))
+    })?;
 
     if !job_ctx.is_owned_by(&ctx.user_id) {
         return Err(JobsCapabilityError::operation(format!(
@@ -588,9 +572,10 @@ pub async fn execute_job_prompt(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    let prompt_queue = ctx.prompt_queue.as_ref().ok_or_else(|| {
-        JobsCapabilityError::operation("no prompt queue available".to_string())
-    })?;
+    let prompt_queue = ctx
+        .prompt_queue
+        .as_ref()
+        .ok_or_else(|| JobsCapabilityError::operation("no prompt queue available".to_string()))?;
 
     let prompt = crate::orchestrator::api::PendingPrompt {
         content: content.to_string(),

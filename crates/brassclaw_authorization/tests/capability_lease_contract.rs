@@ -4,7 +4,6 @@ use std::sync::{
 };
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_authorization::*;
 use brassclaw_filesystem::{
     DirEntry, FileStat, FilesystemError, InMemoryBackend, LocalFilesystem, RootFilesystem,
@@ -12,6 +11,7 @@ use brassclaw_filesystem::{
 };
 use brassclaw_host_api::*;
 use brassclaw_trust::{AuthorityCeiling, EffectiveTrustClass, TrustDecision, TrustProvenance};
+use chrono::Utc;
 
 #[tokio::test]
 async fn lease_authorizer_allows_matching_active_lease_without_context_grant() {

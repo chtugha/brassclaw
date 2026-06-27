@@ -44,7 +44,6 @@ fn is_truthy(value: Option<&str>) -> bool {
         .unwrap_or(false)
 }
 
-
 #[cfg(test)]
 mod env_tests {
     use super::is_truthy;

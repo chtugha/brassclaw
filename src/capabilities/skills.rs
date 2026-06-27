@@ -8,7 +8,9 @@ use brassclaw_host_api::{
 };
 use serde_json::{Value, json};
 
-use brassclaw_skills::catalog::{SkillCatalog, catalog_entry_is_installed, resolve_catalog_slug_for_name};
+use brassclaw_skills::catalog::{
+    SkillCatalog, catalog_entry_is_installed, resolve_catalog_slug_for_name,
+};
 use brassclaw_skills::registry::SkillRegistry;
 
 // ============================================================================
@@ -27,14 +29,14 @@ impl SkillFetchError {
     pub fn is_missing_dependency(&self) -> bool {
         self.is_missing
     }
-    
+
     fn network(msg: impl Into<String>) -> Self {
         Self {
             message: msg.into(),
             is_missing: false,
         }
     }
-    
+
     fn not_found(msg: impl Into<String>) -> Self {
         Self {
             message: msg.into(),
@@ -69,19 +71,20 @@ async fn fetch_skill_payload(url: &str) -> Result<SkillInstallPayload, SkillFetc
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| SkillFetchError::network(format!("Failed to create HTTP client: {}", e)))?;
-    
+
     // Fetch the skill content
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| SkillFetchError::network(format!("Failed to fetch skill from {}: {}", url, e)))?;
-    
+    let response = client.get(url).send().await.map_err(|e| {
+        SkillFetchError::network(format!("Failed to fetch skill from {}: {}", url, e))
+    })?;
+
     // Check for 404 (missing skill)
     if response.status() == reqwest::StatusCode::NOT_FOUND {
-        return Err(SkillFetchError::not_found(format!("Skill not found at {}", url)));
+        return Err(SkillFetchError::not_found(format!(
+            "Skill not found at {}",
+            url
+        )));
     }
-    
+
     // Check for other HTTP errors
     if !response.status().is_success() {
         return Err(SkillFetchError::network(format!(
@@ -90,13 +93,13 @@ async fn fetch_skill_payload(url: &str) -> Result<SkillInstallPayload, SkillFetc
             url
         )));
     }
-    
+
     // Read the response body as text
     let skill_md = response
         .text()
         .await
         .map_err(|e| SkillFetchError::network(format!("Failed to read skill content: {}", e)))?;
-    
+
     // V2: Skills are simple markdown files, no extra files or metadata in the payload
     // (metadata is extracted from the markdown frontmatter during parsing)
     Ok(SkillInstallPayload {
@@ -308,9 +311,7 @@ fn require_str<'a>(params: &'a Value, key: &str) -> Result<&'a str, SkillsCapabi
     params
         .get(key)
         .and_then(Value::as_str)
-        .ok_or_else(|| {
-            SkillsCapabilityError::input(format!("missing required parameter: {key}"))
-        })
+        .ok_or_else(|| SkillsCapabilityError::input(format!("missing required parameter: {key}")))
 }
 
 fn registry_read(
@@ -689,12 +690,8 @@ pub async fn execute_skill_install(
     {
         fetch_skill_payload(url).await?
     } else {
-        let download_key = resolve_catalog_download_key(
-            ctx.catalog.as_ref(),
-            name,
-            slug.as_deref(),
-        )
-        .await?;
+        let download_key =
+            resolve_catalog_download_key(ctx.catalog.as_ref(), name, slug.as_deref()).await?;
         let download_url = brassclaw_skills::catalog::skill_download_url(
             ctx.catalog.registry_url(),
             &download_key,
@@ -775,7 +772,10 @@ pub async fn execute_skill_install(
         CommitResult::AlreadyInstalled => {
             // Race condition: another thread installed between our check and commit
             let report = ChainInstallReport::default();
-            return Ok(build_already_installed_output(&skill_name_from_parse, &report));
+            return Ok(build_already_installed_output(
+                &skill_name_from_parse,
+                &report,
+            ));
         }
     };
 
@@ -849,17 +849,12 @@ pub async fn execute_skill_list(
                 "keywords": s.manifest.activation.keywords,
             });
 
-            if verbose
-                && let Some(obj) = entry.as_object_mut()
-            {
+            if verbose && let Some(obj) = entry.as_object_mut() {
                 obj.insert(
                     "version".to_string(),
                     serde_json::Value::String(s.manifest.version.clone()),
                 );
-                obj.insert(
-                    "tags".to_string(),
-                    json!(s.manifest.activation.tags),
-                );
+                obj.insert("tags".to_string(), json!(s.manifest.activation.tags));
                 obj.insert(
                     "content_hash".to_string(),
                     serde_json::Value::String(s.content_hash.clone()),
@@ -1008,10 +1003,26 @@ mod tests {
     fn descriptors_returns_four() {
         let descs = descriptors();
         assert_eq!(descs.len(), 4);
-        assert!(descs.iter().any(|d| d.id.as_str() == SKILL_INSTALL_CAPABILITY_ID));
-        assert!(descs.iter().any(|d| d.id.as_str() == SKILL_REMOVE_CAPABILITY_ID));
-        assert!(descs.iter().any(|d| d.id.as_str() == SKILL_LIST_CAPABILITY_ID));
-        assert!(descs.iter().any(|d| d.id.as_str() == SKILL_SEARCH_CAPABILITY_ID));
+        assert!(
+            descs
+                .iter()
+                .any(|d| d.id.as_str() == SKILL_INSTALL_CAPABILITY_ID)
+        );
+        assert!(
+            descs
+                .iter()
+                .any(|d| d.id.as_str() == SKILL_REMOVE_CAPABILITY_ID)
+        );
+        assert!(
+            descs
+                .iter()
+                .any(|d| d.id.as_str() == SKILL_LIST_CAPABILITY_ID)
+        );
+        assert!(
+            descs
+                .iter()
+                .any(|d| d.id.as_str() == SKILL_SEARCH_CAPABILITY_ID)
+        );
     }
 
     #[test]

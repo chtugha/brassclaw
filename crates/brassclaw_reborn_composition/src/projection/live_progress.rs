@@ -4,7 +4,6 @@ use std::sync::{
 };
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_event_projections::{
     ProjectionCursor as EventProjectionCursor, ProjectionScope as EventProjectionScope,
 };
@@ -13,7 +12,9 @@ use brassclaw_event_streams::{
     ThreadLiveProjectionUpdate, ThreadLiveWorkSummaryPhase,
 };
 use brassclaw_events::{EventCursor, EventStreamKey, ReadScope};
-use brassclaw_first_party_extension_ports::{SkillActivationObservedEvent, SkillActivationObserver};
+use brassclaw_first_party_extension_ports::{
+    SkillActivationObservedEvent, SkillActivationObserver,
+};
 use brassclaw_host_api::{CapabilityId, InvocationId, UserId};
 use brassclaw_product_adapters::{
     CapabilityActivityStatusView, CapabilityActivityView, CapabilityActivityViewInput,
@@ -27,6 +28,7 @@ use brassclaw_turns::{
         LoopHostMilestoneSink, LoopSafeSummary, sanitize_model_visible_text,
     },
 };
+use chrono::Utc;
 
 // Live progress uses a synthetic cursor because it is an ephemeral UI hint,
 // not a durable runtime event. This sink must remain the only producer on this

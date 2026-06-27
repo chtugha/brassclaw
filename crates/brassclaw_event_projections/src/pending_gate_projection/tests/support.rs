@@ -4,8 +4,8 @@ use std::{
 };
 
 use async_trait::async_trait;
-use chrono::{TimeZone, Utc};
 use brassclaw_turns::{GateRef, TurnBlockedGateMetadata, TurnStatus};
+use chrono::{TimeZone, Utc};
 
 use super::super::*;
 

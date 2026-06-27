@@ -137,7 +137,10 @@ impl BackgroundTaskRegistry {
         let mut handlers: HashMap<String, Arc<dyn BackgroundTaskHandler>> = HashMap::new();
         handlers.insert("data_processing".to_string(), Arc::new(DataProcessingTask));
         handlers.insert("maintenance".to_string(), Arc::new(MaintenanceTask));
-        handlers.insert("report_generation".to_string(), Arc::new(ReportGenerationTask));
+        handlers.insert(
+            "report_generation".to_string(),
+            Arc::new(ReportGenerationTask),
+        );
         Self {
             handlers: RwLock::new(handlers),
         }
@@ -150,7 +153,7 @@ impl BackgroundTaskRegistry {
         handler: Arc<dyn BackgroundTaskHandler>,
     ) -> Result<(), Error> {
         let mut handlers = self.handlers.write().await;
-        
+
         if handlers.contains_key(&task_name) {
             return Err(Error::Config(crate::error::ConfigError::InvalidValue {
                 key: "task_name".to_string(),
@@ -176,14 +179,18 @@ impl BackgroundTaskRegistry {
         params: Value,
     ) -> Result<Value, Error> {
         let handlers = self.handlers.read().await;
-        
+
         let handler = handlers.get(task_name).ok_or_else(|| {
             Error::Config(crate::error::ConfigError::InvalidValue {
                 key: "task_name".to_string(),
                 message: format!(
                     "Unknown background task: '{}'. Available tasks: {}",
                     task_name,
-                    handlers.keys().map(|k| k.as_str()).collect::<Vec<_>>().join(", ")
+                    handlers
+                        .keys()
+                        .map(|k| k.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 ),
             })
         })?;
@@ -243,38 +250,57 @@ pub struct DataProcessingTask;
 #[async_trait]
 impl BackgroundTaskHandler for DataProcessingTask {
     async fn execute(&self, context: TaskContext) -> Result<Value, Error> {
-        context.progress.update_progress(0, Some("Starting data processing".to_string())).await;
-        
+        context
+            .progress
+            .update_progress(0, Some("Starting data processing".to_string()))
+            .await;
+
         // Extract processing parameters
-        let batch_size = context.params.get("batch_size")
+        let batch_size = context
+            .params
+            .get("batch_size")
             .and_then(|v| v.as_u64())
             .unwrap_or(100);
-        
-        let total_items = context.params.get("total_items")
+
+        let total_items = context
+            .params
+            .get("total_items")
             .and_then(|v| v.as_u64())
             .unwrap_or(1000);
 
-        context.progress.add_milestone("Initialized processing".to_string()).await;
+        context
+            .progress
+            .add_milestone("Initialized processing".to_string())
+            .await;
 
         // Simulate batch processing
         let mut processed = 0u64;
         while processed < total_items {
             let batch_end = (processed + batch_size).min(total_items);
-            
+
             // Simulate processing delay
             tokio::time::sleep(Duration::from_millis(50)).await;
-            
+
             processed = batch_end;
             let percent = ((processed as f64 / total_items as f64) * 100.0) as u8;
-            
-            context.progress.update_progress(
-                percent,
-                Some(format!("Processed {}/{} items", processed, total_items))
-            ).await;
+
+            context
+                .progress
+                .update_progress(
+                    percent,
+                    Some(format!("Processed {}/{} items", processed, total_items)),
+                )
+                .await;
         }
 
-        context.progress.add_milestone("Processing completed".to_string()).await;
-        context.progress.update_progress(100, Some("Done".to_string())).await;
+        context
+            .progress
+            .add_milestone("Processing completed".to_string())
+            .await;
+        context
+            .progress
+            .update_progress(100, Some("Done".to_string()))
+            .await;
 
         Ok(serde_json::json!({
             "status": "completed",
@@ -294,13 +320,21 @@ pub struct MaintenanceTask;
 #[async_trait]
 impl BackgroundTaskHandler for MaintenanceTask {
     async fn execute(&self, context: TaskContext) -> Result<Value, Error> {
-        context.progress.update_progress(0, Some("Starting maintenance".to_string())).await;
-        
-        let maintenance_type = context.params.get("type")
+        context
+            .progress
+            .update_progress(0, Some("Starting maintenance".to_string()))
+            .await;
+
+        let maintenance_type = context
+            .params
+            .get("type")
             .and_then(|v| v.as_str())
             .unwrap_or("general");
 
-        context.progress.add_milestone(format!("Running {} maintenance", maintenance_type)).await;
+        context
+            .progress
+            .add_milestone(format!("Running {} maintenance", maintenance_type))
+            .await;
 
         // Simulate maintenance operations
         let steps = vec![
@@ -312,13 +346,22 @@ impl BackgroundTaskHandler for MaintenanceTask {
 
         for (i, step) in steps.iter().enumerate() {
             tokio::time::sleep(Duration::from_millis(100)).await;
-            
+
             let percent = ((i + 1) as f64 / steps.len() as f64 * 100.0) as u8;
-            context.progress.update_progress(percent, Some(step.to_string())).await;
-            context.progress.add_milestone(format!("Completed: {}", step)).await;
+            context
+                .progress
+                .update_progress(percent, Some(step.to_string()))
+                .await;
+            context
+                .progress
+                .add_milestone(format!("Completed: {}", step))
+                .await;
         }
 
-        context.progress.update_progress(100, Some("Maintenance complete".to_string())).await;
+        context
+            .progress
+            .update_progress(100, Some("Maintenance complete".to_string()))
+            .await;
 
         Ok(serde_json::json!({
             "status": "completed",
@@ -338,27 +381,56 @@ pub struct ReportGenerationTask;
 #[async_trait]
 impl BackgroundTaskHandler for ReportGenerationTask {
     async fn execute(&self, context: TaskContext) -> Result<Value, Error> {
-        context.progress.update_progress(0, Some("Initializing report generation".to_string())).await;
-        
-        let report_type = context.params.get("report_type")
+        context
+            .progress
+            .update_progress(0, Some("Initializing report generation".to_string()))
+            .await;
+
+        let report_type = context
+            .params
+            .get("report_type")
             .and_then(|v| v.as_str())
             .unwrap_or("summary");
 
-        context.progress.add_milestone("Gathering data".to_string()).await;
+        context
+            .progress
+            .add_milestone("Gathering data".to_string())
+            .await;
         tokio::time::sleep(Duration::from_millis(100)).await;
-        context.progress.update_progress(25, Some("Data gathered".to_string())).await;
+        context
+            .progress
+            .update_progress(25, Some("Data gathered".to_string()))
+            .await;
 
-        context.progress.add_milestone("Analyzing data".to_string()).await;
+        context
+            .progress
+            .add_milestone("Analyzing data".to_string())
+            .await;
         tokio::time::sleep(Duration::from_millis(100)).await;
-        context.progress.update_progress(50, Some("Analysis complete".to_string())).await;
+        context
+            .progress
+            .update_progress(50, Some("Analysis complete".to_string()))
+            .await;
 
-        context.progress.add_milestone("Formatting report".to_string()).await;
+        context
+            .progress
+            .add_milestone("Formatting report".to_string())
+            .await;
         tokio::time::sleep(Duration::from_millis(100)).await;
-        context.progress.update_progress(75, Some("Report formatted".to_string())).await;
+        context
+            .progress
+            .update_progress(75, Some("Report formatted".to_string()))
+            .await;
 
-        context.progress.add_milestone("Finalizing report".to_string()).await;
+        context
+            .progress
+            .add_milestone("Finalizing report".to_string())
+            .await;
         tokio::time::sleep(Duration::from_millis(100)).await;
-        context.progress.update_progress(100, Some("Report ready".to_string())).await;
+        context
+            .progress
+            .update_progress(100, Some("Report ready".to_string()))
+            .await;
 
         Ok(serde_json::json!({
             "status": "completed",
@@ -376,22 +448,22 @@ impl BackgroundTaskHandler for ReportGenerationTask {
 /// Create a registry with built-in task handlers.
 pub async fn create_default_registry() -> BackgroundTaskRegistry {
     let registry = BackgroundTaskRegistry::new();
-    
+
     // Register built-in handlers
-    let _ = registry.register(
-        "data_processing".to_string(),
-        Arc::new(DataProcessingTask),
-    ).await;
-    
-    let _ = registry.register(
-        "maintenance".to_string(),
-        Arc::new(MaintenanceTask),
-    ).await;
-    
-    let _ = registry.register(
-        "report_generation".to_string(),
-        Arc::new(ReportGenerationTask),
-    ).await;
+    let _ = registry
+        .register("data_processing".to_string(), Arc::new(DataProcessingTask))
+        .await;
+
+    let _ = registry
+        .register("maintenance".to_string(), Arc::new(MaintenanceTask))
+        .await;
+
+    let _ = registry
+        .register(
+            "report_generation".to_string(),
+            Arc::new(ReportGenerationTask),
+        )
+        .await;
 
     registry
 }
@@ -403,10 +475,12 @@ mod tests {
     #[tokio::test]
     async fn test_progress_reporter() {
         let reporter = ProgressReporter::new(Uuid::new_v4());
-        
-        reporter.update_progress(50, Some("Half done".to_string())).await;
+
+        reporter
+            .update_progress(50, Some("Half done".to_string()))
+            .await;
         let progress = reporter.get_progress().await;
-        
+
         assert_eq!(progress.percent, 50);
         assert_eq!(progress.message, Some("Half done".to_string()));
     }
@@ -415,9 +489,12 @@ mod tests {
     async fn test_registry_registration() {
         let registry = BackgroundTaskRegistry::new();
         let handler = Arc::new(DataProcessingTask);
-        
-        registry.register("test_task".to_string(), handler).await.unwrap();
-        
+
+        registry
+            .register("test_task".to_string(), handler)
+            .await
+            .unwrap();
+
         let tasks = registry.list_tasks().await;
         assert!(tasks.contains(&"test_task".to_string()));
     }
@@ -426,7 +503,7 @@ mod tests {
     async fn test_default_registry() {
         let registry = create_default_registry().await;
         let tasks = registry.list_tasks().await;
-        
+
         assert!(tasks.contains(&"data_processing".to_string()));
         assert!(tasks.contains(&"maintenance".to_string()));
         assert!(tasks.contains(&"report_generation".to_string()));

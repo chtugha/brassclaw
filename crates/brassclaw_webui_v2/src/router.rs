@@ -160,10 +160,7 @@ pub fn webui_v2_router_with_options(state: WebUiV2State, options: WebUiV2RouteOp
             WEBUI_V2_PATTERN_UPDATE_TOOL_PERMISSION,
             put(handlers::update_tool_permission),
         )
-        .route(
-            WEBUI_V2_PATTERN_LIST_SKILLS,
-            get(handlers::list_skills),
-        )
+        .route(WEBUI_V2_PATTERN_LIST_SKILLS, get(handlers::list_skills))
         .route(
             WEBUI_V2_PATTERN_INSTALL_SKILL,
             post(handlers::install_skill),
@@ -175,11 +172,13 @@ pub fn webui_v2_router_with_options(state: WebUiV2State, options: WebUiV2RouteOp
         // Safety configuration endpoints
         .route(
             "/api/webchat/v2/safety/sensitive-paths",
-            get(handlers::safety::get_sensitive_paths).put(handlers::safety::update_sensitive_paths),
+            get(handlers::safety::get_sensitive_paths)
+                .put(handlers::safety::update_sensitive_paths),
         )
         .route(
             "/api/webchat/v2/safety/workspace-rules",
-            get(handlers::safety::get_workspace_rules).put(handlers::safety::update_workspace_rules),
+            get(handlers::safety::get_workspace_rules)
+                .put(handlers::safety::update_workspace_rules),
         )
         .route(
             "/api/webchat/v2/safety/blocked-paths",

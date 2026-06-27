@@ -8,13 +8,14 @@ use std::sync::{
 };
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_authorization::{GrantAuthorizer, TrustAwareCapabilityDispatchAuthorizer};
 use brassclaw_dispatcher::{
     RuntimeAdapter, RuntimeAdapterRequest, RuntimeAdapterResult, RuntimeDispatcher,
 };
 use brassclaw_events::{InMemoryEventSink, RuntimeEventKind};
-use brassclaw_extensions::{ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource};
+use brassclaw_extensions::{
+    ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource,
+};
 use brassclaw_filesystem::LocalFilesystem;
 use brassclaw_host_api::*;
 use brassclaw_host_runtime::{
@@ -29,6 +30,7 @@ use brassclaw_trust::{
     AdminConfig, AdminEntry, AuthorityCeiling, EffectiveTrustClass, HostTrustAssignment,
     HostTrustPolicy, TrustDecision, TrustProvenance,
 };
+use chrono::Utc;
 use serde_json::{Value, json};
 
 fn local_test_runtime_policy() -> brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy {

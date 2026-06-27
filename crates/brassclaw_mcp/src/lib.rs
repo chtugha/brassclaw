@@ -15,7 +15,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use futures_util::FutureExt as _;
 use brassclaw_extensions::{ExtensionPackage, ExtensionRuntime};
 use brassclaw_host_api::{
     CapabilityId, ExtensionId, NetworkMethod, NetworkPolicy, ResourceEstimate, ResourceReservation,
@@ -25,6 +24,7 @@ use brassclaw_host_api::{
     RuntimeHttpEgressResponse, RuntimeKind, SecretHandle,
 };
 use brassclaw_resources::{ResourceError, ResourceGovernor, ResourceReceipt};
+use futures_util::FutureExt as _;
 use serde_json::Value;
 use thiserror::Error;
 

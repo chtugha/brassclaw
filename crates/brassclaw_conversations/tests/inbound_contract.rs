@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use chrono::{TimeZone, Utc};
 use brassclaw_conversations::{
     AcceptInboundMessageRequest, AcceptedInboundMessage, AcceptedInboundMessageLookup,
     AcceptedInboundMessageReplay, AdapterInstallationId, AdapterKind,
@@ -19,6 +18,7 @@ use brassclaw_turns::{
     RunProfileVersion, SourceBindingRef, SubmitTurnRequest, SubmitTurnResponse, ThreadBusy,
     TurnActor, TurnCoordinator, TurnError, TurnRunId, TurnRunState, TurnScope, TurnStatus,
 };
+use chrono::{TimeZone, Utc};
 
 #[tokio::test]
 async fn paired_actor_without_binding_creates_thread_binding_message_and_submits_turn() {

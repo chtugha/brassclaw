@@ -30,8 +30,6 @@ use async_trait::async_trait;
 use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::http::{HeaderValue, Method, Request, StatusCode, header};
-use chrono::Duration as ChronoDuration;
-use http_body_util::BodyExt;
 use brassclaw_host_api::{AgentId, ProjectId, TenantId, ThreadId, UserId};
 use brassclaw_product_workflow::{
     LifecyclePackageRef, RebornCancelRunResponse, RebornCreateThreadResponse,
@@ -55,6 +53,8 @@ use brassclaw_reborn_webui_ingress::{
     OAuthUserProfile, SessionAuthenticator, SessionStore, webui_v2_auth_router,
 };
 use brassclaw_threads::{SessionThreadRecord, ThreadScope};
+use chrono::Duration as ChronoDuration;
+use http_body_util::BodyExt;
 use parking_lot::Mutex as PlMutex;
 use serde::Deserialize;
 use tower::ServiceExt;
@@ -255,14 +255,18 @@ impl RebornServicesApi for StubServices {
     async fn list_capabilities(
         &self,
         _caller: WebUiAuthenticatedCaller,
-    ) -> Result<brassclaw_product_workflow::RebornListCapabilitiesResponse, RebornServicesError> {
+    ) -> Result<brassclaw_product_workflow::RebornListCapabilitiesResponse, RebornServicesError>
+    {
         unreachable!("test does not drive list_capabilities")
     }
     async fn update_capability_permission(
         &self,
         _caller: WebUiAuthenticatedCaller,
         _request: brassclaw_product_workflow::RebornUpdateCapabilityPermissionRequest,
-    ) -> Result<brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse, RebornServicesError> {
+    ) -> Result<
+        brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse,
+        RebornServicesError,
+    > {
         unreachable!("test does not drive update_capability_permission")
     }
     async fn list_skills(

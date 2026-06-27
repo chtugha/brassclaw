@@ -19,14 +19,14 @@ use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
+use brassclaw_host_api::{
+    AgentId, CapabilityId, ExtensionId, InvocationId, MissionId, NetworkMethod, ProjectId,
+    ResourceScope, SecretHandle, TenantId, ThreadId, Timestamp, UserId,
+};
 use chrono::{Duration, Utc};
 pub use crypto::{
     SecretsCrypto, credential_account_aad, credential_session_aad, filesystem_secret_aad,
     secret_record_aad,
-};
-use brassclaw_host_api::{
-    AgentId, CapabilityId, ExtensionId, InvocationId, MissionId, NetworkMethod, ProjectId,
-    ResourceScope, SecretHandle, TenantId, ThreadId, Timestamp, UserId,
 };
 use legacy_store::InMemorySecretsStore;
 pub use legacy_store::{CreateSecretParams, SecretConsumeResult, SecretError, SecretsStore};
@@ -1458,11 +1458,11 @@ impl SecretStore for InMemorySecretStore {
 mod tests {
     use std::sync::Arc;
 
-    use chrono::Utc;
     use brassclaw_host_api::{
         AgentId, CapabilityId, ExtensionId, InvocationId, MissionId, NetworkMethod, ProjectId,
         ResourceScope, SecretHandle, TenantId, ThreadId, UserId,
     };
+    use chrono::Utc;
     use secrecy::ExposeSecret;
     use serde_json::json;
 

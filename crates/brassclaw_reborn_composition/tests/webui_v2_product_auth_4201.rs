@@ -6,7 +6,6 @@
 //! caller path (auth layer + body limit + rate limit + handler +
 //! `RebornProductAuthServices`) is exercised, not just the facade helpers.
 
-
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -226,14 +225,18 @@ impl RebornServicesApi for UnusedServices {
     async fn list_capabilities(
         &self,
         _caller: WebUiAuthenticatedCaller,
-    ) -> Result<brassclaw_product_workflow::RebornListCapabilitiesResponse, RebornServicesError> {
+    ) -> Result<brassclaw_product_workflow::RebornListCapabilitiesResponse, RebornServicesError>
+    {
         Err(rejecting_reborn_services_error())
     }
     async fn update_capability_permission(
         &self,
         _caller: WebUiAuthenticatedCaller,
         _request: brassclaw_product_workflow::RebornUpdateCapabilityPermissionRequest,
-    ) -> Result<brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse, RebornServicesError> {
+    ) -> Result<
+        brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse,
+        RebornServicesError,
+    > {
         Err(rejecting_reborn_services_error())
     }
     async fn list_skills(
@@ -1270,13 +1273,13 @@ fn auth_prompt_view_deserialises_without_optional_fields() {
 
 #[tokio::test]
 async fn challenge_for_gate_returns_oauth_url_view_for_seeded_flow() {
-    use chrono::Utc;
     use brassclaw_auth::AuthProviderId;
     use brassclaw_auth::{
         AuthChallenge, AuthContinuationRef, AuthFlowKind, AuthFlowManager, AuthGateRef,
         InMemoryAuthProductServices, NewAuthFlow, OAuthAuthorizationUrl, TurnRunRef,
     };
     use brassclaw_product_adapters::AuthPromptChallengeKind;
+    use chrono::Utc;
     use std::sync::Arc;
 
     let shared = Arc::new(InMemoryAuthProductServices::new());
@@ -1401,7 +1404,6 @@ fn auth_challenge_provider_absent_when_no_flow_record_source() {
 #[tokio::test]
 async fn challenge_for_gate_cancelled_flow_returns_none() {
     // Fix #1/#2: verify that terminal-status flows are not surfaced.
-    use chrono::Utc;
     use brassclaw_auth::AuthProviderId;
     use brassclaw_auth::{
         AuthChallenge, AuthContinuationRef, AuthFlowKind, AuthFlowManager, AuthGateRef,
@@ -1409,6 +1411,7 @@ async fn challenge_for_gate_cancelled_flow_returns_none() {
     };
     use brassclaw_host_api::ThreadId;
     use brassclaw_turns::{TurnRunId, TurnScope};
+    use chrono::Utc;
     use std::sync::Arc;
 
     let shared = Arc::new(InMemoryAuthProductServices::new());
@@ -1481,7 +1484,6 @@ async fn challenge_for_gate_cancelled_flow_returns_none() {
 
 #[tokio::test]
 async fn challenge_for_gate_threadless_flow_returns_none_for_thread_scope() {
-    use chrono::Utc;
     use brassclaw_auth::AuthProviderId;
     use brassclaw_auth::{
         AuthChallenge, AuthContinuationRef, AuthFlowKind, AuthFlowManager, AuthGateRef,
@@ -1489,6 +1491,7 @@ async fn challenge_for_gate_threadless_flow_returns_none_for_thread_scope() {
     };
     use brassclaw_host_api::ThreadId;
     use brassclaw_turns::{TurnRunId, TurnScope};
+    use chrono::Utc;
     use std::sync::Arc;
 
     let shared = Arc::new(InMemoryAuthProductServices::new());
@@ -1555,7 +1558,6 @@ async fn challenge_for_gate_threadless_flow_returns_none_for_thread_scope() {
 async fn challenge_for_gate_wrong_tenant_returns_none() {
     // Fix #1: verify that a flow from a different tenant cannot be retrieved
     // by a caller with a different scope, even with the correct gate_ref UUID.
-    use chrono::Utc;
     use brassclaw_auth::AuthProviderId;
     use brassclaw_auth::{
         AuthChallenge, AuthContinuationRef, AuthFlowKind, AuthFlowManager, AuthGateRef,
@@ -1563,6 +1565,7 @@ async fn challenge_for_gate_wrong_tenant_returns_none() {
     };
     use brassclaw_host_api::ThreadId;
     use brassclaw_turns::{TurnRunId, TurnScope};
+    use chrono::Utc;
     use std::sync::Arc;
 
     let shared = Arc::new(InMemoryAuthProductServices::new());
@@ -1632,7 +1635,6 @@ async fn challenge_for_gate_wrong_tenant_returns_none() {
 #[tokio::test]
 async fn challenge_for_gate_returns_manual_token_view_for_seeded_flow() {
     // Covers the ManualTokenRequired arm of auth_challenge_to_view.
-    use chrono::Utc;
     use brassclaw_auth::AuthProviderId;
     use brassclaw_auth::{
         AuthChallenge, AuthContinuationRef, AuthFlowKind, AuthFlowManager, AuthGateRef,
@@ -1642,6 +1644,7 @@ async fn challenge_for_gate_returns_manual_token_view_for_seeded_flow() {
     use brassclaw_host_api::ThreadId;
     use brassclaw_product_adapters::AuthPromptChallengeKind;
     use brassclaw_turns::{TurnRunId, TurnScope};
+    use chrono::Utc;
     use std::sync::Arc;
 
     let shared = Arc::new(InMemoryAuthProductServices::new());
@@ -1713,7 +1716,6 @@ async fn challenge_for_gate_returns_manual_token_view_for_seeded_flow() {
 async fn challenge_for_gate_returns_other_kind_view_for_setup_required_flow() {
     // Covers the AccountSelectionRequired / ReauthorizeRequired / SetupRequired
     // arms of auth_challenge_to_view (all map to AuthPromptChallengeKind::Other).
-    use chrono::Utc;
     use brassclaw_auth::AuthProviderId;
     use brassclaw_auth::{
         AuthChallenge, AuthContinuationRef, AuthFlowKind, AuthFlowManager, AuthGateRef,
@@ -1722,6 +1724,7 @@ async fn challenge_for_gate_returns_other_kind_view_for_setup_required_flow() {
     use brassclaw_host_api::ThreadId;
     use brassclaw_product_adapters::AuthPromptChallengeKind;
     use brassclaw_turns::{TurnRunId, TurnScope};
+    use chrono::Utc;
     use std::sync::Arc;
 
     let shared = Arc::new(InMemoryAuthProductServices::new());

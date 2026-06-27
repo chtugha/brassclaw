@@ -3,7 +3,6 @@ use std::sync::LazyLock;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_host_api::{AgentId, ProjectId, TenantId, ThreadId, UserId};
 use brassclaw_outbound::{
     CommunicationDeliveryIntent, CommunicationDeliveryResolutionRequest, CommunicationModality,
@@ -34,6 +33,7 @@ use brassclaw_telegram_v2_adapter::{
     GroupTriggerPolicy, TelegramV2Adapter, TelegramV2AdapterConfig,
 };
 use brassclaw_turns::{ReplyTargetBindingRef, TurnActor, TurnRunId, TurnScope};
+use chrono::Utc;
 
 static SYNC_ADAPTER_CAPABILITIES: LazyLock<ProductAdapterCapabilities> =
     LazyLock::new(ProductAdapterCapabilities::empty);

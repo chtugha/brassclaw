@@ -10,8 +10,6 @@ use std::{
 
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
-#[cfg(feature = "test-support")]
-use chrono::{DateTime, Datelike, TimeZone, Utc};
 use brassclaw_authorization::GrantAuthorizer;
 use brassclaw_events::InMemoryAuditSink;
 use brassclaw_extensions::ExtensionRegistry;
@@ -58,6 +56,8 @@ use brassclaw_trust::{
     HostTrustPolicy, TrustDecision, TrustProvenance,
 };
 use brassclaw_turns::TurnRunId;
+#[cfg(feature = "test-support")]
+use chrono::{DateTime, Datelike, TimeZone, Utc};
 use serde_json::{Value, json};
 
 #[tokio::test]

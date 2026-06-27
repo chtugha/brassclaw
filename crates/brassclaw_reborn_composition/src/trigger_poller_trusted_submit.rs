@@ -418,7 +418,6 @@ mod tests {
         TriggerFireAccessCheck, TriggerFireAccessChecker, TriggerFireAccessDecision,
         TriggerFireAccessError,
     };
-    use chrono::Utc;
     use brassclaw_conversations::{
         MessageIdempotencyStatus, ThreadAccessDecision, trusted_trigger_fire_submitter,
     };
@@ -453,6 +452,7 @@ mod tests {
         SubmitTurnRequest, SubmitTurnResponse, TurnActor, TurnCoordinator, TurnError, TurnId,
         TurnRunId, TurnRunState, TurnScope, TurnStatus,
     };
+    use chrono::Utc;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
 

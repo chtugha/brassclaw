@@ -11,12 +11,12 @@ use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use futures::FutureExt;
 use brassclaw_events::{
     EventCursor, RuntimeEvent, RuntimeEventKind, SecurityAuditEvent, SecurityAuditSink,
     SecurityBoundary, SecurityDecision,
 };
 use brassclaw_turns::run_profile::{HookDecisionSummary, HookMilestoneSink, LoopHostMilestoneKind};
+use futures::FutureExt;
 
 /// Stable `&'static str` reason code recorded on the
 /// [`SecurityAuditEvent`] when a `before_capability` hook explicitly
@@ -1872,7 +1872,10 @@ impl HookDispatcher {
     /// Returns `None` if the registry mutex is poisoned, the hook id isn't
     /// found, or the binding has no owning extension (Builtin / Trusted /
     /// SelfAuthored hooks).
-    fn lookup_owning_extension(&self, hook_id_hex: &str) -> Option<brassclaw_host_api::ExtensionId> {
+    fn lookup_owning_extension(
+        &self,
+        hook_id_hex: &str,
+    ) -> Option<brassclaw_host_api::ExtensionId> {
         match self.registry.lock() {
             Ok(registry) => registry.owning_extension_for_hook_hex(hook_id_hex).cloned(),
             Err(_) => None,

@@ -1,5 +1,5 @@
-use clap::{Args, Subcommand};
 use brassclaw_reborn_config::RebornDoctorReport;
+use clap::{Args, Subcommand};
 
 use crate::context::RebornCliContext;
 

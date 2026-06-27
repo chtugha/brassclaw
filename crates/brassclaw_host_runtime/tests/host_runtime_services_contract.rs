@@ -12,7 +12,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use chrono::{Duration as ChronoDuration, Utc};
 use brassclaw_approvals::LeaseApproval;
 use brassclaw_authorization::{
     CapabilityLeaseStatus, CapabilityLeaseStore, GrantAuthorizer, InMemoryCapabilityLeaseStore,
@@ -33,7 +32,9 @@ use brassclaw_events::{
     EventReplay, EventStreamKey, InMemoryAuditSink, InMemoryDurableAuditLog,
     InMemoryDurableEventLog, InMemoryEventSink, ReadScope, RuntimeEventKind,
 };
-use brassclaw_extensions::{ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource};
+use brassclaw_extensions::{
+    ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource,
+};
 #[cfg(feature = "libsql")]
 use brassclaw_filesystem::LibSqlRootFilesystem;
 #[cfg(feature = "libsql")]
@@ -97,6 +98,7 @@ use brassclaw_wasm::{
     WasmRuntimeCredentialRequest, WasmStagedRuntimeCredential, WasmStagedRuntimeCredentials,
     WitToolHost, WitToolRuntimeConfig,
 };
+use chrono::{Duration as ChronoDuration, Utc};
 use serde_json::json;
 use wit_component::{ComponentEncoder, StringEncoding, embed_component_metadata};
 use wit_parser::Resolve;
@@ -6633,9 +6635,9 @@ impl ProcessExecutor for BackgroundExecutor {
             BackgroundExecutorOutcome::Success(output) => Ok(ProcessExecutionResult {
                 output: output.clone(),
             }),
-            BackgroundExecutorOutcome::Failure(kind) => {
-                Err(brassclaw_processes::ProcessExecutionError::new(kind.clone()))
-            }
+            BackgroundExecutorOutcome::Failure(kind) => Err(
+                brassclaw_processes::ProcessExecutionError::new(kind.clone()),
+            ),
             BackgroundExecutorOutcome::DelayedSuccess(delay) => {
                 tokio::time::sleep(*delay).await;
                 Ok(ProcessExecutionResult {

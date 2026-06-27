@@ -2,7 +2,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use chrono::{TimeZone, Utc};
 use brassclaw_host_api::{
     AgentId, CapabilityId, ProjectId, RuntimeKind, TenantId, ThreadId, UserId,
 };
@@ -42,6 +41,7 @@ use brassclaw_turns::{
     },
     runner::{ClaimRunRequest, TurnRunTransitionPort},
 };
+use chrono::{TimeZone, Utc};
 
 #[test]
 fn loop_compaction_outcome_serializes_and_deserializes_wire_shape() {

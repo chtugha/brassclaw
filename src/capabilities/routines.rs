@@ -397,9 +397,7 @@ fn require_str<'a>(params: &'a Value, key: &str) -> Result<&'a str, RoutinesCapa
     params
         .get(key)
         .and_then(Value::as_str)
-        .ok_or_else(|| {
-            RoutinesCapabilityError::input(format!("missing required parameter: {key}"))
-        })
+        .ok_or_else(|| RoutinesCapabilityError::input(format!("missing required parameter: {key}")))
 }
 
 fn nested_object<'a>(params: &'a Value, field: &str) -> Option<&'a Map<String, Value>> {
@@ -484,7 +482,9 @@ fn object_field(
         })
 }
 
-fn validate_timezone_param(timezone: Option<String>) -> Result<Option<String>, RoutinesCapabilityError> {
+fn validate_timezone_param(
+    timezone: Option<String>,
+) -> Result<Option<String>, RoutinesCapabilityError> {
     timezone
         .map(|tz| {
             crate::timezone::parse_timezone(&tz)
@@ -570,7 +570,9 @@ struct NormalizedRoutineCreateRequest {
     cooldown_secs: u64,
 }
 
-fn parse_routine_trigger(params: &Value) -> Result<NormalizedTriggerRequest, RoutinesCapabilityError> {
+fn parse_routine_trigger(
+    params: &Value,
+) -> Result<NormalizedTriggerRequest, RoutinesCapabilityError> {
     let kind = string_field(params, "request", "kind", &["trigger_type"])
         .map(|value| match value.as_str() {
             "event" => "message_event".to_string(),
@@ -595,8 +597,9 @@ fn parse_routine_trigger(params: &Value) -> Result<NormalizedTriggerRequest, Rou
                 "timezone",
                 &["timezone"],
             ))?;
-            next_cron_fire(&schedule, timezone.as_deref())
-                .map_err(|e| RoutinesCapabilityError::input(format!("invalid cron schedule: {e}")))?;
+            next_cron_fire(&schedule, timezone.as_deref()).map_err(|e| {
+                RoutinesCapabilityError::input(format!("invalid cron schedule: {e}"))
+            })?;
             Ok(NormalizedTriggerRequest::Cron { schedule, timezone })
         }
         "manual" => Ok(NormalizedTriggerRequest::Manual),
@@ -652,7 +655,9 @@ fn parse_routine_trigger(params: &Value) -> Result<NormalizedTriggerRequest, Rou
     }
 }
 
-fn parse_execution_mode(value: Option<String>) -> Result<NormalizedExecutionMode, RoutinesCapabilityError> {
+fn parse_execution_mode(
+    value: Option<String>,
+) -> Result<NormalizedExecutionMode, RoutinesCapabilityError> {
     match value.as_deref().unwrap_or("lightweight") {
         "lightweight" => Ok(NormalizedExecutionMode::Lightweight),
         "full_job" => Ok(NormalizedExecutionMode::FullJob),
@@ -846,18 +851,17 @@ pub async fn execute_routine_create(
         routine_verification_fingerprint(&routine),
     );
 
-    ctx.store
-        .create_routine(&routine)
-        .await
-        .map_err(|e| RoutinesCapabilityError::operation(format!("failed to create routine: {e}")))?;
+    ctx.store.create_routine(&routine).await.map_err(|e| {
+        RoutinesCapabilityError::operation(format!("failed to create routine: {e}"))
+    })?;
 
     if matches!(
         routine.trigger,
         Trigger::Event { .. } | Trigger::SystemEvent { .. }
-    )
-        && let Some(engine) = ctx.engine.read().await.as_ref() {
-            engine.refresh_event_cache().await;
-        }
+    ) && let Some(engine) = ctx.engine.read().await.as_ref()
+    {
+        engine.refresh_event_cache().await;
+    }
 
     let verification = verification_result_payload(&routine, false);
     Ok(json!({
@@ -881,7 +885,9 @@ pub async fn execute_routine_update(
         .get_routine_by_name(&ctx.user_id, name)
         .await
         .map_err(|e| RoutinesCapabilityError::operation(format!("DB error: {e}")))?
-        .ok_or_else(|| RoutinesCapabilityError::operation(format!("routine '{}' not found", name)))?;
+        .ok_or_else(|| {
+            RoutinesCapabilityError::operation(format!("routine '{}' not found", name))
+        })?;
 
     let original_fingerprint = routine_verification_fingerprint(&routine);
     let mut verification_reset = false;
@@ -974,10 +980,9 @@ pub async fn execute_routine_update(
         .update_routine(&routine)
         .await
         .map_err(|e| RoutinesCapabilityError::operation(format!("failed to update: {e}")))?;
-if let Some(engine) = ctx.engine.read().await.as_ref() {
-    engine.refresh_event_cache().await;
-}
-
+    if let Some(engine) = ctx.engine.read().await.as_ref() {
+        engine.refresh_event_cache().await;
+    }
 
     let verification = verification_result_payload(&routine, verification_reset);
     Ok(json!({
@@ -1001,17 +1006,18 @@ pub async fn execute_routine_delete(
         .get_routine_by_name(&ctx.user_id, name)
         .await
         .map_err(|e| RoutinesCapabilityError::operation(format!("DB error: {e}")))?
-        .ok_or_else(|| RoutinesCapabilityError::operation(format!("routine '{}' not found", name)))?;
+        .ok_or_else(|| {
+            RoutinesCapabilityError::operation(format!("routine '{}' not found", name))
+        })?;
 
     let deleted = ctx
         .store
         .delete_routine(routine.id)
         .await
         .map_err(|e| RoutinesCapabilityError::operation(format!("failed to delete: {e}")))?;
-if let Some(engine) = ctx.engine.read().await.as_ref() {
-    engine.refresh_event_cache().await;
-}
-
+    if let Some(engine) = ctx.engine.read().await.as_ref() {
+        engine.refresh_event_cache().await;
+    }
 
     Ok(json!({
         "name": name,
@@ -1023,11 +1029,10 @@ pub async fn execute_routine_list(
     _params: &Value,
     ctx: &RoutinesContext,
 ) -> Result<Value, RoutinesCapabilityError> {
-    let routines = ctx
-        .store
-        .list_routines(&ctx.user_id)
-        .await
-        .map_err(|e| RoutinesCapabilityError::operation(format!("failed to list routines: {e}")))?;
+    let routines =
+        ctx.store.list_routines(&ctx.user_id).await.map_err(|e| {
+            RoutinesCapabilityError::operation(format!("failed to list routines: {e}"))
+        })?;
     let routine_ids: Vec<Uuid> = routines.iter().map(|r| r.id).collect();
     let last_run_statuses = ctx
         .store
@@ -1086,7 +1091,9 @@ pub async fn execute_routine_history(
         .get_routine_by_name(&ctx.user_id, name)
         .await
         .map_err(|e| RoutinesCapabilityError::operation(format!("DB error: {e}")))?
-        .ok_or_else(|| RoutinesCapabilityError::operation(format!("routine '{}' not found", name)))?;
+        .ok_or_else(|| {
+            RoutinesCapabilityError::operation(format!("routine '{}' not found", name))
+        })?;
 
     let runs = ctx
         .store
@@ -1161,22 +1168,23 @@ pub async fn execute_routine_fire(
         .get_routine_by_name(&ctx.user_id, name)
         .await
         .map_err(|e| RoutinesCapabilityError::operation(format!("DB error: {e}")))?
-        .ok_or_else(|| RoutinesCapabilityError::operation(format!("routine '{}' not found", name)))?;
+        .ok_or_else(|| {
+            RoutinesCapabilityError::operation(format!("routine '{}' not found", name))
+        })?;
 
     let engine = ctx
         .engine
         .read()
         .await
         .as_ref()
-        .ok_or_else(|| RoutinesCapabilityError::operation("routine engine not initialized".to_string()))?
+        .ok_or_else(|| {
+            RoutinesCapabilityError::operation("routine engine not initialized".to_string())
+        })?
         .clone();
-    
-    let run_id = engine
-        .fire_manual(routine.id, None)
-        .await
-        .map_err(|e| {
-            RoutinesCapabilityError::operation(format!("failed to fire routine '{}': {e}", name))
-        })?;
+
+    let run_id = engine.fire_manual(routine.id, None).await.map_err(|e| {
+        RoutinesCapabilityError::operation(format!("failed to fire routine '{}': {e}", name))
+    })?;
 
     Ok(json!({
         "name": name,
@@ -1201,19 +1209,18 @@ pub async fn execute_event_emit(
         })?
         .to_string();
     let event_type = require_str(params, "event_type")?.to_string();
-    let payload = params
-        .get("payload")
-        .cloned()
-        .unwrap_or_else(|| json!({}));
+    let payload = params.get("payload").cloned().unwrap_or_else(|| json!({}));
 
     let engine = ctx
         .engine
         .read()
         .await
         .as_ref()
-        .ok_or_else(|| RoutinesCapabilityError::operation("routine engine not initialized".to_string()))?
+        .ok_or_else(|| {
+            RoutinesCapabilityError::operation("routine engine not initialized".to_string())
+        })?
         .clone();
-    
+
     let fired = engine
         .emit_system_event(&source, &event_type, &payload, Some(&ctx.user_id))
         .await;

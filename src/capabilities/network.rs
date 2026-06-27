@@ -37,14 +37,14 @@ fn convert_html_to_markdown(html: &str, _base_url: &str) -> Result<String, Strin
 
 mod path_utils {
     use std::path::{Path, PathBuf};
-    
+
     pub(super) fn validate_path(raw: &str, base: Option<&Path>) -> Result<PathBuf, String> {
         let path = Path::new(raw);
-        
+
         if raw.is_empty() {
             return Err("empty path".to_string());
         }
-        
+
         let resolved = if path.is_absolute() {
             path.to_path_buf()
         } else if let Some(base) = base {
@@ -52,12 +52,13 @@ mod path_utils {
         } else {
             path.to_path_buf()
         };
-        
+
         if let Some(base) = base
-            && !resolved.starts_with(base) {
-                return Err(format!("path escapes base directory: {}", raw));
-            }
-        
+            && !resolved.starts_with(base)
+        {
+            return Err(format!("path escapes base directory: {}", raw));
+        }
+
         Ok(resolved)
     }
 }
@@ -385,10 +386,7 @@ fn parse_headers_param(
         let mut out = Vec::with_capacity(map.len());
         for (k, v) in map {
             let value = v.as_str().ok_or_else(|| {
-                NetworkCapabilityError::input(format!(
-                    "header '{}' must have a string value",
-                    k
-                ))
+                NetworkCapabilityError::input(format!("header '{}' must have a string value", k))
             })?;
             out.push((k.clone(), value.to_string()));
         }
@@ -407,16 +405,10 @@ fn parse_headers_param(
                 ))
             })?;
             let name = obj.get("name").and_then(|v| v.as_str()).ok_or_else(|| {
-                NetworkCapabilityError::input(format!(
-                    "headers[{}].name must be a string",
-                    idx
-                ))
+                NetworkCapabilityError::input(format!("headers[{}].name must be a string", idx))
             })?;
             let value = obj.get("value").and_then(|v| v.as_str()).ok_or_else(|| {
-                NetworkCapabilityError::input(format!(
-                    "headers[{}].value must be a string",
-                    idx
-                ))
+                NetworkCapabilityError::input(format!("headers[{}].value must be a string", idx))
             })?;
             out.push((name.to_string(), value.to_string()));
         }
@@ -458,9 +450,7 @@ fn parse_timeout_secs_param(
     let parsed = match timeout {
         None | Some(Value::Null) => Ok(None),
         Some(Value::Number(n)) => n.as_u64().map(Some).ok_or_else(|| {
-            NetworkCapabilityError::input(
-                "timeout_secs must be a non-negative integer".to_string(),
-            )
+            NetworkCapabilityError::input("timeout_secs must be a non-negative integer".to_string())
         }),
         Some(Value::String(raw)) => {
             let trimmed = raw.trim();
@@ -508,19 +498,16 @@ fn parse_save_to_param(save_to: Option<&Value>) -> Result<Option<String>, Networ
     }
 }
 
-fn validate_save_to_path(
-    save_to: &str,
-) -> Result<std::path::PathBuf, NetworkCapabilityError> {
+fn validate_save_to_path(save_to: &str) -> Result<std::path::PathBuf, NetworkCapabilityError> {
     if !save_to.starts_with("/tmp/") {
         return Err(NetworkCapabilityError::input(
             "save_to path must be under /tmp/".to_string(),
         ));
     }
     let tmp_base = std::path::Path::new("/tmp");
-    let validated =
-        path_utils::validate_path(save_to, Some(tmp_base)).map_err(
-            |e| NetworkCapabilityError::operation(format!("save_to path validation failed: {}", e)),
-        )?;
+    let validated = path_utils::validate_path(save_to, Some(tmp_base)).map_err(|e| {
+        NetworkCapabilityError::operation(format!("save_to path validation failed: {}", e))
+    })?;
     if let Some(parent) = validated.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             NetworkCapabilityError::operation(format!("failed to create directory: {}", e))
@@ -617,9 +604,8 @@ pub async fn execute_http(
                 Some(bytes)
             }
         } else {
-            let bytes = serde_json::to_vec(body).map_err(|e| {
-                NetworkCapabilityError::input(format!("invalid body JSON: {}", e))
-            })?;
+            let bytes = serde_json::to_vec(body)
+                .map_err(|e| NetworkCapabilityError::input(format!("invalid body JSON: {}", e)))?;
             request = request.json(body);
             Some(bytes)
         }
@@ -829,9 +815,7 @@ pub async fn execute_http(
             Ok::<_, NetworkCapabilityError>(canonical)
         })
         .await
-        .map_err(|e| {
-            NetworkCapabilityError::operation(format!("spawn_blocking failed: {}", e))
-        })?
+        .map_err(|e| NetworkCapabilityError::operation(format!("spawn_blocking failed: {}", e)))?
         .map_err(|e: NetworkCapabilityError| e)?;
         return Ok(json!({
             "status": status,
@@ -879,8 +863,8 @@ pub async fn execute_http(
         body_text
     };
 
-    let body: Value = serde_json::from_str(&body_text)
-        .unwrap_or_else(|_| Value::String(body_text.clone()));
+    let body: Value =
+        serde_json::from_str(&body_text).unwrap_or_else(|_| Value::String(body_text.clone()));
 
     Ok(json!({
         "status": status,

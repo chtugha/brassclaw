@@ -165,7 +165,9 @@ async fn toggle_agent(name: &str) -> anyhow::Result<()> {
 }
 
 async fn test_agent(_name: &str) -> anyhow::Result<()> {
-    Err(anyhow::anyhow!("ACP test not yet implemented in V2 - use brassclaw_acp crate"))
+    Err(anyhow::anyhow!(
+        "ACP test not yet implemented in V2 - use brassclaw_acp crate"
+    ))
 }
 
 // ==================== DB / disk persistence helpers ====================

@@ -24,4 +24,3 @@ pub struct SafetyEntry {
 pub struct UpdateSafetyConfigRequest {
     pub entries: Vec<SafetyEntry>,
 }
-

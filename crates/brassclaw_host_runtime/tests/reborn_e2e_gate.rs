@@ -8,7 +8,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_approvals::LeaseApproval;
 use brassclaw_authorization::{
     CapabilityLeaseStatus, CapabilityLeaseStore, GrantAuthorizer, InMemoryCapabilityLeaseStore,
@@ -19,7 +18,9 @@ use brassclaw_events::{
     DurableEventLog, EventStreamKey, InMemoryAuditSink, InMemoryDurableEventLog, InMemoryEventSink,
     ReadScope, RuntimeEventKind,
 };
-use brassclaw_extensions::{ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource};
+use brassclaw_extensions::{
+    ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource,
+};
 use brassclaw_filesystem::{InMemoryBackend, LocalFilesystem, RootFilesystem};
 use brassclaw_host_api::*;
 use brassclaw_host_runtime::{
@@ -43,6 +44,7 @@ use brassclaw_trust::{
     AdminConfig, AdminEntry, AuthorityCeiling, EffectiveTrustClass, HostTrustAssignment,
     HostTrustPolicy, TrustDecision, TrustProvenance,
 };
+use chrono::Utc;
 use serde_json::json;
 
 #[tokio::test]

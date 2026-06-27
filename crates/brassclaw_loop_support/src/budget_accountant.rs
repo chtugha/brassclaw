@@ -14,8 +14,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::Utc;
-use dashmap::{DashMap, DashSet};
 use brassclaw_host_api::{
     InvocationId, ResourceEstimate, ResourceReservationId, ResourceScope, ResourceUsage,
     SYSTEM_RESERVED_ID, UserId,
@@ -31,6 +29,8 @@ use brassclaw_turns::run_profile::{
     LoopModelResponse, LoopRunContext, ModelCallOutcome, ModelProfileId, ModelWorkOutcome,
     ModelWorkRequest,
 };
+use chrono::Utc;
+use dashmap::{DashMap, DashSet};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::FromPrimitive;
 
@@ -658,7 +658,6 @@ fn internal_summary_error(reason: String) -> LoopModelGatewayError {
 mod tests {
     use super::*;
     use crate::budget_cost_table::ZeroCostTable;
-    use chrono::Utc;
     use brassclaw_host_api::{TenantId, ThreadId};
     use brassclaw_resources::{
         BudgetPeriod, BudgetThresholds, FakeClock, InMemoryResourceGovernor, ResourceAccount,
@@ -676,6 +675,7 @@ mod tests {
             SchedulingClass, SteeringPolicy,
         },
     };
+    use chrono::Utc;
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
 

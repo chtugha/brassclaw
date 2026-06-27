@@ -162,7 +162,9 @@ impl CapabilityPermissionStore for DbPermissionStore {
         tenant_id: &str,
         capability_id: &str,
     ) -> Result<Option<PermissionMode>, DatabaseError> {
-        self.db.get_capability_permission(tenant_id, capability_id).await
+        self.db
+            .get_capability_permission(tenant_id, capability_id)
+            .await
     }
 
     async fn set_permission(
@@ -171,7 +173,9 @@ impl CapabilityPermissionStore for DbPermissionStore {
         capability_id: &str,
         mode: PermissionMode,
     ) -> Result<(), DatabaseError> {
-        self.db.set_capability_permission(tenant_id, capability_id, mode).await
+        self.db
+            .set_capability_permission(tenant_id, capability_id, mode)
+            .await
     }
 
     async fn delete_permission(
@@ -179,7 +183,9 @@ impl CapabilityPermissionStore for DbPermissionStore {
         tenant_id: &str,
         capability_id: &str,
     ) -> Result<bool, DatabaseError> {
-        self.db.delete_capability_permission(tenant_id, capability_id).await
+        self.db
+            .delete_capability_permission(tenant_id, capability_id)
+            .await
     }
 
     async fn list_overrides(
@@ -194,7 +200,9 @@ impl CapabilityPermissionStore for DbPermissionStore {
         let overrides = self.db.list_capability_overrides(tenant_id).await?;
         let count = overrides.len();
         for capability_id in overrides.keys() {
-            self.db.delete_capability_permission(tenant_id, capability_id).await?;
+            self.db
+                .delete_capability_permission(tenant_id, capability_id)
+                .await?;
         }
         Ok(count)
     }
@@ -211,10 +219,7 @@ mod tests {
         let cap_id = "builtin.read_file";
 
         // Initially no override
-        assert_eq!(
-            store.get_permission(tenant, cap_id).await.unwrap(),
-            None
-        );
+        assert_eq!(store.get_permission(tenant, cap_id).await.unwrap(), None);
 
         // Set override
         store
@@ -238,10 +243,7 @@ mod tests {
 
         // Delete override
         assert!(store.delete_permission(tenant, cap_id).await.unwrap());
-        assert_eq!(
-            store.get_permission(tenant, cap_id).await.unwrap(),
-            None
-        );
+        assert_eq!(store.get_permission(tenant, cap_id).await.unwrap(), None);
 
         // Delete non-existent override
         assert!(!store.delete_permission(tenant, cap_id).await.unwrap());
@@ -279,10 +281,7 @@ mod tests {
             overrides.get("builtin.write_file"),
             Some(&PermissionMode::Ask)
         );
-        assert_eq!(
-            overrides.get("builtin.shell"),
-            Some(&PermissionMode::Deny)
-        );
+        assert_eq!(overrides.get("builtin.shell"), Some(&PermissionMode::Deny));
     }
 
     #[tokio::test]
@@ -339,14 +338,10 @@ mod tests {
 
         // Clear one tenant doesn't affect the other
         store.clear_overrides(tenant1).await.unwrap();
-        assert_eq!(
-            store.get_permission(tenant1, cap_id).await.unwrap(),
-            None
-        );
+        assert_eq!(store.get_permission(tenant1, cap_id).await.unwrap(), None);
         assert_eq!(
             store.get_permission(tenant2, cap_id).await.unwrap(),
             Some(PermissionMode::Deny)
         );
     }
 }
-

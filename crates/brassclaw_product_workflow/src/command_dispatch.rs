@@ -5,12 +5,12 @@
 //! whether a command may execute from that context.
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use brassclaw_product_adapters::{
     AdapterInstallationId, ExternalActorRef, ExternalConversationRef, ProductAdapterId,
     ProductInboundAck, ProductInboundEnvelope, ProductInboundPayload, ProductRejection,
     ProductRejectionKind, ProductTriggerReason, VerifiedAuthClaim,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::action::{ActionFingerprintKey, ProductActionId};

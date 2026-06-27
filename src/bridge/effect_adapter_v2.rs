@@ -9,8 +9,8 @@ use std::time::Instant;
 
 use brassclaw_capabilities::{CapabilityHost, CapabilityInvocationRequest};
 use brassclaw_engine::{
-    ActionDef, ActionInventory, ActionResult, CapabilityLease, CapabilitySummary,
-    EffectExecutor, EngineError, ThreadExecutionContext,
+    ActionDef, ActionInventory, ActionResult, CapabilityLease, CapabilitySummary, EffectExecutor,
+    EngineError, ThreadExecutionContext,
 };
 use brassclaw_extensions::SharedExtensionRegistry;
 use brassclaw_host_api::{
@@ -68,15 +68,19 @@ where
         context: &ThreadExecutionContext,
     ) -> Result<ExecutionContext, EngineError> {
         let invocation_id = InvocationId::new();
-        let user_id = UserId::new(&context.user_id)
-            .map_err(|e| EngineError::Effect { reason: format!("Invalid user_id: {}", e) })?;
-        let tenant_id = TenantId::new("default")
-            .map_err(|e| EngineError::Effect { reason: format!("Invalid tenant_id: {}", e) })?;
-        let agent_id = AgentId::new("default")
-            .map_err(|e| EngineError::Effect { reason: format!("Invalid agent_id: {}", e) })?;
-        let project_id = ProjectId::new("bootstrap")
-            .map_err(|e| EngineError::Effect { reason: format!("Invalid project_id: {}", e) })?;
-        
+        let user_id = UserId::new(&context.user_id).map_err(|e| EngineError::Effect {
+            reason: format!("Invalid user_id: {}", e),
+        })?;
+        let tenant_id = TenantId::new("default").map_err(|e| EngineError::Effect {
+            reason: format!("Invalid tenant_id: {}", e),
+        })?;
+        let agent_id = AgentId::new("default").map_err(|e| EngineError::Effect {
+            reason: format!("Invalid agent_id: {}", e),
+        })?;
+        let project_id = ProjectId::new("bootstrap").map_err(|e| EngineError::Effect {
+            reason: format!("Invalid project_id: {}", e),
+        })?;
+
         let resource_scope = ResourceScope {
             tenant_id: tenant_id.clone(),
             user_id: user_id.clone(),
@@ -98,8 +102,11 @@ where
             project_id: resource_scope.project_id.clone(),
             mission_id: None,
             thread_id: None,
-            extension_id: ExtensionId::new("brassclaw.builtin")
-                .map_err(|e| EngineError::Effect { reason: format!("Invalid extension_id: {}", e) })?,
+            extension_id: ExtensionId::new("brassclaw.builtin").map_err(|e| {
+                EngineError::Effect {
+                    reason: format!("Invalid extension_id: {}", e),
+                }
+            })?,
             runtime: RuntimeKind::FirstParty,
             trust: TrustClass::UserTrusted,
             grants: CapabilitySet { grants: Vec::new() },
@@ -180,8 +187,9 @@ where
         );
 
         // Convert engine types to capability types
-        let capability_id = CapabilityId::new(action_name)
-            .map_err(|e| EngineError::Effect { reason: format!("Invalid capability_id: {}", e) })?;
+        let capability_id = CapabilityId::new(action_name).map_err(|e| EngineError::Effect {
+            reason: format!("Invalid capability_id: {}", e),
+        })?;
         let exec_context = Self::to_execution_context(context)?;
 
         let request = CapabilityInvocationRequest {
@@ -247,7 +255,8 @@ where
                 description: capability.description.clone(),
                 parameters_schema: capability.parameters_schema.clone(),
                 effects: Vec::new(),
-                requires_approval: capability.default_permission != brassclaw_host_api::PermissionMode::Allow,
+                requires_approval: capability.default_permission
+                    != brassclaw_host_api::PermissionMode::Allow,
                 model_tool_surface: brassclaw_engine::ModelToolSurface::FullSchema,
                 discovery: None,
             });
@@ -307,4 +316,3 @@ mod tests {
     // TODO: Add tests for error handling
     // TODO: Add integration tests with mock CapabilityHost
 }
-

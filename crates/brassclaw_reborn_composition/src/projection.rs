@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use futures::{StreamExt, stream};
 #[cfg(test)]
 use brassclaw_event_projections::CapabilityActivityProjection;
 use brassclaw_event_projections::{
@@ -32,6 +31,7 @@ use brassclaw_turns::{
     ReplyTargetBindingRef, SanitizedFailure, TurnActor, TurnCoordinator, TurnEventProjectionCursor,
     TurnEventProjectionSource, TurnRunId, TurnScope, run_profile::LoopHostMilestoneSink,
 };
+use futures::{StreamExt, stream};
 
 mod display_preview;
 mod live_progress;
@@ -980,7 +980,9 @@ fn snapshot_from_envelope(
     envelope: brassclaw_event_streams::ProductProjectionEnvelope,
 ) -> Result<ProjectionSnapshot, ProductAdapterError> {
     match envelope {
-        brassclaw_event_streams::ProductProjectionEnvelope::ThreadSnapshot(snapshot) => Ok(snapshot),
+        brassclaw_event_streams::ProductProjectionEnvelope::ThreadSnapshot(snapshot) => {
+            Ok(snapshot)
+        }
         _ => Err(internal_projection_error(
             "unexpected projection snapshot envelope",
         )),

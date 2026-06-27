@@ -10,12 +10,13 @@ use std::{
 };
 
 use async_trait::async_trait;
-use chrono::Utc;
 use brassclaw_auth::{
     AuthProductScope, AuthProviderId, CredentialAccountId, CredentialAccountProjection,
     CredentialAccountUpdateBinding, ProviderScope,
 };
-use brassclaw_host_api::{AgentId, ExtensionId, ProjectId, TenantId, ThreadId, UserId, PermissionMode};
+use brassclaw_host_api::{
+    AgentId, ExtensionId, PermissionMode, ProjectId, TenantId, ThreadId, UserId,
+};
 use brassclaw_product_adapters::{
     ProductAdapterError, ProductWorkflowRejectionKind, ProjectionStream,
     ProjectionSubscriptionRequest,
@@ -30,6 +31,7 @@ use brassclaw_turns::{
     ResumeTurnRequest, SanitizedCancelReason, SubmitTurnRequest, SubmitTurnResponse, TurnActor,
     TurnCoordinator, TurnError, TurnRunId, TurnScope, TurnStatus,
 };
+use chrono::Utc;
 use secrecy::SecretString;
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 use uuid::Uuid;
@@ -106,22 +108,23 @@ pub use llm_config::{
 pub use types::{
     RebornAutomationInfo, RebornAutomationRunStatus, RebornAutomationSource, RebornAutomationState,
     RebornCancelRunResponse, RebornCapabilityInfo, RebornChannelConnectAction,
-    RebornChannelConnectStrategy, RebornConnectableChannelInfo, RebornConnectableChannelListResponse,
-    RebornCreateThreadResponse, RebornDeleteThreadRequest, RebornDeleteThreadResponse,
-    RebornExtensionActionResponse, RebornExtensionCredentialSetup, RebornExtensionInfo,
-    RebornExtensionListResponse, RebornExtensionOnboardingPayload, RebornExtensionOnboardingState,
-    RebornExtensionRegistryEntry, RebornExtensionRegistryResponse, RebornExtensionSetupField,
-    RebornExtensionSetupSecret, RebornGetRunStateRequest, RebornGetRunStateResponse,
-    RebornListAutomationsResponse, RebornListCapabilitiesResponse, RebornListThreadsResponse,
-    RebornOutboundDeliveryModality, RebornOutboundDeliveryTargetCapabilities,
-    RebornOutboundDeliveryTargetChannel, RebornOutboundDeliveryTargetDescription,
-    RebornOutboundDeliveryTargetDisplayName, RebornOutboundDeliveryTargetId,
-    RebornOutboundDeliveryTargetListResponse, RebornOutboundDeliveryTargetOption,
-    RebornOutboundDeliveryTargetSummary, RebornOutboundPreferencesResponse,
-    RebornResolveGateResponse, RebornResumeGateResponse, RebornSetOutboundPreferencesRequest,
-    RebornSetupExtensionResponse, RebornStreamEventsRequest, RebornStreamEventsResponse,
-    RebornSubmitTurnResponse, RebornTimelineRequest, RebornTimelineResponse,
-    RebornUpdateCapabilityPermissionRequest, RebornUpdateCapabilityPermissionResponse,
+    RebornChannelConnectStrategy, RebornConnectableChannelInfo,
+    RebornConnectableChannelListResponse, RebornCreateThreadResponse, RebornDeleteThreadRequest,
+    RebornDeleteThreadResponse, RebornExtensionActionResponse, RebornExtensionCredentialSetup,
+    RebornExtensionInfo, RebornExtensionListResponse, RebornExtensionOnboardingPayload,
+    RebornExtensionOnboardingState, RebornExtensionRegistryEntry, RebornExtensionRegistryResponse,
+    RebornExtensionSetupField, RebornExtensionSetupSecret, RebornGetRunStateRequest,
+    RebornGetRunStateResponse, RebornListAutomationsResponse, RebornListCapabilitiesResponse,
+    RebornListThreadsResponse, RebornOutboundDeliveryModality,
+    RebornOutboundDeliveryTargetCapabilities, RebornOutboundDeliveryTargetChannel,
+    RebornOutboundDeliveryTargetDescription, RebornOutboundDeliveryTargetDisplayName,
+    RebornOutboundDeliveryTargetId, RebornOutboundDeliveryTargetListResponse,
+    RebornOutboundDeliveryTargetOption, RebornOutboundDeliveryTargetSummary,
+    RebornOutboundPreferencesResponse, RebornResolveGateResponse, RebornResumeGateResponse,
+    RebornSetOutboundPreferencesRequest, RebornSetupExtensionResponse, RebornStreamEventsRequest,
+    RebornStreamEventsResponse, RebornSubmitTurnResponse, RebornTimelineRequest,
+    RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
+    RebornUpdateCapabilityPermissionResponse,
 };
 
 type SkillActivationRecorder =
@@ -170,7 +173,7 @@ pub struct RebornSkillInfo {
     pub name: String,
     pub version: String,
     pub description: String,
-    pub source: String,      // "system" | "user" | "installed"
+    pub source: String, // "system" | "user" | "installed"
     pub keywords: Vec<String>,
     pub tags: Vec<String>,
     pub requires_skills: Vec<String>,
@@ -1844,16 +1847,15 @@ impl RebornServicesApi for RebornServices {
 
         // Verify capability exists in registry if available
         if let Some(registry) = &self.extension_registry {
-            let cap_id = brassclaw_host_api::CapabilityId::new(&capability_id)
-                .map_err(|_| {
-                    RebornServicesError::from_status_kind(
-                        RebornServicesErrorCode::InvalidRequest,
-                        RebornServicesErrorKind::Validation,
-                        400,
-                        false,
-                    )
-                })?;
-            
+            let cap_id = brassclaw_host_api::CapabilityId::new(&capability_id).map_err(|_| {
+                RebornServicesError::from_status_kind(
+                    RebornServicesErrorCode::InvalidRequest,
+                    RebornServicesErrorKind::Validation,
+                    400,
+                    false,
+                )
+            })?;
+
             if registry.get_capability(&cap_id).is_none() {
                 return Err(RebornServicesError::from_status_kind(
                     RebornServicesErrorCode::NotFound,
@@ -1915,7 +1917,7 @@ impl RebornServicesApi for RebornServices {
         caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
         use crate::safety_config_store::SafetyConfigStore;
-        
+
         let Some(store) = &self.safety_config_store else {
             return Err(RebornServicesError::from_status_kind(
                 RebornServicesErrorCode::Unavailable,
@@ -1927,7 +1929,10 @@ impl RebornServicesApi for RebornServices {
 
         let user_id = caller.user_id.to_string();
         store
-            .get_config(&user_id, crate::safety_config_store::SafetyCategory::SensitivePaths)
+            .get_config(
+                &user_id,
+                crate::safety_config_store::SafetyCategory::SensitivePaths,
+            )
             .await
             .map_err(|e| {
                 tracing::error!("❌ Failed to get safety config: {:?}", e);
@@ -1946,7 +1951,7 @@ impl RebornServicesApi for RebornServices {
         request: crate::safety_config::UpdateSafetyConfigRequest,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
         use crate::safety_config_store::SafetyConfigStore;
-        
+
         let Some(store) = &self.safety_config_store else {
             return Err(RebornServicesError::from_status_kind(
                 RebornServicesErrorCode::Unavailable,
@@ -1979,7 +1984,7 @@ impl RebornServicesApi for RebornServices {
         caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
         use crate::safety_config_store::SafetyConfigStore;
-        
+
         let Some(store) = &self.safety_config_store else {
             return Err(RebornServicesError::from_status_kind(
                 RebornServicesErrorCode::Unavailable,
@@ -1991,7 +1996,10 @@ impl RebornServicesApi for RebornServices {
 
         let user_id = caller.user_id.to_string();
         store
-            .get_config(&user_id, crate::safety_config_store::SafetyCategory::WorkspaceRules)
+            .get_config(
+                &user_id,
+                crate::safety_config_store::SafetyCategory::WorkspaceRules,
+            )
             .await
             .map_err(|_e| {
                 RebornServicesError::from_status_kind(
@@ -2009,7 +2017,7 @@ impl RebornServicesApi for RebornServices {
         request: crate::safety_config::UpdateSafetyConfigRequest,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
         use crate::safety_config_store::SafetyConfigStore;
-        
+
         let Some(store) = &self.safety_config_store else {
             return Err(RebornServicesError::from_status_kind(
                 RebornServicesErrorCode::Unavailable,
@@ -2042,7 +2050,7 @@ impl RebornServicesApi for RebornServices {
         caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
         use crate::safety_config_store::SafetyConfigStore;
-        
+
         let Some(store) = &self.safety_config_store else {
             return Err(RebornServicesError::from_status_kind(
                 RebornServicesErrorCode::Unavailable,
@@ -2054,7 +2062,10 @@ impl RebornServicesApi for RebornServices {
 
         let user_id = caller.user_id.to_string();
         store
-            .get_config(&user_id, crate::safety_config_store::SafetyCategory::BlockedPaths)
+            .get_config(
+                &user_id,
+                crate::safety_config_store::SafetyCategory::BlockedPaths,
+            )
             .await
             .map_err(|_e| {
                 RebornServicesError::from_status_kind(
@@ -2072,7 +2083,7 @@ impl RebornServicesApi for RebornServices {
         request: crate::safety_config::UpdateSafetyConfigRequest,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
         use crate::safety_config_store::SafetyConfigStore;
-        
+
         let Some(store) = &self.safety_config_store else {
             return Err(RebornServicesError::from_status_kind(
                 RebornServicesErrorCode::Unavailable,

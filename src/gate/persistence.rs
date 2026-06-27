@@ -136,8 +136,8 @@ impl GatePersistence for FileGatePersistence {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{Duration, Utc};
     use brassclaw_engine::{ConversationId, ResumeKind, ThreadId};
+    use chrono::{Duration, Utc};
 
     use super::*;
 

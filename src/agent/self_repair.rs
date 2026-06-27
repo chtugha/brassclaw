@@ -719,7 +719,10 @@ mod tests {
         let broken = repair.detect_broken_tools().await;
 
         // Should return empty - tool repair not yet implemented in V2
-        assert!(broken.is_empty(), "Tool repair not yet implemented, should return empty");
+        assert!(
+            broken.is_empty(),
+            "Tool repair not yet implemented, should return empty"
+        );
     }
 
     /// E2E test: stuck job detected -> repaired -> transitions back to InProgress
