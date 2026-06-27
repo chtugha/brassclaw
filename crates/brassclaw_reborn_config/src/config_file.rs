@@ -32,6 +32,13 @@
 //! enforces shape (sections exist, fields are the right TOML type,
 //! no inline secrets).
 
+// RebornConfigFileUpdateError carries PathBuf + io::Error in every variant.
+// On Windows PathBuf is wider (OsString/WTF-8 internals) which pushes the
+// Err arm past Clippy's 128-byte threshold. The extra size is intentional —
+// each variant must carry the full path for operator-facing error messages.
+// Boxing every field would hurt call-site ergonomics.
+#![allow(clippy::result_large_err)]
+
 use std::borrow::Cow;
 use std::fs;
 use std::io::Write as _;
