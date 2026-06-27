@@ -141,26 +141,6 @@ export function ExtensionCard({ ext, onActivate, onConfigure, onRemove, isBusy }
       run: () => onConfigure(configurePayload),
     });
   }
-  if (canManage && ext.kind === "wasm_channel" && (state === "setup_required" || state === "failed")) {
-    overflowActions.push({
-      id: "setup",
-      label: "Setup",
-      icon: "settings",
-      run: () => onConfigure(configurePayload),
-    });
-  }
-  if (
-    canManage &&
-    ext.kind === "wasm_channel" &&
-    (state === "active" || state === "ready" || state === "pairing_required" || state === "pairing")
-  ) {
-    overflowActions.push({
-      id: "reconfigure",
-      label: "Reconfigure",
-      icon: "settings",
-      run: () => onConfigure(configurePayload),
-    });
-  }
   if (canManage) {
     overflowActions.push({
       id: "remove",

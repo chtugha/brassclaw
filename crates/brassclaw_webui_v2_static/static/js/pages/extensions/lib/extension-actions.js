@@ -12,10 +12,6 @@ export function primaryExtensionAction(ext) {
     return "configure";
   }
 
-  if (ext.kind === "wasm_channel") {
-    return null;
-  }
-
   return "activate";
 }
 
