@@ -33,6 +33,7 @@ pub(crate) struct AvailableExtensionAsset {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum AvailableExtensionAssetContent {
     Bytes(Vec<u8>),
+    #[allow(dead_code)]
     Filesystem(VirtualPath),
 }
 
@@ -1045,7 +1046,7 @@ where
         .map_err(map_binding_error)?;
         let package = ExtensionPackage::from_manifest_toml(manifest, entry.path, &manifest_toml)
             .map_err(map_binding_error)?;
-        let mut assets = vec![AvailableExtensionAsset {
+        let assets = vec![AvailableExtensionAsset {
             path: "manifest.toml".to_string(),
             content: AvailableExtensionAssetContent::Bytes(manifest_toml.as_bytes().to_vec()),
         }];
