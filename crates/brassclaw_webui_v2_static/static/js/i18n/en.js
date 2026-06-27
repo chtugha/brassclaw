@@ -478,6 +478,8 @@ registerPack("en", {
   "settings.safety.user_entry": "User",
   "settings.safety.default_entries": "Default entries",
   "settings.safety.user_entries": "User entries",
+  "settings.safety.activate": "Activate",
+  "settings.safety.deactivate": "Deactivate",
   
   "settings.safety.sensitive_paths.title": "Sensitive Path Blocking",
   "settings.safety.sensitive_paths.description": "Block access to credential files and sensitive directories (e.g., .env, SSH keys, credential stores)",

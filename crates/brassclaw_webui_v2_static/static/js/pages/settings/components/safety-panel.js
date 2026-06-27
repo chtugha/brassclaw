@@ -286,31 +286,51 @@ function SafetySection({ title, description, data, mutation, emptyText, onError,
 }
 
 function SafetyEntry({ entry, onToggle, onRemove, isUpdating, t }) {
+  const isDefault = !onRemove;
   return html`
     <div className="flex items-center justify-between rounded-lg border border-[var(--v2-panel-border)] bg-[var(--v2-surface-muted)] px-3 py-2">
       <div className="flex items-center gap-3 flex-1 min-w-0">
-        <button
-          type="button"
-          role="switch"
-          aria-checked=${entry.enabled}
-          aria-label=${`Toggle ${entry.pattern}`}
-          onClick=${() => onToggle(entry.pattern, !entry.enabled)}
-          disabled=${isUpdating}
-          className=${[
-            "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 transition-colors duration-200",
-            entry.enabled
-              ? "border-[var(--v2-accent-border,#3b82d4)] bg-[var(--v2-accent-bg,#3b82d4)]"
-              : "border-[var(--v2-panel-border)] bg-[var(--v2-surface)]",
-            isUpdating && "opacity-50 cursor-not-allowed",
-          ].filter(Boolean).join(" ")}
-        >
-          <span
-            className=${[
-              "pointer-events-none absolute top-0.5 inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200",
-              entry.enabled ? "translate-x-4" : "translate-x-0",
-            ].join(" ")}
-          />
-        </button>
+        ${isDefault
+          ? html`
+              <button
+                type="button"
+                onClick=${() => onToggle(entry.pattern, !entry.enabled)}
+                disabled=${isUpdating}
+                className=${[
+                  "shrink-0 rounded border px-2 py-0.5 text-[11px] font-medium transition-colors disabled:opacity-50",
+                  entry.enabled
+                    ? "border-[var(--v2-accent-border,#3b82d4)] text-[var(--v2-accent-text,#3b82d4)] hover:bg-[var(--v2-surface)]"
+                    : "border-[var(--v2-panel-border)] text-[var(--v2-text-muted)] hover:border-[var(--v2-accent-border,#3b82d4)] hover:text-[var(--v2-accent-text,#3b82d4)]",
+                ].filter(Boolean).join(" ")}
+              >
+                ${entry.enabled ? t("settings.safety.deactivate") : t("settings.safety.activate")}
+              </button>
+            `
+          : html`
+              <button
+                type="button"
+                role="switch"
+                aria-checked=${entry.enabled}
+                aria-label=${`Toggle ${entry.pattern}`}
+                onClick=${() => onToggle(entry.pattern, !entry.enabled)}
+                disabled=${isUpdating}
+                className=${[
+                  "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 transition-colors duration-200",
+                  entry.enabled
+                    ? "border-[var(--v2-accent-border,#3b82d4)] bg-[var(--v2-accent-bg,#3b82d4)]"
+                    : "border-[var(--v2-panel-border)] bg-[var(--v2-surface)]",
+                  isUpdating && "opacity-50 cursor-not-allowed",
+                ].filter(Boolean).join(" ")}
+              >
+                <span
+                  className=${[
+                    "pointer-events-none absolute top-0.5 inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200",
+                    entry.enabled ? "translate-x-4" : "translate-x-0",
+                  ].join(" ")}
+                />
+              </button>
+            `
+        }
         <code className="text-sm font-mono text-[var(--v2-text-strong)] truncate">
           ${entry.pattern}
         </code>
@@ -322,7 +342,7 @@ function SafetyEntry({ entry, onToggle, onRemove, isUpdating, t }) {
           disabled=${isUpdating}
           className="ml-3 flex-shrink-0 rounded border border-[var(--v2-panel-border)] px-2 py-0.5 text-[11px] text-[var(--v2-text-muted)] transition-colors hover:border-[var(--v2-danger-text)] hover:text-[var(--v2-danger-text)] disabled:opacity-50"
         >
-          ${t("settings.safety.remove_entry")}
+          ${t("common.delete")}
         </button>
       `}
     </div>

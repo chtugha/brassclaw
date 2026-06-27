@@ -5,7 +5,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchTools, updateToolPermission } from "../lib/settings-api.js";
 import { matchesSearch } from "../lib/settings-search.js";
 import { SettingsSearchEmpty } from "./settings-search-empty.js";
-import { SafetyPanel } from "./safety-panel.js";
 
 export function ToolsTab({ searchQuery = "" }) {
   const t = useT();
@@ -129,12 +128,6 @@ export function ToolsTab({ searchQuery = "" }) {
         `)}
       </div>
 
-      <div className="space-y-4">
-        <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--v2-accent-text)]">
-          ${t("settings.safety.title")}
-        </h2>
-        <${SafetyPanel} searchQuery=${searchQuery} />
-      </div>
     </div>
   `;
 }
