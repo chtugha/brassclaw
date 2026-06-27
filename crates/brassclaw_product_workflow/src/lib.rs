@@ -126,6 +126,9 @@ pub use policy::{
     NoopBeforeInboundPolicy,
 };
 pub use reborn_services::CapabilityPermissionStore;
+pub use reborn_services::{
+    RebornInstallSkillRequest, SkillsProductFacade, UnsupportedSkillsProductFacade,
+};
 pub use safety_config::{SafetyConfigResponse, SafetyEntry, UpdateSafetyConfigRequest};
 pub use safety_config_store::{SafetyCategory, SafetyConfigStore, SqliteSafetyConfigStore};
 // Projection/event types that route handlers need to thread through SSE
@@ -156,7 +159,7 @@ pub use reborn_services::{
     RebornExtensionOnboardingState, RebornExtensionRegistryEntry, RebornExtensionRegistryResponse,
     RebornExtensionSetupField, RebornExtensionSetupSecret, RebornGetRunStateRequest,
     RebornGetRunStateResponse, RebornListAutomationsResponse, RebornListCapabilitiesResponse,
-    RebornListThreadsResponse, RebornOutboundDeliveryModality,
+    RebornListSkillsResponse, RebornListThreadsResponse, RebornOutboundDeliveryModality,
     RebornOutboundDeliveryTargetCapabilities,
     RebornOutboundDeliveryTargetChannel, RebornOutboundDeliveryTargetDescription,
     RebornOutboundDeliveryTargetDisplayName, RebornOutboundDeliveryTargetId,
@@ -164,7 +167,8 @@ pub use reborn_services::{
     RebornOutboundDeliveryTargetSummary, RebornOutboundPreferencesResponse,
     RebornResolveGateResponse, RebornResumeGateResponse, RebornServices, RebornServicesApi,
     RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind,
-    RebornSetOutboundPreferencesRequest, RebornSetupExtensionResponse, RebornStreamEventsRequest,
+    RebornSetOutboundPreferencesRequest, RebornSetupExtensionResponse, RebornSkillInfo,
+    RebornSkillInstallResult, RebornSkillRemoveResult, RebornStreamEventsRequest,
     RebornStreamEventsResponse, RebornSubmitTurnResponse, RebornTimelineRequest,
     RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
     RebornUpdateCapabilityPermissionResponse, SetActiveLlmRequest,

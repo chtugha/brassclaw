@@ -27,10 +27,12 @@ use brassclaw_product_workflow::{
     NearAiWalletLoginRequest, NearAiWalletLoginResult, ProductWorkflowError, ProjectionCursor,
     RebornCancelRunResponse, RebornConnectableChannelListResponse, RebornCreateThreadResponse,
     RebornDeleteThreadRequest, RebornDeleteThreadResponse, RebornExtensionActionResponse,
-    RebornExtensionListResponse, RebornExtensionRegistryResponse, RebornListAutomationsResponse,
-    RebornListCapabilitiesResponse, RebornListThreadsResponse, RebornResolveGateResponse,
-    RebornServicesApi, RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind,
-    RebornSetupExtensionResponse, RebornStreamEventsRequest, RebornSubmitTurnResponse,
+    RebornExtensionListResponse, RebornExtensionRegistryResponse, RebornInstallSkillRequest,
+    RebornListAutomationsResponse,
+    RebornListCapabilitiesResponse, RebornListSkillsResponse, RebornListThreadsResponse,
+    RebornResolveGateResponse, RebornServicesApi, RebornServicesError, RebornServicesErrorCode,
+    RebornServicesErrorKind, RebornSetupExtensionResponse, RebornSkillInstallResult,
+    RebornSkillRemoveResult, RebornStreamEventsRequest, RebornSubmitTurnResponse,
     RebornTimelineRequest, RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
     RebornUpdateCapabilityPermissionResponse, SetActiveLlmRequest, UpsertLlmProviderRequest,
     WebUiAuthenticatedCaller, WebUiCancelRunRequest, WebUiCreateThreadRequest,
@@ -928,6 +930,45 @@ pub async fn update_tool_permission(
         .update_capability_permission(caller, body)
         .await?;
     Ok(Json(response))
+}
+
+/// `GET /api/webchat/v2/skills`
+///
+/// List all installed and system skills available to the authenticated caller.
+pub async fn list_skills(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<RebornListSkillsResponse>, WebUiV2HttpError> {
+    let response = state.services().list_skills(caller).await?;
+    Ok(Json(response))
+}
+
+/// `POST /api/webchat/v2/skills/install`
+///
+/// Install a skill from its SKILL.md content.
+/// Body shape: [`RebornInstallSkillRequest`].
+pub async fn install_skill(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(body): Json<RebornInstallSkillRequest>,
+) -> Result<Json<RebornSkillInstallResult>, WebUiV2HttpError> {
+    let result = state
+        .services()
+        .install_skill(caller, body.content, body.source_url)
+        .await?;
+    Ok(Json(result))
+}
+
+/// `DELETE /api/webchat/v2/skills/{name}`
+///
+/// Remove a skill by name.
+pub async fn remove_skill(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(name): Path<String>,
+) -> Result<Json<RebornSkillRemoveResult>, WebUiV2HttpError> {
+    let result = state.services().remove_skill(caller, name).await?;
+    Ok(Json(result))
 }
 
 pub mod safety;

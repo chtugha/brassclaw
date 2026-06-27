@@ -2749,11 +2749,11 @@ mod tests {
 
     #[test]
     fn test_routine_tool_denylist_allows_safe_tools() {
-        let allowed = vec!["echo", "time", "json", "http", "memory_search", "shell"];
+        let allowed = ["echo", "time", "json", "http", "memory_search", "shell"];
         for tool in &allowed {
             assert!(
-                true, // V1 - tools module deleted, assume not in denylist
-                "Tool '{}' should NOT be in AUTONOMOUS_TOOL_DENYLIST",
+                !super::is_autonomous_capability_denylisted(tool),
+                "Tool '{}' should NOT be in the autonomous capability denylist",
                 tool
             );
         }

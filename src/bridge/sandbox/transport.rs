@@ -23,6 +23,7 @@ use super::protocol::{Request, Response};
 /// expected to be `Arc<dyn ...>`-shareable across the per-project mount
 /// table.
 #[async_trait]
+#[allow(dead_code)] // used by DockerTransport and test implementations; no live call-site yet
 pub(super) trait SandboxTransport: Send + Sync + std::fmt::Debug {
     /// Dispatch a request and wait for the matching response. Errors here
     /// are infrastructure failures (container down, daemon crashed, IPC

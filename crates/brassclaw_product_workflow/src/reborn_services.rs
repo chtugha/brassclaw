@@ -163,6 +163,108 @@ impl ConnectableChannelsProductFacade for StaticConnectableChannelsProductFacade
     }
 }
 
+// ── Skills facade ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RebornSkillInfo {
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub source: String,      // "system" | "user" | "installed"
+    pub keywords: Vec<String>,
+    pub tags: Vec<String>,
+    pub requires_skills: Vec<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RebornListSkillsResponse {
+    pub skills: Vec<RebornSkillInfo>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RebornInstallSkillRequest {
+    pub content: String,
+    pub source_url: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RebornSkillInstallResult {
+    pub name: String,
+    pub source: String,
+    pub success: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RebornSkillRemoveResult {
+    pub name: String,
+    pub success: bool,
+    pub message: String,
+}
+
+#[async_trait]
+pub trait SkillsProductFacade: Send + Sync {
+    async fn list_skills(
+        &self,
+        caller: &WebUiAuthenticatedCaller,
+    ) -> Result<RebornListSkillsResponse, RebornServicesError>;
+
+    async fn install_skill(
+        &self,
+        caller: &WebUiAuthenticatedCaller,
+        content: String,
+        source_url: Option<String>,
+    ) -> Result<RebornSkillInstallResult, RebornServicesError>;
+
+    async fn remove_skill(
+        &self,
+        caller: &WebUiAuthenticatedCaller,
+        name: &str,
+    ) -> Result<RebornSkillRemoveResult, RebornServicesError>;
+}
+
+#[derive(Debug)]
+pub struct UnsupportedSkillsProductFacade;
+
+#[async_trait]
+impl SkillsProductFacade for UnsupportedSkillsProductFacade {
+    async fn list_skills(
+        &self,
+        _caller: &WebUiAuthenticatedCaller,
+    ) -> Result<RebornListSkillsResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    async fn install_skill(
+        &self,
+        _caller: &WebUiAuthenticatedCaller,
+        _content: String,
+        _source_url: Option<String>,
+    ) -> Result<RebornSkillInstallResult, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    async fn remove_skill(
+        &self,
+        _caller: &WebUiAuthenticatedCaller,
+        _name: &str,
+    ) -> Result<RebornSkillRemoveResult, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+}
+
 #[async_trait]
 pub trait OutboundPreferencesProductFacade: Send + Sync {
     /// Return the authenticated caller's scoped outbound preferences.
@@ -637,6 +739,27 @@ pub trait RebornServicesApi: Send + Sync {
         request: RebornUpdateCapabilityPermissionRequest,
     ) -> Result<RebornUpdateCapabilityPermissionResponse, RebornServicesError>;
 
+    /// List all skills available to the authenticated caller.
+    async fn list_skills(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+    ) -> Result<RebornListSkillsResponse, RebornServicesError>;
+
+    /// Install a skill from its SKILL.md content.
+    async fn install_skill(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        content: String,
+        source_url: Option<String>,
+    ) -> Result<RebornSkillInstallResult, RebornServicesError>;
+
+    /// Remove a skill by name.
+    async fn remove_skill(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        name: String,
+    ) -> Result<RebornSkillRemoveResult, RebornServicesError>;
+
     /// Safety configuration methods - default to "not implemented" so facades that
     /// don't wire safety config inherit a safe surface.
     async fn get_safety_sensitive_paths(
@@ -719,6 +842,7 @@ pub struct RebornServices {
     automation_facade: Arc<dyn AutomationProductFacade>,
     connectable_channels_facade: Arc<dyn ConnectableChannelsProductFacade>,
     outbound_preferences_facade: Arc<dyn OutboundPreferencesProductFacade>,
+    skills_facade: Arc<dyn SkillsProductFacade>,
     approval_interactions: Arc<dyn ApprovalInteractionService>,
     auth_interactions: Arc<dyn AuthInteractionService>,
     extension_credentials: Option<Arc<dyn ExtensionCredentialSetupService>>,
@@ -748,6 +872,7 @@ impl RebornServices {
             outbound_preferences_facade: Arc::new(
                 UnsupportedOutboundPreferencesProductFacade::new_static(),
             ),
+            skills_facade: Arc::new(UnsupportedSkillsProductFacade),
             approval_interactions: Arc::new(RejectingApprovalInteractionService),
             auth_interactions: Arc::new(RejectingAuthInteractionService),
             extension_credentials: None,
@@ -800,6 +925,11 @@ impl RebornServices {
         outbound_preferences_facade: Arc<dyn OutboundPreferencesProductFacade>,
     ) -> Self {
         self.outbound_preferences_facade = outbound_preferences_facade;
+        self
+    }
+
+    pub fn with_skills_facade(mut self, skills_facade: Arc<dyn SkillsProductFacade>) -> Self {
+        self.skills_facade = skills_facade;
         self
     }
 
@@ -1752,6 +1882,32 @@ impl RebornServicesApi for RebornServices {
             permission_mode: request.permission_mode,
             updated: true,
         })
+    }
+
+    async fn list_skills(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+    ) -> Result<RebornListSkillsResponse, RebornServicesError> {
+        self.skills_facade.list_skills(&caller).await
+    }
+
+    async fn install_skill(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        content: String,
+        source_url: Option<String>,
+    ) -> Result<RebornSkillInstallResult, RebornServicesError> {
+        self.skills_facade
+            .install_skill(&caller, content, source_url)
+            .await
+    }
+
+    async fn remove_skill(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        name: String,
+    ) -> Result<RebornSkillRemoveResult, RebornServicesError> {
+        self.skills_facade.remove_skill(&caller, &name).await
     }
 
     async fn get_safety_sensitive_paths(

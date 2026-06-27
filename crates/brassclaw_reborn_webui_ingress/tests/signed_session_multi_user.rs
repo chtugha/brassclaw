@@ -219,6 +219,40 @@ impl RebornServicesApi for RecordingServices {
     ) -> Result<RebornSetupExtensionResponse, RebornServicesError> {
         Err(rejecting_reborn_services_error())
     }
+    async fn list_capabilities(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<brassclaw_product_workflow::RebornListCapabilitiesResponse, RebornServicesError> {
+        unreachable!("test does not drive list_capabilities")
+    }
+    async fn update_capability_permission(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: brassclaw_product_workflow::RebornUpdateCapabilityPermissionRequest,
+    ) -> Result<brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse, RebornServicesError> {
+        unreachable!("test does not drive update_capability_permission")
+    }
+    async fn list_skills(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<brassclaw_product_workflow::RebornListSkillsResponse, RebornServicesError> {
+        unreachable!("test does not drive list_skills")
+    }
+    async fn install_skill(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _content: String,
+        _source_url: Option<String>,
+    ) -> Result<brassclaw_product_workflow::RebornSkillInstallResult, RebornServicesError> {
+        unreachable!("test does not drive install_skill")
+    }
+    async fn remove_skill(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _name: String,
+    ) -> Result<brassclaw_product_workflow::RebornSkillRemoveResult, RebornServicesError> {
+        unreachable!("test does not drive remove_skill")
+    }
 }
 
 // ─── distinct-user directory: one user per provider subject ──────────────

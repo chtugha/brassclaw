@@ -11,6 +11,9 @@ use brassclaw_product_workflow::{
     LifecycleProductAction, LifecycleProductContext, LifecycleProductFacade,
     LifecycleProductPayload, LifecycleProductResponse, LifecycleReadinessBlocker,
     LifecycleSkillSource, LifecycleSkillSummary, ProductWorkflowError,
+    RebornListSkillsResponse, RebornServicesError, RebornServicesErrorCode,
+    RebornServicesErrorKind, RebornSkillInfo, RebornSkillInstallResult, RebornSkillRemoveResult,
+    SkillsProductFacade, WebUiAuthenticatedCaller,
 };
 use brassclaw_skills::{
     SkillInstallRequest, SkillInstallSource, SkillManagementContext, SkillManagementError,
@@ -73,6 +76,15 @@ impl RebornLocalSkillManagementPort {
         name: Option<&str>,
         content: &str,
     ) -> Result<brassclaw_skills::SkillInstallResult, RebornLocalSkillManagementError> {
+        self.install_with_source_url(name, content, None).await
+    }
+
+    pub(crate) async fn install_with_source_url(
+        &self,
+        name: Option<&str>,
+        content: &str,
+        source_url: Option<&str>,
+    ) -> Result<brassclaw_skills::SkillInstallResult, RebornLocalSkillManagementError> {
         let context = self.skill_context()?;
         Ok(install_skill(
             &context,
@@ -81,7 +93,7 @@ impl RebornLocalSkillManagementPort {
                 content,
                 files: &[],
                 source: SkillInstallSource::User,
-                source_url: None,
+                source_url,
             },
         )
         .await?)
@@ -163,6 +175,119 @@ pub(crate) fn build_existing_local_dev_skill_management_port(
 fn invalid_skill_context(error: impl std::fmt::Display) -> RebornLocalSkillManagementError {
     RebornLocalSkillManagementError::InvalidContext {
         reason: error.to_string(),
+    }
+}
+
+fn map_skill_management_error(error: RebornLocalSkillManagementError) -> RebornServicesError {
+    let (code, kind, status) = match &error {
+        RebornLocalSkillManagementError::InvalidContext { .. } => (
+            RebornServicesErrorCode::InvalidRequest,
+            RebornServicesErrorKind::Validation,
+            400u16,
+        ),
+        RebornLocalSkillManagementError::Skill(e) => match e.kind() {
+            SkillManagementErrorKind::NotFound => (
+                RebornServicesErrorCode::NotFound,
+                RebornServicesErrorKind::NotFound,
+                404u16,
+            ),
+            SkillManagementErrorKind::InvalidInput | SkillManagementErrorKind::InvalidSkill => (
+                RebornServicesErrorCode::InvalidRequest,
+                RebornServicesErrorKind::Validation,
+                400u16,
+            ),
+            SkillManagementErrorKind::FilesystemDenied => (
+                RebornServicesErrorCode::Forbidden,
+                RebornServicesErrorKind::ParticipantDenied,
+                403u16,
+            ),
+            _ => (
+                RebornServicesErrorCode::Internal,
+                RebornServicesErrorKind::Internal,
+                500u16,
+            ),
+        },
+    };
+    RebornServicesError {
+        code,
+        kind,
+        status_code: status,
+        retryable: false,
+        field: None,
+        validation_code: None,
+    }
+}
+
+pub(crate) struct RebornLocalSkillsProductFacade {
+    skill_management: Arc<RebornLocalSkillManagementPort>,
+}
+
+impl RebornLocalSkillsProductFacade {
+    pub(crate) fn new(skill_management: Arc<RebornLocalSkillManagementPort>) -> Self {
+        Self { skill_management }
+    }
+}
+
+#[async_trait]
+impl SkillsProductFacade for RebornLocalSkillsProductFacade {
+    async fn list_skills(
+        &self,
+        _caller: &WebUiAuthenticatedCaller,
+    ) -> Result<RebornListSkillsResponse, RebornServicesError> {
+        let summaries = self
+            .skill_management
+            .list()
+            .await
+            .map_err(map_skill_management_error)?;
+        let skills = summaries
+            .into_iter()
+            .map(|s| RebornSkillInfo {
+                name: s.name,
+                version: s.version,
+                description: s.description,
+                source: s.source.as_str().to_string(),
+                keywords: s.keywords,
+                tags: s.tags,
+                requires_skills: s.requires_skills,
+            })
+            .collect();
+        Ok(RebornListSkillsResponse { skills })
+    }
+
+    async fn install_skill(
+        &self,
+        _caller: &WebUiAuthenticatedCaller,
+        content: String,
+        source_url: Option<String>,
+    ) -> Result<RebornSkillInstallResult, RebornServicesError> {
+        let result = self
+            .skill_management
+            .install_with_source_url(None, &content, source_url.as_deref())
+            .await
+            .map_err(map_skill_management_error)?;
+        Ok(RebornSkillInstallResult {
+            name: result.name,
+            source: result.source.as_str().to_string(),
+            success: true,
+            message: "installed".to_string(),
+        })
+    }
+
+    async fn remove_skill(
+        &self,
+        _caller: &WebUiAuthenticatedCaller,
+        name: &str,
+    ) -> Result<RebornSkillRemoveResult, RebornServicesError> {
+        let result = self
+            .skill_management
+            .remove(name)
+            .await
+            .map_err(map_skill_management_error)?;
+        Ok(RebornSkillRemoveResult {
+            name: result.name,
+            success: true,
+            message: "removed".to_string(),
+        })
     }
 }
 

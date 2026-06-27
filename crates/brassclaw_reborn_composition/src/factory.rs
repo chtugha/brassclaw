@@ -2839,6 +2839,8 @@ mod tests {
             event_log: Arc::clone(&base_runtime.event_log),
             audit_log: Arc::clone(&base_runtime.audit_log),
             extension_registry: Arc::clone(&base_runtime.extension_registry),
+            #[cfg(feature = "libsql")]
+            safety_config_store: Arc::clone(&base_runtime.safety_config_store),
         })
     }
 

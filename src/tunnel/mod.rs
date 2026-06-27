@@ -256,9 +256,7 @@ pub async fn start_managed_tunnel(
 #[cfg(test)]
 mod tests {
     use super::*;
-    // V1 - channels::web module deleted
-    // use crate::channels::web::sse::DEFAULT_BROADCAST_BUFFER;
-    const DEFAULT_BROADCAST_BUFFER: usize = 100; // fallback value
+    const DEFAULT_BROADCAST_BUFFER: usize = 100;
     use tokio::process::Command;
 
     fn assert_tunnel_err(cfg: &TunnelProviderConfig, needle: &str) {

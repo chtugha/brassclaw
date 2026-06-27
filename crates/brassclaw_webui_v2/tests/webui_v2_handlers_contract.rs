@@ -606,6 +606,54 @@ impl RebornServicesApi for StubServices {
             updated: true,
         })
     }
+
+    async fn list_skills(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<brassclaw_product_workflow::RebornListSkillsResponse, RebornServicesError> {
+        use brassclaw_product_workflow::{RebornListSkillsResponse, RebornSkillInfo};
+        Ok(RebornListSkillsResponse {
+            skills: vec![
+                RebornSkillInfo {
+                    name: "test-skill".to_string(),
+                    version: "1.0.0".to_string(),
+                    description: "A test skill".to_string(),
+                    source: "system".to_string(),
+                    keywords: vec!["test".to_string()],
+                    tags: vec![],
+                    requires_skills: vec![],
+                },
+            ],
+        })
+    }
+
+    async fn install_skill(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _content: String,
+        _source_url: Option<String>,
+    ) -> Result<brassclaw_product_workflow::RebornSkillInstallResult, RebornServicesError> {
+        use brassclaw_product_workflow::RebornSkillInstallResult;
+        Ok(RebornSkillInstallResult {
+            name: "test-skill".to_string(),
+            source: "user".to_string(),
+            success: true,
+            message: "installed".to_string(),
+        })
+    }
+
+    async fn remove_skill(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _name: String,
+    ) -> Result<brassclaw_product_workflow::RebornSkillRemoveResult, RebornServicesError> {
+        use brassclaw_product_workflow::RebornSkillRemoveResult;
+        Ok(RebornSkillRemoveResult {
+            name: "test-skill".to_string(),
+            success: true,
+            message: "removed".to_string(),
+        })
+    }
 }
 
 fn extension_action_response(message: &str) -> RebornExtensionActionResponse {
@@ -1905,6 +1953,27 @@ async fn stream_events_releases_slot_when_facade_drain_stalls_past_max_lifetime(
             _caller: WebUiAuthenticatedCaller,
             _request: brassclaw_product_workflow::RebornUpdateCapabilityPermissionRequest,
         ) -> Result<brassclaw_product_workflow::RebornUpdateCapabilityPermissionResponse, RebornServicesError> {
+            unreachable!("not exercised by this test")
+        }
+        async fn list_skills(
+            &self,
+            _caller: WebUiAuthenticatedCaller,
+        ) -> Result<brassclaw_product_workflow::RebornListSkillsResponse, RebornServicesError> {
+            unreachable!("not exercised by this test")
+        }
+        async fn install_skill(
+            &self,
+            _caller: WebUiAuthenticatedCaller,
+            _content: String,
+            _source_url: Option<String>,
+        ) -> Result<brassclaw_product_workflow::RebornSkillInstallResult, RebornServicesError> {
+            unreachable!("not exercised by this test")
+        }
+        async fn remove_skill(
+            &self,
+            _caller: WebUiAuthenticatedCaller,
+            _name: String,
+        ) -> Result<brassclaw_product_workflow::RebornSkillRemoveResult, RebornServicesError> {
             unreachable!("not exercised by this test")
         }
     }

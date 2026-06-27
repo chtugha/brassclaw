@@ -96,13 +96,18 @@ export function updateToolPermission(toolId, mode) {
   });
 }
 export function fetchSkills() {
-  return Promise.resolve({ skills: [], todo: true });
+  return apiFetch("/api/webchat/v2/skills");
 }
-export function installSkill(_payload) {
-  return Promise.resolve({ success: false, message: "TODO: requires v2 skills endpoint" });
+export function installSkill(payload) {
+  return apiFetch("/api/webchat/v2/skills/install", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
-export function removeSkill(_name) {
-  return Promise.resolve({ success: false, message: "TODO: requires v2 skills endpoint" });
+export function removeSkill(name) {
+  return apiFetch(`/api/webchat/v2/skills/${encodeURIComponent(name)}`, {
+    method: "DELETE",
+  });
 }
 export function fetchUsers() {
   return Promise.resolve({ users: [], todo: true });

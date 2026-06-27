@@ -43,6 +43,9 @@ pub const WEBUI_V2_ROUTE_COMPLETE_NEARAI_WALLET_LOGIN: &str =
 pub const WEBUI_V2_ROUTE_START_CODEX_LOGIN: &str = "webui.v2.start_codex_login";
 pub const WEBUI_V2_ROUTE_LIST_TOOLS: &str = "webui.v2.list_tools";
 pub const WEBUI_V2_ROUTE_UPDATE_TOOL_PERMISSION: &str = "webui.v2.update_tool_permission";
+pub const WEBUI_V2_ROUTE_LIST_SKILLS: &str = "webui.v2.list_skills";
+pub const WEBUI_V2_ROUTE_INSTALL_SKILL: &str = "webui.v2.install_skill";
+pub const WEBUI_V2_ROUTE_REMOVE_SKILL: &str = "webui.v2.remove_skill";
 
 pub const WEBUI_V2_PATTERN_CREATE_THREAD: &str = "/api/webchat/v2/threads";
 pub const WEBUI_V2_PATTERN_LIST_THREADS: &str = "/api/webchat/v2/threads";
@@ -77,6 +80,9 @@ pub const WEBUI_V2_PATTERN_COMPLETE_NEARAI_WALLET_LOGIN: &str = "/api/webchat/v2
 pub const WEBUI_V2_PATTERN_START_CODEX_LOGIN: &str = "/api/webchat/v2/llm/codex/login";
 pub const WEBUI_V2_PATTERN_LIST_TOOLS: &str = "/api/webchat/v2/tools";
 pub const WEBUI_V2_PATTERN_UPDATE_TOOL_PERMISSION: &str = "/api/webchat/v2/tools/{capability_id}/permission";
+pub const WEBUI_V2_PATTERN_LIST_SKILLS: &str = "/api/webchat/v2/skills";
+pub const WEBUI_V2_PATTERN_INSTALL_SKILL: &str = "/api/webchat/v2/skills/install";
+pub const WEBUI_V2_PATTERN_REMOVE_SKILL: &str = "/api/webchat/v2/skills/{name}";
 
 /// Return the canonical [`IngressRouteDescriptor`] set for the WebChat v2
 /// beta route surface.
@@ -115,6 +121,9 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         start_codex_login_descriptor(),
         list_tools_descriptor(),
         update_tool_permission_descriptor(),
+        list_skills_descriptor(),
+        install_skill_descriptor(),
+        remove_skill_descriptor(),
     ]
 }
 
@@ -537,6 +546,48 @@ fn update_tool_permission_descriptor() -> IngressRouteDescriptor {
         WEBUI_V2_PATTERN_UPDATE_TOOL_PERMISSION,
         mutation_policy(
             body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn list_skills_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_LIST_SKILLS,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_LIST_SKILLS,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn install_skill_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_INSTALL_SKILL,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_INSTALL_SKILL,
+        mutation_policy(
+            body_limit_kib(512),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn remove_skill_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_REMOVE_SKILL,
+        NetworkMethod::Delete,
+        WEBUI_V2_PATTERN_REMOVE_SKILL,
+        mutation_policy(
+            BodyLimitPolicy::NoBody,
             mutation_rate_limit(),
             AuditTraceClass::UserAction,
             AllowedEffectPath::ProductWorkflow,
