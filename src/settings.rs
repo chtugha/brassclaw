@@ -2158,18 +2158,9 @@ mod tests {
     // to verify that re-running the wizard (or a subset of steps) doesn't
     // accidentally reset settings from prior runs.
 
-    /// Simulates `brassclaw onboard --provider-only` re-running on a fully
-    /// configured installation. Only provider + model should change; all
-    /// other settings (channels, embeddings, heartbeat) must survive.
-
-    /// Simulates `brassclaw onboard --channels-only` re-running on a fully
-    /// configured installation. Only channel settings should change;
-    /// provider, model, embeddings, heartbeat must survive.
-
-    /// Simulates quick mode re-run on an installation that previously
-    /// completed a full setup. Quick mode only touches DB + security +
-    /// provider + model; channels, embeddings, heartbeat, extensions
-    /// should survive via the merge_from ordering.
+    // TODO: add provider-only re-run regression test
+    // TODO: add channels-only re-run regression test
+    // TODO: add quick-mode re-run regression test
 
     /// Full wizard re-run where user keeps the same provider. The model
     /// selection from the prior run should be pre-populated (not reset).
