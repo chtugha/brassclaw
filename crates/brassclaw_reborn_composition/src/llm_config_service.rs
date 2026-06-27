@@ -275,15 +275,14 @@ impl RebornLlmConfigService {
         // a caller-controlled base_url could exfiltrate that key.
         if let Some(key) = request.api_key.as_ref() {
             apply_stored_api_key(&mut config, key.clone());
-        } else if stored_key_allowed {
-            if let Some(stored) = self
+        } else if stored_key_allowed
+            && let Some(stored) = self
                 .keys
                 .read(&request.provider_id)
                 .await
                 .map_err(|_| LlmConfigServiceError::Unavailable)?
-            {
-                apply_stored_api_key(&mut config, stored);
-            }
+        {
+            apply_stored_api_key(&mut config, stored);
         }
         // If no API key is available, continue anyway - the provider will fail
         // with a proper authentication error, which is more useful than blocking

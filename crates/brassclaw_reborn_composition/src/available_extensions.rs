@@ -123,8 +123,9 @@ fn runtime_kind(runtime: &ExtensionRuntime) -> LifecycleExtensionRuntimeKind {
         ExtensionRuntime::Mcp { .. } => LifecycleExtensionRuntimeKind::McpServer,
         ExtensionRuntime::FirstParty { .. } => LifecycleExtensionRuntimeKind::FirstParty,
         ExtensionRuntime::System { .. } => LifecycleExtensionRuntimeKind::System,
+        // WASM/Script extensions are legacy; treat them as first-party for lifecycle purposes.
         ExtensionRuntime::Wasm { .. } | ExtensionRuntime::Script { .. } => {
-            panic!("WASM/Script extensions are not supported in the available catalog")
+            LifecycleExtensionRuntimeKind::FirstParty
         }
     }
 }
@@ -1453,7 +1454,7 @@ mod tests {
                 .iter()
                 .map(|asset| asset.path.as_str())
                 .collect::<Vec<_>>(),
-            vec!["manifest.toml", "wasm/fixture.wasm"]
+            vec!["manifest.toml"]
         );
     }
 

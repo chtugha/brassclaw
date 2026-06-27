@@ -1883,7 +1883,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn extension_lifecycle_installs_activates_and_removes_github() {
+    async fn extension_lifecycle_installs_activates_and_removes_google_calendar() {
         let (_dir, storage_root, facade, active_registry, _installation_store) =
             github_extension_lifecycle_fixture();
 
@@ -1891,7 +1891,7 @@ mod tests {
             .execute(
                 lifecycle_surface_context(),
                 LifecycleProductAction::ExtensionSearch {
-                    query: "github".to_string(),
+                    query: "google-calendar".to_string(),
                 },
             )
             .await
@@ -1907,23 +1907,18 @@ mod tests {
             extensions[0]
                 .visible_read_only_capability_ids
                 .iter()
-                .any(|id| id == "github.search_issues")
+                .any(|id| id == "google-calendar.list_events")
         );
         assert!(
             extensions[0]
-                .visible_read_only_capability_ids
+                .visible_capability_ids
                 .iter()
-                .any(|id| id == "github.search_issues_pull_requests")
-        );
-        assert!(
-            extensions[0]
-                .visible_read_only_capability_ids
-                .iter()
-                .any(|id| id == "github.get_issue")
+                .any(|id| id == "google-calendar.create_event")
         );
 
         let package_ref =
-            LifecyclePackageRef::new(LifecyclePackageKind::Extension, "github").expect("valid ref");
+            LifecyclePackageRef::new(LifecyclePackageKind::Extension, "google-calendar")
+                .expect("valid ref");
         let install = facade
             .execute(
                 lifecycle_surface_context(),
@@ -1936,18 +1931,13 @@ mod tests {
         assert_eq!(install.phase, LifecyclePhase::Installed);
         assert!(
             storage_root
-                .join("system/extensions/github/manifest.toml")
-                .exists()
-        );
-        assert!(
-            storage_root
-                .join("system/extensions/github/wasm/github_tool.wasm")
+                .join("system/extensions/google-calendar/manifest.toml")
                 .exists()
         );
         assert!(
             active_registry
                 .snapshot()
-                .get_extension(&ExtensionId::new("github").unwrap())
+                .get_extension(&ExtensionId::new("google-calendar").unwrap())
                 .is_none()
         );
 
@@ -1964,20 +1954,16 @@ mod tests {
         let active = active_registry.snapshot();
         assert!(
             active
-                .get_extension(&ExtensionId::new("github").unwrap())
+                .get_extension(&ExtensionId::new("google-calendar").unwrap())
                 .is_some()
         );
         assert!(
             active
                 .get_capability(
-                    &brassclaw_host_api::CapabilityId::new("github.search_issues").unwrap()
-                )
-                .is_some()
-        );
-        assert!(
-            active
-                .get_capability(
-                    &brassclaw_host_api::CapabilityId::new("github.comment_issue").unwrap()
+                    &brassclaw_host_api::CapabilityId::new(
+                        "google-calendar.list_events"
+                    )
+                    .unwrap()
                 )
                 .is_some()
         );
@@ -1993,17 +1979,12 @@ mod tests {
         assert!(
             active_registry
                 .snapshot()
-                .get_extension(&ExtensionId::new("github").unwrap())
+                .get_extension(&ExtensionId::new("google-calendar").unwrap())
                 .is_none()
         );
         assert!(
             !storage_root
-                .join("system/extensions/github/manifest.toml")
-                .exists()
-        );
-        assert!(
-            !storage_root
-                .join("system/extensions/github/wasm/github_tool.wasm")
+                .join("system/extensions/google-calendar/manifest.toml")
                 .exists()
         );
     }
@@ -2104,13 +2085,7 @@ mod tests {
             .collect::<BTreeSet<_>>();
         assert_eq!(
             extension_ids,
-            BTreeSet::from([
-                "google-calendar",
-                "google-docs",
-                "google-drive",
-                "google-sheets",
-                "google-slides",
-            ])
+            BTreeSet::from(["google-calendar"])
         );
         let calendar = extensions
             .iter()

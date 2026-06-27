@@ -193,7 +193,7 @@ mod tests {
         }
     }
 
-    async fn assert_github_capabilities_visible(
+    async fn assert_google_calendar_capabilities_visible(
         wiring: &LocalDevCapabilityWiring,
         run_context: &LoopRunContext,
     ) {
@@ -212,9 +212,8 @@ mod tests {
             .map(|descriptor| descriptor.capability_id.as_str())
             .collect::<Vec<_>>();
 
-        assert!(capability_ids.contains(&"github.search_issues"));
-        assert!(capability_ids.contains(&"github.get_issue"));
-        assert!(capability_ids.contains(&"github.comment_issue"));
+        assert!(capability_ids.contains(&"google-calendar.list_events"));
+        assert!(capability_ids.contains(&"google-calendar.create_event"));
         assert!(!capability_ids.contains(&SPAWN_SUBAGENT_CAPABILITY_ID));
     }
 
@@ -1477,10 +1476,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn local_dev_capability_port_restores_activated_github_extension_surface() {
+    async fn local_dev_capability_port_restores_activated_google_calendar_extension_surface() {
         let dir = tempfile::tempdir().expect("tempdir");
         let storage_root = dir.path().join("local-dev");
-        let owner_id = "local-dev-github-surface-owner";
+        let owner_id = "local-dev-gcal-surface-owner";
         {
             let services = crate::build_reborn_services(crate::RebornBuildInput::local_dev(
                 owner_id,
@@ -1501,24 +1500,25 @@ mod tests {
                 local_runtime.skill_management.clone(),
             )
             .with_extension_management(extension_management);
-            let package_ref = LifecyclePackageRef::new(LifecyclePackageKind::Extension, "github")
-                .expect("valid github ref");
+            let package_ref =
+                LifecyclePackageRef::new(LifecyclePackageKind::Extension, "google-calendar")
+                    .expect("valid google-calendar ref");
             facade
                 .execute(
-                    lifecycle_context("github-install"),
+                    lifecycle_context("gcal-install"),
                     LifecycleProductAction::ExtensionInstall {
                         package_ref: package_ref.clone(),
                     },
                 )
                 .await
-                .expect("install github extension");
+                .expect("install google-calendar extension");
             facade
                 .execute(
-                    lifecycle_context("github-activate"),
+                    lifecycle_context("gcal-activate"),
                     LifecycleProductAction::ExtensionActivate { package_ref },
                 )
                 .await
-                .expect("activate github extension");
+                .expect("activate google-calendar extension");
         }
 
         let services = crate::build_reborn_services(crate::RebornBuildInput::local_dev(
@@ -1527,7 +1527,7 @@ mod tests {
         ))
         .await
         .expect("local-dev services rebuild");
-        let run_context = run_context("github-surface").await;
+        let run_context = run_context("gcal-surface").await;
         let thread_scope = ThreadScope {
             tenant_id: run_context.scope.tenant_id.clone(),
             agent_id: run_context.scope.agent_id.clone().expect("agent id"),
@@ -1539,7 +1539,7 @@ mod tests {
             &services,
             Arc::new(InMemorySessionThreadService::default()),
             thread_scope,
-            UserId::new("local-dev-github-user").expect("user id"),
+            UserId::new("local-dev-gcal-user").expect("user id"),
             Arc::new(
                 crate::local_dev_capability_policy::local_dev_capability_policy()
                     .expect("policy parses"),
@@ -1549,7 +1549,7 @@ mod tests {
             None,
         )
         .expect("local-dev capability wiring");
-        assert_github_capabilities_visible(&wiring, &run_context).await;
+        assert_google_calendar_capabilities_visible(&wiring, &run_context).await;
     }
 
     #[tokio::test]
@@ -1557,12 +1557,12 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let storage_root = dir.path().join("local-dev");
         let services = crate::build_reborn_services(crate::RebornBuildInput::local_dev(
-            "local-dev-live-github-surface-owner",
+            "local-dev-live-gcal-surface-owner",
             storage_root,
         ))
         .await
         .expect("local-dev services build");
-        let run_context = run_context("github-live-surface").await;
+        let run_context = run_context("gcal-live-surface").await;
         let thread_scope = ThreadScope {
             tenant_id: run_context.scope.tenant_id.clone(),
             agent_id: run_context.scope.agent_id.clone().expect("agent id"),
@@ -1574,7 +1574,7 @@ mod tests {
             &services,
             Arc::new(InMemorySessionThreadService::default()),
             thread_scope,
-            UserId::new("local-dev-live-github-user").expect("user id"),
+            UserId::new("local-dev-live-gcal-user").expect("user id"),
             Arc::new(
                 crate::local_dev_capability_policy::local_dev_capability_policy()
                     .expect("policy parses"),
@@ -1597,26 +1597,27 @@ mod tests {
             local_runtime.skill_management.clone(),
         )
         .with_extension_management(extension_management);
-        let package_ref = LifecyclePackageRef::new(LifecyclePackageKind::Extension, "github")
-            .expect("valid github ref");
+        let package_ref =
+            LifecyclePackageRef::new(LifecyclePackageKind::Extension, "google-calendar")
+                .expect("valid google-calendar ref");
         facade
             .execute(
-                lifecycle_context("github-live-install"),
+                lifecycle_context("gcal-live-install"),
                 LifecycleProductAction::ExtensionInstall {
                     package_ref: package_ref.clone(),
                 },
             )
             .await
-            .expect("install github extension");
+            .expect("install google-calendar extension");
         facade
             .execute(
-                lifecycle_context("github-live-activate"),
+                lifecycle_context("gcal-live-activate"),
                 LifecycleProductAction::ExtensionActivate { package_ref },
             )
             .await
-            .expect("activate github extension");
+            .expect("activate google-calendar extension");
 
-        assert_github_capabilities_visible(&wiring, &run_context).await;
+        assert_google_calendar_capabilities_visible(&wiring, &run_context).await;
     }
 
     #[tokio::test]

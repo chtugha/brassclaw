@@ -430,7 +430,7 @@ async fn callback_with_provider_error_redirects_with_denied() {
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
     assert_eq!(
         header_str(&resp, header::LOCATION),
-        "/v2?login_error=denied"
+        "/?login_error=denied"
     );
 }
 
@@ -491,7 +491,7 @@ async fn callback_exchange_failure_redirects_with_exchange_failed() {
     assert_eq!(callback.status(), StatusCode::SEE_OTHER);
     assert_eq!(
         header_str(&callback, header::LOCATION),
-        "/v2?login_error=exchange_failed",
+        "/?login_error=exchange_failed",
     );
 }
 
@@ -517,7 +517,7 @@ async fn callback_with_unknown_state_redirects_with_invalid_state_error() {
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
     assert_eq!(
         header_str(&resp, header::LOCATION),
-        "/v2?login_error=invalid_state"
+        "/?login_error=invalid_state"
     );
 }
 
@@ -560,7 +560,7 @@ async fn callback_with_state_replay_fails_closed() {
         .await
         .expect("oneshot");
     assert_eq!(first.status(), StatusCode::SEE_OTHER);
-    assert!(header_str(&first, header::LOCATION).starts_with("/v2?login_ticket="));
+    assert!(header_str(&first, header::LOCATION).starts_with("/?login_ticket="));
     assert_eq!(store_inner.len(), 1);
 
     // Replaying the SAME state must fail closed — no second session.
@@ -580,7 +580,7 @@ async fn callback_with_state_replay_fails_closed() {
     assert_eq!(replay.status(), StatusCode::SEE_OTHER);
     assert_eq!(
         header_str(&replay, header::LOCATION),
-        "/v2?login_error=invalid_state"
+        "/?login_error=invalid_state"
     );
     assert_eq!(
         store_inner.len(),
@@ -655,7 +655,7 @@ async fn callback_profile_fetch_failure_redirects_with_exchange_failed() {
     assert_eq!(callback.status(), StatusCode::SEE_OTHER);
     assert_eq!(
         header_str(&callback, header::LOCATION),
-        "/v2?login_error=exchange_failed",
+        "/?login_error=exchange_failed",
     );
 }
 
@@ -722,7 +722,7 @@ async fn callback_exchange_timeout_redirects_with_exchange_failed() {
     assert_eq!(callback.status(), StatusCode::SEE_OTHER);
     assert_eq!(
         header_str(&callback, header::LOCATION),
-        "/v2?login_error=exchange_failed",
+        "/?login_error=exchange_failed",
     );
 }
 

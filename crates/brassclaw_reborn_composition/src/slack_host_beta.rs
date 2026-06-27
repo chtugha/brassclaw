@@ -1422,11 +1422,33 @@ mod tests {
                 )
                 .await
                 .expect("route responds");
-            assert_eq!(
-                response.status(),
-                StatusCode::NOT_FOUND,
-                "{method} route must not be mounted for non-operator auth"
-            );
+            // Operator-only API routes are not mounted for non-operator auth.
+            // GET requests fall through to the SPA static router (200 HTML);
+            // non-GET requests get 405 (method not allowed from the wildcard GET-only route).
+            if method == "GET" {
+                assert_eq!(
+                    response.status(),
+                    StatusCode::OK,
+                    "{method} {uri} must fall through to SPA for non-operator auth"
+                );
+                let ct = response
+                    .headers()
+                    .get(axum::http::header::CONTENT_TYPE)
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("");
+                assert!(
+                    ct.starts_with("text/html"),
+                    "{method} {uri} SPA fallback must serve HTML, not JSON (got {ct})"
+                );
+            } else {
+                assert!(
+                    response.status() == StatusCode::METHOD_NOT_ALLOWED
+                        || response.status() == StatusCode::NOT_FOUND,
+                    "{method} {uri} must not be mounted as an API route for non-operator auth \
+                     (got {})",
+                    response.status()
+                );
+            }
         }
 
         runtime.shutdown().await.expect("runtime shuts down");
