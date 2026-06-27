@@ -68,6 +68,19 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
     [providerState, showMessage, t]
   );
 
+  const handleDeactivate = React.useCallback(
+    async (provider) => {
+      if (!window.confirm(t("llm.confirmDeactivate", { name: provider.name || provider.id }))) return;
+      try {
+        await providerState.deactivateProvider();
+        showMessage("success", t("llm.providerDeactivated"));
+      } catch (err) {
+        showMessage("error", err.message);
+      }
+    },
+    [providerState, showMessage, t]
+  );
+
   const handleDelete = React.useCallback(
     async (provider) => {
       if (!window.confirm(t("llm.confirmDelete", { id: provider.id }))) return;
@@ -112,6 +125,7 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
     closeDialog: () => setIsDialogOpen(false),
     handleUse,
     handleSave,
+    handleDeactivate,
     handleDelete,
     handleReset,
   };

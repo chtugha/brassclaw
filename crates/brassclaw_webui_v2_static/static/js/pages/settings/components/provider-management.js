@@ -116,6 +116,7 @@ export function ProviderManagement({ settings, gatewayStatus, searchQuery = "" }
                             isBusy=${state.isBusy}
                             onUse=${actions.handleUse}
                             onConfigure=${actions.openDialog}
+                            onDeactivate=${actions.handleDeactivate}
                             onDelete=${actions.handleDelete}
                             onReset=${actions.handleReset}
                             onNearaiLogin=${login.startNearai}

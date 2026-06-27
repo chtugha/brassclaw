@@ -288,6 +288,9 @@ registerPack("en", {
   "llm.testConnection": "Test connection",
   "llm.testing": "Testing...",
   "llm.use": "Use",
+  "llm.clickToDeactivate": "Click to deactivate this provider",
+  "llm.confirmDeactivate": "Deactivate {name}? You can reactivate it later by clicking 'Use'.",
+  "llm.providerDeactivated": "Provider deactivated successfully",
   // Settings — LLM providers (progressive disclosure)
   "llm.groupActive": "Active",
   "llm.groupReady": "Ready to use",

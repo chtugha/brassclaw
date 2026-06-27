@@ -320,12 +320,9 @@ function SafetyEntry({ entry, onToggle, onRemove, isUpdating, t }) {
           type="button"
           onClick=${() => onRemove(entry.pattern)}
           disabled=${isUpdating}
-          className="ml-3 flex-shrink-0 text-[var(--v2-text-muted)] transition-colors hover:text-[var(--v2-danger-text)] disabled:opacity-50"
-          title=${t("settings.safety.remove_entry")}
+          className="ml-3 flex-shrink-0 rounded border border-[var(--v2-panel-border)] px-2 py-0.5 text-[11px] text-[var(--v2-text-muted)] transition-colors hover:border-[var(--v2-danger-text)] hover:text-[var(--v2-danger-text)] disabled:opacity-50"
         >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          ${t("settings.safety.remove_entry")}
         </button>
       `}
     </div>
