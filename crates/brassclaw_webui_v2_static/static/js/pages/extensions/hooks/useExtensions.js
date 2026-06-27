@@ -127,18 +127,14 @@ export function useExtensions() {
   const registry = registryQuery.data?.entries || [];
   const connectableChannels = connectableChannelsQuery.data?.channels || [];
 
-  const channels = extensions.filter((e) => e.kind === "wasm_channel");
+  const channels = [];
   const mcpServers = extensions.filter((e) => e.kind === "mcp_server");
-  const tools = extensions.filter((e) => e.kind !== "wasm_channel" && e.kind !== "mcp_server");
+  const tools = extensions.filter((e) => e.kind !== "mcp_server");
 
-  const channelRegistry = registry.filter((e) => (e.kind === "wasm_channel" || e.kind === "channel") && !e.installed);
+  const channelRegistry = [];
   const mcpRegistry = registry.filter((e) => e.kind === "mcp_server" && !e.installed);
   const toolRegistry = registry.filter(
-    (e) =>
-      e.kind !== "mcp_server" &&
-      e.kind !== "wasm_channel" &&
-      e.kind !== "channel" &&
-      !e.installed
+    (e) => e.kind !== "mcp_server" && !e.installed
   );
 
   const isLoading = extensionsQuery.isLoading || registryQuery.isLoading;

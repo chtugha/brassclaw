@@ -13,32 +13,8 @@ use toml::Value;
 
 use crate::nearai_mcp::{NearAiMcpEndpoint, nearai_mcp_endpoint_from_env};
 
-const GITHUB_MANIFEST: &str =
-    include_str!("../../brassclaw_first_party_extensions/assets/github/manifest.toml");
-const GITHUB_WASM_MODULE: &[u8] =
-    include_bytes!("../../brassclaw_first_party_extensions/assets/github/wasm/github_tool.wasm");
 const GOOGLE_CALENDAR_MANIFEST: &str =
     include_str!("../../brassclaw_first_party_extensions/assets/google-calendar/manifest.toml");
-const GOOGLE_DOCS_MANIFEST: &str =
-    include_str!("../../brassclaw_first_party_extensions/assets/google-docs/manifest.toml");
-const GOOGLE_DOCS_WASM_MODULE: &[u8] = include_bytes!(
-    "../../brassclaw_first_party_extensions/assets/google-docs/wasm/google_docs_tool.wasm"
-);
-const GOOGLE_DRIVE_MANIFEST: &str =
-    include_str!("../../brassclaw_first_party_extensions/assets/google-drive/manifest.toml");
-const GOOGLE_DRIVE_WASM_MODULE: &[u8] = include_bytes!(
-    "../../brassclaw_first_party_extensions/assets/google-drive/wasm/google_drive_tool.wasm"
-);
-const GOOGLE_SHEETS_MANIFEST: &str =
-    include_str!("../../brassclaw_first_party_extensions/assets/google-sheets/manifest.toml");
-const GOOGLE_SHEETS_WASM_MODULE: &[u8] = include_bytes!(
-    "../../brassclaw_first_party_extensions/assets/google-sheets/wasm/google_sheets_tool.wasm"
-);
-const GOOGLE_SLIDES_MANIFEST: &str =
-    include_str!("../../brassclaw_first_party_extensions/assets/google-slides/manifest.toml");
-const GOOGLE_SLIDES_WASM_MODULE: &[u8] = include_bytes!(
-    "../../brassclaw_first_party_extensions/assets/google-slides/wasm/google_slides_tool.wasm"
-);
 const GMAIL_MANIFEST: &str =
     include_str!("../../brassclaw_first_party_extensions/assets/gmail/manifest.toml");
 const NOTION_MCP_MANIFEST: &str =
@@ -93,14 +69,6 @@ impl AvailableExtensionPackage {
 
 fn onboarding(package_id: &str) -> Option<LifecycleExtensionOnboarding> {
     match package_id {
-        "github" => Some(onboarding_message(
-            "GitHub needs a personal access token before its repository and pull request tools can run.",
-            Some(
-                "Create a GitHub personal access token with the repository permissions you want BrassClaw to use, then paste it here.",
-            ),
-            Some("https://github.com/settings/personal-access-tokens/new"),
-            "After saving the token, activate GitHub to publish its tools.",
-        )),
         "gmail" => Some(onboarding_message(
             "Gmail needs Google OAuth authorization before mail tools can run.",
             Some("Authorize the Google account that BrassClaw should use for Gmail."),
@@ -283,15 +251,10 @@ impl AvailableExtensionCatalog {
 
     pub(crate) fn from_first_party_assets() -> Result<Self, ProductWorkflowError> {
         Ok(Self::from_packages(vec![
-            github_package()?,
             notion_mcp_package()?,
             web_access_package()?,
             nearai_mcp_package()?,
             google_calendar_package()?,
-            google_docs_package()?,
-            google_drive_package()?,
-            google_sheets_package()?,
-            google_slides_package()?,
             gmail_package()?,
         ]))
     }
@@ -364,10 +327,6 @@ impl AvailableExtensionCatalog {
     }
 }
 
-fn github_package() -> Result<AvailableExtensionPackage, ProductWorkflowError> {
-    bundled_extension_package("github", "GitHub", GITHUB_MANIFEST, github_assets())
-}
-
 fn notion_mcp_package() -> Result<AvailableExtensionPackage, ProductWorkflowError> {
     bundled_extension_package(
         "notion",
@@ -400,64 +359,12 @@ fn google_calendar_package() -> Result<AvailableExtensionPackage, ProductWorkflo
     )
 }
 
-fn google_docs_package() -> Result<AvailableExtensionPackage, ProductWorkflowError> {
-    bundled_extension_package(
-        "google-docs",
-        "Google Docs",
-        GOOGLE_DOCS_MANIFEST,
-        google_docs_assets(),
-    )
-}
-
-fn google_drive_package() -> Result<AvailableExtensionPackage, ProductWorkflowError> {
-    bundled_extension_package(
-        "google-drive",
-        "Google Drive",
-        GOOGLE_DRIVE_MANIFEST,
-        google_drive_assets(),
-    )
-}
-
-fn google_sheets_package() -> Result<AvailableExtensionPackage, ProductWorkflowError> {
-    bundled_extension_package(
-        "google-sheets",
-        "Google Sheets",
-        GOOGLE_SHEETS_MANIFEST,
-        google_sheets_assets(),
-    )
-}
-
-fn google_slides_package() -> Result<AvailableExtensionPackage, ProductWorkflowError> {
-    bundled_extension_package(
-        "google-slides",
-        "Google Slides",
-        GOOGLE_SLIDES_MANIFEST,
-        google_slides_assets(),
-    )
-}
-
 fn gmail_package() -> Result<AvailableExtensionPackage, ProductWorkflowError> {
     bundled_extension_package("gmail", "Gmail", GMAIL_MANIFEST, gmail_assets())
 }
 
 pub(crate) fn google_calendar_manifest_digest() -> String {
     sha256_digest_token(GOOGLE_CALENDAR_MANIFEST.as_bytes())
-}
-
-pub(crate) fn google_docs_manifest_digest() -> String {
-    sha256_digest_token(GOOGLE_DOCS_MANIFEST.as_bytes())
-}
-
-pub(crate) fn google_drive_manifest_digest() -> String {
-    sha256_digest_token(GOOGLE_DRIVE_MANIFEST.as_bytes())
-}
-
-pub(crate) fn google_sheets_manifest_digest() -> String {
-    sha256_digest_token(GOOGLE_SHEETS_MANIFEST.as_bytes())
-}
-
-pub(crate) fn google_slides_manifest_digest() -> String {
-    sha256_digest_token(GOOGLE_SLIDES_MANIFEST.as_bytes())
 }
 
 pub(crate) fn gmail_manifest_digest() -> String {
@@ -568,108 +475,6 @@ fn bundled_extension_package(
         package,
         assets,
     })
-}
-
-fn github_assets() -> Vec<AvailableExtensionAsset> {
-    macro_rules! github_schema_asset {
-        ($path:literal) => {
-            bytes_asset(
-                concat!("schemas/github/", $path),
-                include_bytes!(concat!(
-                    "../../brassclaw_first_party_extensions/assets/github/schemas/github/",
-                    $path
-                )),
-            )
-        };
-    }
-    macro_rules! github_prompt_asset {
-        ($path:literal) => {
-            bytes_asset(
-                concat!("prompts/github/", $path),
-                include_bytes!(concat!(
-                    "../../brassclaw_first_party_extensions/assets/github/prompts/github/",
-                    $path
-                )),
-            )
-        };
-    }
-
-    vec![
-        bytes_asset("manifest.toml", GITHUB_MANIFEST.as_bytes()),
-        github_schema_asset!("comment_issue.input.v1.json"),
-        github_schema_asset!("comment_issue.output.v1.json"),
-        github_schema_asset!("create_branch.input.v1.json"),
-        github_schema_asset!("create_issue.input.v1.json"),
-        github_schema_asset!("create_issue_comment.input.v1.json"),
-        github_schema_asset!("create_or_update_file.input.v1.json"),
-        github_schema_asset!("create_pr_review.input.v1.json"),
-        github_schema_asset!("create_pull_request.input.v1.json"),
-        github_schema_asset!("create_release.input.v1.json"),
-        github_schema_asset!("create_repo.input.v1.json"),
-        github_schema_asset!("delete_file.input.v1.json"),
-        github_schema_asset!("fork_repo.input.v1.json"),
-        github_schema_asset!("get_combined_status.input.v1.json"),
-        github_schema_asset!("get_file_content.input.v1.json"),
-        github_schema_asset!("get_issue.input.v1.json"),
-        github_schema_asset!("get_issue.output.v1.json"),
-        github_schema_asset!("get_pull_request.input.v1.json"),
-        github_schema_asset!("get_pull_request_files.input.v1.json"),
-        github_schema_asset!("get_pull_request_reviews.input.v1.json"),
-        github_schema_asset!("get_repo.input.v1.json"),
-        github_schema_asset!("get_workflow_runs.input.v1.json"),
-        github_schema_asset!("handle_webhook.input.v1.json"),
-        github_schema_asset!("list_branches.input.v1.json"),
-        github_schema_asset!("list_issue_comments.input.v1.json"),
-        github_schema_asset!("list_issues.input.v1.json"),
-        github_schema_asset!("list_pull_request_comments.input.v1.json"),
-        github_schema_asset!("list_pull_requests.input.v1.json"),
-        github_schema_asset!("list_releases.input.v1.json"),
-        github_schema_asset!("list_repos.input.v1.json"),
-        github_schema_asset!("merge_pull_request.input.v1.json"),
-        github_schema_asset!("raw_output.v1.json"),
-        github_schema_asset!("reply_pull_request_comment.input.v1.json"),
-        github_schema_asset!("search_code.input.v1.json"),
-        github_schema_asset!("search_issues.input.v1.json"),
-        github_schema_asset!("search_issues.output.v1.json"),
-        github_schema_asset!("search_issues_pull_requests.input.v1.json"),
-        github_schema_asset!("search_repositories.input.v1.json"),
-        github_schema_asset!("trigger_workflow.input.v1.json"),
-        github_prompt_asset!("comment_issue.md"),
-        github_prompt_asset!("create_branch.md"),
-        github_prompt_asset!("create_issue.md"),
-        github_prompt_asset!("create_issue_comment.md"),
-        github_prompt_asset!("create_or_update_file.md"),
-        github_prompt_asset!("create_pr_review.md"),
-        github_prompt_asset!("create_pull_request.md"),
-        github_prompt_asset!("create_release.md"),
-        github_prompt_asset!("create_repo.md"),
-        github_prompt_asset!("delete_file.md"),
-        github_prompt_asset!("fork_repo.md"),
-        github_prompt_asset!("get_combined_status.md"),
-        github_prompt_asset!("get_file_content.md"),
-        github_prompt_asset!("get_issue.md"),
-        github_prompt_asset!("get_pull_request.md"),
-        github_prompt_asset!("get_pull_request_files.md"),
-        github_prompt_asset!("get_pull_request_reviews.md"),
-        github_prompt_asset!("get_repo.md"),
-        github_prompt_asset!("get_workflow_runs.md"),
-        github_prompt_asset!("handle_webhook.md"),
-        github_prompt_asset!("list_branches.md"),
-        github_prompt_asset!("list_issue_comments.md"),
-        github_prompt_asset!("list_issues.md"),
-        github_prompt_asset!("list_pull_request_comments.md"),
-        github_prompt_asset!("list_pull_requests.md"),
-        github_prompt_asset!("list_releases.md"),
-        github_prompt_asset!("list_repos.md"),
-        github_prompt_asset!("merge_pull_request.md"),
-        github_prompt_asset!("reply_pull_request_comment.md"),
-        github_prompt_asset!("search_code.md"),
-        github_prompt_asset!("search_issues.md"),
-        github_prompt_asset!("search_issues_pull_requests.md"),
-        github_prompt_asset!("search_repositories.md"),
-        github_prompt_asset!("trigger_workflow.md"),
-        bytes_asset("wasm/github_tool.wasm", GITHUB_WASM_MODULE),
-    ]
 }
 
 fn notion_mcp_assets() -> Vec<AvailableExtensionAsset> {
@@ -987,143 +792,6 @@ fn google_calendar_assets() -> Vec<AvailableExtensionAsset> {
             ),
         ),
     ]
-}
-
-macro_rules! google_wasm_assets {
-    ($id:literal, $manifest:expr, $wasm_file:literal, $wasm_module:expr, [$($operation:literal),+ $(,)?]) => {{
-        vec![
-            bytes_asset("manifest.toml", $manifest.as_bytes()),
-            bytes_asset(
-                concat!("schemas/", $id, "/raw_output.v1.json"),
-                include_bytes!(concat!(
-                    "../../brassclaw_first_party_extensions/assets/",
-                    $id,
-                    "/schemas/",
-                    $id,
-                    "/raw_output.v1.json"
-                )),
-            ),
-            $(
-                bytes_asset(
-                    concat!("schemas/", $id, "/", $operation, ".input.v1.json"),
-                    include_bytes!(concat!(
-                        "../../brassclaw_first_party_extensions/assets/",
-                        $id,
-                        "/schemas/",
-                        $id,
-                        "/",
-                        $operation,
-                        ".input.v1.json"
-                    )),
-                ),
-                bytes_asset(
-                    concat!("prompts/", $id, "/", $operation, ".md"),
-                    include_bytes!(concat!(
-                        "../../brassclaw_first_party_extensions/assets/",
-                        $id,
-                        "/prompts/",
-                        $id,
-                        "/",
-                        $operation,
-                        ".md"
-                    )),
-                ),
-            )+
-            bytes_asset(concat!("wasm/", $wasm_file), $wasm_module),
-        ]
-    }};
-}
-
-fn google_docs_assets() -> Vec<AvailableExtensionAsset> {
-    google_wasm_assets!(
-        "google-docs",
-        GOOGLE_DOCS_MANIFEST,
-        "google_docs_tool.wasm",
-        GOOGLE_DOCS_WASM_MODULE,
-        [
-            "create_document",
-            "get_document",
-            "read_content",
-            "insert_text",
-            "delete_content",
-            "replace_text",
-            "format_text",
-            "format_paragraph",
-            "insert_table",
-            "create_list",
-            "batch_update"
-        ]
-    )
-}
-
-fn google_drive_assets() -> Vec<AvailableExtensionAsset> {
-    google_wasm_assets!(
-        "google-drive",
-        GOOGLE_DRIVE_MANIFEST,
-        "google_drive_tool.wasm",
-        GOOGLE_DRIVE_WASM_MODULE,
-        [
-            "list_files",
-            "get_file",
-            "download_file",
-            "upload_file",
-            "update_file",
-            "create_folder",
-            "delete_file",
-            "trash_file",
-            "share_file",
-            "list_permissions",
-            "remove_permission",
-            "list_shared_drives"
-        ]
-    )
-}
-
-fn google_sheets_assets() -> Vec<AvailableExtensionAsset> {
-    google_wasm_assets!(
-        "google-sheets",
-        GOOGLE_SHEETS_MANIFEST,
-        "google_sheets_tool.wasm",
-        GOOGLE_SHEETS_WASM_MODULE,
-        [
-            "create_spreadsheet",
-            "get_spreadsheet",
-            "read_values",
-            "batch_read_values",
-            "write_values",
-            "append_values",
-            "clear_values",
-            "add_sheet",
-            "delete_sheet",
-            "rename_sheet",
-            "format_cells"
-        ]
-    )
-}
-
-fn google_slides_assets() -> Vec<AvailableExtensionAsset> {
-    google_wasm_assets!(
-        "google-slides",
-        GOOGLE_SLIDES_MANIFEST,
-        "google_slides_tool.wasm",
-        GOOGLE_SLIDES_WASM_MODULE,
-        [
-            "create_presentation",
-            "get_presentation",
-            "get_thumbnail",
-            "create_slide",
-            "delete_object",
-            "insert_text",
-            "delete_text",
-            "replace_all_text",
-            "create_shape",
-            "insert_image",
-            "format_text",
-            "format_paragraph",
-            "replace_shapes_with_image",
-            "batch_update"
-        ]
-    )
 }
 
 fn gmail_assets() -> Vec<AvailableExtensionAsset> {
