@@ -1,4 +1,5 @@
 import { React } from "../../../lib/html.js";
+import { ApiError } from "../../../lib/api.js";
 import { useLlmProviders } from "./useLlmProviders.js";
 
 function matchesProvider(provider, query) {
@@ -67,12 +68,12 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
     [providerState, showMessage, t]
   );
 
-  const handleDeactivate = React.useCallback(
+  const handleDelete = React.useCallback(
     async (provider) => {
-      if (!window.confirm(t("llm.confirmDeactivate", { name: provider.name || provider.id }))) return;
+      if (!window.confirm(t("llm.confirmDelete", { id: provider.id }))) return;
       try {
-        await providerState.deactivateProvider();
-        showMessage("success", t("llm.providerDeactivated"));
+        await providerState.deleteCustomProvider(provider);
+        showMessage("success", t("llm.providerDeleted"));
       } catch (err) {
         showMessage("error", err.message);
       }
@@ -80,24 +81,19 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
     [providerState, showMessage, t]
   );
 
-  const handleDelete = React.useCallback(
+  const handleReset = React.useCallback(
     async (provider) => {
-      const isActive = provider.id === providerState.activeProviderId;
-      const confirmMsg = isActive
-        ? t("llm.confirmDeleteActive", { id: provider.id })
-        : t("llm.confirmDelete", { id: provider.id });
-      
-      if (!window.confirm(confirmMsg)) return;
-      
+      if (!window.confirm(t("llm.confirmReset", { id: provider.id }))) return;
       try {
-        // If active, deactivate first
-        if (isActive) {
-          await providerState.deactivateProvider();
-        }
         await providerState.deleteCustomProvider(provider);
-        showMessage("success", t("llm.providerDeleted"));
+        showMessage("success", t("llm.providerReset"));
       } catch (err) {
-        showMessage("error", err.message);
+        // 404 = no overlay — provider is already at defaults
+        if (err instanceof ApiError && err.status === 404) {
+          showMessage("success", t("llm.providerReset"));
+        } else {
+          showMessage("error", err.message);
+        }
       }
     },
     [providerState, showMessage, t]
@@ -116,7 +112,7 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
     closeDialog: () => setIsDialogOpen(false),
     handleUse,
     handleSave,
-    handleDeactivate,
     handleDelete,
+    handleReset,
   };
 }

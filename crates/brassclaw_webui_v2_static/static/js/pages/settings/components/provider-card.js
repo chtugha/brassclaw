@@ -21,8 +21,8 @@ export function ProviderCard({
   isBusy,
   onUse,
   onConfigure,
-  onDeactivate,
   onDelete,
+  onReset,
   onNearaiLogin,
   onNearaiWallet,
   onCodexLogin,
@@ -174,17 +174,7 @@ export function ProviderCard({
               ${provider.name || provider.id}
             </span>
             <span className="font-mono text-[11px] text-[var(--v2-text-faint)]">${provider.id}</span>
-            ${isActive && html`
-              <button
-                type="button"
-                onClick=${onDeactivate ? () => onDeactivate(provider) : undefined}
-                className="cursor-pointer transition-opacity hover:opacity-70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--v2-accent)] rounded"
-                title=${t("llm.clickToDeactivate")}
-                disabled=${isBusy}
-              >
-                <${Badge} tone="positive" label=${t("llm.active")} size="sm" />
-              </button>
-            `}
+            ${isActive && html`<${Badge} tone="positive" label=${t("llm.active")} size="sm" />`}
             ${provider.builtin && !isActive &&
             html`<${Badge} tone="muted" label=${t("llm.builtin")} size="sm" />`}
           </span>
@@ -238,8 +228,18 @@ export function ProviderCard({
                 ${configureLabel}
               <//>
             `}
-            ${!provider.builtin &&
-            html`
+            ${provider.builtin && configured && html`
+              <${Button}
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled=${isBusy}
+                onClick=${() => onReset(provider)}
+              >
+                ${t("llm.reset")}
+              <//>
+            `}
+            ${!provider.builtin && !isActive && html`
               <${Button}
                 type="button"
                 variant="danger"

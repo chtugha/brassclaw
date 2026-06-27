@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchTools, updateToolPermission } from "../lib/settings-api.js";
 import { matchesSearch } from "../lib/settings-search.js";
 import { SettingsSearchEmpty } from "./settings-search-empty.js";
+import { SafetyPanel } from "./safety-panel.js";
 
 export function ToolsTab({ searchQuery = "" }) {
   const t = useT();
@@ -62,14 +63,18 @@ export function ToolsTab({ searchQuery = "" }) {
     `;
   }
 
-  const tools = query.data?.capabilities || [];
-  
+  // Hide internal dispatch capability — not user-configurable
+  const tools = (query.data?.capabilities || []).filter(
+    (tool) => tool.id !== "DispatchCapability"
+  );
+
   const filteredTools = tools.filter((tool) =>
     matchesSearch(searchQuery, [
+      tool.name,
       tool.id,
       tool.description,
       tool.provider,
-      ...(tool.effects || []),
+      ...(tool.effect_kinds || []),
     ])
   );
 
@@ -83,37 +88,22 @@ export function ToolsTab({ searchQuery = "" }) {
     groupedTools.get(provider).push(tool);
   }
 
-  // Render tools section (or empty state)
-  const toolsSection = tools.length === 0
-    ? html`
-        <${Card} padding="lg">
-          <h3 className="text-lg font-semibold text-[var(--v2-text-strong)]">
-            ${t("settings.tools.empty")}
-          </h3>
-          <p className="mt-2 max-w-md text-sm leading-6 text-[var(--v2-text-muted)]">
-            ${t("settings.tools.emptyDesc")}
-          </p>
-        <//>
-      `
-    : filteredTools.length === 0
-    ? html`<${SettingsSearchEmpty} query=${searchQuery} />`
-    : html`
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-[var(--v2-text-strong)]">
-            ${t("settings.tools.title")}
-          </h2>
-          ${Array.from(groupedTools.entries()).map(([provider, providerTools]) => html`
-            <${ProviderGroup}
-              key=${provider}
-              provider=${provider}
-              tools=${providerTools}
-              onPermissionChange=${handlePermissionChange}
-              isUpdating=${updatePermissionMutation.isPending}
-              t=${t}
-            />
-          `)}
-        </div>
-      `;
+  if (tools.length === 0) {
+    return html`
+      <${Card} padding="lg">
+        <h3 className="text-lg font-semibold text-[var(--v2-text-strong)]">
+          ${t("settings.tools.empty")}
+        </h3>
+        <p className="mt-2 max-w-md text-sm leading-6 text-[var(--v2-text-muted)]">
+          ${t("settings.tools.emptyDesc")}
+        </p>
+      <//>
+    `;
+  }
+
+  if (filteredTools.length === 0) {
+    return html`<${SettingsSearchEmpty} query=${searchQuery} />`;
+  }
 
   return html`
     <div className="space-y-6">
@@ -122,8 +112,29 @@ export function ToolsTab({ searchQuery = "" }) {
           ${updateError}
         </div>
       `}
-      
-      ${toolsSection}
+
+      <div className="space-y-4">
+        <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--v2-accent-text)]">
+          ${t("settings.tools.title")}
+        </h2>
+        ${Array.from(groupedTools.entries()).map(([provider, providerTools]) => html`
+          <${ProviderGroup}
+            key=${provider}
+            provider=${provider}
+            tools=${providerTools}
+            onPermissionChange=${handlePermissionChange}
+            isUpdating=${updatePermissionMutation.isPending}
+            t=${t}
+          />
+        `)}
+      </div>
+
+      <div className="space-y-4">
+        <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--v2-accent-text)]">
+          ${t("settings.safety.title")}
+        </h2>
+        <${SafetyPanel} searchQuery=${searchQuery} />
+      </div>
     </div>
   `;
 }
@@ -174,17 +185,15 @@ function ProviderGroup({ provider, tools, onPermissionChange, isUpdating, t }) {
 
 function ToolRow({ tool, onPermissionChange, isUpdating, t }) {
   const permissionMode = tool.permission_mode || "ask";
-  // Extract readable name from ID (e.g., "builtin.echo" -> "echo")
-  const displayName = tool.id.split('.').pop();
 
   return html`
     <div className="flex items-start justify-between border-t border-[var(--v2-panel-border)] py-4 first:border-0">
       <div className="flex-1 pr-4">
         <div className="flex items-center gap-2">
-          <h4 className="font-medium text-[var(--v2-text-strong)]">${displayName}</h4>
-          ${tool.effects && tool.effects.length > 0 && html`
+          <h4 className="font-medium text-[var(--v2-text-strong)]">${tool.name || tool.id}</h4>
+          ${tool.effect_kinds && tool.effect_kinds.length > 0 && html`
             <div className="flex gap-1">
-              ${tool.effects.map((effect) => html`
+              ${tool.effect_kinds.map((effect) => html`
                 <${EffectBadge} key=${effect} effect=${effect} t=${t} />
               `)}
             </div>
@@ -210,16 +219,16 @@ function ToolRow({ tool, onPermissionChange, isUpdating, t }) {
   `;
 }
 
+const EFFECT_META = {
+  Read:    "bg-blue-500/20 text-blue-200 border-blue-400/30",
+  Write:   "bg-amber-500/20 text-amber-200 border-amber-400/30",
+  Execute: "bg-red-500/20 text-red-200 border-red-400/30",
+  Network: "bg-purple-500/20 text-purple-200 border-purple-400/30",
+  System:  "bg-orange-500/20 text-orange-200 border-orange-400/30",
+};
+
 function EffectBadge({ effect, t }) {
-  const colorMap = {
-    read: "bg-blue-500/20 text-blue-200 border-blue-400/30",
-    write: "bg-amber-500/20 text-amber-200 border-amber-400/30",
-    execute: "bg-red-500/20 text-red-200 border-red-400/30",
-    network: "bg-purple-500/20 text-purple-200 border-purple-400/30",
-    system: "bg-orange-500/20 text-orange-200 border-orange-400/30",
-  };
-  
-  const colorClass = colorMap[effect] || "bg-gray-500/20 text-gray-200 border-gray-400/30";
+  const colorClass = EFFECT_META[effect] || "bg-gray-500/20 text-gray-200 border-gray-400/30";
   
   return html`
     <span
