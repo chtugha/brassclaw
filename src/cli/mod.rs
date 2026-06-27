@@ -4,7 +4,6 @@
 //! - Running the agent (`run`)
 //! - Interactive onboarding wizard (`onboard`)
 //! - Managing configuration (`config list`, `config get`, `config set`)
-//! - Managing WASM tools (`tool install`, `tool list`, `tool remove`)
 //! - Managing MCP servers (`mcp add`, `mcp auth`, `mcp list`, `mcp test`)
 //! - Querying workspace memory (`memory search`, `memory read`, `memory write`)
 //! - Managing routines (`routines list`, `routines create`, `routines edit`, ...)
@@ -35,7 +34,6 @@ mod routines;
 mod service;
 mod skills;
 pub mod status;
-mod tool;
 
 pub use acp::{AcpCommand, run_acp_command};
 pub use channels::{ChannelsCommand, run_channels_command};
@@ -57,7 +55,6 @@ pub use routines::{RoutinesCommand, run_routines_command};
 pub use service::{ServiceCommand, run_service_command};
 pub use skills::{SkillsCommand, run_skills_command};
 pub use status::run_status_command;
-pub use tool::{ToolCommand, run_tool_command};
 
 use std::sync::Arc;
 
@@ -202,14 +199,6 @@ pub enum Command {
            brassclaw config path              # Show where settings are stored"
     )]
     Config(ConfigCommand),
-
-    /// Manage WASM tools
-    #[command(
-        subcommand,
-        about = "Manage WASM tools",
-        long_about = "Install, list, or remove WASM-based tools.\nExample: brassclaw tool install mytool.wasm"
-    )]
-    Tool(ToolCommand),
 
     /// Browse and install extensions from the registry
     #[command(

@@ -283,13 +283,12 @@ impl RegistryInstaller {
             source_dir.display()
         );
         let crate_name = &source.crate_name;
-        let wasm_path =
-            crate::registry::artifacts::build_wasm_component(&source_dir, crate_name, true)
-                .await
-                .map_err(|e| RegistryError::ManifestRead {
-                    path: source_dir.clone(),
-                    reason: format!("build failed: {}", e),
-                })?;
+        let wasm_path = build_wasm_component(&source_dir, crate_name, true)
+            .await
+            .map_err(|e| RegistryError::ManifestRead {
+                path: source_dir.clone(),
+                reason: format!("build failed: {}", e),
+            })?;
 
         // Copy WASM binary
         println!("  Installing to {}", target_wasm.display());
@@ -789,6 +788,117 @@ fn extract_tar_gz(
     Ok(ExtractResult {
         has_capabilities: found_caps,
     })
+}
+
+/// WASM target triples to search, in priority order.
+const WASM_TRIPLES: &[&str] = &[
+    "wasm32-wasip1",
+    "wasm32-wasip2",
+    "wasm32-wasi",
+    "wasm32-unknown-unknown",
+];
+
+/// Resolve the cargo target directory for a crate.
+fn resolve_target_dir(crate_dir: &Path) -> PathBuf {
+    if let Ok(dir) = std::env::var("CARGO_TARGET_DIR") {
+        let p = PathBuf::from(dir);
+        if p.is_relative() {
+            return crate_dir.join(p);
+        }
+        return p;
+    }
+    crate_dir.join("target")
+}
+
+/// Find a compiled WASM artifact by searching across all target triples.
+fn find_wasm_artifact(crate_dir: &Path, crate_name: &str, profile: &str) -> Option<PathBuf> {
+    let target_base = resolve_target_dir(crate_dir);
+    let snake_name = crate_name.replace('-', "_");
+
+    for triple in WASM_TRIPLES {
+        let dir = target_base.join(triple).join(profile);
+        let candidates = [
+            dir.join(format!("{}.wasm", crate_name)),
+            dir.join(format!("{}.wasm", snake_name)),
+        ];
+        for candidate in &candidates {
+            if candidate.exists() {
+                return Some(candidate.clone());
+            }
+        }
+    }
+
+    None
+}
+
+/// Find any `.wasm` file in the target dirs (fallback when crate name is unknown).
+fn find_any_wasm_artifact(crate_dir: &Path, profile: &str) -> Option<PathBuf> {
+    let target_base = resolve_target_dir(crate_dir);
+
+    for triple in WASM_TRIPLES {
+        let dir = target_base.join(triple).join(profile);
+        if !dir.is_dir() {
+            continue;
+        }
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().map(|ext| ext == "wasm").unwrap_or(false) {
+                    return Some(path);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Build a WASM component using `cargo-component` (async).
+async fn build_wasm_component(
+    source_dir: &Path,
+    crate_name: &str,
+    release: bool,
+) -> anyhow::Result<PathBuf> {
+    use tokio::process::Command;
+
+    let check = Command::new("cargo")
+        .args(["component", "--version"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await;
+
+    if check.is_err() || !check.as_ref().map(|s| s.success()).unwrap_or(false) {
+        anyhow::bail!("cargo-component not found. Install with: cargo install cargo-component");
+    }
+
+    let mut cmd = Command::new("cargo");
+    cmd.current_dir(source_dir).args(["component", "build"]);
+
+    if release {
+        cmd.arg("--release");
+    }
+
+    let status = cmd.status().await?;
+
+    if !status.success() {
+        anyhow::bail!("Build failed (exit code: {})", status);
+    }
+
+    let profile = if release { "release" } else { "debug" };
+    let wasm_filename = format!("{}.wasm", crate_name.replace('-', "_"));
+
+    find_wasm_artifact(source_dir, wasm_filename.trim_end_matches(".wasm"), profile)
+        .or_else(|| find_wasm_artifact(source_dir, crate_name, profile))
+        .or_else(|| find_any_wasm_artifact(source_dir, profile))
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Could not find {} in {}/target/*/{}/ after build",
+                wasm_filename,
+                source_dir.display(),
+                profile,
+            )
+        })
 }
 
 #[cfg(test)]

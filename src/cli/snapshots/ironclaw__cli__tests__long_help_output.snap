@@ -24,7 +24,6 @@ Commands:
   run         Run the AI agent
   onboard     Run interactive setup wizard (start here if new to BrassClaw)
   config      Manage app configuration settings
-  tool        Manage WASM tools
   registry    Browse/install extensions
   channels    Manage channels
   routines    Manage routines

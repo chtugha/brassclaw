@@ -11,7 +11,6 @@
 //! └── _bundles.json   <- Bundle definitions (google, messaging, default)
 //! ```
 
-pub mod artifacts;
 pub mod catalog;
 pub mod embedded;
 pub mod installer;
