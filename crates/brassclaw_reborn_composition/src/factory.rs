@@ -680,7 +680,7 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
         extension_registry: Arc::clone(&extension_registry),
         #[cfg(feature = "libsql")]
         identity_substrate_db,
-    })?;
+    }).await?;
 
     let turn_coordinator: Arc<dyn brassclaw_turns::TurnCoordinator> = Arc::new(
         DefaultTurnCoordinator::new(Arc::clone(&store_graph.turn_state)),
@@ -907,7 +907,7 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
 }
 
 #[cfg(feature = "libsql")]
-fn build_local_dev_store_graph(
+async fn build_local_dev_store_graph(
     input: RebornLocalDevStoreGraphInput,
 ) -> Result<RebornLocalDevStoreGraph, RebornBuildError> {
     let RebornLocalDevStoreGraphInput {
@@ -969,11 +969,15 @@ fn build_local_dev_store_graph(
     let skill_management =
         build_local_skill_management_port(owner_user_id, Arc::clone(&filesystem))?;
     
-    // Create the safety configuration store using the identity_substrate_db
+    // Create the safety configuration store, ensuring the tables exist.
     let safety_config_store = Arc::new(
-        brassclaw_product_workflow::SqliteSafetyConfigStore::new(
+        brassclaw_product_workflow::SqliteSafetyConfigStore::open(
             Arc::clone(&identity_substrate_db)
         )
+        .await
+        .map_err(|error| RebornBuildError::InvalidConfig {
+            reason: format!("SafetyConfigStore schema migration failed: {error}"),
+        })?,
     );
     tracing::info!("✅ SafetyConfigStore created successfully in build_local_dev_store_graph");
     
@@ -1032,7 +1036,7 @@ fn build_local_dev_store_graph(
 }
 
 #[cfg(not(feature = "libsql"))]
-fn build_local_dev_store_graph(
+async fn build_local_dev_store_graph(
     input: RebornLocalDevStoreGraphInput,
 ) -> Result<RebornLocalDevStoreGraph, RebornBuildError> {
     let RebornLocalDevStoreGraphInput {

@@ -62,11 +62,54 @@ pub struct SqliteSafetyConfigStore {
 }
 
 impl SqliteSafetyConfigStore {
+    /// Open the store and ensure the required tables exist.
+    /// Use this instead of `new()` in production so the first request
+    /// does not fail with "no such table".
+    pub async fn open(db: Arc<Database>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let store = Self::new(db);
+        store.ensure_tables().await?;
+        Ok(store)
+    }
+
     pub fn new(db: Arc<Database>) -> Self {
         Self {
             db,
             write_lock: Arc::new(Mutex::new(())),
         }
+    }
+
+    async fn ensure_tables(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let conn = self.connect().await?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS safety_config (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                category TEXT NOT NULL,
+                pattern TEXT NOT NULL,
+                is_enabled BOOLEAN NOT NULL DEFAULT 1,
+                is_default BOOLEAN NOT NULL DEFAULT 0,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, category, pattern)
+            );
+            CREATE INDEX IF NOT EXISTS idx_safety_config_user_category
+                ON safety_config(user_id, category);
+            CREATE INDEX IF NOT EXISTS idx_safety_config_enabled
+                ON safety_config(is_enabled);
+            CREATE TABLE IF NOT EXISTS capability_permissions (
+                tenant_id TEXT NOT NULL,
+                capability_id TEXT NOT NULL,
+                permission_mode TEXT NOT NULL CHECK (permission_mode IN ('allow', 'ask', 'deny')),
+                updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                PRIMARY KEY (tenant_id, capability_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_capability_permissions_tenant
+                ON capability_permissions(tenant_id);
+            CREATE INDEX IF NOT EXISTS idx_capability_permissions_capability
+                ON capability_permissions(capability_id);",
+        )
+        .await?;
+        Ok(())
     }
 
     /// Get default patterns for each category.
