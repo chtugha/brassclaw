@@ -565,22 +565,12 @@ impl AppBuilder {
             }
 
             let ws = Arc::new(ws);
-            // V1 - WorkspacePool deleted with channels::web
-            // let pool: Arc<dyn crate::capabilities::memory::WorkspaceResolver> =
-            //     Arc::new(crate::channels::web::platform::state::WorkspacePool::new(
-            //         Arc::clone(db),
-            //         embeddings.clone(),
-            //         emb_cache_config,
-            //         self.config.search.clone(),
-            //         self.config.workspace.clone(),
-            //     ));
-            
             tracing::debug!(
                 multi_tenant = is_multi_tenant,
                 "Workspace configured for V2 capability system"
             );
 
-            (Some(ws), None) // V1 - pool disabled
+            (Some(ws), None)
         } else {
             (None, None)
         };
@@ -630,21 +620,28 @@ impl AppBuilder {
             }
         }
 
-        // V1 - ExtensionManager::new_stub deleted - comment out for now
-        let extension_manager: Option<Arc<ExtensionManager>> = None;
-        // let extension_manager = if let Some(ref secrets) = self.secrets_store {
-        //     let em = ExtensionManager::new_stub(
-        //         Arc::clone(secrets),
-        //         self.config.owner_id.clone(),
-        //         self.db.clone(),
-        //         catalog_entries.clone(),
-        //     );
-        //     Some(Arc::new(em))
-        // } else {
-        //     None
-        // };
+        let extension_manager: Option<Arc<ExtensionManager>> =
+            if let Some(ref secrets) = self.secrets_store {
+                let registry = Arc::new(
+                    crate::extensions::ExtensionRegistry::new_with_catalog(catalog_entries.clone()),
+                );
+                let discovery = Arc::new(crate::extensions::OnlineDiscovery::new());
+                let pairing = Arc::new(crate::pairing::PairingStore::new_noop());
+                let channel_manager = Arc::new(crate::channels::ChannelManager::new());
+                let em = ExtensionManager::new(
+                    registry,
+                    discovery,
+                    Arc::clone(secrets) as Arc<dyn crate::secrets::SecretsStore>,
+                    Arc::clone(_hooks),
+                    pairing,
+                    channel_manager,
+                );
+                Some(Arc::new(em))
+            } else {
+                None
+            };
 
-        tracing::debug!("Extension manager stub initialized for V2 capability system");
+        tracing::debug!("Extension manager initialized");
 
 
         Ok((
@@ -693,21 +690,21 @@ impl AppBuilder {
         // Create hook registry early so runtime extension activation can register hooks.
         let hooks = Arc::new(HookRegistry::new());
 
-        // V1 - DISABLED: Register session summary hook (writes conversation summary on session end).
-        // Commented out due to WorkspaceResolver trait mismatch between capabilities::memory and hooks::session_summary
-        // if let (Some(db), Some(ws_resolver)) = (&self.db, &workspace_resolver) {
-        //     let summary_llm = cheap_llm
-        //         .as_ref()
-        //         .map(Arc::clone)
-        //         .unwrap_or_else(|| Arc::clone(&llm));
-        //     hooks
-        //         .register(Arc::new(crate::hooks::SessionSummaryHook::new(
-        //             Arc::clone(db) as Arc<dyn crate::db::ConversationStore>,
-        //             Arc::clone(ws_resolver) as Arc<dyn crate::hooks::session_summary::WorkspaceResolver>,
-        //             summary_llm,
-        //         )))
-        //         .await;
-        // }
+        if let (Some(db), Some(ws)) = (&self.db, &workspace) {
+            let summary_llm = cheap_llm
+                .as_ref()
+                .map(Arc::clone)
+                .unwrap_or_else(|| Arc::clone(&llm));
+            let resolver: Arc<dyn crate::capabilities::memory::WorkspaceResolver> =
+                Arc::new(crate::capabilities::memory::FixedWorkspaceResolver::new(Arc::clone(ws)));
+            hooks
+                .register(Arc::new(crate::hooks::SessionSummaryHook::new(
+                    Arc::clone(db) as Arc<dyn crate::db::ConversationStore>,
+                    resolver,
+                    summary_llm,
+                )))
+                .await;
+        }
 
         let agent_session_manager =
             Arc::new(AgentSessionManager::new().with_hooks(Arc::clone(&hooks)));
@@ -826,21 +823,10 @@ impl AppBuilder {
                 tracing::debug!("Loaded {} skill(s): {}", loaded.len(), loaded.join(", "));
             }
 
-            // TODO: V1 credential registry removed - skill credential registration needs V2 reimplementation
-            // crate::skills::register_skill_credentials(registry.skills(), &credential_registry);
-            // V1 - persist_skill_auth_descriptors deleted
-            // if let Some(db) = self.db.as_ref() {
-            //     crate::skills::persist_skill_auth_descriptors(
-            //         registry.skills(),
-            //         Some(db.as_ref()),
-            //         &self.config.owner_id,
-            //     )
-            //     .await;
-            // }
+            crate::skills::register_skill_credentials(registry.skills());
 
             let registry = Arc::new(std::sync::RwLock::new(registry));
             let catalog = brassclaw_skills::catalog::shared_catalog();
-            // TODO: V1 tools.register_skill_tools removed - needs V2 reimplementation
             (Some(registry), Some(catalog))
         } else {
             (None, None)
