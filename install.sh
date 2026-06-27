@@ -58,8 +58,8 @@ detect_artifact() {
         Darwin/arm64)       echo "brassclaw-macos-arm64" ;;
         Darwin/x86_64)      echo "brassclaw-macos-amd64" ;;
         *)
-            log_error "Unsupported platform: $os/$arch"
-            log_info  "Build from source: cargo build --release --bin brassclaw"
+            log_error "Unsupported platform: $os/$arch" >&2
+            log_info  "Build from source: cargo build --release --bin brassclaw" >&2
             exit 1 ;;
     esac
 }
@@ -70,12 +70,12 @@ resolve_version() {
         echo "$PINNED_VERSION"
         return
     fi
-    log_step "Fetching latest release version from GitHub..."
+    log_step "Fetching latest release version from GitHub..." >&2
     local latest
     latest=$(curl -fsSL "https://api.github.com/repos/$GITHUB_REPO/releases/latest" \
         | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"v\([^"]*\)".*/\1/')
     if [[ -z "$latest" ]]; then
-        log_error "Could not determine latest version. Use -v to pin a version."
+        log_error "Could not determine latest version. Use -v to pin a version." >&2
         exit 1
     fi
     echo "$latest"

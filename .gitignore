@@ -46,7 +46,7 @@ artifacts/
 
 # WASM build artifacts (loaded from disk, not bundled)
 *.wasm
-!crates/ironclaw_first_party_extensions/assets/*/wasm/*.wasm
+!crates/brassclaw_first_party_extensions/assets/*/wasm/*.wasm
 
 # Traces
 trace_*.json
