@@ -611,20 +611,19 @@ jobs:
           retention-days: 7
 
   provider-matrix:
+    # e2e_live / e2e_live_mission were v1 test targets removed during the
+    # v1→reborn migration. Disabled until reborn live tests are written.
     name: Provider Matrix (${{ matrix.provider }})
-    if: >
-      (github.event_name == 'schedule' && github.event.schedule == '0 */6 * * *') ||
-      (github.event_name == 'workflow_dispatch' && (inputs.lane == 'all' || inputs.lane == 'provider-matrix'))
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        # e2e_live / e2e_live_mission were v1 test targets removed during the
-        # v1→reborn migration. The matrix is intentionally empty until reborn
-        # live tests are written. The job still exists so workflow_dispatch
-        # with lane=provider-matrix doesn't fail with "no matrix entries".
-        include: []
+        include:
+          - provider: placeholder
+            test_target: placeholder
+            scenario: placeholder
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
