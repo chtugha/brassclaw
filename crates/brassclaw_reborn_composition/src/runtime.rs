@@ -566,7 +566,6 @@ fn approval_turn_locator_unavailable() -> brassclaw_product_workflow::ProductWor
 /// into the filesystem-backed store so an existing SSO user keeps their
 /// `UserId` across upgrade. Idempotent (bind re-points to the same user) and
 /// a no-op when the legacy table is absent (fresh installs).
-
 async fn fold_legacy_webui_identities<R>(
     db: &libsql::Database,
     tenant_id: &TenantId,
@@ -782,7 +781,6 @@ impl RebornRuntime {
     /// Returns `None` when the runtime was built without a local-runtime
     /// substrate (production-shape profiles not yet wired), so callers fail
     /// closed.
-
     pub async fn open_reborn_identity_resolver(
         &self,
         tenant_id: &TenantId,
