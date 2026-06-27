@@ -30,4 +30,21 @@ pub fn run() -> anyhow::Result<()> {
     cli::run()
 }
 
+/// Run the `serve` subcommand directly, bypassing argv.
+///
+/// Called from the main `brassclaw` binary when legacy flags like
+/// `--no-onboard` are detected with no recognised reborn subcommand, so
+/// the gateway E2E tests keep working after the v1→v2 migration.
+pub fn run_serve() -> anyhow::Result<()> {
+    if let Err(error) = dotenvy::dotenv()
+        && !error.not_found()
+    {
+        eprintln!("warning: failed to load .env: {error}");
+    }
+    // Parse with a synthetic argv of ["brassclaw", "serve"] so clap
+    // constructs a default ServeCommand with no extra flags.
+    use clap::Parser as _;
+    cli::Cli::parse_from(["brassclaw", "serve"]).command.execute()
+}
+
 // Made with Bob

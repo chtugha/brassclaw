@@ -12,6 +12,23 @@
 
 use std::process;
 
+/// Known reborn subcommands. When the first arg is one of these, pass
+/// straight through to the reborn CLI without any compat translation.
+const REBORN_SUBCOMMANDS: &[&str] = &[
+    "serve", "run", "onboard", "config", "registry", "channels", "routines", "mcp", "memory",
+    "pairing", "profile", "service", "skills", "hooks", "models", "doctor", "logs", "status",
+    "completion", "import", "login", "acp", "help", "--help", "-h", "--version", "-V",
+];
+
+/// Legacy top-level flags that the v1 binary accepted when running as a server.
+/// Strip these when translating a bare invocation into `brassclaw serve`.
+const LEGACY_SERVER_FLAGS: &[&str] = &[
+    "--no-onboard",
+    "--cli-only",
+    "--no-db",
+    "--auto-approve",
+];
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -24,6 +41,32 @@ fn main() {
             .expect("failed to build tokio runtime for status command")
             .block_on(brassclaw::cli::run_status_command());
         match result {
+            Ok(()) => process::exit(0),
+            Err(e) => {
+                eprintln!("Error: {:#}", e);
+                process::exit(1);
+            }
+        }
+    }
+
+    // Compat shim: translate a bare `brassclaw --no-onboard` (or similar
+    // legacy top-level flags with no subcommand) into `brassclaw serve`.
+    // This preserves E2E test fixtures that were written against the v1
+    // binary interface where the gateway started by default.
+    let first_non_flag = args[1..]
+        .iter()
+        .find(|a| !a.starts_with('-'));
+    let is_reborn_subcommand = first_non_flag
+        .map(|a| REBORN_SUBCOMMANDS.contains(&a.as_str()))
+        .unwrap_or(false);
+    let has_legacy_server_flags = args[1..]
+        .iter()
+        .any(|a| LEGACY_SERVER_FLAGS.contains(&a.as_str()));
+
+    if !is_reborn_subcommand && has_legacy_server_flags {
+        // Legacy invocation like `brassclaw --no-onboard`: delegate directly
+        // to the reborn serve path without any argv rewriting.
+        match brassclaw_reborn_cli::run_serve() {
             Ok(()) => process::exit(0),
             Err(e) => {
                 eprintln!("Error: {:#}", e);
@@ -45,3 +88,4 @@ fn main() {
         }
     }
 }
+
