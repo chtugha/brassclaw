@@ -61,9 +61,13 @@ jobs:
             --test-runner nextest \
             --no-default-features \
             --features "libsql,replay" \
-            --test e2e_engine_v2 \
-            --test e2e_recorded_trace \
-            --test e2e_live
+            --test reborn_trace_core_builtin_tools_parity \
+            --test reborn_recorded_trace_parity \
+            --test reborn_trace_error_path_parity \
+            --test reborn_trace_file_tools_parity \
+            --test reborn_trace_coding_read_tools_parity \
+            --test reborn_trace_first_party_tool_coverage \
+            --test reborn_trace_wasm_github_fixture_parity
 
       - name: Report trace coverage
         run: ./scripts/trace-coverage.sh

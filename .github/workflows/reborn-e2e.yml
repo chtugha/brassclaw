@@ -95,7 +95,7 @@ jobs:
           key: reborn-e2e-gateway-smoke
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
-      - name: Build ironclaw with libSQL
+      - name: Build brassclaw with libSQL
         run: cargo build --no-default-features --features libsql
 
       - name: Install Python

@@ -27,6 +27,11 @@ ignore = [
     # so the TRUNCATE bypass is not reachable from our guest surface. Remove once
     # wasmtime is upgraded to a patched release.
     "RUSTSEC-2026-0149",
+    # wasmtime-wasi: Leak in WASIp1 fd_renumber implementation
+    # (https://github.com/bytecodealliance/wasmtime/security/advisories/GHSA-3p27-qvp9-27qf).
+    # BrassClaw WASM guests do not use fd_renumber; the leak path is not reachable
+    # from our guest surface. Remove once wasmtime is upgraded to >=44.0.3.
+    "RUSTSEC-2026-0182",
 ]
 
 [licenses]

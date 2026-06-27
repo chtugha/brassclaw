@@ -13,6 +13,13 @@ publish = false
 [features]
 default = []
 root-llm-provider = ["dep:brassclaw_llm"]
+# Convenience alias used by workspace-wide `--features libsql` invocations
+# (e.g. `cargo clippy --all --features libsql`).  Routes to the concrete
+# feature gates that actually enable the libSQL code paths.
+libsql = [
+    "libsql-secrets",
+    "webui-user-store",
+]
 libsql-secrets = [
     "dep:brassclaw_secrets",
     "dep:libsql",

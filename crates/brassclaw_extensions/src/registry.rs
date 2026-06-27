@@ -220,6 +220,25 @@ impl ExtensionRegistry {
     }
 }
 
+impl brassclaw_host_api::CapabilityRegistry for ExtensionRegistry {
+    fn capabilities(
+        &self,
+    ) -> Box<dyn Iterator<Item = &brassclaw_host_api::CapabilityDescriptor> + '_> {
+        Box::new(
+            self.capability_order
+                .iter()
+                .filter_map(|id| self.capabilities.get(id)),
+        )
+    }
+
+    fn get_capability(
+        &self,
+        id: &brassclaw_host_api::CapabilityId,
+    ) -> Option<&brassclaw_host_api::CapabilityDescriptor> {
+        self.capabilities.get(id)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SharedExtensionRegistry {
     inner: Arc<RwLock<Arc<ExtensionRegistry>>>,

@@ -1,4 +1,3 @@
-use chrono::Utc;
 use brassclaw_extensions::{
     ExtensionActivationState, ExtensionHealthMessage, ExtensionHealthSnapshot,
     ExtensionHealthStatus, ExtensionInstallation, ExtensionInstallationError,
@@ -7,6 +6,7 @@ use brassclaw_extensions::{
     ManifestHash, ManifestSource, ManifestV2Error,
 };
 use brassclaw_host_api::{ExtensionId, HostPortCatalog};
+use chrono::Utc;
 
 fn extension_id(value: &str) -> ExtensionId {
     ExtensionId::new(value).unwrap()

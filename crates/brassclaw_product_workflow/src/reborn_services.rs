@@ -850,7 +850,7 @@ pub struct RebornServices {
     skill_activation_clearer: Option<Arc<SkillActivationClearer>>,
     llm_config: Option<Arc<dyn LlmConfigService>>,
     thread_operation_locks: Arc<ThreadOperationLocks>,
-    extension_registry: Option<Arc<brassclaw_extensions::ExtensionRegistry>>,
+    extension_registry: Option<Arc<dyn brassclaw_host_api::CapabilityRegistry>>,
     capability_permission_store: Option<Arc<dyn CapabilityPermissionStore>>,
     safety_config_store: Option<Arc<crate::safety_config_store::SqliteSafetyConfigStore>>,
 }
@@ -987,7 +987,7 @@ impl RebornServices {
     /// Attach the extension registry for listing available capabilities.
     pub fn with_extension_registry(
         mut self,
-        extension_registry: Arc<brassclaw_extensions::ExtensionRegistry>,
+        extension_registry: Arc<dyn brassclaw_host_api::CapabilityRegistry>,
     ) -> Self {
         self.extension_registry = Some(extension_registry);
         self

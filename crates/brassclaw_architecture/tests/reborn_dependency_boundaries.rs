@@ -944,12 +944,12 @@ fn wasm_product_adapter_crate_keeps_minimal_host_glue_dependencies() {
     // updating both the wasm crate's CLAUDE.md and this expected set.
     let expected = vec![
         "async-trait",
+        "brassclaw_product_adapters",
+        "brassclaw_wasm_sandbox_core",
         "chrono",
         "hex",
         "hmac",
         "http",
-        "brassclaw_product_adapters",
-        "brassclaw_wasm_sandbox_core",
         "serde_json",
         "sha2",
         "subtle",

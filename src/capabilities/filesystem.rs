@@ -1376,6 +1376,11 @@ mod tests {
 
     #[tokio::test]
     async fn execute_grep_happy_path() {
+        // Skip when ripgrep is not installed (CI environments without rg).
+        if std::process::Command::new("rg").arg("--version").output().is_err() {
+            return;
+        }
+
         let dir = tempfile::tempdir().unwrap();
         tokio::fs::write(dir.path().join("a.txt"), "hello world\nfoo bar\nhello again\n")
             .await

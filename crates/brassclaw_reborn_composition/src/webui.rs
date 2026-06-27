@@ -162,7 +162,7 @@ pub(crate) fn build_webui_services_with_connectable_channels(
     // Wire the extension registry and capability permission store for Tools API
     if let Some(local_runtime) = &services.local_runtime {
         tracing::info!("✅ Wiring ExtensionRegistry into WebUI API");
-        api = api.with_extension_registry(Arc::clone(&local_runtime.extension_registry));
+        api = api.with_extension_registry(Arc::clone(&local_runtime.extension_registry) as Arc<dyn brassclaw_host_api::CapabilityRegistry>);
         
         // Wire capability permission store when available (local-dev with libsql)
         #[cfg(feature = "libsql")]

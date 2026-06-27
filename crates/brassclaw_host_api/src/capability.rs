@@ -131,3 +131,17 @@ pub struct GrantConstraints {
     pub expires_at: Option<Timestamp>,
     pub max_invocations: Option<u64>,
 }
+
+/// Lookup interface for a registry of available capability descriptors.
+///
+/// Defined here (in `brassclaw_host_api`) so that higher-level product crates
+/// such as `brassclaw_product_workflow` can accept a registry without
+/// depending directly on `brassclaw_extensions`.  `ExtensionRegistry` in
+/// `brassclaw_extensions` implements this trait.
+pub trait CapabilityRegistry: Send + Sync {
+    /// Iterate over all registered capability descriptors.
+    fn capabilities(&self) -> Box<dyn Iterator<Item = &CapabilityDescriptor> + '_>;
+
+    /// Look up a single capability by its ID.
+    fn get_capability(&self, id: &CapabilityId) -> Option<&CapabilityDescriptor>;
+}

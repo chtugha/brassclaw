@@ -1644,7 +1644,8 @@ mod tests {
 
     fn product_auth_source() -> RuntimeCredentialRequirementSource {
         RuntimeCredentialRequirementSource::ProductAuthAccount {
-            provider: brassclaw_host_api::RuntimeCredentialAccountProviderId::new("google").unwrap(),
+            provider: brassclaw_host_api::RuntimeCredentialAccountProviderId::new("google")
+                .unwrap(),
             setup: brassclaw_host_api::RuntimeCredentialAccountSetup::ManualToken,
         }
     }

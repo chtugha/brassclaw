@@ -71,3 +71,7 @@ brassclaw_reborn_composition = { path = "../brassclaw_reborn_composition", versi
 [lib]
 name = "brassclaw_reborn_cli"
 path = "src/lib.rs"
+
+[[bin]]
+name = "brassclaw-reborn"
+path = "src/main.rs"
