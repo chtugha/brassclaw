@@ -41,7 +41,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(disabled)'] }
 
 [package]
 name = "brassclaw"
-version = "0.30.5"
+version = "0.30.6"
 edition = "2024"
 rust-version = "1.92"
 description = "Secure personal AI assistant that protects your data and expands its capabilities on the fly"
