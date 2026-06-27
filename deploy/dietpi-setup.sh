@@ -4,10 +4,9 @@ set -euo pipefail
 BRASSCLAW_DIR="/opt/brassclaw"
 BRASSCLAW_REPO="https://github.com/chtugha/brassclaw.git"
 VLLM_MODEL="Qwen/Qwen2.5-7B-Instruct-AWQ"
-export VLLM_HOST="${VLLM_HOST}"
-export VLLM_PORT="${VLLM_PORT}"
-#VLLM_HOST="${VLLM_HOST:-localhost}"
-#VLLM_PORT="${VLLM_PORT:-8000}"
+VLLM_HOST="${VLLM_HOST:-localhost}"
+VLLM_PORT="${VLLM_PORT:-8000}"
+export VLLM_HOST VLLM_PORT
 
 echo "=== BrassClaw DietPi Setup ==="
 echo "This script sets up BrassClaw on a DietPi system."
@@ -63,11 +62,13 @@ echo "  Done."
 
 
 echo "[6/7] Cloning and building BrassClaw..."
-#cd /opt
-#rm -rf "$BRASSCLAW_DIR"
-#git clone "$BRASSCLAW_REPO" "$BRASSCLAW_DIR"
-cd "$BRASSCLAW_DIR"
-git pull
+if [[ -d "$BRASSCLAW_DIR/.git" ]]; then
+    cd "$BRASSCLAW_DIR"
+    git pull
+else
+    git clone "$BRASSCLAW_REPO" "$BRASSCLAW_DIR"
+    cd "$BRASSCLAW_DIR"
+fi
 cargo install --list | grep -q '^sccache ' || cargo install sccache
 export RUSTC_WRAPPER=sccache
 export CC=clang

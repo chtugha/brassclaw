@@ -1,19 +1,35 @@
 #!/usr/bin/env bash
+# BrassClaw install script.
+# Downloads the latest (or pinned) release binary from GitHub and installs it.
+# Works on Linux (amd64, arm64) and macOS (arm64, amd64).
+# Run as root for a system install with a systemd service; run as a normal user
+# for a user-local install without a service.
+#
+# Usage:
+#   bash install.sh               # latest release, auto-detect arch
+#   bash install.sh -v 0.30.6    # pin to a specific version
+#   sudo bash install.sh          # system install + systemd service
+
 set -euo pipefail
 
-# BrassClaw Reborn Installation Script
-# Supports both fresh installation and updates
-# Works with or without root privileges
-# Systemd service is optional (only with root)
-
-VERSION="0.30.2"
+# ── configurable ──────────────────────────────────────────────────────────────
 GITHUB_REPO="chtugha/brassclaw"
 BINARY_NAME="brassclaw"
-CONFIG_DIR="$HOME/.brassclaw/reborn"
+CONFIG_DIR="${BRASSCLAW_REBORN_HOME:-$HOME/.brassclaw/reborn}"
 SERVICE_NAME="brassclaw"
 SYSTEMD_DIR="/etc/systemd/system"
+# ─────────────────────────────────────────────────────────────────────────────
 
-# Determine install directory based on privileges
+# ── parse flags ──────────────────────────────────────────────────────────────
+PINNED_VERSION=""
+while getopts "v:" opt; do
+    case $opt in
+        v) PINNED_VERSION="$OPTARG" ;;
+        *) echo "Usage: $0 [-v version]"; exit 1 ;;
+    esac
+done
+
+# ── privilege / install mode ──────────────────────────────────────────────────
 if [[ $EUID -eq 0 ]]; then
     INSTALL_DIR="/usr/local/bin"
     INSTALL_MODE="system"
@@ -22,337 +38,229 @@ else
     INSTALL_MODE="user"
 fi
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# ── colours ───────────────────────────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+BLUE='\033[0;34m'; NC='\033[0m'
 
-# Helper functions
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
+log_info()  { echo -e "${GREEN}[INFO]${NC}  $*"; }
+log_warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
+log_step()  { echo -e "${BLUE}[STEP]${NC}  $*"; }
+
+# ── detect platform ───────────────────────────────────────────────────────────
+detect_artifact() {
+    local os arch
+    os="$(uname -s)"
+    arch="$(uname -m)"
+    case "$os/$arch" in
+        Linux/x86_64)       echo "brassclaw-linux-amd64" ;;
+        Linux/aarch64)      echo "brassclaw-linux-arm64" ;;
+        Darwin/arm64)       echo "brassclaw-macos-arm64" ;;
+        Darwin/x86_64)      echo "brassclaw-macos-amd64" ;;
+        *)
+            log_error "Unsupported platform: $os/$arch"
+            log_info  "Build from source: cargo build --release --bin brassclaw"
+            exit 1 ;;
+    esac
 }
 
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-log_step() {
-    echo -e "${BLUE}[STEP]${NC} $1"
-}
-
-# Detect if this is an update
-is_update() {
-    if [[ -f "$INSTALL_DIR/$BINARY_NAME" ]]; then
-        return 0
-    else
-        return 1
+# ── resolve version ───────────────────────────────────────────────────────────
+resolve_version() {
+    if [[ -n "$PINNED_VERSION" ]]; then
+        echo "$PINNED_VERSION"
+        return
     fi
-}
-
-# Get installed version
-get_installed_version() {
-    if [[ -f "$INSTALL_DIR/$BINARY_NAME" ]]; then
-        "$INSTALL_DIR/$BINARY_NAME" --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' || echo "unknown"
-    else
-        echo "none"
-    fi
-}
-
-# Stop service if running (only for root)
-stop_service() {
-    if [[ $INSTALL_MODE == "system" ]] && systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
-        log_step "Stopping $SERVICE_NAME service..."
-        systemctl stop "$SERVICE_NAME"
-        log_info "Service stopped"
-    fi
-}
-
-# Backup existing binary
-backup_binary() {
-    if [[ -f "$INSTALL_DIR/$BINARY_NAME" ]]; then
-        local backup_file="$INSTALL_DIR/$BINARY_NAME.backup.$(date +%Y%m%d_%H%M%S)"
-        log_step "Backing up existing binary to $backup_file..."
-        cp "$INSTALL_DIR/$BINARY_NAME" "$backup_file"
-        log_info "Backup created"
-    fi
-}
-
-# Download binary from GitHub release
-download_binary() {
-    local download_url="https://github.com/$GITHUB_REPO/releases/download/v$VERSION/brassclaw-linux-amd64"
-    local checksum_url="https://github.com/$GITHUB_REPO/releases/download/v$VERSION/brassclaw-linux-amd64.sha256"
-    local temp_dir=$(mktemp -d)
-    local download_name="brassclaw-linux-amd64"
-    
-    log_step "Downloading brassclaw v$VERSION..."
-    log_info "Download URL: $download_url"
-    
-    if ! curl -L -f -o "$temp_dir/$download_name" "$download_url" 2>&1; then
-        log_error "Failed to download binary from $download_url"
-        log_info "Please check if the release exists at: https://github.com/$GITHUB_REPO/releases/tag/v$VERSION"
-        rm -rf "$temp_dir"
+    log_step "Fetching latest release version from GitHub..."
+    local latest
+    latest=$(curl -fsSL "https://api.github.com/repos/$GITHUB_REPO/releases/latest" \
+        | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"v\([^"]*\)".*/\1/')
+    if [[ -z "$latest" ]]; then
+        log_error "Could not determine latest version. Use -v to pin a version."
         exit 1
     fi
-    
-    log_info "Binary downloaded successfully"
-    
-    log_step "Downloading checksum..."
-    if ! curl -L -f -o "$temp_dir/$download_name.sha256" "$checksum_url" 2>&1; then
-        log_warn "Checksum file not available, skipping verification"
-    else
-        log_step "Verifying checksum..."
-        cd "$temp_dir"
-        if sha256sum -c "$download_name.sha256" >/dev/null 2>&1; then
-            log_info "Checksum verification passed"
-        else
-            log_error "Checksum verification failed"
-            cd - > /dev/null
-            rm -rf "$temp_dir"
-            exit 1
-        fi
-        cd - > /dev/null
-    fi
-    
-    # Create install directory if it doesn't exist (for user mode)
-    if [[ ! -d "$INSTALL_DIR" ]]; then
-        log_step "Creating installation directory at $INSTALL_DIR..."
-        mkdir -p "$INSTALL_DIR"
-        log_info "Installation directory created"
-    fi
-    
-    log_step "Installing binary to $INSTALL_DIR..."
-    chmod +x "$temp_dir/$download_name"
-    mv "$temp_dir/$download_name" "$INSTALL_DIR/$BINARY_NAME"
-    log_info "Binary installed successfully"
-    
-    rm -rf "$temp_dir"
+    echo "$latest"
 }
 
-# Create config directory if it doesn't exist
-create_config_dir() {
-    if [[ ! -d "$CONFIG_DIR" ]]; then
-        log_step "Creating configuration directory at $CONFIG_DIR..."
-        mkdir -p "$CONFIG_DIR"
-        log_info "Configuration directory created"
+# ── checksum tool ─────────────────────────────────────────────────────────────
+sha256_check() {
+    local file="$1" expected_file="$2"
+    if command -v sha256sum &>/dev/null; then
+        # expected_file contains "<hash>  <filename>" — rewrite filename to match
+        local hash
+        hash=$(awk '{print $1}' "$expected_file")
+        echo "$hash  $file" | sha256sum -c - >/dev/null
+    elif command -v shasum &>/dev/null; then
+        local hash
+        hash=$(awk '{print $1}' "$expected_file")
+        echo "$hash  $file" | shasum -a 256 -c - >/dev/null
     else
-        log_info "Configuration directory already exists (preserving existing data)"
-    fi
-}
-
-# Create systemd service file (only for root)
-create_systemd_service() {
-    if [[ $INSTALL_MODE != "system" ]]; then
+        log_warn "No sha256 tool found — skipping checksum verification."
         return 0
     fi
-    
-    log_step "Creating systemd service at $SYSTEMD_DIR/$SERVICE_NAME.service..."
-    
-    # Determine the user to run the service as
-    local service_user="${SUDO_USER:-$USER}"
-    local service_group="${SUDO_USER:-$USER}"
-    
+}
+
+# ── download ──────────────────────────────────────────────────────────────────
+download_binary() {
+    local version="$1" artifact="$2"
+    local base_url="https://github.com/$GITHUB_REPO/releases/download/v$version"
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    # shellcheck disable=SC2064
+    trap "rm -rf $tmp_dir" EXIT
+
+    log_step "Downloading $artifact v$version..."
+    if ! curl -fsSL -o "$tmp_dir/$artifact" "$base_url/$artifact"; then
+        log_error "Download failed: $base_url/$artifact"
+        log_info  "Check releases at: https://github.com/$GITHUB_REPO/releases/tag/v$version"
+        exit 1
+    fi
+
+    if curl -fsSL -o "$tmp_dir/$artifact.sha256" "$base_url/$artifact.sha256" 2>/dev/null; then
+        log_step "Verifying checksum..."
+        if sha256_check "$tmp_dir/$artifact" "$tmp_dir/$artifact.sha256"; then
+            log_info "Checksum OK"
+        else
+            log_error "Checksum mismatch — aborting."
+            exit 1
+        fi
+    else
+        log_warn "No checksum file available for this release — skipping verification."
+    fi
+
+    mkdir -p "$INSTALL_DIR"
+    chmod +x "$tmp_dir/$artifact"
+
+    # Backup existing binary with a single .bak file (not timestamped accumulation)
+    if [[ -f "$INSTALL_DIR/$BINARY_NAME" ]]; then
+        log_step "Backing up existing binary to $INSTALL_DIR/$BINARY_NAME.bak"
+        cp "$INSTALL_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME.bak"
+    fi
+
+    mv "$tmp_dir/$artifact" "$INSTALL_DIR/$BINARY_NAME"
+    log_info "Installed to $INSTALL_DIR/$BINARY_NAME"
+    trap - EXIT
+    rm -rf "$tmp_dir"
+}
+
+# ── config dir ────────────────────────────────────────────────────────────────
+create_config_dir() {
+    if [[ ! -d "$CONFIG_DIR" ]]; then
+        log_step "Creating config directory: $CONFIG_DIR"
+        mkdir -p "$CONFIG_DIR"
+    else
+        log_info "Config directory already exists: $CONFIG_DIR"
+    fi
+}
+
+# ── systemd service ───────────────────────────────────────────────────────────
+create_systemd_service() {
+    [[ $INSTALL_MODE != "system" ]] && return 0
+    command -v systemctl &>/dev/null || { log_warn "systemctl not found — skipping service install."; return 0; }
+
+    local service_user="${SUDO_USER:-root}"
+    local home_dir
+    home_dir=$(eval echo "~$service_user")
+    local reborn_home="${home_dir}/.brassclaw/reborn"
+    local webui_token
+    webui_token=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 40)
+
+    log_step "Writing $SYSTEMD_DIR/$SERVICE_NAME.service"
     cat > "$SYSTEMD_DIR/$SERVICE_NAME.service" <<EOF
 [Unit]
-Description=BrassClaw Reborn AI Agent
-Documentation=https://github.com/chtugha/brassclaw
-After=network.target network-online.target
+Description=BrassClaw AI Agent
+Documentation=https://github.com/$GITHUB_REPO
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=$service_user
-Group=$service_group
-WorkingDirectory=$CONFIG_DIR
-ExecStart=$INSTALL_DIR/$BINARY_NAME serve --host 0.0.0.0
+WorkingDirectory=$reborn_home
+Environment=BRASSCLAW_REBORN_HOME=$reborn_home
+Environment=BRASSCLAW_REBORN_WEBUI_TOKEN=$webui_token
+Environment=BRASSCLAW_REBORN_WEBUI_USER_ID=brassclaw-admin
+ExecStart=$INSTALL_DIR/$BINARY_NAME serve --host 0.0.0.0 --port 3000
 Restart=on-failure
-RestartSec=10
+RestartSec=5
 StandardOutput=journal
 StandardError=journal
-
-# Environment variables (customize as needed)
-Environment="BRASSCLAW_REBORN_WEBUI_TOKEN=change-me-$(openssl rand -hex 16)"
-Environment="BRASSCLAW_REBORN_WEBUI_USER_ID=default-user"
-
-# Security hardening
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=$CONFIG_DIR
+ReadWritePaths=$reborn_home
 
 [Install]
 WantedBy=multi-user.target
 EOF
-
     chmod 644 "$SYSTEMD_DIR/$SERVICE_NAME.service"
-    log_info "Systemd service file created"
-}
 
-# Reload systemd and enable service (only for root)
-enable_service() {
-    if [[ $INSTALL_MODE != "system" ]]; then
-        return 0
+    # Stop running instance before daemon-reload
+    if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+        log_step "Stopping running service for upgrade..."
+        systemctl stop "$SERVICE_NAME"
     fi
-    
-    log_step "Reloading systemd daemon..."
+
     systemctl daemon-reload
-    
-    log_step "Enabling $SERVICE_NAME service..."
     systemctl enable "$SERVICE_NAME"
-    log_info "Service enabled (will start on boot)"
-}
-
-# Start service (only for root)
-start_service() {
-    if [[ $INSTALL_MODE != "system" ]]; then
-        return 0
-    fi
-    
-    log_step "Starting $SERVICE_NAME service..."
     systemctl start "$SERVICE_NAME"
-    
     sleep 2
-    
+
     if systemctl is-active --quiet "$SERVICE_NAME"; then
         log_info "Service started successfully"
     else
-        log_error "Service failed to start"
-        log_info "Check logs with: journalctl -u $SERVICE_NAME -n 50"
+        log_error "Service failed to start — check: journalctl -u $SERVICE_NAME -n 50"
         exit 1
     fi
+
+    echo ""
+    echo -e "${YELLOW}⚠  SAVE YOUR WEBUI TOKEN:${NC}"
+    echo -e "   ${GREEN}$webui_token${NC}"
+    echo "   (also in $SYSTEMD_DIR/$SERVICE_NAME.service)"
+    echo ""
 }
 
-# Show status (only for root)
-show_status() {
-    if [[ $INSTALL_MODE != "system" ]]; then
-        return 0
-    fi
-    
+# ── post-install summary ──────────────────────────────────────────────────────
+print_summary() {
+    local version="$1"
     echo ""
-    log_step "Service status:"
-    systemctl status "$SERVICE_NAME" --no-pager -l || true
-}
-
-# Print post-installation instructions
-print_instructions() {
-    echo ""
-    echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
-    echo -e "${GREEN}  Installation Complete!${NC}"
-    echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
-    echo ""
-    echo -e "${BLUE}Installation Details:${NC}"
-    echo -e "  Mode:          ${GREEN}$INSTALL_MODE${NC}"
-    echo -e "  Binary:        ${GREEN}$INSTALL_DIR/$BINARY_NAME${NC}"
-    echo -e "  Config Dir:    ${GREEN}$CONFIG_DIR${NC}"
-    
+    echo -e "${BLUE}══════════════════════════════════════════${NC}"
+    echo -e "${GREEN}  BrassClaw v$version installed!${NC}"
+    echo -e "${BLUE}══════════════════════════════════════════${NC}"
+    echo -e "  Binary:   $INSTALL_DIR/$BINARY_NAME"
+    echo -e "  Config:   $CONFIG_DIR"
     if [[ $INSTALL_MODE == "system" ]]; then
-        echo -e "  Service:       ${GREEN}$SERVICE_NAME${NC}"
-        echo -e "  Service File:  ${GREEN}$SYSTEMD_DIR/$SERVICE_NAME.service${NC}"
-        echo ""
-        echo -e "${BLUE}Useful Commands:${NC}"
-        echo -e "  ${GREEN}sudo systemctl status $SERVICE_NAME${NC}     # Check service status"
-        echo -e "  ${GREEN}sudo systemctl restart $SERVICE_NAME${NC}    # Restart service"
-        echo -e "  ${GREEN}sudo systemctl stop $SERVICE_NAME${NC}       # Stop service"
-        echo -e "  ${GREEN}sudo systemctl start $SERVICE_NAME${NC}      # Start service"
-        echo -e "  ${GREEN}sudo journalctl -u $SERVICE_NAME -f${NC}     # View live logs"
-        echo -e "  ${GREEN}sudo journalctl -u $SERVICE_NAME -n 50${NC}  # View last 50 log lines"
-        echo ""
-        echo -e "${YELLOW}⚠ IMPORTANT SECURITY NOTICE:${NC}"
-        echo -e "  The service has been created with a random authentication token."
-        echo -e "  To customize authentication and other settings:"
-        echo ""
-        echo -e "  1. Edit the service file:"
-        echo -e "     ${GREEN}sudo nano $SYSTEMD_DIR/$SERVICE_NAME.service${NC}"
-        echo ""
-        echo -e "  2. Update the Environment variables as needed"
-        echo ""
-        echo -e "  3. Reload and restart the service:"
-        echo -e "     ${GREEN}sudo systemctl daemon-reload${NC}"
-        echo -e "     ${GREEN}sudo systemctl restart $SERVICE_NAME${NC}"
+        echo -e "  Service:  systemctl {start|stop|restart|status} $SERVICE_NAME"
+        echo -e "  Logs:     journalctl -u $SERVICE_NAME -f"
     else
         echo ""
-        echo -e "${BLUE}Running BrassClaw:${NC}"
-        echo -e "  ${GREEN}$BINARY_NAME serve${NC}                    # Start server on localhost:8080"
-        echo -e "  ${GREEN}$BINARY_NAME serve --host 0.0.0.0${NC}     # Start server on all interfaces"
-        echo -e "  ${GREEN}$BINARY_NAME --help${NC}                   # Show all available commands"
-        echo ""
-        echo -e "${YELLOW}⚠ PATH Configuration:${NC}"
+        echo -e "${BLUE}Run:${NC}"
+        echo -e "  BRASSCLAW_REBORN_WEBUI_TOKEN=<token> \\"
+        echo -e "  BRASSCLAW_REBORN_WEBUI_USER_ID=me \\"
+        echo -e "  $BINARY_NAME serve"
         if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-            echo -e "  ${YELLOW}$INSTALL_DIR is not in your PATH${NC}"
-            echo -e "  Add it to your shell profile (~/.bashrc or ~/.zshrc):"
-            echo -e "  ${GREEN}export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
             echo ""
-            echo -e "  Then reload your shell:"
-            echo -e "  ${GREEN}source ~/.bashrc${NC}  # or source ~/.zshrc"
-            echo ""
-            echo -e "  Or run directly:"
-            echo -e "  ${GREEN}$INSTALL_DIR/$BINARY_NAME serve${NC}"
-        else
-            echo -e "  ${GREEN}✓ $INSTALL_DIR is already in your PATH${NC}"
-            echo -e "  You can run: ${GREEN}$BINARY_NAME serve${NC}"
+            echo -e "${YELLOW}Add to PATH:${NC}"
+            echo -e "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
         fi
-        echo ""
-        echo -e "${BLUE}To install as a system service:${NC}"
-        echo -e "  Run this script with sudo:"
-        echo -e "  ${GREEN}sudo bash install.sh${NC}"
     fi
-    
-    echo ""
-    echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}══════════════════════════════════════════${NC}"
     echo ""
 }
 
-# Main installation flow
+# ── main ──────────────────────────────────────────────────────────────────────
 main() {
-    echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
-    echo -e "${BLUE}  BrassClaw Reborn Installation Script${NC}"
-    echo -e "${BLUE}  Version: $VERSION${NC}"
-    echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+    local version artifact
+    version=$(resolve_version)
+    artifact=$(detect_artifact)
+
+    echo -e "${BLUE}BrassClaw installer — v$version ($artifact, $INSTALL_MODE mode)${NC}"
     echo ""
-    
-    if [[ $INSTALL_MODE == "system" ]]; then
-        log_info "Running in SYSTEM mode (with root privileges)"
-        log_info "Will install to $INSTALL_DIR and create systemd service"
-    else
-        log_info "Running in USER mode (without root privileges)"
-        log_info "Will install to $INSTALL_DIR (no systemd service)"
-        log_warn "For system-wide installation with systemd service, run: sudo bash install.sh"
-    fi
-    echo ""
-    
-    local installed_version=$(get_installed_version)
-    
-    if is_update; then
-        echo -e "${YELLOW}Existing installation detected${NC}"
-        echo -e "  Current version: ${BLUE}$installed_version${NC}"
-        echo -e "  New version:     ${BLUE}$VERSION${NC}"
-        echo ""
-        log_info "Performing update (configuration and data will be preserved)"
-        echo ""
-        stop_service
-        backup_binary
-    else
-        log_info "Performing fresh installation"
-        echo ""
-    fi
-    
-    download_binary
+
+    download_binary "$version" "$artifact"
     create_config_dir
     create_systemd_service
-    enable_service
-    start_service
-    
-    print_instructions
-    show_status
+    print_summary "$version"
 }
 
-# Run main function
-main "$@"
-
-# Made with Bob
+main
