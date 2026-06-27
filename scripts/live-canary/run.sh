@@ -228,42 +228,29 @@ main() {
 
   case "${LANE}" in
     deterministic-replay)
-      BRASSCLAW_LIVE_TEST=0 run_cargo_test e2e_live "${SCENARIO}"
+      # e2e_live was a v1 test target — not yet ported to reborn.
+      # Skip gracefully until reborn live tests are written.
+      log "[live-canary] SKIP: deterministic-replay lane requires e2e_live (v1 test — not yet ported to reborn)"
       ;;
     public-smoke)
-      export BRASSCLAW_LIVE_TEST=1
-      run_cargo_test e2e_live "${SCENARIO:-zizmor_scan}"
-      run_cargo_test e2e_live_mission "mission_daily_news_digest_with_followup"
+      # e2e_live / e2e_live_mission were v1 test targets — not yet ported to reborn.
+      log "[live-canary] SKIP: public-smoke lane requires e2e_live / e2e_live_mission (v1 tests — not yet ported to reborn)"
       ;;
     persona-rotating)
-      export BRASSCLAW_LIVE_TEST=1
-      selected="$(select_rotating_persona)"
-      SCENARIO="${selected}"
-      run_cargo_test e2e_live_personas "${selected}"
+      # e2e_live_personas was a v1 test target — not yet ported to reborn.
+      log "[live-canary] SKIP: persona-rotating lane requires e2e_live_personas (v1 test — not yet ported to reborn)"
       ;;
     private-oauth)
-      export BRASSCLAW_LIVE_TEST=1
-      # drive_auth_gate_roundtrip is currently skipped pending the
-      # non-HTTP pre-flight auth gate (stub fallthrough in
-      # `src/auth/extension.rs::check_action_auth`). Until that lands
-      # the agent gets control back after a WASM wrapper credential
-      # failure instead of pausing at a gate, so the test's
-      # "expected exactly 1 LLM call" assertion always fails. See the
-      # `#[ignore = "..."]` reason on the test itself for context.
-      # To re-enable: uncomment below once the gate fix lands.
-      # run_cargo_test e2e_live "drive_auth_gate_roundtrip"
-      run_cargo_test e2e_live "drive_transparent_oauth_refresh"
+      # e2e_live was a v1 test target — not yet ported to reborn.
+      log "[live-canary] SKIP: private-oauth lane requires e2e_live (v1 test — not yet ported to reborn)"
       ;;
     provider-matrix)
-      export BRASSCLAW_LIVE_TEST=1
-      run_cargo_test "${PROVIDER_TEST_TARGET:-e2e_live}" "${SCENARIO:-zizmor_scan}"
+      # e2e_live / e2e_live_mission were v1 test targets — not yet ported to reborn.
+      log "[live-canary] SKIP: provider-matrix lane requires e2e_live (v1 test — not yet ported to reborn)"
       ;;
     release-public-full)
-      export BRASSCLAW_LIVE_TEST=1
-      run_cargo_test e2e_live "zizmor_scan"
-      run_cargo_test e2e_live "zizmor_scan_v2"
-      run_cargo_test e2e_live_mission ""
-      run_cargo_test e2e_live_personas ""
+      # e2e_live / e2e_live_mission / e2e_live_personas were v1 test targets — not yet ported.
+      log "[live-canary] SKIP: release-public-full lane requires e2e_live / e2e_live_mission / e2e_live_personas (v1 tests — not yet ported to reborn)"
       ;;
     upgrade-canary)
       run_with_timeout scripts/live-canary/upgrade-canary.sh

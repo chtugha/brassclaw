@@ -620,13 +620,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - provider: anthropic
-            test_target: e2e_live
-            scenario: zizmor_scan
-          - provider: openai-compatible
-            test_target: e2e_live_mission
-            scenario: mission_daily_news_digest_with_followup
+        # e2e_live / e2e_live_mission were v1 test targets removed during the
+        # v1→reborn migration. The matrix is intentionally empty until reborn
+        # live tests are written. The job still exists so workflow_dispatch
+        # with lane=provider-matrix doesn't fail with "no matrix entries".
+        include: []
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
