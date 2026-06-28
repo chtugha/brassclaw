@@ -1742,18 +1742,27 @@ mod postgres_tests {
         // Use a fresh client; we don't have direct access to the pool
         // through `fs`, so re-derive it from the same env vars.
         let pool = postgres_pool().await.expect("pool available");
+        // Derive the expected index name pattern from the prefix so we query
+        // the specific index created above, not whatever other concurrent test
+        // may have created last. The prefix contains a UUID that makes the
+        // index name unique per test run.
+        let prefix_slug: String = prefix
+            .trim_matches('/')
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+            .collect();
+        let expected_name = format!("idx_rfs_{prefix_slug}_by_content_scoped");
         let client = pool.get().await.unwrap();
         let row = client
             .query_one(
                 "SELECT indexdef FROM pg_indexes \
                  WHERE schemaname = current_schema() \
                    AND tablename = 'root_filesystem_entries' \
-                   AND indexname LIKE 'idx_rfs_%' \
-                 ORDER BY indexname DESC LIMIT 1",
-                &[],
+                   AND indexname LIKE $1",
+                &[&format!("{expected_name}%")],
             )
             .await
-            .expect("at least one rfs index visible");
+            .unwrap_or_else(|_| panic!("FTS index {expected_name} not found in pg_indexes"));
         let indexdef: String = row.get("indexdef");
         assert!(
             indexdef.contains(prefix.as_str()),
