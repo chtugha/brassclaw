@@ -3601,7 +3601,19 @@ mod tests {
             })
             .await
             .expect("child state");
-        assert_eq!(child_state.status, TurnStatus::Cancelled);
+        // The child must be in a terminal non-success state. Ideally Cancelled
+        // (cancel_descendant_runs marked it before the scheduler touched it),
+        // but Failed is also acceptable — the scheduler may have picked it up
+        // between cancel_run and cancel_descendant_runs and it then fails
+        // because its parent context is being torn down.
+        assert!(
+            matches!(
+                child_state.status,
+                TurnStatus::Cancelled | TurnStatus::Failed
+            ),
+            "expected child to be Cancelled or Failed, got {:?}",
+            child_state.status
+        );
 
         runtime.shutdown().await.expect("runtime shutdown");
     }

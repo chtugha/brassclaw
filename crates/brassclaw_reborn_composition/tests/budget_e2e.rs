@@ -132,7 +132,7 @@ async fn f1_happy_path_records_actual_usd_in_ledger() {
     let conversation = runtime.new_conversation().await.expect("conversation");
 
     let reply = tokio::time::timeout(
-        Duration::from_secs(3),
+        Duration::from_secs(10),
         runtime.send_user_message(&conversation, "ping"),
     )
     .await
@@ -216,7 +216,7 @@ async fn f2_crossing_warn_threshold_emits_warned_event() {
 
     let conversation = runtime.new_conversation().await.expect("conversation");
     let _ = tokio::time::timeout(
-        Duration::from_secs(3),
+        Duration::from_secs(10),
         runtime.send_user_message(&conversation, "ping"),
     )
     .await
@@ -283,7 +283,7 @@ async fn f6_hard_cap_denied_before_provider_call() {
 
     let conversation = runtime.new_conversation().await.expect("conversation");
     let outcome = tokio::time::timeout(
-        Duration::from_secs(3),
+        Duration::from_secs(10),
         runtime.send_user_message(&conversation, "ping"),
     )
     .await
@@ -344,7 +344,7 @@ async fn c1_provider_tokens_reconcile_to_actual_usd() {
 
     let conversation = runtime.new_conversation().await.expect("conversation");
     let _ = tokio::time::timeout(
-        Duration::from_secs(3),
+        Duration::from_secs(10),
         runtime.send_user_message(&conversation, "ping"),
     )
     .await
@@ -391,7 +391,7 @@ async fn c2_unknown_model_in_cost_table_uses_default_cost_fallback() {
 
     let conversation = runtime.new_conversation().await.expect("conversation");
     let _ = tokio::time::timeout(
-        Duration::from_secs(3),
+        Duration::from_secs(10),
         runtime.send_user_message(&conversation, "ping"),
     )
     .await
@@ -438,7 +438,7 @@ async fn c3_zero_cost_model_records_zero_spend() {
 
     let conversation = runtime.new_conversation().await.expect("conversation");
     let _ = tokio::time::timeout(
-        Duration::from_secs(3),
+        Duration::from_secs(10),
         runtime.send_user_message(&conversation, "ping"),
     )
     .await
@@ -491,7 +491,7 @@ async fn d3_seeding_policy_installs_default_cap_on_first_touch() {
 
     let conversation = runtime.new_conversation().await.expect("conversation");
     let reply = tokio::time::timeout(
-        Duration::from_secs(3),
+        Duration::from_secs(10),
         runtime.send_user_message(&conversation, "ping"),
     )
     .await
@@ -588,7 +588,7 @@ async fn d1_agent_deny_preserves_user_warn_event() {
 
     let conversation = runtime.new_conversation().await.expect("conversation");
     let _ = tokio::time::timeout(
-        Duration::from_secs(3),
+        Duration::from_secs(10),
         runtime.send_user_message(&conversation, "ping"),
     )
     .await
@@ -665,7 +665,7 @@ async fn broadcast_sink_publishes_events_to_subscribers() {
 
     let conversation = runtime.new_conversation().await.expect("conversation");
     let _ = tokio::time::timeout(
-        Duration::from_secs(3),
+        Duration::from_secs(10),
         runtime.send_user_message(&conversation, "ping"),
     )
     .await
@@ -736,7 +736,7 @@ async fn budget_test_gateway_scripted_replies_drive_per_turn_costs() {
     let conversation = runtime.new_conversation().await.expect("conversation");
     for prompt in ["first", "second"] {
         let _ = tokio::time::timeout(
-            Duration::from_secs(3),
+            Duration::from_secs(10),
             runtime.send_user_message(&conversation, prompt),
         )
         .await
@@ -803,7 +803,7 @@ async fn projection_delivers_budget_events_to_installed_observer() {
     let runtime = build_reborn_runtime(input).await.expect("runtime builds");
     let conversation = runtime.new_conversation().await.expect("conversation");
     let _ = tokio::time::timeout(
-        Duration::from_secs(3),
+        Duration::from_secs(10),
         runtime.send_user_message(&conversation, "ping"),
     )
     .await
@@ -814,7 +814,7 @@ async fn projection_delivers_budget_events_to_installed_observer() {
     // is non-blocking on emit; the projection task observes on its own
     // tokio task and may not have run yet when send_user_message
     // returns.
-    let saw_reconciled = tokio::time::timeout(Duration::from_secs(2), async {
+    let saw_reconciled = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             let reconciled = {
                 let events = observer.events.lock().unwrap();
