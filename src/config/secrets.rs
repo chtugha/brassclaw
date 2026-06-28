@@ -386,6 +386,10 @@ mod tests {
         unsafe {
             std::env::remove_var("SECRETS_MASTER_KEY");
         }
+        // Also clear the INJECTED_VARS overlay so that a previous test that
+        // ran the auto-generate path (which calls inject_single_var) doesn't
+        // bleed SECRETS_MASTER_KEY through optional_env's third lookup.
+        crate::config::clear_injected_var("SECRETS_MASTER_KEY");
 
         let dir = tempfile::tempdir().unwrap();
         let env_path = dir.path().join(".env");
