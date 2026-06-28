@@ -202,7 +202,7 @@ async fn login_and_callback(router: &axum::Router) -> String {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/auth/login/github?redirect_after=%2Fv2")
+                .uri("/auth/login/github?redirect_after=%2F")
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -286,7 +286,7 @@ async fn login_redirects_to_github_with_state_and_scope_and_no_pkce() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/auth/login/github?redirect_after=%2Fv2")
+                .uri("/auth/login/github?redirect_after=%2F")
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -318,7 +318,7 @@ async fn callback_success_mints_session_for_primary_verified_email() {
     let router = build_router(vec![github_provider(addr)], session_store);
 
     let landing = login_and_callback(&router).await;
-    assert!(landing.starts_with("/v2?login_ticket="), "got {landing}");
+    assert!(landing.starts_with("/?login_ticket="), "got {landing}");
     assert!(
         !landing.contains("#token="),
         "callback Location must not carry the bearer: {landing}",
@@ -391,7 +391,7 @@ async fn callback_with_unverified_emails_mints_session_for_provider_sub() {
     let router = build_router(vec![github_provider(addr)], session_store);
 
     let landing = login_and_callback(&router).await;
-    assert!(landing.starts_with("/v2?login_ticket="), "got {landing}");
+    assert!(landing.starts_with("/?login_ticket="), "got {landing}");
     let ticket = ticket_from_landing(&landing);
     let bearer = redeem_ticket(&router, &ticket).await;
     let session = store_inner

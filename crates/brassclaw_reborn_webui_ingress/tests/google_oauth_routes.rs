@@ -226,7 +226,7 @@ async fn login_redirects_to_provider_with_state_and_callback_url() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/auth/login/google?redirect_after=%2Fv2")
+                .uri("/auth/login/google?redirect_after=%2F")
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -317,7 +317,7 @@ async fn callback_success_creates_session_and_redirects_with_login_ticket() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/auth/login/google?redirect_after=%2Fv2")
+                .uri("/auth/login/google?redirect_after=%2F")
                 .body(Body::empty())
                 .expect("request"),
         )
