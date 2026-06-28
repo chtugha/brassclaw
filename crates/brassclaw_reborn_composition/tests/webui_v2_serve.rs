@@ -1483,11 +1483,33 @@ async fn llm_config_routes_are_not_mounted_for_multi_user_authenticator() {
             .oneshot(builder.body(Body::empty()).expect("request"))
             .await
             .expect("oneshot must complete");
-        assert_eq!(
-            response.status(),
-            StatusCode::NOT_FOUND,
-            "{method} {uri} must not be mounted for non-operator auth"
-        );
+        // LLM config routes are not mounted for non-operator auth.
+        // GET requests fall through to the SPA static router (200 HTML);
+        // non-GET requests get 405 (method not allowed from the wildcard GET-only route)
+        // or 404 if the path segment contains a dot and isn't caught by the SPA wildcard.
+        if method == Method::GET {
+            assert_eq!(
+                response.status(),
+                StatusCode::OK,
+                "{method} {uri} must fall through to SPA for non-operator auth"
+            );
+            let ct = response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            assert!(
+                ct.starts_with("text/html"),
+                "{method} {uri} SPA fallback must serve HTML, not JSON (got {ct})"
+            );
+        } else {
+            assert!(
+                response.status() == StatusCode::METHOD_NOT_ALLOWED
+                    || response.status() == StatusCode::NOT_FOUND,
+                "{method} {uri} must not be mounted as an API route for non-operator auth (got {})",
+                response.status()
+            );
+        }
     }
 }
 
@@ -1503,9 +1525,9 @@ fn expand_route_pattern(pattern: &str) -> String {
 
 // ─── static SPA mount (`brassclaw_webui_v2_static`) ────────────────────
 //
-// The composition mounts the embedded SPA bundle under `/v2`. These
+// The composition mounts the embedded SPA bundle at `/` (root). These
 // tests drive that mount through the same composed router production
-// uses, so a regression that drops the `.nest("/v2", ...)` call (or
+// uses, so a regression that drops the static_router() merge (or
 // that accidentally routes the SPA through the bearer-auth middleware)
 // fails here. Per `.claude/rules/testing.md` ("Test Through the
 // Caller") — the standalone router test in `brassclaw_webui_v2_static`
@@ -1519,7 +1541,7 @@ async fn static_root_serves_index_with_substituted_csp_nonce() {
         .oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri("/v2/")
+                .uri("/")
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -1555,7 +1577,7 @@ async fn static_root_does_not_require_bearer_auth() {
         .oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri("/v2/")
+                .uri("/")
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -1571,7 +1593,7 @@ async fn static_js_asset_returns_javascript_content_type() {
         .oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri("/v2/js/main.js")
+                .uri("/js/main.js")
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -1593,7 +1615,7 @@ async fn static_chat_oauth_card_exposes_https_only_authorization_link() {
         .oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri("/v2/js/pages/chat/components/auth-oauth-card.js")
+                .uri("/js/pages/chat/components/auth-oauth-card.js")
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -1627,7 +1649,7 @@ async fn static_chat_hook_listens_for_oauth_callback_completion() {
         .oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri("/v2/js/pages/chat/hooks/useChat.js")
+                .uri("/js/pages/chat/hooks/useChat.js")
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -1671,7 +1693,7 @@ async fn static_chat_events_clear_gate_when_run_resumes() {
         .oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri("/v2/js/pages/chat/lib/useChatEvents.js")
+                .uri("/js/pages/chat/lib/useChatEvents.js")
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -1715,7 +1737,7 @@ async fn static_css_asset_returns_text_css_content_type() {
         .oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri("/v2/styles/app.css")
+                .uri("/styles/app.css")
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -1737,7 +1759,7 @@ async fn static_unknown_extension_path_returns_404() {
         .oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri("/v2/missing-asset.bin")
+                .uri("/missing-asset.bin")
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -1757,7 +1779,7 @@ async fn static_client_side_route_falls_back_to_spa_shell() {
         .oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri("/v2/chat/some-thread-id")
+                .uri("/chat/some-thread-id")
                 .body(Body::empty())
                 .expect("request"),
         )
@@ -1784,7 +1806,7 @@ async fn static_root_emits_a_fresh_nonce_per_request() {
             .oneshot(
                 Request::builder()
                     .method(Method::GET)
-                    .uri("/v2/")
+                    .uri("/")
                     .body(Body::empty())
                     .expect("request"),
             )
@@ -1796,7 +1818,7 @@ async fn static_root_emits_a_fresh_nonce_per_request() {
         app.oneshot(
             Request::builder()
                 .method(Method::GET)
-                .uri("/v2/")
+                .uri("/")
                 .body(Body::empty())
                 .expect("request"),
         )
