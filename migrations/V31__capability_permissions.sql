@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS capability_permissions (
     tenant_id TEXT NOT NULL,
     capability_id TEXT NOT NULL,
     permission_mode TEXT NOT NULL CHECK (permission_mode IN ('allow', 'ask', 'deny')),
-    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     PRIMARY KEY (tenant_id, capability_id)
 );
 
