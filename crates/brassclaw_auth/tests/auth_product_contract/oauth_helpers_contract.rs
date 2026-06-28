@@ -248,7 +248,10 @@ fn google_callback_state_round_trips_through_validated_encoded_state() {
 
 #[test]
 fn google_callback_state_rejects_unapproved_requested_scopes() {
-    let invalid_scope = ProviderScope::new("https://www.googleapis.com/auth/drive").unwrap();
+    // Use a scope that is not in the allowed list (drive is now allowed;
+    // admin.directory is not).
+    let invalid_scope =
+        ProviderScope::new("https://www.googleapis.com/auth/admin.directory.user").unwrap();
 
     assert_invalid_request(GoogleOAuthCallbackState::new(
         AuthFlowId::new(),

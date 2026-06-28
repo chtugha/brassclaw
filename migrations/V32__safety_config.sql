@@ -5,8 +5,8 @@ CREATE TABLE IF NOT EXISTS safety_config (
     user_id TEXT NOT NULL,
     category TEXT NOT NULL, -- 'sensitive_paths', 'workspace_rules', 'blocked_paths'
     pattern TEXT NOT NULL,
-    is_enabled BOOLEAN NOT NULL DEFAULT 1,
-    is_default BOOLEAN NOT NULL DEFAULT 0, -- System defaults cannot be deleted
+    is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    is_default BOOLEAN NOT NULL DEFAULT FALSE, -- System defaults cannot be deleted
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, category, pattern)
