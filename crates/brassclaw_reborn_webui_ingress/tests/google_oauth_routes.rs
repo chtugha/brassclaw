@@ -357,7 +357,7 @@ async fn callback_success_creates_session_and_redirects_with_login_ticket() {
         .to_str()
         .expect("utf-8")
         .to_string();
-    assert!(landing.starts_with("/v2?login_ticket="), "got {landing}",);
+    assert!(landing.starts_with("/?login_ticket="), "got {landing}",);
     assert!(
         !landing.contains("#token="),
         "callback Location must not carry the bearer: {landing}",
@@ -458,7 +458,7 @@ async fn callback_with_unknown_state_redirects_with_error_code() {
         .expect("Location")
         .to_str()
         .expect("utf-8");
-    assert_eq!(location, "/v2?login_error=invalid_state");
+    assert_eq!(location, "/?login_error=invalid_state");
 }
 
 #[tokio::test]
@@ -521,7 +521,7 @@ async fn callback_with_state_replay_fails_closed() {
         .to_str()
         .unwrap();
     assert!(
-        first_location.starts_with("/v2?login_ticket="),
+        first_location.starts_with("/?login_ticket="),
         "first callback must succeed; got {first_location}"
     );
     assert_eq!(store_inner.len(), 1, "first callback must mint a session");
@@ -550,7 +550,7 @@ async fn callback_with_state_replay_fails_closed() {
         .unwrap()
         .to_str()
         .unwrap();
-    assert_eq!(replay_location, "/v2?login_error=invalid_state");
+    assert_eq!(replay_location, "/?login_error=invalid_state");
     assert_eq!(
         store_inner.len(),
         1,
@@ -581,7 +581,7 @@ async fn callback_with_provider_error_param_redirects_with_denied() {
         .unwrap()
         .to_str()
         .unwrap();
-    assert_eq!(location, "/v2?login_error=denied");
+    assert_eq!(location, "/?login_error=denied");
 }
 
 #[tokio::test]
@@ -631,7 +631,7 @@ async fn callback_when_provider_rejects_hosted_domain_yields_unauthorized() {
         .unwrap()
         .to_str()
         .unwrap();
-    assert_eq!(location, "/v2?login_error=unauthorized");
+    assert_eq!(location, "/?login_error=unauthorized");
     assert_eq!(store_inner.len(), 0, "no session must be created");
 }
 
@@ -687,7 +687,7 @@ async fn login_open_redirect_attempt_falls_back_to_default() {
         .unwrap()
         .to_str()
         .unwrap();
-    assert!(location.starts_with("/v2?login_ticket="));
+    assert!(location.starts_with("/?login_ticket="));
 }
 
 // ─── logout ───────────────────────────────────────────────────────────
@@ -828,7 +828,7 @@ async fn callback_missing_code_or_state_redirects_invalid_request() {
             .unwrap()
             .to_str()
             .unwrap();
-        assert_eq!(location, "/v2?login_error=invalid_request", "uri={uri}");
+        assert_eq!(location, "/?login_error=invalid_request", "uri={uri}");
     }
 }
 
@@ -893,7 +893,7 @@ async fn callback_with_state_for_different_provider_redirects_provider_mismatch(
         .unwrap()
         .to_str()
         .unwrap();
-    assert_eq!(location, "/v2?login_error=provider_mismatch");
+    assert_eq!(location, "/?login_error=provider_mismatch");
     assert_eq!(
         store_inner.len(),
         0,
@@ -955,7 +955,7 @@ async fn callback_when_provider_exchange_fails_redirects_exchange_failed() {
         .unwrap()
         .to_str()
         .unwrap();
-    assert_eq!(location, "/v2?login_error=exchange_failed");
+    assert_eq!(location, "/?login_error=exchange_failed");
     assert_eq!(store_inner.len(), 0);
 }
 
@@ -1009,7 +1009,7 @@ async fn callback_when_profile_fetch_fails_redirects_exchange_failed() {
             .unwrap()
             .to_str()
             .unwrap(),
-        "/v2?login_error=exchange_failed",
+        "/?login_error=exchange_failed",
     );
 }
 
@@ -1112,7 +1112,7 @@ mod user_directory_branches {
     async fn unknown_user_redirects_unauthorized() {
         let (router, store) = build_router_with_directory(Arc::new(AlwaysUnknown));
         let location = drive_callback(router).await;
-        assert_eq!(location, "/v2?login_error=unauthorized");
+        assert_eq!(location, "/?login_error=unauthorized");
         assert_eq!(store.len(), 0);
     }
 
@@ -1120,7 +1120,7 @@ mod user_directory_branches {
     async fn backend_failure_redirects_server_error() {
         let (router, store) = build_router_with_directory(Arc::new(AlwaysBackendFail));
         let location = drive_callback(router).await;
-        assert_eq!(location, "/v2?login_error=server_error");
+        assert_eq!(location, "/?login_error=server_error");
         assert_eq!(store.len(), 0);
     }
 }
@@ -1221,7 +1221,7 @@ mod session_store_failure {
                 .unwrap()
                 .to_str()
                 .unwrap(),
-            "/v2?login_error=server_error",
+            "/?login_error=server_error",
         );
     }
 }

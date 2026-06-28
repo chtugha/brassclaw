@@ -1330,12 +1330,12 @@ impl RebornRuntime {
         );
         if cancellation_accepted {
             self.append_webui_loop_cancelled(scope, run_id).await?;
-        }
-        self.wake_sender.wake();
-        if cancellation_accepted {
+            // Cancel descendants BEFORE waking the scheduler so children in
+            // Queued state are marked Cancelled before they can be picked up.
             self.cancel_descendant_runs(scope, run_id, reason, idempotency_suffix)
                 .await?;
         }
+        self.wake_sender.wake();
         Ok(response)
     }
 
