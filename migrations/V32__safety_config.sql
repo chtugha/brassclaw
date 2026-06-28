@@ -1,7 +1,7 @@
 -- Safety configuration table
 -- Stores user-specific safety rules for sensitive paths, workspace rules, and blocked paths
 CREATE TABLE IF NOT EXISTS safety_config (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     user_id TEXT NOT NULL,
     category TEXT NOT NULL, -- 'sensitive_paths', 'workspace_rules', 'blocked_paths'
     pattern TEXT NOT NULL,

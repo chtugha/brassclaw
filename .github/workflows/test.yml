@@ -434,6 +434,9 @@ jobs:
           key: slack-integration
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - name: Build Slack WASM channel
+        env:
+          CARGO_NET_RETRY: 10
+          CARGO_NET_GIT_FETCH_WITH_CLI: true
         run: cargo build --manifest-path channels-src/slack/Cargo.toml --target wasm32-wasip2 --release
       - name: Run Slack integration tests
         run: |
