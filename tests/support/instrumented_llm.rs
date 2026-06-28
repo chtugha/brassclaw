@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 //! InstrumentedLlm -- an LLM provider wrapper that captures per-call metrics.
 //!
 //! Wraps any `Arc<dyn LlmProvider>` and transparently intercepts `complete()`

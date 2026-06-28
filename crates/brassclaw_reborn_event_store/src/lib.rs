@@ -546,13 +546,10 @@ mod postgres_backed {
             match host {
                 #[cfg(unix)]
                 Host::Unix(_) => continue,
-                Host::Tcp(name) => {
-                    if !is_local_host_literal(name) {
-                        return false;
-                    }
+                Host::Tcp(name) if !is_local_host_literal(name) => {
+                    return false;
                 }
-                #[cfg(not(unix))]
-                _ => {}
+                Host::Tcp(_) => {}
             }
         }
         for addr in hostaddrs {

@@ -1,3 +1,4 @@
+#![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;

@@ -1,6 +1,7 @@
 //! Shared Reborn test-support configuration.
 
 #![allow(dead_code)] // Shared by staged Reborn harness modules as ports opt in.
+#![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 
 use std::time::Duration;
 

@@ -940,15 +940,15 @@ impl Scheduler {
     async fn schedule_with_context(&self, job_id: Uuid) -> Result<(), JobError> {
         // Per-user concurrency check — only count jobs consuming a parallel
         // execution slot (Pending/InProgress/Stuck), not Completed/Submitted.
-        if let Some(max_per_user) = self.config.max_jobs_per_user {
-            if let Ok(ctx) = self.context_manager.get_context(job_id).await {
-                let user_blocking = self
-                    .context_manager
-                    .parallel_blocking_count_for(&ctx.user_id)
-                    .await;
-                if user_blocking >= max_per_user {
-                    return Err(JobError::MaxJobsExceeded { max: max_per_user });
-                }
+        if let Some(max_per_user) = self.config.max_jobs_per_user
+            && let Ok(ctx) = self.context_manager.get_context(job_id).await
+        {
+            let user_blocking = self
+                .context_manager
+                .parallel_blocking_count_for(&ctx.user_id)
+                .await;
+            if user_blocking >= max_per_user {
+                return Err(JobError::MaxJobsExceeded { max: max_per_user });
             }
         }
 
@@ -1751,7 +1751,7 @@ impl Scheduler {
         self.dead_letter_queue.remove_job(job_id).await?;
 
         // Reschedule the job
-        self.schedule(job_id).await.map_err(|e| Error::Job(e))
+        self.schedule(job_id).await.map_err(Error::Job)
     }
 
     /// Get access to the background task registry.

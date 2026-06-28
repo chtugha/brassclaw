@@ -9,6 +9,7 @@
 //! Tool call responses are pre-configured via `MockToolResponse`.
 
 #![allow(dead_code)]
+#![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;

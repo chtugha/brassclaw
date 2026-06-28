@@ -5,6 +5,7 @@
 //! harness that drives the real blocked/resume path.
 
 #![allow(dead_code)] // External-boundary shims consumed by future binary-E2E tests.
+#![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 
 use super::config::WaitConfig;
 

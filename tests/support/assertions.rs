@@ -4,6 +4,7 @@
 //! test files. Mirrors the assertion types from `nearai/benchmarks` SpotSuite.
 
 #![allow(dead_code)]
+#![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 
 use regex::Regex;
 

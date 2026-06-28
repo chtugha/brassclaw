@@ -1,3 +1,4 @@
+#![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 pub mod approval;
 pub mod config;
 pub mod delivery;

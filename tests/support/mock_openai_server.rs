@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 
 use std::net::SocketAddr;
 use std::sync::Arc;

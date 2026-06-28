@@ -13,6 +13,7 @@
 //! - external internet, delivery, and OAuth are not exercised by this harness.
 
 #![allow(dead_code)] // Shared by staged Reborn binary-E2E validation ports.
+#![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 
 use std::{
     collections::VecDeque,

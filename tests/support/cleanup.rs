@@ -1,3 +1,4 @@
+#![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 //! RAII cleanup guard for test directories and files.
 
 /// The kind of path registered for cleanup.

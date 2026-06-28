@@ -337,7 +337,7 @@ impl BackgroundTaskHandler for MaintenanceTask {
             .await;
 
         // Simulate maintenance operations
-        let steps = vec![
+        let steps = [
             "Cleaning temporary files",
             "Optimizing database",
             "Checking system health",

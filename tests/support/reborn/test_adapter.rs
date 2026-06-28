@@ -1,3 +1,4 @@
+#![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 use async_trait::async_trait;
 use brassclaw_product_adapters::{
     AdapterInstallationId, AuthRequirement, DeliveryStatus, ExternalActorRef,

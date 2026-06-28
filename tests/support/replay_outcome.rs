@@ -4,6 +4,7 @@
 //! small prompt-wording changes don't force snapshot churn.
 
 #![allow(dead_code)] // Consumed by snapshot tests gated by features.
+#![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 
 use std::collections::BTreeMap;
 

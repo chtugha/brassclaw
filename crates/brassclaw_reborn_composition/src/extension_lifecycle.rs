@@ -1960,10 +1960,7 @@ mod tests {
         assert!(
             active
                 .get_capability(
-                    &brassclaw_host_api::CapabilityId::new(
-                        "google-calendar.list_events"
-                    )
-                    .unwrap()
+                    &brassclaw_host_api::CapabilityId::new("google-calendar.list_events").unwrap()
                 )
                 .is_some()
         );
@@ -2083,10 +2080,7 @@ mod tests {
             .iter()
             .map(|extension| extension.package_ref.id.as_str())
             .collect::<BTreeSet<_>>();
-        assert_eq!(
-            extension_ids,
-            BTreeSet::from(["google-calendar"])
-        );
+        assert_eq!(extension_ids, BTreeSet::from(["google-calendar"]));
         let calendar = extensions
             .iter()
             .find(|extension| extension.package_ref.id.as_str() == "google-calendar")

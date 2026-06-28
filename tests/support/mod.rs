@@ -1,3 +1,4 @@
+#![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 pub mod assertions;
 pub mod cleanup;
 pub mod instrumented_llm;

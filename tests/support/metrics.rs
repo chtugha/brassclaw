@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 //! Metrics types for test instrumentation.
 //!
 //! These types were previously in the `brassclaw::benchmark::metrics` module.

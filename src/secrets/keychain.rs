@@ -100,7 +100,7 @@ mod platform {
     use super::*;
 
     /// Store the master key in the Linux secret service (GNOME Keyring, KWallet).
-    pub async fn store_master_key(key: &[u8]) -> Result<(), SecretError> {
+    pub(super) async fn store_master_key(key: &[u8]) -> Result<(), SecretError> {
         let ss = SecretService::connect(EncryptionType::Dh)
             .await
             .map_err(|e| {
@@ -139,7 +139,7 @@ mod platform {
     }
 
     /// Retrieve the master key from the Linux secret service.
-    pub async fn get_master_key() -> Result<Vec<u8>, SecretError> {
+    pub(super) async fn get_master_key() -> Result<Vec<u8>, SecretError> {
         let ss = SecretService::connect(EncryptionType::Dh)
             .await
             .map_err(|e| {
@@ -180,7 +180,7 @@ mod platform {
     }
 
     /// Delete the master key from the Linux secret service.
-    pub async fn delete_master_key() -> Result<(), SecretError> {
+    pub(super) async fn delete_master_key() -> Result<(), SecretError> {
         let ss = SecretService::connect(EncryptionType::Dh)
             .await
             .map_err(|e| {
@@ -206,7 +206,7 @@ mod platform {
     }
 
     /// Check if a master key exists in the secret service.
-    pub async fn has_master_key() -> bool {
+    pub(super) async fn has_master_key() -> bool {
         let ss = match SecretService::connect(EncryptionType::Dh).await {
             Ok(ss) => ss,
             Err(_) => return false,
@@ -236,25 +236,25 @@ mod platform {
 mod platform {
     use super::*;
 
-    pub async fn store_master_key(_key: &[u8]) -> Result<(), SecretError> {
+    pub(super) async fn store_master_key(_key: &[u8]) -> Result<(), SecretError> {
         Err(SecretError::KeychainError(
             "Keychain not supported on this platform. Use SECRETS_MASTER_KEY env var.".to_string(),
         ))
     }
 
-    pub async fn get_master_key() -> Result<Vec<u8>, SecretError> {
+    pub(super) async fn get_master_key() -> Result<Vec<u8>, SecretError> {
         Err(SecretError::KeychainError(
             "Keychain not supported on this platform. Use SECRETS_MASTER_KEY env var.".to_string(),
         ))
     }
 
-    pub async fn delete_master_key() -> Result<(), SecretError> {
+    pub(super) async fn delete_master_key() -> Result<(), SecretError> {
         Err(SecretError::KeychainError(
             "Keychain not supported on this platform".to_string(),
         ))
     }
 
-    pub async fn has_master_key() -> bool {
+    pub(super) async fn has_master_key() -> bool {
         false
     }
 }

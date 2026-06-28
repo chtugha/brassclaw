@@ -4,6 +4,7 @@
 //! responses and status events for assertion in tests.
 
 #![allow(dead_code)] // Public API consumed by later test modules (Task 3+).
+#![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 
 use std::collections::HashMap;
 use std::sync::Arc;

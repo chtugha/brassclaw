@@ -1,3 +1,4 @@
+#![allow(unreachable_pub)] // Integration test support — items pub for use across test modules.
 //! TraceLlm -- a replay-based LLM provider for E2E testing.
 //!
 //! Replays canned responses from a JSON trace, advancing through steps

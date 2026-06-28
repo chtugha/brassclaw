@@ -13,20 +13,11 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
-use rust_decimal::Decimal;
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
 
-use crate::channels::{
-    Channel,
-    ChannelManager,
-    IncomingMessage,
-    MessageStream,
-    OutgoingResponse,
-    StatusUpdate, // ChannelManager needed by RecordingBroadcastChannel
-};
+use crate::channels::{Channel, IncomingMessage, MessageStream, OutgoingResponse, StatusUpdate};
 use crate::db::Database;
-use crate::error::{ChannelError, LlmError};
-use brassclaw_llm::{CompletionRequest, FinishReason, LlmProvider};
+use crate::error::ChannelError;
 
 /// Create a libSQL-backed test database in a temporary directory.
 ///

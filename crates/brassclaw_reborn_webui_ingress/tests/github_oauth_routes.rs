@@ -428,10 +428,7 @@ async fn callback_with_provider_error_redirects_with_denied() {
         .await
         .expect("oneshot");
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
-    assert_eq!(
-        header_str(&resp, header::LOCATION),
-        "/?login_error=denied"
-    );
+    assert_eq!(header_str(&resp, header::LOCATION), "/?login_error=denied");
 }
 
 #[tokio::test]
