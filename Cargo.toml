@@ -146,7 +146,7 @@ brassclaw_runtime_policy = { path = "crates/brassclaw_runtime_policy", version =
 brassclaw_turns = { path = "crates/brassclaw_turns", version = "0.1.0" }
 
 # V2 Reborn CLI
-brassclaw_reborn_cli = { path = "crates/brassclaw_reborn_cli", version = "0.30.2" }
+brassclaw_reborn_cli = { path = "crates/brassclaw_reborn_cli", version = "0.41.0" }
 
 # Safety/sanitization
 brassclaw_engine = { path = "crates/brassclaw_engine", version = "0.1.0" }
