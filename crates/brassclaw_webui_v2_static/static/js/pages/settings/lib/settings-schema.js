@@ -6,6 +6,7 @@ export const SETTINGS_TABS = [
   { id: "tools", labelKey: "settings.tools", icon: "wrench" },
   { id: "skills", labelKey: "settings.skills", icon: "file" },
   { id: "safety", labelKey: "settings.safety", icon: "shield" },
+  { id: "tokens", labelKey: "settings.tokens", icon: "bolt" },
   { id: "users", labelKey: "settings.users", icon: "lock" },
   { id: "language", labelKey: "settings.language", icon: "globe" },
 ];

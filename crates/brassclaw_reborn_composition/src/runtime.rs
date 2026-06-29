@@ -1505,6 +1505,8 @@ pub async fn build_reborn_runtime(
         identity,
         default_project_id,
         regex_skill_activation_enabled,
+        conversation_context_tokens,
+        skill_context_tokens,
         skill_context_source: configured_skill_context_source,
         hooks: hooks_config,
         budget_defaults,
@@ -1562,6 +1564,7 @@ pub async fn build_reborn_runtime(
                     local_runtime,
                     &validated_identity.tenant_id,
                     regex_skill_activation_enabled,
+                    skill_context_tokens,
                 )?;
                 (
                     Some(local_dev_skills.source),
@@ -1837,6 +1840,7 @@ pub async fn build_reborn_runtime(
                 poll_interval: runner.poll_interval,
                 scope_filter: None,
             },
+            context_token_budget: conversation_context_tokens,
             ..DefaultPlannedRuntimeConfig::default()
         },
         model_route_resolver: None,
@@ -2161,9 +2165,10 @@ const LOCAL_DEV_MAX_SKILL_CONTEXT_TOKENS: usize = 6000;
 /// through silently.
 fn local_dev_selector_config(
     regex_skill_activation_enabled: bool,
+    skill_context_tokens: Option<usize>,
 ) -> SkillActivationSelectorConfig {
     SkillActivationSelectorConfig {
-        max_context_tokens: LOCAL_DEV_MAX_SKILL_CONTEXT_TOKENS,
+        max_context_tokens: skill_context_tokens.unwrap_or(LOCAL_DEV_MAX_SKILL_CONTEXT_TOKENS),
         selection_mode:
             brassclaw_first_party_extension_ports::SkillActivationSelectionMode::ExplicitOnly,
         regex_activation_enabled: regex_skill_activation_enabled,
@@ -2175,6 +2180,7 @@ fn local_dev_filesystem_skill_context_source(
     local_runtime: &crate::factory::RebornLocalRuntimeServices,
     tenant_id: &TenantId,
     regex_skill_activation_enabled: bool,
+    skill_context_tokens: Option<usize>,
 ) -> Result<LocalDevSkillContextSource, RebornRuntimeError> {
     let extension = FirstPartySkillsExtension::new(
         Arc::clone(&local_runtime.skill_filesystem),
@@ -2188,7 +2194,7 @@ fn local_dev_filesystem_skill_context_source(
     .map_err(|reason| RebornRuntimeError::InvalidArgument {
         reason: format!("first-party skills extension source: {reason}"),
     })?;
-    let selector_config = local_dev_selector_config(regex_skill_activation_enabled);
+    let selector_config = local_dev_selector_config(regex_skill_activation_enabled, skill_context_tokens);
     let selectable_skills = extension.selectable_skill_runtime_with_setup_markers(
         selector_config,
         Arc::clone(&local_runtime.workspace_filesystem),
@@ -2473,7 +2479,7 @@ mod tests {
     /// [`local_dev_filesystem_skill_context_source`] depends on.
     #[test]
     fn local_dev_selector_config_propagates_regex_activation_disabled() {
-        let cfg = super::local_dev_selector_config(false);
+        let cfg = super::local_dev_selector_config(false, None);
         assert!(
             !cfg.regex_activation_enabled,
             "regex_skill_activation_enabled=false must propagate into SkillActivationSelectorConfig"
@@ -2486,7 +2492,7 @@ mod tests {
 
     #[test]
     fn local_dev_selector_config_propagates_regex_activation_enabled() {
-        let cfg = super::local_dev_selector_config(true);
+        let cfg = super::local_dev_selector_config(true, None);
         assert!(
             cfg.regex_activation_enabled,
             "regex_skill_activation_enabled=true must propagate into SkillActivationSelectorConfig"
@@ -2495,10 +2501,19 @@ mod tests {
 
     #[test]
     fn local_dev_selector_config_uses_large_skill_context_budget() {
-        let cfg = super::local_dev_selector_config(true);
+        let cfg = super::local_dev_selector_config(true, None);
         assert_eq!(
             cfg.max_context_tokens, 6000,
             "local-dev Reborn skill activation should match the legacy 6000-token skill budget"
+        );
+    }
+
+    #[test]
+    fn local_dev_selector_config_uses_custom_skill_context_budget() {
+        let cfg = super::local_dev_selector_config(true, Some(3000));
+        assert_eq!(
+            cfg.max_context_tokens, 3000,
+            "custom skill_context_tokens must override the default budget"
         );
     }
     use brassclaw_authorization::CapabilityLeaseStore;

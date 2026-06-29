@@ -147,3 +147,14 @@ export function updateSafetyBlockedPaths(payload) {
     body: JSON.stringify(payload),
   });
 }
+
+// Token settings — v2 native endpoints
+export function fetchTokenSettings() {
+  return apiFetch("/api/webchat/v2/tokens");
+}
+export function updateTokenSettings(payload) {
+  return apiFetch("/api/webchat/v2/tokens", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}

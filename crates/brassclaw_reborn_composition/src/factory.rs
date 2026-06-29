@@ -332,6 +332,11 @@ pub struct RebornServices {
     #[cfg(feature = "libsql")]
     pub(crate) safety_config_store:
         Option<Arc<brassclaw_product_workflow::SqliteSafetyConfigStore>>,
+    /// Token settings store for managing per-section token limits.
+    /// Available when libsql feature is enabled for local-dev mode.
+    #[cfg(feature = "libsql")]
+    pub(crate) token_settings_store:
+        Option<Arc<crate::token_settings_store::DbTokenSettingsStore>>,
 }
 
 impl RebornServices {
@@ -385,6 +390,9 @@ pub(crate) struct RebornLocalRuntimeServices {
     /// Safety configuration store for managing safety rules and settings.
     #[cfg(feature = "libsql")]
     pub(crate) safety_config_store: Arc<brassclaw_product_workflow::SqliteSafetyConfigStore>,
+    /// Token settings store for managing per-section token limits.
+    #[cfg(feature = "libsql")]
+    pub(crate) token_settings_store: Arc<crate::token_settings_store::DbTokenSettingsStore>,
     /// Same sink as `budget_event_sink` but typed as the concrete
     /// `InMemoryBudgetEventSink` so the runtime can expose `drain()` /
     /// `snapshot()` to tests without leaking the concrete type into the
@@ -504,6 +512,8 @@ impl RebornServices {
             secret_store: Arc::new(brassclaw_secrets::InMemorySecretStore::new()),
             #[cfg(feature = "libsql")]
             safety_config_store: None,
+            #[cfg(feature = "libsql")]
+            token_settings_store: None,
         }
     }
 }
@@ -908,6 +918,11 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
             tracing::info!("✅ Wiring SafetyConfigStore into RebornServices");
             Some(Arc::clone(&store_graph.local_runtime.safety_config_store))
         },
+        #[cfg(feature = "libsql")]
+        token_settings_store: {
+            tracing::info!("✅ Wiring TokenSettingsStore into RebornServices");
+            Some(Arc::clone(&store_graph.local_runtime.token_settings_store))
+        },
     })
 }
 
@@ -986,6 +1001,14 @@ async fn build_local_dev_store_graph(
     );
     tracing::info!("✅ SafetyConfigStore created successfully in build_local_dev_store_graph");
 
+    // Create the token settings store (shares the same DB as safety config).
+    let token_settings_store = Arc::new(
+        crate::token_settings_store::DbTokenSettingsStore::new(Arc::clone(
+            &identity_substrate_db,
+        )),
+    );
+    tracing::info!("✅ TokenSettingsStore created successfully in build_local_dev_store_graph");
+
     let local_runtime = Arc::new(RebornLocalRuntimeServices {
         approval_requests: Arc::clone(&approval_requests),
         capability_leases: Arc::clone(&capability_leases),
@@ -1025,6 +1048,7 @@ async fn build_local_dev_store_graph(
         audit_log,
         extension_registry,
         safety_config_store,
+        token_settings_store,
     });
     let process_services = ProcessServices::filesystem(Arc::clone(&scoped_filesystem));
 
@@ -2525,6 +2549,8 @@ where
         secret_store,
         #[cfg(feature = "libsql")]
         safety_config_store: None,
+        #[cfg(feature = "libsql")]
+        token_settings_store: None,
     })
 }
 
@@ -2810,6 +2836,8 @@ mod tests {
             extension_registry: Arc::clone(&base_runtime.extension_registry),
             #[cfg(feature = "libsql")]
             safety_config_store: Arc::clone(&base_runtime.safety_config_store),
+            #[cfg(feature = "libsql")]
+            token_settings_store: Arc::clone(&base_runtime.token_settings_store),
         })
     }
 

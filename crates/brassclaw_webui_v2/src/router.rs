@@ -183,6 +183,12 @@ pub fn webui_v2_router_with_options(state: WebUiV2State, options: WebUiV2RouteOp
         .route(
             "/api/webchat/v2/safety/blocked-paths",
             get(handlers::safety::get_blocked_paths).put(handlers::safety::update_blocked_paths),
+        )
+        // Token settings endpoint
+        .route(
+            "/api/webchat/v2/tokens",
+            get(handlers::tokens::get_token_settings)
+                .put(handlers::tokens::update_token_settings),
         );
     if options.mount_llm_config_routes {
         router = router

@@ -8,7 +8,7 @@ pub mod families;
 pub mod family;
 pub mod planner;
 pub mod state;
-pub(crate) mod strategies;
+pub mod strategies;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 pub mod token_budget;

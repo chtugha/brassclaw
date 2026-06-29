@@ -74,6 +74,9 @@ pub struct RebornConfigFile {
     pub runner: Option<RunnerSection>,
     /// Skill activation selection settings for local-dev runtime skill context.
     pub skills: Option<SkillsSection>,
+    /// Per-section token limits for LLM context composition. All fields are
+    /// optional overrides of compiled defaults. Absent section → all defaults.
+    pub tokens: Option<TokensSection>,
     /// Per-slot LLM selection. Keyed by Reborn model slot name. Today
     /// composition wires only the `default` slot; the `mission` slot
     /// becomes live when the planned driver lands. Operators are free
@@ -163,6 +166,35 @@ pub struct SkillsSection {
     /// When false, regex activation criteria no longer auto-load full skill context.
     /// Keyword/tag activation and explicit skill mentions still work.
     pub regex_activation_enabled: Option<bool>,
+}
+
+/// Per-section token limits for LLM context composition.
+///
+/// All fields are optional overrides of the compiled defaults. A missing field
+/// or absent `[tokens]` section leaves the compiled default in effect. Values
+/// are token counts (`usize`); composition validates that each supplied value is
+/// `> 0` (setting any limit to 0 is meaningless and is a likely misconfiguration).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TokensSection {
+    /// Max tokens for conversation/thread history messages.
+    pub conversation_history: Option<usize>,
+    /// Max tokens for skill/instruction snippets shown to the model.
+    pub skills: Option<usize>,
+    /// Max tokens for identity/persona context.
+    pub identity: Option<usize>,
+    /// Max tokens for inline control messages (loop nudges, in-flight guidance).
+    pub inline_control: Option<usize>,
+    /// Max tokens for memory snippets.
+    pub memory: Option<usize>,
+    /// Max tokens for safety context.
+    pub safety: Option<usize>,
+    /// Max tokens for the visible capability surface (tool descriptions).
+    pub capability_surface: Option<usize>,
+    /// Max tokens for total model input (across all sections combined).
+    pub total_input: Option<usize>,
+    /// Max output tokens requested from the model.
+    pub max_output: Option<usize>,
 }
 
 /// WebChat v2 HTTP gateway configuration.
@@ -1013,6 +1045,7 @@ mod tests {
         assert!(cfg.harness.is_none());
         assert!(cfg.runner.is_none());
         assert!(cfg.skills.is_none());
+        assert!(cfg.tokens.is_none());
         assert!(cfg.llm.is_none());
         assert!(cfg.slack.is_none());
     }

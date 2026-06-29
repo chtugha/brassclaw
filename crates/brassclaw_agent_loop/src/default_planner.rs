@@ -216,6 +216,14 @@ pub(crate) struct DefaultStrategySlots {
     budget: Arc<dyn BudgetStrategy>,
 }
 
+impl DefaultStrategySlots {
+    /// Override the context strategy slot with a custom implementation.
+    pub(crate) fn with_context(mut self, context: Arc<dyn ContextStrategy>) -> Self {
+        self.context = context;
+        self
+    }
+}
+
 impl Default for DefaultStrategySlots {
     fn default() -> Self {
         Self {

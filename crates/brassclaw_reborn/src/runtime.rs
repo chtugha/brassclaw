@@ -30,7 +30,7 @@ use brassclaw_turns::{
 };
 
 use crate::{
-    app_loop_family::build_loop_family_registry,
+    app_loop_family::build_loop_family_registry_with_config,
     driver_registry::{DriverRegistry, DriverRegistryError},
     loop_driver_host::{
         HookDispatcherBuilderFactory, RebornLoopDriverHostFactory, TextOnlyLoopHostConfig,
@@ -59,6 +59,10 @@ pub struct DefaultPlannedRuntimeConfig {
     pub worker: TurnRunnerWorkerConfig,
     pub text_only_driver: TextOnlyModelReplyDriverConfig,
     pub host: TextOnlyLoopHostConfig,
+    /// Optional token budget for conversation history context.
+    /// When `Some(n)`, the `DefaultContextStrategy` is capped at `n` tokens.
+    /// When `None`, the compiled default (`DEFAULT_MAX_CONTEXT_TOKENS`) is used.
+    pub context_token_budget: Option<usize>,
 }
 
 pub struct DefaultPlannedRuntimeParts<T, G>
@@ -327,7 +331,7 @@ where
 {
     let mut registry = DriverRegistry::new();
     register_default_text_only_driver(&mut registry, parts.config.text_only_driver)?;
-    let family_registry = build_loop_family_registry().map_err(|error| {
+    let family_registry = build_loop_family_registry_with_config(parts.config.context_token_budget).map_err(|error| {
         DefaultPlannedRuntimeBuildError::PlannedDriver(
             DefaultPlannedDriverRegistrationError::DriverBuild(
                 AgentLoopDriverError::InvalidRequest {

@@ -9,6 +9,7 @@ import { NetworkingTab } from "./components/networking-tab.js";
 import { RestartBanner } from "./components/restart-banner.js";
 import { SafetyPanel } from "./components/safety-panel.js";
 import { SkillsTab } from "./components/skills-tab.js";
+import { TokensTab } from "./components/tokens-tab.js";
 import { ToolsTab } from "./components/tools-tab.js";
 import { SettingsToolbar } from "./components/settings-toolbar.js";
 import { UsersTab } from "./components/users-tab.js";
@@ -68,6 +69,7 @@ export function SettingsPage() {
     tools: html`<${ToolsTab} searchQuery=${searchQuery} />`,
     skills: html`<${SkillsTab} searchQuery=${searchQuery} />`,
     safety: html`<${SafetyPanel} searchQuery=${searchQuery} />`,
+    tokens: html`<${TokensTab} searchQuery=${searchQuery} />`,
     users: html`<${UsersTab} searchQuery=${searchQuery} />`,
     language: html`<${LanguageTab} searchQuery=${searchQuery} />`,
   };

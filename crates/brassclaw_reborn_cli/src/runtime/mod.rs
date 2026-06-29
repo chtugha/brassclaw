@@ -316,6 +316,9 @@ pub(crate) fn build_runtime_input_with_options(
 ) -> anyhow::Result<RebornRuntimeInput> {
     let runtime_services = build_services_input_with_options(config, caller, options)?;
 
+    let (conversation_context_tokens, skill_context_tokens) =
+        token_budgets_from_config(runtime_services.config_file.as_ref());
+
     #[allow(unused_mut)]
     let mut runtime_input = RebornRuntimeInput::from_services(runtime_services.services_input)
         .with_runner_settings(runner_settings(runtime_services.config_file.as_ref())?)
@@ -329,7 +332,9 @@ pub(crate) fn build_runtime_input_with_options(
         .with_identity(runtime_identity(runtime_services.config_file.as_ref()))
         .with_regex_skill_activation_enabled(regex_skill_activation_enabled(
             runtime_services.config_file.as_ref(),
-        ));
+        ))
+        .with_conversation_context_tokens(conversation_context_tokens)
+        .with_skill_context_tokens(skill_context_tokens);
 
     #[cfg(feature = "root-llm-provider")]
     {
@@ -648,6 +653,15 @@ fn reject_unsupported_runtime_sections(
             sections.join(", ")
         )
     }
+}
+
+fn token_budgets_from_config(
+    config_file: Option<&brassclaw_reborn_config::RebornConfigFile>,
+) -> (Option<usize>, Option<usize>) {
+    let Some(tokens) = config_file.and_then(|file| file.tokens.as_ref()) else {
+        return (None, None);
+    };
+    (tokens.conversation_history, tokens.skills)
 }
 
 fn runner_settings(

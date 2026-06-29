@@ -262,6 +262,12 @@ pub struct RebornRuntimeInput {
     /// otherwise the loop host rejects the run before model execution.
     pub default_project_id: Option<ProjectId>,
     pub regex_skill_activation_enabled: bool,
+    /// Optional override for the max tokens allocated to conversation history.
+    /// When set, replaces `DefaultContextStrategy::DEFAULT_MAX_CONTEXT_TOKENS`.
+    pub conversation_context_tokens: Option<usize>,
+    /// Optional override for the max tokens allocated to skill context.
+    /// When set, replaces `LOCAL_DEV_MAX_SKILL_CONTEXT_TOKENS`.
+    pub skill_context_tokens: Option<usize>,
     pub skill_context_source: Option<Arc<dyn HostSkillContextSource>>,
     /// Hook-framework activation knobs. Default OFF. Callers resolve
     /// environment or config into this typed value once at the edge.
@@ -312,6 +318,8 @@ impl RebornRuntimeInput {
             identity: RebornRuntimeIdentity::default(),
             default_project_id: None,
             regex_skill_activation_enabled: true,
+            conversation_context_tokens: None,
+            skill_context_tokens: None,
             skill_context_source: None,
             hooks: HooksActivationConfig::default(),
             budget_defaults: None,
@@ -396,6 +404,16 @@ impl RebornRuntimeInput {
 
     pub fn with_regex_skill_activation_enabled(mut self, enabled: bool) -> Self {
         self.regex_skill_activation_enabled = enabled;
+        self
+    }
+
+    pub fn with_conversation_context_tokens(mut self, tokens: Option<usize>) -> Self {
+        self.conversation_context_tokens = tokens;
+        self
+    }
+
+    pub fn with_skill_context_tokens(mut self, tokens: Option<usize>) -> Self {
+        self.skill_context_tokens = tokens;
         self
     }
 

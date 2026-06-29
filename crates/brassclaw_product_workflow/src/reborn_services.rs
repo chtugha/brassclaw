@@ -833,6 +833,31 @@ pub trait RebornServicesApi: Send + Sync {
             false,
         ))
     }
+
+    /// Token settings methods - default to "not implemented" so facades that
+    /// don't wire token settings inherit a safe surface.
+    async fn get_token_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::token_settings::TokenSettingsResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    async fn update_token_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: crate::token_settings::UpdateTokenSettingsRequest,
+    ) -> Result<crate::token_settings::TokenSettingsResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
 }
 
 /// Default facade implementation composed at the WebUI boundary.
@@ -856,6 +881,7 @@ pub struct RebornServices {
     extension_registry: Option<Arc<dyn brassclaw_host_api::CapabilityRegistry>>,
     capability_permission_store: Option<Arc<dyn CapabilityPermissionStore>>,
     safety_config_store: Option<Arc<crate::safety_config_store::SqliteSafetyConfigStore>>,
+    token_settings_store: Option<Arc<dyn crate::token_settings_store::TokenSettingsStore>>,
 }
 
 impl RebornServices {
@@ -886,6 +912,7 @@ impl RebornServices {
             extension_registry: None,
             capability_permission_store: None,
             safety_config_store: None,
+            token_settings_store: None,
         }
     }
 
@@ -1011,6 +1038,15 @@ impl RebornServices {
         safety_config_store: Arc<crate::safety_config_store::SqliteSafetyConfigStore>,
     ) -> Self {
         self.safety_config_store = Some(safety_config_store);
+        self
+    }
+
+    /// Attach the token settings store for reading/writing token limits.
+    pub fn with_token_settings_store(
+        mut self,
+        token_settings_store: Arc<dyn crate::token_settings_store::TokenSettingsStore>,
+    ) -> Self {
+        self.token_settings_store = Some(token_settings_store);
         self
     }
 
@@ -2102,6 +2138,63 @@ impl RebornServicesApi for RebornServices {
             )
             .await
             .map_err(|_e| {
+                RebornServicesError::from_status_kind(
+                    RebornServicesErrorCode::Internal,
+                    RebornServicesErrorKind::Internal,
+                    500,
+                    false,
+                )
+            })
+    }
+
+    async fn get_token_settings(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::token_settings::TokenSettingsResponse, RebornServicesError> {
+        let Some(store) = &self.token_settings_store else {
+            return Err(RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            ));
+        };
+
+        let user_id = caller.user_id.to_string();
+        store
+            .get_token_settings(&user_id)
+            .await
+            .map_err(|e| {
+                tracing::error!("❌ Failed to get token settings: {:?}", e);
+                RebornServicesError::from_status_kind(
+                    RebornServicesErrorCode::Internal,
+                    RebornServicesErrorKind::Internal,
+                    500,
+                    false,
+                )
+            })
+    }
+
+    async fn update_token_settings(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: crate::token_settings::UpdateTokenSettingsRequest,
+    ) -> Result<crate::token_settings::TokenSettingsResponse, RebornServicesError> {
+        let Some(store) = &self.token_settings_store else {
+            return Err(RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            ));
+        };
+
+        let user_id = caller.user_id.to_string();
+        store
+            .update_token_settings(&user_id, request)
+            .await
+            .map_err(|e| {
+                tracing::error!("❌ Failed to update token settings: {:?}", e);
                 RebornServicesError::from_status_kind(
                     RebornServicesErrorCode::Internal,
                     RebornServicesErrorKind::Internal,

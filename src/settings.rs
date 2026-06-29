@@ -281,6 +281,10 @@ pub struct Settings {
     #[serde(default)]
     pub skills: SkillsSettings,
 
+    /// Token limit configuration.
+    #[serde(default)]
+    pub tokens: TokenSettings,
+
     /// Memory hygiene configuration.
     #[serde(default)]
     pub hygiene: HygieneSettings,
@@ -1086,6 +1090,50 @@ pub struct MissionSettings {
     /// `None` = use env/default (5). Minimum: 1.
     #[serde(default)]
     pub insights_interval: Option<u32>,
+}
+
+/// Token limit configuration for LLM context composition.
+///
+/// All fields are optional — when absent, the runtime uses its compiled default.
+/// Setting a field to `Some(n)` applies an intelligent token budget for that
+/// composition layer.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TokenSettings {
+    /// Max tokens for conversation/thread history messages.
+    #[serde(default)]
+    pub conversation_history: Option<usize>,
+
+    /// Max tokens for skill/instruction snippets.
+    #[serde(default)]
+    pub skills: Option<usize>,
+
+    /// Max tokens for identity/persona messages.
+    #[serde(default)]
+    pub identity: Option<usize>,
+
+    /// Max tokens for inline control messages (loop nudges).
+    #[serde(default)]
+    pub inline_control: Option<usize>,
+
+    /// Max tokens for memory snippets.
+    #[serde(default)]
+    pub memory: Option<usize>,
+
+    /// Max tokens for safety context.
+    #[serde(default)]
+    pub safety: Option<usize>,
+
+    /// Max tokens for the visible capability surface (tool descriptions).
+    #[serde(default)]
+    pub capability_surface: Option<usize>,
+
+    /// Max tokens for total input (across all sections).
+    #[serde(default)]
+    pub total_input: Option<usize>,
+
+    /// Max output tokens requested from the model.
+    #[serde(default)]
+    pub max_output: Option<usize>,
 }
 
 /// Transcription pipeline settings.

@@ -159,6 +159,16 @@ pub(crate) fn build_webui_services_with_connectable_channels(
     #[cfg(not(feature = "libsql"))]
     tracing::warn!("⚠️ libsql feature not enabled - SafetyConfigStore not available");
 
+    // Wire the token settings store when available (local-dev with libsql)
+    #[cfg(feature = "libsql")]
+    if let Some(token_settings_store) = &services.token_settings_store {
+        tracing::info!("✅ Wiring TokenSettingsStore into WebUI API");
+        api = api.with_token_settings_store(
+            Arc::clone(token_settings_store)
+                as Arc<dyn brassclaw_product_workflow::TokenSettingsStore>,
+        );
+    }
+
     // Wire the extension registry and capability permission store for Tools API
     if let Some(local_runtime) = &services.local_runtime {
         tracing::info!("✅ Wiring ExtensionRegistry into WebUI API");

@@ -47,6 +47,32 @@ pub fn default() -> LoopFamily {
     LoopFamily::new(id, version, Arc::new(planner))
 }
 
+/// The default loop family with a custom conversation context token budget.
+///
+/// When `context_token_budget` is `Some(n)`, the `DefaultContextStrategy` will
+/// limit conversation history to approximately `n` tokens instead of the default
+/// 8000.  When `None`, falls back to [`default()`].
+pub fn default_with_context_tokens(context_token_budget: Option<usize>) -> LoopFamily {
+    use crate::strategies::context::DefaultContextStrategy;
+
+    let Some(budget) = context_token_budget else {
+        return default();
+    };
+    let slots = crate::default_planner::DefaultStrategySlots::default()
+        .with_context(Arc::new(DefaultContextStrategy::with_token_budget(
+            DefaultContextStrategy::DEFAULT_MAX_MESSAGES,
+            budget,
+        )));
+    let planner = DefaultPlanner::compose(
+        crate::family::LoopFamilyId::DEFAULT,
+        crate::family::ComponentIdentity::from_static("default", DEFAULT_FAMILY_DIGEST),
+        slots,
+    );
+    let id = planner.id().clone();
+    let version = planner.version().clone();
+    LoopFamily::new(id, version, Arc::new(planner))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::family::LoopFamilyId;

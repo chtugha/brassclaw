@@ -39,6 +39,7 @@ mod sandbox;
 mod search;
 mod secrets;
 mod skills;
+mod tokens;
 mod transcription;
 mod tunnel;
 mod wasm;
@@ -72,6 +73,7 @@ pub use self::sandbox::{AcpModeConfig, ClaudeCodeConfig, SandboxModeConfig};
 pub use self::search::WorkspaceSearchConfig;
 pub use self::secrets::SecretsConfig;
 pub use self::skills::SkillsConfig;
+pub use self::tokens::TokensConfig;
 pub use self::transcription::TranscriptionConfig;
 pub use self::tunnel::TunnelConfig;
 pub use self::wasm::WasmConfig;
@@ -129,6 +131,7 @@ pub struct Config {
     pub claude_code: ClaudeCodeConfig,
     pub acp: AcpModeConfig,
     pub skills: SkillsConfig,
+    pub tokens: TokensConfig,
     pub transcription: TranscriptionConfig,
     pub search: WorkspaceSearchConfig,
     pub missions: MissionsConfig,
@@ -259,6 +262,7 @@ impl Config {
                 installed_dir: installed_skills_dir,
                 ..SkillsConfig::default()
             },
+            tokens: TokensConfig::default(),
             transcription: TranscriptionConfig::default(),
             search: WorkspaceSearchConfig::default(),
             missions: MissionsConfig::default(),
@@ -610,6 +614,7 @@ impl Config {
             claude_code: ClaudeCodeConfig::resolve(settings)?,
             acp: AcpModeConfig::resolve(settings)?,
             skills: SkillsConfig::resolve(settings)?,
+            tokens: TokensConfig::resolve(settings)?,
             transcription: TranscriptionConfig::resolve(settings)?,
             search: WorkspaceSearchConfig::resolve(settings)?,
             missions: MissionsConfig::resolve(settings)?,

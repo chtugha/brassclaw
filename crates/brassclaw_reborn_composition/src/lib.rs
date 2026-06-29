@@ -114,6 +114,8 @@ pub mod test_support;
 mod trigger_poller;
 mod trigger_poller_trusted_submit;
 mod web_access;
+#[cfg(feature = "libsql")]
+mod token_settings_store;
 mod webui;
 mod webui_body_limit;
 mod webui_extension_credentials;
