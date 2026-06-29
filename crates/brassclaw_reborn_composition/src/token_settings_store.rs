@@ -2,8 +2,8 @@
 //!
 //! Token limits are stored as a JSON object under the key `tokens`
 //! in the settings table, keyed by user_id.  The settings table is
-//! already created and managed by the main crate; this store reads and
-//! writes a single row with key = "tokens".
+//! created here with `CREATE TABLE IF NOT EXISTS` if it does not yet exist
+//! (for DBs that pre-date the settings migration).
 
 use std::sync::Arc;
 
@@ -14,14 +14,34 @@ use brassclaw_product_workflow::{
 
 const TOKENS_SETTINGS_KEY: &str = "tokens";
 
+const CREATE_SETTINGS_TABLE: &str = "
+CREATE TABLE IF NOT EXISTS settings (
+    user_id    TEXT NOT NULL,
+    key        TEXT NOT NULL,
+    value      TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    PRIMARY KEY (user_id, key)
+);
+CREATE INDEX IF NOT EXISTS idx_settings_user ON settings(user_id);
+";
+
 /// LibSQL-backed implementation of [`TokenSettingsStore`].
 pub(crate) struct DbTokenSettingsStore {
     db: Arc<libsql::Database>,
 }
 
 impl DbTokenSettingsStore {
-    pub(crate) fn new(db: Arc<libsql::Database>) -> Self {
-        Self { db }
+    /// Open the store, ensuring the `settings` table exists.
+    pub(crate) async fn open(
+        db: Arc<libsql::Database>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let conn = db
+            .connect()
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+        conn.execute_batch(CREATE_SETTINGS_TABLE)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
+        Ok(Self { db })
     }
 
     async fn connection(&self) -> Result<libsql::Connection, Box<dyn std::error::Error + Send + Sync>> {

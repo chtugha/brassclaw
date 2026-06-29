@@ -1002,10 +1002,16 @@ async fn build_local_dev_store_graph(
     tracing::info!("✅ SafetyConfigStore created successfully in build_local_dev_store_graph");
 
     // Create the token settings store (shares the same DB as safety config).
+    // `open` runs `CREATE TABLE IF NOT EXISTS` so pre-migration DBs get the
+    // settings table on the first startup after upgrade.
     let token_settings_store = Arc::new(
-        crate::token_settings_store::DbTokenSettingsStore::new(Arc::clone(
+        crate::token_settings_store::DbTokenSettingsStore::open(Arc::clone(
             &identity_substrate_db,
-        )),
+        ))
+        .await
+        .map_err(|error| RebornBuildError::InvalidConfig {
+            reason: format!("TokenSettingsStore schema migration failed: {error}"),
+        })?,
     );
     tracing::info!("✅ TokenSettingsStore created successfully in build_local_dev_store_graph");
 
