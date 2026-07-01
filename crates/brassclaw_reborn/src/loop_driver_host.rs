@@ -20,7 +20,7 @@ use brassclaw_host_api::ExtensionId;
 use brassclaw_loop_support::{
     CapabilityResolveError, CapabilitySurfaceProfileFilter, CapabilitySurfaceProfileResolver,
     EmptyLoopCapabilityPort, GuardedSystemInferencePort, HostIdentityContextSource, HostInputQueue,
-    HostManagedModelGateway, HostQueueLoopInputPort, HostSkillContextSource,
+    HostManagedModelGateway, HostQueueLoopInputPort, HostSkillContextSource, IdentityBudget,
     LoopCapabilityInputResolver, LoopCapabilityPortFactory, ModelGatewayBackedSystemInferencePort,
     RunCancellationFactory, RunCancellationObservationKind, RunStateLoopCancellationPort,
     SubagentLoopPromptPort, SubagentPromptComposer, ThreadBackedLoopContextPort,
@@ -948,6 +948,9 @@ where
     event_subscription: Option<EventTriggeredHookSubscription>,
     safety_context: InstructionSafetyContext,
     identity_context_source: Option<Arc<dyn HostIdentityContextSource>>,
+    /// Optional identity token ceiling for `ThreadBackedLoopContextPort`.
+    /// `None` means use the compiled default.
+    identity_token_ceiling: Option<usize>,
     input_queue: Option<Arc<dyn HostInputQueue>>,
     profiled_capabilities: Option<ProfiledCapabilityHostRuntime>,
     subagent_prompt_composer: Option<SubagentPromptComposer>,
@@ -1011,6 +1014,7 @@ where
             event_subscription: None,
             safety_context,
             identity_context_source: None,
+            identity_token_ceiling: None,
             input_queue: None,
             profiled_capabilities: None,
             subagent_prompt_composer: None,
@@ -1269,6 +1273,11 @@ where
         self
     }
 
+    pub fn with_identity_token_ceiling(mut self, ceiling: Option<usize>) -> Self {
+        self.identity_token_ceiling = ceiling;
+        self
+    }
+
     pub fn with_profiled_capability_port_factory(
         mut self,
         capability_factory: Arc<dyn LoopCapabilityPortFactory>,
@@ -1368,6 +1377,24 @@ where
         }
         if let Some(source) = self.identity_context_source.as_ref() {
             context_adapter = context_adapter.with_identity_context_source(source.clone());
+        }
+        if let Some(ceiling) = self.identity_token_ceiling {
+            match IdentityBudget::new(ceiling as u32) {
+                Ok(budget) => {
+                    tracing::debug!(
+                        identity_token_ceiling = ceiling,
+                        "applying configured identity token ceiling"
+                    );
+                    context_adapter = context_adapter.with_identity_budget(budget);
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        identity_token_ceiling = ceiling,
+                        reason = %error,
+                        "ignoring invalid identity_token_ceiling; using compiled default"
+                    );
+                }
+            }
         }
         context_adapter = context_adapter.with_milestone_sink(Arc::clone(&self.milestone_sink));
         let context: Arc<dyn LoopContextPort> = Arc::new(context_adapter);

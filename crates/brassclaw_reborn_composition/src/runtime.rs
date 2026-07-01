@@ -1507,6 +1507,8 @@ pub async fn build_reborn_runtime(
         regex_skill_activation_enabled,
         conversation_context_tokens,
         skill_context_tokens,
+        identity_token_ceiling,
+        capability_surface_tokens,
         skill_context_source: configured_skill_context_source,
         hooks: hooks_config,
         budget_defaults,
@@ -1841,6 +1843,8 @@ pub async fn build_reborn_runtime(
                 scope_filter: None,
             },
             context_token_budget: conversation_context_tokens,
+            identity_token_ceiling,
+            capability_surface_tokens,
             ..DefaultPlannedRuntimeConfig::default()
         },
         model_route_resolver: None,

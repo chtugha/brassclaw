@@ -72,6 +72,7 @@ impl TokenSettingsStore for DbTokenSettingsStore {
         } else {
             // Return empty (all None) when no settings exist yet.
             Ok(TokenSettingsResponse {
+                profile: None,
                 conversation_history: None,
                 skills: None,
                 identity: None,
@@ -91,6 +92,7 @@ impl TokenSettingsStore for DbTokenSettingsStore {
         request: UpdateTokenSettingsRequest,
     ) -> Result<TokenSettingsResponse, Box<dyn std::error::Error + Send + Sync>> {
         let response = TokenSettingsResponse {
+            profile: request.profile,
             conversation_history: request.conversation_history,
             skills: request.skills,
             identity: request.identity,

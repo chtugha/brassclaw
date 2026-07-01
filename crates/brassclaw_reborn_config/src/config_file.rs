@@ -177,6 +177,10 @@ pub struct SkillsSection {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TokensSection {
+    /// Named distribution preset (`small_7b`, `large`, `coding`, `chat`).
+    /// When set, provides default values for all token fields. Explicit field
+    /// values override the preset value for that field.
+    pub profile: Option<String>,
     /// Max tokens for conversation/thread history messages.
     pub conversation_history: Option<usize>,
     /// Max tokens for skill/instruction snippets shown to the model.
@@ -195,6 +199,127 @@ pub struct TokensSection {
     pub total_input: Option<usize>,
     /// Max output tokens requested from the model.
     pub max_output: Option<usize>,
+}
+
+/// A fully-resolved set of token budgets derived from a preset (and optional
+/// per-field overrides from [`TokensSection`]).  All fields are concrete
+/// `usize` values — callers do not need to handle `None`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TokenDistributionPreset {
+    pub conversation_history: usize,
+    pub skills: usize,
+    pub identity: usize,
+    pub capability_surface: usize,
+    pub inline_control: usize,
+    pub memory: usize,
+    pub total_input: usize,
+    pub max_output: usize,
+}
+
+/// Built-in preset for 7B-class local models (tight per-section budgets,
+/// small total context window).
+pub const PRESET_SMALL_7B: TokenDistributionPreset = TokenDistributionPreset {
+    conversation_history: 4000,
+    skills: 3000,
+    identity: 2000,
+    capability_surface: 1500,
+    inline_control: 500,
+    memory: 500,
+    total_input: 12000,
+    max_output: 2048,
+};
+
+/// Built-in preset for large/cloud models (generous budgets).
+pub const PRESET_LARGE: TokenDistributionPreset = TokenDistributionPreset {
+    conversation_history: 8000,
+    skills: 6000,
+    identity: 4000,
+    capability_surface: 3000,
+    inline_control: 1000,
+    memory: 1000,
+    total_input: 28000,
+    max_output: 4096,
+};
+
+/// Built-in preset optimised for coding tasks (large skill + output budget).
+pub const PRESET_CODING: TokenDistributionPreset = TokenDistributionPreset {
+    conversation_history: 3000,
+    skills: 8000,
+    identity: 2000,
+    capability_surface: 2000,
+    inline_control: 500,
+    memory: 1000,
+    total_input: 16000,
+    max_output: 4096,
+};
+
+/// Built-in preset for chat / conversational use (large history budget).
+pub const PRESET_CHAT: TokenDistributionPreset = TokenDistributionPreset {
+    conversation_history: 8000,
+    skills: 1000,
+    identity: 3000,
+    capability_surface: 1000,
+    inline_control: 500,
+    memory: 1500,
+    total_input: 16000,
+    max_output: 2048,
+};
+
+/// Resolved token budgets with all fields populated.
+///
+/// Produced by [`resolve_with_profile`].  Every field is `Option<usize>`
+/// so callers can use `None` as "no override for this field" and let the
+/// runtime compiled default take effect.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ResolvedTokenBudgets {
+    pub conversation_history: Option<usize>,
+    pub skills: Option<usize>,
+    pub identity: Option<usize>,
+    pub capability_surface: Option<usize>,
+    pub inline_control: Option<usize>,
+    pub memory: Option<usize>,
+    pub total_input: Option<usize>,
+    pub max_output: Option<usize>,
+}
+
+/// Resolve token budgets by starting from a named preset (if any) and
+/// applying explicit `TokensSection` field overrides on top.
+///
+/// Precedence: explicit `Some(v)` field in `overrides` > preset value >
+/// `None` (runtime compiled default).
+///
+/// Unknown profile names are silently ignored (treated as no preset) so
+/// a future profile name does not break older binaries.
+pub fn resolve_with_profile(overrides: &TokensSection) -> ResolvedTokenBudgets {
+    let preset: Option<&TokenDistributionPreset> = match overrides
+        .profile
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some("small_7b") => Some(&PRESET_SMALL_7B),
+        Some("large") => Some(&PRESET_LARGE),
+        Some("coding") => Some(&PRESET_CODING),
+        Some("chat") => Some(&PRESET_CHAT),
+        _ => None,
+    };
+
+    macro_rules! resolve_field {
+        ($field:ident) => {
+            overrides.$field.or_else(|| preset.map(|p| p.$field))
+        };
+    }
+
+    ResolvedTokenBudgets {
+        conversation_history: resolve_field!(conversation_history),
+        skills: resolve_field!(skills),
+        identity: resolve_field!(identity),
+        capability_surface: resolve_field!(capability_surface),
+        inline_control: resolve_field!(inline_control),
+        memory: resolve_field!(memory),
+        total_input: resolve_field!(total_input),
+        max_output: resolve_field!(max_output),
+    }
 }
 
 /// WebChat v2 HTTP gateway configuration.

@@ -20,13 +20,37 @@ const TOKEN_FIELDS = [
   { key: "max_output",           labelKey: "settings.tokens.max_output",           descKey: "settings.tokens.max_output.desc" },
 ];
 
+// Named presets with their concrete values (mirrors the Rust constants in
+// crates/brassclaw_reborn_config/src/config_file.rs).
+const PRESETS = {
+  small_7b: { conversation_history: 4000, skills: 3000, identity: 2000, inline_control: 500,  memory: 500,  safety: null, capability_surface: 1500, total_input: 12000, max_output: 2048 },
+  large:    { conversation_history: 8000, skills: 6000, identity: 4000, inline_control: 1000, memory: 1000, safety: null, capability_surface: 3000, total_input: 28000, max_output: 4096 },
+  coding:   { conversation_history: 3000, skills: 8000, identity: 2000, inline_control: 500,  memory: 1000, safety: null, capability_surface: 2000, total_input: 16000, max_output: 4096 },
+  chat:     { conversation_history: 8000, skills: 1000, identity: 3000, inline_control: 500,  memory: 1500, safety: null, capability_surface: 1000, total_input: 16000, max_output: 2048 },
+};
+
+// Sentinel value used in the <select> for "no preset / custom values".
+const CUSTOM = "custom";
+
+// Preset options shown in the dropdown (in display order).
+const PRESET_OPTIONS = [
+  { value: CUSTOM,     labelKey: "settings.tokens.profile.custom" },
+  { value: "small_7b", labelKey: "settings.tokens.profile.small_7b" },
+  { value: "large",    labelKey: "settings.tokens.profile.large" },
+  { value: "coding",   labelKey: "settings.tokens.profile.coding" },
+  { value: "chat",     labelKey: "settings.tokens.profile.chat" },
+];
+
 /**
  * Convert a server response payload into a local form state.
- * Server returns `{ conversation_history: number | null, … }`.
- * Form state uses empty-string for "unset" so inputs render cleanly.
+ * Server returns `{ profile: string | null, conversation_history: number | null, … }`.
+ * Form state:
+ *   - `profile`: the preset key or CUSTOM sentinel
+ *   - per-field keys: empty-string for "unset/default", otherwise the number as string
  */
 function serverToForm(data) {
-  const form = {};
+  const profile = data?.profile ?? CUSTOM;
+  const form = { profile };
   for (const { key } of TOKEN_FIELDS) {
     const v = data?.[key];
     form[key] = v != null ? String(v) : "";
@@ -36,14 +60,22 @@ function serverToForm(data) {
 
 /**
  * Convert local form state back to a server payload.
- * Empty strings map to `null` (clear the override).
- * Non-empty strings are parsed as integers.
+ * When a preset is active, all per-field values are null (the preset drives
+ * them on the server side); only `profile` is sent.
+ * In Custom mode, empty strings map to `null` (clear the override).
  */
 function formToPayload(form) {
-  const payload = {};
+  const isCustom = form.profile === CUSTOM;
+  const payload = { profile: isCustom ? null : form.profile };
   for (const { key } of TOKEN_FIELDS) {
-    const v = form[key];
-    payload[key] = v === "" ? null : parseInt(v, 10) || null;
+    if (isCustom) {
+      const v = form[key];
+      payload[key] = v === "" ? null : parseInt(v, 10) || null;
+    } else {
+      // Preset selected: send null for all individual fields so the server
+      // knows the preset drives everything.
+      payload[key] = null;
+    }
   }
   return payload;
 }
@@ -75,6 +107,22 @@ export function TokensTab({ searchQuery = "" }) {
     }
   }, [query.data, form]);
 
+  const handleProfileChange = React.useCallback((value) => {
+    setForm((prev) => {
+      const next = { ...prev, profile: value };
+      // When switching to a preset, populate fields with preset values so the
+      // user sees what will be applied (read-only).
+      if (value !== CUSTOM) {
+        const preset = PRESETS[value] ?? {};
+        for (const { key } of TOKEN_FIELDS) {
+          next[key] = preset[key] != null ? String(preset[key]) : "";
+        }
+      }
+      return next;
+    });
+    setSavedOk(false);
+  }, []);
+
   const handleChange = React.useCallback((key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
     setSavedOk(false);
@@ -100,10 +148,18 @@ export function TokensTab({ searchQuery = "" }) {
     }
   }, [form, mutation, t]);
 
-  // Filter fields by search query
+  // Filter fields by search query. The preset selector is always shown when
+  // any field or the profile label matches.
   const visibleFields = TOKEN_FIELDS.filter(({ key, labelKey, descKey }) =>
     matchesSearch(searchQuery, [t(labelKey), t(descKey)])
   );
+
+  // Show the preset row if the profile label/desc matches OR any field matches.
+  const profileMatchesSearch = matchesSearch(searchQuery, [
+    t("settings.tokens.profile.label"),
+    t("settings.tokens.profile.desc"),
+  ]);
+  const showProfileSelector = profileMatchesSearch || visibleFields.length > 0;
 
   if (query.isLoading) {
     return html`
@@ -128,11 +184,18 @@ export function TokensTab({ searchQuery = "" }) {
     `;
   }
 
-  if (visibleFields.length === 0) {
+  if (!showProfileSelector && visibleFields.length === 0) {
     return html`<${SettingsSearchEmpty} query=${searchQuery} />`;
   }
 
   const currentForm = form ?? serverToForm(query.data);
+  const activeProfile = currentForm.profile ?? CUSTOM;
+  const isCustom = activeProfile === CUSTOM;
+
+  // Hint text shown below the preset selector.
+  const hintText = isCustom
+    ? t("settings.tokens.custom_hint")
+    : t("settings.tokens.preset_hint", { profile: t(`settings.tokens.profile.${activeProfile}`) });
 
   return html`
     <form onSubmit=${handleSave} className="space-y-4">
@@ -146,19 +209,32 @@ export function TokensTab({ searchQuery = "" }) {
           </p>
         </div>
 
-        <div className="space-y-5">
-          ${visibleFields.map(({ key, labelKey, descKey }) => html`
-            <${TokenField}
-              key=${key}
-              fieldKey=${key}
-              label=${t(labelKey)}
-              description=${t(descKey)}
-              value=${currentForm[key] ?? ""}
-              onChange=${handleChange}
-              disabled=${mutation.isPending}
-            />
-          `)}
-        </div>
+        ${showProfileSelector && html`
+          <${ProfileSelector}
+            value=${activeProfile}
+            onChange=${handleProfileChange}
+            disabled=${mutation.isPending}
+            hint=${hintText}
+            t=${t}
+          />
+        `}
+
+        ${visibleFields.length > 0 && html`
+          <div className="mt-5 space-y-5">
+            ${visibleFields.map(({ key, labelKey, descKey }) => html`
+              <${TokenField}
+                key=${key}
+                fieldKey=${key}
+                label=${t(labelKey)}
+                description=${t(descKey)}
+                value=${currentForm[key] ?? ""}
+                onChange=${handleChange}
+                disabled=${mutation.isPending || !isCustom}
+                readOnly=${!isCustom}
+              />
+            `)}
+          </div>
+        `}
 
         ${saveError && html`
           <div className="mt-4 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -196,21 +272,50 @@ export function TokensTab({ searchQuery = "" }) {
   `;
 }
 
-function TokenField({ fieldKey, label, description, value, onChange, disabled }) {
+function ProfileSelector({ value, onChange, disabled, hint, t }) {
+  return html`
+    <div className="mb-1">
+      <label className="block">
+        <span className="text-sm font-medium text-[var(--v2-text-strong)]">
+          ${t("settings.tokens.profile.label")}
+        </span>
+        <p className="mt-0.5 text-xs text-[var(--v2-text-muted)]">
+          ${t("settings.tokens.profile.desc")}
+        </p>
+        <select
+          value=${value}
+          disabled=${disabled}
+          onChange=${(e) => onChange(e.target.value)}
+          className="mt-1.5 block w-full rounded-lg border border-[var(--v2-panel-border)] bg-[var(--v2-surface)] px-3 py-2 text-sm text-[var(--v2-text-strong)] transition-colors hover:border-[var(--v2-accent-border)] focus:border-[var(--v2-accent-border)] focus:outline-none disabled:opacity-50"
+        >
+          ${PRESET_OPTIONS.map(({ value: v, labelKey }) => html`
+            <option key=${v} value=${v}>${t(labelKey)}</option>
+          `)}
+        </select>
+      </label>
+      ${hint && html`
+        <p className="mt-1.5 text-xs text-[var(--v2-text-muted)] italic">${hint}</p>
+      `}
+    </div>
+  `;
+}
+
+function TokenField({ fieldKey, label, description, value, onChange, disabled, readOnly }) {
   return html`
     <div>
       <label className="block">
-        <span className="text-sm font-medium text-[var(--v2-text-strong)]">${label}</span>
+        <span className="text-sm font-medium ${readOnly ? "text-[var(--v2-text-muted)]" : "text-[var(--v2-text-strong)]"}">${label}</span>
         <p className="mt-0.5 text-xs text-[var(--v2-text-muted)]">${description}</p>
         <input
           type="number"
           min="1"
           step="1"
           value=${value}
-          placeholder="default"
+          placeholder=${readOnly ? "" : "default"}
           disabled=${disabled}
-          onInput=${(e) => onChange(fieldKey, e.target.value)}
-          className="mt-1.5 block w-full rounded-lg border border-[var(--v2-panel-border)] bg-[var(--v2-surface)] px-3 py-2 text-sm text-[var(--v2-text-strong)] placeholder-[var(--v2-text-muted)] transition-colors hover:border-[var(--v2-accent-border)] focus:border-[var(--v2-accent-border)] focus:outline-none disabled:opacity-50"
+          readOnly=${readOnly}
+          onInput=${readOnly ? undefined : (e) => onChange(fieldKey, e.target.value)}
+          className="mt-1.5 block w-full rounded-lg border border-[var(--v2-panel-border)] bg-[var(--v2-surface)] px-3 py-2 text-sm transition-colors focus:outline-none ${readOnly ? "cursor-default opacity-50 select-none" : "text-[var(--v2-text-strong)] placeholder-[var(--v2-text-muted)] hover:border-[var(--v2-accent-border)] focus:border-[var(--v2-accent-border)] disabled:opacity-50"}"
         />
       </label>
     </div>

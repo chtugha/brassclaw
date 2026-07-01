@@ -268,6 +268,12 @@ pub struct RebornRuntimeInput {
     /// Optional override for the max tokens allocated to skill context.
     /// When set, replaces `LOCAL_DEV_MAX_SKILL_CONTEXT_TOKENS`.
     pub skill_context_tokens: Option<usize>,
+    /// Optional ceiling for identity/persona token budget.
+    /// When set, replaces `DEFAULT_IDENTITY_TOKEN_CEILING` in the context port.
+    pub identity_token_ceiling: Option<usize>,
+    /// Optional token budget for the visible capability surface (tool descriptions).
+    /// Stored here for downstream use; enforcement point is in loop family config.
+    pub capability_surface_tokens: Option<usize>,
     pub skill_context_source: Option<Arc<dyn HostSkillContextSource>>,
     /// Hook-framework activation knobs. Default OFF. Callers resolve
     /// environment or config into this typed value once at the edge.
@@ -320,6 +326,8 @@ impl RebornRuntimeInput {
             regex_skill_activation_enabled: true,
             conversation_context_tokens: None,
             skill_context_tokens: None,
+            identity_token_ceiling: None,
+            capability_surface_tokens: None,
             skill_context_source: None,
             hooks: HooksActivationConfig::default(),
             budget_defaults: None,
@@ -414,6 +422,16 @@ impl RebornRuntimeInput {
 
     pub fn with_skill_context_tokens(mut self, tokens: Option<usize>) -> Self {
         self.skill_context_tokens = tokens;
+        self
+    }
+
+    pub fn with_identity_token_ceiling(mut self, tokens: Option<usize>) -> Self {
+        self.identity_token_ceiling = tokens;
+        self
+    }
+
+    pub fn with_capability_surface_tokens(mut self, tokens: Option<usize>) -> Self {
+        self.capability_surface_tokens = tokens;
         self
     }
 

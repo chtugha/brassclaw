@@ -5,6 +5,10 @@ use serde::{Deserialize, Serialize};
 /// Response shape for token settings endpoints.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenSettingsResponse {
+    /// Named distribution preset (`small_7b`, `large`, `coding`, `chat`).
+    /// `null` means no preset — all fields are individually configured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
     /// Max tokens for conversation/thread history messages.
     pub conversation_history: Option<usize>,
     /// Max tokens for skill/instruction snippets.
@@ -28,6 +32,10 @@ pub struct TokenSettingsResponse {
 /// Request body for updating token settings.
 #[derive(Debug, Clone, Deserialize)]
 pub struct UpdateTokenSettingsRequest {
+    /// Named distribution preset (`small_7b`, `large`, `coding`, `chat`).
+    /// `null` clears the preset selection (switches to Custom).
+    #[serde(default)]
+    pub profile: Option<String>,
     /// Max tokens for conversation/thread history messages.
     pub conversation_history: Option<usize>,
     /// Max tokens for skill/instruction snippets.

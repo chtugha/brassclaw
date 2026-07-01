@@ -30,7 +30,7 @@ use brassclaw_turns::{
 };
 
 use crate::{
-    app_loop_family::build_loop_family_registry_with_config,
+    app_loop_family::{LoopFamilyConfig, build_loop_family_registry_with_full_config},
     driver_registry::{DriverRegistry, DriverRegistryError},
     loop_driver_host::{
         HookDispatcherBuilderFactory, RebornLoopDriverHostFactory, TextOnlyLoopHostConfig,
@@ -63,6 +63,13 @@ pub struct DefaultPlannedRuntimeConfig {
     /// When `Some(n)`, the `DefaultContextStrategy` is capped at `n` tokens.
     /// When `None`, the compiled default (`DEFAULT_MAX_CONTEXT_TOKENS`) is used.
     pub context_token_budget: Option<usize>,
+    /// Optional ceiling for identity/persona token budget passed to
+    /// `ThreadBackedLoopContextPort::with_identity_budget()`.
+    /// When `None`, the compiled default (`DEFAULT_IDENTITY_TOKEN_CEILING`) is used.
+    pub identity_token_ceiling: Option<usize>,
+    /// Optional token budget for the visible capability surface (tool descriptions).
+    /// Stored for downstream use in capability strategy composition.
+    pub capability_surface_tokens: Option<usize>,
 }
 
 pub struct DefaultPlannedRuntimeParts<T, G>
@@ -331,7 +338,10 @@ where
 {
     let mut registry = DriverRegistry::new();
     register_default_text_only_driver(&mut registry, parts.config.text_only_driver)?;
-    let family_registry = build_loop_family_registry_with_config(parts.config.context_token_budget).map_err(|error| {
+    let family_registry = build_loop_family_registry_with_full_config(LoopFamilyConfig {
+        conversation_context_tokens: parts.config.context_token_budget,
+        capability_surface_tokens: parts.config.capability_surface_tokens,
+    }).map_err(|error| {
         DefaultPlannedRuntimeBuildError::PlannedDriver(
             DefaultPlannedDriverRegistrationError::DriverBuild(
                 AgentLoopDriverError::InvalidRequest {
@@ -436,6 +446,18 @@ where
     let safety_context = parts
         .safety_context
         .unwrap_or_else(local_development_noop_safety_context);
+    // Derive max_messages from conversation context token budget when available.
+    // Formula: (budget / 200).min(50) — 200 tokens per message average, capped at 50.
+    let host_config = match parts.config.context_token_budget {
+        Some(budget) if budget > 0 => {
+            let derived_max_messages = (budget / 200).min(50).max(1);
+            TextOnlyLoopHostConfig {
+                max_messages: derived_max_messages,
+                ..parts.config.host
+            }
+        }
+        _ => parts.config.host,
+    };
     let mut host_factory = RebornLoopDriverHostFactory::new(
         Arc::clone(&parts.thread_service),
         parts.thread_scope,
@@ -444,7 +466,7 @@ where
         turn_state_store,
         Arc::clone(&parts.loop_checkpoint_store),
         parts.milestone_sink,
-        parts.config.host,
+        host_config,
         safety_context,
     )
     .with_profiled_capability_port_factory(capability_factory, capability_surface_resolver)
@@ -475,6 +497,9 @@ where
         host_factory = host_factory.with_hook_security_audit_sink(sink);
     }
     host_factory = host_factory.with_identity_context_source(parts.identity_context_source);
+    if let Some(ceiling) = parts.config.identity_token_ceiling {
+        host_factory = host_factory.with_identity_token_ceiling(Some(ceiling));
+    }
     let host_factory = Arc::new(host_factory);
 
     let transition_port: Arc<dyn TurnRunTransitionPort> = turn_state;

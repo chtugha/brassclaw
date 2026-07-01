@@ -5,6 +5,18 @@ use brassclaw_agent_loop::{
     family::{LoopFamilyRegistry, LoopFamilyRegistryError},
 };
 
+/// Configuration forwarded from `DefaultPlannedRuntimeConfig` to the loop
+/// family registry builder.
+#[derive(Debug, Clone, Default)]
+pub struct LoopFamilyConfig {
+    /// Token budget for conversation history context.
+    pub conversation_context_tokens: Option<usize>,
+    /// Token budget for the visible capability surface (tool descriptions).
+    /// Stored here for future capability strategy enforcement; the current
+    /// `DefaultCapabilityStrategy` does not filter by token count.
+    pub capability_surface_tokens: Option<usize>,
+}
+
 /// Build the production loop-family registry.
 ///
 /// This is the Reborn composition root for loop families. Adding another
@@ -22,8 +34,26 @@ pub fn build_loop_family_registry() -> Result<Arc<LoopFamilyRegistry>, LoopFamil
 pub fn build_loop_family_registry_with_config(
     conversation_context_tokens: Option<usize>,
 ) -> Result<Arc<LoopFamilyRegistry>, LoopFamilyRegistryError> {
+    build_loop_family_registry_with_full_config(LoopFamilyConfig {
+        conversation_context_tokens,
+        capability_surface_tokens: None,
+    })
+}
+
+/// Build the production loop-family registry with full token budget config.
+pub fn build_loop_family_registry_with_full_config(
+    config: LoopFamilyConfig,
+) -> Result<Arc<LoopFamilyRegistry>, LoopFamilyRegistryError> {
+    if let Some(budget) = config.capability_surface_tokens {
+        tracing::debug!(
+            capability_surface_tokens = budget,
+            "capability surface token budget configured (enforcement pending strategy upgrade)"
+        );
+    }
     LoopFamilyRegistry::with_families(vec![
-        Arc::new(families::default_with_context_tokens(conversation_context_tokens)),
+        Arc::new(families::default_with_context_tokens(
+            config.conversation_context_tokens,
+        )),
         Arc::new(families::subagent()),
     ])
 }

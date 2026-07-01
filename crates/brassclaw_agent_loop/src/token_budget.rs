@@ -18,7 +18,7 @@
 ///
 /// let text = "Hello, world!";
 /// let tokens = estimate_tokens(text);
-/// assert_eq!(tokens, 3); // 13 chars / 4 = 3.25 -> 3
+/// assert_eq!(tokens, 4); // (13 + 3) / 4 = 4
 /// ```
 pub fn estimate_tokens(content: &str) -> usize {
     // ~4 characters per token is a reasonable heuristic for English text.
