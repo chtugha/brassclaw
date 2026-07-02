@@ -199,6 +199,10 @@ pub struct TokensSection {
     pub total_input: Option<usize>,
     /// Max output tokens requested from the model.
     pub max_output: Option<usize>,
+    /// When `true`, `FocusedCapabilityStrategy` is used instead of
+    /// `DefaultCapabilityStrategy`. Narrows the visible tool surface to
+    /// recently-used capabilities each iteration.
+    pub capability_focus_enabled: Option<bool>,
 }
 
 /// A fully-resolved set of token budgets derived from a preset (and optional
@@ -280,6 +284,8 @@ pub struct ResolvedTokenBudgets {
     pub memory: Option<usize>,
     pub total_input: Option<usize>,
     pub max_output: Option<usize>,
+    /// When `true`, the capability focus strategy is enabled.
+    pub capability_focus_enabled: bool,
 }
 
 /// Resolve token budgets by starting from a named preset (if any) and
@@ -319,6 +325,7 @@ pub fn resolve_with_profile(overrides: &TokensSection) -> ResolvedTokenBudgets {
         memory: resolve_field!(memory),
         total_input: resolve_field!(total_input),
         max_output: resolve_field!(max_output),
+        capability_focus_enabled: overrides.capability_focus_enabled.unwrap_or(false),
     }
 }
 

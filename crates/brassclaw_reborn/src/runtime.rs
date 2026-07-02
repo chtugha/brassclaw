@@ -68,8 +68,10 @@ pub struct DefaultPlannedRuntimeConfig {
     /// When `None`, the compiled default (`DEFAULT_IDENTITY_TOKEN_CEILING`) is used.
     pub identity_token_ceiling: Option<usize>,
     /// Optional token budget for the visible capability surface (tool descriptions).
-    /// Stored for downstream use in capability strategy composition.
     pub capability_surface_tokens: Option<usize>,
+    /// When `true`, `FocusedCapabilityStrategy` is wired instead of
+    /// `DefaultCapabilityStrategy` for the default loop family.
+    pub capability_focus_enabled: bool,
 }
 
 pub struct DefaultPlannedRuntimeParts<T, G>
@@ -341,6 +343,7 @@ where
     let family_registry = build_loop_family_registry_with_full_config(LoopFamilyConfig {
         conversation_context_tokens: parts.config.context_token_budget,
         capability_surface_tokens: parts.config.capability_surface_tokens,
+        capability_focus_enabled: parts.config.capability_focus_enabled,
     }).map_err(|error| {
         DefaultPlannedRuntimeBuildError::PlannedDriver(
             DefaultPlannedDriverRegistrationError::DriverBuild(

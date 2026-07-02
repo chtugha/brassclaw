@@ -272,8 +272,10 @@ pub struct RebornRuntimeInput {
     /// When set, replaces `DEFAULT_IDENTITY_TOKEN_CEILING` in the context port.
     pub identity_token_ceiling: Option<usize>,
     /// Optional token budget for the visible capability surface (tool descriptions).
-    /// Stored here for downstream use; enforcement point is in loop family config.
     pub capability_surface_tokens: Option<usize>,
+    /// When `true`, `FocusedCapabilityStrategy` is wired for the default loop family,
+    /// narrowing visible tools to recently-used capabilities each iteration.
+    pub capability_focus_enabled: bool,
     pub skill_context_source: Option<Arc<dyn HostSkillContextSource>>,
     /// Hook-framework activation knobs. Default OFF. Callers resolve
     /// environment or config into this typed value once at the edge.
@@ -328,6 +330,7 @@ impl RebornRuntimeInput {
             skill_context_tokens: None,
             identity_token_ceiling: None,
             capability_surface_tokens: None,
+            capability_focus_enabled: false,
             skill_context_source: None,
             hooks: HooksActivationConfig::default(),
             budget_defaults: None,
@@ -432,6 +435,11 @@ impl RebornRuntimeInput {
 
     pub fn with_capability_surface_tokens(mut self, tokens: Option<usize>) -> Self {
         self.capability_surface_tokens = tokens;
+        self
+    }
+
+    pub fn with_capability_focus_enabled(mut self, enabled: bool) -> Self {
+        self.capability_focus_enabled = enabled;
         self
     }
 

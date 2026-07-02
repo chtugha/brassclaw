@@ -335,7 +335,8 @@ pub(crate) fn build_runtime_input_with_options(
         .with_conversation_context_tokens(token_budgets.conversation_history)
         .with_skill_context_tokens(token_budgets.skills)
         .with_identity_token_ceiling(token_budgets.identity)
-        .with_capability_surface_tokens(token_budgets.capability_surface);
+        .with_capability_surface_tokens(token_budgets.capability_surface)
+        .with_capability_focus_enabled(token_budgets.capability_focus_enabled);
 
     #[cfg(feature = "root-llm-provider")]
     {

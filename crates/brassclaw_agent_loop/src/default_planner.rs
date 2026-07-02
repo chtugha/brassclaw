@@ -222,6 +222,12 @@ impl DefaultStrategySlots {
         self.context = context;
         self
     }
+
+    /// Override the capability strategy slot with a custom implementation.
+    pub(crate) fn with_capability(mut self, capability: Arc<dyn CapabilityStrategy>) -> Self {
+        self.capability = capability;
+        self
+    }
 }
 
 impl Default for DefaultStrategySlots {

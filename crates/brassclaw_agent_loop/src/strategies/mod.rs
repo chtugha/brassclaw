@@ -34,7 +34,11 @@ pub(crate) use batch::{
     BatchPolicy, BatchPolicyStrategy, CapabilityCallSummary, DefaultBatchPolicyStrategy,
 };
 pub(crate) use budget::{BudgetStrategy, DefaultBudgetStrategy};
-pub(crate) use capability::{CapabilityFilter, CapabilityStrategy, DefaultCapabilityStrategy};
+pub(crate) use capability::{
+    CapabilityFilter, CapabilityStrategy, DefaultCapabilityStrategy,
+    FocusedCapabilityStrategy, CapabilityFocusConfig,
+};
+pub use capability::{FocusedCapabilityStrategy as PublicFocusedCapabilityStrategy, CapabilityFocusConfig as PublicCapabilityFocusConfig};
 pub(crate) use compaction::{CompactionDecision, CompactionStrategy, DefaultCompactionStrategy};
 pub(crate) use context::{ContextPlan, ContextStrategy, DefaultContextStrategy};
 pub use context::DefaultContextStrategy as PublicDefaultContextStrategy;

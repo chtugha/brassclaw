@@ -1509,6 +1509,7 @@ pub async fn build_reborn_runtime(
         skill_context_tokens,
         identity_token_ceiling,
         capability_surface_tokens,
+        capability_focus_enabled,
         skill_context_source: configured_skill_context_source,
         hooks: hooks_config,
         budget_defaults,
@@ -1845,6 +1846,7 @@ pub async fn build_reborn_runtime(
             context_token_budget: conversation_context_tokens,
             identity_token_ceiling,
             capability_surface_tokens,
+            capability_focus_enabled,
             ..DefaultPlannedRuntimeConfig::default()
         },
         model_route_resolver: None,

@@ -4,6 +4,101 @@ use serde::{Deserialize, Serialize};
 
 use crate::state::LoopExecutionState;
 
+// ── FocusedCapabilityStrategy ────────────────────────────────────────────────
+
+/// Configuration for [`FocusedCapabilityStrategy`].
+///
+/// `always_allow` lists capability IDs that are unconditionally included in
+/// every `AllowOnly` set, regardless of scoring. Use this to guarantee that
+/// meta-tools (e.g. `fetch_cached_content`) are always reachable.
+#[derive(Debug, Clone)]
+pub struct CapabilityFocusConfig {
+    /// Maximum number of scored capabilities to include per iteration.
+    /// The `always_allow` set is added on top of this limit.
+    pub max_tools: usize,
+    /// Capability IDs that bypass scoring and are always exposed.
+    pub always_allow: Vec<String>,
+}
+
+impl Default for CapabilityFocusConfig {
+    fn default() -> Self {
+        Self {
+            max_tools: 4,
+            always_allow: vec![],
+        }
+    }
+}
+
+/// A `CapabilityStrategy` that narrows the visible tool surface each iteration
+/// to the tools most likely needed given recent execution history.
+///
+/// ## Scoring
+///
+/// On iteration 0 (no tool calls yet in this turn) the strategy returns
+/// [`CapabilityFilter::All`] — there is no signal to score against.
+///
+/// On iterations 1+ the strategy:
+/// 1. Collects the distinct `CapabilityId`s from `state.recent_call_signatures`
+///    (the last ≤8 tool invocations tracked by the executor).
+/// 2. Takes the most-recent `config.max_tools` of those IDs as the "hot" set.
+/// 3. Unions the hot set with `config.always_allow` (deduplicated).
+/// 4. Returns `CapabilityFilter::AllowOnly(union)`.
+///
+/// When the hot set is empty (no tool calls recorded, though iteration > 0)
+/// the strategy falls back to `CapabilityFilter::All`.
+///
+/// This heuristic is deliberately simple and requires no external data: the
+/// model's own recent tool-call pattern is the strongest predictor of what it
+/// will need next on multi-step tasks.
+pub struct FocusedCapabilityStrategy {
+    config: CapabilityFocusConfig,
+}
+
+impl FocusedCapabilityStrategy {
+    /// Create a strategy with the given configuration.
+    pub fn new(config: CapabilityFocusConfig) -> Self {
+        Self { config }
+    }
+}
+
+#[async_trait]
+impl CapabilityStrategy for FocusedCapabilityStrategy {
+    async fn filter(&self, state: &LoopExecutionState) -> CapabilityFilter {
+        // On the very first iteration there is no execution history to score
+        // against — expose everything so the model can pick the right starter.
+        if state.recent_call_signatures.is_empty() {
+            return CapabilityFilter::All;
+        }
+
+        // Collect recently-used capability IDs (most recent first, deduplicated).
+        let mut seen = std::collections::HashSet::new();
+        let mut hot: Vec<CapabilityId> = Vec::new();
+        for sig in state.recent_call_signatures.iter().rev() {
+            if seen.insert(sig.name.as_str().to_owned()) {
+                hot.push(sig.name.clone());
+                if hot.len() >= self.config.max_tools {
+                    break;
+                }
+            }
+        }
+
+        if hot.is_empty() {
+            return CapabilityFilter::All;
+        }
+
+        // Union with always_allow (deduplicated).
+        for always in &self.config.always_allow {
+            if let Ok(id) = CapabilityId::new(always) {
+                if !hot.contains(&id) {
+                    hot.push(id);
+                }
+            }
+        }
+
+        CapabilityFilter::AllowOnly(hot)
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum CapabilityFilter {

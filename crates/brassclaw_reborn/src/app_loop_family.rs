@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use brassclaw_agent_loop::{
+    CapabilityFocusConfig,
     families,
     family::{LoopFamilyRegistry, LoopFamilyRegistryError},
 };
@@ -12,9 +13,11 @@ pub struct LoopFamilyConfig {
     /// Token budget for conversation history context.
     pub conversation_context_tokens: Option<usize>,
     /// Token budget for the visible capability surface (tool descriptions).
-    /// Stored here for future capability strategy enforcement; the current
-    /// `DefaultCapabilityStrategy` does not filter by token count.
     pub capability_surface_tokens: Option<usize>,
+    /// When true, `FocusedCapabilityStrategy` is wired instead of
+    /// `DefaultCapabilityStrategy`. The strategy narrows the visible tool
+    /// surface to recently-used capabilities each iteration.
+    pub capability_focus_enabled: bool,
 }
 
 /// Build the production loop-family registry.
@@ -37,6 +40,7 @@ pub fn build_loop_family_registry_with_config(
     build_loop_family_registry_with_full_config(LoopFamilyConfig {
         conversation_context_tokens,
         capability_surface_tokens: None,
+        capability_focus_enabled: false,
     })
 }
 
@@ -44,15 +48,23 @@ pub fn build_loop_family_registry_with_config(
 pub fn build_loop_family_registry_with_full_config(
     config: LoopFamilyConfig,
 ) -> Result<Arc<LoopFamilyRegistry>, LoopFamilyRegistryError> {
-    if let Some(budget) = config.capability_surface_tokens {
-        tracing::debug!(
-            capability_surface_tokens = budget,
-            "capability surface token budget configured (enforcement pending strategy upgrade)"
-        );
-    }
+    let capability_focus = if config.capability_focus_enabled {
+        tracing::debug!("capability focus strategy enabled: narrowing tool surface to recently-used capabilities");
+        Some(CapabilityFocusConfig {
+            max_tools: 4,
+            // fetch_cached_content will be added in subtask 4; hardcode
+            // the expected capability ID here as always_allow so it is
+            // available the moment the tool is registered.
+            always_allow: vec!["brassclaw.fetch_cached_content".to_owned()],
+        })
+    } else {
+        None
+    };
+
     LoopFamilyRegistry::with_families(vec![
-        Arc::new(families::default_with_context_tokens(
+        Arc::new(families::default_with_full_config(
             config.conversation_context_tokens,
+            capability_focus,
         )),
         Arc::new(families::subagent()),
     ])

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::default_planner::DefaultPlanner;
 use crate::family::{ComponentDigest, LoopFamily};
 use crate::planner::AgentLoopPlanner;
+use crate::strategies::{CapabilityFocusConfig, FocusedCapabilityStrategy};
 
 mod subagent;
 
@@ -63,6 +64,39 @@ pub fn default_with_context_tokens(context_token_budget: Option<usize>) -> LoopF
             DefaultContextStrategy::DEFAULT_MAX_MESSAGES,
             budget,
         )));
+    let planner = DefaultPlanner::compose(
+        crate::family::LoopFamilyId::DEFAULT,
+        crate::family::ComponentIdentity::from_static("default", DEFAULT_FAMILY_DIGEST),
+        slots,
+    );
+    let id = planner.id().clone();
+    let version = planner.version().clone();
+    LoopFamily::new(id, version, Arc::new(planner))
+}
+
+/// The default loop family with both context token budget and capability focus config.
+///
+/// When `capability_focus` is `Some(config)`, the `FocusedCapabilityStrategy` is wired
+/// in place of `DefaultCapabilityStrategy`. Falls back gracefully when neither is set.
+pub fn default_with_full_config(
+    context_token_budget: Option<usize>,
+    capability_focus: Option<CapabilityFocusConfig>,
+) -> LoopFamily {
+    use crate::strategies::context::DefaultContextStrategy;
+
+    let mut slots = crate::default_planner::DefaultStrategySlots::default();
+
+    if let Some(budget) = context_token_budget {
+        slots = slots.with_context(Arc::new(DefaultContextStrategy::with_token_budget(
+            DefaultContextStrategy::DEFAULT_MAX_MESSAGES,
+            budget,
+        )));
+    }
+
+    if let Some(cfg) = capability_focus {
+        slots = slots.with_capability(Arc::new(FocusedCapabilityStrategy::new(cfg)));
+    }
+
     let planner = DefaultPlanner::compose(
         crate::family::LoopFamilyId::DEFAULT,
         crate::family::ComponentIdentity::from_static("default", DEFAULT_FAMILY_DIGEST),
