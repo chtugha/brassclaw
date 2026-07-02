@@ -278,6 +278,9 @@ pub struct RebornRuntimeInput {
     pub capability_focus_enabled: bool,
     /// When `true`, `PlanningContextStrategy` is wired for the default loop family.
     pub planning_mode_enabled: bool,
+    /// When `Some(n)`, tool results exceeding `n` estimated tokens are cached
+    /// and replaced with compact stubs in the model context.
+    pub content_cache_threshold: Option<usize>,
     pub skill_context_source: Option<Arc<dyn HostSkillContextSource>>,
     /// Hook-framework activation knobs. Default OFF. Callers resolve
     /// environment or config into this typed value once at the edge.
@@ -334,6 +337,7 @@ impl RebornRuntimeInput {
             capability_surface_tokens: None,
             capability_focus_enabled: false,
             planning_mode_enabled: false,
+            content_cache_threshold: None,
             skill_context_source: None,
             hooks: HooksActivationConfig::default(),
             budget_defaults: None,
@@ -448,6 +452,11 @@ impl RebornRuntimeInput {
 
     pub fn with_planning_mode_enabled(mut self, enabled: bool) -> Self {
         self.planning_mode_enabled = enabled;
+        self
+    }
+
+    pub fn with_content_cache_threshold(mut self, threshold: Option<usize>) -> Self {
+        self.content_cache_threshold = threshold;
         self
     }
 

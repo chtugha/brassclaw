@@ -207,6 +207,9 @@ pub struct TokensSection {
     /// `DefaultContextStrategy`. Injects a planning phase on iteration 0
     /// and steps through a structured plan on subsequent iterations.
     pub planning_mode_enabled: Option<bool>,
+    /// Minimum estimated token count for a tool output to be cached.
+    /// When `None`, content caching is disabled.
+    pub content_cache_threshold: Option<usize>,
 }
 
 /// A fully-resolved set of token budgets derived from a preset (and optional
@@ -292,6 +295,8 @@ pub struct ResolvedTokenBudgets {
     pub capability_focus_enabled: bool,
     /// When `true`, the planning context strategy is enabled.
     pub planning_mode_enabled: bool,
+    /// Minimum token count for a tool result to be cached. `None` = disabled.
+    pub content_cache_threshold: Option<usize>,
 }
 
 /// Resolve token budgets by starting from a named preset (if any) and
@@ -333,6 +338,7 @@ pub fn resolve_with_profile(overrides: &TokensSection) -> ResolvedTokenBudgets {
         max_output: resolve_field!(max_output),
         capability_focus_enabled: overrides.capability_focus_enabled.unwrap_or(false),
         planning_mode_enabled: overrides.planning_mode_enabled.unwrap_or(false),
+        content_cache_threshold: overrides.content_cache_threshold,
     }
 }
 

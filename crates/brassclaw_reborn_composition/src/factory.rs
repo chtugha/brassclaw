@@ -442,6 +442,9 @@ pub(crate) struct RebornLocalRuntimeServices {
     pub(crate) audit_log: Arc<dyn DurableAuditLog>,
     /// Canonical registry shared by capability dispatch and hook activation.
     pub(crate) extension_registry: Arc<ExtensionRegistry>,
+    /// Shared content-cache bridge slot updated per turn by the capability port
+    /// decorator and read by the `fetch_cached_content` first-party handler.
+    pub(crate) content_cache_slot: brassclaw_reborn::content_cache_port::CurrentCacheBridgeSlot,
 }
 
 #[cfg(any(feature = "libsql", feature = "postgres"))]
@@ -898,6 +901,13 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
             reason: format!("local-dev extension lifecycle handlers are invalid: {error}"),
         },
     )?;
+    crate::fetch_cached_content::register_fetch_cached_content_handler(
+        &mut first_party_registry,
+        store_graph.local_runtime.content_cache_slot.clone(),
+    )
+    .map_err(|error| RebornBuildError::InvalidConfig {
+        reason: format!("fetch_cached_content handler is invalid: {error}"),
+    })?;
     services = services.with_first_party_capabilities(Arc::new(first_party_registry));
 
     let host_runtime: Arc<dyn brassclaw_host_runtime::HostRuntime> =
@@ -1055,6 +1065,7 @@ async fn build_local_dev_store_graph(
         extension_registry,
         safety_config_store,
         token_settings_store,
+        content_cache_slot: brassclaw_reborn::content_cache_port::CurrentCacheBridgeSlot::new(),
     });
     let process_services = ProcessServices::filesystem(Arc::clone(&scoped_filesystem));
 
@@ -1159,6 +1170,7 @@ async fn build_local_dev_store_graph(
         event_log,
         audit_log,
         extension_registry: Arc::new(ExtensionRegistry::new()),
+        content_cache_slot: brassclaw_reborn::content_cache_port::CurrentCacheBridgeSlot::new(),
     });
     let process_services = ProcessServices::in_memory();
 

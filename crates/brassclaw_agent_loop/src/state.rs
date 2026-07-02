@@ -22,6 +22,7 @@ use brassclaw_turns::{
     run_profile::{CapabilitySurfaceVersion, LoopInputCursor, LoopRunContext},
 };
 
+use crate::content_cache::ContentCacheState;
 use crate::plan_state::AgentPlanState;
 
 /// Initial checkpoint payload schema reserved for the default Reborn loop.
@@ -90,6 +91,11 @@ pub struct LoopExecutionState {
     /// once the plan state is written.
     #[serde(default)]
     pub pending_prose_conversion: Option<String>,
+    /// Semantic content cache: large tool outputs are stored here and
+    /// replaced with compact stubs in the assembled prompt. Persisted in
+    /// loop checkpoints so the model can re-fetch content across turns.
+    #[serde(default)]
+    pub content_cache: ContentCacheState,
 }
 
 impl LoopExecutionState {
@@ -124,6 +130,7 @@ impl LoopExecutionState {
             gate_state: GateStrategyState::default(),
             plan_state: None,
             pending_prose_conversion: None,
+            content_cache: ContentCacheState::default(),
         }
     }
 

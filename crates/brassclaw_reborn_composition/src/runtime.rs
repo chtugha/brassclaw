@@ -1511,6 +1511,7 @@ pub async fn build_reborn_runtime(
         capability_surface_tokens,
         capability_focus_enabled,
         planning_mode_enabled,
+        content_cache_threshold,
         skill_context_source: configured_skill_context_source,
         hooks: hooks_config,
         budget_defaults,
@@ -1778,7 +1779,28 @@ pub async fn build_reborn_runtime(
         skill_activation_source.clone(),
     )
     .ok_or(RebornRuntimeError::HostRuntimeUnavailable)?;
-    let capability_factory = local_dev_capabilities.capability_factory;
+    let capability_factory = {
+        // Wrap the capability factory with the content-cache decorator when
+        // content_cache_threshold is configured.
+        let base_factory = local_dev_capabilities.capability_factory;
+        if let Some(threshold_tokens) = content_cache_threshold {
+            tracing::debug!(
+                threshold_tokens,
+                "content cache enabled: large tool results will be stubbed and cached"
+            );
+            let slot = local_runtime.content_cache_slot.clone();
+            let decorator = brassclaw_reborn::content_cache_port::ContentCachingPortDecorator::new(
+                slot,
+                threshold_tokens,
+            );
+            Arc::new(
+                brassclaw_loop_support::DecoratingLoopCapabilityPortFactory::new(base_factory)
+                    .with_decorator(Arc::new(decorator)),
+            ) as Arc<dyn brassclaw_loop_support::LoopCapabilityPortFactory>
+        } else {
+            base_factory
+        }
+    };
     let capability_input_resolver = local_dev_capabilities.capability_input_resolver;
     let capability_result_writer = local_dev_capabilities.capability_result_writer;
     let model_gateway = local_dev_capabilities.model_gateway;

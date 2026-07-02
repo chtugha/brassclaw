@@ -3,6 +3,7 @@
 //! This crate owns the framework layer above `brassclaw_turns`.
 
 mod default_planner;
+pub mod content_cache;
 pub mod executor;
 pub mod families;
 pub mod family;

@@ -337,7 +337,8 @@ pub(crate) fn build_runtime_input_with_options(
         .with_identity_token_ceiling(token_budgets.identity)
         .with_capability_surface_tokens(token_budgets.capability_surface)
         .with_capability_focus_enabled(token_budgets.capability_focus_enabled)
-        .with_planning_mode_enabled(token_budgets.planning_mode_enabled);
+        .with_planning_mode_enabled(token_budgets.planning_mode_enabled)
+        .with_content_cache_threshold(token_budgets.content_cache_threshold);
 
     #[cfg(feature = "root-llm-provider")]
     {

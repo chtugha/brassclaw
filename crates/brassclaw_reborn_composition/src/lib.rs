@@ -111,6 +111,7 @@ mod slack_personal_binding_serve;
 pub mod slack_serve;
 #[cfg(feature = "test-support")]
 pub mod test_support;
+mod fetch_cached_content;
 mod trigger_poller;
 mod trigger_poller_trusted_submit;
 mod web_access;
