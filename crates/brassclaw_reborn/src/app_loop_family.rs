@@ -4,6 +4,7 @@ use brassclaw_agent_loop::{
     CapabilityFocusConfig,
     families,
     family::{LoopFamilyRegistry, LoopFamilyRegistryError},
+    strategies::planning_context::{PlanningContextConfig, PlanningContextStrategy},
 };
 
 /// Configuration forwarded from `DefaultPlannedRuntimeConfig` to the loop
@@ -18,6 +19,10 @@ pub struct LoopFamilyConfig {
     /// `DefaultCapabilityStrategy`. The strategy narrows the visible tool
     /// surface to recently-used capabilities each iteration.
     pub capability_focus_enabled: bool,
+    /// When true, `PlanningContextStrategy` is wired instead of
+    /// `DefaultContextStrategy`. Injects a planning phase on iteration 0
+    /// and step injection on subsequent iterations.
+    pub planning_mode_enabled: bool,
 }
 
 /// Build the production loop-family registry.
@@ -41,6 +46,7 @@ pub fn build_loop_family_registry_with_config(
         conversation_context_tokens,
         capability_surface_tokens: None,
         capability_focus_enabled: false,
+        planning_mode_enabled: false,
     })
 }
 
@@ -61,10 +67,18 @@ pub fn build_loop_family_registry_with_full_config(
         None
     };
 
+    let planning_context = if config.planning_mode_enabled {
+        tracing::debug!("planning mode enabled: two-phase planning context strategy wired");
+        Some(PlanningContextStrategy::new(PlanningContextConfig::default()))
+    } else {
+        None
+    };
+
     LoopFamilyRegistry::with_families(vec![
         Arc::new(families::default_with_full_config(
             config.conversation_context_tokens,
             capability_focus,
+            planning_context,
         )),
         Arc::new(families::subagent()),
     ])

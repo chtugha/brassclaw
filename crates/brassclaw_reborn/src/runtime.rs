@@ -72,6 +72,9 @@ pub struct DefaultPlannedRuntimeConfig {
     /// When `true`, `FocusedCapabilityStrategy` is wired instead of
     /// `DefaultCapabilityStrategy` for the default loop family.
     pub capability_focus_enabled: bool,
+    /// When `true`, `PlanningContextStrategy` is wired instead of
+    /// `DefaultContextStrategy` for the default loop family.
+    pub planning_mode_enabled: bool,
 }
 
 pub struct DefaultPlannedRuntimeParts<T, G>
@@ -344,6 +347,7 @@ where
         conversation_context_tokens: parts.config.context_token_budget,
         capability_surface_tokens: parts.config.capability_surface_tokens,
         capability_focus_enabled: parts.config.capability_focus_enabled,
+        planning_mode_enabled: parts.config.planning_mode_enabled,
     }).map_err(|error| {
         DefaultPlannedRuntimeBuildError::PlannedDriver(
             DefaultPlannedDriverRegistrationError::DriverBuild(

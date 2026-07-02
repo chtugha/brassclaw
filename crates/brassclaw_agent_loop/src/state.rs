@@ -22,6 +22,8 @@ use brassclaw_turns::{
     run_profile::{CapabilitySurfaceVersion, LoopInputCursor, LoopRunContext},
 };
 
+use crate::plan_state::AgentPlanState;
+
 /// Initial checkpoint payload schema reserved for the default Reborn loop.
 ///
 /// Reborn checkpoint persistence has not shipped yet, so this branch is still
@@ -77,6 +79,17 @@ pub struct LoopExecutionState {
     pub reply_admission_state: ReplyAdmissionStrategyState,
     pub stop_state: StopStrategyState,
     pub gate_state: GateStrategyState,
+
+    /// Planning state: the structured step list produced from iteration 0's
+    /// model reply. `None` until the first assistant reply has been parsed.
+    #[serde(default)]
+    pub plan_state: Option<AgentPlanState>,
+    /// Carries the raw model output from iteration 0 when `extract_steps`
+    /// fails to parse it into a structured plan. The executor uses this on
+    /// the NEXT iteration to inject a JSON-format instruction inline. Cleared
+    /// once the plan state is written.
+    #[serde(default)]
+    pub pending_prose_conversion: Option<String>,
 }
 
 impl LoopExecutionState {
@@ -109,6 +122,8 @@ impl LoopExecutionState {
             reply_admission_state: ReplyAdmissionStrategyState::default(),
             stop_state: StopStrategyState::default(),
             gate_state: GateStrategyState::default(),
+            plan_state: None,
+            pending_prose_conversion: None,
         }
     }
 

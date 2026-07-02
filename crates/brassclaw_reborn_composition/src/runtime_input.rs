@@ -276,6 +276,8 @@ pub struct RebornRuntimeInput {
     /// When `true`, `FocusedCapabilityStrategy` is wired for the default loop family,
     /// narrowing visible tools to recently-used capabilities each iteration.
     pub capability_focus_enabled: bool,
+    /// When `true`, `PlanningContextStrategy` is wired for the default loop family.
+    pub planning_mode_enabled: bool,
     pub skill_context_source: Option<Arc<dyn HostSkillContextSource>>,
     /// Hook-framework activation knobs. Default OFF. Callers resolve
     /// environment or config into this typed value once at the edge.
@@ -331,6 +333,7 @@ impl RebornRuntimeInput {
             identity_token_ceiling: None,
             capability_surface_tokens: None,
             capability_focus_enabled: false,
+            planning_mode_enabled: false,
             skill_context_source: None,
             hooks: HooksActivationConfig::default(),
             budget_defaults: None,
@@ -440,6 +443,11 @@ impl RebornRuntimeInput {
 
     pub fn with_capability_focus_enabled(mut self, enabled: bool) -> Self {
         self.capability_focus_enabled = enabled;
+        self
+    }
+
+    pub fn with_planning_mode_enabled(mut self, enabled: bool) -> Self {
+        self.planning_mode_enabled = enabled;
         self
     }
 

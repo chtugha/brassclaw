@@ -135,13 +135,13 @@ impl ContextStrategy for DefaultContextStrategy {
     }
 }
 
-struct LoopControlInlineMessages {
-    inline_messages: Vec<LoopInlineMessage>,
-    emitted_admission_control: bool,
-    emitted_repeated_call_warning: bool,
+pub(crate) struct LoopControlInlineMessages {
+    pub(crate) inline_messages: Vec<LoopInlineMessage>,
+    pub(crate) emitted_admission_control: bool,
+    pub(crate) emitted_repeated_call_warning: bool,
 }
 
-fn loop_control_inline_messages(state: &LoopExecutionState) -> LoopControlInlineMessages {
+pub(crate) fn loop_control_inline_messages(state: &LoopExecutionState) -> LoopControlInlineMessages {
     let mut inline_messages = Vec::new();
     let mut emitted_admission_control = false;
     if let Some(rejection) = state.reply_admission_state.pending_rejection.as_ref()

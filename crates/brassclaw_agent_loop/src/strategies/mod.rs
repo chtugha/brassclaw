@@ -25,6 +25,7 @@ pub mod context;
 mod drain;
 pub(crate) mod gate;
 mod model;
+pub mod planning_context;
 pub mod progress;
 pub(crate) mod recovery;
 mod reply_admission;

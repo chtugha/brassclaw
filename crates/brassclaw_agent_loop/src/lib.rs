@@ -6,6 +6,7 @@ mod default_planner;
 pub mod executor;
 pub mod families;
 pub mod family;
+pub mod plan_state;
 pub mod planner;
 pub mod state;
 pub mod strategies;

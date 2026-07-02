@@ -203,6 +203,10 @@ pub struct TokensSection {
     /// `DefaultCapabilityStrategy`. Narrows the visible tool surface to
     /// recently-used capabilities each iteration.
     pub capability_focus_enabled: Option<bool>,
+    /// When `true`, `PlanningContextStrategy` is wired instead of
+    /// `DefaultContextStrategy`. Injects a planning phase on iteration 0
+    /// and steps through a structured plan on subsequent iterations.
+    pub planning_mode_enabled: Option<bool>,
 }
 
 /// A fully-resolved set of token budgets derived from a preset (and optional
@@ -286,6 +290,8 @@ pub struct ResolvedTokenBudgets {
     pub max_output: Option<usize>,
     /// When `true`, the capability focus strategy is enabled.
     pub capability_focus_enabled: bool,
+    /// When `true`, the planning context strategy is enabled.
+    pub planning_mode_enabled: bool,
 }
 
 /// Resolve token budgets by starting from a named preset (if any) and
@@ -326,6 +332,7 @@ pub fn resolve_with_profile(overrides: &TokensSection) -> ResolvedTokenBudgets {
         total_input: resolve_field!(total_input),
         max_output: resolve_field!(max_output),
         capability_focus_enabled: overrides.capability_focus_enabled.unwrap_or(false),
+        planning_mode_enabled: overrides.planning_mode_enabled.unwrap_or(false),
     }
 }
 

@@ -4,6 +4,7 @@ use crate::default_planner::DefaultPlanner;
 use crate::family::{ComponentDigest, LoopFamily};
 use crate::planner::AgentLoopPlanner;
 use crate::strategies::{CapabilityFocusConfig, FocusedCapabilityStrategy};
+use crate::strategies::planning_context::PlanningContextStrategy;
 
 mod subagent;
 
@@ -74,19 +75,28 @@ pub fn default_with_context_tokens(context_token_budget: Option<usize>) -> LoopF
     LoopFamily::new(id, version, Arc::new(planner))
 }
 
-/// The default loop family with both context token budget and capability focus config.
+/// The default loop family with full config: context tokens, capability focus,
+/// and optional planning context strategy.
 ///
-/// When `capability_focus` is `Some(config)`, the `FocusedCapabilityStrategy` is wired
-/// in place of `DefaultCapabilityStrategy`. Falls back gracefully when neither is set.
+/// - `context_token_budget`: when `Some(n)`, caps conversation history to `n` tokens.
+/// - `capability_focus`: when `Some(cfg)`, wires `FocusedCapabilityStrategy`.
+/// - `planning_context`: when `Some(strategy)`, wires `PlanningContextStrategy`
+///   **instead of** any context-token-budget strategy (planning mode subsumes it).
 pub fn default_with_full_config(
     context_token_budget: Option<usize>,
     capability_focus: Option<CapabilityFocusConfig>,
+    planning_context: Option<PlanningContextStrategy>,
 ) -> LoopFamily {
     use crate::strategies::context::DefaultContextStrategy;
 
     let mut slots = crate::default_planner::DefaultStrategySlots::default();
 
-    if let Some(budget) = context_token_budget {
+    if let Some(strategy) = planning_context {
+        // Planning mode: wires PlanningContextStrategy, which already handles
+        // token budgeting internally. The explicit token budget is ignored when
+        // planning mode is active — the planning strategy owns iteration 0 context.
+        slots = slots.with_context(Arc::new(strategy));
+    } else if let Some(budget) = context_token_budget {
         slots = slots.with_context(Arc::new(DefaultContextStrategy::with_token_budget(
             DefaultContextStrategy::DEFAULT_MAX_MESSAGES,
             budget,

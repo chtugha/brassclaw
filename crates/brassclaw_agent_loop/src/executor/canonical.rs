@@ -208,6 +208,9 @@ impl DefaultExecutorPipeline {
             };
             let completed_kind = summary.kind;
 
+            // Planning hook runs in AssistantReplyStage (has reply content).
+            // canonical.rs only orchestrates stop/exit decisions.
+
             let (mut next_state, summary) = match self
                 .stop
                 .observe(
