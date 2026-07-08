@@ -81,6 +81,7 @@ pub(crate) fn execute(
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
+        .thread_stack_size(8 * 1024 * 1024)
         .build()?;
     rt.block_on(async move {
         let runtime_input =
@@ -338,7 +339,9 @@ pub(crate) fn build_runtime_input_with_options(
         .with_capability_surface_tokens(token_budgets.capability_surface)
         .with_capability_focus_enabled(token_budgets.capability_focus_enabled)
         .with_planning_mode_enabled(token_budgets.planning_mode_enabled)
-        .with_content_cache_threshold(token_budgets.content_cache_threshold);
+        .with_content_cache_threshold(token_budgets.content_cache_threshold)
+        .with_plan_library_enabled(token_budgets.plan_library_enabled)
+        .with_skill_promotion_threshold(token_budgets.skill_promotion_threshold);
 
     #[cfg(feature = "root-llm-provider")]
     {

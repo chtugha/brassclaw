@@ -61,6 +61,7 @@ postgres = [
 async-trait = "0.1"
 base64 = "0.22"
 chrono = "0.4"
+hex = "0.4"
 deadpool-postgres = { version = "0.14", optional = true }
 futures = "0.3"
 brassclaw_auth = { path = "../brassclaw_auth" }
@@ -77,6 +78,7 @@ brassclaw_filesystem = { path = "../brassclaw_filesystem" }
 brassclaw_first_party_extensions = { path = "../brassclaw_first_party_extensions" }
 brassclaw_hooks = { path = "../brassclaw_hooks" }
 brassclaw_host_api = { path = "../brassclaw_host_api" }
+brassclaw_agent_loop = { path = "../brassclaw_agent_loop" }
 brassclaw_host_runtime = { path = "../brassclaw_host_runtime" }
 brassclaw_llm = { path = "../brassclaw_llm", optional = true, default-features = false }
 brassclaw_loop_support = { path = "../brassclaw_loop_support" }
@@ -115,6 +117,7 @@ tower-http = { version = "0.6", features = ["cors", "set-header", "limit", "catc
 lru = "0.16"
 fs4 = "0.6"
 rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"] }
 rust_decimal = { version = "1", features = ["serde", "serde-with-str"] }
 secrecy = "0.10"
 serde = { version = "1", features = ["derive"] }

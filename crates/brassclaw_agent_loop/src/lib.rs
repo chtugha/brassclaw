@@ -7,6 +7,7 @@ pub mod content_cache;
 pub mod executor;
 pub mod families;
 pub mod family;
+pub mod plan_scoring;
 pub mod plan_state;
 pub mod planner;
 pub mod state;

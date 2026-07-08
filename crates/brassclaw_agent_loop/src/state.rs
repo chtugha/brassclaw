@@ -96,6 +96,10 @@ pub struct LoopExecutionState {
     /// loop checkpoints so the model can re-fetch content across turns.
     #[serde(default)]
     pub content_cache: ContentCacheState,
+    /// Optional hint set by the executor when a plan step keyword-matches a
+    /// library skill. Cleared after the subagent spawn is handled.
+    #[serde(default)]
+    pub spawn_subagent_hint: Option<String>,
 }
 
 impl LoopExecutionState {
@@ -131,6 +135,7 @@ impl LoopExecutionState {
             plan_state: None,
             pending_prose_conversion: None,
             content_cache: ContentCacheState::default(),
+            spawn_subagent_hint: None,
         }
     }
 

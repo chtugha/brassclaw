@@ -234,6 +234,11 @@ pub struct RebornRuntime {
     send_locks: Mutex<HashMap<ConversationId, Arc<Mutex<()>>>>,
     skill_activation_source: Option<Arc<LocalDevSelectableSkillContextSource>>,
     skill_execution_adapter: Option<Arc<LocalDevSkillExecutionAdapter>>,
+    /// Plan library processor: active when `plan_library_enabled = true`.
+    /// After each completed turn, scores the session and persists plan docs.
+    plan_library: Option<Arc<crate::plan_library::PlanLibraryService<LocalDevRootFilesystem>>>,
+    /// Shared plan-state slot written by the post-turn bridge.
+    plan_state_slot: Option<crate::plan_library::CurrentPlanStateSlot>,
     /// Operator boot config, carried so the WebUI facade can compose the
     /// LLM-config settings service over `providers.json` / `config.toml`.
     #[cfg(feature = "root-llm-provider")]
@@ -1142,6 +1147,18 @@ impl RebornRuntime {
                 .map_err(|error| RebornRuntimeError::TurnSubmission(error.to_string()))?;
         }
 
+        // Post-turn plan library processing — awaited so the plan doc is persisted
+        // before the CLI process exits. Errors are swallowed inside the hook.
+        if let (Ok(ok_reply), Some(library)) = (reply.as_ref(), self.plan_library.as_ref()) {
+            if let Some(ref local_runtime) = self.services.local_runtime {
+                let library = Arc::clone(library);
+                let fs = Arc::clone(&local_runtime.extension_filesystem);
+                let scope_clone = scope.clone();
+                let run_id_clone = ok_reply.run_id;
+                Self::run_plan_library_post_turn(library, fs, &scope_clone, run_id_clone).await;
+            }
+        }
+
         reply
     }
 
@@ -1476,6 +1493,127 @@ impl RebornRuntime {
             .and_then(|message| message.content);
         Ok(reply)
     }
+
+    /// Post-turn hook for the plan library.
+    ///
+    /// Scans the checkpoint-state filesystem directly for the Final checkpoint
+    /// belonging to `run_id`, deserializes `LoopExecutionState`, and calls
+    /// `PlanLibraryService::process_session`. All errors are logged at DEBUG
+    /// and swallowed — the plan library is best-effort.
+    async fn run_plan_library_post_turn(
+        library: Arc<crate::plan_library::PlanLibraryService<LocalDevRootFilesystem>>,
+        filesystem: Arc<LocalDevRootFilesystem>,
+        scope: &TurnScope,
+        run_id: TurnRunId,
+    ) {
+        use brassclaw_agent_loop::state::{CheckpointKind, LoopExecutionState};
+        use brassclaw_filesystem::RootFilesystem;
+        use brassclaw_host_api::VirtualPath;
+
+        // Build the directory path where checkpoint state files for this thread live.
+        // FilesystemCheckpointStateStore stores state records at:
+        //   /tenants/{tenant}/users/__system__/checkpoint-state/agents/{agent}/threads/{thread}/states/checkpoint/{uuid}.json
+        // The state_ref is "checkpoint:{uuid}" and stored as "checkpoint/{uuid}" under states/.
+        // We list the "states/checkpoint" subdirectory directly to get the .json files.
+        let dir_path_str = {
+            let mut p = format!(
+                "/tenants/{}/users/__system__/checkpoint-state",
+                scope.tenant_id.as_str()
+            );
+            if let Some(agent_id) = &scope.agent_id {
+                p.push_str("/agents/");
+                p.push_str(agent_id.as_str());
+            }
+            if let Some(project_id) = &scope.project_id {
+                p.push_str("/projects/");
+                p.push_str(project_id.as_str());
+            }
+            p.push_str("/threads/");
+            p.push_str(scope.thread_id.as_str());
+            p.push_str("/states/checkpoint");
+            p
+        };
+        let dir_path = match VirtualPath::new(&dir_path_str) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::debug!(%run_id, error = %e, "plan library: invalid checkpoint dir path");
+                return;
+            }
+        };
+
+        // List entries in the states directory and find the Final checkpoint for run_id.
+        let entries = match filesystem.list_dir(&dir_path).await {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::debug!(%run_id, error = %e, "plan library: could not list checkpoint dir");
+                return;
+            }
+        };
+
+        // Read each .json file, decode the stored record, find the one matching
+        // run_id + kind == Final.
+        #[derive(serde::Deserialize)]
+        struct StoredRecord {
+            run_id: TurnRunId,
+            kind: brassclaw_turns::LoopCheckpointKind,
+            payload_hex: String,
+        }
+
+        let run_id_str = run_id.to_string();
+        for entry in &entries {
+            if entry.file_type == brassclaw_filesystem::FileType::Directory {
+                continue;
+            }
+            let file_path_str = format!("{}/{}", dir_path_str, entry.name);
+            let file_path = match VirtualPath::new(&file_path_str) {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            let bytes = match filesystem.read_file(&file_path).await {
+                Ok(b) => b,
+                Err(_) => continue,
+            };
+            let record: StoredRecord = match serde_json::from_slice(&bytes) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            if record.run_id.to_string() != run_id_str {
+                continue;
+            }
+            if record.kind != brassclaw_turns::LoopCheckpointKind::Final {
+                continue;
+            }
+            // Decode payload.
+            let payload_bytes = match hex::decode(&record.payload_hex) {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::debug!(%run_id, error = %e, "plan library: payload hex decode failed");
+                    return;
+                }
+            };
+            let exec_state = match LoopExecutionState::from_checkpoint_payload(
+                &payload_bytes,
+                CheckpointKind::Final,
+            ) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::debug!(%run_id, error = %e, "plan library: state deserialization failed");
+                    return;
+                }
+            };
+            let tool_outcomes: Vec<brassclaw_agent_loop::plan_scoring::ToolOutcome> = exec_state
+                .recent_call_signatures
+                .iter()
+                .map(|sig| brassclaw_agent_loop::plan_scoring::ToolOutcome {
+                    tool_id: sig.name.as_str().to_string(),
+                    success: true,
+                })
+                .collect();
+            library.process_session(&exec_state, &tool_outcomes).await;
+            return;
+        }
+        tracing::debug!(%run_id, "plan library: no Final checkpoint found for run");
+    }
 }
 
 /// Build and start a Reborn agent runtime.
@@ -1512,6 +1650,8 @@ pub async fn build_reborn_runtime(
         capability_focus_enabled,
         planning_mode_enabled,
         content_cache_threshold,
+        plan_library_enabled,
+        skill_promotion_threshold,
         skill_context_source: configured_skill_context_source,
         hooks: hooks_config,
         budget_defaults,
@@ -2060,6 +2200,25 @@ pub async fn build_reborn_runtime(
         )
     });
 
+    // Wire plan library when enabled. The service holds an Arc to the root
+    // filesystem so it can write plan documents and SKILL.md files.
+    let (plan_library, plan_state_slot) =
+        if plan_library_enabled {
+            if let Some(ref local_runtime) = services.local_runtime {
+                let fs = Arc::clone(&local_runtime.extension_filesystem);
+                let library = Arc::new(crate::plan_library::PlanLibraryService::new(
+                    fs,
+                    skill_promotion_threshold,
+                ));
+                let slot = local_runtime.plan_state_slot.clone();
+                (Some(library), Some(slot))
+            } else {
+                (None, None)
+            }
+        } else {
+            (None, None)
+        };
+
     Ok(RebornRuntime {
         services,
         turn_coordinator,
@@ -2087,6 +2246,8 @@ pub async fn build_reborn_runtime(
         send_locks: Mutex::new(HashMap::new()),
         skill_activation_source,
         skill_execution_adapter,
+        plan_library,
+        plan_state_slot,
         #[cfg(feature = "root-llm-provider")]
         boot,
         #[cfg(feature = "root-llm-provider")]

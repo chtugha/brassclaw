@@ -281,6 +281,11 @@ pub struct RebornRuntimeInput {
     /// When `Some(n)`, tool results exceeding `n` estimated tokens are cached
     /// and replaced with compact stubs in the model context.
     pub content_cache_threshold: Option<usize>,
+    /// When `true`, the plan library and skill self-improvement loop is enabled.
+    pub plan_library_enabled: bool,
+    /// Wilson lower bound threshold for Candidate tier (GitHub PR) promotion.
+    /// `None` → 0.80 default.
+    pub skill_promotion_threshold: Option<f64>,
     pub skill_context_source: Option<Arc<dyn HostSkillContextSource>>,
     /// Hook-framework activation knobs. Default OFF. Callers resolve
     /// environment or config into this typed value once at the edge.
@@ -338,6 +343,8 @@ impl RebornRuntimeInput {
             capability_focus_enabled: false,
             planning_mode_enabled: false,
             content_cache_threshold: None,
+            plan_library_enabled: false,
+            skill_promotion_threshold: None,
             skill_context_source: None,
             hooks: HooksActivationConfig::default(),
             budget_defaults: None,
@@ -457,6 +464,16 @@ impl RebornRuntimeInput {
 
     pub fn with_content_cache_threshold(mut self, threshold: Option<usize>) -> Self {
         self.content_cache_threshold = threshold;
+        self
+    }
+
+    pub fn with_plan_library_enabled(mut self, enabled: bool) -> Self {
+        self.plan_library_enabled = enabled;
+        self
+    }
+
+    pub fn with_skill_promotion_threshold(mut self, threshold: Option<f64>) -> Self {
+        self.skill_promotion_threshold = threshold;
         self
     }
 

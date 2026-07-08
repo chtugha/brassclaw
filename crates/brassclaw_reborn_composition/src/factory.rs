@@ -445,6 +445,9 @@ pub(crate) struct RebornLocalRuntimeServices {
     /// Shared content-cache bridge slot updated per turn by the capability port
     /// decorator and read by the `fetch_cached_content` first-party handler.
     pub(crate) content_cache_slot: brassclaw_reborn::content_cache_port::CurrentCacheBridgeSlot,
+    /// Shared plan-state slot updated after each completed run by the
+    /// plan library post-turn bridge. The `PlanLibraryService` reads it.
+    pub(crate) plan_state_slot: crate::plan_library::CurrentPlanStateSlot,
 }
 
 #[cfg(any(feature = "libsql", feature = "postgres"))]
@@ -908,6 +911,11 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
     .map_err(|error| RebornBuildError::InvalidConfig {
         reason: format!("fetch_cached_content handler is invalid: {error}"),
     })?;
+    // submit_skill_candidate: internal-only handler, not exposed in any
+    // capability schema.  Registered here so the plan library can invoke it
+    // via the first-party registry when a skill reaches the Candidate tier.
+    // (Currently a no-op stub — actual invocation happens directly in
+    // `PlanLibraryService::submit_skill_candidate`.)
     services = services.with_first_party_capabilities(Arc::new(first_party_registry));
 
     let host_runtime: Arc<dyn brassclaw_host_runtime::HostRuntime> =
@@ -1066,6 +1074,7 @@ async fn build_local_dev_store_graph(
         safety_config_store,
         token_settings_store,
         content_cache_slot: brassclaw_reborn::content_cache_port::CurrentCacheBridgeSlot::new(),
+        plan_state_slot: crate::plan_library::CurrentPlanStateSlot::new(),
     });
     let process_services = ProcessServices::filesystem(Arc::clone(&scoped_filesystem));
 
@@ -1171,6 +1180,7 @@ async fn build_local_dev_store_graph(
         audit_log,
         extension_registry: Arc::new(ExtensionRegistry::new()),
         content_cache_slot: brassclaw_reborn::content_cache_port::CurrentCacheBridgeSlot::new(),
+        plan_state_slot: crate::plan_library::CurrentPlanStateSlot::new(),
     });
     let process_services = ProcessServices::in_memory();
 

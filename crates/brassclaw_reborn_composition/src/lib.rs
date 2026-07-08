@@ -112,6 +112,7 @@ pub mod slack_serve;
 #[cfg(feature = "test-support")]
 pub mod test_support;
 mod fetch_cached_content;
+pub(crate) mod plan_library;
 mod trigger_poller;
 mod trigger_poller_trusted_submit;
 mod web_access;
