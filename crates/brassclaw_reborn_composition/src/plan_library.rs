@@ -34,9 +34,9 @@ use brassclaw_filesystem::RootFilesystem;
 use brassclaw_host_api::VirtualPath;
 
 /// Default Wilson z-quantile (95 % confidence interval).
-pub const DEFAULT_WILSON_Z: f64 = 1.96;
+pub(crate) const DEFAULT_WILSON_Z: f64 = 1.96;
 /// Default promotion threshold (Wilson lower bound for Candidate tier).
-pub const DEFAULT_PROMOTION_THRESHOLD: f64 = 0.80;
+pub(crate) const DEFAULT_PROMOTION_THRESHOLD: f64 = 0.80;
 /// Virtual path prefix under which plan-library documents are written.
 const PLAN_LIBRARY_ROOT: &str = "/workspace/reborn-cli/users/reborn-cli/projects/_none/skills/.plan-library";
 /// Virtual path prefix under which workspace skills are written.
@@ -49,23 +49,23 @@ const WORKSPACE_SKILLS_ROOT: &str = "/workspace/reborn-cli/users/reborn-cli/proj
 /// `FilesystemMemoryDocumentRepository` requires embedding metadata in a
 /// `MemoryDoc` which is heavier than needed here.)
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct PlanLibraryMetrics {
-    pub usage_count: u64,
-    pub success_count: u64,
-    pub failure_count: u64,
-    pub last_wilson: f64,
-    pub tier: SkillMaturityTier,
-    pub pr_url: Option<String>,
+pub(crate) struct PlanLibraryMetrics {
+    pub(crate) usage_count: u64,
+    pub(crate) success_count: u64,
+    pub(crate) failure_count: u64,
+    pub(crate) last_wilson: f64,
+    pub(crate) tier: SkillMaturityTier,
+    pub(crate) pr_url: Option<String>,
 }
 
 impl PlanLibraryMetrics {
-    pub fn wilson_lower_bound(&self, z: f64) -> f64 {
+    pub(crate) fn wilson_lower_bound(&self, z: f64) -> f64 {
         wilson_lower_bound(self.success_count, self.failure_count, z)
     }
 }
 
 /// Service that manages the plan library for a single Reborn runtime instance.
-pub struct PlanLibraryService<F: RootFilesystem + ?Sized> {
+pub(crate) struct PlanLibraryService<F: RootFilesystem + ?Sized> {
     filesystem: Arc<F>,
     promotion_threshold: f64,
 }
@@ -74,7 +74,7 @@ impl<F> PlanLibraryService<F>
 where
     F: RootFilesystem + ?Sized + 'static,
 {
-    pub fn new(filesystem: Arc<F>, promotion_threshold: Option<f64>) -> Self {
+    pub(crate) fn new(filesystem: Arc<F>, promotion_threshold: Option<f64>) -> Self {
         Self {
             filesystem,
             promotion_threshold: promotion_threshold.unwrap_or(DEFAULT_PROMOTION_THRESHOLD),
@@ -84,7 +84,7 @@ where
     /// Process a completed session: score it, update metrics, persist plan
     /// document, apply tier effects. Errors are logged and swallowed — the plan
     /// library is an enhancement, not a correctness requirement.
-    pub async fn process_session(&self, state: &LoopExecutionState, tool_outcomes: &[ToolOutcome]) {
+    pub(crate) async fn process_session(&self, state: &LoopExecutionState, tool_outcomes: &[ToolOutcome]) {
         let Some(plan_state) = state.plan_state.as_ref() else {
             return;
         };
@@ -346,7 +346,7 @@ where
         {
             Ok(t) if !t.is_empty() => t,
             _ => {
-                tracing::info!(
+                tracing::debug!(
                     %slug,
                     "plan library: github_token not configured; skipping skill candidate PR"
                 );
@@ -390,10 +390,10 @@ where
 
         match pr_result {
             Ok(url) => {
-                tracing::info!(%slug, pr_url = %url, "plan library: skill candidate PR created");
+                tracing::debug!(%slug, pr_url = %url, "plan library: skill candidate PR created");
             }
             Err(error) => {
-                tracing::warn!(%slug, %error, "plan library: failed to create skill candidate PR");
+                tracing::debug!(%slug, %error, "plan library: failed to create skill candidate PR");
             }
         }
     }
@@ -531,23 +531,25 @@ fn encode_url_path(s: &str) -> String {
 /// post-turn processor (reader).  Updated after every completed run via a
 /// `PlanStatePortDecorator`-like mechanism.
 #[derive(Debug, Clone, Default)]
-pub struct CurrentPlanStateSlot(
-    pub std::sync::Arc<std::sync::Mutex<Option<LoopExecutionState>>>,
+pub(crate) struct CurrentPlanStateSlot(
+    Arc<std::sync::Mutex<Option<LoopExecutionState>>>,
 );
 
 impl CurrentPlanStateSlot {
-    pub fn new() -> Self {
-        Self(std::sync::Arc::new(std::sync::Mutex::new(None)))
+    pub(crate) fn new() -> Self {
+        Self(Arc::new(std::sync::Mutex::new(None)))
     }
 
     /// Set the current state (called by the post-turn bridge).
-    pub fn set(&self, state: LoopExecutionState) {
+    #[allow(dead_code)]
+    pub(crate) fn set(&self, state: LoopExecutionState) {
         let mut guard = self.0.lock().unwrap_or_else(|e| e.into_inner());
         *guard = Some(state);
     }
 
     /// Take the current state (called by the post-turn processor, once per turn).
-    pub fn take(&self) -> Option<LoopExecutionState> {
+    #[allow(dead_code)]
+    pub(crate) fn take(&self) -> Option<LoopExecutionState> {
         let mut guard = self.0.lock().unwrap_or_else(|e| e.into_inner());
         guard.take()
     }

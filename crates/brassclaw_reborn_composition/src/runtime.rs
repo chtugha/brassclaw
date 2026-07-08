@@ -237,7 +237,9 @@ pub struct RebornRuntime {
     /// Plan library processor: active when `plan_library_enabled = true`.
     /// After each completed turn, scores the session and persists plan docs.
     plan_library: Option<Arc<crate::plan_library::PlanLibraryService<LocalDevRootFilesystem>>>,
-    /// Shared plan-state slot written by the post-turn bridge.
+    /// Shared plan-state slot written by the post-turn bridge (reserved for
+    /// future use when a state-port decorator feeds it without checkpoint I/O).
+    #[allow(dead_code)]
     plan_state_slot: Option<crate::plan_library::CurrentPlanStateSlot>,
     /// Operator boot config, carried so the WebUI facade can compose the
     /// LLM-config settings service over `providers.json` / `config.toml`.

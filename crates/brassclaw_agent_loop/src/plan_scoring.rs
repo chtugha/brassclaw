@@ -26,10 +26,11 @@ use crate::plan_state::AgentPlanState;
 /// Maturity level of a plan/skill entry in the library.
 ///
 /// Tiers are ordered: Seedling → Growing → Mature → Candidate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SkillMaturityTier {
     /// Newly created; only exists as a workspace SKILL.md.
+    #[default]
     Seedling,
     /// Accumulating confidence; `activation.tags` carries `"growing"`.
     Growing,
@@ -37,12 +38,6 @@ pub enum SkillMaturityTier {
     Mature,
     /// GitHub PR candidate for upstream review.
     Candidate,
-}
-
-impl Default for SkillMaturityTier {
-    fn default() -> Self {
-        Self::Seedling
-    }
 }
 
 // ── OutcomeVector ──────────────────────────────────────────────────────────────
