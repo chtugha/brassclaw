@@ -109,7 +109,7 @@ impl ContextStrategy for PlanningContextStrategy {
 
             // Derive max_messages from token budget (same formula as DefaultContextStrategy)
             let estimated_messages = (self.config.plan_token_budget / 200).max(1) as u32;
-            let max_messages = estimated_messages.min(2).max(1);
+            let max_messages = estimated_messages.clamp(1, 2);
 
             return ContextPlan {
                 request: LoopPromptBundleRequest {
@@ -155,21 +155,21 @@ impl ContextStrategy for PlanningContextStrategy {
         }
 
         // ── Phase 1+: plan present — inject current step ────────────────────
-        if let Some(plan) = &state.plan_state {
-            if let Some(step_text) = plan.current_step_text() {
-                let step_num = plan.current_step + 1;
-                let total = plan.steps.len();
-                // Sanitize step text: strip LoopSafeSummary-forbidden characters
-                let safe_step = sanitize_for_safe_summary(step_text);
-                let msg = sanitize_for_safe_summary(
-                    &format!("Execute step {step_num} of {total}: {safe_step}")
-                );
-                if let Ok(body) = LoopSafeSummary::new(msg) {
-                    inline_messages.push(LoopInlineMessage {
-                        role: LoopInlineMessageRole::User,
-                        safe_body: body,
-                    });
-                }
+        if let Some(plan) = &state.plan_state
+            && let Some(step_text) = plan.current_step_text()
+        {
+            let step_num = plan.current_step + 1;
+            let total = plan.steps.len();
+            // Sanitize step text: strip LoopSafeSummary-forbidden characters
+            let safe_step = sanitize_for_safe_summary(step_text);
+            let msg = sanitize_for_safe_summary(
+                &format!("Execute step {step_num} of {total}: {safe_step}")
+            );
+            if let Ok(body) = LoopSafeSummary::new(msg) {
+                inline_messages.push(LoopInlineMessage {
+                    role: LoopInlineMessageRole::User,
+                    safe_body: body,
+                });
             }
         }
 

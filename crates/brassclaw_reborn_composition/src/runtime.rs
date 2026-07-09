@@ -1151,14 +1151,14 @@ impl RebornRuntime {
 
         // Post-turn plan library processing — awaited so the plan doc is persisted
         // before the CLI process exits. Errors are swallowed inside the hook.
-        if let (Ok(ok_reply), Some(library)) = (reply.as_ref(), self.plan_library.as_ref()) {
-            if let Some(ref local_runtime) = self.services.local_runtime {
-                let library = Arc::clone(library);
-                let fs = Arc::clone(&local_runtime.extension_filesystem);
-                let scope_clone = scope.clone();
-                let run_id_clone = ok_reply.run_id;
-                Self::run_plan_library_post_turn(library, fs, &scope_clone, run_id_clone).await;
-            }
+        if let (Ok(ok_reply), Some(library)) = (reply.as_ref(), self.plan_library.as_ref())
+            && let Some(ref local_runtime) = self.services.local_runtime
+        {
+            let library = Arc::clone(library);
+            let fs = Arc::clone(&local_runtime.extension_filesystem);
+            let scope_clone = scope.clone();
+            let run_id_clone = ok_reply.run_id;
+            Self::run_plan_library_post_turn(library, fs, &scope_clone, run_id_clone).await;
         }
 
         reply

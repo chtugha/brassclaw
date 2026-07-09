@@ -457,7 +457,7 @@ where
     // Formula: (budget / 200).min(50) — 200 tokens per message average, capped at 50.
     let host_config = match parts.config.context_token_budget {
         Some(budget) if budget > 0 => {
-            let derived_max_messages = (budget / 200).min(50).max(1);
+            let derived_max_messages = (budget / 200).clamp(1, 50);
             TextOnlyLoopHostConfig {
                 max_messages: derived_max_messages,
                 ..parts.config.host

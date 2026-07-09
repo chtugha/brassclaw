@@ -870,6 +870,7 @@ mod tests {
             local_runtime,
             &run_context.scope.tenant_id,
             false,
+            None,
         )
         .expect("skill context source");
         let activation_source = skill_context.activation_source;
@@ -990,6 +991,7 @@ mod tests {
             local_runtime,
             &run_context.scope.tenant_id,
             false,
+            None,
         )
         .expect("skill context source");
         let policy = Arc::new(

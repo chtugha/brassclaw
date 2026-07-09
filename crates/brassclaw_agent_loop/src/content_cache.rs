@@ -143,7 +143,7 @@ impl ContentCacheState {
     pub fn next_key(&mut self, tool_id: &str, iteration: usize) -> String {
         self.entry_counter += 1;
         // Strip namespace prefix for brevity (e.g. "builtin.shell" → "shell")
-        let short_id = tool_id.split('.').last().unwrap_or(tool_id);
+        let short_id = tool_id.split('.').next_back().unwrap_or(tool_id);
         format!("{}-iter{}-{}", short_id, iteration, self.entry_counter)
     }
 }

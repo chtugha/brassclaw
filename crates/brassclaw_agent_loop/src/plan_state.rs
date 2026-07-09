@@ -186,7 +186,7 @@ pub fn extract_steps(text: &str) -> Option<Vec<String>> {
 
     // 5. Sentence split — last resort. Split on ". " or ";\s"
     let sentences: Vec<String> = text
-        .split(|c: char| c == '.' || c == ';')
+        .split(['.', ';'])
         .map(str::trim)
         .filter(|s| {
             !s.is_empty()
@@ -238,7 +238,7 @@ fn extract_by_pattern<F>(text: &str, extract: F) -> Vec<String>
 where
     F: Fn(&str) -> Option<String>,
 {
-    text.lines().filter_map(|line| extract(line)).collect()
+    text.lines().filter_map(extract).collect()
 }
 
 // ── PlanTypeClassifier ────────────────────────────────────────────────────────

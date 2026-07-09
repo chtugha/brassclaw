@@ -399,6 +399,7 @@ where
     }
 
     /// Low-level GitHub API calls: CreateBranch → CreateOrUpdateFile → CreatePullRequest.
+    #[allow(clippy::too_many_arguments)]
     async fn github_create_skill_pr(
         &self,
         token: &str,
@@ -417,7 +418,7 @@ where
             .build()
             .map_err(|e| e.to_string())?;
         let auth = format!("Bearer {token}");
-        let api = format!("https://api.github.com");
+        let api = "https://api.github.com".to_string();
 
         // 1. Get the SHA of main's HEAD to branch from
         let refs_url = format!("{api}/repos/{owner}/{repo}/git/ref/heads/main");

@@ -2866,6 +2866,8 @@ mod tests {
             safety_config_store: Arc::clone(&base_runtime.safety_config_store),
             #[cfg(feature = "libsql")]
             token_settings_store: Arc::clone(&base_runtime.token_settings_store),
+            content_cache_slot: brassclaw_reborn::content_cache_port::CurrentCacheBridgeSlot::new(),
+            plan_state_slot: crate::plan_library::CurrentPlanStateSlot::new(),
         })
     }
 

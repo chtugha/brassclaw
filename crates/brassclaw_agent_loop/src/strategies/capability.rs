@@ -88,10 +88,10 @@ impl CapabilityStrategy for FocusedCapabilityStrategy {
 
         // Union with always_allow (deduplicated).
         for always in &self.config.always_allow {
-            if let Ok(id) = CapabilityId::new(always) {
-                if !hot.contains(&id) {
-                    hot.push(id);
-                }
+            if let Ok(id) = CapabilityId::new(always)
+                && !hot.contains(&id)
+            {
+                hot.push(id);
             }
         }
 
