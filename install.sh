@@ -190,6 +190,7 @@ Environment=BRASSCLAW_REBORN_HOME=$reborn_home
 Environment=BRASSCLAW_REBORN_PROFILE=local-dev
 Environment=BRASSCLAW_REBORN_WEBUI_TOKEN=$webui_token
 Environment=BRASSCLAW_REBORN_WEBUI_USER_ID=brassclaw-admin
+Environment=LLM_API_KEY=none
 ExecStart=$INSTALL_DIR/$BINARY_NAME serve --host 0.0.0.0 --port 3000
 Restart=on-failure
 RestartSec=5
