@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.41.3] - 2026-07-14
+
+### Fixed
+
+- *(reborn)* Fix SIGSEGV / stack overflow on first chat message: `Box::pin` the `execute_family` future at the `PlannedDriver::run` and `PlannedDriver::resume` call sites so the executor future is heap-allocated rather than inlined on the thread stack. The async state machine for `DefaultExecutorPipeline::execute()` grew to several MiB due to `ContentCacheState` (HashMap-heavy), `AgentPlanState`, and `PlanLibraryMetrics` fields added in subtasks 3–5 — enough to overflow the 8 MiB OS default stack on the first agent turn.
+- *(reborn-cli)* Revert `thread_stack_size(16 MiB)` workaround from `serve` and `run` runtimes — the root cause (inline executor state machine size) is fixed by the `Box::pin` change above; the enlarged stack was masking the symptom.
+- *(webui-v2)* Fix token settings not showing saved values after page refresh: `serverToForm` now expands the PRESETS dictionary when a named preset is active and the server returns null individual fields (the normal storage format for preset selections), so the token limit inputs display the correct preset values instead of appearing empty on reload.
+
 ## [0.41.2] - 2026-07-08
 
 ### Added

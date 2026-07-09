@@ -47,13 +47,29 @@ const PRESET_OPTIONS = [
  * Form state:
  *   - `profile`: the preset key or CUSTOM sentinel
  *   - per-field keys: empty-string for "unset/default", otherwise the number as string
+ *
+ * When the server returns a named preset with null field values (which is the
+ * storage format for presets — only `profile` is stored, fields are null), we
+ * expand the preset dictionary so the user sees the actual token values that
+ * the preset will apply. Without this expansion the fields show as empty after
+ * a page refresh even though the preset was saved correctly.
  */
 function serverToForm(data) {
   const profile = data?.profile ?? CUSTOM;
   const form = { profile };
+  // If a named preset is active and all fields are null (the normal storage
+  // shape for presets), expand from the local PRESETS dictionary so the
+  // form renders the preset's concrete values rather than blank inputs.
+  const presetValues = (profile !== CUSTOM && PRESETS[profile]) ? PRESETS[profile] : null;
   for (const { key } of TOKEN_FIELDS) {
     const v = data?.[key];
-    form[key] = v != null ? String(v) : "";
+    if (v != null) {
+      form[key] = String(v);
+    } else if (presetValues && presetValues[key] != null) {
+      form[key] = String(presetValues[key]);
+    } else {
+      form[key] = "";
+    }
   }
   return form;
 }

@@ -114,10 +114,17 @@ impl AgentLoopDriver for PlannedDriver {
     ) -> Result<LoopExit, AgentLoopDriverError> {
         validate_run_request(&request, &self.descriptor)?;
         let initial = LoopExecutionState::initial_for_run(host.run_context());
-        self.executor
-            .execute_family(self.family.as_ref(), host, initial)
-            .await
-            .map_err(map_executor_error)
+        // Box::pin breaks the inline async state machine so the executor future
+        // is heap-allocated rather than sitting on the caller's stack frame.
+        // Without this, each LoopExecutionState field (ContentCacheState,
+        // AgentPlanState, etc.) added by recent subtasks bloats the stack-inline
+        // future to several MiB, causing SIGSEGV on the first chat message.
+        Box::pin(
+            self.executor
+                .execute_family(self.family.as_ref(), host, initial),
+        )
+        .await
+        .map_err(map_executor_error)
     }
 
     async fn resume(
@@ -158,10 +165,13 @@ impl AgentLoopDriver for PlannedDriver {
             }
         };
 
-        self.executor
-            .execute_family(self.family.as_ref(), host, initial)
-            .await
-            .map_err(map_executor_error)
+        // Same Box::pin heap-allocation as in `run` above — see comment there.
+        Box::pin(
+            self.executor
+                .execute_family(self.family.as_ref(), host, initial),
+        )
+        .await
+        .map_err(map_executor_error)
     }
 }
 
