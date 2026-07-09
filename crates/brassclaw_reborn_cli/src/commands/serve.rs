@@ -336,7 +336,7 @@ impl ServeCommand {
         }
         let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
-            .thread_stack_size(8 * 1024 * 1024)
+            .thread_stack_size(16 * 1024 * 1024)
             .build()
             .context("failed to build tokio runtime for `serve`")?;
 

@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.41.2] - 2026-07-08
+
+### Added
+
+- *(agent-loop)* Self-improving plan & skill library with GitHub promotion (subtask 5): Wilson lower-bound scoring, session outcome tracking, skill maturity tiers (Seedling → Growing → Mature → Candidate), automatic SKILL.md generation, and GitHub PR promotion for Candidate-tier skills.
+
+### Changed
+
+- *(reborn-cli)* Increase tokio thread stack size from 8 MiB to 16 MiB to prevent stack overflows on deeply nested async state.
+
+### Fixed
+
+- *(agent-loop)* Fix all clippy errors introduced by subtasks 1–5: `.last()` → `.next_back()` on `DoubleEndedIterator`, char comparison patterns, redundant closures, collapsible `if let` chains, manual `.min().max()` → `.clamp()`.
+- *(reborn-composition)* Fix `info!`/`warn!` in background task code — project rule violation that would corrupt the terminal REPL UI; downgraded to `debug!`.
+- *(reborn-composition)* Fix test compilation: missing `content_cache_slot`/`plan_state_slot` fields in test constructor and missing `skill_context_tokens` arg.
+
 ## [Unreleased]
 
 ### Changed
