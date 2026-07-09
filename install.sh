@@ -1,26 +1,29 @@
 #!/usr/bin/env bash
 # BrassClaw install script.
 # Downloads the latest (or pinned) release binary from GitHub and installs it.
-# Works on Linux (amd64, arm64) and macOS (arm64, amd64).
+# Works on Linux (amd64) and macOS (arm64, amd64).
 # Run as root for a system install with a systemd service; run as a normal user
 # for a user-local install without a service.
 #
 # Usage:
 #   bash install.sh               # latest release, auto-detect arch
-#   bash install.sh -v 0.30.6    # pin to a specific version
+#   bash install.sh -v 0.41.2    # pin to a specific version
 #   sudo bash install.sh          # system install + systemd service
 
 set -euo pipefail
 
 # ── configurable ──────────────────────────────────────────────────────────────
 GITHUB_REPO="chtugha/brassclaw"
-BINARY_NAME="brassclaw"
+# The installed binary is always named "brassclaw-reborn" — that is the Reborn
+# CLI binary.  The legacy "brassclaw" stub printed "main binary is disabled"
+# and must not be used.
+BINARY_NAME="brassclaw-reborn"
 CONFIG_DIR="${BRASSCLAW_REBORN_HOME:-$HOME/.brassclaw/reborn}"
 SERVICE_NAME="brassclaw"
 SYSTEMD_DIR="/etc/systemd/system"
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── parse flags ──────────────────────────────────────────────────────────────
+# ── parse flags ───────────────────────────────────────────────────────────────
 PINNED_VERSION=""
 while getopts "v:" opt; do
     case $opt in
@@ -53,10 +56,16 @@ detect_artifact() {
     os="$(uname -s)"
     arch="$(uname -m)"
     case "$os/$arch" in
+        # CI produces only linux-amd64, macos-arm64, macos-amd64 artifacts.
+        # Linux/aarch64 is not in the build matrix; direct users to build from source.
         Linux/x86_64)       echo "brassclaw-linux-amd64" ;;
-        Linux/aarch64)      echo "brassclaw-linux-arm64" ;;
         Darwin/arm64)       echo "brassclaw-macos-arm64" ;;
         Darwin/x86_64)      echo "brassclaw-macos-amd64" ;;
+        Linux/aarch64)
+            log_error "Linux ARM64 pre-built binaries are not available yet." >&2
+            log_info  "Build from source: cargo build --release --bin brassclaw" >&2
+            log_info  "See: https://github.com/$GITHUB_REPO#building-from-source" >&2
+            exit 1 ;;
         *)
             log_error "Unsupported platform: $os/$arch" >&2
             log_info  "Build from source: cargo build --release --bin brassclaw" >&2
@@ -85,7 +94,6 @@ resolve_version() {
 sha256_check() {
     local file="$1" expected_file="$2"
     if command -v sha256sum &>/dev/null; then
-        # expected_file contains "<hash>  <filename>" — rewrite filename to match
         local hash
         hash=$(awk '{print $1}' "$expected_file")
         echo "$hash  $file" | sha256sum -c - >/dev/null
@@ -130,12 +138,14 @@ download_binary() {
     mkdir -p "$INSTALL_DIR"
     chmod +x "$tmp_dir/$artifact"
 
-    # Backup existing binary with a single .bak file (not timestamped accumulation)
+    # Backup existing binary with a single .bak file (not timestamped accumulation).
+    # Back up under the installed name (brassclaw-reborn), not the artifact name.
     if [[ -f "$INSTALL_DIR/$BINARY_NAME" ]]; then
         log_step "Backing up existing binary to $INSTALL_DIR/$BINARY_NAME.bak"
         cp "$INSTALL_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME.bak"
     fi
 
+    # Install the artifact under the canonical binary name
     mv "$tmp_dir/$artifact" "$INSTALL_DIR/$BINARY_NAME"
     log_info "Installed to $INSTALL_DIR/$BINARY_NAME"
     trap - EXIT
@@ -188,8 +198,7 @@ StandardError=journal
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=$reborn_home
+ReadWritePaths=$reborn_home /tmp
 
 [Install]
 WantedBy=multi-user.target
@@ -205,7 +214,7 @@ EOF
     systemctl daemon-reload
     systemctl enable "$SERVICE_NAME"
     systemctl start "$SERVICE_NAME"
-    sleep 2
+    sleep 3
 
     if systemctl is-active --quiet "$SERVICE_NAME"; then
         log_info "Service started successfully"
@@ -233,6 +242,7 @@ print_summary() {
     if [[ $INSTALL_MODE == "system" ]]; then
         echo -e "  Service:  systemctl {start|stop|restart|status} $SERVICE_NAME"
         echo -e "  Logs:     journalctl -u $SERVICE_NAME -f"
+        echo -e "  WebUI:    http://$(hostname -I | awk '{print $1}'):3000"
     else
         echo ""
         echo -e "${BLUE}Run:${NC}"
@@ -255,7 +265,7 @@ main() {
     version=$(resolve_version)
     artifact=$(detect_artifact)
 
-    echo -e "${BLUE}BrassClaw installer — v$version ($artifact, $INSTALL_MODE mode)${NC}"
+    echo -e "${BLUE}BrassClaw installer — v$version ($artifact → $BINARY_NAME, $INSTALL_MODE mode)${NC}"
     echo ""
 
     download_binary "$version" "$artifact"
