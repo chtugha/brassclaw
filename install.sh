@@ -171,11 +171,34 @@ create_systemd_service() {
     local home_dir
     home_dir=$(eval echo "~$service_user")
     local reborn_home="${home_dir}/.brassclaw/reborn"
-    local webui_token
-    webui_token=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 40 || true)
+    local existing_service="$SYSTEMD_DIR/$SERVICE_NAME.service"
+
+    # On upgrade: preserve the existing token and user_id so the operator
+    # does not need to reconfigure their browser or bookmark after every
+    # version update.  Only generate a fresh token on a first-time install.
+    local webui_token webui_user_id is_upgrade=false
+    if [[ -f "$existing_service" ]]; then
+        is_upgrade=true
+        webui_token=$(grep -oP '(?<=Environment=BRASSCLAW_REBORN_WEBUI_TOKEN=)\S+' "$existing_service" 2>/dev/null || true)
+        webui_user_id=$(grep -oP '(?<=Environment=BRASSCLAW_REBORN_WEBUI_USER_ID=)\S+' "$existing_service" 2>/dev/null || true)
+    fi
+    if [[ -z "$webui_token" ]]; then
+        webui_token=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 40 || true)
+    fi
+    if [[ -z "$webui_user_id" ]]; then
+        webui_user_id="brassclaw-admin"
+    fi
+
+    # Stop running instance before writing the new service file so the old
+    # process releases port 3000 cleanly before systemd starts the new one.
+    if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+        log_step "Stopping running service for upgrade..."
+        systemctl stop "$SERVICE_NAME"
+        sleep 1
+    fi
 
     log_step "Writing $SYSTEMD_DIR/$SERVICE_NAME.service"
-    cat > "$SYSTEMD_DIR/$SERVICE_NAME.service" <<EOF
+    cat > "$existing_service" <<EOF
 [Unit]
 Description=BrassClaw AI Agent
 Documentation=https://github.com/$GITHUB_REPO
@@ -189,7 +212,7 @@ WorkingDirectory=$reborn_home
 Environment=BRASSCLAW_REBORN_HOME=$reborn_home
 Environment=BRASSCLAW_REBORN_PROFILE=local-dev
 Environment=BRASSCLAW_REBORN_WEBUI_TOKEN=$webui_token
-Environment=BRASSCLAW_REBORN_WEBUI_USER_ID=brassclaw-admin
+Environment=BRASSCLAW_REBORN_WEBUI_USER_ID=$webui_user_id
 Environment=LLM_API_KEY=none
 ExecStart=$INSTALL_DIR/$BINARY_NAME serve --host 0.0.0.0 --port 3000
 Restart=on-failure
@@ -204,13 +227,7 @@ ReadWritePaths=$reborn_home /tmp
 [Install]
 WantedBy=multi-user.target
 EOF
-    chmod 644 "$SYSTEMD_DIR/$SERVICE_NAME.service"
-
-    # Stop running instance before daemon-reload
-    if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
-        log_step "Stopping running service for upgrade..."
-        systemctl stop "$SERVICE_NAME"
-    fi
+    chmod 644 "$existing_service"
 
     systemctl daemon-reload
     systemctl enable "$SERVICE_NAME"
@@ -225,9 +242,14 @@ EOF
     fi
 
     echo ""
-    echo -e "${YELLOW}⚠  SAVE YOUR WEBUI TOKEN:${NC}"
-    echo -e "   ${GREEN}$webui_token${NC}"
-    echo "   (also in $SYSTEMD_DIR/$SERVICE_NAME.service)"
+    if [[ "$is_upgrade" == "true" ]]; then
+        echo -e "${GREEN}✓  Token preserved from previous install:${NC}"
+        echo -e "   ${GREEN}$webui_token${NC}"
+    else
+        echo -e "${YELLOW}⚠  SAVE YOUR WEBUI TOKEN:${NC}"
+        echo -e "   ${GREEN}$webui_token${NC}"
+    fi
+    echo "   (also in $existing_service)"
     echo ""
 }
 
