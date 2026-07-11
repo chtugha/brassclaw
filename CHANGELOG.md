@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.41.7] - 2026-07-30
+
+### Fixed
+
+- *(engine)* Move retrieved memory docs from system prompt to tail `User` message for KV-cache stability: appending per-turn docs to the system message injected volatile content into the stable prefix, causing a cache miss on every turn. Docs are now inserted as a synthetic `User` message immediately before the last user turn, keeping the system prompt byte-identical across turns and making it fully cacheable (~10x cost reduction on cache reads at Anthropic/DeepSeek rates).
+
+### Changed
+
+- *(deps)* Remove unused `rustyline` and `termimad` dependencies (v1 REPL remnants with no remaining references in any crate).
+
 ## [0.41.6] - 2026-07-30
 
 ### Fixed
