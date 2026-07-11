@@ -43,6 +43,7 @@ pub use capability::{FocusedCapabilityStrategy as PublicFocusedCapabilityStrateg
 pub(crate) use compaction::{CompactionDecision, CompactionStrategy, DefaultCompactionStrategy};
 pub(crate) use context::{ContextPlan, ContextStrategy, DefaultContextStrategy};
 pub use context::DefaultContextStrategy as PublicDefaultContextStrategy;
+pub use context::LiveTokenBudget;
 pub(crate) use drain::{DefaultInputDrainStrategy, InputDrainStrategy};
 pub(crate) use gate::{
     DefaultGateHandlingStrategy, GateHandlingStrategy, GateKind, GateOutcome, GateSummary,

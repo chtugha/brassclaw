@@ -74,8 +74,11 @@ pub struct RebornConfigFile {
     pub runner: Option<RunnerSection>,
     /// Skill activation selection settings for local-dev runtime skill context.
     pub skills: Option<SkillsSection>,
-    /// Per-section token limits for LLM context composition. All fields are
-    /// optional overrides of compiled defaults. Absent section → all defaults.
+    /// Behavior flags for context strategy selection and feature toggles.
+    /// Token budget values in this section are ignored — all per-section
+    /// token limits are now managed via per-provider settings in the DB.
+    /// Retained for backward compatibility (e.g. `capability_focus_enabled`,
+    /// `planning_mode_enabled`).
     pub tokens: Option<TokensSection>,
     /// Per-slot LLM selection. Keyed by Reborn model slot name. Today
     /// composition wires only the `default` slot; the `mission` slot

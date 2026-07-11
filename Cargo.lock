@@ -1340,7 +1340,6 @@ dependencies = [
  "pgvector",
  "postgres-types",
  "pretty_assertions",
- "pty-process",
  "rand 0.8.6",
  "readabilityrs",
  "refinery",
@@ -7234,16 +7233,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
-]
-
-[[package]]
-name = "pty-process"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71cec9e2670207c5ebb9e477763c74436af3b9091dd550b9fb3c1bec7f3ea266"
-dependencies = [
- "rustix 1.1.4",
- "tokio",
 ]
 
 [[package]]

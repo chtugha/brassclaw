@@ -148,16 +148,8 @@ export function updateSafetyBlockedPaths(payload) {
   });
 }
 
-// Token settings — v2 native endpoints
-export function fetchTokenSettings() {
-  return apiFetch("/api/webchat/v2/tokens");
-}
-export function updateTokenSettings(payload) {
-  return apiFetch("/api/webchat/v2/tokens", {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  });
-}
+// Token settings — per-provider only. The global /tokens endpoint has been
+// removed; all token budget configuration is now per-provider.
 export function fetchProviderTokenSettings(providerId) {
   return apiFetch(
     `/api/webchat/v2/providers/${encodeURIComponent(providerId)}/tokens`

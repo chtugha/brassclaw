@@ -1,11 +1,13 @@
 //! Token settings store implementation backed by the libSQL DB.
 //!
-//! Token limits are stored as a JSON object under the key `tokens`
+//! Per-provider limits are stored under the key `provider_tokens:<provider_id>`
 //! in the settings table, keyed by user_id.  The settings table is
 //! created here with `CREATE TABLE IF NOT EXISTS` if it does not yet exist
 //! (for DBs that pre-date the settings migration).
 //!
-//! Per-provider limits are stored under the key `provider_tokens:<provider_id>`.
+//! The old global `tokens` key is no longer written, but rows with that key
+//! may still exist in the DB from prior versions; the one-time migration
+//! function below promotes them to the per-provider key on first startup.
 
 use std::sync::Arc;
 
@@ -15,7 +17,8 @@ use brassclaw_product_workflow::{
 };
 use tokio::sync::Mutex;
 
-const TOKENS_SETTINGS_KEY: &str = "tokens";
+/// Key used by the legacy global token settings row (read-only; never written).
+const LEGACY_GLOBAL_TOKENS_KEY: &str = "tokens";
 
 fn provider_tokens_key(provider_id: &str) -> String {
     // provider_id is already validated as [a-z0-9_-]{1,64} at the API layer.
@@ -63,69 +66,6 @@ impl DbTokenSettingsStore {
 
 #[async_trait]
 impl TokenSettingsStore for DbTokenSettingsStore {
-    async fn get_token_settings(
-        &self,
-        user_id: &str,
-    ) -> Result<TokenSettingsResponse, Box<dyn std::error::Error + Send + Sync>> {
-        let conn = self.conn.lock().await;
-        let mut rows = conn
-            .query(
-                "SELECT value FROM settings WHERE user_id = ? AND key = ?",
-                libsql::params![user_id, TOKENS_SETTINGS_KEY],
-            )
-            .await?;
-
-        if let Some(row) = rows.next().await? {
-            let value_str: String = row.get(0)?;
-            let response: TokenSettingsResponse = serde_json::from_str(&value_str)?;
-            Ok(response)
-        } else {
-            // Return empty (all None) when no settings exist yet.
-            Ok(TokenSettingsResponse {
-                profile: None,
-                conversation_history: None,
-                skills: None,
-                identity: None,
-                inline_control: None,
-                memory: None,
-                safety: None,
-                capability_surface: None,
-                total_input: None,
-                max_output: None,
-            })
-        }
-    }
-
-    async fn update_token_settings(
-        &self,
-        user_id: &str,
-        request: UpdateTokenSettingsRequest,
-    ) -> Result<TokenSettingsResponse, Box<dyn std::error::Error + Send + Sync>> {
-        let response = TokenSettingsResponse {
-            profile: request.profile,
-            conversation_history: request.conversation_history,
-            skills: request.skills,
-            identity: request.identity,
-            inline_control: request.inline_control,
-            memory: request.memory,
-            safety: request.safety,
-            capability_surface: request.capability_surface,
-            total_input: request.total_input,
-            max_output: request.max_output,
-        };
-
-        let value_str = serde_json::to_string(&response)?;
-        let conn = self.conn.lock().await;
-        conn.execute(
-            "INSERT INTO settings (user_id, key, value, updated_at) VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-             ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-            libsql::params![user_id, TOKENS_SETTINGS_KEY, value_str],
-        )
-        .await?;
-
-        Ok(response)
-    }
-
     async fn get_provider_token_settings(
         &self,
         user_id: &str,
@@ -218,12 +158,31 @@ pub(crate) async fn migrate_global_tokens_to_active_provider(
         return; // already migrated; nothing to do
     }
 
-    // 2. Read the global row.
-    let Ok(global) = store.get_token_settings(user_id).await else {
-        return;
+    // 2. Read the legacy global row directly via raw SQL (the trait method was removed).
+    let conn = store.conn.lock().await;
+    let mut rows = match conn
+        .query(
+            "SELECT value FROM settings WHERE user_id = ? AND key = ?",
+            libsql::params![user_id, LEGACY_GLOBAL_TOKENS_KEY],
+        )
+        .await
+    {
+        Ok(r) => r,
+        Err(_) => return,
     };
+    let global: TokenSettingsResponse = match rows.next().await {
+        Ok(Some(row)) => match row.get::<String>(0) {
+            Ok(s) => match serde_json::from_str(&s) {
+                Ok(v) => v,
+                Err(_) => return,
+            },
+            Err(_) => return,
+        },
+        _ => return,
+    };
+    drop(conn);
 
-    // 3. If global has any non-None field, copy it to the per-provider key.
+    // 3. If the legacy row has any non-None field, copy it to the per-provider key.
     if global.conversation_history.is_some() || global.profile.is_some() {
         let request = brassclaw_product_workflow::UpdateTokenSettingsRequest {
             profile: global.profile,

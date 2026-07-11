@@ -169,6 +169,13 @@ pub(crate) fn build_webui_services_with_connectable_channels(
         );
     }
 
+    // Wire the live context budget setter so token-settings PUT takes effect
+    // immediately on the running DefaultContextStrategy.
+    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+    if let Some(budget) = runtime.live_context_budget() {
+        api = api.with_live_context_budget_setter(Arc::new(move |v| budget.set(v)));
+    }
+
     // Wire the extension registry and capability permission store for Tools API
     if let Some(local_runtime) = &services.local_runtime {
         tracing::info!("✅ Wiring ExtensionRegistry into WebUI API");

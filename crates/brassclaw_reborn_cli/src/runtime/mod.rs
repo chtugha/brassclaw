@@ -316,7 +316,12 @@ pub(crate) fn build_runtime_input_with_options(
 ) -> anyhow::Result<RebornRuntimeInput> {
     let runtime_services = build_services_input_with_options(config, caller, options)?;
 
-    let token_budgets = token_budgets_from_config(runtime_services.config_file.as_ref());
+    // Behavior flags that have no per-provider equivalent are still read from
+    // the config file. Token budget fields (conversation_history, skills,
+    // identity, capability_surface) are now resolved from the per-provider DB
+    // at runtime startup in build_reborn_runtime; no file-config fallback is
+    // passed — the compiled defaults apply when the DB has no row.
+    let behavior_flags = behavior_flags_from_config(runtime_services.config_file.as_ref());
 
     #[allow(unused_mut)]
     let mut runtime_input = RebornRuntimeInput::from_services(runtime_services.services_input)
@@ -332,15 +337,11 @@ pub(crate) fn build_runtime_input_with_options(
         .with_regex_skill_activation_enabled(regex_skill_activation_enabled(
             runtime_services.config_file.as_ref(),
         ))
-        .with_conversation_context_tokens(token_budgets.conversation_history)
-        .with_skill_context_tokens(token_budgets.skills)
-        .with_identity_token_ceiling(token_budgets.identity)
-        .with_capability_surface_tokens(token_budgets.capability_surface)
-        .with_capability_focus_enabled(token_budgets.capability_focus_enabled)
-        .with_planning_mode_enabled(token_budgets.planning_mode_enabled)
-        .with_content_cache_threshold(token_budgets.content_cache_threshold)
-        .with_plan_library_enabled(token_budgets.plan_library_enabled)
-        .with_skill_promotion_threshold(token_budgets.skill_promotion_threshold);
+        .with_capability_focus_enabled(behavior_flags.capability_focus_enabled)
+        .with_planning_mode_enabled(behavior_flags.planning_mode_enabled)
+        .with_content_cache_threshold(behavior_flags.content_cache_threshold)
+        .with_plan_library_enabled(behavior_flags.plan_library_enabled)
+        .with_skill_promotion_threshold(behavior_flags.skill_promotion_threshold);
 
     #[cfg(feature = "root-llm-provider")]
     {
@@ -661,24 +662,34 @@ fn reject_unsupported_runtime_sections(
     }
 }
 
-fn token_budgets_from_config(
+/// Extract only the behavior flags from the config file `[tokens]` section.
+/// Token budget values (conversation_history, skills, identity,
+/// capability_surface) are now per-provider and loaded from the DB at
+/// runtime startup; the config-file fields for those are ignored.
+fn behavior_flags_from_config(
     config_file: Option<&brassclaw_reborn_config::RebornConfigFile>,
 ) -> brassclaw_reborn_config::ResolvedTokenBudgets {
     let Some(tokens) = config_file.and_then(|file| file.tokens.as_ref()) else {
         return brassclaw_reborn_config::ResolvedTokenBudgets::default();
     };
-    let resolved = brassclaw_reborn_config::resolve_with_profile(tokens);
-    if let Some(ref profile) = tokens.profile {
-        tracing::debug!(
-            profile = %profile,
-            conversation_history = ?resolved.conversation_history,
-            skills = ?resolved.skills,
-            identity = ?resolved.identity,
-            capability_surface = ?resolved.capability_surface,
-            "resolved token budgets from profile"
-        );
+    brassclaw_reborn_config::ResolvedTokenBudgets {
+        // Token budget fields intentionally omitted — loaded from per-provider DB.
+        conversation_history: None,
+        skills: None,
+        identity: None,
+        capability_surface: None,
+        inline_control: None,
+        memory: None,
+        total_input: None,
+        max_output: None,
+        profile: None,
+        // Behavior flags remain file-config driven.
+        capability_focus_enabled: tokens.capability_focus_enabled.unwrap_or(false),
+        planning_mode_enabled: tokens.planning_mode_enabled.unwrap_or(false),
+        content_cache_threshold: tokens.content_cache_threshold,
+        plan_library_enabled: tokens.plan_library_enabled.unwrap_or(false),
+        skill_promotion_threshold: tokens.skill_promotion_threshold,
     }
-    resolved
 }
 
 fn runner_settings(

@@ -15,6 +15,7 @@ pub(crate) mod serve;
 pub(crate) mod serve_slack;
 pub(crate) mod serve_sso;
 pub(crate) mod skills;
+pub(crate) mod status;
 pub(crate) mod traces;
 pub(crate) mod user_directory;
 pub(crate) mod webui_auth;
@@ -47,6 +48,8 @@ pub(crate) enum Command {
     Serve(serve::ServeCommand),
     /// Inspect configured Reborn skills.
     Skills(skills::SkillsCommand),
+    /// Print system health and configuration summary.
+    Status(status::StatusCommand),
     /// Manage trace contributions to TraceCommons.
     Traces(Box<traces::TracesCommand>),
 }
@@ -79,6 +82,9 @@ impl Command {
                 command.execute(crate::context::RebornCliContext::resolve_from_env()?)
             }
             Self::Skills(command) => {
+                command.execute(crate::context::RebornCliContext::resolve_from_env()?)
+            }
+            Self::Status(command) => {
                 command.execute(crate::context::RebornCliContext::resolve_from_env()?)
             }
             Self::Traces(command) => command.execute(),

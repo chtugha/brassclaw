@@ -2,6 +2,8 @@
 
 use std::{error::Error, fmt, marker::PhantomData, sync::Arc};
 
+use brassclaw_agent_loop::LiveTokenBudget;
+
 use brassclaw_events::SecurityAuditSink;
 use brassclaw_host_api::CapabilityId;
 use brassclaw_loop_support::{
@@ -59,10 +61,12 @@ pub struct DefaultPlannedRuntimeConfig {
     pub worker: TurnRunnerWorkerConfig,
     pub text_only_driver: TextOnlyModelReplyDriverConfig,
     pub host: TextOnlyLoopHostConfig,
-    /// Optional token budget for conversation history context.
-    /// When `Some(n)`, the `DefaultContextStrategy` is capped at `n` tokens.
-    /// When `None`, the compiled default (`DEFAULT_MAX_CONTEXT_TOKENS`) is used.
-    pub context_token_budget: Option<usize>,
+    /// Live-updatable token budget slot for conversation history context.
+    ///
+    /// The `Arc` inside is shared with the settings service; calling `.set()`
+    /// on a clone takes effect on the next turn without a restart.
+    /// `None` (or `LiveTokenBudget::new(None)`) uses the compiled default.
+    pub context_token_budget: Option<LiveTokenBudget>,
     /// Optional ceiling for identity/persona token budget passed to
     /// `ThreadBackedLoopContextPort::with_identity_budget()`.
     /// When `None`, the compiled default (`DEFAULT_IDENTITY_TOKEN_CEILING`) is used.
@@ -343,8 +347,14 @@ where
 {
     let mut registry = DriverRegistry::new();
     register_default_text_only_driver(&mut registry, parts.config.text_only_driver)?;
+    // Peek the initial budget value before moving the slot into the family registry.
+    let initial_budget_value = parts
+        .config
+        .context_token_budget
+        .as_ref()
+        .and_then(|b| b.get());
     let family_registry = build_loop_family_registry_with_full_config(LoopFamilyConfig {
-        conversation_context_tokens: parts.config.context_token_budget,
+        conversation_token_budget: parts.config.context_token_budget,
         capability_surface_tokens: parts.config.capability_surface_tokens,
         capability_focus_enabled: parts.config.capability_focus_enabled,
         planning_mode_enabled: parts.config.planning_mode_enabled,
@@ -455,7 +465,7 @@ where
         .unwrap_or_else(local_development_noop_safety_context);
     // Derive max_messages from conversation context token budget when available.
     // Formula: (budget / 200).min(50) — 200 tokens per message average, capped at 50.
-    let host_config = match parts.config.context_token_budget {
+    let host_config = match initial_budget_value {
         Some(budget) if budget > 0 => {
             let derived_max_messages = (budget / 200).clamp(1, 50);
             TextOnlyLoopHostConfig {

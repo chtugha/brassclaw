@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use brassclaw_agent_loop::{
     CapabilityFocusConfig,
+    LiveTokenBudget,
     families,
     family::{LoopFamilyRegistry, LoopFamilyRegistryError},
     strategies::planning_context::{PlanningContextConfig, PlanningContextStrategy},
@@ -11,8 +12,12 @@ use brassclaw_agent_loop::{
 /// family registry builder.
 #[derive(Debug, Clone, Default)]
 pub struct LoopFamilyConfig {
-    /// Token budget for conversation history context.
-    pub conversation_context_tokens: Option<usize>,
+    /// Live token budget slot for conversation history context.
+    ///
+    /// The caller clones and retains the `LiveTokenBudget`; calling `.set()`
+    /// on it updates the baked-in `DefaultContextStrategy` on the next turn
+    /// — no restart or registry rebuild required.
+    pub conversation_token_budget: Option<LiveTokenBudget>,
     /// Token budget for the visible capability surface (tool descriptions).
     pub capability_surface_tokens: Option<usize>,
     /// When true, `FocusedCapabilityStrategy` is wired instead of
@@ -31,26 +36,14 @@ pub struct LoopFamilyConfig {
 /// Builtin family means adding its factory here; the framework crate exports
 /// family factories but does not decide which ones are bound in production.
 pub fn build_loop_family_registry() -> Result<Arc<LoopFamilyRegistry>, LoopFamilyRegistryError> {
-    build_loop_family_registry_with_config(None)
-}
-
-/// Build the production loop-family registry with an optional conversation
-/// context token budget override.
-///
-/// When `conversation_context_tokens` is `Some(n)`, the default planner uses
-/// a `DefaultContextStrategy` capped at `n` tokens for conversation history.
-pub fn build_loop_family_registry_with_config(
-    conversation_context_tokens: Option<usize>,
-) -> Result<Arc<LoopFamilyRegistry>, LoopFamilyRegistryError> {
-    build_loop_family_registry_with_full_config(LoopFamilyConfig {
-        conversation_context_tokens,
-        capability_surface_tokens: None,
-        capability_focus_enabled: false,
-        planning_mode_enabled: false,
-    })
+    build_loop_family_registry_with_full_config(LoopFamilyConfig::default())
 }
 
 /// Build the production loop-family registry with full token budget config.
+///
+/// Pass a [`LiveTokenBudget`] in `config.conversation_token_budget` to enable
+/// live-updating: call `.set()` on the retained clone and the next turn picks
+/// up the new value automatically.
 pub fn build_loop_family_registry_with_full_config(
     config: LoopFamilyConfig,
 ) -> Result<Arc<LoopFamilyRegistry>, LoopFamilyRegistryError> {
@@ -76,7 +69,7 @@ pub fn build_loop_family_registry_with_full_config(
 
     LoopFamilyRegistry::with_families(vec![
         Arc::new(families::default_with_full_config(
-            config.conversation_context_tokens,
+            config.conversation_token_budget,
             capability_focus,
             planning_context,
         )),

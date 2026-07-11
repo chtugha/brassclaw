@@ -4,8 +4,6 @@ import { Card } from "../../../design-system/card.js";
 import { useT } from "../../../lib/i18n.js";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  fetchTokenSettings,
-  updateTokenSettings,
   fetchProviderTokenSettings,
   updateProviderTokenSettings,
 } from "../lib/settings-api.js";
@@ -84,11 +82,10 @@ function formToPayload(form) {
 }
 
 /**
- * Shared token budget form.
+ * Per-provider token budget form.
  *
- * @param {string|null} providerId
- *   When set, reads/writes per-provider endpoints.
- *   When null, falls back to the global /api/webchat/v2/tokens endpoints.
+ * @param {string} providerId
+ *   Required. Reads/writes the per-provider token settings endpoints.
  * @param {Array} queryKey
  *   React Query cache key, e.g. ["provider-tokens", providerId].
  * @param {string} [searchQuery=""]
@@ -100,16 +97,11 @@ export function TokenBudgetForm({ providerId, queryKey, searchQuery = "" }) {
 
   const query = useQuery({
     queryKey,
-    queryFn: providerId
-      ? () => fetchProviderTokenSettings(providerId)
-      : fetchTokenSettings,
+    queryFn: () => fetchProviderTokenSettings(providerId),
   });
 
   const mutation = useMutation({
-    mutationFn: (payload) =>
-      providerId
-        ? updateProviderTokenSettings(providerId, payload)
-        : updateTokenSettings(payload),
+    mutationFn: (payload) => updateProviderTokenSettings(providerId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
     },

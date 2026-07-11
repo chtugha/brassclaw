@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use async_trait::async_trait;
 use brassclaw_turns::run_profile::{
     LoopInlineMessage, LoopInlineMessageRole, LoopPromptBundleRequest, LoopSafeSummary, PromptMode,
@@ -31,6 +34,39 @@ pub(crate) struct ContextPlan {
     pub(crate) emitted_repeated_call_warning: bool,
 }
 
+/// A live-updatable token budget slot shared between the context strategy and
+/// the settings service.
+///
+/// Stored as an `AtomicUsize` so reads are lock-free.  Sentinel value `0`
+/// means "use the compiled default"; any non-zero value is the active limit.
+///
+/// Update it with [`LiveTokenBudget::set`]; the next `plan_context_request`
+/// call picks up the new value immediately — no restart required.
+#[derive(Clone, Debug)]
+pub struct LiveTokenBudget(Arc<AtomicUsize>);
+
+impl LiveTokenBudget {
+    /// Create a live slot initialised to `initial` (or compiled default when `None`).
+    pub fn new(initial: Option<usize>) -> Self {
+        Self(Arc::new(AtomicUsize::new(initial.unwrap_or(0))))
+    }
+
+    /// Read the current limit.  Returns `None` when the sentinel `0` is set,
+    /// meaning "use the caller's compiled default".
+    #[inline]
+    pub fn get(&self) -> Option<usize> {
+        match self.0.load(Ordering::Relaxed) {
+            0 => None,
+            n => Some(n),
+        }
+    }
+
+    /// Atomically update the limit.  Pass `None` to revert to the compiled default.
+    pub fn set(&self, value: Option<usize>) {
+        self.0.store(value.unwrap_or(0), Ordering::Relaxed);
+    }
+}
+
 /// Reference baseline `ContextStrategy` implementation.
 ///
 /// Requests `PromptMode::TextOnly` with at most [`Self::DEFAULT_MAX_MESSAGES`]
@@ -38,19 +74,19 @@ pub(crate) struct ContextPlan {
 /// CodeAct-shaped prompts or want to inject nudges swap this strategy
 /// rather than mutating state.
 ///
-/// Now includes token-aware budgeting: if `max_context_tokens` is set,
-/// the strategy will reduce `max_messages` when the estimated token count
-/// would exceed the budget.
-#[derive(Debug, Clone, Copy)]
+/// Token-aware budgeting: if `token_budget` is set, the strategy reads the
+/// live slot on every call and reduces `max_messages` accordingly.  Updating
+/// the [`LiveTokenBudget`] takes effect on the very next turn — no restart.
+#[derive(Debug, Clone)]
 pub struct DefaultContextStrategy {
     /// Max messages to ask the host to include in the bundle. Default
     /// [`Self::DEFAULT_MAX_MESSAGES`].
     pub max_messages: u32,
 
-    /// Max tokens to allow in the context. If set, the strategy will
-    /// reduce `max_messages` to stay within this budget. Default is
-    /// [`Self::DEFAULT_MAX_CONTEXT_TOKENS`] (8000 tokens).
-    pub max_context_tokens: Option<usize>,
+    /// Live token budget slot.  `None` inside means "use compiled default".
+    /// The `Arc` is shared with the settings service so UI changes propagate
+    /// immediately without restarting.
+    pub token_budget: Option<LiveTokenBudget>,
 }
 
 impl DefaultContextStrategy {
@@ -65,15 +101,24 @@ impl DefaultContextStrategy {
     pub fn new(max_messages: u32, max_context_tokens: Option<usize>) -> Self {
         Self {
             max_messages,
-            max_context_tokens,
+            token_budget: max_context_tokens.map(|n| LiveTokenBudget::new(Some(n))),
         }
     }
 
-    /// Create a strategy with token budgeting enabled.
+    /// Create a strategy backed by an externally-owned live budget slot.
+    /// The caller retains a clone of the slot and can call `set()` at any time.
+    pub fn with_live_budget(max_messages: u32, budget: LiveTokenBudget) -> Self {
+        Self {
+            max_messages,
+            token_budget: Some(budget),
+        }
+    }
+
+    /// Create a strategy with a one-shot token budget (not live-updatable).
     pub fn with_token_budget(max_messages: u32, max_context_tokens: usize) -> Self {
         Self {
             max_messages,
-            max_context_tokens: Some(max_context_tokens),
+            token_budget: Some(LiveTokenBudget::new(Some(max_context_tokens))),
         }
     }
 }
@@ -82,7 +127,7 @@ impl Default for DefaultContextStrategy {
     fn default() -> Self {
         Self {
             max_messages: Self::DEFAULT_MAX_MESSAGES,
-            max_context_tokens: Some(Self::DEFAULT_MAX_CONTEXT_TOKENS),
+            token_budget: Some(LiveTokenBudget::new(Some(Self::DEFAULT_MAX_CONTEXT_TOKENS))),
         }
     }
 }
@@ -92,8 +137,9 @@ impl ContextStrategy for DefaultContextStrategy {
     async fn plan_context_request(&self, state: &LoopExecutionState) -> ContextPlan {
         let loop_control = loop_control_inline_messages(state);
 
-        // Token-aware message limit adjustment
-        let max_messages = if let Some(max_tokens) = self.max_context_tokens {
+        // Token-aware message limit adjustment — reads live atomic slot each call
+        // so UI changes take effect on the very next turn without a restart.
+        let max_messages = if let Some(max_tokens) = self.token_budget.as_ref().and_then(|b| b.get()) {
             // Estimate tokens from inline control messages
             let control_tokens: usize = loop_control
                 .inline_messages

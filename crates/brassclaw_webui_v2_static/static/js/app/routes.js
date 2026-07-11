@@ -41,7 +41,9 @@ export const SETTINGS_SUB_ROUTES = [
   { id: "tools", labelKey: "settings.tools", icon: "tool" },
   // { id: "skills", labelKey: "settings.skills", icon: "file" },
   { id: "safety", labelKey: "settings.safety", icon: "shield" },
-  { id: "tokens", labelKey: "settings.tokens", icon: "bolt" },
+  // { id: "tokens", labelKey: "settings.tokens", icon: "bolt" },
+  // Removed: global token settings are superseded by per-provider token
+  // settings in the provider dialog. The global endpoint has been removed.
   // { id: "users", labelKey: "settings.users", icon: "lock" },
   { id: "language", labelKey: "settings.language", icon: "globe" },
 ];

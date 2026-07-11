@@ -834,31 +834,8 @@ pub trait RebornServicesApi: Send + Sync {
         ))
     }
 
-    /// Token settings methods - default to "not implemented" so facades that
-    /// don't wire token settings inherit a safe surface.
-    async fn get_token_settings(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-    ) -> Result<crate::token_settings::TokenSettingsResponse, RebornServicesError> {
-        Err(RebornServicesError::from_status(
-            RebornServicesErrorCode::InvalidRequest,
-            501,
-            false,
-        ))
-    }
-
-    async fn update_token_settings(
-        &self,
-        _caller: WebUiAuthenticatedCaller,
-        _request: crate::token_settings::UpdateTokenSettingsRequest,
-    ) -> Result<crate::token_settings::TokenSettingsResponse, RebornServicesError> {
-        Err(RebornServicesError::from_status(
-            RebornServicesErrorCode::InvalidRequest,
-            501,
-            false,
-        ))
-    }
-
+    /// Per-provider token settings methods — default to "not implemented" so
+    /// facades that don't wire the token store inherit a safe surface.
     async fn get_provider_token_settings(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -907,6 +884,10 @@ pub struct RebornServices {
     capability_permission_store: Option<Arc<dyn CapabilityPermissionStore>>,
     safety_config_store: Option<Arc<crate::safety_config_store::SqliteSafetyConfigStore>>,
     token_settings_store: Option<Arc<dyn crate::token_settings_store::TokenSettingsStore>>,
+    /// Callback that updates the live context-token budget slot in the running
+    /// `DefaultContextStrategy`. When wired, calling this updates the token
+    /// cap on the very next turn — no restart required.
+    live_context_budget_setter: Option<Arc<dyn Fn(Option<usize>) + Send + Sync>>,
 }
 
 impl RebornServices {
@@ -938,6 +919,7 @@ impl RebornServices {
             capability_permission_store: None,
             safety_config_store: None,
             token_settings_store: None,
+            live_context_budget_setter: None,
         }
     }
 
@@ -1072,6 +1054,18 @@ impl RebornServices {
         token_settings_store: Arc<dyn crate::token_settings_store::TokenSettingsStore>,
     ) -> Self {
         self.token_settings_store = Some(token_settings_store);
+        self
+    }
+
+    /// Attach a callback that updates the live context-token budget in the
+    /// running `DefaultContextStrategy`.  Call this with the new
+    /// `conversation_history` value (or `None` to revert to compiled default)
+    /// after any successful `update_provider_token_settings`.
+    pub fn with_live_context_budget_setter(
+        mut self,
+        setter: Arc<dyn Fn(Option<usize>) + Send + Sync>,
+    ) -> Self {
+        self.live_context_budget_setter = Some(setter);
         self
     }
 
@@ -2172,63 +2166,6 @@ impl RebornServicesApi for RebornServices {
             })
     }
 
-    async fn get_token_settings(
-        &self,
-        caller: WebUiAuthenticatedCaller,
-    ) -> Result<crate::token_settings::TokenSettingsResponse, RebornServicesError> {
-        let Some(store) = &self.token_settings_store else {
-            return Err(RebornServicesError::from_status_kind(
-                RebornServicesErrorCode::Unavailable,
-                RebornServicesErrorKind::ServiceUnavailable,
-                503,
-                false,
-            ));
-        };
-
-        let user_id = caller.user_id.to_string();
-        store
-            .get_token_settings(&user_id)
-            .await
-            .map_err(|e| {
-                tracing::error!("❌ Failed to get token settings: {:?}", e);
-                RebornServicesError::from_status_kind(
-                    RebornServicesErrorCode::Internal,
-                    RebornServicesErrorKind::Internal,
-                    500,
-                    false,
-                )
-            })
-    }
-
-    async fn update_token_settings(
-        &self,
-        caller: WebUiAuthenticatedCaller,
-        request: crate::token_settings::UpdateTokenSettingsRequest,
-    ) -> Result<crate::token_settings::TokenSettingsResponse, RebornServicesError> {
-        let Some(store) = &self.token_settings_store else {
-            return Err(RebornServicesError::from_status_kind(
-                RebornServicesErrorCode::Unavailable,
-                RebornServicesErrorKind::ServiceUnavailable,
-                503,
-                false,
-            ));
-        };
-
-        let user_id = caller.user_id.to_string();
-        store
-            .update_token_settings(&user_id, request)
-            .await
-            .map_err(|e| {
-                tracing::error!("❌ Failed to update token settings: {:?}", e);
-                RebornServicesError::from_status_kind(
-                    RebornServicesErrorCode::Internal,
-                    RebornServicesErrorKind::Internal,
-                    500,
-                    false,
-                )
-            })
-    }
-
     async fn get_provider_token_settings(
         &self,
         caller: WebUiAuthenticatedCaller,
@@ -2298,7 +2235,7 @@ impl RebornServicesApi for RebornServices {
             ));
         }
         let user_id = caller.user_id.to_string();
-        store
+        let response = store
             .update_provider_token_settings(&user_id, provider_id, request)
             .await
             .map_err(|e| {
@@ -2309,7 +2246,13 @@ impl RebornServicesApi for RebornServices {
                     500,
                     false,
                 )
-            })
+            })?;
+        // Propagate the new conversation_history budget to the live strategy slot
+        // so the change takes effect on the very next turn — no restart required.
+        if let Some(setter) = &self.live_context_budget_setter {
+            setter(response.conversation_history);
+        }
+        Ok(response)
     }
 }
 

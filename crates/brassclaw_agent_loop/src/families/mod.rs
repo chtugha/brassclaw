@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::default_planner::DefaultPlanner;
 use crate::family::{ComponentDigest, LoopFamily};
 use crate::planner::AgentLoopPlanner;
-use crate::strategies::{CapabilityFocusConfig, FocusedCapabilityStrategy};
+use crate::strategies::{CapabilityFocusConfig, FocusedCapabilityStrategy, LiveTokenBudget};
 use crate::strategies::planning_context::PlanningContextStrategy;
 
 mod subagent;
@@ -49,41 +49,17 @@ pub fn default() -> LoopFamily {
     LoopFamily::new(id, version, Arc::new(planner))
 }
 
-/// The default loop family with a custom conversation context token budget.
-///
-/// When `context_token_budget` is `Some(n)`, the `DefaultContextStrategy` will
-/// limit conversation history to approximately `n` tokens instead of the default
-/// 8000.  When `None`, falls back to [`default()`].
-pub fn default_with_context_tokens(context_token_budget: Option<usize>) -> LoopFamily {
-    use crate::strategies::context::DefaultContextStrategy;
-
-    let Some(budget) = context_token_budget else {
-        return default();
-    };
-    let slots = crate::default_planner::DefaultStrategySlots::default()
-        .with_context(Arc::new(DefaultContextStrategy::with_token_budget(
-            DefaultContextStrategy::DEFAULT_MAX_MESSAGES,
-            budget,
-        )));
-    let planner = DefaultPlanner::compose(
-        crate::family::LoopFamilyId::DEFAULT,
-        crate::family::ComponentIdentity::from_static("default", DEFAULT_FAMILY_DIGEST),
-        slots,
-    );
-    let id = planner.id().clone();
-    let version = planner.version().clone();
-    LoopFamily::new(id, version, Arc::new(planner))
-}
-
 /// The default loop family with full config: context tokens, capability focus,
 /// and optional planning context strategy.
 ///
-/// - `context_token_budget`: when `Some(n)`, caps conversation history to `n` tokens.
+/// - `conversation_token_budget`: live-updatable slot; call `.set()` on the
+///   retained clone to update the cap on the next turn without a restart.
+///   `None` uses the compiled default.
 /// - `capability_focus`: when `Some(cfg)`, wires `FocusedCapabilityStrategy`.
 /// - `planning_context`: when `Some(strategy)`, wires `PlanningContextStrategy`
 ///   **instead of** any context-token-budget strategy (planning mode subsumes it).
 pub fn default_with_full_config(
-    context_token_budget: Option<usize>,
+    conversation_token_budget: Option<LiveTokenBudget>,
     capability_focus: Option<CapabilityFocusConfig>,
     planning_context: Option<PlanningContextStrategy>,
 ) -> LoopFamily {
@@ -96,8 +72,8 @@ pub fn default_with_full_config(
         // token budgeting internally. The explicit token budget is ignored when
         // planning mode is active — the planning strategy owns iteration 0 context.
         slots = slots.with_context(Arc::new(strategy));
-    } else if let Some(budget) = context_token_budget {
-        slots = slots.with_context(Arc::new(DefaultContextStrategy::with_token_budget(
+    } else if let Some(budget) = conversation_token_budget {
+        slots = slots.with_context(Arc::new(DefaultContextStrategy::with_live_budget(
             DefaultContextStrategy::DEFAULT_MAX_MESSAGES,
             budget,
         )));

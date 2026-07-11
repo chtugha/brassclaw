@@ -248,6 +248,12 @@ pub struct RebornRuntime {
     /// Hot-swap handle for the live LLM provider, when one was wired at boot.
     #[cfg(feature = "root-llm-provider")]
     llm_reload: Option<RebornLlmReloadParts>,
+    /// Live conversation-history token budget shared with the baked-in
+    /// `DefaultContextStrategy`. Updating this slot takes effect on the next
+    /// turn without a restart or a registry rebuild.
+    /// Present whenever a per-provider token budget was resolved at startup.
+    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+    live_context_budget: Option<brassclaw_agent_loop::LiveTokenBudget>,
 }
 
 pub(crate) type LocalDevSelectableSkillContextSource =
@@ -721,6 +727,14 @@ impl RebornRuntime {
         Some(crate::nearai_login_serve::nearai_login_callback_mount(
             session, reload, boot, states,
         ))
+    }
+
+    /// Live conversation-history token budget slot. Calling `.set()` on the
+    /// returned clone takes effect on the very next turn — no restart needed.
+    /// `None` when the feature gates are not active or no budget was wired.
+    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+    pub(crate) fn live_context_budget(&self) -> Option<brassclaw_agent_loop::LiveTokenBudget> {
+        self.live_context_budget.clone()
     }
 
     /// Live LLM-provider reload trigger for the settings service. Returns the
@@ -1703,20 +1717,42 @@ pub async fn build_reborn_runtime(
     let loop_checkpoint_store = Arc::clone(&local_runtime.loop_checkpoint_store);
     let thread_service = Arc::clone(&local_runtime.thread_service);
 
-    // Phase 3.4: override conversation_context_tokens with the per-provider
-    // DB setting when one exists for the active provider.
-    // This runs once at startup — O(1) DB read, no per-turn cost.
+    // Override token budgets with per-provider DB values when they exist.
+    // Runs once at startup — O(1) DB read, no per-turn cost.
+    // Per-provider DB wins over file-config for every field that has a runtime
+    // slot; fields with no runtime slot (inline_control, memory, max_output)
+    // are stored in the DB but not yet plumbed further.
     #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-    let conversation_context_tokens = {
+    let (
+        conversation_context_tokens,
+        skill_context_tokens,
+        identity_token_ceiling,
+        capability_surface_tokens,
+    ) = {
         let provider_id = llm.as_ref().map(|l| l.provider_id().to_string());
-        resolve_active_provider_conversation_tokens(
+        resolve_active_provider_token_budgets(
             &local_runtime.token_settings_store,
             provider_id.as_deref(),
             &owner_id,
             conversation_context_tokens,
+            skill_context_tokens,
+            identity_token_ceiling,
+            capability_surface_tokens,
         )
         .await
     };
+
+    // Create the live token budget slot from the resolved conversation_context_tokens.
+    // The slot is shared with the baked-in DefaultContextStrategy AND stored on
+    // RebornRuntime so the token-settings PUT handler can call .set() immediately.
+    // Only stored on RebornRuntime under libsql+root-llm-provider, but the variable is
+    // created unconditionally for the DefaultPlannedRuntimeConfig call below.
+    #[cfg_attr(
+        not(all(feature = "libsql", feature = "root-llm-provider")),
+        allow(unused_variables)
+    )]
+    let live_context_budget: Option<brassclaw_agent_loop::LiveTokenBudget> =
+        conversation_context_tokens.map(|n| brassclaw_agent_loop::LiveTokenBudget::new(Some(n)));
 
     let validated_identity = validate_runtime_identity(identity)?;
     let (skill_context_source, skill_activation_source, skill_execution_adapter) =
@@ -2024,7 +2060,7 @@ pub async fn build_reborn_runtime(
                 poll_interval: runner.poll_interval,
                 scope_filter: None,
             },
-            context_token_budget: conversation_context_tokens,
+            context_token_budget: live_context_budget.clone(),
             identity_token_ceiling,
             capability_surface_tokens,
             capability_focus_enabled,
@@ -2270,6 +2306,8 @@ pub async fn build_reborn_runtime(
         boot,
         #[cfg(feature = "root-llm-provider")]
         llm_reload,
+        #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+        live_context_budget,
     })
 }
 
@@ -2666,29 +2704,52 @@ fn build_stub_gateway() -> Arc<dyn brassclaw_loop_support::HostManagedModelGatew
     Arc::new(StubGateway)
 }
 
-/// Resolve the active provider's per-provider conversation token budget from
-/// the DB.  Falls back to the file-config budget if no per-provider row exists.
+/// Resolve the active provider's per-provider token budgets from the DB.
+/// Falls back to the file-config value for each field if no per-provider row
+/// exists or if the DB field is `None`.  Returns a tuple of the four budget
+/// fields that have runtime wiring slots.
+///
 /// Only available when both libsql and root-llm-provider features are on.
 #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-async fn resolve_active_provider_conversation_tokens(
+async fn resolve_active_provider_token_budgets(
     store: &crate::token_settings_store::DbTokenSettingsStore,
     provider_id: Option<&str>,
     user_id: &str,
-    file_config_budget: Option<usize>,
-) -> Option<usize> {
+    file_conversation: Option<usize>,
+    file_skills: Option<usize>,
+    file_identity: Option<usize>,
+    file_capability_surface: Option<usize>,
+) -> (Option<usize>, Option<usize>, Option<usize>, Option<usize>) {
     use brassclaw_product_workflow::TokenSettingsStore as _;
     let Some(provider_id) = provider_id else {
-        return file_config_budget;
+        return (
+            file_conversation,
+            file_skills,
+            file_identity,
+            file_capability_surface,
+        );
     };
-    let db_settings = store
+    let db = match store
         .get_provider_token_settings(user_id, provider_id)
         .await
-        .ok();
-    let Some(db) = db_settings else {
-        return file_config_budget;
+    {
+        Ok(d) => d,
+        Err(_) => {
+            return (
+                file_conversation,
+                file_skills,
+                file_identity,
+                file_capability_surface,
+            );
+        }
     };
-    // DB wins: conversation_history from DB row, or fall back to file-config.
-    db.conversation_history.or(file_config_budget)
+    // Per-provider DB value wins; fall back to file-config when DB field is None.
+    (
+        db.conversation_history.or(file_conversation),
+        db.skills.or(file_skills),
+        db.identity.or(file_identity),
+        db.capability_surface.or(file_capability_surface),
+    )
 }
 
 #[cfg(test)]
