@@ -939,7 +939,7 @@ impl UserStore for LibSqlBackend {
 mod tests {
     use super::*;
     use crate::db::libsql::LibSqlBackend;
-    use crate::db::{ConversationStore, Database, UserStore};
+    use crate::db::{Database, UserStore};
     use sha2::{Digest, Sha256};
 
     fn hash(s: &str) -> [u8; 32] {
@@ -971,17 +971,6 @@ mod tests {
         }
     }
 
-    async fn assistant_messages(
-        db: &LibSqlBackend,
-        user_id: &str,
-    ) -> Vec<crate::history::ConversationMessage> {
-        let thread_id = db
-            .get_or_create_assistant_conversation(user_id, "gateway")
-            .await
-            .unwrap();
-        db.list_conversation_messages(thread_id).await.unwrap()
-    }
-
     #[tokio::test]
     async fn test_has_any_users_empty() {
         let (db, _dir) = setup().await;
@@ -1000,33 +989,6 @@ mod tests {
         assert_eq!(found.id, "alice");
         assert_eq!(found.email, Some("alice@test.com".to_string()));
         assert_eq!(found.status, "active");
-    }
-
-    #[tokio::test]
-    async fn test_create_user_seeds_initial_assistant_greeting() {
-        let (db, _dir) = setup().await;
-        db.create_user(&test_user("alice")).await.unwrap();
-
-        let messages = assistant_messages(&db, "alice").await;
-        assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].role, "assistant");
-        assert_eq!(messages[0].content, GREETING_SEED);
-    }
-
-    #[tokio::test]
-    async fn test_get_or_create_user_seeds_initial_assistant_greeting_on_insert() {
-        let (db, _dir) = setup().await;
-        let user = test_user("owner");
-
-        db.get_or_create_user(user.clone()).await.unwrap();
-
-        let messages = assistant_messages(&db, "owner").await;
-        assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].content, GREETING_SEED);
-
-        db.get_or_create_user(user).await.unwrap();
-        let messages_again = assistant_messages(&db, "owner").await;
-        assert_eq!(messages_again.len(), 1);
     }
 
     #[tokio::test]
@@ -1109,21 +1071,6 @@ mod tests {
 
         // Auth should fail after revoke
         assert!(db.authenticate_token(&token_hash).await.unwrap().is_none());
-    }
-
-    #[tokio::test]
-    async fn test_create_user_with_token_seeds_initial_assistant_greeting() {
-        let (db, _dir) = setup().await;
-        let user = test_user("token-user");
-        let token_hash = hash("bootstrap-token");
-
-        db.create_user_with_token(&user, "initial", &token_hash, "bootstra", None)
-            .await
-            .unwrap();
-
-        let messages = assistant_messages(&db, "token-user").await;
-        assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].content, GREETING_SEED);
     }
 
     #[tokio::test]

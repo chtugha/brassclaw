@@ -4,9 +4,7 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use deadpool_postgres::{GenericClient as _, Pool};
-use rust_decimal::Decimal;
-use tokio_postgres::GenericClient as _;
+use deadpool_postgres::Pool;
 use uuid::Uuid;
 
 use crate::config::DatabaseConfig;
@@ -92,7 +90,7 @@ fn row_to_api_token(row: &tokio_postgres::Row) -> ApiTokenRecord {
 }
 
 async fn seed_initial_assistant_thread(
-    client: &impl tokio_postgres::GenericClient,
+    client: &tokio_postgres::Transaction<'_>,
     user_id: &str,
     created_at: DateTime<Utc>,
 ) -> Result<(), DatabaseError> {
@@ -1306,7 +1304,7 @@ impl IdentityStore for PgBackend {
         provider: &str,
         provider_user_id: &str,
     ) -> Result<Option<UserIdentityRecord>, DatabaseError> {
-        let conn = self.store.pool().get().await?;
+        let conn = self.conn().await?;
         let row = conn
             .query_opt(
                 "SELECT id, user_id, provider, provider_user_id, email, email_verified, \
@@ -1322,7 +1320,7 @@ impl IdentityStore for PgBackend {
         &self,
         user_id: &str,
     ) -> Result<Vec<UserIdentityRecord>, DatabaseError> {
-        let conn = self.store.pool().get().await?;
+        let conn = self.conn().await?;
         let rows = conn
             .query(
                 "SELECT id, user_id, provider, provider_user_id, email, email_verified, \
@@ -1335,7 +1333,7 @@ impl IdentityStore for PgBackend {
     }
 
     async fn create_identity(&self, identity: &UserIdentityRecord) -> Result<(), DatabaseError> {
-        let conn = self.store.pool().get().await?;
+        let conn = self.conn().await?;
         conn.execute(
             "INSERT INTO user_identities \
              (id, user_id, provider, provider_user_id, email, email_verified, \
@@ -1343,7 +1341,7 @@ impl IdentityStore for PgBackend {
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
             &[
                 &identity.id,
-                &identity.user_id,
+                &identity.user_id.as_str(),
                 &identity.provider,
                 &identity.provider_user_id,
                 &identity.email,
@@ -1366,12 +1364,12 @@ impl IdentityStore for PgBackend {
         display_name: Option<&str>,
         avatar_url: Option<&str>,
     ) -> Result<(), DatabaseError> {
-        let conn = self.store.pool().get().await?;
+        let conn = self.conn().await?;
         conn.execute(
             "UPDATE user_identities SET display_name = COALESCE($3, display_name), \
              avatar_url = COALESCE($4, avatar_url), updated_at = NOW() \
              WHERE provider = $1 AND provider_user_id = $2",
-            &[&provider, &provider_user_id, &display_name, &avatar_url],
+            &[&provider, &provider_user_id, &display_name as &(dyn tokio_postgres::types::ToSql + Sync), &avatar_url as &(dyn tokio_postgres::types::ToSql + Sync)],
         )
         .await?;
         Ok(())
@@ -1381,7 +1379,7 @@ impl IdentityStore for PgBackend {
         &self,
         email: &str,
     ) -> Result<Option<UserIdentityRecord>, DatabaseError> {
-        let conn = self.store.pool().get().await?;
+        let conn = self.conn().await?;
         let row = conn
             .query_opt(
                 "SELECT id, user_id, provider, provider_user_id, email, email_verified, \
@@ -1457,7 +1455,7 @@ impl IdentityStore for PgBackend {
         )
         .await?;
 
-        Store::seed_initial_assistant_thread(&tx, &user.id, user.created_at).await?;
+        seed_initial_assistant_thread(&tx, &user.id, user.created_at).await?;
 
         tx.commit().await?;
         Ok(())

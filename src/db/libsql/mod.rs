@@ -223,6 +223,7 @@ pub(crate) fn opt_text(s: Option<&str>) -> libsql::Value {
 }
 
 /// Convert an `Option<String>` to a `libsql::Value` (Text or Null).
+#[allow(dead_code)]
 pub(crate) fn opt_text_owned(s: Option<String>) -> libsql::Value {
     match s {
         Some(s) => libsql::Value::Text(s),
@@ -230,6 +231,7 @@ pub(crate) fn opt_text_owned(s: Option<String>) -> libsql::Value {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn normalize_notify_user(value: Option<String>) -> Option<String> {
     value.and_then(|value| {
         let trimmed = value.trim();
@@ -247,11 +249,13 @@ pub(crate) fn get_i64(row: &libsql::Row, idx: i32) -> i64 {
 }
 
 /// Extract an optional bool from an integer column.
+#[allow(dead_code)]
 pub(crate) fn get_opt_bool(row: &libsql::Row, idx: i32) -> Option<bool> {
     row.get::<i64>(idx).ok().map(|v| v != 0)
 }
 
 /// Parse a Decimal from a text column.
+#[allow(dead_code)]
 pub(crate) fn get_decimal(row: &libsql::Row, idx: i32) -> Decimal {
     row.get::<String>(idx)
         .ok()
@@ -260,6 +264,7 @@ pub(crate) fn get_decimal(row: &libsql::Row, idx: i32) -> Decimal {
 }
 
 /// Parse an optional Decimal from a text column.
+#[allow(dead_code)]
 pub(crate) fn get_opt_decimal(row: &libsql::Row, idx: i32) -> Option<Decimal> {
     row.get::<String>(idx)
         .ok()

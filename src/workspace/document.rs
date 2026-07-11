@@ -59,8 +59,10 @@ pub(super) mod system_paths {
     /// Settings documents directory.
     pub(crate) const SETTINGS_PREFIX: &str = ".system/settings/";
     /// Extension state directory.
+    #[allow(dead_code)]
     pub(crate) const EXTENSIONS_PREFIX: &str = ".system/extensions/";
     /// Skill state directory.
+    #[allow(dead_code)]
     pub(crate) const SKILLS_PREFIX: &str = ".system/skills/";
     /// v2 engine state root. The bridge `store_adapter` defines its own
     /// per-subdirectory constants under this prefix; this constant exists

@@ -324,6 +324,7 @@ pub(crate) fn path_matches_prefix(path: &str, prefix: &str) -> bool {
 /// Callers sort ascending by specificity so the most-specific mapping is
 /// applied LAST — that makes it overwrite any conflicting headers from
 /// less-specific mappings under a last-write-wins merge.
+#[allow(dead_code)]
 pub(crate) fn match_specificity(path_patterns: &[String], req_path: &str) -> usize {
     path_patterns
         .iter()

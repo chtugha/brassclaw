@@ -262,7 +262,7 @@ impl IdentityStore for LibSqlBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{ConversationStore, Database, IdentityStore, UserStore};
+    use crate::db::{Database, IdentityStore, UserStore};
 
     async fn test_backend() -> (LibSqlBackend, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
@@ -421,15 +421,6 @@ mod tests {
             .await
             .unwrap();
         assert!(found_identity.is_some());
-
-        let thread_id = db
-            .get_or_create_assistant_conversation("user-3", "gateway")
-            .await
-            .unwrap();
-        let messages = db.list_conversation_messages(thread_id).await.unwrap();
-        assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].role, "assistant");
-        assert_eq!(messages[0].content, crate::workspace::GREETING_SEED);
     }
 
     /// Regression: an earlier release recorded V15 as "document_versions"

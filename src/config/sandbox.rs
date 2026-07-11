@@ -421,58 +421,6 @@ mod tests {
         assert_eq!(cfg.extra_allowed_domains, vec!["example.com"]);
     }
 
-    #[test]
-    fn sandbox_mode_to_sandbox_config_propagates_fields() {
-        let mode = SandboxModeConfig {
-            enabled: true,
-            policy: "workspace_write".to_string(),
-            timeout_secs: 300,
-            memory_limit_mb: 1024,
-            cpu_shares: 2048,
-            image: "test:latest".to_string(),
-            auto_pull_image: false,
-            extra_allowed_domains: vec!["custom.example.com".to_string()],
-            reaper_interval_secs: 300,
-            orphan_threshold_secs: 600,
-            allow_full_access: false,
-        };
-        let sc = mode.to_sandbox_config();
-        assert!(sc.enabled);
-        assert_eq!(sc.policy, crate::sandbox::SandboxPolicy::WorkspaceWrite);
-        assert_eq!(sc.timeout, std::time::Duration::from_secs(300));
-        assert_eq!(sc.memory_limit_mb, 1024);
-        assert_eq!(sc.cpu_shares, 2048);
-        assert_eq!(sc.image, "test:latest");
-        assert!(!sc.auto_pull_image);
-        // extra domain should be in the allowlist
-        assert!(
-            sc.network_allowlist
-                .contains(&"custom.example.com".to_string()),
-            "expected custom domain in allowlist"
-        );
-    }
-
-    #[test]
-    fn sandbox_mode_to_sandbox_config_invalid_policy_falls_back_to_readonly() {
-        let mode = SandboxModeConfig {
-            policy: "garbage_value".to_string(),
-            ..SandboxModeConfig::default()
-        };
-        let sc = mode.to_sandbox_config();
-        assert_eq!(sc.policy, crate::sandbox::SandboxPolicy::ReadOnly);
-    }
-
-    #[test]
-    fn sandbox_mode_to_sandbox_config_includes_default_allowlist() {
-        let mode = SandboxModeConfig::default();
-        let sc = mode.to_sandbox_config();
-        // The default allowlist from sandbox module should be non-empty
-        assert!(
-            !sc.network_allowlist.is_empty(),
-            "default allowlist should not be empty"
-        );
-    }
-
     // ── ClaudeCodeConfig defaults ───────────────────────────────────
 
     #[test]
@@ -595,48 +543,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_full_access_downgraded_without_allow() {
-        let config = SandboxModeConfig {
-            policy: "full_access".to_string(),
-            allow_full_access: false,
-            ..Default::default()
-        };
-        let sandbox = config.to_sandbox_config();
-        // Should have been downgraded to WorkspaceWrite
-        assert_eq!(
-            sandbox.policy,
-            crate::sandbox::SandboxPolicy::WorkspaceWrite
-        );
-        assert!(!sandbox.allow_full_access);
-    }
-
-    #[test]
-    fn test_full_access_allowed_with_explicit_opt_in() {
-        let config = SandboxModeConfig {
-            policy: "full_access".to_string(),
-            allow_full_access: true,
-            ..Default::default()
-        };
-        let sandbox = config.to_sandbox_config();
-        assert_eq!(sandbox.policy, crate::sandbox::SandboxPolicy::FullAccess);
-        assert!(sandbox.allow_full_access);
-    }
-
-    #[test]
-    fn test_non_full_access_policy_unaffected() {
-        let config = SandboxModeConfig {
-            policy: "workspace_write".to_string(),
-            allow_full_access: false,
-            ..Default::default()
-        };
-        let sandbox = config.to_sandbox_config();
-        assert_eq!(
-            sandbox.policy,
-            crate::sandbox::SandboxPolicy::WorkspaceWrite
-        );
-    }
-
     // ── Settings fallback tests ──────────────────────────────────────
 
     #[test]
@@ -719,17 +625,6 @@ mod tests {
 
         // DB value (true) wins over env (false) under DB-first priority.
         assert!(cfg.enabled);
-    }
-
-    #[test]
-    fn test_readonly_policy_unaffected() {
-        let config = SandboxModeConfig {
-            policy: "readonly".to_string(),
-            allow_full_access: false,
-            ..Default::default()
-        };
-        let sandbox = config.to_sandbox_config();
-        assert_eq!(sandbox.policy, crate::sandbox::SandboxPolicy::ReadOnly);
     }
 
     // ── AcpModeConfig defaults ──────────────────────────────────

@@ -1742,7 +1742,7 @@ impl Workspace {
         // own copy is missing — the agent would present as the wrong person.
         // Memory files (MEMORY.md, daily logs) intentionally use multi-scope
         // read() since sharing memory across scopes is a feature.
-        let bootstrap_injected = if self.is_bootstrap_completed() {
+        let _bootstrap_injected = if self.is_bootstrap_completed() {
             if self
                 .read_primary(paths::BOOTSTRAP)
                 .await
@@ -1853,7 +1853,7 @@ impl Workspace {
 const PROFILE_SECTION_BEGIN: &str = "<!-- BEGIN:profile-sync -->";
 const PROFILE_SECTION_END: &str = "<!-- END:profile-sync -->";
 
-/// Wrap profile content in section delimiters.
+#[allow(dead_code)]
 fn wrap_profile_section(content: &str) -> String {
     format!(
         "{}\n{}\n{}",
@@ -1861,12 +1861,7 @@ fn wrap_profile_section(content: &str) -> String {
     )
 }
 
-/// Merge auto-generated profile content into an existing USER.md.
-///
-/// - If delimiters are found, replaces only the delimited block.
-/// - If the old-format auto-generated header is present, does a full replace.
-/// - If the content matches the seed template, does a full replace.
-/// - Otherwise appends the delimited block (preserves user-authored content).
+#[allow(dead_code)]
 fn merge_profile_section(existing: &str, new_content: &str) -> String {
     let delimited = wrap_profile_section(new_content);
 
@@ -1903,12 +1898,14 @@ fn merge_profile_section(existing: &str, new_content: &str) -> String {
 }
 
 /// Check if content matches the seed template for USER.md.
+#[allow(dead_code)]
 fn is_seed_template(content: &str) -> bool {
     let trimmed = content.trim();
     trimmed.starts_with("# User Context") && trimmed.contains("- **Name:**")
 }
 
 /// Check whether a profile's `updated_at` timestamp is within `max_days` of now.
+#[allow(dead_code)]
 fn is_profile_recent(updated_at: &str, max_days: i64) -> bool {
     let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(updated_at) else {
         return false;

@@ -387,6 +387,7 @@ pub struct UserIdentityRecord {
     pub updated_at: DateTime<Utc>,
 }
 
+#[allow(dead_code)]
 pub(crate) fn scoped_conversation_id(channel: &str, user_id: &str, scope: &str) -> Uuid {
     Uuid::parse_str(scope).unwrap_or_else(|_| {
         let mut seed = Vec::new();
