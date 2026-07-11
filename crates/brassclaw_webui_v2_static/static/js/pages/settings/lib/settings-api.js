@@ -92,7 +92,7 @@ export function fetchTools() {
 export function updateToolPermission(toolId, mode) {
   return apiFetch(`/api/webchat/v2/tools/${encodeURIComponent(toolId)}/permission`, {
     method: "PUT",
-    body: JSON.stringify({ mode }),
+    body: JSON.stringify({ capability_id: toolId, permission_mode: mode }),
   });
 }
 export function fetchSkills() {
