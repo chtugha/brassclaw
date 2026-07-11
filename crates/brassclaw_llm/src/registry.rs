@@ -1066,7 +1066,7 @@ mod tests {
                 }),
                 unsupported_params: vec![],
                 token_budget: None,
-            context_window_tokens: None,
+                context_window_tokens: None,
             },
             // User override removes setup
             ProviderDefinition {
@@ -1085,7 +1085,7 @@ mod tests {
                 setup: None,
                 unsupported_params: vec![],
                 token_budget: None,
-            context_window_tokens: None,
+                context_window_tokens: None,
             },
         ];
 
@@ -1125,7 +1125,7 @@ mod tests {
                 }),
                 unsupported_params: vec![],
                 token_budget: None,
-            context_window_tokens: None,
+                context_window_tokens: None,
             },
             ProviderDefinition {
                 id: "bbb".to_string(),
@@ -1146,7 +1146,7 @@ mod tests {
                 }),
                 unsupported_params: vec![],
                 token_budget: None,
-            context_window_tokens: None,
+                context_window_tokens: None,
             },
             ProviderDefinition {
                 id: "ccc".to_string(),
@@ -1167,7 +1167,7 @@ mod tests {
                 }),
                 unsupported_params: vec![],
                 token_budget: None,
-            context_window_tokens: None,
+                context_window_tokens: None,
             },
             // User override for B
             ProviderDefinition {
@@ -1189,7 +1189,7 @@ mod tests {
                 }),
                 unsupported_params: vec![],
                 token_budget: None,
-            context_window_tokens: None,
+                context_window_tokens: None,
             },
         ];
 
