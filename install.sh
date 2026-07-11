@@ -176,7 +176,7 @@ create_systemd_service() {
     # On upgrade: preserve the existing token and user_id so the operator
     # does not need to reconfigure their browser or bookmark after every
     # version update.  Only generate a fresh token on a first-time install.
-    local webui_token webui_user_id is_upgrade=false
+    local webui_token="" webui_user_id="" is_upgrade=false
     if [[ -f "$existing_service" ]]; then
         is_upgrade=true
         webui_token=$(grep -oP '(?<=Environment=BRASSCLAW_REBORN_WEBUI_TOKEN=)\S+' "$existing_service" 2>/dev/null || true)
@@ -213,7 +213,6 @@ Environment=BRASSCLAW_REBORN_HOME=$reborn_home
 Environment=BRASSCLAW_REBORN_PROFILE=local-dev
 Environment=BRASSCLAW_REBORN_WEBUI_TOKEN=$webui_token
 Environment=BRASSCLAW_REBORN_WEBUI_USER_ID=$webui_user_id
-Environment=LLM_API_KEY=none
 ExecStart=$INSTALL_DIR/$BINARY_NAME serve --host 0.0.0.0 --port 3000
 Restart=on-failure
 RestartSec=5
