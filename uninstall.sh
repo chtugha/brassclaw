@@ -6,8 +6,17 @@
 # Usage:
 #   bash uninstall.sh               # removes user-local binary (~/.local/bin)
 #   sudo bash uninstall.sh          # removes system binary + systemd service
+#   sudo bash uninstall.sh -y       # non-interactive (skip confirmation prompts)
 
 set -euo pipefail
+
+# ── parse flags ───────────────────────────────────────────────────────────────
+YES=false
+for arg in "$@"; do
+    case "$arg" in
+        -y|--yes) YES=true ;;
+    esac
+done
 
 # The canonical installed binary name (same as install.sh uses)
 BINARY_NAME="brassclaw-reborn"
@@ -43,10 +52,14 @@ if [[ $INSTALL_MODE == "system" ]] && [[ -f "$SYSTEMD_DIR/$SERVICE_NAME.service"
     echo -e "              ${RED}$SYSTEMD_DIR/$SERVICE_NAME.service${NC}"
 fi
 echo ""
-read -rp "Continue? [y/N] " reply
-if [[ ! "$reply" =~ ^[Yy]$ ]]; then
-    log_info "Cancelled."
-    exit 0
+if [[ "$YES" == "true" ]]; then
+    echo "Proceeding non-interactively (-y)"
+else
+    read -rp "Continue? [y/N] " reply
+    if [[ ! "$reply" =~ ^[Yy]$ ]]; then
+        log_info "Cancelled."
+        exit 0
+    fi
 fi
 echo ""
 
@@ -86,13 +99,17 @@ fi
 echo ""
 if [[ -d "$CONFIG_DIR" ]]; then
     echo -e "Reborn config dir ${BLUE}$CONFIG_DIR${NC} contains your data and will be kept."
-    read -rp "Remove reborn config dir? [y/N] " reply
-    if [[ "$reply" =~ ^[Yy]$ ]]; then
-        log_step "Removing reborn config directory..."
-        rm -rf "$CONFIG_DIR"
-        log_info "Removed: $CONFIG_DIR"
+    if [[ "$YES" == "true" ]]; then
+        log_info "Config preserved at: $CONFIG_DIR (use --wipe-data to remove)"
     else
-        log_info "Config preserved at: $CONFIG_DIR"
+        read -rp "Remove reborn config dir? [y/N] " reply
+        if [[ "$reply" =~ ^[Yy]$ ]]; then
+            log_step "Removing reborn config directory..."
+            rm -rf "$CONFIG_DIR"
+            log_info "Removed: $CONFIG_DIR"
+        else
+            log_info "Config preserved at: $CONFIG_DIR"
+        fi
     fi
 fi
 
