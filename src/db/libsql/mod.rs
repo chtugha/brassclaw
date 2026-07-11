@@ -7,14 +7,9 @@
 //! - In-memory (for testing)
 
 mod capability_permissions;
-mod conversations;
 mod identities;
-mod jobs;
 mod pairing;
-mod routines;
-mod sandbox;
 mod settings;
-mod tool_failures;
 mod users;
 mod workspace;
 

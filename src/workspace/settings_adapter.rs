@@ -17,7 +17,6 @@ use tracing::debug;
 
 use crate::db::{Database, SettingsStore};
 use crate::error::{DatabaseError, WorkspaceError};
-use crate::history::SettingRow;
 use crate::workspace::Workspace;
 use crate::workspace::settings_schemas::{schema_for_key, settings_path, validate_settings_key};
 

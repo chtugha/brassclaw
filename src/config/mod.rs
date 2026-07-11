@@ -1130,7 +1130,7 @@ mod tests {
             &self,
             _user_id: &str,
             _key: &str,
-        ) -> Result<Option<crate::history::SettingRow>, crate::error::DatabaseError> {
+        ) -> Result<Option<crate::db::SettingRow>, crate::error::DatabaseError> {
             Err(crate::error::DatabaseError::Query(
                 "FakeSettingsStore::get_setting_full not implemented".into(),
             ))
@@ -1161,7 +1161,7 @@ mod tests {
         async fn list_settings(
             &self,
             _user_id: &str,
-        ) -> Result<Vec<crate::history::SettingRow>, crate::error::DatabaseError> {
+        ) -> Result<Vec<crate::db::SettingRow>, crate::error::DatabaseError> {
             Err(crate::error::DatabaseError::Query(
                 "FakeSettingsStore::list_settings not implemented".into(),
             ))

@@ -5,10 +5,8 @@
 //! runtime. The v1 agentic loop, channels, and CLI commands have been removed;
 //! all runtime functionality now lives in `crates/brassclaw_reborn_*`.
 
-pub mod app;
 pub mod bootstrap;
 pub mod bridge;
-pub mod capabilities;
 
 pub mod cli;
 pub mod code_challenge;
@@ -16,7 +14,7 @@ pub mod config;
 pub mod db;
 pub mod document_extraction;
 pub mod error;
-pub mod generated_images;
+pub(crate) mod generated_images;
 #[cfg(feature = "import")]
 pub mod import;
 pub mod logging;

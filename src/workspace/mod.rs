@@ -42,7 +42,6 @@
 
 mod chunker;
 mod document;
-pub mod extension_state;
 pub mod hygiene;
 pub mod layer;
 pub mod privacy;

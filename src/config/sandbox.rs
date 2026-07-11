@@ -119,43 +119,6 @@ impl SandboxModeConfig {
         })
     }
 
-    /// Convert to SandboxConfig for the sandbox module.
-    ///
-    /// If `policy` is `FullAccess` but `allow_full_access` is `false`,
-    /// the policy is downgraded to `WorkspaceWrite` and an error is logged.
-    pub fn to_sandbox_config(&self) -> crate::sandbox::SandboxConfig {
-        use crate::sandbox::SandboxPolicy;
-        use std::time::Duration;
-
-        let mut policy = self.policy.parse().unwrap_or(SandboxPolicy::ReadOnly);
-
-        // Double opt-in guard: FullAccess requires SANDBOX_ALLOW_FULL_ACCESS=true
-        if policy == SandboxPolicy::FullAccess && !self.allow_full_access {
-            tracing::error!(
-                "SANDBOX_POLICY=full_access is set but SANDBOX_ALLOW_FULL_ACCESS is not \
-                 set to 'true'. FullAccess bypasses Docker and runs commands directly on \
-                 the host. Downgrading to WorkspaceWrite for safety. Set \
-                 SANDBOX_ALLOW_FULL_ACCESS=true to explicitly enable FullAccess."
-            );
-            policy = SandboxPolicy::WorkspaceWrite;
-        }
-
-        let mut allowlist = crate::sandbox::default_allowlist();
-        allowlist.extend(self.extra_allowed_domains.clone());
-
-        crate::sandbox::SandboxConfig {
-            enabled: self.enabled,
-            policy,
-            allow_full_access: self.allow_full_access,
-            timeout: Duration::from_secs(self.timeout_secs),
-            memory_limit_mb: self.memory_limit_mb,
-            cpu_shares: self.cpu_shares,
-            network_allowlist: allowlist,
-            image: self.image.clone(),
-            auto_pull_image: self.auto_pull_image,
-            proxy_port: 0, // Auto-assign
-        }
-    }
 }
 
 /// Claude Code sandbox configuration.
