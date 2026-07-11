@@ -74,99 +74,65 @@ BrassClaw is built on a simple principle: **your AI assistant should work for yo
 
 **Minimum requirements:** any machine with ~8 GB RAM, a modern 64-bit CPU, and about 4 GB of free disk space for models.
 
-### Option A: DietPi / Linux Server (automated)
+### Option A: Linux Server — one-line install (recommended)
 
-The deploy script installs vLLM, builds BrassClaw, and registers both as systemd services in one command:
+Downloads the latest pre-built binary from GitHub Releases and registers it as a systemd service:
 
 ```bash
-cd /opt
-git clone https://github.com/chtugha/brassclaw.git
-cd brassclaw
-export VLLM_HOST=127.0.0.1
-export VLLM_PORT=8000
-sudo bash deploy/dietpi-setup.sh
+curl -fsSL https://raw.githubusercontent.com/chtugha/brassclaw/main/install.sh | sudo bash
 ```
 
-Point to a remote GPU server instead of installing vLLM locally:
-
-
-```bash
-cd /opt
-git clone https://github.com/chtugha/brassclaw.git
-cd brassclaw
-export VLLM_HOST=192.168.10.223
-export VLLM_PORT=8000
-sudo bash deploy/dietpi-setup.sh
-```
-
-### Option B: Precompiled binaries
-
-Pre-built binaries are automatically compiled by GitHub Actions CI for each release and are available for:
-- **Linux x86_64** (statically linked with musl)
-- **macOS ARM64** (Apple Silicon)
-- **macOS x86_64** (Intel)
-
-Download the latest release from [GitHub Releases](https://github.com/chtugha/brassclaw/releases/latest).
-
-**Linux installation:**
+Or download and review first (recommended):
 
 ```bash
-# Download the install script
 curl -fsSL https://raw.githubusercontent.com/chtugha/brassclaw/main/install.sh -o install.sh
-
-# Review the script (recommended)
 less install.sh
-
-# Run as root to install systemd service
 sudo bash install.sh
 ```
 
 The installer will:
-- Download the latest binary from GitHub releases
-- Verify SHA256 checksums
-- Install to `/usr/local/bin/brassclaw`
-- Create systemd service at `/etc/systemd/system/brassclaw.service`
-- Preserve existing configuration during updates
+- Detect your platform (Linux x86\_64, macOS ARM64, macOS x86\_64)
+- Download the latest binary from GitHub Releases and verify its SHA256 checksum
+- Install to `/usr/local/bin/brassclaw-reborn`
+- Create a systemd service at `/etc/systemd/system/brassclaw.service` (when run as root)
+- Preserve your WebUI token and user ID on upgrades
 
-**macOS installation:**
+Pin to a specific version with `-v`:
 
 ```bash
-# Download the appropriate binary for your architecture
-# For Apple Silicon (M1/M2/M3):
-curl -LO https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-macos-arm64
-
-# For Intel Macs:
-curl -LO https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-macos-amd64
-
-# Make executable and move to PATH
-chmod +x brassclaw-macos-*
-sudo mv brassclaw-macos-* /usr/local/bin/brassclaw
+sudo bash install.sh -v 0.41.3
 ```
 
 **Uninstallation:**
 
 ```bash
-# Download the uninstall script
-curl -fsSL https://raw.githubusercontent.com/chtugha/brassclaw/main/uninstall.sh -o uninstall.sh
-
-# Run as root
-sudo bash uninstall.sh
+curl -fsSL https://raw.githubusercontent.com/chtugha/brassclaw/main/uninstall.sh | sudo bash
 ```
 
-The uninstaller will:
-- Stop and disable the systemd service
-- Remove the binary and service file
-- Optionally remove configuration (you'll be prompted)
+The uninstaller stops and disables the service, removes the binary, and optionally removes your configuration (you will be prompted).
+
+### Option B: macOS — manual binary install
+
+```bash
+# Apple Silicon (M1/M2/M3):
+curl -fsSL -o brassclaw-reborn https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-macos-arm64
+chmod +x brassclaw-reborn && sudo mv brassclaw-reborn /usr/local/bin/brassclaw-reborn
+
+# Intel Mac:
+curl -fsSL -o brassclaw-reborn https://github.com/chtugha/brassclaw/releases/latest/download/brassclaw-macos-amd64
+chmod +x brassclaw-reborn && sudo mv brassclaw-reborn /usr/local/bin/brassclaw-reborn
+```
+
+All release artifacts are listed on the [GitHub Releases page](https://github.com/chtugha/brassclaw/releases/latest).
 
 ### Option C: Build from source
 
 Requires [Rust 1.92+](https://rustup.rs).
 
 ```bash
-cd /opt
 git clone https://github.com/chtugha/brassclaw.git
 cd brassclaw
-cargo build --release -p brassclaw_reborn_cli
+cargo build --release --bin brassclaw
 ```
 
 The binary is at `target/release/brassclaw`.
