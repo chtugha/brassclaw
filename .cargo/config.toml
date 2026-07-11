@@ -1,2 +1,47 @@
+# ── Faster linker (macOS arm64) ───────────────────────────────────────────────
+# Use LLVM lld (ld64.lld) instead of the Apple ld, routed through Homebrew
+# clang so the driver receives the right -arch / SDK flags before handing off
+# to the linker.  mold does NOT support macOS; ld64.lld is the correct choice.
+[target.aarch64-apple-darwin]
+linker = "/opt/homebrew/opt/llvm/bin/clang"
+rustflags = [
+    "-C", "link-arg=-fuse-ld=/opt/homebrew/bin/ld64.lld",
+]
+
+# ── Cross-compilation target (unchanged) ──────────────────────────────────────
 [target.x86_64-unknown-linux-musl]
 linker = "x86_64-linux-musl-gcc"
+
+# ── Build jobs ────────────────────────────────────────────────────────────────
+[build]
+jobs = 10          # match logical-CPU count (sysctl hw.logicalcpu = 10)
+
+# ── Compiler cache (opt-in) ───────────────────────────────────────────────────
+# sccache is incompatible with incremental compilation — rustc silently drops
+# incremental when a wrapper is active, making warm dev/test builds *slower*.
+# Use it explicitly for cold builds or CI:
+#   RUSTC_WRAPPER=sccache cargo build --release
+# To enable permanently for your user (e.g. in CI), set in the environment:
+#   export RUSTC_WRAPPER=sccache
+# Uncomment the line below only if you have disabled incremental globally:
+# rustc-wrapper = "/opt/homebrew/bin/sccache"
+
+# ── Sparse registry protocol ──────────────────────────────────────────────────
+# Replaces the legacy git-based index with an HTTP sparse fetch.
+# Dramatically speeds up `cargo update` and first-time dependency resolution.
+[registries.crates-io]
+protocol = "sparse"
+
+# ── Profile tweaks (dev only) ─────────────────────────────────────────────────
+# `split-debuginfo = "unpacked"` keeps .dSYM unpacked during incremental
+# builds, which lets the linker skip re-linking unchanged debug sections.
+# `incremental = true` is the default for dev but explicit here for clarity.
+[profile.dev]
+split-debuginfo = "unpacked"
+incremental = true
+
+# Slightly faster incremental test builds; full optimisation for release stays
+# at the cargo default (opt-level = 3).
+[profile.test]
+split-debuginfo = "unpacked"
+incremental = true
