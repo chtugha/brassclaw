@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.41.6] - 2026-07-30
+
+### Fixed
+
+- *(db/libsql)* Fix `test_pairing_channels_are_isolated` and related "bad parameter or other API misuse" errors: `PRAGMA busy_timeout = 5000` echoes its new value as a result row; the `connect()` path now drains that row before returning the connection to the caller, preventing the stale cursor from corrupting the next operation on the same connection.
+- *(ownership)* Add `UserId::new()` (validated constructor), `is_admin()`, `is_owner()`, `is_regular()` methods and `UserRole::Owner` variant to the v1-compatibility ownership stub; all 12 ownership integration tests now pass.
+- *(import)* Replace deleted conversation-DB calls in `import/openclaw/history` with a no-op stub — conversation tables were removed in the v2 schema migration.
+- *(build)* Remove stale `ld64.lld` linker override from global `~/.cargo/config.toml` that was causing `clang: error: invalid linker name` on macOS aarch64 after Homebrew LLVM upgrade.
+
 ## [0.41.3] - 2026-07-14
 
 ### Fixed
