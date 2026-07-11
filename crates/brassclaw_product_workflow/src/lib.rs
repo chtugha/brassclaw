@@ -152,6 +152,7 @@ pub use reborn_services::{
     ExtensionCredentialStatusRequest, ExtensionCredentialSubmitRequest, LlmActiveSelection,
     LlmConfigService, LlmConfigServiceError, LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest,
     LlmProbeResult, LlmProviderView, NearAiAuthProvider, NearAiLoginRequest, NearAiLoginStart,
+    ProviderTokenBudgetView,
     NearAiWalletLoginRequest, NearAiWalletLoginResult, OutboundPreferencesProductFacade,
     ProductAgentBoundCaller, RebornAutomationInfo, RebornAutomationRunStatus,
     RebornAutomationSource, RebornAutomationState, RebornCancelRunResponse, RebornCapabilityInfo,

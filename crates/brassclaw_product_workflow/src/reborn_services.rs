@@ -103,7 +103,7 @@ pub use llm_config::{
     CodexLoginStart, LlmActiveSelection, LlmConfigService, LlmConfigServiceError,
     LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult, LlmProviderView,
     NearAiAuthProvider, NearAiLoginRequest, NearAiLoginStart, NearAiWalletLoginRequest,
-    NearAiWalletLoginResult, SetActiveLlmRequest, UpsertLlmProviderRequest,
+    NearAiWalletLoginResult, ProviderTokenBudgetView, SetActiveLlmRequest, UpsertLlmProviderRequest,
 };
 pub use types::{
     RebornAutomationInfo, RebornAutomationRunStatus, RebornAutomationSource, RebornAutomationState,
@@ -850,6 +850,31 @@ pub trait RebornServicesApi: Send + Sync {
     async fn update_token_settings(
         &self,
         _caller: WebUiAuthenticatedCaller,
+        _request: crate::token_settings::UpdateTokenSettingsRequest,
+    ) -> Result<crate::token_settings::TokenSettingsResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    async fn get_provider_token_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _provider_id: &str,
+    ) -> Result<crate::token_settings::TokenSettingsResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    async fn update_provider_token_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _provider_id: &str,
         _request: crate::token_settings::UpdateTokenSettingsRequest,
     ) -> Result<crate::token_settings::TokenSettingsResponse, RebornServicesError> {
         Err(RebornServicesError::from_status(
@@ -2195,6 +2220,89 @@ impl RebornServicesApi for RebornServices {
             .await
             .map_err(|e| {
                 tracing::error!("❌ Failed to update token settings: {:?}", e);
+                RebornServicesError::from_status_kind(
+                    RebornServicesErrorCode::Internal,
+                    RebornServicesErrorKind::Internal,
+                    500,
+                    false,
+                )
+            })
+    }
+
+    async fn get_provider_token_settings(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        provider_id: &str,
+    ) -> Result<crate::token_settings::TokenSettingsResponse, RebornServicesError> {
+        let Some(store) = &self.token_settings_store else {
+            return Err(RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            ));
+        };
+        // Validate provider_id at the service boundary (same rule as UpsertLlmProvider).
+        if !provider_id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+            || provider_id.is_empty()
+            || provider_id.len() > 64
+        {
+            return Err(RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                400,
+                false,
+            ));
+        }
+        let user_id = caller.user_id.to_string();
+        store
+            .get_provider_token_settings(&user_id, provider_id)
+            .await
+            .map_err(|e| {
+                tracing::error!("❌ Failed to get provider token settings: {:?}", e);
+                RebornServicesError::from_status_kind(
+                    RebornServicesErrorCode::Internal,
+                    RebornServicesErrorKind::Internal,
+                    500,
+                    false,
+                )
+            })
+    }
+
+    async fn update_provider_token_settings(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        provider_id: &str,
+        request: crate::token_settings::UpdateTokenSettingsRequest,
+    ) -> Result<crate::token_settings::TokenSettingsResponse, RebornServicesError> {
+        let Some(store) = &self.token_settings_store else {
+            return Err(RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            ));
+        };
+        // Validate provider_id at the service boundary (same rule as UpsertLlmProvider).
+        if !provider_id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+            || provider_id.is_empty()
+            || provider_id.len() > 64
+        {
+            return Err(RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                400,
+                false,
+            ));
+        }
+        let user_id = caller.user_id.to_string();
+        store
+            .update_provider_token_settings(&user_id, provider_id, request)
+            .await
+            .map_err(|e| {
+                tracing::error!("❌ Failed to update provider token settings: {:?}", e);
                 RebornServicesError::from_status_kind(
                     RebornServicesErrorCode::Internal,
                     RebornServicesErrorKind::Internal,

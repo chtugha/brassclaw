@@ -703,6 +703,7 @@ fn llm_snapshot(provider_id: &str) -> LlmConfigSnapshot {
             accepts_api_key: true,
             api_key_set: true,
             can_list_models: true,
+            token_budget: None,
         }],
         active: Some(LlmActiveSelection {
             provider_id: provider_id.to_string(),

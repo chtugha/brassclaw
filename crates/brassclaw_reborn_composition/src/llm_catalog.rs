@@ -405,6 +405,7 @@ mod tests {
             extra_headers_env: None,
             unsupported_params: Vec::new(),
             setup: None,
+            token_budget: None,
         }
     }
 
@@ -424,6 +425,7 @@ mod tests {
             extra_headers_env: None,
             unsupported_params: Vec::new(),
             setup: None,
+            token_budget: None,
         }
     }
 
@@ -443,6 +445,7 @@ mod tests {
             extra_headers_env: None,
             unsupported_params: Vec::new(),
             setup: None,
+            token_budget: None,
         }
     }
 
@@ -469,6 +472,7 @@ mod tests {
             extra_headers_env: None,
             unsupported_params: Vec::new(),
             setup: None,
+            token_budget: None,
         }
     }
 
@@ -488,6 +492,7 @@ mod tests {
             extra_headers_env: None,
             unsupported_params: Vec::new(),
             setup: None,
+            token_budget: None,
         }
     }
 

@@ -22,4 +22,19 @@ pub trait TokenSettingsStore: Send + Sync {
         user_id: &str,
         request: UpdateTokenSettingsRequest,
     ) -> Result<TokenSettingsResponse, Box<dyn std::error::Error + Send + Sync>>;
+
+    /// Load per-provider token settings for the given user + provider.
+    async fn get_provider_token_settings(
+        &self,
+        user_id: &str,
+        provider_id: &str,
+    ) -> Result<TokenSettingsResponse, Box<dyn std::error::Error + Send + Sync>>;
+
+    /// Persist per-provider token settings for the given user + provider.
+    async fn update_provider_token_settings(
+        &self,
+        user_id: &str,
+        provider_id: &str,
+        request: UpdateTokenSettingsRequest,
+    ) -> Result<TokenSettingsResponse, Box<dyn std::error::Error + Send + Sync>>;
 }

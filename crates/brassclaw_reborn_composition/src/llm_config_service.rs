@@ -28,7 +28,8 @@ use brassclaw_product_workflow::{
     CodexLoginStart, LlmActiveSelection, LlmConfigService, LlmConfigServiceError,
     LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult, LlmProviderView,
     NearAiLoginRequest, NearAiLoginStart, NearAiWalletLoginRequest, NearAiWalletLoginResult,
-    SetActiveLlmRequest, UpsertLlmProviderRequest, WebUiAuthenticatedCaller,
+    ProviderTokenBudgetView, SetActiveLlmRequest, UpsertLlmProviderRequest,
+    WebUiAuthenticatedCaller,
 };
 use brassclaw_reborn_config::{LlmSlotSelection, RebornBootConfig};
 use secrecy::{ExposeSecret as _, SecretString};
@@ -198,6 +199,21 @@ impl RebornLlmConfigService {
                     model: info.active_model.clone(),
                 });
             }
+            let definition_budget = builtin_registry
+                .find(&info.id)
+                .and_then(|def| def.token_budget.as_ref())
+                .map(|b| ProviderTokenBudgetView {
+                    profile: b.profile.clone(),
+                    conversation_history: b.conversation_history,
+                    skills: b.skills,
+                    identity: b.identity,
+                    inline_control: b.inline_control,
+                    memory: b.memory,
+                    safety: b.safety,
+                    capability_surface: b.capability_surface,
+                    total_input: b.total_input,
+                    max_output: b.max_output,
+                });
             providers.push(LlmProviderView {
                 id: info.id,
                 description: info.description,
@@ -223,6 +239,7 @@ impl RebornLlmConfigService {
                     .as_ref()
                     .map(|meta| meta.can_list_models)
                     .unwrap_or(false),
+                token_budget: definition_budget,
             });
         }
 
@@ -456,7 +473,7 @@ impl LlmConfigService for RebornLlmConfigService {
         let builtin = builtin_registry.find(&id);
         let key_present =
             has_new_key || stored_key_present || builtin.is_some_and(definition_env_key_set);
-        let definition = build_overlay_definition(
+        let mut definition = build_overlay_definition(
             &id,
             builtin,
             &request.adapter,
@@ -465,6 +482,29 @@ impl LlmConfigService for RebornLlmConfigService {
             key_present,
             request.name.as_deref(),
         )?;
+
+        // Merge token_budget from the request.  When the request carries a
+        // budget, convert the view type to the catalog type (same fields,
+        // different crate).  When the request omits it, keep the existing
+        // budget from the previous overlay (if any), or leave it unset for
+        // new providers.
+        if let Some(v) = request.token_budget.as_ref() {
+            definition.token_budget = Some(brassclaw_llm::ProviderTokenBudget {
+                profile: v.profile.clone(),
+                conversation_history: v.conversation_history,
+                skills: v.skills,
+                identity: v.identity,
+                inline_control: v.inline_control,
+                memory: v.memory,
+                safety: v.safety,
+                capability_surface: v.capability_surface,
+                total_input: v.total_input,
+                max_output: v.max_output,
+            });
+        } else if let Some(prev) = previous_definition.as_ref() {
+            // No new budget sent: preserve whatever was already on the definition.
+            definition.token_budget = prev.token_budget.clone();
+        }
 
         // Store the key value only when a real (non-sentinel) one was supplied.
         if has_new_key && let Some(key) = request.api_key.as_ref() {
@@ -931,6 +971,7 @@ fn custom_definition(
         extra_headers_env: None,
         unsupported_params: Vec::new(),
         setup: None,
+        token_budget: None,
     }
 }
 
@@ -953,12 +994,24 @@ fn is_masked_sentinel(value: &SecretString) -> bool {
     value.expose_secret().chars().all(|c| c == '\u{2022}')
 }
 
+const PROVIDER_ID_MAX_LEN: usize = 64;
+
 fn validate_provider_id(id: &str) -> Result<String, LlmConfigServiceError> {
     let trimmed = id.trim();
     if trimmed.is_empty() {
         return Err(LlmConfigServiceError::InvalidRequest {
             field: Some("id".to_string()),
             reason: "provider id cannot be empty".to_string(),
+        });
+    }
+    if trimmed.len() > PROVIDER_ID_MAX_LEN {
+        return Err(LlmConfigServiceError::InvalidRequest {
+            field: Some("id".to_string()),
+            reason: format!(
+                "provider id must be ≤ {} characters, got {}",
+                PROVIDER_ID_MAX_LEN,
+                trimmed.len()
+            ),
         });
     }
     if !trimmed
@@ -1032,6 +1085,7 @@ mod tests {
             api_key: api_key.map(SecretString::from),
             set_active,
             model: Some("acme-1".to_string()),
+            token_budget: None,
         }
     }
 
@@ -1102,6 +1156,9 @@ mod tests {
         assert!(validate_provider_id("Acme").is_err());
         assert!(validate_provider_id("has space").is_err());
         assert!(validate_provider_id("  ").is_err());
+        // Length limit: exactly 64 chars is ok, 65 is rejected.
+        assert!(validate_provider_id(&"a".repeat(64)).is_ok());
+        assert!(validate_provider_id(&"a".repeat(65)).is_err());
     }
 
     #[test]

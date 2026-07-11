@@ -158,3 +158,14 @@ export function updateTokenSettings(payload) {
     body: JSON.stringify(payload),
   });
 }
+export function fetchProviderTokenSettings(providerId) {
+  return apiFetch(
+    `/api/webchat/v2/providers/${encodeURIComponent(providerId)}/tokens`
+  );
+}
+export function updateProviderTokenSettings(providerId, payload) {
+  return apiFetch(
+    `/api/webchat/v2/providers/${encodeURIComponent(providerId)}/tokens`,
+    { method: "PUT", body: JSON.stringify(payload) }
+  );
+}

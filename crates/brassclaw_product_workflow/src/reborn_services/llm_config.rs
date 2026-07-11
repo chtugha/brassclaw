@@ -21,6 +21,24 @@ use serde::{Deserialize, Serialize};
 use super::error::{RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind};
 use crate::WebUiAuthenticatedCaller;
 
+/// Wire-format token budget view sent to the settings UI.
+/// Identical shape to `TokenSettingsResponse` so the frontend can reuse
+/// the same `TokensTab` component verbatim.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderTokenBudgetView {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
+    pub conversation_history: Option<usize>,
+    pub skills: Option<usize>,
+    pub identity: Option<usize>,
+    pub inline_control: Option<usize>,
+    pub memory: Option<usize>,
+    pub safety: Option<usize>,
+    pub capability_surface: Option<usize>,
+    pub total_input: Option<usize>,
+    pub max_output: Option<usize>,
+}
+
 /// Operator-wide LLM configuration management.
 #[async_trait]
 pub trait LlmConfigService: Send + Sync {
@@ -201,6 +219,10 @@ pub struct LlmProviderView {
     /// Whether an API-key value is stored for this provider (never the value).
     pub api_key_set: bool,
     pub can_list_models: bool,
+    /// Token budget stored for this provider, if any.
+    /// `None` means the global `[tokens]` section (or compiled defaults) apply.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_budget: Option<ProviderTokenBudgetView>,
 }
 
 /// The active provider + model selection.
@@ -233,6 +255,10 @@ pub struct UpsertLlmProviderRequest {
     /// Model to activate when `set_active` is `true`.
     #[serde(default)]
     pub model: Option<String>,
+    /// Token budget for this provider.  `None` leaves any existing budget
+    /// untouched.  Send an all-None `ProviderTokenBudgetView` to clear it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_budget: Option<ProviderTokenBudgetView>,
 }
 
 /// Select the active provider + model.

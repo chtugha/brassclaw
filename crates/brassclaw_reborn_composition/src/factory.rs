@@ -491,6 +491,10 @@ struct RebornLocalDevStoreGraphInput {
     /// handle (see `RebornRuntime::open_reborn_identity_resolver`).
     #[cfg(feature = "libsql")]
     identity_substrate_db: Arc<libsql::Database>,
+    /// Active provider ID at boot time, used for the one-time per-provider
+    /// token settings migration.  `None` when no LLM is configured.
+    #[cfg(feature = "libsql")]
+    active_provider_id: Option<String>,
 }
 
 impl std::fmt::Debug for RebornServices {
@@ -687,6 +691,21 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
         extension_registry.capabilities().count()
     );
 
+    // Resolve active provider ID for the startup token-settings migration.
+    // We read the config file directly here (sync, best-effort) so we don't
+    // need to thread RebornBootConfig all the way through.
+    #[cfg(feature = "libsql")]
+    let startup_active_provider_id: Option<String> = {
+        use brassclaw_reborn_config::RebornConfigFile;
+        let config_file_path = root.join("config.toml");
+        RebornConfigFile::load(&config_file_path)
+            .ok()
+            .flatten()
+            .and_then(|cf| cf.llm)
+            .and_then(|llm| llm.get("default").and_then(|slot| slot.provider_id.clone()))
+            .filter(|id| !id.is_empty())
+    };
+
     let mut store_graph = build_local_dev_store_graph(RebornLocalDevStoreGraphInput {
         filesystem: Arc::clone(&filesystem),
         owner_user_id,
@@ -699,6 +718,8 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
         extension_registry: Arc::clone(&extension_registry),
         #[cfg(feature = "libsql")]
         identity_substrate_db,
+        #[cfg(feature = "libsql")]
+        active_provider_id: startup_active_provider_id,
     })
     .await?;
 
@@ -959,6 +980,7 @@ async fn build_local_dev_store_graph(
         trigger_repository,
         extension_registry,
         identity_substrate_db,
+        active_provider_id,
     } = input;
     let scoped_filesystem = local_dev_scoped_filesystem(Arc::clone(&filesystem));
     let event_log = local_dev_event_log(Arc::clone(&filesystem))?;
@@ -1005,7 +1027,7 @@ async fn build_local_dev_store_graph(
     #[cfg(feature = "slack-v2-host-beta")]
     let host_state_filesystem = local_dev_slack_host_state_filesystem(Arc::clone(&filesystem));
     let skill_management =
-        build_local_skill_management_port(owner_user_id, Arc::clone(&filesystem))?;
+        build_local_skill_management_port(owner_user_id.clone(), Arc::clone(&filesystem))?;
 
     // Create the safety configuration store, ensuring the tables exist.
     let safety_config_store = Arc::new(
@@ -1032,6 +1054,17 @@ async fn build_local_dev_store_graph(
         })?,
     );
     tracing::info!("✅ TokenSettingsStore created successfully in build_local_dev_store_graph");
+
+    // One-time forward migration: promote global token settings to the active
+    // provider's per-provider row.  Non-destructive; no-op if already done.
+    if let Some(ref provider_id) = active_provider_id {
+        crate::token_settings_store::migrate_global_tokens_to_active_provider(
+            &token_settings_store,
+            provider_id,
+            owner_user_id.as_str(),
+        )
+        .await;
+    }
 
     let local_runtime = Arc::new(RebornLocalRuntimeServices {
         approval_requests: Arc::clone(&approval_requests),

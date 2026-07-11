@@ -321,6 +321,38 @@ mod unsupported_params_de {
     }
 }
 
+/// Minimal token-budget overlay stored inside a [`ProviderDefinition`].
+///
+/// Mirrors the subset of `brassclaw_reborn_config::TokensSection` that the
+/// loop actually consumes. Keeping this struct in `brassclaw_llm` avoids
+/// a circular dependency: `brassclaw_reborn_config` must not depend on
+/// `brassclaw_llm`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
+pub struct ProviderTokenBudget {
+    /// Named preset: `"small_7b"`, `"large"`, `"coding"`, `"chat"`.
+    /// When set, all `None` fields below are filled with preset values.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation_history: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skills: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inline_control: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub safety: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability_surface: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_input: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_output: Option<usize>,
+}
+
 /// Declarative definition of an LLM provider.
 ///
 /// One JSON object in `providers.json` maps to one `ProviderDefinition`.
@@ -367,6 +399,13 @@ pub struct ProviderDefinition {
     /// Invalid parameter names cause a deserialization error.
     #[serde(default, deserialize_with = "unsupported_params_de::deserialize")]
     pub unsupported_params: Vec<String>,
+    /// Optional per-provider token budget.  When present, the runtime
+    /// resolves this against the active preset and uses it instead of the
+    /// global `[tokens]` section or compiled defaults.
+    /// `skip_serializing_if` keeps the field absent from providers.json
+    /// entries that don't set it, so builtins stay compact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token_budget: Option<ProviderTokenBudget>,
 }
 
 /// Registry of known LLM providers.
@@ -667,6 +706,7 @@ mod tests {
             extra_headers_env: None,
             setup: None,
             unsupported_params: vec![],
+            token_budget: None,
         });
         let registry = ProviderRegistry::new(all);
         let tf = registry.find("tinfoil").expect("tinfoil should exist");
@@ -923,6 +963,7 @@ mod tests {
             extra_headers_env: None,
             setup: None, // no setup hint
             unsupported_params: vec![],
+            token_budget: None,
         }];
 
         let registry = ProviderRegistry::new(providers.clone());
@@ -953,6 +994,7 @@ mod tests {
                 models_filter: None,
             }),
             unsupported_params: vec![],
+            token_budget: None,
         });
 
         let registry = ProviderRegistry::new(providers);
@@ -995,6 +1037,7 @@ mod tests {
                     models_filter: None,
                 }),
                 unsupported_params: vec![],
+                token_budget: None,
             },
             // User override removes setup
             ProviderDefinition {
@@ -1012,6 +1055,7 @@ mod tests {
                 extra_headers_env: None,
                 setup: None,
                 unsupported_params: vec![],
+                token_budget: None,
             },
         ];
 
@@ -1050,6 +1094,7 @@ mod tests {
                     can_list_models: false,
                 }),
                 unsupported_params: vec![],
+                token_budget: None,
             },
             ProviderDefinition {
                 id: "bbb".to_string(),
@@ -1069,6 +1114,7 @@ mod tests {
                     can_list_models: false,
                 }),
                 unsupported_params: vec![],
+                token_budget: None,
             },
             ProviderDefinition {
                 id: "ccc".to_string(),
@@ -1088,6 +1134,7 @@ mod tests {
                     can_list_models: false,
                 }),
                 unsupported_params: vec![],
+                token_budget: None,
             },
             // User override for B
             ProviderDefinition {
@@ -1108,6 +1155,7 @@ mod tests {
                     can_list_models: false,
                 }),
                 unsupported_params: vec![],
+                token_budget: None,
             },
         ];
 
@@ -1304,5 +1352,77 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn provider_definition_round_trips_without_token_budget() {
+        // Providers without token_budget in JSON must still deserialize cleanly.
+        let json = r#"{
+            "id": "test-plain",
+            "protocol": "open_ai_completions",
+            "model_env": "TEST_MODEL",
+            "default_model": "test-model",
+            "description": "Plain provider"
+        }"#;
+        let def: ProviderDefinition = serde_json::from_str(json)
+            .expect("should deserialize without token_budget field");
+        assert!(
+            def.token_budget.is_none(),
+            "token_budget should default to None when absent"
+        );
+        // Serializing should omit the field entirely (skip_serializing_if)
+        let serialized = serde_json::to_string(&def).expect("should serialize");
+        assert!(
+            !serialized.contains("token_budget"),
+            "token_budget should be omitted from serialized output when None"
+        );
+    }
+
+    #[test]
+    fn provider_definition_round_trips_with_token_budget() {
+        let json = r#"{
+            "id": "test-budgeted",
+            "protocol": "open_ai_completions",
+            "model_env": "TEST_MODEL",
+            "default_model": "test-model",
+            "description": "Provider with budget",
+            "token_budget": {
+                "conversation_history": 50000,
+                "total_input": 1000000
+            }
+        }"#;
+        let def: ProviderDefinition = serde_json::from_str(json)
+            .expect("should deserialize with token_budget");
+        let budget = def.token_budget.as_ref().expect("token_budget should be Some");
+        assert_eq!(budget.conversation_history, Some(50000));
+        assert_eq!(budget.total_input, Some(1_000_000));
+        // Serialized form must include token_budget when Some
+        let serialized = serde_json::to_string(&def).expect("should serialize");
+        assert!(
+            serialized.contains("token_budget"),
+            "token_budget should appear in serialized output when Some"
+        );
+        // Full round-trip: deserializing the serialized form gives back the same budget
+        let def2: ProviderDefinition =
+            serde_json::from_str(&serialized).expect("round-trip deserialization");
+        assert_eq!(def2.token_budget, def.token_budget, "round-trip must be lossless");
+    }
+
+    #[test]
+    fn provider_definition_partial_token_budget_round_trips() {
+        // Only one limit set — the others should remain None
+        let json = r#"{
+            "id": "test-partial-budget",
+            "protocol": "open_ai_completions",
+            "model_env": "TEST_MODEL",
+            "default_model": "test-model",
+            "description": "Provider with partial budget",
+            "token_budget": { "conversation_history": 10000 }
+        }"#;
+        let def: ProviderDefinition = serde_json::from_str(json)
+            .expect("partial token_budget should deserialize");
+        let budget = def.token_budget.as_ref().expect("token_budget should be Some");
+        assert_eq!(budget.conversation_history, Some(10_000));
+        assert!(budget.total_input.is_none(), "total_input should be None when absent");
     }
 }

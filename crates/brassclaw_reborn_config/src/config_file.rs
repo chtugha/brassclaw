@@ -309,6 +309,15 @@ pub struct ResolvedTokenBudgets {
     /// Wilson lower bound override for the Candidate promotion threshold.
     /// `None` means "use the default 0.80".
     pub skill_promotion_threshold: Option<f64>,
+    /// The preset name that was active when this budget was resolved, if any.
+    pub profile: Option<String>,
+}
+
+impl ResolvedTokenBudgets {
+    /// The preset name that was active when this budget was resolved, if any.
+    pub fn profile_name(&self) -> Option<String> {
+        self.profile.clone()
+    }
 }
 
 /// Resolve token budgets by starting from a named preset (if any) and
@@ -353,6 +362,7 @@ pub fn resolve_with_profile(overrides: &TokensSection) -> ResolvedTokenBudgets {
         content_cache_threshold: overrides.content_cache_threshold,
         plan_library_enabled: overrides.plan_library_enabled.unwrap_or(false),
         skill_promotion_threshold: overrides.skill_promotion_threshold,
+        profile: overrides.profile.clone(),
     }
 }
 

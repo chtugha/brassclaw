@@ -1702,6 +1702,22 @@ pub async fn build_reborn_runtime(
     let checkpoint_state_store = Arc::clone(&local_runtime.checkpoint_state_store);
     let loop_checkpoint_store = Arc::clone(&local_runtime.loop_checkpoint_store);
     let thread_service = Arc::clone(&local_runtime.thread_service);
+
+    // Phase 3.4: override conversation_context_tokens with the per-provider
+    // DB setting when one exists for the active provider.
+    // This runs once at startup — O(1) DB read, no per-turn cost.
+    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+    let conversation_context_tokens = {
+        let provider_id = llm.as_ref().map(|l| l.provider_id().to_string());
+        resolve_active_provider_conversation_tokens(
+            &local_runtime.token_settings_store,
+            provider_id.as_deref(),
+            &owner_id,
+            conversation_context_tokens,
+        )
+        .await
+    };
+
     let validated_identity = validate_runtime_identity(identity)?;
     let (skill_context_source, skill_activation_source, skill_execution_adapter) =
         match configured_skill_context_source {
@@ -2648,6 +2664,31 @@ fn build_stub_gateway() -> Arc<dyn brassclaw_loop_support::HostManagedModelGatew
     }
 
     Arc::new(StubGateway)
+}
+
+/// Resolve the active provider's per-provider conversation token budget from
+/// the DB.  Falls back to the file-config budget if no per-provider row exists.
+/// Only available when both libsql and root-llm-provider features are on.
+#[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+async fn resolve_active_provider_conversation_tokens(
+    store: &crate::token_settings_store::DbTokenSettingsStore,
+    provider_id: Option<&str>,
+    user_id: &str,
+    file_config_budget: Option<usize>,
+) -> Option<usize> {
+    use brassclaw_product_workflow::TokenSettingsStore as _;
+    let Some(provider_id) = provider_id else {
+        return file_config_budget;
+    };
+    let db_settings = store
+        .get_provider_token_settings(user_id, provider_id)
+        .await
+        .ok();
+    let Some(db) = db_settings else {
+        return file_config_budget;
+    };
+    // DB wins: conversation_history from DB row, or fall back to file-config.
+    db.conversation_history.or(file_config_budget)
 }
 
 #[cfg(test)]

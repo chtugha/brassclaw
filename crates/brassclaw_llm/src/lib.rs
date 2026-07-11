@@ -90,7 +90,7 @@ pub use reasoning::{
     recover_tool_calls_from_content,
 };
 pub use recording::{MemorySnapshotEntry, RecordingLlm};
-pub use registry::{ProviderDefinition, ProviderProtocol, ProviderRegistry};
+pub use registry::{ProviderDefinition, ProviderProtocol, ProviderRegistry, ProviderTokenBudget};
 #[cfg(feature = "registry-provider-factory")]
 pub use resolution::{
     ProviderResolutionError, ProviderSelection, ResolvedDedicatedProviderConfig,

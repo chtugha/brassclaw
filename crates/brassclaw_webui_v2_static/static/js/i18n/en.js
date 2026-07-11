@@ -301,6 +301,8 @@ registerPack("en", {
   "llm.missingApiKey": "Missing API key",
   "llm.missingBaseUrl": "Missing base URL",
   "llm.addApiKey": "Add API key",
+  "llm.tokenLimits": "Token Limits",
+  "llm.tokenLimits.desc": "Override the default prompt-composition token limits for this provider.",
 
   // Settings — inference groups
   "settings.group.embeddings": "Embeddings",

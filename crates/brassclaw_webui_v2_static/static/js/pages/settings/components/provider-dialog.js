@@ -8,6 +8,7 @@ import {
   adapterLabel,
 } from "../lib/llm-providers.js";
 import { useProviderDialogForm } from "../hooks/useProviderDialogForm.js";
+import { TokenBudgetForm } from "./token-budget-form.js";
 
 export function ProviderDialog({
   provider,
@@ -110,6 +111,20 @@ export function ProviderDialog({
           <div className=${message.tone === "error" ? "text-sm text-red-200" : "text-sm text-mint"} role="status">
             ${message.text}
           </div>
+        `}
+
+        ${provider?.id && html`
+          <details>
+            <summary className="mt-4 cursor-pointer text-sm font-medium text-[var(--v2-text-strong)]">
+              ${t("llm.tokenLimits")}
+            </summary>
+            <div className="mt-3">
+              <${TokenBudgetForm}
+                providerId=${provider.id}
+                queryKey=${["provider-tokens", provider.id]}
+              />
+            </div>
+          </details>
         `}
       <//>
       <${ModalFooter}>
