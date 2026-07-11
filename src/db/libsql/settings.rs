@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use libsql::params;
 
 use super::{LibSqlBackend, fmt_ts, get_i64, get_json, get_text, get_ts};
-use crate::db::SettingsStore;
+use crate::db::{SettingRow, SettingsStore};
 use crate::error::DatabaseError;
 
 use chrono::Utc;

@@ -11,11 +11,27 @@ cargo test                                                             # unit te
 cargo test --features integration                                      # + PostgreSQL tests
 
 # Build the Reborn binary with WebUI v2
-cargo build --release --bin brassclaw 
+cargo build --release --bin brassclaw
 
 # Run with logging
 BRASSCLAW_REBORN_LOG=brassclaw=debug cargo run
 ```
+
+### Avoid redundant rebuilds
+
+`cargo build` on this workspace is slow. Capture output once and inspect it multiple times — do **not** rerun the build just to see different output:
+
+```bash
+# Capture and display simultaneously
+cargo build --release --bin brassclaw 2>&1 | tee build.log
+
+# Analyse the saved log without rebuilding
+grep "^error" build.log
+grep -n "warning\|error" build.log | head -40
+cat build.log | less
+```
+
+Before invoking `cargo build` a second time, check whether `build.log` (or any previously captured log) already contains the information needed.
 
 E2E tests: see `tests/e2e/CLAUDE.md`.
 

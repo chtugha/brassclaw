@@ -1829,116 +1829,8 @@ impl Workspace {
         // Profile personalization and onboarding are skipped in group chats
         // to avoid leaking personal context or asking onboarding questions publicly.
         if !is_group_chat {
-            // Load psychographic profile for interaction style directives.
-            // Uses a three-tier system: Tier 1 (summary) always injected,
-            // Tier 2 (full context) only when confidence > 0.6 and profile is recent.
-            let mut has_profile_doc = false;
-            if let Ok(doc) = self.read(paths::PROFILE).await
-                && !doc.content.is_empty()
-                && let Ok(profile) =
-                    serde_json::from_str::<crate::profile::PsychographicProfile>(&doc.content)
-            {
-                has_profile_doc = true;
-                let has_rich_profile = profile.is_populated();
-
-                if has_rich_profile {
-                    // Tier 1: always-on summary line.
-                    let tier1 = format!(
-                        "## Interaction Style\n\n\
-                         {} | {} tone | {} detail | {} proactivity",
-                        profile.cohort.cohort,
-                        profile.communication.tone,
-                        profile.communication.detail_level,
-                        profile.assistance.proactivity,
-                    );
-                    parts.push(tier1);
-
-                    // Tier 2: full context — only when confidence is sufficient and profile is recent.
-                    let is_recent = is_profile_recent(&profile.updated_at, 7);
-                    if profile.confidence > 0.6 && is_recent {
-                        let mut tier2 = String::from("## Personalization\n\n");
-
-                        // Communication details.
-                        tier2.push_str(&format!(
-                            "Communication: {} tone, {} formality, {} detail, {} pace",
-                            profile.communication.tone,
-                            profile.communication.formality,
-                            profile.communication.detail_level,
-                            profile.communication.pace,
-                        ));
-                        if profile.communication.response_speed != "unknown" {
-                            tier2.push_str(&format!(
-                                ", {} response speed",
-                                profile.communication.response_speed
-                            ));
-                        }
-                        if profile.communication.decision_making != "unknown" {
-                            tier2.push_str(&format!(
-                                ", {} decision-making",
-                                profile.communication.decision_making
-                            ));
-                        }
-                        tier2.push('.');
-
-                        // Interaction preferences.
-                        if profile.interaction_preferences.feedback_style != "direct" {
-                            tier2.push_str(&format!(
-                                "\nFeedback style: {}.",
-                                profile.interaction_preferences.feedback_style
-                            ));
-                        }
-                        if profile.interaction_preferences.proactivity_style != "reactive" {
-                            tier2.push_str(&format!(
-                                "\nProactivity style: {}.",
-                                profile.interaction_preferences.proactivity_style
-                            ));
-                        }
-
-                        // Notification preferences.
-                        if profile.assistance.notification_preferences != "moderate"
-                            && profile.assistance.notification_preferences != "unknown"
-                        {
-                            tier2.push_str(&format!(
-                                "\nNotification preference: {}.",
-                                profile.assistance.notification_preferences
-                            ));
-                        }
-
-                        // Goals and pain points for behavioral guidance.
-                        if !profile.assistance.goals.is_empty() {
-                            tier2.push_str(&format!(
-                                "\nActive goals: {}.",
-                                profile.assistance.goals.join(", ")
-                            ));
-                        }
-                        if !profile.behavior.pain_points.is_empty() {
-                            tier2.push_str(&format!(
-                                "\nKnown pain points: {}.",
-                                profile.behavior.pain_points.join(", ")
-                            ));
-                        }
-
-                        parts.push(tier2);
-                    }
-                }
-            }
-
-            // Profile schema: injected during bootstrap onboarding when no profile
-            // exists yet, so the agent knows the target structure for profile.json.
-            if bootstrap_injected && !has_profile_doc {
-                parts.push(format!(
-                    "PROFILE ANALYSIS FRAMEWORK:\n{}\n\n\
-                     PROFILE JSON SCHEMA:\nWrite to `context/profile.json` using `memory_write` with this exact structure:\n{}\n\n\
-                     If the conversation doesn't reveal enough about a dimension, use defaults/unknown.\n\
-                     For personality trait scores: 40-60 is average range. Default to 50 if unclear.\n\
-                     Only score above 70 or below 30 with strong evidence.",
-                    crate::profile::ANALYSIS_FRAMEWORK,
-                    crate::profile::PROFILE_JSON_SCHEMA,
-                ));
-            }
-
-            // Load assistant directives if present (profile-derived, so stays inside
-            // the group-chat guard to avoid leaking personal context).
+            // Psychographic profile personalization removed (v1 feature, PsychographicProfile type deleted).
+            // Assistant directives are still loaded if present.
             if let Ok(doc) = self.read(paths::ASSISTANT_DIRECTIVES).await
                 && !doc.content.is_empty()
             {
@@ -1951,47 +1843,10 @@ impl Workspace {
 
     /// Sync derived identity documents from the psychographic profile.
     ///
-    /// Reads `context/profile.json` and, if the profile is populated, writes:
-    /// - `USER.md` (from `to_user_md()`, using section-based merge to preserve user edits)
-    /// - `context/assistant-directives.md` (from `to_assistant_directives()`)
-    /// - `HEARTBEAT.md` (from `to_heartbeat_md()`, only if it doesn't already exist)
-    ///
-    /// Returns `Ok(true)` if documents were synced, `Ok(false)` if skipped.
+    /// PsychographicProfile has been removed (v1 feature). This is now a no-op stub.
+    /// Returns `Ok(false)` always.
     pub async fn sync_profile_documents(&self) -> Result<bool, WorkspaceError> {
-        let doc = match self.read(paths::PROFILE).await {
-            Ok(d) if !d.content.is_empty() => d,
-            _ => return Ok(false),
-        };
-
-        let profile: crate::profile::PsychographicProfile = match serde_json::from_str(&doc.content)
-        {
-            Ok(p) => p,
-            Err(_) => return Ok(false),
-        };
-
-        if !profile.is_populated() {
-            return Ok(false);
-        }
-
-        // Merge profile content into USER.md, preserving any user-written sections.
-        // Injection scanning happens inside self.write() for system-prompt files.
-        let new_profile_content = profile.to_user_md();
-        let merged = match self.read(paths::USER).await {
-            Ok(existing) => merge_profile_section(&existing.content, &new_profile_content),
-            Err(_) => wrap_profile_section(&new_profile_content),
-        };
-        self.write(paths::USER, &merged).await?;
-
-        let directives = profile.to_assistant_directives();
-        self.write(paths::ASSISTANT_DIRECTIVES, &directives).await?;
-
-        // Seed HEARTBEAT.md only if it doesn't exist yet (don't clobber user customizations).
-        if self.read(paths::HEARTBEAT).await.is_err() {
-            self.write(paths::HEARTBEAT, &profile.to_heartbeat_md())
-                .await?;
-        }
-
-        Ok(true)
+        Ok(false)
     }
 }
 
@@ -2355,7 +2210,7 @@ impl Workspace {
         // Uses read_primary() to avoid false positives from secondary scopes.
         let has_profile = self.read_primary(paths::PROFILE).await.is_ok_and(|d| {
             !d.content.trim().is_empty()
-                && serde_json::from_str::<crate::profile::PsychographicProfile>(&d.content).is_ok()
+                && serde_json::from_str::<serde_json::Value>(&d.content).is_ok()
         });
         if is_fresh_workspace && !has_profile {
             if let Err(e) = self.write(paths::BOOTSTRAP, BOOTSTRAP_SEED).await {
@@ -2804,9 +2659,8 @@ mod seed_tests {
         let (ws, _dir) = create_test_workspace().await;
 
         // Pre-create a valid profile.json (existing user upgrading).
-        let profile = crate::profile::PsychographicProfile::default();
-        let profile_json = serde_json::to_string(&profile).expect("serialize profile");
-        ws.write(paths::PROFILE, &profile_json)
+        let profile_json = r#"{"version":1}"#;
+        ws.write(paths::PROFILE, profile_json)
             .await
             .expect("write profile");
 

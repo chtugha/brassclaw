@@ -129,6 +129,10 @@ pub fn resolve_reborn_runtime_llm(
             // api_key) is not yet filled in.  Boot with the placeholder so the
             // WebUI is reachable and the operator can finish configuration there,
             // instead of crashing into a systemd restart loop.
+            //
+            // Exception: if the env var is explicitly set to an empty string the
+            // operator made a deliberate (broken) configuration — surface the error
+            // rather than silently ignoring it.
             Err(RebornLlmCatalogError::BaseUrlUnconfigured { ref provider }) => {
                 tracing::warn!(
                     provider = %provider,
@@ -138,6 +142,15 @@ pub fn resolve_reborn_runtime_llm(
                 return Ok(None);
             }
             Err(RebornLlmCatalogError::ApiKeyEnvUnset { ref provider, ref env }) => {
+                // If the var is absent entirely → graceful start.
+                // If the var is present but empty → hard error (misconfiguration).
+                if std::env::var(env).is_ok() {
+                    // var present but empty — treat as misconfiguration
+                    return Err(RebornLlmCatalogError::ApiKeyEnvUnset {
+                        provider: provider.clone(),
+                        env: env.clone(),
+                    });
+                }
                 tracing::warn!(
                     provider = %provider,
                     env = %env,
@@ -161,13 +174,15 @@ fn resolve_llm_from_env(
     )) {
         Ok(maybe_config) => Ok(maybe_config.map(ResolvedRebornLlm::from_llm_config)),
         // MissingBaseUrl and MissingApiKey convert to RequestFailed / AuthFailed
-        // respectively via ProviderResolutionError::into_llm_error.  Both mean
-        // "env vars are partially set but the provider cannot be fully resolved".
-        // Treat them as "not configured" so the service starts and the user can
-        // finish setup via Settings → Inference, rather than crashing into a
-        // systemd restart loop.
+        // respectively via ProviderResolutionError::into_llm_error.
+        //
+        // Only treat these as "not configured yet" (graceful start) when the
+        // operator has NOT explicitly set LLM_BACKEND.  When LLM_BACKEND is set
+        // the operator made a deliberate configuration choice that is broken —
+        // surface the error so they know to fix it.
         Err(brassclaw_llm::LlmError::RequestFailed { ref reason, .. })
-            if reason.contains("base URL is required") =>
+            if reason.contains("base URL is required")
+                && std::env::var("LLM_BACKEND").is_err() =>
         {
             tracing::warn!(
                 "LLM env vars are partially set but base_url is missing. Starting without \
@@ -175,7 +190,9 @@ fn resolve_llm_from_env(
             );
             Ok(None)
         }
-        Err(brassclaw_llm::LlmError::AuthFailed { .. }) => {
+        Err(brassclaw_llm::LlmError::AuthFailed { .. })
+            if std::env::var("LLM_BACKEND").is_err() =>
+        {
             tracing::warn!(
                 "LLM env vars are partially set but api_key or provider is not resolvable. \
                  Starting without a configured LLM provider — configure one via Settings → \

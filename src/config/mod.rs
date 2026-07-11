@@ -105,6 +105,16 @@ static INJECTED_VARS: LazyLock<Mutex<HashMap<String, String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static WARNED_EXPLICIT_DEFAULT_OWNER_ID: Once = Once::new();
 
+/// Observability backend configuration.
+///
+/// Replaces the deleted `src/observability` module. Only the config shape
+/// is needed here; the actual observer machinery has been removed.
+#[derive(Debug, Clone, Default)]
+pub struct ObservabilityConfig {
+    /// Backend name: `"none"`, `"log"`, etc.
+    pub backend: String,
+}
+
 /// Main configuration for the agent.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -136,7 +146,7 @@ pub struct Config {
     pub search: WorkspaceSearchConfig,
     pub missions: MissionsConfig,
     pub workspace: WorkspaceConfig,
-    pub observability: crate::observability::ObservabilityConfig,
+    pub observability: ObservabilityConfig,
     /// OAuth/social login configuration (Google, GitHub, etc.).
     pub oauth: OAuthConfig,
     /// Channel-relay integration (Slack via external relay service).
@@ -267,7 +277,7 @@ impl Config {
             search: WorkspaceSearchConfig::default(),
             missions: MissionsConfig::default(),
             workspace: WorkspaceConfig::default(),
-            observability: crate::observability::ObservabilityConfig::default(),
+            observability: ObservabilityConfig::default(),
             oauth: OAuthConfig::default(),
             relay: None,
         }
@@ -447,7 +457,7 @@ impl Config {
         profile::apply_profile(&mut settings)?;
         Self::apply_toml_overlay(&mut settings, toml_path)?;
 
-        let admin_scope = crate::tenant::ADMIN_SETTINGS_USER_ID;
+        let admin_scope = "__admin__";
         if user_id != admin_scope {
             match store.get_all_settings(admin_scope).await {
                 Ok(mut admin_map) if !admin_map.is_empty() => {
@@ -619,7 +629,7 @@ impl Config {
             search: WorkspaceSearchConfig::resolve(settings)?,
             missions: MissionsConfig::resolve(settings)?,
             workspace,
-            observability: crate::observability::ObservabilityConfig {
+            observability: ObservabilityConfig {
                 backend: std::env::var("OBSERVABILITY_BACKEND").unwrap_or_else(|_| "none".into()),
             },
             oauth: OAuthConfig::resolve()?,
@@ -1364,7 +1374,7 @@ mod tests {
         let store = FakeSettingsStore::new();
         store
             .seed(
-                crate::tenant::ADMIN_SETTINGS_USER_ID,
+                "__admin__",
                 "llm_builtin_overrides",
                 serde_json::json!({
                     "nearai": {
@@ -1400,7 +1410,7 @@ mod tests {
         let store = FakeSettingsStore::new();
         store
             .seed(
-                crate::tenant::ADMIN_SETTINGS_USER_ID,
+                "__admin__",
                 "llm_builtin_overrides",
                 serde_json::json!({
                     "nearai": {

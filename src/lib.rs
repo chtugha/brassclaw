@@ -12,12 +12,13 @@ pub mod cli;
 pub mod code_challenge;
 pub mod config;
 pub mod db;
-pub mod document_extraction;
 pub mod error;
 pub(crate) mod generated_images;
 #[cfg(feature = "import")]
 pub mod import;
 pub mod logging;
+pub mod ownership;
+pub mod pairing;
 pub mod safety;
 pub mod secrets;
 pub mod settings;
