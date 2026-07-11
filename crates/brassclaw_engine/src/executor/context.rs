@@ -50,22 +50,25 @@ pub async fn build_step_context(
 
     let mut ctx_messages = messages.to_vec();
 
-    // Inject retrieved memory docs into the existing system prompt.
-    // Many providers require all system messages at the beginning (or a single
-    // system message), so we append to the first system message rather than
-    // inserting a separate one.
+    // Inject retrieved memory docs as a User message at the tail of the
+    // conversation rather than mutating the system prompt.
+    //
+    // KV-cache: appending docs to the system message injects volatile,
+    // per-turn content into the stable prefix (different retrieval results
+    // → different tokens → cache miss from that position forward). Placing
+    // them as a synthetic User message at position N-1 (just before the
+    // actual user turn) keeps the stable system prefix byte-identical across
+    // turns and confines the volatile content to the end of the sequence
+    // where it belongs.
+    //
+    // Providers that only allow a single system message are unaffected —
+    // the system prompt remains a single message; the docs travel as User.
     if !docs.is_empty() {
         let context_section = format_docs_as_context(&docs);
-        if !ctx_messages.is_empty()
-            && ctx_messages[0].role == crate::types::message::MessageRole::System
-        {
-            // Append to existing system prompt
-            ctx_messages[0].content.push_str("\n\n");
-            ctx_messages[0].content.push_str(&context_section);
-        } else {
-            // No system message — prepend as one
-            ctx_messages.insert(0, ThreadMessage::system(context_section));
-        }
+        // Insert before the last message so the user's actual message
+        // remains the final turn.
+        let insert_pos = ctx_messages.len().saturating_sub(1);
+        ctx_messages.insert(insert_pos, ThreadMessage::user(context_section));
     }
 
     Ok((ctx_messages, actions))
@@ -147,7 +150,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn context_injects_docs_after_system_prompt() {
+    async fn context_injects_docs_before_last_user_message() {
         let project = ProjectId::new();
         let store: Arc<dyn crate::traits::store::Store> =
             Arc::new(crate::tests::InMemoryStore::with_docs(vec![
@@ -193,14 +196,20 @@ mod tests {
         .await
         .unwrap();
 
-        // Should have 2 messages: system prompt (with docs appended), user message
-        assert_eq!(ctx_msgs.len(), 2);
+        // KV-cache: docs must NOT mutate the system prompt.
+        // Layout should be: [system, docs-user, user-query]
+        assert_eq!(ctx_msgs.len(), 3);
         assert_eq!(ctx_msgs[0].role, crate::types::message::MessageRole::System);
-        assert!(ctx_msgs[0].content.contains("You are an assistant."));
-        assert!(ctx_msgs[0].content.contains("Prior Knowledge"));
-        assert!(ctx_msgs[0].content.contains("LESSON"));
-        assert!(ctx_msgs[0].content.contains("web_search"));
+        // System prompt is byte-identical to the original — no docs appended.
+        assert_eq!(ctx_msgs[0].content, "You are an assistant.");
+        // Docs injected as a User message before the real user turn.
         assert_eq!(ctx_msgs[1].role, crate::types::message::MessageRole::User);
+        assert!(ctx_msgs[1].content.contains("Prior Knowledge"));
+        assert!(ctx_msgs[1].content.contains("LESSON"));
+        assert!(ctx_msgs[1].content.contains("web_search"));
+        // Real user message is last.
+        assert_eq!(ctx_msgs[2].role, crate::types::message::MessageRole::User);
+        assert_eq!(ctx_msgs[2].content, "search the web");
     }
 
     #[tokio::test]
