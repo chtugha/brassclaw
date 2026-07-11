@@ -120,12 +120,34 @@ pub fn resolve_reborn_runtime_llm(
     config_file: Option<&RebornConfigFile>,
 ) -> Result<Option<ResolvedRebornLlm>, RebornLlmCatalogError> {
     if let Some(selection) = config_file.and_then(|file| file.default_llm_slot()) {
-        return resolve_llm_selection_against_catalog(
+        match resolve_llm_selection_against_catalog(
             selection,
             Some(boot.home().providers_file_path().as_path()),
-        )
-        .map(ResolvedRebornLlm::from_llm_config)
-        .map(Some);
+        ) {
+            Ok(config) => return Ok(Some(ResolvedRebornLlm::from_llm_config(config))),
+            // Provider is named in config.toml but a required field (base_url,
+            // api_key) is not yet filled in.  Boot with the placeholder so the
+            // WebUI is reachable and the operator can finish configuration there,
+            // instead of crashing into a systemd restart loop.
+            Err(RebornLlmCatalogError::BaseUrlUnconfigured { ref provider }) => {
+                tracing::warn!(
+                    provider = %provider,
+                    "LLM provider is configured in config.toml but base_url is missing. \
+                     Starting without a live LLM — configure it via Settings → Inference."
+                );
+                return Ok(None);
+            }
+            Err(RebornLlmCatalogError::ApiKeyEnvUnset { ref provider, ref env }) => {
+                tracing::warn!(
+                    provider = %provider,
+                    env = %env,
+                    "LLM provider is configured but the API key env var is not set. \
+                     Starting without a live LLM — set the env var or configure via the WebUI."
+                );
+                return Ok(None);
+            }
+            Err(other) => return Err(other),
+        }
     }
 
     resolve_llm_from_env(boot)
@@ -134,9 +156,35 @@ pub fn resolve_reborn_runtime_llm(
 fn resolve_llm_from_env(
     boot: &RebornBootConfig,
 ) -> Result<Option<ResolvedRebornLlm>, RebornLlmCatalogError> {
-    brassclaw_llm::resolve_llm_config_from_env(Some(boot.home().providers_file_path().as_path()))
-        .map(|maybe_config| maybe_config.map(ResolvedRebornLlm::from_llm_config))
-        .map_err(|source| RebornLlmCatalogError::EnvResolution { source })
+    match brassclaw_llm::resolve_llm_config_from_env(Some(
+        boot.home().providers_file_path().as_path(),
+    )) {
+        Ok(maybe_config) => Ok(maybe_config.map(ResolvedRebornLlm::from_llm_config)),
+        // MissingBaseUrl and MissingApiKey convert to RequestFailed / AuthFailed
+        // respectively via ProviderResolutionError::into_llm_error.  Both mean
+        // "env vars are partially set but the provider cannot be fully resolved".
+        // Treat them as "not configured" so the service starts and the user can
+        // finish setup via Settings → Inference, rather than crashing into a
+        // systemd restart loop.
+        Err(brassclaw_llm::LlmError::RequestFailed { ref reason, .. })
+            if reason.contains("base URL is required") =>
+        {
+            tracing::warn!(
+                "LLM env vars are partially set but base_url is missing. Starting without \
+                 a configured LLM provider — configure one via Settings → Inference in the WebUI."
+            );
+            Ok(None)
+        }
+        Err(brassclaw_llm::LlmError::AuthFailed { .. }) => {
+            tracing::warn!(
+                "LLM env vars are partially set but api_key or provider is not resolvable. \
+                 Starting without a configured LLM provider — configure one via Settings → \
+                 Inference in the WebUI."
+            );
+            Ok(None)
+        }
+        Err(source) => Err(RebornLlmCatalogError::EnvResolution { source }),
+    }
 }
 
 /// Resolve an `LlmSlotSelection` against the merged provider catalog.
