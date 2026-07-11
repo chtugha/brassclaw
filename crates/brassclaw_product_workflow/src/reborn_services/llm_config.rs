@@ -223,6 +223,10 @@ pub struct LlmProviderView {
     /// `None` means the global `[tokens]` section (or compiled defaults) apply.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token_budget: Option<ProviderTokenBudgetView>,
+    /// Registered context window size in tokens for this provider's default model.
+    /// `None` means the provider definition does not specify a window size.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window_tokens: Option<u32>,
 }
 
 /// The active provider + model selection.

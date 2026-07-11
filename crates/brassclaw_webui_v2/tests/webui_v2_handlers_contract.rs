@@ -704,6 +704,7 @@ fn llm_snapshot(provider_id: &str) -> LlmConfigSnapshot {
             api_key_set: true,
             can_list_models: true,
             token_budget: None,
+            context_window_tokens: None,
         }],
         active: Some(LlmActiveSelection {
             provider_id: provider_id.to_string(),

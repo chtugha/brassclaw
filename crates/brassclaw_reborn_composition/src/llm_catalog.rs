@@ -471,6 +471,7 @@ mod tests {
             unsupported_params: Vec::new(),
             setup: None,
             token_budget: None,
+            context_window_tokens: None,
         }
     }
 
@@ -491,6 +492,7 @@ mod tests {
             unsupported_params: Vec::new(),
             setup: None,
             token_budget: None,
+            context_window_tokens: None,
         }
     }
 
@@ -511,6 +513,7 @@ mod tests {
             unsupported_params: Vec::new(),
             setup: None,
             token_budget: None,
+            context_window_tokens: None,
         }
     }
 
@@ -538,6 +541,7 @@ mod tests {
             unsupported_params: Vec::new(),
             setup: None,
             token_budget: None,
+            context_window_tokens: None,
         }
     }
 
@@ -558,6 +562,7 @@ mod tests {
             unsupported_params: Vec::new(),
             setup: None,
             token_budget: None,
+            context_window_tokens: None,
         }
     }
 

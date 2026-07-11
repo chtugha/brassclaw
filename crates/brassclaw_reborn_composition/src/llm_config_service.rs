@@ -199,8 +199,8 @@ impl RebornLlmConfigService {
                     model: info.active_model.clone(),
                 });
             }
-            let definition_budget = builtin_registry
-                .find(&info.id)
+            let builtin_def = builtin_registry.find(&info.id);
+            let definition_budget = builtin_def
                 .and_then(|def| def.token_budget.as_ref())
                 .map(|b| ProviderTokenBudgetView {
                     profile: b.profile.clone(),
@@ -214,6 +214,7 @@ impl RebornLlmConfigService {
                     total_input: b.total_input,
                     max_output: b.max_output,
                 });
+            let definition_context_window = builtin_def.and_then(|def| def.context_window_tokens);
             providers.push(LlmProviderView {
                 id: info.id,
                 description: info.description,
@@ -240,6 +241,7 @@ impl RebornLlmConfigService {
                     .map(|meta| meta.can_list_models)
                     .unwrap_or(false),
                 token_budget: definition_budget,
+                context_window_tokens: definition_context_window,
             });
         }
 
@@ -972,6 +974,7 @@ fn custom_definition(
         unsupported_params: Vec::new(),
         setup: None,
         token_budget: None,
+        context_window_tokens: None,
     }
 }
 
