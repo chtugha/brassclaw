@@ -66,7 +66,16 @@ impl std::hash::Hash for UserId {
 }
 
 impl UserId {
-    /// Opt-out for values sourced from a trusted upstream (DB row, registry entry, etc.).
+    /// Validated constructor — rejects blank ids.
+    pub fn new(id: impl Into<String>, role: UserRole) -> Result<Self, &'static str> {
+        let id = id.into();
+        if id.trim().is_empty() {
+            return Err("user id must not be blank");
+        }
+        Ok(Self { id, role })
+    }
+
+    /// Constructor for values sourced from a trusted upstream (DB row, registry entry, etc.).
     pub fn from_trusted(id: String, role: UserRole) -> Self {
         Self { id, role }
     }
@@ -79,6 +88,21 @@ impl UserId {
     /// The attached role.
     pub fn role(&self) -> UserRole {
         self.role
+    }
+
+    /// Returns `true` when the user has administrative privileges.
+    pub fn is_admin(&self) -> bool {
+        self.role.is_admin()
+    }
+
+    /// Returns `true` for the deployment owner.
+    pub fn is_owner(&self) -> bool {
+        self.role.is_owner()
+    }
+
+    /// Returns `true` for regular (non-admin) users.
+    pub fn is_regular(&self) -> bool {
+        matches!(self.role, UserRole::Regular)
     }
 }
 

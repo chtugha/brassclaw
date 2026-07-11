@@ -129,11 +129,15 @@ impl LibSqlBackend {
         for attempt in 0..3u32 {
             match self.db.connect() {
                 Ok(conn) => {
-                    conn.query("PRAGMA busy_timeout = 5000", ())
+                    // busy_timeout is a PRAGMA that returns a result row; drain it.
+                    let mut rows = conn
+                        .query("PRAGMA busy_timeout = 5000", ())
                         .await
                         .map_err(|e| {
                             DatabaseError::Pool(format!("Failed to set busy_timeout: {}", e))
                         })?;
+                    // Consume the row so the connection is in a clean state.
+                    let _ = rows.next().await;
                     return Ok(conn);
                 }
                 Err(e) => {
