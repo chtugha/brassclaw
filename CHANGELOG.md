@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.41.8] - 2026-07-31
+
+### Fixed
+
+- *(webui)* Eliminate spurious "Connection Lost" banner flash on prompt submit: `useSSE.js` now debounces the `disconnected` state by 1 500 ms so transient SSE stream recycling between turns is invisible to the user. The `"connecting"` banner is also suppressed on first open — only reconnects (retry ≥ 1) show the banner.
+- *(composition)* Replace generic "The run failed before producing a reply" fallback with human-readable per-category failure messages covering all `LoopFailureKind` variants (`model_error`, `context_build_failed`, `capability_protocol_error`, `iteration_limit`, `invalid_model_output`, `checkpoint_rejected`, `checkpoint_unavailable`, `transcript_write_failed`, `driver_bug`, `policy_denied`, `compaction_unavailable`, `driver_protocol_violation`).
+- *(skill-context)* Fix hard turn failure when skill context exceeds byte budgets: `SkillContextService` now stops gracefully (returns collected snippets) instead of propagating `ContextBudgetExceeded` as a turn error. Trusted skills whose full prompt exceeds the per-snippet cap fall back to `safe_description` only rather than failing.
+
+### Added
+
+- *(agent-loop)* `TurnContextBudget` — per-turn advisory context budget derived from the active model's registered `context_window_tokens`. Slices (`skill_snippet_tokens`, `history_tokens`, `tool_output_tokens`) are soft starting-point hints; the only hard limit is the model's total context window. Groundwork for Phases 2–4 of the clever-prompts context distribution plan.
+- *(agent-loop)* `ObservedMessageAverage` — rolling EMA replacing the hard-coded `AVG_TOKENS_PER_MESSAGE = 200` magic constant. Updated from actual model usage responses after each turn.
+- *(llm/registry)* `context_window_tokens` field on `ProviderDefinition` + `ProviderRegistry::context_window_tokens()` accessor. Populated for all built-in providers: Anthropic 200 K, OpenAI/o-series 128–200 K, Gemini/Gemini-OAuth 1 M, Groq/GitHub-Copilot/Mistral 128 K, DeepSeek 64 K, Ollama 8 K (conservative), Bedrock (Claude default) 200 K.
+
 ## [0.41.7] - 2026-07-30
 
 ### Fixed

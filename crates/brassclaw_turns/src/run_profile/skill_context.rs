@@ -340,35 +340,51 @@ impl SkillContextSource for SkillContextService {
 
         let mut snippets = Vec::with_capacity(visible.len());
         let mut total_bytes = 0usize;
+        let mut description_only_count = 0usize;
 
-        for entry in visible {
+        'entries: for entry in visible {
+            // Build the candidate model content.
+            // For trusted skills whose full prompt exceeds the per-snippet cap,
+            // fall back to safe_description only rather than hard-failing.
             let model_content = match entry.trust {
                 SkillTrustLevel::Trusted => {
-                    if let Some(ref content) = entry.prompt_content {
+                    let full = if let Some(ref content) = entry.prompt_content {
                         format!("{}\n\n{}", entry.safe_description, content)
                     } else {
                         entry.safe_description.clone()
+                    };
+                    if full.len() > self.budget.max_snippet_bytes {
+                        // Per-snippet cap exceeded: fall back to description only.
+                        description_only_count += 1;
+                        entry.safe_description.clone()
+                    } else {
+                        full
                     }
                 }
                 SkillTrustLevel::Installed => entry.safe_description.clone(),
             };
             let safe_summary = entry.safe_description.clone();
 
-            if model_content.len() > self.budget.max_snippet_bytes {
-                return Err(SkillContextError::ContextBudgetExceeded);
-            }
-
             validate_model_visible_skill_name(&entry.name)?;
             validate_model_visible_content(&model_content)?;
             validate_model_visible_summary(&safe_summary)?;
 
             let snippet_ref = format!("skill:{}", entry.name);
-            total_bytes = checked_context_total_bytes(
-                total_bytes,
-                snippet_ref.len(),
-                model_content.len(),
-                self.budget.max_context_bytes,
-            )?;
+
+            // Aggregate budget check: if adding this snippet would exceed the
+            // total context budget, stop collecting rather than hard-failing.
+            let next_total = total_bytes
+                .checked_add(snippet_ref.len())
+                .and_then(|t| t.checked_add(model_content.len()));
+            match next_total {
+                Some(n) if n <= self.budget.max_context_bytes => {
+                    total_bytes = n;
+                }
+                _ => {
+                    // Budget exhausted — stop gracefully with whatever we have.
+                    break 'entries;
+                }
+            }
 
             snippets.push(SkillContextSnippet {
                 snippet_ref,
@@ -379,6 +395,7 @@ impl SkillContextSource for SkillContextService {
             });
         }
 
+        let _ = description_only_count; // available for callers via result type in a later phase
         Ok(snippets)
     }
 }
@@ -615,24 +632,6 @@ fn contains_ascii_case_insensitive(haystack: &str, needle: &str) -> bool {
                 .zip(needle)
                 .all(|(left, right)| left.eq_ignore_ascii_case(right))
         })
-}
-
-fn checked_context_total_bytes(
-    current_total: usize,
-    snippet_ref_bytes: usize,
-    model_content_bytes: usize,
-    max_context_bytes: usize,
-) -> Result<usize, SkillContextError> {
-    let next_total = current_total
-        .checked_add(snippet_ref_bytes)
-        .and_then(|total| total.checked_add(model_content_bytes))
-        .ok_or(SkillContextError::ContextBudgetExceeded)?;
-
-    if next_total > max_context_bytes {
-        return Err(SkillContextError::ContextBudgetExceeded);
-    }
-
-    Ok(next_total)
 }
 
 /// Compute a deterministic version string from sorted snapshot entries.

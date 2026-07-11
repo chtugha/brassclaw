@@ -309,7 +309,9 @@ async fn oversized_single_snippet_is_allowed_within_aggregate_budget() {
 }
 
 #[tokio::test]
-async fn single_snippet_over_per_snippet_budget_fails_budget() {
+async fn single_snippet_over_per_snippet_budget_falls_back_to_description() {
+    // When full prompt + description exceeds the per-snippet cap, the service
+    // falls back to safe_description only rather than hard-failing.
     let prompt = "x".repeat(128);
     let snapshot = SkillRunSnapshot::from_entries(vec![visible_trusted("alpha", "desc", &prompt)]);
     let service = SkillContextService::with_budget(
@@ -320,8 +322,10 @@ async fn single_snippet_over_per_snippet_budget_fails_budget() {
         },
     );
 
-    let err = service.skill_snippets(&snapshot).await.unwrap_err();
-    assert_eq!(err, SkillContextError::ContextBudgetExceeded);
+    let snippets = service.skill_snippets(&snapshot).await.unwrap();
+    assert_eq!(snippets.len(), 1);
+    // Falls back to safe_description only.
+    assert_eq!(snippets[0].model_content, "desc");
 }
 
 #[tokio::test]
@@ -346,15 +350,20 @@ async fn single_snippet_at_per_snippet_budget_limit_is_allowed() {
 }
 
 #[tokio::test]
-async fn aggregate_skill_context_fails_budget() {
+async fn aggregate_skill_context_stops_at_budget_without_error() {
+    // When the aggregate budget is exhausted mid-list, the service returns
+    // whatever fitted rather than failing the entire turn.
     let snapshot = SkillRunSnapshot::from_entries(vec![
         visible_trusted("alpha", "first description", "first prompt"),
         visible_trusted("beta", "second description", "second prompt"),
     ]);
     let service = SkillContextService::with_budget(snapshot.clone(), SkillContextBudget::new(64));
 
-    let err = service.skill_snippets(&snapshot).await.unwrap_err();
-    assert_eq!(err, SkillContextError::ContextBudgetExceeded);
+    // Must succeed — not return an error.
+    let snippets = service.skill_snippets(&snapshot).await.unwrap();
+    // Budget of 64 bytes is enough for the first snippet but not both.
+    assert!(!snippets.is_empty(), "at least one snippet should fit");
+    assert!(snippets.len() < 2, "second snippet should be dropped when budget exhausted");
 }
 
 #[tokio::test]

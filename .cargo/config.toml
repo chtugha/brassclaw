@@ -1,12 +1,20 @@
 # ── Faster linker (macOS arm64) ───────────────────────────────────────────────
-# Use LLVM lld (ld64.lld) instead of the Apple ld, routed through Homebrew
-# clang so the driver receives the right -arch / SDK flags before handing off
-# to the linker.  mold does NOT support macOS; ld64.lld is the correct choice.
-[target.aarch64-apple-darwin]
-linker = "/opt/homebrew/opt/llvm/bin/clang"
-rustflags = [
-    "-C", "link-arg=-fuse-ld=/opt/homebrew/bin/ld64.lld",
-]
+# Drive ld64.lld through Apple's own clang wrapper (/usr/bin/clang).
+#
+# Why not Homebrew clang as the driver?
+#   Homebrew clang (LLVM 22) loads a cfg file that probes the CommandLineTools
+#   SDK before handing off to the linker, adding ~35 ms of overhead *per
+#   crate link*.  Apple clang resolves the same SDK in ~2 ms and drives
+#   ld64.lld identically — `-fuse-ld` is a pass-through flag the driver never
+#   interprets itself.  On a workspace with hundreds of linked artefacts the
+#   difference is measurable (tens of seconds on a cold incremental build).
+#
+# mold does NOT support macOS; ld64.lld is the correct macOS alternative.
+#[target.aarch64-apple-darwin]
+#linker = "/usr/bin/clang"
+#rustflags = [
+#    "-C", "link-arg=-fuse-ld=/opt/homebrew/bin/ld64.lld",
+#]
 
 # ── Cross-compilation target (unchanged) ──────────────────────────────────────
 [target.x86_64-unknown-linux-musl]

@@ -25,6 +25,12 @@ const V2_EVENT_NAMES = [
   "keep_alive",
   "error",
 ];
+// How long (ms) the hook waits after an onerror before surfacing
+// "disconnected" to the UI. A brief connection drop on message
+// submit is expected — the server restarts the SSE frame for the
+// new turn — and should not flash a red "Disconnected" banner.
+const DISCONNECT_GRACE_MS = 1500;
+
 export function useSSE({ threadId, onEvent, enabled }) {
   const [status, setStatus] = React.useState("idle");
   const onEventRef = React.useRef(onEvent);
@@ -49,6 +55,7 @@ export function useSSE({ threadId, onEvent, enabled }) {
 
     let es = null;
     let reconnectTimer = null;
+    let disconnectTimer = null;
     let reconnectAttempts = 0;
     const maxReconnectDelay = 30_000;
 
@@ -57,7 +64,13 @@ export function useSSE({ threadId, onEvent, enabled }) {
         setStatus("paused");
         return;
       }
-      setStatus(reconnectAttempts > 0 ? "reconnecting" : "connecting");
+      // Only show "connecting" on the very first attempt once we have
+      // previously been connected (reconnectAttempts > 0). On the
+      // initial open keep "idle" so no banner flashes during normal
+      // page load or thread navigation.
+      if (reconnectAttempts > 0) {
+        setStatus("reconnecting");
+      }
 
       es = openEventStream({
         threadId,
@@ -65,16 +78,29 @@ export function useSSE({ threadId, onEvent, enabled }) {
       });
 
       es.onopen = () => {
+        if (disconnectTimer) {
+          clearTimeout(disconnectTimer);
+          disconnectTimer = null;
+        }
         reconnectAttempts = 0;
         setStatus("connected");
       };
 
       es.onerror = () => {
         if (es) es.close();
-        setStatus("disconnected");
         reconnectAttempts++;
         const delay = Math.min(1000 * 2 ** reconnectAttempts, maxReconnectDelay);
         reconnectTimer = setTimeout(connect, delay);
+        // Only surface "disconnected" to the UI after the grace period
+        // has elapsed without a successful reconnect. This prevents the
+        // red banner from flashing on transient drops (e.g. the server
+        // briefly closes the SSE stream when a new turn starts).
+        if (!disconnectTimer) {
+          disconnectTimer = setTimeout(() => {
+            disconnectTimer = null;
+            setStatus("disconnected");
+          }, DISCONNECT_GRACE_MS);
+        }
       };
 
       const dispatchFrame = (event, fallbackType) => {
@@ -115,6 +141,10 @@ export function useSSE({ threadId, onEvent, enabled }) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
+      if (disconnectTimer) {
+        clearTimeout(disconnectTimer);
+        disconnectTimer = null;
+      }
       if (es) {
         es.close();
         es = null;
@@ -136,6 +166,7 @@ export function useSSE({ threadId, onEvent, enabled }) {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (disconnectTimer) clearTimeout(disconnectTimer);
       if (es) es.close();
     };
   }, [enabled, threadId]);

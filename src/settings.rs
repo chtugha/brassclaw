@@ -172,7 +172,8 @@ pub struct Settings {
     pub secrets_master_key_hex: Option<String>,
 
     // === Step 3: Inference Provider ===
-    /// LLM backend: "nearai", "anthropic", "openai", "github_copilot", "ollama", "openai_compatible", "tinfoil", "bedrock".
+    /// LLM backend: "nearai", "anthropic", "openai", "github_copilot", "ollama",
+    /// "openai_compatible", "tinfoil", "bedrock".
     #[serde(default)]
     pub llm_backend: Option<String>,
 
@@ -227,12 +228,12 @@ pub struct Settings {
     #[serde(default)]
     pub embeddings: EmbeddingsSettings,
 
-    // === Step 6: Channels ===
+    // === Step 6: Tunnel / Channels ===
     /// Tunnel configuration for public webhook endpoints.
     #[serde(default)]
     pub tunnel: TunnelSettings,
 
-    /// Channel configuration.
+    /// Channel configuration (gateway, HTTP, Signal, CLI, TUI).
     #[serde(default)]
     pub channels: ChannelSettings,
 

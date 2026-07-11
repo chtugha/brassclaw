@@ -198,10 +198,9 @@ pub(crate) fn strip_admin_only_llm_keys(map: &mut HashMap<String, serde_json::Va
 ///
 /// Matches both exact keys in [`ADMIN_ONLY_LLM_SETTING_KEYS`] and dotted
 /// subpaths under those roots (e.g. `llm_builtin_overrides.bedrock.extras
-/// .region`). The write-side gate in `channels::web::features::settings`
-/// must call this rather than re-implementing `.contains(key)`, or a
-/// non-admin can sneak past the gate by addressing the same value
-/// through a dotted subpath.
+/// .region`). The write-side settings gate must call this rather than
+/// re-implementing `.contains(key)`, or a non-admin can sneak past the gate
+/// by addressing the same value through a dotted subpath.
 pub(crate) fn is_admin_only_llm_key(key: &str) -> bool {
     if ADMIN_ONLY_LLM_SETTING_KEYS.contains(&key) {
         return true;

@@ -409,10 +409,9 @@ impl Config {
 
     /// Re-resolve only the LLM config after credential injection.
     ///
-    /// Called by `AppBuilder::init_secrets()` after injecting API keys into
-    /// the env overlay. Only rebuilds `self.llm` — all other config fields
-    /// are unaffected, preserving values from the initial config load (or
-    /// from `Config::for_testing()` in test mode).
+    /// Called after injecting API keys into the env overlay. Only rebuilds
+    /// `self.llm` — all other config fields are unaffected, preserving values
+    /// from the initial config load (or from `Config::for_testing()` in test mode).
     pub async fn re_resolve_llm(
         &mut self,
         store: Option<&(dyn crate::db::SettingsStore + Sync)>,

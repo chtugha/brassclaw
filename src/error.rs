@@ -13,9 +13,6 @@ pub enum Error {
     #[error("Database error: {0}")]
     Database(#[from] DatabaseError),
 
-    #[error("Channel error: {0}")]
-    Channel(#[from] ChannelError),
-
     #[error("LLM error: {0}")]
     Llm(#[from] LlmError),
 
@@ -118,37 +115,6 @@ pub enum DatabaseError {
     #[cfg(feature = "libsql")]
     #[error("LibSQL error: {0}")]
     LibSql(#[from] libsql::Error),
-}
-
-/// Channel-related errors.
-#[derive(Debug, thiserror::Error)]
-pub enum ChannelError {
-    #[error("Channel {name} failed to start: {reason}")]
-    StartupFailed { name: String, reason: String },
-
-    #[error("Channel {name} disconnected: {reason}")]
-    Disconnected { name: String, reason: String },
-
-    #[error("Failed to send response on channel {name}: {reason}")]
-    SendFailed { name: String, reason: String },
-
-    #[error("Channel {name} is missing a routing target: {reason}")]
-    MissingRoutingTarget { name: String, reason: String },
-
-    #[error("Invalid message format: {0}")]
-    InvalidMessage(String),
-
-    #[error("Authentication failed for channel {name}: {reason}")]
-    AuthFailed { name: String, reason: String },
-
-    #[error("Rate limited on channel {name}")]
-    RateLimited { name: String },
-
-    #[error("HTTP error: {0}")]
-    Http(String),
-
-    #[error("Channel health check failed: {name}")]
-    HealthCheckFailed { name: String },
 }
 
 // LlmError lives in `brassclaw_llm`; re-exported here so existing
@@ -522,20 +488,6 @@ mod tests {
 
         let err = DatabaseError::Query("syntax error near SELECT".to_string());
         assert!(err.to_string().contains("syntax error"));
-    }
-
-    #[test]
-    fn channel_error_display() {
-        let err = ChannelError::StartupFailed {
-            name: "telegram".to_string(),
-            reason: "invalid token".to_string(),
-        };
-        let msg = err.to_string();
-        assert!(msg.contains("telegram"), "Should mention channel: {msg}");
-        assert!(
-            msg.contains("invalid token"),
-            "Should mention reason: {msg}"
-        );
     }
 
     #[test]

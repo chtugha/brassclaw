@@ -132,8 +132,8 @@ pub async fn connect_with_handles(
 /// Create a secrets store from database and secrets configuration.
 ///
 /// This is the shared factory for CLI commands and other call sites that need
-/// a `SecretsStore` without going through the full `AppBuilder`. Mirrors the
-/// pattern of [`connect_from_config`] but returns a secrets-specific store.
+/// a `SecretsStore`. Mirrors the pattern of [`connect_from_config`] but returns
+/// a secrets-specific store.
 pub async fn create_secrets_store(
     config: &crate::config::DatabaseConfig,
     crypto: Arc<crate::secrets::SecretsCrypto>,

@@ -19,10 +19,9 @@ pub struct SecretsConfig {
     /// `SECRETS_MASTER_KEY`, no keychain entry, and no on-disk `.env`
     /// key was available when we resolved.
     ///
-    /// Consumed by `AppBuilder::init_secrets` as a safety gate: if the
-    /// secrets table already has rows, a freshly-generated key can't
-    /// decrypt them and startup must fail loudly rather than silently
-    /// shadow unrecoverable data.
+    /// Safety gate at startup: if the secrets table already has rows,
+    /// a freshly-generated key can't decrypt them and startup must fail
+    /// loudly rather than silently shadow unrecoverable data.
     pub generated: bool,
 }
 
@@ -135,7 +134,7 @@ impl SecretsConfig {
     /// `false` when the TOCTOU re-check picked up a key another
     /// process wrote concurrently — that key is legitimate (same
     /// round of generation as ours), so the startup safety gate in
-    /// `AppBuilder::init_secrets` must not treat it as stale.
+    /// The startup safety gate must not treat it as stale.
     ///
     /// TOCTOU note: before writing to `.env`, we re-read the file to
     /// catch the case where a concurrently-started process already
@@ -305,7 +304,7 @@ mod tests {
     /// `generated` must be false when the key came from env or
     /// keychain, and true only when we fell through to
     /// `auto_generate_and_persist`. The flag is read in
-    /// `AppBuilder::init_secrets` to gate the "DB already populated"
+    /// The startup safety gate uses this to gate the "DB already populated"
     /// safety check — a false positive (marking an env-supplied key as
     /// generated) would spuriously abort a correctly-configured
     /// startup; a false negative would silently shadow undecryptable

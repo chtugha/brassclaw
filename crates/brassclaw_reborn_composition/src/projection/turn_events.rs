@@ -534,6 +534,10 @@ fn failure_summary_for_category(category: &str) -> &'static str {
             "The run failed because the execution driver rejected the request."
         }
         "driver_panic" => "The run failed because the execution driver stopped unexpectedly.",
+        "driver_bug" => "The run failed because the execution driver encountered an unexpected condition.",
+        "driver_protocol_violation" => {
+            "The run failed because the execution driver submitted an invalid exit."
+        }
         "host_creation_failed" => "The run failed while preparing the runtime host.",
         "route_snapshot_persistence_failed" => {
             "The run failed while saving the selected model route."
@@ -549,6 +553,29 @@ fn failure_summary_for_category(category: &str) -> &'static str {
             "The run stopped because it repeated the same step without making progress."
         }
         "unknown_failure" => "The run failed for an unknown reason.",
+        // LoopFailureKind categories emitted by the executor
+        "model_error" => {
+            "The run failed because the AI model call returned an error. Check the LLM configuration and try again."
+        }
+        "context_build_failed" => "The run failed while building the conversation context.",
+        "capability_protocol_error" => {
+            "The run failed because a tool call returned an unexpected response."
+        }
+        "iteration_limit" => {
+            "The run stopped after reaching the maximum number of steps."
+        }
+        "invalid_model_output" => {
+            "The run failed because the AI model returned output that could not be processed."
+        }
+        "checkpoint_rejected" => "The run failed because a checkpoint was rejected.",
+        "checkpoint_unavailable" => "The run failed because a required checkpoint was unavailable.",
+        "transcript_write_failed" => {
+            "The run failed while saving the conversation transcript."
+        }
+        "policy_denied" => "The run was stopped by a policy restriction.",
+        "compaction_unavailable" => {
+            "The run failed because the context compaction service was unavailable."
+        }
         _ => "The run failed before producing a reply.",
     }
 }

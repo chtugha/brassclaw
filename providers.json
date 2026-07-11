@@ -28,6 +28,7 @@
     "api_key_required": false,
     "model_env": "GEMINI_MODEL",
     "default_model": "gemini-2.5-flash",
+    "context_window_tokens": 1000000,
     "description": "Official Gemini API via Gemini CLI OAuth",
     "setup": {
       "kind": "file_based_credentials",
@@ -63,6 +64,7 @@
     "base_url_env": "OPENAI_BASE_URL",
     "model_env": "OPENAI_MODEL",
     "default_model": "gpt-5-mini",
+    "context_window_tokens": 128000,
     "description": "OpenAI GPT models (direct API)",
     "unsupported_params": ["temperature"],
     "setup": {
@@ -84,6 +86,7 @@
     "base_url_env": "ANTHROPIC_BASE_URL",
     "model_env": "ANTHROPIC_MODEL",
     "default_model": "claude-sonnet-4-20250514",
+    "context_window_tokens": 200000,
     "description": "Anthropic Claude models (direct API)",
     "setup": {
       "kind": "api_key",
@@ -101,6 +104,7 @@
     "base_url_env": "OLLAMA_BASE_URL",
     "model_env": "OLLAMA_MODEL",
     "default_model": "llama3",
+    "context_window_tokens": 8000,
     "description": "Local Ollama instance (no API key needed)",
     "setup": {
       "kind": "ollama",
@@ -143,6 +147,7 @@
     "api_key_required": true,
     "model_env": "GITHUB_COPILOT_MODEL",
     "default_model": "gpt-4o",
+    "context_window_tokens": 128000,
     "extra_headers_env": "GITHUB_COPILOT_EXTRA_HEADERS",
     "description": "GitHub Copilot Chat API (OAuth token from IDE sign-in)",
     "setup": {
@@ -202,6 +207,7 @@
     "api_key_required": true,
     "model_env": "GROQ_MODEL",
     "default_model": "llama-3.3-70b-versatile",
+    "context_window_tokens": 128000,
     "description": "Groq LPU inference (ultra-fast)",
     "setup": {
       "kind": "api_key",
@@ -306,6 +312,7 @@
     "api_key_required": true,
     "model_env": "DEEPSEEK_MODEL",
     "default_model": "deepseek-chat",
+    "context_window_tokens": 64000,
     "description": "DeepSeek inference API (preserves reasoning_content for thinking-mode models)",
     "setup": {
       "kind": "api_key",
@@ -385,6 +392,7 @@
     "api_key_required": true,
     "model_env": "GEMINI_MODEL",
     "default_model": "gemini-2.5-flash",
+    "context_window_tokens": 1000000,
     "description": "Google Gemini native API (preserves thought_signature on tool calls)",
     "setup": {
       "kind": "api_key",
@@ -427,6 +435,7 @@
     "api_key_required": true,
     "model_env": "MISTRAL_MODEL",
     "default_model": "mistral-large-latest",
+    "context_window_tokens": 128000,
     "description": "Mistral AI API",
     "setup": {
       "kind": "api_key",
@@ -510,6 +519,7 @@
     "api_key_required": false,
     "model_env": "BEDROCK_MODEL",
     "default_model": "anthropic.claude-sonnet-4-20250514-v1:0",
+    "context_window_tokens": 200000,
     "description": "Claude & other models via AWS (IAM, SSO)",
     "setup": {
       "kind": "aws_credentials",

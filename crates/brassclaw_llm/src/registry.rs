@@ -25,6 +25,11 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+/// Default context window (tokens) used when a provider definition omits
+/// `context_window_tokens`. Conservative minimum that works on Claude Haiku
+/// and GPT-3.5-class models.
+pub const FALLBACK_CONTEXT_WINDOW: u32 = 16_000;
+
 /// Error returned by fallible provider-registry loading.
 #[derive(Debug, Error)]
 pub enum ProviderRegistryLoadError {
@@ -406,6 +411,16 @@ pub struct ProviderDefinition {
     /// entries that don't set it, so builtins stay compact.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token_budget: Option<ProviderTokenBudget>,
+    /// Context window size in tokens for the default model of this provider.
+    ///
+    /// Used by `TurnContextBudget` to derive per-slice advisory limits.
+    /// For the model-role system (planned): per-model overrides will be stored
+    /// in a `model_overrides` map added in a later phase — this field covers
+    /// the "use provider default model" case.
+    ///
+    /// `None` → caller falls back to `DEFAULT_FALLBACK_CONTEXT_WINDOW` (16 000).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window_tokens: Option<u32>,
 }
 
 /// Registry of known LLM providers.
@@ -520,6 +535,16 @@ impl ProviderRegistry {
         self.lookup
             .get(&id.to_lowercase())
             .map(|&idx| &self.providers[idx])
+    }
+
+    /// Return the registered context window (tokens) for `provider_id`.
+    ///
+    /// Falls back to [`FALLBACK_CONTEXT_WINDOW`] when the provider is
+    /// unknown or the field is absent from its definition.
+    pub fn context_window_tokens(&self, provider_id: &str) -> u32 {
+        self.find(provider_id)
+            .and_then(|def| def.context_window_tokens)
+            .unwrap_or(FALLBACK_CONTEXT_WINDOW)
     }
 
     /// All registered providers (built-in + user).

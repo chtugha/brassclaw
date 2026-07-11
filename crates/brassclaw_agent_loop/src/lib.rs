@@ -4,6 +4,7 @@
 
 mod default_planner;
 pub mod content_cache;
+pub mod context_budget;
 pub mod executor;
 pub mod families;
 pub mod family;

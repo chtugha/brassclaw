@@ -200,11 +200,10 @@ pub fn upsert_bootstrap_vars_to(
 
 /// Remove a single variable from `~/.brassclaw/.env`, preserving other lines.
 ///
-/// Used by the secrets safety-gate rollback in `AppBuilder::init_secrets`:
-/// when a freshly-generated `SECRETS_MASTER_KEY` turns out to conflict with
-/// an already-populated secrets store, we strip our write so the next
-/// startup re-triggers the safety gate instead of silently accepting the
-/// stray key.
+/// Used by the secrets safety-gate rollback at startup: when a freshly-generated
+/// `SECRETS_MASTER_KEY` turns out to conflict with an already-populated secrets
+/// store, we strip our write so the next startup re-triggers the safety gate
+/// instead of silently accepting the stray key.
 pub fn remove_bootstrap_var_to(path: &std::path::Path, key: &str) -> std::io::Result<()> {
     let existing = match std::fs::read_to_string(path) {
         Ok(contents) => contents,
