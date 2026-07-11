@@ -1,22 +1,15 @@
 use std::process::Command;
 
+/// Verify that `brassclaw status` exits 0 and prints the version/profile lines
+/// from the Reborn status command.
 #[test]
-fn status_lists_enabled_wasm_channel_names() {
+fn status_exits_zero_and_prints_version() {
     let tempdir = tempfile::tempdir().expect("tempdir");
     let base_dir = tempdir.path();
-    let channels_dir = base_dir.join("channels");
-    std::fs::create_dir_all(&channels_dir).expect("create channels dir");
-    std::fs::File::create(channels_dir.join("telegram.wasm")).expect("write wasm");
-    std::fs::write(
-        base_dir.join("config.toml"),
-        "[channels]\nwasm_channels_enabled = true\nwasm_channels = [\"telegram\"]\n",
-    )
-    .expect("write config");
 
     let output = Command::new(env!("CARGO_BIN_EXE_brassclaw"))
         .arg("status")
-        .env("BRASSCLAW_BASE_DIR", base_dir)
-        .current_dir(base_dir)
+        .env("BRASSCLAW_REBORN_HOME", base_dir)
         .output()
         .expect("run brassclaw status");
 
@@ -28,8 +21,11 @@ fn status_lists_enabled_wasm_channel_names() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("Channels") && stdout.contains("telegram"),
-        "status output did not include enabled WASM channel names:\n{}",
-        stdout
+        stdout.contains("BrassClaw Status"),
+        "status output did not contain header:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("Version"),
+        "status output did not contain Version line:\n{stdout}"
     );
 }

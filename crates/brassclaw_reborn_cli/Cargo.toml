@@ -1,6 +1,6 @@
 [package]
 name = "brassclaw_reborn_cli"
-version = "0.41.4"
+version = "0.41.5"
 edition = "2024"
 rust-version = "1.92"
 description = "Standalone BrassClaw Reborn binary"

@@ -235,7 +235,7 @@ mod tests {
         },
     };
 
-    use super::{ContextStrategy, DefaultContextStrategy};
+    use super::{ContextStrategy, DefaultContextStrategy, LiveTokenBudget};
     use crate::state::{
         CapabilityCallSignature, LoopExecutionState, RepeatedCallWarningState,
         ReplyAdmissionRejection,
@@ -344,7 +344,7 @@ mod tests {
     async fn plan_context_request_clamps_zero_to_one() {
         let strategy = DefaultContextStrategy {
             max_messages: 0,
-            max_context_tokens: Some(DefaultContextStrategy::DEFAULT_MAX_CONTEXT_TOKENS),
+            token_budget: Some(LiveTokenBudget::new(Some(DefaultContextStrategy::DEFAULT_MAX_CONTEXT_TOKENS))),
         };
         let state = LoopExecutionState::initial_for_run(&test_run_context());
 

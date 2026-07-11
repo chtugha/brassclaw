@@ -1,91 +1,30 @@
-//! NEAR AI Agentic Worker Framework
+//! BrassClaw — shared library for the legacy compatibility layer.
 //!
-//! An LLM-powered autonomous agent that operates on the NEAR AI marketplace.
-//!
-//! # Architecture
-//!
-//! ```text
-//! ┌─────────────────────────────────────────────────────────────────────────────────┐
-//! │                              User Interaction Layer                              │
-//! │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐                         │
-//! │  │   CLI    │  │  Slack   │  │ Telegram │  │   HTTP   │                         │
-//! │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘                         │
-//! │       └─────────────┴────────────┬┴─────────────┘                               │
-//! └──────────────────────────────────┼──────────────────────────────────────────────┘
-//!                                    ▼
-//! ┌──────────────────────────────────────────────────────────────────────────────────┐
-//! │                              Main Agent Loop                                      │
-//! │  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐                      │
-//! │  │ Message Router │──│  LLM Reasoning │──│ Action Executor│                      │
-//! │  └────────────────┘  └───────┬────────┘  └───────┬────────┘                      │
-//! │         ▲                    │                   │                               │
-//! │         │         ┌──────────┴───────────────────┴──────────┐                    │
-//! │         │         ▼                                         ▼                    │
-//! │  ┌──────┴─────────────┐                         ┌───────────────────────┐        │
-//! │  │   Safety Layer     │                         │    Self-Repair        │        │
-//! │  │ - Input sanitizer  │                         │ - Stuck job detection │        │
-//! │  │ - Injection defense│                         │ - Tool fixer          │        │
-//! │  └────────────────────┘                         └───────────────────────┘        │
-//! └──────────────────────────────────────────────────────────────────────────────────┘
-//! ```
-//!
-//! # Features
-//!
-//! - **Multi-channel interaction** - CLI, Slack, Telegram, HTTP webhooks
-//! - **Parallel job execution** - Run multiple jobs with isolated contexts
-//! - **Pluggable tools** - MCP, 3rd party services, dynamic tools
-//! - **Self-repair** - Detect and fix stuck jobs and broken tools
-//! - **Prompt injection defense** - Sanitize all external data
-//! - **Continuous learning** - Improve estimates from historical data
+//! This crate provides the persistence, workspace, config, and import
+//! infrastructure shared between the v1 compatibility layer and the Reborn
+//! runtime. The v1 agentic loop, channels, and CLI commands have been removed;
+//! all runtime functionality now lives in `crates/brassclaw_reborn_*`.
 
-pub mod agent;
 pub mod app;
-// pub mod auth; // V1 auth bridge module - depends on deleted V1 types. V2 uses brassclaw_auth crate.
-pub mod boot_screen;
 pub mod bootstrap;
 pub mod bridge;
 pub mod capabilities;
 
-pub mod channels;
-
 pub mod cli;
 pub mod code_challenge;
 pub mod config;
-pub mod context;
 pub mod db;
 pub mod document_extraction;
 pub mod error;
-pub mod estimation;
-pub mod evaluation;
-pub mod extensions;
-pub mod gate;
-pub(crate) mod generated_images;
-pub mod history;
-pub mod hooks;
-pub mod http_intercept;
+pub mod generated_images;
 #[cfg(feature = "import")]
 pub mod import;
-pub mod llm_host;
 pub mod logging;
-pub mod observability;
-pub mod orchestrator;
-pub mod ownership;
-pub mod pairing;
-pub mod profile;
-pub mod registry;
 pub mod safety;
-pub mod sandbox;
 pub mod secrets;
-pub mod service;
 pub mod settings;
-pub mod setup;
-pub mod skills;
-pub mod tenant;
 pub mod timezone;
-pub mod trace_client;
-pub mod trace_contribution;
 pub mod tracing_fmt;
-pub mod tunnel;
 pub mod util;
 
 pub mod workspace;
@@ -98,9 +37,7 @@ pub use error::{Error, Result};
 
 /// Re-export commonly used types.
 pub mod prelude {
-    pub use crate::channels::{Channel, IncomingMessage, MessageStream};
     pub use crate::config::Config;
-    pub use crate::context::{JobContext, JobState};
     pub use crate::error::{Error, Result};
     pub use crate::workspace::{MemoryDocument, Workspace};
     pub use brassclaw_llm::LlmProvider;
