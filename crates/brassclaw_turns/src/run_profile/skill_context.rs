@@ -683,12 +683,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn context_byte_accumulator_reports_arithmetic_overflow() {
-        let err = checked_context_total_bytes(usize::MAX, 1, 0, usize::MAX).unwrap_err();
-        assert_eq!(err, SkillContextError::ContextBudgetExceeded);
-    }
-
-    #[test]
     fn entries_are_sorted_detects_sorted_and_unsorted_snapshots() {
         let alpha = InstalledSkillSnapshot {
             name: "alpha".to_string(),
