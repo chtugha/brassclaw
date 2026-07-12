@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.41.9] - 2026-08-01
+
+### Fixed
+
+- *(agent-loop)* `inline_control_tokens` now threads all the way from the per-provider DB row through `resolve_active_provider_token_budgets` → `DefaultPlannedRuntimeConfig` → `LoopFamilyConfig` → `default_with_full_config` → `DefaultContextStrategy`, closing the gap where the field was stored but never enforced.
+- *(agent-loop)* `total_input` pre-call guard: `LlmProviderModelGateway` now estimates the prompt token count before each provider call and returns `BudgetExceeded` when it exceeds the per-provider `total_input` limit, preventing oversized prompts from ever reaching the network.
+- *(agent-loop)* `DefaultStrategySlots::with_compaction()` added so `default_with_full_config` can inject the provider-aware `DefaultCompactionStrategy` (replacing the 8 192-token hardcode) via the slots builder instead of bypassing it.
+- *(agent-loop)* Fixed borrow-after-move in the executor: `prompt.messages.len()` is now cached before `messages` is moved into `ModelInput`, eliminating a compile error introduced by the EMA `notify_model_usage` call.
+- *(composition)* Hot-swap budget refresh: `LlmReloadTrigger` gains a default-no-op `on_provider_changed()` method; `RebornLlmReloadAdapter` implements it via an optional `Arc<dyn Fn(&str)>` callback; `refresh_running_provider` fires the callback after a successful reload; `build_webui_services` wires a tokio-spawned async DB read that refreshes `live_context_budget` with the new provider's `conversation_history` setting — no restart needed after a provider switch.
+- *(composition)* Fixed unused-variable compiler warning for `resolved_total_input_tokens` in non-`root-llm-provider` builds by storing the value in `DefaultPlannedRuntimeConfig.total_input_tokens`.
+
 ## [0.41.8] - 2026-07-31
 
 ### Fixed

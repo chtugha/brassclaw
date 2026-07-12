@@ -15,6 +15,9 @@ pub(crate) struct RebornLlmReloadAdapter {
     reload_handle: Arc<brassclaw_llm::LlmReloadHandle>,
     session: Arc<brassclaw_llm::SessionManager>,
     keys: LlmKeyStore,
+    /// Optional callback invoked after a successful provider reload.
+    /// Used to refresh live token-budget slots with the new provider's settings.
+    on_provider_changed: Option<Arc<dyn Fn(&str) + Send + Sync>>,
 }
 
 impl RebornLlmReloadAdapter {
@@ -29,7 +32,19 @@ impl RebornLlmReloadAdapter {
             reload_handle,
             session,
             keys,
+            on_provider_changed: None,
         }
+    }
+
+    /// Attach a callback that fires after a successful provider reload.
+    /// The callback receives the new active provider ID and can update
+    /// live budget slots, context-window overrides, etc.
+    pub(crate) fn with_on_provider_changed(
+        mut self,
+        f: Arc<dyn Fn(&str) + Send + Sync>,
+    ) -> Self {
+        self.on_provider_changed = Some(f);
+        self
     }
 }
 
@@ -58,5 +73,11 @@ impl LlmReloadTrigger for RebornLlmReloadAdapter {
             .reload(&config, Arc::clone(&self.session))
             .await
             .map_err(|error| error.to_string())
+    }
+
+    async fn on_provider_changed(&self, new_provider_id: &str) {
+        if let Some(f) = &self.on_provider_changed {
+            f(new_provider_id);
+        }
     }
 }

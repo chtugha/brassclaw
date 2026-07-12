@@ -73,6 +73,28 @@ pub struct DefaultPlannedRuntimeConfig {
     pub identity_token_ceiling: Option<usize>,
     /// Optional token budget for the visible capability surface (tool descriptions).
     pub capability_surface_tokens: Option<usize>,
+    /// Provider context window in tokens. Fed to `DefaultContextStrategy` and
+    /// `DefaultCompactionStrategy` so both use the real model window instead of
+    /// compiled-in defaults. `None` → compiled defaults apply.
+    pub context_window_tokens: Option<u32>,
+    /// Per-provider output token ceiling. When `Some`, forwarded to the model
+    /// gateway so `CompletionRequest.max_tokens` is set on every provider call.
+    /// `None` → provider default applies.
+    pub max_output_tokens: Option<u32>,
+    /// Optional ceiling for inline loop-control message tokens (admission control,
+    /// repeated-call warnings). Enforced in `DefaultContextStrategy`.
+    /// `None` → no limit.
+    pub inline_control_tokens: Option<usize>,
+    /// Per-provider total input guard. When `Some`, forwarded to the model
+    /// gateway so oversized prompts are rejected before reaching the network.
+    /// `None` → no pre-call guard.
+    pub total_input_tokens: Option<usize>,
+    /// Stored for forward compatibility; not yet enforced at the prompt-port
+    /// level (requires a separate PR to extend `ThreadBackedLoopContextPort`).
+    pub memory_tokens: Option<usize>,
+    /// Stored for forward compatibility; not yet enforced at the prompt-port
+    /// level (requires a separate PR to extend `InstructionSafetyContext`).
+    pub safety_tokens: Option<usize>,
     /// When `true`, `FocusedCapabilityStrategy` is wired instead of
     /// `DefaultCapabilityStrategy` for the default loop family.
     pub capability_focus_enabled: bool,
@@ -356,6 +378,8 @@ where
     let family_registry = build_loop_family_registry_with_full_config(LoopFamilyConfig {
         conversation_token_budget: parts.config.context_token_budget,
         capability_surface_tokens: parts.config.capability_surface_tokens,
+        context_window_tokens: parts.config.context_window_tokens,
+        inline_control_tokens: parts.config.inline_control_tokens,
         capability_focus_enabled: parts.config.capability_focus_enabled,
         planning_mode_enabled: parts.config.planning_mode_enabled,
     }).map_err(|error| {

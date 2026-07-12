@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
+use crate::context_budget::DEFAULT_FALLBACK_CONTEXT_WINDOW;
 use crate::default_planner::DefaultPlanner;
 use crate::family::{ComponentDigest, LoopFamily};
 use crate::planner::AgentLoopPlanner;
-use crate::strategies::{CapabilityFocusConfig, FocusedCapabilityStrategy, LiveTokenBudget};
+use crate::strategies::{
+    CapabilityFocusConfig, DefaultCompactionStrategy, FocusedCapabilityStrategy, LiveTokenBudget,
+};
 use crate::strategies::planning_context::PlanningContextStrategy;
 
 mod subagent;
@@ -50,7 +53,7 @@ pub fn default() -> LoopFamily {
 }
 
 /// The default loop family with full config: context tokens, capability focus,
-/// and optional planning context strategy.
+/// optional planning context strategy, and optional provider context window.
 ///
 /// - `conversation_token_budget`: live-updatable slot; call `.set()` on the
 ///   retained clone to update the cap on the next turn without a restart.
@@ -58,10 +61,17 @@ pub fn default() -> LoopFamily {
 /// - `capability_focus`: when `Some(cfg)`, wires `FocusedCapabilityStrategy`.
 /// - `planning_context`: when `Some(strategy)`, wires `PlanningContextStrategy`
 ///   **instead of** any context-token-budget strategy (planning mode subsumes it).
+/// - `context_window_tokens`: provider context window in tokens. Used by
+///   `DefaultContextStrategy` (via `TurnContextBudget`) and by
+///   `DefaultCompactionStrategy.context_limit_tokens`. `None` → compiled defaults.
+/// - `inline_control_tokens`: optional ceiling for inline loop-control messages
+///   (admission control, repeated-call warnings). `None` → no limit.
 pub fn default_with_full_config(
     conversation_token_budget: Option<LiveTokenBudget>,
     capability_focus: Option<CapabilityFocusConfig>,
     planning_context: Option<PlanningContextStrategy>,
+    context_window_tokens: Option<u32>,
+    inline_control_tokens: Option<usize>,
 ) -> LoopFamily {
     use crate::strategies::context::DefaultContextStrategy;
 
@@ -73,15 +83,32 @@ pub fn default_with_full_config(
         // planning mode is active — the planning strategy owns iteration 0 context.
         slots = slots.with_context(Arc::new(strategy));
     } else if let Some(budget) = conversation_token_budget {
-        slots = slots.with_context(Arc::new(DefaultContextStrategy::with_live_budget(
-            DefaultContextStrategy::DEFAULT_MAX_MESSAGES,
-            budget,
-        )));
+        let mut strategy = match context_window_tokens {
+            Some(window) => DefaultContextStrategy::with_live_budget_and_window(
+                DefaultContextStrategy::DEFAULT_MAX_MESSAGES,
+                budget,
+                window,
+            ),
+            None => DefaultContextStrategy::with_live_budget(
+                DefaultContextStrategy::DEFAULT_MAX_MESSAGES,
+                budget,
+            ),
+        };
+        strategy.inline_control_tokens = inline_control_tokens;
+        slots = slots.with_context(Arc::new(strategy));
     }
 
     if let Some(cfg) = capability_focus {
         slots = slots.with_capability(Arc::new(FocusedCapabilityStrategy::new(cfg)));
     }
+
+    // Wire the compaction strategy with the provider-aware context window so
+    // compaction does not trigger at 8 192 tokens on a 128K-window model.
+    let window = context_window_tokens.unwrap_or(DEFAULT_FALLBACK_CONTEXT_WINDOW) as u64;
+    slots = slots.with_compaction(Arc::new(DefaultCompactionStrategy {
+        context_limit_tokens: window,
+        ..DefaultCompactionStrategy::default()
+    }));
 
     let planner = DefaultPlanner::compose(
         crate::family::LoopFamilyId::DEFAULT,

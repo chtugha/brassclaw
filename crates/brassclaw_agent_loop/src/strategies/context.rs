@@ -6,6 +6,9 @@ use brassclaw_turns::run_profile::{
     LoopInlineMessage, LoopInlineMessageRole, LoopPromptBundleRequest, LoopSafeSummary, PromptMode,
 };
 
+use crate::context_budget::{
+    DEFAULT_FALLBACK_CONTEXT_WINDOW, ObservedMessageAverage, TurnContextBudget,
+};
 use crate::state::{LoopExecutionState, RepeatedCallWarningPhase};
 use crate::strategies::reply_admission::reply_admission_control_message;
 
@@ -23,6 +26,15 @@ pub(crate) const REPEATED_CALL_WARNING_CONTROL_TEXT: &str = "loop control repeat
 #[async_trait]
 pub(crate) trait ContextStrategy: Send + Sync {
     async fn plan_context_request(&self, state: &LoopExecutionState) -> ContextPlan;
+
+    /// Notify the strategy with actual model usage after a turn completes.
+    ///
+    /// `input_tokens` is the provider-reported prompt token count.
+    /// `messages_in_bundle` is the number of messages in the prompt bundle.
+    ///
+    /// The default implementation is a no-op; strategies that maintain an EMA
+    /// (like [`DefaultContextStrategy`]) override this to update their estimate.
+    fn notify_model_usage(&self, _input_tokens: u32, _messages_in_bundle: usize) {}
 }
 
 #[allow(dead_code)]
@@ -74,19 +86,40 @@ impl LiveTokenBudget {
 /// CodeAct-shaped prompts or want to inject nudges swap this strategy
 /// rather than mutating state.
 ///
-/// Token-aware budgeting: if `token_budget` is set, the strategy reads the
-/// live slot on every call and reduces `max_messages` accordingly.  Updating
-/// the [`LiveTokenBudget`] takes effect on the very next turn — no restart.
+/// Token-aware budgeting: when `token_budget` is set, the strategy uses
+/// [`TurnContextBudget::from_context_window`] to derive the history slice,
+/// then divides by the [`ObservedMessageAverage`] EMA (updated after every
+/// turn) to derive `max_messages`. This replaces the prior `(budget/2)/200`
+/// heuristic.  Updating the [`LiveTokenBudget`] takes effect on the very next
+/// turn — no restart required.
 #[derive(Debug, Clone)]
 pub struct DefaultContextStrategy {
     /// Max messages to ask the host to include in the bundle. Default
-    /// [`Self::DEFAULT_MAX_MESSAGES`].
+    /// [`Self::DEFAULT_MAX_MESSAGES`]. Acts as an upper ceiling even when
+    /// the token-based estimate would allow more.
     pub max_messages: u32,
 
     /// Live token budget slot.  `None` inside means "use compiled default".
     /// The `Arc` is shared with the settings service so UI changes propagate
     /// immediately without restarting.
     pub token_budget: Option<LiveTokenBudget>,
+
+    /// Provider context window in tokens. When `Some`, drives
+    /// `TurnContextBudget::from_context_window` which allocates slices by
+    /// percentage. `None` falls back to `DEFAULT_FALLBACK_CONTEXT_WINDOW`.
+    pub context_window_tokens: Option<u32>,
+
+    /// Optional ceiling for inline loop-control messages (admission control,
+    /// repeated-call warnings) injected into the prompt bundle. When the
+    /// cumulative estimated token count of the inline messages would exceed
+    /// this limit, messages are dropped from the back until it fits.
+    /// `None` → no limit.
+    pub inline_control_tokens: Option<usize>,
+
+    /// Rolling EMA of observed tokens-per-message, updated after each turn
+    /// by the executor via [`DefaultContextStrategy::update_message_average`].
+    /// Arc-shared across clones so every clone reflects the same observation.
+    pub observed_message_average: ObservedMessageAverage,
 }
 
 impl DefaultContextStrategy {
@@ -102,6 +135,9 @@ impl DefaultContextStrategy {
         Self {
             max_messages,
             token_budget: max_context_tokens.map(|n| LiveTokenBudget::new(Some(n))),
+            context_window_tokens: None,
+            inline_control_tokens: None,
+            observed_message_average: ObservedMessageAverage::new(),
         }
     }
 
@@ -111,6 +147,24 @@ impl DefaultContextStrategy {
         Self {
             max_messages,
             token_budget: Some(budget),
+            context_window_tokens: None,
+            inline_control_tokens: None,
+            observed_message_average: ObservedMessageAverage::new(),
+        }
+    }
+
+    /// Create a strategy with a live budget slot and a known provider context window.
+    pub fn with_live_budget_and_window(
+        max_messages: u32,
+        budget: LiveTokenBudget,
+        context_window_tokens: u32,
+    ) -> Self {
+        Self {
+            max_messages,
+            token_budget: Some(budget),
+            context_window_tokens: Some(context_window_tokens),
+            inline_control_tokens: None,
+            observed_message_average: ObservedMessageAverage::new(),
         }
     }
 
@@ -119,7 +173,24 @@ impl DefaultContextStrategy {
         Self {
             max_messages,
             token_budget: Some(LiveTokenBudget::new(Some(max_context_tokens))),
+            context_window_tokens: None,
+            inline_control_tokens: None,
+            observed_message_average: ObservedMessageAverage::new(),
         }
+    }
+
+    /// Update the rolling message-average EMA with a new observation.
+    ///
+    /// Called by the executor after each model turn with:
+    ///   `input_tokens / messages_in_bundle`
+    ///
+    /// Thread-safe; the `ObservedMessageAverage` uses an atomic internally.
+    pub fn update_message_average(&self, input_tokens: u32, messages_in_bundle: usize) {
+        if messages_in_bundle == 0 || input_tokens == 0 {
+            return;
+        }
+        let per_msg = input_tokens / messages_in_bundle as u32;
+        self.observed_message_average.update(per_msg);
     }
 }
 
@@ -128,36 +199,66 @@ impl Default for DefaultContextStrategy {
         Self {
             max_messages: Self::DEFAULT_MAX_MESSAGES,
             token_budget: Some(LiveTokenBudget::new(Some(Self::DEFAULT_MAX_CONTEXT_TOKENS))),
+            context_window_tokens: None,
+            inline_control_tokens: None,
+            observed_message_average: ObservedMessageAverage::new(),
         }
     }
 }
 
 #[async_trait]
 impl ContextStrategy for DefaultContextStrategy {
+    fn notify_model_usage(&self, input_tokens: u32, messages_in_bundle: usize) {
+        self.update_message_average(input_tokens, messages_in_bundle);
+    }
+
     async fn plan_context_request(&self, state: &LoopExecutionState) -> ContextPlan {
         let loop_control = loop_control_inline_messages(state);
 
-        // Token-aware message limit adjustment — reads live atomic slot each call
-        // so UI changes take effect on the very next turn without a restart.
-        let max_messages = if let Some(max_tokens) = self.token_budget.as_ref().and_then(|b| b.get()) {
-            // Estimate tokens from inline control messages
-            let control_tokens: usize = loop_control
-                .inline_messages
-                .iter()
-                .map(|msg| crate::token_budget::estimate_tokens(msg.safe_body.as_str()))
-                .sum();
+        // Enforce the inline_control_tokens budget: drop messages from the back
+        // of the inline list when the cumulative token cost would exceed the limit.
+        // Prefer dropping later messages (repeated-call warning) over earlier ones
+        // (admission control), since admission control is higher priority.
+        let inline_messages = match self.inline_control_tokens {
+            Some(limit) if limit > 0 => {
+                let mut budget = limit;
+                let mut trimmed = Vec::with_capacity(loop_control.inline_messages.len());
+                for msg in &loop_control.inline_messages {
+                    let cost = crate::token_budget::estimate_tokens(msg.safe_body.as_str());
+                    if cost <= budget {
+                        budget = budget.saturating_sub(cost);
+                        trimmed.push(msg.clone());
+                    }
+                    // Messages that don't fit are silently dropped; the loop
+                    // continues without the control message rather than failing.
+                }
+                trimmed
+            }
+            _ => loop_control.inline_messages,
+        };
 
-            // Reserve tokens for system instructions (skills, memory, etc.)
-            // Assume ~50% of budget goes to conversation, rest to instructions
-            let conversation_budget = max_tokens.saturating_sub(control_tokens) / 2;
+        // Token-aware message limit: uses TurnContextBudget percentage allocation +
+        // the observed EMA so the estimate adapts to the actual conversation mix.
+        let max_messages = if let Some(live_budget) = self.token_budget.as_ref().and_then(|b| b.get()) {
+            let window = self
+                .context_window_tokens
+                .unwrap_or(DEFAULT_FALLBACK_CONTEXT_WINDOW);
 
-            // Estimate average tokens per message (~200 tokens per message)
-            // This is a rough heuristic; actual messages vary widely
-            const AVG_TOKENS_PER_MESSAGE: usize = 200;
-            let estimated_messages = conversation_budget / AVG_TOKENS_PER_MESSAGE.max(1);
+            // Derive per-slice budgets from the model's context window.
+            let turn_budget = TurnContextBudget::from_context_window(window);
 
-            // Use the smaller of configured max_messages or token-based estimate
-            self.max_messages.min(estimated_messages as u32)
+            // Honour the operator-configured history ceiling if it is tighter
+            // than the window-derived history slice.
+            let history_tokens = turn_budget
+                .history_tokens
+                .min(live_budget.try_into().unwrap_or(u32::MAX));
+
+            // Use the EMA-derived per-message estimate for the calculation.
+            let avg = self.observed_message_average.get_tokens();
+            let estimated = history_tokens / avg.max(1);
+
+            // Clamp to the configured hard ceiling.
+            self.max_messages.min(estimated)
         } else {
             self.max_messages
         };
@@ -172,7 +273,7 @@ impl ContextStrategy for DefaultContextStrategy {
                 surface_version: None,
                 checkpoint_state_ref: None,
                 max_messages: Some(max_messages.max(1)),
-                inline_messages: loop_control.inline_messages,
+                inline_messages,
                 capability_view: None,
             },
             emitted_admission_control: loop_control.emitted_admission_control,
@@ -342,10 +443,11 @@ mod tests {
 
     #[tokio::test]
     async fn plan_context_request_clamps_zero_to_one() {
-        let strategy = DefaultContextStrategy {
-            max_messages: 0,
-            token_budget: Some(LiveTokenBudget::new(Some(DefaultContextStrategy::DEFAULT_MAX_CONTEXT_TOKENS))),
-        };
+        // max_messages = 0 to test the clamp-to-1 invariant.
+        let strategy = DefaultContextStrategy::with_token_budget(
+            0,
+            DefaultContextStrategy::DEFAULT_MAX_CONTEXT_TOKENS,
+        );
         let state = LoopExecutionState::initial_for_run(&test_run_context());
 
         let request = strategy.plan_context_request(&state).await;

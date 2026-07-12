@@ -250,6 +250,15 @@ where
     provider: Arc<P>,
     policy: LlmModelProfilePolicy,
     provider_turn_sequence: Arc<AtomicU64>,
+    /// Per-provider output ceiling forwarded to `CompletionRequest.max_tokens`.
+    /// `None` → provider default applies.
+    max_output_tokens: Option<u32>,
+    /// Per-provider total input guard. When set, the gateway estimates the
+    /// prompt token count before calling the provider and returns
+    /// `BudgetExceeded` when the estimate exceeds the limit, preventing
+    /// oversized prompts from ever reaching the network.
+    /// `None` → no pre-call guard.
+    total_input_tokens: Option<usize>,
 }
 
 impl<P> LlmProviderModelGateway<P>
@@ -271,7 +280,50 @@ where
             provider,
             policy,
             provider_turn_sequence: Arc::new(AtomicU64::new(1)),
+            max_output_tokens: None,
+            total_input_tokens: None,
         }
+    }
+
+    /// Set the per-provider output token ceiling. When set, `CompletionRequest.max_tokens`
+    /// is populated before every provider call so the model stops generating at this limit.
+    pub fn with_max_output_tokens(mut self, max_output_tokens: Option<u32>) -> Self {
+        self.max_output_tokens = max_output_tokens;
+        self
+    }
+
+    /// Set the total-input pre-call guard. When set, the gateway estimates the
+    /// prompt token count and returns `BudgetExceeded` if it would exceed the limit.
+    pub fn with_total_input_tokens(mut self, total_input_tokens: Option<usize>) -> Self {
+        self.total_input_tokens = total_input_tokens;
+        self
+    }
+
+    /// Estimate the prompt token count for a slice of `HostManagedModelMessage`s
+    /// and return `Err(BudgetExceeded)` when a limit is configured and exceeded.
+    fn check_total_input_budget(
+        &self,
+        messages: &[brassclaw_loop_support::HostManagedModelMessage],
+    ) -> Result<(), HostManagedModelError> {
+        let Some(limit) = self.total_input_tokens else {
+            return Ok(());
+        };
+        let estimated: usize = messages
+            .iter()
+            .map(|m| brassclaw_agent_loop::token_budget::estimate_tokens(&m.content))
+            .sum();
+        if estimated > limit {
+            debug!(
+                estimated_tokens = estimated,
+                limit,
+                "total_input pre-call guard: prompt estimate exceeds per-provider limit"
+            );
+            return Err(HostManagedModelError::safe(
+                HostManagedModelErrorKind::BudgetExceeded,
+                "prompt token estimate exceeds per-provider total_input limit",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -284,6 +336,7 @@ where
         &self,
         request: HostManagedModelRequest,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+        self.check_total_input_budget(&request.messages)?;
         let route = self
             .policy
             .route_for(&request.model_profile_id)
@@ -301,6 +354,9 @@ where
         let mut completion =
             CompletionRequest::new(convert_messages(request.messages, &replay_identity)?);
         completion.model = Some(model_override);
+        if let Some(cap) = self.max_output_tokens {
+            completion.max_tokens = Some(cap);
+        }
         add_request_metadata(&mut completion, &model_profile_id, run_id, turn_id);
 
         complete_model_request(
@@ -318,6 +374,7 @@ where
         request: HostManagedModelRequest,
         capabilities: Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>,
     ) -> Result<HostManagedModelResponse, HostManagedModelError> {
+        self.check_total_input_budget(&request.messages)?;
         let route = self
             .policy
             .route_for(&request.model_profile_id)
@@ -335,6 +392,9 @@ where
         let mut completion =
             CompletionRequest::new(convert_messages(request.messages, &replay_identity)?);
         completion.model = Some(model_override);
+        if let Some(cap) = self.max_output_tokens {
+            completion.max_tokens = Some(cap);
+        }
         add_request_metadata(&mut completion, &model_profile_id, run_id, turn_id);
 
         let provider_turn_scope = format!(

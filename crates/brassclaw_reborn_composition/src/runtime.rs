@@ -737,20 +737,40 @@ impl RebornRuntime {
         self.live_context_budget.clone()
     }
 
+    /// The actor user ID string — used by the webui composition layer to
+    /// pass the owner identity to token-settings DB reads on provider change.
+    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+    pub(crate) fn actor_user_id_string(&self) -> String {
+        self.actor_user_id.as_str().to_string()
+    }
+
     /// Live LLM-provider reload trigger for the settings service. Returns the
-    /// hot-swap adapter when an LLM provider was wired at boot; otherwise
-    /// `None`, in which case config edits persist to disk and apply on the
-    /// next restart.
+    /// bare adapter (not yet Arc-wrapped) when an LLM provider was wired at
+    /// boot; otherwise `None`, in which case config edits persist to disk and
+    /// apply on the next restart.
+    ///
+    /// Returning the concrete adapter allows the caller to call
+    /// `.with_on_provider_changed(…)` before `Arc`-wrapping it.
     #[cfg(feature = "root-llm-provider")]
-    pub(crate) fn webui_llm_reload_trigger(&self) -> Option<Arc<dyn crate::LlmReloadTrigger>> {
+    pub(crate) fn webui_llm_reload_adapter(
+        &self,
+    ) -> Option<crate::llm_reload::RebornLlmReloadAdapter> {
         let boot = self.boot.as_ref()?;
         let parts = self.llm_reload.as_ref()?;
-        Some(Arc::new(crate::llm_reload::RebornLlmReloadAdapter::new(
+        Some(crate::llm_reload::RebornLlmReloadAdapter::new(
             boot.clone(),
             Arc::clone(&parts.reload_handle),
             Arc::clone(&parts.session),
             crate::LlmKeyStore::new(self.services.secret_store()),
-        )))
+        ))
+    }
+
+    /// Convenience wrapper that returns the adapter already `Arc`-wrapped.
+    /// Use `webui_llm_reload_adapter()` when you need to attach a callback first.
+    #[cfg(feature = "root-llm-provider")]
+    pub(crate) fn webui_llm_reload_trigger(&self) -> Option<Arc<dyn crate::LlmReloadTrigger>> {
+        self.webui_llm_reload_adapter()
+            .map(|adapter| Arc::new(adapter) as Arc<dyn crate::LlmReloadTrigger>)
     }
 
     /// Diagnostic id for the no-profile run profile selected by this runtime.
@@ -1719,15 +1739,16 @@ pub async fn build_reborn_runtime(
 
     // Override token budgets with per-provider DB values when they exist.
     // Runs once at startup — O(1) DB read, no per-turn cost.
-    // Per-provider DB wins over file-config for every field that has a runtime
-    // slot; fields with no runtime slot (inline_control, memory, max_output)
-    // are stored in the DB but not yet plumbed further.
+    // Per-provider DB wins over file-config for every field that has a runtime slot.
     #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
     let (
         conversation_context_tokens,
         skill_context_tokens,
         identity_token_ceiling,
         capability_surface_tokens,
+        resolved_max_output_tokens,
+        resolved_inline_control_tokens,
+        resolved_total_input_tokens,
     ) = {
         let provider_id = llm.as_ref().map(|l| l.provider_id().to_string());
         resolve_active_provider_token_budgets(
@@ -1741,6 +1762,24 @@ pub async fn build_reborn_runtime(
         )
         .await
     };
+    #[cfg(not(all(feature = "libsql", feature = "root-llm-provider")))]
+    let resolved_max_output_tokens: Option<u32> = None;
+    #[cfg(not(all(feature = "libsql", feature = "root-llm-provider")))]
+    let resolved_inline_control_tokens: Option<usize> = None;
+    #[cfg(not(all(feature = "libsql", feature = "root-llm-provider")))]
+    let resolved_total_input_tokens: Option<usize> = None;
+
+    // context_window_tokens comes from the provider catalog (providers.json), not the DB.
+    // Read once at startup and thread to both DefaultContextStrategy and
+    // DefaultCompactionStrategy. All cfg paths define this binding.
+    #[cfg(feature = "root-llm-provider")]
+    let resolved_context_window_tokens: Option<u32> = llm.as_ref().and_then(|l| {
+        brassclaw_llm::ProviderRegistry::try_load_from_path(None)
+            .ok()
+            .and_then(|reg| reg.find(l.provider_id()).and_then(|def| def.context_window_tokens))
+    });
+    #[cfg(not(feature = "root-llm-provider"))]
+    let resolved_context_window_tokens: Option<u32> = None;
 
     // Create the live token budget slot from the resolved conversation_context_tokens.
     // The slot is shared with the baked-in DefaultContextStrategy AND stored on
@@ -1808,13 +1847,14 @@ pub async fn build_reborn_runtime(
     #[cfg(all(feature = "root-llm-provider", any(test, feature = "test-support")))]
     let (model_gateway, llm_cost_table, llm_reload) = match model_gateway_override {
         Some(override_gateway) => (override_gateway, None, None),
-        None => build_production_model_gateway(llm).await?,
+        None => build_production_model_gateway(llm, resolved_max_output_tokens, resolved_total_input_tokens).await?,
     };
     #[cfg(all(
         feature = "root-llm-provider",
         not(any(test, feature = "test-support"))
     ))]
-    let (model_gateway, llm_cost_table, llm_reload) = build_production_model_gateway(llm).await?;
+    let (model_gateway, llm_cost_table, llm_reload) =
+        build_production_model_gateway(llm, resolved_max_output_tokens, resolved_total_input_tokens).await?;
     #[cfg(all(
         not(feature = "root-llm-provider"),
         any(test, feature = "test-support")
@@ -2063,6 +2103,10 @@ pub async fn build_reborn_runtime(
             context_token_budget: live_context_budget.clone(),
             identity_token_ceiling,
             capability_surface_tokens,
+            context_window_tokens: resolved_context_window_tokens,
+            max_output_tokens: resolved_max_output_tokens,
+            inline_control_tokens: resolved_inline_control_tokens,
+            total_input_tokens: resolved_total_input_tokens,
             capability_focus_enabled,
             planning_mode_enabled,
             ..DefaultPlannedRuntimeConfig::default()
@@ -2508,6 +2552,8 @@ impl CapabilitySurfaceProfileResolver for AllowAllCapabilitySurfaceResolver {
 #[cfg(feature = "root-llm-provider")]
 async fn build_production_model_gateway(
     llm: Option<crate::runtime_input::ResolvedRebornLlm>,
+    max_output_tokens: Option<u32>,
+    total_input_tokens: Option<usize>,
 ) -> Result<
     (
         Arc<dyn brassclaw_loop_support::HostManagedModelGateway>,
@@ -2527,7 +2573,7 @@ async fn build_production_model_gateway(
                 gateway,
                 policy,
                 reload,
-            } = build_llm_gateway(cfg).await?;
+            } = build_llm_gateway(cfg, max_output_tokens, total_input_tokens).await?;
             Ok((gateway, Some(policy.build_cost_table()), Some(reload)))
         }
         None => {
@@ -2579,13 +2625,17 @@ pub(crate) struct RebornLlmReloadParts {
 }
 
 #[cfg(feature = "root-llm-provider")]
-async fn build_llm_gateway(llm: ResolvedRebornLlm) -> Result<LlmGatewayBundle, RebornRuntimeError> {
+async fn build_llm_gateway(
+    llm: ResolvedRebornLlm,
+    max_output_tokens: Option<u32>,
+    total_input_tokens: Option<usize>,
+) -> Result<LlmGatewayBundle, RebornRuntimeError> {
     let model = llm.model().to_string();
     let session = brassclaw_llm::create_session_manager(llm.config.session.clone()).await;
     let raw = brassclaw_llm::build_static_provider_chain(&llm.config, Arc::clone(&session))
         .await
         .map_err(|error| RebornRuntimeError::LlmProvider(error.to_string()))?;
-    wrap_swappable_gateway(raw, Some(model), session)
+    wrap_swappable_gateway(raw, Some(model), session, max_output_tokens, total_input_tokens)
 }
 
 /// Cold-boot gateway: no LLM configured yet. Wraps a placeholder provider (which
@@ -2597,7 +2647,8 @@ async fn build_placeholder_llm_gateway() -> Result<LlmGatewayBundle, RebornRunti
     let session =
         brassclaw_llm::create_session_manager(brassclaw_llm::SessionConfig::default()).await;
     let raw: Arc<dyn brassclaw_llm::LlmProvider> = Arc::new(PlaceholderLlmProvider);
-    wrap_swappable_gateway(raw, None, session)
+    // No max_output_tokens or total_input guard for the placeholder — it will error on every call anyway.
+    wrap_swappable_gateway(raw, None, session, None, None)
 }
 
 /// Wrap a raw provider in a [`SwappableLlmProvider`] + reload handle and build
@@ -2608,6 +2659,8 @@ fn wrap_swappable_gateway(
     raw: Arc<dyn brassclaw_llm::LlmProvider>,
     model: Option<String>,
     session: Arc<brassclaw_llm::SessionManager>,
+    max_output_tokens: Option<u32>,
+    total_input_tokens: Option<usize>,
 ) -> Result<LlmGatewayBundle, RebornRuntimeError> {
     use brassclaw_llm::{LlmProvider, LlmReloadHandle, SwappableLlmProvider};
     use brassclaw_reborn::model_gateway::{LlmModelProfilePolicy, LlmProviderModelGateway};
@@ -2621,7 +2674,9 @@ fn wrap_swappable_gateway(
         RebornRuntimeError::LlmProvider(format!("invalid interactive model profile id: {reason}"))
     })?;
     let policy = LlmModelProfilePolicy::new().allow_model_profile(model_profile_id, model);
-    let gateway = LlmProviderModelGateway::new(provider, policy.clone());
+    let gateway = LlmProviderModelGateway::new(provider, policy.clone())
+        .with_max_output_tokens(max_output_tokens)
+        .with_total_input_tokens(total_input_tokens);
     Ok(LlmGatewayBundle {
         gateway: Arc::new(gateway),
         policy,
@@ -2706,8 +2761,13 @@ fn build_stub_gateway() -> Arc<dyn brassclaw_loop_support::HostManagedModelGatew
 
 /// Resolve the active provider's per-provider token budgets from the DB.
 /// Falls back to the file-config value for each field if no per-provider row
-/// exists or if the DB field is `None`.  Returns a tuple of the four budget
-/// fields that have runtime wiring slots.
+/// exists or if the DB field is `None`.
+///
+/// Returns a 5-tuple:
+///   (conversation, skills, identity, capability_surface, max_output)
+///
+/// `max_output` is returned as `Option<u32>` because it is forwarded directly
+/// to `CompletionRequest.max_tokens` which expects `u32`.
 ///
 /// Only available when both libsql and root-llm-provider features are on.
 #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
@@ -2719,7 +2779,15 @@ async fn resolve_active_provider_token_budgets(
     file_skills: Option<usize>,
     file_identity: Option<usize>,
     file_capability_surface: Option<usize>,
-) -> (Option<usize>, Option<usize>, Option<usize>, Option<usize>) {
+) -> (
+    Option<usize>,
+    Option<usize>,
+    Option<usize>,
+    Option<usize>,
+    Option<u32>,
+    Option<usize>,
+    Option<usize>,
+) {
     use brassclaw_product_workflow::TokenSettingsStore as _;
     let Some(provider_id) = provider_id else {
         return (
@@ -2727,6 +2795,9 @@ async fn resolve_active_provider_token_budgets(
             file_skills,
             file_identity,
             file_capability_surface,
+            None,
+            None,
+            None,
         );
     };
     let db = match store
@@ -2740,15 +2811,25 @@ async fn resolve_active_provider_token_budgets(
                 file_skills,
                 file_identity,
                 file_capability_surface,
+                None,
+                None,
+                None,
             );
         }
     };
     // Per-provider DB value wins; fall back to file-config when DB field is None.
+    // max_output: DB value as u32 (saturating cast — budgets fit in u32).
+    let max_output = db
+        .max_output
+        .map(|v| v.try_into().unwrap_or(u32::MAX));
     (
         db.conversation_history.or(file_conversation),
         db.skills.or(file_skills),
         db.identity.or(file_identity),
         db.capability_surface.or(file_capability_surface),
+        max_output,
+        db.inline_control,
+        db.total_input,
     )
 }
 
@@ -3333,7 +3414,7 @@ mod tests {
         };
         let llm = crate::runtime_input::ResolvedRebornLlm::from_llm_config(config);
 
-        let bundle = super::build_llm_gateway(llm).await.expect("gateway builds");
+        let bundle = super::build_llm_gateway(llm, None, None).await.expect("gateway builds");
         let response = bundle
             .gateway
             .stream_model(nearai_gateway_test_request())

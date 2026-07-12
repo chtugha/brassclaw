@@ -223,6 +223,12 @@ impl DefaultStrategySlots {
         self
     }
 
+    /// Override the compaction strategy slot with a custom implementation.
+    pub(crate) fn with_compaction(mut self, compaction: Arc<dyn CompactionStrategy>) -> Self {
+        self.compaction = compaction;
+        self
+    }
+
     /// Override the capability strategy slot with a custom implementation.
     pub(crate) fn with_capability(mut self, capability: Arc<dyn CapabilityStrategy>) -> Self {
         self.capability = capability;

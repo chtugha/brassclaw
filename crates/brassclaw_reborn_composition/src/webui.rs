@@ -135,8 +135,45 @@ pub(crate) fn build_webui_services_with_connectable_channels(
     if let Some(boot) = runtime.webui_boot_config() {
         let keys = crate::LlmKeyStore::new(runtime.services().secret_store());
         let mut llm_config = crate::RebornLlmConfigService::new(boot.clone(), keys);
-        if let Some(reload) = runtime.webui_llm_reload_trigger() {
-            llm_config = llm_config.with_reload_trigger(reload);
+        if let Some(mut adapter) = runtime.webui_llm_reload_adapter() {
+            // Wire the per-provider budget refresh callback on provider change so
+            // live budget slots update without a restart when the active provider
+            // is switched through the settings UI.
+            #[cfg(feature = "libsql")]
+            {
+                let budget_slot = runtime.live_context_budget();
+                let token_store = services
+                    .local_runtime
+                    .as_ref()
+                    .and_then(|lr| lr.token_settings_store.as_ref())
+                    .map(Arc::clone);
+                let owner_id = runtime.actor_user_id_string();
+                if let (Some(slot), Some(store)) = (budget_slot, token_store) {
+                    let on_change: Arc<dyn Fn(&str) + Send + Sync> =
+                        Arc::new(move |provider_id: &str| {
+                            let slot = slot.clone();
+                            let store = Arc::clone(&store);
+                            let owner = owner_id.clone();
+                            let provider_id = provider_id.to_string();
+                            // Spawn a detached task: the callback is sync but the
+                            // DB read is async. Best-effort — a failure leaves the
+                            // old budget value until the next restart.
+                            tokio::spawn(async move {
+                                use brassclaw_product_workflow::TokenSettingsStore as _;
+                                if let Ok(row) = store
+                                    .get_provider_token_settings(&owner, &provider_id)
+                                    .await
+                                {
+                                    slot.set(row.conversation_history);
+                                }
+                            });
+                        });
+                    adapter = adapter.with_on_provider_changed(on_change);
+                }
+            }
+            llm_config = llm_config.with_reload_trigger(
+                Arc::new(adapter) as Arc<dyn crate::LlmReloadTrigger>,
+            );
         }
         if let Some(session) = runtime.webui_llm_session() {
             llm_config = llm_config.with_nearai_session(session);

@@ -92,6 +92,12 @@ pub trait LlmReloadTrigger: Send + Sync {
     /// Re-resolve and hot-swap the active provider. The error string is for
     /// logging only and must stay free of secrets / backend internals.
     async fn reload(&self) -> Result<(), String>;
+
+    /// Called by `refresh_running_provider` after a successful reload.
+    /// `new_provider_id` is the provider that is now active.
+    /// Implementations use this to refresh per-provider budget slots.
+    /// The default is a no-op so existing impls (tests, stubs) keep compiling.
+    async fn on_provider_changed(&self, _new_provider_id: &str) {}
 }
 
 /// Operator-wide LLM configuration service backing the webui2 settings surface.
@@ -173,6 +179,13 @@ impl RebornLlmConfigService {
                 reason = %reason,
                 "LLM config persisted but live provider reload failed; change applies on restart"
             );
+        }
+        // Tell budget slots which provider is now active so they can re-read
+        // per-provider settings without a restart.
+        if let Ok(list) = self.admin_list_async().await {
+            if let Some(active) = list.providers.iter().find(|p| p.active) {
+                reload.on_provider_changed(&active.id).await;
+            }
         }
     }
 

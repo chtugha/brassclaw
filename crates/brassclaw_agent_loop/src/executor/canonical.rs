@@ -99,6 +99,8 @@ impl DefaultExecutorPipeline {
                 PromptStep::Prepared(prompt) => *prompt,
                 PromptStep::Exit(exit) => return Ok(exit),
             };
+            // Cache the message count before `prompt.messages` is moved into `ModelInput`.
+            let prompt_message_count = prompt.messages.len();
             state = prompt.state;
             pending_input_ack = prompt.pending_input_ack;
 
@@ -163,6 +165,17 @@ impl DefaultExecutorPipeline {
             // turns in a row. `None` is "unknown" and must NOT count as
             // a zero-output turn against the detector.
             let response_usage = model_response.usage;
+
+            // Update the context strategy's message-average EMA so future turns
+            // use real observed token densities rather than the compiled default.
+            if let Some(usage) = &response_usage
+                && usage.input_tokens > 0
+            {
+                ctx.planner.context().notify_model_usage(
+                    usage.input_tokens,
+                    prompt_message_count,
+                );
+            }
             let completed = match model_response.output {
                 ParentLoopOutput::AssistantReply(reply) => {
                     match self

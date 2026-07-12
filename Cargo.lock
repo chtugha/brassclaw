@@ -1256,7 +1256,7 @@ dependencies = [
 
 [[package]]
 name = "brassclaw"
-version = "0.41.7"
+version = "0.41.8"
 dependencies = [
  "aes",
  "aes-gcm",
