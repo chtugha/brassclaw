@@ -249,43 +249,10 @@ impl InstructionBundleBuilder {
             )?;
         }
 
-        // PRIORITY 2: Thread context messages (conversation history)
-        // Moving this earlier ensures recent conversation is preserved when context is trimmed.
-        // This is the most critical change: conversation flow now takes precedence over
-        // system instructions, preventing the "instruction spam" issue in longer chats.
-        for (ordinal, message) in request.context_bundle.messages.into_iter().enumerate() {
-            requires_materialization_store |= push_context_message(
-                &mut messages,
-                &mut materialized_messages,
-                &mut fingerprint,
-                ContextMessageOptions {
-                    section: "thread",
-                    ordinal,
-                    force_materialize: false,
-                },
-                &mut synthetic_refs,
-                message,
-            )?;
-        }
-
-        // PRIORITY 3: Inline control messages (immediate feedback/warnings)
-        // These come after conversation so the model sees the context before the control message.
-        if !request.inline_messages.is_empty() {
-            requires_materialization_store = true;
-        }
-        for (ordinal, message) in request.inline_messages.into_iter().enumerate() {
-            push_inline_message(
-                &mut messages,
-                &mut materialized_messages,
-                &mut fingerprint,
-                ordinal,
-                message,
-                &mut synthetic_refs,
-            )?;
-        }
-
-        // PRIORITY 4: Instruction snippets (skills and other instructions)
-        // Skills now come after conversation, so they're dropped first if context is tight.
+        // PRIORITY 2: Instruction snippets (skills and other system instructions)
+        // Stable system content sits near the top of the prompt so the KV prefix cache can
+        // reuse it across turns. Skills and instructions only change when the operator
+        // reconfigures them, making them ideal cache-warming material.
         let mut instruction_snippets = request.context_bundle.instruction_snippets;
         sort_instruction_snippets_for_prompt(&mut instruction_snippets);
         let mut skill_ordinal = 0usize;
@@ -334,7 +301,9 @@ impl InstructionBundleBuilder {
             }
         }
 
-        // PRIORITY 5: Memory snippets (contextual information)
+        // PRIORITY 3: Memory snippets (semi-stable contextual information)
+        // Memory changes less often than conversation history, so it sits in the stable
+        // prefix zone — after skills, before the volatile conversation tail.
         let mut memory_snippets = request.context_bundle.memory_snippets;
         if !memory_snippets.is_empty() {
             requires_materialization_store = true;
@@ -354,7 +323,7 @@ impl InstructionBundleBuilder {
             )?;
         }
 
-        // PRIORITY 6: Safety context (policy information)
+        // PRIORITY 4: Safety context (stable policy information)
         if let Some(safety_context) = request.safety_context {
             requires_materialization_store = true;
             push_safety_context(
@@ -366,7 +335,7 @@ impl InstructionBundleBuilder {
             )?;
         }
 
-        // PRIORITY 7: Visible capability surface (available tools/capabilities)
+        // PRIORITY 5: Visible capability surface (stable tool/capability descriptors)
         if let Some(surface) = request
             .visible_surface
             .filter(|surface| !surface.descriptors.is_empty())
@@ -377,6 +346,43 @@ impl InstructionBundleBuilder {
                 &mut materialized_messages,
                 &mut fingerprint,
                 surface,
+                &mut synthetic_refs,
+            )?;
+        }
+
+        // PRIORITY 6: Thread context messages (conversation history — volatile tail)
+        // Conversation history changes every turn and must sit at the end of the stable
+        // prefix so that KV cache entries for identities, skills, memory, safety, and
+        // surface descriptors survive across turns without re-computation.
+        for (ordinal, message) in request.context_bundle.messages.into_iter().enumerate() {
+            requires_materialization_store |= push_context_message(
+                &mut messages,
+                &mut materialized_messages,
+                &mut fingerprint,
+                ContextMessageOptions {
+                    section: "thread",
+                    ordinal,
+                    force_materialize: false,
+                },
+                &mut synthetic_refs,
+                message,
+            )?;
+        }
+
+        // PRIORITY 7: Inline control messages (per-turn nudges — most volatile)
+        // Inline messages are injected for a single turn only (warnings, hints, gate
+        // feedback). They must always be the last messages in the bundle so they appear
+        // immediately before the model's response slot, regardless of history length.
+        if !request.inline_messages.is_empty() {
+            requires_materialization_store = true;
+        }
+        for (ordinal, message) in request.inline_messages.into_iter().enumerate() {
+            push_inline_message(
+                &mut messages,
+                &mut materialized_messages,
+                &mut fingerprint,
+                ordinal,
+                message,
                 &mut synthetic_refs,
             )?;
         }
