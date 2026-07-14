@@ -2718,29 +2718,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "brassclaw_wasm_product_adapters"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "brassclaw_product_adapters",
- "brassclaw_wasm_sandbox_core",
- "chrono",
- "hex",
- "hmac 0.12.1",
- "http 1.4.1",
- "serde_json",
- "sha2 0.10.9",
- "subtle",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "wasmtime",
- "wat",
- "wit-component 0.245.1",
- "wit-parser 0.245.1",
-]
-
-[[package]]
 name = "brassclaw_wasm_sandbox_core"
 version = "0.1.0"
 dependencies = [

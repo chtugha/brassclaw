@@ -278,7 +278,6 @@ fn untrusted_ingress_paths_cannot_submit_host_trusted_inbound() {
         "crates/brassclaw_product_workflow/src",
         "crates/brassclaw_product_workflow_storage/src",
         "crates/brassclaw_reborn_webui_ingress/src",
-        "crates/brassclaw_wasm_product_adapters/src",
         "crates/brassclaw_webui_v2/src",
         "crates/brassclaw_telegram_v2_adapter/src",
     ];
@@ -904,252 +903,6 @@ fn wasm_sandbox_core_is_standalone_v1_parity_kernel() {
     );
 }
 
-#[test]
-fn wasm_product_adapter_crate_has_local_guardrails() {
-    let guardrails = workspace_root().join("crates/brassclaw_wasm_product_adapters/CLAUDE.md");
-    assert!(
-        guardrails.exists(),
-        "brassclaw_wasm_product_adapters needs local CLAUDE.md guardrails before becoming a Reborn boundary crate"
-    );
-}
-
-#[test]
-fn wasm_product_adapter_crate_keeps_minimal_host_glue_dependencies() {
-    let metadata = cargo_metadata();
-    let packages = metadata["packages"]
-        .as_array()
-        .expect("cargo metadata must include packages");
-    let package = packages
-        .iter()
-        .find(|package| package["name"] == "brassclaw_wasm_product_adapters")
-        .expect("brassclaw_wasm_product_adapters must be a workspace package");
-    let mut deps = package["dependencies"]
-        .as_array()
-        .expect("dependencies")
-        .iter()
-        .filter(|dependency| is_normal_dependency(dependency))
-        .filter_map(|dependency| dependency["name"].as_str())
-        .collect::<Vec<_>>();
-    deps.sort_unstable();
-
-    // Deliberate additions beyond the original auth/egress primitives:
-    //   * async-trait, tokio  — required by the native ProductAdapter runner
-    //     (async traits, semaphore-based admission control, timeout).
-    //   * chrono              — receive-timestamp for TrustedInboundContext.
-    //   * hex                 — HMAC signature encoding in the auth verifier.
-    //   * tracing             — structured logging for hardened error paths
-    //                           added in the zmanian review.
-    //   * serde_json          — validates temporary JSON-shim WIT payloads.
-    //   * brassclaw_wasm_sandbox_core — shared v1-style minimal WASI sandbox kernel.
-    //   * wasmtime            — component type and generated binding instantiation.
-    // Every addition is justified by a concrete call site in src/. Adding a
-    // dep here without a matching call site is a contract violation — and
-    // adding workflow/runtime crates beyond this list still requires
-    // updating both the wasm crate's CLAUDE.md and this expected set.
-    let expected = vec![
-        "async-trait",
-        "brassclaw_product_adapters",
-        "brassclaw_wasm_sandbox_core",
-        "chrono",
-        "hex",
-        "hmac",
-        "http",
-        "serde_json",
-        "sha2",
-        "subtle",
-        "thiserror",
-        "tokio",
-        "tracing",
-        "wasmtime",
-    ];
-    assert_eq!(
-        deps, expected,
-        "brassclaw_wasm_product_adapters should stay thin host glue; add runtime/workflow dependencies only when a call-site proves they are required"
-    );
-}
-
-#[test]
-fn wasm_product_adapter_runtime_uses_v1_style_minimal_wasi() {
-    let root = workspace_root();
-    let core = std::fs::read_to_string(root.join("crates/brassclaw_wasm_sandbox_core/src/lib.rs"))
-        .expect("WASM sandbox core must be readable");
-    let adapter_store =
-        std::fs::read_to_string(root.join("crates/brassclaw_wasm_product_adapters/src/store.rs"))
-            .expect("ProductAdapter WASM store must be readable");
-    let adapter_runtime = std::fs::read_to_string(
-        root.join("crates/brassclaw_wasm_product_adapters/src/component_runtime.rs"),
-    )
-    .expect("ProductAdapter WASM runtime must be readable");
-
-    assert!(
-        adapter_store.contains("SandboxStoreCore")
-            && adapter_runtime.contains("add_minimal_wasi_to_linker"),
-        "ProductAdapter components should use the shared v1-style WASM sandbox core instead of duplicating WASI setup"
-    );
-    assert!(
-        core.contains("wasmtime_wasi::p2::add_to_linker_sync"),
-        "shared sandbox core should register WASI p2 like v1 tools/channels"
-    );
-    assert!(
-        core.contains("WasiCtxBuilder::new().build()"),
-        "shared sandbox core should use the v1 minimal default: no env, args, preopens, or inherited network"
-    );
-    for forbidden in [
-        "inherit_env",
-        "inherit_stdio",
-        "preopened_dir",
-        "inherit_network",
-        "allow_ip_name_lookup(true)",
-        "socket_addr_check(|_, _| Box::pin(async { true }))",
-    ] {
-        assert!(
-            !core.contains(forbidden)
-                && !adapter_store.contains(forbidden)
-                && !adapter_runtime.contains(forbidden),
-            "ProductAdapter minimal WASI must not enable `{forbidden}`; HTTP egress stays host-mediated"
-        );
-    }
-}
-
-#[test]
-fn wasm_product_adapter_wit_preserves_product_adapter_trust_boundary() {
-    let wit = std::fs::read_to_string(
-        workspace_root().join("crates/brassclaw_wasm_product_adapters/wit/product_adapter.wit"),
-    )
-    .expect("product adapter WIT must be readable");
-
-    assert!(
-        wit.contains("record parsed-inbound"),
-        "WIT should name adapter output as ParsedProductInbound, not a trusted envelope"
-    );
-    assert!(
-        wit.contains("result<parsed-inbound, string>"),
-        "parse-inbound should return a parsed inbound payload; host glue stamps TrustedInboundContext and builds ProductInboundEnvelope"
-    );
-    for forbidden in [
-        "result<option<parsed-envelope>",
-        "record parsed-envelope",
-        "envelope-json",
-        "Returns `none`",
-        "ProductInboundEnvelope",
-    ] {
-        assert!(
-            !wit.contains(forbidden),
-            "WIT must not use `{forbidden}`; no-op events are ProductInboundPayload::NoOp and envelopes are host-stamped"
-        );
-    }
-
-    let response_record = wit
-        .split("record egress-response {")
-        .nth(1)
-        .and_then(|rest| rest.split('}').next())
-        .expect("egress-response record must exist");
-    assert!(
-        !response_record.contains("headers"),
-        "WASM egress responses must not expose raw response headers to adapters"
-    );
-}
-
-#[test]
-fn wasm_product_adapter_wit_declares_egress_targets_as_paired_records() {
-    // Henry's review (PR #3352, 2026-05-12T05:04:30Z) flagged that the
-    // WIT manifest previously exposed `declared-egress-hosts: list<string>`
-    // and `declared-credential-handles: list<string>` as independent
-    // lists, which contradicted the Rust `EgressPolicy` that now
-    // requires exact `(host, Option<credential_handle>)` pairs.
-    // Independent lists could not express "Slack token only for Slack",
-    // forcing the future host glue to either reintroduce the cross-pair
-    // leak the Rust policy closes or invent pair metadata the manifest
-    // did not carry.
-    //
-    // The WIT now declares a `declared-egress-target` record and the
-    // manifest carries `declared-egress-targets: list<declared-egress-
-    // target>`. This boundary test pins the new shape — a regression
-    // that splits the pair back into independent lists fails here.
-    let wit = std::fs::read_to_string(
-        workspace_root().join("crates/brassclaw_wasm_product_adapters/wit/product_adapter.wit"),
-    )
-    .expect("product adapter WIT must be readable");
-
-    assert!(
-        wit.contains("record declared-egress-target"),
-        "WIT must declare a paired `declared-egress-target` record so the manifest can express the (host, optional credential_handle) contract the Rust EgressPolicy enforces"
-    );
-    assert!(
-        wit.contains("declared-egress-targets: list<declared-egress-target>"),
-        "adapter-manifest must carry `declared-egress-targets: list<declared-egress-target>` (paired) instead of independent host/handle lists"
-    );
-
-    // Egress-request must reference the paired target by a single
-    // index, not split into separate host/handle indexes — the WIT
-    // shape mirrors the Rust pair-contract.
-    assert!(
-        wit.contains("egress-target-index: u32"),
-        "egress-request must reference a single paired target via `egress-target-index`"
-    );
-
-    // Forbidden: the prior independent-list shape and split indexes
-    // that allowed cross-pair leak by construction.
-    for forbidden in [
-        "declared-egress-hosts: list<string>",
-        "declared-credential-handles: list<string>",
-        "host-index: u32",
-        "credential-handle-index: option<u32>",
-    ] {
-        assert!(
-            !wit.contains(forbidden),
-            "WIT must not carry the prior independent-list / split-index shape `{forbidden}` — it could not express the paired Rust contract and would reintroduce the cross-pair credential leak"
-        );
-    }
-}
-
-#[test]
-fn wasm_product_adapter_wit_pins_json_shim_shape() {
-    // Henry's review on PR #3352 flagged that the WIT carries adapter
-    // payloads as JSON strings (`parsed-json`, `evidence-json`,
-    // `outbound-json`, `egress-request-json`, `capabilities-json`),
-    // which weakens the typed component-model boundary. The host
-    // re-validates every JSON crossing on the Rust side via serde, so
-    // the seal contract still holds — but the typed redesign is a
-    // followup. This test pins the current shim shape so a future
-    // change must EITHER:
-    //   (a) update this test alongside the corresponding typed record
-    //       (deliberate redesign), OR
-    //   (b) fail boundary checks (accidental shape drift).
-    let wit = std::fs::read_to_string(
-        workspace_root().join("crates/brassclaw_wasm_product_adapters/wit/product_adapter.wit"),
-    )
-    .expect("product adapter WIT must be readable");
-
-    // Top-level documentation MUST call out the shim explicitly so a
-    // reviewer doesn't have to infer the intent from the field names.
-    for required_doc in ["TEMPORARY", "JSON-string payload shim", "Follow-up"] {
-        assert!(
-            wit.contains(required_doc),
-            "WIT must document the JSON-shim status (`{required_doc}` missing); \
-             see top-of-file comment block before `package`"
-        );
-    }
-
-    // The five known JSON-shim fields. Each is the temporary surface
-    // covering a typed Rust DTO in `brassclaw_product_adapters`.
-    let shim_fields = [
-        ("parsed-inbound", "parsed-json: string"),
-        ("auth-evidence", "evidence-json: string"),
-        ("outbound-envelope", "outbound-json: string"),
-        ("outbound-render", "egress-request-json: string"),
-        ("adapter-manifest", "capabilities-json: string"),
-    ];
-    for (record, field) in shim_fields {
-        assert!(
-            wit.contains(field),
-            "WIT JSON-shim field `{field}` in record `{record}` is missing. \
-             If you removed it as part of a typed redesign, update this test \
-             to assert the new typed shape instead — otherwise the boundary \
-             is silently drifting"
-        );
-    }
-}
 
 #[test]
 fn reborn_runtime_http_egress_has_single_network_boundary() {
@@ -1267,7 +1020,6 @@ fn reborn_product_api_crates_do_not_bind_http_ingress() {
         "crates/brassclaw_product_adapters/src",
         "crates/brassclaw_product_adapter_registry/src",
         "crates/brassclaw_product_workflow/src",
-        "crates/brassclaw_wasm_product_adapters/src",
         "crates/brassclaw_telegram_v2_adapter/src",
         "crates/brassclaw_outbound/src",
         "crates/brassclaw_conversations/src",
@@ -1577,7 +1329,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_tui",
                 "brassclaw_turns",
                 "brassclaw_wasm",
-                "brassclaw_wasm_product_adapters",
             ],
         },
         BoundaryRule {
@@ -1632,7 +1383,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_tui",
                 "brassclaw_turns",
                 "brassclaw_wasm",
-                "brassclaw_wasm_product_adapters",
             ],
         },
         BoundaryRule {
@@ -1671,7 +1421,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_threads",
                 "brassclaw_tui",
                 "brassclaw_wasm",
-                "brassclaw_wasm_product_adapters",
             ],
         },
         BoundaryRule {
@@ -1715,7 +1464,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_threads",
                 "brassclaw_tui",
                 "brassclaw_wasm",
-                "brassclaw_wasm_product_adapters",
             ],
         },
         BoundaryRule {
@@ -1757,7 +1505,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_secrets",
                 "brassclaw_tui",
                 "brassclaw_wasm",
-                "brassclaw_wasm_product_adapters",
             ],
         },
         BoundaryRule {
@@ -1868,7 +1615,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_tui",
                 "brassclaw_turns",
                 "brassclaw_wasm",
-                "brassclaw_wasm_product_adapters",
                 "brassclaw_webui_v2",
             ],
         },
@@ -2064,7 +1810,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_trust",
                 "brassclaw_tui",
                 "brassclaw_wasm",
-                "brassclaw_wasm_product_adapters",
                 "brassclaw_webui_v2",
             ],
         },
@@ -2142,42 +1887,7 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_trust",
                 "brassclaw_tui",
                 "brassclaw_wasm",
-                "brassclaw_wasm_product_adapters",
                 "brassclaw_webui_v2",
-            ],
-        },
-        BoundaryRule {
-            crate_name: "brassclaw_wasm_product_adapters",
-            forbidden: vec![
-                "brassclaw",
-                "brassclaw_authorization",
-                "brassclaw_approvals",
-                "brassclaw_capabilities",
-                "brassclaw_conversations",
-                "brassclaw_dispatcher",
-                "brassclaw_engine",
-                "brassclaw_events",
-                "brassclaw_extensions",
-                "brassclaw_filesystem",
-                "brassclaw_gateway",
-                "brassclaw_host_runtime",
-                "brassclaw_mcp",
-                "brassclaw_memory",
-                "brassclaw_network",
-                "brassclaw_outbound",
-                "brassclaw_processes",
-                "brassclaw_reborn_event_store",
-                "brassclaw_resources",
-                "brassclaw_run_state",
-                "brassclaw_runtime_policy",
-                "brassclaw_safety",
-                "brassclaw_scripts",
-                "brassclaw_secrets",
-                "brassclaw_skills",
-                "brassclaw_threads",
-                "brassclaw_tui",
-                "brassclaw_turns",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {

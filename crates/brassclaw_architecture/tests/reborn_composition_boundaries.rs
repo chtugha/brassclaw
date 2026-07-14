@@ -39,7 +39,6 @@ const SUBSTRATE_CRATES: &[&str] = &[
     "brassclaw_product_adapters",
     "brassclaw_product_workflow",
     "brassclaw_triggers",
-    "brassclaw_wasm_product_adapters",
 ];
 
 #[test]
