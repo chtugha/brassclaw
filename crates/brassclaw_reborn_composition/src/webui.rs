@@ -151,13 +151,16 @@ pub(crate) fn build_webui_services_with_connectable_channels(
                     .as_ref()
                     .map(|lr| Arc::clone(&lr.token_settings_store));
                 let owner_id = runtime.actor_user_id_string();
-                // All five live slots share this outer guard. If the runtime
-                // has no conversation-history budget slot (budget_slot is None)
-                // or no token store, the max_output / total_input /
-                // inline_control / context_window slots are also skipped even
-                // though they carry their own Option guards inside. This is
-                // intentional: without a store to read from, none of the slots
-                // can be refreshed on provider change.
+                // Load the provider registry once at wiring time so the
+                // on_provider_changed callback can read context_window_tokens
+                // from an in-memory snapshot rather than hitting disk on every
+                // provider switch in the UI.
+                let boot_registry = brassclaw_llm::ProviderRegistry::try_load_from_path(None)
+                    .ok()
+                    .map(Arc::new);
+                // All five live slots share this outer guard: if budget_slot or
+                // token_store is absent, the entire callback is skipped. This is
+                // intentional — without a store none of the slots can refresh.
                 if let (Some(slot), Some(store)) = (budget_slot, token_store) {
                     let on_change: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(
                         move |provider_id: &str| {
@@ -169,6 +172,7 @@ pub(crate) fn build_webui_services_with_connectable_channels(
                             let store = Arc::clone(&store);
                             let owner = owner_id.clone();
                             let pid = provider_id.to_string();
+                            let registry = boot_registry.clone();
                             tokio::spawn(async move {
                                 use brassclaw_product_workflow::TokenSettingsStore as _;
                                 match store.get_provider_token_settings(&owner, &pid).await {
@@ -191,20 +195,17 @@ pub(crate) fn build_webui_services_with_connectable_channels(
                                         );
                                     }
                                 }
-                                match brassclaw_llm::ProviderRegistry::try_load_from_path(None) {
-                                    Ok(reg) => {
-                                        if let Some(s) = &ctx_win {
-                                            let window = reg
-                                                .find(&pid)
-                                                .and_then(|d| d.context_window_tokens)
-                                                .map(|v| v as usize);
-                                            s.set(window);
-                                        }
-                                    }
-                                    Err(_) => {
+                                if let Some(s) = &ctx_win {
+                                    if let Some(reg) = &registry {
+                                        let window = reg
+                                            .find(&pid)
+                                            .and_then(|d| d.context_window_tokens)
+                                            .map(|v| v as usize);
+                                        s.set(window);
+                                    } else {
                                         tracing::debug!(
                                             provider = %pid,
-                                            "on_provider_changed: failed to load provider registry, context_window slot not updated"
+                                            "on_provider_changed: provider registry not available at boot, context_window slot not updated"
                                         );
                                     }
                                 }

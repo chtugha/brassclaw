@@ -40,9 +40,10 @@ use brassclaw_product_workflow::{
     RebornSetupExtensionResponse, RebornStreamEventsRequest, RebornStreamEventsResponse,
     RebornSubmitTurnResponse, RebornTimelineRequest, RebornTimelineResponse,
     ReductionRuleConfigView, ReductionRulesRequest, ReductionRulesResponse, RuleType,
-    SetActiveLlmRequest, UpsertLlmProviderRequest, WebUiAuthenticatedCaller, WebUiCancelRunRequest,
-    WebUiCreateThreadRequest, WebUiListAutomationsRequest, WebUiListThreadsRequest,
-    WebUiResolveGateRequest, WebUiSendMessageRequest, WebUiSetupExtensionRequest,
+    SetActiveLlmRequest, TokenSettingsResponse, UpdateTokenSettingsRequest, UpsertLlmProviderRequest,
+    WebUiAuthenticatedCaller, WebUiCancelRunRequest, WebUiCreateThreadRequest,
+    WebUiListAutomationsRequest, WebUiListThreadsRequest, WebUiResolveGateRequest,
+    WebUiSendMessageRequest, WebUiSetupExtensionRequest,
 };
 use brassclaw_threads::SessionThreadRecord;
 use brassclaw_turns::{
@@ -120,6 +121,10 @@ struct StubServices {
         Mutex<Option<Result<ReductionRulesResponse, RebornServicesError>>>,
     next_author_reduction_rule_response:
         Mutex<Option<Result<AuthorReductionRuleResponse, RebornServicesError>>>,
+    get_token_settings_calls: Mutex<Vec<(WebUiAuthenticatedCaller, String)>>,
+    update_token_settings_calls: Mutex<Vec<(String, UpdateTokenSettingsRequest)>>,
+    next_token_settings_response:
+        Mutex<Option<Result<TokenSettingsResponse, RebornServicesError>>>,
 }
 
 impl StubServices {
@@ -738,6 +743,71 @@ impl RebornServicesApi for StubServices {
                 priority: 100,
             },
             description: None,
+        })
+    }
+
+    async fn get_provider_token_settings(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        provider_id: &str,
+    ) -> Result<TokenSettingsResponse, RebornServicesError> {
+        self.get_token_settings_calls
+            .lock()
+            .expect("lock")
+            .push((caller, provider_id.to_string()));
+        if let Some(queued) = self
+            .next_token_settings_response
+            .lock()
+            .expect("lock")
+            .take()
+        {
+            return queued;
+        }
+        Ok(TokenSettingsResponse {
+            profile: None,
+            conversation_history: Some(8000),
+            skills: None,
+            identity: None,
+            inline_control: None,
+            memory: None,
+            safety: None,
+            capability_surface: None,
+            total_input: None,
+            max_output: Some(4096),
+            cache_retention: None,
+        })
+    }
+
+    async fn update_provider_token_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        provider_id: &str,
+        request: UpdateTokenSettingsRequest,
+    ) -> Result<TokenSettingsResponse, RebornServicesError> {
+        self.update_token_settings_calls
+            .lock()
+            .expect("lock")
+            .push((provider_id.to_string(), request.clone()));
+        if let Some(queued) = self
+            .next_token_settings_response
+            .lock()
+            .expect("lock")
+            .take()
+        {
+            return queued;
+        }
+        Ok(TokenSettingsResponse {
+            profile: request.profile,
+            conversation_history: request.conversation_history,
+            skills: request.skills,
+            identity: request.identity,
+            inline_control: request.inline_control,
+            memory: request.memory,
+            safety: request.safety,
+            capability_surface: request.capability_surface,
+            total_input: request.total_input,
+            max_output: request.max_output,
+            cache_retention: request.cache_retention,
         })
     }
 }
@@ -3156,4 +3226,106 @@ async fn reduction_rule_endpoints_reject_missing_project_id() {
             .len(),
         0,
     );
+}
+
+// ── Provider token-settings route contract ──────────────────────────────
+//
+// The HTTP handler in `handlers/tokens.rs` wires path extraction, body
+// deserialization, caller injection, and service delegation. These tests
+// drive the real `Router` against `StubServices` so the dispatch table and
+// wire contract — not just the facade method — are covered.
+
+#[tokio::test]
+async fn get_provider_token_settings_dispatches_through_facade() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/webchat/v2/providers/anthropic/tokens")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    assert_eq!(body["conversation_history"], 8000);
+    assert_eq!(body["max_output"], 4096);
+
+    let calls = services
+        .get_token_settings_calls
+        .lock()
+        .expect("lock")
+        .clone();
+    assert_eq!(calls.len(), 1, "facade called exactly once");
+    assert_eq!(calls[0].1, "anthropic", "provider_id must be threaded from path to facade");
+}
+
+#[tokio::test]
+async fn update_provider_token_settings_round_trips_body_and_provider_id() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let request_body = serde_json::json!({
+        "conversation_history": 6000,
+        "max_output": 2048,
+        "cache_retention": "short",
+    });
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/api/webchat/v2/providers/ollama/tokens")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&request_body).expect("json")))
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    assert_eq!(body["conversation_history"], 6000);
+    assert_eq!(body["max_output"], 2048);
+    assert_eq!(body["cache_retention"], "short");
+
+    let calls = services
+        .update_token_settings_calls
+        .lock()
+        .expect("lock")
+        .clone();
+    assert_eq!(calls.len(), 1, "facade called exactly once");
+    assert_eq!(calls[0].0, "ollama", "provider_id must be threaded from path to facade");
+    assert_eq!(calls[0].1.conversation_history, Some(6000));
+    assert_eq!(calls[0].1.max_output, Some(2048));
+    assert_eq!(calls[0].1.cache_retention.as_deref(), Some("short"));
+}
+
+#[tokio::test]
+async fn update_provider_token_settings_propagates_facade_error() {
+    let services = Arc::new(StubServices::default());
+    *services.next_token_settings_response.lock().expect("lock") =
+        Some(Err(service_unavailable_error(true)));
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/api/webchat/v2/providers/openai/tokens")
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = read_json(response).await;
+    assert_eq!(body["retryable"], true);
 }
