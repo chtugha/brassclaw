@@ -50,14 +50,9 @@ A good rule of thumb: if a change adds new authority or persistence, put it in t
 | `brassclaw_capabilities` | `brassclaw_capabilities` | Caller-facing capability invocation host. Coordinates authorization, approvals, run-state transitions, and neutral runtime dispatch. |
 | `brassclaw_dispatcher` | `brassclaw_dispatcher` | Composition-only runtime dispatch contracts. Wires validated extension descriptors to runtime lanes; it does not parse manifests or grant authority. |
 | `brassclaw_processes` | `brassclaw_processes` | Host-tracked background process lifecycle. Owns lifecycle mechanics, not capability policy. |
-| `brassclaw_scripts` | `brassclaw_scripts` | Script/CLI capability runner contracts. Executes declared commands through a host-selected backend. |
 | `brassclaw_mcp` | `brassclaw_mcp` | Adapts manifest-declared MCP tools into BrassClaw capabilities without granting ambient filesystem, secret, or network authority. |
-| `brassclaw_wasm` | `brassclaw_wasm` | Reborn WASM component runtime lane. Owns component-model/WIT runtime surface and sandboxed WASM execution details. |
-| `brassclaw_wasm_limiter` | `brassclaw_wasm_limiter` | Shared `wasmtime::ResourceLimiter` used by WASM tool and hook runtimes so memory/table/instance limits do not drift. |
-| `brassclaw_wasm_sandbox_core` | `brassclaw_wasm_sandbox_core` | Shared WASM sandbox primitives used below product adapters and runtime lanes. |
-| `brassclaw_wasm_product_adapters` | `brassclaw_wasm_product_adapters` | WASM-side adapters that bridge guest components into product-facing shapes. Keeps host-only authority out of the guest. |
 | `brassclaw_extensions` | `brassclaw_extensions` | Extension manifest, lifecycle, and registration contracts. Owns install/activate/remove semantics; runtime crates consume validated descriptors from here. |
-| `brassclaw_host_runtime` | `brassclaw_host_runtime` | Narrow facade upper Reborn services depend on. Provides `HostRuntime` plus production composition around capability hosting. |
+| `brassclaw_host_runtime` | `brassclaw_host_runtime` | Narrow facade upper Reborn services depend on. Provides `HostRuntime` plus production composition around capability hosting. Also hosts the in-kernel script lane (Docker-backed executor) so the script runtime is never a separate crate. |
 
 ### Durable state, eventing, and read models
 

@@ -1844,7 +1844,6 @@ dependencies = [
  "brassclaw_run_state",
  "brassclaw_runtime_policy",
  "brassclaw_safety",
- "brassclaw_scripts",
  "brassclaw_secrets",
  "brassclaw_skills",
  "brassclaw_triggers",
@@ -2185,7 +2184,6 @@ dependencies = [
  "brassclaw_processes",
  "brassclaw_reborn_event_store",
  "brassclaw_resources",
- "brassclaw_scripts",
  "brassclaw_secrets",
  "brassclaw_skills",
  "brassclaw_threads",
@@ -2232,6 +2230,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "toml 0.8.23",
+ "toml_edit 0.22.27",
  "tracing",
  "tracing-subscriber",
  "uuid",
@@ -2503,22 +2502,6 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "url",
-]
-
-[[package]]
-name = "brassclaw_scripts"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "brassclaw_extensions",
- "brassclaw_host_api",
- "brassclaw_resources",
- "futures-util",
- "rust_decimal_macros",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
 ]
 
 [[package]]

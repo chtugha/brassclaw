@@ -19,19 +19,6 @@ ignore = [
     # rand unsoundness with custom logger calling rand::rng() during reseed — we don't use this pattern;
     # revisit/remove by 2026-06-30, or when transitive deps (tower, nanoid, phf_generator) release rand ≥0.9.3 compat
     "RUSTSEC-2026-0097",
-    # wasmtime: WASI path_open(TRUNCATE) bypasses FilePerms::WRITE host restriction
-    # (https://github.com/bytecodealliance/wasmtime/security/advisories/GHSA-2r75-cxrj-cmph).
-    # The BrassClaw WASM sandbox does not grant guest modules WASI filesystem
-    # capabilities backed by host-controlled FilePerms — guests communicate via
-    # explicit host functions (see crates/brassclaw_engine and src/tools/wasm/host.rs),
-    # so the TRUNCATE bypass is not reachable from our guest surface. Remove once
-    # wasmtime is upgraded to a patched release.
-    "RUSTSEC-2026-0149",
-    # wasmtime-wasi: Leak in WASIp1 fd_renumber implementation
-    # (https://github.com/bytecodealliance/wasmtime/security/advisories/GHSA-3p27-qvp9-27qf).
-    # BrassClaw WASM guests do not use fd_renumber; the leak path is not reachable
-    # from our guest surface. Remove once wasmtime is upgraded to >=44.0.3.
-    "RUSTSEC-2026-0182",
     # lopdf: stack overflow via deeply nested PDF objects (RUSTSEC-2026-0187).
     # lopdf is pulled in by the document-extraction path (src/document_extraction).
     # We do not accept untrusted PDFs in the critical path; extraction is user-initiated

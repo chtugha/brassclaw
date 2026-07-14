@@ -7,7 +7,6 @@
 - Use these neighboring contracts before changing behavior:
   - `crates/brassclaw_product_adapter_registry/AGENTS.md`
   - `crates/brassclaw_product_workflow/AGENTS.md`
-  - `crates/brassclaw_wasm_product_adapters/CLAUDE.md`
   - `crates/brassclaw_outbound/AGENTS.md`
 
 ## What This Crate Owns

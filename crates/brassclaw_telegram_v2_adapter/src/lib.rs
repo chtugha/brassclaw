@@ -1,4 +1,4 @@
-//! Telegram WASM v2 ProductAdapter (issue #3285 tracer-bullet).
+//! Telegram v2 ProductAdapter (issue #3285 tracer-bullet).
 //!
 //! This crate implements the Telegram side of the Reborn ProductAdapter
 //! contract defined in `brassclaw_product_adapters`. It is a clean rewrite
@@ -12,9 +12,7 @@
 //! * [`render`] — `FinalReplyView` -> `sendMessage` body shaping.
 //!
 //! The crate ships as a native Rust ProductAdapter so the contract can be
-//! exercised end-to-end against fakes today; the wasmtime component-model
-//! binary build lands in a follow-up landing alongside the
-//! `crates/brassclaw_wasm_product_adapters` runtime glue.
+//! exercised end-to-end against fakes today.
 
 #![forbid(unsafe_code)]
 

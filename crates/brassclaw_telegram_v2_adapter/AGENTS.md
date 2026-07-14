@@ -9,11 +9,10 @@
   - `render.rs` — Telegram outbound rendering.
 - Read upstream contracts before changing adapter behavior:
   - `crates/brassclaw_product_adapters/AGENTS.md`
-  - `crates/brassclaw_wasm_product_adapters/CLAUDE.md`
 
 ## What This Crate Owns
 
-- Telegram WASM v2 ProductAdapter tracer-bullet implementation.
+- Telegram ProductAdapter tracer-bullet implementation.
 - Telegram payload parsing and outbound rendering for the adapter contract.
 - Adapter-specific mapping between Telegram shapes and shared ProductAdapter DTOs.
 

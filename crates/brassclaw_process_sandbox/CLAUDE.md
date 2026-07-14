@@ -5,4 +5,4 @@
 - Keep physical Docker mount roots in trusted executor configuration, never in `ProcessExecutionRequest.input`.
 - Treat install and credentialed run phases separately: install may write scoped tool/cache state with no secrets; credentialed run uses brokered secrets and read-only tool/cache state.
 - Secret values must stay inside broker/lease seams and redaction helpers. Docker args, process output, errors, and debug data must not contain secret material.
-- Do not stretch `brassclaw_scripts`; this crate is for dynamic sandbox process execution behind `ProcessExecutor`.
+- Do not reach into the host-runtime script lane; this crate is for dynamic sandbox process execution behind `ProcessExecutor` and shares no types with the extension-runtime script backend.

@@ -160,7 +160,7 @@ Browsers should render registry `display_name` for users and send
 
 Handlers must consume only `RebornServicesApi`. They must NOT depend on
 `brassclaw_dispatcher`, `brassclaw_extensions`, `brassclaw_host_runtime`,
-`brassclaw_mcp`, `brassclaw_wasm`, `brassclaw_scripts`, `brassclaw_network`,
+`brassclaw_mcp`, `brassclaw_network`,
 `brassclaw_engine`, `brassclaw_gateway`, `brassclaw_run_state`,
 `brassclaw_capabilities`, or any DB/storage crate. The architecture
 boundary test enforces this.

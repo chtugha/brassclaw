@@ -44,11 +44,10 @@ The legacy v1 runtime in `src/` follows a different model (Channel/Agent/AppBuil
 | LLM providers and routing | `crates/brassclaw_llm/` |
 | Skills system | `crates/brassclaw_skills/`, `skills/` |
 | Security, safety, prompt injection | `crates/brassclaw_safety/` |
-| WASM sandbox and tool runtime | `crates/brassclaw_wasm/` |
 | WebUI v2 server (React SPA) | `crates/brassclaw_webui_v2/`, `crates/brassclaw_webui_v2_static/` |
 | WebUI ingress / gateway adapter | `crates/brassclaw_reborn_webui_ingress/` |
 | Extensions lifecycle | `crates/brassclaw_extensions/` |
-| Host runtime shell access | `crates/brassclaw_host_runtime/` |
+| Host runtime shell access | `crates/brassclaw_host_runtime/` (hosts the in-kernel script lane via `services/script_runtime`) |
 | Embeddings | `crates/brassclaw_embeddings/` |
 | Dual-backend persistence | `src/db/` |
 | Legacy v1 agent runtime | `src/agent/` — do not modify unless the task explicitly targets v1 |

@@ -36,7 +36,7 @@ Use targeted crate tests first. Add `brassclaw_architecture` when dependency edg
 - `docs/reborn/contracts/*.md` — Reborn source-of-truth contracts.
 - `crates/brassclaw_architecture` — mechanical dependency-boundary enforcement.
 
-Treat crate-local `AGENTS.md` as the first file to load when it exists. Current workspace crates without one include `brassclaw_hooks`, `brassclaw_prompt_envelope`, `brassclaw_reborn_traces`, and `brassclaw_wasm_limiter`.
+Treat crate-local `AGENTS.md` as the first file to load when it exists. Current workspace crates without one include `brassclaw_hooks`, `brassclaw_prompt_envelope`, and `brassclaw_reborn_traces`.
 
 ## Dependency Mental Model
 
@@ -46,7 +46,7 @@ Keep lower layers neutral. Product and runtime composition flows downward throug
 common / host_api / prompt_envelope
   -> filesystem / memory / events / event_projections / event_streams / extensions / trust / resources
   -> secrets / network / outbound / run_state / authorization / approvals / runtime_policy / hooks
-  -> host_runtime / processes / dispatcher / runtime lanes (scripts, mcp, wasm, wasm_limiter)
+  -> host_runtime (also hosts the script lane) / processes / dispatcher / runtime lanes (mcp, host_runtime::script_runtime)
   -> turns / threads / agent_loop / loop_support / capabilities
   -> reborn composition / product adapters / product workflow / product workflow storage / CLI
   -> engine / llm / gateway / webui_v2 / webui_ingress / tui / root product integration
@@ -100,11 +100,7 @@ Boundary rule: if you need an upstream crate in a low-level crate, stop and chec
 | `brassclaw_host_runtime` | `brassclaw_host_runtime/AGENTS.md`, `brassclaw_host_runtime/CLAUDE.md` | Host-side Reborn service composition: production services, obligations, HTTP egress, redaction, secrets/network/resource mediation. | Product workflow, runtime-specific request shapes, duplicate network/secret logic. |
 | `brassclaw_processes` | `brassclaw_processes/AGENTS.md`, `brassclaw_processes/CLAUDE.md` | Process lifecycle, cancellation, stores, status/output helpers, `ProcessHost`, wrappers. | Authorization, approval policy, runtime lane internals beyond adapter contracts. |
 | `brassclaw_dispatcher` | `brassclaw_dispatcher/AGENTS.md`, `brassclaw_dispatcher/CLAUDE.md` | Already-authorized runtime routing through `RuntimeAdapter`, redacted dispatch results, event dispatch contracts. | Authorization, approvals, run-state, concrete runtime deps, product workflow. |
-| `brassclaw_scripts` | `brassclaw_scripts/AGENTS.md`, `brassclaw_scripts/CLAUDE.md` | Script runtime lane over host-mediated filesystem/events/resources/dispatcher/HTTP, Docker/backend output parsing. | Manual credentials, direct provider HTTP, duplicated dispatcher/process/resource policy. |
 | `brassclaw_mcp` | `brassclaw_mcp/AGENTS.md`, `brassclaw_mcp/CLAUDE.md` | MCP runtime lane, execution request/result types, JSON-RPC exchange, client abstraction, HTTP adapter, resource accounting. | Direct outbound networking, ad-hoc credential injection, product workflow. |
-| `brassclaw_wasm` | `brassclaw_wasm/AGENTS.md`, `brassclaw_wasm/CLAUDE.md`, `docs/reborn/contracts/wasm.md`, `wit/tool.wit` | WASM runtime lane, component/WIT bindings, limiter, store, host adapters, runtime config. | Privileged host effects outside mediated APIs; copied secrets/network/resource logic. |
-| `brassclaw_wasm_limiter` | `Cargo.toml`, `src/lib.rs` | Shared `wasmtime::ResourceLimiter` for WASM tool and hook runtimes. | Product adapter workflow, policy decisions, or runtime-specific side effects beyond limiter accounting. |
-| `brassclaw_wasm_sandbox_core` | `brassclaw_wasm_sandbox_core/AGENTS.md`, `brassclaw_wasm_sandbox_core/CLAUDE.md` | Shared WASM sandbox core primitives used below product adapters/runtime. | Product adapter workflow or host product policy. |
 
 ### Turns, threads, loops, engine
 
@@ -132,8 +128,7 @@ Boundary rule: if you need an upstream crate in a low-level crate, stop and chec
 | `brassclaw_product_adapter_registry` | `brassclaw_product_adapter_registry/AGENTS.md`, `brassclaw_product_adapter_registry/CLAUDE.md` | ProductAdapter host-api projection and installation registry. | Adapter execution or product workflow orchestration. |
 | `brassclaw_product_workflow` | `brassclaw_product_workflow/AGENTS.md`, `brassclaw_product_workflow/CLAUDE.md` | Product-facing workflow facade: inbound turns, bindings, ledger, workflow/errors, Reborn service bridges. | Low-level runtime lane internals or direct provider-specific transports. |
 | `brassclaw_product_workflow_storage` | `brassclaw_product_workflow_storage/AGENTS.md`, `Cargo.toml` | Durable libSQL/PostgreSQL adapters for the product workflow idempotency ledger. | Workflow orchestration, direct dispatch, or divergence between libSQL and PostgreSQL behavior. |
-| `brassclaw_wasm_product_adapters` | `brassclaw_wasm_product_adapters/AGENTS.md`, `brassclaw_wasm_product_adapters/CLAUDE.md` | WASM v2 ProductAdapter runtime: component runner, egress policy, auth verifier, bindings, store. | Generic WASM lane semantics or product workflow decisions. |
-| `brassclaw_telegram_v2_adapter` | `brassclaw_telegram_v2_adapter/AGENTS.md`, `Cargo.toml`, `src/lib.rs` | Telegram WASM v2 ProductAdapter tracer bullet: payload parsing, rendering, adapter implementation. | Shared adapter contracts or registry semantics. |
+| `brassclaw_telegram_v2_adapter` | `brassclaw_telegram_v2_adapter/AGENTS.md`, `Cargo.toml`, `src/lib.rs` | Telegram ProductAdapter tracer bullet: payload parsing, rendering, adapter implementation. | Shared adapter contracts or registry semantics. |
 | `brassclaw_reborn_webui_ingress` | `brassclaw_reborn_webui_ingress/AGENTS.md`, `Cargo.toml` | Host-owned listener binding, authenticator implementations, and serve loop for Reborn WebChat v2. | Product/API route semantics, transcript storage, v1 channel code, product adapter transport shims. |
 
 ### LLM, skills, safety, UI, helpers
@@ -156,7 +151,7 @@ Boundary rule: if you need an upstream crate in a low-level crate, stop and chec
 - Events/projections/outbound: `brassclaw_events` for canonical redacted events; `brassclaw_event_projections` for projection model; `brassclaw_event_streams` for transport-neutral live/replay streams; `brassclaw_outbound` for metadata-only delivery/subscription policy; adapters for concrete delivery.
 - Trust/auth/approval: `brassclaw_trust` -> `brassclaw_authorization` -> `brassclaw_run_state`/`brassclaw_approvals` -> `brassclaw_capabilities` as needed.
 - Hooks and prompt context: `brassclaw_hooks` for hook registration/dispatch/failure policy; `brassclaw_prompt_envelope` for model-visible untrusted or trust-labeled snippet wrapping.
-- Runtime execution: lane crate (`scripts`, `mcp`, `wasm`) first; `dispatcher` for routing; `host_runtime` for secrets/network/resources/redaction; `processes` for background lifecycle; `brassclaw_wasm_limiter` only for shared limiter mechanics.
+- Runtime execution: lane crate (`mcp` or `script` execution via `host_runtime`'s script lane) first; `dispatcher` for routing; `host_runtime` for secrets/network/resources/redaction; `processes` for background lifecycle. The script lane lives inside `brassclaw_host_runtime` (no separate crate) to keep dispatcher composition private to the kernel.
 - Turns/agent loop: `brassclaw_turns` for turn coordination; `brassclaw_agent_loop` for strategy/planner/executor contracts; `brassclaw_loop_support` for host support ports; `brassclaw_engine` for CodeAct/thread runtime.
 - Product adapter flow: `brassclaw_product_adapters` contracts -> `brassclaw_product_adapter_registry` installation/projection -> `brassclaw_product_workflow` orchestration -> concrete adapter crate.
 - Reborn binary/composition: `brassclaw_reborn_config` for boot config; `brassclaw_reborn_composition` for production wiring; `brassclaw_reborn_cli` for commands; `brassclaw_reborn` for standalone adapters/driver registry; `brassclaw_reborn_webui_ingress` for host-owned WebChat v2 listener lifecycle.
@@ -172,7 +167,6 @@ cargo test -p brassclaw_host_api
 cargo test -p brassclaw_network network_policy_contract
 cargo test -p brassclaw_outbound --all-features
 cargo test -p brassclaw_product_workflow
-cargo test -p brassclaw_wasm --test wit_tool_runtime_contract
 ```
 
 Then expand by risk:
