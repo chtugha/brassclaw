@@ -25,15 +25,14 @@
 //!   `list_memory_docs_with_shared` via the same read path; they
 //!   delegate to the per-owner `list_memory_docs` query and fan out
 //!   across the shared-owner candidates.
-//! - `unimplemented!()`s every other `Store` method. Those methods are
-//!   only invoked from engine code paths the reduction-rule pipeline
-//!   does not touch (thread CRUD, mission CRUD, lease CRUD, ...
-//!   followed by the eventual full v1 → v2 store land — tracked
-//!   separately). The `unimplemented!` is acceptable because the
-//!   AGENTS.md policy applies to `_production code that has been
-//!   audited`_ and these methods are demonstrably dead under the
-//!   reduction-rule test surface; running reduction rules with this
-//!   adapter cannot reach them.
+//! - Returns `Err(EngineError::Store { … })` for every `Store` method
+//!   that is outside the MemoryDoc surface (thread CRUD, mission CRUD,
+//!   lease CRUD). These code paths are not reached by the
+//!   reduction-rule pipeline, but returning a proper error is safer
+//!   than panicking — a future caller that accidentally routes a
+//!   thread-CRUD call through this adapter gets a diagnosable error
+//!   instead of an unrecoverable process abort. The full engine-store
+//!   land (Phase 6) will replace these stubs with real implementations.
 
 #![forbid(unsafe_code)]
 
@@ -215,110 +214,176 @@ impl Store for MemoryDocLibSqlStore {
         &self,
         _thread: &Thread,
     ) -> Result<(), brassclaw_engine::types::error::EngineError> {
-        unimplemented!(
-            "MemoryDocLibSqlStore covers only MemoryDoc persistence; thread CRUD is a separate surface"
-        )
+        Err(brassclaw_engine::types::error::EngineError::Store {
+            reason: "MemoryDocLibSqlStore::save_thread is not implemented \
+                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
+                .into(),
+        })
     }
     async fn load_thread(
         &self,
         _id: ThreadId,
     ) -> Result<Option<Thread>, brassclaw_engine::types::error::EngineError> {
-        unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
+        Err(brassclaw_engine::types::error::EngineError::Store {
+            reason: "MemoryDocLibSqlStore::load_thread is not implemented \
+                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
+                .into(),
+        })
     }
     async fn list_threads(
         &self,
         _project_id: ProjectId,
         _user_id: &str,
     ) -> Result<Vec<Thread>, brassclaw_engine::types::error::EngineError> {
-        unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
+        Err(brassclaw_engine::types::error::EngineError::Store {
+            reason: "MemoryDocLibSqlStore::list_threads is not implemented \
+                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
+                .into(),
+        })
     }
     async fn update_thread_state(
         &self,
         _id: ThreadId,
         _state: ThreadState,
     ) -> Result<(), brassclaw_engine::types::error::EngineError> {
-        unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
+        Err(brassclaw_engine::types::error::EngineError::Store {
+            reason: "MemoryDocLibSqlStore::update_thread_state is not implemented \
+                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
+                .into(),
+        })
     }
     async fn save_step(
         &self,
         _step: &Step,
     ) -> Result<(), brassclaw_engine::types::error::EngineError> {
-        unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
+        Err(brassclaw_engine::types::error::EngineError::Store {
+            reason: "MemoryDocLibSqlStore::save_step is not implemented \
+                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
+                .into(),
+        })
     }
     async fn load_steps(
         &self,
         _thread_id: ThreadId,
     ) -> Result<Vec<Step>, brassclaw_engine::types::error::EngineError> {
-        unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
+        Err(brassclaw_engine::types::error::EngineError::Store {
+            reason: "MemoryDocLibSqlStore::load_steps is not implemented \
+                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
+                .into(),
+        })
     }
     async fn append_events(
         &self,
         _events: &[ThreadEvent],
     ) -> Result<(), brassclaw_engine::types::error::EngineError> {
-        unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
+        Err(brassclaw_engine::types::error::EngineError::Store {
+            reason: "MemoryDocLibSqlStore::append_events is not implemented \
+                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
+                .into(),
+        })
     }
     async fn load_events(
         &self,
         _thread_id: ThreadId,
     ) -> Result<Vec<ThreadEvent>, brassclaw_engine::types::error::EngineError> {
-        unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
+        Err(brassclaw_engine::types::error::EngineError::Store {
+            reason: "MemoryDocLibSqlStore::load_events is not implemented \
+                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
+                .into(),
+        })
     }
     async fn save_project(
         &self,
         _project: &Project,
     ) -> Result<(), brassclaw_engine::types::error::EngineError> {
-        unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
+        Err(brassclaw_engine::types::error::EngineError::Store {
+            reason: "MemoryDocLibSqlStore::save_project is not implemented \
+                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
+                .into(),
+        })
     }
     async fn load_project(
         &self,
         _id: ProjectId,
     ) -> Result<Option<Project>, brassclaw_engine::types::error::EngineError> {
-        unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
+        Err(brassclaw_engine::types::error::EngineError::Store {
+            reason: "MemoryDocLibSqlStore::load_project is not implemented \
+                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
+                .into(),
+        })
     }
     async fn save_lease(
         &self,
         _lease: &CapabilityLease,
     ) -> Result<(), brassclaw_engine::types::error::EngineError> {
-        unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
+        Err(brassclaw_engine::types::error::EngineError::Store {
+            reason: "MemoryDocLibSqlStore::save_lease is not implemented \
+                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
+                .into(),
+        })
     }
     async fn load_active_leases(
         &self,
         _thread_id: ThreadId,
     ) -> Result<Vec<CapabilityLease>, brassclaw_engine::types::error::EngineError> {
-        unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
+        Err(brassclaw_engine::types::error::EngineError::Store {
+            reason: "MemoryDocLibSqlStore::load_active_leases is not implemented \
+                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
+                .into(),
+        })
     }
     async fn revoke_lease(
         &self,
         _lease_id: LeaseId,
         _reason: &str,
     ) -> Result<(), brassclaw_engine::types::error::EngineError> {
-        unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
+        Err(brassclaw_engine::types::error::EngineError::Store {
+            reason: "MemoryDocLibSqlStore::revoke_lease is not implemented \
+                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
+                .into(),
+        })
     }
     async fn save_mission(
         &self,
         _mission: &Mission,
     ) -> Result<(), brassclaw_engine::types::error::EngineError> {
-        unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
+        Err(brassclaw_engine::types::error::EngineError::Store {
+            reason: "MemoryDocLibSqlStore::save_mission is not implemented \
+                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
+                .into(),
+        })
     }
     async fn load_mission(
         &self,
         _id: MissionId,
     ) -> Result<Option<Mission>, brassclaw_engine::types::error::EngineError> {
-        unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
+        Err(brassclaw_engine::types::error::EngineError::Store {
+            reason: "MemoryDocLibSqlStore::load_mission is not implemented \
+                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
+                .into(),
+        })
     }
     async fn list_missions(
         &self,
         _project_id: ProjectId,
         _user_id: &str,
     ) -> Result<Vec<Mission>, brassclaw_engine::types::error::EngineError> {
-        unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
+        Err(brassclaw_engine::types::error::EngineError::Store {
+            reason: "MemoryDocLibSqlStore::list_missions is not implemented \
+                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
+                .into(),
+        })
     }
     async fn update_mission_status(
         &self,
         _id: MissionId,
         _status: MissionStatus,
     ) -> Result<(), brassclaw_engine::types::error::EngineError> {
-        unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
+        Err(brassclaw_engine::types::error::EngineError::Store {
+            reason: "MemoryDocLibSqlStore::update_mission_status is not implemented \
+                     (MemoryDoc-only adapter; Phase 6 will land the full store)"
+                .into(),
+        })
     }
 
     // ── MemoryDoc operations (functional) ──
