@@ -41,7 +41,6 @@ use brassclaw_engine::types::project::ProjectId;
 use brassclaw_product_workflow::{
     ReductionRuleConfigView, ReductionRuleStore, ReductionRuleStoreError, sort_for_storage,
 };
-use tokio::sync::Mutex;
 use uuid::Uuid;
 
 /// Stable UUID namespace used to derive the deterministic `DocId` for a
@@ -101,10 +100,17 @@ impl ReductionRuleStore for StoreBackedReductionRuleStore {
         user_id: &str,
         project_id: &str,
     ) -> Result<Vec<ReductionRuleConfigView>, ReductionRuleStoreError> {
-        let project_id = parse_project_id(project_id)?;
+        // `project_id` here is the wire slug (e.g. "bootstrap"); we keep
+        // both the slug and the derived `ProjectId` so the title-match
+        // filter and the store filter stay row-for-row identical to the
+        // `replace` write path. `ProjectId::Display` prints the internal
+        // UUID, NOT the slug, so reusing `project_id_typed.to_string()`
+        // for the title key would silently rewrite the key and no doc
+        // ever matches itself.
+        let project_id_typed = parse_project_id(project_id)?;
         let docs = self
             .store
-            .list_memory_docs(project_id, user_id)
+            .list_memory_docs(project_id_typed, user_id)
             .await
             .map_err(|source| {
                 ReductionRuleStoreError::Unavailable(format!(
@@ -120,21 +126,22 @@ impl ReductionRuleStore for StoreBackedReductionRuleStore {
             // (user, project) tuple. Operators cannot create extra
             // entries today, but if the schema ever widens we don't
             // want cross-tenant leakage via matching tags.
-            if doc.title != ruleset_title(user_id, &project_id.to_string()) {
+            let expected_title = ruleset_title(user_id, project_id);
+            if doc.title != expected_title {
                 continue;
             }
-            let rules: Vec<ReductionRuleConfigView> = match serde_json::from_str(&doc.content) {
-                Ok(v) => v,
-                Err(source) => {
-                    drop(doc);
-                    tracing::debug!(
-                        user_id,
-                        %project_id,
-                        "reduction rule parse failed; skipping doc: {source}"
-                    );
-                    continue;
-                }
-            };
+            let rules: Vec<ReductionRuleConfigView> =
+                match serde_json::from_str::<Vec<ReductionRuleConfigView>>(&doc.content) {
+                    Ok(v) => v,
+                    Err(source) => {
+                        tracing::debug!(
+                            user_id,
+                            %project_id_typed,
+                            "reduction rule parse failed; skipping doc: {source}"
+                        );
+                        continue;
+                    }
+                };
             for rule in rules {
                 out.push(rule);
             }
@@ -205,93 +212,6 @@ fn parse_project_id(raw: &str) -> Result<ProjectId, ReductionRuleStoreError> {
         )));
     }
     Ok(ProjectId::from_slug("brassclaw-reduction-rules", raw))
-}
-
-fn reduction_rules_key(project_id: &str) -> String {
-    format!("reduction_rules:{project_id}")
-}
-
-/// LibSQL-backed implementation of [`ReductionRuleStore`].
-///
-/// Uses the same `settings` table as [`super::token_settings_store::DbTokenSettingsStore`]
-/// (which creates it with `CREATE TABLE IF NOT EXISTS` on `open`). Rules for each
-/// `(user_id, project_id)` pair are stored as a JSON array under the key
-/// `reduction_rules:<project_id>`.
-pub(crate) struct DbReductionRuleStore {
-    conn: Arc<Mutex<libsql::Connection>>,
-}
-
-impl DbReductionRuleStore {
-    /// Open the store against `db`. The `settings` table must already exist
-    /// (created by `DbTokenSettingsStore::open` which runs `CREATE TABLE IF NOT EXISTS`
-    /// on the same database handle — just call it first).
-    pub(crate) async fn open(
-        db: Arc<libsql::Database>,
-    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let conn = db
-            .connect()
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-        Ok(Self {
-            conn: Arc::new(Mutex::new(conn)),
-        })
-    }
-}
-
-#[async_trait]
-impl ReductionRuleStore for DbReductionRuleStore {
-    async fn list(
-        &self,
-        user_id: &str,
-        project_id: &str,
-    ) -> Result<Vec<ReductionRuleConfigView>, ReductionRuleStoreError> {
-        let key = reduction_rules_key(project_id);
-        let conn = self.conn.lock().await;
-        let mut rows = conn
-            .query(
-                "SELECT value FROM settings WHERE user_id = ? AND key = ?",
-                libsql::params![user_id, key],
-            )
-            .await
-            .map_err(|e| ReductionRuleStoreError::Unavailable(e.to_string()))?;
-        if let Some(row) = rows
-            .next()
-            .await
-            .map_err(|e| ReductionRuleStoreError::Unavailable(e.to_string()))?
-        {
-            let value_str: String = row
-                .get(0)
-                .map_err(|e| ReductionRuleStoreError::Unavailable(e.to_string()))?;
-            let mut rules: Vec<ReductionRuleConfigView> = serde_json::from_str(&value_str)
-                .map_err(|e| ReductionRuleStoreError::Invalid(e.to_string()))?;
-            sort_for_storage(&mut rules);
-            Ok(rules)
-        } else {
-            Ok(Vec::new())
-        }
-    }
-
-    async fn replace(
-        &self,
-        user_id: &str,
-        project_id: &str,
-        mut rules: Vec<ReductionRuleConfigView>,
-    ) -> Result<Vec<ReductionRuleConfigView>, ReductionRuleStoreError> {
-        let key = reduction_rules_key(project_id);
-        sort_for_storage(&mut rules);
-        let value_str = serde_json::to_string(&rules)
-            .map_err(|e| ReductionRuleStoreError::Invalid(e.to_string()))?;
-        let conn = self.conn.lock().await;
-        conn.execute(
-            "INSERT INTO settings (user_id, key, value, updated_at) VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-             ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-            libsql::params![user_id, key, value_str],
-        )
-        .await
-        .map_err(|e| ReductionRuleStoreError::Unavailable(e.to_string()))?;
-        drop(conn);
-        invalidate_reduction_rules_cache();
-        Ok(rules)
-    }
 }
 
 #[cfg(test)]
@@ -574,7 +494,7 @@ mod tests {
                 user_id: "user1".to_string(),
                 doc_type: DocType::Note,
                 title: "reduction_rules:user1:alpha".to_string(),
-                content: "[{\"id\":\"alpha-rule\",\"type\":\"truncate\",\"params\":{\"field\":\"content\",\"max_chars\":256},\"priority\":100}]".to_string(),
+                content: "[{\"id\":\"alpha-rule\",\"rule_type\":\"truncate\",\"params\":{\"field\":\"content\",\"max_chars\":256},\"priority\":100}]".to_string(),
                 source_thread_id: None,
                 tags: vec!["reduction_rule".to_string()],
                 metadata: serde_json::json!({}),

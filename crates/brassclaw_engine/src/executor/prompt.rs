@@ -200,10 +200,17 @@ pub(crate) fn build_codeact_system_prompt_inner(
     // appear in the prompt as "available" but never made it into
     // `tool_calls`, leaving them effectively unreachable (PR #3665 review).
     if !disable_codeact {
-        let compact_actions: Vec<_> = compact_actions
+        let mut compact_actions: Vec<&ActionDef> = compact_actions
             .iter()
             .filter(|action| matches!(action.model_tool_surface, ModelToolSurface::CompactToolInfo))
             .collect();
+        // Deterministic ordering of the Enabled Tools list is required for
+        // vLLM/Anthropic prefix-cache hits — the listing is part of the
+        // stable system-prompt prefix, so any reordering between turns
+        // invalidates the cache. Mirrors the background-capabilities /
+        // activatable-integrations sort above and the tool-list sort in
+        // `complete_model_request`.
+        compact_actions.sort_by(|a, b| a.name.cmp(&b.name));
 
         if !compact_actions.is_empty() {
             prompt.push_str(CODEACT_ENABLED_TOOLS_HEADING);
@@ -633,20 +640,30 @@ mod tests {
         assert!(prompt.contains("don't enumerate alternatives"));
     }
 
-    /// Prefix-cache invariant: capabilities rendered into the system prompt
-    /// must appear in alphabetical order regardless of input order, so the
-    /// stable prefix-cache hit rate is preserved across turns.
+    /// Prefix-cache invariant: capabilities rendered into the same section
+    /// of the system prompt must appear in alphabetical order regardless
+    /// of input order, so the stable prefix-cache hit rate is preserved
+    /// across turns.
     ///
-    /// `telegram` (background) is alphabetically BEFORE `slack`
-    /// (activatable), but the test input places them in the opposite
-    /// order. If the sort guard regresses, the rendered order will mirror
-    /// the input and the assertion below flips.
+    /// Sections themselves are emitted in a fixed DOM order by the
+    /// renderer (Background Capabilities → Enabled Tools → Activatable
+    /// Integrations), so cross-section alphabetic comparisons are NOT a
+    /// valid invariant — items in earlier sections are guaranteed to
+    /// appear before items in later sections by section semantics, not by
+    /// the sort. The within-section sort is what protects per-section
+    /// prefix-cache stability.
+    ///
+    /// `discord` and `telegram` are both background channel capabilities.
+    /// The test input places `telegram` BEFORE `discord` (reverse
+    /// alphabetical within the Background section), so a regression in
+    /// the sort guard would mirror the input order. The assertion below
+    /// verifies the rendered order matches the alphabetic invariant.
     #[test]
     fn prompt_capabilities_are_alphabetic_for_prefix_cache_stability() {
         let prompt = build_codeact_system_prompt_with_docs(
             &[
-                // Background capability, listed FIRST but sorted after
-                // `slack` because 's' < 't'.
+                // Background capability, listed FIRST but sorted AFTER
+                // `discord` because 'd' < 't'.
                 CapabilitySummary {
                     name: "telegram".into(),
                     display_name: Some("Telegram".into()),
@@ -656,15 +673,15 @@ mod tests {
                     action_preview: Vec::new(),
                     routing_hint: None,
                 },
-                // Activatable integration, listed SECOND but sorted BEFORE
-                // `telegram` because 's' < 't'.
+                // Background capability, listed SECOND but sorted BEFORE
+                // `telegram` because 'd' < 't'.
                 CapabilitySummary {
-                    name: "slack".into(),
-                    display_name: None,
-                    kind: CapabilitySummaryKind::Provider,
-                    status: CapabilityStatus::NeedsSetup,
-                    description: Some("Slack workspace integration".into()),
-                    action_preview: vec!["slack_send".into()],
+                    name: "discord".into(),
+                    display_name: Some("Discord".into()),
+                    kind: CapabilitySummaryKind::Channel,
+                    status: CapabilityStatus::ReadyScoped,
+                    description: Some("Discord notifications".into()),
+                    action_preview: Vec::new(),
                     routing_hint: None,
                 },
             ],
@@ -673,17 +690,68 @@ mod tests {
             None,
         );
 
-        let slack_pos = prompt
-            .find("`slack` [provider]")
-            .expect("slack must be rendered in Activatable Integrations section");
+        let discord_pos = prompt
+            .find("- `discord`")
+            .expect("discord must be rendered in Background Capabilities section");
         let telegram_pos = prompt
-            .find("`telegram` [channel]")
-            .expect("telegram must be rendered in background section");
+            .find("- `telegram`")
+            .expect("telegram must be rendered in Background Capabilities section");
         assert!(
-            slack_pos < telegram_pos,
-            "capabilities must be rendered in alphabetical order across sections \
-             (slack before telegram) for prefix-cache stability, but the rendered \
-             prompt places telegram at {telegram_pos} and slack at {slack_pos}"
+            discord_pos < telegram_pos,
+            "background capabilities must be rendered in alphabetical order \
+             (discord before telegram) for prefix-cache stability, but the \
+             rendered prompt places discord at {discord_pos} and telegram \
+             at {telegram_pos}"
+        );
+    }
+
+    /// Prefix-cache invariant: compact actions rendered into the Enabled
+    /// Tools section must appear in alphabetical order regardless of input
+    /// order. The listing is part of the stable prefix, so any reordering
+    /// between turns invalidates the cache.
+    ///
+    /// `weather` (compact) is alphabetically AFTER `mission_create`
+    /// (compact) but the test input places them in the reverse order. If
+    /// the sort guard regresses, the rendered Enabled Tools list mirrors
+    /// the input order and the assertion below flips.
+    #[test]
+    fn prompt_compact_actions_are_alphabetic_for_prefix_cache_stability() {
+        let actions = vec![
+            // Listed FIRST but sorted AFTER `mission_create` because 'm' < 'w'.
+            ActionDef {
+                name: "weather".into(),
+                description: "Weather lookup.".into(),
+                parameters_schema: serde_json::json!({"type": "object"}),
+                effects: Vec::new(),
+                requires_approval: false,
+                model_tool_surface: ModelToolSurface::CompactToolInfo,
+                discovery: None,
+            },
+            // Listed SECOND but sorted BEFORE `weather` because 'm' < 'w'.
+            ActionDef {
+                name: "mission_create".into(),
+                description: "Create scheduled or event-driven missions.".into(),
+                parameters_schema: serde_json::json!({"type": "object"}),
+                effects: Vec::new(),
+                requires_approval: false,
+                model_tool_surface: ModelToolSurface::CompactToolInfo,
+                discovery: None,
+            },
+        ];
+        let prompt = build_codeact_system_prompt_with_docs(&[], &actions, &[], None);
+
+        let mission_pos = prompt
+            .find("- `mission_create`")
+            .expect("mission_create must be rendered in Enabled Tools section");
+        let weather_pos = prompt
+            .find("- `weather`")
+            .expect("weather must be rendered in Enabled Tools section");
+        assert!(
+            mission_pos < weather_pos,
+            "compact actions must be rendered in alphabetical order in the \
+             Enabled Tools section (mission_create before weather) for \
+             prefix-cache stability, but the rendered prompt places \
+             mission_create at {mission_pos} and weather at {weather_pos}"
         );
     }
 

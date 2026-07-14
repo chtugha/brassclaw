@@ -79,7 +79,6 @@ brassclaw_filesystem = { path = "../brassclaw_filesystem", version = "0.1.0" }
 brassclaw_processes = { path = "../brassclaw_processes", version = "0.1.0" }
 brassclaw_reborn_event_store = { path = "../brassclaw_reborn_event_store", version = "0.1.0" }
 brassclaw_resources = { path = "../brassclaw_resources", version = "0.1.0" }
-brassclaw_scripts = { path = "../brassclaw_scripts", version = "0.1.0" }
 brassclaw_skills = { path = "../brassclaw_skills", version = "0.3.0", default-features = false }
 brassclaw_trust = { path = "../brassclaw_trust", version = "0.1.0" }
 rust_decimal = "1"

@@ -320,6 +320,12 @@ pub struct RebornServices {
     /// Available when libsql feature is enabled for local-dev mode.
     #[cfg(feature = "libsql")]
     pub(crate) token_settings_store: Option<Arc<crate::token_settings_store::DbTokenSettingsStore>>,
+    /// Libsql-backed engine `Store` for `MemoryDoc` operations. Required by
+    /// the reduction-rule read path (`orchestrator::load_reduction_rules`)
+    /// and the WebUI `ReductionRuleStore` adapter. Wired through to the
+    /// runtime by `build_webui_services_with_connectable_channels`.
+    #[cfg(feature = "libsql")]
+    pub(crate) memory_doc_store: Option<Arc<crate::memory_doc_libsql_store::MemoryDocLibSqlStore>>,
 }
 
 impl RebornServices {
@@ -376,6 +382,12 @@ pub(crate) struct RebornLocalRuntimeServices {
     /// Token settings store for managing per-section token limits.
     #[cfg(feature = "libsql")]
     pub(crate) token_settings_store: Arc<crate::token_settings_store::DbTokenSettingsStore>,
+    /// Libsql-backed engine `Store` for `MemoryDoc` operations. Owns the
+    /// `memory_docs` table on the local-dev substrate; the reduction-rule
+    /// read path and the `StoreBackedReductionRuleStore` both go through
+    /// this `Arc<MemoryDocLibSqlStore>`.
+    #[cfg(feature = "libsql")]
+    pub(crate) memory_doc_store: Arc<crate::memory_doc_libsql_store::MemoryDocLibSqlStore>,
     /// Same sink as `budget_event_sink` but typed as the concrete
     /// `InMemoryBudgetEventSink` so the runtime can expose `drain()` /
     /// `snapshot()` to tests without leaking the concrete type into the
@@ -502,6 +514,8 @@ impl RebornServices {
             safety_config_store: None,
             #[cfg(feature = "libsql")]
             token_settings_store: None,
+            #[cfg(feature = "libsql")]
+            memory_doc_store: None,
         }
     }
 }
@@ -930,6 +944,11 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
             tracing::info!("✅ Wiring TokenSettingsStore into RebornServices");
             Some(Arc::clone(&store_graph.local_runtime.token_settings_store))
         },
+        #[cfg(feature = "libsql")]
+        memory_doc_store: {
+            tracing::info!("✅ Wiring MemoryDocLibSqlStore into RebornServices");
+            Some(Arc::clone(&store_graph.local_runtime.memory_doc_store))
+        },
     })
 }
 
@@ -1019,6 +1038,21 @@ async fn build_local_dev_store_graph(
     );
     tracing::info!("✅ TokenSettingsStore created successfully in build_local_dev_store_graph");
 
+    // Open the libSQL-backed `Store` for engine `MemoryDoc` operations. The
+    // reduction-rule pipeline persists its ruleset as a tagged `MemoryDoc`
+    // (see `crate::reduction_rules_store`), so this `Store` is the
+    // read path the orchestrator's `__get_reduction_rules__` host call
+    // walks and the `StoreBackedReductionRuleStore` write path that the
+    // WebUI `PUT /tokens/reduction-rules` endpoint routes through.
+    let memory_doc_store = Arc::new(
+        crate::memory_doc_libsql_store::MemoryDocLibSqlStore::open(Arc::clone(&identity_substrate_db))
+            .await
+            .map_err(|error| RebornBuildError::InvalidConfig {
+                reason: format!("MemoryDocLibSqlStore schema migration failed: {error}"),
+            })?,
+    );
+    tracing::info!("✅ MemoryDocLibSqlStore created successfully in build_local_dev_store_graph");
+
     // One-time forward migration: promote global token settings to the active
     // provider's per-provider row.  Non-destructive; no-op if already done.
     if let Some(ref provider_id) = active_provider_id {
@@ -1068,6 +1102,7 @@ async fn build_local_dev_store_graph(
         extension_registry,
         safety_config_store,
         token_settings_store,
+        memory_doc_store,
         content_cache_slot: brassclaw_reborn::content_cache_port::CurrentCacheBridgeSlot::new(),
         plan_state_slot: crate::plan_library::CurrentPlanStateSlot::new(),
     });
@@ -2548,6 +2583,8 @@ where
         safety_config_store: None,
         #[cfg(feature = "libsql")]
         token_settings_store: None,
+        #[cfg(feature = "libsql")]
+        memory_doc_store: None,
     })
 }
 
@@ -2833,6 +2870,8 @@ mod tests {
             safety_config_store: Arc::clone(&base_runtime.safety_config_store),
             #[cfg(feature = "libsql")]
             token_settings_store: Arc::clone(&base_runtime.token_settings_store),
+            #[cfg(feature = "libsql")]
+            memory_doc_store: Arc::clone(&base_runtime.memory_doc_store),
             content_cache_slot: brassclaw_reborn::content_cache_port::CurrentCacheBridgeSlot::new(),
             plan_state_slot: crate::plan_library::CurrentPlanStateSlot::new(),
         })

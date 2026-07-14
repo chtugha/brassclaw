@@ -641,10 +641,14 @@ fn usage_for_model_work(
     usage: brassclaw_turns::run_profile::ModelWorkUsage,
     estimate: &ResourceEstimate,
 ) -> ResourceUsage {
-    // Provider-supplied token counts and USD have not yet been threaded into
-    // loop model responses or system inference responses. Until they are,
-    // reconcile the original reservation estimate as the recorded USD spend:
-    // this is conservative and ensures daily USD budgets actually deplete.
+    // `ModelWorkUsage` (consumed by non-loop model work such as system
+    // inference and async tool calls) intentionally carries only
+    // `output_tokens` / `output_bytes` / `wall_clock_ms` — there is no
+    // analogous `LoopModelUsage::input_tokens` or cache-field surface here,
+    // so all input-token and USD accounting must come from the original
+    // reservation estimate. Reconciling the estimate as the recorded USD
+    // spend is conservative (the estimate carries the over-reserve factor)
+    // and ensures daily USD budgets still deplete for these non-loop calls.
     ResourceUsage {
         usd: estimate.usd.unwrap_or(Decimal::ZERO),
         input_tokens: estimate.input_tokens.unwrap_or(0),

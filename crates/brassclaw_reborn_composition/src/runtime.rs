@@ -1804,14 +1804,26 @@ pub async fn build_reborn_runtime(
     let resolved_context_window_tokens: Option<u32> = None;
 
     #[cfg(feature = "root-llm-provider")]
-    let resolved_cache_retention_from_registry = resolved_cache_retention.clone();
+    let resolved_cache_retention_from_db = resolved_cache_retention.clone();
     #[cfg(feature = "root-llm-provider")]
-    let resolved_cache_retention_final: Option<String> = resolved_cache_retention_from_registry
+    let resolved_cache_retention_final: Option<String> = resolved_cache_retention_from_db
         .or_else(|| {
             std::env::var("LLM_CACHE_RETENTION").ok().and_then(|raw| {
-                raw.parse::<brassclaw_llm::CacheRetention>()
-                    .ok()
-                    .map(|cr| cr.to_string())
+                match raw.parse::<brassclaw_llm::CacheRetention>() {
+                    Ok(cr) => Some(cr.to_string()),
+                    Err(error) => {
+                        // Unknown values must not poison runtime config — fall
+                        // back to the providers.json value with a debug record
+                        // (matches the equivalent guard in
+                        // `build_production_model_gateway`).
+                        tracing::debug!(
+                            cache_retention = %raw,
+                            error = %error,
+                            "ignoring unparseable LLM_CACHE_RETENTION; using providers.json value"
+                        );
+                        None
+                    }
+                }
             })
         })
         .or_else(|| {

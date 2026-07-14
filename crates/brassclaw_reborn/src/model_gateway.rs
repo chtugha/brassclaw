@@ -878,7 +878,7 @@ where
         // Deterministic tool ordering is required for vLLM/Anthropic-prefix
         // cache hits — the tool list is part of the stable system-prompt
         // prefix, so any reordering between turns invalidates the cache.
-        tool_definitions.sort_by(|a, b| a.name.cmp(&b.name));
+        tool_definitions = sort_tool_definitions_for_prefix_cache(tool_definitions);
         if tracing::enabled!(tracing::Level::DEBUG) {
             let tool_name_sample = tool_definitions
                 .iter()
@@ -1241,6 +1241,20 @@ fn map_provider_tool_output_error(error: AgentLoopHostError) -> HostManagedModel
     }
 }
 
+/// Sort tool definitions alphabetically by name so the provider's tool
+/// list is byte-identical across turns — required for vLLM / Anthropic
+/// prefix-cache hits on the system-prompt tool surface.
+///
+/// Extracted from `complete_model_request` so a unit test can lock in
+/// the ordering invariant without standing up a full capability / provider
+/// mock stack.
+fn sort_tool_definitions_for_prefix_cache(
+    mut tool_definitions: Vec<ProviderToolDefinition>,
+) -> Vec<ProviderToolDefinition> {
+    tool_definitions.sort_by(|a, b| a.name.cmp(&b.name));
+    tool_definitions
+}
+
 fn convert_messages(
     messages: Vec<HostManagedModelMessage>,
     replay_identity: &ProviderReplayIdentity,
@@ -1582,6 +1596,96 @@ mod tests {
 
         let err = request_failed("rate limit exceeded");
         assert!(!is_credit_exhaustion_error(&err));
+    }
+
+    /// Prefix-cache invariant: `sort_tool_definitions_for_prefix_cache`
+    /// must sort tool definitions strictly alphabetically by name,
+    /// regardless of input order. The provider tool list is part of the
+    /// stable system-prompt prefix — any reordering between turns
+    /// invalidates the vLLM / Anthropic KV cache.
+    ///
+    /// The input lists five tools in a deliberately out-of-order sequence;
+    /// if the sort guard regresses the assertion below flips.
+    #[test]
+    fn sort_tool_definitions_for_prefix_cache_orders_alphabetically() {
+        let unsorted = vec![
+            ProviderToolDefinition {
+                capability_id: brassclaw_host_api::CapabilityId::new("cap.weather").expect("cap"),
+                name: "weather_lookup".into(),
+                description: "weather".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+            ProviderToolDefinition {
+                capability_id: brassclaw_host_api::CapabilityId::new("cap.alpha").expect("cap"),
+                name: "alpha_search".into(),
+                description: "alpha".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+            ProviderToolDefinition {
+                capability_id: brassclaw_host_api::CapabilityId::new("cap.mission").expect("cap"),
+                name: "mission_create".into(),
+                description: "mission".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+            ProviderToolDefinition {
+                capability_id: brassclaw_host_api::CapabilityId::new("cap.beta").expect("cap"),
+                name: "beta_index".into(),
+                description: "beta".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+            ProviderToolDefinition {
+                capability_id: brassclaw_host_api::CapabilityId::new("cap.http").expect("cap"),
+                name: "http_fetch".into(),
+                description: "http".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+        ];
+        let sorted = sort_tool_definitions_for_prefix_cache(unsorted);
+        assert_eq!(
+            sorted
+                .iter()
+                .map(|definition| definition.name.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                "alpha_search".to_string(),
+                "beta_index".to_string(),
+                "http_fetch".to_string(),
+                "mission_create".to_string(),
+                "weather_lookup".to_string(),
+            ],
+            "tool definitions must be strictly alphabetical for prefix-cache stability"
+        );
+    }
+
+    /// Prefix-cache invariant: `sort_tool_definitions_for_prefix_cache`
+    /// is stable and idempotent — applying it twice yields the same order
+    /// as applying it once. Without idempotence, intermediate callers
+    /// that pre-sort would still incur a re-sort cost on every turn.
+    #[test]
+    fn sort_tool_definitions_for_prefix_cache_is_idempotent() {
+        let unsorted = vec![
+            ProviderToolDefinition {
+                capability_id: brassclaw_host_api::CapabilityId::new("cap.zeta").expect("cap"),
+                name: "zeta".into(),
+                description: String::new(),
+                parameters: serde_json::json!({}),
+            },
+            ProviderToolDefinition {
+                capability_id: brassclaw_host_api::CapabilityId::new("cap.alpha").expect("cap"),
+                name: "alpha".into(),
+                description: String::new(),
+                parameters: serde_json::json!({}),
+            },
+            ProviderToolDefinition {
+                capability_id: brassclaw_host_api::CapabilityId::new("cap.mu").expect("cap"),
+                name: "mu".into(),
+                description: String::new(),
+                parameters: serde_json::json!({}),
+            },
+        ];
+        let once = sort_tool_definitions_for_prefix_cache(unsorted.clone());
+        let twice = sort_tool_definitions_for_prefix_cache(once.clone());
+        assert_eq!(once, twice);
     }
 
     #[test]

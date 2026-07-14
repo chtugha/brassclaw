@@ -266,6 +266,7 @@ mod tests {
             setup: None,
             token_budget: None,
             context_window_tokens: None,
+            cache_retention: None,
         }
     }
 

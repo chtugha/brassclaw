@@ -247,6 +247,36 @@ pub(crate) fn build_webui_services_with_connectable_channels(
             as Arc<dyn brassclaw_product_workflow::TokenSettingsStore>);
     }
 
+    // Wire the libsql-backed engine `Store` through the
+    // `StoreBackedReductionRuleStore` adapter so the WebUI v2
+    // `/tokens/reduction-rules/*` endpoints read/write the same
+    // `MemoryDoc`-tagged rows the orchestrator's
+    // `__get_reduction_rules__` host call consumes on the over-budget
+    // turn. Engines' `invalidate_reduction_rules_cache()` is a
+    // process-wide flush today; the closure accepts (`project_id`,
+    // `user_id`) so the slot type stays scoped for the future
+    // per-(project, user) cache flush without breaking the wired surface.
+    #[cfg(feature = "libsql")]
+    if let Some(memory_doc_store) = services.memory_doc_store.clone() {
+        let dyn_store: Arc<dyn brassclaw_engine::traits::store::Store> =
+            Arc::clone(&memory_doc_store) as Arc<dyn brassclaw_engine::traits::store::Store>;
+        let reduction_rule_store = crate::reduction_rules_store::StoreBackedReductionRuleStore::open(
+            Arc::clone(&dyn_store),
+        );
+        api = api.with_reduction_rule_store(
+            Arc::new(reduction_rule_store)
+                as Arc<dyn brassclaw_product_workflow::ReductionRuleStore>,
+        );
+        api = api.with_reduction_rules_cache_invalidator(Arc::new(
+            |_project_id: &str, _user_id: &str| {
+                brassclaw_engine::executor::orchestrator::invalidate_reduction_rules_cache();
+            },
+        ));
+        tracing::info!("✅ ReductionRuleStore wired through MemoryDocLibSqlStore");
+    } else {
+        tracing::warn!("⚠️ MemoryDocLibSqlStore is None - reduction-rule endpoints will return 501");
+    }
+
     #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
     if let Some(budget) = runtime.live_context_budget() {
         api = api.with_live_context_budget_setter(Arc::new(move |v| budget.set(v)));

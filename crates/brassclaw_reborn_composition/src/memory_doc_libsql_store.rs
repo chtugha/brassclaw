@@ -119,11 +119,16 @@ fn serialize_doc(doc: &MemoryDoc) -> (String, String, Option<String>, String, St
     )
 }
 
-fn deserialize_doc(
+/// Columns read from a `memory_docs` row, intended for re-Q-and-A-free
+/// decoding into a `MemoryDoc` via [`MemoryDocRow::into_memory_doc`].
+/// Grouping the fields into a single record keeps the helper's signature
+/// under clippy's `too_many_arguments` (default 7) while staying close
+/// to the SQL column order for fast review.
+struct MemoryDocRow {
     id_str: String,
     project_id: ProjectId,
     user_id: String,
-    doc_type: DocType,
+    doc_type_str: String,
     title: String,
     content: String,
     source_thread_id: Option<String>,
@@ -131,59 +136,77 @@ fn deserialize_doc(
     metadata_json: String,
     created_at_str: String,
     updated_at_str: String,
-) -> Result<MemoryDoc, brassclaw_engine::types::error::EngineError> {
-    use chrono::DateTime;
-    let id = DocId(uuid::Uuid::parse_str(&id_str).map_err(|source| {
-        brassclaw_engine::types::error::EngineError::Store {
-            reason: format!("memory_docs.id is not a UUID: {source}"),
-        }
-    })?);
-    let source_thread_id = source_thread_id
-        .map(|s| {
-            uuid::Uuid::parse_str(&s).map(ThreadId).map_err(|source| {
-                brassclaw_engine::types::error::EngineError::Store {
-                    reason: format!("memory_docs.source_thread_id is not a UUID: {source}"),
-                }
+}
+
+impl MemoryDocRow {
+    fn into_memory_doc(self) -> Result<MemoryDoc, brassclaw_engine::types::error::EngineError> {
+        use chrono::DateTime;
+        let MemoryDocRow {
+            id_str,
+            project_id,
+            user_id,
+            doc_type_str,
+            title,
+            content,
+            source_thread_id: raw_source_thread_id,
+            tags_json,
+            metadata_json,
+            created_at_str,
+            updated_at_str,
+        } = self;
+        let id = DocId(uuid::Uuid::parse_str(&id_str).map_err(|source| {
+            brassclaw_engine::types::error::EngineError::Store {
+                reason: format!("memory_docs.id is not a UUID: {source}"),
+            }
+        })?);
+        let source_thread_id = raw_source_thread_id
+            .map(|s| {
+                uuid::Uuid::parse_str(&s).map(ThreadId).map_err(|source| {
+                    brassclaw_engine::types::error::EngineError::Store {
+                        reason: format!("memory_docs.source_thread_id is not a UUID: {source}"),
+                    }
+                })
             })
+            .transpose()?;
+        let tags: Vec<String> = serde_json::from_str(&tags_json).map_err(|source| {
+            brassclaw_engine::types::error::EngineError::Store {
+                reason: format!("memory_docs.tags_json is malformed: {source}"),
+            }
+        })?;
+        let metadata: serde_json::Value =
+            serde_json::from_str(&metadata_json).map_err(|source| {
+                brassclaw_engine::types::error::EngineError::Store {
+                    reason: format!("memory_docs.metadata_json is malformed: {source}"),
+                }
+            })?;
+        let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+            .map_err(
+                |source| brassclaw_engine::types::error::EngineError::Store {
+                    reason: format!("memory_docs.created_at is not RFC3339: {source}"),
+                },
+            )?
+            .with_timezone(&chrono::Utc);
+        let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
+            .map_err(
+                |source| brassclaw_engine::types::error::EngineError::Store {
+                    reason: format!("memory_docs.updated_at is not RFC3339: {source}"),
+                },
+            )?
+            .with_timezone(&chrono::Utc);
+        Ok(MemoryDoc {
+            id,
+            project_id,
+            user_id,
+            doc_type: parse_doc_type(&doc_type_str)?,
+            title,
+            content,
+            source_thread_id,
+            tags,
+            metadata,
+            created_at,
+            updated_at,
         })
-        .transpose()?;
-    let tags: Vec<String> = serde_json::from_str(&tags_json).map_err(|source| {
-        brassclaw_engine::types::error::EngineError::Store {
-            reason: format!("memory_docs.tags_json is malformed: {source}"),
-        }
-    })?;
-    let metadata: serde_json::Value = serde_json::from_str(&metadata_json).map_err(|source| {
-        brassclaw_engine::types::error::EngineError::Store {
-            reason: format!("memory_docs.metadata_json is malformed: {source}"),
-        }
-    })?;
-    let created_at = DateTime::parse_from_rfc3339(&created_at_str)
-        .map_err(
-            |source| brassclaw_engine::types::error::EngineError::Store {
-                reason: format!("memory_docs.created_at is not RFC3339: {source}"),
-            },
-        )?
-        .with_timezone(&chrono::Utc);
-    let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
-        .map_err(
-            |source| brassclaw_engine::types::error::EngineError::Store {
-                reason: format!("memory_docs.updated_at is not RFC3339: {source}"),
-            },
-        )?
-        .with_timezone(&chrono::Utc);
-    Ok(MemoryDoc {
-        id,
-        project_id,
-        user_id,
-        doc_type,
-        title,
-        content,
-        source_thread_id,
-        tags,
-        metadata,
-        created_at,
-        updated_at,
-    })
+    }
 }
 
 #[async_trait]
@@ -421,21 +444,25 @@ impl Store for MemoryDocLibSqlStore {
                     reason: format!("libsql updated_at decode failed: {source}"),
                 }
             })?;
-            let doc_type = parse_doc_type(&doc_type_str)?;
-            let project_id = ProjectId::from_slug("brassclaw-memory-store", &project_id_str);
-            return Ok(Some(deserialize_doc(
-                id.0.to_string(),
-                project_id,
-                user_id,
-                doc_type,
-                title,
-                content,
-                source_thread_id,
-                tags_json,
-                metadata_json,
-                created_at,
-                updated_at,
-            )?));
+            return Ok(Some(
+                MemoryDocRow {
+                    id_str: id.0.to_string(),
+                    project_id: ProjectId::from_slug(
+                        "brassclaw-memory-store",
+                        &project_id_str,
+                    ),
+                    user_id,
+                    doc_type_str,
+                    title,
+                    content,
+                    source_thread_id,
+                    tags_json,
+                    metadata_json,
+                    created_at_str: created_at,
+                    updated_at_str: updated_at,
+                }
+                .into_memory_doc()?,
+            ));
         }
         Ok(None)
     }
@@ -512,20 +539,22 @@ impl Store for MemoryDocLibSqlStore {
                     reason: format!("libsql updated_at decode failed: {source}"),
                 }
             })?;
-            let doc_type = parse_doc_type(&doc_type_str)?;
-            out.push(deserialize_doc(
-                id_str,
-                project_id,
-                user_id.to_string(),
-                doc_type,
-                title,
-                content,
-                source_thread_id,
-                tags_json,
-                metadata_json,
-                created_at,
-                updated_at,
-            )?);
+            out.push(
+                MemoryDocRow {
+                    id_str,
+                    project_id,
+                    user_id: user_id.to_string(),
+                    doc_type_str,
+                    title,
+                    content,
+                    source_thread_id,
+                    tags_json,
+                    metadata_json,
+                    created_at_str: created_at,
+                    updated_at_str: updated_at,
+                }
+                .into_memory_doc()?,
+            );
         }
         Ok(out)
     }
@@ -631,20 +660,25 @@ impl Store for MemoryDocLibSqlStore {
                     reason: format!("libsql updated_at decode failed: {source}"),
                 }
             })?;
-            let doc_type = parse_doc_type(&doc_type_str)?;
-            out.push(deserialize_doc(
-                id_str,
-                ProjectId::from_slug("brassclaw-memory-store", &project_id_str),
-                user_id.to_string(),
-                doc_type,
-                title,
-                content,
-                source_thread_id,
-                tags_json,
-                metadata_json,
-                created_at,
-                updated_at,
-            )?);
+            out.push(
+                MemoryDocRow {
+                    id_str,
+                    project_id: ProjectId::from_slug(
+                        "brassclaw-memory-store",
+                        &project_id_str,
+                    ),
+                    user_id: user_id.to_string(),
+                    doc_type_str,
+                    title,
+                    content,
+                    source_thread_id,
+                    tags_json,
+                    metadata_json,
+                    created_at_str: created_at,
+                    updated_at_str: updated_at,
+                }
+                .into_memory_doc()?,
+            );
         }
         Ok(out)
     }
