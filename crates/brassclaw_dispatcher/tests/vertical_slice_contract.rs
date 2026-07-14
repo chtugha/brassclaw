@@ -17,12 +17,12 @@ async fn vertical_slice_discovers_and_dispatches_registered_runtime_adapters() {
     assert_eq!(registry.extensions().count(), 3);
 
     let governor = InMemoryResourceGovernor::new();
-    let wasm_adapter = EchoAdapter::new(RuntimeKind::Wasm);
+    let wasm_adapter = EchoAdapter::new(RuntimeKind::FirstParty);
     let script_adapter = EchoAdapter::new(RuntimeKind::Script);
     let mcp_adapter = EchoAdapter::new(RuntimeKind::Mcp);
     let scope = sample_scope();
     let dispatcher = RuntimeDispatcher::new(&registry, &fs, &governor)
-        .with_runtime_adapter(RuntimeKind::Wasm, &wasm_adapter)
+        .with_runtime_adapter(RuntimeKind::FirstParty, &wasm_adapter)
         .with_runtime_adapter(RuntimeKind::Script, &script_adapter)
         .with_runtime_adapter(RuntimeKind::Mcp, &mcp_adapter);
 
@@ -45,7 +45,7 @@ async fn vertical_slice_discovers_and_dispatches_registered_runtime_adapters() {
         .unwrap();
 
     assert_eq!(wasm.provider, ExtensionId::new("echo-wasm").unwrap());
-    assert_eq!(wasm.runtime, RuntimeKind::Wasm);
+    assert_eq!(wasm.runtime, RuntimeKind::FirstParty);
     assert_eq!(wasm.output, json!({"message": "hello wasm"}));
     assert_eq!(wasm.receipt.status, ReservationStatus::Reconciled);
     assert_eq!(
@@ -166,10 +166,13 @@ fn dispatch_error_for_runtime(
     kind: RuntimeDispatchErrorKind,
 ) -> DispatchError {
     match runtime {
-        RuntimeKind::Wasm => DispatchError::Wasm { kind },
+        RuntimeKind::FirstParty => DispatchError::FirstParty {
+            kind,
+            safe_summary: None,
+        },
         RuntimeKind::Script => DispatchError::Script { kind },
         RuntimeKind::Mcp => DispatchError::Mcp { kind },
-        RuntimeKind::FirstParty | RuntimeKind::System => DispatchError::UnsupportedRuntime {
+        RuntimeKind::System => DispatchError::UnsupportedRuntime {
             capability: CapabilityId::new("system.unsupported").unwrap(),
             runtime,
         },

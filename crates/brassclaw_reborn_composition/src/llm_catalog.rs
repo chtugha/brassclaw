@@ -141,7 +141,10 @@ pub fn resolve_reborn_runtime_llm(
                 );
                 return Ok(None);
             }
-            Err(RebornLlmCatalogError::ApiKeyEnvUnset { ref provider, ref env }) => {
+            Err(RebornLlmCatalogError::ApiKeyEnvUnset {
+                ref provider,
+                ref env,
+            }) => {
                 // If the var is absent entirely → graceful start.
                 // If the var is present but empty → hard error (misconfiguration).
                 if std::env::var(env).is_ok() {
@@ -181,8 +184,7 @@ fn resolve_llm_from_env(
         // the operator made a deliberate configuration choice that is broken —
         // surface the error so they know to fix it.
         Err(brassclaw_llm::LlmError::RequestFailed { ref reason, .. })
-            if reason.contains("base URL is required")
-                && std::env::var("LLM_BACKEND").is_err() =>
+            if reason.contains("base URL is required") && std::env::var("LLM_BACKEND").is_err() =>
         {
             tracing::warn!(
                 "LLM env vars are partially set but base_url is missing. Starting without \

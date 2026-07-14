@@ -228,16 +228,18 @@ impl RuntimeAdapter<LocalFilesystem, InMemoryResourceGovernor> for RecordingRunt
             None => request
                 .governor
                 .reserve(request.scope, request.estimate)
-                .map_err(|_| DispatchError::Wasm {
+                .map_err(|_| DispatchError::FirstParty {
                     kind: RuntimeDispatchErrorKind::Resource,
+                    safe_summary: None,
                 })?,
         };
         let output_bytes = usage.output_bytes;
         let receipt = request
             .governor
             .reconcile(reservation.id, usage.clone())
-            .map_err(|_| DispatchError::Wasm {
+            .map_err(|_| DispatchError::FirstParty {
                 kind: RuntimeDispatchErrorKind::Resource,
+                safe_summary: None,
             })?;
         Ok(RuntimeAdapterResult {
             output,
@@ -307,7 +309,7 @@ fn runtime_dispatcher_stack(
     let events = InMemoryEventSink::new();
     let dispatcher =
         RuntimeDispatcher::from_arcs(Arc::clone(&registry), filesystem, Arc::clone(&governor))
-            .with_runtime_adapter_arc(RuntimeKind::Wasm, adapter)
+            .with_runtime_adapter_arc(RuntimeKind::FirstParty, adapter)
             .with_event_sink_arc(Arc::new(events.clone()));
     (registry, dispatcher, governor, events)
 }
@@ -338,7 +340,7 @@ fn execution_context(grants: CapabilitySet) -> ExecutionContext {
     ExecutionContext::local_default(
         UserId::new("user").unwrap(),
         ExtensionId::new("caller").unwrap(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         TrustClass::UserTrusted,
         grants,
         MountView::default(),

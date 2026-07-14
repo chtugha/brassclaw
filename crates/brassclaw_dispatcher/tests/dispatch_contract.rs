@@ -19,7 +19,8 @@ async fn dispatcher_routes_wasm_capability_through_registered_adapter() {
     registry
         .insert(package_from_manifest(WASM_MANIFEST))
         .unwrap();
-    let adapter = RecordingAdapter::new(RuntimeKind::Wasm, json!({"message": "hello adapter"}));
+    let adapter =
+        RecordingAdapter::new(RuntimeKind::FirstParty, json!({"message": "hello adapter"}));
     let governor = InMemoryResourceGovernor::new();
     let scope = sample_scope();
     let account = ResourceAccount::tenant(scope.tenant_id.clone());
@@ -35,7 +36,7 @@ async fn dispatcher_routes_wasm_capability_through_registered_adapter() {
         .unwrap();
 
     let dispatcher = RuntimeDispatcher::new(&registry, &fs, &governor)
-        .with_runtime_adapter(RuntimeKind::Wasm, &adapter);
+        .with_runtime_adapter(RuntimeKind::FirstParty, &adapter);
     let result = dispatcher
         .dispatch_json(CapabilityDispatchRequest {
             capability_id: CapabilityId::new("echo.say").unwrap(),
@@ -54,7 +55,7 @@ async fn dispatcher_routes_wasm_capability_through_registered_adapter() {
 
     assert_eq!(result.capability_id, CapabilityId::new("echo.say").unwrap());
     assert_eq!(result.provider, ExtensionId::new("echo").unwrap());
-    assert_eq!(result.runtime, RuntimeKind::Wasm);
+    assert_eq!(result.runtime, RuntimeKind::FirstParty);
     assert_eq!(result.output, json!({"message": "hello adapter"}));
     assert_eq!(result.receipt.status, ReservationStatus::Reconciled);
     assert_eq!(governor.reserved_for(&account), ResourceTally::default());
@@ -67,7 +68,7 @@ async fn dispatcher_routes_wasm_capability_through_registered_adapter() {
         requests[0].capability_id,
         CapabilityId::new("echo.say").unwrap()
     );
-    assert_eq!(requests[0].runtime, RuntimeKind::Wasm);
+    assert_eq!(requests[0].runtime, RuntimeKind::FirstParty);
     assert_eq!(requests[0].input, json!({"message": "hello dispatcher"}));
 }
 
@@ -249,10 +250,10 @@ async fn dispatcher_fails_unknown_capability_without_reserving_resources() {
     let governor = InMemoryResourceGovernor::new();
     let scope = sample_scope();
     let account = ResourceAccount::tenant(scope.tenant_id.clone());
-    let adapter = RecordingAdapter::new(RuntimeKind::Wasm, json!({}));
+    let adapter = RecordingAdapter::new(RuntimeKind::FirstParty, json!({}));
 
     let dispatcher = RuntimeDispatcher::new(&registry, &fs, &governor)
-        .with_runtime_adapter(RuntimeKind::Wasm, &adapter);
+        .with_runtime_adapter(RuntimeKind::FirstParty, &adapter);
     let err = dispatcher
         .dispatch_json(CapabilityDispatchRequest {
             capability_id: CapabilityId::new("missing.say").unwrap(),
@@ -412,7 +413,7 @@ async fn dispatcher_requires_wasm_backend_before_reserving_resources() {
     assert!(matches!(
         err,
         DispatchError::MissingRuntimeBackend {
-            runtime: RuntimeKind::Wasm
+            runtime: RuntimeKind::FirstParty
         }
     ));
     assert_eq!(governor.reserved_for(&account), ResourceTally::default());
@@ -510,10 +511,13 @@ fn dispatch_error_for_runtime(
     kind: RuntimeDispatchErrorKind,
 ) -> DispatchError {
     match runtime {
-        RuntimeKind::Wasm => DispatchError::Wasm { kind },
+        RuntimeKind::FirstParty => DispatchError::FirstParty {
+            kind,
+            safe_summary: None,
+        },
         RuntimeKind::Script => DispatchError::Script { kind },
         RuntimeKind::Mcp => DispatchError::Mcp { kind },
-        RuntimeKind::FirstParty | RuntimeKind::System => DispatchError::UnsupportedRuntime {
+        RuntimeKind::System => DispatchError::UnsupportedRuntime {
             capability: CapabilityId::new("system.unsupported").unwrap(),
             runtime,
         },

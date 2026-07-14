@@ -1020,7 +1020,7 @@ async fn loop_prompt_port_filters_visible_surface_by_capability_view() {
             CapabilityDescriptorView {
                 capability_id: CapabilityId::new("demo.echo").unwrap(),
                 provider: None,
-                runtime: RuntimeKind::Wasm,
+                runtime: RuntimeKind::FirstParty,
                 safe_name: "Echo".to_string(),
                 safe_description: "Returns an opaque result ref".to_string(),
                 concurrency_hint: ConcurrencyHint::Exclusive,
@@ -1029,7 +1029,7 @@ async fn loop_prompt_port_filters_visible_surface_by_capability_view() {
             CapabilityDescriptorView {
                 capability_id: CapabilityId::new("demo.hidden").unwrap(),
                 provider: None,
-                runtime: RuntimeKind::Wasm,
+                runtime: RuntimeKind::FirstParty,
                 safe_name: "Hidden".to_string(),
                 safe_description: "Should not reach the prompt".to_string(),
                 concurrency_hint: ConcurrencyHint::Exclusive,
@@ -2339,7 +2339,7 @@ impl RecordingAgentLoopHost {
                 descriptors: vec![CapabilityDescriptorView {
                     capability_id: CapabilityId::new("demo.echo").unwrap(),
                     provider: None,
-                    runtime: RuntimeKind::Wasm,
+                    runtime: RuntimeKind::FirstParty,
                     safe_name: "Echo".to_string(),
                     safe_description: "Returns an opaque result ref".to_string(),
                     concurrency_hint: ConcurrencyHint::Exclusive,

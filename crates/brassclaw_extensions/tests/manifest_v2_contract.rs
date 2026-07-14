@@ -742,6 +742,8 @@ output_schema_ref = "schemas/acme/echo.output.v1.json"
     }
 }
 
+
+
 #[test]
 fn rejects_wasm_module_with_host_or_url_or_traversal_paths() {
     for bad in [
@@ -752,7 +754,7 @@ fn rejects_wasm_module_with_host_or_url_or_traversal_paths() {
         "foo/../bar.wasm",
         "https://evil.example.com/x.wasm",
         "file:///tmp/x.wasm",
-        "C:\\windows.wasm",
+        "C:\windows.wasm",
         "c:/win.wasm",
         "has space.wasm",
         "wasm/./echo.wasm",

@@ -20,7 +20,6 @@ const ALL_RUNTIME_KINDS: &[RuntimeKind] = &[
     RuntimeKind::Script,
     RuntimeKind::FirstParty,
     RuntimeKind::System,
-    RuntimeKind::Wasm,
 ];
 
 const ALL_EFFECT_KINDS: &[EffectKind] = &[
@@ -432,7 +431,6 @@ fn canonical_effect_kinds(effects: &[EffectKind]) -> Vec<&'static str> {
 
 fn runtime_kind_token(runtime: RuntimeKind) -> &'static str {
     match runtime {
-        RuntimeKind::Wasm => "wasm",
         RuntimeKind::Mcp => "mcp",
         RuntimeKind::Script => "script",
         RuntimeKind::FirstParty => "first_party",

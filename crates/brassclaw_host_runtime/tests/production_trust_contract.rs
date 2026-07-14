@@ -203,7 +203,7 @@ impl CapabilityDispatcher for CountingDispatcher {
         Ok(CapabilityDispatchResult {
             capability_id: request.capability_id,
             provider: extension_id(),
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             output: json!({"ok": true}),
             display_preview: None,
             usage: ResourceUsage::default(),
@@ -288,7 +288,7 @@ fn execution_context_with_dispatch_grant(trust: TrustClass) -> ExecutionContext 
     ExecutionContext::local_default(
         UserId::new("user").unwrap(),
         ExtensionId::new("caller").unwrap(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         trust,
         grants,
         MountView::default(),

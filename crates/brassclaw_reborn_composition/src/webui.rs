@@ -159,8 +159,8 @@ pub(crate) fn build_webui_services_with_connectable_channels(
                 // intentional: without a store to read from, none of the slots
                 // can be refreshed on provider change.
                 if let (Some(slot), Some(store)) = (budget_slot, token_store) {
-                    let on_change: Arc<dyn Fn(&str) + Send + Sync> =
-                        Arc::new(move |provider_id: &str| {
+                    let on_change: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(
+                        move |provider_id: &str| {
                             let slot = slot.clone();
                             let max_out = max_output_slot.clone();
                             let total_in = total_input_slot.clone();
@@ -209,13 +209,13 @@ pub(crate) fn build_webui_services_with_connectable_channels(
                                     }
                                 }
                             });
-                        });
+                        },
+                    );
                     adapter = adapter.with_on_provider_changed(on_change);
                 }
             }
-            llm_config = llm_config.with_reload_trigger(
-                Arc::new(adapter) as Arc<dyn crate::LlmReloadTrigger>,
-            );
+            llm_config = llm_config
+                .with_reload_trigger(Arc::new(adapter) as Arc<dyn crate::LlmReloadTrigger>);
         }
         if let Some(session) = runtime.webui_llm_session() {
             llm_config = llm_config.with_nearai_session(session);
@@ -242,10 +242,8 @@ pub(crate) fn build_webui_services_with_connectable_channels(
     #[cfg(feature = "libsql")]
     if let Some(token_settings_store) = &services.token_settings_store {
         tracing::info!("✅ Wiring TokenSettingsStore into WebUI API");
-        api = api.with_token_settings_store(
-            Arc::clone(token_settings_store)
-                as Arc<dyn brassclaw_product_workflow::TokenSettingsStore>,
-        );
+        api = api.with_token_settings_store(Arc::clone(token_settings_store)
+            as Arc<dyn brassclaw_product_workflow::TokenSettingsStore>);
     }
 
     #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]

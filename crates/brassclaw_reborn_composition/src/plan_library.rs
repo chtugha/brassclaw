@@ -38,7 +38,8 @@ pub(crate) const DEFAULT_WILSON_Z: f64 = 1.96;
 /// Default promotion threshold (Wilson lower bound for Candidate tier).
 pub(crate) const DEFAULT_PROMOTION_THRESHOLD: f64 = 0.80;
 /// Virtual path prefix under which plan-library documents are written.
-const PLAN_LIBRARY_ROOT: &str = "/workspace/reborn-cli/users/reborn-cli/projects/_none/skills/.plan-library";
+const PLAN_LIBRARY_ROOT: &str =
+    "/workspace/reborn-cli/users/reborn-cli/projects/_none/skills/.plan-library";
 /// Virtual path prefix under which workspace skills are written.
 const WORKSPACE_SKILLS_ROOT: &str = "/workspace/reborn-cli/users/reborn-cli/projects/_none/skills";
 
@@ -84,7 +85,11 @@ where
     /// Process a completed session: score it, update metrics, persist plan
     /// document, apply tier effects. Errors are logged and swallowed — the plan
     /// library is an enhancement, not a correctness requirement.
-    pub(crate) async fn process_session(&self, state: &LoopExecutionState, tool_outcomes: &[ToolOutcome]) {
+    pub(crate) async fn process_session(
+        &self,
+        state: &LoopExecutionState,
+        tool_outcomes: &[ToolOutcome],
+    ) {
         let Some(plan_state) = state.plan_state.as_ref() else {
             return;
         };
@@ -175,8 +180,8 @@ where
     ) -> Result<(), brassclaw_filesystem::FilesystemError> {
         let type_slug = self.plan_type_slug(plan_type);
         let path_str = format!("{}/{}/{}.md", PLAN_LIBRARY_ROOT, type_slug, slug);
-        let path = VirtualPath::new(path_str)
-            .map_err(brassclaw_filesystem::FilesystemError::Contract)?;
+        let path =
+            VirtualPath::new(path_str).map_err(brassclaw_filesystem::FilesystemError::Contract)?;
         self.filesystem.write_file(&path, content.as_bytes()).await
     }
 
@@ -186,10 +191,9 @@ where
         metrics: &PlanLibraryMetrics,
     ) -> Result<(), brassclaw_filesystem::FilesystemError> {
         let path_str = format!("{}/{}.metrics.json", PLAN_LIBRARY_ROOT, slug);
-        let path = VirtualPath::new(path_str)
-            .map_err(brassclaw_filesystem::FilesystemError::Contract)?;
-        let bytes =
-            serde_json::to_vec(metrics).unwrap_or_else(|_| b"{}".to_vec());
+        let path =
+            VirtualPath::new(path_str).map_err(brassclaw_filesystem::FilesystemError::Contract)?;
+        let bytes = serde_json::to_vec(metrics).unwrap_or_else(|_| b"{}".to_vec());
         self.filesystem.write_file(&path, &bytes).await
     }
 
@@ -242,8 +246,8 @@ where
         plan_state: &AgentPlanState,
     ) -> Result<(), brassclaw_filesystem::FilesystemError> {
         let path_str = format!("{}/{}/SKILL.md", WORKSPACE_SKILLS_ROOT, slug);
-        let path = VirtualPath::new(path_str)
-            .map_err(brassclaw_filesystem::FilesystemError::Contract)?;
+        let path =
+            VirtualPath::new(path_str).map_err(brassclaw_filesystem::FilesystemError::Contract)?;
         // Only write if it doesn't already exist
         if self.filesystem.read_file(&path).await.is_ok() {
             return Ok(());
@@ -258,8 +262,8 @@ where
         plan_state: &AgentPlanState,
     ) -> Result<(), brassclaw_filesystem::FilesystemError> {
         let path_str = format!("{}/{}/SKILL.md", WORKSPACE_SKILLS_ROOT, slug);
-        let path = VirtualPath::new(path_str)
-            .map_err(brassclaw_filesystem::FilesystemError::Contract)?;
+        let path =
+            VirtualPath::new(path_str).map_err(brassclaw_filesystem::FilesystemError::Contract)?;
         let content = self.build_skill_md(slug, plan_state, true);
         self.filesystem.write_file(&path, content.as_bytes()).await
     }
@@ -271,8 +275,8 @@ where
     ) -> Result<(), brassclaw_filesystem::FilesystemError> {
         // Write to the system/skills directory (TenantShared equivalent in local-dev)
         let path_str = format!("/system/skills/{}/SKILL.md", slug);
-        let path = VirtualPath::new(path_str)
-            .map_err(brassclaw_filesystem::FilesystemError::Contract)?;
+        let path =
+            VirtualPath::new(path_str).map_err(brassclaw_filesystem::FilesystemError::Contract)?;
         let content = self.build_skill_md(slug, plan_state, true);
         self.filesystem.write_file(&path, content.as_bytes()).await
     }
@@ -369,10 +373,7 @@ where
              **Tier:** {:?}\n\n\
              Auto-promoted by the BrassClaw plan library (subtask 5).\n\
              Human review required before merging.\n",
-            plan_state.plan_type,
-            metrics.usage_count,
-            metrics.last_wilson,
-            metrics.tier
+            plan_state.plan_type, metrics.usage_count, metrics.last_wilson, metrics.tier
         );
 
         let pr_result = self
@@ -383,7 +384,10 @@ where
                 &branch,
                 &skill_path,
                 &skill_content,
-                &format!("[Skill Candidate] {}: auto-generated skill for {} tasks", slug, slug),
+                &format!(
+                    "[Skill Candidate] {}: auto-generated skill for {} tasks",
+                    slug, slug
+                ),
                 &pr_body,
             )
             .await;
@@ -459,8 +463,12 @@ where
         }
 
         // 3. Create/update file
-        let encoded_content = base64::engine::general_purpose::STANDARD.encode(file_content.as_bytes());
-        let file_url = format!("{api}/repos/{owner}/{repo}/contents/{}", encode_url_path(file_path));
+        let encoded_content =
+            base64::engine::general_purpose::STANDARD.encode(file_content.as_bytes());
+        let file_url = format!(
+            "{api}/repos/{owner}/{repo}/contents/{}",
+            encode_url_path(file_path)
+        );
         let file_body = serde_json::json!({
             "message": format!("feat: add skill candidate {}", file_path),
             "content": encoded_content,
@@ -532,9 +540,7 @@ fn encode_url_path(s: &str) -> String {
 /// post-turn processor (reader).  Updated after every completed run via a
 /// `PlanStatePortDecorator`-like mechanism.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct CurrentPlanStateSlot(
-    Arc<std::sync::Mutex<Option<LoopExecutionState>>>,
-);
+pub(crate) struct CurrentPlanStateSlot(Arc<std::sync::Mutex<Option<LoopExecutionState>>>);
 
 impl CurrentPlanStateSlot {
     pub(crate) fn new() -> Self {

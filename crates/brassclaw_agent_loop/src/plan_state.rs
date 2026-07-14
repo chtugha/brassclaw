@@ -126,7 +126,9 @@ pub fn extract_steps(text: &str) -> Option<Vec<String>> {
         }
         // require . or )
         match chars.peek() {
-            Some('.') | Some(')') => { chars.next(); }
+            Some('.') | Some(')') => {
+                chars.next();
+            }
             _ => return None,
         }
         // require whitespace
@@ -150,7 +152,7 @@ pub fn extract_steps(text: &str) -> Option<Vec<String>> {
             .strip_prefix("- ")
             .or_else(|| line.strip_prefix("* "))
             .or_else(|| line.strip_prefix("• "))
-            .or_else(|| line.strip_prefix("– "))  // en-dash
+            .or_else(|| line.strip_prefix("– ")) // en-dash
             .or_else(|| line.strip_prefix("— ")); // em-dash
         rest.filter(|s| !s.is_empty()).map(str::to_owned)
     });
@@ -162,11 +164,31 @@ pub fn extract_steps(text: &str) -> Option<Vec<String>> {
     let ordinals = extract_by_pattern(text, |line| {
         let lower = line.trim().to_ascii_lowercase();
         const ORDINALS: &[&str] = &[
-            "first", "second", "third", "fourth", "fifth", "sixth",
-            "seventh", "eighth", "ninth", "tenth",
-            "then", "next", "finally", "lastly", "after that",
-            "step 1", "step 2", "step 3", "step 4", "step 5",
-            "step 6", "step 7", "step 8", "step 9", "step 10",
+            "first",
+            "second",
+            "third",
+            "fourth",
+            "fifth",
+            "sixth",
+            "seventh",
+            "eighth",
+            "ninth",
+            "tenth",
+            "then",
+            "next",
+            "finally",
+            "lastly",
+            "after that",
+            "step 1",
+            "step 2",
+            "step 3",
+            "step 4",
+            "step 5",
+            "step 6",
+            "step 7",
+            "step 8",
+            "step 9",
+            "step 10",
         ];
         for ord in ORDINALS {
             if lower.starts_with(ord) {
@@ -189,8 +211,7 @@ pub fn extract_steps(text: &str) -> Option<Vec<String>> {
         .split(['.', ';'])
         .map(str::trim)
         .filter(|s| {
-            !s.is_empty()
-                && s.split_whitespace().count() >= 3  // skip fragments
+            !s.is_empty() && s.split_whitespace().count() >= 3 // skip fragments
         })
         .map(str::to_owned)
         .collect();
@@ -204,7 +225,7 @@ pub fn extract_steps(text: &str) -> Option<Vec<String>> {
 }
 
 fn try_parse_json_steps(text: &str) -> Option<Vec<String>> {
-    // Accept both {"steps":[...]} and bare arrays ["step","step",...] 
+    // Accept both {"steps":[...]} and bare arrays ["step","step",...]
     let value: serde_json::Value = serde_json::from_str(text).ok()?;
 
     // Case 1: object with "steps" key
@@ -326,7 +347,10 @@ mod tests {
     fn extracts_json_steps_object() {
         let raw = r#"{"steps":["Read the file","Modify line 42","Save changes"]}"#;
         let steps = extract_steps(raw).expect("steps");
-        assert_eq!(steps, vec!["Read the file", "Modify line 42", "Save changes"]);
+        assert_eq!(
+            steps,
+            vec!["Read the file", "Modify line 42", "Save changes"]
+        );
     }
 
     #[test]
@@ -340,11 +364,14 @@ mod tests {
     fn extracts_numbered_list() {
         let raw = "1. Read the config file\n2. Update the value\n3. Restart the service";
         let steps = extract_steps(raw).expect("steps");
-        assert_eq!(steps, vec![
-            "Read the config file",
-            "Update the value",
-            "Restart the service",
-        ]);
+        assert_eq!(
+            steps,
+            vec![
+                "Read the config file",
+                "Update the value",
+                "Restart the service",
+            ]
+        );
     }
 
     #[test]
@@ -429,22 +456,34 @@ mod tests {
 
     #[test]
     fn classify_code() {
-        assert_eq!(classify("implement a sorting function", &[]), PlanType::CodeGeneration);
+        assert_eq!(
+            classify("implement a sorting function", &[]),
+            PlanType::CodeGeneration
+        );
     }
 
     #[test]
     fn classify_file() {
-        assert_eq!(classify("read the config file and update it", &[]), PlanType::FileOperation);
+        assert_eq!(
+            classify("read the config file and update it", &[]),
+            PlanType::FileOperation
+        );
     }
 
     #[test]
     fn classify_shell() {
-        assert_eq!(classify("run the deploy script on the server", &[]), PlanType::ShellTask);
+        assert_eq!(
+            classify("run the deploy script on the server", &[]),
+            PlanType::ShellTask
+        );
     }
 
     #[test]
     fn classify_research() {
-        assert_eq!(classify("explain how the scheduler works", &[]), PlanType::Research);
+        assert_eq!(
+            classify("explain how the scheduler works", &[]),
+            PlanType::Research
+        );
     }
 
     #[test]

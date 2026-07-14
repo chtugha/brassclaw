@@ -38,7 +38,7 @@ async fn in_memory_process_store_starts_capability_process_record() {
     assert_eq!(record.scope, scope);
     assert_eq!(record.extension_id, ExtensionId::new("echo").unwrap());
     assert_eq!(record.capability_id, CapabilityId::new("echo.say").unwrap());
-    assert_eq!(record.runtime, RuntimeKind::Wasm);
+    assert_eq!(record.runtime, RuntimeKind::FirstParty);
     assert_eq!(record.status, ProcessStatus::Running);
     assert_eq!(record.parent_process_id, None);
     assert_eq!(record.grants.grants.len(), 1);
@@ -558,7 +558,7 @@ async fn eventing_process_store_emits_started_and_killed_events() {
     assert_eq!(emitted[0].process_id, Some(process_id));
     assert_eq!(emitted[0].scope, scope);
     assert_eq!(emitted[0].provider, Some(ExtensionId::new("echo").unwrap()));
-    assert_eq!(emitted[0].runtime, Some(RuntimeKind::Wasm));
+    assert_eq!(emitted[0].runtime, Some(RuntimeKind::FirstParty));
     assert_eq!(emitted[1].kind, RuntimeEventKind::ProcessKilled);
     assert_eq!(emitted[1].process_id, Some(process_id));
 }
@@ -1823,7 +1823,7 @@ async fn assert_unowned_process_reservation_rejected(transition: UnownedTransiti
         scope: scope.clone(),
         extension_id: ExtensionId::new("echo").unwrap(),
         capability_id: CapabilityId::new("echo.say").unwrap(),
-        runtime: RuntimeKind::Wasm,
+        runtime: RuntimeKind::FirstParty,
         grants: CapabilitySet::default(),
         mounts: MountView::default(),
         estimated_resources: estimate,
@@ -2554,7 +2554,7 @@ fn process_start_with_estimate(
         scope,
         extension_id: ExtensionId::new("echo").unwrap(),
         capability_id: CapabilityId::new("echo.say").unwrap(),
-        runtime: RuntimeKind::Wasm,
+        runtime: RuntimeKind::FirstParty,
         grants: CapabilitySet {
             grants: vec![CapabilityGrant {
                 id: CapabilityGrantId::new(),

@@ -534,7 +534,9 @@ fn failure_summary_for_category(category: &str) -> &'static str {
             "The run failed because the execution driver rejected the request."
         }
         "driver_panic" => "The run failed because the execution driver stopped unexpectedly.",
-        "driver_bug" => "The run failed because the execution driver encountered an unexpected condition.",
+        "driver_bug" => {
+            "The run failed because the execution driver encountered an unexpected condition."
+        }
         "driver_protocol_violation" => {
             "The run failed because the execution driver submitted an invalid exit."
         }
@@ -561,17 +563,13 @@ fn failure_summary_for_category(category: &str) -> &'static str {
         "capability_protocol_error" => {
             "The run failed because a tool call returned an unexpected response."
         }
-        "iteration_limit" => {
-            "The run stopped after reaching the maximum number of steps."
-        }
+        "iteration_limit" => "The run stopped after reaching the maximum number of steps.",
         "invalid_model_output" => {
             "The run failed because the AI model returned output that could not be processed."
         }
         "checkpoint_rejected" => "The run failed because a checkpoint was rejected.",
         "checkpoint_unavailable" => "The run failed because a required checkpoint was unavailable.",
-        "transcript_write_failed" => {
-            "The run failed while saving the conversation transcript."
-        }
+        "transcript_write_failed" => "The run failed while saving the conversation transcript.",
         "policy_denied" => "The run was stopped by a policy restriction.",
         "compaction_unavailable" => {
             "The run failed because the context compaction service was unavailable."

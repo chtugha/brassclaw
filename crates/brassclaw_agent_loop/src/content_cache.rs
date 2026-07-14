@@ -43,12 +43,7 @@ pub struct CachedEntry {
 }
 
 impl CachedEntry {
-    pub fn new(
-        key: String,
-        tool_id: String,
-        full_content: String,
-        iteration: usize,
-    ) -> Self {
+    pub fn new(key: String, tool_id: String, full_content: String, iteration: usize) -> Self {
         let categories = tool_id_to_categories(&tool_id);
         let token_estimate = estimate_tokens(&full_content);
         let preview = full_content.chars().take(100).collect();
@@ -69,12 +64,7 @@ impl CachedEntry {
         let categories = self.categories.join(",");
         format!(
             "[CACHED:{}|type:{}|iter:{}|tokens:{}|categories:{}|preview:{}]",
-            self.key,
-            self.tool_id,
-            self.iteration,
-            self.token_estimate,
-            categories,
-            self.preview
+            self.key, self.tool_id, self.iteration, self.token_estimate, categories, self.preview
         )
     }
 }
@@ -244,7 +234,12 @@ mod tests {
     #[test]
     fn content_cache_fetch_increments_count() {
         let mut cache = ContentCacheState::default();
-        let entry = CachedEntry::new("k1".to_string(), "builtin.shell".to_string(), "data".to_string(), 0);
+        let entry = CachedEntry::new(
+            "k1".to_string(),
+            "builtin.shell".to_string(),
+            "data".to_string(),
+            0,
+        );
         cache.insert(entry);
 
         let _ = cache.fetch("k1", None);
@@ -280,18 +275,29 @@ mod tests {
 
     #[test]
     fn tool_id_to_categories_shell() {
-        assert_eq!(tool_id_to_categories("builtin.shell"), vec!["shell", "output"]);
+        assert_eq!(
+            tool_id_to_categories("builtin.shell"),
+            vec!["shell", "output"]
+        );
     }
 
     #[test]
     fn tool_id_to_categories_web() {
-        assert_eq!(tool_id_to_categories("web.get_content"), vec!["web", "content"]);
+        assert_eq!(
+            tool_id_to_categories("web.get_content"),
+            vec!["web", "content"]
+        );
     }
 
     #[test]
     fn content_cache_state_round_trips_json() {
         let mut cache = ContentCacheState::default();
-        let entry = CachedEntry::new("k1".to_string(), "builtin.shell".to_string(), "output".to_string(), 1);
+        let entry = CachedEntry::new(
+            "k1".to_string(),
+            "builtin.shell".to_string(),
+            "output".to_string(),
+            1,
+        );
         cache.insert(entry);
         let json = serde_json::to_string(&cache).expect("serialize");
         let restored: ContentCacheState = serde_json::from_str(&json).expect("deserialize");

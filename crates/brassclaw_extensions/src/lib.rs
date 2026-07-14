@@ -78,9 +78,6 @@ impl ExtensionAssetPath {
 /// validation has converted manifest strings into typed internal values.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExtensionRuntime {
-    Wasm {
-        module: ExtensionAssetPath,
-    },
     Script {
         runner: String,
         image: Option<String>,
@@ -104,7 +101,6 @@ pub enum ExtensionRuntime {
 impl ExtensionRuntime {
     pub fn kind(&self) -> RuntimeKind {
         match self {
-            Self::Wasm { .. } => RuntimeKind::Wasm,
             Self::Script { .. } => RuntimeKind::Script,
             Self::Mcp { .. } => RuntimeKind::Mcp,
             Self::FirstParty { .. } => RuntimeKind::FirstParty,
@@ -114,9 +110,6 @@ impl ExtensionRuntime {
 
     fn from_v2(runtime: ExtensionRuntimeV2) -> Result<Self, ExtensionError> {
         match runtime {
-            ExtensionRuntimeV2::Wasm { module } => Ok(Self::Wasm {
-                module: ExtensionAssetPath::new(module)?,
-            }),
             ExtensionRuntimeV2::Script {
                 runner,
                 image,

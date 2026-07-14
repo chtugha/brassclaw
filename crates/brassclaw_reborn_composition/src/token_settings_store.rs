@@ -230,7 +230,10 @@ mod tests {
     #[test]
     fn provider_tokens_key_format() {
         assert_eq!(provider_tokens_key("ollama"), "provider_tokens:ollama");
-        assert_eq!(provider_tokens_key("my-provider"), "provider_tokens:my-provider");
+        assert_eq!(
+            provider_tokens_key("my-provider"),
+            "provider_tokens:my-provider"
+        );
     }
 
     #[tokio::test]

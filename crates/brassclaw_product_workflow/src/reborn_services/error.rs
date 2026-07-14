@@ -74,11 +74,7 @@ impl RebornServicesError {
         Self::from_status(RebornServicesErrorCode::InvalidRequest, 400, false)
     }
 
-    pub fn from_status(
-        code: RebornServicesErrorCode,
-        status_code: u16,
-        retryable: bool,
-    ) -> Self {
+    pub fn from_status(code: RebornServicesErrorCode, status_code: u16, retryable: bool) -> Self {
         Self::from_status_kind(code, default_kind_for_code(code), status_code, retryable)
     }
 

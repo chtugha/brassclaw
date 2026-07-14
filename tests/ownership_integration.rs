@@ -286,5 +286,4 @@ mod tests {
         assert!(!reg.is_owner());
         assert!(reg.is_regular());
     }
-
 }

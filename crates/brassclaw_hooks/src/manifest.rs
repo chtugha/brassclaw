@@ -68,7 +68,9 @@ pub struct HookManifestEntry {
     /// install time.
     #[serde(default)]
     pub requires_grant: Option<String>,
-    /// Hook body — either declarative predicate or programmatic WASM.
+    /// Hook body — declarative predicate. The WASM hook backend was removed
+    /// in Phase 6 of the v1-removal plan; `mode = "wasm"` manifests are now
+    /// rejected at install time.
     pub body: HookManifestBody,
 }
 
@@ -148,55 +150,18 @@ pub enum HookManifestScope {
     SameTenant,
 }
 
-/// Hook body — either declarative predicate or programmatic WASM.
+/// Hook body — only declarative predicate. The WASM hook backend was removed
+/// in Phase 6 of the v1-removal plan; programmatic hooks are no longer
+/// supported.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
 pub enum HookManifestBody {
-    /// Declarative predicate evaluated by the host. No WASM invoked at hook
-    /// time.
+    /// Declarative predicate evaluated by the host. No external code runtimes
+    /// (WASM, script) are involved — every hook decision is computed in the
+    /// host's predicate evaluator.
     Predicate { spec: HookPredicateSpec },
-    /// Programmatic hook — a WASM function exported by the extension. The
-    /// dispatcher runs it inside the extension's WASM sandbox with a typed
-    /// `HookSink` host import.
-    Wasm {
-        export: String,
-        #[serde(default)]
-        budget: WasmBudget,
-    },
 }
 
-/// Per-hook execution budget for WASM hooks. Defaults match the dispatcher's
-/// per-hook timeout.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct WasmBudget {
-    #[serde(default = "default_fuel")]
-    pub fuel: u64,
-    #[serde(default = "default_memory_mb")]
-    pub memory_mb: u32,
-    #[serde(default = "default_wall_ms")]
-    pub wall_ms: u32,
-}
-
-impl Default for WasmBudget {
-    fn default() -> Self {
-        Self {
-            fuel: default_fuel(),
-            memory_mb: default_memory_mb(),
-            wall_ms: default_wall_ms(),
-        }
-    }
-}
-
-fn default_fuel() -> u64 {
-    100_000
-}
-fn default_memory_mb() -> u32 {
-    4
-}
-fn default_wall_ms() -> u32 {
-    50
-}
 fn default_phase() -> HookPhase {
     HookPhase::Policy
 }
@@ -257,80 +222,79 @@ impl HookManifestEntry {
         // Validate predicate bodies that carry a sliding-window string. We
         // surface unparseable windows at install time rather than letting
         // them fail closed at every evaluation.
-        if let HookManifestBody::Predicate { spec } = &self.body {
-            let (when, reason_strs, window) = match spec {
-                HookPredicateSpec::DenyCapability { when, reason } => {
-                    (Some(when), vec![reason.as_str()], None)
-                }
-                HookPredicateSpec::PauseApproval { when, reason } => {
-                    (Some(when), vec![reason.as_str()], None)
-                }
-                HookPredicateSpec::RateOrValueCap {
-                    when,
-                    bound,
-                    on_exceeded,
-                } => {
-                    // Bug 1 (codex review on PR #3635): an `InvocationCount`
-                    // cap whose `max` exceeds the backend's per-key sample
-                    // cap is silently unenforceable — the sliding window can
-                    // never retain more than `MAX_SAMPLES_PER_KEY` samples,
-                    // so `count` can never exceed such a `max` and the cap
-                    // never fires. Reject at install time (fail-closed) so
-                    // the operator sees the impossibility instead of a dead
-                    // rate limit. `NumericSum` is intentionally NOT bounded
-                    // here: its threshold is a value sum, not a count, and
-                    // the backend fails closed via `WindowOverflow` when its
-                    // window saturates.
-                    if let ValueOrRateBound::InvocationCount { max, .. } = bound
-                        && (*max as usize) > crate::predicate_state::MAX_SAMPLES_PER_KEY
-                    {
-                        return Err(HookManifestValidationError(format!(
-                            "hook `{}` InvocationCount max {} exceeds the predicate \
-                             backend capacity (per-key sample cap {}); the cap would be \
-                             silently unenforceable",
-                            self.id.as_str(),
-                            max,
-                            crate::predicate_state::MAX_SAMPLES_PER_KEY
-                        )));
-                    }
-                    let window = match bound {
-                        ValueOrRateBound::InvocationCount { window, .. } => Some(window.as_str()),
-                        ValueOrRateBound::NumericSum { window, .. } => Some(window.as_str()),
-                    };
-                    let reasons: Vec<&str> = match on_exceeded {
-                        crate::predicate::OnExceededAction::Deny { reason }
-                        | crate::predicate::OnExceededAction::DenyWithCode { reason, .. }
-                        | crate::predicate::OnExceededAction::PauseApproval { reason }
-                        | crate::predicate::OnExceededAction::PauseApprovalWithCode {
-                            reason,
-                            ..
-                        } => vec![reason.as_str()],
-                    };
-                    (Some(when), reasons, window)
-                }
-            };
-            if let Some(when) = when {
-                validate_predicate_tree(self.id.as_str(), when)?;
+        let HookManifestBody::Predicate { spec } = &self.body;
+        let (when, reason_strs, window) = match spec {
+            HookPredicateSpec::DenyCapability { when, reason } => {
+                (Some(when), vec![reason.as_str()], None)
             }
-            for reason in reason_strs {
-                if reason.len() > MAX_MANIFEST_REASON_BYTES {
+            HookPredicateSpec::PauseApproval { when, reason } => {
+                (Some(when), vec![reason.as_str()], None)
+            }
+            HookPredicateSpec::RateOrValueCap {
+                when,
+                bound,
+                on_exceeded,
+            } => {
+                // Bug 1 (codex review on PR #3635): an `InvocationCount`
+                // cap whose `max` exceeds the backend's per-key sample
+                // cap is silently unenforceable — the sliding window can
+                // never retain more than `MAX_SAMPLES_PER_KEY` samples,
+                // so `count` can never exceed such a `max` and the cap
+                // never fires. Reject at install time (fail-closed) so
+                // the operator sees the impossibility instead of a dead
+                // rate limit. `NumericSum` is intentionally NOT bounded
+                // here: its threshold is a value sum, not a count, and
+                // the backend fails closed via `WindowOverflow` when its
+                // window saturates.
+                if let ValueOrRateBound::InvocationCount { max, .. } = bound
+                    && (*max as usize) > crate::predicate_state::MAX_SAMPLES_PER_KEY
+                {
                     return Err(HookManifestValidationError(format!(
-                        "hook `{}` reason exceeds {} bytes (got {})",
+                        "hook `{}` InvocationCount max {} exceeds the predicate \
+                         backend capacity (per-key sample cap {}); the cap would be \
+                         silently unenforceable",
                         self.id.as_str(),
-                        MAX_MANIFEST_REASON_BYTES,
-                        reason.len()
+                        max,
+                        crate::predicate_state::MAX_SAMPLES_PER_KEY
                     )));
                 }
+                let window = match bound {
+                    ValueOrRateBound::InvocationCount { window, .. } => Some(window.as_str()),
+                    ValueOrRateBound::NumericSum { window, .. } => Some(window.as_str()),
+                };
+                let reasons: Vec<&str> = match on_exceeded {
+                    crate::predicate::OnExceededAction::Deny { reason }
+                    | crate::predicate::OnExceededAction::DenyWithCode { reason, .. }
+                    | crate::predicate::OnExceededAction::PauseApproval { reason }
+                    | crate::predicate::OnExceededAction::PauseApprovalWithCode {
+                        reason,
+                        ..
+                    } => vec![reason.as_str()],
+                };
+                (Some(when), reasons, window)
             }
-            if let Some(window) = window {
-                validate_window(window).map_err(|msg| {
-                    HookManifestValidationError(format!(
-                        "hook `{}` has invalid window: {}",
-                        self.id.as_str(),
-                        msg
-                    ))
-                })?;
+        };
+        if let Some(when) = when {
+            validate_predicate_tree(self.id.as_str(), when)?;
+        }
+        for reason in reason_strs {
+            if reason.len() > MAX_MANIFEST_REASON_BYTES {
+                return Err(HookManifestValidationError(format!(
+                    "hook `{}` reason exceeds {} bytes (got {})",
+                    self.id.as_str(),
+                    MAX_MANIFEST_REASON_BYTES,
+                    reason.len()
+                )));
             }
+        }
+        if let Some(window) = window {
+            validate_window(window).map_err(|msg| {
+                HookManifestValidationError(format!(
+                    "hook `{}` has invalid window: {}",
+                    self.id.as_str(),
+                    msg
+                ))
+            })?;
         }
         Ok(())
     }
@@ -755,47 +719,24 @@ type = "always"
 
     /// Unknown nested body fields must also fail loud — the manifest's nested
     /// DTOs (`HookManifestBody`, `WasmBudget`) carry `deny_unknown_fields`
-    /// so typos in WASM budget tuning don't get silently ignored.
+    /// Phase 6 of the v1-removal plan removed the WASM hook backend. The
+    /// `mode = "wasm"` manifest form must now be rejected by the schema so a
+    /// future schema migration cannot silently downgrade to predicate logic.
     #[test]
-    fn rejects_unknown_wasm_budget_field() {
+    fn rejects_wasm_body_mode_after_phase6_removal() {
         let toml_text = r#"
 id = "h"
 kind = "after_capability"
 [body]
 mode = "wasm"
 export = "go"
-[body.budget]
-fuel = 1000
-memory_mb = 1
-wall_ms = 10
-gas = 999
 "#;
         let err = toml::from_str::<HookManifestEntry>(toml_text)
-            .expect_err("unknown field `gas` must be rejected");
+            .expect_err("WASM hook body mode must be rejected after Phase 6 removal");
         assert!(
-            err.to_string().contains("gas") || err.to_string().contains("unknown field"),
+            err.to_string().contains("wasm") || err.to_string().contains("unknown variant"),
             "error: {err}"
         );
-    }
-
-    #[test]
-    fn wasm_body_round_trips_with_defaults() {
-        let entry = HookManifestEntry {
-            id: HookLocalId::new("telemetry").expect("valid HookLocalId in test"),
-            kind: HookManifestKind::AfterCapability,
-            scope: HookManifestScope::OwnCapabilities,
-            phase: HookPhase::Telemetry,
-            priority: HookPriority::DEFAULT,
-            description: None,
-            requires_grant: None,
-            body: HookManifestBody::Wasm {
-                export: "order_telemetry".to_string(),
-                budget: WasmBudget::default(),
-            },
-        };
-        let toml_text = toml::to_string(&entry).expect("ser");
-        let back: HookManifestEntry = toml::from_str(&toml_text).expect("de");
-        assert_eq!(entry, back);
     }
 
     #[test]
@@ -808,9 +749,13 @@ gas = 999
             priority: HookPriority::DEFAULT,
             description: Some("Observe durable hook failures".to_string()),
             requires_grant: None,
-            body: HookManifestBody::Wasm {
-                export: "observe_event".to_string(),
-                budget: WasmBudget::default(),
+            body: HookManifestBody::Predicate {
+                spec: crate::predicate::HookPredicateSpec::DenyCapability {
+                    when: crate::predicate::CapabilityPredicate::NameEquals {
+                        name: "shell.deny".to_string(),
+                    },
+                    reason: "phase 6 placeholder".to_string(),
+                },
             },
         };
         entry.validate().expect("event-triggered manifest is valid");

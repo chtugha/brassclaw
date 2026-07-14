@@ -175,5 +175,4 @@ mod tests {
             Some("https://abc.ngrok.io/".to_string())
         );
     }
-
 }

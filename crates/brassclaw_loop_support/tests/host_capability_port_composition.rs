@@ -61,7 +61,7 @@ async fn host_capability_port_composition_factory_builds_loop_capability_port() 
     let mut context = ExecutionContext::local_default(
         UserId::new("user-loop-support-factory").unwrap(),
         ExtensionId::new("loop-support-factory").unwrap(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         TrustClass::UserTrusted,
         CapabilitySet::default(),
         MountView::default(),
@@ -101,7 +101,7 @@ async fn visible_capability_request_rejects_caller_supplied_mounts() {
     let mut context = ExecutionContext::local_default(
         UserId::new("user-caller-mount-rejection").unwrap(),
         ExtensionId::new("loop-support-mounts").unwrap(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         TrustClass::UserTrusted,
         CapabilitySet::default(),
         MountView::new(vec![MountGrant::new(
@@ -146,7 +146,7 @@ async fn factory_stages_provider_tool_call_arguments_without_custom_resolver_ove
     let mut context = ExecutionContext::local_default(
         UserId::new("user-provider-tool-input").unwrap(),
         ExtensionId::new("loop-support-provider-tool-input").unwrap(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         TrustClass::UserTrusted,
         CapabilitySet::default(),
         MountView::default(),
@@ -351,7 +351,7 @@ impl HostRuntime for SingleToolHostRuntime {
                 descriptor: CapabilityDescriptor {
                     id: CapabilityId::new("demo.echo").unwrap(),
                     provider: ExtensionId::new("demo").unwrap(),
-                    runtime: RuntimeKind::Wasm,
+                    runtime: RuntimeKind::FirstParty,
                     trust_ceiling: TrustClass::UserTrusted,
                     description: "Echo input".to_string(),
                     parameters_schema: serde_json::json!({

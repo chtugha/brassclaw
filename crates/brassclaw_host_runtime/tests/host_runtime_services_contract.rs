@@ -924,8 +924,7 @@ async fn production_wiring_validation_uses_configured_runtime_requirements() {
         ProcessServices::in_memory(),
         CapabilitySurfaceVersion::new("surface-v1").unwrap(),
     );
-    let config = ProductionWiringConfig::new([RuntimeKind::Script])
-        .require_runtime_http_egress();
+    let config = ProductionWiringConfig::new([RuntimeKind::Script]).require_runtime_http_egress();
 
     let report = services
         .validate_production_wiring(&config)
@@ -6240,7 +6239,7 @@ fn execution_context_with_dispatch_grant(capability: CapabilityId) -> ExecutionC
     ExecutionContext::local_default(
         UserId::new("user").unwrap(),
         ExtensionId::new("caller").unwrap(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         TrustClass::UserTrusted,
         grants,
         MountView::default(),
@@ -6276,7 +6275,7 @@ fn execution_context_with_effect_grants_for_scope(
         mission_id: scope.mission_id.clone(),
         thread_id: scope.thread_id.clone(),
         extension_id: ExtensionId::new("caller").unwrap(),
-        runtime: RuntimeKind::Wasm,
+        runtime: RuntimeKind::FirstParty,
         trust: TrustClass::UserTrusted,
         grants: capability_grants_with_effects(capability, allowed_effects),
         mounts: MountView::default(),

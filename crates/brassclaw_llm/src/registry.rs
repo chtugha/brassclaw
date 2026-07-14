@@ -1300,8 +1300,8 @@ mod tests {
             "description": "stub",
             "cache_retention": "long"
         }"#;
-        let def: ProviderDefinition =
-            serde_json::from_str(with_retention).expect("JSON with cache_retention must deserialize");
+        let def: ProviderDefinition = serde_json::from_str(with_retention)
+            .expect("JSON with cache_retention must deserialize");
         assert_eq!(
             def.cache_retention.as_deref(),
             Some("long"),
@@ -1475,8 +1475,8 @@ mod tests {
             "default_model": "test-model",
             "description": "Plain provider"
         }"#;
-        let def: ProviderDefinition = serde_json::from_str(json)
-            .expect("should deserialize without token_budget field");
+        let def: ProviderDefinition =
+            serde_json::from_str(json).expect("should deserialize without token_budget field");
         assert!(
             def.token_budget.is_none(),
             "token_budget should default to None when absent"
@@ -1502,9 +1502,12 @@ mod tests {
                 "total_input": 1000000
             }
         }"#;
-        let def: ProviderDefinition = serde_json::from_str(json)
-            .expect("should deserialize with token_budget");
-        let budget = def.token_budget.as_ref().expect("token_budget should be Some");
+        let def: ProviderDefinition =
+            serde_json::from_str(json).expect("should deserialize with token_budget");
+        let budget = def
+            .token_budget
+            .as_ref()
+            .expect("token_budget should be Some");
         assert_eq!(budget.conversation_history, Some(50000));
         assert_eq!(budget.total_input, Some(1_000_000));
         // Serialized form must include token_budget when Some
@@ -1516,7 +1519,10 @@ mod tests {
         // Full round-trip: deserializing the serialized form gives back the same budget
         let def2: ProviderDefinition =
             serde_json::from_str(&serialized).expect("round-trip deserialization");
-        assert_eq!(def2.token_budget, def.token_budget, "round-trip must be lossless");
+        assert_eq!(
+            def2.token_budget, def.token_budget,
+            "round-trip must be lossless"
+        );
     }
 
     #[test]
@@ -1529,11 +1535,17 @@ mod tests {
             "description": "Provider with partial budget",
             "token_budget": { "conversation_history": 10000 }
         }"#;
-        let def: ProviderDefinition = serde_json::from_str(json)
-            .expect("partial token_budget should deserialize");
-        let budget = def.token_budget.as_ref().expect("token_budget should be Some");
+        let def: ProviderDefinition =
+            serde_json::from_str(json).expect("partial token_budget should deserialize");
+        let budget = def
+            .token_budget
+            .as_ref()
+            .expect("token_budget should be Some");
         assert_eq!(budget.conversation_history, Some(10_000));
-        assert!(budget.total_input.is_none(), "total_input should be None when absent");
+        assert!(
+            budget.total_input.is_none(),
+            "total_input should be None when absent"
+        );
     }
 
     #[test]

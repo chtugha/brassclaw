@@ -721,7 +721,7 @@ async fn default_runtime_status_reports_running_invocations_only() {
         RuntimeWorkId::Invocation(context.invocation_id)
     );
     assert_eq!(status.active_work[0].capability_id, Some(capability_id()));
-    assert_eq!(status.active_work[0].runtime, Some(RuntimeKind::Wasm));
+    assert_eq!(status.active_work[0].runtime, Some(RuntimeKind::FirstParty));
 }
 
 #[tokio::test]
@@ -873,7 +873,7 @@ async fn default_runtime_status_includes_running_processes_from_process_store() 
         RuntimeWorkId::Process(process_id)
     );
     assert_eq!(status.active_work[0].capability_id, Some(capability_id()));
-    assert_eq!(status.active_work[0].runtime, Some(RuntimeKind::Wasm));
+    assert_eq!(status.active_work[0].runtime, Some(RuntimeKind::FirstParty));
 }
 
 #[tokio::test]
@@ -1006,7 +1006,10 @@ async fn default_runtime_health_without_probe_reports_required_runtimes_missing(
     let health = runtime.health().await.unwrap();
 
     assert!(!health.ready);
-    assert_eq!(health.missing_runtime_backends, vec![RuntimeKind::Wasm]);
+    assert_eq!(
+        health.missing_runtime_backends,
+        vec![RuntimeKind::FirstParty]
+    );
 }
 
 #[tokio::test]
@@ -1049,7 +1052,7 @@ fn process_start(context: &ExecutionContext, process_id: ProcessId) -> ProcessSt
         scope: context.resource_scope.clone(),
         extension_id: extension_id(),
         capability_id: capability_id(),
-        runtime: RuntimeKind::Wasm,
+        runtime: RuntimeKind::FirstParty,
         grants: context.grants.clone(),
         mounts: context.mounts.clone(),
         estimated_resources: ResourceEstimate::default(),
@@ -1432,7 +1435,7 @@ impl CapabilityDispatcher for CountingDispatcher {
         Ok(CapabilityDispatchResult {
             capability_id: request.capability_id,
             provider: extension_id(),
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             output: json!({"ok": true}),
             display_preview: None,
             usage: ResourceUsage::default(),
@@ -1491,7 +1494,7 @@ impl CapabilityDispatcher for RecordingDispatcher {
         Ok(CapabilityDispatchResult {
             capability_id: request.capability_id,
             provider: extension_id(),
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             output: json!({"ok": true}),
             display_preview: None,
             usage: ResourceUsage::default(),
@@ -1576,7 +1579,7 @@ fn execution_context_with_dispatch_grant() -> ExecutionContext {
     ExecutionContext::local_default(
         UserId::new("user").unwrap(),
         ExtensionId::new("caller").unwrap(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         TrustClass::UserTrusted,
         grants,
         MountView::default(),

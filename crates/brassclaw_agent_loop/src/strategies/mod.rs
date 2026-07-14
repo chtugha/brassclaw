@@ -36,14 +36,17 @@ pub(crate) use batch::{
 };
 pub(crate) use budget::{BudgetStrategy, DefaultBudgetStrategy};
 pub(crate) use capability::{
-    CapabilityFilter, CapabilityStrategy, DefaultCapabilityStrategy,
-    FocusedCapabilityStrategy, CapabilityFocusConfig,
+    CapabilityFilter, CapabilityFocusConfig, CapabilityStrategy, DefaultCapabilityStrategy,
+    FocusedCapabilityStrategy,
 };
-pub use capability::{FocusedCapabilityStrategy as PublicFocusedCapabilityStrategy, CapabilityFocusConfig as PublicCapabilityFocusConfig};
+pub use capability::{
+    CapabilityFocusConfig as PublicCapabilityFocusConfig,
+    FocusedCapabilityStrategy as PublicFocusedCapabilityStrategy,
+};
 pub(crate) use compaction::{CompactionDecision, CompactionStrategy, DefaultCompactionStrategy};
-pub(crate) use context::{ContextPlan, ContextStrategy, DefaultContextStrategy};
 pub use context::DefaultContextStrategy as PublicDefaultContextStrategy;
 pub use context::LiveTokenBudget;
+pub(crate) use context::{ContextPlan, ContextStrategy, DefaultContextStrategy};
 pub(crate) use drain::{DefaultInputDrainStrategy, InputDrainStrategy};
 pub(crate) use gate::{
     DefaultGateHandlingStrategy, GateHandlingStrategy, GateKind, GateOutcome, GateSummary,

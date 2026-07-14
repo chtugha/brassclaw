@@ -5392,7 +5392,9 @@ async fn list_threads_unimplemented_backend_returns_service_unavailable() {
 
 // ── live setter invocation tests ─────────────────────────────────────────────
 
-use brassclaw_product_workflow::{TokenSettingsResponse, TokenSettingsStore, UpdateTokenSettingsRequest};
+use brassclaw_product_workflow::{
+    TokenSettingsResponse, TokenSettingsStore, UpdateTokenSettingsRequest,
+};
 
 struct FixedTokenSettingsStore {
     response: TokenSettingsResponse,

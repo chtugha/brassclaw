@@ -8,12 +8,12 @@ use deadpool_postgres::Pool;
 use uuid::Uuid;
 
 use crate::config::DatabaseConfig;
-use crate::db::{
-    ApiTokenRecord, CapabilityPermissionStore, ChannelPairingStore, Database,
-    IdentityStore, PairingRequestRecord, SettingRow, SettingsStore,
-    UserIdentityRecord, UserRecord, UserStore, WorkspaceStore,
-};
 use crate::db::tls;
+use crate::db::{
+    ApiTokenRecord, CapabilityPermissionStore, ChannelPairingStore, Database, IdentityStore,
+    PairingRequestRecord, SettingRow, SettingsStore, UserIdentityRecord, UserRecord, UserStore,
+    WorkspaceStore,
+};
 use crate::error::{DatabaseError, WorkspaceError};
 use crate::workspace::{
     ChunkWrite, DocumentVersion, MemoryChunk, MemoryDocument, Repository, SearchConfig,
@@ -55,7 +55,10 @@ impl PgBackend {
 
     /// Get a pooled connection.
     async fn conn(&self) -> Result<deadpool_postgres::Object, DatabaseError> {
-        self.pool.get().await.map_err(|e| DatabaseError::Pool(e.to_string()))
+        self.pool
+            .get()
+            .await
+            .map_err(|e| DatabaseError::Pool(e.to_string()))
     }
 }
 
@@ -270,7 +273,12 @@ impl SettingsStore for PgBackend {
             .await?;
         Ok(rows
             .iter()
-            .map(|r| (r.get::<_, String>("key"), r.get::<_, serde_json::Value>("value")))
+            .map(|r| {
+                (
+                    r.get::<_, String>("key"),
+                    r.get::<_, serde_json::Value>("value"),
+                )
+            })
             .collect())
     }
 
@@ -616,13 +624,21 @@ impl UserStore for PgBackend {
 
     async fn update_user_status(&self, id: &str, status: &str) -> Result<(), DatabaseError> {
         let conn = self.conn().await?;
-        conn.execute("UPDATE users SET status = $1, updated_at = NOW() WHERE id = $2", &[&status, &id]).await?;
+        conn.execute(
+            "UPDATE users SET status = $1, updated_at = NOW() WHERE id = $2",
+            &[&status, &id],
+        )
+        .await?;
         Ok(())
     }
 
     async fn update_user_role(&self, id: &str, role: &str) -> Result<(), DatabaseError> {
         let conn = self.conn().await?;
-        conn.execute("UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2", &[&role, &id]).await?;
+        conn.execute(
+            "UPDATE users SET role = $1, updated_at = NOW() WHERE id = $2",
+            &[&role, &id],
+        )
+        .await?;
         Ok(())
     }
 
@@ -636,13 +652,18 @@ impl UserStore for PgBackend {
         conn.execute(
             "UPDATE users SET display_name = $1, metadata = $2, updated_at = NOW() WHERE id = $3",
             &[&display_name, metadata, &id],
-        ).await?;
+        )
+        .await?;
         Ok(())
     }
 
     async fn record_login(&self, id: &str) -> Result<(), DatabaseError> {
         let conn = self.conn().await?;
-        conn.execute("UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1", &[&id]).await?;
+        conn.execute(
+            "UPDATE users SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1",
+            &[&id],
+        )
+        .await?;
         Ok(())
     }
 
@@ -662,8 +683,16 @@ impl UserStore for PgBackend {
                VALUES ($1, $2, $3, $4, $5, $6, $7)"#,
             &[&id, &user_id, &token_hash.as_slice(), &token_prefix, &name, &expires_at, &now],
         ).await?;
-        Ok(ApiTokenRecord { id, user_id: user_id.to_string(), name: name.to_string(),
-            token_prefix: token_prefix.to_string(), expires_at, last_used_at: None, created_at: now, revoked_at: None })
+        Ok(ApiTokenRecord {
+            id,
+            user_id: user_id.to_string(),
+            name: name.to_string(),
+            token_prefix: token_prefix.to_string(),
+            expires_at,
+            last_used_at: None,
+            created_at: now,
+            revoked_at: None,
+        })
     }
 
     async fn list_api_tokens(&self, user_id: &str) -> Result<Vec<ApiTokenRecord>, DatabaseError> {
@@ -702,16 +731,26 @@ impl UserStore for PgBackend {
         ).await?;
         Ok(row.map(|r| {
             let token = ApiTokenRecord {
-                id: r.get("id"), user_id: r.get("user_id"), name: r.get("name"),
-                token_prefix: r.get("token_prefix"), expires_at: r.get("expires_at"),
-                last_used_at: r.get("last_used_at"), created_at: r.get("created_at"),
+                id: r.get("id"),
+                user_id: r.get("user_id"),
+                name: r.get("name"),
+                token_prefix: r.get("token_prefix"),
+                expires_at: r.get("expires_at"),
+                last_used_at: r.get("last_used_at"),
+                created_at: r.get("created_at"),
                 revoked_at: r.get("revoked_at"),
             };
             let user = UserRecord {
-                id: r.get("u_id"), email: r.get("email"), display_name: r.get("display_name"),
-                status: r.get("status"), role: r.get("role"), created_at: r.get("u_created_at"),
-                updated_at: r.get("updated_at"), last_login_at: r.get("last_login_at"),
-                created_by: r.get("created_by"), metadata: r.get("metadata"),
+                id: r.get("u_id"),
+                email: r.get("email"),
+                display_name: r.get("display_name"),
+                status: r.get("status"),
+                role: r.get("role"),
+                created_at: r.get("u_created_at"),
+                updated_at: r.get("updated_at"),
+                last_login_at: r.get("last_login_at"),
+                created_by: r.get("created_by"),
+                metadata: r.get("metadata"),
             };
             (token, user)
         }))
@@ -719,35 +758,70 @@ impl UserStore for PgBackend {
 
     async fn record_token_usage(&self, token_id: Uuid) -> Result<(), DatabaseError> {
         let conn = self.conn().await?;
-        conn.execute("UPDATE api_tokens SET last_used_at = NOW() WHERE id = $1", &[&token_id]).await?;
+        conn.execute(
+            "UPDATE api_tokens SET last_used_at = NOW() WHERE id = $1",
+            &[&token_id],
+        )
+        .await?;
         Ok(())
     }
 
     async fn has_any_users(&self) -> Result<bool, DatabaseError> {
         let conn = self.conn().await?;
-        let row = conn.query_one("SELECT EXISTS(SELECT 1 FROM users LIMIT 1) as has_users", &[]).await?;
+        let row = conn
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM users LIMIT 1) as has_users",
+                &[],
+            )
+            .await?;
         Ok(row.get("has_users"))
     }
 
     async fn delete_user(&self, id: &str) -> Result<bool, DatabaseError> {
         let mut conn = self.conn().await?;
-        let tx = conn.transaction().await
+        let tx = conn
+            .transaction()
+            .await
             .map_err(|e| DatabaseError::Query(e.to_string()))?;
-        for table in &["settings", "heartbeat_state", "tool_rate_limit_state", "secret_usage_log",
-            "leak_detection_events", "secrets", "wasm_tools", "routines", "memory_documents",
-            "conversations", "user_identities"] {
+        for table in &[
+            "settings",
+            "heartbeat_state",
+            "tool_rate_limit_state",
+            "secret_usage_log",
+            "leak_detection_events",
+            "secrets",
+            "wasm_tools",
+            "routines",
+            "memory_documents",
+            "conversations",
+            "user_identities",
+        ] {
             tx.execute(&format!("DELETE FROM {table} WHERE user_id = $1"), &[&id])
-                .await.map_err(|e| DatabaseError::Query(e.to_string()))?;
+                .await
+                .map_err(|e| DatabaseError::Query(e.to_string()))?;
         }
-        tx.execute("DELETE FROM job_events WHERE job_id IN (SELECT id FROM agent_jobs WHERE user_id = $1)", &[&id])
-            .await.map_err(|e| DatabaseError::Query(e.to_string()))?;
+        tx.execute(
+            "DELETE FROM job_events WHERE job_id IN (SELECT id FROM agent_jobs WHERE user_id = $1)",
+            &[&id],
+        )
+        .await
+        .map_err(|e| DatabaseError::Query(e.to_string()))?;
         tx.execute("DELETE FROM agent_jobs WHERE user_id = $1", &[&id])
-            .await.map_err(|e| DatabaseError::Query(e.to_string()))?;
-        tx.execute("UPDATE users SET created_by = NULL WHERE created_by = $1", &[&id])
-            .await.map_err(|e| DatabaseError::Query(e.to_string()))?;
-        let result = tx.execute("DELETE FROM users WHERE id = $1", &[&id])
-            .await.map_err(|e| DatabaseError::Query(e.to_string()))?;
-        tx.commit().await.map_err(|e| DatabaseError::Query(e.to_string()))?;
+            .await
+            .map_err(|e| DatabaseError::Query(e.to_string()))?;
+        tx.execute(
+            "UPDATE users SET created_by = NULL WHERE created_by = $1",
+            &[&id],
+        )
+        .await
+        .map_err(|e| DatabaseError::Query(e.to_string()))?;
+        let result = tx
+            .execute("DELETE FROM users WHERE id = $1", &[&id])
+            .await
+            .map_err(|e| DatabaseError::Query(e.to_string()))?;
+        tx.commit()
+            .await
+            .map_err(|e| DatabaseError::Query(e.to_string()))?;
         Ok(result > 0)
     }
 
@@ -784,11 +858,17 @@ impl UserStore for PgBackend {
                 &[&since],
             ).await?
         };
-        Ok(rows.iter().map(|r| crate::db::UserUsageStats {
-            user_id: r.get("user_id"), model: r.get("model"), call_count: r.get("call_count"),
-            input_tokens: r.get("input_tokens"), output_tokens: r.get("output_tokens"),
-            total_cost: r.get("total_cost"),
-        }).collect())
+        Ok(rows
+            .iter()
+            .map(|r| crate::db::UserUsageStats {
+                user_id: r.get("user_id"),
+                model: r.get("model"),
+                call_count: r.get("call_count"),
+                input_tokens: r.get("input_tokens"),
+                output_tokens: r.get("output_tokens"),
+                total_cost: r.get("total_cost"),
+            })
+            .collect())
     }
 
     async fn user_summary_stats(
@@ -808,7 +888,8 @@ impl UserStore for PgBackend {
                    WHERE COALESCE(j.user_id, c.user_id) = $1
                    GROUP BY COALESCE(j.user_id, c.user_id)"#,
                 &[&uid],
-            ).await?
+            )
+            .await?
         } else {
             conn.query(
                 r#"SELECT COALESCE(j.user_id, c.user_id) AS user_id,
@@ -820,12 +901,18 @@ impl UserStore for PgBackend {
                    LEFT JOIN conversations c ON l.conversation_id = c.id
                    GROUP BY COALESCE(j.user_id, c.user_id)"#,
                 &[],
-            ).await?
+            )
+            .await?
         };
-        Ok(rows.iter().map(|r| crate::db::UserSummaryStats {
-            user_id: r.get("user_id"), job_count: r.get("job_count"),
-            total_cost: r.get("total_cost"), last_active_at: r.get("last_active_at"),
-        }).collect())
+        Ok(rows
+            .iter()
+            .map(|r| crate::db::UserSummaryStats {
+                user_id: r.get("user_id"),
+                job_count: r.get("job_count"),
+                total_cost: r.get("total_cost"),
+                last_active_at: r.get("last_active_at"),
+            })
+            .collect())
     }
 
     async fn admin_usage_summary(
@@ -833,8 +920,9 @@ impl UserStore for PgBackend {
         since: DateTime<Utc>,
     ) -> Result<crate::db::AdminUsageSummary, DatabaseError> {
         let conn = self.conn().await?;
-        let row = conn.query_one(
-            r#"SELECT (SELECT COUNT(*) FROM users) AS total_users,
+        let row = conn
+            .query_one(
+                r#"SELECT (SELECT COUNT(*) FROM users) AS total_users,
                       (SELECT COUNT(*) FROM users WHERE status = 'active') AS active_users,
                       (SELECT COUNT(*) FROM users WHERE status = 'suspended') AS suspended_users,
                       (SELECT COUNT(*) FROM users WHERE role = 'admin') AS admin_users,
@@ -845,13 +933,18 @@ impl UserStore for PgBackend {
                            COALESCE(SUM(output_tokens), 0) AS output_tokens,
                            COALESCE(SUM(cost), 0::numeric) AS usage_cost
                     FROM llm_calls WHERE created_at >= $1) recent"#,
-            &[&since],
-        ).await?;
+                &[&since],
+            )
+            .await?;
         Ok(crate::db::AdminUsageSummary {
-            total_users: row.get("total_users"), active_users: row.get("active_users"),
-            suspended_users: row.get("suspended_users"), admin_users: row.get("admin_users"),
-            total_jobs: row.get("total_jobs"), llm_calls: row.get("llm_calls"),
-            input_tokens: row.get("input_tokens"), output_tokens: row.get("output_tokens"),
+            total_users: row.get("total_users"),
+            active_users: row.get("active_users"),
+            suspended_users: row.get("suspended_users"),
+            admin_users: row.get("admin_users"),
+            total_jobs: row.get("total_jobs"),
+            llm_calls: row.get("llm_calls"),
+            input_tokens: row.get("input_tokens"),
+            output_tokens: row.get("output_tokens"),
             usage_cost: row.get("usage_cost"),
         })
     }
@@ -881,9 +974,16 @@ impl UserStore for PgBackend {
         ).await?;
         seed_initial_assistant_thread(&tx, &user.id, user.created_at).await?;
         tx.commit().await?;
-        Ok(ApiTokenRecord { id, user_id: user.id.clone(), name: token_name.to_string(),
-            token_prefix: token_prefix.to_string(), expires_at, last_used_at: None,
-            created_at: now, revoked_at: None })
+        Ok(ApiTokenRecord {
+            id,
+            user_id: user.id.clone(),
+            name: token_name.to_string(),
+            token_prefix: token_prefix.to_string(),
+            expires_at,
+            last_used_at: None,
+            created_at: now,
+            revoked_at: None,
+        })
     }
 }
 
@@ -1369,7 +1469,12 @@ impl IdentityStore for PgBackend {
             "UPDATE user_identities SET display_name = COALESCE($3, display_name), \
              avatar_url = COALESCE($4, avatar_url), updated_at = NOW() \
              WHERE provider = $1 AND provider_user_id = $2",
-            &[&provider, &provider_user_id, &display_name as &(dyn tokio_postgres::types::ToSql + Sync), &avatar_url as &(dyn tokio_postgres::types::ToSql + Sync)],
+            &[
+                &provider,
+                &provider_user_id,
+                &display_name as &(dyn tokio_postgres::types::ToSql + Sync),
+                &avatar_url as &(dyn tokio_postgres::types::ToSql + Sync),
+            ],
         )
         .await?;
         Ok(())

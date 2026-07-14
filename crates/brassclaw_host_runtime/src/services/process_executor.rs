@@ -341,8 +341,9 @@ mod tests {
                 "network_denied",
             ),
             (
-                DispatchError::Wasm {
+                DispatchError::FirstParty {
                     kind: RuntimeDispatchErrorKind::OutputDecode,
+                    safe_summary: None,
                 },
                 "output_decode",
             ),

@@ -4,10 +4,10 @@ use crate::context_budget::DEFAULT_FALLBACK_CONTEXT_WINDOW;
 use crate::default_planner::DefaultPlanner;
 use crate::family::{ComponentDigest, LoopFamily};
 use crate::planner::AgentLoopPlanner;
+use crate::strategies::planning_context::PlanningContextStrategy;
 use crate::strategies::{
     CapabilityFocusConfig, DefaultCompactionStrategy, FocusedCapabilityStrategy, LiveTokenBudget,
 };
-use crate::strategies::planning_context::PlanningContextStrategy;
 
 mod subagent;
 

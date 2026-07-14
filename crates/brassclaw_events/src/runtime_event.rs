@@ -224,7 +224,6 @@ struct TrustedRuntimeEventWire {
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum TrustedRuntimeKindWire {
-    Wasm,
     Mcp,
     Script,
     FirstParty,
@@ -234,7 +233,6 @@ enum TrustedRuntimeKindWire {
 impl From<TrustedRuntimeKindWire> for RuntimeKind {
     fn from(value: TrustedRuntimeKindWire) -> Self {
         match value {
-            TrustedRuntimeKindWire::Wasm => Self::Wasm,
             TrustedRuntimeKindWire::Mcp => Self::Mcp,
             TrustedRuntimeKindWire::Script => Self::Script,
             TrustedRuntimeKindWire::FirstParty => Self::FirstParty,

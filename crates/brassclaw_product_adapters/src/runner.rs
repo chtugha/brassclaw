@@ -416,20 +416,16 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
-    use async_trait::async_trait;
     use crate::capabilities::ProductAdapterCapabilities;
-    use crate::external::{
-        ExternalActorRef, ExternalConversationRef, ExternalEventId,
-    };
-    use crate::identity::{
-        AdapterInstallationId, ProductAdapterId, ProductSurfaceKind,
-    };
+    use crate::external::{ExternalActorRef, ExternalConversationRef, ExternalEventId};
+    use crate::identity::{AdapterInstallationId, ProductAdapterId, ProductSurfaceKind};
     use crate::{
         AuthRequirement, OutboundDeliverySink, ParsedProductInbound, ProductInboundPayload,
         ProductOutboundEnvelope, ProductRejection, ProductRejectionKind, ProductRenderOutcome,
         ProductTriggerReason, ProjectionSubscriptionRequest, ProtocolHttpEgress,
         UserMessagePayload,
     };
+    use async_trait::async_trait;
     use http::HeaderMap;
     use http::header::HeaderValue;
     use tokio::sync::Notify;

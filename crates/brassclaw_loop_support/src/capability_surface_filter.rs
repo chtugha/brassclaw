@@ -642,7 +642,7 @@ mod tests {
         CapabilityDescriptorView {
             capability_id: capability_id(capability),
             provider: None,
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             safe_name: capability.to_string(),
             safe_description: format!("{capability} description"),
             concurrency_hint: ConcurrencyHint::SafeForParallel,

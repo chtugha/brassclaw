@@ -73,6 +73,10 @@ mod production_runtime_policy;
 mod profile;
 mod projection;
 pub use auth_prompt::{AuthChallengeProvider, AuthChallengeView};
+mod fetch_cached_content;
+#[cfg(feature = "libsql")]
+mod memory_doc_libsql_store;
+pub(crate) mod plan_library;
 #[cfg(feature = "root-llm-provider")]
 mod provider_admin;
 #[cfg(feature = "root-llm-provider")]
@@ -80,22 +84,18 @@ mod provider_admin_product_command;
 #[cfg(feature = "root-llm-provider")]
 mod provider_repo;
 mod readiness;
+#[cfg(feature = "libsql")]
+mod reduction_rules_store;
 mod runtime;
 mod runtime_input;
 mod skill_listing;
 #[cfg(feature = "test-support")]
 pub mod test_support;
-mod fetch_cached_content;
 #[cfg(feature = "libsql")]
-mod memory_doc_libsql_store;
-pub(crate) mod plan_library;
+mod token_settings_store;
 mod trigger_poller;
 mod trigger_poller_trusted_submit;
 mod web_access;
-#[cfg(feature = "libsql")]
-mod reduction_rules_store;
-#[cfg(feature = "libsql")]
-mod token_settings_store;
 mod webui;
 mod webui_body_limit;
 mod webui_extension_credentials;

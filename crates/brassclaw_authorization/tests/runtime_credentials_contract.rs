@@ -275,7 +275,7 @@ fn wasm_descriptor() -> CapabilityDescriptor {
     CapabilityDescriptor {
         id: CapabilityId::new("echo.say").unwrap(),
         provider: ExtensionId::new("echo").unwrap(),
-        runtime: RuntimeKind::Wasm,
+        runtime: RuntimeKind::FirstParty,
         trust_ceiling: TrustClass::Sandbox,
         description: "Echo text".to_string(),
         parameters_schema: json!({"type": "object"}),
@@ -339,7 +339,7 @@ fn execution_context(grants: CapabilitySet) -> ExecutionContext {
         mission_id: resource_scope.mission_id.clone(),
         thread_id: resource_scope.thread_id.clone(),
         extension_id: ExtensionId::new("caller").unwrap(),
-        runtime: RuntimeKind::Wasm,
+        runtime: RuntimeKind::FirstParty,
         trust: TrustClass::Sandbox,
         grants,
         mounts: MountView::default(),

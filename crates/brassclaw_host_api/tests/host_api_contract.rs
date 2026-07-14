@@ -252,7 +252,7 @@ fn dispatch_errors_preserve_typed_failure_kind() {
     assert_eq!(
         DispatchError::RuntimeMismatch {
             capability: capability.clone(),
-            descriptor_runtime: RuntimeKind::Wasm,
+            descriptor_runtime: RuntimeKind::FirstParty,
             package_runtime: RuntimeKind::Mcp,
         }
         .failure_kind(),
@@ -268,14 +268,15 @@ fn dispatch_errors_preserve_typed_failure_kind() {
     assert_eq!(
         DispatchError::UnsupportedRuntime {
             capability,
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
         }
         .failure_kind(),
         DispatchFailureKind::UnsupportedRuntime
     );
     assert_eq!(
-        DispatchError::Wasm {
+        DispatchError::FirstParty {
             kind: RuntimeDispatchErrorKind::Guest,
+            safe_summary: None,
         }
         .failure_kind(),
         DispatchFailureKind::Runtime(RuntimeDispatchErrorKind::Guest)
@@ -450,7 +451,7 @@ fn local_default_execution_context_keeps_scope_fields_aligned() {
     let ctx = ExecutionContext::local_default(
         UserId::new("alice").unwrap(),
         ExtensionId::new("echo").unwrap(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         TrustClass::Sandbox,
         CapabilitySet::default(),
         mounts,
@@ -1039,8 +1040,8 @@ fn obligations_are_unique_and_canonicalized() {
 #[test]
 fn privileged_runtime_and_trust_classes_cannot_be_self_asserted_from_json() {
     assert_eq!(
-        serde_json::from_value::<RuntimeKind>(json!("wasm")).unwrap(),
-        RuntimeKind::Wasm
+        serde_json::from_value::<RuntimeKind>(json!("mcp")).unwrap(),
+        RuntimeKind::FirstParty
     );
     assert_eq!(
         serde_json::from_value::<TrustClass>(json!("sandbox")).unwrap(),
@@ -1056,7 +1057,7 @@ fn privileged_runtime_and_trust_classes_cannot_be_self_asserted_from_json() {
 #[test]
 fn runtime_http_egress_request_defaults_optional_body_controls() {
     let mut value = serde_json::to_value(RuntimeHttpEgressRequest {
-        runtime: RuntimeKind::Wasm,
+        runtime: RuntimeKind::FirstParty,
         scope: sample_context().resource_scope,
         capability_id: CapabilityId::new("http.fetch").unwrap(),
         method: NetworkMethod::Get,
@@ -1663,7 +1664,7 @@ fn sample_context() -> ExecutionContext {
         mission_id: None,
         thread_id: None,
         extension_id,
-        runtime: RuntimeKind::Wasm,
+        runtime: RuntimeKind::FirstParty,
         trust: TrustClass::Sandbox,
         grants: CapabilitySet::default(),
         mounts: MountView::new(vec![MountGrant::new(

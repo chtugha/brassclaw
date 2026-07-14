@@ -123,10 +123,8 @@ fn runtime_kind(runtime: &ExtensionRuntime) -> LifecycleExtensionRuntimeKind {
         ExtensionRuntime::Mcp { .. } => LifecycleExtensionRuntimeKind::McpServer,
         ExtensionRuntime::FirstParty { .. } => LifecycleExtensionRuntimeKind::FirstParty,
         ExtensionRuntime::System { .. } => LifecycleExtensionRuntimeKind::System,
-        // WASM/Script extensions are legacy; treat them as first-party for lifecycle purposes.
-        ExtensionRuntime::Wasm { .. } | ExtensionRuntime::Script { .. } => {
-            LifecycleExtensionRuntimeKind::FirstParty
-        }
+        // Script extensions are legacy; treat them as first-party for lifecycle purposes.
+        ExtensionRuntime::Script { .. } => LifecycleExtensionRuntimeKind::FirstParty,
     }
 }
 

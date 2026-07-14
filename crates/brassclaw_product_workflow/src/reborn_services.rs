@@ -105,7 +105,8 @@ pub use llm_config::{
     CodexLoginStart, LlmActiveSelection, LlmConfigService, LlmConfigServiceError,
     LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult, LlmProviderView,
     NearAiAuthProvider, NearAiLoginRequest, NearAiLoginStart, NearAiWalletLoginRequest,
-    NearAiWalletLoginResult, ProviderTokenBudgetView, SetActiveLlmRequest, UpsertLlmProviderRequest,
+    NearAiWalletLoginResult, ProviderTokenBudgetView, SetActiveLlmRequest,
+    UpsertLlmProviderRequest,
 };
 pub use types::{
     RebornAutomationInfo, RebornAutomationRunStatus, RebornAutomationSource, RebornAutomationState,
@@ -2422,10 +2423,7 @@ impl RebornServicesApi for RebornServices {
                     )
                 }
                 crate::reduction_rules::ReductionRuleStoreError::Internal(_) => {
-                    tracing::error!(
-                        "❌ Failed to list reduction rules: {:?}",
-                        error
-                    );
+                    tracing::error!("❌ Failed to list reduction rules: {:?}", error);
                     RebornServicesError::from_status_kind(
                         RebornServicesErrorCode::Internal,
                         RebornServicesErrorKind::Internal,
@@ -2528,10 +2526,7 @@ impl RebornServicesApi for RebornServices {
                     )
                 }
                 crate::reduction_rules::ReductionRuleStoreError::Internal(_) => {
-                    tracing::error!(
-                        "❌ Failed to replace reduction rules: {:?}",
-                        error
-                    );
+                    tracing::error!("❌ Failed to replace reduction rules: {:?}", error);
                     RebornServicesError::from_status_kind(
                         RebornServicesErrorCode::Internal,
                         RebornServicesErrorKind::Internal,
@@ -2597,11 +2592,7 @@ impl RebornServicesApi for RebornServices {
                 "author_reduction_rule called without caller project_id: user={:?}",
                 caller.user_id
             );
-            RebornServicesError::from_status(
-                RebornServicesErrorCode::InvalidRequest,
-                400,
-                false,
-            )
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 400, false)
         })?;
         let project_id_str = project_id.as_str();
         let user_id = caller.user_id.to_string();
@@ -2629,11 +2620,7 @@ impl RebornServicesApi for RebornServices {
                 source,
                 source
             );
-            RebornServicesError::from_status(
-                RebornServicesErrorCode::InvalidRequest,
-                400,
-                false,
-            )
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 400, false)
         })?;
         // Persist by re-reading the existing list, appending the new rule,
         // and writing back atomically. We deliberately don't try to peek
@@ -2700,10 +2687,7 @@ impl RebornServicesApi for RebornServices {
                     )
                 }
                 crate::reduction_rules::ReductionRuleStoreError::Internal(_) => {
-                    tracing::error!(
-                        "❌ Failed to persist authored reduction rule: {:?}",
-                        error
-                    );
+                    tracing::error!("❌ Failed to persist authored reduction rule: {:?}", error);
                     RebornServicesError::from_status_kind(
                         RebornServicesErrorCode::Internal,
                         RebornServicesErrorKind::Internal,

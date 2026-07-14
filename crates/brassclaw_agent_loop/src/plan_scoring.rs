@@ -26,7 +26,18 @@ use crate::plan_state::AgentPlanState;
 /// Maturity level of a plan/skill entry in the library.
 ///
 /// Tiers are ordered: Seedling → Growing → Mature → Candidate.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum SkillMaturityTier {
     /// Newly created; only exists as a workspace SKILL.md.
@@ -169,8 +180,8 @@ pub fn wilson_lower_bound(successes: u64, failures: u64, z: f64) -> f64 {
     let n_f = n as f64;
     let p_hat = successes as f64 / n_f;
     let z2 = z * z;
-    let numerator = p_hat + z2 / (2.0 * n_f)
-        - z * ((p_hat * (1.0 - p_hat) + z2 / (4.0 * n_f)) / n_f).sqrt();
+    let numerator =
+        p_hat + z2 / (2.0 * n_f) - z * ((p_hat * (1.0 - p_hat) + z2 / (4.0 * n_f)) / n_f).sqrt();
     let denominator = 1.0 + z2 / n_f;
     numerator / denominator
 }
@@ -190,7 +201,11 @@ pub fn wilson_lower_bound(successes: u64, failures: u64, z: f64) -> f64 {
 /// | Seedling  | any         | any      |
 ///
 /// `promotion_threshold` overrides the Candidate tier's `w_lower` requirement.
-pub fn classify_tier(usage_count: u64, w_lower: f64, promotion_threshold: f64) -> SkillMaturityTier {
+pub fn classify_tier(
+    usage_count: u64,
+    w_lower: f64,
+    promotion_threshold: f64,
+) -> SkillMaturityTier {
     if usage_count >= 50 && w_lower >= promotion_threshold {
         return SkillMaturityTier::Candidate;
     }
@@ -287,9 +302,10 @@ mod tests {
     #[test]
     fn score_session_counts_failure_tool() {
         let plan = make_plan(2, 2);
-        let outcomes = vec![
-            ToolOutcome::from_result_text("builtin.shell", "Error: command not found"),
-        ];
+        let outcomes = vec![ToolOutcome::from_result_text(
+            "builtin.shell",
+            "Error: command not found",
+        )];
         let score = score_session(Some(&plan), &outcomes, 2, &Default::default());
         // tool_success_rate = 0
         assert!(score < 0.90);
@@ -299,7 +315,12 @@ mod tests {
     fn score_session_with_cache_utility() {
         let plan = make_plan(2, 2);
         let mut cache = ContentCacheState::default();
-        let mut e = CachedEntry::new("k1".to_string(), "builtin.shell".to_string(), "data".to_string(), 0);
+        let mut e = CachedEntry::new(
+            "k1".to_string(),
+            "builtin.shell".to_string(),
+            "data".to_string(),
+            0,
+        );
         e.fetch_count = 2;
         cache.entries.insert("k1".to_string(), e);
         let score = score_session(Some(&plan), &[], 2, &cache);

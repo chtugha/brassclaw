@@ -2,9 +2,9 @@
 //!
 //! This crate owns the framework layer above `brassclaw_turns`.
 
-mod default_planner;
 pub mod content_cache;
 pub mod context_budget;
+mod default_planner;
 pub mod executor;
 pub mod families;
 pub mod family;
@@ -27,7 +27,6 @@ pub mod progress {
 
 pub use planner::AgentLoopPlanner;
 pub use strategies::{
+    LiveTokenBudget, PublicCapabilityFocusConfig as CapabilityFocusConfig,
     PublicFocusedCapabilityStrategy as FocusedCapabilityStrategy,
-    PublicCapabilityFocusConfig as CapabilityFocusConfig,
-    LiveTokenBudget,
 };

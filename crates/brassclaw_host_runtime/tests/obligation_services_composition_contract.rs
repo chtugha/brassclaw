@@ -231,7 +231,7 @@ impl CapabilityDispatcher for ObligationAwareDispatcher {
         let egress_response = self
             .egress
             .execute(RuntimeHttpEgressRequest {
-                runtime: RuntimeKind::Wasm,
+                runtime: RuntimeKind::FirstParty,
                 scope: request.scope.clone(),
                 capability_id: request.capability_id.clone(),
                 method: NetworkMethod::Post,
@@ -255,8 +255,9 @@ impl CapabilityDispatcher for ObligationAwareDispatcher {
                 timeout_ms: None,
             })
             .await
-            .map_err(|_| DispatchError::Wasm {
+            .map_err(|_| DispatchError::FirstParty {
                 kind: RuntimeDispatchErrorKind::NetworkDenied,
+                safe_summary: None,
             })?;
         assert_eq!(egress_response.status, 200);
 
@@ -273,7 +274,7 @@ impl CapabilityDispatcher for ObligationAwareDispatcher {
         Ok(CapabilityDispatchResult {
             capability_id: request.capability_id,
             provider: extension_id(),
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             output: json!({"ok": true}),
             display_preview: None,
             usage: ResourceUsage::default(),
@@ -324,7 +325,7 @@ fn execution_context_with_dispatch_grant() -> ExecutionContext {
     ExecutionContext::local_default(
         UserId::new("user").unwrap(),
         ExtensionId::new("caller").unwrap(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         TrustClass::UserTrusted,
         grants,
         MountView::default(),

@@ -296,7 +296,10 @@ where
     /// Set the per-provider output token ceiling via a live-updatable slot.
     /// The slot can be shared with the settings service — calling `.set()` on a
     /// clone takes effect on the next model call without a restart.
-    pub fn with_max_output_tokens(mut self, max_output_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>) -> Self {
+    pub fn with_max_output_tokens(
+        mut self,
+        max_output_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
+    ) -> Self {
         self.max_output_tokens = max_output_tokens;
         self
     }
@@ -304,7 +307,10 @@ where
     /// Set the total-input pre-call guard via a live-updatable slot.
     /// The slot can be shared with the settings service — calling `.set()` on a
     /// clone takes effect on the next model call without a restart.
-    pub fn with_total_input_tokens(mut self, total_input_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>) -> Self {
+    pub fn with_total_input_tokens(
+        mut self,
+        total_input_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
+    ) -> Self {
         self.total_input_tokens = total_input_tokens;
         self
     }
@@ -325,8 +331,7 @@ where
         if estimated > limit {
             debug!(
                 estimated_tokens = estimated,
-                limit,
-                "total_input pre-call guard: prompt estimate exceeds per-provider limit"
+                limit, "total_input pre-call guard: prompt estimate exceeds per-provider limit"
             );
             return Err(HostManagedModelError::safe(
                 HostManagedModelErrorKind::BudgetExceeded,

@@ -213,20 +213,21 @@ impl RebornLlmConfigService {
                 });
             }
             let builtin_def = builtin_registry.find(&info.id);
-            let definition_budget = builtin_def
-                .and_then(|def| def.token_budget.as_ref())
-                .map(|b| ProviderTokenBudgetView {
-                    profile: b.profile.clone(),
-                    conversation_history: b.conversation_history,
-                    skills: b.skills,
-                    identity: b.identity,
-                    inline_control: b.inline_control,
-                    memory: b.memory,
-                    safety: b.safety,
-                    capability_surface: b.capability_surface,
-                    total_input: b.total_input,
-                    max_output: b.max_output,
-                });
+            let definition_budget =
+                builtin_def
+                    .and_then(|def| def.token_budget.as_ref())
+                    .map(|b| ProviderTokenBudgetView {
+                        profile: b.profile.clone(),
+                        conversation_history: b.conversation_history,
+                        skills: b.skills,
+                        identity: b.identity,
+                        inline_control: b.inline_control,
+                        memory: b.memory,
+                        safety: b.safety,
+                        capability_surface: b.capability_surface,
+                        total_input: b.total_input,
+                        max_output: b.max_output,
+                    });
             let definition_context_window = builtin_def.and_then(|def| def.context_window_tokens);
             providers.push(LlmProviderView {
                 id: info.id,

@@ -20,9 +20,9 @@ use brassclaw_agent_loop::content_cache::{
 };
 use brassclaw_turns::run_profile::{
     AgentLoopHostError, CapabilityBatchInvocation, CapabilityBatchOutcome, CapabilityFailureKind,
-    CapabilityInvocation, CapabilityOutcome, CapabilityResultMessage, LoopCapabilityPort, LoopRunContext,
-    ProviderToolCall, ProviderToolCallCapabilityIds, ProviderToolDefinition, VisibleCapabilityRequest,
-    VisibleCapabilitySurface,
+    CapabilityInvocation, CapabilityOutcome, CapabilityResultMessage, LoopCapabilityPort,
+    LoopRunContext, ProviderToolCall, ProviderToolCallCapabilityIds, ProviderToolDefinition,
+    VisibleCapabilityRequest, VisibleCapabilitySurface,
 };
 
 /// Capability ID for the content-cache retrieval tool.
@@ -191,7 +191,10 @@ impl LoopCapabilityPort for ContentCachingCapabilityPort {
         // Intercept completed results.
         for (outcome, cap_id) in batch.outcomes.iter_mut().zip(cap_ids.iter()) {
             let cached = self.maybe_cache_outcome(
-                std::mem::replace(outcome, CapabilityOutcome::Failed(make_placeholder_failure())),
+                std::mem::replace(
+                    outcome,
+                    CapabilityOutcome::Failed(make_placeholder_failure()),
+                ),
                 cap_id,
                 0,
             );

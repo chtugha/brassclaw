@@ -104,9 +104,6 @@ pub async fn author_reduction_rule(
     // caller; the trait impl also gates this internally as a defence
     // in depth.
     let _ = require_project_id(&caller)?.to_string();
-    let response = state
-        .services()
-        .author_reduction_rule(caller, body)
-        .await?;
+    let response = state.services().author_reduction_rule(caller, body).await?;
     Ok(Json(response))
 }

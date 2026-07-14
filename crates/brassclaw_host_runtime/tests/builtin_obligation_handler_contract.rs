@@ -1115,7 +1115,7 @@ impl CapabilityDispatcher for RecordingDispatcher {
         Ok(CapabilityDispatchResult {
             capability_id: request.capability_id,
             provider: ExtensionId::new("echo").unwrap(),
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             output: json!({"ok": true}),
             display_preview: None,
             usage: ResourceUsage::default(),
@@ -1142,7 +1142,7 @@ fn sample_dispatch(
     CapabilityDispatchResult {
         capability_id: capability_id.clone(),
         provider: ExtensionId::new("echo").unwrap(),
-        runtime: RuntimeKind::Wasm,
+        runtime: RuntimeKind::FirstParty,
         output,
         display_preview: None,
         usage: ResourceUsage::default(),
@@ -1230,7 +1230,7 @@ fn execution_context(grants: CapabilitySet) -> ExecutionContext {
         mission_id: resource_scope.mission_id.clone(),
         thread_id: resource_scope.thread_id.clone(),
         extension_id: ExtensionId::new("caller").unwrap(),
-        runtime: RuntimeKind::Wasm,
+        runtime: RuntimeKind::FirstParty,
         trust: TrustClass::Sandbox,
         grants,
         mounts: MountView::default(),

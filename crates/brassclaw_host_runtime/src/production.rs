@@ -1308,7 +1308,6 @@ fn runtime_kind_rank(runtime: RuntimeKind) -> u8 {
         RuntimeKind::Script => 2,
         RuntimeKind::FirstParty => 3,
         RuntimeKind::System => 4,
-        RuntimeKind::Wasm => 5,
     }
 }
 

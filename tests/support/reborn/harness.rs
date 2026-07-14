@@ -122,7 +122,6 @@ use brassclaw_turns::{
         VisibleCapabilitySurface,
     },
 };
-use brassclaw_wasm::{WitToolHost, WitToolRuntimeConfig};
 use serde_json::json;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -1777,7 +1776,7 @@ impl HostRuntimeCapabilityHarness {
             mounts,
             capability_mount_overrides: Vec::new(),
             capability_ids: github_support::capability_ids()?,
-            runtime_kind: RuntimeKind::Wasm,
+            runtime_kind: RuntimeKind::FirstParty,
             effect_kinds: github_support::effect_kinds(),
             network_policy: github_support::api_policy(),
             secrets: github_support::secret_handles()?,
@@ -2020,9 +2019,7 @@ fn local_dev_host_runtime_with_registry_and_egress(
     .with_runtime_http_egress(runtime_http_egress)
     .with_trust_policy(Arc::new(github_first_party_trust_policy()?))
     .try_with_host_http_egress((*network_egress).clone())
-    .map_err(|report| std::io::Error::other(format!("host HTTP egress failed: {report:?}")))?
-    .try_with_wasm_runtime(WitToolRuntimeConfig::default(), WitToolHost::deny_all())
-    .map_err(|report| std::io::Error::other(format!("WASM runtime failed: {report:?}")))?;
+    .map_err(|report| std::io::Error::other(format!("host HTTP egress failed: {report:?}")))?;
 
     Ok(Arc::new(services.host_runtime_for_local_testing()))
 }

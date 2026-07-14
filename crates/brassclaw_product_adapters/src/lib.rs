@@ -76,8 +76,11 @@ pub use projection::{
 pub use redaction::{REDACTED_PLACEHOLDER, RedactedDebug, RedactedString};
 pub use workflow::ProductWorkflow;
 
-pub use auth_verifier::{Clock, HmacWebhookAuth, SharedSecretHeaderAuth, VerificationOutcome, WebhookAuthVerifier};
+pub use auth_verifier::{
+    Clock, HmacWebhookAuth, SharedSecretHeaderAuth, VerificationOutcome, WebhookAuthVerifier,
+};
 pub use egress_policy::{EgressPolicy, EgressPolicyError, EgressPolicyTarget};
+pub use log_record::{ComponentLogLevel, ComponentLogRecord};
 #[cfg(feature = "host-auth-mint")]
 pub use runner::{
     DEFAULT_MAX_IN_FLIGHT_WEBHOOKS, DEFAULT_WEBHOOK_WORKFLOW_TIMEOUT, NativeProductAdapterRunner,
@@ -86,4 +89,3 @@ pub use runner::{
 };
 #[cfg(feature = "host-auth-mint")]
 pub use runner_immediate_ack::ImmediateAckWorkflowObserver;
-pub use log_record::{ComponentLogLevel, ComponentLogRecord};

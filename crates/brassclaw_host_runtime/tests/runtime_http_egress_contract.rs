@@ -1709,7 +1709,7 @@ async fn host_http_egress_forwards_timeout_to_network() {
 
     service
         .execute(RuntimeHttpEgressRequest {
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             scope: sample_scope(),
             capability_id: sample_capability_id(),
             method: NetworkMethod::Post,
@@ -1827,7 +1827,7 @@ async fn host_http_egress_without_policy_store_fails_closed_before_transport() {
 
     let error = service
         .execute(RuntimeHttpEgressRequest {
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             scope: sample_scope(),
             capability_id: sample_capability_id(),
             method: NetworkMethod::Post,
@@ -1876,7 +1876,7 @@ async fn host_http_egress_borrows_staged_network_policy_before_transport() {
 
     service
         .execute(RuntimeHttpEgressRequest {
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             scope: scope.clone(),
             capability_id: capability_id.clone(),
             method: NetworkMethod::Post,
@@ -2562,7 +2562,7 @@ async fn host_http_egress_fails_closed_without_staged_network_policy() {
 
     let error = service
         .execute(RuntimeHttpEgressRequest {
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             scope: sample_scope(),
             capability_id: sample_capability_id(),
             method: NetworkMethod::Post,
@@ -2614,7 +2614,7 @@ async fn host_http_egress_does_not_use_cross_scope_or_cross_capability_policy() 
 
     let error = service
         .execute(RuntimeHttpEgressRequest {
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             scope: scope.clone(),
             capability_id: capability_id.clone(),
             method: NetworkMethod::Post,
@@ -2662,7 +2662,7 @@ async fn host_http_egress_consumes_staged_policy_when_dispatch_fails_before_tran
 
     let error = service
         .execute(RuntimeHttpEgressRequest {
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             scope: scope.clone(),
             capability_id: capability_id.clone(),
             method: NetworkMethod::Post,
@@ -2711,7 +2711,7 @@ async fn host_http_egress_consumes_staged_policy_when_request_validation_fails()
 
     let error = service
         .execute(RuntimeHttpEgressRequest {
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             scope: scope.clone(),
             capability_id: capability_id.clone(),
             method: NetworkMethod::Post,

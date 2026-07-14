@@ -89,16 +89,19 @@ impl MemoryDocLibSqlStore {
     pub(crate) async fn open(
         db: Arc<libsql::Database>,
     ) -> Result<Self, brassclaw_engine::types::error::EngineError> {
-        let conn = db.connect().map_err(|source| {
-            brassclaw_engine::types::error::EngineError::Store {
-                reason: format!("libsql connect failed: {source}"),
-            }
-        })?;
-        conn.execute_batch(CREATE_MEMORY_DOCS_TABLE).await.map_err(|source| {
-            brassclaw_engine::types::error::EngineError::Store {
-                reason: format!("libsql CREATE TABLE memory_docs failed: {source}"),
-            }
-        })?;
+        let conn =
+            db.connect().map_err(
+                |source| brassclaw_engine::types::error::EngineError::Store {
+                    reason: format!("libsql connect failed: {source}"),
+                },
+            )?;
+        conn.execute_batch(CREATE_MEMORY_DOCS_TABLE)
+            .await
+            .map_err(
+                |source| brassclaw_engine::types::error::EngineError::Store {
+                    reason: format!("libsql CREATE TABLE memory_docs failed: {source}"),
+                },
+            )?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })
@@ -137,11 +140,11 @@ fn deserialize_doc(
     })?);
     let source_thread_id = source_thread_id
         .map(|s| {
-            uuid::Uuid::parse_str(&s)
-                .map(ThreadId)
-                .map_err(|source| brassclaw_engine::types::error::EngineError::Store {
+            uuid::Uuid::parse_str(&s).map(ThreadId).map_err(|source| {
+                brassclaw_engine::types::error::EngineError::Store {
                     reason: format!("memory_docs.source_thread_id is not a UUID: {source}"),
-                })
+                }
+            })
         })
         .transpose()?;
     let tags: Vec<String> = serde_json::from_str(&tags_json).map_err(|source| {
@@ -155,14 +158,18 @@ fn deserialize_doc(
         }
     })?;
     let created_at = DateTime::parse_from_rfc3339(&created_at_str)
-        .map_err(|source| brassclaw_engine::types::error::EngineError::Store {
-            reason: format!("memory_docs.created_at is not RFC3339: {source}"),
-        })?
+        .map_err(
+            |source| brassclaw_engine::types::error::EngineError::Store {
+                reason: format!("memory_docs.created_at is not RFC3339: {source}"),
+            },
+        )?
         .with_timezone(&chrono::Utc);
     let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
-        .map_err(|source| brassclaw_engine::types::error::EngineError::Store {
-            reason: format!("memory_docs.updated_at is not RFC3339: {source}"),
-        })?
+        .map_err(
+            |source| brassclaw_engine::types::error::EngineError::Store {
+                reason: format!("memory_docs.updated_at is not RFC3339: {source}"),
+            },
+        )?
         .with_timezone(&chrono::Utc);
     Ok(MemoryDoc {
         id,
@@ -181,10 +188,18 @@ fn deserialize_doc(
 
 #[async_trait]
 impl Store for MemoryDocLibSqlStore {
-    async fn save_thread(&self, _thread: &Thread) -> Result<(), brassclaw_engine::types::error::EngineError> {
-        unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence; thread CRUD is a separate surface")
+    async fn save_thread(
+        &self,
+        _thread: &Thread,
+    ) -> Result<(), brassclaw_engine::types::error::EngineError> {
+        unimplemented!(
+            "MemoryDocLibSqlStore covers only MemoryDoc persistence; thread CRUD is a separate surface"
+        )
     }
-    async fn load_thread(&self, _id: ThreadId) -> Result<Option<Thread>, brassclaw_engine::types::error::EngineError> {
+    async fn load_thread(
+        &self,
+        _id: ThreadId,
+    ) -> Result<Option<Thread>, brassclaw_engine::types::error::EngineError> {
         unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
     }
     async fn list_threads(
@@ -201,7 +216,10 @@ impl Store for MemoryDocLibSqlStore {
     ) -> Result<(), brassclaw_engine::types::error::EngineError> {
         unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
     }
-    async fn save_step(&self, _step: &Step) -> Result<(), brassclaw_engine::types::error::EngineError> {
+    async fn save_step(
+        &self,
+        _step: &Step,
+    ) -> Result<(), brassclaw_engine::types::error::EngineError> {
         unimplemented!("MemoryDocLibSqlStore covers only MemoryDoc persistence")
     }
     async fn load_steps(
@@ -322,9 +340,11 @@ impl Store for MemoryDocLibSqlStore {
             ],
         )
         .await
-        .map_err(|source| brassclaw_engine::types::error::EngineError::Store {
-            reason: format!("libsql INSERT/UPDATE memory_docs failed: {source}"),
-        })?;
+        .map_err(
+            |source| brassclaw_engine::types::error::EngineError::Store {
+                reason: format!("libsql INSERT/UPDATE memory_docs failed: {source}"),
+            },
+        )?;
         Ok(())
     }
 
@@ -341,16 +361,16 @@ impl Store for MemoryDocLibSqlStore {
                 libsql::params![id.0.to_string()],
             )
             .await
-            .map_err(|source| brassclaw_engine::types::error::EngineError::Store {
-                reason: format!("libsql SELECT memory_docs failed: {source}"),
-            })?;
-        if let Some(row) = rows
-            .next()
-            .await
-            .map_err(|source| brassclaw_engine::types::error::EngineError::Store {
+            .map_err(
+                |source| brassclaw_engine::types::error::EngineError::Store {
+                    reason: format!("libsql SELECT memory_docs failed: {source}"),
+                },
+            )?;
+        if let Some(row) = rows.next().await.map_err(|source| {
+            brassclaw_engine::types::error::EngineError::Store {
                 reason: format!("libsql row iteration failed: {source}"),
-            })?
-        {
+            }
+        })? {
             let project_id_str: String = row.get(0).map_err(|source| {
                 brassclaw_engine::types::error::EngineError::Store {
                     reason: format!("libsql project_id decode failed: {source}"),
@@ -436,17 +456,17 @@ impl Store for MemoryDocLibSqlStore {
                 libsql::params![user_id, project_id.to_string()],
             )
             .await
-            .map_err(|source| brassclaw_engine::types::error::EngineError::Store {
-                reason: format!("libsql SELECT memory_docs failed: {source}"),
-            })?;
+            .map_err(
+                |source| brassclaw_engine::types::error::EngineError::Store {
+                    reason: format!("libsql SELECT memory_docs failed: {source}"),
+                },
+            )?;
         let mut out = Vec::new();
-        while let Some(row) = rows
-            .next()
-            .await
-            .map_err(|source| brassclaw_engine::types::error::EngineError::Store {
+        while let Some(row) = rows.next().await.map_err(|source| {
+            brassclaw_engine::types::error::EngineError::Store {
                 reason: format!("libsql row iteration failed: {source}"),
-            })?
-        {
+            }
+        })? {
             let id_str: String = row.get(0).map_err(|source| {
                 brassclaw_engine::types::error::EngineError::Store {
                     reason: format!("libsql id decode failed: {source}"),
@@ -550,17 +570,17 @@ impl Store for MemoryDocLibSqlStore {
                 libsql::params![user_id],
             )
             .await
-            .map_err(|source| brassclaw_engine::types::error::EngineError::Store {
-                reason: format!("libsql SELECT memory_docs (by owner) failed: {source}"),
-            })?;
+            .map_err(
+                |source| brassclaw_engine::types::error::EngineError::Store {
+                    reason: format!("libsql SELECT memory_docs (by owner) failed: {source}"),
+                },
+            )?;
         let mut out = Vec::new();
-        while let Some(row) = rows
-            .next()
-            .await
-            .map_err(|source| brassclaw_engine::types::error::EngineError::Store {
+        while let Some(row) = rows.next().await.map_err(|source| {
+            brassclaw_engine::types::error::EngineError::Store {
                 reason: format!("libsql row iteration failed: {source}"),
-            })?
-        {
+            }
+        })? {
             let project_id_str: String = row.get(0).map_err(|source| {
                 brassclaw_engine::types::error::EngineError::Store {
                     reason: format!("libsql project_id decode failed: {source}"),
@@ -730,10 +750,7 @@ mod tests {
         let mut updated = base.clone();
         updated.content = "[{\"id\":\"only-one\",\"type\":\"drop\",\"params\":{\"field\":\"x\"},\"priority\":10}]".to_string();
         store.save_memory_doc(&updated).await.expect("upsert save");
-        let listed = store
-            .list_memory_docs(pid, "user1")
-            .await
-            .expect("list");
+        let listed = store.list_memory_docs(pid, "user1").await.expect("list");
         assert_eq!(listed.len(), 1, "upsert must replace, not append");
         assert_eq!(listed[0].id, doc_id);
         assert!(listed[0].content.contains("only-one"));
@@ -797,13 +814,19 @@ mod tests {
             .await
             .expect("save alpha user2");
         let alpha = store
-            .list_memory_docs(ProjectId::from_slug("brassclaw-memory-store", "alpha"), "user1")
+            .list_memory_docs(
+                ProjectId::from_slug("brassclaw-memory-store", "alpha"),
+                "user1",
+            )
             .await
             .expect("list alpha user1");
         assert_eq!(alpha.len(), 1);
         assert_eq!(alpha[0].title, "a");
         let beta = store
-            .list_memory_docs(ProjectId::from_slug("brassclaw-memory-store", "beta"), "user1")
+            .list_memory_docs(
+                ProjectId::from_slug("brassclaw-memory-store", "beta"),
+                "user1",
+            )
             .await
             .expect("list beta user1");
         assert_eq!(beta.len(), 1);

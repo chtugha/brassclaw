@@ -21,9 +21,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::{
-    DeclaredEgressHost, DeclaredEgressTarget, EgressCredentialHandle,
-};
+use crate::{DeclaredEgressHost, DeclaredEgressTarget, EgressCredentialHandle};
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

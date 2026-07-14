@@ -54,7 +54,7 @@ impl CapabilityDispatcher for RecordingDispatcher {
         Ok(CapabilityDispatchResult {
             capability_id: request.capability_id,
             provider: extension_id(),
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             output: json!({"ok": true}),
             display_preview: None,
             usage: ResourceUsage::default(),
@@ -190,7 +190,7 @@ pub fn execution_context(grants: CapabilitySet) -> ExecutionContext {
     ExecutionContext::local_default(
         UserId::new("user").unwrap(),
         ExtensionId::new("caller").unwrap(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         TrustClass::UserTrusted,
         grants,
         MountView::default(),

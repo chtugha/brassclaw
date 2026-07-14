@@ -93,9 +93,7 @@ impl TurnContextBudget {
         let output_reserved =
             ((context_window_tokens as u64 * allocation.output_reserved_pct as u64) / 100) as u32;
         // Floor at 4 096 tokens so small-window models still have room for a reply.
-        let output_reserved = output_reserved
-            .max(4_096)
-            .min(context_window_tokens);
+        let output_reserved = output_reserved.max(4_096).min(context_window_tokens);
         let remaining = context_window_tokens.saturating_sub(output_reserved);
         let skill_snippet_tokens =
             (remaining as u64 * allocation.skill_snippet_pct as u64 / 100) as u32;
@@ -206,8 +204,10 @@ mod tests {
 
     fn slices_sum_to_window(budget: &TurnContextBudget) {
         assert_eq!(
-            budget.output_reserved + budget.skill_snippet_tokens
-                + budget.history_tokens + budget.tool_output_tokens,
+            budget.output_reserved
+                + budget.skill_snippet_tokens
+                + budget.history_tokens
+                + budget.tool_output_tokens,
             budget.model_context_window,
             "slices must sum to model_context_window for window={}",
             budget.model_context_window
@@ -265,7 +265,10 @@ mod tests {
     #[test]
     fn observed_message_average_starts_at_default() {
         let avg = ObservedMessageAverage::new();
-        assert_eq!(avg.get_tokens(), ObservedMessageAverage::DEFAULT_AVG_TOKENS_PER_MESSAGE);
+        assert_eq!(
+            avg.get_tokens(),
+            ObservedMessageAverage::DEFAULT_AVG_TOKENS_PER_MESSAGE
+        );
     }
 
     #[test]
@@ -275,7 +278,11 @@ mod tests {
         for _ in 0..40 {
             avg.update(100);
         }
-        assert!(avg.get_tokens() < 200, "should have converged toward 100, got {}", avg.get_tokens());
+        assert!(
+            avg.get_tokens() < 200,
+            "should have converged toward 100, got {}",
+            avg.get_tokens()
+        );
     }
 
     #[test]

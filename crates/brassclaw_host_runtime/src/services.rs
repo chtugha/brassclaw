@@ -10,6 +10,19 @@ mod process_executor;
 
 use std::sync::{Arc, Mutex};
 
+use crate::obligations::{
+    NetworkObligationPolicyStore, RuntimeCredentialAccountResolver, RuntimeSecretInjectionStore,
+    SharedSecretStore,
+};
+use crate::{
+    BuiltinObligationHandler, CapabilitySurfaceVersion, DefaultHostRuntime,
+    FirstPartyCapabilityRegistry, FirstPartyCapabilityRequest, HostRuntimeError,
+    HostRuntimeHttpEgressPort, InvocationServicesResolutionRequest, InvocationServicesResolver,
+    LocalHostProcessPort, LocalInvocationServicesResolver, PlannerError,
+    ProcessObligationLifecycleStore, RuntimeBackendHealth, RuntimeProcessPort,
+    RuntimeSecretMaterialStager, RuntimeSecretStageError, TenantSandboxProcessPort,
+    ToolCallHttpEgress, TurnRunExecutor, TurnRunScheduler, TurnRunSchedulerConfig, plan_capability,
+};
 use async_trait::async_trait;
 use brassclaw_approvals::ApprovalResolver;
 use brassclaw_authorization::{
@@ -66,19 +79,6 @@ use brassclaw_turns::{
     DefaultTurnCoordinator, FilesystemTurnStateStore, InMemoryTurnStateStore,
     NoopTurnRunWakeNotifier, RunProfileResolver, TurnRunWakeNotifier, TurnStateStore,
     runner::TurnRunTransitionPort,
-};
-use crate::obligations::{
-    NetworkObligationPolicyStore, RuntimeCredentialAccountResolver, RuntimeSecretInjectionStore,
-    SharedSecretStore,
-};
-use crate::{
-    BuiltinObligationHandler, CapabilitySurfaceVersion, DefaultHostRuntime,
-    FirstPartyCapabilityRegistry, FirstPartyCapabilityRequest, HostRuntimeError,
-    HostRuntimeHttpEgressPort, InvocationServicesResolutionRequest, InvocationServicesResolver,
-    LocalHostProcessPort, LocalInvocationServicesResolver, PlannerError,
-    ProcessObligationLifecycleStore, RuntimeBackendHealth, RuntimeProcessPort,
-    RuntimeSecretMaterialStager, RuntimeSecretStageError, TenantSandboxProcessPort,
-    ToolCallHttpEgress, TurnRunExecutor, TurnRunScheduler, TurnRunSchedulerConfig, plan_capability,
 };
 use process_executor::{HostProcessExecutor, RuntimeDispatchProcessExecutor};
 
@@ -749,7 +749,6 @@ fn runtime_sort_key(kind: RuntimeKind) -> u8 {
         RuntimeKind::Script => 2,
         RuntimeKind::FirstParty => 3,
         RuntimeKind::System => 4,
-        RuntimeKind::Wasm => 5,
     }
 }
 

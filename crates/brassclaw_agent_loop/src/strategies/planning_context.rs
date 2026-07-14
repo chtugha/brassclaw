@@ -44,14 +44,12 @@ const DEFAULT_EXECUTION_MAX_MESSAGES: u32 = 2;
 
 /// Inline planning instruction injected at iteration 0.
 /// Note: must not contain { } [ ] ` < > / \ (LoopSafeSummary constraint).
-const PLANNING_INSTRUCTION: &str =
-    "Before acting, output a numbered step-by-step plan. \
+const PLANNING_INSTRUCTION: &str = "Before acting, output a numbered step-by-step plan. \
      Use format: 1. step one, 2. step two, 3. step three. \
      Do not perform any actions yet - plan only.";
 
 /// Inline numbered-list reformat instruction injected when pending_prose_conversion is set.
-const NUMBERED_REFORMAT_INSTRUCTION: &str =
-    "Your previous response was not structured as a step list. \
+const NUMBERED_REFORMAT_INSTRUCTION: &str = "Your previous response was not structured as a step list. \
      Please restate the plan as a numbered list: 1. first step, 2. second step, and so on. \
      Do not perform any actions yet.";
 
@@ -162,9 +160,9 @@ impl ContextStrategy for PlanningContextStrategy {
             let total = plan.steps.len();
             // Sanitize step text: strip LoopSafeSummary-forbidden characters
             let safe_step = sanitize_for_safe_summary(step_text);
-            let msg = sanitize_for_safe_summary(
-                &format!("Execute step {step_num} of {total}: {safe_step}")
-            );
+            let msg = sanitize_for_safe_summary(&format!(
+                "Execute step {step_num} of {total}: {safe_step}"
+            ));
             if let Ok(body) = LoopSafeSummary::new(msg) {
                 inline_messages.push(LoopInlineMessage {
                     role: LoopInlineMessageRole::User,
@@ -272,10 +270,8 @@ mod tests {
             runner_pool_id: None,
             scheduling_class: SchedulingClass::new("interactive").expect("valid"),
             concurrency_class: ConcurrencyClass::new("thread_serial").expect("valid"),
-            resolution_fingerprint: RunProfileFingerprint::new(
-                "planning-ctx-test-fingerprint",
-            )
-            .expect("valid"),
+            resolution_fingerprint: RunProfileFingerprint::new("planning-ctx-test-fingerprint")
+                .expect("valid"),
             provenance: RedactedRunProfileProvenance {
                 sources: vec![],
                 effective_privileges: vec![],
@@ -292,9 +288,12 @@ mod tests {
         let plan = strategy.plan_context_request(&state).await;
 
         assert_eq!(plan.request.max_messages, Some(2));
-        assert!(plan.request.inline_messages.iter().any(|m| {
-            m.safe_body.as_str().contains("plan")
-        }));
+        assert!(
+            plan.request
+                .inline_messages
+                .iter()
+                .any(|m| { m.safe_body.as_str().contains("plan") })
+        );
     }
 
     #[tokio::test]
@@ -321,9 +320,8 @@ mod tests {
     async fn pending_prose_conversion_injects_reformat_nudge() {
         let strategy = PlanningContextStrategy::default();
         let mut state = LoopExecutionState::initial_for_run(&test_run_context());
-        state.pending_prose_conversion = Some(
-            "I will first check the file and then update it and finally restart.".to_owned(),
-        );
+        state.pending_prose_conversion =
+            Some("I will first check the file and then update it and finally restart.".to_owned());
 
         let plan = strategy.plan_context_request(&state).await;
 

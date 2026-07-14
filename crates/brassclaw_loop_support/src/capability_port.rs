@@ -5014,7 +5014,7 @@ mod tests {
         });
         let capability = RuntimeSurfaceCapabilitySnapshot {
             provider: ExtensionId::new("demo").expect("valid provider"),
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             estimate: ResourceEstimate::default(),
             safe_description: "demo capability".to_string(),
             parameters_schema: serde_json::json!({"type":"object"}),
@@ -5066,7 +5066,7 @@ mod tests {
         });
         let capability = RuntimeSurfaceCapabilitySnapshot {
             provider: ExtensionId::new("demo").expect("valid provider"),
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             estimate: ResourceEstimate::default(),
             safe_description: "demo capability".to_string(),
             parameters_schema: serde_json::json!({"type":"object"}),
@@ -5115,7 +5115,7 @@ mod tests {
         });
         let capability = RuntimeSurfaceCapabilitySnapshot {
             provider: ExtensionId::new("demo").expect("valid provider"),
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             estimate: ResourceEstimate::default(),
             safe_description: "demo capability".to_string(),
             parameters_schema: serde_json::json!({"type":"object"}),

@@ -134,7 +134,6 @@ impl From<DispatchError> for CapabilityInvocationError {
             | DispatchError::UnsupportedRuntime { .. }
             | DispatchError::Mcp { .. }
             | DispatchError::Script { .. }
-            | DispatchError::Wasm { .. }
             | DispatchError::FirstParty { .. }) => Self::Dispatch {
                 kind: dispatch_error_kind(&other),
                 safe_summary: dispatch_error_safe_summary(&other),
@@ -189,7 +188,7 @@ mod tests {
     fn dispatch_error_kind_maps_runtime_mismatch_to_stable_literal() {
         let kind = dispatch_error_kind(&DispatchError::RuntimeMismatch {
             capability: cap(),
-            descriptor_runtime: RuntimeKind::Wasm,
+            descriptor_runtime: RuntimeKind::FirstParty,
             package_runtime: RuntimeKind::Mcp,
         });
         assert_eq!(kind.as_str(), "RuntimeMismatch");
@@ -198,7 +197,7 @@ mod tests {
     #[test]
     fn dispatch_error_kind_maps_missing_runtime_backend_to_stable_literal() {
         let kind = dispatch_error_kind(&DispatchError::MissingRuntimeBackend {
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
         });
         assert_eq!(kind.as_str(), "MissingRuntimeBackend");
     }
@@ -207,7 +206,7 @@ mod tests {
     fn dispatch_error_kind_maps_unsupported_runtime_to_stable_literal() {
         let kind = dispatch_error_kind(&DispatchError::UnsupportedRuntime {
             capability: cap(),
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
         });
         assert_eq!(kind.as_str(), "UnsupportedRuntime");
     }
@@ -229,9 +228,10 @@ mod tests {
     }
 
     #[test]
-    fn dispatch_error_kind_forwards_wasm_runtime_kind_as_str() {
-        let kind = dispatch_error_kind(&DispatchError::Wasm {
+    fn dispatch_error_kind_forwards_first_party_memory_kind_as_str() {
+        let kind = dispatch_error_kind(&DispatchError::FirstParty {
             kind: RuntimeDispatchErrorKind::Memory,
+            safe_summary: None,
         });
         assert_eq!(kind.as_str(), "Memory");
     }
@@ -259,8 +259,9 @@ mod tests {
 
     #[test]
     fn from_dispatch_error_preserves_redacted_runtime_kind() {
-        let err = CapabilityInvocationError::from(DispatchError::Wasm {
+        let err = CapabilityInvocationError::from(DispatchError::FirstParty {
             kind: RuntimeDispatchErrorKind::Guest,
+            safe_summary: None,
         });
         match err {
             CapabilityInvocationError::Dispatch { kind, .. } => {

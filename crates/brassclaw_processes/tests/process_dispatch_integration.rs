@@ -77,7 +77,7 @@ async fn process_services_complete_background_process_through_process_host_and_e
         recorded[1].provider,
         Some(ExtensionId::new("echo").unwrap())
     );
-    assert_eq!(recorded[1].runtime, Some(RuntimeKind::Wasm));
+    assert_eq!(recorded[1].runtime, Some(RuntimeKind::FirstParty));
 }
 
 #[tokio::test]
@@ -539,7 +539,7 @@ fn process_start_with_input(
         scope,
         extension_id: ExtensionId::new("echo").unwrap(),
         capability_id: CapabilityId::new("echo.say").unwrap(),
-        runtime: RuntimeKind::Wasm,
+        runtime: RuntimeKind::FirstParty,
         grants: CapabilitySet::default(),
         mounts: MountView::default(),
         estimated_resources: ResourceEstimate::default(),

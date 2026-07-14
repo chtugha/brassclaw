@@ -30,20 +30,19 @@ use brassclaw_product_workflow::{
     LlmActiveSelection, LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult,
     LlmProviderView, RebornAutomationInfo, RebornAutomationSource, RebornAutomationState,
     RebornCancelRunResponse, RebornChannelConnectAction, RebornChannelConnectStrategy,
-    RebornConnectableChannelInfo, RebornConnectableChannelListResponse,
-    RebornCreateThreadResponse, RebornDeleteThreadRequest, RebornDeleteThreadResponse,
-    RebornExtensionActionResponse, RebornExtensionListResponse, RebornExtensionRegistryResponse,
-    RebornGetRunStateRequest, RebornGetRunStateResponse, RebornListAutomationsResponse,
-    RebornListThreadsResponse, RebornOutboundDeliveryTargetListResponse,
-    RebornOutboundPreferencesResponse, RebornResolveGateResponse, RebornResumeGateResponse,
-    RebornServicesApi, RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind,
-    RebornSetOutboundPreferencesRequest, RebornSetupExtensionResponse, RebornStreamEventsRequest,
-    RebornStreamEventsResponse, RebornSubmitTurnResponse, RebornTimelineRequest,
-    RebornTimelineResponse, ReductionRuleConfigView, ReductionRulesRequest,
-    ReductionRulesResponse, RuleType, SetActiveLlmRequest, UpsertLlmProviderRequest,
-    WebUiAuthenticatedCaller, WebUiCancelRunRequest, WebUiCreateThreadRequest,
-    WebUiListAutomationsRequest, WebUiListThreadsRequest, WebUiResolveGateRequest,
-    WebUiSendMessageRequest, WebUiSetupExtensionRequest,
+    RebornConnectableChannelInfo, RebornConnectableChannelListResponse, RebornCreateThreadResponse,
+    RebornDeleteThreadRequest, RebornDeleteThreadResponse, RebornExtensionActionResponse,
+    RebornExtensionListResponse, RebornExtensionRegistryResponse, RebornGetRunStateRequest,
+    RebornGetRunStateResponse, RebornListAutomationsResponse, RebornListThreadsResponse,
+    RebornOutboundDeliveryTargetListResponse, RebornOutboundPreferencesResponse,
+    RebornResolveGateResponse, RebornResumeGateResponse, RebornServicesApi, RebornServicesError,
+    RebornServicesErrorCode, RebornServicesErrorKind, RebornSetOutboundPreferencesRequest,
+    RebornSetupExtensionResponse, RebornStreamEventsRequest, RebornStreamEventsResponse,
+    RebornSubmitTurnResponse, RebornTimelineRequest, RebornTimelineResponse,
+    ReductionRuleConfigView, ReductionRulesRequest, ReductionRulesResponse, RuleType,
+    SetActiveLlmRequest, UpsertLlmProviderRequest, WebUiAuthenticatedCaller, WebUiCancelRunRequest,
+    WebUiCreateThreadRequest, WebUiListAutomationsRequest, WebUiListThreadsRequest,
+    WebUiResolveGateRequest, WebUiSendMessageRequest, WebUiSetupExtensionRequest,
 };
 use brassclaw_threads::SessionThreadRecord;
 use brassclaw_turns::{
@@ -117,7 +116,8 @@ struct StubServices {
     list_reduction_rules_calls: Mutex<Vec<(WebUiAuthenticatedCaller, String)>>,
     replace_reduction_rules_calls: Mutex<Vec<ReductionRulesRequest>>,
     author_reduction_rule_calls: Mutex<Vec<AuthorReductionRuleRequest>>,
-    next_reduction_rules_response: Mutex<Option<Result<ReductionRulesResponse, RebornServicesError>>>,
+    next_reduction_rules_response:
+        Mutex<Option<Result<ReductionRulesResponse, RebornServicesError>>>,
     next_author_reduction_rule_response:
         Mutex<Option<Result<AuthorReductionRuleResponse, RebornServicesError>>>,
 }
@@ -2922,8 +2922,7 @@ fn router_with_no_project(services: Arc<dyn RebornServicesApi>) -> Router {
         None,
         None,
     );
-    webui_v2_router(WebUiV2State::new(services))
-        .layer(axum::Extension(caller_no_project))
+    webui_v2_router(WebUiV2State::new(services)).layer(axum::Extension(caller_no_project))
 }
 
 #[tokio::test]
@@ -2938,10 +2937,7 @@ async fn list_reduction_rules_dispatches_through_facade() {
             priority: 50,
         }],
     };
-    *services
-        .next_reduction_rules_response
-        .lock()
-        .expect("lock") = Some(Ok(canned));
+    *services.next_reduction_rules_response.lock().expect("lock") = Some(Ok(canned));
 
     let router = router_with(services.clone());
 
@@ -2962,9 +2958,16 @@ async fn list_reduction_rules_dispatches_through_facade() {
     assert_eq!(body["rules"].as_array().map(|a| a.len()), Some(1));
     assert_eq!(body["rules"][0]["id"], "rt-noise");
 
-    let calls = services.list_reduction_rules_calls.lock().expect("lock").clone();
+    let calls = services
+        .list_reduction_rules_calls
+        .lock()
+        .expect("lock")
+        .clone();
     assert_eq!(calls.len(), 1, "facade called exactly once");
-    assert_eq!(calls[0].0.project_id.as_ref().map(|p| p.as_str()), Some("project-alpha"));
+    assert_eq!(
+        calls[0].0.project_id.as_ref().map(|p| p.as_str()),
+        Some("project-alpha")
+    );
     // The handler must thread the operator's project_id to the trait, not
     // the caller's user_id. This guards against future regressions where
     // someone copies the tokens handler shape and crosses the wires.
@@ -3089,11 +3092,7 @@ async fn reduction_rule_endpoints_reject_missing_project_id() {
     // them on subsequent turns. The handler guards project_id with
     // `require_project_id`; this test pins that guard.
     for (method, path, body) in [
-        (
-            Method::GET,
-            "/api/webchat/v2/tokens/reduction-rules",
-            None,
-        ),
+        (Method::GET, "/api/webchat/v2/tokens/reduction-rules", None),
         (
             Method::PUT,
             "/api/webchat/v2/tokens/reduction-rules",
@@ -3133,16 +3132,28 @@ async fn reduction_rule_endpoints_reject_missing_project_id() {
     }
 
     assert_eq!(
-        services.list_reduction_rules_calls.lock().expect("lock").len(),
+        services
+            .list_reduction_rules_calls
+            .lock()
+            .expect("lock")
+            .len(),
         0,
         "facade must not be reached when caller has no project_id"
     );
     assert_eq!(
-        services.replace_reduction_rules_calls.lock().expect("lock").len(),
+        services
+            .replace_reduction_rules_calls
+            .lock()
+            .expect("lock")
+            .len(),
         0,
     );
     assert_eq!(
-        services.author_reduction_rule_calls.lock().expect("lock").len(),
+        services
+            .author_reduction_rule_calls
+            .lock()
+            .expect("lock")
+            .len(),
         0,
     );
 }

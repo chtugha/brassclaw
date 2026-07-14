@@ -406,7 +406,6 @@ pub(crate) fn scoped_conversation_id(channel: &str, user_id: &str, scope: &str) 
 // combines them all, so existing `Arc<dyn Database>` consumers keep working.
 // Leaf consumers can depend on a specific sub-trait instead.
 
-
 #[async_trait]
 pub trait SettingsStore: Send + Sync {
     async fn get_setting(

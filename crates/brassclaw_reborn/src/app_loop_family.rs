@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use brassclaw_agent_loop::{
-    CapabilityFocusConfig,
-    LiveTokenBudget,
-    families,
+    CapabilityFocusConfig, LiveTokenBudget, families,
     family::{LoopFamilyRegistry, LoopFamilyRegistryError},
     strategies::planning_context::{PlanningContextConfig, PlanningContextStrategy},
 };
@@ -56,7 +54,9 @@ pub fn build_loop_family_registry_with_full_config(
     config: LoopFamilyConfig,
 ) -> Result<Arc<LoopFamilyRegistry>, LoopFamilyRegistryError> {
     let capability_focus = if config.capability_focus_enabled {
-        tracing::debug!("capability focus strategy enabled: narrowing tool surface to recently-used capabilities");
+        tracing::debug!(
+            "capability focus strategy enabled: narrowing tool surface to recently-used capabilities"
+        );
         Some(CapabilityFocusConfig {
             max_tools: 4,
             // fetch_cached_content will be added in subtask 4; hardcode
@@ -70,7 +70,9 @@ pub fn build_loop_family_registry_with_full_config(
 
     let planning_context = if config.planning_mode_enabled {
         tracing::debug!("planning mode enabled: two-phase planning context strategy wired");
-        Some(PlanningContextStrategy::new(PlanningContextConfig::default()))
+        Some(PlanningContextStrategy::new(
+            PlanningContextConfig::default(),
+        ))
     } else {
         None
     };

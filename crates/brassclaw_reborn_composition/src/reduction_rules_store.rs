@@ -152,9 +152,7 @@ impl ReductionRuleStore for StoreBackedReductionRuleStore {
         let project_id_typed = parse_project_id(project_id)?;
         sort_for_storage(&mut rules);
         let content = serde_json::to_string(&rules).map_err(|source| {
-            ReductionRuleStoreError::Invalid(format!(
-                "rule list serialize failed: {source}"
-            ))
+            ReductionRuleStoreError::Invalid(format!("rule list serialize failed: {source}"))
         })?;
         let doc = MemoryDoc {
             id: ruleset_doc_id(user_id, project_id),
@@ -172,14 +170,9 @@ impl ReductionRuleStore for StoreBackedReductionRuleStore {
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
-        self.store
-            .save_memory_doc(&doc)
-            .await
-            .map_err(|source| {
-                ReductionRuleStoreError::Unavailable(format!(
-                    "Store::save_memory_doc failed: {source}"
-                ))
-            })?;
+        self.store.save_memory_doc(&doc).await.map_err(|source| {
+            ReductionRuleStoreError::Unavailable(format!("Store::save_memory_doc failed: {source}"))
+        })?;
         invalidate_reduction_rules_cache();
         Ok(rules)
     }
@@ -397,10 +390,7 @@ mod tests {
             docs.push(doc.clone());
             Ok(())
         }
-        async fn load_memory_doc(
-            &self,
-            id: DocId,
-        ) -> Result<Option<MemoryDoc>, EngineError> {
+        async fn load_memory_doc(&self, id: DocId) -> Result<Option<MemoryDoc>, EngineError> {
             Ok(self.docs.read().await.iter().find(|d| d.id == id).cloned())
         }
         async fn list_memory_docs(

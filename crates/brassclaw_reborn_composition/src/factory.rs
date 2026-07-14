@@ -319,8 +319,7 @@ pub struct RebornServices {
     /// Token settings store for managing per-section token limits.
     /// Available when libsql feature is enabled for local-dev mode.
     #[cfg(feature = "libsql")]
-    pub(crate) token_settings_store:
-        Option<Arc<crate::token_settings_store::DbTokenSettingsStore>>,
+    pub(crate) token_settings_store: Option<Arc<crate::token_settings_store::DbTokenSettingsStore>>,
 }
 
 impl RebornServices {
@@ -1012,13 +1011,11 @@ async fn build_local_dev_store_graph(
     // `open` runs `CREATE TABLE IF NOT EXISTS` so pre-migration DBs get the
     // settings table on the first startup after upgrade.
     let token_settings_store = Arc::new(
-        crate::token_settings_store::DbTokenSettingsStore::open(Arc::clone(
-            &identity_substrate_db,
-        ))
-        .await
-        .map_err(|error| RebornBuildError::InvalidConfig {
-            reason: format!("TokenSettingsStore schema migration failed: {error}"),
-        })?,
+        crate::token_settings_store::DbTokenSettingsStore::open(Arc::clone(&identity_substrate_db))
+            .await
+            .map_err(|error| RebornBuildError::InvalidConfig {
+                reason: format!("TokenSettingsStore schema migration failed: {error}"),
+            })?,
     );
     tracing::info!("✅ TokenSettingsStore created successfully in build_local_dev_store_graph");
 
@@ -2042,10 +2039,7 @@ async fn build_production_shaped(
         oauth_dcr_provider_configs,
     } = input;
     #[cfg(any(feature = "libsql", feature = "postgres"))]
-    let wiring_config = production_config(
-        required_runtime_backends,
-        require_runtime_http_egress,
-    );
+    let wiring_config = production_config(required_runtime_backends, require_runtime_http_egress);
     #[cfg(not(any(feature = "libsql", feature = "postgres")))]
     let _ = (
         production_trust_policy,

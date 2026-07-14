@@ -123,10 +123,7 @@ where
         }
         for runtime in &config.required_runtime_backends {
             match runtime {
-                RuntimeKind::Script
-                | RuntimeKind::Mcp
-                | RuntimeKind::Wasm
-                | RuntimeKind::FirstParty => {}
+                RuntimeKind::Script | RuntimeKind::Mcp | RuntimeKind::FirstParty => {}
                 RuntimeKind::System => self.push_issue(
                     &mut issues,
                     ProductionWiringComponent::RuntimeBackend,

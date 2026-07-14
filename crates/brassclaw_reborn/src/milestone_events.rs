@@ -496,7 +496,7 @@ mod tests {
                 activity_id,
                 capability_id: capability_id.clone(),
                 provider: provider.clone(),
-                runtime: RuntimeKind::Wasm,
+                runtime: RuntimeKind::FirstParty,
                 output_bytes: 42,
             });
 
@@ -517,7 +517,7 @@ mod tests {
         );
         assert_eq!(event.capability_id, capability_id);
         assert_eq!(event.provider.as_ref(), Some(&provider));
-        assert_eq!(event.runtime, Some(RuntimeKind::Wasm));
+        assert_eq!(event.runtime, Some(RuntimeKind::FirstParty));
         assert_eq!(event.output_bytes, Some(42));
     }
 
@@ -571,7 +571,7 @@ mod tests {
                 activity_id,
                 capability_id: capability_id.clone(),
                 provider: provider.clone(),
-                runtime: RuntimeKind::Wasm,
+                runtime: RuntimeKind::FirstParty,
                 output_bytes: 42,
             },
             LoopHostMilestoneKind::CapabilityFailed {

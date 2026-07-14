@@ -171,10 +171,9 @@ impl DefaultExecutorPipeline {
             if let Some(usage) = &response_usage
                 && usage.input_tokens > 0
             {
-                ctx.planner.context().notify_model_usage(
-                    usage.input_tokens,
-                    prompt_message_count,
-                );
+                ctx.planner
+                    .context()
+                    .notify_model_usage(usage.input_tokens, prompt_message_count);
             }
             let completed = match model_response.output {
                 ParentLoopOutput::AssistantReply(reply) => {

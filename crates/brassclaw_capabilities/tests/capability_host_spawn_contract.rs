@@ -245,7 +245,7 @@ async fn capability_host_spawns_authorized_process_without_dispatching_inline() 
     assert_eq!(start.scope, context.resource_scope);
     assert_eq!(start.capability_id, capability_id());
     assert_eq!(start.extension_id, ExtensionId::new("echo").unwrap());
-    assert_eq!(start.runtime, RuntimeKind::Wasm);
+    assert_eq!(start.runtime, RuntimeKind::FirstParty);
     assert_eq!(start.input, json!({"message": "background"}));
     assert_eq!(result.process.process_id, start.process_id);
 }

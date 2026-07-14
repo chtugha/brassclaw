@@ -87,7 +87,6 @@ impl WebuiAuthenticator for MultiUserToken {
     }
 }
 
-
 #[derive(Default)]
 struct StubServices {
     create_thread_calls: Mutex<Vec<WebUiAuthenticatedCaller>>,

@@ -30,4 +30,3 @@ pub async fn test_db() -> (Arc<dyn Database>, tempfile::TempDir) {
         .expect("failed to run migrations");
     (Arc::new(backend) as Arc<dyn Database>, dir)
 }
-

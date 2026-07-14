@@ -363,7 +363,10 @@ async fn aggregate_skill_context_stops_at_budget_without_error() {
     let snippets = service.skill_snippets(&snapshot).await.unwrap();
     // Budget of 64 bytes is enough for the first snippet but not both.
     assert!(!snippets.is_empty(), "at least one snippet should fit");
-    assert!(snippets.len() < 2, "second snippet should be dropped when budget exhausted");
+    assert!(
+        snippets.len() < 2,
+        "second snippet should be dropped when budget exhausted"
+    );
 }
 
 #[tokio::test]

@@ -736,8 +736,9 @@ async fn service_guard_rejects_resolution_before_wasm_dispatch() {
 
     assert!(matches!(
         result,
-        Err(DispatchError::Wasm {
-            kind: RuntimeDispatchErrorKind::NetworkDenied
+        Err(DispatchError::FirstParty {
+            kind: RuntimeDispatchErrorKind::NetworkDenied,
+            safe_summary: None,
         })
     ));
     assert_eq!(inner.call_count(), 0);
@@ -798,8 +799,9 @@ async fn service_guard_releases_reservation_on_invocation_service_resolution_den
 
     assert!(matches!(
         result,
-        Err(DispatchError::Wasm {
-            kind: RuntimeDispatchErrorKind::NetworkDenied
+        Err(DispatchError::FirstParty {
+            kind: RuntimeDispatchErrorKind::NetworkDenied,
+            safe_summary: None,
         })
     ));
     assert_eq!(inner.call_count(), 0);
@@ -852,8 +854,9 @@ async fn service_guard_rejects_required_secret_without_secret_store_before_dispa
 
     assert!(matches!(
         result,
-        Err(DispatchError::Wasm {
-            kind: RuntimeDispatchErrorKind::SecretDenied
+        Err(DispatchError::FirstParty {
+            kind: RuntimeDispatchErrorKind::SecretDenied,
+            safe_summary: None,
         })
     ));
     assert_eq!(inner.call_count(), 0);
@@ -1100,15 +1103,17 @@ impl RuntimeAdapter<LocalFilesystem, InMemoryResourceGovernor> for RecordingRunt
             None => request
                 .governor
                 .reserve(request.scope, request.estimate)
-                .map_err(|_| DispatchError::Wasm {
+                .map_err(|_| DispatchError::FirstParty {
                     kind: RuntimeDispatchErrorKind::Resource,
+                    safe_summary: None,
                 })?,
         };
         let receipt: ResourceReceipt = request
             .governor
             .reconcile(reservation.id, usage.clone())
-            .map_err(|_| DispatchError::Wasm {
+            .map_err(|_| DispatchError::FirstParty {
                 kind: RuntimeDispatchErrorKind::Resource,
+                safe_summary: None,
             })?;
         Ok(RuntimeAdapterResult {
             output: Value::Null,

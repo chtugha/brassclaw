@@ -130,12 +130,12 @@ impl LibSqlBackend {
             match self.db.connect() {
                 Ok(conn) => {
                     // busy_timeout is a PRAGMA that returns a result row; drain it.
-                    let mut rows = conn
-                        .query("PRAGMA busy_timeout = 5000", ())
-                        .await
-                        .map_err(|e| {
-                            DatabaseError::Pool(format!("Failed to set busy_timeout: {}", e))
-                        })?;
+                    let mut rows =
+                        conn.query("PRAGMA busy_timeout = 5000", ())
+                            .await
+                            .map_err(|e| {
+                                DatabaseError::Pool(format!("Failed to set busy_timeout: {}", e))
+                            })?;
                     // Consume the row so the connection is in a clean state.
                     let _ = rows.next().await;
                     return Ok(conn);
@@ -419,7 +419,6 @@ mod tests {
 
     use crate::db::Database;
     use crate::db::libsql::{LibSqlBackend, fmt_ts, normalize_notify_user, parse_timestamp};
-
 
     #[test]
     fn test_normalize_notify_user_treats_legacy_default_as_missing() {

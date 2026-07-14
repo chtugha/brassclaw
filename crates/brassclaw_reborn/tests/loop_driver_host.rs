@@ -4787,7 +4787,7 @@ async fn text_only_host_uses_fresh_execution_context_per_capability_invocation()
             invocation.context.extension_id,
             ExtensionId::new(fixture.context.loop_driver_id.as_str()).unwrap()
         );
-        assert_eq!(invocation.context.runtime, RuntimeKind::Wasm);
+        assert_eq!(invocation.context.runtime, RuntimeKind::FirstParty);
         assert_eq!(invocation.context.trust, TrustClass::UserTrusted);
         assert_eq!(invocation.context.grants, visible_request.context.grants);
         assert_eq!(invocation.context.mounts, visible_request.context.mounts);
@@ -6465,7 +6465,7 @@ fn capability_descriptor(id: &str) -> CapabilityDescriptor {
     CapabilityDescriptor {
         id: CapabilityId::new(id).unwrap(),
         provider: ExtensionId::new(provider).unwrap(),
-        runtime: RuntimeKind::Wasm,
+        runtime: RuntimeKind::FirstParty,
         trust_ceiling: TrustClass::Sandbox,
         description: format!("Safe description for {id}"),
         parameters_schema: json!({"type": "object"}),

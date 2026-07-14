@@ -1365,7 +1365,7 @@ fn adapter_config() -> ProductLivePlannedRuntimeAdapterConfig {
 fn visible_capability_request_config(label: &str) -> ProductLiveVisibleCapabilityRequestConfig {
     ProductLiveVisibleCapabilityRequestConfig::new(
         UserId::new(format!("user-{label}")).unwrap(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         TrustClass::UserTrusted,
         SurfaceKind::new("agent_loop").unwrap(),
         CapabilitySurfacePolicy::allow_all(),
@@ -1466,7 +1466,7 @@ fn host_visible_capability_request(label: &str) -> HostVisibleCapabilityRequest 
     let mut context = ExecutionContext::local_default(
         UserId::new(format!("user-{label}")).unwrap(),
         ExtensionId::new("adapter-test").unwrap(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         TrustClass::UserTrusted,
         CapabilitySet::default(),
         brassclaw_host_api::MountView::default(),

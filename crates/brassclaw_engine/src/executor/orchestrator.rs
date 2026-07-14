@@ -636,9 +636,7 @@ pub async fn execute_orchestrator(
                     // __get_reduction_rules__() -> list
                     // Returns the per-project/user cached reduction rules used
                     // by the segment reduction pipeline in default.py.
-                    "__get_reduction_rules__" => {
-                        handle_get_reduction_rules(thread, store).await
-                    }
+                    "__get_reduction_rules__" => handle_get_reduction_rules(thread, store).await,
 
                     // __get_actions__()
                     "__get_actions__" => handle_get_actions(thread, effects, leases, store).await,
@@ -2542,7 +2540,9 @@ static REDUCTION_RULE_CACHE: LazyLock<StdMutex<ReductionRuleCacheMap>> =
 ///
 /// Returns the number of cache slots cleared (mostly useful for tests).
 pub fn invalidate_reduction_rules_cache() -> usize {
-    let cache = REDUCTION_RULE_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    let cache = REDUCTION_RULE_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut cleared = 0;
     for slot in cache.values() {
         if let Ok(mut slot) = slot.lock()
@@ -5892,10 +5892,7 @@ evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
                 MontyObject::String("field".into()),
                 MontyObject::String("tokens".into()),
             ),
-            (
-                MontyObject::String("value".into()),
-                MontyObject::Int(-50),
-            ),
+            (MontyObject::String("value".into()), MontyObject::Int(-50)),
             (
                 MontyObject::String("message".into()),
                 MontyObject::String("token budget low".into()),

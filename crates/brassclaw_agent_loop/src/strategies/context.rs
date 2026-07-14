@@ -243,32 +243,33 @@ impl ContextStrategy for DefaultContextStrategy {
 
         // Token-aware message limit: uses TurnContextBudget percentage allocation +
         // the observed EMA so the estimate adapts to the actual conversation mix.
-        let max_messages = if let Some(live_budget) = self.token_budget.as_ref().and_then(|b| b.get()) {
-            let window = self
-                .context_window_tokens
-                .as_ref()
-                .and_then(|s| s.get())
-                .map(|v| v as u32)
-                .unwrap_or(DEFAULT_FALLBACK_CONTEXT_WINDOW);
+        let max_messages =
+            if let Some(live_budget) = self.token_budget.as_ref().and_then(|b| b.get()) {
+                let window = self
+                    .context_window_tokens
+                    .as_ref()
+                    .and_then(|s| s.get())
+                    .map(|v| v as u32)
+                    .unwrap_or(DEFAULT_FALLBACK_CONTEXT_WINDOW);
 
-            // Derive per-slice budgets from the model's context window.
-            let turn_budget = TurnContextBudget::from_context_window(window);
+                // Derive per-slice budgets from the model's context window.
+                let turn_budget = TurnContextBudget::from_context_window(window);
 
-            // Honour the operator-configured history ceiling if it is tighter
-            // than the window-derived history slice.
-            let history_tokens = turn_budget
-                .history_tokens
-                .min(live_budget.try_into().unwrap_or(u32::MAX));
+                // Honour the operator-configured history ceiling if it is tighter
+                // than the window-derived history slice.
+                let history_tokens = turn_budget
+                    .history_tokens
+                    .min(live_budget.try_into().unwrap_or(u32::MAX));
 
-            // Use the EMA-derived per-message estimate for the calculation.
-            let avg = self.observed_message_average.get_tokens();
-            let estimated = history_tokens / avg.max(1);
+                // Use the EMA-derived per-message estimate for the calculation.
+                let avg = self.observed_message_average.get_tokens();
+                let estimated = history_tokens / avg.max(1);
 
-            // Clamp to the configured hard ceiling.
-            self.max_messages.min(estimated)
-        } else {
-            self.max_messages
-        };
+                // Clamp to the configured hard ceiling.
+                self.max_messages.min(estimated)
+            } else {
+                self.max_messages
+            };
 
         // `max(1)` keeps the host's "zero is rejected" invariant from
         // `LoopPromptBundleRequest` even if a loop family overrides
@@ -295,7 +296,9 @@ pub(crate) struct LoopControlInlineMessages {
     pub(crate) emitted_repeated_call_warning: bool,
 }
 
-pub(crate) fn loop_control_inline_messages(state: &LoopExecutionState) -> LoopControlInlineMessages {
+pub(crate) fn loop_control_inline_messages(
+    state: &LoopExecutionState,
+) -> LoopControlInlineMessages {
     let mut inline_messages = Vec::new();
     let mut emitted_admission_control = false;
     if let Some(rejection) = state.reply_admission_state.pending_rejection.as_ref()

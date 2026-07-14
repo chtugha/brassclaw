@@ -211,7 +211,9 @@ impl ReductionRuleConfigTyped {
     pub fn validate(&self) -> Result<(), ReductionRuleValidationError> {
         validate_id(self.id())?;
         match self {
-            Self::Truncate { field, max_chars, .. } => {
+            Self::Truncate {
+                field, max_chars, ..
+            } => {
                 validate_field_name(field)?;
                 if *max_chars == 0 {
                     return Err(ReductionRuleValidationError::ZeroMaxChars);
@@ -628,10 +630,9 @@ fn validate_id(id: &str) -> Result<(), ReductionRuleValidationError> {
             max_bytes: REDUCTION_RULE_FIELD_NAME_MAX_BYTES,
         });
     }
-    if !id
-        .bytes()
-        .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_' || byte == b'-')
-    {
+    if !id.bytes().all(|byte| {
+        byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_' || byte == b'-'
+    }) {
         return Err(ReductionRuleValidationError::InvalidIdFormat {
             max_bytes: REDUCTION_RULE_FIELD_NAME_MAX_BYTES,
         });
@@ -648,10 +649,9 @@ fn validate_field_name(name: &str) -> Result<(), ReductionRuleValidationError> {
             max_bytes: REDUCTION_RULE_FIELD_NAME_MAX_BYTES,
         });
     }
-    if !name
-        .bytes()
-        .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_' || byte == b'-')
-    {
+    if !name.bytes().all(|byte| {
+        byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_' || byte == b'-'
+    }) {
         return Err(ReductionRuleValidationError::InvalidFieldFormat {
             max_bytes: REDUCTION_RULE_FIELD_NAME_MAX_BYTES,
         });
@@ -761,7 +761,10 @@ mod tests {
             RuleType::Priority,
             RuleType::HistoryCompact,
         ] {
-            assert_eq!(RuleType::from_wire_str(rule_type.as_wire_str()), Some(rule_type));
+            assert_eq!(
+                RuleType::from_wire_str(rule_type.as_wire_str()),
+                Some(rule_type)
+            );
         }
         assert_eq!(RuleType::from_wire_str("unknown"), None);
     }

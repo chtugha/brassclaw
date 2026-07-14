@@ -17,10 +17,10 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use crate::{
     InboundRetryDisposition, ProductInboundAck, ProductInboundEnvelope, ProtocolAuthEvidence,
 };
+use async_trait::async_trait;
 
 use crate::runner::{NativeProductAdapterRunner, RunnerError, WebhookProcessOutcome};
 
@@ -151,14 +151,9 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
-    use async_trait::async_trait;
     use crate::capabilities::ProductAdapterCapabilities;
-    use crate::external::{
-        ExternalActorRef, ExternalConversationRef, ExternalEventId,
-    };
-    use crate::identity::{
-        AdapterInstallationId, ProductAdapterId, ProductSurfaceKind,
-    };
+    use crate::external::{ExternalActorRef, ExternalConversationRef, ExternalEventId};
+    use crate::identity::{AdapterInstallationId, ProductAdapterId, ProductSurfaceKind};
     use crate::{
         AuthRequirement, OutboundDeliverySink, ParsedProductInbound, ProductAdapter,
         ProductAdapterError, ProductInboundAck, ProductInboundEnvelope, ProductInboundPayload,
@@ -166,6 +161,7 @@ mod tests {
         ProjectionSubscriptionRequest, ProtocolAuthEvidence, ProtocolAuthFailure,
         ProtocolHttpEgress, UserMessagePayload,
     };
+    use async_trait::async_trait;
     use tokio::sync::Notify;
 
     use crate::auth_verifier::SharedSecretHeaderAuth;

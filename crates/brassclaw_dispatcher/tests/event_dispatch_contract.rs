@@ -18,11 +18,11 @@ async fn dispatcher_emits_events_for_wasm_and_script_success() {
     let fs = filesystem_with_echo_extensions();
     let registry = discover_legacy_fixture_registry(&fs).await;
     let governor = InMemoryResourceGovernor::new();
-    let wasm_adapter = EchoAdapter::new(RuntimeKind::Wasm);
+    let wasm_adapter = EchoAdapter::new(RuntimeKind::FirstParty);
     let script_adapter = EchoAdapter::new(RuntimeKind::Script);
     let events = InMemoryEventSink::new();
     let dispatcher = RuntimeDispatcher::new(&registry, &fs, &governor)
-        .with_runtime_adapter(RuntimeKind::Wasm, &wasm_adapter)
+        .with_runtime_adapter(RuntimeKind::FirstParty, &wasm_adapter)
         .with_runtime_adapter(RuntimeKind::Script, &script_adapter)
         .with_event_sink(&events);
 
@@ -76,7 +76,7 @@ async fn dispatcher_emits_events_for_wasm_and_script_success() {
         recorded[0].capability_id,
         CapabilityId::new("echo-wasm.say").unwrap()
     );
-    assert_eq!(recorded[1].runtime, Some(RuntimeKind::Wasm));
+    assert_eq!(recorded[1].runtime, Some(RuntimeKind::FirstParty));
     assert_eq!(recorded[2].output_bytes, Some(24));
     assert_eq!(
         recorded[3].capability_id,
@@ -94,10 +94,10 @@ async fn dispatcher_ignores_event_sink_failures_on_success() {
     let fs = filesystem_with_echo_extensions();
     let registry = discover_legacy_fixture_registry(&fs).await;
     let governor = InMemoryResourceGovernor::new();
-    let wasm_adapter = EchoAdapter::new(RuntimeKind::Wasm);
+    let wasm_adapter = EchoAdapter::new(RuntimeKind::FirstParty);
     let events = FailingEventSink;
     let dispatcher = RuntimeDispatcher::new(&registry, &fs, &governor)
-        .with_runtime_adapter(RuntimeKind::Wasm, &wasm_adapter)
+        .with_runtime_adapter(RuntimeKind::FirstParty, &wasm_adapter)
         .with_event_sink(&events);
 
     let result = dispatcher
@@ -451,10 +451,13 @@ fn dispatch_error_for_runtime(
     kind: RuntimeDispatchErrorKind,
 ) -> DispatchError {
     match runtime {
-        RuntimeKind::Wasm => DispatchError::Wasm { kind },
+        RuntimeKind::FirstParty => DispatchError::FirstParty {
+            kind,
+            safe_summary: None,
+        },
         RuntimeKind::Script => DispatchError::Script { kind },
         RuntimeKind::Mcp => DispatchError::Mcp { kind },
-        RuntimeKind::FirstParty | RuntimeKind::System => DispatchError::UnsupportedRuntime {
+        RuntimeKind::System => DispatchError::UnsupportedRuntime {
             capability: CapabilityId::new("system.unsupported").unwrap(),
             runtime,
         },

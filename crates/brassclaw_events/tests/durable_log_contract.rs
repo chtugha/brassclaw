@@ -50,13 +50,13 @@ async fn durable_event_log_appends_and_replays_in_order() {
         scope.clone(),
         capability_id(),
         extension_id(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
     );
     let e3 = RuntimeEvent::dispatch_succeeded(
         scope.clone(),
         capability_id(),
         extension_id(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         42,
     );
 
@@ -416,7 +416,7 @@ async fn dispatch_failed_redacts_unsafe_error_kind() {
         scope,
         capability_id(),
         Some(extension_id()),
-        Some(RuntimeKind::Wasm),
+        Some(RuntimeKind::FirstParty),
         unsafe_message,
     );
 
@@ -431,7 +431,7 @@ async fn dispatch_failed_preserves_safe_classification_token() {
         scope,
         capability_id(),
         Some(extension_id()),
-        Some(RuntimeKind::Wasm),
+        Some(RuntimeKind::FirstParty),
         "missing_runtime_backend",
     );
 
@@ -482,7 +482,7 @@ async fn deserialize_runtime_event_resanitizes_error_kind() {
             scope,
             capability_id(),
             Some(extension_id()),
-            Some(RuntimeKind::Wasm),
+            Some(RuntimeKind::FirstParty),
             "missing_runtime_backend",
         );
         serde_json::to_value(&event).expect("serialize")
@@ -508,7 +508,7 @@ async fn appended_event_payload_omits_raw_payloads_by_construction() {
         scope,
         capability_id(),
         extension_id(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         128,
     );
 
@@ -538,7 +538,7 @@ async fn best_effort_event_sink_records_emit_calls() {
         scope,
         capability_id(),
         extension_id(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         7,
     ))
     .await
@@ -588,7 +588,7 @@ async fn durable_audit_log_appends_and_replays() {
     let ctx = ExecutionContext::local_default(
         scope.user_id.clone(),
         extension_id(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         brassclaw_host_api::TrustClass::FirstParty,
         Default::default(),
         MountView::default(),
@@ -740,7 +740,7 @@ async fn best_effort_audit_sink_captures_records() {
     let ctx = ExecutionContext::local_default(
         scope.user_id.clone(),
         extension_id(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         brassclaw_host_api::TrustClass::FirstParty,
         Default::default(),
         MountView::default(),
@@ -768,7 +768,7 @@ async fn durable_audit_sink_appends_records_to_durable_log() {
     let ctx = ExecutionContext::local_default(
         scope.user_id.clone(),
         extension_id(),
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         brassclaw_host_api::TrustClass::FirstParty,
         Default::default(),
         MountView::default(),
@@ -911,7 +911,7 @@ async fn direct_construction_serialize_path_resanitizes_error_kind() {
         parent_invocation_id: None,
         capability_id: capability_id(),
         provider: Some(extension_id()),
-        runtime: Some(RuntimeKind::Wasm),
+        runtime: Some(RuntimeKind::FirstParty),
         process_id: None,
         output_bytes: None,
         // Free-form raw text with a path-like fragment — exactly what the

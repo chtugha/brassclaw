@@ -26,7 +26,7 @@ async fn runtime_dispatcher_routes_already_authorized_request_through_public_tra
     let governor = Arc::new(InMemoryResourceGovernor::new());
     let events = InMemoryEventSink::new();
     let adapter = Arc::new(RecordingAdapter::new(
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         json!({"reply": "from adapter"}),
     ));
     let scope = sample_scope();
@@ -54,7 +54,7 @@ async fn runtime_dispatcher_routes_already_authorized_request_through_public_tra
         Arc::clone(&filesystem),
         Arc::clone(&governor),
     )
-    .with_runtime_adapter_arc(RuntimeKind::Wasm, Arc::clone(&adapter))
+    .with_runtime_adapter_arc(RuntimeKind::FirstParty, Arc::clone(&adapter))
     .with_event_sink_arc(Arc::new(events.clone()));
     let dispatch_port: &dyn CapabilityDispatcher = &dispatcher;
 
@@ -76,7 +76,7 @@ async fn runtime_dispatcher_routes_already_authorized_request_through_public_tra
 
     assert_eq!(result.capability_id, CapabilityId::new("echo.say").unwrap());
     assert_eq!(result.provider, ExtensionId::new("echo").unwrap());
-    assert_eq!(result.runtime, RuntimeKind::Wasm);
+    assert_eq!(result.runtime, RuntimeKind::FirstParty);
     assert_eq!(result.output, json!({"reply": "from adapter"}));
     assert_eq!(result.receipt.status, ReservationStatus::Reconciled);
     assert_eq!(governor.reserved_for(&account), ResourceTally::default());
@@ -89,7 +89,7 @@ async fn runtime_dispatcher_routes_already_authorized_request_through_public_tra
         requests[0].capability_id,
         CapabilityId::new("echo.say").unwrap()
     );
-    assert_eq!(requests[0].runtime, RuntimeKind::Wasm);
+    assert_eq!(requests[0].runtime, RuntimeKind::FirstParty);
     assert_eq!(requests[0].network_mode, NetworkMode::Deny);
     assert_eq!(requests[0].scope, scope);
     assert_eq!(requests[0].mounts, Some(mounts));
@@ -106,7 +106,7 @@ async fn runtime_dispatcher_routes_already_authorized_request_through_public_tra
         recorded[1].provider,
         Some(ExtensionId::new("echo").unwrap())
     );
-    assert_eq!(recorded[1].runtime, Some(RuntimeKind::Wasm));
+    assert_eq!(recorded[1].runtime, Some(RuntimeKind::FirstParty));
     assert_eq!(recorded[2].kind, RuntimeEventKind::DispatchSucceeded);
     assert_eq!(recorded[2].output_bytes, Some(result.usage.output_bytes));
 }
@@ -117,12 +117,12 @@ async fn runtime_dispatcher_forwards_configured_runtime_policy_to_adapter() {
     let filesystem = Arc::new(mounted_empty_extension_root());
     let governor = Arc::new(InMemoryResourceGovernor::new());
     let adapter = Arc::new(RecordingAdapter::new(
-        RuntimeKind::Wasm,
+        RuntimeKind::FirstParty,
         json!({"reply": "from adapter"}),
     ));
     let dispatcher = RuntimeDispatcher::from_arcs(registry, filesystem, governor)
         .with_runtime_policy(local_dev_policy())
-        .with_runtime_adapter_arc(RuntimeKind::Wasm, Arc::clone(&adapter));
+        .with_runtime_adapter_arc(RuntimeKind::FirstParty, Arc::clone(&adapter));
 
     dispatcher
         .dispatch_json(CapabilityDispatchRequest {
@@ -291,10 +291,13 @@ fn dispatch_error_for_runtime(
     kind: RuntimeDispatchErrorKind,
 ) -> DispatchError {
     match runtime {
-        RuntimeKind::Wasm => DispatchError::Wasm { kind },
+        RuntimeKind::FirstParty => DispatchError::FirstParty {
+            kind,
+            safe_summary: None,
+        },
         RuntimeKind::Script => DispatchError::Script { kind },
         RuntimeKind::Mcp => DispatchError::Mcp { kind },
-        RuntimeKind::FirstParty | RuntimeKind::System => DispatchError::UnsupportedRuntime {
+        RuntimeKind::System => DispatchError::UnsupportedRuntime {
             capability: CapabilityId::new("system.unsupported").unwrap(),
             runtime,
         },

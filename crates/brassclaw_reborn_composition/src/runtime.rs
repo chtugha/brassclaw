@@ -1795,7 +1795,10 @@ pub async fn build_reborn_runtime(
     let resolved_context_window_tokens: Option<u32> = llm.as_ref().and_then(|l| {
         brassclaw_llm::ProviderRegistry::try_load_from_path(None)
             .ok()
-            .and_then(|reg| reg.find(l.provider_id()).and_then(|def| def.context_window_tokens))
+            .and_then(|reg| {
+                reg.find(l.provider_id())
+                    .and_then(|def| def.context_window_tokens)
+            })
     });
     #[cfg(not(feature = "root-llm-provider"))]
     let resolved_context_window_tokens: Option<u32> = None;
@@ -1803,14 +1806,15 @@ pub async fn build_reborn_runtime(
     #[cfg(feature = "root-llm-provider")]
     let resolved_cache_retention_from_registry = resolved_cache_retention.clone();
     #[cfg(feature = "root-llm-provider")]
-    let resolved_cache_retention_final: Option<String> =
-        resolved_cache_retention_from_registry.or_else(|| {
+    let resolved_cache_retention_final: Option<String> = resolved_cache_retention_from_registry
+        .or_else(|| {
             std::env::var("LLM_CACHE_RETENTION").ok().and_then(|raw| {
                 raw.parse::<brassclaw_llm::CacheRetention>()
                     .ok()
                     .map(|cr| cr.to_string())
             })
-        }).or_else(|| {
+        })
+        .or_else(|| {
             llm.as_ref().and_then(|l| {
                 brassclaw_llm::ProviderRegistry::try_load_from_path(None)
                     .ok()
@@ -1835,8 +1839,8 @@ pub async fn build_reborn_runtime(
         not(all(feature = "libsql", feature = "root-llm-provider")),
         allow(unused_variables)
     )]
-    let live_max_output: Option<brassclaw_agent_loop::LiveTokenBudget> =
-        resolved_max_output_tokens.map(|n| brassclaw_agent_loop::LiveTokenBudget::new(Some(n as usize)));
+    let live_max_output: Option<brassclaw_agent_loop::LiveTokenBudget> = resolved_max_output_tokens
+        .map(|n| brassclaw_agent_loop::LiveTokenBudget::new(Some(n as usize)));
 
     #[cfg_attr(
         not(all(feature = "libsql", feature = "root-llm-provider")),
@@ -1857,7 +1861,8 @@ pub async fn build_reborn_runtime(
         allow(unused_variables)
     )]
     let live_context_window: Option<brassclaw_agent_loop::LiveTokenBudget> =
-        resolved_context_window_tokens.map(|n| brassclaw_agent_loop::LiveTokenBudget::new(Some(n as usize)));
+        resolved_context_window_tokens
+            .map(|n| brassclaw_agent_loop::LiveTokenBudget::new(Some(n as usize)));
 
     let validated_identity = validate_runtime_identity(identity)?;
     let (skill_context_source, skill_activation_source, skill_execution_adapter) =
@@ -1913,13 +1918,15 @@ pub async fn build_reborn_runtime(
     #[cfg(all(feature = "root-llm-provider", any(test, feature = "test-support")))]
     let (model_gateway, llm_cost_table, llm_reload) = match model_gateway_override {
         Some(override_gateway) => (override_gateway, None, None),
-        None => build_production_model_gateway(
-            llm,
-            live_max_output.clone(),
-            live_total_input.clone(),
-            resolved_cache_retention_final.clone(),
-        )
-        .await?,
+        None => {
+            build_production_model_gateway(
+                llm,
+                live_max_output.clone(),
+                live_total_input.clone(),
+                resolved_cache_retention_final.clone(),
+            )
+            .await?
+        }
     };
     #[cfg(all(
         feature = "root-llm-provider",
@@ -2377,22 +2384,21 @@ pub async fn build_reborn_runtime(
 
     // Wire plan library when enabled. The service holds an Arc to the root
     // filesystem so it can write plan documents and SKILL.md files.
-    let (plan_library, plan_state_slot) =
-        if plan_library_enabled {
-            if let Some(ref local_runtime) = services.local_runtime {
-                let fs = Arc::clone(&local_runtime.extension_filesystem);
-                let library = Arc::new(crate::plan_library::PlanLibraryService::new(
-                    fs,
-                    skill_promotion_threshold,
-                ));
-                let slot = local_runtime.plan_state_slot.clone();
-                (Some(library), Some(slot))
-            } else {
-                (None, None)
-            }
+    let (plan_library, plan_state_slot) = if plan_library_enabled {
+        if let Some(ref local_runtime) = services.local_runtime {
+            let fs = Arc::clone(&local_runtime.extension_filesystem);
+            let library = Arc::new(crate::plan_library::PlanLibraryService::new(
+                fs,
+                skill_promotion_threshold,
+            ));
+            let slot = local_runtime.plan_state_slot.clone();
+            (Some(library), Some(slot))
         } else {
             (None, None)
-        };
+        }
+    } else {
+        (None, None)
+    };
 
     Ok(RebornRuntime {
         services,
@@ -2570,7 +2576,8 @@ fn local_dev_filesystem_skill_context_source(
     .map_err(|reason| RebornRuntimeError::InvalidArgument {
         reason: format!("first-party skills extension source: {reason}"),
     })?;
-    let selector_config = local_dev_selector_config(regex_skill_activation_enabled, skill_context_tokens);
+    let selector_config =
+        local_dev_selector_config(regex_skill_activation_enabled, skill_context_tokens);
     let selectable_skills = extension.selectable_skill_runtime_with_setup_markers(
         selector_config,
         Arc::clone(&local_runtime.workspace_filesystem),
@@ -2676,7 +2683,8 @@ async fn build_production_model_gateway(
                 gateway,
                 policy,
                 reload,
-            } = build_llm_gateway(cfg, max_output_tokens, total_input_tokens, cache_retention).await?;
+            } = build_llm_gateway(cfg, max_output_tokens, total_input_tokens, cache_retention)
+                .await?;
             Ok((gateway, Some(policy.build_cost_table()), Some(reload)))
         }
         None => {
@@ -2742,7 +2750,13 @@ async fn build_llm_gateway(
     if let Some(retention) = cache_retention {
         raw = brassclaw_llm::apply_cache_retention(raw, retention);
     }
-    wrap_swappable_gateway(raw, Some(model), session, max_output_tokens, total_input_tokens)
+    wrap_swappable_gateway(
+        raw,
+        Some(model),
+        session,
+        max_output_tokens,
+        total_input_tokens,
+    )
 }
 
 /// Cold-boot gateway: no LLM configured yet. Wraps a placeholder provider (which
@@ -2931,9 +2945,7 @@ async fn resolve_active_provider_token_budgets(
     };
     // Per-provider DB value wins; fall back to file-config when DB field is None.
     // max_output: DB value as u32 (saturating cast — budgets fit in u32).
-    let max_output = db
-        .max_output
-        .map(|v| v.try_into().unwrap_or(u32::MAX));
+    let max_output = db.max_output.map(|v| v.try_into().unwrap_or(u32::MAX));
     (
         db.conversation_history.or(file_conversation),
         db.skills.or(file_skills),
@@ -3527,7 +3539,9 @@ mod tests {
         };
         let llm = crate::runtime_input::ResolvedRebornLlm::from_llm_config(config);
 
-        let bundle = super::build_llm_gateway(llm, None, None, None).await.expect("gateway builds");
+        let bundle = super::build_llm_gateway(llm, None, None, None)
+            .await
+            .expect("gateway builds");
         let response = bundle
             .gateway
             .stream_model(nearai_gateway_test_request())

@@ -1537,9 +1537,9 @@ not_a_field = true
             "max_output",
         ] {
             let toml = format!("[tokens]\n{field} = 1000\n");
-            let err = RebornConfigFile::parse_text(&toml, &attributed()).expect_err(
-                &format!("removed [tokens].{field} must be rejected by deny_unknown_fields"),
-            );
+            let err = RebornConfigFile::parse_text(&toml, &attributed()).expect_err(&format!(
+                "removed [tokens].{field} must be rejected by deny_unknown_fields"
+            ));
             assert!(
                 matches!(err, RebornConfigFileError::Toml { .. }),
                 "expected Toml parse error for [tokens].{field}, got: {err:?}"

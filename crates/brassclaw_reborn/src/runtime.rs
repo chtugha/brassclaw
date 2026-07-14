@@ -382,7 +382,8 @@ where
         inline_control_tokens: parts.config.inline_control_tokens,
         capability_focus_enabled: parts.config.capability_focus_enabled,
         planning_mode_enabled: parts.config.planning_mode_enabled,
-    }).map_err(|error| {
+    })
+    .map_err(|error| {
         DefaultPlannedRuntimeBuildError::PlannedDriver(
             DefaultPlannedDriverRegistrationError::DriverBuild(
                 AgentLoopDriverError::InvalidRequest {

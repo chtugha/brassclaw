@@ -929,7 +929,7 @@ fn descriptor(id: CapabilityId) -> CapabilityDescriptor {
     CapabilityDescriptor {
         provider: ExtensionId::new(id.as_str().split('.').next().unwrap()).unwrap(),
         id,
-        runtime: RuntimeKind::Wasm,
+        runtime: RuntimeKind::FirstParty,
         trust_ceiling: TrustClass::Sandbox,
         description: "test".to_string(),
         parameters_schema: serde_json::json!({"type": "object"}),
@@ -971,7 +971,7 @@ fn execution_context(grants: CapabilitySet) -> ExecutionContext {
         mission_id: resource_scope.mission_id.clone(),
         thread_id: resource_scope.thread_id.clone(),
         extension_id: ExtensionId::new("caller").unwrap(),
-        runtime: RuntimeKind::Wasm,
+        runtime: RuntimeKind::FirstParty,
         trust: TrustClass::Sandbox,
         grants,
         mounts: MountView::default(),

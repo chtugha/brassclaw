@@ -564,7 +564,7 @@ impl CapabilityDispatcher for OutputDispatcher {
         Ok(CapabilityDispatchResult {
             capability_id: request.capability_id,
             provider: extension_id(),
-            runtime: RuntimeKind::Wasm,
+            runtime: RuntimeKind::FirstParty,
             output: self.output.clone(),
             display_preview: None,
             usage: ResourceUsage::default(),

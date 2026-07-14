@@ -875,34 +875,15 @@ fn reborn_turns_public_surface_uses_turn_ids_not_runtime_or_process_ids() {
 }
 
 #[test]
-fn wasm_sandbox_core_is_standalone_v1_parity_kernel() {
+fn wasm_sandbox_core_removed_after_phase_6() {
     let root = workspace_root().join("crates/brassclaw_wasm_sandbox_core");
     assert!(
-        root.join("Cargo.toml").exists(),
-        "shared WASM sandbox core should exist before ProductAdapters duplicate v1 sandbox setup"
-    );
-    assert!(
-        root.join("CLAUDE.md").exists(),
-        "shared WASM sandbox core needs local guardrails"
-    );
-
-    let metadata = cargo_metadata();
-    let packages = metadata["packages"]
-        .as_array()
-        .expect("cargo metadata must include packages");
-    let package = packages
-        .iter()
-        .find(|package| package["name"] == "brassclaw_wasm_sandbox_core")
-        .expect("brassclaw_wasm_sandbox_core must be a workspace package");
-    let workspace_deps = workspace_dependency_names(package)
-        .filter_map(|dependency| dependency["name"].as_str())
-        .collect::<Vec<_>>();
-    assert!(
-        workspace_deps.is_empty(),
-        "WASM sandbox core should stay independent of BrassClaw domain crates; got {workspace_deps:?}"
+        !root.join("Cargo.toml").exists(),
+        "Phase 6 of the v1-removal plan deleted `brassclaw_wasm_sandbox_core`. \
+         The shared WASM sandbox is gone; the directory on disk must not reappear \
+         until a new boundary rule for a future crate names it."
     );
 }
-
 
 #[test]
 fn reborn_runtime_http_egress_has_single_network_boundary() {

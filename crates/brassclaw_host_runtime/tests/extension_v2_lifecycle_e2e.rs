@@ -246,9 +246,12 @@ fn dispatch_error_for_runtime(
 ) -> DispatchError {
     match runtime {
         RuntimeKind::Script => DispatchError::Script { kind },
-        RuntimeKind::Wasm => DispatchError::Wasm { kind },
         RuntimeKind::Mcp => DispatchError::Mcp { kind },
-        RuntimeKind::FirstParty | RuntimeKind::System => DispatchError::UnsupportedRuntime {
+        RuntimeKind::FirstParty => DispatchError::FirstParty {
+            kind,
+            safe_summary: None,
+        },
+        RuntimeKind::System => DispatchError::UnsupportedRuntime {
             capability: CapabilityId::new("system.unsupported").unwrap(),
             runtime,
         },

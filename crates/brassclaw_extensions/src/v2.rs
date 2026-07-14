@@ -384,9 +384,6 @@ pub struct CapabilityDeclV2 {
 /// v2 runtime declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExtensionRuntimeV2 {
-    Wasm {
-        module: String,
-    },
     Script {
         runner: String,
         image: Option<String>,
@@ -410,7 +407,6 @@ pub enum ExtensionRuntimeV2 {
 impl ExtensionRuntimeV2 {
     pub fn kind(&self) -> RuntimeKind {
         match self {
-            Self::Wasm { .. } => RuntimeKind::Wasm,
             Self::Script { .. } => RuntimeKind::Script,
             Self::Mcp { .. } => RuntimeKind::Mcp,
             Self::FirstParty { .. } => RuntimeKind::FirstParty,
@@ -424,7 +420,7 @@ impl ExtensionRuntimeV2 {
     /// an explicit decision here rather than silently defaulting to `false`.
     fn installed_allows(&self) -> bool {
         match self {
-            Self::Wasm { .. } | Self::Mcp { .. } | Self::Script { .. } => true,
+            Self::Mcp { .. } | Self::Script { .. } => true,
             Self::FirstParty { .. } | Self::System { .. } => false,
         }
     }
@@ -569,8 +565,6 @@ pub enum ManifestV2Error {
         capability: CapabilityId,
         profile: CapabilityProfileId,
     },
-    #[error("invalid wasm module ref '{value}': {reason}")]
-    InvalidWasmModuleRef { value: String, reason: String },
     #[error("invalid mcp runtime: {reason}")]
     InvalidMcpRuntime { reason: String },
     #[error("manifest declares {count} hooks, exceeding the maximum of {max}")]
@@ -1132,40 +1126,6 @@ fn validate_section_path(value: &str) -> Result<(), ManifestV2Error> {
     Ok(())
 }
 
-fn validate_wasm_module_ref(value: &str) -> Result<(), ManifestV2Error> {
-    let raise = |reason: &str| ManifestV2Error::InvalidWasmModuleRef {
-        value: value.to_string(),
-        reason: reason.to_string(),
-    };
-    if value.is_empty() {
-        return Err(raise("must not be empty"));
-    }
-    if value.chars().any(|ch| ch == ' ' || ch.is_control()) {
-        return Err(raise("NUL/control characters and spaces are not allowed"));
-    }
-    if value.contains("://") {
-        return Err(raise("URLs are not extension asset paths"));
-    }
-    if value.starts_with('/') {
-        return Err(raise("must be relative"));
-    }
-    if value.contains('\\') {
-        return Err(raise("host path separators are not allowed"));
-    }
-    let bytes = value.as_bytes();
-    let looks_windows = (bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':')
-        || (bytes.len() >= 3 && bytes[1] == b':' && (bytes[2] == b'\\' || bytes[2] == b'/'));
-    if looks_windows {
-        return Err(raise("host path separators are not allowed"));
-    }
-    for segment in value.split('/') {
-        if segment.is_empty() || segment == "." || segment == ".." {
-            return Err(raise("empty or dot path segments are not allowed"));
-        }
-    }
-    Ok(())
-}
-
 fn validate_mcp_runtime_shape(
     transport: &str,
     command: Option<&str>,
@@ -1454,9 +1414,6 @@ struct RawHostApiRefV2 {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum RawRuntimeV2 {
-    Wasm {
-        module: String,
-    },
     Script {
         runner: String,
         #[serde(default)]
@@ -1485,10 +1442,6 @@ enum RawRuntimeV2 {
 impl RawRuntimeV2 {
     fn into_runtime(self) -> Result<ExtensionRuntimeV2, ManifestV2Error> {
         match self {
-            Self::Wasm { module } => {
-                validate_wasm_module_ref(&module)?;
-                Ok(ExtensionRuntimeV2::Wasm { module })
-            }
             Self::Script {
                 runner,
                 image,

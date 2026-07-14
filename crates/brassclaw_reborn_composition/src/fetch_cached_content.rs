@@ -48,21 +48,20 @@ impl FirstPartyCapabilityHandler for FetchCachedContentHandler {
         &self,
         request: FirstPartyCapabilityRequest,
     ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
-        let args: FetchCachedContentArgs = serde_json::from_value(request.input.clone())
-            .map_err(|error| {
+        let args: FetchCachedContentArgs =
+            serde_json::from_value(request.input.clone()).map_err(|error| {
                 FirstPartyCapabilityError::with_safe_summary(
                     brassclaw_host_api::RuntimeDispatchErrorKind::InvalidResult,
                     format!("fetch_cached_content: invalid input: {error}"),
                 )
             })?;
 
-        let result = self.slot.with_current(|cache| {
-            cache.fetch(&args.key, args.filter.as_deref())
-        });
+        let result = self
+            .slot
+            .with_current(|cache| cache.fetch(&args.key, args.filter.as_deref()));
 
-        let output = result.unwrap_or_else(|| {
-            "Content cache is not available for this request.".to_string()
-        });
+        let output = result
+            .unwrap_or_else(|| "Content cache is not available for this request.".to_string());
 
         Ok(FirstPartyCapabilityResult::new(
             serde_json::Value::String(output),
