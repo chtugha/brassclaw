@@ -69,6 +69,7 @@ brassclaw_events = { path = "../brassclaw_events" }
 brassclaw_extensions = { path = "../brassclaw_extensions" }
 brassclaw_filesystem = { path = "../brassclaw_filesystem" }
 brassclaw_first_party_extensions = { path = "../brassclaw_first_party_extensions" }
+brassclaw_engine = { path = "../brassclaw_engine" }
 brassclaw_hooks = { path = "../brassclaw_hooks" }
 brassclaw_host_api = { path = "../brassclaw_host_api" }
 brassclaw_agent_loop = { path = "../brassclaw_agent_loop" }
@@ -121,7 +122,7 @@ tokio-util = { version = "0.7", features = ["rt"] }
 toml = "0.8"
 tracing = "0.1"
 url = "2"
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "v5"] }
 
 [dev-dependencies]
 async-trait = "0.1"

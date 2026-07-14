@@ -5389,3 +5389,130 @@ async fn list_threads_unimplemented_backend_returns_service_unavailable() {
     );
     assert_eq!(json["retryable"], true);
 }
+
+// ── live setter invocation tests ─────────────────────────────────────────────
+
+use brassclaw_product_workflow::{TokenSettingsResponse, TokenSettingsStore, UpdateTokenSettingsRequest};
+
+struct FixedTokenSettingsStore {
+    response: TokenSettingsResponse,
+}
+
+#[async_trait]
+impl TokenSettingsStore for FixedTokenSettingsStore {
+    async fn get_provider_token_settings(
+        &self,
+        _user_id: &str,
+        _provider_id: &str,
+    ) -> Result<TokenSettingsResponse, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(self.response.clone())
+    }
+
+    async fn update_provider_token_settings(
+        &self,
+        _user_id: &str,
+        _provider_id: &str,
+        _request: UpdateTokenSettingsRequest,
+    ) -> Result<TokenSettingsResponse, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(self.response.clone())
+    }
+}
+
+#[tokio::test]
+async fn update_token_settings_invokes_all_live_setters() {
+    // NOTE: This test exercises the `RebornServices::update_provider_token_settings`
+    // call site which fires four live setter callbacks after a successful DB update.
+    // The test asserts that all four setters receive the exact values from the store
+    // response.
+    //
+    // The async `on_provider_changed` spawn path in webui.rs (which also calls
+    // `get_provider_token_settings` on provider switch) is a separate code path
+    // and is not covered by this test. A covering test for that path would
+    // require driving `LlmConfigService::set_active_provider` with a wired
+    // `RebornLlmReloadAdapter` and asserting the budget slots change.
+    use std::sync::atomic::AtomicUsize;
+
+    let store = Arc::new(FixedTokenSettingsStore {
+        response: TokenSettingsResponse {
+            profile: None,
+            conversation_history: Some(4000),
+            skills: None,
+            identity: None,
+            inline_control: Some(512),
+            memory: None,
+            safety: None,
+            capability_surface: None,
+            total_input: Some(12000),
+            max_output: Some(2048),
+            cache_retention: None,
+        },
+    });
+
+    let conv_hist_called = Arc::new(AtomicUsize::new(0));
+    let max_output_called = Arc::new(AtomicUsize::new(0));
+    let total_input_called = Arc::new(AtomicUsize::new(0));
+    let inline_ctrl_called = Arc::new(AtomicUsize::new(0));
+
+    let c1 = Arc::clone(&conv_hist_called);
+    let c2 = Arc::clone(&max_output_called);
+    let c3 = Arc::clone(&total_input_called);
+    let c4 = Arc::clone(&inline_ctrl_called);
+
+    let services = RebornServices::new(
+        Arc::new(InMemorySessionThreadService::default()),
+        Arc::new(FakeTurnCoordinator::default()),
+    )
+    .with_token_settings_store(store as Arc<dyn TokenSettingsStore>)
+    .with_live_context_budget_setter(Arc::new(move |v| {
+        c1.store(v.unwrap_or(0), Ordering::SeqCst);
+    }))
+    .with_live_max_output_setter(Arc::new(move |v| {
+        c2.store(v.unwrap_or(0), Ordering::SeqCst);
+    }))
+    .with_live_total_input_setter(Arc::new(move |v| {
+        c3.store(v.unwrap_or(0), Ordering::SeqCst);
+    }))
+    .with_live_inline_control_setter(Arc::new(move |v| {
+        c4.store(v.unwrap_or(0), Ordering::SeqCst);
+    }));
+
+    let request = UpdateTokenSettingsRequest {
+        profile: None,
+        conversation_history: Some(4000),
+        skills: None,
+        identity: None,
+        inline_control: Some(512),
+        memory: None,
+        safety: None,
+        capability_surface: None,
+        total_input: Some(12000),
+        max_output: Some(2048),
+    };
+
+    let response = services
+        .update_provider_token_settings(caller(), "test-provider", request)
+        .await
+        .expect("update_provider_token_settings must succeed with a wired store");
+
+    assert_eq!(response.conversation_history, Some(4000));
+    assert_eq!(
+        conv_hist_called.load(Ordering::SeqCst),
+        4000,
+        "live_context_budget_setter must be invoked with conversation_history value"
+    );
+    assert_eq!(
+        max_output_called.load(Ordering::SeqCst),
+        2048,
+        "live_max_output_setter must be invoked with max_output value"
+    );
+    assert_eq!(
+        total_input_called.load(Ordering::SeqCst),
+        12000,
+        "live_total_input_setter must be invoked with total_input value"
+    );
+    assert_eq!(
+        inline_ctrl_called.load(Ordering::SeqCst),
+        512,
+        "live_inline_control_setter must be invoked with inline_control value"
+    );
+}

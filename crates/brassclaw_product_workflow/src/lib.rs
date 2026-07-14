@@ -44,6 +44,7 @@ mod lifecycle;
 mod outbound_delivery;
 mod policy;
 mod reborn_services;
+mod reduction_rules;
 mod safety_config;
 mod safety_config_store;
 mod token_settings;
@@ -133,6 +134,12 @@ pub use reborn_services::{
 };
 pub use safety_config::{SafetyConfigResponse, SafetyEntry, UpdateSafetyConfigRequest};
 pub use safety_config_store::{SafetyCategory, SafetyConfigStore, SqliteSafetyConfigStore};
+pub use reduction_rules::{
+    AuthorReductionRuleRequest, AuthorReductionRuleResponse, ReductionRuleConfigTyped,
+    ReductionRuleConfigView, ReductionRuleStore, ReductionRuleStoreError,
+    ReductionRuleValidationError, ReductionRulesRequest, ReductionRulesResponse, RuleType,
+    REDUCTION_RULES_MAX_PER_USER, sort_for_storage,
+};
 pub use token_settings::{TokenSettingsResponse, UpdateTokenSettingsRequest};
 pub use token_settings_store::TokenSettingsStore;
 // Projection/event types that route handlers need to thread through SSE

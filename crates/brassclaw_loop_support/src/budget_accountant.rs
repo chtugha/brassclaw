@@ -1076,6 +1076,8 @@ mod tests {
             input_per_token: dec!(0.01),
             output_per_token: dec!(0.10),
             max_output_tokens: 1024,
+            cache_write_multiplier: dec!(1.25),
+            cache_read_multiplier: dec!(0.10),
         };
         let accountant = GovernorBackedAccountant::new(governor.clone(), Arc::new(CostStub(cost)));
         let request = sample_request();

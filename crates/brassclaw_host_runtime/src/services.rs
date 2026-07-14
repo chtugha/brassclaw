@@ -67,13 +67,6 @@ use brassclaw_turns::{
     NoopTurnRunWakeNotifier, RunProfileResolver, TurnRunWakeNotifier, TurnStateStore,
     runner::TurnRunTransitionPort,
 };
-use brassclaw_wasm::{
-    DenyWasmHostHttp, EmptyWasmRuntimeCredentials, PreparedWitTool, WasmError,
-    WasmRuntimeCredentialProvider, WasmRuntimeHttpAdapter, WasmRuntimePolicyDiscarder,
-    WasmStagedRuntimeCredentials, WitToolHost, WitToolRequest, WitToolRuntime,
-    WitToolRuntimeConfig,
-};
-
 use crate::obligations::{
     NetworkObligationPolicyStore, RuntimeCredentialAccountResolver, RuntimeSecretInjectionStore,
     SharedSecretStore,
@@ -96,7 +89,6 @@ mod builder;
 mod production_services;
 mod production_wiring;
 mod runtime_adapters;
-mod wasm_diagnostics;
 
 use production_wiring::{
     ProductionComponentType, ProductionComponentTypes, ProductionImplementationReadiness,
@@ -108,7 +100,7 @@ pub use production_wiring::{
 };
 use runtime_adapters::{
     FirstPartyRuntimeAdapter, McpRuntimeAdapter, ScriptRuntimeAdapter,
-    ServiceResolvedRuntimeAdapter, WasmRuntimeAdapter,
+    ServiceResolvedRuntimeAdapter,
 };
 
 /// Concrete composition bundle for one Reborn host-runtime vertical slice.
@@ -152,14 +144,12 @@ where
     process_port: Arc<dyn RuntimeProcessPort>,
     managed_process_port: bool,
     tenant_sandbox_process_port: Option<Arc<dyn RuntimeProcessPort>>,
-    wasm_credential_provider: Option<Arc<dyn WasmRuntimeCredentialProvider>>,
     runtime_health: Option<Arc<dyn RuntimeBackendHealth>>,
     runtime_policy: Option<EffectiveRuntimePolicy>,
     process_sandbox_executor: Option<Arc<dyn ProcessExecutor>>,
     script_runtime: Option<Arc<dyn ScriptExecutor>>,
     mcp_runtime: Option<Arc<dyn McpExecutor>>,
     first_party_runtime: Option<Arc<FirstPartyCapabilityRegistry>>,
-    wasm_runtime: Option<Arc<WasmRuntimeAdapter>>,
     turn_state: Option<Arc<dyn TurnStateStore>>,
     run_profile_resolver: Option<Arc<dyn RunProfileResolver>>,
     turn_run_transition_port: Option<Arc<dyn TurnRunTransitionPort>>,
@@ -322,14 +312,12 @@ where
             process_port: Arc::new(LocalHostProcessPort::new()),
             managed_process_port: true,
             tenant_sandbox_process_port: None,
-            wasm_credential_provider: None,
             runtime_health: None,
             runtime_policy: None,
             process_sandbox_executor: None,
             script_runtime: None,
             mcp_runtime: None,
             first_party_runtime: None,
-            wasm_runtime: None,
             turn_state: None,
             run_profile_resolver: None,
             turn_run_transition_port: None,
@@ -353,9 +341,6 @@ where
                 runtime_http_egress_verified: false,
                 runtime_process_port: ProductionComponentType::of::<LocalHostProcessPort>(),
                 tenant_sandbox_process_port: None,
-                wasm_credential_provider: None,
-                wasm_credential_provider_verified: false,
-                wasm_runtime_credential_provider_captured: false,
                 script_runtime: None,
                 mcp_runtime: None,
                 first_party_runtime: None,
@@ -420,15 +405,6 @@ where
             dispatcher = dispatcher.with_runtime_adapter_arc(
                 RuntimeKind::FirstParty,
                 Arc::new(FirstPartyRuntimeAdapter::from_registry(
-                    Arc::clone(runtime),
-                    Arc::clone(&invocation_services),
-                )),
-            );
-        }
-        if let Some(runtime) = &self.wasm_runtime {
-            dispatcher = dispatcher.with_runtime_adapter_arc(
-                RuntimeKind::Wasm,
-                Arc::new(ServiceResolvedRuntimeAdapter::new(
                     Arc::clone(runtime),
                     Arc::clone(&invocation_services),
                 )),
@@ -613,9 +589,6 @@ where
 
     fn registered_runtime_backends(&self) -> Vec<RuntimeKind> {
         let mut backends = Vec::new();
-        if self.wasm_runtime.is_some() {
-            backends.push(RuntimeKind::Wasm);
-        }
         if self.mcp_runtime.is_some() {
             backends.push(RuntimeKind::Mcp);
         }
@@ -772,11 +745,11 @@ fn normalize_runtime_kinds(kinds: &mut Vec<RuntimeKind>) {
 
 fn runtime_sort_key(kind: RuntimeKind) -> u8 {
     match kind {
-        RuntimeKind::Wasm => 0,
         RuntimeKind::Mcp => 1,
         RuntimeKind::Script => 2,
         RuntimeKind::FirstParty => 3,
         RuntimeKind::System => 4,
+        RuntimeKind::Wasm => 5,
     }
 }
 

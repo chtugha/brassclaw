@@ -60,6 +60,8 @@ mod extension_onboarding;
 mod extension_setup_credentials;
 mod extensions;
 mod lifecycle_setup;
+
+type CacheInvalidatorFn = Arc<dyn Fn(&str, &str) + Send + Sync>;
 mod llm_config;
 mod types;
 
@@ -860,6 +862,48 @@ pub trait RebornServicesApi: Send + Sync {
             false,
         ))
     }
+
+    /// Reduction rules — default to "not implemented" so facades that don't
+    /// wire the rules store inherit a safe surface. The composer in
+    /// `brassclaw_reborn_composition` overrides these via `.with_...` so the
+    /// WebUI v2 operators can author, list, and replace rules without
+    /// restarting the runtime.
+    async fn list_reduction_rules(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+    ) -> Result<crate::reduction_rules::ReductionRulesResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    async fn replace_reduction_rules(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _request: crate::reduction_rules::ReductionRulesRequest,
+    ) -> Result<crate::reduction_rules::ReductionRulesResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    async fn author_reduction_rule(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: crate::reduction_rules::AuthorReductionRuleRequest,
+    ) -> Result<crate::reduction_rules::AuthorReductionRuleResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
 }
 
 /// Default facade implementation composed at the WebUI boundary.
@@ -884,10 +928,27 @@ pub struct RebornServices {
     capability_permission_store: Option<Arc<dyn CapabilityPermissionStore>>,
     safety_config_store: Option<Arc<crate::safety_config_store::SqliteSafetyConfigStore>>,
     token_settings_store: Option<Arc<dyn crate::token_settings_store::TokenSettingsStore>>,
+    /// Reduction-rule persistence port backing `/tokens/reduction-rules/*`.
+    /// When unwired, the default `501` responses keep the WebUI surface
+    /// fail-safe: there's no cache to invalidate, no partial write to roll
+    /// back, and no orchestrator path engaged.
+    reduction_rule_store: Option<Arc<dyn crate::reduction_rules::ReductionRuleStore>>,
+    /// Hook composition installs to flush the engine-side
+    /// `(project_id, user_id) → rules` cache after a successful PUT. The
+    /// orchestrator Python picks up the change on the very next over-budget
+    /// turn — no restart required.
+    reduction_rules_cache_invalidator: Option<CacheInvalidatorFn>,
     /// Callback that updates the live context-token budget slot in the running
     /// `DefaultContextStrategy`. When wired, calling this updates the token
     /// cap on the very next turn — no restart required.
     live_context_budget_setter: Option<Arc<dyn Fn(Option<usize>) + Send + Sync>>,
+    /// Live-setter for max-output-tokens. Mirrors `live_context_budget_setter`
+    /// for the `max_output` slot on `LiveTokenBudget`.
+    live_max_output_setter: Option<Arc<dyn Fn(Option<usize>) + Send + Sync>>,
+    /// Live-setter for total-input-tokens.
+    live_total_input_setter: Option<Arc<dyn Fn(Option<usize>) + Send + Sync>>,
+    /// Live-setter for inline-control-tokens.
+    live_inline_control_setter: Option<Arc<dyn Fn(Option<usize>) + Send + Sync>>,
 }
 
 impl RebornServices {
@@ -919,7 +980,12 @@ impl RebornServices {
             capability_permission_store: None,
             safety_config_store: None,
             token_settings_store: None,
+            reduction_rule_store: None,
+            reduction_rules_cache_invalidator: None,
             live_context_budget_setter: None,
+            live_max_output_setter: None,
+            live_total_input_setter: None,
+            live_inline_control_setter: None,
         }
     }
 
@@ -1066,6 +1132,64 @@ impl RebornServices {
         setter: Arc<dyn Fn(Option<usize>) + Send + Sync>,
     ) -> Self {
         self.live_context_budget_setter = Some(setter);
+        self
+    }
+
+    /// Attach a callback that updates the live max-output-tokens slot in the
+    /// running strategy.  Fired after a successful `update_provider_token_settings`.
+    pub fn with_live_max_output_setter(
+        mut self,
+        setter: Arc<dyn Fn(Option<usize>) + Send + Sync>,
+    ) -> Self {
+        self.live_max_output_setter = Some(setter);
+        self
+    }
+
+    /// Attach a callback that updates the live total-input-tokens slot in the
+    /// running strategy.  Fired after a successful `update_provider_token_settings`.
+    pub fn with_live_total_input_setter(
+        mut self,
+        setter: Arc<dyn Fn(Option<usize>) + Send + Sync>,
+    ) -> Self {
+        self.live_total_input_setter = Some(setter);
+        self
+    }
+
+    /// Attach a callback that updates the live inline-control-tokens slot in
+    /// the running strategy.  Fired after a successful `update_provider_token_settings`.
+    pub fn with_live_inline_control_setter(
+        mut self,
+        setter: Arc<dyn Fn(Option<usize>) + Send + Sync>,
+    ) -> Self {
+        self.live_inline_control_setter = Some(setter);
+        self
+    }
+
+    /// Wire the persistence port for `GET/PUT /api/webchat/v2/tokens/reduction-rules`.
+    /// Composition builds this from the libSQL settings table; the trait
+    /// method itself is keyed by `(user_id, project_id)` so per-project
+    /// isolation matches the engine's `(project_id, user_id)` cache key.
+    /// Without this setter the facade returns `501` to every reduction-rule
+    /// request, so misconfigured deployments fail loud rather than quietly
+    /// serving the empty default.
+    pub fn with_reduction_rule_store(
+        mut self,
+        store: Arc<dyn crate::reduction_rules::ReductionRuleStore>,
+    ) -> Self {
+        self.reduction_rule_store = Some(store);
+        self
+    }
+
+    /// Wire a cache-invalidation hook fired after every successful
+    /// `replace_reduction_rules`. Composition points this at the engine's
+    /// `invalidate_reduction_rules_cache(project_id, user_id)` so the
+    /// orchestrator Python picks up the new rules on the very next
+    /// over-budget turn without restarting the runtime.
+    pub fn with_reduction_rules_cache_invalidator(
+        mut self,
+        invalidator: CacheInvalidatorFn,
+    ) -> Self {
+        self.reduction_rules_cache_invalidator = Some(invalidator);
         self
     }
 
@@ -2247,12 +2371,354 @@ impl RebornServicesApi for RebornServices {
                     false,
                 )
             })?;
-        // Propagate the new conversation_history budget to the live strategy slot
-        // so the change takes effect on the very next turn — no restart required.
+        // Propagate all updated budget values to live strategy slots so changes
+        // take effect on the very next turn — no restart required.
         if let Some(setter) = &self.live_context_budget_setter {
             setter(response.conversation_history);
         }
+        if let Some(setter) = &self.live_max_output_setter {
+            setter(response.max_output);
+        }
+        if let Some(setter) = &self.live_total_input_setter {
+            setter(response.total_input);
+        }
+        if let Some(setter) = &self.live_inline_control_setter {
+            setter(response.inline_control);
+        }
         Ok(response)
+    }
+
+    async fn list_reduction_rules(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+    ) -> Result<crate::reduction_rules::ReductionRulesResponse, RebornServicesError> {
+        let store = self.reduction_rule_store.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            )
+        })?;
+        let user_id = caller.user_id.to_string();
+        let mut rules = store
+            .list(&user_id, project_id)
+            .await
+            .map_err(|error| match error {
+                crate::reduction_rules::ReductionRuleStoreError::Invalid(_) => {
+                    RebornServicesError::from_status(
+                        RebornServicesErrorCode::InvalidRequest,
+                        400,
+                        false,
+                    )
+                }
+                crate::reduction_rules::ReductionRuleStoreError::Unavailable(_) => {
+                    RebornServicesError::from_status_kind(
+                        RebornServicesErrorCode::Unavailable,
+                        RebornServicesErrorKind::ServiceUnavailable,
+                        503,
+                        false,
+                    )
+                }
+                crate::reduction_rules::ReductionRuleStoreError::Internal(_) => {
+                    tracing::error!(
+                        "❌ Failed to list reduction rules: {:?}",
+                        error
+                    );
+                    RebornServicesError::from_status_kind(
+                        RebornServicesErrorCode::Internal,
+                        RebornServicesErrorKind::Internal,
+                        500,
+                        false,
+                    )
+                }
+            })?;
+        // Read-side guarantee: serve sorted so the WebUI never observes a
+        // list out of order with respect to its own subsequent PUT.
+        crate::reduction_rules::sort_for_storage(&mut rules);
+        Ok(crate::reduction_rules::ReductionRulesResponse {
+            project_id: project_id.to_string(),
+            rules,
+        })
+    }
+
+    async fn replace_reduction_rules(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+        request: crate::reduction_rules::ReductionRulesRequest,
+    ) -> Result<crate::reduction_rules::ReductionRulesResponse, RebornServicesError> {
+        let store = self.reduction_rule_store.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            )
+        })?;
+        let user_id = caller.user_id.to_string();
+        // Validate every rule before any write happens so a single broken
+        // entry cannot leave the store with a partial replacement. The
+        // typed-view shape makes `field`, `max_chars`, etc. type-checked
+        // rather than relying on the storage layer to catch typos.
+        if request.rules.len() > crate::reduction_rules::REDUCTION_RULES_MAX_PER_USER {
+            return Err(RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                400,
+                false,
+            ));
+        }
+        let mut validated = Vec::with_capacity(request.rules.len());
+        for rule in request.rules {
+            rule.validate().map_err(|source| {
+                tracing::warn!(
+                    "reduction rule payload rejected: id={:?} code={:?} message={}",
+                    rule.id,
+                    source,
+                    source
+                );
+                RebornServicesError::from_status(
+                    RebornServicesErrorCode::InvalidRequest,
+                    400,
+                    false,
+                )
+            })?;
+            validated.push(rule);
+        }
+        crate::reduction_rules::sort_for_storage(&mut validated);
+        // Detect duplicate ids — the orchestrator Python would otherwise
+        // apply whichever copy comes later in the ordered list, masking
+        // the operator's intent; reject at write time.
+        {
+            let mut i = 0;
+            while i < validated.len() {
+                let id = validated[i].id.clone();
+                let mut j = i + 1;
+                while j < validated.len() {
+                    if validated[j].id == id {
+                        return Err(RebornServicesError::from_status(
+                            RebornServicesErrorCode::InvalidRequest,
+                            400,
+                            false,
+                        ));
+                    }
+                    j += 1;
+                }
+                i += 1;
+            }
+        }
+        let rules = store
+            .replace(&user_id, project_id, validated)
+            .await
+            .map_err(|error| match error {
+                crate::reduction_rules::ReductionRuleStoreError::Invalid(_) => {
+                    RebornServicesError::from_status(
+                        RebornServicesErrorCode::InvalidRequest,
+                        400,
+                        false,
+                    )
+                }
+                crate::reduction_rules::ReductionRuleStoreError::Unavailable(_) => {
+                    RebornServicesError::from_status_kind(
+                        RebornServicesErrorCode::Unavailable,
+                        RebornServicesErrorKind::ServiceUnavailable,
+                        503,
+                        false,
+                    )
+                }
+                crate::reduction_rules::ReductionRuleStoreError::Internal(_) => {
+                    tracing::error!(
+                        "❌ Failed to replace reduction rules: {:?}",
+                        error
+                    );
+                    RebornServicesError::from_status_kind(
+                        RebornServicesErrorCode::Internal,
+                        RebornServicesErrorKind::Internal,
+                        500,
+                        false,
+                    )
+                }
+            })?;
+        // Cache invalidation runs AFTER the storage write succeeds. If the
+        // invalidator panics or the channel is closed (e.g. composition
+        // unwired the hook), the storage row is still authoritative and
+        // will be reread on the next cache miss.
+        if let Some(invalidator) = &self.reduction_rules_cache_invalidator {
+            invalidator(project_id, &user_id);
+        }
+        Ok(crate::reduction_rules::ReductionRulesResponse {
+            project_id: project_id.to_string(),
+            rules,
+        })
+    }
+
+    async fn author_reduction_rule(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: crate::reduction_rules::AuthorReductionRuleRequest,
+    ) -> Result<crate::reduction_rules::AuthorReductionRuleResponse, RebornServicesError> {
+        // Author a new reduction rule from a structured request.
+        //
+        // No live LLM is invoked here today. A generic WebUI-side LLM-call
+        // port is intentionally out of scope for v2 (the composition
+        // facade does not yet expose one) — but the orchestrator Python
+        // already runs the same Monty-safe reducer end-to-end on the very
+        // next over-budget turn, so a misconfigured rule is *detected*
+        // immediately by `_reduce_prompt` rather than by an LLM pre-flight
+        // check. Authoring the rule and verifying it in production is
+        // therefore the right division of labor here: validate the shape
+        // now, run it through Monty later. The validation is the same one
+        // that gates the bulk-replace path, so a rule that passes here is
+        // indistinguishable from one the WebUI handed us via PUT.
+        //
+        // The returned rule is wired with a deterministic id of the form
+        // `auto-{rule_type}-{nanos}` so a future audit pass can tell it
+        // apart from operator-authored rules. Using monotonic nanoseconds
+        // (not random IDs) keeps id uniqueness without introducing a UUID
+        // dependency on a struct with a strict ASCII-format validator.
+        //
+        // The `project_id` is taken from the caller's authenticated
+        // scope, NOT a request body field — that's a deliberate choice
+        // to keep the author surface minimal and aligned with how the
+        // list/replace endpoints already work. A request with no
+        // caller-side project_id returns `400` rather than silently
+        // writing into the local-default bucket.
+        let store = self.reduction_rule_store.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            )
+        })?;
+        let project_id = caller.project_id.as_ref().ok_or_else(|| {
+            tracing::warn!(
+                "author_reduction_rule called without caller project_id: user={:?}",
+                caller.user_id
+            );
+            RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                400,
+                false,
+            )
+        })?;
+        let project_id_str = project_id.as_str();
+        let user_id = caller.user_id.to_string();
+        let id = format!(
+            "auto-{}-{}",
+            request.rule_type,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        );
+        let rule = crate::reduction_rules::ReductionRuleConfigView {
+            id,
+            rule_type: request.rule_type,
+            params: request.params,
+            priority: crate::reduction_rules::sort_for_storage_default_priority(),
+        };
+        // The same validation path as the bulk `replace` endpoint runs
+        // here; it's exhaustive on `RuleType`/params. If the rule fails
+        // validation, no write occurs.
+        rule.validate().map_err(|source| {
+            tracing::warn!(
+                "authored reduction rule rejected: id={:?} code={:?} message={}",
+                rule.id,
+                source,
+                source
+            );
+            RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                400,
+                false,
+            )
+        })?;
+        // Persist by re-reading the existing list, appending the new rule,
+        // and writing back atomically. We deliberately don't try to peek
+        // the store's internal ordering — the storage layer is responsible
+        // for sort/idempotency under replace.
+        let existing = store
+            .list(&user_id, project_id_str)
+            .await
+            .map_err(|error| match error {
+                crate::reduction_rules::ReductionRuleStoreError::Invalid(_) => {
+                    RebornServicesError::from_status(
+                        RebornServicesErrorCode::InvalidRequest,
+                        400,
+                        false,
+                    )
+                }
+                crate::reduction_rules::ReductionRuleStoreError::Unavailable(_) => {
+                    RebornServicesError::from_status_kind(
+                        RebornServicesErrorCode::Unavailable,
+                        RebornServicesErrorKind::ServiceUnavailable,
+                        503,
+                        false,
+                    )
+                }
+                crate::reduction_rules::ReductionRuleStoreError::Internal(_) => {
+                    tracing::error!(
+                        "❌ Failed to list reduction rules during author: {:?}",
+                        error
+                    );
+                    RebornServicesError::from_status_kind(
+                        RebornServicesErrorCode::Internal,
+                        RebornServicesErrorKind::Internal,
+                        500,
+                        false,
+                    )
+                }
+            })?;
+        let mut merged = existing;
+        merged.push(rule.clone());
+        if merged.len() > crate::reduction_rules::REDUCTION_RULES_MAX_PER_USER {
+            return Err(RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                400,
+                false,
+            ));
+        }
+        let _stored = store
+            .replace(&user_id, project_id_str, merged)
+            .await
+            .map_err(|error| match error {
+                crate::reduction_rules::ReductionRuleStoreError::Invalid(_) => {
+                    RebornServicesError::from_status(
+                        RebornServicesErrorCode::InvalidRequest,
+                        400,
+                        false,
+                    )
+                }
+                crate::reduction_rules::ReductionRuleStoreError::Unavailable(_) => {
+                    RebornServicesError::from_status_kind(
+                        RebornServicesErrorCode::Unavailable,
+                        RebornServicesErrorKind::ServiceUnavailable,
+                        503,
+                        false,
+                    )
+                }
+                crate::reduction_rules::ReductionRuleStoreError::Internal(_) => {
+                    tracing::error!(
+                        "❌ Failed to persist authored reduction rule: {:?}",
+                        error
+                    );
+                    RebornServicesError::from_status_kind(
+                        RebornServicesErrorCode::Internal,
+                        RebornServicesErrorKind::Internal,
+                        500,
+                        false,
+                    )
+                }
+            })?;
+        if let Some(invalidator) = &self.reduction_rules_cache_invalidator {
+            invalidator(project_id_str, &user_id);
+        }
+        Ok(crate::reduction_rules::AuthorReductionRuleResponse {
+            rule,
+            description: request.description,
+        })
     }
 }
 

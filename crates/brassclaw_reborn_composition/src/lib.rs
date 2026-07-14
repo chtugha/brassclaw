@@ -86,10 +86,14 @@ mod skill_listing;
 #[cfg(feature = "test-support")]
 pub mod test_support;
 mod fetch_cached_content;
+#[cfg(feature = "libsql")]
+mod memory_doc_libsql_store;
 pub(crate) mod plan_library;
 mod trigger_poller;
 mod trigger_poller_trusted_submit;
 mod web_access;
+#[cfg(feature = "libsql")]
+mod reduction_rules_store;
 #[cfg(feature = "libsql")]
 mod token_settings_store;
 mod webui;

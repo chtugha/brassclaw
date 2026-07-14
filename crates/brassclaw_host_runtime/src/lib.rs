@@ -54,7 +54,6 @@ mod sandbox_process;
 mod services;
 mod surface;
 mod turn_scheduler;
-mod wasm_credentials;
 
 pub use capability_catalog::{
     HotCapabilityCatalog, HotCapabilityRecord, MAX_HOT_PROMPT_BYTES, MAX_HOT_SCHEMA_BYTES,

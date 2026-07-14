@@ -166,37 +166,23 @@ pub struct SkillsSection {
     pub regex_activation_enabled: Option<bool>,
 }
 
-/// Per-section token limits for LLM context composition.
+/// Runtime-behavior toggles for the LLM context strategy.
 ///
-/// All fields are optional overrides of the compiled defaults. A missing field
-/// or absent `[tokens]` section leaves the compiled default in effect. Values
-/// are token counts (`usize`); composition validates that each supplied value is
-/// `> 0` (setting any limit to 0 is meaningless and is a likely misconfiguration).
+/// Per-provider token budget values (`conversation_history`, `skills`, etc.)
+/// are stored in the DB and loaded at runtime via the `TokenSettingsStore`.
+/// Only runtime-behavior toggles and feature gates belong here.
+///
+/// A missing field or absent `[tokens]` section leaves the compiled default
+/// in effect.
+///
+/// **Removed fields**: `profile`, `conversation_history`, `skills`, `identity`,
+/// `inline_control`, `memory`, `safety`, `capability_surface`, `total_input`,
+/// `max_output` were removed in v2. They are now DB-backed per-provider settings.
+/// If your config file still contains them a startup migration strips them
+/// automatically before the parser sees the file.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TokensSection {
-    /// Named distribution preset (`small_7b`, `large`, `coding`, `chat`).
-    /// When set, provides default values for all token fields. Explicit field
-    /// values override the preset value for that field.
-    pub profile: Option<String>,
-    /// Max tokens for conversation/thread history messages.
-    pub conversation_history: Option<usize>,
-    /// Max tokens for skill/instruction snippets shown to the model.
-    pub skills: Option<usize>,
-    /// Max tokens for identity/persona context.
-    pub identity: Option<usize>,
-    /// Max tokens for inline control messages (loop nudges, in-flight guidance).
-    pub inline_control: Option<usize>,
-    /// Max tokens for memory snippets.
-    pub memory: Option<usize>,
-    /// Max tokens for safety context.
-    pub safety: Option<usize>,
-    /// Max tokens for the visible capability surface (tool descriptions).
-    pub capability_surface: Option<usize>,
-    /// Max tokens for total model input (across all sections combined).
-    pub total_input: Option<usize>,
-    /// Max output tokens requested from the model.
-    pub max_output: Option<usize>,
     /// When `true`, `FocusedCapabilityStrategy` is used instead of
     /// `DefaultCapabilityStrategy`. Narrows the visible tool surface to
     /// recently-used capabilities each iteration.
