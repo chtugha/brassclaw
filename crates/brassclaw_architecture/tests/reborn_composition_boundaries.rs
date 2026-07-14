@@ -30,8 +30,6 @@ const SUBSTRATE_CRATES: &[&str] = &[
     "brassclaw_memory",
     "brassclaw_host_runtime",
     "brassclaw_mcp",
-    "brassclaw_scripts",
-    "brassclaw_wasm",
     "brassclaw_turns",
     "brassclaw_threads",
     "brassclaw_loop_support",

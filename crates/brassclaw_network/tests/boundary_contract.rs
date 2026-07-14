@@ -17,9 +17,7 @@ fn network_crate_does_not_depend_on_workflow_runtime_secret_or_observability_cra
         "brassclaw_processes",
         "brassclaw_resources",
         "brassclaw_run_state",
-        "brassclaw_scripts",
         "brassclaw_secrets",
-        "brassclaw_wasm",
     ] {
         assert!(
             !manifest.contains(forbidden),

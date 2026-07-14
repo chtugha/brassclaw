@@ -26,7 +26,7 @@ use brassclaw_network::{
     PolicyNetworkHttpEgress, ReqwestNetworkTransport,
 };
 use brassclaw_resources::InMemoryResourceGovernor;
-use brassclaw_scripts::{ScriptHostHttpRequest, ScriptRuntimeHttpAdapter};
+use brassclaw_host_runtime::{ScriptHostHttpRequest, ScriptRuntimeHttpAdapter};
 use brassclaw_secrets::{InMemorySecretStore, SecretMaterial, SecretStore};
 use serde_json::{Value, json};
 use std::{

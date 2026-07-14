@@ -7,8 +7,6 @@ fn dispatcher_crate_does_not_depend_on_higher_level_workflow_crates() {
     for forbidden in [
         "brassclaw_authorization",
         "brassclaw_capabilities",
-        "brassclaw_wasm",
-        "brassclaw_scripts",
         "brassclaw_mcp",
     ] {
         assert!(

@@ -12,7 +12,10 @@ fn v2_manifest_builds_capability_descriptors_from_schema_refs() {
     assert_eq!(manifest.descriptor_trust_default, TrustClass::Sandbox);
     assert!(matches!(
         manifest.runtime,
-        ExtensionRuntime::Wasm { ref module } if module.as_str() == "wasm/echo.wasm"
+        ExtensionRuntime::Script { ref image, ref runner, ref command, .. }
+            if image.as_deref() == Some("wasm/echo.wasm")
+                && runner == "docker"
+                && command == "wasm-load"
     ));
 
     let package = package_from_manifest(manifest, "echo");
@@ -21,7 +24,7 @@ fn v2_manifest_builds_capability_descriptors_from_schema_refs() {
     let descriptor = &package.capabilities[0];
     assert_eq!(descriptor.id.as_str(), "echo.say");
     assert_eq!(descriptor.provider.as_str(), "echo");
-    assert_eq!(descriptor.runtime, RuntimeKind::Wasm);
+    assert_eq!(descriptor.runtime, RuntimeKind::Script);
     assert_eq!(descriptor.trust_ceiling, TrustClass::Sandbox);
     assert_eq!(descriptor.default_permission, PermissionMode::Allow);
     assert_eq!(descriptor.effects, vec![EffectKind::DispatchCapability]);
@@ -388,7 +391,7 @@ fn capability_provider_host_api_contract_accepts_valid_manifest() {
     let descriptor = &package.capabilities[0];
     assert_eq!(descriptor.id.as_str(), "telegram.send_message");
     assert_eq!(descriptor.provider.as_str(), "telegram");
-    assert_eq!(descriptor.runtime, RuntimeKind::Wasm);
+    assert_eq!(descriptor.runtime, RuntimeKind::Script);
     assert_eq!(descriptor.trust_ceiling, TrustClass::UserTrusted);
     assert_eq!(descriptor.default_permission, PermissionMode::Ask);
     assert_eq!(descriptor.effects, vec![EffectKind::Network]);
@@ -919,8 +922,8 @@ fn lifecycle_package(id: &str, capability: &str, version: &str) -> ExtensionPack
         id,
         capability,
         version,
-        "wasm",
-        "module = \"wasm/tool.wasm\"",
+        "script",
+        "runner = \"docker\"\nimage = \"wasm/tool.wasm\"\ncommand = \"wasm-load\"",
     );
     package_from_manifest(parse_manifest(&manifest), id)
 }
@@ -1033,8 +1036,10 @@ description = "Echo demo extension"
 trust = "untrusted"
 
 [runtime]
-kind = "wasm"
-module = "wasm/echo.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/echo.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "echo.say"
@@ -1055,8 +1060,10 @@ description = "Echo demo extension"
 trust = "untrusted"
 
 [runtime]
-kind = "wasm"
-module = "wasm/echo.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/echo.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "echo.say"
@@ -1078,8 +1085,10 @@ description = "Telegram adapter"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/telegram.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/telegram.wasm"
+command = "wasm-load"
 
 [[host_api]]
 id = "brassclaw.product_adapter/v1"
@@ -1097,8 +1106,10 @@ description = "Telegram adapter"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/telegram.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/telegram.wasm"
+command = "wasm-load"
 
 [[host_api]]
 id = "brassclaw.capability_provider/v1"
@@ -1184,8 +1195,10 @@ description = "hookext extension"
 trust = "untrusted"
 
 [runtime]
-kind = "wasm"
-module = "wasm/tool.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/tool.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "hookext.run"
@@ -1253,8 +1266,14 @@ type = "always"
 id = "second"
 kind = "after_capability"
 [hooks.body]
-mode = "wasm"
-export = "observe"
+mode = "predicate"
+
+[hooks.body.spec]
+type = "deny_capability"
+reason = "observe only past wasm"
+
+[hooks.body.spec.when]
+type = "always"
 "#;
     let manifest = parse_manifest(&manifest_with_hooks(hooks));
     assert_eq!(manifest.hooks.len(), 2);
@@ -1300,8 +1319,10 @@ trust = "untrusted"
 hooks = ["not-a-table"]
 
 [runtime]
-kind = "wasm"
-module = "wasm/tool.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/tool.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "hookext.run"
@@ -1402,8 +1423,14 @@ type = "always"
 id = "dup"
 kind = "after_capability"
 [hooks.body]
-mode = "wasm"
-export = "observe"
+mode = "predicate"
+
+[hooks.body.spec]
+type = "deny_capability"
+reason = "observe only past wasm"
+
+[hooks.body.spec.when]
+type = "always"
 "#;
     let err = ExtensionManifest::parse(
         &manifest_with_hooks(hooks),

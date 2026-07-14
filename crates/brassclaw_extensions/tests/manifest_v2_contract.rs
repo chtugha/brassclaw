@@ -27,7 +27,7 @@ fn catalog() -> HostPortCatalog {
     .unwrap()
 }
 
-fn third_party_wasm_manifest(extension_id: &str, capability_id: &str) -> String {
+fn third_party_script_manifest(extension_id: &str, capability_id: &str) -> String {
     format!(
         r#"
 schema_version = "{schema}"
@@ -38,8 +38,10 @@ description = "test"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/example.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/example.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "{cap}"
@@ -57,7 +59,7 @@ output_schema_ref = "schemas/example/echo.output.v1.json"
 
 #[test]
 fn parses_minimum_valid_v2_manifest_for_installed_third_party_extension() {
-    let toml = third_party_wasm_manifest("acme-tools", "acme-tools.echo");
+    let toml = third_party_script_manifest("acme-tools", "acme-tools.echo");
     let manifest =
         ExtensionManifestV2::parse(&toml, ManifestSource::InstalledLocal, &catalog()).unwrap();
 
@@ -66,7 +68,7 @@ fn parses_minimum_valid_v2_manifest_for_installed_third_party_extension() {
     assert_eq!(manifest.source, ManifestSource::InstalledLocal);
     assert_eq!(manifest.requested_trust, RequestedTrustClass::ThirdParty);
     assert_eq!(manifest.descriptor_trust_default, TrustClass::UserTrusted);
-    assert_eq!(manifest.runtime.kind(), RuntimeKind::Wasm);
+    assert_eq!(manifest.runtime.kind(), RuntimeKind::Script);
     assert_eq!(manifest.capabilities.len(), 1);
     let cap = &manifest.capabilities[0];
     assert_eq!(cap.visibility, CapabilityVisibility::Model);
@@ -76,7 +78,7 @@ fn parses_minimum_valid_v2_manifest_for_installed_third_party_extension() {
 
 #[test]
 fn parses_runtime_credentials_from_capability_declarations() {
-    let toml = third_party_wasm_manifest("acme-tools", "acme-tools.echo").replace(
+    let toml = third_party_script_manifest("acme-tools", "acme-tools.echo").replace(
         r#"default_permission = "allow""#,
         r#"effects = ["network", "use_secret"]
 runtime_credentials = [
@@ -116,7 +118,7 @@ default_permission = "allow""#,
 
 #[test]
 fn parses_product_auth_account_runtime_credential_source() {
-    let toml = third_party_wasm_manifest("acme-tools", "acme-tools.echo").replace(
+    let toml = third_party_script_manifest("acme-tools", "acme-tools.echo").replace(
         r#"default_permission = "allow""#,
         r#"effects = ["network", "use_secret"]
 runtime_credentials = [
@@ -138,7 +140,7 @@ default_permission = "allow""#,
 
 #[test]
 fn parses_product_auth_account_runtime_credential_provider_scopes() {
-    let toml = third_party_wasm_manifest("acme-tools", "acme-tools.echo").replace(
+    let toml = third_party_script_manifest("acme-tools", "acme-tools.echo").replace(
         r#"default_permission = "allow""#,
         r#"effects = ["network", "use_secret"]
 runtime_credentials = [
@@ -163,7 +165,7 @@ fn rejects_invalid_runtime_credential_provider_scopes() {
         r#"[" https://www.googleapis.com/auth/drive"]"#,
         r#"["https://www.googleapis.com/auth/drive "]"#,
     ] {
-        let toml = third_party_wasm_manifest("acme-tools", "acme-tools.echo").replace(
+        let toml = third_party_script_manifest("acme-tools", "acme-tools.echo").replace(
             r#"default_permission = "allow""#,
             &format!(
                 r#"effects = ["network", "use_secret"]
@@ -186,7 +188,7 @@ default_permission = "allow""#
 
 #[test]
 fn rejects_provider_scopes_for_non_product_auth_runtime_credentials() {
-    let toml = third_party_wasm_manifest("acme-tools", "acme-tools.echo").replace(
+    let toml = third_party_script_manifest("acme-tools", "acme-tools.echo").replace(
         r#"default_permission = "allow""#,
         r#"effects = ["network", "use_secret"]
 runtime_credentials = [
@@ -206,7 +208,7 @@ default_permission = "allow""#,
 
 #[test]
 fn rejects_runtime_credentials_without_use_secret_effect() {
-    let toml = third_party_wasm_manifest("acme-tools", "acme-tools.echo").replace(
+    let toml = third_party_script_manifest("acme-tools", "acme-tools.echo").replace(
         r#"default_permission = "allow""#,
         r#"runtime_credentials = [
   { handle = "github_token", audience = { scheme = "https", host_pattern = "api.github.com" }, target = { type = "header", name = "authorization" } },
@@ -221,7 +223,7 @@ default_permission = "allow""#,
 
 #[test]
 fn rejects_runtime_credentials_with_invalid_target_shape() {
-    let toml = third_party_wasm_manifest("acme-tools", "acme-tools.echo").replace(
+    let toml = third_party_script_manifest("acme-tools", "acme-tools.echo").replace(
         r#"default_permission = "allow""#,
         r#"effects = ["network", "use_secret"]
 runtime_credentials = [
@@ -241,7 +243,7 @@ default_permission = "allow""#,
 
 #[test]
 fn rejects_runtime_credentials_with_invalid_audience_shape() {
-    let toml = third_party_wasm_manifest("acme-tools", "acme-tools.echo").replace(
+    let toml = third_party_script_manifest("acme-tools", "acme-tools.echo").replace(
         r#"default_permission = "allow""#,
         r#"effects = ["network", "use_secret"]
 runtime_credentials = [
@@ -265,7 +267,7 @@ fn rejects_runtime_credentials_without_https_audience_scheme() {
         r#"{ scheme = "http", host_pattern = "api.github.com" }"#,
         r#"{ host_pattern = "api.github.com" }"#,
     ] {
-        let toml = third_party_wasm_manifest("acme-tools", "acme-tools.echo").replace(
+        let toml = third_party_script_manifest("acme-tools", "acme-tools.echo").replace(
             r#"default_permission = "allow""#,
             &format!(
                 r#"effects = ["network", "use_secret"]
@@ -284,7 +286,7 @@ default_permission = "allow""#
 
 #[test]
 fn rejects_runtime_credentials_with_invalid_handle() {
-    let toml = third_party_wasm_manifest("acme-tools", "acme-tools.echo").replace(
+    let toml = third_party_script_manifest("acme-tools", "acme-tools.echo").replace(
         r#"default_permission = "allow""#,
         r#"effects = ["network", "use_secret"]
 runtime_credentials = [
@@ -301,7 +303,7 @@ default_permission = "allow""#,
 fn rejects_unknown_runtime_credential_source_type() {
     // An unknown `source.type` in the manifest must produce a parse error rather than
     // silently defaulting. This catches forward-incompatible manifests from future versions.
-    let toml = third_party_wasm_manifest("acme-tools", "acme-tools.echo").replace(
+    let toml = third_party_script_manifest("acme-tools", "acme-tools.echo").replace(
         r#"default_permission = "allow""#,
         r#"effects = ["network", "use_secret"]
 runtime_credentials = [
@@ -320,7 +322,7 @@ default_permission = "allow""#,
 
 #[test]
 fn rejects_duplicate_runtime_credential_handles() {
-    let toml = third_party_wasm_manifest("acme-tools", "acme-tools.echo").replace(
+    let toml = third_party_script_manifest("acme-tools", "acme-tools.echo").replace(
         r#"default_permission = "allow""#,
         r#"effects = ["network", "use_secret"]
 runtime_credentials = [
@@ -350,8 +352,10 @@ trust = "third_party"
 oops = true
 
 [runtime]
-kind = "wasm"
-module = "wasm/echo.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/echo.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "acme-tools.echo"
@@ -368,7 +372,7 @@ output_schema_ref = "schemas/acme/echo.output.v1.json"
 
 #[test]
 fn rejects_unknown_top_level_tables_in_legacy_capability_manifests() {
-    let toml = third_party_wasm_manifest("acme-tools", "acme-tools.echo")
+    let toml = third_party_script_manifest("acme-tools", "acme-tools.echo")
         + r#"
 
 [surprise]
@@ -391,8 +395,10 @@ description = "x"
 trust = "first_party_requested"
 
 [runtime]
-kind = "wasm"
-module = "wasm/echo.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/echo.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "acme-tools.echo"
@@ -512,7 +518,7 @@ required_host_ports = [
 
 #[test]
 fn rejects_reserved_id_prefix_for_installed_source() {
-    let toml = third_party_wasm_manifest("brassclaw.fake", "brassclaw.fake.echo");
+    let toml = third_party_script_manifest("brassclaw.fake", "brassclaw.fake.echo");
     let err = ExtensionManifestV2::parse(&toml, ManifestSource::RegistryInstalled, &catalog())
         .unwrap_err();
     assert!(
@@ -523,7 +529,7 @@ fn rejects_reserved_id_prefix_for_installed_source() {
 
 #[test]
 fn rejects_capability_id_without_provider_prefix() {
-    let toml = third_party_wasm_manifest("acme-tools", "other.echo");
+    let toml = third_party_script_manifest("acme-tools", "other.echo");
     let err =
         ExtensionManifestV2::parse(&toml, ManifestSource::InstalledLocal, &catalog()).unwrap_err();
     assert!(
@@ -544,8 +550,10 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/echo.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/echo.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "acme-tools.echo"
@@ -578,8 +586,10 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/echo.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/echo.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "acme-tools.echo"
@@ -615,8 +625,10 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/echo.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/echo.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "acme-tools.echo"
@@ -655,8 +667,10 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/echo.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/echo.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "acme-tools.echo"
@@ -685,8 +699,10 @@ version = "0.1"
 description = "x"
 
 [runtime]
-kind = "wasm"
-module = "wasm/echo.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/echo.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "acme-tools.echo"
@@ -717,8 +733,10 @@ description = "{description}"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/echo.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/echo.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "acme-tools.echo"
@@ -745,7 +763,7 @@ output_schema_ref = "schemas/acme/echo.output.v1.json"
 
 
 #[test]
-fn rejects_wasm_module_with_host_or_url_or_traversal_paths() {
+fn rejects_script_image_with_host_or_url_or_traversal_paths() {
     for bad in [
         "",
         " ",
@@ -754,7 +772,7 @@ fn rejects_wasm_module_with_host_or_url_or_traversal_paths() {
         "foo/../bar.wasm",
         "https://evil.example.com/x.wasm",
         "file:///tmp/x.wasm",
-        "C:\windows.wasm",
+        r"C:\windows.wasm",
         "c:/win.wasm",
         "has space.wasm",
         "wasm/./echo.wasm",
@@ -769,8 +787,10 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "{bad}"
+kind = "script"
+runner = "docker"
+image = "{bad}"
+command = "test"
 
 [[capabilities]]
 id = "acme-tools.echo"
@@ -786,8 +806,8 @@ output_schema_ref = "schemas/acme/echo.output.v1.json"
         let err = ExtensionManifestV2::parse(&toml, ManifestSource::InstalledLocal, &catalog())
             .unwrap_err();
         assert!(
-            matches!(err, ManifestV2Error::InvalidWasmModuleRef { .. }),
-            "wasm module {bad:?} should be rejected, got {err:?}"
+            matches!(err, ManifestV2Error::Invalid { .. }),
+            "script image {bad:?} should be rejected, got {err:?}"
         );
     }
 }
@@ -858,8 +878,10 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/echo.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/echo.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "acme-tools.echo"
@@ -892,8 +914,10 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/echo.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/echo.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "acme-tools.echo"
@@ -926,8 +950,10 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/echo.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/echo.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "acme-tools.echo"
@@ -957,8 +983,10 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/echo.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/echo.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "acme-tools.echo"
@@ -996,7 +1024,7 @@ fn host_bundled_accepts_non_reserved_id() {
     // *required* of HostBundled. A host-bundled extension may legitimately
     // ship under any id; lock that in so the reserved-prefix rule does not
     // accidentally become a "must use" rule downstream.
-    let toml = third_party_wasm_manifest("memory-native", "memory-native.echo");
+    let toml = third_party_script_manifest("memory-native", "memory-native.echo");
     let manifest =
         ExtensionManifestV2::parse(&toml, ManifestSource::HostBundled, &catalog()).unwrap();
     assert_eq!(manifest.source, ManifestSource::HostBundled);
@@ -1015,8 +1043,10 @@ description = "two capabilities"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/acme.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/acme.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "acme-tools.echo"
@@ -1085,8 +1115,10 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/acme.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/acme.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "acme-tools.echo"
@@ -1122,8 +1154,10 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/acme.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/acme.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "acme-tools.echo"
@@ -1230,8 +1264,10 @@ description = "Telegram product adapter and tools"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/telegram.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/telegram.wasm"
+command = "wasm-load"
 
 [[host_api]]
 id = "brassclaw.product_adapter/v1"
@@ -1497,8 +1533,10 @@ description = "Telegram product adapter and tools"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/telegram.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/telegram.wasm"
+command = "wasm-load"
 
 [[host_api]]
 id = "brassclaw.product_adapter/v1"

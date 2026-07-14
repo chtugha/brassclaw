@@ -35,7 +35,7 @@ use brassclaw_run_state::{
     ApprovalRequestStore, FilesystemApprovalRequestStore, FilesystemRunStateStore, RunStateStore,
     RunStatus,
 };
-use brassclaw_scripts::{
+use brassclaw_host_runtime::{
     ScriptBackend, ScriptBackendOutput, ScriptBackendRequest, ScriptRuntime, ScriptRuntimeConfig,
 };
 use brassclaw_trust::{

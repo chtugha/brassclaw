@@ -241,8 +241,10 @@ description = "test extension"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/{extension_id}.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/{extension_id}.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "{extension_id}.read"

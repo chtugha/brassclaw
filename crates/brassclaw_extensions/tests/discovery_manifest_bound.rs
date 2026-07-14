@@ -158,8 +158,10 @@ description = "{id} extension"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/{id}.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/{id}.wasm"
+command = "wasm-load"
 
 [[host_api]]
 id = "brassclaw.capability_provider/v1"

@@ -13,8 +13,6 @@ fn authorization_crate_stays_below_workflow_and_runtime_crates() {
         "brassclaw_host_runtime",
         "brassclaw_resources",
         "brassclaw_extensions",
-        "brassclaw_wasm",
-        "brassclaw_scripts",
         "brassclaw_mcp",
     ] {
         assert!(

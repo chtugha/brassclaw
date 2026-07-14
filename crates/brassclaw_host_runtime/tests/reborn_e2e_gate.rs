@@ -36,7 +36,7 @@ use brassclaw_resources::{InMemoryResourceGovernor, ResourceAccount, ResourceTal
 use brassclaw_run_state::{
     InMemoryApprovalRequestStore, InMemoryRunStateStore, RunStateStore, RunStatus,
 };
-use brassclaw_scripts::{
+use brassclaw_host_runtime::{
     ScriptBackend, ScriptBackendOutput, ScriptBackendRequest, ScriptRuntime, ScriptRuntimeConfig,
 };
 use brassclaw_secrets::{InMemorySecretStore, SecretMaterial, SecretStore};

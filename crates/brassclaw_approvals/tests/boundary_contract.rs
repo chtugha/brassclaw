@@ -12,8 +12,6 @@ fn approvals_crate_stays_out_of_runtime_and_host_workflow_crates() {
         "brassclaw_host_runtime",
         "brassclaw_resources",
         "brassclaw_extensions",
-        "brassclaw_wasm",
-        "brassclaw_scripts",
         "brassclaw_mcp",
     ] {
         assert!(

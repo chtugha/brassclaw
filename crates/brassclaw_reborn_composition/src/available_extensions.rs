@@ -1354,8 +1354,8 @@ mod tests {
 
     #[test]
     fn catalog_extend_replaces_duplicate_package_refs() {
-        let stale = test_extension_package_with_wasm_bytes(b"stale");
-        let bundled = test_extension_package_with_wasm_bytes(b"bundled");
+        let stale = test_extension_package_with_artifact(b"stale");
+        let bundled = test_extension_package_with_artifact(b"bundled");
         let mut catalog = AvailableExtensionCatalog::from_packages(vec![stale]);
         catalog.extend(AvailableExtensionCatalog::from_packages(vec![bundled]));
 
@@ -1600,10 +1600,10 @@ mod tests {
     }
 
     fn test_extension_package() -> AvailableExtensionPackage {
-        test_extension_package_with_wasm_bytes(b"wasm")
+        test_extension_package_with_artifact(b"script")
     }
 
-    fn test_extension_package_with_wasm_bytes(wasm_bytes: &[u8]) -> AvailableExtensionPackage {
+    fn test_extension_package_with_artifact(artifact_bytes: &[u8]) -> AvailableExtensionPackage {
         static MANIFEST: &str = r#"
 schema_version = "reborn.extension_manifest.v2"
 id = "fixture"
@@ -1613,8 +1613,10 @@ description = "fixture extension"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/fixture.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/fixture.wasm"
+command = "fixture-load"
 
 [[capabilities]]
 id = "fixture.search"
@@ -1657,7 +1659,7 @@ output_schema_ref = "schemas/write.output.json"
                 },
                 AvailableExtensionAsset {
                     path: "wasm/fixture.wasm".to_string(),
-                    content: AvailableExtensionAssetContent::Bytes(wasm_bytes.to_vec()),
+                    content: AvailableExtensionAssetContent::Bytes(artifact_bytes.to_vec()),
                 },
             ],
         }

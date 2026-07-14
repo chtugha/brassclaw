@@ -16,8 +16,6 @@ fn secrets_crate_does_not_depend_on_workflow_runtime_or_observability_crates() {
         "brassclaw_processes",
         "brassclaw_resources",
         "brassclaw_run_state",
-        "brassclaw_scripts",
-        "brassclaw_wasm",
     ] {
         assert!(
             !manifest.contains(forbidden),

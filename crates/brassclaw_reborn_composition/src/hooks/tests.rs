@@ -79,8 +79,10 @@ description = "{id} extension"
 trust = "untrusted"
 
 [runtime]
-kind = "wasm"
-module = "wasm/{id}.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/{id}.wasm"
+command = "{id}-load"
 
 [[capabilities]]
 id = "{id}.run"
@@ -479,10 +481,11 @@ body = { mode = "predicate", spec = { type = "deny_capability", reason = "wider-
     );
 }
 
-/// Third-party WASM stays OUT: the projection registrar has no
-/// `wasm_runtime`, so a WASM-bodied installed hook fails install → under
-/// quarantine the extension is dropped and the build continues (Step 6
-/// negative test). A sibling predicate-only extension still installs.
+/// Third-party WASM stays OUT: Phase 6 removed the WASM hook backend. The
+/// manifest layer preserves the hook section as raw TOML — the schema
+/// rejection happens during hook activation in the composition-owned
+/// registrar. The wasm-bodied extension therefore produces no binding, the
+/// predicate-only sibling still installs, and the build itself succeeds.
 #[test]
 fn wasm_bodied_third_party_hook_is_quarantined_build_continues() {
     let wasm_block = r#"
@@ -507,7 +510,7 @@ body = { mode = "wasm", export = "evaluate" }
 
     let factory =
         build_hook_dispatcher_builder_factory(HooksActivationConfig::enabled(), &registry)
-            .expect("WASM-bodied third-party hook must quarantine, not fail the build")
+            .expect("predicate-only sibling must still build after a WASM-bodied hook is dropped")
             .expect("flag ON yields a factory");
     let dispatcher = factory().expect("mint hook builder").build_arc();
     let bindings = dispatcher.active_bindings_snapshot(HookPointSpec::BeforeCapability);
@@ -515,7 +518,7 @@ body = { mode = "wasm", export = "evaluate" }
         !bindings
             .iter()
             .any(|b| b.hook_id == installed_hook_id("wasm-ext", "0.1.0", "wasm-hook")),
-        "WASM-bodied third-party hook must be quarantined (no runtime in loader registrar)"
+        "WASM-bodied third-party hook must never produce a binding (Phase 6 removed backend)"
     );
     assert!(
         bindings
@@ -651,8 +654,10 @@ description = "{id} extension"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/{id}.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/{id}.wasm"
+command = "{id}-load"
 
 [[host_api]]
 id = "brassclaw.capability_provider/v1"

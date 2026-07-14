@@ -31,8 +31,10 @@ description = "test"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/acme.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/acme.wasm"
+command = "wasm-load"
 
 [[capabilities]]
 id = "acme-tools.echo"

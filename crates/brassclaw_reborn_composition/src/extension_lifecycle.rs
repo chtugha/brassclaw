@@ -3460,8 +3460,10 @@ description = "Lifecycle fixture extension"
 trust = "first_party_requested"
 
 [runtime]
-kind = "wasm"
-module = "wasm/fixture.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/fixture.wasm"
+command = "fixture-load"
 
 [[capabilities]]
 id = "fixture.search"
@@ -3493,8 +3495,10 @@ description = "Installed local fixture extension"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/fixture.wasm"
+kind = "script"
+runner = "docker"
+image = "wasm/fixture.wasm"
+command = "fixture-load"
 
 [[host_api]]
 id = "brassclaw.capability_provider/v1"

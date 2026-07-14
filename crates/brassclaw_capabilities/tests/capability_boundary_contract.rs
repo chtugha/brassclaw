@@ -13,8 +13,6 @@ fn capabilities_crate_does_not_depend_on_concrete_runtime_or_dispatcher_crates()
         "brassclaw_dispatcher",
         "brassclaw_host_runtime",
         "brassclaw_mcp",
-        "brassclaw_scripts",
-        "brassclaw_wasm",
         "brassclaw_secrets",
         "brassclaw_network",
     ] {
