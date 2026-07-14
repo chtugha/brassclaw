@@ -2096,8 +2096,13 @@ dependencies = [
  "brassclaw_host_api",
  "brassclaw_turns",
  "chrono",
+ "hex",
+ "hmac 0.12.1",
+ "http 1.4.1",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "subtle",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -2282,12 +2287,10 @@ dependencies = [
  "brassclaw_safety",
  "brassclaw_secrets",
  "brassclaw_skills",
- "brassclaw_slack_v2_adapter",
  "brassclaw_threads",
  "brassclaw_triggers",
  "brassclaw_trust",
  "brassclaw_turns",
- "brassclaw_wasm_product_adapters",
  "brassclaw_webui_v2",
  "brassclaw_webui_v2_static",
  "chrono",
@@ -2570,21 +2573,6 @@ dependencies = [
  "tokio",
  "tracing",
  "urlencoding",
-]
-
-[[package]]
-name = "brassclaw_slack_v2_adapter"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "brassclaw_product_adapters",
- "brassclaw_turns",
- "chrono",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "uuid",
 ]
 
 [[package]]

@@ -10,6 +10,8 @@ use crate::llm_config_service::LlmReloadTrigger;
 /// Live-reload adapter wired by the runtime. Re-resolves the LLM config from
 /// `config.toml` + `providers.json` + the stored key, then hot-swaps the
 /// running provider's inner backend via the `brassclaw_llm` reload handle.
+type ProviderChangedCallback = Arc<dyn Fn(&str) + Send + Sync>;
+
 pub(crate) struct RebornLlmReloadAdapter {
     boot: RebornBootConfig,
     reload_handle: Arc<brassclaw_llm::LlmReloadHandle>,
@@ -17,7 +19,7 @@ pub(crate) struct RebornLlmReloadAdapter {
     keys: LlmKeyStore,
     /// Optional callback invoked after a successful provider reload.
     /// Used to refresh live token-budget slots with the new provider's settings.
-    on_provider_changed: Option<Arc<dyn Fn(&str) + Send + Sync>>,
+    on_provider_changed: Option<ProviderChangedCallback>,
 }
 
 impl RebornLlmReloadAdapter {

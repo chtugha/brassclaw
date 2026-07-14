@@ -145,8 +145,7 @@ pub(crate) fn build_webui_services_with_connectable_channels(
                 let token_store = services
                     .local_runtime
                     .as_ref()
-                    .and_then(|lr| lr.token_settings_store.as_ref())
-                    .map(Arc::clone);
+                    .map(|lr| Arc::clone(&lr.token_settings_store));
                 let owner_id = runtime.actor_user_id_string();
                 if let (Some(slot), Some(store)) = (budget_slot, token_store) {
                     let on_change: Arc<dyn Fn(&str) + Send + Sync> =

@@ -4,19 +4,13 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::{Context, anyhow};
-#[cfg(not(feature = "slack-v2-host-beta"))]
 use brassclaw_reborn_composition::build_webui_services;
 use brassclaw_reborn_composition::host_api::{AgentId, ProjectId, TenantId, UserId};
 use brassclaw_reborn_composition::{
     GoogleOAuthRouteConfig, LocalTriggerAccessReconciliation, LocalTriggerAccessRole,
     LocalTriggerAccessSource, RebornBuildInput, RebornReadiness, RebornRuntimeIdentity,
-    RebornRuntimeInput, RebornWebuiBundle, WebuiAuthenticator, WebuiServeConfig,
-    build_reborn_runtime, open_local_trigger_access_store, webui_v2_app_with_lifecycle,
-};
-#[cfg(feature = "slack-v2-host-beta")]
-use brassclaw_reborn_composition::{
-    SlackOperatorRouteVisibility, build_slack_host_beta_mounts,
-    build_webui_services_with_slack_host_beta_mounts,
+    RebornRuntimeInput, WebuiAuthenticator, WebuiServeConfig, build_reborn_runtime,
+    open_local_trigger_access_store, webui_v2_app_with_lifecycle,
 };
 use brassclaw_reborn_config::IdentitySection;
 use brassclaw_reborn_webui_ingress::{
@@ -167,17 +161,6 @@ impl ServeCommand {
         if let Some(project_id) = default_project_id.clone() {
             runtime_input = runtime_input.with_default_project_id(project_id);
         }
-        let slack_host_beta_config = crate::commands::serve_slack::resolve_slack_config_for_serve(
-            config_file.as_ref().and_then(|file| file.slack.as_ref()),
-            &tenant_id,
-            &default_agent_id,
-            default_project_id.as_ref(),
-            &user_id,
-            &boot_config.home().config_file_path(),
-        )?;
-        #[cfg(not(feature = "slack-v2-host-beta"))]
-        let _ = slack_host_beta_config;
-
         // Resolve listen address with explicit precedence:
         //   CLI flag (Some(...)) > config file > compile-time default.
         // Both `host` and `port` are `Option<>` in the clap struct so
@@ -353,31 +336,6 @@ impl ServeCommand {
             let runtime = build_reborn_runtime(runtime_input)
                 .await
                 .context("failed to assemble Reborn runtime for `serve`")?;
-            #[cfg(feature = "slack-v2-host-beta")]
-            let slack_mounts = if let Some(slack_config) = slack_host_beta_config {
-                Some(
-                    build_slack_host_beta_mounts(&runtime, slack_config)
-                        .context("failed to compose Slack host-beta routes")?,
-                )
-            } else {
-                None
-            };
-            #[cfg(feature = "slack-v2-host-beta")]
-            let operator_route_visibility = if sso_startup.is_none() {
-                SlackOperatorRouteVisibility::Visible
-            } else {
-                SlackOperatorRouteVisibility::Hidden
-            };
-            #[cfg(feature = "slack-v2-host-beta")]
-            let bundle: RebornWebuiBundle = build_webui_services_with_slack_host_beta_mounts(
-                &runtime,
-                None,
-                slack_mounts.as_ref(),
-                operator_route_visibility,
-            )?;
-            #[cfg(not(feature = "slack-v2-host-beta"))]
-            let bundle: RebornWebuiBundle = build_webui_services(&runtime, None)?;
-
             // Open the canonical Reborn identity resolver on the runtime's
             // existing substrate handle (the same `reborn-local-dev.db` the
             // runtime owns) rather than opening a second handle to the file.
@@ -398,6 +356,8 @@ impl ServeCommand {
             } else {
                 None
             };
+            let bundle = build_webui_services(&runtime, None)
+                .context("failed to assemble WebUI services bundle")?;
 
             // Assemble the WebChat v2 auth surface (authenticator + optional
             // public login mount). The auth/identity module owns the
@@ -463,13 +423,6 @@ impl ServeCommand {
             }
             if let Some(host) = canonical_host {
                 serve_config = serve_config.with_canonical_host(host);
-            }
-            #[cfg(feature = "slack-v2-host-beta")]
-            if let Some(slack_mounts) = slack_mounts {
-                serve_config = serve_config
-                    .with_public_route_mount(slack_mounts.events)
-                    .with_slack_personal_binding_pairing(slack_mounts.personal_binding_pairing)
-                    .with_slack_channel_routes(slack_mounts.channel_routes);
             }
             // Public NEAR AI login callback route (token redirect target). Built
             // from the runtime's LLM seam; absent when no LLM was wired.

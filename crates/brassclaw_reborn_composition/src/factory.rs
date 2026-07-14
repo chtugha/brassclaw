@@ -423,11 +423,6 @@ pub(crate) struct RebornLocalRuntimeServices {
     pub(crate) memory_mounts: MountView,
     pub(crate) skill_filesystem: Arc<ScopedFilesystem<LocalDevRootFilesystem>>,
     pub(crate) workspace_filesystem: Arc<ScopedFilesystem<LocalDevRootFilesystem>>,
-    #[cfg(all(
-        any(feature = "libsql", feature = "postgres"),
-        feature = "slack-v2-host-beta"
-    ))]
-    pub(crate) host_state_filesystem: Arc<ScopedFilesystem<LocalDevRootFilesystem>>,
     #[cfg(any(feature = "libsql", feature = "postgres"))]
     pub(crate) subagent_goal_filesystem: Arc<ScopedFilesystem<LocalDevRootFilesystem>>,
     /// Tenant-scoped root filesystem used for third-party extension hook
@@ -589,8 +584,6 @@ fn production_config(
 }
 
 async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, RebornBuildError> {
-    #[cfg(all(test, feature = "slack-v2-host-beta"))]
-    let host_runtime_http_egress_for_test = input.host_runtime_http_egress_for_test.clone();
     let RebornBuildInput {
         profile,
         storage,
@@ -890,9 +883,6 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
         local_runtime.runtime_http_egress = Some(product_auth_runtime_ports.runtime_http_egress());
         // extension_registry is now set during store_graph creation, no need to set it here
         let host_runtime_http_egress = services.host_runtime_http_egress_port();
-        #[cfg(all(test, feature = "slack-v2-host-beta"))]
-        let host_runtime_http_egress =
-            host_runtime_http_egress_for_test.unwrap_or(host_runtime_http_egress);
         local_runtime.host_runtime_http_egress = host_runtime_http_egress;
     } else {
         return Err(RebornBuildError::InvalidConfig {
@@ -1024,8 +1014,6 @@ async fn build_local_dev_store_graph(
                 reason: error.to_string(),
             }
         })?;
-    #[cfg(feature = "slack-v2-host-beta")]
-    let host_state_filesystem = local_dev_slack_host_state_filesystem(Arc::clone(&filesystem));
     let skill_management =
         build_local_skill_management_port(owner_user_id.clone(), Arc::clone(&filesystem))?;
 
@@ -1092,8 +1080,6 @@ async fn build_local_dev_store_graph(
         memory_mounts,
         skill_filesystem,
         workspace_filesystem,
-        #[cfg(feature = "slack-v2-host-beta")]
-        host_state_filesystem,
         subagent_goal_filesystem: Arc::clone(&scoped_filesystem),
         identity_filesystem: Arc::clone(&scoped_filesystem),
         identity_substrate_db,
@@ -1169,8 +1155,6 @@ async fn build_local_dev_store_graph(
                 reason: error.to_string(),
             }
         })?;
-    #[cfg(all(feature = "postgres", feature = "slack-v2-host-beta"))]
-    let host_state_filesystem = local_dev_slack_host_state_filesystem(Arc::clone(&filesystem));
     let skill_management =
         build_local_skill_management_port(owner_user_id, Arc::clone(&filesystem))?;
     #[cfg(not(any(feature = "libsql", feature = "postgres")))]
@@ -1201,8 +1185,6 @@ async fn build_local_dev_store_graph(
         memory_mounts,
         skill_filesystem,
         workspace_filesystem,
-        #[cfg(all(feature = "postgres", feature = "slack-v2-host-beta"))]
-        host_state_filesystem,
         #[cfg(feature = "postgres")]
         subagent_goal_filesystem,
         extension_filesystem: Arc::clone(&filesystem),
@@ -1749,19 +1731,6 @@ fn local_dev_scoped_filesystem(
     crate::wrap_scoped(filesystem)
 }
 
-#[cfg(all(
-    any(feature = "libsql", feature = "postgres"),
-    feature = "slack-v2-host-beta"
-))]
-fn local_dev_slack_host_state_filesystem(
-    filesystem: Arc<LocalDevRootFilesystem>,
-) -> Arc<ScopedFilesystem<LocalDevRootFilesystem>> {
-    Arc::new(ScopedFilesystem::new(
-        filesystem,
-        crate::slack_host_state_mount_view,
-    ))
-}
-
 #[cfg(feature = "libsql")]
 fn local_dev_event_log(
     filesystem: Arc<LocalDevRootFilesystem>,
@@ -2090,8 +2059,6 @@ async fn build_production_shaped(
         required_runtime_backends,
         require_runtime_http_egress,
         require_wasm_credentials,
-        #[cfg(all(test, feature = "slack-v2-host-beta"))]
-            host_runtime_http_egress_for_test: _,
         product_auth_ports,
         oauth_provider_configs,
         oauth_dcr_provider_configs,
@@ -2873,8 +2840,6 @@ mod tests {
             memory_mounts: base_runtime.memory_mounts.clone(),
             skill_filesystem: Arc::clone(&base_runtime.skill_filesystem),
             workspace_filesystem: Arc::clone(&base_runtime.workspace_filesystem),
-            #[cfg(feature = "slack-v2-host-beta")]
-            host_state_filesystem: Arc::clone(&base_runtime.host_state_filesystem),
             #[cfg(feature = "libsql")]
             identity_filesystem: Arc::clone(&base_runtime.identity_filesystem),
             #[cfg(feature = "libsql")]

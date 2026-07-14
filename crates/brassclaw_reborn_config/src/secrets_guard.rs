@@ -36,10 +36,6 @@ const SECRET_PREFIXES: &[&str] = &[
     // pastes from a billing console aren't impossible.
     "sk_live_",
     "sk_test_",
-    // Slack bot / user / app tokens.
-    "xoxb-",
-    "xoxp-",
-    "xapp-",
     // GitHub tokens, all stable prefixes per GitHub's docs.
     "ghp_",
     "gho_",
@@ -192,20 +188,6 @@ mod tests {
         let value = "sk-proj-abcdef1234567890abcdef1234";
         let err = reject_inline_secret("llm.default.api_key", value).expect_err("must reject");
         assert!(matches!(err.pattern, SecretPattern::Prefix("sk-")));
-    }
-
-    #[test]
-    fn rejects_slack_bot_token() {
-        // Synthesized at runtime so the literal in source doesn't match
-        // upstream secret-scanners (GitHub push protection trips on a
-        // direct `xoxb-...` literal even when it is obviously a test
-        // fixture). The composed string has the same shape the
-        // production rejection rule catches.
-        let value = format!(
-            "{}{}",
-            "xo", "xb-1234567890123-1234567890123-aBcDeFgHiJkLmNoPqRsTuVwX"
-        );
-        assert!(reject_inline_secret("any", &value).is_err());
     }
 
     #[test]

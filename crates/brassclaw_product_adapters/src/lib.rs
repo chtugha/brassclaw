@@ -4,17 +4,24 @@
 
 mod adapter;
 pub mod auth;
+mod auth_verifier;
 pub mod capabilities;
 mod egress;
+mod egress_policy;
 mod error;
 pub mod external;
 #[cfg(any(test, feature = "test-support"))]
 pub mod fakes;
 pub mod identity;
 pub mod inbound;
+mod log_record;
 mod outbound;
 mod projection;
 pub mod redaction;
+#[cfg(feature = "host-auth-mint")]
+mod runner;
+#[cfg(feature = "host-auth-mint")]
+mod runner_immediate_ack;
 mod workflow;
 
 pub use adapter::{ProductAdapter, ProductAdapterHealth};
@@ -68,3 +75,15 @@ pub use projection::{
 };
 pub use redaction::{REDACTED_PLACEHOLDER, RedactedDebug, RedactedString};
 pub use workflow::ProductWorkflow;
+
+pub use auth_verifier::{Clock, HmacWebhookAuth, SharedSecretHeaderAuth, VerificationOutcome, WebhookAuthVerifier};
+pub use egress_policy::{EgressPolicy, EgressPolicyError, EgressPolicyTarget};
+#[cfg(feature = "host-auth-mint")]
+pub use runner::{
+    DEFAULT_MAX_IN_FLIGHT_WEBHOOKS, DEFAULT_WEBHOOK_WORKFLOW_TIMEOUT, NativeProductAdapterRunner,
+    NativeProductAdapterRunnerConfig, RunnerError, WebhookAuth, WebhookProcessOutcome,
+    evidence_from_bearer_subject, evidence_from_session_subject,
+};
+#[cfg(feature = "host-auth-mint")]
+pub use runner_immediate_ack::ImmediateAckWorkflowObserver;
+pub use log_record::{ComponentLogLevel, ComponentLogRecord};

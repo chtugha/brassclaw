@@ -29,13 +29,6 @@ root-llm-provider = [
 # budget pipeline end-to-end. Enable with `cargo test --features
 # test-support` (plus whatever feature surface the test crate also requires).
 test-support = []
-# Host-mounted Slack Events API ingress fragment for the Reborn ProductAdapter
-# MVP. Off by default; host binaries opt in and mount it behind their Slack
-# enablement/config checks.
-slack-v2-host-beta = [
-    "dep:brassclaw_slack_v2_adapter",
-    "dep:brassclaw_wasm_product_adapters",
-]
 libsql = [
     "dep:libsql",
     "brassclaw_filesystem/libsql",
@@ -99,7 +92,6 @@ brassclaw_runtime_policy = { path = "../brassclaw_runtime_policy" }
 brassclaw_safety = { path = "../brassclaw_safety" }
 brassclaw_secrets = { path = "../brassclaw_secrets" }
 brassclaw_skills = { path = "../brassclaw_skills" }
-brassclaw_slack_v2_adapter = { path = "../brassclaw_slack_v2_adapter", optional = true }
 brassclaw_threads = { path = "../brassclaw_threads" }
 brassclaw_triggers = { path = "../brassclaw_triggers" }
 brassclaw_trust = { path = "../brassclaw_trust" }
@@ -108,7 +100,6 @@ brassclaw_turns = { path = "../brassclaw_turns" }
 brassclaw_webui_v2 = { path = "../brassclaw_webui_v2" }
 # WebUI v2 static SPA bundle — mounted under `/v2`
 brassclaw_webui_v2_static = { path = "../brassclaw_webui_v2_static" }
-brassclaw_wasm_product_adapters = { path = "../brassclaw_wasm_product_adapters", optional = true }
 libsql = { version = "0.6", optional = true, default-features = false, features = ["core", "replication", "remote", "tls"] }
 # axum + tower middleware stack used by the `webui_serve` module
 axum = "0.8"

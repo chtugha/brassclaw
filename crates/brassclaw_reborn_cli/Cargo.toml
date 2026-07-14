@@ -25,12 +25,6 @@ default = ["root-llm-provider", "libsql"]
 root-llm-provider = [
     "brassclaw_reborn_composition/root-llm-provider",
 ]
-# Compile in the Slack Events API host-beta mount for `brassclaw serve`.
-# Still requires `[slack].enabled = true` at runtime before the route is
-# mounted; ambient Slack env vars alone do not enable it.
-slack-v2-host-beta = [
-    "brassclaw_reborn_composition/slack-v2-host-beta",
-]
 # Enable libSQL database support for local-dev storage, including the
 # safety configuration store and other local-dev features.
 libsql = [

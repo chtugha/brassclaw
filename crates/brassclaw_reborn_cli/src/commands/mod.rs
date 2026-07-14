@@ -12,7 +12,6 @@ pub(crate) mod profile;
 pub(crate) mod repl;
 pub(crate) mod run;
 pub(crate) mod serve;
-pub(crate) mod serve_slack;
 pub(crate) mod serve_sso;
 pub(crate) mod skills;
 pub(crate) mod status;

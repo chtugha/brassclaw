@@ -182,10 +182,10 @@ impl RebornLlmConfigService {
         }
         // Tell budget slots which provider is now active so they can re-read
         // per-provider settings without a restart.
-        if let Ok(list) = self.admin_list_async().await {
-            if let Some(active) = list.providers.iter().find(|p| p.active) {
-                reload.on_provider_changed(&active.id).await;
-            }
+        if let Ok(list) = self.admin_list_async().await
+            && let Some(active) = list.providers.iter().find(|p| p.active)
+        {
+            reload.on_provider_changed(&active.id).await;
         }
     }
 
