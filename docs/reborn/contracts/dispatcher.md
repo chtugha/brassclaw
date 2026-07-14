@@ -52,21 +52,20 @@ The dispatcher can be constructed from borrowed service boundaries for request-s
 
 ```rust
 RuntimeDispatcher::new(&registry, &root_filesystem, &resource_governor)
-    .with_runtime_adapter(RuntimeKind::Wasm, &wasm_adapter)
-    .with_runtime_adapter(RuntimeKind::Script, &script_adapter)
     .with_runtime_adapter(RuntimeKind::Mcp, &mcp_adapter)
+    .with_runtime_adapter(RuntimeKind::FirstParty, &first_party_adapter)
 ```
 
 For detached background execution, it can also own shared service handles:
 
 ```rust
 RuntimeDispatcher::from_arcs(registry, root_filesystem, resource_governor)
-    .with_runtime_adapter_arc(RuntimeKind::Script, script_adapter)
+    .with_runtime_adapter_arc(RuntimeKind::Mcp, mcp_adapter)
 ```
 
 The owned form keeps dispatcher composition-only while allowing `DispatchProcessExecutor` to run capability-backed processes without leaking borrowed app state into a spawned task.
 
-`ExtensionRegistry` remains the authority for what can run. Runtime adapter owners remain the authority for how a lane runs. The concrete WASM, Script, and MCP adapters now live in `brassclaw_host_runtime`, so `brassclaw_dispatcher` no longer has normal dependencies on `brassclaw_wasm`, `brassclaw_scripts`, or `brassclaw_mcp`.
+`ExtensionRegistry` remains the authority for what can run. Runtime adapter owners remain the authority for how a lane runs. The concrete MCP and first-party adapters now live in `brassclaw_host_runtime`, so `brassclaw_dispatcher` no longer has normal dependencies on `brassclaw_mcp`. (The WASM and Script runtime kinds were retired in Phase 4 of the v2 consolidation — see `docs/reborn/contracts/extensions.md` for the deletion record.)
 
 ---
 

@@ -418,9 +418,6 @@ fn reborn_host_runtime_services_do_not_expose_lower_substrate_handles() {
     let host_runtime_contract =
         std::fs::read_to_string(root.join("docs/reborn/contracts/host-runtime.md"))
             .expect("host runtime contract must be readable");
-    let scripts =
-        std::fs::read_to_string(root.join("crates/brassclaw_host_runtime/src/services/script_runtime.rs"))
-            .expect("host runtime script_runtime.rs must be readable");
     let host_runtime_manifest =
         std::fs::read_to_string(root.join("crates/brassclaw_host_runtime/Cargo.toml"))
             .expect("host runtime Cargo.toml must be readable");
@@ -536,17 +533,23 @@ fn reborn_host_runtime_services_do_not_expose_lower_substrate_handles() {
         "pub struct ScriptRuntimeAdapter",
         "pub fn script_error_kind",
     ];
-    for pattern in forbidden_script_lane_surface {
+    let script_runtime_module = root.join(
+        "crates/brassclaw_host_runtime/src/services/script_runtime.rs",
+    );
+    if script_runtime_module.exists() {
+        let scripts = std::fs::read_to_string(&script_runtime_module)
+            .expect("host runtime script_runtime.rs must be readable when present");
+        for pattern in forbidden_script_lane_surface {
+            assert!(
+                !scripts.contains(pattern),
+                "brassclaw_host_runtime::script_runtime must not expose host-runtime dispatcher composition surface `{pattern}`; compose script dispatch adapters inside brassclaw_host_runtime"
+            );
+        }
         assert!(
-            !scripts.contains(pattern),
-            "brassclaw_host_runtime::script_runtime must not expose host-runtime dispatcher composition surface `{pattern}`; compose script dispatch adapters inside brassclaw_host_runtime"
+            !scripts.contains("brassclaw_dispatcher"),
+            "brassclaw_host_runtime::script_runtime must not import brassclaw_dispatcher; script dispatcher adapters are host-runtime-private composition owned by the surrounding services layer"
         );
     }
-
-    assert!(
-        !scripts.contains("brassclaw_dispatcher"),
-        "brassclaw_host_runtime::script_runtime must not import brassclaw_dispatcher; script dispatcher adapters are host-runtime-private composition owned by the surrounding services layer"
-    );
 
     let forbidden_mcp_lane_surface = [
         "RuntimeAdapter",
@@ -876,13 +879,40 @@ fn reborn_turns_public_surface_uses_turn_ids_not_runtime_or_process_ids() {
 }
 
 #[test]
-fn wasm_sandbox_core_removed_after_phase_6() {
-    let root = workspace_root().join("crates/brassclaw_wasm_sandbox_core");
+fn phase_4_deleted_wasm_and_script_paths() {
+    let workspace = workspace_root();
+
+    let deleted_wasm_crates = [
+        "crates/brassclaw_wasm",
+        "crates/brassclaw_wasm_sandbox_core",
+        "crates/brassclaw_wasm_limiter",
+        "crates/brassclaw_wasm_product_adapters",
+        "crates/brassclaw_scripts",
+    ];
+
+    let missing: Vec<&str> = deleted_wasm_crates
+        .iter()
+        .filter(|relative| workspace.join(relative).join("Cargo.toml").exists())
+        .copied()
+        .collect();
+
     assert!(
-        !root.join("Cargo.toml").exists(),
-        "Phase 6 of the v1-removal plan deleted `brassclaw_wasm_sandbox_core`. \
-         The shared WASM sandbox is gone; the directory on disk must not reappear \
-         until a new boundary rule for a future crate names it."
+        missing.is_empty(),
+        "Phase 4 of the v1-removal plan deleted the WASM sandbox crates (wasm, wasm_sandbox_core, \
+         wasm_limiter, wasm_product_adapters) and the bespoke script runtime crate (scripts). \
+         Each deleted crate's directory must stay absent until a new boundary rule reintroduces it. \
+         Reappeared crates: {:?}",
+        missing
+    );
+
+    let script_runtime_module = workspace.join(
+        "crates/brassclaw_host_runtime/src/services/script_runtime.rs",
+    );
+    assert!(
+        !script_runtime_module.exists(),
+        "Phase 4 also deleted `brassclaw_host_runtime::services::script_runtime`. \
+         Subprocess-with-docker isolation moved to `brassclaw_process_sandbox::image::validate_reference`; \
+         the bespoke script module must not reappear unless a new boundary rule reintroduces it."
     );
 }
 

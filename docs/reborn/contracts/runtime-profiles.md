@@ -65,11 +65,12 @@ Sandboxed, Experiment
 The four are separate. `DeploymentMode + RuntimeProfile + tenant/org policy` resolves to an effective runtime policy. For example:
 
 ```text
-RuntimeKind::Script + SandboxBackend::None + RuntimeProfile::LocalDev
+RuntimeKind::FirstParty + SandboxBackend::None + RuntimeProfile::LocalDev
   -> direct local shell capability inside a local coding session
+    (shell tool inside `brassclaw_process_sandbox`, gated by capability grant)
 
-RuntimeKind::Script + SandboxBackend::Srt + RuntimeProfile::SecureDefault
-  -> sandboxed script capability for safer/default assistant use
+RuntimeKind::FirstParty + SandboxBackend::Srt + RuntimeProfile::SecureDefault
+  -> capability-gated shell + sandbox-friendly MCP for safer/default assistant use
 
 RuntimeKind::Experiment + SandboxBackend::SmolVm + RuntimeProfile::Experiment
   -> disposable Linux coding workspace

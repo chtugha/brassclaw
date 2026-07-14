@@ -1,8 +1,8 @@
-# Telegram WASM v2 ProductAdapter
+# Telegram v2 ProductAdapter
 
 **Status:** First-slice tracer-bullet for #3285 (default off).
 **Crate:** `brassclaw_telegram_v2_adapter`.
-**Host runtime:** `brassclaw_wasm_product_adapters`.
+**Host runtime:** `brassclaw_product_adapters` (native Rust integration; the WASM component-model build was retired in Phase 4).
 **Contract:** `brassclaw_product_adapters` (see `product-adapters.md`).
 
 ## Goals
@@ -11,9 +11,10 @@ Prove the [`product-adapters.md`](product-adapters.md) contract end-to-end
 against recorded Telegram payloads and fake Reborn services. The first
 slice is intentionally narrow:
 
-- The adapter is implemented natively in Rust today; the wasmtime
-  component-model build of the same logic lives in a follow-up landing
-  alongside the host runtime's full WIT bindings.
+- The adapter is implemented natively in Rust; the abandoned
+  wasmtime component-model build of the same logic was replaced by
+  direct calls into `brassclaw_product_adapters::run_*` helpers as
+  part of the Phase-4 WASM removal.
 - All Reborn services below the workflow facade are fakes
   (`FakeProductWorkflow`, etc.).
 - Production traffic is gated behind `REBORN_TELEGRAM_V2_ENABLED`
@@ -24,7 +25,7 @@ slice is intentionally narrow:
 Telegram webhooks ship a shared secret in
 `X-Telegram-Bot-Api-Secret-Token`. The host verifies the header in
 constant time using
-`brassclaw_wasm_product_adapters::SharedSecretHeaderAuth` and only then
+`brassclaw_product_adapters::SharedSecretHeaderAuth` and only then
 constructs a `ProtocolAuthEvidence::Verified` via
 `mark_shared_secret_header_verified`. Adapters refuse to parse a payload
 whose evidence is not `Verified`.

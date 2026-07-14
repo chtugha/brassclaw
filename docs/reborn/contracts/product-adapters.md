@@ -176,7 +176,7 @@ reply push + delivery status reporting, without progress or gate push.
 
 ## Authentication evidence
 
-Verifiers in `brassclaw_wasm_product_adapters::auth_verifier` provide
+Verifiers in `brassclaw_product_adapters::auth_verifier` provide
 constant-time HMAC and shared-secret-header verification. The host calls a
 verifier first and only constructs a `Verified` evidence (via one of the
 public `mark_*_verified` helpers) when the digest matches.
@@ -192,13 +192,11 @@ to avoid timing oracles.
 - `method`, `path`, `headers`, `body`
 - `credential_handle: Option<EgressCredentialHandle>`
 
-Component runtime uses v1-style minimal WASI p2 for wasm32-wasip2 guest compatibility:
-clock/random are available, but env, args, stdio, preopened directories, and
-network are not inherited. The first WASM runtime slice is parse/render-only:
-`render-outbound` returns a host-validated typed `EgressRequest`, while the
-component `http-egress` import fails closed until follow-up host-runtime wiring
-injects the production `ProtocolHttpEgress` path. Native adapters already use
-`ProtocolHttpEgress` directly.
+Native adapters call `ProtocolHttpEgress` directly. The WASM
+component-model glue that previously powered `render-outbound` parsing
+in a `wasm32-wasip2` guest was retired in Phase 4; the production
+`http-egress` import now lives inside `brassclaw_product_adapters` as
+a pure-Rust path that always resolves to `ProtocolHttpEgress`.
 
 The production host egress path:
 
@@ -230,6 +228,6 @@ configured for the same installation; see
 | Egress policy enforcement | `[implemented slice]` |
 | `NativeProductAdapterRunner` | `[implemented slice]` |
 | Telegram v2 native adapter | `[implemented slice]` (`brassclaw_telegram_v2_adapter`) |
-| wasmtime component-model glue | `[implemented slice]` (`ProductAdapterComponentRuntime` loads `crates/brassclaw_wasm_product_adapters/wit/product_adapter.wit`; parse/render-only, component `http-egress` import fails closed until production egress wiring lands) |
+| wasmtime component-model glue | `[removed]` (Phase 4 retired `brassclaw_wasm_product_adapters`; the runtime is no longer wired, and production egress flows through `ProtocolHttpEgress` directly) |
 | Web / Slack / Discord / WhatsApp / Feishu / Signal v2 adapters | `[not implemented]` |
 | Production wiring of v2 webhook route | `[not implemented]` (default-off flag exists; route registration is a follow-up) |

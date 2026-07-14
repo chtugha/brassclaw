@@ -28,7 +28,7 @@ It is not a runtime, policy engine, filesystem, budget ledger, or extension mana
 - host-owned HTTP ingress descriptors
 - audit/event envelopes
 
-The first implementation PR should create this crate before implementing `brassclaw_filesystem`, `brassclaw_resources`, `brassclaw_extensions`, `brassclaw_wasm`, or `brassclaw_dispatcher`.
+The first implementation PR should create this crate before implementing `brassclaw_filesystem`, `brassclaw_resources`, `brassclaw_extensions`, or `brassclaw_dispatcher`.
 
 ---
 
@@ -50,9 +50,7 @@ The first implementation PR should create this crate before implementing `brassc
 - `brassclaw_filesystem`
 - `brassclaw_resources`
 - `brassclaw_extensions`
-- `brassclaw_wasm`
 - `brassclaw_mcp`
-- `brassclaw_scripts`
 - `brassclaw_auth`
 - `brassclaw_network`
 - current `src/tools/*`
@@ -245,9 +243,9 @@ pub enum TrustClass {
 
 Rules:
 
-- `RuntimeKind::FirstParty` and `RuntimeKind::System` are concrete host-lane markers for host-policy-selected services in the broader `Host | WASM | Script Runner` model.
+- `RuntimeKind::FirstParty` and `RuntimeKind::System` are concrete host-lane markers for host-policy-selected services.
 - `RuntimeKind::Mcp` is a capability adapter lane; local stdio MCP servers may still be process/sandbox-backed internally.
-- `RuntimeKind::Script` is the native CLI/script lane. Docker/container is the V1 backend selected by policy, not a distinct public host API runtime kind.
+- (Removed 2026-07-14 Phase 4) `RuntimeKind::Wasm` and `RuntimeKind::Script` were retired. New code paths use FirstParty or MCP lanes. The capability surface for shell-style work is realized through `brassclaw_process_sandbox`, not a script runtime kind.
 - `TrustClass` is an authority ceiling, not a permission grant and not a kernel bypass.
 - Shipped first-party code and bundled reference loops still need explicit grants, scoped mounts, resource reservations, leases, and obligation handling for privileged effects.
 - User-installed packages cannot self-declare `TrustClass::FirstParty` or `TrustClass::System`; those ceilings are assigned only by host policy, signed/bundled package metadata, or admin configuration.
@@ -688,7 +686,7 @@ pub struct SandboxQuota {
 }
 ```
 
-`brassclaw_host_api` defines these shapes. `brassclaw_resources`, `brassclaw_scripts`, `brassclaw_wasm`, and sandbox backends enforce them.
+`brassclaw_host_api` defines these shapes. `brassclaw_resources`, `brassclaw_process_sandbox`, and the remaining sandboxed runtime backends enforce them.
 
 ---
 
@@ -1148,9 +1146,8 @@ Do not implement in `brassclaw_host_api`:
 - database schema
 - budget ledger
 - extension manifest discovery
-- WASM invocation
 - MCP client
-- script runner
+- first-party tool implementation
 - auth/OAuth flows
 - network client
 - dispatcher builder

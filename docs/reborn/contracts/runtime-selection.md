@@ -1,9 +1,17 @@
 # BrassClaw Reborn runtime selection contract
 
-**Date:** 2026-04-26
+**Date:** 2026-04-26 (Revised 2026-07-14: Phase 4 WASM/Script removal)
 **Status:** Decision guide / contract boundary
-**Depends on:** `docs/reborn/contracts/capabilities.md`, `docs/reborn/contracts/dispatcher.md`, `docs/reborn/contracts/processes.md`, `docs/reborn/contracts/scripts.md`, `docs/reborn/contracts/wasm.md`, `docs/reborn/contracts/host-runtime.md`
+**Depends on:** `docs/reborn/contracts/capabilities.md`, `docs/reborn/contracts/dispatcher.md`, `docs/reborn/contracts/processes.md`, `docs/reborn/contracts/host-runtime.md`
 **Profile presets:** `docs/reborn/contracts/runtime-profiles.md`
+
+> **Phase-4 update.** The previously-referenced
+> `docs/reborn/contracts/scripts.md` and `docs/reborn/contracts/wasm.md`
+> were deleted. The `Script` and `Wasm` runtime kinds are no longer
+> first-class; new authors compose capabilities from `Mcp`,
+> `FirstParty`, and `System` lanes plus the `brassclaw_process_sandbox`
+> shell lane. Existing mentions in this document are kept for archival
+> continuity; new code paths are MCP-first.
 
 ---
 
@@ -37,13 +45,13 @@ A sandbox can reduce blast radius, but it does not grant authority. Grants, leas
 ```rust
 enum RuntimeKind {
     ActionScript,
-    Wasm,
     DeclarativeHttp,
-    Script,
     Mcp,
     LocalProcess,
     AgentLoopProcess,
     Experiment,
+    FirstParty,
+    System,
 }
 
 enum SandboxBackend {
@@ -60,11 +68,11 @@ Examples:
 
 ```text
 RuntimeKind::ActionScript       -> QuickJS isolate, later Pyodide/WASI CPython
-RuntimeKind::Wasm               -> Wasmtime component/module
 RuntimeKind::DeclarativeHttp    -> host-owned HTTP dispatcher, no child process
 RuntimeKind::Mcp                -> stdio/server process, usually sandboxed by SRT or VM/container
-RuntimeKind::Script             -> declared command runner, sandboxed when process-backed
 RuntimeKind::Experiment         -> disposable or persistent coding workspace, usually SmolVM/Docker
+RuntimeKind::FirstParty         -> host-policy-selected packaged service / loop ceiling
+RuntimeKind::System             -> host-owned system fixture/service; not user-installable
 ```
 
 ---
@@ -76,13 +84,13 @@ RuntimeKind::Experiment         -> disposable or persistent coding workspace, us
 | Replace Monty for normal CodeAct/tool composition | `ActionScript` on QuickJS | Real JS syntax, no ambient host authority, cheap embedding, async host bridge |
 | Keep Python-shaped CodeAct later | `ActionScript` on Pyodide or WASI CPython | Realer Python than Monty, still capability-shaped; heavier than QuickJS |
 | Run local MCP stdio server | `Mcp` with `SandboxBackend::Srt` | Long-running process amortizes SRT startup; host controls filesystem/network policy |
-| Run trusted-ish helper script | `Script` with `SandboxBackend::Srt` | Real host interpreter/tooling with process sandbox defense-in-depth |
+| Run helper script | `brassclaw_process_sandbox` shell tool, gated by capability grant | Real host interpreter; the agent composes skill+tool recipes rather than declaring a separate `Script` manifest kind |
 | Run generated or untrusted coding experiment | `Experiment` with `SandboxBackend::SmolVm` | Full Linux, package installs, persistent overlay, stronger hypervisor boundary |
 | Run heavy reproducible build/test workload | `Experiment` with SmolVM or Docker | Real shell and dependencies; choose backend by image/cgroup/host support needs |
-| Implement durable extension capability | `Wasm` | Portable no-ambient-authority implementation runtime |
-| Wrap simple REST API | `DeclarativeHttp` | No process or WASM needed; host owns network, credential injection, audit |
+| Implement durable extension capability | `FirstParty` or `Mcp` | First-party is host-policy-selected packaged service; MCP is the standard adapter lane |
+| Wrap simple REST API | `DeclarativeHttp` | No process needed; host owns network, credential injection, audit |
 | Govern outbound HTTP/DNS | Network broker/policy layer | Cross-cutting egress boundary, not an execution runtime |
-| Execute raw shell | Explicit capability inside `Script`/`Experiment` | Never ambient CodeAct behavior; always scoped, audited, and sandboxed |
+| Execute raw shell | Explicit capability inside `FirstParty` shell tool | Never ambient CodeAct behavior; always scoped, audited, and sandboxed |
 
 ---
 
@@ -102,7 +110,7 @@ RuntimeKind::Experiment         -> disposable or persistent coding workspace, us
 | SmolVM (`smol-machines/smolvm`) | Local Linux microVM runtime using libkrun/KVM/Hypervisor.framework | Yes, inside guest | Yes | Per-workload VM/hypervisor | Coding experiment runtime / disposable agent computer | Strong yes for experiments |
 | SmolVM (`CelestoAI/SmolVM`) | AI-agent microVM sandbox platform | Yes, inside guest | Yes | MicroVM sandbox infrastructure | Agent computer/browser/session sandbox | Interesting; evaluate separately |
 | Docker | Container runtime | Yes, inside container | Yes | Namespaces/cgroups, shared kernel | Heavy/reproducible sandbox backend | Keep for selected workloads |
-| Wasmtime/WASM | Portable capability runtime | Depends on source language | No | WASM capability sandbox | Extension capability implementation runtime | Keep |
+| Wasmtime/WASM | Portable capability runtime | Depends on source language | No | WASM capability sandbox | ~~~~| **Removed (Phase 4)** — capabilities now land via First-party/MCP |
 | Declarative HTTP | Host-executed API call descriptor | No | No | Host network/secret policy | Simple REST integrations | Strong yes |
 | MCP stdio process | External MCP server process | Server-defined | Process runtime | Needs SRT/Docker/SmolVM/etc. | Tool server integration lane | Use with sandbox backend |
 | Raw shell | Direct Bash/sh command execution | N/A | Yes | Depends on backend | Explicit approved capability only | Never as ambient CodeAct default |
@@ -235,9 +243,9 @@ The experiment runtime may expose shell commands, but it must remain a capabilit
 2. Deprecate Monty as the primary CodeAct runtime because Python-like incompatibilities cause avoidable LLM errors.
 3. Add `RuntimeKind::ActionScript` with QuickJS first.
 4. Add Python WASM only if real Python-shaped CodeAct remains important after QuickJS lands.
-5. Use SRT as a `SandboxBackend` for local process, script, MCP stdio, and external agent-loop processes.
+5. Use SRT as a `SandboxBackend` for local process, MCP stdio, and external agent-loop processes.
 6. Use SmolVM as the preferred `Experiment` backend for multi-step coding experiments and untrusted generated code.
-7. Keep Docker as an optional experiment/script backend for reproducible images, cgroups, and CI-like workloads.
-8. Keep WASM for durable extension capabilities and declarative HTTP for simple REST integrations.
+7. Keep Docker as an optional experiment backend for reproducible images, cgroups, and CI-like workloads.
+8. Choose `FirstParty` for durable extension capabilities and `DeclarativeHttp` for simple REST integrations; MCP for cross-process adapters. WASM is no longer a runtime lane.
 9. Add or preserve a cross-cutting network broker/policy layer for all outbound HTTP/DNS paths.
 10. Make raw shell an explicit, scoped, audited capability inside process-backed lanes, never the ambient CodeAct substrate.

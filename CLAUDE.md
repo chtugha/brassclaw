@@ -243,8 +243,9 @@ crates/
 ├── Safety and security
 │   └── brassclaw_safety/           # Prompt injection, validation, leak detection, policy
 │
-├── WASM
-│   └── brassclaw_wasm/             # Wasmtime sandbox, host functions, fuel metering
+├── WASM (Phase 4 removed)
+│   └── brassclaw_wasm/             # Removed: Wasmtime sandbox, host functions, fuel metering
+│                                    # Replaced by brassclaw_process_sandbox (subprocess + docker-image gating)
 │
 ├── WebUI v2
 │   ├── brassclaw_webui_v2/         # React SPA server, routes, bearer-token auth
@@ -270,7 +271,7 @@ crates/
 src/                                # Legacy v1 runtime — do not modify for Reborn work
 ├── lib.rs, main.rs, app.rs         # v1 entrypoints
 ├── agent/                          # v1 agent loop — see src/agent/CLAUDE.md
-├── channels/                       # v1 channels (cli, http, web, wasm)
+├── channels/                       # v1 channels (cli, http, web) — v1 wasm channel removed in Phase 4
 │   └── web/                        # v1 web gateway — see src/channels/web/CLAUDE.md
 ├── db/                             # Dual-backend persistence — see src/db/CLAUDE.md
 ├── tools/                          # v1 tool system and registry
@@ -402,7 +403,7 @@ RUST_LOG=brassclaw=debug,tower_http=debug cargo run   # v1 with HTTP request log
 1. Reborn runtime: long-lived daemon/service installation not yet supported
 2. Reborn runtime: v1 config, DB, settings, and secrets migration not yet implemented
 3. MCP: no streaming support; stdio/HTTP/Unix transports all use request-response
-4. WIT bindgen: auto-extract tool schema from WASM is stubbed
+4. ~~WIT bindgen: auto-extract tool schema from WASM is stubbed~~ — removed in Phase 4; tool schemas come from native Extension Manifest v2 / MCP server introspection
 5. Built tools get empty capabilities; no UX for granting access
 6. No tool versioning or rollback
 7. Observability: only `log` and `noop` backends (no OpenTelemetry)

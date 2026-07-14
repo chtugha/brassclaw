@@ -74,7 +74,6 @@ export RUSTC_WRAPPER=sccache
 export CC=clang
 export CXX=clang++
 export RUSTFLAGS=""
-./scripts/build-wasm-extensions.sh --first-party
 export RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=mold"
 cargo build --release --bin brassclaw
 ln -sf "$BRASSCLAW_DIR/target/release/brassclaw" /usr/local/bin/brassclaw

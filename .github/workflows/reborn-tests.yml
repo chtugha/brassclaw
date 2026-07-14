@@ -105,7 +105,6 @@ jobs:
                         or (.name == "brassclaw_architecture")
                         or (.name == "brassclaw_slack_v2_adapter")
                         or (.name == "brassclaw_telegram_v2_adapter")
-                        or (.name == "brassclaw_wasm_product_adapters")
                         or (.name | startswith("brassclaw_webui_v2"))
                       )
                     | .name

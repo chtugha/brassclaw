@@ -457,16 +457,19 @@ Security and safety layer.
 
 ---
 
-### `brassclaw_wasm`
+### `brassclaw_process_sandbox`
 
-WebAssembly sandbox for untrusted tools.
+Host-side isolation and command gating for tools that need to run sub-processes (shell, docker, git, etc.).
 
 **Owns:**
-- Wasmtime-based execution with capability leases
-- Endpoint allowlisting
+- Single canonical docker-image validator (`image::validate_reference`) — applies to all processes_sandbox docker-exec invocations
+- Capability-lease enforcement across process spawns
+- Endpoint allowlisting + scoped filesystem mounts
 - Credential injection at host boundary
-- Leak detection (request/response scanning)
+- Leak detection (request/response scanning for outbound HTTP)
 - Rate limiting per tool
+
+> **Phase 4 update:** the v1 WASM sandbox (`brassclaw_wasm` / `brassclaw_wasm_sandbox_core` / `brassclaw_wasm_limiter`) and the bespoke script runtime (`brassclaw_scripts`, `brassclaw_host_runtime::services::script_runtime`) have been removed. New tool isolation comes from this `brassclaw_process_sandbox` crate combined with the `Mcp` / `FirstParty` / `System` runtime lanes in `brassclaw_extensions`. See `docs/brassclaw-architecture.md` § "Reborn v2 extension runtimes" for the replacement topology.
 
 ---
 
@@ -919,7 +922,7 @@ trust/source classification
 
 ### Defense in Depth
 
-1. **WASM Sandbox**: Untrusted tools run in isolated WebAssembly containers (wasmtime)
+1. **Process Sandbox** (`brassclaw_process_sandbox`): untrusted tool subprocesses (shell, docker-exec, git) run with capability leases, scoped filesystems, endpoint allowlists, and a single canonical docker-image validator. **Phase 4 update:** this replaces the v1 WebAssembly sandbox (wasmtime) — the WASM-mediated lane has been removed; tool authors target `Mcp` (hosted) or `FirstParty` / `System` (native Rust) lanes and call into `brassclaw_process_sandbox` when they need subprocess isolation.
 2. **Capability Leases**: Scoped, time-bound, use-limited access grants; exact-invocation scoped
 3. **Policy Engine**: Deterministic allow/deny/require-approval decisions (Block/Warn/Review/Sanitize)
 4. **Credential Injection**: Secrets injected at host boundary, never exposed to tools; staged for one runtime handoff and consumed before use
@@ -1321,8 +1324,8 @@ brassclaw/
 │   ├── brassclaw_llm/              # LLM provider abstractions
 │   ├── brassclaw_skills/           # Deterministic skills selection pipeline
 │   ├── brassclaw_safety/           # Prompt injection defense, sanitization
-│   ├── brassclaw_wasm/             # WASM sandbox (wasmtime)
-│   ├── brassclaw_extensions/       # Extension discovery and lifecycle
+│   ├── brassclaw_extensions/       # Extension discovery and lifecycle (Mcp/FirstParty/System lanes)
+│   ├── brassclaw_process_sandbox/  # Process sandbox: docker-image validator, capability-lease subprocess gating
 │   ├── brassclaw_threads/          # Session thread and transcript service
 │   ├── brassclaw_events/           # Typed redacted event/audit substrate
 │   ├── brassclaw_webui_v2/         # WebUI v2 product adapter

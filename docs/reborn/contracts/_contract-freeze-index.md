@@ -66,8 +66,6 @@ If a task needs to change one of those answers, it is not implementation work; i
 - [`run-state.md`](run-state.md)
 - [`dispatcher.md`](dispatcher.md)
 - [`runtime-workflows.md`](runtime-workflows.md)
-- [`wasm.md`](wasm.md)
-- [`scripts.md`](scripts.md)
 - [`mcp.md`](mcp.md)
 - [`processes.md`](processes.md)
 - [`filesystem.md`](filesystem.md)
@@ -131,7 +129,7 @@ Current implemented/partial substrate called out there includes:
 - network policy boundary and hardened WASM host HTTP path;
 - capability access, `CapabilityHost`, approvals/resume, and run-state slices;
 - dispatcher runtime-adapter inversion;
-- WASM, Script, and MCP adapter lanes;
+- MCP adapter lane;
 - process store/manager/result/output-ref/process-host slices;
 - architecture dependency guardrails and live vertical-slice examples.
 
@@ -224,7 +222,7 @@ Can run in parallel once the relevant `memory.md`, storage, network, secrets, an
 | Kernel turn coordination + reference loops | `kernel-boundary.md`, `turns-agent-loop.md` | one-active-run-per-thread in kernel-mediated coordination; loop behavior/prompt strategy as userland over `CapabilityHost` |
 | Web SSE/WebSocket event APIs | `events-projections.md` | product transport over durable replay cursors + projections |
 | Settings/extension/skill projections | `settings-config.md`, `extensions.md` | typed repos with `/system/...` views |
-| Runtime lane hardening | `wasm.md`, `scripts.md`, `mcp.md`, `network.md` | all three first-class |
+| Runtime lane hardening | `mcp.md`, `network.md` | MCP and network; WASM/Script lanes are removed (Phase 4) |
 | Migration bridge | `migration-compatibility.md` | reuse schemas where viable |
 
 ---

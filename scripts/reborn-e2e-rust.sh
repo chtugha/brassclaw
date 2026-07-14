@@ -48,12 +48,6 @@ run_runtimes() {
   run_test brassclaw_dispatcher event_dispatch_contract
   run_test brassclaw_dispatcher runtime_dispatcher_integration
   run_test brassclaw_dispatcher vertical_slice_contract
-  run_test brassclaw_wasm wasm_dispatch_integration
-  run_test brassclaw_wasm wasm_http_adapter_contract
-  run_test brassclaw_wasm wit_tool_runtime_contract
-  run_test brassclaw_scripts script_dispatch_integration
-  run_test brassclaw_scripts script_http_adapter_contract
-  run_test brassclaw_scripts script_runner_contract
   run_test brassclaw_mcp mcp_adapter_contract
   run_test brassclaw_mcp mcp_dispatch_integration
   run_test brassclaw_processes process_dispatch_integration

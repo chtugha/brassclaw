@@ -2,7 +2,7 @@
 
 **Status:** partial MVP implementation slice
 
-This slice adds a Docker-backed compatibility lane for dynamic process execution through Reborn process lifecycle. It is intentionally separate from the manifest-derived `brassclaw_scripts` lane.
+This slice adds a Docker-backed compatibility lane for dynamic process execution through Reborn process lifecycle. **Phase 4 update:** the previously-separate `brassclaw_scripts` lane and its bespoke script runtime (`brassclaw_host_runtime::services::script_runtime`) have been removed — `brassclaw_process_sandbox` with `image::validate_reference` is now the single canonical docker execution path and applies to all subprocesses that need docker isolation.
 
 ## Shape
 

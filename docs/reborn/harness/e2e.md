@@ -12,9 +12,9 @@ This document is the branch-local map for the dedicated Reborn E2E gate. Reborn 
 | Dedicated Reborn E2E spine | `crates/brassclaw_host_runtime/tests/reborn_e2e_gate.rs` |
 | Capability host invoke/resume/spawn | `crates/brassclaw_capabilities/tests/capability_host_*` |
 | Dispatcher adapter selection | `crates/brassclaw_dispatcher/tests/vertical_slice_contract.rs` |
-| WASM runtime lane | `crates/brassclaw_wasm/tests/wasm_dispatch_integration.rs` and `wasm_http_adapter_contract.rs` |
-| Script runtime lane | `crates/brassclaw_scripts/tests/script_dispatch_integration.rs` and `script_http_adapter_contract.rs` |
-| MCP runtime lane | `crates/brassclaw_mcp/tests/mcp_dispatch_integration.rs` and `mcp_adapter_contract.rs` |
+| Extension runtime lanes (Mcp / FirstParty / System) | `crates/brassclaw_extensions/tests/extension_v2_lifecycle_e2e.rs`, `crates/brassclaw_extensions/tests/manifest_v2_contract.rs` |
+| MCP server adapters | `crates/brassclaw_mcp/tests/mcp_dispatch_integration.rs` and `mcp_adapter_contract.rs` |
+| Process/subprocess isolation (incl. `image::validate_reference`) | `crates/brassclaw_process_sandbox/tests/*` plus host-runtime subprocess tests |
 | Process lifecycle | `crates/brassclaw_processes/tests/process_dispatch_integration.rs` and process service/store contracts |
 | Network policy and host HTTP egress | `crates/brassclaw_network/tests/*` plus host-runtime HTTP egress tests |
 | Secret storage/leases | `crates/brassclaw_secrets/tests/secret_store_contract.rs` plus host-runtime staged-secret tests |
@@ -43,7 +43,8 @@ Extension manifests
 -> DefaultHostRuntime / HostRuntime facade
 -> CapabilityHost authorization and run-state lifecycle
 -> RuntimeDispatcher adapter selection
--> WASM / Script / MCP runtime adapters
+-> Mcp / FirstParty / System extension runtime adapters
+-> subprocess gating through brassclaw_process_sandbox when needed
 -> resource reservation and reconciliation
 -> durable runtime events
 -> structured outcome returned to caller
@@ -124,7 +125,7 @@ scripts/reborn-e2e-rust.sh runtimes
 scripts/reborn-e2e-rust.sh substrates
 ```
 
-The script expands to the dedicated `reborn_e2e_gate.rs` tests plus the current Reborn boundary, host-runtime, capability-host, dispatcher, WASM, Script, MCP, process, event, filesystem, network, secret, resource, run-state, approval, and authorization contract tests. Use the script as the source of truth for local/CI parity rather than copying individual `cargo test` commands.
+The script expands to the dedicated `reborn_e2e_gate.rs` tests plus the current Reborn boundary, host-runtime, capability-host, dispatcher, Extension (Mcp/FirstParty/System) and process_sandbox runtime lanes, MCP server adapter, process, event, filesystem, network, secret, resource, run-state, approval, and authorization contract tests. Use the script as the source of truth for local/CI parity rather than copying individual `cargo test` commands.
 
 Run the gateway smoke test:
 

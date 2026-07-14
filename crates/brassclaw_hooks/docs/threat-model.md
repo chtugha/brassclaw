@@ -152,7 +152,7 @@ Ranked by severity:
 
 1. ~~**(High)** Per-extension cap on hook registrations (D3/D4).~~ **DONE** — `MAX_HOOKS_PER_EXTENSION` (32) + `_PER_KIND` (8) consts in `registrar.rs`, enforced pre-flight in `enforce_registration_caps`.
 2. ~~**(High)** Gate-ref unguessability test (S1).~~ **DONE** — `gate_refs_are_v4_uuids` pins the v4 entropy source; 20k-draw no-collision test as statistical proxy. One-shot consumption deferred to the approval gateway's threat model.
-3. ~~**(Med)** Resolver field-level scope (I2).~~ **DONE** — `SanitizedArguments` narrow public API (only `extract_numeric(field_path)`) makes the current predicate path field-scoped by construction. Documented in rustdoc; reassess when Installed-WASM lands.
+3. ~~**(Med)** Resolver field-level scope (I2).~~ **DONE** — `SanitizedArguments` narrow public API (only `extract_numeric(field_path)`) makes the current predicate path field-scoped by construction. Documented in rustdoc.
 4. ~~**(Med)** Per-evaluator state ceiling (D5).~~ **DONE** — `MAX_HISTORY_KEYS = 8192` per map, LRU eviction, `evictions_observed()` metric.
 5. ~~**(Med)** Document poison-stickiness operator runbook.~~ **DONE** — see [`operator-runbook.md`](./operator-runbook.md) §1.
 6. **(Low)** Acknowledge timing side-channel residual (I4) in CLAUDE.md; defer mitigation unless a use case forces it.
@@ -161,10 +161,7 @@ Ranked by severity:
 ## What this threat model does NOT cover
 
 - The **extension installation pipeline** — where do extension bundles come from, who signs them, how is `trust_class` derived. This is #3492.
-- The **WASM execution sandbox** — covered separately in
-  [`threat-model-wasm.md`](./threat-model-wasm.md), including the
-  wasmtime boundary, host-function attenuation, and the linear-memory
-  boundary.
+- The **WASM execution sandbox** — the v1 Installed-WASM hook path was scoped, manifest-validated, but never landed with a guest VM (see commit history of `brassclaw_wasm` crate removal). Phase 4 of the Reborn v2 consolidation deleted `brassclaw_wasm`, `brassclaw_wasm_sandbox_core`, `brassclaw_wasm_limiter`, and `brassclaw_wasm_product_adapters`. Installed hooks remain manifest-only; runtime enforcement is delegated to the per-extension first-party / MCP tool path inside `brassclaw_process_sandbox`. The sandbox boundary described in the now-removed `threat-model-wasm.md` is satisfied by `brassclaw_process_sandbox::image::validate_reference` (single canonical docker-image validator) plus the existing capability/egress/obligation matrix.
 - The **approval gateway** — gate-ref lifecycle, TTL, user-facing approval UX. Owned by the channel layer (#3564).
 - **Side channels at the model layer** — what if the LLM itself is the attack vector (jailbreak, prompt injection from user input). The prompt-envelope mitigates the *hook-injected* prompt-injection vector but doesn't address user-driven prompt injection.
 - **Supply chain on `blake3`, `tokio`, `serde_json`, `wasmtime`** — out of scope here.

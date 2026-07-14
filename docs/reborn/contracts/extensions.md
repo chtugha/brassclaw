@@ -26,12 +26,22 @@ What authority metadata do they request?
 
 It does **not** execute capabilities.
 
-Execution belongs to:
+Execution belongs to (Reborn v2):
 
-- `brassclaw_wasm` for WASM modules
-- `brassclaw_scripts` for Docker-backed native CLI/script capabilities
 - `brassclaw_mcp` for MCP adapter calls
 - host-policy-selected service crates for first-party/system work
+- first-party tool implementations in `brassclaw_extensions::v2`/`brassclaw_first_party_extensions`
+- `brassclaw_process_sandbox` for shell/exec tools (replaces the legacy docker-script lane)
+
+> **Phase 4 deletion record (Reborn v2).** The legacy `brassclaw_wasm`,
+> `brassclaw_wasm_sandbox_core`, `brassclaw_wasm_limiter`,
+> `brassclaw_wasm_product_adapters`, and `brassclaw_scripts` crates were
+> removed. WASM and Docker-script runtime lanes are no longer wired —
+> `ExtensionRuntime::Script` and `RuntimeKind::Wasm/Script` are gone.
+> Manifest examples below that show `kind = "wasm"` or
+> `kind = "script"` are kept for archival continuity with installed
+> legacy extensions during the migration window; new manifests must use
+> `kind = "mcp"`, `kind = "first_party"`, or `kind = "system"`.
 
 ---
 

@@ -78,7 +78,7 @@ is_reborn_test_path() {
     crates/brassclaw_product_*/*|crates/brassclaw_slack_v2_adapter/*|crates/brassclaw_telegram_v2_adapter/*)
       return 0
       ;;
-    crates/brassclaw_wasm_product_adapters/*|crates/brassclaw_webui_v2/*|crates/brassclaw_webui_v2_static/*)
+    crates/brassclaw_webui_v2/*|crates/brassclaw_webui_v2_static/*)
       return 0
       ;;
     crates/brassclaw_conversations/*|crates/brassclaw_outbound/*|crates/brassclaw_triggers/*)
@@ -99,10 +99,10 @@ is_code_path() {
     Cargo.toml|Cargo.lock|Dockerfile|build.rs|providers.json)
       return 0
       ;;
-    scripts/check_no_panics.py|scripts/check_gateway_boundaries.py|scripts/build-wasm-extensions.sh|scripts/check-version-bumps.sh|scripts/reborn-e2e-rust.sh|scripts/ci/*)
+    scripts/check_no_panics.py|scripts/check_gateway_boundaries.py|scripts/check-version-bumps.sh|scripts/reborn-e2e-rust.sh|scripts/ci/*)
       return 0
       ;;
-    .github/workflows/*.yml|.github/actions/install-cargo-component/*|.github/dependabot.yml|.github/labeler.yml)
+    .github/workflows/*.yml|.github/dependabot.yml|.github/labeler.yml)
       return 0
       ;;
     *)

@@ -5,20 +5,16 @@ description: "A Reborn-only implementation guide for BrassClaw extension tools"
 
 # How to implement a Reborn tool extension
 
-This guide is for coding agents and engineers adding an BrassClaw Reborn
+This guide is for coding agents and engineers adding a BrassClaw Reborn
 extension tool. It is intentionally Reborn-only. Do not use V1 extension,
-native-extension, pending-OAuth-map, or legacy tool-router patterns when
-following this document.
+native-extension, pending-OAuth-map, WIT/Wasm, or script-runtime patterns
+when following this document. The Wasm and Script runtime lanes were
+removed in Phase 4 of the v2 consolidation (`docs/reborn/contracts/extensions.md`).
+Every new tool today is a First-party or MCP capability.
 
-The guide is grounded in the current GitHub, GSuite, and Notion implementations:
-
-- GitHub: bundled WASM capability provider under
-  `crates/brassclaw_first_party_extensions/assets/github/`.
-- GSuite: bundled WASM capability providers for Gmail, Calendar, Docs, Drive,
-  Sheets, and Slides.
-- Notion: bundled hosted HTTP MCP capability provider under
-  `crates/brassclaw_first_party_extensions/assets/notion-mcp/`, with product
-  auth / OAuth DCR wiring in Reborn composition.
+The guide is grounded in the current Notion, GitHub hosted-MCP, and
+internal first-party tool implementations bundled in
+`crates/brassclaw_first_party_extensions/assets/`.
 
 ## Success criteria
 
@@ -27,7 +23,8 @@ A Reborn tool extension is complete only when all of the following are true:
 1. The extension package has a `schema_version = "reborn.extension_manifest.v2"`
    manifest and every model-visible capability has schema, output schema, and
    prompt assets.
-2. The manifest declares the correct runtime lane: `wasm`, `mcp`, or `script`.
+2. The manifest declares the correct runtime lane: `mcp`, `first_party`, or
+   `system`. Wasm and script lanes are no longer wired.
 3. The manifest exposes tools through `brassclaw.capability_provider/v1` via the
    registry extension manifest path. Do not add or copy top-level
    `[[capabilities]]` declarations.
@@ -51,7 +48,7 @@ Extension package
   -> model selects a visible capability
   -> brassclaw_capabilities performs authorization, approvals, obligations, run state
   -> host runtime selects the runtime adapter by RuntimeKind
-  -> runtime executes through host-provided services
+  -> first-party or MCP adapter executes through host-provided services
   -> host HTTP egress injects staged credentials and enforces network policy
   -> sanitized JSON output returns to the loop
 ```
@@ -73,13 +70,24 @@ Pick one lane first. Do not blend lanes to make a tool work.
 
 | Lane | Use when | Current examples | Main files |
 | --- | --- | --- | --- |
-| WASM capability provider | Provider logic can run in a sandboxed component and use host HTTP egress. This is the default for provider tools. | GitHub, Gmail, Google Calendar, Google Drive, Google Docs, Google Sheets, Google Slides | `crates/brassclaw_first_party_extensions/assets/<id>/manifest.toml`, `schemas/`, `prompts/`, optional `wasm-src/` |
-| Hosted HTTP MCP | The provider already exposes an MCP server and the host should lock egress to that endpoint. | Notion hosted MCP | `assets/<id>-mcp/manifest.toml`, schemas/prompts, `crates/brassclaw_reborn_composition/src/mcp.rs` only if adding a new host-bundled MCP policy shape |
-| Product adapter | The extension receives external inbound events or product webhooks. This is not just a model-callable tool lane. | Slack/Telegram-style adapters, not the main focus of this guide | `crates/brassclaw_product_adapters`, `crates/brassclaw_product_adapter_registry`, `crates/brassclaw_wasm_product_adapters` |
-| Script | Sandboxed process/CLI capability. Use only when a process boundary is the product requirement. | Project tools / CLI-style tools | `crates/brassclaw_scripts` runtime path plus manifest runtime `script` |
+| Hosted HTTP MCP | The provider already exposes an MCP server and the host should lock egress to that endpoint. This is the default for provider tools. | Notion, GitHub hosted MCP | `crates/brassclaw_first_party_extensions/assets/<provider>-mcp/manifest.toml`, `schemas/`, `prompts/`, optionally `crates/brassclaw_reborn_composition/src/mcp.rs` only for new host-bundled MCP policy shape |
+| First-party capability | Logic is host-owned — a Rust crate shipped with the binary or a workspace-level capability. | Internal HTTP wrappers, scheduled cron, declarative HTTP descriptors, system accessors | `crates/brassclaw_first_party_extensions/src/**` plus a `manifest.toml` declaring `kind = "first_party"` |
+| Product adapter | The extension receives external inbound events or product webhooks. This is not just a model-callable tool lane. | Telegram v2, future Slack/Discord v2 | `crates/brassclaw_product_adapters`, `crates/brassclaw_product_adapter_registry` |
+| System | Host-owned system fixtures and reference loops. Not user-installable. | Regression test fixtures, ship-with-the-binary scheduled missions | Manifest declared by composition code only; users cannot install `System` lane packages |
 
 For a new provider API like Linear, Jira, or a small internal SaaS API, start
-with WASM unless you have a concrete reason not to.
+with hosted MCP — point the manifest at the provider's MCP server and let
+Reborn enforce egress, credentials, and approvals. Reach for First-party
+when the logic is genuinely host-owned (cron, declarative HTTP wrappers,
+telemetry, internal service access).
+
+> **Removed lanes.** `wasm`, `script`, and Docker-script backends are no
+> longer wired. The legacy `brassclaw_wasm`,
+> `brassclaw_wasm_sandbox_core`, `brassclaw_wasm_limiter`,
+> `brassclaw_wasm_product_adapters`, and `brassclaw_scripts` crates were
+> deleted. If you need to spawn a process, use the `brassclaw_process_sandbox`
+> shell tool inside a capability grant; if you need a remote adapter, host its
+> MCP server and wire it through `brassclaw_mcp`.
 
 ## Crates to touch
 
@@ -110,26 +118,6 @@ Do not touch for ordinary tools:
 - agent loop crates for tool-specific routing. Tool selection must come from the
   published capability surface, not hardcoded model-routing logic.
 
-### WASM lane
-
-Usually touch:
-
-- `crates/brassclaw_first_party_extensions/assets/<extension>/wasm-src/`
-- `crates/brassclaw_first_party_extensions/assets/<extension>/wasm/<tool>.wasm`
-- the extension manifest, schemas, and prompts.
-- `crates/brassclaw_reborn_composition/src/available_extensions.rs` to package
-  the manifest, schemas, prompts, and WASM bytes if host-bundled.
-
-Use as references:
-
-- `crates/brassclaw_first_party_extensions/assets/github/wasm-src/src/lib.rs`
-- `crates/brassclaw_first_party_extensions/assets/github/wasm-src/src/request.rs`
-- `crates/brassclaw_host_runtime/src/wasm_credentials.rs`
-
-Do not add a direct `reqwest`/HTTP client inside the WASM tool. Use the WIT host
-HTTP import (`near::agent::host::http_request`) so Reborn can enforce egress,
-inject staged credentials, and sanitize failures.
-
 ### Hosted MCP lane
 
 Usually touch:
@@ -137,8 +125,10 @@ Usually touch:
 - `crates/brassclaw_first_party_extensions/assets/<provider>-mcp/manifest.toml`
 - `schemas/<provider>/...`
 - `prompts/<provider>/...`
-- `crates/brassclaw_reborn_composition/src/available_extensions.rs` if
-  host-bundled.
+- `crates/brassclaw_reborn_composition/src/mcp.rs` only if adding a new
+  host-bundled MCP policy shape.
+- `crates/brassclaw_reborn_composition/src/<provider>_oauth.rs` for product
+  auth / OAuth DCR wiring if the provider uses hosted MCP.
 
 Use as references:
 
@@ -150,6 +140,23 @@ Only touch `crates/brassclaw_reborn_composition/src/mcp.rs` if the hosted MCP
 runtime policy needs a new generic rule. Notion already demonstrates the common
 shape: HTTPS-only endpoint, exact host/path match, no URL credentials, no query,
 no fragment, host-mediated egress, staged product-auth token.
+
+### First-party capability lane
+
+Usually touch only when adding a host-owned Rust implementation:
+
+- `crates/brassclaw_first_party_extensions/src/<extension>.rs` for the Rust
+  implementation.
+- `crates/brassclaw_first_party_extensions/assets/<extension>/manifest.toml`
+  declaring `kind = "first_party"`.
+- `schemas/`, `prompts/` for model-facing surfaces.
+- `crates/brassclaw_reborn_composition/src/available_extensions.rs` to wire
+  the extension into the built-in install catalog.
+
+First-party tools exercise the host HTTP egress boundary by calling
+`brassclaw_host_runtime` helpers directly (not via WIT, not via a script
+runtime). Reach for shell-side work through `brassclaw_process_sandbox` —
+never reintroduce a script runtime variant.
 
 ### Auth/OAuth lane
 
@@ -198,8 +205,10 @@ description = "Example tools for Reborn."
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/example_tool.wasm"
+kind = "mcp"            # or "first_party" / "system"
+transport = "stdio"      # MCP-specific
+command = "example-mcp-server"
+args = ["--stdio"]
 ```
 
 Extension IDs and capability IDs are authority-bearing:
@@ -305,9 +314,8 @@ Follow these rules:
 - Prefer provider-neutral names only when they are already established locally.
 - Put path/ID/URL validation in runtime code too; schemas are not a security
   boundary.
-- Output schemas may be provider raw JSON for compatibility, as GitHub and many
-  Google WASM tools do, but typed output is better when the runtime owns the
-  shape.
+- Output schemas may be provider raw JSON for compatibility, but typed output
+  is better when the runtime owns the shape.
 
 Prompt docs are lazy help metadata. Keep them operation-specific:
 
@@ -323,10 +331,10 @@ prompt docs.
 
 Runtime code must use host-mediated HTTP:
 
-- WASM tools call the WIT host HTTP import, as GitHub does through
-  `near::agent::host::http_request`.
-- Hosted MCP uses `McpHostHttpClient` with `McpRuntimeHttpAdapter` and a
-  host-owned egress planner.
+- Hosted MCP goes through `McpHostHttpClient` with `McpRuntimeHttpAdapter` and
+  a host-owned egress planner.
+- First-party capability implementations call `brassclaw_host_runtime`
+  HTTP helpers directly.
 
 Do not:
 
@@ -338,12 +346,11 @@ Do not:
 
 Network policy belongs in host/runtime planning:
 
-- WASM credential injection is derived from manifest descriptors in
-  `crates/brassclaw_host_runtime/src/wasm_credentials.rs`.
 - Hosted MCP policy is planned in
   `crates/brassclaw_reborn_composition/src/mcp.rs`.
-- GSuite WASM tools should declare narrow credential audiences and use host
-  HTTP egress for Google API hosts.
+- First-party credential injection is derived from manifest descriptors in
+  `crates/brassclaw_host_runtime/src/credentials.rs` (the
+  `wasm_credentials.rs` module was generalised in Phase 4).
 - Shared HTTP enforcement and redaction live in
   `crates/brassclaw_host_runtime/src/egress/` and `crates/brassclaw_network`.
 
@@ -372,331 +379,53 @@ Important fields:
 
 - `handle`: extension/runtime-local credential handle. Keep it stable.
 - `source`: omit or use `{ type = "secret_handle" }` only for manual direct
-  secret-handle credentials. Prefer `{ type = "product_auth_account", ... }`
-  for OAuth/account-backed integrations.
-- `source.provider`: provider account namespace, for example `github`,
-  `google`, or `notion`.
-- `source.setup`: `manual_token` or `oauth` with scopes.
-- `provider_scopes`: scopes required for this capability. Use this for account
-  selection and scope mismatch checks.
-- `audience`: exact HTTPS provider host pattern the credential may be sent to.
-- `target`: header/query/path-placeholder injection target. Header is preferred.
-- `required`: defaults to `true`.
-
-Credential flow:
-
-```text
-manifest runtime_credentials
-  -> authorization obligation for use_secret
-  -> product-auth account selection or secret lease
-  -> RuntimeSecretInjectionStore staging
-  -> HostHttpEgressService injects once for matching capability + audience
-  -> host strips/redacts sensitive request and response material
-```
-
-Do not call `SecretStore::put`, `lease_once`, or `consume` from an extension
-runtime. Those are trusted setup/composition primitives, not tool APIs.
-
-## Product auth and OAuth
-
-Use product-auth account sources for provider accounts. Current patterns:
-
-- GitHub uses provider `github` and injects a bearer token for
-  `api.github.com`.
-- GSuite uses provider `google`, OAuth scopes per capability, and host egress
-  to Google API hosts.
-- Notion uses provider `notion`, DCR/OAuth provider spec in composition, and a
-  bearer token for `mcp.notion.com`.
-
-For a new OAuth provider:
-
-1. Add provider ID and shared scope vocabulary only if it must be shared across
-   crates.
-2. Add a provider spec in Reborn composition, like
-   `crates/brassclaw_reborn_composition/src/notion_oauth.rs`.
-3. Wire OAuth start/callback through product-auth services, not an
-   extension-local map.
-4. Store access/refresh material as credential-account secret handles.
-5. Declare per-capability scopes in `runtime_credentials`.
-6. Ensure auth-required dispatch errors map to structured product-auth
-   requirements instead of leaking provider or backend details.
-
-Missing credentials should produce an auth-required gate, not a plain backend
-failure and not a model-visible token prompt.
-
-## WASM implementation pattern
-
-WASM tools implement `wit/tool.wit`:
-
-```rust
-wit_bindgen::generate!({
-    world: "sandboxed-tool",
-    path: "../../../../../wit/tool.wit",
-});
-
-struct ExampleTool;
-
-impl exports::near::agent::tool::Guest for ExampleTool {
-    fn execute(req: exports::near::agent::tool::Request) -> exports::near::agent::tool::Response {
-        match execute_inner(&req.params, req.context.as_deref()) {
-            Ok(output) => exports::near::agent::tool::Response {
-                output: Some(output),
-                error: None,
-            },
-            Err(code) => exports::near::agent::tool::Response {
-                output: None,
-                error: Some(error_payload(&code)),
-            },
-        }
-    }
-
-    fn schema() -> String {
-        schema::schema()
-    }
-
-    fn description() -> String {
-        "Example Reborn tool. Credentials are injected only by host HTTP egress.".to_string()
-    }
-}
-
-export!(ExampleTool);
-```
-
-Rules:
-
-- Prefer operation selection from `req.context.capability_id`, as GitHub does.
-  Do not let the model choose a hidden `action` that can mismatch the
-  capability ID.
-- Deserialize with unknown fields denied.
-- Validate provider path segments, refs, IDs, pagination, and limits in runtime
-  code before HTTP.
-- Use host HTTP imports for provider calls.
-- Return stable, sanitized error codes. Do not echo raw host egress errors,
-  provider credentials, provider response bodies containing sensitive data, or
-  raw backend messages.
-- Keep schema and runtime input expectations in sync.
-
-GitHub is the strongest current reference for this lane:
-
-- `operation_comes_from_host_context_not_param_shape`
-- `serde_rejects_unknown_fields_before_egress`
-- `sanitizes_host_egress_errors_without_leaking_details`
-- path/ref validation tests
-
-## Hosted MCP implementation pattern
-
-Hosted MCP packages declare runtime:
-
-```toml
-[runtime]
-kind = "mcp"
-transport = "http"
-url = "https://mcp.notion.com/mcp"
-```
-
-For host-bundled hosted HTTP MCP, Reborn composition:
-
-- accepts only HTTPS endpoint URLs;
-- rejects userinfo, query strings, fragments, wrong scheme, wrong host, and
-  wrong path;
-- derives a locked network policy from the manifest endpoint;
-- projects `runtime_credentials` to staged credential injections when the
-  capability and endpoint audience match;
-- uses `RuntimeHttpEgress` instead of ambient MCP HTTP clients.
-
-Notion is the reference. Its manifest declares each MCP tool as a capability,
-with per-tool schemas and prompts, and a product-auth `notion` credential for
-`mcp.notion.com`.
-
-Do not make a hosted MCP runtime call directly from an extension lifecycle or
-agent-loop path. Let the MCP runtime and host egress planner own it.
-
-## Packaging host-bundled extensions
-
-Host-bundled extension packages are included in:
-
-- `crates/brassclaw_reborn_composition/src/available_extensions.rs`
-
-That file:
-
-- includes manifest strings and WASM bytes;
-- includes schema and prompt assets;
-- builds `AvailableExtensionPackage`s;
-- defines lifecycle summaries and onboarding text;
-- materializes assets into `/system/extensions/<extension_id>/...`.
-
-When adding a host-bundled package:
-
-1. Add manifest/assets under
-   `crates/brassclaw_first_party_extensions/assets/<extension>/`.
-2. Add `include_str!` / `include_bytes!` entries in `available_extensions.rs`.
-3. Add a package constructor like `github_package()` or `notion_mcp_package()`.
-4. Add assets for every `input_schema_ref`, `output_schema_ref`, and
-   `prompt_doc_ref`.
-5. Add onboarding only if setup is needed.
-6. Add tests that every manifest asset ref is packaged.
-
-For non-bundled registry packages, do not add them to this host-bundled catalog.
-They should be discovered from `/system/extensions/<id>/` through the same
-manifest host API path.
-
-## Publication to the model
-
-Hot model-facing publication happens in:
-
-- `crates/brassclaw_host_runtime/src/capability_catalog.rs`
-
-It resolves input schema refs, output schema refs, and optional prompt docs
-under the extension root. It does not grant authority and does not execute
-runtime code.
-
-Constraints to keep in mind:
-
-- input/output schema files are bounded to 64 KiB;
-- prompt docs are bounded to 16 KiB;
-- schema files must parse as valid JSON Schema;
-- only `visibility = "model"` capabilities enter the model-facing catalog.
-
-If a tool does not appear to the model, inspect manifest visibility, lifecycle
-activation, asset packaging, and schema validity before touching the agent loop.
-
-## Approval and auth outcomes
-
-A capability can stop before runtime dispatch for authorization or approval.
-That is expected. Do not bypass it.
-
-Approval path:
-
-```text
-CapabilityHost invokes
-  -> authorization requires approval
-  -> approval record is stored with invocation fingerprint
-  -> run state marks blocked approval
-  -> user resolves approval
-  -> resolver issues scoped lease
-  -> resume validates fingerprint
-  -> runtime dispatch happens once
-```
-
-Auth-required path:
-
-```text
-runtime credential missing or scope-mismatched
-  -> runtime/obligation returns auth-required context
-  -> product-auth creates setup/OAuth/manual-token gate
-  -> credential account stores access secret handle
-  -> continuation resumes or the next invocation selects the account
-```
-
-Runtime code should produce typed/sanitized failures that map into these paths.
-It should not serialize raw OAuth URLs, raw tokens, approval IDs, or provider
-errors into model output.
-
-## Tests to add
-
-Minimum tests for a Reborn tool:
-
-### Manifest and packaging
-
-- manifest parses as `reborn.extension_manifest.v2`;
-- capability IDs use the extension prefix;
-- every capability has matching schema and prompt assets;
-- credential capabilities include `use_secret`;
-- write capabilities include `external_write` and default to `ask`;
-- bundled package assets include every manifest ref;
-- extension manifests use `[[host_api]]` / `[capability_provider.tools]`, never
-  top-level `[[capabilities]]`.
-
-Useful existing test areas:
-
-- `crates/brassclaw_extensions/tests/manifest_v2_contract.rs`
-- `crates/brassclaw_reborn_composition/src/available_extensions.rs` tests
-- `crates/brassclaw_host_runtime/src/capability_catalog.rs` tests
-
-### Runtime behavior
-
-For WASM:
-
-- operation comes from invocation context capability ID;
-- unknown fields are rejected before egress;
-- unsafe provider paths/refs are rejected;
-- host egress errors are sanitized;
-- auth status maps to auth-required rather than leaking backend detail;
-- output-size/body-limit cases map to stable errors.
-
-For hosted MCP:
-
-- planner denies wrong provider, wrong host, HTTP scheme, wrong path, query,
-  fragment, and URL userinfo;
-- planner emits locked network policy for the canonical endpoint;
-- manifest runtime credentials project to staged injections.
-
-### Integration/caller-facing
-
-Add a test through the actual call site that gates side effects:
-
-- `CapabilityHost` or runtime adapter dispatch for capability invocation.
-- Extension lifecycle install/activate path for package publication.
-- Product-auth setup/callback path for OAuth-backed credentials.
-
-A helper-only test is not enough when a helper gates HTTP, DB writes, OAuth,
-tool execution, or lifecycle activation.
-
-## Review checklist
-
-Before opening a PR, verify:
-
-- No V1 architecture paths were touched.
-- No runtime code fetches raw secrets.
-- No runtime code creates ambient external HTTP clients for provider calls.
-- Every provider write has `external_write` and default `ask`.
-- Every credential audience is HTTPS and as narrow as possible.
-- Every schema/prompt ref is package-relative and packaged.
-- Auth-required paths include provider/scopes/requester extension context.
-- Error messages are sanitized and stable.
-- Relevant docs/specs and `FEATURE_PARITY.md` were checked if behavior changed.
-- Targeted tests pass.
-
-## Concrete examples to copy
-
-Copy these runtime, credential, and security patterns, not legacy manifest
-shape. If one of these manifests still uses top-level `[[capabilities]]`, port
-the semantics into the registry `[[host_api]]` / `[capability_provider.tools]`
-shape before extending it.
-
-- GitHub WASM operation dispatch:
-  `crates/brassclaw_first_party_extensions/assets/github/wasm-src/src/lib.rs`
-- GitHub host HTTP request wrapper:
-  `crates/brassclaw_first_party_extensions/assets/github/wasm-src/src/request.rs`
-- GitHub manifest credential/effect semantics:
-  `crates/brassclaw_first_party_extensions/assets/github/manifest.toml`
-- Google Drive WASM OAuth scopes by operation:
-  `crates/brassclaw_first_party_extensions/assets/google-drive/manifest.toml`
-- Gmail and Google Calendar follow the bundled WASM GSuite manifest and runtime
-  shape.
-- Notion hosted MCP credential/effect semantics:
-  `crates/brassclaw_first_party_extensions/assets/notion-mcp/manifest.toml`
-- Hosted MCP egress planner:
-  `crates/brassclaw_reborn_composition/src/mcp.rs`
-- Notion OAuth provider spec:
-  `crates/brassclaw_reborn_composition/src/notion_oauth.rs`
-- Hot capability catalog:
-  `crates/brassclaw_host_runtime/src/capability_catalog.rs`
-- Host HTTP egress service:
-  `crates/brassclaw_host_runtime/src/egress/`
-- Manifest v2 contract:
-  `crates/brassclaw_extensions/src/v2.rs`
-
-## Quick implementation checklist
-
-1. Pick lane: WASM, hosted MCP, script, or product adapter.
-2. Create package assets under `assets/<extension>/`.
-3. Write manifest v2 with the capability-provider host API and make it flow
-   through extension registry discovery/publication.
-4. Add schemas and prompt docs for every model-visible capability.
-5. Implement runtime code using host services only.
-6. Declare credentials with narrow HTTPS audiences and provider scopes.
-7. Add packaging/onboarding only if host-bundled.
-8. Add manifest, packaging, runtime, auth/approval, and integration tests.
-9. Run targeted tests.
-10. Check docs/specs and `FEATURE_PARITY.md` for behavior-status updates.
+  secret-handle credentials. Prefer `{ type = "product_auth_account", provider = "..." }`
+  for OAuth-backed provider accounts.
+- `audience`: must be HTTPS. Use `host_pattern` to scope the audience broadly
+  to a provider backend.
+- `target`: header/query_param name and prefix. The host egress writes the
+  injected secret into the request using this target.
+- `required`: declare each credential as `required = true` when the runtime
+  cannot function correctly without it; otherwise the host may grant optional
+  credentials.
+
+The runtime never inlines, logs, returns, or returns with the secret value.
+Egress responses are scanned for credentials; raw token material is redacted
+in logs and audit.
+
+## Validation and provenance
+
+Every extension goes through:
+
+1. Manifest schema validation (`brassclaw_extensions::v2::validate`).
+2. Host-API contract parser.
+3. Effect/credential consistency check.
+4. Trust ceiling check (host composition authority; manifest `trust` is a
+   ceiling only).
+5. Schema and prompt reference resolution.
+6. Runtime adapter health probe for hosted MCP lanes (`McpHostHttpClient::
+   health`).
+7. Catalog publication into the prompt-envelope tool surface.
+
+A failure at any step rejects the extension at install time. There is no
+partial-load path; every host API contract must validate atomically.
+
+## Operational checklist
+
+Before opening a PR for a new tool:
+
+- [ ] Manifest declares `runtime.kind` in `{mcp, first_party, system}`.
+- [ ] Every model-visible capability has schema, output schema, prompt, and
+      `default_permission` set.
+- [ ] `runtime_credentials` lists every credential the runtime needs, and
+      `audience` is HTTPS-bound to the provider host.
+- [ ] Network egress is host-mediated; no inline `reqwest::Client` in
+      runtime code.
+- [ ] No raw secrets, host paths, environment assumptions, or V1 setup
+      commands appear in prompt docs.
+- [ ] Tests cover manifest validation, runtime dispatch behavior, and
+      credential/auth gates via the runtime or lifecycle call site (not
+      only via internal helpers).
+- [ ] Optional: agent-skill coverage — if the capability supports automatic
+      learning, the capability descriptor is annotated so Phase-7 recipe
+      extraction can pick it up from successful threads.

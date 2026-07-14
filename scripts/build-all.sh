@@ -2,7 +2,6 @@
 # Build BrassClaw and all bundled channels.
 #
 # Run this before release or when channel sources have changed.
-# The main binary bundles telegram.wasm via include_bytes!; it must exist.
 
 set -euo pipefail
 

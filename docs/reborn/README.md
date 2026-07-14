@@ -11,7 +11,11 @@ The `reborn-integration` branch currently exposes Reborn structure primarily thr
 | Need | Start with |
 | --- | --- |
 | Standalone Reborn binary | `docs/reborn-binary.md` |
-| Porting v1 channels to Reborn surfaces/ProductAdapters | `docs/reborn/how-to-port-channel-to-reborn.md` |
+| ProductAdapter architecture (channels/surfaces/host adapters) | `crates/brassclaw_product_adapters/` |
+| Native ProductAdapter contract | `crates/brassclaw_product_adapters/CLAUDE.md` |
+| Extending the agent with Tools/Recipes/Skills | `docs/extensions/building-a-tool.md` |
+| Extension runtime lanes (Mcp / FirstParty / System) | `crates/brassclaw_extensions/` |
+| Process/subprocess isolation for tools that need it | `crates/brassclaw_process_sandbox/` |
 | Proposed subagent spawn design | `docs/reborn/subagent-spawn/README.md` |
 | Host API vocabulary | `crates/brassclaw_host_api/` |
 | Host API local rules | `crates/brassclaw_host_api/CLAUDE.md` |
@@ -28,9 +32,9 @@ The `reborn-integration` branch currently exposes Reborn structure primarily thr
 | Authorization substrate | `crates/brassclaw_authorization/` |
 | Approval substrate | `crates/brassclaw_approvals/` |
 | Run-state substrate | `crates/brassclaw_run_state/` |
-| WASM runtime lane and WIT HTTP adapter | `crates/brassclaw_wasm/` |
-| Script runtime lane and host HTTP adapter | `crates/brassclaw_scripts/` |
-| MCP runtime lane and host-mediated HTTP/fail-closed process policy | `crates/brassclaw_mcp/` |
+| Extension runtime lanes (Mcp / FirstParty / System) | `crates/brassclaw_extensions/` |
+| Process/subprocess isolation (incl. docker-image validator) | `crates/brassclaw_process_sandbox/` |
+| MCP server adapters and host-mediated HTTP/fail-closed process policy | `crates/brassclaw_mcp/` |
 | Replay fixtures | `tests/fixtures/llm_traces/README.md` |
 | Replay workflow | `.github/workflows/replay-gate.yml` |
 | E2E test harness | `tests/e2e/README.md` |
