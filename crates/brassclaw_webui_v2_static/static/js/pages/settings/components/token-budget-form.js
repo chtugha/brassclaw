@@ -32,6 +32,15 @@ const PRESETS = {
   chat:     { conversation_history: 8000, skills: 1000, identity: 3000, inline_control: 500,  memory: 1500, safety: null, capability_surface: 1000, total_input: 16000, max_output: 2048 },
 };
 
+// Cache retention options. Values must match the `CacheRetention` enum in
+// `crates/brassclaw_llm/src/config.rs` ("none", "short", "long").
+const CACHE_RETENTION_OPTIONS = [
+  { value: "",      labelKey: "settings.tokens.cache_retention.provider_default" },
+  { value: "none",  labelKey: "settings.tokens.cache_retention.none" },
+  { value: "short", labelKey: "settings.tokens.cache_retention.short" },
+  { value: "long",  labelKey: "settings.tokens.cache_retention.long" },
+];
+
 // Sentinel value used in the <select> for "no preset / custom values".
 const CUSTOM = "custom";
 
@@ -61,6 +70,8 @@ function serverToForm(data) {
       form[key] = "";
     }
   }
+  // cache_retention is independent of presets — always use the server value or empty string.
+  form.cache_retention = data?.cache_retention ?? "";
   return form;
 }
 
@@ -78,6 +89,8 @@ function formToPayload(form) {
       payload[key] = null;
     }
   }
+  // cache_retention is always sent regardless of preset — empty string → null (provider default).
+  payload.cache_retention = form.cache_retention === "" ? null : form.cache_retention;
   return payload;
 }
 
@@ -164,6 +177,11 @@ export function TokenBudgetForm({ providerId, queryKey, searchQuery = "" }) {
     t("settings.tokens.profile.label"),
     t("settings.tokens.profile.desc"),
   ]);
+  const cacheRetentionMatchesSearch = matchesSearch(searchQuery, [
+    t("settings.tokens.cache_retention.label"),
+    t("settings.tokens.cache_retention.desc"),
+  ]);
+  const showCacheRetention = cacheRetentionMatchesSearch || visibleFields.length > 0 || profileMatchesSearch;
   const showProfileSelector = profileMatchesSearch || visibleFields.length > 0;
 
   if (query.isLoading) {
@@ -189,7 +207,7 @@ export function TokenBudgetForm({ providerId, queryKey, searchQuery = "" }) {
     `;
   }
 
-  if (!showProfileSelector && visibleFields.length === 0) {
+  if (!showProfileSelector && visibleFields.length === 0 && !showCacheRetention) {
     return html`<${SettingsSearchEmpty} query=${searchQuery} />`;
   }
 
@@ -212,6 +230,17 @@ export function TokenBudgetForm({ providerId, queryKey, searchQuery = "" }) {
             hint=${hintText}
             t=${t}
           />
+        `}
+
+        ${showCacheRetention && html`
+          <div className="mt-5">
+            <${CacheRetentionField}
+              value=${currentForm.cache_retention ?? ""}
+              onChange=${(value) => handleChange("cache_retention", value)}
+              disabled=${mutation.isPending}
+              t=${t}
+            />
+          </div>
         `}
 
         ${visibleFields.length > 0 && html`
@@ -312,6 +341,31 @@ function TokenField({ fieldKey, label, description, value, onChange, disabled, r
           onInput=${readOnly ? undefined : (e) => onChange(fieldKey, e.target.value)}
           className="mt-1.5 block w-full rounded-lg border border-[var(--v2-panel-border)] bg-[var(--v2-surface)] px-3 py-2 text-sm transition-colors focus:outline-none ${readOnly ? "cursor-default opacity-50 select-none" : "text-[var(--v2-text-strong)] placeholder-[var(--v2-text-muted)] hover:border-[var(--v2-accent-border)] focus:border-[var(--v2-accent-border)] disabled:opacity-50"}"
         />
+      </label>
+    </div>
+  `;
+}
+
+function CacheRetentionField({ value, onChange, disabled, t }) {
+  return html`
+    <div>
+      <label className="block">
+        <span className="text-sm font-medium text-[var(--v2-text-strong)]">
+          ${t("settings.tokens.cache_retention.label")}
+        </span>
+        <p className="mt-0.5 text-xs text-[var(--v2-text-muted)]">
+          ${t("settings.tokens.cache_retention.desc")}
+        </p>
+        <select
+          value=${value}
+          disabled=${disabled}
+          onChange=${(e) => onChange(e.target.value)}
+          className="mt-1.5 block w-full rounded-lg border border-[var(--v2-panel-border)] bg-[var(--v2-surface)] px-3 py-2 text-sm text-[var(--v2-text-strong)] transition-colors hover:border-[var(--v2-accent-border)] focus:border-[var(--v2-accent-border)] focus:outline-none disabled:opacity-50"
+        >
+          ${CACHE_RETENTION_OPTIONS.map(({ value: v, labelKey }) => html`
+            <option key=${v} value=${v}>${t(labelKey)}</option>
+          `)}
+        </select>
       </label>
     </div>
   `;

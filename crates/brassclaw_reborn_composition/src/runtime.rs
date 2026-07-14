@@ -3527,7 +3527,7 @@ mod tests {
         };
         let llm = crate::runtime_input::ResolvedRebornLlm::from_llm_config(config);
 
-        let bundle = super::build_llm_gateway(llm, None, None).await.expect("gateway builds");
+        let bundle = super::build_llm_gateway(llm, None, None, None).await.expect("gateway builds");
         let response = bundle
             .gateway
             .stream_model(nearai_gateway_test_request())
