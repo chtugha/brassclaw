@@ -582,8 +582,8 @@ fn migrate_tokens_section(path: &std::path::Path) {
         Ok(s) => s,
         Err(_) => return,
     };
-    let mut doc: toml::Value = match raw.parse() {
-        Ok(v) => v,
+    let mut doc: toml_edit::DocumentMut = match raw.parse() {
+        Ok(d) => d,
         Err(_) => return,
     };
     let tokens = match doc.get_mut("tokens").and_then(|v| v.as_table_mut()) {
@@ -599,10 +599,7 @@ fn migrate_tokens_section(path: &std::path::Path) {
     if removed.is_empty() {
         return;
     }
-    let serialized = match toml::to_string(&doc) {
-        Ok(s) => s,
-        Err(_) => return,
-    };
+    let serialized = doc.to_string();
     if let Err(e) = std::fs::write(path, &serialized) {
         eprintln!(
             "brassclaw: config migration warning: could not rewrite {}: {e}",
@@ -611,8 +608,7 @@ fn migrate_tokens_section(path: &std::path::Path) {
         return;
     }
     eprintln!(
-        "brassclaw: migrated config file {}: removed deprecated [tokens] fields: {}. \
-         Note: comments and custom formatting in the [tokens] section may have been lost.",
+        "brassclaw: migrated config file {}: removed deprecated [tokens] fields: {}",
         path.display(),
         removed.join(", ")
     );
