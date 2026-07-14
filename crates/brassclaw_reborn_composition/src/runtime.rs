@@ -254,6 +254,14 @@ pub struct RebornRuntime {
     /// Present whenever a per-provider token budget was resolved at startup.
     #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
     live_context_budget: Option<brassclaw_agent_loop::LiveTokenBudget>,
+    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+    live_max_output: Option<brassclaw_agent_loop::LiveTokenBudget>,
+    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+    live_total_input: Option<brassclaw_agent_loop::LiveTokenBudget>,
+    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+    live_inline_control: Option<brassclaw_agent_loop::LiveTokenBudget>,
+    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+    live_context_window: Option<brassclaw_agent_loop::LiveTokenBudget>,
 }
 
 pub(crate) type LocalDevSelectableSkillContextSource =
@@ -737,8 +745,26 @@ impl RebornRuntime {
         self.live_context_budget.clone()
     }
 
-    /// The actor user ID string — used by the webui composition layer to
-    /// pass the owner identity to token-settings DB reads on provider change.
+    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+    pub(crate) fn live_max_output(&self) -> Option<brassclaw_agent_loop::LiveTokenBudget> {
+        self.live_max_output.clone()
+    }
+
+    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+    pub(crate) fn live_total_input(&self) -> Option<brassclaw_agent_loop::LiveTokenBudget> {
+        self.live_total_input.clone()
+    }
+
+    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+    pub(crate) fn live_inline_control(&self) -> Option<brassclaw_agent_loop::LiveTokenBudget> {
+        self.live_inline_control.clone()
+    }
+
+    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+    pub(crate) fn live_context_window(&self) -> Option<brassclaw_agent_loop::LiveTokenBudget> {
+        self.live_context_window.clone()
+    }
+
     #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
     pub(crate) fn actor_user_id_string(&self) -> String {
         self.actor_user_id.as_str().to_string()
@@ -1741,6 +1767,7 @@ pub async fn build_reborn_runtime(
         resolved_max_output_tokens,
         resolved_inline_control_tokens,
         resolved_total_input_tokens,
+        resolved_cache_retention,
     ) = {
         let provider_id = llm.as_ref().map(|l| l.provider_id().to_string());
         resolve_active_provider_token_budgets(
@@ -1760,10 +1787,10 @@ pub async fn build_reborn_runtime(
     let resolved_inline_control_tokens: Option<usize> = None;
     #[cfg(not(all(feature = "libsql", feature = "root-llm-provider")))]
     let resolved_total_input_tokens: Option<usize> = None;
+    #[cfg(not(all(feature = "libsql", feature = "root-llm-provider")))]
+    #[allow(unused_variables)]
+    let resolved_cache_retention: Option<String> = None;
 
-    // context_window_tokens comes from the provider catalog (providers.json), not the DB.
-    // Read once at startup and thread to both DefaultContextStrategy and
-    // DefaultCompactionStrategy. All cfg paths define this binding.
     #[cfg(feature = "root-llm-provider")]
     let resolved_context_window_tokens: Option<u32> = llm.as_ref().and_then(|l| {
         brassclaw_llm::ProviderRegistry::try_load_from_path(None)
@@ -1773,17 +1800,62 @@ pub async fn build_reborn_runtime(
     #[cfg(not(feature = "root-llm-provider"))]
     let resolved_context_window_tokens: Option<u32> = None;
 
-    // Create the live token budget slot from the resolved conversation_context_tokens.
-    // The slot is shared with the baked-in DefaultContextStrategy AND stored on
-    // RebornRuntime so the token-settings PUT handler can call .set() immediately.
-    // Only stored on RebornRuntime under libsql+root-llm-provider, but the variable is
-    // created unconditionally for the DefaultPlannedRuntimeConfig call below.
+    #[cfg(feature = "root-llm-provider")]
+    let resolved_cache_retention_from_registry = resolved_cache_retention.clone();
+    #[cfg(feature = "root-llm-provider")]
+    let resolved_cache_retention_final: Option<String> =
+        resolved_cache_retention_from_registry.or_else(|| {
+            std::env::var("LLM_CACHE_RETENTION").ok().and_then(|raw| {
+                raw.parse::<brassclaw_llm::CacheRetention>()
+                    .ok()
+                    .map(|cr| cr.to_string())
+            })
+        }).or_else(|| {
+            llm.as_ref().and_then(|l| {
+                brassclaw_llm::ProviderRegistry::try_load_from_path(None)
+                    .ok()
+                    .and_then(|reg| reg.find(l.provider_id()))
+                    .and_then(|def| def.cache_retention.clone())
+            })
+        });
+    #[cfg(not(feature = "root-llm-provider"))]
+    #[allow(unused_variables)]
+    let resolved_cache_retention_final: Option<String> = None;
+
     #[cfg_attr(
         not(all(feature = "libsql", feature = "root-llm-provider")),
         allow(unused_variables)
     )]
     let live_context_budget: Option<brassclaw_agent_loop::LiveTokenBudget> =
         conversation_context_tokens.map(|n| brassclaw_agent_loop::LiveTokenBudget::new(Some(n)));
+
+    #[cfg_attr(
+        not(all(feature = "libsql", feature = "root-llm-provider")),
+        allow(unused_variables)
+    )]
+    let live_max_output: Option<brassclaw_agent_loop::LiveTokenBudget> =
+        resolved_max_output_tokens.map(|n| brassclaw_agent_loop::LiveTokenBudget::new(Some(n as usize)));
+
+    #[cfg_attr(
+        not(all(feature = "libsql", feature = "root-llm-provider")),
+        allow(unused_variables)
+    )]
+    let live_total_input: Option<brassclaw_agent_loop::LiveTokenBudget> =
+        resolved_total_input_tokens.map(|n| brassclaw_agent_loop::LiveTokenBudget::new(Some(n)));
+
+    #[cfg_attr(
+        not(all(feature = "libsql", feature = "root-llm-provider")),
+        allow(unused_variables)
+    )]
+    let live_inline_control: Option<brassclaw_agent_loop::LiveTokenBudget> =
+        resolved_inline_control_tokens.map(|n| brassclaw_agent_loop::LiveTokenBudget::new(Some(n)));
+
+    #[cfg_attr(
+        not(all(feature = "libsql", feature = "root-llm-provider")),
+        allow(unused_variables)
+    )]
+    let live_context_window: Option<brassclaw_agent_loop::LiveTokenBudget> =
+        resolved_context_window_tokens.map(|n| brassclaw_agent_loop::LiveTokenBudget::new(Some(n as usize)));
 
     let validated_identity = validate_runtime_identity(identity)?;
     let (skill_context_source, skill_activation_source, skill_execution_adapter) =
@@ -1839,14 +1911,25 @@ pub async fn build_reborn_runtime(
     #[cfg(all(feature = "root-llm-provider", any(test, feature = "test-support")))]
     let (model_gateway, llm_cost_table, llm_reload) = match model_gateway_override {
         Some(override_gateway) => (override_gateway, None, None),
-        None => build_production_model_gateway(llm, resolved_max_output_tokens, resolved_total_input_tokens).await?,
+        None => build_production_model_gateway(
+            llm,
+            live_max_output.clone(),
+            live_total_input.clone(),
+            resolved_cache_retention_final.clone(),
+        )
+        .await?,
     };
     #[cfg(all(
         feature = "root-llm-provider",
         not(any(test, feature = "test-support"))
     ))]
-    let (model_gateway, llm_cost_table, llm_reload) =
-        build_production_model_gateway(llm, resolved_max_output_tokens, resolved_total_input_tokens).await?;
+    let (model_gateway, llm_cost_table, llm_reload) = build_production_model_gateway(
+        llm,
+        live_max_output.clone(),
+        live_total_input.clone(),
+        resolved_cache_retention_final.clone(),
+    )
+    .await?;
     #[cfg(all(
         not(feature = "root-llm-provider"),
         any(test, feature = "test-support")
@@ -2095,10 +2178,10 @@ pub async fn build_reborn_runtime(
             context_token_budget: live_context_budget.clone(),
             identity_token_ceiling,
             capability_surface_tokens,
-            context_window_tokens: resolved_context_window_tokens,
-            max_output_tokens: resolved_max_output_tokens,
-            inline_control_tokens: resolved_inline_control_tokens,
-            total_input_tokens: resolved_total_input_tokens,
+            context_window_tokens: live_context_window.clone(),
+            max_output_tokens: live_max_output.clone(),
+            inline_control_tokens: live_inline_control.clone(),
+            total_input_tokens: live_total_input.clone(),
             capability_focus_enabled,
             planning_mode_enabled,
             ..DefaultPlannedRuntimeConfig::default()
@@ -2344,6 +2427,14 @@ pub async fn build_reborn_runtime(
         llm_reload,
         #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
         live_context_budget,
+        #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+        live_max_output,
+        #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+        live_total_input,
+        #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+        live_inline_control,
+        #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+        live_context_window,
     })
 }
 
@@ -2544,8 +2635,9 @@ impl CapabilitySurfaceProfileResolver for AllowAllCapabilitySurfaceResolver {
 #[cfg(feature = "root-llm-provider")]
 async fn build_production_model_gateway(
     llm: Option<crate::runtime_input::ResolvedRebornLlm>,
-    max_output_tokens: Option<u32>,
-    total_input_tokens: Option<usize>,
+    max_output_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
+    total_input_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
+    cache_retention: Option<String>,
 ) -> Result<
     (
         Arc<dyn brassclaw_loop_support::HostManagedModelGateway>,
@@ -2554,6 +2646,23 @@ async fn build_production_model_gateway(
     ),
     RebornRuntimeError,
 > {
+    let parsed_cache_retention = cache_retention
+        .as_deref()
+        .map(str::parse::<brassclaw_llm::CacheRetention>)
+        .transpose();
+    // Unknown values must not break boot — fall back to None silently
+    // rather than poisoning the runtime.
+    let cache_retention = match parsed_cache_retention {
+        Ok(cr) => cr,
+        Err(error) => {
+            tracing::debug!(
+                cache_retention = ?cache_retention,
+                error = %error,
+                "ignoring unparseable CacheRetention override; using provider default"
+            );
+            None
+        }
+    };
     // Even with no LLM configured at boot we build a real swappable gateway
     // around a placeholder provider (which errors until swapped) plus a reload
     // handle. That way the FIRST configuration made through the settings UI
@@ -2565,7 +2674,7 @@ async fn build_production_model_gateway(
                 gateway,
                 policy,
                 reload,
-            } = build_llm_gateway(cfg, max_output_tokens, total_input_tokens).await?;
+            } = build_llm_gateway(cfg, max_output_tokens, total_input_tokens, cache_retention).await?;
             Ok((gateway, Some(policy.build_cost_table()), Some(reload)))
         }
         None => {
@@ -2619,14 +2728,18 @@ pub(crate) struct RebornLlmReloadParts {
 #[cfg(feature = "root-llm-provider")]
 async fn build_llm_gateway(
     llm: ResolvedRebornLlm,
-    max_output_tokens: Option<u32>,
-    total_input_tokens: Option<usize>,
+    max_output_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
+    total_input_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
+    cache_retention: Option<brassclaw_llm::CacheRetention>,
 ) -> Result<LlmGatewayBundle, RebornRuntimeError> {
     let model = llm.model().to_string();
     let session = brassclaw_llm::create_session_manager(llm.config.session.clone()).await;
-    let raw = brassclaw_llm::build_static_provider_chain(&llm.config, Arc::clone(&session))
+    let mut raw = brassclaw_llm::build_static_provider_chain(&llm.config, Arc::clone(&session))
         .await
         .map_err(|error| RebornRuntimeError::LlmProvider(error.to_string()))?;
+    if let Some(retention) = cache_retention {
+        raw = brassclaw_llm::apply_cache_retention(raw, retention);
+    }
     wrap_swappable_gateway(raw, Some(model), session, max_output_tokens, total_input_tokens)
 }
 
@@ -2651,8 +2764,8 @@ fn wrap_swappable_gateway(
     raw: Arc<dyn brassclaw_llm::LlmProvider>,
     model: Option<String>,
     session: Arc<brassclaw_llm::SessionManager>,
-    max_output_tokens: Option<u32>,
-    total_input_tokens: Option<usize>,
+    max_output_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
+    total_input_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
 ) -> Result<LlmGatewayBundle, RebornRuntimeError> {
     use brassclaw_llm::{LlmProvider, LlmReloadHandle, SwappableLlmProvider};
     use brassclaw_reborn::model_gateway::{LlmModelProfilePolicy, LlmProviderModelGateway};
@@ -2755,14 +2868,16 @@ fn build_stub_gateway() -> Arc<dyn brassclaw_loop_support::HostManagedModelGatew
 /// Falls back to the file-config value for each field if no per-provider row
 /// exists or if the DB field is `None`.
 ///
-/// Returns a 5-tuple:
-///   (conversation, skills, identity, capability_surface, max_output)
+/// Returns an 8-tuple:
+///   (conversation, skills, identity, capability_surface, max_output,
+///    inline_control, total_input, cache_retention)
 ///
 /// `max_output` is returned as `Option<u32>` because it is forwarded directly
 /// to `CompletionRequest.max_tokens` which expects `u32`.
 ///
 /// Only available when both libsql and root-llm-provider features are on.
 #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+#[allow(clippy::type_complexity)]
 async fn resolve_active_provider_token_budgets(
     store: &crate::token_settings_store::DbTokenSettingsStore,
     provider_id: Option<&str>,
@@ -2779,6 +2894,7 @@ async fn resolve_active_provider_token_budgets(
     Option<u32>,
     Option<usize>,
     Option<usize>,
+    Option<String>,
 ) {
     use brassclaw_product_workflow::TokenSettingsStore as _;
     let Some(provider_id) = provider_id else {
@@ -2787,6 +2903,7 @@ async fn resolve_active_provider_token_budgets(
             file_skills,
             file_identity,
             file_capability_surface,
+            None,
             None,
             None,
             None,
@@ -2806,6 +2923,7 @@ async fn resolve_active_provider_token_budgets(
                 None,
                 None,
                 None,
+                None,
             );
         }
     };
@@ -2822,6 +2940,7 @@ async fn resolve_active_provider_token_budgets(
         max_output,
         db.inline_control,
         db.total_input,
+        db.cache_retention,
     )
 }
 
@@ -3729,6 +3848,8 @@ mod tests {
                 input_per_token: dec!(1.00),
                 output_per_token: dec!(1.00),
                 max_output_tokens: 8_192,
+                cache_write_multiplier_milli: 0,
+                cache_read_multiplier_milli: 0,
             },
         );
 

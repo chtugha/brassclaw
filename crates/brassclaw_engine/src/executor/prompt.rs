@@ -172,9 +172,17 @@ pub(crate) fn build_codeact_system_prompt_inner(
         prompt.push_str(overlay);
     }
 
-    let (activatable_integrations, background_capabilities): (Vec<_>, Vec<_>) = capabilities
-        .iter()
-        .partition(|capability| is_activatable_integration(capability));
+    let (mut activatable_integrations, mut background_capabilities): (Vec<_>, Vec<_>) =
+        capabilities
+            .iter()
+            .partition(|capability| is_activatable_integration(capability));
+    // Deterministic ordering of capabilities in the system prompt is required
+    // for vLLM/Anthropic prefix-cache hits — the capability list is part of
+    // the stable system-prompt prefix, so reordering between turns
+    // invalidates the cache. Track this alongside the LLM tool list (see
+    // `complete_model_request` in `brassclaw_reborn::model_gateway`).
+    background_capabilities.sort_by(|a, b| a.name.cmp(&b.name));
+    activatable_integrations.sort_by(|a, b| a.name.cmp(&b.name));
 
     if !background_capabilities.is_empty() {
         prompt.push_str(CODEACT_BACKGROUND_CAPABILITIES_HEADING);
@@ -623,6 +631,60 @@ mod tests {
         // manual UI steps or enumerating alternatives.
         assert!(prompt.contains("tool_install(name=\"<name>\")"));
         assert!(prompt.contains("don't enumerate alternatives"));
+    }
+
+    /// Prefix-cache invariant: capabilities rendered into the system prompt
+    /// must appear in alphabetical order regardless of input order, so the
+    /// stable prefix-cache hit rate is preserved across turns.
+    ///
+    /// `telegram` (background) is alphabetically BEFORE `slack`
+    /// (activatable), but the test input places them in the opposite
+    /// order. If the sort guard regresses, the rendered order will mirror
+    /// the input and the assertion below flips.
+    #[test]
+    fn prompt_capabilities_are_alphabetic_for_prefix_cache_stability() {
+        let prompt = build_codeact_system_prompt_with_docs(
+            &[
+                // Background capability, listed FIRST but sorted after
+                // `slack` because 's' < 't'.
+                CapabilitySummary {
+                    name: "telegram".into(),
+                    display_name: Some("Telegram".into()),
+                    kind: CapabilitySummaryKind::Channel,
+                    status: CapabilityStatus::ReadyScoped,
+                    description: Some("Telegram notifications".into()),
+                    action_preview: Vec::new(),
+                    routing_hint: None,
+                },
+                // Activatable integration, listed SECOND but sorted BEFORE
+                // `telegram` because 's' < 't'.
+                CapabilitySummary {
+                    name: "slack".into(),
+                    display_name: None,
+                    kind: CapabilitySummaryKind::Provider,
+                    status: CapabilityStatus::NeedsSetup,
+                    description: Some("Slack workspace integration".into()),
+                    action_preview: vec!["slack_send".into()],
+                    routing_hint: None,
+                },
+            ],
+            &[],
+            &[],
+            None,
+        );
+
+        let slack_pos = prompt
+            .find("`slack` [provider]")
+            .expect("slack must be rendered in Activatable Integrations section");
+        let telegram_pos = prompt
+            .find("`telegram` [channel]")
+            .expect("telegram must be rendered in background section");
+        assert!(
+            slack_pos < telegram_pos,
+            "capabilities must be rendered in alphabetical order across sections \
+             (slack before telegram) for prefix-cache stability, but the rendered \
+             prompt places telegram at {telegram_pos} and slack at {slack_pos}"
+        );
     }
 
     #[test]

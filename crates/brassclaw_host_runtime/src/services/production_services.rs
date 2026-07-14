@@ -179,13 +179,6 @@ where
                 self.mcp_runtime.is_some(),
             );
         }
-        if config.requires_runtime(RuntimeKind::Wasm) {
-            self.push_missing(
-                &mut issues,
-                ProductionWiringComponent::WasmRuntime,
-                self.wasm_runtime.is_some(),
-            );
-        }
         if config.requires_runtime(RuntimeKind::FirstParty) {
             self.push_missing(
                 &mut issues,

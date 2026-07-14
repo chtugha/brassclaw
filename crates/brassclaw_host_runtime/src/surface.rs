@@ -16,11 +16,11 @@ use crate::{
 };
 
 const ALL_RUNTIME_KINDS: &[RuntimeKind] = &[
-    RuntimeKind::Wasm,
     RuntimeKind::Mcp,
     RuntimeKind::Script,
     RuntimeKind::FirstParty,
     RuntimeKind::System,
+    RuntimeKind::Wasm,
 ];
 
 const ALL_EFFECT_KINDS: &[EffectKind] = &[

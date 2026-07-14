@@ -106,15 +106,18 @@ pub struct DefaultContextStrategy {
 
     /// Provider context window in tokens. When `Some`, drives
     /// `TurnContextBudget::from_context_window` which allocates slices by
-    /// percentage. `None` falls back to `DEFAULT_FALLBACK_CONTEXT_WINDOW`.
-    pub context_window_tokens: Option<u32>,
+    /// percentage. Live-updatable via the shared atomic slot.
+    /// `None` (slot absent) or sentinel 0 falls back to
+    /// `DEFAULT_FALLBACK_CONTEXT_WINDOW`.
+    pub context_window_tokens: Option<LiveTokenBudget>,
 
     /// Optional ceiling for inline loop-control messages (admission control,
     /// repeated-call warnings) injected into the prompt bundle. When the
     /// cumulative estimated token count of the inline messages would exceed
     /// this limit, messages are dropped from the back until it fits.
-    /// `None` → no limit.
-    pub inline_control_tokens: Option<usize>,
+    /// Live-updatable via the shared atomic slot.
+    /// `None` (slot absent) or sentinel 0 → no limit.
+    pub inline_control_tokens: Option<LiveTokenBudget>,
 
     /// Rolling EMA of observed tokens-per-message, updated after each turn
     /// by the executor via [`DefaultContextStrategy::update_message_average`].
@@ -153,11 +156,11 @@ impl DefaultContextStrategy {
         }
     }
 
-    /// Create a strategy with a live budget slot and a known provider context window.
+    /// Create a strategy with a live budget slot and a live context window slot.
     pub fn with_live_budget_and_window(
         max_messages: u32,
         budget: LiveTokenBudget,
-        context_window_tokens: u32,
+        context_window_tokens: LiveTokenBudget,
     ) -> Self {
         Self {
             max_messages,
@@ -219,7 +222,8 @@ impl ContextStrategy for DefaultContextStrategy {
         // of the inline list when the cumulative token cost would exceed the limit.
         // Prefer dropping later messages (repeated-call warning) over earlier ones
         // (admission control), since admission control is higher priority.
-        let inline_messages = match self.inline_control_tokens {
+        let inline_limit = self.inline_control_tokens.as_ref().and_then(|s| s.get());
+        let inline_messages = match inline_limit {
             Some(limit) if limit > 0 => {
                 let mut budget = limit;
                 let mut trimmed = Vec::with_capacity(loop_control.inline_messages.len());
@@ -242,6 +246,9 @@ impl ContextStrategy for DefaultContextStrategy {
         let max_messages = if let Some(live_budget) = self.token_budget.as_ref().and_then(|b| b.get()) {
             let window = self
                 .context_window_tokens
+                .as_ref()
+                .and_then(|s| s.get())
+                .map(|v| v as u32)
                 .unwrap_or(DEFAULT_FALLBACK_CONTEXT_WINDOW);
 
             // Derive per-slice budgets from the model's context window.

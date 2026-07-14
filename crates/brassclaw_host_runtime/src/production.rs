@@ -1304,11 +1304,11 @@ fn normalize_missing_runtime_backends(
 
 fn runtime_kind_rank(runtime: RuntimeKind) -> u8 {
     match runtime {
-        RuntimeKind::Wasm => 0,
         RuntimeKind::Mcp => 1,
         RuntimeKind::Script => 2,
         RuntimeKind::FirstParty => 3,
         RuntimeKind::System => 4,
+        RuntimeKind::Wasm => 5,
     }
 }
 

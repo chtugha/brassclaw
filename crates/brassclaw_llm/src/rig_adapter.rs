@@ -480,7 +480,7 @@ fn saturate_u32(val: u64) -> u32 {
 ///
 /// Per Anthropic docs, only Claude 3+ models support prompt caching.
 /// Unsupported: claude-2, claude-2.1, claude-instant-*.
-fn supports_prompt_cache(name: &str) -> bool {
+pub(crate) fn supports_prompt_cache(name: &str) -> bool {
     let lower = name.to_lowercase();
     // Strip optional provider prefix (e.g. "anthropic/claude-...")
     let model = lower.strip_prefix("anthropic/").unwrap_or(&lower);

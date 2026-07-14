@@ -19,15 +19,13 @@ use super::{
     RunStateStore, RuntimeBackendHealth, RuntimeCredentialAccountResolver, RuntimeHttpEgress,
     RuntimeKind, RuntimeProcessPort, ScopedFilesystem, ScriptExecutor, SecretMode, SecretStore,
     SecurityAuditSink, SharedSecretStore, TenantSandboxProcessPort, TrustPolicy,
-    TurnRunTransitionPort, TurnRunWakeNotifier, TurnStateStore, WasmError, WasmRuntimeAdapter,
-    WasmRuntimeCredentialProvider, WasmStagedRuntimeCredentials, WitToolHost, WitToolRuntimeConfig,
+    TurnRunTransitionPort, TurnRunWakeNotifier, TurnStateStore,
     build_reborn_event_stores, production_wiring_report, set_runtime_http_egress,
     set_tool_call_http_egress,
 };
 use crate::LocalHostProcessPort;
 use crate::RuntimeHttpBodyStore;
 use crate::http_body::UnsupportedRuntimeHttpBodyStore;
-use crate::wasm_credentials::SharedHostWasmRuntimeCredentials;
 use brassclaw_secrets::{CredentialAccountStore, CredentialSessionStore};
 
 impl<F, G, S, R> HostRuntimeServices<F, G, S, R>
@@ -70,14 +68,13 @@ where
             process_port,
             managed_process_port,
             tenant_sandbox_process_port,
-            wasm_credential_provider,
+
             runtime_health,
             runtime_policy,
             process_sandbox_executor,
             script_runtime,
             mcp_runtime,
             first_party_runtime,
-            wasm_runtime,
             turn_state,
             run_profile_resolver,
             turn_run_transition_port,
@@ -113,14 +110,13 @@ where
             process_port,
             managed_process_port,
             tenant_sandbox_process_port,
-            wasm_credential_provider,
+
             runtime_health,
             runtime_policy,
             process_sandbox_executor,
             script_runtime,
             mcp_runtime,
             first_party_runtime,
-            wasm_runtime,
             turn_state,
             run_profile_resolver,
             turn_run_transition_port,
@@ -177,14 +173,13 @@ where
             process_port,
             managed_process_port,
             tenant_sandbox_process_port,
-            wasm_credential_provider,
+
             runtime_health,
             runtime_policy,
             process_sandbox_executor,
             script_runtime,
             mcp_runtime,
             first_party_runtime,
-            wasm_runtime,
             turn_state,
             run_profile_resolver,
             turn_run_transition_port,
@@ -230,14 +225,13 @@ where
             process_port,
             managed_process_port,
             tenant_sandbox_process_port,
-            wasm_credential_provider,
+
             runtime_health,
             runtime_policy,
             process_sandbox_executor,
             script_runtime,
             mcp_runtime,
             first_party_runtime,
-            wasm_runtime,
             turn_state,
             run_profile_resolver,
             turn_run_transition_port,
@@ -796,49 +790,6 @@ where
         };
     }
 
-    pub fn with_wasm_runtime_credential_provider<T>(mut self, provider: Arc<T>) -> Self
-    where
-        T: WasmRuntimeCredentialProvider + 'static,
-    {
-        self.component_types.wasm_credential_provider = Some(ProductionComponentType::of::<T>());
-        self.component_types.wasm_credential_provider_verified = false;
-        let provider: Arc<dyn WasmRuntimeCredentialProvider> = provider;
-        self.wasm_credential_provider = Some(provider);
-        self.component_types
-            .wasm_runtime_credential_provider_captured = self.wasm_runtime.is_none();
-        self
-    }
-
-    pub fn with_verified_wasm_runtime_credentials(
-        mut self,
-        provider: Arc<WasmStagedRuntimeCredentials>,
-    ) -> Self {
-        self.component_types.wasm_credential_provider =
-            Some(ProductionComponentType::of::<WasmStagedRuntimeCredentials>());
-        self.component_types.wasm_credential_provider_verified = !provider.credentials().is_empty();
-        let provider: Arc<dyn WasmRuntimeCredentialProvider> = provider;
-        self.wasm_credential_provider = Some(provider);
-        self.component_types
-            .wasm_runtime_credential_provider_captured = self.wasm_runtime.is_none();
-        self
-    }
-
-    fn with_manifest_wasm_runtime_credentials(
-        mut self,
-        provider: Arc<SharedHostWasmRuntimeCredentials>,
-        has_current_manifest_credentials: bool,
-    ) -> Self {
-        self.component_types.wasm_credential_provider = Some(ProductionComponentType::of::<
-            SharedHostWasmRuntimeCredentials,
-        >());
-        self.component_types.wasm_credential_provider_verified = has_current_manifest_credentials;
-        let provider: Arc<dyn WasmRuntimeCredentialProvider> = provider;
-        self.wasm_credential_provider = Some(provider);
-        self.component_types
-            .wasm_runtime_credential_provider_captured = self.wasm_runtime.is_none();
-        self
-    }
-
     /// Builds and attaches production-shaped host HTTP egress using this
     /// service graph's private network-policy, secret-injection, and secret-store
     /// handles. Callers provide concrete network transport, but never receive the
@@ -918,52 +869,5 @@ where
             Some(ProductionComponentType::of::<FirstPartyCapabilityRegistry>());
         self.first_party_runtime = Some(registry);
         self
-    }
-
-    fn with_wasm_runtime(mut self, runtime: Arc<WasmRuntimeAdapter>) -> Self {
-        self.component_types
-            .wasm_runtime_credential_provider_captured = self.wasm_credential_provider.is_some();
-        self.wasm_runtime = Some(runtime);
-        self
-    }
-
-    pub fn try_with_wasm_runtime(
-        mut self,
-        config: WitToolRuntimeConfig,
-        host: WitToolHost,
-    ) -> Result<Self, WasmError> {
-        if self.wasm_credential_provider.is_none() {
-            let registry = self.registry.snapshot();
-            let has_current_manifest_credentials = registry.capabilities().any(|descriptor| {
-                descriptor.runtime == RuntimeKind::Wasm
-                    && !descriptor.runtime_credentials.is_empty()
-            });
-            let mut provider = SharedHostWasmRuntimeCredentials::new((*self.registry).clone());
-            if let (Some(secret_store), Some(account_resolver)) = (
-                self.secret_store.clone(),
-                self.runtime_credential_account_resolver.clone(),
-            ) {
-                provider = provider.with_product_auth_restaging(
-                    secret_store,
-                    Arc::clone(&self.secret_injection_store),
-                    account_resolver,
-                );
-            }
-            let provider = Arc::new(provider);
-            self = self
-                .with_manifest_wasm_runtime_credentials(provider, has_current_manifest_credentials);
-        }
-        let adapter = Arc::new(WasmRuntimeAdapter::try_new(
-            config,
-            host,
-            Arc::clone(&self.network_policy_store),
-            Arc::clone(&self.runtime_http_egress),
-            self.wasm_credential_provider.clone(),
-        )?);
-        Ok(self.with_wasm_runtime(adapter))
-    }
-
-    pub fn try_with_default_wasm_runtime(self) -> Result<Self, WasmError> {
-        self.try_with_wasm_runtime(WitToolRuntimeConfig::default(), WitToolHost::deny_all())
     }
 }

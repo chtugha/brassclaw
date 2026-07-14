@@ -578,7 +578,7 @@ async fn host_runtime_services_with_security_audit_sink_records_leak_block() {
         mission_id: resource_scope.mission_id.clone(),
         thread_id: resource_scope.thread_id.clone(),
         extension_id: ExtensionId::new("caller").unwrap(),
-        runtime: RuntimeKind::Wasm,
+        runtime: RuntimeKind::Script,
         trust: TrustClass::Sandbox,
         grants: CapabilitySet::default(),
         mounts: MountView::default(),
@@ -588,7 +588,7 @@ async fn host_runtime_services_with_security_audit_sink_records_leak_block() {
     let dispatch = CapabilityDispatchResult {
         capability_id: capability_id.clone(),
         provider: context.extension_id.clone(),
-        runtime: RuntimeKind::Wasm,
+        runtime: RuntimeKind::Script,
         output: Value::String("hello AKIAABCDEFGHIJKLMNOP goodbye".to_string()),
         display_preview: None,
         usage: ResourceUsage::default(),
@@ -709,8 +709,8 @@ async fn service_guard_rejects_resolution_before_wasm_dispatch() {
     let governor = InMemoryResourceGovernor::new();
     let scope = sample_scope();
     let estimate = ResourceEstimate::default();
-    let package = test_package(WASM_MANIFEST, "test-wasm");
-    let descriptor = test_descriptor(RuntimeKind::Wasm, vec![EffectKind::Network]);
+    let package = test_package(SCRIPT_MANIFEST, "test-script");
+    let descriptor = test_descriptor(RuntimeKind::Script, vec![EffectKind::Network]);
     let policy = policy_with(
         FilesystemBackendKind::HostWorkspace,
         ProcessBackendKind::LocalHost,
@@ -771,8 +771,8 @@ async fn service_guard_releases_reservation_on_invocation_service_resolution_den
         1
     );
 
-    let package = test_package(WASM_MANIFEST, "test-wasm");
-    let descriptor = test_descriptor(RuntimeKind::Wasm, vec![EffectKind::Network]);
+    let package = test_package(SCRIPT_MANIFEST, "test-script");
+    let descriptor = test_descriptor(RuntimeKind::Script, vec![EffectKind::Network]);
     let policy = policy_with(
         FilesystemBackendKind::HostWorkspace,
         ProcessBackendKind::LocalHost,
@@ -825,8 +825,8 @@ async fn service_guard_rejects_required_secret_without_secret_store_before_dispa
     let governor = InMemoryResourceGovernor::new();
     let scope = sample_scope();
     let estimate = ResourceEstimate::default();
-    let package = test_package(WASM_MANIFEST, "test-wasm");
-    let descriptor = test_descriptor(RuntimeKind::Wasm, vec![EffectKind::UseSecret]);
+    let package = test_package(SCRIPT_MANIFEST, "test-script");
+    let descriptor = test_descriptor(RuntimeKind::Script, vec![EffectKind::UseSecret]);
     let policy = policy_with(
         FilesystemBackendKind::HostWorkspace,
         ProcessBackendKind::LocalHost,
@@ -890,7 +890,7 @@ async fn first_party_adapter_releases_reservation_when_invocation_service_resolu
         governor.reserved_for(&tenant_account).network_egress_bytes,
         1
     );
-    let package = test_package(WASM_MANIFEST, "test-wasm");
+    let package = test_package(SCRIPT_MANIFEST, "test-script");
     let policy = policy_with(
         FilesystemBackendKind::HostWorkspace,
         ProcessBackendKind::LocalHost,
@@ -958,7 +958,7 @@ async fn first_party_adapter_releases_reservation_when_planner_denies() {
         governor.reserved_for(&tenant_account).network_egress_bytes,
         1
     );
-    let package = test_package(WASM_MANIFEST, "test-wasm");
+    let package = test_package(SCRIPT_MANIFEST, "test-script");
     let policy = policy_with(
         FilesystemBackendKind::HostWorkspace,
         ProcessBackendKind::LocalHost,
@@ -1234,28 +1234,6 @@ output_schema_ref = "schemas/test-script/run.output.v1.json"
 prompt_doc_ref = "prompts/test-script/run.md"
 "#;
 
-const WASM_MANIFEST: &str = r#"schema_version = "reborn.extension_manifest.v2"
-id = "test-wasm"
-name = "Test Wasm"
-version = "0.1.0"
-description = "WASM test extension"
-trust = "untrusted"
-
-[runtime]
-kind = "wasm"
-module = "test.wasm"
-
-[[capabilities]]
-id = "test-wasm.run"
-description = "Run WASM"
-effects = ["network"]
-default_permission = "allow"
-visibility = "model"
-input_schema_ref = "schemas/test-wasm/run.input.v1.json"
-output_schema_ref = "schemas/test-wasm/run.output.v1.json"
-prompt_doc_ref = "prompts/test-wasm/run.md"
-"#;
-
 #[derive(Clone)]
 struct RecordingNetwork {
     requests: Arc<Mutex<Vec<NetworkHttpRequest>>>,
@@ -1378,13 +1356,13 @@ async fn registered_runtime_health_empty_available_reports_all_required_as_missi
     use crate::services::{RegisteredRuntimeHealth, RuntimeBackendHealth};
     let health = RegisteredRuntimeHealth::new(vec![]);
     let missing = health
-        .missing_runtime_backends(&[RuntimeKind::Wasm, RuntimeKind::Mcp])
+        .missing_runtime_backends(&[RuntimeKind::Script, RuntimeKind::Mcp])
         .await
         .expect("health check must succeed");
     // Both kinds are missing; order is normalized by runtime_sort_key.
     assert!(
-        missing.contains(&RuntimeKind::Wasm),
-        "Wasm must be missing; got {missing:?}"
+        missing.contains(&RuntimeKind::Script),
+        "Script must be missing; got {missing:?}"
     );
     assert!(
         missing.contains(&RuntimeKind::Mcp),
@@ -1396,9 +1374,9 @@ async fn registered_runtime_health_empty_available_reports_all_required_as_missi
 #[tokio::test]
 async fn registered_runtime_health_deduplicates_duplicate_required_kinds() {
     use crate::services::{RegisteredRuntimeHealth, RuntimeBackendHealth};
-    let health = RegisteredRuntimeHealth::new(vec![RuntimeKind::Wasm]);
+    let health = RegisteredRuntimeHealth::new(vec![RuntimeKind::Script]);
     let missing = health
-        .missing_runtime_backends(&[RuntimeKind::Mcp, RuntimeKind::Mcp, RuntimeKind::Wasm])
+        .missing_runtime_backends(&[RuntimeKind::Mcp, RuntimeKind::Mcp, RuntimeKind::Script])
         .await
         .expect("health check must succeed");
     assert_eq!(missing, vec![RuntimeKind::Mcp], "got {missing:?}");
@@ -1407,9 +1385,9 @@ async fn registered_runtime_health_deduplicates_duplicate_required_kinds() {
 #[tokio::test]
 async fn registered_runtime_health_returns_empty_when_all_required_available() {
     use crate::services::{RegisteredRuntimeHealth, RuntimeBackendHealth};
-    let health = RegisteredRuntimeHealth::new(vec![RuntimeKind::Wasm, RuntimeKind::Mcp]);
+    let health = RegisteredRuntimeHealth::new(vec![RuntimeKind::Script, RuntimeKind::Mcp]);
     let missing = health
-        .missing_runtime_backends(&[RuntimeKind::Wasm])
+        .missing_runtime_backends(&[RuntimeKind::Script])
         .await
         .expect("health check must succeed");
     assert!(

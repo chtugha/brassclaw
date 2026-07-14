@@ -73,22 +73,22 @@ pub struct DefaultPlannedRuntimeConfig {
     pub identity_token_ceiling: Option<usize>,
     /// Optional token budget for the visible capability surface (tool descriptions).
     pub capability_surface_tokens: Option<usize>,
-    /// Provider context window in tokens. Fed to `DefaultContextStrategy` and
-    /// `DefaultCompactionStrategy` so both use the real model window instead of
-    /// compiled-in defaults. `None` → compiled defaults apply.
-    pub context_window_tokens: Option<u32>,
-    /// Per-provider output token ceiling. When `Some`, forwarded to the model
-    /// gateway so `CompletionRequest.max_tokens` is set on every provider call.
+    /// Provider context window in tokens (live-updatable). Fed to
+    /// `DefaultContextStrategy` and `DefaultCompactionStrategy`.
+    /// `None` → compiled defaults apply.
+    pub context_window_tokens: Option<LiveTokenBudget>,
+    /// Per-provider output token ceiling (live-updatable). Forwarded to the
+    /// model gateway so `CompletionRequest.max_tokens` is set on every call.
     /// `None` → provider default applies.
-    pub max_output_tokens: Option<u32>,
-    /// Optional ceiling for inline loop-control message tokens (admission control,
-    /// repeated-call warnings). Enforced in `DefaultContextStrategy`.
+    pub max_output_tokens: Option<LiveTokenBudget>,
+    /// Optional ceiling for inline loop-control message tokens (live-updatable).
+    /// Enforced in `DefaultContextStrategy`.
     /// `None` → no limit.
-    pub inline_control_tokens: Option<usize>,
-    /// Per-provider total input guard. When `Some`, forwarded to the model
+    pub inline_control_tokens: Option<LiveTokenBudget>,
+    /// Per-provider total input guard (live-updatable). Forwarded to the model
     /// gateway so oversized prompts are rejected before reaching the network.
     /// `None` → no pre-call guard.
-    pub total_input_tokens: Option<usize>,
+    pub total_input_tokens: Option<LiveTokenBudget>,
     /// Stored for forward compatibility; not yet enforced at the prompt-port
     /// level (requires a separate PR to extend `ThreadBackedLoopContextPort`).
     pub memory_tokens: Option<usize>,

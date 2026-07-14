@@ -44,6 +44,8 @@ impl ScriptedReply {
         HostManagedModelResponse::assistant_reply(self.text).with_usage(LoopModelUsage {
             input_tokens: self.input_tokens,
             output_tokens: self.output_tokens,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
         })
     }
 }

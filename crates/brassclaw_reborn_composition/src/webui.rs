@@ -142,28 +142,71 @@ pub(crate) fn build_webui_services_with_connectable_channels(
             #[cfg(feature = "libsql")]
             {
                 let budget_slot = runtime.live_context_budget();
+                let max_output_slot = runtime.live_max_output();
+                let total_input_slot = runtime.live_total_input();
+                let inline_control_slot = runtime.live_inline_control();
+                let context_window_slot = runtime.live_context_window();
                 let token_store = services
                     .local_runtime
                     .as_ref()
                     .map(|lr| Arc::clone(&lr.token_settings_store));
                 let owner_id = runtime.actor_user_id_string();
+                // All five live slots share this outer guard. If the runtime
+                // has no conversation-history budget slot (budget_slot is None)
+                // or no token store, the max_output / total_input /
+                // inline_control / context_window slots are also skipped even
+                // though they carry their own Option guards inside. This is
+                // intentional: without a store to read from, none of the slots
+                // can be refreshed on provider change.
                 if let (Some(slot), Some(store)) = (budget_slot, token_store) {
                     let on_change: Arc<dyn Fn(&str) + Send + Sync> =
                         Arc::new(move |provider_id: &str| {
                             let slot = slot.clone();
+                            let max_out = max_output_slot.clone();
+                            let total_in = total_input_slot.clone();
+                            let inline_ctl = inline_control_slot.clone();
+                            let ctx_win = context_window_slot.clone();
                             let store = Arc::clone(&store);
                             let owner = owner_id.clone();
-                            let provider_id = provider_id.to_string();
-                            // Spawn a detached task: the callback is sync but the
-                            // DB read is async. Best-effort — a failure leaves the
-                            // old budget value until the next restart.
+                            let pid = provider_id.to_string();
                             tokio::spawn(async move {
                                 use brassclaw_product_workflow::TokenSettingsStore as _;
-                                if let Ok(row) = store
-                                    .get_provider_token_settings(&owner, &provider_id)
-                                    .await
-                                {
-                                    slot.set(row.conversation_history);
+                                match store.get_provider_token_settings(&owner, &pid).await {
+                                    Ok(row) => {
+                                        slot.set(row.conversation_history);
+                                        if let Some(s) = &max_out {
+                                            s.set(row.max_output);
+                                        }
+                                        if let Some(s) = &total_in {
+                                            s.set(row.total_input);
+                                        }
+                                        if let Some(s) = &inline_ctl {
+                                            s.set(row.inline_control);
+                                        }
+                                    }
+                                    Err(_) => {
+                                        tracing::debug!(
+                                            provider = %pid,
+                                            "on_provider_changed: failed to load token settings, live slots not updated"
+                                        );
+                                    }
+                                }
+                                match brassclaw_llm::ProviderRegistry::try_load_from_path(None) {
+                                    Ok(reg) => {
+                                        if let Some(s) = &ctx_win {
+                                            let window = reg
+                                                .find(&pid)
+                                                .and_then(|d| d.context_window_tokens)
+                                                .map(|v| v as usize);
+                                            s.set(window);
+                                        }
+                                    }
+                                    Err(_) => {
+                                        tracing::debug!(
+                                            provider = %pid,
+                                            "on_provider_changed: failed to load provider registry, context_window slot not updated"
+                                        );
+                                    }
                                 }
                             });
                         });
@@ -205,11 +248,21 @@ pub(crate) fn build_webui_services_with_connectable_channels(
         );
     }
 
-    // Wire the live context budget setter so token-settings PUT takes effect
-    // immediately on the running DefaultContextStrategy.
     #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
     if let Some(budget) = runtime.live_context_budget() {
         api = api.with_live_context_budget_setter(Arc::new(move |v| budget.set(v)));
+    }
+    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+    if let Some(slot) = runtime.live_max_output() {
+        api = api.with_live_max_output_setter(Arc::new(move |v| slot.set(v)));
+    }
+    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+    if let Some(slot) = runtime.live_total_input() {
+        api = api.with_live_total_input_setter(Arc::new(move |v| slot.set(v)));
+    }
+    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
+    if let Some(slot) = runtime.live_inline_control() {
+        api = api.with_live_inline_control_setter(Arc::new(move |v| slot.set(v)));
     }
 
     // Wire the extension registry and capability permission store for Tools API

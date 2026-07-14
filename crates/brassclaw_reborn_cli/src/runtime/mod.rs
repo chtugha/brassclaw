@@ -552,6 +552,7 @@ pub(crate) fn read_config_file(
 ) -> anyhow::Result<Option<brassclaw_reborn_config::RebornConfigFile>> {
     use brassclaw_reborn_config::RebornConfigFile;
     let path = config.home().config_file_path();
+    migrate_tokens_section(&path);
     let file = RebornConfigFile::load(&path).map_err(anyhow::Error::from)?;
     if let Some(parsed) = &file {
         tracing::debug!(
@@ -561,6 +562,65 @@ pub(crate) fn read_config_file(
         );
     }
     Ok(file)
+}
+
+const REMOVED_TOKEN_FIELDS: &[&str] = &[
+    "conversation_history",
+    "skills",
+    "identity",
+    "inline_control",
+    "memory",
+    "safety",
+    "capability_surface",
+    "total_input",
+    "max_output",
+    "profile",
+];
+
+fn migrate_tokens_section(path: &std::path::Path) {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let mut doc: toml::Value = match raw.parse() {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    let tokens = match doc.get_mut("tokens").and_then(|v| v.as_table_mut()) {
+        Some(t) => t,
+        None => return,
+    };
+    let mut removed = Vec::new();
+    for field in REMOVED_TOKEN_FIELDS {
+        if tokens.remove(*field).is_some() {
+            removed.push(*field);
+        }
+    }
+    if removed.is_empty() {
+        return;
+    }
+    let serialized = match toml::to_string(&doc) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    if let Err(e) = std::fs::write(path, &serialized) {
+        eprintln!(
+            "brassclaw: config migration warning: could not rewrite {}: {e}",
+            path.display()
+        );
+        return;
+    }
+    eprintln!(
+        "brassclaw: migrated config file {}: removed deprecated [tokens] fields: {}. \
+         Note: comments and custom formatting in the [tokens] section may have been lost.",
+        path.display(),
+        removed.join(", ")
+    );
+    tracing::debug!(
+        path = %path.display(),
+        removed_fields = ?removed,
+        "migrated deprecated token budget fields from config file"
+    );
 }
 
 // CLI-local operator config only. Product/WebUI identity must come from
@@ -662,34 +722,13 @@ fn reject_unsupported_runtime_sections(
     }
 }
 
-/// Extract only the behavior flags from the config file `[tokens]` section.
-/// Token budget values (conversation_history, skills, identity,
-/// capability_surface) are now per-provider and loaded from the DB at
-/// runtime startup; the config-file fields for those are ignored.
 fn behavior_flags_from_config(
     config_file: Option<&brassclaw_reborn_config::RebornConfigFile>,
 ) -> brassclaw_reborn_config::ResolvedTokenBudgets {
     let Some(tokens) = config_file.and_then(|file| file.tokens.as_ref()) else {
         return brassclaw_reborn_config::ResolvedTokenBudgets::default();
     };
-    brassclaw_reborn_config::ResolvedTokenBudgets {
-        // Token budget fields intentionally omitted — loaded from per-provider DB.
-        conversation_history: None,
-        skills: None,
-        identity: None,
-        capability_surface: None,
-        inline_control: None,
-        memory: None,
-        total_input: None,
-        max_output: None,
-        profile: None,
-        // Behavior flags remain file-config driven.
-        capability_focus_enabled: tokens.capability_focus_enabled.unwrap_or(false),
-        planning_mode_enabled: tokens.planning_mode_enabled.unwrap_or(false),
-        content_cache_threshold: tokens.content_cache_threshold,
-        plan_library_enabled: tokens.plan_library_enabled.unwrap_or(false),
-        skill_promotion_threshold: tokens.skill_promotion_threshold,
-    }
+    brassclaw_reborn_config::resolve_with_profile(tokens)
 }
 
 fn runner_settings(

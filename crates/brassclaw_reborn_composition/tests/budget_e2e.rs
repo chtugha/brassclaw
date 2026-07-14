@@ -85,6 +85,8 @@ fn interactive_cost_table(
             input_per_token,
             output_per_token,
             max_output_tokens: 20,
+            cache_write_multiplier_milli: 0,
+            cache_read_multiplier_milli: 0,
         },
     );
     Arc::new(table)
@@ -178,6 +180,8 @@ async fn f2_crossing_warn_threshold_emits_warned_event() {
             input_per_token: dec!(0.05),
             output_per_token: dec!(0.10),
             max_output_tokens: 30,
+            cache_write_multiplier_milli: 0,
+            cache_read_multiplier_milli: 0,
         },
     );
     let cost_table: Arc<dyn ModelCostTable> = Arc::new(cost_entries);
@@ -541,6 +545,8 @@ async fn d1_agent_deny_preserves_user_warn_event() {
             input_per_token: dec!(0.05),
             output_per_token: dec!(0.10),
             max_output_tokens: 30,
+            cache_write_multiplier_milli: 0,
+            cache_read_multiplier_milli: 0,
         },
     );
     let cost_table: Arc<dyn ModelCostTable> = Arc::new(cost_entries);

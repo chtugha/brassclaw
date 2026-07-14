@@ -101,6 +101,12 @@ impl LlmModelProfilePolicy {
                     // `DEFAULT_MAX_OUTPUT_TOKENS` (8 KiB) for the
                     // upfront reservation estimate.
                     max_output_tokens: 0,
+                    // Anthropic-style multipliers are the conservative default
+                    // for paid providers; free/local providers set these to
+                    // 0 via `brassclaw_llm::costs::model_cost` and produce
+                    // zero cache cost naturally.
+                    cache_write_multiplier_milli: 1250,
+                    cache_read_multiplier_milli: 100,
                 },
             );
         }
@@ -251,14 +257,16 @@ where
     policy: LlmModelProfilePolicy,
     provider_turn_sequence: Arc<AtomicU64>,
     /// Per-provider output ceiling forwarded to `CompletionRequest.max_tokens`.
-    /// `None` → provider default applies.
-    max_output_tokens: Option<u32>,
+    /// Live-updatable: the settings service can call `.set()` on the shared
+    /// slot and the next model call picks up the new value immediately.
+    /// `None` inside the slot (sentinel 0) → provider default applies.
+    max_output_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
     /// Per-provider total input guard. When set, the gateway estimates the
     /// prompt token count before calling the provider and returns
-    /// `BudgetExceeded` when the estimate exceeds the limit, preventing
-    /// oversized prompts from ever reaching the network.
-    /// `None` → no pre-call guard.
-    total_input_tokens: Option<usize>,
+    /// `BudgetExceeded` when the estimate exceeds the limit.
+    /// Live-updatable via the shared atomic slot.
+    /// `None` inside the slot (sentinel 0) → no pre-call guard.
+    total_input_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>,
 }
 
 impl<P> LlmProviderModelGateway<P>
@@ -285,16 +293,18 @@ where
         }
     }
 
-    /// Set the per-provider output token ceiling. When set, `CompletionRequest.max_tokens`
-    /// is populated before every provider call so the model stops generating at this limit.
-    pub fn with_max_output_tokens(mut self, max_output_tokens: Option<u32>) -> Self {
+    /// Set the per-provider output token ceiling via a live-updatable slot.
+    /// The slot can be shared with the settings service — calling `.set()` on a
+    /// clone takes effect on the next model call without a restart.
+    pub fn with_max_output_tokens(mut self, max_output_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>) -> Self {
         self.max_output_tokens = max_output_tokens;
         self
     }
 
-    /// Set the total-input pre-call guard. When set, the gateway estimates the
-    /// prompt token count and returns `BudgetExceeded` if it would exceed the limit.
-    pub fn with_total_input_tokens(mut self, total_input_tokens: Option<usize>) -> Self {
+    /// Set the total-input pre-call guard via a live-updatable slot.
+    /// The slot can be shared with the settings service — calling `.set()` on a
+    /// clone takes effect on the next model call without a restart.
+    pub fn with_total_input_tokens(mut self, total_input_tokens: Option<brassclaw_agent_loop::LiveTokenBudget>) -> Self {
         self.total_input_tokens = total_input_tokens;
         self
     }
@@ -305,7 +315,7 @@ where
         &self,
         messages: &[brassclaw_loop_support::HostManagedModelMessage],
     ) -> Result<(), HostManagedModelError> {
-        let Some(limit) = self.total_input_tokens else {
+        let Some(limit) = self.total_input_tokens.as_ref().and_then(|s| s.get()) else {
             return Ok(());
         };
         let estimated: usize = messages
@@ -354,8 +364,8 @@ where
         let mut completion =
             CompletionRequest::new(convert_messages(request.messages, &replay_identity)?);
         completion.model = Some(model_override);
-        if let Some(cap) = self.max_output_tokens {
-            completion.max_tokens = Some(cap);
+        if let Some(cap) = self.max_output_tokens.as_ref().and_then(|s| s.get()) {
+            completion.max_tokens = Some(cap as u32);
         }
         add_request_metadata(&mut completion, &model_profile_id, run_id, turn_id);
 
@@ -392,8 +402,8 @@ where
         let mut completion =
             CompletionRequest::new(convert_messages(request.messages, &replay_identity)?);
         completion.model = Some(model_override);
-        if let Some(cap) = self.max_output_tokens {
-            completion.max_tokens = Some(cap);
+        if let Some(cap) = self.max_output_tokens.as_ref().and_then(|s| s.get()) {
+            completion.max_tokens = Some(cap as u32);
         }
         add_request_metadata(&mut completion, &model_profile_id, run_id, turn_id);
 
@@ -857,9 +867,13 @@ where
     P: LlmProvider + ?Sized,
 {
     if let Some(capabilities) = capabilities {
-        let tool_definitions = capabilities
+        let mut tool_definitions = capabilities
             .tool_definitions()
             .map_err(map_capability_host_error)?;
+        // Deterministic tool ordering is required for vLLM/Anthropic-prefix
+        // cache hits — the tool list is part of the stable system-prompt
+        // prefix, so any reordering between turns invalidates the cache.
+        tool_definitions.sort_by(|a, b| a.name.cmp(&b.name));
         if tracing::enabled!(tracing::Level::DEBUG) {
             let tool_name_sample = tool_definitions
                 .iter()
@@ -1057,6 +1071,8 @@ async fn tool_response_to_host(
         .with_usage(LoopModelUsage {
             input_tokens: response.input_tokens,
             output_tokens: response.output_tokens,
+            cache_read_input_tokens: response.cache_read_input_tokens,
+            cache_creation_input_tokens: response.cache_creation_input_tokens,
         }));
     }
 
@@ -1080,6 +1096,8 @@ async fn tool_response_to_host(
             .with_usage(LoopModelUsage {
                 input_tokens: response.input_tokens,
                 output_tokens: response.output_tokens,
+                cache_read_input_tokens: response.cache_read_input_tokens,
+                cache_creation_input_tokens: response.cache_creation_input_tokens,
             }))
         }
         FinishReason::Length => Err(HostManagedModelError::safe(
@@ -1149,6 +1167,8 @@ fn response_to_host_reply(
     let usage = LoopModelUsage {
         input_tokens: response.input_tokens,
         output_tokens: response.output_tokens,
+        cache_read_input_tokens: response.cache_read_input_tokens,
+        cache_creation_input_tokens: response.cache_creation_input_tokens,
     };
     match response.finish_reason {
         FinishReason::Stop => {

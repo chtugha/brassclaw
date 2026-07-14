@@ -20,14 +20,14 @@ pub struct LoopFamilyConfig {
     pub conversation_token_budget: Option<LiveTokenBudget>,
     /// Token budget for the visible capability surface (tool descriptions).
     pub capability_surface_tokens: Option<usize>,
-    /// Provider context window in tokens. Used by `DefaultContextStrategy` to
-    /// derive per-slice advisory limits via `TurnContextBudget`, and by
+    /// Provider context window in tokens (live-updatable). Used by
+    /// `DefaultContextStrategy` (via `TurnContextBudget`) and by
     /// `DefaultCompactionStrategy` to set `context_limit_tokens`.
     /// `None` → compiled defaults apply.
-    pub context_window_tokens: Option<u32>,
-    /// Optional ceiling for inline loop-control message tokens.
+    pub context_window_tokens: Option<LiveTokenBudget>,
+    /// Optional ceiling for inline loop-control message tokens (live-updatable).
     /// Forwarded to `DefaultContextStrategy.inline_control_tokens`.
-    pub inline_control_tokens: Option<usize>,
+    pub inline_control_tokens: Option<LiveTokenBudget>,
     /// When true, `FocusedCapabilityStrategy` is wired instead of
     /// `DefaultCapabilityStrategy`. The strategy narrows the visible tool
     /// surface to recently-used capabilities each iteration.

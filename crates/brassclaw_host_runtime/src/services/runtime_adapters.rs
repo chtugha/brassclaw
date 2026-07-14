@@ -1,19 +1,15 @@
-use std::{
-    collections::HashMap,
-    panic::AssertUnwindSafe,
-    sync::{Arc, Mutex, MutexGuard},
-};
+use std::{panic::AssertUnwindSafe, sync::Arc};
 
 use async_trait::async_trait;
 use futures_util::FutureExt;
 
 use super::{
-    CapabilityId, DispatchError, ExtensionRuntime, FirstPartyCapabilityRegistry,
-    FirstPartyCapabilityRequest, InvocationServicesResolutionRequest, InvocationServicesResolver,
-    McpError, McpExecutionRequest, McpExecutor, McpInvocation, PlannerError, ResourceGovernor,
-    ResourceReservationId, ResourceUsage, RootFilesystem, RuntimeAdapter, RuntimeAdapterRequest,
-    RuntimeAdapterResult, RuntimeDispatchErrorKind, RuntimeKind, ScriptError,
-    ScriptExecutionRequest, ScriptExecutor, ScriptInvocation, plan_capability,
+    DispatchError, FirstPartyCapabilityRegistry, FirstPartyCapabilityRequest,
+    InvocationServicesResolutionRequest, InvocationServicesResolver, McpError, McpExecutionRequest,
+    McpExecutor, McpInvocation, PlannerError, ResourceGovernor, ResourceReservationId,
+    ResourceUsage, RootFilesystem, RuntimeAdapter, RuntimeAdapterRequest, RuntimeAdapterResult,
+    RuntimeDispatchErrorKind, RuntimeKind, ScriptError, ScriptExecutionRequest, ScriptExecutor,
+    ScriptInvocation, plan_capability,
 };
 use crate::FirstPartyCapabilityError;
 

@@ -3,12 +3,12 @@ use std::any::{TypeId, type_name};
 use thiserror::Error;
 
 use super::{
-    DurableAuditSink, DurableEventSink, EmptyWasmRuntimeCredentials, InMemoryApprovalRequestStore,
-    InMemoryAuditSink, InMemoryCapabilityLeaseStore, InMemoryCredentialBroker,
-    InMemoryDurableAuditLog, InMemoryDurableEventLog, InMemoryEventSink,
-    InMemoryProcessResultStore, InMemoryProcessStore, InMemoryResourceGovernor,
-    InMemoryRunStateStore, InMemorySecretStore, InMemoryTurnStateStore, LocalFilesystem,
-    LocalHostProcessPort, NoopTurnRunWakeNotifier, RebornEventStoreError, RuntimeKind,
+    DurableAuditSink, DurableEventSink, InMemoryApprovalRequestStore, InMemoryAuditSink,
+    InMemoryCapabilityLeaseStore, InMemoryCredentialBroker, InMemoryDurableAuditLog,
+    InMemoryDurableEventLog, InMemoryEventSink, InMemoryProcessResultStore,
+    InMemoryProcessStore, InMemoryResourceGovernor, InMemoryRunStateStore,
+    InMemorySecretStore, InMemoryTurnStateStore, LocalFilesystem, LocalHostProcessPort,
+    NoopTurnRunWakeNotifier, RebornEventStoreError, RuntimeKind,
 };
 
 #[derive(Debug, Error)]
@@ -31,7 +31,6 @@ impl From<ProductionWiringReport> for ProductionEventStoreWiringError {
 pub struct ProductionWiringConfig {
     pub(super) required_runtime_backends: Vec<RuntimeKind>,
     pub(super) require_runtime_http_egress: bool,
-    pub(super) require_wasm_credentials: bool,
     pub(super) require_credential_broker: bool,
 }
 
@@ -43,18 +42,12 @@ impl ProductionWiringConfig {
         Self {
             required_runtime_backends: required_runtime_backends.into_iter().collect(),
             require_runtime_http_egress: false,
-            require_wasm_credentials: false,
             require_credential_broker: false,
         }
     }
 
     pub fn require_runtime_http_egress(mut self) -> Self {
         self.require_runtime_http_egress = true;
-        self
-    }
-
-    pub fn require_wasm_credentials(mut self) -> Self {
-        self.require_wasm_credentials = true;
         self
     }
 
@@ -88,10 +81,8 @@ pub enum ProductionWiringComponent {
     CredentialSessionStore,
     RuntimeHttpEgress,
     RuntimeProcessPort,
-    WasmCredentialProvider,
     ScriptRuntime,
     McpRuntime,
-    WasmRuntime,
     FirstPartyRuntime,
     TurnState,
     RunProfileResolver,
@@ -118,10 +109,8 @@ impl ProductionWiringComponent {
             Self::CredentialSessionStore => "credential_session_store",
             Self::RuntimeHttpEgress => "runtime_http_egress",
             Self::RuntimeProcessPort => "runtime_process_port",
-            Self::WasmCredentialProvider => "wasm_credential_provider",
             Self::ScriptRuntime => "script_runtime",
             Self::McpRuntime => "mcp_runtime",
-            Self::WasmRuntime => "wasm_runtime",
             Self::FirstPartyRuntime => "first_party_runtime",
             Self::TurnState => "turn_state",
             Self::RunProfileResolver => "run_profile_resolver",
@@ -217,9 +206,6 @@ pub(super) struct ProductionComponentTypes {
     pub(super) runtime_http_egress_verified: bool,
     pub(super) runtime_process_port: ProductionComponentType,
     pub(super) tenant_sandbox_process_port: Option<ProductionComponentType>,
-    pub(super) wasm_credential_provider: Option<ProductionComponentType>,
-    pub(super) wasm_credential_provider_verified: bool,
-    pub(super) wasm_runtime_credential_provider_captured: bool,
     pub(super) script_runtime: Option<ProductionComponentType>,
     pub(super) mcp_runtime: Option<ProductionComponentType>,
     pub(super) first_party_runtime: Option<ProductionComponentType>,
@@ -282,7 +268,6 @@ fn classify_component_type<T: 'static>() -> ProductionImplementationReadiness {
             || type_id == TypeId::of::<InMemoryDurableAuditLog>()
             || type_id == TypeId::of::<InMemorySecretStore>()
             || type_id == TypeId::of::<InMemoryCredentialBroker>()
-            || type_id == TypeId::of::<EmptyWasmRuntimeCredentials>()
             || type_id == TypeId::of::<InMemoryTurnStateStore>()
             || type_id == TypeId::of::<NoopTurnRunWakeNotifier>()
             || type_id == TypeId::of::<LocalHostProcessPort>() =>

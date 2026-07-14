@@ -97,6 +97,7 @@ impl TokenSettingsStore for DbTokenSettingsStore {
                 capability_surface: None,
                 total_input: None,
                 max_output: None,
+                cache_retention: None,
             })
         }
     }
@@ -119,6 +120,7 @@ impl TokenSettingsStore for DbTokenSettingsStore {
             capability_surface: request.capability_surface,
             total_input: request.total_input,
             max_output: request.max_output,
+            cache_retention: request.cache_retention,
         };
 
         let value_str = serde_json::to_string(&response)?;
@@ -195,6 +197,7 @@ pub(crate) async fn migrate_global_tokens_to_active_provider(
             capability_surface: global.capability_surface,
             total_input: global.total_input,
             max_output: global.max_output,
+            cache_retention: global.cache_retention,
         };
         if let Err(e) = store
             .update_provider_token_settings(user_id, active_provider_id, request)
@@ -244,6 +247,7 @@ mod tests {
             capability_surface: None,
             total_input: None,
             max_output: None,
+            cache_retention: Some("short".to_string()),
         };
         store
             .update_provider_token_settings("user1", "ollama", req)
@@ -258,6 +262,7 @@ mod tests {
         assert_eq!(response.conversation_history, Some(4000));
         assert_eq!(response.skills, Some(3000));
         assert_eq!(response.identity, None);
+        assert_eq!(response.cache_retention, Some("short".to_string()));
     }
 
     #[tokio::test]
@@ -275,6 +280,7 @@ mod tests {
             capability_surface: None,
             total_input: None,
             max_output: None,
+            cache_retention: None,
         };
         let req_b = UpdateTokenSettingsRequest {
             profile: None,
@@ -287,6 +293,7 @@ mod tests {
             capability_surface: None,
             total_input: None,
             max_output: None,
+            cache_retention: None,
         };
         store
             .update_provider_token_settings("user1", "provider-a", req_a)

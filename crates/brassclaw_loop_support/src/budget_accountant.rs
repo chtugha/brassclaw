@@ -124,6 +124,8 @@ impl GovernorBackedAccountant {
                 input_per_token: Decimal::from_f64(0.0000025).unwrap_or(Decimal::ZERO),
                 output_per_token: Decimal::from_f64(0.00001).unwrap_or(Decimal::ZERO),
                 max_output_tokens: 0,
+                cache_write_multiplier_milli: 0,
+                cache_read_multiplier_milli: 0,
             },
             event_sink: Arc::new(NoOpBudgetEventSink),
         }
@@ -599,12 +601,24 @@ fn usage_for_response(
         let cost = cost_table
             .cost_for(effective_model)
             .unwrap_or(*default_cost);
-        let actual_usd = Decimal::from(usage.input_tokens) * cost.input_per_token
-            + Decimal::from(usage.output_tokens) * cost.output_per_token;
+        // Provider-supplied token counts split across fresh input,
+        // cache creation, cache read, and output. Cache multipliers are
+        // already inherent in `cost` (see `ModelCost::cache_*_cost`).
+        // Providers without caching return 0 for cache fields, so the
+        // multiplier math yields zero cost naturally — no provider guard
+        // needed.
+        let input_tokens = u64::from(usage.input_tokens);
+        let output_tokens = u64::from(usage.output_tokens);
+        let cache_creation_input_tokens = u64::from(usage.cache_creation_input_tokens);
+        let cache_read_input_tokens = u64::from(usage.cache_read_input_tokens);
+        let actual_usd = cost.fresh_input_cost(input_tokens)
+            + cost.cache_write_cost(cache_creation_input_tokens)
+            + cost.cache_read_cost(cache_read_input_tokens)
+            + cost.output_cost(output_tokens);
         return ResourceUsage {
             usd: actual_usd,
-            input_tokens: u64::from(usage.input_tokens),
-            output_tokens: u64::from(usage.output_tokens),
+            input_tokens,
+            output_tokens,
             wall_clock_ms: 0,
             output_bytes,
             network_egress_bytes: 0,
@@ -767,6 +781,8 @@ mod tests {
             input_per_token: dec!(0.000001),
             output_per_token: dec!(0.00001),
             max_output_tokens: 1024,
+            cache_write_multiplier_milli: 0,
+            cache_read_multiplier_milli: 0,
         };
         let accountant = GovernorBackedAccountant::new(governor.clone(), Arc::new(CostStub(cost)));
         let context = run_context();
@@ -807,6 +823,8 @@ mod tests {
             input_per_token: dec!(0.01),
             output_per_token: dec!(0.10),
             max_output_tokens: 100,
+            cache_write_multiplier_milli: 0,
+            cache_read_multiplier_milli: 0,
         };
         let accountant = GovernorBackedAccountant::new(governor, Arc::new(CostStub(cost)));
         let request = sample_request();
@@ -846,6 +864,8 @@ mod tests {
             // but the hard cap is also exceeded. Adjust to push into the
             // approval band by sizing max_output to land at ~$9.
             max_output_tokens: 75,
+            cache_write_multiplier_milli: 0,
+            cache_read_multiplier_milli: 0,
         };
         let accountant = GovernorBackedAccountant::new(governor, Arc::new(CostStub(cost)))
             .with_overestimate_factor(dec!(1.0));
@@ -871,6 +891,8 @@ mod tests {
             input_per_token: Decimal::ZERO,
             output_per_token: Decimal::ZERO,
             max_output_tokens: 0,
+            cache_write_multiplier_milli: 0,
+            cache_read_multiplier_milli: 0,
         };
         let accountant = GovernorBackedAccountant::new(governor.clone(), Arc::new(CostStub(cost)));
         let context = run_context();
@@ -902,6 +924,8 @@ mod tests {
             input_per_token: Decimal::ZERO,
             output_per_token: Decimal::ZERO,
             max_output_tokens: 0,
+            cache_write_multiplier_milli: 0,
+            cache_read_multiplier_milli: 0,
         };
         let accountant = GovernorBackedAccountant::new(governor.clone(), Arc::new(CostStub(cost)));
         let context = run_context();
@@ -1022,6 +1046,8 @@ mod tests {
             input_per_token: dec!(0.0001),
             output_per_token: dec!(0.001),
             max_output_tokens: 1024,
+            cache_write_multiplier_milli: 0,
+            cache_read_multiplier_milli: 0,
         };
         let accountant = GovernorBackedAccountant::new(governor.clone(), Arc::new(CostStub(cost)));
         let request = sample_request();
@@ -1076,8 +1102,8 @@ mod tests {
             input_per_token: dec!(0.01),
             output_per_token: dec!(0.10),
             max_output_tokens: 1024,
-            cache_write_multiplier: dec!(1.25),
-            cache_read_multiplier: dec!(0.10),
+            cache_write_multiplier_milli: 0,
+            cache_read_multiplier_milli: 0,
         };
         let accountant = GovernorBackedAccountant::new(governor.clone(), Arc::new(CostStub(cost)));
         let request = sample_request();
@@ -1094,6 +1120,8 @@ mod tests {
             usage: Some(brassclaw_turns::run_profile::LoopModelUsage {
                 input_tokens: 7,
                 output_tokens: 3,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
             }),
         };
         accountant

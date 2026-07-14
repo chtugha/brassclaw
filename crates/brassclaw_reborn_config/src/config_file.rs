@@ -195,11 +195,9 @@ pub struct TokensSection {
     /// When `None`, content caching is disabled.
     pub content_cache_threshold: Option<usize>,
     /// When `true`, the plan library and skill self-improvement loop is enabled.
-    /// Plans are persisted to Memory after each session; skills accumulate
-    /// confidence metrics and are promoted through maturity tiers.
     pub plan_library_enabled: Option<bool>,
     /// Wilson lower bound required for a skill to be promoted to the `Candidate`
-    /// tier (GitHub PR submitted). Defaults to `0.80`.
+    /// tier. Defaults to `0.80`.
     pub skill_promotion_threshold: Option<f64>,
 }
 
@@ -267,86 +265,35 @@ pub const PRESET_CHAT: TokenDistributionPreset = TokenDistributionPreset {
     max_output: 2048,
 };
 
-/// Resolved token budgets with all fields populated.
+/// Resolved behavior flags from the `[tokens]` config section.
 ///
-/// Produced by [`resolve_with_profile`].  Every field is `Option<usize>`
-/// so callers can use `None` as "no override for this field" and let the
-/// runtime compiled default take effect.
+/// Token budget values are now managed per-provider in the DB; this struct
+/// carries only behavior flags read from the config file at boot.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ResolvedTokenBudgets {
-    pub conversation_history: Option<usize>,
-    pub skills: Option<usize>,
-    pub identity: Option<usize>,
-    pub capability_surface: Option<usize>,
-    pub inline_control: Option<usize>,
-    pub memory: Option<usize>,
-    pub total_input: Option<usize>,
-    pub max_output: Option<usize>,
-    /// When `true`, the capability focus strategy is enabled.
     pub capability_focus_enabled: bool,
-    /// When `true`, the planning context strategy is enabled.
     pub planning_mode_enabled: bool,
-    /// Minimum token count for a tool result to be cached. `None` = disabled.
     pub content_cache_threshold: Option<usize>,
-    /// When `true`, the plan library and skill self-improvement loop is enabled.
     pub plan_library_enabled: bool,
-    /// Wilson lower bound override for the Candidate promotion threshold.
-    /// `None` means "use the default 0.80".
     pub skill_promotion_threshold: Option<f64>,
-    /// The preset name that was active when this budget was resolved, if any.
-    pub profile: Option<String>,
 }
 
-impl ResolvedTokenBudgets {
-    /// The preset name that was active when this budget was resolved, if any.
-    pub fn profile_name(&self) -> Option<String> {
-        self.profile.clone()
-    }
-}
-
-/// Resolve token budgets by starting from a named preset (if any) and
-/// applying explicit `TokensSection` field overrides on top.
+/// Extract behavior flags from a `TokensSection`.
 ///
-/// Precedence: explicit `Some(v)` field in `overrides` > preset value >
-/// `None` (runtime compiled default).
+/// Token budget values are no longer in `TokensSection` — they are managed
+/// per-provider in the DB. This function extracts only the behavior flags.
 ///
-/// Unknown profile names are silently ignored (treated as no preset) so
-/// a future profile name does not break older binaries.
+/// This is the single canonical extraction point. CLI boot code delegates to
+/// it via `behavior_flags_from_config` in `brassclaw_reborn_cli`; any new
+/// consumer should call this function rather than constructing
+/// [`ResolvedTokenBudgets`] directly from field accesses.
 pub fn resolve_with_profile(overrides: &TokensSection) -> ResolvedTokenBudgets {
-    let preset: Option<&TokenDistributionPreset> = match overrides
-        .profile
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        Some("small_7b") => Some(&PRESET_SMALL_7B),
-        Some("large") => Some(&PRESET_LARGE),
-        Some("coding") => Some(&PRESET_CODING),
-        Some("chat") => Some(&PRESET_CHAT),
-        _ => None,
-    };
-
-    macro_rules! resolve_field {
-        ($field:ident) => {
-            overrides.$field.or_else(|| preset.map(|p| p.$field))
-        };
-    }
-
     ResolvedTokenBudgets {
-        conversation_history: resolve_field!(conversation_history),
-        skills: resolve_field!(skills),
-        identity: resolve_field!(identity),
-        capability_surface: resolve_field!(capability_surface),
-        inline_control: resolve_field!(inline_control),
-        memory: resolve_field!(memory),
-        total_input: resolve_field!(total_input),
-        max_output: resolve_field!(max_output),
         capability_focus_enabled: overrides.capability_focus_enabled.unwrap_or(false),
         planning_mode_enabled: overrides.planning_mode_enabled.unwrap_or(false),
         content_cache_threshold: overrides.content_cache_threshold,
         plan_library_enabled: overrides.plan_library_enabled.unwrap_or(false),
         skill_promotion_threshold: overrides.skill_promotion_threshold,
-        profile: overrides.profile.clone(),
     }
 }
 
@@ -1574,5 +1521,56 @@ not_a_field = true
         let err = RebornConfigFile::parse_text(toml, &attributed())
             .expect_err("deny_unknown_fields must catch typos in [trigger_poller]");
         assert!(matches!(err, RebornConfigFileError::Toml { .. }));
+    }
+
+    #[test]
+    fn tokens_section_rejects_removed_budget_fields() {
+        for field in &[
+            "conversation_history",
+            "skills",
+            "identity",
+            "inline_control",
+            "memory",
+            "safety",
+            "capability_surface",
+            "total_input",
+            "max_output",
+        ] {
+            let toml = format!("[tokens]\n{field} = 1000\n");
+            let err = RebornConfigFile::parse_text(&toml, &attributed()).expect_err(
+                &format!("removed [tokens].{field} must be rejected by deny_unknown_fields"),
+            );
+            assert!(
+                matches!(err, RebornConfigFileError::Toml { .. }),
+                "expected Toml parse error for [tokens].{field}, got: {err:?}"
+            );
+        }
+        let toml = "[tokens]\nprofile = \"small_7b\"\n";
+        let err = RebornConfigFile::parse_text(toml, &attributed())
+            .expect_err("removed [tokens].profile must be rejected by deny_unknown_fields");
+        assert!(
+            matches!(err, RebornConfigFileError::Toml { .. }),
+            "expected Toml parse error for [tokens].profile, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn tokens_section_accepts_behavior_flags() {
+        let toml = r#"
+[tokens]
+capability_focus_enabled = true
+planning_mode_enabled = false
+content_cache_threshold = 500
+plan_library_enabled = true
+skill_promotion_threshold = 0.85
+"#;
+        let cfg = RebornConfigFile::parse_text(toml, &attributed())
+            .expect("[tokens] behavior flags must parse");
+        let tokens = cfg.tokens.expect("tokens section present");
+        assert_eq!(tokens.capability_focus_enabled, Some(true));
+        assert_eq!(tokens.planning_mode_enabled, Some(false));
+        assert_eq!(tokens.content_cache_threshold, Some(500));
+        assert_eq!(tokens.plan_library_enabled, Some(true));
+        assert_eq!(tokens.skill_promotion_threshold, Some(0.85));
     }
 }

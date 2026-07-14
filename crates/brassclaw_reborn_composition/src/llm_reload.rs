@@ -7,6 +7,8 @@ use crate::LlmKeyStore;
 use crate::llm_catalog::{apply_stored_api_key, resolve_reborn_runtime_llm};
 use crate::llm_config_service::LlmReloadTrigger;
 
+type ProviderChangedCallback = Arc<dyn Fn(&str) + Send + Sync>;
+
 /// Live-reload adapter wired by the runtime. Re-resolves the LLM config from
 /// `config.toml` + `providers.json` + the stored key, then hot-swaps the
 /// running provider's inner backend via the `brassclaw_llm` reload handle.
@@ -41,10 +43,7 @@ impl RebornLlmReloadAdapter {
     /// Attach a callback that fires after a successful provider reload.
     /// The callback receives the new active provider ID and can update
     /// live budget slots, context-window overrides, etc.
-    pub(crate) fn with_on_provider_changed(
-        mut self,
-        f: Arc<dyn Fn(&str) + Send + Sync>,
-    ) -> Self {
+    pub(crate) fn with_on_provider_changed(mut self, f: ProviderChangedCallback) -> Self {
         self.on_provider_changed = Some(f);
         self
     }

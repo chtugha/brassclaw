@@ -70,17 +70,20 @@ pub fn default_with_full_config(
     conversation_token_budget: Option<LiveTokenBudget>,
     capability_focus: Option<CapabilityFocusConfig>,
     planning_context: Option<PlanningContextStrategy>,
-    context_window_tokens: Option<u32>,
-    inline_control_tokens: Option<usize>,
+    context_window_tokens: Option<LiveTokenBudget>,
+    inline_control_tokens: Option<LiveTokenBudget>,
 ) -> LoopFamily {
     use crate::strategies::context::DefaultContextStrategy;
 
     let mut slots = crate::default_planner::DefaultStrategySlots::default();
 
+    let compaction_window = context_window_tokens
+        .as_ref()
+        .and_then(|s| s.get())
+        .map(|v| v as u32)
+        .unwrap_or(DEFAULT_FALLBACK_CONTEXT_WINDOW) as u64;
+
     if let Some(strategy) = planning_context {
-        // Planning mode: wires PlanningContextStrategy, which already handles
-        // token budgeting internally. The explicit token budget is ignored when
-        // planning mode is active — the planning strategy owns iteration 0 context.
         slots = slots.with_context(Arc::new(strategy));
     } else if let Some(budget) = conversation_token_budget {
         let mut strategy = match context_window_tokens {
@@ -102,9 +105,7 @@ pub fn default_with_full_config(
         slots = slots.with_capability(Arc::new(FocusedCapabilityStrategy::new(cfg)));
     }
 
-    // Wire the compaction strategy with the provider-aware context window so
-    // compaction does not trigger at 8 192 tokens on a 128K-window model.
-    let window = context_window_tokens.unwrap_or(DEFAULT_FALLBACK_CONTEXT_WINDOW) as u64;
+    let window = compaction_window;
     slots = slots.with_compaction(Arc::new(DefaultCompactionStrategy {
         context_limit_tokens: window,
         ..DefaultCompactionStrategy::default()

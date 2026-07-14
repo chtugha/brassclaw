@@ -62,6 +62,8 @@ fn pause_inducing_cost_table() -> Arc<dyn ModelCostTable> {
             input_per_token: dec!(0.05),
             output_per_token: dec!(0.10),
             max_output_tokens: 20,
+            cache_write_multiplier_milli: 0,
+            cache_read_multiplier_milli: 0,
         },
     );
     Arc::new(table)

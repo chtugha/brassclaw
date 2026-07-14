@@ -47,7 +47,6 @@ brassclaw_skills = { path = "../brassclaw_skills" }
 brassclaw_triggers = { path = "../brassclaw_triggers" }
 brassclaw_trust = { path = "../brassclaw_trust" }
 brassclaw_turns = { path = "../brassclaw_turns" }
-brassclaw_wasm = { path = "../brassclaw_wasm" }
 libsql = { version = "0.6", optional = true, default-features = false, features = ["core", "replication", "remote", "tls"] }
 jsonschema = { version = "0.45", default-features = false }
 libc = "0.2"
@@ -69,9 +68,6 @@ tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 tokio-postgres = "0.7"
 zeroize = "1"
-wat = "1.245.1"
-wit-component = "0.245.1"
-wit-parser = "0.245.1"
 
 [lints]
 workspace = true

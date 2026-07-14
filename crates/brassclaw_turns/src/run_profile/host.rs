@@ -1143,6 +1143,14 @@ pub struct LoopModelResponse {
 pub struct LoopModelUsage {
     pub input_tokens: u32,
     pub output_tokens: u32,
+    /// Tokens served by the provider from a cached prefix
+    /// (Anthropic prompt caching: lower-cost read of an already cached span).
+    #[serde(default)]
+    pub cache_read_input_tokens: u32,
+    /// Tokens written to the provider's cache on this call
+    /// (Anthropic prompt caching: higher-cost first write).
+    #[serde(default)]
+    pub cache_creation_input_tokens: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

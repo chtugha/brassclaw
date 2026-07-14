@@ -311,7 +311,7 @@ mod tests {
                 DispatchError::RuntimeMismatch {
                     capability: capability.clone(),
                     descriptor_runtime: RuntimeKind::Script,
-                    package_runtime: RuntimeKind::Wasm,
+                    package_runtime: RuntimeKind::Mcp,
                 },
                 "runtime_mismatch",
             ),

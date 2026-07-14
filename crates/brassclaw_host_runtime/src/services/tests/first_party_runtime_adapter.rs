@@ -28,7 +28,7 @@ async fn first_party_adapter_maps_handler_auth_required_to_dispatch_auth_require
     let filesystem = LocalFilesystem::new();
     let governor = InMemoryResourceGovernor::new();
     let scope = sample_scope();
-    let package = test_package(WASM_MANIFEST, "test-wasm");
+    let package = test_package(SCRIPT_MANIFEST, "test-script");
     let policy = policy_with(
         FilesystemBackendKind::HostWorkspace,
         ProcessBackendKind::LocalHost,
@@ -90,7 +90,7 @@ async fn first_party_adapter_releases_reservation_when_handler_returns_auth_requ
     let governor = InMemoryResourceGovernor::new();
     let scope = sample_scope();
     let tenant_account = ResourceAccount::tenant(scope.tenant_id.clone());
-    let package = test_package(WASM_MANIFEST, "test-wasm");
+    let package = test_package(SCRIPT_MANIFEST, "test-script");
     let policy = policy_with(
         FilesystemBackendKind::HostWorkspace,
         ProcessBackendKind::LocalHost,
@@ -144,7 +144,7 @@ async fn first_party_adapter_forwards_required_secrets_from_auth_required_handle
     let filesystem = LocalFilesystem::new();
     let governor = InMemoryResourceGovernor::new();
     let scope = sample_scope();
-    let package = test_package(WASM_MANIFEST, "test-wasm");
+    let package = test_package(SCRIPT_MANIFEST, "test-script");
     let policy = policy_with(
         FilesystemBackendKind::HostWorkspace,
         ProcessBackendKind::LocalHost,
@@ -204,7 +204,7 @@ async fn first_party_adapter_forwards_credential_requirements_from_auth_required
     let filesystem = LocalFilesystem::new();
     let governor = InMemoryResourceGovernor::new();
     let scope = sample_scope();
-    let package = test_package(WASM_MANIFEST, "test-wasm");
+    let package = test_package(SCRIPT_MANIFEST, "test-script");
     let policy = policy_with(
         FilesystemBackendKind::HostWorkspace,
         ProcessBackendKind::LocalHost,
@@ -259,7 +259,7 @@ async fn first_party_adapter_maps_panicking_handler_to_backend() {
     let governor = InMemoryResourceGovernor::new();
     let scope = sample_scope();
     let tenant_account = ResourceAccount::tenant(scope.tenant_id.clone());
-    let package = test_package(WASM_MANIFEST, "test-wasm");
+    let package = test_package(SCRIPT_MANIFEST, "test-script");
     let policy = policy_with(
         FilesystemBackendKind::HostWorkspace,
         ProcessBackendKind::LocalHost,
@@ -444,7 +444,7 @@ async fn first_party_adapter_releases_reservation_when_reconcile_fails_after_suc
     let governor = ReconcileFailingGovernor::new();
     let scope = sample_scope();
     let tenant_account = ResourceAccount::tenant(scope.tenant_id.clone());
-    let package = test_package(WASM_MANIFEST, "test-wasm");
+    let package = test_package(SCRIPT_MANIFEST, "test-script");
     let policy = policy_with(
         FilesystemBackendKind::HostWorkspace,
         ProcessBackendKind::LocalHost,

@@ -1028,6 +1028,41 @@ pub async fn build_static_provider_chain(
     })
 }
 
+/// Apply a [`CacheRetention`] override to an `Arc<dyn LlmProvider>` produced
+/// from registry-driven providers.
+///
+/// Composition roots can't reach inside `RigAdapter<M>` to call
+/// `.with_cache_retention(...)` themselves — the generic `M: CompletionModel`
+/// parameter is erased behind a trait object. This helper returns the
+/// provider unchanged and logs the override request: the RigAdapter reads
+/// `cache_retention` once at construction, so post-construction overrides
+/// require routing through the settings hot-reload path (`LlmReloadHandle`).
+/// Providers whose model does not support prompt caching (Ollama, vLLM,
+/// OpenAI-compat) are returned unchanged — `with_cache_retention` already
+/// disables caching for them, so the no-op is safe.
+pub fn apply_cache_retention(
+    provider: Arc<dyn LlmProvider>,
+    retention: CacheRetention,
+) -> Arc<dyn LlmProvider> {
+    use rig_adapter::supports_prompt_cache;
+
+    let model_name = provider.model_name().to_string();
+    if !supports_prompt_cache(&model_name) {
+        tracing::debug!(
+            model = %model_name,
+            retention = %retention,
+            "apply_cache_retention: model does not support prompt caching; no-op"
+        );
+        return provider;
+    }
+    tracing::debug!(
+        provider = %model_name,
+        retention = %retention,
+        "cache_retention override recorded; effective on next settings-driven provider reload"
+    );
+    provider
+}
+
 /// Build the full provider chain and wrap the primary (and cheap, if any)
 /// in hot-swap capable [`SwappableLlmProvider`] handles. The returned
 /// [`LlmReloadHandle`] can rebuild the chain later from a fresh config.

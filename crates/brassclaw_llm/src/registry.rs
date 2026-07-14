@@ -421,6 +421,15 @@ pub struct ProviderDefinition {
     /// `None` → caller falls back to `DEFAULT_FALLBACK_CONTEXT_WINDOW` (16 000).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window_tokens: Option<u32>,
+    /// Provider-supplied cache_retention hint for this provider.
+    /// Valid values: `"none"`, `"short"`, `"long"` (matching
+    /// `CacheRetention`). Provider-level defaults are overridden by the DB
+    /// token-settings row (and then by `LLM_CACHE_RETENTION` env var)
+    /// via `resolve_active_provider_token_budgets`.
+    ///
+    /// `None` here → caller falls back to "none".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_retention: Option<String>,
 }
 
 /// Registry of known LLM providers.
@@ -733,6 +742,7 @@ mod tests {
             unsupported_params: vec![],
             token_budget: None,
             context_window_tokens: None,
+            cache_retention: None,
         });
         let registry = ProviderRegistry::new(all);
         let tf = registry.find("tinfoil").expect("tinfoil should exist");
@@ -991,6 +1001,7 @@ mod tests {
             unsupported_params: vec![],
             token_budget: None,
             context_window_tokens: None,
+            cache_retention: None,
         }];
 
         let registry = ProviderRegistry::new(providers.clone());
@@ -1023,6 +1034,7 @@ mod tests {
             unsupported_params: vec![],
             token_budget: None,
             context_window_tokens: None,
+            cache_retention: None,
         });
 
         let registry = ProviderRegistry::new(providers);
@@ -1067,6 +1079,7 @@ mod tests {
                 unsupported_params: vec![],
                 token_budget: None,
                 context_window_tokens: None,
+                cache_retention: None,
             },
             // User override removes setup
             ProviderDefinition {
@@ -1086,6 +1099,7 @@ mod tests {
                 unsupported_params: vec![],
                 token_budget: None,
                 context_window_tokens: None,
+                cache_retention: None,
             },
         ];
 
@@ -1126,6 +1140,7 @@ mod tests {
                 unsupported_params: vec![],
                 token_budget: None,
                 context_window_tokens: None,
+                cache_retention: None,
             },
             ProviderDefinition {
                 id: "bbb".to_string(),
@@ -1147,6 +1162,7 @@ mod tests {
                 unsupported_params: vec![],
                 token_budget: None,
                 context_window_tokens: None,
+                cache_retention: None,
             },
             ProviderDefinition {
                 id: "ccc".to_string(),
@@ -1168,6 +1184,7 @@ mod tests {
                 unsupported_params: vec![],
                 token_budget: None,
                 context_window_tokens: None,
+                cache_retention: None,
             },
             // User override for B
             ProviderDefinition {
@@ -1190,6 +1207,7 @@ mod tests {
                 unsupported_params: vec![],
                 token_budget: None,
                 context_window_tokens: None,
+                cache_retention: None,
             },
         ];
 
@@ -1253,6 +1271,65 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// `cache_retention` is optional. Existing `providers.json` entries that
+    /// omit the field must continue to deserialize cleanly (the new field
+    /// is gated by `#[serde(default)]`).
+    #[test]
+    fn test_provider_definition_cache_retention_is_optional() {
+        let minimal = r#"{
+            "id": "stub",
+            "protocol": "open_ai_completions",
+            "model_env": "STUB_MODEL",
+            "default_model": "stub-1",
+            "description": "stub"
+        }"#;
+        let def: ProviderDefinition =
+            serde_json::from_str(minimal).expect("minimal JSON must deserialize");
+        assert!(
+            def.cache_retention.is_none(),
+            "missing cache_retention must default to None"
+        );
+
+        let with_retention = r#"{
+            "id": "stub",
+            "protocol": "open_ai_completions",
+            "model_env": "STUB_MODEL",
+            "default_model": "stub-1",
+            "description": "stub",
+            "cache_retention": "long"
+        }"#;
+        let def: ProviderDefinition =
+            serde_json::from_str(with_retention).expect("JSON with cache_retention must deserialize");
+        assert_eq!(
+            def.cache_retention.as_deref(),
+            Some("long"),
+            "cache_retention must round-trip"
+        );
+    }
+
+    /// `ProviderDefinition` has `#[serde(deny_unknown_fields)]` — adding
+    /// `cache_retention` must not regress that gate. A typo'd field must
+    /// still produce a deserialization error so the failure surfaces at
+    /// startup rather than silently drifting the cache_retention default.
+    #[test]
+    fn test_provider_definition_rejects_unknown_field() {
+        let typo_json = r#"{
+            "id": "stub",
+            "protocol": "open_ai_completions",
+            "model_env": "STUB_MODEL",
+            "default_model": "stub-1",
+            "description": "stub",
+            "cache_retention_typo": "long"
+        }"#;
+        let result: Result<ProviderDefinition, _> = serde_json::from_str(typo_json);
+        assert!(
+            result.is_err(),
+            "typo'd field must be rejected by deny_unknown_fields — \
+             otherwise the new cache_retention field is silently ignored \
+             and prefix-cache behaviour drifts from intent"
+        );
     }
 
     /// The dedicated-config backends (nearai/bedrock/codex/gemini_oauth)
@@ -1444,7 +1521,6 @@ mod tests {
 
     #[test]
     fn provider_definition_partial_token_budget_round_trips() {
-        // Only one limit set — the others should remain None
         let json = r#"{
             "id": "test-partial-budget",
             "protocol": "open_ai_completions",
@@ -1458,5 +1534,86 @@ mod tests {
         let budget = def.token_budget.as_ref().expect("token_budget should be Some");
         assert_eq!(budget.conversation_history, Some(10_000));
         assert!(budget.total_input.is_none(), "total_input should be None when absent");
+    }
+
+    #[test]
+    fn provider_definition_full_round_trip_all_optional_fields() {
+        let json = r#"{
+            "id": "test-full",
+            "aliases": ["test-alias"],
+            "protocol": "open_ai_completions",
+            "default_base_url": "https://api.example.com",
+            "base_url_env": "TEST_BASE_URL",
+            "base_url_required": true,
+            "api_key_env": "TEST_API_KEY",
+            "api_key_required": true,
+            "model_env": "TEST_MODEL",
+            "default_model": "test-model",
+            "description": "Full test",
+            "extra_headers_env": "TEST_HEADERS",
+            "setup": { "kind": "api_key", "secret_name": "test_key", "display_name": "Test Key" },
+            "unsupported_params": ["temperature"],
+            "token_budget": {
+                "profile": "small_7b",
+                "conversation_history": 4000,
+                "skills": 3000,
+                "identity": 2000,
+                "inline_control": 500,
+                "memory": 500,
+                "safety": 100,
+                "capability_surface": 1500,
+                "total_input": 12000,
+                "max_output": 2048
+            },
+            "context_window_tokens": 32000
+        }"#;
+        let def: ProviderDefinition =
+            serde_json::from_str(json).expect("full ProviderDefinition must deserialize");
+        let serialized = serde_json::to_string(&def).expect("must serialize");
+        let def2: ProviderDefinition =
+            serde_json::from_str(&serialized).expect("round-trip deserialization");
+        assert_eq!(def.id, def2.id);
+        assert_eq!(def.aliases, def2.aliases);
+        assert_eq!(def.context_window_tokens, def2.context_window_tokens);
+        assert_eq!(def.token_budget, def2.token_budget);
+    }
+
+    #[test]
+    fn provider_definition_minimal_round_trip() {
+        let json = r#"{
+            "id": "test-minimal",
+            "protocol": "open_ai_completions",
+            "model_env": "TEST_MODEL",
+            "default_model": "test-model",
+            "description": "Minimal"
+        }"#;
+        let def: ProviderDefinition =
+            serde_json::from_str(json).expect("minimal ProviderDefinition must deserialize");
+        assert!(def.token_budget.is_none());
+        assert!(def.context_window_tokens.is_none());
+        assert!(def.setup.is_none());
+        assert!(def.aliases.is_empty());
+        let serialized = serde_json::to_string(&def).expect("must serialize");
+        let def2: ProviderDefinition =
+            serde_json::from_str(&serialized).expect("round-trip deserialization");
+        assert_eq!(def.id, def2.id);
+        assert!(def2.token_budget.is_none());
+    }
+
+    #[test]
+    fn provider_definition_rejects_unknown_fields() {
+        let json = r#"{
+            "id": "test-unknown",
+            "protocol": "open_ai_completions",
+            "model_env": "TEST_MODEL",
+            "default_model": "test-model",
+            "description": "Bad",
+            "unknown_field": true
+        }"#;
+        let result: Result<ProviderDefinition, _> = serde_json::from_str(json);
+        assert!(
+            result.is_err(),
+            "deny_unknown_fields must reject unknown_field"
+        );
     }
 }
