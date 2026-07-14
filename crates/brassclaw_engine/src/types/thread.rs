@@ -156,6 +156,13 @@ pub struct ThreadConfig {
     pub depth: u32,
     /// Maximum recursion depth for rlm_query() sub-calls.
     pub max_depth: u32,
+    /// Soft prompt-assembly budget in tokens. When the assembled prompt
+    /// exceeds this value the orchestrator invokes the per-user reduction
+    /// pipeline (`__get_reduction_rules__`) to shrink the message list
+    /// before the LLM call. Zero (the default) disables the reduction
+    /// pipeline entirely.
+    #[serde(default)]
+    pub prompt_budget_tokens: u32,
 }
 
 impl Default for ThreadConfig {
@@ -175,6 +182,7 @@ impl Default for ThreadConfig {
             compaction_threshold: 0.85,
             depth: 0,
             max_depth: 1,
+            prompt_budget_tokens: 0,
         }
     }
 }

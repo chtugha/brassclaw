@@ -592,7 +592,7 @@ fn migrate_tokens_section(path: &std::path::Path) {
     };
     let mut removed = Vec::new();
     for field in REMOVED_TOKEN_FIELDS {
-        if tokens.remove(*field).is_some() {
+        if tokens.remove(field).is_some() {
             removed.push(*field);
         }
     }

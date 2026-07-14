@@ -241,8 +241,12 @@ async fn first_party_use_secret_with_non_empty_static_secret_still_injects_oblig
 
 #[tokio::test]
 async fn capability_access_denies_non_first_party_secret_consumers_without_static_secret_grant() {
+    // `wasm_descriptor()` uses `RuntimeKind::FirstParty`; this test specifically
+    // validates that a *non*-first-party runtime (e.g. MCP) without a static
+    // secret grant in `constraints.secrets` is denied. Override the runtime.
     let descriptor = CapabilityDescriptor {
         effects: vec![EffectKind::DispatchCapability, EffectKind::UseSecret],
+        runtime: RuntimeKind::Mcp,
         ..wasm_descriptor()
     };
     let grant = grant_for(

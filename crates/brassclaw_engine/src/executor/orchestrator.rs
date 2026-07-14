@@ -2545,10 +2545,13 @@ pub fn invalidate_reduction_rules_cache() -> usize {
         .unwrap_or_else(|e| e.into_inner());
     let mut cleared = 0;
     for slot in cache.values() {
-        if let Ok(mut slot) = slot.lock()
-            && slot.is_some()
-        {
-            *slot = None;
+        // Use the same poison-recovery pattern as the rest of this module:
+        // if a thread panicked while holding the inner mutex we recover the
+        // guard rather than silently skipping the slot (which would leave
+        // stale rules cached forever).
+        let mut guard = slot.lock().unwrap_or_else(|e| e.into_inner());
+        if guard.is_some() {
+            *guard = None;
             cleared += 1;
         }
     }
@@ -2610,6 +2613,12 @@ async fn load_reduction_rules(
         }
         Err(e) => {
             debug!("reduction rule load failed: {e}");
+            // Cache the empty result so subsequent calls on the same
+            // (project_id, user_id) pair do not hammer a flaky DB on
+            // every over-budget turn. An explicit `invalidate_reduction_rules_cache`
+            // call (e.g. after a DB recovery) will clear the slot.
+            let mut guard = slot.lock().unwrap_or_else(|e| e.into_inner());
+            *guard = Some(Vec::new());
             return Vec::new();
         }
     };
@@ -2999,6 +3008,10 @@ fn build_orchestrator_inputs(
         "depth": thread.config.depth,
         "max_depth": thread.config.max_depth,
         "step_count": thread.step_count,
+        // Phase 3: soft prompt-assembly budget. Zero means no reduction;
+        // Python reads this as `prompt_budget` and gates the entire
+        // `_reduce_prompt` pipeline on `prompt_budget > 0`.
+        "prompt_budget_tokens": thread.config.prompt_budget_tokens,
     });
 
     let values = vec![
@@ -5948,5 +5961,248 @@ evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
         // Ensure the public API exists and is callable; in this fresh
         // state no slots are populated so cleared is zero.
         let _ = invalidate_reduction_rules_cache();
+    }
+
+    // ── load_reduction_rules ──────────────────────────────────────────────
+
+    /// Helper: build a `MemoryDoc` tagged `reduction_rule` whose content is
+    /// a JSON array of rule objects.
+    fn make_rule_doc(
+        project_id: crate::types::project::ProjectId,
+        user_id: &str,
+        rules_json: serde_json::Value,
+    ) -> crate::types::memory::MemoryDoc {
+        use crate::types::memory::{DocType, MemoryDoc};
+        let mut doc = MemoryDoc::new(project_id, user_id, DocType::Note, "rules", rules_json.to_string());
+        doc.tags.push("reduction_rule".to_string());
+        doc
+    }
+
+    #[tokio::test]
+    async fn load_reduction_rules_cache_miss_then_hit() {
+        // First call loads from DB; second call returns from cache (exactly
+        // one DB query total, proven by using a store that counts calls).
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct CountingStore {
+            inner: crate::tests::InMemoryStore,
+            calls: AtomicUsize,
+        }
+
+        #[async_trait::async_trait]
+        impl Store for CountingStore {
+            async fn list_memory_docs(
+                &self,
+                project_id: crate::types::project::ProjectId,
+                user_id: &str,
+            ) -> Result<Vec<crate::types::memory::MemoryDoc>, crate::types::error::EngineError> {
+                self.calls.fetch_add(1, Ordering::Relaxed);
+                self.inner.list_memory_docs(project_id, user_id).await
+            }
+            // ── delegate everything else ──────────────────────────────────
+            async fn save_thread(&self, t: &crate::types::thread::Thread) -> Result<(), crate::types::error::EngineError> { self.inner.save_thread(t).await }
+            async fn load_thread(&self, id: crate::types::thread::ThreadId) -> Result<Option<crate::types::thread::Thread>, crate::types::error::EngineError> { self.inner.load_thread(id).await }
+            async fn list_threads(&self, p: crate::types::project::ProjectId, u: &str) -> Result<Vec<crate::types::thread::Thread>, crate::types::error::EngineError> { self.inner.list_threads(p, u).await }
+            async fn update_thread_state(&self, id: crate::types::thread::ThreadId, s: crate::types::thread::ThreadState) -> Result<(), crate::types::error::EngineError> { self.inner.update_thread_state(id, s).await }
+            async fn save_step(&self, step: &crate::types::step::Step) -> Result<(), crate::types::error::EngineError> { self.inner.save_step(step).await }
+            async fn load_steps(&self, id: crate::types::thread::ThreadId) -> Result<Vec<crate::types::step::Step>, crate::types::error::EngineError> { self.inner.load_steps(id).await }
+            async fn append_events(&self, evts: &[crate::types::event::ThreadEvent]) -> Result<(), crate::types::error::EngineError> { self.inner.append_events(evts).await }
+            async fn load_events(&self, id: crate::types::thread::ThreadId) -> Result<Vec<crate::types::event::ThreadEvent>, crate::types::error::EngineError> { self.inner.load_events(id).await }
+            async fn save_project(&self, p: &crate::types::project::Project) -> Result<(), crate::types::error::EngineError> { self.inner.save_project(p).await }
+            async fn load_project(&self, id: crate::types::project::ProjectId) -> Result<Option<crate::types::project::Project>, crate::types::error::EngineError> { self.inner.load_project(id).await }
+            async fn list_all_projects(&self) -> Result<Vec<crate::types::project::Project>, crate::types::error::EngineError> { self.inner.list_all_projects().await }
+            async fn save_conversation(&self, c: &crate::types::conversation::ConversationSurface) -> Result<(), crate::types::error::EngineError> { self.inner.save_conversation(c).await }
+            async fn load_conversation(&self, id: crate::types::conversation::ConversationId) -> Result<Option<crate::types::conversation::ConversationSurface>, crate::types::error::EngineError> { self.inner.load_conversation(id).await }
+            async fn list_conversations(&self, u: &str) -> Result<Vec<crate::types::conversation::ConversationSurface>, crate::types::error::EngineError> { self.inner.list_conversations(u).await }
+            async fn save_memory_doc(&self, doc: &crate::types::memory::MemoryDoc) -> Result<(), crate::types::error::EngineError> { self.inner.save_memory_doc(doc).await }
+            async fn load_memory_doc(&self, id: crate::types::memory::DocId) -> Result<Option<crate::types::memory::MemoryDoc>, crate::types::error::EngineError> { self.inner.load_memory_doc(id).await }
+            async fn list_memory_docs_by_owner(&self, u: &str) -> Result<Vec<crate::types::memory::MemoryDoc>, crate::types::error::EngineError> { self.inner.list_memory_docs_by_owner(u).await }
+            async fn save_lease(&self, l: &crate::types::capability::CapabilityLease) -> Result<(), crate::types::error::EngineError> { self.inner.save_lease(l).await }
+            async fn load_active_leases(&self, id: crate::types::thread::ThreadId) -> Result<Vec<crate::types::capability::CapabilityLease>, crate::types::error::EngineError> { self.inner.load_active_leases(id).await }
+            async fn revoke_lease(&self, id: crate::types::capability::LeaseId, reason: &str) -> Result<(), crate::types::error::EngineError> { self.inner.revoke_lease(id, reason).await }
+            async fn save_mission(&self, m: &crate::types::mission::Mission) -> Result<(), crate::types::error::EngineError> { self.inner.save_mission(m).await }
+            async fn load_mission(&self, id: crate::types::mission::MissionId) -> Result<Option<crate::types::mission::Mission>, crate::types::error::EngineError> { self.inner.load_mission(id).await }
+            async fn list_missions(&self, p: crate::types::project::ProjectId, u: &str) -> Result<Vec<crate::types::mission::Mission>, crate::types::error::EngineError> { self.inner.list_missions(p, u).await }
+            async fn update_mission_status(&self, id: crate::types::mission::MissionId, s: crate::types::mission::MissionStatus) -> Result<(), crate::types::error::EngineError> { self.inner.update_mission_status(id, s).await }
+        }
+
+        let project_id = crate::types::project::ProjectId::new();
+        let user_id = "alice";
+        let rule = serde_json::json!([{"type": "drop", "field": "content"}]);
+        let doc = make_rule_doc(project_id, user_id, rule.clone());
+
+        // Wrap in Arc so we can also hold a reference to the CountingStore
+        // and verify call counts directly (no as_any needed).
+        let counting_store = Arc::new(CountingStore {
+            inner: crate::tests::InMemoryStore::with_docs(vec![doc]),
+            calls: AtomicUsize::new(0),
+        });
+        let store: Arc<dyn Store> = counting_store.clone();
+
+        // Ensure a clean cache slot for this key before the test runs.
+        invalidate_reduction_rules_cache();
+
+        // First call: cache miss → DB query.
+        let rules = load_reduction_rules(project_id, user_id, Some(&store)).await;
+        assert_eq!(rules.len(), 1, "expected one rule from DB");
+        assert_eq!(rules[0]["type"], "drop");
+        assert_eq!(
+            counting_store.calls.load(Ordering::Relaxed),
+            1,
+            "DB must be called exactly once on cache miss"
+        );
+
+        // Second call: cache hit → no additional DB query.
+        let rules2 = load_reduction_rules(project_id, user_id, Some(&store)).await;
+        assert_eq!(rules2.len(), 1, "expected same rule from cache");
+        assert_eq!(
+            counting_store.calls.load(Ordering::Relaxed),
+            1,
+            "DB must not be called again on cache hit"
+        );
+        assert_eq!(rules, rules2, "cache hit must return identical data");
+    }
+
+    #[tokio::test]
+    async fn load_reduction_rules_ignores_docs_without_tag() {
+        // A doc without the `reduction_rule` tag must be silently skipped.
+        use crate::types::memory::{DocType, MemoryDoc};
+        let project_id = crate::types::project::ProjectId::new();
+        let user_id = "bob";
+        let mut doc = MemoryDoc::new(
+            project_id,
+            user_id,
+            DocType::Note,
+            "not-a-rule",
+            r#"[{"type": "drop", "field": "content"}]"#,
+        );
+        doc.tags.push("skill".to_string()); // wrong tag — must be ignored
+
+        invalidate_reduction_rules_cache();
+
+        let store: Arc<dyn Store> =
+            Arc::new(crate::tests::InMemoryStore::with_docs(vec![doc]));
+        let rules = load_reduction_rules(project_id, user_id, Some(&store)).await;
+        assert!(
+            rules.is_empty(),
+            "docs without the 'reduction_rule' tag must not produce rules"
+        );
+    }
+
+    #[tokio::test]
+    async fn load_reduction_rules_db_error_returns_empty_and_caches() {
+        // When the DB fails the function must return an empty vec and cache
+        // that result so the slot is not re-queried on every subsequent call.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct AlwaysFailStore {
+            calls: AtomicUsize,
+        }
+
+        #[async_trait::async_trait]
+        impl Store for AlwaysFailStore {
+            async fn list_memory_docs(
+                &self,
+                _project_id: crate::types::project::ProjectId,
+                _user_id: &str,
+            ) -> Result<Vec<crate::types::memory::MemoryDoc>, crate::types::error::EngineError> {
+                self.calls.fetch_add(1, Ordering::Relaxed);
+                Err(crate::types::error::EngineError::Store {
+                    reason: "simulated DB failure".into(),
+                })
+            }
+            async fn save_thread(&self, _: &crate::types::thread::Thread) -> Result<(), crate::types::error::EngineError> { Ok(()) }
+            async fn load_thread(&self, _: crate::types::thread::ThreadId) -> Result<Option<crate::types::thread::Thread>, crate::types::error::EngineError> { Ok(None) }
+            async fn list_threads(&self, _: crate::types::project::ProjectId, _: &str) -> Result<Vec<crate::types::thread::Thread>, crate::types::error::EngineError> { Ok(vec![]) }
+            async fn update_thread_state(&self, _: crate::types::thread::ThreadId, _: crate::types::thread::ThreadState) -> Result<(), crate::types::error::EngineError> { Ok(()) }
+            async fn save_step(&self, _: &crate::types::step::Step) -> Result<(), crate::types::error::EngineError> { Ok(()) }
+            async fn load_steps(&self, _: crate::types::thread::ThreadId) -> Result<Vec<crate::types::step::Step>, crate::types::error::EngineError> { Ok(vec![]) }
+            async fn append_events(&self, _: &[crate::types::event::ThreadEvent]) -> Result<(), crate::types::error::EngineError> { Ok(()) }
+            async fn load_events(&self, _: crate::types::thread::ThreadId) -> Result<Vec<crate::types::event::ThreadEvent>, crate::types::error::EngineError> { Ok(vec![]) }
+            async fn save_project(&self, _: &crate::types::project::Project) -> Result<(), crate::types::error::EngineError> { Ok(()) }
+            async fn load_project(&self, _: crate::types::project::ProjectId) -> Result<Option<crate::types::project::Project>, crate::types::error::EngineError> { Ok(None) }
+            async fn list_all_projects(&self) -> Result<Vec<crate::types::project::Project>, crate::types::error::EngineError> { Ok(vec![]) }
+            async fn save_conversation(&self, _: &crate::types::conversation::ConversationSurface) -> Result<(), crate::types::error::EngineError> { Ok(()) }
+            async fn load_conversation(&self, _: crate::types::conversation::ConversationId) -> Result<Option<crate::types::conversation::ConversationSurface>, crate::types::error::EngineError> { Ok(None) }
+            async fn list_conversations(&self, _: &str) -> Result<Vec<crate::types::conversation::ConversationSurface>, crate::types::error::EngineError> { Ok(vec![]) }
+            async fn save_memory_doc(&self, _: &crate::types::memory::MemoryDoc) -> Result<(), crate::types::error::EngineError> { Ok(()) }
+            async fn load_memory_doc(&self, _: crate::types::memory::DocId) -> Result<Option<crate::types::memory::MemoryDoc>, crate::types::error::EngineError> { Ok(None) }
+            async fn list_memory_docs_by_owner(&self, _: &str) -> Result<Vec<crate::types::memory::MemoryDoc>, crate::types::error::EngineError> { Ok(vec![]) }
+            async fn save_lease(&self, _: &crate::types::capability::CapabilityLease) -> Result<(), crate::types::error::EngineError> { Ok(()) }
+            async fn load_active_leases(&self, _: crate::types::thread::ThreadId) -> Result<Vec<crate::types::capability::CapabilityLease>, crate::types::error::EngineError> { Ok(vec![]) }
+            async fn revoke_lease(&self, _: crate::types::capability::LeaseId, _: &str) -> Result<(), crate::types::error::EngineError> { Ok(()) }
+            async fn save_mission(&self, _: &crate::types::mission::Mission) -> Result<(), crate::types::error::EngineError> { Ok(()) }
+            async fn load_mission(&self, _: crate::types::mission::MissionId) -> Result<Option<crate::types::mission::Mission>, crate::types::error::EngineError> { Ok(None) }
+            async fn list_missions(&self, _: crate::types::project::ProjectId, _: &str) -> Result<Vec<crate::types::mission::Mission>, crate::types::error::EngineError> { Ok(vec![]) }
+            async fn update_mission_status(&self, _: crate::types::mission::MissionId, _: crate::types::mission::MissionStatus) -> Result<(), crate::types::error::EngineError> { Ok(()) }
+        }
+
+        let project_id = crate::types::project::ProjectId::new();
+        let user_id = "carol";
+
+        invalidate_reduction_rules_cache();
+
+        let store = Arc::new(AlwaysFailStore { calls: AtomicUsize::new(0) });
+        let store_dyn: Arc<dyn Store> = store.clone();
+
+        let rules = load_reduction_rules(project_id, user_id, Some(&store_dyn)).await;
+        assert!(rules.is_empty(), "DB error must yield empty rules");
+        assert_eq!(
+            store.calls.load(Ordering::Relaxed),
+            1,
+            "DB called exactly once"
+        );
+
+        // Second call must use the cached empty vec (DB error is cached).
+        let rules2 = load_reduction_rules(project_id, user_id, Some(&store_dyn)).await;
+        assert!(rules2.is_empty());
+        assert_eq!(
+            store.calls.load(Ordering::Relaxed),
+            1,
+            "DB must not be called again after error was cached"
+        );
+    }
+
+    // ── handle_log_budget_warning ─────────────────────────────────────────
+
+    #[test]
+    fn log_budget_warning_positional_args() {
+        // The Python call site in default.py uses positional args:
+        //   __log_budget_warning__("tokens", value, "token budget low")
+        // This test verifies the positional path is wired correctly so a
+        // future arg-order change in the Rust handler does not silently
+        // produce garbled BudgetWarning events (the kwargs test in
+        // handle_emit_event_dispatches_budget_warning only covers kwargs).
+        let mut thread = crate::types::thread::Thread::new(
+            "goal",
+            crate::types::thread::ThreadType::Foreground,
+            crate::types::project::ProjectId::new(),
+            "user",
+            crate::types::thread::ThreadConfig::default(),
+        );
+        thread
+            .transition_to(crate::types::thread::ThreadState::Running, None)
+            .unwrap();
+
+        let args = vec![
+            MontyObject::String("tokens".into()),
+            MontyObject::Int(-42),
+            MontyObject::String("token budget low".into()),
+        ];
+        let kwargs: Vec<(MontyObject, MontyObject)> = vec![];
+        handle_log_budget_warning(&args, &kwargs, &mut thread, None);
+
+        let warned = thread.events.iter().any(|e| {
+            matches!(
+                &e.kind,
+                EventKind::BudgetWarning { field, value, message }
+                    if field == "tokens" && *value == -42 && message == "token budget low"
+            )
+        });
+        assert!(
+            warned,
+            "positional-args path of handle_log_budget_warning must emit a BudgetWarning event \
+             with the correct field, value, and message"
+        );
     }
 }

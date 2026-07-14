@@ -534,6 +534,11 @@ def _apply_rule(messages, rule, budget_tokens):
     return messages
 
 
+# NOTE: This function is named `_reduce_prompt` (underscore prefix) in this
+# Monty-sandboxed production file. The CPython reference implementation in
+# `segment_reduction.py` names it `reduce_prompt` (no prefix). The logic is
+# identical; the underscore signals "internal to this module" in the Monty
+# context where there is no real import system.
 def _reduce_prompt(messages, rules, budget_tokens):
     """Apply reduction rules in order until the prompt fits the budget.
 
@@ -1137,10 +1142,13 @@ def run_loop(context, goal, actions, state, config):
             # Mirror into state so `ensure_working_messages` picks up the
             # reduced list when it runs after the enforcement step.
             state["working_messages"] = working_messages
-            if estimate_context_tokens(working_messages) > prompt_budget:
+            # Compute once and reuse: the post-reduction check and the event
+            # kwarg both read the same (now-reduced) message list.
+            post_tokens = estimate_context_tokens(working_messages)
+            if post_tokens > prompt_budget:
                 __emit_event__(
                     "prompt_over_budget",
-                    estimated_tokens=estimate_context_tokens(working_messages),
+                    estimated_tokens=post_tokens,
                     budget_tokens=prompt_budget,
                 )
 

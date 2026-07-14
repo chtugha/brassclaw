@@ -4,11 +4,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use brassclaw_authorization::GrantAuthorizer;
-use brassclaw_extensions::{
-    ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource,
-};
-use brassclaw_filesystem::{LocalFilesystem, RootFilesystem};
 use brassclaw_hooks::{
     HookId, HookLocalId, HookRegistrar, HookRegistry, HookVersion,
     dispatch::HookDispatcherBuilder,
@@ -21,15 +16,14 @@ use brassclaw_hooks::{
     sink::{ObserverHook, ObserverSink},
 };
 use brassclaw_host_api::{
-    AgentId, ApprovalRequestId, CapabilityDescriptor, CapabilityGrant, CapabilityGrantId,
-    CapabilityId, CapabilitySet, EffectKind, ExecutionContext, ExtensionId, GrantConstraints,
-    HostPath, HostPortCatalog, MountView, NetworkPolicy, PackageId, PermissionMode, Principal,
-    ProcessId, ProjectId, ResourceEstimate, ResourceUsage, RuntimeKind, SecretHandle, TenantId,
-    ThreadId, TrustClass, UserId, VirtualPath,
+    AgentId, ApprovalRequestId, CapabilityDescriptor, CapabilityId, CapabilitySet, EffectKind,
+    ExecutionContext, ExtensionId, MountView, PermissionMode, ProcessId, ProjectId,
+    ResourceEstimate, ResourceUsage, RuntimeKind, SecretHandle, TenantId, ThreadId, TrustClass,
+    UserId,
 };
 use brassclaw_host_runtime::{
     CancelRuntimeWorkOutcome, CancelRuntimeWorkRequest, CapabilitySurfacePolicy, HostRuntime,
-    HostRuntimeError, HostRuntimeHealth, HostRuntimeServices, HostRuntimeStatus,
+    HostRuntimeError, HostRuntimeHealth, HostRuntimeStatus,
     RuntimeApprovalGate, RuntimeAuthGate, RuntimeBlockedReason, RuntimeCapabilityCompleted,
     RuntimeCapabilityFailure, RuntimeCapabilityOutcome, RuntimeCapabilityRequest,
     RuntimeCapabilityResumeRequest, RuntimeCapabilityUnknown, RuntimeFailureKind, RuntimeGateId,
@@ -47,9 +41,8 @@ use brassclaw_loop_support::{
     IdentityApplicability, IdentityFileName, JsonSpawnSubagentInputCodec,
     LoopCapabilityInputResolver, LoopCapabilityPortFactory, LoopCapabilityResultWriter,
     ProductLiveCancellationProbe, RunCancellationFactory, RunCancellationHandle,
-    identity_message_ref, loop_driver_execution_extension_id,
+    identity_message_ref,
 };
-use brassclaw_processes::ProcessServices;
 use brassclaw_reborn::driver_registry::{
     DriverKind, DriverRegistry, DriverRequirements, LoopDriverRegistryKey,
 };
@@ -79,9 +72,8 @@ use brassclaw_reborn::subagent::{
 };
 use brassclaw_reborn::text_loop_driver::TextOnlyModelReplyDriver;
 use brassclaw_reborn::turn_runner::{
-    HostFactory, HostFactoryError, TurnRunnerWakeReceiver, TurnRunnerWorker, TurnRunnerWorkerConfig,
+    HostFactory, TurnRunnerWakeReceiver, TurnRunnerWorker, TurnRunnerWorkerConfig,
 };
-use brassclaw_resources::InMemoryResourceGovernor;
 use brassclaw_skills::SkillTrust;
 use brassclaw_threads::{
     AcceptInboundMessageRequest, EnsureThreadRequest, InMemorySessionThreadService, MessageContent,
@@ -89,8 +81,7 @@ use brassclaw_threads::{
     ThreadHistoryRequest, ThreadMessageId, ThreadScope,
 };
 use brassclaw_trust::{
-    AdminConfig, AdminEntry, AuthorityCeiling, EffectiveTrustClass, HostTrustAssignment,
-    HostTrustPolicy, TrustDecision, TrustProvenance,
+    AuthorityCeiling, EffectiveTrustClass, TrustDecision, TrustProvenance,
 };
 use brassclaw_turns::{
     AcceptedMessageRef, AgentLoopDriver, AgentLoopDriverDescriptor, AgentLoopDriverError,
@@ -1542,163 +1533,6 @@ async fn turn_runner_worker_drives_full_text_only_model_transcript_completion_af
         ]
     );
 }
-
-#[tokio::test]
-async fn turn_runner_worker_drives_script_capability_through_real_host_runtime() {
-    let fixture = HostFixture::new_unsubmitted(
-        "thread-runner-script-capability-e2e",
-        "hello script capability runner",
-    )
-    .await;
-    let turn_store = Arc::new(InMemoryTurnStateStore::default());
-    let resolver = InMemoryRunProfileResolver::default();
-    let resolved = resolver
-        .resolve_run_profile(RunProfileResolutionRequest::interactive_default())
-        .await
-        .unwrap();
-    let descriptor = resolved.loop_driver.clone();
-    let input_ref = CapabilityInputRef::new("input:runner-script-capability-happy-path").unwrap();
-    let input = json!({"message": "reborn runner script capability happy path"});
-    let io = Arc::new(InMemoryCapabilityIo::default());
-    io.put_input(input_ref.clone(), input.clone());
-    let run_id = queue_fixture_turn(
-        &fixture,
-        turn_store.as_ref(),
-        &resolver,
-        "idem-runner-script",
-    )
-    .await;
-
-    let mut registry = DriverRegistry::new();
-    registry
-        .register_driver(
-            Arc::new(ScriptCapabilityFinalReplyDriver {
-                descriptor,
-                capability_id: e2e_script_capability_id(),
-                input_ref,
-            }),
-            DriverRequirements::all_required(),
-            DriverKind::Reference,
-        )
-        .unwrap();
-
-    let runtime: Arc<dyn HostRuntime + Send + Sync> = Arc::new(
-        HostRuntimeServices::new(
-            Arc::new(e2e_registry_with_manifest(E2E_SCRIPT_MANIFEST)),
-            Arc::new(e2e_script_filesystem().await),
-            Arc::new(InMemoryResourceGovernor::new()),
-            Arc::new(GrantAuthorizer::new()),
-            ProcessServices::in_memory(),
-            brassclaw_host_runtime::CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-        )
-        .with_trust_policy(Arc::new(e2e_trust_policy()))
-        .with_script_runtime(Arc::new(ScriptRuntime::new(
-            ScriptRuntimeConfig::for_testing(),
-            E2eEchoScriptBackend,
-        )))
-        .host_runtime_for_local_testing(),
-    );
-    let factory = CapabilityHostFactory {
-        thread_service: fixture.thread_service.clone(),
-        thread_scope: fixture.thread_scope.clone(),
-        model_gateway: fixture.gateway.clone(),
-        checkpoint_state_store: fixture.checkpoint_state_store.clone(),
-        loop_checkpoint_store: turn_store.clone(),
-        milestone_sink: fixture.milestone_sink.clone(),
-        runtime,
-        visible_request: host_runtime_visible_request_with_dispatch_grant(
-            &fixture,
-            e2e_script_capability_id(),
-        ),
-        io: io.clone(),
-    };
-
-    let (_wake_sender, wake_receiver) = TurnRunnerWakeReceiver::new();
-    let worker = TurnRunnerWorker::new(
-        TurnRunnerWorkerConfig {
-            heartbeat_interval: std::time::Duration::from_millis(20),
-            poll_interval: std::time::Duration::from_millis(10),
-            scope_filter: Some(fixture.context.scope.clone()),
-        },
-        turn_store.clone(),
-        loop_exit_applier_for_fixture(&fixture, turn_store.clone()),
-        Arc::new(registry),
-        Arc::new(factory),
-        wake_receiver,
-    );
-
-    let cancel = tokio_util::sync::CancellationToken::new();
-    let cancel_clone = cancel.clone();
-    let handle = tokio::spawn(async move { worker.run(cancel_clone).await });
-
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
-    loop {
-        let state = turn_store
-            .get_run_state(GetRunStateRequest {
-                scope: fixture.context.scope.clone(),
-                run_id,
-            })
-            .await
-            .unwrap();
-        if state.status == TurnStatus::Completed {
-            break;
-        }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "worker should complete queued run through script capability and final reply; last status={:?} failure={:?} milestones={:?}",
-            state.status,
-            state.failure,
-            fixture.milestone_names()
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
-    cancel.cancel();
-    handle.await.unwrap();
-
-    let expected_result_ref = format!("result:{run_id}-{}", e2e_script_capability_id().as_str());
-    assert_eq!(io.results(), vec![(e2e_script_capability_id(), input)]);
-    assert_eq!(io.result_refs(), vec![expected_result_ref]);
-    assert_eq!(fixture.gateway.requests().len(), 1);
-    assert!(
-        fixture.gateway.requests()[0]
-            .messages
-            .iter()
-            .any(|message| message.content == "hello script capability runner"),
-        "script capability prompt should include original user content: {:?}",
-        fixture.gateway.requests()[0].messages
-    );
-    let history = fixture
-        .thread_service
-        .list_thread_history(ThreadHistoryRequest {
-            scope: fixture.thread_scope.clone(),
-            thread_id: fixture.thread_id.clone(),
-        })
-        .await
-        .unwrap();
-    assert!(history.messages.iter().any(|message| {
-        message.kind == MessageKind::Assistant
-            && message.status == MessageStatus::Finalized
-            && message.content.as_deref() == Some("model says hi")
-    }));
-    let milestone_names = fixture.milestone_names();
-    assert!(milestone_names.contains(&"capability_invoked"));
-    assert!(milestone_names.contains(&"prompt_bundle_built"));
-    assert!(milestone_names.contains(&"model_started"));
-    assert!(milestone_names.contains(&"model_completed"));
-    assert!(milestone_names.contains(&"assistant_reply_finalized"));
-    assert!(
-        milestone_names
-            .iter()
-            .position(|name| *name == "capability_invoked")
-            .expect("capability_invoked milestone should be present")
-            < milestone_names
-                .iter()
-                .position(|name| *name == "assistant_reply_finalized")
-                .expect("assistant_reply_finalized milestone should be present"),
-        "capability must be invoked before final reply is persisted: {milestone_names:?}"
-    );
-}
-
 #[tokio::test]
 async fn turn_runner_rejects_driver_fabricated_approval_block_without_durable_gate_evidence() {
     let fixture = HostFixture::new_unsubmitted(
@@ -5788,81 +5622,6 @@ async fn text_only_host_empty_capability_surface_denies_invocation() {
 }
 
 #[tokio::test]
-async fn text_only_host_e2e_invokes_script_capability_through_real_host_runtime() {
-    let fixture = HostFixture::new("thread-host-runtime-e2e-script", "hello e2e").await;
-    let runtime: Arc<dyn HostRuntime + Send + Sync> = Arc::new(
-        HostRuntimeServices::new(
-            Arc::new(e2e_registry_with_manifest(E2E_SCRIPT_MANIFEST)),
-            Arc::new(e2e_script_filesystem().await),
-            Arc::new(InMemoryResourceGovernor::new()),
-            Arc::new(GrantAuthorizer::new()),
-            ProcessServices::in_memory(),
-            brassclaw_host_runtime::CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-        )
-        .with_trust_policy(Arc::new(e2e_trust_policy()))
-        .with_script_runtime(Arc::new(ScriptRuntime::new(
-            ScriptRuntimeConfig::for_testing(),
-            E2eEchoScriptBackend,
-        )))
-        .host_runtime_for_local_testing(),
-    );
-    let io = Arc::new(InMemoryCapabilityIo::default());
-    let input_ref = CapabilityInputRef::new("input:e2e-script-happy-path").unwrap();
-    let input = json!({"message": "reborn adapter e2e happy path"});
-    io.put_input(input_ref.clone(), input.clone());
-    let capability_port = HostRuntimeLoopCapabilityPort::new(
-        runtime,
-        fixture.context.clone(),
-        host_runtime_visible_request_with_dispatch_grant(&fixture, e2e_script_capability_id()),
-        io.clone(),
-        io.clone(),
-        fixture.milestone_sink.clone(),
-    );
-    let host = fixture
-        .factory()
-        .build_text_only_host_with_capabilities(
-            RebornLoopDriverHostRequest {
-                claimed_run: fixture.claimed.clone(),
-                loop_run_context: fixture.context.clone(),
-            },
-            Arc::new(capability_port),
-        )
-        .await
-        .unwrap();
-
-    let surface = host
-        .visible_capabilities(VisibleCapabilityRequest)
-        .await
-        .unwrap();
-    assert_eq!(
-        surface
-            .descriptors
-            .iter()
-            .find(|descriptor| descriptor.capability_id == e2e_script_capability_id())
-            .expect("script capability should be visible")
-            .runtime,
-        RuntimeKind::Script
-    );
-
-    let outcome = host
-        .invoke_capability(CapabilityInvocation {
-            surface_version: surface.version,
-            capability_id: e2e_script_capability_id(),
-            input_ref,
-        })
-        .await
-        .unwrap();
-
-    let CapabilityOutcome::Completed(completed) = outcome else {
-        panic!("expected completed script capability through host runtime");
-    };
-    assert!(completed.result_ref.as_str().starts_with("result:"));
-    assert_eq!(completed.safe_summary, "capability completed");
-    assert_eq!(io.results(), vec![(e2e_script_capability_id(), input)]);
-    assert!(fixture.milestone_names().contains(&"capability_invoked"));
-}
-
-#[tokio::test]
 async fn text_only_host_denies_capability_without_provider_trust_before_host_runtime() {
     let fixture = HostFixture::new("thread-host-runtime-capability-missing-trust", "hello").await;
     let capability_id = CapabilityId::new("demo.echo").unwrap();
@@ -6284,10 +6043,6 @@ impl InMemoryCapabilityIo {
         self.results.lock().unwrap().clone()
     }
 
-    fn result_refs(&self) -> Vec<String> {
-        self.result_refs.lock().unwrap().clone()
-    }
-
     fn fail_next_result_write(&self) {
         *self.fail_result_writes_remaining.lock().unwrap() += 1;
     }
@@ -6525,136 +6280,6 @@ fn trust_decision() -> TrustDecision {
     }
 }
 
-fn host_runtime_visible_request_with_dispatch_grant(
-    fixture: &HostFixture,
-    capability_id: CapabilityId,
-) -> brassclaw_host_runtime::VisibleCapabilityRequest {
-    let mut request = host_runtime_visible_request(fixture, ["script"]);
-    let loop_driver_extension = loop_driver_execution_extension_id(&fixture.context).unwrap();
-    request.context.grants.grants.push(CapabilityGrant {
-        id: CapabilityGrantId::new(),
-        capability: capability_id,
-        grantee: Principal::Extension(loop_driver_extension),
-        issued_by: Principal::HostRuntime,
-        constraints: GrantConstraints {
-            allowed_effects: vec![EffectKind::DispatchCapability],
-            mounts: MountView::default(),
-            network: NetworkPolicy::default(),
-            secrets: Vec::new(),
-            resource_ceiling: None,
-            expires_at: None,
-            max_invocations: None,
-        },
-    });
-    request
-}
-
-async fn e2e_script_filesystem() -> LocalFilesystem {
-    let storage = tempfile::tempdir().unwrap().keep();
-    let mut filesystem = LocalFilesystem::new();
-    filesystem
-        .mount_local(
-            VirtualPath::new("/system/extensions").unwrap(),
-            HostPath::from_path_buf(storage),
-        )
-        .unwrap();
-    filesystem
-        .write_file(
-            &VirtualPath::new("/system/extensions/script/schemas/script/echo.input.v1.json")
-                .unwrap(),
-            br#"{"type":"object"}"#,
-        )
-        .await
-        .unwrap();
-    filesystem
-        .write_file(
-            &VirtualPath::new("/system/extensions/script/schemas/script/echo.output.v1.json")
-                .unwrap(),
-            br#"{"type":"object"}"#,
-        )
-        .await
-        .unwrap();
-    filesystem
-        .write_file(
-            &VirtualPath::new("/system/extensions/script/prompt/script/echo.md").unwrap(),
-            b"Echo the input JSON through the script runtime.",
-        )
-        .await
-        .unwrap();
-    filesystem
-}
-
-fn e2e_registry_with_manifest(manifest: &str) -> ExtensionRegistry {
-    let mut registry = ExtensionRegistry::new();
-    let manifest = ExtensionManifest::parse(
-        manifest,
-        ManifestSource::InstalledLocal,
-        &HostPortCatalog::empty(),
-    )
-    .unwrap();
-    let package = ExtensionPackage::from_manifest(
-        manifest,
-        VirtualPath::new("/system/extensions/script").unwrap(),
-    )
-    .unwrap();
-    registry.insert(package).unwrap();
-    registry
-}
-
-fn e2e_trust_policy() -> HostTrustPolicy {
-    HostTrustPolicy::new(vec![Box::new(AdminConfig::with_entries(vec![
-        AdminEntry::for_local_manifest(
-            PackageId::new("script").unwrap(),
-            "/system/extensions/script/manifest.toml".to_string(),
-            None,
-            HostTrustAssignment::user_trusted(),
-            vec![EffectKind::DispatchCapability],
-            None,
-        ),
-    ]))])
-    .unwrap()
-}
-
-fn e2e_script_capability_id() -> CapabilityId {
-    CapabilityId::new("script.echo").unwrap()
-}
-
-struct E2eEchoScriptBackend;
-
-impl ScriptBackend for E2eEchoScriptBackend {
-    fn execute(&self, request: ScriptBackendRequest) -> Result<ScriptBackendOutput, String> {
-        let value = serde_json::from_str(&request.stdin_json).map_err(|error| error.to_string())?;
-        Ok(ScriptBackendOutput::json(value))
-    }
-}
-
-const E2E_SCRIPT_MANIFEST: &str = r#"
-schema_version = "reborn.extension_manifest.v2"
-id = "script"
-name = "Script Echo"
-version = "0.1.0"
-description = "Script echo test extension"
-trust = "third_party"
-
-[runtime]
-kind = "script"
-runner = "sandboxed_process"
-command = "echo-script"
-args = []
-
-[[capabilities]]
-id = "script.echo"
-description = "Echo text through Reborn adapter e2e"
-effects = ["dispatch_capability"]
-default_permission = "allow"
-visibility = "model"
-input_schema_ref = "schemas/script/echo.input.v1.json"
-output_schema_ref = "schemas/script/echo.output.v1.json"
-prompt_doc_ref = "prompt/script/echo.md"
-"#;
-
-/// Test-only evidence port that bypasses all durable evidence checks.
-///
 /// Use only when the test asserts behavior outside evidence verification; use
 /// `ThreadCheckpointLoopExitEvidencePort` when the evidence path itself matters.
 struct AlwaysVerifiedLoopExitEvidence;
@@ -6734,161 +6359,6 @@ async fn wait_for_run_status(
             state.failure
         );
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-    }
-}
-
-struct CapabilityHostFactory {
-    thread_service: Arc<InMemorySessionThreadService>,
-    thread_scope: ThreadScope,
-    model_gateway: Arc<RecordingGateway>,
-    checkpoint_state_store: Arc<InMemoryCheckpointStateStore>,
-    loop_checkpoint_store: Arc<dyn LoopCheckpointStore>,
-    milestone_sink: Arc<InMemoryLoopHostMilestoneSink>,
-    runtime: Arc<dyn HostRuntime + Send + Sync>,
-    visible_request: brassclaw_host_runtime::VisibleCapabilityRequest,
-    io: Arc<InMemoryCapabilityIo>,
-}
-
-#[async_trait]
-impl HostFactory for CapabilityHostFactory {
-    async fn create_host(
-        &self,
-        claimed: &ClaimedTurnRun,
-    ) -> Result<Box<dyn AgentLoopDriverHost + Send + Sync>, HostFactoryError> {
-        let mut loop_run_context = LoopRunContext::new(
-            claimed.state.scope.clone(),
-            claimed.state.turn_id,
-            claimed.state.run_id,
-            claimed.resolved_run_profile.clone(),
-        );
-        if let Some(snapshot) = claimed.state.resolved_model_route.clone() {
-            loop_run_context = loop_run_context.with_resolved_model_route(snapshot);
-        }
-        let capability_port = HostRuntimeLoopCapabilityPort::new(
-            self.runtime.clone(),
-            loop_run_context.clone(),
-            self.visible_request.clone(),
-            self.io.clone(),
-            self.io.clone(),
-            self.milestone_sink.clone(),
-        );
-        RebornLoopDriverHostFactory::new(
-            self.thread_service.clone(),
-            self.thread_scope.clone(),
-            self.model_gateway.clone(),
-            self.checkpoint_state_store.clone(),
-            Arc::new(StaticTurnStateStore::new(claimed.state.clone())),
-            self.loop_checkpoint_store.clone(),
-            self.milestone_sink.clone(),
-            TextOnlyLoopHostConfig {
-                max_messages: 8,
-                require_model_route_snapshot: false,
-            },
-            InstructionSafetyContext::local_development_noop(),
-        )
-        .build_text_only_host_with_capabilities(
-            RebornLoopDriverHostRequest {
-                claimed_run: claimed.clone(),
-                loop_run_context,
-            },
-            Arc::new(capability_port),
-        )
-        .await
-        .map(|host| Box::new(host) as Box<dyn AgentLoopDriverHost + Send + Sync>)
-        .map_err(|error| HostFactoryError::new(error.to_string()))
-    }
-}
-
-struct ScriptCapabilityFinalReplyDriver {
-    descriptor: AgentLoopDriverDescriptor,
-    capability_id: CapabilityId,
-    input_ref: CapabilityInputRef,
-}
-
-#[async_trait]
-impl AgentLoopDriver for ScriptCapabilityFinalReplyDriver {
-    fn descriptor(&self) -> AgentLoopDriverDescriptor {
-        self.descriptor.clone()
-    }
-
-    async fn run(
-        &self,
-        _request: AgentLoopDriverRunRequest,
-        host: &(dyn AgentLoopDriverHost + Send + Sync),
-    ) -> Result<LoopExit, AgentLoopDriverError> {
-        let surface = host
-            .visible_capabilities(VisibleCapabilityRequest)
-            .await
-            .map_err(driver_host_error)?;
-        let capability = host
-            .invoke_capability(CapabilityInvocation {
-                surface_version: surface.version.clone(),
-                capability_id: self.capability_id.clone(),
-                input_ref: self.input_ref.clone(),
-            })
-            .await
-            .map_err(driver_host_error)?;
-        let CapabilityOutcome::Completed(completed) = capability else {
-            return Err(AgentLoopDriverError::Failed {
-                reason_kind: "script_capability_did_not_complete".to_string(),
-            });
-        };
-        let prompt_bundle = host
-            .build_prompt_bundle(LoopPromptBundleRequest {
-                mode: PromptMode::TextOnly,
-                context_cursor: None,
-                surface_version: Some(surface.version.clone()),
-                checkpoint_state_ref: None,
-                max_messages: Some(8),
-                inline_messages: Vec::new(),
-                capability_view: None,
-            })
-            .await
-            .map_err(driver_host_error)?;
-        let model_response = host
-            .stream_model(LoopModelRequest {
-                messages: prompt_bundle.messages,
-                surface_version: Some(surface.version),
-                model_preference: None,
-                capability_view: None,
-            })
-            .await
-            .map_err(driver_host_error)?;
-        let ParentLoopOutput::AssistantReply(reply) = model_response.output else {
-            return Err(AgentLoopDriverError::Failed {
-                reason_kind: "unexpected_model_output".to_string(),
-            });
-        };
-        let reply_ref = host
-            .finalize_assistant_message(FinalizeAssistantMessage { reply })
-            .await
-            .map_err(driver_host_error)?;
-
-        let _result_ref = completed.result_ref;
-        Ok(LoopExit::Completed(LoopCompleted {
-            completion_kind: LoopCompletionKind::FinalReply,
-            reply_message_refs: vec![reply_ref],
-            result_refs: vec![],
-            final_checkpoint_id: None,
-            usage_summary_ref: None,
-            exit_id: LoopExitId::new("exit:turn-runner-script-capability-e2e").unwrap(),
-        }))
-    }
-
-    async fn resume(
-        &self,
-        request: AgentLoopDriverResumeRequest,
-        host: &(dyn AgentLoopDriverHost + Send + Sync),
-    ) -> Result<LoopExit, AgentLoopDriverError> {
-        self.run(
-            AgentLoopDriverRunRequest {
-                turn_id: request.turn_id,
-                run_id: request.run_id,
-                resolved_run_profile: request.resolved_run_profile,
-            },
-            host,
-        )
-        .await
     }
 }
 

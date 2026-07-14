@@ -147,6 +147,11 @@ def _apply_rule(messages: list[dict[str, Any]], rule: ReductionRule, budget: int
     return messages
 
 
+# NOTE: This function is named `reduce_prompt` (no prefix) in this CPython
+# reference implementation. The production Monty orchestrator (`default.py`)
+# names it `_reduce_prompt` (underscore prefix) to signal "internal to the
+# module" in an environment without a real import system. The logic is
+# otherwise identical.
 def reduce_prompt(
     messages: list[dict[str, Any]],
     rules: Sequence[ReductionRule],
