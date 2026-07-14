@@ -23,6 +23,7 @@ use crate::{
     ProcessSandboxBackend, ProcessSandboxError, ProcessSandboxErrorKind, ProcessSandboxPlanError,
     SandboxCommandPlan, SandboxPhaseOutput, SandboxProcessOutput, SandboxProcessRequest,
     SandboxProcessResult, ValidatedSandboxProcessPlan,
+    image::validate_reference as validate_docker_image_reference,
     validation::{validate_env_has_no_raw_sensitive_values, validate_env_name},
 };
 use brassclaw_processes::ProcessCancellationToken;
@@ -50,19 +51,45 @@ pub struct DockerProcessSandboxConfig {
 
 impl DockerProcessSandboxConfig {
     /// Builds a Docker config with the default binary and sandbox image.
+    ///
+    /// The image reference is validated against the canonical
+    /// [`validate_docker_image_reference`] rules so callers cannot accidentally
+    /// build a backend that would pass an attacker-controlled string to
+    /// `docker run`.
     pub fn new(
         workspace_host_path: impl Into<PathBuf>,
         tools_host_path: impl Into<PathBuf>,
         cache_host_path: impl Into<PathBuf>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, ProcessSandboxPlanError> {
+        Self::with_image(
+            DEFAULT_PROCESS_SANDBOX_IMAGE,
+            workspace_host_path,
+            tools_host_path,
+            cache_host_path,
+        )
+    }
+
+    /// Builds a Docker config with a custom image reference. The reference is
+    /// validated via [`validate_docker_image_reference`]; an invalid reference
+    /// returns [`ProcessSandboxPlanError::InvalidDockerImageReference`] without
+    /// constructing the backend.
+    pub fn with_image(
+        image: &str,
+        workspace_host_path: impl Into<PathBuf>,
+        tools_host_path: impl Into<PathBuf>,
+        cache_host_path: impl Into<PathBuf>,
+    ) -> Result<Self, ProcessSandboxPlanError> {
+        validate_docker_image_reference(image).map_err(|reason| {
+            ProcessSandboxPlanError::InvalidDockerImageReference { reason }
+        })?;
+        Ok(Self {
             docker_bin: "docker".to_string(),
-            image: DEFAULT_PROCESS_SANDBOX_IMAGE.to_string(),
+            image: image.to_string(),
             workspace_host_path: workspace_host_path.into(),
             tools_host_path: tools_host_path.into(),
             cache_host_path: cache_host_path.into(),
             broker: None,
-        }
+        })
     }
 }
 

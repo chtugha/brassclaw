@@ -135,8 +135,8 @@ where
         if config.requires_runtime(RuntimeKind::Script) {
             self.push_missing(
                 &mut issues,
-                ProductionWiringComponent::ScriptRuntime,
-                self.script_runtime.is_some(),
+                ProductionWiringComponent::McpRuntime,
+                self.mcp_runtime.is_some(),
             );
         }
         if config.requires_runtime(RuntimeKind::Mcp) {
@@ -265,11 +265,6 @@ where
             &mut issues,
             ProductionWiringComponent::RuntimeHttpEgress,
             self.component_types.runtime_http_egress,
-        );
-        self.push_local_only(
-            &mut issues,
-            ProductionWiringComponent::ScriptRuntime,
-            self.component_types.script_runtime,
         );
         self.push_local_only(
             &mut issues,

@@ -111,7 +111,6 @@ pub use sandbox_process::{
     RebornScopedSandboxCommandTransport,
 };
 pub use services::{
-    DockerScriptBackend,
     HostRuntimeServices,
     ProductAuthCredentialStageError,
     ProductAuthProviderRuntimePorts,
@@ -122,21 +121,6 @@ pub use services::{
     ProductionWiringIssueKind,
     ProductionWiringReport,
     RegisteredRuntimeHealth,
-    ScriptBackend,
-    ScriptBackendOutput,
-    ScriptBackendRequest,
-    ScriptCapabilityResult,
-    ScriptError,
-    ScriptExecutionRequest,
-    ScriptExecutionResult,
-    ScriptExecutor,
-    ScriptHostHttpError,
-    ScriptHostHttpRequest,
-    ScriptHostHttpResponse,
-    ScriptInvocation,
-    ScriptRuntime,
-    ScriptRuntimeConfig,
-    ScriptRuntimeHttpAdapter,
 };
 pub use surface::{CapabilitySurfacePolicy, VisibleCapability, VisibleCapabilityAccess};
 pub use turn_scheduler::{

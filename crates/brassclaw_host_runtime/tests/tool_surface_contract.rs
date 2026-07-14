@@ -1031,13 +1031,13 @@ async fn visible_surface_version_is_order_insensitive_for_equivalent_policy() {
     )])));
 
     let policy_a = CapabilitySurfacePolicy {
-        allowed_runtimes: vec![RuntimeKind::FirstParty, RuntimeKind::Script],
+        allowed_runtimes: vec![RuntimeKind::FirstParty, RuntimeKind::Mcp],
         allowed_effects: vec![EffectKind::DispatchCapability, EffectKind::Network],
         include_requires_approval: true,
         max_capabilities: None,
     };
     let policy_b = CapabilitySurfacePolicy {
-        allowed_runtimes: vec![RuntimeKind::Script, RuntimeKind::FirstParty],
+        allowed_runtimes: vec![RuntimeKind::Mcp, RuntimeKind::FirstParty],
         allowed_effects: vec![EffectKind::Network, EffectKind::DispatchCapability],
         include_requires_approval: true,
         max_capabilities: None,

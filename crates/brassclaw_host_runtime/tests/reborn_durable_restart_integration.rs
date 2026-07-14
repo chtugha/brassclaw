@@ -35,9 +35,7 @@ use brassclaw_run_state::{
     ApprovalRequestStore, FilesystemApprovalRequestStore, FilesystemRunStateStore, RunStateStore,
     RunStatus,
 };
-use brassclaw_host_runtime::{
-    ScriptBackend, ScriptBackendOutput, ScriptBackendRequest, ScriptRuntime, ScriptRuntimeConfig,
-};
+
 use brassclaw_trust::{
     AdminConfig, AdminEntry, AuthorityCeiling, EffectiveTrustClass, HostTrustAssignment,
     HostTrustPolicy, TrustDecision, TrustProvenance,
@@ -390,10 +388,6 @@ fn base_services(
     .with_event_sink(Arc::new(DurableEventSink::new(Arc::clone(
         &event_stores.events,
     ))))
-    .with_script_runtime(Arc::new(ScriptRuntime::new(
-        ScriptRuntimeConfig::for_testing(),
-        EchoScriptBackend,
-    )))
 }
 
 async fn jsonl_event_stores(event_root: &Path) -> RebornEventStores {
@@ -639,15 +633,6 @@ impl ProcessExecutor for SuccessProcessExecutor {
     }
 }
 
-struct EchoScriptBackend;
-
-impl ScriptBackend for EchoScriptBackend {
-    fn execute(&self, request: ScriptBackendRequest) -> Result<ScriptBackendOutput, String> {
-        let value = serde_json::from_str(&request.stdin_json).map_err(|error| error.to_string())?;
-        Ok(ScriptBackendOutput::json(value))
-    }
-}
-
 fn registry_with_manifest(manifest: &str) -> ExtensionRegistry {
     let manifest = parse_manifest(manifest);
     let root = VirtualPath::new(format!("/system/extensions/{}", manifest.id.as_str())).unwrap();
@@ -680,7 +665,7 @@ fn execution_context_without_grants_for_scope(scope: ResourceScope) -> Execution
         mission_id: scope.mission_id.clone(),
         thread_id: scope.thread_id.clone(),
         extension_id: ExtensionId::new("caller").unwrap(),
-        runtime: RuntimeKind::Script,
+        runtime: RuntimeKind::Mcp,
         trust: TrustClass::UserTrusted,
         grants: CapabilitySet::default(),
         mounts: MountView::default(),
@@ -706,7 +691,7 @@ fn execution_context_with_dispatch_grant_for_scope(
         mission_id: scope.mission_id.clone(),
         thread_id: scope.thread_id.clone(),
         extension_id: ExtensionId::new("caller").unwrap(),
-        runtime: RuntimeKind::Script,
+        runtime: RuntimeKind::Mcp,
         trust: TrustClass::UserTrusted,
         grants: capability_grants(capability),
         mounts: MountView::default(),
@@ -748,7 +733,7 @@ fn process_start(
         scope,
         extension_id: ExtensionId::new("script").unwrap(),
         capability_id: script_capability_id(),
-        runtime: RuntimeKind::Script,
+        runtime: RuntimeKind::Mcp,
         grants: CapabilitySet::default(),
         mounts: MountView::default(),
         estimated_resources: ResourceEstimate::default(),

@@ -400,6 +400,8 @@ pub enum ProcessSandboxPlanError {
     MissingPlaceholderEnv { env: String },
     #[error("placeholder env {env} must equal the approved placeholder value")]
     InvalidPlaceholderEnv { env: String },
+    #[error("invalid docker image reference: {reason}")]
+    InvalidDockerImageReference { reason: String },
 }
 
 fn validate_plan(plan: &SandboxProcessPlan) -> Result<(), ProcessSandboxPlanError> {

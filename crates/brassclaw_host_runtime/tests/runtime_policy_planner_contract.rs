@@ -51,7 +51,7 @@ fn descriptor_with_runtime(
 }
 
 fn descriptor(id: &str, effects: Vec<EffectKind>) -> CapabilityDescriptor {
-    descriptor_with_runtime(id, RuntimeKind::Script, effects)
+    descriptor_with_runtime(id, RuntimeKind::Mcp, effects)
 }
 
 fn builtin_shell_descriptor() -> CapabilityDescriptor {

@@ -88,13 +88,6 @@ mod builder;
 mod production_services;
 mod production_wiring;
 mod runtime_adapters;
-mod script_runtime;
-pub use script_runtime::{
-    DockerScriptBackend, ScriptBackend, ScriptBackendOutput, ScriptBackendRequest,
-    ScriptCapabilityResult, ScriptError, ScriptExecutionRequest, ScriptExecutionResult,
-    ScriptExecutor, ScriptHostHttpError, ScriptHostHttpRequest, ScriptHostHttpResponse,
-    ScriptRuntimeHttpAdapter, ScriptInvocation, ScriptRuntime, ScriptRuntimeConfig,
-};
 
 use production_wiring::{
     ProductionComponentType, ProductionComponentTypes, ProductionImplementationReadiness,
@@ -105,8 +98,7 @@ pub use production_wiring::{
     ProductionWiringIssue, ProductionWiringIssueKind, ProductionWiringReport,
 };
 use runtime_adapters::{
-    FirstPartyRuntimeAdapter, McpRuntimeAdapter, ScriptRuntimeAdapter,
-    ServiceResolvedRuntimeAdapter,
+    FirstPartyRuntimeAdapter, McpRuntimeAdapter, ServiceResolvedRuntimeAdapter,
 };
 
 /// Concrete composition bundle for one Reborn host-runtime vertical slice.
@@ -153,7 +145,6 @@ where
     runtime_health: Option<Arc<dyn RuntimeBackendHealth>>,
     runtime_policy: Option<EffectiveRuntimePolicy>,
     process_sandbox_executor: Option<Arc<dyn ProcessExecutor>>,
-    script_runtime: Option<Arc<dyn ScriptExecutor>>,
     mcp_runtime: Option<Arc<dyn McpExecutor>>,
     first_party_runtime: Option<Arc<FirstPartyCapabilityRegistry>>,
     turn_state: Option<Arc<dyn TurnStateStore>>,
@@ -321,7 +312,6 @@ where
             runtime_health: None,
             runtime_policy: None,
             process_sandbox_executor: None,
-            script_runtime: None,
             mcp_runtime: None,
             first_party_runtime: None,
             turn_state: None,
@@ -347,7 +337,6 @@ where
                 runtime_http_egress_verified: false,
                 runtime_process_port: ProductionComponentType::of::<LocalHostProcessPort>(),
                 tenant_sandbox_process_port: None,
-                script_runtime: None,
                 mcp_runtime: None,
                 first_party_runtime: None,
                 turn_state: None,
@@ -389,15 +378,6 @@ where
         let invocation_services: Arc<dyn InvocationServicesResolver> =
             Arc::new(invocation_services_resolver);
 
-        if let Some(runtime) = &self.script_runtime {
-            dispatcher = dispatcher.with_runtime_adapter_arc(
-                RuntimeKind::Script,
-                Arc::new(ServiceResolvedRuntimeAdapter::new(
-                    Arc::new(ScriptRuntimeAdapter::from_executor(Arc::clone(runtime))),
-                    Arc::clone(&invocation_services),
-                )),
-            );
-        }
         if let Some(runtime) = &self.mcp_runtime {
             dispatcher = dispatcher.with_runtime_adapter_arc(
                 RuntimeKind::Mcp,
@@ -597,9 +577,6 @@ where
         let mut backends = Vec::new();
         if self.mcp_runtime.is_some() {
             backends.push(RuntimeKind::Mcp);
-        }
-        if self.script_runtime.is_some() {
-            backends.push(RuntimeKind::Script);
         }
         if self.first_party_runtime_covers_declared_capabilities() {
             backends.push(RuntimeKind::FirstParty);

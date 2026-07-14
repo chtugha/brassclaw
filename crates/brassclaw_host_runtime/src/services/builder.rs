@@ -17,7 +17,7 @@ use super::{
     ProductionWiringReport, RebornEventStoreConfig, RebornEventStoreError, RebornEventStores,
     RebornProfile, ResourceGovernor, RootFilesystem, RunProfileResolver, RunStateApprovalStore,
     RunStateStore, RuntimeBackendHealth, RuntimeCredentialAccountResolver, RuntimeHttpEgress,
-    RuntimeProcessPort, ScopedFilesystem, ScriptExecutor, SecretMode, SecretStore,
+    RuntimeProcessPort, ScopedFilesystem, SecretMode, SecretStore,
     SecurityAuditSink, SharedSecretStore, TenantSandboxProcessPort, TrustPolicy,
     TurnRunTransitionPort, TurnRunWakeNotifier, TurnStateStore, build_reborn_event_stores,
     production_wiring_report, set_runtime_http_egress, set_tool_call_http_egress,
@@ -71,7 +71,6 @@ where
             runtime_health,
             runtime_policy,
             process_sandbox_executor,
-            script_runtime,
             mcp_runtime,
             first_party_runtime,
             turn_state,
@@ -113,7 +112,6 @@ where
             runtime_health,
             runtime_policy,
             process_sandbox_executor,
-            script_runtime,
             mcp_runtime,
             first_party_runtime,
             turn_state,
@@ -176,7 +174,6 @@ where
             runtime_health,
             runtime_policy,
             process_sandbox_executor,
-            script_runtime,
             mcp_runtime,
             first_party_runtime,
             turn_state,
@@ -228,7 +225,6 @@ where
             runtime_health,
             runtime_policy,
             process_sandbox_executor,
-            script_runtime,
             mcp_runtime,
             first_party_runtime,
             turn_state,
@@ -840,15 +836,6 @@ where
         );
         let runtime_http_egress = Arc::new(service);
         Ok(self.with_host_http_egress_service(runtime_http_egress))
-    }
-
-    pub fn with_script_runtime<T>(mut self, runtime: Arc<T>) -> Self
-    where
-        T: ScriptExecutor + 'static,
-    {
-        self.component_types.script_runtime = Some(ProductionComponentType::of::<T>());
-        self.script_runtime = Some(runtime);
-        self
     }
 
     pub fn with_mcp_runtime<T>(mut self, runtime: Arc<T>) -> Self

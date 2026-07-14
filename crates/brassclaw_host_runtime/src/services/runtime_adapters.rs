@@ -8,8 +8,7 @@ use super::{
     InvocationServicesResolutionRequest, InvocationServicesResolver, McpError, McpExecutionRequest,
     McpExecutor, McpInvocation, PlannerError, ResourceGovernor, ResourceReservationId,
     ResourceUsage, RootFilesystem, RuntimeAdapter, RuntimeAdapterRequest, RuntimeAdapterResult,
-    RuntimeDispatchErrorKind, RuntimeKind, ScriptError, ScriptExecutionRequest, ScriptExecutor,
-    ScriptInvocation, plan_capability,
+    RuntimeDispatchErrorKind, RuntimeKind, plan_capability,
 };
 use crate::FirstPartyCapabilityError;
 
@@ -73,57 +72,6 @@ where
             })?;
 
         self.inner.dispatch_json(request).await
-    }
-}
-
-#[derive(Clone)]
-pub(super) struct ScriptRuntimeAdapter {
-    executor: Arc<dyn ScriptExecutor>,
-}
-
-impl ScriptRuntimeAdapter {
-    pub(super) fn from_executor(executor: Arc<dyn ScriptExecutor>) -> Self {
-        Self { executor }
-    }
-}
-
-#[async_trait]
-impl<F, G> RuntimeAdapter<F, G> for ScriptRuntimeAdapter
-where
-    F: RootFilesystem,
-    G: ResourceGovernor,
-{
-    async fn dispatch_json(
-        &self,
-        request: RuntimeAdapterRequest<'_, F, G>,
-    ) -> Result<RuntimeAdapterResult, DispatchError> {
-        let execution = self
-            .executor
-            .execute_extension_json(
-                request.governor,
-                ScriptExecutionRequest {
-                    package: request.package,
-                    capability_id: request.capability_id,
-                    scope: request.scope,
-                    estimate: request.estimate,
-                    mounts: request.mounts,
-                    resource_reservation: request.resource_reservation,
-                    invocation: ScriptInvocation {
-                        input: request.input,
-                    },
-                },
-            )
-            .map_err(|error| DispatchError::Script {
-                kind: script_error_kind(&error),
-            })?;
-
-        Ok(RuntimeAdapterResult {
-            output: execution.result.output,
-            display_preview: None,
-            usage: execution.result.usage,
-            receipt: execution.receipt,
-            output_bytes: execution.result.output_bytes,
-        })
     }
 }
 
@@ -504,24 +452,6 @@ fn planner_error_kind(error: &PlannerError) -> RuntimeDispatchErrorKind {
         PlannerError::SecretAccessRequiredButSecretModeIsDeny { .. } => {
             RuntimeDispatchErrorKind::SecretDenied
         }
-    }
-}
-
-fn script_error_kind(error: &ScriptError) -> RuntimeDispatchErrorKind {
-    match error {
-        ScriptError::Resource(_) => RuntimeDispatchErrorKind::Resource,
-        ScriptError::Backend { .. } => RuntimeDispatchErrorKind::Backend,
-        ScriptError::UnsupportedRunner { .. } => RuntimeDispatchErrorKind::UnsupportedRunner,
-        ScriptError::ExtensionRuntimeMismatch { .. } => {
-            RuntimeDispatchErrorKind::ExtensionRuntimeMismatch
-        }
-        ScriptError::CapabilityNotDeclared { .. } => RuntimeDispatchErrorKind::UndeclaredCapability,
-        ScriptError::DescriptorMismatch { .. } => RuntimeDispatchErrorKind::Manifest,
-        ScriptError::InvalidInvocation { .. } => RuntimeDispatchErrorKind::InputEncode,
-        ScriptError::ExitFailure { .. } => RuntimeDispatchErrorKind::ExitFailure,
-        ScriptError::OutputLimitExceeded { .. } => RuntimeDispatchErrorKind::OutputTooLarge,
-        ScriptError::Timeout { .. } => RuntimeDispatchErrorKind::Executor,
-        ScriptError::InvalidOutput { .. } => RuntimeDispatchErrorKind::OutputDecode,
     }
 }
 

@@ -9,12 +9,14 @@ mod approval;
 mod backend;
 mod broker;
 mod docker;
+mod image;
 mod plan;
 mod validation;
 
 pub use approval::{
     SandboxApprovalCredential, SandboxApprovalMount, SandboxProcessApprovalSummary,
 };
+pub use image::validate_reference as validate_docker_image_reference;
 pub use backend::{
     ProcessSandboxBackend, ProcessSandboxError, ProcessSandboxErrorKind, ProcessSandboxExecutor,
     SandboxPhaseOutput, SandboxProcessOutput, SandboxProcessRequest, SandboxProcessResult,

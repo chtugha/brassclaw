@@ -83,12 +83,12 @@ async fn extension_v2_lifecycle_discovers_installs_publishes_and_dispatches_host
         )
         .unwrap();
     let adapter = Arc::new(RecordingAdapter::new(
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         json!({"message":"script ok"}),
     ));
     let dispatcher =
         RuntimeDispatcher::from_arcs(Arc::new(discovered), Arc::new(fs), Arc::clone(&governor))
-            .with_runtime_adapter_arc(RuntimeKind::Script, Arc::clone(&adapter));
+            .with_runtime_adapter_arc(RuntimeKind::Mcp, Arc::clone(&adapter));
     let dispatch_port: &dyn CapabilityDispatcher = &dispatcher;
     let reservation = governor.reserve(scope.clone(), estimate.clone()).unwrap();
     let reservation_id = reservation.id;
@@ -119,7 +119,7 @@ async fn extension_v2_lifecycle_discovers_installs_publishes_and_dispatches_host
         requests[0].capability_id,
         CapabilityId::new("script.echo").unwrap()
     );
-    assert_eq!(requests[0].runtime, RuntimeKind::Script);
+    assert_eq!(requests[0].runtime, RuntimeKind::Mcp);
     assert_eq!(requests[0].scope, scope);
     assert_eq!(requests[0].estimate, estimate);
     assert_eq!(requests[0].mounts, None);
@@ -210,7 +210,7 @@ impl RuntimeAdapter<LocalFilesystem, InMemoryResourceGovernor> for RecordingAdap
             output_bytes,
             process_count: u32::from(matches!(
                 self.runtime,
-                RuntimeKind::Script | RuntimeKind::Mcp
+                RuntimeKind::Mcp
             )),
             ..ResourceUsage::default()
         };
@@ -245,13 +245,12 @@ fn dispatch_error_for_runtime(
     kind: RuntimeDispatchErrorKind,
 ) -> DispatchError {
     match runtime {
-        RuntimeKind::Script => DispatchError::Script { kind },
         RuntimeKind::Mcp => DispatchError::Mcp { kind },
         RuntimeKind::FirstParty => DispatchError::FirstParty {
             kind,
             safe_summary: None,
         },
-        RuntimeKind::System => DispatchError::UnsupportedRuntime {
+        RuntimeKind::System | RuntimeKind::Script => DispatchError::UnsupportedRuntime {
             capability: CapabilityId::new("system.unsupported").unwrap(),
             runtime,
         },

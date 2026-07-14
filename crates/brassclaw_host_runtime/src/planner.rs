@@ -127,10 +127,9 @@ pub fn plan_capability(
             EffectKind::ReadFilesystem | EffectKind::WriteFilesystem | EffectKind::DeleteFilesystem
         )
     });
-    let needs_process = descriptor.runtime == RuntimeKind::Script
-        || effects
-            .iter()
-            .any(|e| matches!(e, EffectKind::SpawnProcess | EffectKind::ExecuteCode));
+    let needs_process = effects
+        .iter()
+        .any(|e| matches!(e, EffectKind::SpawnProcess | EffectKind::ExecuteCode));
     if needs_process && matches!(policy.process_backend, ProcessBackendKind::None) {
         return Err(
             PlannerError::ProcessEffectsRequiredButProcessBackendIsNone {
@@ -337,22 +336,6 @@ mod tests {
         // already have hidden this capability, but the planner is the
         // belt-and-braces check at execution.
         let desc = descriptor(vec![EffectKind::SpawnProcess]);
-        let policy = policy_with(
-            FilesystemBackendKind::ScopedVirtual,
-            ProcessBackendKind::None,
-            NetworkMode::Brokered,
-            SecretMode::BrokeredHandles,
-        );
-        let err = plan_capability(&desc, &policy).unwrap_err();
-        assert!(matches!(
-            err,
-            PlannerError::ProcessEffectsRequiredButProcessBackendIsNone { .. }
-        ));
-    }
-
-    #[test]
-    fn rejects_script_runtime_when_policy_disables_processes_even_without_process_effects() {
-        let desc = descriptor(vec![EffectKind::DispatchCapability]);
         let policy = policy_with(
             FilesystemBackendKind::ScopedVirtual,
             ProcessBackendKind::None,
