@@ -1814,8 +1814,10 @@ pub async fn build_reborn_runtime(
             llm.as_ref().and_then(|l| {
                 brassclaw_llm::ProviderRegistry::try_load_from_path(None)
                     .ok()
-                    .and_then(|reg| reg.find(l.provider_id()))
-                    .and_then(|def| def.cache_retention.clone())
+                    .and_then(|reg| {
+                        reg.find(l.provider_id())
+                            .and_then(|def| def.cache_retention.clone())
+                    })
             })
         });
     #[cfg(not(feature = "root-llm-provider"))]

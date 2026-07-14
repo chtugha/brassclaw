@@ -152,7 +152,6 @@ pub struct RebornBuildInput {
     pub(crate) runtime_process_binding: RebornRuntimeProcessBinding,
     pub(crate) required_runtime_backends: Vec<brassclaw_host_api::RuntimeKind>,
     pub(crate) require_runtime_http_egress: bool,
-    pub(crate) require_wasm_credentials: bool,
     pub(crate) product_auth_ports: Option<RebornProductAuthServicePorts>,
     pub(crate) oauth_provider_configs: Vec<OAuthProviderBackendConfig>,
     pub(crate) oauth_dcr_provider_configs: Vec<OAuthDcrProviderBackendConfig>,
@@ -390,11 +389,6 @@ impl RebornBuildInput {
         self
     }
 
-    pub fn require_wasm_credentials(mut self) -> Self {
-        self.require_wasm_credentials = true;
-        self
-    }
-
     /// Inject Reborn-native product-auth service ports.
     ///
     /// Production callers should provide durable implementations here. The
@@ -491,7 +485,6 @@ impl RebornBuildInput {
             runtime_process_binding: RebornRuntimeProcessBinding::default(),
             required_runtime_backends: Vec::new(),
             require_runtime_http_egress: false,
-            require_wasm_credentials: false,
             product_auth_ports: None,
             oauth_provider_configs: Vec::new(),
             oauth_dcr_provider_configs: Vec::new(),

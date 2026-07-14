@@ -24,7 +24,7 @@ use brassclaw_events::{
     InMemoryAuditSink, InMemoryDurableAuditLog, InMemoryDurableEventLog, InMemoryEventSink,
     SecurityAuditSink,
 };
-use brassclaw_extensions::{ExtensionRegistry, ExtensionRuntime, SharedExtensionRegistry};
+use brassclaw_extensions::{ExtensionRegistry, SharedExtensionRegistry};
 #[cfg(feature = "libsql")]
 use brassclaw_filesystem::LibSqlRootFilesystem;
 #[cfg(feature = "postgres")]

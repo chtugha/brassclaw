@@ -7,8 +7,6 @@ use crate::LlmKeyStore;
 use crate::llm_catalog::{apply_stored_api_key, resolve_reborn_runtime_llm};
 use crate::llm_config_service::LlmReloadTrigger;
 
-type ProviderChangedCallback = Arc<dyn Fn(&str) + Send + Sync>;
-
 /// Live-reload adapter wired by the runtime. Re-resolves the LLM config from
 /// `config.toml` + `providers.json` + the stored key, then hot-swaps the
 /// running provider's inner backend via the `brassclaw_llm` reload handle.

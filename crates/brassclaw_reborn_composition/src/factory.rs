@@ -281,22 +281,6 @@ where
     ))))
 }
 
-fn attach_wasm_runtime<F, G, S, R>(
-    services: HostRuntimeServices<F, G, S, R>,
-) -> Result<HostRuntimeServices<F, G, S, R>, RebornBuildError>
-where
-    F: brassclaw_filesystem::RootFilesystem + 'static,
-    G: brassclaw_resources::ResourceGovernor + 'static,
-    S: brassclaw_processes::ProcessStore + 'static,
-    R: brassclaw_processes::ProcessResultStore + 'static,
-{
-    services
-        .try_with_default_wasm_runtime()
-        .map_err(|error| RebornBuildError::InvalidConfig {
-            reason: format!("WASM runtime could not be initialized: {error}"),
-        })
-}
-
 #[cfg(any(feature = "libsql", feature = "postgres"))]
 pub(crate) fn apply_production_runtime_process_binding<F, G, S, R>(
     services: HostRuntimeServices<F, G, S, R>,
@@ -571,14 +555,10 @@ fn compose_product_auth_services(
 fn production_config(
     required_runtime_backends: Vec<brassclaw_host_api::RuntimeKind>,
     require_runtime_http_egress: bool,
-    require_wasm_credentials: bool,
 ) -> brassclaw_host_runtime::ProductionWiringConfig {
     let mut config = brassclaw_host_runtime::ProductionWiringConfig::new(required_runtime_backends);
     if require_runtime_http_egress {
         config = config.require_runtime_http_egress();
-    }
-    if require_wasm_credentials {
-        config = config.require_wasm_credentials();
     }
     config.require_credential_broker()
 }
@@ -764,7 +744,6 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
     }
     services = apply_runtime_process_binding(services, runtime_process_binding);
     services = attach_hosted_mcp_runtime(services)?;
-    services = attach_wasm_runtime(services)?;
     let product_auth_runtime_ports = require_product_auth_runtime_ports(&services)?;
     let provider_composition = compose_provider_client(
         oauth_provider_configs,
@@ -2058,7 +2037,6 @@ async fn build_production_shaped(
         runtime_process_binding,
         required_runtime_backends,
         require_runtime_http_egress,
-        require_wasm_credentials,
         product_auth_ports,
         oauth_provider_configs,
         oauth_dcr_provider_configs,
@@ -2067,7 +2045,6 @@ async fn build_production_shaped(
     let wiring_config = production_config(
         required_runtime_backends,
         require_runtime_http_egress,
-        require_wasm_credentials,
     );
     #[cfg(not(any(feature = "libsql", feature = "postgres")))]
     let _ = (
@@ -2077,7 +2054,6 @@ async fn build_production_shaped(
         runtime_process_binding,
         required_runtime_backends,
         require_runtime_http_egress,
-        require_wasm_credentials,
         product_auth_ports,
         oauth_provider_configs,
         oauth_dcr_provider_configs,
@@ -2518,7 +2494,6 @@ where
         services,
         production_wiring.runtime_process_binding,
     );
-    let services = attach_wasm_runtime(services)?;
 
     let turn_coordinator: Arc<dyn brassclaw_turns::TurnCoordinator> =
         Arc::new(services.turn_coordinator_for_production()?);

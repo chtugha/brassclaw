@@ -93,15 +93,8 @@ use brassclaw_turns::{
     TurnCoordinator, TurnScope, TurnStateStore,
 };
 use brassclaw_turns::{NoopTurnRunWakeNotifier, TurnRunWake, TurnRunWakeNotifier};
-use brassclaw_wasm::{
-    RecordingWasmHostHttp, WasmHostError, WasmHttpResponse, WasmRuntimeCredentialProvider,
-    WasmRuntimeCredentialRequest, WasmStagedRuntimeCredential, WasmStagedRuntimeCredentials,
-    WitToolHost, WitToolRuntimeConfig,
-};
 use chrono::{Duration as ChronoDuration, Utc};
 use serde_json::json;
-use wit_component::{ComponentEncoder, StringEncoding, embed_component_metadata};
-use wit_parser::Resolve;
 
 #[tokio::test]
 async fn production_wiring_validation_rejects_missing_components_and_local_only_defaults() {
@@ -931,9 +924,8 @@ async fn production_wiring_validation_uses_configured_runtime_requirements() {
         ProcessServices::in_memory(),
         CapabilitySurfaceVersion::new("surface-v1").unwrap(),
     );
-    let config = ProductionWiringConfig::new([RuntimeKind::Script, RuntimeKind::Wasm])
-        .require_runtime_http_egress()
-        .require_wasm_credentials();
+    let config = ProductionWiringConfig::new([RuntimeKind::Script])
+        .require_runtime_http_egress();
 
     let report = services
         .validate_production_wiring(&config)
@@ -948,24 +940,10 @@ async fn production_wiring_validation_uses_configured_runtime_requirements() {
     );
     assert!(
         report.contains(
-            ProductionWiringComponent::WasmRuntime,
-            ProductionWiringIssueKind::Missing
-        ),
-        "missing wasm runtime should be reported: {report:?}"
-    );
-    assert!(
-        report.contains(
             ProductionWiringComponent::RuntimeHttpEgress,
             ProductionWiringIssueKind::Missing
         ),
         "missing runtime HTTP egress should be reported: {report:?}"
-    );
-    assert!(
-        report.contains(
-            ProductionWiringComponent::WasmCredentialProvider,
-            ProductionWiringIssueKind::Missing
-        ),
-        "missing WASM credential provider should be reported: {report:?}"
     );
 }
 
@@ -1318,98 +1296,6 @@ async fn production_wiring_validation_tracks_tenant_sandbox_process_port_for_bui
             ProductionWiringIssueKind::UnverifiedProductionImplementation
         ),
         "verified tenant sandbox process port should satisfy the process-port gate: {report:?}"
-    );
-}
-
-#[tokio::test]
-async fn production_wiring_validation_rejects_empty_verified_wasm_credentials() {
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(WASM_HTTP_SUCCESS_MANIFEST)),
-        Arc::new(LocalFilesystem::new()),
-        Arc::new(InMemoryResourceGovernor::new()),
-        Arc::new(GrantAuthorizer::new()),
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    )
-    .with_verified_wasm_runtime_credentials(Arc::new(WasmStagedRuntimeCredentials::new(vec![])))
-    .try_with_wasm_runtime(WitToolRuntimeConfig::for_testing(), WitToolHost::deny_all())
-    .unwrap();
-
-    let report = services
-        .validate_production_wiring(
-            &ProductionWiringConfig::new([RuntimeKind::Wasm]).require_wasm_credentials(),
-        )
-        .expect_err("empty verified credential provider must not satisfy credential requirement");
-
-    assert!(
-        report.contains(
-            ProductionWiringComponent::WasmCredentialProvider,
-            ProductionWiringIssueKind::UnverifiedProductionImplementation
-        ),
-        "empty WASM credentials should be reported as unverified: {report:?}"
-    );
-}
-
-#[tokio::test]
-async fn production_wiring_validation_rejects_wasm_credentials_added_after_adapter() {
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(WASM_HTTP_SUCCESS_MANIFEST)),
-        Arc::new(LocalFilesystem::new()),
-        Arc::new(InMemoryResourceGovernor::new()),
-        Arc::new(GrantAuthorizer::new()),
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    )
-    .try_with_wasm_runtime(WitToolRuntimeConfig::for_testing(), WitToolHost::deny_all())
-    .unwrap()
-    .with_wasm_runtime_credential_provider(Arc::new(WasmStagedRuntimeCredentials::new(vec![])));
-
-    let report = services
-        .validate_production_wiring(
-            &ProductionWiringConfig::new([RuntimeKind::Wasm]).require_wasm_credentials(),
-        )
-        .expect_err(
-            "credentials added after WASM adapter construction are not captured by the adapter",
-        );
-
-    assert!(
-        report.contains(
-            ProductionWiringComponent::WasmCredentialProvider,
-            ProductionWiringIssueKind::UnverifiedProductionImplementation
-        ),
-        "WASM credentials must be configured before adapter construction: {report:?}"
-    );
-}
-
-#[tokio::test]
-async fn production_wiring_validation_rejects_wasm_credentials_replaced_after_adapter() {
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(WASM_HTTP_SUCCESS_MANIFEST)),
-        Arc::new(LocalFilesystem::new()),
-        Arc::new(InMemoryResourceGovernor::new()),
-        Arc::new(GrantAuthorizer::new()),
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    )
-    .with_wasm_runtime_credential_provider(Arc::new(WasmStagedRuntimeCredentials::new(vec![])))
-    .try_with_wasm_runtime(WitToolRuntimeConfig::for_testing(), WitToolHost::deny_all())
-    .unwrap()
-    .with_wasm_runtime_credential_provider(Arc::new(WasmStagedRuntimeCredentials::new(vec![])));
-
-    let report = services
-        .validate_production_wiring(
-            &ProductionWiringConfig::new([RuntimeKind::Wasm]).require_wasm_credentials(),
-        )
-        .expect_err(
-            "replacing credentials after WASM adapter construction is not captured by the adapter",
-        );
-
-    assert!(
-        report.contains(
-            ProductionWiringComponent::WasmCredentialProvider,
-            ProductionWiringIssueKind::UnverifiedProductionImplementation
-        ),
-        "WASM credentials must not be replaced after adapter construction: {report:?}"
     );
 }
 
@@ -3051,17 +2937,13 @@ async fn host_runtime_services_resume_without_backing_stores_fails_closed() {
 }
 
 #[tokio::test]
-async fn host_runtime_services_registered_runtime_health_tracks_script_mcp_and_wasm_adapters() {
+async fn host_runtime_services_registered_runtime_health_tracks_script_and_mcp_adapters() {
     let script_runtime = Arc::new(ScriptRuntime::new(
         ScriptRuntimeConfig::for_testing(),
         EchoScriptBackend,
     ));
     let runtime = HostRuntimeServices::new(
-        Arc::new(registry_with_manifests(&[
-            SCRIPT_MANIFEST,
-            MCP_MANIFEST,
-            WASM_MANIFEST,
-        ])),
+        Arc::new(registry_with_manifests(&[SCRIPT_MANIFEST, MCP_MANIFEST])),
         Arc::new(LocalFilesystem::new()),
         Arc::new(InMemoryResourceGovernor::new()),
         Arc::new(GrantAuthorizer::new()),
@@ -3070,8 +2952,6 @@ async fn host_runtime_services_registered_runtime_health_tracks_script_mcp_and_w
     )
     .with_script_runtime(script_runtime)
     .with_mcp_runtime(Arc::new(PanicMcpExecutor))
-    .try_with_wasm_runtime(WitToolRuntimeConfig::for_testing(), WitToolHost::deny_all())
-    .unwrap()
     .host_runtime_for_local_testing();
 
     let health = runtime.health().await.unwrap();
@@ -4207,444 +4087,6 @@ async fn host_runtime_services_fails_closed_when_durable_obligation_audit_append
 }
 
 #[tokio::test]
-async fn host_runtime_services_routes_wasm_http_through_per_invocation_policy_handoff() {
-    let parsed_manifest = parse_manifest(WASM_HTTP_SUCCESS_MANIFEST);
-    let component = tool_component(HTTP_TOOL_WAT);
-    let filesystem = Arc::new(
-        filesystem_with_wasm_component(
-            parsed_manifest.id.as_str(),
-            "wasm/http-success.wasm",
-            &component,
-        )
-        .await,
-    );
-    let governor = Arc::new(governor_with_default_limit(sample_account()));
-    let policy = wasm_http_policy();
-    let authorizer: Arc<dyn TrustAwareCapabilityDispatchAuthorizer> =
-        Arc::new(ObligatingAuthorizer::new(vec![
-            Obligation::ApplyNetworkPolicy {
-                policy: policy.clone(),
-            },
-        ]));
-    let egress = Arc::new(RecordingRuntimeHttpEgress::default());
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(WASM_HTTP_SUCCESS_MANIFEST)),
-        filesystem,
-        governor,
-        authorizer,
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    )
-    .with_runtime_http_egress(Arc::clone(&egress))
-    .try_with_wasm_runtime(WitToolRuntimeConfig::for_testing(), WitToolHost::deny_all())
-    .unwrap();
-    let capability_id = CapabilityId::new("wasm-http.success").unwrap();
-    let scope = sample_scope(InvocationId::new());
-
-    let outcome = services
-        .host_runtime_for_local_testing()
-        .invoke_capability(wasm_runtime_request_for_scope(
-            capability_id.clone(),
-            scope.clone(),
-            json!({"call": "http-success"}),
-        ))
-        .await
-        .unwrap();
-
-    match outcome {
-        RuntimeCapabilityOutcome::Completed(completed) => {
-            assert_eq!(completed.capability_id, capability_id);
-            assert_eq!(completed.output, json!(1));
-        }
-        other => panic!("expected completed outcome, got {other:?}"),
-    }
-    let requests = egress.requests();
-    assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].runtime, RuntimeKind::Wasm);
-    assert_eq!(requests[0].scope, scope);
-    assert_eq!(requests[0].network_policy, policy);
-    assert_eq!(requests[0].method, NetworkMethod::Post);
-    assert_eq!(requests[0].url, "https://example.test/api");
-    assert_eq!(requests[0].body, b"hello".to_vec());
-}
-
-#[tokio::test]
-async fn host_runtime_services_routes_cached_wasm_http_through_per_invocation_policy_handoff() {
-    let parsed_manifest = parse_manifest(WASM_HTTP_SUCCESS_MANIFEST);
-    let component = tool_component(HTTP_TOOL_WAT);
-    let filesystem = Arc::new(
-        filesystem_with_wasm_component(
-            parsed_manifest.id.as_str(),
-            "wasm/http-success.wasm",
-            &component,
-        )
-        .await,
-    );
-    let governor = Arc::new(governor_with_default_limit(sample_account()));
-    let policy = wasm_http_policy();
-    let authorizer: Arc<dyn TrustAwareCapabilityDispatchAuthorizer> =
-        Arc::new(ObligatingAuthorizer::new(vec![
-            Obligation::ApplyNetworkPolicy {
-                policy: policy.clone(),
-            },
-        ]));
-    let egress = Arc::new(RecordingRuntimeHttpEgress::default());
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(WASM_HTTP_SUCCESS_MANIFEST)),
-        filesystem,
-        governor,
-        authorizer,
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    )
-    .with_runtime_http_egress(Arc::clone(&egress))
-    .try_with_wasm_runtime(WitToolRuntimeConfig::for_testing(), WitToolHost::deny_all())
-    .unwrap();
-    let runtime = services.host_runtime_for_local_testing();
-    let capability_id = CapabilityId::new("wasm-http.success").unwrap();
-    let first_scope = sample_scope(InvocationId::new());
-    let second_scope = sample_scope(InvocationId::new());
-
-    let first = runtime
-        .invoke_capability(wasm_runtime_request_for_scope(
-            capability_id.clone(),
-            first_scope.clone(),
-            json!({"call": "http-success-first"}),
-        ))
-        .await
-        .unwrap();
-    let second = runtime
-        .invoke_capability(wasm_runtime_request_for_scope(
-            capability_id.clone(),
-            second_scope.clone(),
-            json!({"call": "http-success-second"}),
-        ))
-        .await
-        .unwrap();
-
-    assert_completed_outcome(first, &capability_id);
-    assert_completed_outcome(second, &capability_id);
-    let requests = egress.requests();
-    assert_eq!(requests.len(), 2);
-    assert_eq!(requests[0].scope, first_scope);
-    assert_eq!(requests[1].scope, second_scope);
-    assert_eq!(requests[0].network_policy, policy);
-    assert_eq!(requests[1].network_policy, policy);
-}
-
-#[tokio::test]
-async fn host_runtime_services_wasm_http_uses_production_staged_network_and_secret_handoffs() {
-    let parsed_manifest = parse_manifest(WASM_HTTP_SUCCESS_MANIFEST);
-    let component = tool_component(HTTP_TOOL_WAT);
-    let filesystem = Arc::new(
-        filesystem_with_wasm_component(
-            parsed_manifest.id.as_str(),
-            "wasm/http-success.wasm",
-            &component,
-        )
-        .await,
-    );
-    let governor = Arc::new(governor_with_default_limit(sample_account()));
-    let secret_store = Arc::new(InMemorySecretStore::new());
-    let secret_handle = SecretHandle::new("api-token").unwrap();
-    let policy = wasm_http_policy();
-    let authorizer: Arc<dyn TrustAwareCapabilityDispatchAuthorizer> =
-        Arc::new(ObligatingAuthorizer::new(vec![
-            Obligation::ApplyNetworkPolicy {
-                policy: policy.clone(),
-            },
-            Obligation::InjectSecretOnce {
-                handle: secret_handle.clone(),
-            },
-        ]));
-    let network = RecordingNetworkHttpEgress::new();
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(WASM_HTTP_SUCCESS_MANIFEST)),
-        filesystem,
-        governor,
-        authorizer,
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    )
-    .with_secret_store(Arc::clone(&secret_store))
-    .with_wasm_runtime_credential_provider(Arc::new(WasmStagedRuntimeCredentials::new(vec![
-        WasmStagedRuntimeCredential::for_exact_url(
-            secret_handle.clone(),
-            RuntimeCredentialTarget::Header {
-                name: "authorization".to_string(),
-                prefix: Some("Bearer ".to_string()),
-            },
-            true,
-            "https://example.test/api".to_string(),
-        ),
-    ])));
-    let services = services
-        .try_with_host_http_egress(network.clone())
-        .unwrap()
-        .try_with_wasm_runtime(WitToolRuntimeConfig::for_testing(), WitToolHost::deny_all())
-        .unwrap();
-    let capability_id = CapabilityId::new("wasm-http.success").unwrap();
-    let scope = sample_scope(InvocationId::new());
-    secret_store
-        .put(
-            scope.clone(),
-            secret_handle.clone(),
-            SecretMaterial::from("sk-vertical-secret"),
-        )
-        .await
-        .unwrap();
-
-    let outcome = services
-        .host_runtime_for_local_testing()
-        .invoke_capability(wasm_runtime_request_for_scope(
-            capability_id.clone(),
-            scope.clone(),
-            json!({"call": "http-success-with-secret"}),
-        ))
-        .await
-        .unwrap();
-
-    assert_completed_outcome(outcome, &capability_id);
-    let requests = network.requests();
-    assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].scope, scope);
-    assert_eq!(requests[0].policy, policy);
-    assert_eq!(
-        requests[0]
-            .headers
-            .iter()
-            .find(|(name, _)| name == "authorization"),
-        Some(&(
-            "authorization".to_string(),
-            "Bearer sk-vertical-secret".to_string(),
-        ))
-    );
-    // The consumed-staged-secret one-shot invariant is covered by
-    // `reborn_e2e_gate_host_http_consumes_staged_policy_and_secret_once`.
-}
-
-#[tokio::test]
-async fn host_runtime_services_wasm_http_rejects_secret_store_lease_before_transport() {
-    let parsed_manifest = parse_manifest(WASM_HTTP_SUCCESS_MANIFEST);
-    let component = tool_component(HTTP_TOOL_WAT);
-    let filesystem = Arc::new(
-        filesystem_with_wasm_component(
-            parsed_manifest.id.as_str(),
-            "wasm/http-success.wasm",
-            &component,
-        )
-        .await,
-    );
-    let governor = Arc::new(governor_with_default_limit(sample_account()));
-    let secret_store = Arc::new(InMemorySecretStore::new());
-    let secret_handle = SecretHandle::new("api-token").unwrap();
-    let policy = wasm_http_policy();
-    let authorizer: Arc<dyn TrustAwareCapabilityDispatchAuthorizer> =
-        Arc::new(ObligatingAuthorizer::new(vec![
-            Obligation::ApplyNetworkPolicy {
-                policy: policy.clone(),
-            },
-        ]));
-    let network = RecordingNetworkHttpEgress::new();
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(WASM_HTTP_SUCCESS_MANIFEST)),
-        filesystem,
-        governor,
-        authorizer,
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    )
-    .with_secret_store(Arc::clone(&secret_store))
-    .with_wasm_runtime_credential_provider(Arc::new(SecretStoreLeaseCredentials {
-        handle: secret_handle.clone(),
-    }));
-    let services = services
-        .try_with_host_http_egress(network.clone())
-        .unwrap()
-        .try_with_wasm_runtime(WitToolRuntimeConfig::for_testing(), WitToolHost::deny_all())
-        .unwrap();
-    let capability_id = CapabilityId::new("wasm-http.success").unwrap();
-    let scope = sample_scope(InvocationId::new());
-    secret_store
-        .put(
-            scope.clone(),
-            secret_handle,
-            SecretMaterial::from("sk-graph-store-secret"),
-        )
-        .await
-        .unwrap();
-
-    let outcome = services
-        .host_runtime_for_local_testing()
-        .invoke_capability(wasm_runtime_request_for_scope(
-            capability_id.clone(),
-            scope,
-            json!({"call": "http-success-with-secret-store-lease"}),
-        ))
-        .await
-        .unwrap();
-
-    assert_completed_outcome(outcome, &capability_id);
-    assert_eq!(
-        network.requests(),
-        Vec::new(),
-        "direct secret-store lease credentials must be rejected before network transport"
-    );
-}
-
-#[tokio::test]
-async fn host_runtime_services_wasm_http_missing_staged_secret_stays_before_transport() {
-    let parsed_manifest = parse_manifest(WASM_HTTP_SUCCESS_MANIFEST);
-    let component = tool_component(HTTP_TOOL_WAT);
-    let filesystem = Arc::new(
-        filesystem_with_wasm_component(
-            parsed_manifest.id.as_str(),
-            "wasm/http-success.wasm",
-            &component,
-        )
-        .await,
-    );
-    let governor = Arc::new(governor_with_default_limit(sample_account()));
-    let secret_handle = SecretHandle::new("api-token").unwrap();
-    let policy = wasm_http_policy();
-    let authorizer: Arc<dyn TrustAwareCapabilityDispatchAuthorizer> =
-        Arc::new(ObligatingAuthorizer::new(vec![
-            Obligation::ApplyNetworkPolicy { policy },
-        ]));
-    let network = RecordingNetworkHttpEgress::new();
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(WASM_HTTP_SUCCESS_MANIFEST)),
-        filesystem,
-        governor,
-        authorizer,
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    )
-    .with_secret_store(Arc::new(InMemorySecretStore::new()))
-    .with_wasm_runtime_credential_provider(Arc::new(WasmStagedRuntimeCredentials::new(vec![
-        WasmStagedRuntimeCredential::for_exact_url(
-            secret_handle,
-            RuntimeCredentialTarget::Header {
-                name: "authorization".to_string(),
-                prefix: Some("Bearer ".to_string()),
-            },
-            true,
-            "https://example.test/api".to_string(),
-        ),
-    ])));
-    let services = services
-        .try_with_host_http_egress(network.clone())
-        .unwrap()
-        .try_with_wasm_runtime(WitToolRuntimeConfig::for_testing(), WitToolHost::deny_all())
-        .unwrap();
-    let capability_id = CapabilityId::new("wasm-http.success").unwrap();
-
-    let outcome = services
-        .host_runtime_for_local_testing()
-        .invoke_capability(wasm_runtime_request(
-            capability_id.clone(),
-            json!({"call": "http-missing-staged-secret"}),
-        ))
-        .await
-        .unwrap();
-
-    match outcome {
-        RuntimeCapabilityOutcome::Completed(completed) => {
-            assert_eq!(completed.capability_id, capability_id);
-            assert_eq!(completed.usage.network_egress_bytes, 0);
-        }
-        other => panic!("expected guest to complete after host HTTP denial, got {other:?}"),
-    }
-    assert!(
-        network.requests().is_empty(),
-        "missing staged secret must be denied before outbound transport"
-    );
-}
-
-#[tokio::test]
-async fn host_runtime_services_denies_wasm_http_when_shared_egress_has_no_policy_handoff() {
-    let parsed_manifest = parse_manifest(WASM_HTTP_SUCCESS_MANIFEST);
-    let component = tool_component(HTTP_TOOL_WAT);
-    let filesystem = Arc::new(
-        filesystem_with_wasm_component(
-            parsed_manifest.id.as_str(),
-            "wasm/http-success.wasm",
-            &component,
-        )
-        .await,
-    );
-    let governor = Arc::new(governor_with_default_limit(sample_account()));
-    let egress = Arc::new(RecordingRuntimeHttpEgress::default());
-    let direct_http = Arc::new(RecordingWasmHostHttp::ok(WasmHttpResponse {
-        status: 200,
-        headers_json: "{}".to_string(),
-        body: Vec::new(),
-    }));
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(WASM_HTTP_SUCCESS_MANIFEST)),
-        filesystem,
-        governor,
-        Arc::new(AllowAllDispatchAuthorizer),
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    )
-    .with_runtime_http_egress(Arc::clone(&egress))
-    .try_with_wasm_runtime(
-        WitToolRuntimeConfig::for_testing(),
-        WitToolHost::deny_all().with_http(Arc::clone(&direct_http)),
-    )
-    .unwrap();
-    let capability_id = CapabilityId::new("wasm-http.success").unwrap();
-
-    let outcome = services
-        .host_runtime_for_local_testing()
-        .invoke_capability(wasm_runtime_request(
-            capability_id,
-            json!({"call": "http-without-policy"}),
-        ))
-        .await
-        .unwrap();
-
-    match outcome {
-        RuntimeCapabilityOutcome::Completed(completed) => {
-            assert_eq!(completed.usage.network_egress_bytes, 0);
-        }
-        RuntimeCapabilityOutcome::Failed(_) => {}
-        other => panic!("expected completed or failed outcome, got {other:?}"),
-    }
-    assert!(egress.requests().is_empty());
-    assert!(
-        direct_http.requests().unwrap().is_empty(),
-        "HostRuntimeServices must not let a preconfigured WASM host bypass policy handoff when shared egress is active"
-    );
-}
-
-#[tokio::test]
-async fn host_runtime_services_wasm_input_encode_releases_prepared_reservation() {
-    let services = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/services/runtime_adapters.rs"),
-    )
-    .unwrap();
-    let reservation_index = services
-        .find("let reservation = match request.resource_reservation")
-        .expect("WASM execution must bind the dispatch reservation");
-    let input_index = services
-        .find("let input_json = match serde_json::to_string(&request.input)")
-        .expect("WASM input encoding must use explicit cleanup branch");
-
-    assert!(
-        reservation_index < input_index,
-        "WASM adapters must take ownership of a prepared reservation before input encoding so encode failures can release it"
-    );
-    assert!(
-        services.contains(
-            "Err(_) => {\n            release_wasm_reservation(request.governor, reservation.id);"
-        ),
-        "InputEncode failures must release the prepared WASM reservation"
-    );
-}
-
-#[tokio::test]
 async fn host_runtime_services_cancel_and_status_share_process_result_and_cancellation_graph() {
     let process_services = ProcessServices::in_memory();
     let process_store = process_services.process_store();
@@ -4906,7 +4348,7 @@ async fn process_obligation_lifecycle_cleans_record_started_before_wrapper_exist
         &scope,
         &script_capability_id(),
         &secret_handle,
-        wasm_http_policy(),
+        sample_network_policy(),
         "runtime-secret",
     )
     .await;
@@ -4944,7 +4386,7 @@ async fn process_obligation_lifecycle_cleans_legacy_handoffs_without_resource_re
         &scope,
         &script_capability_id(),
         &secret_handle,
-        wasm_http_policy(),
+        sample_network_policy(),
         "runtime-secret",
     )
     .await;
@@ -4978,7 +4420,7 @@ async fn process_obligation_lifecycle_rejects_second_active_handoff_for_same_sco
         &scope,
         &script_capability_id(),
         &secret_handle,
-        wasm_http_policy(),
+        sample_network_policy(),
         "runtime-secret",
     )
     .await;
@@ -4996,7 +4438,7 @@ async fn process_obligation_lifecycle_rejects_second_active_handoff_for_same_sco
         &scope,
         &script_capability_id(),
         &secret_handle,
-        wasm_http_policy(),
+        sample_network_policy(),
         "runtime-secret",
     )
     .await;
@@ -5028,7 +4470,7 @@ async fn process_obligation_lifecycle_rejects_second_active_handoff_for_same_sco
         &scope,
         &script_capability_id(),
         &secret_handle,
-        wasm_http_policy(),
+        sample_network_policy(),
         "runtime-secret",
     )
     .await;
@@ -5069,7 +4511,7 @@ async fn process_obligation_lifecycle_does_not_clean_handoffs_twice_after_backgr
         &scope,
         &script_capability_id(),
         &secret_handle,
-        wasm_http_policy(),
+        sample_network_policy(),
         "first-runtime-secret",
     )
     .await;
@@ -5088,7 +4530,7 @@ async fn process_obligation_lifecycle_does_not_clean_handoffs_twice_after_backgr
         &scope,
         &script_capability_id(),
         &secret_handle,
-        wasm_http_policy(),
+        sample_network_policy(),
         "second-runtime-secret",
     )
     .await;
@@ -5306,121 +4748,6 @@ async fn spawned_obligation_lifecycle_abort_cleans_up_when_process_start_fails()
             ..
         }
     ));
-}
-
-#[tokio::test]
-async fn host_runtime_services_wasm_operation_failed_reconciles_usage_after_host_effect() {
-    let wat = http_then_operation_failed_wat();
-    let runtime = wasm_runtime_for_component(
-        WASM_OPERATION_FAILED_MANIFEST,
-        "wasm-accounting.operation_failed",
-        "wasm/operation-failed.wasm",
-        &wat,
-    )
-    .await;
-
-    let outcome = runtime
-        .runtime
-        .invoke_capability(wasm_runtime_request(
-            runtime.capability_id,
-            json!({"call": "operation-failed"}),
-        ))
-        .await
-        .unwrap();
-
-    assert_failed_outcome(outcome, RuntimeFailureKind::OperationFailed);
-    assert_eq!(runtime.http.requests().len(), 1);
-    assert_eq!(
-        runtime
-            .governor
-            .usage_for(&sample_account())
-            .network_egress_bytes,
-        5,
-        "host-mediated HTTP request bytes must be reconciled even when the capability returns an operation failure"
-    );
-    assert_eq!(
-        runtime
-            .governor
-            .reserved_for(&sample_account())
-            .network_egress_bytes,
-        0
-    );
-}
-
-#[tokio::test]
-async fn host_runtime_services_wasm_invalid_output_reconciles_usage_after_host_effect() {
-    let wat = http_then_invalid_output_wat();
-    let runtime = wasm_runtime_for_component(
-        WASM_INVALID_OUTPUT_MANIFEST,
-        "wasm-accounting.invalid_output",
-        "wasm/invalid-output.wasm",
-        &wat,
-    )
-    .await;
-
-    let outcome = runtime
-        .runtime
-        .invoke_capability(wasm_runtime_request(
-            runtime.capability_id,
-            json!({"call": "invalid-output"}),
-        ))
-        .await
-        .unwrap();
-
-    assert_failed_outcome(outcome, RuntimeFailureKind::InvalidOutput);
-    assert_eq!(runtime.http.requests().len(), 1);
-    assert_eq!(
-        runtime
-            .governor
-            .usage_for(&sample_account())
-            .network_egress_bytes,
-        5,
-        "host-mediated HTTP request bytes must be reconciled even when the capability returns malformed output"
-    );
-    assert_eq!(
-        runtime
-            .governor
-            .reserved_for(&sample_account())
-            .network_egress_bytes,
-        0
-    );
-}
-
-#[tokio::test]
-async fn host_runtime_services_wasm_operation_failed_reconciles_wall_clock_after_host_effect() {
-    let wat = http_without_body_then_operation_failed_wat();
-    let runtime = wasm_runtime_for_component_with_slow_zero_body_http(
-        WASM_WALL_CLOCK_FAILURE_MANIFEST,
-        "wasm-accounting.wall_clock_failure",
-        "wasm/wall-clock-failure.wasm",
-        &wat,
-    )
-    .await;
-
-    let outcome = runtime
-        .runtime
-        .invoke_capability(wasm_runtime_request(
-            runtime.capability_id,
-            json!({"call": "wall-clock-failure"}),
-        ))
-        .await
-        .unwrap();
-
-    assert_failed_outcome(outcome, RuntimeFailureKind::OperationFailed);
-    assert_eq!(runtime.http.requests().len(), 1);
-    let usage = runtime.governor.usage_for(&sample_account());
-    assert!(
-        usage.wall_clock_ms > 0,
-        "wall-clock usage must be reconciled even when an operation failure has no byte/token/process usage"
-    );
-    assert_eq!(usage.network_egress_bytes, 0);
-    assert_eq!(
-        runtime
-            .governor
-            .reserved_for(&sample_account())
-            .network_egress_bytes,
-        0
-    );
 }
 
 fn assert_failed_outcome(outcome: RuntimeCapabilityOutcome, expected_kind: RuntimeFailureKind) {
@@ -6103,28 +5430,6 @@ impl NetworkHttpEgress for RecordingNetworkHttpEgress {
     }
 }
 
-#[derive(Debug)]
-struct SecretStoreLeaseCredentials {
-    handle: SecretHandle,
-}
-
-impl WasmRuntimeCredentialProvider for SecretStoreLeaseCredentials {
-    fn credential_injections(
-        &self,
-        _request: &WasmRuntimeCredentialRequest,
-    ) -> Result<Vec<RuntimeCredentialInjection>, WasmHostError> {
-        Ok(vec![RuntimeCredentialInjection {
-            handle: self.handle.clone(),
-            source: RuntimeCredentialSource::SecretStoreLease,
-            target: RuntimeCredentialTarget::Header {
-                name: "authorization".to_string(),
-                prefix: Some("Bearer ".to_string()),
-            },
-            required: true,
-        }])
-    }
-}
-
 #[derive(Debug, Clone)]
 struct RecordingRuntimeHttpEgress {
     requests: Arc<std::sync::Mutex<Vec<RuntimeHttpEgressRequest>>>,
@@ -6330,7 +5635,7 @@ where
         Arc::new(ObligatingAuthorizer::new(vec![
             Obligation::ReserveResources { reservation_id },
             Obligation::ApplyNetworkPolicy {
-                policy: wasm_http_policy(),
+                policy: sample_network_policy(),
             },
             Obligation::InjectSecretOnce {
                 handle: secret_handle,
@@ -7249,121 +6554,6 @@ fn process_sandbox_capability_id() -> CapabilityId {
     CapabilityId::new("system.process_sandbox.run").unwrap()
 }
 
-struct WasmRuntimeFixture {
-    runtime: DefaultHostRuntime,
-    governor: Arc<InMemoryResourceGovernor>,
-    http: Arc<RecordingRuntimeHttpEgress>,
-    capability_id: CapabilityId,
-}
-
-struct WasmWallClockRuntimeFixture {
-    runtime: DefaultHostRuntime,
-    governor: Arc<InMemoryResourceGovernor>,
-    http: Arc<RecordingRuntimeHttpEgress>,
-    capability_id: CapabilityId,
-}
-
-async fn wasm_runtime_for_component(
-    manifest: &str,
-    capability: &str,
-    module_path: &str,
-    wat: &str,
-) -> WasmRuntimeFixture {
-    let parsed_manifest = parse_manifest(manifest);
-    let component = tool_component(wat);
-    let filesystem = Arc::new(
-        filesystem_with_wasm_component(parsed_manifest.id.as_str(), module_path, &component).await,
-    );
-    let governor = Arc::new(governor_with_default_limit(sample_account()));
-    let policy = wasm_http_policy();
-    let authorizer: Arc<dyn TrustAwareCapabilityDispatchAuthorizer> =
-        Arc::new(ObligatingAuthorizer::new(vec![
-            Obligation::ApplyNetworkPolicy { policy },
-        ]));
-    let http = Arc::new(RecordingRuntimeHttpEgress::new());
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(manifest)),
-        filesystem,
-        Arc::clone(&governor),
-        authorizer,
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    )
-    .with_runtime_http_egress(Arc::clone(&http))
-    .try_with_wasm_runtime(WitToolRuntimeConfig::for_testing(), WitToolHost::deny_all())
-    .unwrap();
-
-    WasmRuntimeFixture {
-        runtime: services.host_runtime_for_local_testing(),
-        governor,
-        http,
-        capability_id: CapabilityId::new(capability).unwrap(),
-    }
-}
-
-async fn wasm_runtime_for_component_with_slow_zero_body_http(
-    manifest: &str,
-    capability: &str,
-    module_path: &str,
-    wat: &str,
-) -> WasmWallClockRuntimeFixture {
-    let parsed_manifest = parse_manifest(manifest);
-    let component = tool_component(wat);
-    let filesystem = Arc::new(
-        filesystem_with_wasm_component(parsed_manifest.id.as_str(), module_path, &component).await,
-    );
-    let governor = Arc::new(governor_with_default_limit(sample_account()));
-    let policy = wasm_http_policy();
-    let authorizer: Arc<dyn TrustAwareCapabilityDispatchAuthorizer> =
-        Arc::new(ObligatingAuthorizer::new(vec![
-            Obligation::ApplyNetworkPolicy { policy },
-        ]));
-    let http = Arc::new(RecordingRuntimeHttpEgress::with_delay(
-        Duration::from_millis(25),
-    ));
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(manifest)),
-        filesystem,
-        Arc::clone(&governor),
-        authorizer,
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    )
-    .with_runtime_http_egress(Arc::clone(&http))
-    .try_with_wasm_runtime(WitToolRuntimeConfig::for_testing(), WitToolHost::deny_all())
-    .unwrap();
-
-    WasmWallClockRuntimeFixture {
-        runtime: services.host_runtime_for_local_testing(),
-        governor,
-        http,
-        capability_id: CapabilityId::new(capability).unwrap(),
-    }
-}
-
-async fn filesystem_with_wasm_component(
-    extension_id: &str,
-    module_path: &str,
-    wasm_bytes: &[u8],
-) -> LocalFilesystem {
-    let fs = mounted_empty_extension_root();
-    let path =
-        VirtualPath::new(format!("/system/extensions/{extension_id}/{module_path}")).unwrap();
-    fs.write_file(&path, wasm_bytes).await.unwrap();
-    fs
-}
-
-fn mounted_empty_extension_root() -> LocalFilesystem {
-    let storage = tempfile::tempdir().unwrap().keep();
-    let mut fs = LocalFilesystem::new();
-    fs.mount_local(
-        VirtualPath::new("/system/extensions").unwrap(),
-        HostPath::from_path_buf(storage),
-    )
-    .unwrap();
-    fs
-}
-
 fn governor_with_default_limit(account: ResourceAccount) -> InMemoryResourceGovernor {
     let governor = InMemoryResourceGovernor::new();
     governor
@@ -7380,43 +6570,11 @@ fn governor_with_default_limit(account: ResourceAccount) -> InMemoryResourceGove
     governor
 }
 
-fn wasm_runtime_request(
-    capability_id: CapabilityId,
-    input: serde_json::Value,
-) -> RuntimeCapabilityRequest {
-    let scope = sample_scope(InvocationId::new());
-    wasm_runtime_request_for_scope(capability_id, scope, input)
-}
-
-fn wasm_runtime_request_for_scope(
-    capability_id: CapabilityId,
-    scope: ResourceScope,
-    input: serde_json::Value,
-) -> RuntimeCapabilityRequest {
-    let context = execution_context_with_dispatch_grant_for_scope(capability_id.clone(), scope);
-    RuntimeCapabilityRequest::new(
-        context,
-        capability_id,
-        wasm_http_estimate(),
-        input,
-        trust_decision_with_dispatch_authority(),
-    )
-}
-
-fn wasm_http_estimate() -> ResourceEstimate {
-    ResourceEstimate {
-        concurrency_slots: Some(1),
-        network_egress_bytes: Some(10),
-        output_bytes: Some(10_000),
-        ..ResourceEstimate::default()
-    }
-}
-
 fn sample_account() -> ResourceAccount {
     ResourceAccount::tenant(TenantId::new("tenant-a").unwrap())
 }
 
-fn wasm_http_policy() -> NetworkPolicy {
+fn sample_network_policy() -> NetworkPolicy {
     NetworkPolicy {
         allowed_targets: vec![NetworkTargetPattern {
             scheme: Some(NetworkScheme::Https),
@@ -7426,51 +6584,6 @@ fn wasm_http_policy() -> NetworkPolicy {
         deny_private_ip_ranges: true,
         max_egress_bytes: Some(10_000),
     }
-}
-
-fn tool_component(wat_src: &str) -> Vec<u8> {
-    let mut module = wat::parse_str(wat_src).unwrap();
-    let mut resolve = Resolve::default();
-    let package = resolve
-        .push_str("tool.wit", include_str!("../../../wit/tool.wit"))
-        .unwrap();
-    let world = resolve
-        .select_world(&[package], Some("sandboxed-tool"))
-        .unwrap();
-
-    embed_component_metadata(&mut module, &resolve, world, StringEncoding::UTF8).unwrap();
-
-    let mut encoder = ComponentEncoder::default()
-        .module(&module)
-        .unwrap()
-        .validate(true);
-    encoder.encode().unwrap()
-}
-
-fn http_then_operation_failed_wat() -> String {
-    HTTP_TOOL_WAT.replace(
-        "i32.const 48\n    i32.const 1\n    i32.store\n    i32.const 52\n    i32.const 3072\n    i32.store\n    i32.const 56\n    i32.const 1\n    i32.store\n    i32.const 60\n    i32.const 0\n    i32.store\n    i32.const 48",
-        "i32.const 48\n    i32.const 0\n    i32.store\n    i32.const 52\n    i32.const 0\n    i32.store\n    i32.const 56\n    i32.const 0\n    i32.store\n    i32.const 60\n    i32.const 1\n    i32.store\n    i32.const 64\n    i32.const 3072\n    i32.store\n    i32.const 68\n    i32.const 11\n    i32.store\n    i32.const 48",
-    )
-}
-
-fn http_then_invalid_output_wat() -> String {
-    HTTP_TOOL_WAT
-        .replace(
-            r#"(data (i32.const 3072) "1")"#,
-            r#"(data (i32.const 3072) "not-json")"#,
-        )
-        .replace(
-            "i32.const 56\n    i32.const 1\n    i32.store",
-            "i32.const 56\n    i32.const 8\n    i32.store",
-        )
-}
-
-fn http_without_body_then_operation_failed_wat() -> String {
-    http_then_operation_failed_wat().replace(
-        "i32.const 1\n    i32.const 256\n    i32.const 5",
-        "i32.const 0\n    i32.const 0\n    i32.const 0",
-    )
 }
 
 #[cfg(feature = "libsql")]
@@ -7575,187 +6688,4 @@ description = "Search through MCP"
 effects = ["dispatch_capability", "network"]
 default_permission = "ask"
 parameters_schema = { type = "object" }
-"#;
-
-const WASM_MANIFEST: &str = r#"
-id = "wasm"
-name = "WASM Count"
-version = "0.1.0"
-description = "WASM integration extension"
-trust = "untrusted"
-
-[runtime]
-kind = "wasm"
-module = "tool.wasm"
-
-[[capabilities]]
-id = "wasm.count"
-description = "Count through WASM"
-effects = ["dispatch_capability"]
-default_permission = "allow"
-parameters_schema = { type = "object" }
-"#;
-
-const WASM_HTTP_SUCCESS_MANIFEST: &str = r#"
-id = "wasm-http"
-name = "WASM HTTP Success"
-version = "0.1.0"
-description = "WASM HTTP success extension"
-trust = "untrusted"
-
-[runtime]
-kind = "wasm"
-module = "wasm/http-success.wasm"
-
-[[capabilities]]
-id = "wasm-http.success"
-description = "Call host HTTP then return success"
-effects = ["dispatch_capability", "network"]
-default_permission = "allow"
-parameters_schema = { type = "object" }
-"#;
-
-const WASM_OPERATION_FAILED_MANIFEST: &str = r#"
-id = "wasm-accounting"
-name = "WASM Accounting Operation Failed"
-version = "0.1.0"
-description = "WASM accounting extension"
-trust = "untrusted"
-
-[runtime]
-kind = "wasm"
-module = "wasm/operation-failed.wasm"
-
-[[capabilities]]
-id = "wasm-accounting.operation_failed"
-description = "Call host HTTP then return an operation failure"
-effects = ["dispatch_capability", "network"]
-default_permission = "allow"
-parameters_schema = { type = "object" }
-"#;
-
-const WASM_INVALID_OUTPUT_MANIFEST: &str = r#"
-id = "wasm-accounting"
-name = "WASM Accounting Invalid Output"
-version = "0.1.0"
-description = "WASM accounting extension"
-trust = "untrusted"
-
-[runtime]
-kind = "wasm"
-module = "wasm/invalid-output.wasm"
-
-[[capabilities]]
-id = "wasm-accounting.invalid_output"
-description = "Call host HTTP then return invalid output"
-effects = ["dispatch_capability", "network"]
-default_permission = "allow"
-parameters_schema = { type = "object" }
-"#;
-
-const WASM_WALL_CLOCK_FAILURE_MANIFEST: &str = r#"
-id = "wasm-accounting"
-name = "WASM Accounting Wall Clock Failure"
-version = "0.1.0"
-description = "WASM accounting extension"
-trust = "untrusted"
-
-[runtime]
-kind = "wasm"
-module = "wasm/wall-clock-failure.wasm"
-
-[[capabilities]]
-id = "wasm-accounting.wall_clock_failure"
-description = "Spend wall-clock time through host HTTP then return an operation failure"
-effects = ["dispatch_capability", "network"]
-default_permission = "allow"
-parameters_schema = { type = "object" }
-"#;
-
-const HTTP_TOOL_WAT: &str = r#"
-(module
-  (type (;0;) (func (param i32 i32 i32)))
-  (type (;1;) (func (result i64)))
-  (type (;2;) (func (param i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32 i32)))
-  (type (;3;) (func (param i32 i32 i32 i32 i32)))
-  (type (;4;) (func (param i32 i32) (result i32)))
-  (import "near:agent/host@0.3.0" "log" (func $log (type 0)))
-  (import "near:agent/host@0.3.0" "now-millis" (func $now (type 1)))
-  (import "near:agent/host@0.3.0" "workspace-read" (func $workspace_read (type 0)))
-  (import "near:agent/host@0.3.0" "http-request" (func $http_request (type 2)))
-  (import "near:agent/host@0.3.0" "tool-invoke" (func $tool_invoke (type 3)))
-  (import "near:agent/host@0.3.0" "secret-exists" (func $secret_exists (type 4)))
-  (memory (export "memory") 1)
-  (global $heap (mut i32) (i32.const 4096))
-  (data (i32.const 128) "POST")
-  (data (i32.const 160) "https://example.test/api")
-  (data (i32.const 224) "{}")
-  (data (i32.const 256) "hello")
-  (data (i32.const 1024) "{\22type\22:\22object\22}")
-  (data (i32.const 2048) "fixture description")
-  (data (i32.const 3072) "1")
-  (func $schema (result i32)
-    i32.const 16
-    i32.const 1024
-    i32.store
-    i32.const 20
-    i32.const 17
-    i32.store
-    i32.const 16)
-  (func $description (result i32)
-    i32.const 32
-    i32.const 2048
-    i32.store
-    i32.const 36
-    i32.const 19
-    i32.store
-    i32.const 32)
-  (func $execute (param i32 i32 i32 i32 i32) (result i32)
-    i32.const 128
-    i32.const 4
-    i32.const 160
-    i32.const 24
-    i32.const 224
-    i32.const 2
-    i32.const 1
-    i32.const 256
-    i32.const 5
-    i32.const 0
-    i32.const 0
-    i32.const 512
-    call $http_request
-
-    i32.const 48
-    i32.const 1
-    i32.store
-    i32.const 52
-    i32.const 3072
-    i32.store
-    i32.const 56
-    i32.const 1
-    i32.store
-    i32.const 60
-    i32.const 0
-    i32.store
-    i32.const 48)
-  (func $post (param i32))
-  (func $realloc (param $old i32) (param $old_align i32) (param $new_size i32) (param $new_align i32) (result i32)
-    (local $ret i32)
-    global.get $heap
-    local.set $ret
-    global.get $heap
-    local.get $new_size
-    i32.add
-    global.set $heap
-    local.get $ret)
-  (func $_initialize)
-  (export "near:agent/tool@0.3.0#execute" (func $execute))
-  (export "cabi_post_near:agent/tool@0.3.0#execute" (func $post))
-  (export "near:agent/tool@0.3.0#schema" (func $schema))
-  (export "cabi_post_near:agent/tool@0.3.0#schema" (func $post))
-  (export "near:agent/tool@0.3.0#description" (func $description))
-  (export "cabi_post_near:agent/tool@0.3.0#description" (func $post))
-  (export "cabi_realloc" (func $realloc))
-  (export "_initialize" (func $_initialize))
-)
 "#;

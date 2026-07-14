@@ -28,7 +28,6 @@ use brassclaw_network::{
 use brassclaw_resources::InMemoryResourceGovernor;
 use brassclaw_scripts::{ScriptHostHttpRequest, ScriptRuntimeHttpAdapter};
 use brassclaw_secrets::{InMemorySecretStore, SecretMaterial, SecretStore};
-use brassclaw_wasm::{WasmHostHttp, WasmHttpRequest, WasmRuntimeHttpAdapter};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -2099,52 +2098,6 @@ async fn production_host_http_egress_rejects_cross_capability_staged_credentials
             if reason == "staged credential capability does not match request capability"
     ));
     assert!(network_recorder.lock().unwrap().is_empty());
-}
-
-#[tokio::test]
-async fn wasm_http_adapter_borrows_real_host_staged_network_policy() {
-    let network = RecordingNetwork::ok(NetworkHttpResponse {
-        status: 200,
-        headers: vec![],
-        body: b"ok".to_vec(),
-        usage: NetworkUsage {
-            request_bytes: 5,
-            response_bytes: 2,
-            resolved_ip: None,
-        },
-    });
-    let network_recorder = network.requests.clone();
-    let services = test_obligation_services();
-    let scope = sample_scope();
-    let capability_id = sample_capability_id();
-    let staged_policy = sample_policy();
-    stage_policy_sync(&services, &scope, &capability_id, staged_policy.clone());
-    let service = services.host_http_egress(network);
-    let adapter = WasmRuntimeHttpAdapter::new(
-        Arc::new(service),
-        scope.clone(),
-        capability_id.clone(),
-        caller_supplied_policy(),
-    );
-
-    let response = adapter
-        .request(WasmHttpRequest {
-            method: "POST".to_string(),
-            url: "https://api.example.test/v1/run".to_string(),
-            headers_json: "{}".to_string(),
-            body: Some(b"hello".to_vec()),
-            timeout_ms: Some(1000),
-        })
-        .expect("WASM adapter should reach host egress using staged policy");
-
-    assert_eq!(response.status, 200);
-    assert_eq!(response.body, b"ok".to_vec());
-    let requests = network_recorder.lock().unwrap();
-    assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].policy, staged_policy);
-    assert_eq!(requests[0].url, "https://api.example.test/v1/run");
-    assert_eq!(requests[0].body, b"hello".to_vec());
-    drop(requests);
 }
 
 #[tokio::test]
