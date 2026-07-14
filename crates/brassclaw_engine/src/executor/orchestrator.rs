@@ -5819,6 +5819,41 @@ msgs[-1].get("_reduction_flags", {}).get("content") == "summarize"
         run_python_final_with_driver(driver);
     }
 
+    // Regression for review finding #3: `_summarize_field_in_message`
+    // was shallow-copying the message, so writing to the
+    // `_reduction_flags` nested dict mutated the original message.
+    // Two distinct copies of the same source message must keep their
+    // flag dicts separate after being passed through
+    // `_summarize_field_in_message`.
+    #[test]
+    fn summarize_does_not_corrupt_sibling_message_via_nested_flags() {
+        let driver = r#"
+shared = {"role": "user", "content": "x" * 100, "_reduction_flags": {"already_set": True}}
+msgs = [dict(shared), dict(shared)]
+# Mutate one of them through the helper. The other must keep its
+# existing `_reduction_flags` untouched.
+msgs[0] = _summarize_field_in_message(msgs[0], "content")
+msgs[0]["_reduction_flags"].get("content") == "summarize" and msgs[1]["_reduction_flags"] == {"already_set": True}
+"#;
+        run_python_final_with_driver(driver);
+    }
+
+    // Regression for review finding #2: `_history_compact` was
+    // checking `"system"` (lowercase) but the orchestrator always
+    // emits `"System"` (capital). The bug silently destroyed the
+    // cache-stable system prefix.
+    #[test]
+    fn history_compact_preserves_capitalized_system_prefix() {
+        let driver = r#"
+msgs = [{"role": "System", "content": "stable"}] + [
+    {"role": "User", "content": "x" * 4000} for _ in range(10)
+]
+out = _history_compact(list(msgs), 3)
+out[0].get("role") == "System" and len(out) == 4
+"#;
+        run_python_final_with_driver(driver);
+    }
+
     #[test]
     fn reduce_prompt_returns_messages_when_already_under_budget() {
         let driver = r#"

@@ -27,6 +27,11 @@ integrations/abound/tests/source_env_vars.sh
 .sidecar/
 .todos/
 
+# Zenflow operator scratch directory — contains per-task plan, spec,
+# proposal artifacts and chat state used by the Zenflow workflow runner.
+# Never commit; per-project operator state.
+.zenflow/
+
 target/
 
 # Python

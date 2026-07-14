@@ -439,9 +439,15 @@ def _summarize_field_in_message(message, field):
     if not isinstance(message, dict):
         return message
     new_message = dict(message)
-    flags = new_message.get("_reduction_flags", {})
-    if not isinstance(flags, dict):
-        flags = {}
+    # Copy the nested flags dict so we never mutate the original message's
+    # `_reduction_flags` (which `new_message` shares by reference until
+    # we replace it). Without this copy, calling this helper twice on two
+    # different messages from the same source list would corrupt the
+    # first message.
+    flags_source = new_message.get("_reduction_flags", {})
+    if not isinstance(flags_source, dict):
+        flags_source = {}
+    flags = dict(flags_source)
     flags[field] = "summarize"
     new_message["_reduction_flags"] = flags
     return new_message
@@ -473,13 +479,19 @@ def _history_compact(messages, keep_recent_n):
     System messages (the cache-stable prefix) are preserved at the head
     of the message list. Everything else is sliced to the most recent
     `keep_recent_n` entries. Returns the new list.
+
+    Accepts both `"System"` (the canonical role produced by the
+    orchestrator's `append_message` / `append_system_append` helpers —
+    see lines 273 and 602) and the lowercase `"system"` so that
+    imported transcripts (e.g. CPython test fixtures, external
+    gateways) are also classified correctly.
     """
     if keep_recent_n <= 0 or len(messages) <= keep_recent_n:
         return messages
     system_prefix = []
     body = []
     for msg in messages:
-        if isinstance(msg, dict) and msg.get("role") == "system":
+        if isinstance(msg, dict) and msg.get("role") in ("System", "system"):
             system_prefix.append(msg)
         else:
             body.append(msg)
@@ -1116,7 +1128,15 @@ def run_loop(context, goal, actions, state, config):
             rules_list = []
             if isinstance(rules, list):
                 rules_list = rules
-            _reduce_prompt(working_messages, rules_list, prompt_budget)
+            # IMPORTANT: capture the return value. Rules that rebuild the
+            # message list (e.g. `history_compact`) return a NEW list —
+            # discarding the return loses the trimmed prefix.
+            working_messages = _reduce_prompt(
+                working_messages, rules_list, prompt_budget
+            )
+            # Mirror into state so `ensure_working_messages` picks up the
+            # reduced list when it runs after the enforcement step.
+            state["working_messages"] = working_messages
             if estimate_context_tokens(working_messages) > prompt_budget:
                 __emit_event__(
                     "prompt_over_budget",

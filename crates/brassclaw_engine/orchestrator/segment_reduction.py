@@ -119,8 +119,8 @@ def _priority_drop(messages: list[dict[str, Any]], priority_fields: tuple[str, .
 def _history_compact(messages: list[dict[str, Any]], keep_recent_n: int) -> list[dict[str, Any]]:
     if keep_recent_n <= 0 or len(messages) <= keep_recent_n:
         return messages
-    system_prefix = [m for m in messages if m.get("role") == "system"]
-    body = [m for m in messages if m.get("role") != "system"]
+    system_prefix = [m for m in messages if m.get("role") in ("System", "system")]
+    body = [m for m in messages if m.get("role") not in ("System", "system")]
     if len(body) <= keep_recent_n:
         return messages
     return system_prefix + body[-keep_recent_n:]
