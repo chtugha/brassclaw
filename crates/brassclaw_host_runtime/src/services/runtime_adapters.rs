@@ -486,10 +486,12 @@ fn dispatch_error_for_runtime(
     match runtime {
         RuntimeKind::Mcp => DispatchError::Mcp { kind },
         RuntimeKind::Script => DispatchError::Script { kind },
-        RuntimeKind::FirstParty | RuntimeKind::System => DispatchError::FirstParty {
-            kind,
-            safe_summary: None,
-        },
+        RuntimeKind::FirstParty | RuntimeKind::System | RuntimeKind::Wasm => {
+            DispatchError::FirstParty {
+                kind,
+                safe_summary: None,
+            }
+        }
     }
 }
 

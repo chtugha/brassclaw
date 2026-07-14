@@ -121,36 +121,6 @@ where
                 );
             }
         }
-        if config.require_wasm_credentials {
-            self.push_missing(
-                &mut issues,
-                ProductionWiringComponent::WasmCredentialProvider,
-                self.wasm_credential_provider.is_some(),
-            );
-            if self.wasm_credential_provider.is_some()
-                && !self.component_types.wasm_credential_provider_verified
-            {
-                self.push_issue(
-                    &mut issues,
-                    ProductionWiringComponent::WasmCredentialProvider,
-                    ProductionWiringIssueKind::UnverifiedProductionImplementation,
-                    component_name(self.component_types.wasm_credential_provider),
-                );
-            }
-            if self.wasm_runtime.is_some()
-                && self.wasm_credential_provider.is_some()
-                && !self
-                    .component_types
-                    .wasm_runtime_credential_provider_captured
-            {
-                self.push_issue(
-                    &mut issues,
-                    ProductionWiringComponent::WasmCredentialProvider,
-                    ProductionWiringIssueKind::UnverifiedProductionImplementation,
-                    component_name(self.component_types.wasm_credential_provider),
-                );
-            }
-        }
         for runtime in &config.required_runtime_backends {
             match runtime {
                 RuntimeKind::Script
@@ -298,11 +268,6 @@ where
             &mut issues,
             ProductionWiringComponent::RuntimeHttpEgress,
             self.component_types.runtime_http_egress,
-        );
-        self.push_local_only(
-            &mut issues,
-            ProductionWiringComponent::WasmCredentialProvider,
-            self.component_types.wasm_credential_provider,
         );
         self.push_local_only(
             &mut issues,
