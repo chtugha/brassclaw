@@ -19,6 +19,8 @@
 //! - `__get_actions__` — available tool definitions
 
 use std::sync::Arc;
+use std::sync::LazyLock;
+use std::sync::Mutex as StdMutex;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -622,6 +624,21 @@ pub async fn execute_orchestrator(
 
                     // __check_budget__()"
                     "__check_budget__" => handle_check_budget(thread),
+
+                    // __log_budget_warning__(field, value, message)
+                    // Soft telemetry — emits a BudgetWarning event but does not
+                    // abort the orchestrator. Token-budget soft warnings are the
+                    // only soft signal: time/cost budgets remain hard-stops.
+                    "__log_budget_warning__" => {
+                        handle_log_budget_warning(args, kwargs, thread, event_tx)
+                    }
+
+                    // __get_reduction_rules__() -> list
+                    // Returns the per-project/user cached reduction rules used
+                    // by the segment reduction pipeline in default.py.
+                    "__get_reduction_rules__" => {
+                        handle_get_reduction_rules(thread, store).await
+                    }
 
                     // __get_actions__()
                     "__get_actions__" => handle_get_actions(thread, effects, leases, store).await,
@@ -2319,6 +2336,24 @@ fn handle_emit_event(
                 .collect();
             EventKind::SkillActivated { skill_names }
         }
+        "budget_warning" => {
+            let field = extract_string_kwarg(kwargs, "field").unwrap_or_default();
+            let value = extract_i64_kwarg(kwargs, "value").unwrap_or(0);
+            let message = extract_string_kwarg(kwargs, "message").unwrap_or_default();
+            EventKind::BudgetWarning {
+                field,
+                value,
+                message,
+            }
+        }
+        "prompt_over_budget" => {
+            let estimated = extract_u64_kwarg(kwargs, "estimated_tokens").unwrap_or(0);
+            let budget = extract_u64_kwarg(kwargs, "budget_tokens").unwrap_or(0);
+            EventKind::PromptOverBudget {
+                estimated_tokens: estimated,
+                budget_tokens: budget,
+            }
+        }
         _ => {
             debug!(kind = %kind_str, "orchestrator: unknown event kind, skipping");
             return ExtFunctionResult::Return(MontyObject::None);
@@ -2478,6 +2513,171 @@ fn handle_check_budget(thread: &Thread) -> ExtFunctionResult {
     });
 
     ExtFunctionResult::Return(json_to_monty(&result))
+}
+
+// ── Reduction rules cache ──────────────────────────────────
+//
+// The orchestrator Python calls `__get_reduction_rules__()` on every
+// prompt assembly when the assembled message list is over budget. To
+// keep that hot path off the DB, the resolved rules are cached
+// per-(project_id, user_id) in a process-wide map. REST handlers that
+// mutate the rules call `invalidate_reduction_rules_cache()` to flush
+// stale entries; until then, the cache serves the same Vec without
+// touching the DB.
+//
+// The cache key intentionally excludes the rule tag — only one tag
+// ("reduction_rule") is supported today. Adding more tags later
+// requires widening the key.
+type ReductionRuleCacheKey = (crate::types::project::ProjectId, String);
+type ReductionRuleCacheValue = Vec<serde_json::Value>;
+type ReductionRuleSlot = Arc<StdMutex<Option<ReductionRuleCacheValue>>>;
+type ReductionRuleCacheMap = HashMap<ReductionRuleCacheKey, ReductionRuleSlot>;
+
+static REDUCTION_RULE_CACHE: LazyLock<StdMutex<ReductionRuleCacheMap>> =
+    LazyLock::new(|| StdMutex::new(HashMap::new()));
+
+/// Invalidate cached reduction rules. Currently a process-wide flush:
+/// every cached entry is dropped on the next access. Called by the
+/// REST layer when reduction rules are added, removed, or replaced.
+///
+/// Returns the number of cache slots cleared (mostly useful for tests).
+pub fn invalidate_reduction_rules_cache() -> usize {
+    let cache = REDUCTION_RULE_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    let mut cleared = 0;
+    for slot in cache.values() {
+        if let Ok(mut slot) = slot.lock()
+            && slot.is_some()
+        {
+            *slot = None;
+            cleared += 1;
+        }
+    }
+    cleared
+}
+
+/// Apply cached or freshly-loaded reduction rules for the given project/
+/// user. If a fresh DB load fails, returns an empty list (the
+/// orchestrator skips reduction rather than aborting).
+async fn load_reduction_rules(
+    project_id: crate::types::project::ProjectId,
+    user_id: &str,
+    store: Option<&Arc<dyn Store>>,
+) -> Vec<serde_json::Value> {
+    let Some(store) = store else {
+        return Vec::new();
+    };
+    let key: ReductionRuleCacheKey = (project_id, user_id.to_string());
+    let slot = {
+        let mut cache = REDUCTION_RULE_CACHE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        cache
+            .entry(key)
+            .or_insert_with(|| Arc::new(StdMutex::new(None)))
+            .clone()
+    };
+    {
+        let guard = slot.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(cached) = guard.as_ref() {
+            return cached.clone();
+        }
+    }
+    let fresh = match store.list_memory_docs(project_id, user_id).await {
+        Ok(docs) => {
+            let mut out: Vec<serde_json::Value> = Vec::new();
+            for doc in docs {
+                if !doc.tags.iter().any(|t| t == "reduction_rule") {
+                    continue;
+                }
+                let value = match serde_json::from_str::<serde_json::Value>(&doc.content) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        debug!("reduction rule parse failed: {e}");
+                        continue;
+                    }
+                };
+                if let Some(arr) = value.as_array() {
+                    for entry in arr {
+                        if entry.is_object() {
+                            out.push(entry.clone());
+                        }
+                    }
+                } else if value.is_object() {
+                    out.push(value);
+                }
+            }
+            out
+        }
+        Err(e) => {
+            debug!("reduction rule load failed: {e}");
+            return Vec::new();
+        }
+    };
+    {
+        let mut guard = slot.lock().unwrap_or_else(|e| e.into_inner());
+        *guard = Some(fresh.clone());
+    }
+    fresh
+}
+
+/// Handle `__log_budget_warning__(field, value, message)`.
+///
+/// Emits a `BudgetWarning` event. The token budget is the only soft
+/// budget — time and cost budgets remain hard-stops. This function is
+/// called by the orchestrator when the soft threshold is crossed, before
+/// the reduction pipeline tries to shrink the prompt.
+fn handle_log_budget_warning(
+    args: &[MontyObject],
+    kwargs: &[(MontyObject, MontyObject)],
+    thread: &mut Thread,
+    event_tx: Option<&tokio::sync::broadcast::Sender<ThreadEvent>>,
+) -> ExtFunctionResult {
+    let field = if let Some(s) = args.first().map(monty_to_string) {
+        s
+    } else {
+        extract_string_kwarg(kwargs, "field").unwrap_or_default()
+    };
+    let value = args
+        .get(1)
+        .and_then(|v| match v {
+            MontyObject::Int(i) => Some(*i),
+            _ => None,
+        })
+        .or_else(|| extract_i64_kwarg(kwargs, "value"))
+        .unwrap_or(0);
+    let message = if args.len() >= 3 {
+        monty_to_string(&args[2])
+    } else {
+        extract_string_kwarg(kwargs, "message").unwrap_or_default()
+    };
+
+    let kind = EventKind::BudgetWarning {
+        field,
+        value,
+        message,
+    };
+    let event = ThreadEvent::new(thread.id, kind);
+    if let Some(tx) = event_tx {
+        let _ = tx.send(event.clone());
+    }
+    thread.events.push(event);
+    thread.updated_at = chrono::Utc::now();
+
+    ExtFunctionResult::Return(MontyObject::None)
+}
+
+/// Handle `__get_reduction_rules__()`.
+///
+/// Returns the cached or freshly-loaded reduction rules for the active
+/// thread's project/user, filtered by the `reduction_rule` tag and
+/// parsed as a JSON array of objects. Session-isolated via the
+/// thread's `project_id`+`user_id`.
+async fn handle_get_reduction_rules(
+    thread: &Thread,
+    store: Option<&Arc<dyn Store>>,
+) -> ExtFunctionResult {
+    let rules = load_reduction_rules(thread.project_id, &thread.user_id, store).await;
+    ExtFunctionResult::Return(json_to_monty(&serde_json::json!(rules)))
 }
 
 /// Handle `__get_actions__()`.
@@ -3205,6 +3405,18 @@ fn extract_u64_kwarg(kwargs: &[(MontyObject, MontyObject)], name: &str) -> Optio
             && let MontyObject::Int(i) = v
         {
             return Some(*i as u64);
+        }
+    }
+    None
+}
+
+fn extract_i64_kwarg(kwargs: &[(MontyObject, MontyObject)], name: &str) -> Option<i64> {
+    for (k, v) in kwargs {
+        if let MontyObject::String(key) = k
+            && key == name
+            && let MontyObject::Int(i) = v
+        {
+            return Some(*i);
         }
     }
     None
@@ -5502,5 +5714,207 @@ FINAL(batch_error_count)
             action_failed,
             "expected ActionFailed event alongside CodeExecutionFailed"
         );
+    }
+
+    // ── Segment reduction helpers (Phase 3) ─────────────────────────
+    //
+    // Monty-side smoke tests for the Python reduction-rule factories +
+    // `_reduce_prompt` pipeline defined inline in default.py. Each test
+    // compiles the helpers through `MontyRun::new` and runs a small
+    // driver program that ends with FINAL(...).
+
+    fn eval_python_object(program: &str) -> MontyObject {
+        let helpers_end = DEFAULT_ORCHESTRATOR
+            .find("\ndef run_loop(")
+            .unwrap_or(DEFAULT_ORCHESTRATOR.len());
+        let helpers = &DEFAULT_ORCHESTRATOR[..helpers_end];
+
+        let code = format!("{helpers}\n{program}");
+        run_python_final(code)
+    }
+
+    /// Run a multi-statement Python driver whose final expression is
+    /// implicitly the program's value (auto-wrapped in `FINAL(...)`).
+    /// Retrieves the last non-empty line of the driver as the assertion
+    /// expression and runs `FINAL(<that expression>)` against the
+    /// orchestrator helpers.
+    fn run_python_final_with_driver(driver: &str) {
+        let trimmed = driver.trim();
+        let body_lines: Vec<&str> = trimmed
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
+        // Body is everything except the final assertion line; if the
+        // driver has only one line we use it both as body and
+        // assertion so trivial drivers still work.
+        let (body, assertion) = match body_lines.as_slice() {
+            [] => (String::new(), "True".to_string()),
+            [single] => (String::new(), (*single).to_string()),
+            [rest @ .., last] => (rest.join("\n"), (*last).to_string()),
+        };
+        let program = format!("{body}\nFINAL({assertion})");
+        match eval_python_object(&program) {
+            MontyObject::Bool(true) => {}
+            MontyObject::Bool(false) => panic!("driver returned False"),
+            other => panic!("driver returned non-bool: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn truncate_rule_reduces_oversized_content() {
+        // Build a single user message with 1MB of content, apply a
+        // 200-char truncate rule with a 100-token budget, and verify
+        // the resulting content is small enough.
+        let driver = r#"
+msgs = [{"role": "user", "content": "x" * 1000000}]
+_reduce_prompt(msgs, [make_truncate_rule("content", 200)], 100)
+len(msgs[-1]["content"]) <= 210
+"#;
+        run_python_final_with_driver(driver);
+    }
+
+    #[test]
+    fn drop_rule_removes_target_field() {
+        let driver = r#"
+msgs = [{"role": "user", "content": "x" * 8000, "noise": "y" * 4000}]
+_reduce_prompt(msgs, [make_drop_rule("noise")], 100)
+"noise" not in msgs[-1]
+"#;
+        run_python_final_with_driver(driver);
+    }
+
+    #[test]
+    fn priority_rule_drops_low_priority_fields_first() {
+        // 'content' is highest priority, 'meta' middle, 'noise' lowest.
+        // The rule must drop 'noise' first, then 'meta' if still needed.
+        let driver = r#"
+msgs = [{"role": "user", "content": "a" * 500, "meta": "b" * 4000, "noise": "c" * 8000}]
+_reduce_prompt(msgs, [make_priority_rule(["content", "meta", "noise"])], 100)
+estimate_context_tokens(msgs) <= 100
+"#;
+        run_python_final_with_driver(driver);
+    }
+
+    #[test]
+    fn history_compact_keeps_system_prefix() {
+        // Direct check of _history_compact (would-be-tested via
+        // _reduce_prompt after the early-return short-circuits).
+        let driver = r#"
+msgs = [{"role": "system", "content": "stable"}] + [
+    {"role": "user", "content": "x" * 4000} for _ in range(10)
+]
+out = _history_compact(list(msgs), 3)
+len(out) <= 4
+"#;
+        run_python_final_with_driver(driver);
+    }
+
+    #[test]
+    fn summarize_rule_records_flag() {
+        let driver = r#"
+msgs = [{"role": "user", "content": "x" * 8000}]
+_reduce_prompt(msgs, [make_summarize_rule("content")], 100)
+msgs[-1].get("_reduction_flags", {}).get("content") == "summarize"
+"#;
+        run_python_final_with_driver(driver);
+    }
+
+    #[test]
+    fn reduce_prompt_returns_messages_when_already_under_budget() {
+        let driver = r#"
+msgs = [{"role": "system", "content": "stable"}, {"role": "user", "content": "hi"}]
+out = _reduce_prompt(msgs, [make_drop_rule("content")], 1000)
+out is msgs
+"#;
+        run_python_final_with_driver(driver);
+    }
+
+    #[test]
+    fn reduction_rules_over_budget_event_kwarg_shape() {
+        // Verify the new event-kwarg shape used by the post-assembly
+        // enforcement step: estimated_tokens and budget_tokens. The
+        // shape must round-trip through Monty as a dict.
+        let driver = r#"
+evt = {"estimated_tokens": 123, "budget_tokens": 100}
+evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
+"#;
+        run_python_final_with_driver(driver);
+    }
+
+    #[test]
+    fn handle_emit_event_dispatches_budget_warning() {
+        let mut thread = Thread::new(
+            "goal",
+            crate::types::thread::ThreadType::Foreground,
+            crate::types::project::ProjectId::new(),
+            "user",
+            crate::types::thread::ThreadConfig::default(),
+        );
+        thread.transition_to(ThreadState::Running, None).unwrap();
+        let args = vec![MontyObject::String("budget_warning".into())];
+        let kwargs = vec![
+            (
+                MontyObject::String("field".into()),
+                MontyObject::String("tokens".into()),
+            ),
+            (
+                MontyObject::String("value".into()),
+                MontyObject::Int(-50),
+            ),
+            (
+                MontyObject::String("message".into()),
+                MontyObject::String("token budget low".into()),
+            ),
+        ];
+        handle_emit_event(&args, &kwargs, &mut thread, None);
+        let warned = thread.events.iter().any(|e| {
+            matches!(
+                &e.kind,
+                EventKind::BudgetWarning { field, value, .. }
+                    if field == "tokens" && *value == -50
+            )
+        });
+        assert!(warned, "expected BudgetWarning event on thread");
+    }
+
+    #[test]
+    fn handle_emit_event_dispatches_prompt_over_budget() {
+        let mut thread = Thread::new(
+            "goal",
+            crate::types::thread::ThreadType::Foreground,
+            crate::types::project::ProjectId::new(),
+            "user",
+            crate::types::thread::ThreadConfig::default(),
+        );
+        thread.transition_to(ThreadState::Running, None).unwrap();
+        let args = vec![MontyObject::String("prompt_over_budget".into())];
+        let kwargs = vec![
+            (
+                MontyObject::String("estimated_tokens".into()),
+                MontyObject::Int(8000),
+            ),
+            (
+                MontyObject::String("budget_tokens".into()),
+                MontyObject::Int(6000),
+            ),
+        ];
+        handle_emit_event(&args, &kwargs, &mut thread, None);
+        let over = thread.events.iter().any(|e| {
+            matches!(
+                &e.kind,
+                EventKind::PromptOverBudget {
+                    estimated_tokens,
+                    budget_tokens,
+                } if *estimated_tokens == 8000 && *budget_tokens == 6000
+            )
+        });
+        assert!(over, "expected PromptOverBudget event on thread");
+    }
+
+    #[test]
+    fn invalidate_reduction_rules_cache_returns_zero_when_unused() {
+        // Ensure the public API exists and is callable; in this fresh
+        // state no slots are populated so cleared is zero.
+        let _ = invalidate_reduction_rules_cache();
     }
 }

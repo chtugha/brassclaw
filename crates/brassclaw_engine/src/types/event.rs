@@ -390,6 +390,25 @@ pub enum EventKind {
         reason: String,
     },
 
+    // ── Prompt segment reduction telemetry ──────────────────
+    /// Soft warning emitted by the orchestrator when a soft budget
+    /// threshold is crossed (e.g. token budget low but not yet exhausted).
+    /// Time/cost budgets remain hard-stops; only the token budget has a
+    /// soft pass-through to the reduction pipeline.
+    BudgetWarning {
+        field: String,
+        value: i64,
+        message: String,
+    },
+    /// Emitted when prompt assembly finishes but the assembled message
+    /// list still exceeds the per-turn token budget after all configured
+    /// reduction rules have been applied. The orchestrator then proceeds
+    /// with the over-budget prompt (continues, not aborts).
+    PromptOverBudget {
+        estimated_tokens: u64,
+        budget_tokens: u64,
+    },
+
     /// Unknown event kind — catch-all for forward compatibility during
     /// rolling deploys. Older binaries deserializing events written by
     /// newer binaries will produce this variant instead of failing.

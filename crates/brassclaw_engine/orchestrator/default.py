@@ -298,6 +298,250 @@ def estimate_context_tokens(messages):
     return (total_chars + CHARS_PER_TOKEN - 1) // CHARS_PER_TOKEN
 
 
+# ---------------------------------------------------------------------------
+# Segment reduction helpers (Monty-safe subset).
+#
+# These five rule factories + `_reduce_prompt` implement the soft-budget
+# reduction pipeline that runs after the orchestrator has assembled a message
+# list but before the LLM call. They are intentionally pure Python: no
+# imports, no `with`, no comprehensions with `if`, no `match`, no classes, no
+# closures captured by reference. They are reachable from the Monty VM.
+#
+# Monty-safe conventions used throughout:
+#   - no `import` statements
+#   - no classes (only functions and dicts)
+#   - no f-strings (use `"...".format(...)`)
+#   - no list comprehensions with `if` (use explicit for-loops)
+#   - no `match`, `del`, `yield`, `with`
+#   - no `any` / `all` builtins (use explicit loops)
+# ---------------------------------------------------------------------------
+
+REDUCE_TYPE_TRUNCATE = "truncate"
+REDUCE_TYPE_SUMMARIZE = "summarize"
+REDUCE_TYPE_DROP = "drop"
+REDUCE_TYPE_PRIORITY = "priority"
+REDUCE_TYPE_HISTORY_COMPACT = "history_compact"
+
+VALID_REDUCE_TYPES = [
+    REDUCE_TYPE_TRUNCATE,
+    REDUCE_TYPE_SUMMARIZE,
+    REDUCE_TYPE_DROP,
+    REDUCE_TYPE_PRIORITY,
+    REDUCE_TYPE_HISTORY_COMPACT,
+]
+
+
+def make_truncate_rule(field, max_chars):
+    """Build a rule that truncates `field` in the last user message to `max_chars`."""
+    return {
+        "type": REDUCE_TYPE_TRUNCATE,
+        "field": field,
+        "max_chars": int(max_chars),
+    }
+
+
+def make_summarize_rule(field):
+    """Build a rule that marks `field` for LLM-based summarization.
+
+    The host runtime performs the actual summarization on the next turn.
+    The Python pipeline just records the request so the post-assembly
+    enforcement step knows to skip this field rather than drop it.
+    """
+    return {
+        "type": REDUCE_TYPE_SUMMARIZE,
+        "field": field,
+    }
+
+
+def make_drop_rule(field):
+    """Build a rule that removes `field` from the last user message entirely."""
+    return {
+        "type": REDUCE_TYPE_DROP,
+        "field": field,
+    }
+
+
+def make_priority_rule(fields_priority_list):
+    """Build a rule that drops fields lowest-priority-first until under budget.
+
+    `fields_priority_list` is a list of field names ordered from highest to
+    lowest priority. The reduction pipeline walks the list in reverse and
+    drops fields until the budget is satisfied or only the highest-priority
+    field remains.
+    """
+    return {
+        "type": REDUCE_TYPE_PRIORITY,
+        "fields": list(fields_priority_list),
+    }
+
+
+def make_history_compact_rule(keep_recent_n):
+    """Build a rule that keeps only the N most recent conversation messages."""
+    return {
+        "type": REDUCE_TYPE_HISTORY_COMPACT,
+        "keep_recent_n": int(keep_recent_n),
+    }
+
+
+def _truncate_field_in_message(message, field, max_chars):
+    """Truncate a top-level field on `message` to at most `max_chars` chars.
+
+    A non-positive `max_chars` clears the field. Monty-safe: returns a
+    new dict rather than slicing in place so the caller's reference
+    remains valid for the next rule's read.
+    """
+    if not isinstance(message, dict):
+        return message
+    raw = message.get(field, "")
+    if not isinstance(raw, str):
+        return message
+    if max_chars <= 0:
+        new_message = dict(message)
+        new_message[field] = ""
+        return new_message
+    if len(raw) <= max_chars:
+        return message
+    suffix = "..."
+    keep = max_chars - len(suffix)
+    if keep < 0:
+        keep = 0
+    truncated = raw[:keep] + suffix
+    new_message = dict(message)
+    new_message[field] = truncated
+    return new_message
+
+
+def _drop_field_in_message(message, field):
+    """Remove `field` from `message`. Returns a new dict to keep the call site pure.
+
+    Avoids the `del` statement per the Monty-safe subset — uses a
+    manual copy through `dict.pop` is also off-limits for the same
+    reason, so we rebuild with key iteration instead.
+    """
+    if not isinstance(message, dict):
+        return message
+    if field not in message:
+        return message
+    new_message = {}
+    for key in message:
+        if key != field:
+            new_message[key] = message[key]
+    return new_message
+
+
+def _summarize_field_in_message(message, field):
+    """Mark a field as targeted for summarization on the next turn.
+
+    The Python pipeline never performs the summarization itself — Monty
+    has no LLM handle. We leave the content untouched but flag it so the
+    post-assembly pass can avoid retrying the same rule on the next turn.
+    """
+    if not isinstance(message, dict):
+        return message
+    new_message = dict(message)
+    flags = new_message.get("_reduction_flags", {})
+    if not isinstance(flags, dict):
+        flags = {}
+    flags[field] = "summarize"
+    new_message["_reduction_flags"] = flags
+    return new_message
+
+
+def _priority_drop_until_under_budget(messages, fields, budget_tokens):
+    """Drop `fields` (lowest-priority tail-first) from the last user message until under budget.
+
+    Walks `fields` in reverse so the lowest-priority field is dropped first.
+    Returns the field name that finally brought the budget under, or None
+    if even dropping the highest-priority field couldn't fit.
+    """
+    if len(messages) == 0 or len(fields) == 0:
+        return None
+    target_field = None
+    for i in range(len(fields) - 1, -1, -1):
+        candidate = fields[i]
+        updated = _drop_field_in_message(messages[-1], candidate)
+        messages[-1] = updated
+        if estimate_context_tokens(messages) <= budget_tokens:
+            target_field = candidate
+            break
+    return target_field
+
+
+def _history_compact(messages, keep_recent_n):
+    """Trim history to at most `keep_recent_n` non-system messages.
+
+    System messages (the cache-stable prefix) are preserved at the head
+    of the message list. Everything else is sliced to the most recent
+    `keep_recent_n` entries. Returns the new list.
+    """
+    if keep_recent_n <= 0 or len(messages) <= keep_recent_n:
+        return messages
+    system_prefix = []
+    body = []
+    for msg in messages:
+        if isinstance(msg, dict) and msg.get("role") == "system":
+            system_prefix.append(msg)
+        else:
+            body.append(msg)
+    if len(body) <= keep_recent_n:
+        return messages
+    trimmed_body = body[-keep_recent_n:]
+    return system_prefix + trimmed_body
+
+
+def _apply_rule(messages, rule, budget_tokens):
+    """Apply a single reduction rule. Returns the (possibly modified) message list."""
+    rule_type = rule.get("type")
+    field = rule.get("field")
+    if rule_type == REDUCE_TYPE_TRUNCATE:
+        max_chars = rule.get("max_chars", 0)
+        if not field or len(messages) == 0:
+            return messages
+        updated = _truncate_field_in_message(messages[-1], field, max_chars)
+        messages[-1] = updated
+        return messages
+    if rule_type == REDUCE_TYPE_SUMMARIZE:
+        if not field or len(messages) == 0:
+            return messages
+        updated = _summarize_field_in_message(messages[-1], field)
+        messages[-1] = updated
+        return messages
+    if rule_type == REDUCE_TYPE_DROP:
+        if not field or len(messages) == 0:
+            return messages
+        updated = _drop_field_in_message(messages[-1], field)
+        messages[-1] = updated
+        return messages
+    if rule_type == REDUCE_TYPE_PRIORITY:
+        fields = rule.get("fields", [])
+        _priority_drop_until_under_budget(messages, fields, budget_tokens)
+        return messages
+    if rule_type == REDUCE_TYPE_HISTORY_COMPACT:
+        keep = rule.get("keep_recent_n", 0)
+        return _history_compact(messages, keep)
+    return messages
+
+
+def _reduce_prompt(messages, rules, budget_tokens):
+    """Apply reduction rules in order until the prompt fits the budget.
+
+    Returns the message list (possibly reduced). Some rules — like
+    `history_compact` — return a NEW list rather than mutating in
+    place; we adopt that new list as the working list so subsequent
+    rules operate on the reduced shape. Always returns the current
+    working list even if all rules were applied and we are still
+    over budget — caller is responsible for emitting `prompt_over_budget`
+    and deciding whether to abort or proceed.
+    """
+    if estimate_context_tokens(messages) <= budget_tokens:
+        return messages
+    for rule in rules:
+        if estimate_context_tokens(messages) <= budget_tokens:
+            return messages
+        messages = _apply_rule(messages, rule, budget_tokens)
+    return messages
+
+
 def compact_if_needed(state, config):
     """Compact thread context when the active message history grows too large.
 
@@ -786,10 +1030,15 @@ def run_loop(context, goal, actions, state, config):
                 state["_obligation_nudge_count"] = 0
 
         # 2. Check budget
+        # Token budget: SOFT TELEMETRY ONLY. The post-assembly reduction
+        # pipeline (_reduce_prompt) progressively shrinks the prompt when
+        # it is over budget, so we never abort on token exhaustion here.
+        # Time + cost budgets remain hard-stops because they reflect real
+        # resource limits (session deadline, accumulated spend) that no
+        # reduction can alleviate.
         budget = __check_budget__()
         if budget.get("tokens_remaining", 1) <= 0:
-            __transition_to__("completed", "token budget exhausted")
-            return complete_result(state, "completed", "Token budget exhausted.")
+            __log_budget_warning__("tokens", int(budget.get("tokens_remaining", 0)), "token budget low")
         if budget.get("time_remaining_ms", 1) <= 0:
             __transition_to__("completed", "time budget exhausted")
             return complete_result(state, "completed", "Time budget exhausted.")
@@ -848,6 +1097,31 @@ def run_loop(context, goal, actions, state, config):
                     + rendered
                     + ". Reply clearly that those skills are unavailable, do not pretend they ran, "
                     + "and suggest typing `/` to see the available commands and installed skills.",
+                )
+
+        # 3.4 Post-assembly reduction pipeline.
+        # If the assembled prompt is over budget, fetch the per-user/user
+        # reduction rules from the host store and progressively shrink
+        # the message list. Only emits a telemetry event when even
+        # reduction can't fit — never aborts the orchestrator.
+        prompt_budget = 0
+        if isinstance(config, dict):
+            raw = config.get("prompt_budget_tokens")
+            if isinstance(raw, int):
+                prompt_budget = raw
+            elif isinstance(raw, float):
+                prompt_budget = int(raw)
+        if prompt_budget > 0 and estimate_context_tokens(working_messages) > prompt_budget:
+            rules = __get_reduction_rules__()
+            rules_list = []
+            if isinstance(rules, list):
+                rules_list = rules
+            _reduce_prompt(working_messages, rules_list, prompt_budget)
+            if estimate_context_tokens(working_messages) > prompt_budget:
+                __emit_event__(
+                    "prompt_over_budget",
+                    estimated_tokens=estimate_context_tokens(working_messages),
+                    budget_tokens=prompt_budget,
                 )
 
         # 3.5 Compact context before the next model call when needed.
