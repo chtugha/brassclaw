@@ -5487,6 +5487,7 @@ async fn update_token_settings_invokes_all_live_setters() {
         capability_surface: None,
         total_input: Some(12000),
         max_output: Some(2048),
+        cache_retention: None,
     };
 
     let response = services

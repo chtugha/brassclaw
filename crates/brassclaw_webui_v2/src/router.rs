@@ -189,6 +189,24 @@ pub fn webui_v2_router_with_options(state: WebUiV2State, options: WebUiV2RouteOp
             "/api/webchat/v2/providers/{provider_id}/tokens",
             get(handlers::tokens::get_provider_token_settings)
                 .put(handlers::tokens::update_provider_token_settings),
+        )
+        // Reduction-rule endpoints — once-per-user/per-project storage
+        // backing `__get_reduction_rules__()` in the orchestrator. Mutating
+        // routes invalidate the engine cache via the composer-wired hook
+        // on `RebornServices`; the GET path is read-only and hits the
+        // store every time so a fresh operator-authored rule surfaces in
+        // the WebUI on the next refresh without a server restart.
+        // 400-by-contract: a caller without an authenticated `project_id`
+        // is rejected at the handler boundary, so the orchestrator cache
+        // never sees rules filed under an empty bucket.
+        .route(
+            "/api/webchat/v2/tokens/reduction-rules",
+            get(handlers::reduction_rules::list_reduction_rules)
+                .put(handlers::reduction_rules::replace_reduction_rules),
+        )
+        .route(
+            "/api/webchat/v2/tokens/reduction-rules/author",
+            post(handlers::reduction_rules::author_reduction_rule),
         );
     if options.mount_llm_config_routes {
         router = router

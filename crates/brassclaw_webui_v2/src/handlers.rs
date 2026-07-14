@@ -970,5 +970,6 @@ pub async fn remove_skill(
     Ok(Json(result))
 }
 
+pub mod reduction_rules;
 pub mod safety;
 pub mod tokens;

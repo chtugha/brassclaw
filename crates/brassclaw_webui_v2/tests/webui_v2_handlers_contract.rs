@@ -26,22 +26,24 @@ use brassclaw_product_adapters::{
     ProgressKind, ProgressUpdateView, ProjectionCursor,
 };
 use brassclaw_product_workflow::{
-    LifecyclePackageRef, LifecyclePhase, LlmActiveSelection, LlmConfigSnapshot, LlmModelsResult,
-    LlmProbeRequest, LlmProbeResult, LlmProviderView, RebornAutomationInfo, RebornAutomationSource,
-    RebornAutomationState, RebornCancelRunResponse, RebornChannelConnectAction,
-    RebornChannelConnectStrategy, RebornConnectableChannelInfo,
-    RebornConnectableChannelListResponse, RebornCreateThreadResponse, RebornDeleteThreadRequest,
-    RebornDeleteThreadResponse, RebornExtensionActionResponse, RebornExtensionListResponse,
-    RebornExtensionRegistryResponse, RebornGetRunStateRequest, RebornGetRunStateResponse,
-    RebornListAutomationsResponse, RebornListThreadsResponse,
-    RebornOutboundDeliveryTargetListResponse, RebornOutboundPreferencesResponse,
-    RebornResolveGateResponse, RebornResumeGateResponse, RebornServicesApi, RebornServicesError,
-    RebornServicesErrorCode, RebornServicesErrorKind, RebornSetOutboundPreferencesRequest,
-    RebornSetupExtensionResponse, RebornStreamEventsRequest, RebornStreamEventsResponse,
-    RebornSubmitTurnResponse, RebornTimelineRequest, RebornTimelineResponse, SetActiveLlmRequest,
-    UpsertLlmProviderRequest, WebUiAuthenticatedCaller, WebUiCancelRunRequest,
-    WebUiCreateThreadRequest, WebUiListAutomationsRequest, WebUiListThreadsRequest,
-    WebUiResolveGateRequest, WebUiSendMessageRequest, WebUiSetupExtensionRequest,
+    AuthorReductionRuleRequest, AuthorReductionRuleResponse, LifecyclePackageRef, LifecyclePhase,
+    LlmActiveSelection, LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult,
+    LlmProviderView, RebornAutomationInfo, RebornAutomationSource, RebornAutomationState,
+    RebornCancelRunResponse, RebornChannelConnectAction, RebornChannelConnectStrategy,
+    RebornConnectableChannelInfo, RebornConnectableChannelListResponse,
+    RebornCreateThreadResponse, RebornDeleteThreadRequest, RebornDeleteThreadResponse,
+    RebornExtensionActionResponse, RebornExtensionListResponse, RebornExtensionRegistryResponse,
+    RebornGetRunStateRequest, RebornGetRunStateResponse, RebornListAutomationsResponse,
+    RebornListThreadsResponse, RebornOutboundDeliveryTargetListResponse,
+    RebornOutboundPreferencesResponse, RebornResolveGateResponse, RebornResumeGateResponse,
+    RebornServicesApi, RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind,
+    RebornSetOutboundPreferencesRequest, RebornSetupExtensionResponse, RebornStreamEventsRequest,
+    RebornStreamEventsResponse, RebornSubmitTurnResponse, RebornTimelineRequest,
+    RebornTimelineResponse, ReductionRuleConfigView, ReductionRulesRequest,
+    ReductionRulesResponse, RuleType, SetActiveLlmRequest, UpsertLlmProviderRequest,
+    WebUiAuthenticatedCaller, WebUiCancelRunRequest, WebUiCreateThreadRequest,
+    WebUiListAutomationsRequest, WebUiListThreadsRequest, WebUiResolveGateRequest,
+    WebUiSendMessageRequest, WebUiSetupExtensionRequest,
 };
 use brassclaw_threads::SessionThreadRecord;
 use brassclaw_turns::{
@@ -112,6 +114,12 @@ struct StubServices {
     /// branches, or empty drains in a deterministic order.
     next_stream_events: Mutex<VecDeque<Result<RebornStreamEventsResponse, RebornServicesError>>>,
     stream_events_notify: Arc<Notify>,
+    list_reduction_rules_calls: Mutex<Vec<(WebUiAuthenticatedCaller, String)>>,
+    replace_reduction_rules_calls: Mutex<Vec<ReductionRulesRequest>>,
+    author_reduction_rule_calls: Mutex<Vec<AuthorReductionRuleRequest>>,
+    next_reduction_rules_response: Mutex<Option<Result<ReductionRulesResponse, RebornServicesError>>>,
+    next_author_reduction_rule_response:
+        Mutex<Option<Result<AuthorReductionRuleResponse, RebornServicesError>>>,
 }
 
 impl StubServices {
@@ -655,6 +663,81 @@ impl RebornServicesApi for StubServices {
             name: "test-skill".to_string(),
             success: true,
             message: "removed".to_string(),
+        })
+    }
+
+    async fn list_reduction_rules(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+    ) -> Result<ReductionRulesResponse, RebornServicesError> {
+        self.list_reduction_rules_calls
+            .lock()
+            .expect("lock")
+            .push((caller, project_id.to_string()));
+        if let Some(queued) = self
+            .next_reduction_rules_response
+            .lock()
+            .expect("lock")
+            .take()
+        {
+            return queued;
+        }
+        Ok(ReductionRulesResponse {
+            project_id: project_id.to_string(),
+            rules: Vec::new(),
+        })
+    }
+
+    async fn replace_reduction_rules(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+        request: ReductionRulesRequest,
+    ) -> Result<ReductionRulesResponse, RebornServicesError> {
+        self.replace_reduction_rules_calls
+            .lock()
+            .expect("lock")
+            .push(request);
+        if let Some(queued) = self
+            .next_reduction_rules_response
+            .lock()
+            .expect("lock")
+            .take()
+        {
+            return queued;
+        }
+        Ok(ReductionRulesResponse {
+            project_id: project_id.to_string(),
+            rules: Vec::new(),
+        })
+    }
+
+    async fn author_reduction_rule(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        request: AuthorReductionRuleRequest,
+    ) -> Result<AuthorReductionRuleResponse, RebornServicesError> {
+        self.author_reduction_rule_calls
+            .lock()
+            .expect("lock")
+            .push(request);
+        if let Some(queued) = self
+            .next_author_reduction_rule_response
+            .lock()
+            .expect("lock")
+            .take()
+        {
+            return queued;
+        }
+        Ok(AuthorReductionRuleResponse {
+            rule: brassclaw_product_workflow::ReductionRuleConfigView {
+                id: "auto-truncate-0".to_string(),
+                rule_type: brassclaw_product_workflow::RuleType::Truncate,
+                params: serde_json::json!({"field": "content", "max_chars": 200}),
+                priority: 100,
+            },
+            description: None,
         })
     }
 }
@@ -2817,4 +2900,249 @@ async fn update_tool_permission_updates_capability() {
     assert_eq!(body["capability_id"], "web_search");
     assert_eq!(body["permission_mode"], "denied");
     assert_eq!(body["updated"], true);
+}
+
+// ── Reduction-rule route contract ──────────────────────────────
+//
+// `.claude/rules/testing.md`: webchat-v2 routes gate a side effect (writes
+// to the libSQL reduction-rule store), so a unit test on the stub method
+// alone is not sufficient regression coverage. The tests below drive the
+// actual `Router` against a `StubServices` facade so the dispatch table,
+// path/body parsing, project_id extraction, and error mapping all get
+// exercised — exactly what a real WebUI operator triggers.
+
+/// Build the same router as `router_with`, but inject a caller that has
+/// no `project_id`. Used to assert that the handler boundary rejects
+/// per-project endpoints with `400 InvalidRequest` before delegating to
+/// the facade (see `require_project_id`).
+fn router_with_no_project(services: Arc<dyn RebornServicesApi>) -> Router {
+    let caller_no_project = WebUiAuthenticatedCaller::new(
+        TenantId::new("tenant-alpha").expect("tenant"),
+        UserId::new("user-alpha").expect("user"),
+        None,
+        None,
+    );
+    webui_v2_router(WebUiV2State::new(services))
+        .layer(axum::Extension(caller_no_project))
+}
+
+#[tokio::test]
+async fn list_reduction_rules_dispatches_through_facade() {
+    let services = Arc::new(StubServices::default());
+    let canned = ReductionRulesResponse {
+        project_id: "project-alpha".to_string(),
+        rules: vec![ReductionRuleConfigView {
+            id: "rt-noise".to_string(),
+            rule_type: RuleType::Drop,
+            params: serde_json::json!({"field": "noise"}),
+            priority: 50,
+        }],
+    };
+    *services
+        .next_reduction_rules_response
+        .lock()
+        .expect("lock") = Some(Ok(canned));
+
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/webchat/v2/tokens/reduction-rules")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    assert_eq!(body["project_id"], "project-alpha");
+    assert_eq!(body["rules"].as_array().map(|a| a.len()), Some(1));
+    assert_eq!(body["rules"][0]["id"], "rt-noise");
+
+    let calls = services.list_reduction_rules_calls.lock().expect("lock").clone();
+    assert_eq!(calls.len(), 1, "facade called exactly once");
+    assert_eq!(calls[0].0.project_id.as_ref().map(|p| p.as_str()), Some("project-alpha"));
+    // The handler must thread the operator's project_id to the trait, not
+    // the caller's user_id. This guards against future regressions where
+    // someone copies the tokens handler shape and crosses the wires.
+    assert_eq!(calls[0].1, "project-alpha");
+    assert_ne!(calls[0].1, "user-alpha");
+}
+
+#[tokio::test]
+async fn replace_reduction_rules_dispatches_through_facade() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let request_body = serde_json::json!({
+        "rules": [
+            {
+                "id": "rt-truncate-content",
+                "rule_type": "truncate",
+                "params": {"field": "content", "max_chars": 200},
+                "priority": 100,
+            },
+            {
+                "id": "rt-truncate-noise",
+                "rule_type": "truncate",
+                "params": {"field": "noise", "max_chars": 80},
+                "priority": 200,
+            },
+        ],
+    });
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/api/webchat/v2/tokens/reduction-rules")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&request_body).expect("json")))
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let calls = services
+        .replace_reduction_rules_calls
+        .lock()
+        .expect("lock")
+        .clone();
+    assert_eq!(calls.len(), 1, "facade called exactly once");
+    assert_eq!(calls[0].rules.len(), 2);
+    assert_eq!(calls[0].rules[0].id, "rt-truncate-content");
+    assert_eq!(calls[0].rules[1].priority, 200);
+}
+
+#[tokio::test]
+async fn author_reduction_rule_dispatches_through_facade() {
+    let services = Arc::new(StubServices::default());
+    let canned = AuthorReductionRuleResponse {
+        rule: ReductionRuleConfigView {
+            id: "rt-truncate-content-150".to_string(),
+            rule_type: RuleType::Truncate,
+            params: serde_json::json!({"field": "content", "max_chars": 150}),
+            priority: 100,
+        },
+        description: Some("shrink long content blocks".to_string()),
+    };
+    *services
+        .next_author_reduction_rule_response
+        .lock()
+        .expect("lock") = Some(Ok(canned));
+    let router = router_with(services.clone());
+
+    let request_body = serde_json::json!({
+        "rule_type": "truncate",
+        "params": {"field": "content", "max_chars": 150},
+        "description": "shrink long content blocks",
+    });
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/webchat/v2/tokens/reduction-rules/author")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&request_body).expect("json")))
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    assert_eq!(body["rule"]["id"], "rt-truncate-content-150");
+    assert_eq!(body["rule"]["rule_type"], "truncate");
+    assert_eq!(body["rule"]["params"]["field"], "content");
+    assert_eq!(body["rule"]["params"]["max_chars"], 150);
+    assert_eq!(body["rule"]["priority"], 100);
+    assert_eq!(body["description"], "shrink long content blocks");
+
+    let calls = services
+        .author_reduction_rule_calls
+        .lock()
+        .expect("lock")
+        .clone();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].rule_type, RuleType::Truncate);
+    assert_eq!(
+        calls[0].description.as_deref(),
+        Some("shrink long content blocks"),
+    );
+}
+
+#[tokio::test]
+async fn reduction_rule_endpoints_reject_missing_project_id() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with_no_project(services.clone());
+
+    // GET, PUT, POST must all short-circuit with 400 at the handler
+    // boundary; the facade must NOT see any of these calls because a
+    // wildcard-bucket write would land rules in the wrong scope and the
+    // orchestrator's `(project_id, user_id)` cache would never observe
+    // them on subsequent turns. The handler guards project_id with
+    // `require_project_id`; this test pins that guard.
+    for (method, path, body) in [
+        (
+            Method::GET,
+            "/api/webchat/v2/tokens/reduction-rules",
+            None,
+        ),
+        (
+            Method::PUT,
+            "/api/webchat/v2/tokens/reduction-rules",
+            Some(serde_json::json!({"rules": []})),
+        ),
+        (
+            Method::POST,
+            "/api/webchat/v2/tokens/reduction-rules/author",
+            Some(serde_json::json!({
+                "rule_type": "truncate",
+                "params": {"field": "content", "max_chars": 100},
+            })),
+        ),
+    ] {
+        let method_str = method.as_str().to_string();
+        let mut builder = Request::builder().method(method).uri(path);
+        if body.is_some() {
+            builder = builder.header("content-type", "application/json");
+        }
+        let body_bytes = body
+            .map(|v| serde_json::to_vec(&v).expect("json"))
+            .unwrap_or_default();
+        let request = builder.body(Body::from(body_bytes)).expect("request");
+
+        let response = router.clone().oneshot(request).await.expect("oneshot");
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "{method_str} {path} must reject no-project callers"
+        );
+        let body = read_json(response).await;
+        assert_eq!(
+            body["error"],
+            serde_json::to_value(RebornServicesErrorCode::InvalidRequest)
+                .expect("error code value"),
+        );
+    }
+
+    assert_eq!(
+        services.list_reduction_rules_calls.lock().expect("lock").len(),
+        0,
+        "facade must not be reached when caller has no project_id"
+    );
+    assert_eq!(
+        services.replace_reduction_rules_calls.lock().expect("lock").len(),
+        0,
+    );
+    assert_eq!(
+        services.author_reduction_rule_calls.lock().expect("lock").len(),
+        0,
+    );
 }

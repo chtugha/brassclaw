@@ -63,7 +63,18 @@ impl RebornServicesError {
         }
     }
 
-    pub(super) fn from_status(
+    /// `400 InvalidRequest` with `Validation` kind — the standard wire
+    /// shape for request payloads that the facade itself rejects before
+    /// delegating to a backing store (e.g. missing authenticated
+    /// `project_id` on a per-project endpoint). Crates outside
+    /// `brassclaw_product_workflow` can call this through the public
+    /// re-export in `error`; existing internal callers continue to use
+    /// `from_status` so behavior stays identical.
+    pub fn invalid_request() -> Self {
+        Self::from_status(RebornServicesErrorCode::InvalidRequest, 400, false)
+    }
+
+    pub fn from_status(
         code: RebornServicesErrorCode,
         status_code: u16,
         retryable: bool,
