@@ -41,7 +41,6 @@ brassclaw_resources = { path = "../brassclaw_resources" }
 brassclaw_run_state = { path = "../brassclaw_run_state" }
 brassclaw_runtime_policy = { path = "../brassclaw_runtime_policy" }
 brassclaw_safety = { path = "../brassclaw_safety" }
-brassclaw_scripts = { path = "../brassclaw_scripts" }
 brassclaw_secrets = { path = "../brassclaw_secrets" }
 brassclaw_skills = { path = "../brassclaw_skills" }
 brassclaw_triggers = { path = "../brassclaw_triggers" }

@@ -69,7 +69,6 @@ use brassclaw_run_state::{
     ApprovalRequestStore, FilesystemApprovalRequestStore, FilesystemRunStateStore,
     InMemoryApprovalRequestStore, InMemoryRunStateStore, RunStateApprovalStore, RunStateStore,
 };
-use brassclaw_scripts::{ScriptError, ScriptExecutionRequest, ScriptExecutor, ScriptInvocation};
 use brassclaw_secrets::{
     CredentialAccountStore, CredentialSessionStore, InMemoryCredentialBroker, InMemorySecretStore,
     SecretStore, SecretStoreError,
@@ -89,6 +88,13 @@ mod builder;
 mod production_services;
 mod production_wiring;
 mod runtime_adapters;
+mod script_runtime;
+pub use script_runtime::{
+    DockerScriptBackend, ScriptBackend, ScriptBackendOutput, ScriptBackendRequest,
+    ScriptCapabilityResult, ScriptError, ScriptExecutionRequest, ScriptExecutionResult,
+    ScriptExecutor, ScriptHostHttpError, ScriptHostHttpRequest, ScriptHostHttpResponse,
+    ScriptRuntimeHttpAdapter, ScriptInvocation, ScriptRuntime, ScriptRuntimeConfig,
+};
 
 use production_wiring::{
     ProductionComponentType, ProductionComponentTypes, ProductionImplementationReadiness,

@@ -418,11 +418,12 @@ fn reborn_host_runtime_services_do_not_expose_lower_substrate_handles() {
     let host_runtime_contract =
         std::fs::read_to_string(root.join("docs/reborn/contracts/host-runtime.md"))
             .expect("host runtime contract must be readable");
-    let scripts = std::fs::read_to_string(root.join("crates/brassclaw_scripts/src/lib.rs"))
-        .expect("script runtime lib.rs must be readable");
-    let scripts_manifest =
-        std::fs::read_to_string(root.join("crates/brassclaw_scripts/Cargo.toml"))
-            .expect("script runtime Cargo.toml must be readable");
+    let scripts =
+        std::fs::read_to_string(root.join("crates/brassclaw_host_runtime/src/services/script_runtime.rs"))
+            .expect("host runtime script_runtime.rs must be readable");
+    let host_runtime_manifest =
+        std::fs::read_to_string(root.join("crates/brassclaw_host_runtime/Cargo.toml"))
+            .expect("host runtime Cargo.toml must be readable");
     let mcp = std::fs::read_to_string(root.join("crates/brassclaw_mcp/src/lib.rs"))
         .expect("MCP runtime lib.rs must be readable");
     let mcp_manifest = std::fs::read_to_string(root.join("crates/brassclaw_mcp/Cargo.toml"))
@@ -538,13 +539,13 @@ fn reborn_host_runtime_services_do_not_expose_lower_substrate_handles() {
     for pattern in forbidden_script_lane_surface {
         assert!(
             !scripts.contains(pattern),
-            "brassclaw_scripts must not expose host-runtime dispatcher composition surface `{pattern}`; compose script dispatch adapters inside brassclaw_host_runtime"
+            "brassclaw_host_runtime::script_runtime must not expose host-runtime dispatcher composition surface `{pattern}`; compose script dispatch adapters inside brassclaw_host_runtime"
         );
     }
 
     assert!(
-        !scripts_manifest.contains("brassclaw_dispatcher"),
-        "brassclaw_scripts must not depend on brassclaw_dispatcher; script dispatcher adapters are host-runtime-private composition"
+        !scripts.contains("brassclaw_dispatcher"),
+        "brassclaw_host_runtime::script_runtime must not import brassclaw_dispatcher; script dispatcher adapters are host-runtime-private composition owned by the surrounding services layer"
     );
 
     let forbidden_mcp_lane_surface = [
@@ -928,8 +929,6 @@ fn reborn_runtime_http_egress_has_single_network_boundary() {
 
     let root = workspace_root();
     let runtime_src_roots = [
-        "crates/brassclaw_wasm/src",
-        "crates/brassclaw_scripts/src",
         "crates/brassclaw_mcp/src",
         "crates/brassclaw_host_runtime/src",
     ];
@@ -1255,8 +1254,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_extensions",
                 "brassclaw_host_runtime",
                 "brassclaw_mcp",
-                "brassclaw_wasm",
-                "brassclaw_scripts",
                 "brassclaw_network",
                 "brassclaw_engine",
                 "brassclaw_gateway",
@@ -1301,7 +1298,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_run_state",
                 "brassclaw_runtime_policy",
                 "brassclaw_safety",
-                "brassclaw_scripts",
                 "brassclaw_secrets",
                 "brassclaw_skills",
                 "brassclaw_storage",
@@ -1309,7 +1305,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_trust",
                 "brassclaw_tui",
                 "brassclaw_turns",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1355,7 +1350,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_run_state",
                 "brassclaw_runtime_policy",
                 "brassclaw_safety",
-                "brassclaw_scripts",
                 "brassclaw_secrets",
                 "brassclaw_skills",
                 "brassclaw_storage",
@@ -1363,7 +1357,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_trust",
                 "brassclaw_tui",
                 "brassclaw_turns",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1396,12 +1389,10 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_run_state",
                 "brassclaw_runtime_policy",
                 "brassclaw_safety",
-                "brassclaw_scripts",
                 "brassclaw_secrets",
                 "brassclaw_skills",
                 "brassclaw_threads",
                 "brassclaw_tui",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1440,11 +1431,9 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_resources",
                 "brassclaw_run_state",
                 "brassclaw_runtime_policy",
-                "brassclaw_scripts",
                 "brassclaw_secrets",
                 "brassclaw_threads",
                 "brassclaw_tui",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1482,10 +1471,8 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_run_state",
                 "brassclaw_runtime_policy",
                 "brassclaw_safety",
-                "brassclaw_scripts",
                 "brassclaw_secrets",
                 "brassclaw_tui",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1518,14 +1505,12 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_run_state",
                 "brassclaw_runtime_policy",
                 "brassclaw_safety",
-                "brassclaw_scripts",
                 "brassclaw_secrets",
                 "brassclaw_skills",
                 "brassclaw_threads",
                 "brassclaw_trust",
                 "brassclaw_tui",
                 "brassclaw_turns",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1588,14 +1573,12 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_run_state",
                 "brassclaw_runtime_policy",
                 "brassclaw_safety",
-                "brassclaw_scripts",
                 "brassclaw_secrets",
                 "brassclaw_skills",
                 "brassclaw_threads",
                 "brassclaw_trust",
                 "brassclaw_tui",
                 "brassclaw_turns",
-                "brassclaw_wasm",
                 "brassclaw_webui_v2",
             ],
         },
@@ -1615,8 +1598,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_processes",
                 "brassclaw_resources",
                 "brassclaw_run_state",
-                "brassclaw_scripts",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1635,8 +1616,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_processes",
                 "brassclaw_resources",
                 "brassclaw_run_state",
-                "brassclaw_scripts",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1658,8 +1637,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_mcp",
                 "brassclaw_processes",
                 "brassclaw_run_state",
-                "brassclaw_scripts",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1679,8 +1656,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_processes",
                 "brassclaw_resources",
                 "brassclaw_run_state",
-                "brassclaw_scripts",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1700,8 +1675,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_processes",
                 "brassclaw_resources",
                 "brassclaw_run_state",
-                "brassclaw_scripts",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1719,8 +1692,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_processes",
                 "brassclaw_resources",
                 "brassclaw_run_state",
-                "brassclaw_scripts",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1747,8 +1718,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_processes",
                 "brassclaw_resources",
                 "brassclaw_run_state",
-                "brassclaw_scripts",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1783,14 +1752,12 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_run_state",
                 "brassclaw_runtime_policy",
                 "brassclaw_safety",
-                "brassclaw_scripts",
                 "brassclaw_secrets",
                 "brassclaw_skills",
                 "brassclaw_telegram_v2_adapter",
                 "brassclaw_threads",
                 "brassclaw_trust",
                 "brassclaw_tui",
-                "brassclaw_wasm",
                 "brassclaw_webui_v2",
             ],
         },
@@ -1818,11 +1785,9 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_resources",
                 "brassclaw_run_state",
                 "brassclaw_safety",
-                "brassclaw_scripts",
                 "brassclaw_secrets",
                 "brassclaw_skills",
                 "brassclaw_tui",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1861,13 +1826,11 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_run_state",
                 "brassclaw_runtime_policy",
                 "brassclaw_safety",
-                "brassclaw_scripts",
                 "brassclaw_secrets",
                 "brassclaw_skills",
                 "brassclaw_threads",
                 "brassclaw_trust",
                 "brassclaw_tui",
-                "brassclaw_wasm",
                 "brassclaw_webui_v2",
             ],
         },
@@ -1889,8 +1852,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_processes",
                 "brassclaw_resources",
                 "brassclaw_run_state",
-                "brassclaw_scripts",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1912,8 +1873,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_processes",
                 "brassclaw_resources",
                 "brassclaw_run_state",
-                "brassclaw_scripts",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1931,9 +1890,7 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_processes",
                 "brassclaw_resources",
                 "brassclaw_run_state",
-                "brassclaw_scripts",
                 "brassclaw_secrets",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1950,8 +1907,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_processes",
                 "brassclaw_resources",
                 "brassclaw_run_state",
-                "brassclaw_scripts",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1969,8 +1924,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_mcp",
                 "brassclaw_processes",
                 "brassclaw_resources",
-                "brassclaw_scripts",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -1999,11 +1952,9 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 // brassclaw_safety is permitted: thread/transcript storage
                 // validates provider-originated replay metadata before it can
                 // be persisted or exposed back to a model-visible context.
-                "brassclaw_scripts",
                 "brassclaw_secrets",
                 "brassclaw_skills",
                 "brassclaw_tui",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -2018,8 +1969,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_mcp",
                 "brassclaw_processes",
                 "brassclaw_resources",
-                "brassclaw_scripts",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -2035,8 +1984,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_network",
                 "brassclaw_mcp",
                 "brassclaw_run_state",
-                "brassclaw_scripts",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -2058,9 +2005,7 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_network",
                 "brassclaw_processes",
                 "brassclaw_run_state",
-                "brassclaw_scripts",
                 "brassclaw_secrets",
-                "brassclaw_wasm",
             ],
         },
         // The hooks framework depends on `brassclaw_turns` and host primitives
@@ -2083,9 +2028,7 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_processes",
                 "brassclaw_reborn",
                 "brassclaw_run_state",
-                "brassclaw_scripts",
                 "brassclaw_secrets",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -2096,8 +2039,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_secrets",
                 "brassclaw_network",
                 "brassclaw_mcp",
-                "brassclaw_scripts",
-                "brassclaw_wasm",
             ],
         },
         BoundaryRule {
@@ -2112,8 +2053,6 @@ fn boundary_rules() -> Vec<BoundaryRule> {
                 "brassclaw_mcp",
                 "brassclaw_processes",
                 "brassclaw_run_state",
-                "brassclaw_scripts",
-                "brassclaw_wasm",
             ],
         },
     ]

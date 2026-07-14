@@ -72,7 +72,7 @@ use brassclaw_run_state::{
     ApprovalRecord, ApprovalRequestStore, InMemoryApprovalRequestStore, InMemoryRunStateStore,
     RunRecord, RunStart, RunStateApprovalStore, RunStateError, RunStateStore, RunStatus,
 };
-use brassclaw_scripts::{
+use brassclaw_host_runtime::{
     ScriptBackend, ScriptBackendOutput, ScriptBackendRequest, ScriptExecutionRequest,
     ScriptExecutionResult, ScriptExecutor, ScriptRuntime, ScriptRuntimeConfig,
 };
@@ -4756,16 +4756,6 @@ fn assert_failed_outcome(outcome: RuntimeCapabilityOutcome, expected_kind: Runti
     }
 }
 
-fn assert_completed_outcome(outcome: RuntimeCapabilityOutcome, expected_capability: &CapabilityId) {
-    match outcome {
-        RuntimeCapabilityOutcome::Completed(completed) => {
-            assert_eq!(&completed.capability_id, expected_capability);
-            assert_eq!(completed.output, json!(1));
-        }
-        other => panic!("expected completed outcome, got {other:?}"),
-    }
-}
-
 type InMemoryHostRuntimeServices = HostRuntimeServices<
     LocalFilesystem,
     InMemoryResourceGovernor,
@@ -5275,7 +5265,7 @@ impl ScriptExecutor for RecordingScriptExecutor {
         &self,
         governor: &dyn ResourceGovernor,
         request: ScriptExecutionRequest<'_>,
-    ) -> Result<ScriptExecutionResult, brassclaw_scripts::ScriptError> {
+    ) -> Result<ScriptExecutionResult, brassclaw_host_runtime::ScriptError> {
         self.mounts.lock().unwrap().push(request.mounts.clone());
         let reservation = match request.resource_reservation.clone() {
             Some(reservation) => reservation,
@@ -5284,7 +5274,7 @@ impl ScriptExecutor for RecordingScriptExecutor {
         let usage = ResourceUsage::default();
         let receipt = governor.reconcile(reservation.id, usage.clone())?;
         Ok(ScriptExecutionResult {
-            result: brassclaw_scripts::ScriptCapabilityResult {
+            result: brassclaw_host_runtime::ScriptCapabilityResult {
                 output: request.invocation.input,
                 reservation_id: reservation.id,
                 usage,
@@ -5343,8 +5333,6 @@ impl DurableAuditLog for FailingDurableAuditLog {
     }
 }
 
-struct AllowAllDispatchAuthorizer;
-
 struct ObligatingAuthorizer {
     obligations: Vec<Obligation>,
 }
@@ -5402,10 +5390,6 @@ impl RecordingNetworkHttpEgress {
     fn new() -> Self {
         Self::default()
     }
-
-    fn requests(&self) -> Vec<NetworkHttpRequest> {
-        self.requests.lock().unwrap().clone()
-    }
 }
 
 #[async_trait::async_trait]
@@ -5449,18 +5433,6 @@ impl RecordingRuntimeHttpEgress {
             delay: Duration::ZERO,
             response_status: 200,
         }
-    }
-
-    fn with_delay(delay: Duration) -> Self {
-        Self {
-            delay,
-            response_status: 204,
-            ..Self::new()
-        }
-    }
-
-    fn requests(&self) -> Vec<RuntimeHttpEgressRequest> {
-        self.requests.lock().unwrap().clone()
     }
 }
 
@@ -6073,33 +6045,6 @@ async fn wait_for_no_reserved_processes(governor: &InMemoryResourceGovernor) {
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
     panic!("process reservation was not cleaned up");
-}
-
-#[async_trait]
-impl TrustAwareCapabilityDispatchAuthorizer for AllowAllDispatchAuthorizer {
-    async fn authorize_dispatch_with_trust(
-        &self,
-        _context: &ExecutionContext,
-        _descriptor: &CapabilityDescriptor,
-        _estimate: &ResourceEstimate,
-        _trust_decision: &TrustDecision,
-    ) -> Decision {
-        Decision::Allow {
-            obligations: Obligations::empty(),
-        }
-    }
-
-    async fn authorize_spawn_with_trust(
-        &self,
-        _context: &ExecutionContext,
-        _descriptor: &CapabilityDescriptor,
-        _estimate: &ResourceEstimate,
-        _trust_decision: &TrustDecision,
-    ) -> Decision {
-        Decision::Allow {
-            obligations: Obligations::empty(),
-        }
-    }
 }
 
 #[async_trait]
