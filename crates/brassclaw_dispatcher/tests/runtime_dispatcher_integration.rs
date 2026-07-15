@@ -173,7 +173,7 @@ async fn runtime_dispatcher_fails_closed_for_missing_backend_before_reservation_
     assert!(matches!(
         err,
         DispatchError::MissingRuntimeBackend {
-            runtime: RuntimeKind::Script
+            runtime: RuntimeKind::Mcp
         }
     ));
     assert_eq!(governor.reserved_for(&account), ResourceTally::default());
@@ -183,7 +183,7 @@ async fn runtime_dispatcher_fails_closed_for_missing_backend_before_reservation_
     assert_eq!(recorded.len(), 2);
     assert_eq!(recorded[0].kind, RuntimeEventKind::DispatchRequested);
     assert_eq!(recorded[1].kind, RuntimeEventKind::DispatchFailed);
-    assert_eq!(recorded[1].runtime, Some(RuntimeKind::Script));
+    assert_eq!(recorded[1].runtime, Some(RuntimeKind::Mcp));
     assert_eq!(
         recorded[1].error_kind.as_deref(),
         Some("missing_runtime_backend")
@@ -195,7 +195,7 @@ async fn registry_rejects_descriptor_package_runtime_mismatch_before_dispatcher_
     let manifest = parse_manifest(WASM_MANIFEST);
     let root = VirtualPath::new(format!("/system/extensions/{}", manifest.id.as_str())).unwrap();
     let mut package = ExtensionPackage::from_manifest(manifest, root).unwrap();
-    package.capabilities[0].runtime = RuntimeKind::Script;
+    package.capabilities[0].runtime = RuntimeKind::Mcp;
 
     let err = ExtensionRegistry::new().insert(package).unwrap_err();
 
@@ -259,7 +259,7 @@ impl RuntimeAdapter<LocalFilesystem, InMemoryResourceGovernor> for RecordingAdap
             output_bytes,
             process_count: u32::from(matches!(
                 self.runtime,
-                RuntimeKind::Script | RuntimeKind::Mcp
+                RuntimeKind::Mcp
             )),
             ..ResourceUsage::default()
         };
@@ -295,7 +295,6 @@ fn dispatch_error_for_runtime(
             kind,
             safe_summary: None,
         },
-        RuntimeKind::Script => DispatchError::Script { kind },
         RuntimeKind::Mcp => DispatchError::Mcp { kind },
         RuntimeKind::System => DispatchError::UnsupportedRuntime {
             capability: CapabilityId::new("system.unsupported").unwrap(),

@@ -80,7 +80,7 @@ async fn dispatcher_routes_script_capability_through_registered_adapter() {
         .insert(package_from_manifest(SCRIPT_MANIFEST))
         .unwrap();
     let adapter = RecordingAdapter::new(
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         json!({
             "message": "hello script adapter"
         }),
@@ -101,7 +101,7 @@ async fn dispatcher_routes_script_capability_through_registered_adapter() {
         .unwrap();
 
     let dispatcher = RuntimeDispatcher::new(&registry, &fs, &governor)
-        .with_runtime_adapter(RuntimeKind::Script, &adapter);
+        .with_runtime_adapter(RuntimeKind::Mcp, &adapter);
     let result = dispatcher
         .dispatch_json(CapabilityDispatchRequest {
             capability_id: CapabilityId::new("script.echo").unwrap(),
@@ -124,7 +124,7 @@ async fn dispatcher_routes_script_capability_through_registered_adapter() {
         CapabilityId::new("script.echo").unwrap()
     );
     assert_eq!(result.provider, ExtensionId::new("script").unwrap());
-    assert_eq!(result.runtime, RuntimeKind::Script);
+    assert_eq!(result.runtime, RuntimeKind::Mcp);
     assert_eq!(result.output, json!({"message": "hello script adapter"}));
     assert_eq!(result.receipt.status, ReservationStatus::Reconciled);
     assert_eq!(governor.reserved_for(&account), ResourceTally::default());
@@ -139,7 +139,7 @@ async fn dispatcher_redacts_runtime_adapter_failure_details() {
         .insert(package_from_manifest(SCRIPT_MANIFEST))
         .unwrap();
     let adapter =
-        RecordingAdapter::failing(RuntimeKind::Script, RuntimeDispatchErrorKind::ExitFailure);
+        RecordingAdapter::failing(RuntimeKind::Mcp, RuntimeDispatchErrorKind::ExitFailure);
     let governor = InMemoryResourceGovernor::new();
     let scope = sample_scope();
     governor
@@ -155,7 +155,7 @@ async fn dispatcher_redacts_runtime_adapter_failure_details() {
         .unwrap();
 
     let dispatcher = RuntimeDispatcher::new(&registry, &fs, &governor)
-        .with_runtime_adapter(RuntimeKind::Script, &adapter);
+        .with_runtime_adapter(RuntimeKind::Mcp, &adapter);
     let err = dispatcher
         .dispatch_json(CapabilityDispatchRequest {
             capability_id: CapabilityId::new("script.echo").unwrap(),
@@ -175,7 +175,7 @@ async fn dispatcher_redacts_runtime_adapter_failure_details() {
 
     assert!(matches!(
         err,
-        DispatchError::Script {
+        DispatchError::Mcp {
             kind: RuntimeDispatchErrorKind::ExitFailure
         }
     ));
@@ -376,7 +376,7 @@ async fn dispatcher_requires_script_backend_before_reserving_resources() {
     assert!(matches!(
         err,
         DispatchError::MissingRuntimeBackend {
-            runtime: RuntimeKind::Script
+            runtime: RuntimeKind::Mcp
         }
     ));
     assert_eq!(governor.reserved_for(&account), ResourceTally::default());
@@ -480,7 +480,7 @@ impl RuntimeAdapter<LocalFilesystem, InMemoryResourceGovernor> for RecordingAdap
             output_bytes: serde_json::to_vec(&self.output).unwrap().len() as u64,
             process_count: u32::from(matches!(
                 self.runtime,
-                RuntimeKind::Script | RuntimeKind::Mcp
+                RuntimeKind::Mcp
             )),
             ..ResourceUsage::default()
         };
@@ -515,7 +515,6 @@ fn dispatch_error_for_runtime(
             kind,
             safe_summary: None,
         },
-        RuntimeKind::Script => DispatchError::Script { kind },
         RuntimeKind::Mcp => DispatchError::Mcp { kind },
         RuntimeKind::System => DispatchError::UnsupportedRuntime {
             capability: CapabilityId::new("system.unsupported").unwrap(),

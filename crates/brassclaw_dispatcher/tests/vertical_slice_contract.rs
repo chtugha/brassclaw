@@ -18,12 +18,10 @@ async fn vertical_slice_discovers_and_dispatches_registered_runtime_adapters() {
 
     let governor = InMemoryResourceGovernor::new();
     let wasm_adapter = EchoAdapter::new(RuntimeKind::FirstParty);
-    let script_adapter = EchoAdapter::new(RuntimeKind::Script);
     let mcp_adapter = EchoAdapter::new(RuntimeKind::Mcp);
     let scope = sample_scope();
     let dispatcher = RuntimeDispatcher::new(&registry, &fs, &governor)
         .with_runtime_adapter(RuntimeKind::FirstParty, &wasm_adapter)
-        .with_runtime_adapter(RuntimeKind::Script, &script_adapter)
         .with_runtime_adapter(RuntimeKind::Mcp, &mcp_adapter);
 
     let wasm_scope = scope.clone();
@@ -73,7 +71,7 @@ async fn vertical_slice_discovers_and_dispatches_registered_runtime_adapters() {
         .unwrap();
 
     assert_eq!(script.provider, ExtensionId::new("echo-script").unwrap());
-    assert_eq!(script.runtime, RuntimeKind::Script);
+    assert_eq!(script.runtime, RuntimeKind::Mcp);
     assert_eq!(script.output, json!({"message": "hello script"}));
     assert_eq!(script.receipt.status, ReservationStatus::Reconciled);
     assert_eq!(
@@ -135,7 +133,7 @@ impl RuntimeAdapter<LocalFilesystem, InMemoryResourceGovernor> for EchoAdapter {
             output_bytes: serde_json::to_vec(&output).unwrap().len() as u64,
             process_count: u32::from(matches!(
                 self.runtime,
-                RuntimeKind::Script | RuntimeKind::Mcp
+                RuntimeKind::Mcp
             )),
             ..ResourceUsage::default()
         };
@@ -170,7 +168,6 @@ fn dispatch_error_for_runtime(
             kind,
             safe_summary: None,
         },
-        RuntimeKind::Script => DispatchError::Script { kind },
         RuntimeKind::Mcp => DispatchError::Mcp { kind },
         RuntimeKind::System => DispatchError::UnsupportedRuntime {
             capability: CapabilityId::new("system.unsupported").unwrap(),

@@ -251,7 +251,6 @@ fn notes(capability: &CapabilityInfoEntry<'_>) -> Vec<String> {
 fn runtime_kind_label(runtime: RuntimeKind) -> &'static str {
     match runtime {
         RuntimeKind::Mcp => "mcp",
-        RuntimeKind::Script => "script",
         RuntimeKind::FirstParty => "first_party",
         RuntimeKind::System => "system",
     }

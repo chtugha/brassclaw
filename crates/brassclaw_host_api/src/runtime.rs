@@ -1,10 +1,10 @@
 //! Runtime and trust classification contracts.
 //!
 //! [`RuntimeKind`] identifies the execution lane required for a capability or
-//! invocation: MCP, script, first-party extension, or system service.
-//! The WASM lane was removed in Phase 6 of the v1-removal plan; capabilities
-//! that historically declared `wasm` now report `FirstParty` (or `Mcp`/`Script`
-//! depending on the actual host that resolved them). [`TrustClass`] is the
+//! invocation: MCP, first-party extension, or system service.
+//! The WASM and Script lanes were removed in Phase 4 of the v1-removal plan;
+//! capabilities that historically declared `wasm` or `script` now dispatch via
+//! the `Mcp` lane. [`TrustClass`] is the
 //! *effective* authority ceiling consumed by downstream authorization — not a
 //! grant. Even first-party and system contexts still need explicit mounts,
 //! capability grants, resource scopes, and audit obligations.
@@ -24,7 +24,6 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeKind {
     Mcp,
-    Script,
     #[serde(skip_deserializing)]
     FirstParty,
     #[serde(skip_deserializing)]

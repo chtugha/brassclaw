@@ -316,7 +316,7 @@ async fn webui_event_stream_replays_capability_started_before_folded_completion(
             ),
             capability.clone(),
             provider,
-            RuntimeKind::Script,
+            RuntimeKind::Mcp,
             42,
         ))
         .await
@@ -366,7 +366,7 @@ async fn webui_event_stream_preserves_sanitized_capability_activity_error_kind()
             resource_scope(&tenant_id, &user_id, &agent_id, &thread_id, invocation_id),
             CapabilityId::new("script.echo").unwrap(),
             Some(ExtensionId::new("script").unwrap()),
-            Some(RuntimeKind::Script),
+            Some(RuntimeKind::Mcp),
             "raw failure /tmp/private-host-path SECRET_SENTINEL_sk_live",
         ))
         .await
@@ -1486,7 +1486,7 @@ async fn webui_event_stream_drains_completed_and_failed_capability_activity_meta
             ),
             capability.clone(),
             provider.clone(),
-            RuntimeKind::Script,
+            RuntimeKind::Mcp,
             64,
         ))
         .await
@@ -1502,7 +1502,7 @@ async fn webui_event_stream_drains_completed_and_failed_capability_activity_meta
             ),
             capability.clone(),
             Some(provider),
-            Some(RuntimeKind::Script),
+            Some(RuntimeKind::Mcp),
             "policy_denied",
         ))
         .await

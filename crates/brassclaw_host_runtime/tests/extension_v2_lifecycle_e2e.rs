@@ -250,7 +250,7 @@ fn dispatch_error_for_runtime(
             kind,
             safe_summary: None,
         },
-        RuntimeKind::System | RuntimeKind::Script => DispatchError::UnsupportedRuntime {
+        RuntimeKind::System => DispatchError::UnsupportedRuntime {
             capability: CapabilityId::new("system.unsupported").unwrap(),
             runtime,
         },

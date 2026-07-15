@@ -5248,7 +5248,7 @@ mod tests {
         });
         let capability = RuntimeSurfaceCapabilitySnapshot {
             provider: ExtensionId::new("demo").expect("valid provider"),
-            runtime: RuntimeKind::Script,
+            runtime: RuntimeKind::Mcp,
             estimate: ResourceEstimate::default(),
             safe_description: "demo capability".to_string(),
             parameters_schema: serde_json::json!({"type":"object"}),
@@ -5268,7 +5268,7 @@ mod tests {
         .expect("context");
 
         assert_eq!(invocation_context.extension_id, loop_driver_extension);
-        assert_eq!(invocation_context.runtime, RuntimeKind::Script);
+        assert_eq!(invocation_context.runtime, RuntimeKind::Mcp);
         assert_eq!(invocation_context.trust, TrustClass::UserTrusted);
         assert_eq!(invocation_context.mounts, MountView::default());
         assert_eq!(invocation_context.grants.grants.len(), 1);

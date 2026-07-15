@@ -437,7 +437,7 @@ mod tests {
     #[test]
     fn runtime_http_egress_request_scrubs_url_and_header_values() {
         let mut request = RuntimeHttpEgressRequest {
-            runtime: RuntimeKind::Script,
+            runtime: RuntimeKind::Mcp,
             scope: ResourceScope::local_default(UserId::new("user1").unwrap(), InvocationId::new())
                 .unwrap(),
             capability_id: CapabilityId::new("runtime.http").unwrap(),

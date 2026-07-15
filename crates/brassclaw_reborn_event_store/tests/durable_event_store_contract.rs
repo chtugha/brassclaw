@@ -162,7 +162,7 @@ async fn jsonl_runtime_log_survives_rebuild_and_preserves_filtered_cursor_semant
             scope_a.clone(),
             capability_id(),
             extension_id(),
-            RuntimeKind::Script,
+            RuntimeKind::Mcp,
             7,
         ))
         .await
@@ -393,7 +393,7 @@ async fn libsql_runtime_and_audit_logs_survive_rebuild_with_filtered_cursor_sema
             scope_a.clone(),
             capability_id(),
             extension_id(),
-            RuntimeKind::Script,
+            RuntimeKind::Mcp,
             7,
         ))
         .await
@@ -568,7 +568,7 @@ async fn postgres_runtime_and_audit_logs_survive_rebuild_with_filtered_cursor_se
             scope_a.clone(),
             capability_id(),
             extension_id(),
-            RuntimeKind::Script,
+            RuntimeKind::Mcp,
             7,
         ))
         .await
@@ -646,7 +646,7 @@ async fn jsonl_runtime_records_do_not_serialize_raw_error_sentinels() {
             scope,
             capability_id(),
             Some(extension_id()),
-            Some(RuntimeKind::Script),
+            Some(RuntimeKind::Mcp),
             raw_error,
         ))
         .await

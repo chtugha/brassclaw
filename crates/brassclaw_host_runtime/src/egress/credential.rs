@@ -475,7 +475,7 @@ mod tests {
 
     fn sample_request(scope: ResourceScope) -> RuntimeHttpEgressRequest {
         RuntimeHttpEgressRequest {
-            runtime: RuntimeKind::Script,
+            runtime: RuntimeKind::Mcp,
             scope,
             capability_id: CapabilityId::new("runtime.http").unwrap(),
             method: NetworkMethod::Post,

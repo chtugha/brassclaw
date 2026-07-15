@@ -55,7 +55,7 @@ impl LoopCapabilityPort for AlwaysCompletedPort {
             descriptors: vec![CapabilityDescriptorView {
                 capability_id: CapabilityId::new("cap.x").expect("ok"),
                 provider: None,
-                runtime: RuntimeKind::Script,
+                runtime: RuntimeKind::Mcp,
                 safe_name: "cap.x".to_string(),
                 safe_description: "test capability".to_string(),
                 concurrency_hint: brassclaw_turns::run_profile::ConcurrencyHint::Exclusive,

@@ -729,9 +729,8 @@ fn normalize_runtime_kinds(kinds: &mut Vec<RuntimeKind>) {
 fn runtime_sort_key(kind: RuntimeKind) -> u8 {
     match kind {
         RuntimeKind::Mcp => 1,
-        RuntimeKind::Script => 2,
-        RuntimeKind::FirstParty => 3,
-        RuntimeKind::System => 4,
+        RuntimeKind::FirstParty => 2,
+        RuntimeKind::System => 3,
     }
 }
 

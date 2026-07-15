@@ -159,7 +159,7 @@ mod tests {
             Ok(CapabilityDispatchResult {
                 capability_id: request.capability_id,
                 provider: ExtensionId::new("demo").unwrap(),
-                runtime: RuntimeKind::Script,
+                runtime: RuntimeKind::Mcp,
                 output: json!({"ok": true}),
                 display_preview: None,
                 usage: ResourceUsage::default(),
@@ -208,7 +208,7 @@ mod tests {
         let result = executor
             .execute(sample_process_request(
                 "demo.background",
-                RuntimeKind::Script,
+                RuntimeKind::Mcp,
             ))
             .await
             .unwrap();
@@ -231,7 +231,7 @@ mod tests {
         let sandbox_capability_wrong_runtime = executor
             .execute(sample_process_request(
                 "system.process_sandbox.run",
-                RuntimeKind::Script,
+                RuntimeKind::Mcp,
             ))
             .await
             .unwrap();
@@ -280,7 +280,7 @@ mod tests {
             cancellation: cancellation.clone(),
         });
         let executor = RuntimeDispatchProcessExecutor::new(dispatcher);
-        let mut request = sample_process_request("demo.background", RuntimeKind::Script);
+        let mut request = sample_process_request("demo.background", RuntimeKind::Mcp);
         request.cancellation = cancellation;
 
         let error = executor.execute(request).await.unwrap_err();
@@ -310,26 +310,26 @@ mod tests {
             (
                 DispatchError::RuntimeMismatch {
                     capability: capability.clone(),
-                    descriptor_runtime: RuntimeKind::Script,
+                    descriptor_runtime: RuntimeKind::Mcp,
                     package_runtime: RuntimeKind::Mcp,
                 },
                 "runtime_mismatch",
             ),
             (
                 DispatchError::MissingRuntimeBackend {
-                    runtime: RuntimeKind::Script,
+                    runtime: RuntimeKind::Mcp,
                 },
                 "missing_runtime_backend",
             ),
             (
                 DispatchError::UnsupportedRuntime {
                     capability,
-                    runtime: RuntimeKind::Script,
+                    runtime: RuntimeKind::Mcp,
                 },
                 "unsupported_runtime",
             ),
             (
-                DispatchError::Script {
+                DispatchError::Mcp {
                     kind: RuntimeDispatchErrorKind::Resource,
                 },
                 "resource",

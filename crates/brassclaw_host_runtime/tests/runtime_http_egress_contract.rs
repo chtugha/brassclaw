@@ -2242,7 +2242,7 @@ async fn execute_path_placeholder_egress(
     let service = services.host_http_egress(network);
 
     let response = service.execute(RuntimeHttpEgressRequest {
-        runtime: RuntimeKind::Script,
+        runtime: RuntimeKind::Mcp,
         scope,
         capability_id: capability_id.clone(),
         method: NetworkMethod::Post,
@@ -2459,7 +2459,7 @@ fn execution_context() -> ExecutionContext {
     ExecutionContext::local_default(
         UserId::new("user1").unwrap(),
         ExtensionId::new("example").unwrap(),
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         TrustClass::Sandbox,
         CapabilitySet::default(),
         MountView::default(),

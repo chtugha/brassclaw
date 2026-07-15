@@ -233,8 +233,7 @@ enum TrustedRuntimeKindWire {
 impl From<TrustedRuntimeKindWire> for RuntimeKind {
     fn from(value: TrustedRuntimeKindWire) -> Self {
         match value {
-            TrustedRuntimeKindWire::Mcp => Self::Mcp,
-            TrustedRuntimeKindWire::Script => Self::Script,
+            TrustedRuntimeKindWire::Mcp | TrustedRuntimeKindWire::Script => Self::Mcp,
             TrustedRuntimeKindWire::FirstParty => Self::FirstParty,
             TrustedRuntimeKindWire::System => Self::System,
         }
@@ -1057,7 +1056,7 @@ mod tests {
             scope(),
             capability(),
             ExtensionId::new("builtin").expect("valid extension id"),
-            RuntimeKind::Script,
+            RuntimeKind::Mcp,
             0,
         );
         let mut wire =

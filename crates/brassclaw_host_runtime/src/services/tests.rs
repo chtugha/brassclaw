@@ -578,7 +578,7 @@ async fn host_runtime_services_with_security_audit_sink_records_leak_block() {
         mission_id: resource_scope.mission_id.clone(),
         thread_id: resource_scope.thread_id.clone(),
         extension_id: ExtensionId::new("caller").unwrap(),
-        runtime: RuntimeKind::Script,
+        runtime: RuntimeKind::Mcp,
         trust: TrustClass::Sandbox,
         grants: CapabilitySet::default(),
         mounts: MountView::default(),
@@ -588,7 +588,7 @@ async fn host_runtime_services_with_security_audit_sink_records_leak_block() {
     let dispatch = CapabilityDispatchResult {
         capability_id: capability_id.clone(),
         provider: context.extension_id.clone(),
-        runtime: RuntimeKind::Script,
+        runtime: RuntimeKind::Mcp,
         output: Value::String("hello AKIAABCDEFGHIJKLMNOP goodbye".to_string()),
         display_preview: None,
         usage: ResourceUsage::default(),
@@ -656,7 +656,7 @@ async fn service_guard_releases_reservation_on_planner_denial() {
     assert_eq!(governor.reserved_for(&tenant_account).process_count, 1);
 
     let package = test_package(SCRIPT_MANIFEST, "test-script");
-    let descriptor = test_descriptor(RuntimeKind::Script, vec![EffectKind::ExecuteCode]);
+    let descriptor = test_descriptor(RuntimeKind::Mcp, vec![EffectKind::ExecuteCode]);
     let policy = policy_with(
         FilesystemBackendKind::ScopedVirtual,
         ProcessBackendKind::None,
@@ -682,7 +682,7 @@ async fn service_guard_releases_reservation_on_planner_denial() {
 
     assert!(matches!(
         result,
-        Err(DispatchError::Script {
+        Err(DispatchError::Mcp {
             kind: RuntimeDispatchErrorKind::UnsupportedRunner
         })
     ));
@@ -710,7 +710,7 @@ async fn service_guard_rejects_resolution_before_wasm_dispatch() {
     let scope = sample_scope();
     let estimate = ResourceEstimate::default();
     let package = test_package(SCRIPT_MANIFEST, "test-script");
-    let descriptor = test_descriptor(RuntimeKind::Script, vec![EffectKind::Network]);
+    let descriptor = test_descriptor(RuntimeKind::Mcp, vec![EffectKind::Network]);
     let policy = policy_with(
         FilesystemBackendKind::HostWorkspace,
         ProcessBackendKind::LocalHost,
@@ -773,7 +773,7 @@ async fn service_guard_releases_reservation_on_invocation_service_resolution_den
     );
 
     let package = test_package(SCRIPT_MANIFEST, "test-script");
-    let descriptor = test_descriptor(RuntimeKind::Script, vec![EffectKind::Network]);
+    let descriptor = test_descriptor(RuntimeKind::Mcp, vec![EffectKind::Network]);
     let policy = policy_with(
         FilesystemBackendKind::HostWorkspace,
         ProcessBackendKind::LocalHost,
@@ -828,7 +828,7 @@ async fn service_guard_rejects_required_secret_without_secret_store_before_dispa
     let scope = sample_scope();
     let estimate = ResourceEstimate::default();
     let package = test_package(SCRIPT_MANIFEST, "test-script");
-    let descriptor = test_descriptor(RuntimeKind::Script, vec![EffectKind::UseSecret]);
+    let descriptor = test_descriptor(RuntimeKind::Mcp, vec![EffectKind::UseSecret]);
     let policy = policy_with(
         FilesystemBackendKind::HostWorkspace,
         ProcessBackendKind::LocalHost,
@@ -1142,7 +1142,7 @@ fn request_without_credentials(
     capability_id: CapabilityId,
 ) -> RuntimeHttpEgressRequest {
     RuntimeHttpEgressRequest {
-        runtime: RuntimeKind::Script,
+        runtime: RuntimeKind::Mcp,
         scope,
         capability_id,
         method: NetworkMethod::Get,
@@ -1361,12 +1361,12 @@ async fn registered_runtime_health_empty_available_reports_all_required_as_missi
     use crate::services::{RegisteredRuntimeHealth, RuntimeBackendHealth};
     let health = RegisteredRuntimeHealth::new(vec![]);
     let missing = health
-        .missing_runtime_backends(&[RuntimeKind::Script, RuntimeKind::Mcp])
+        .missing_runtime_backends(&[RuntimeKind::Mcp, RuntimeKind::Mcp])
         .await
         .expect("health check must succeed");
     // Both kinds are missing; order is normalized by runtime_sort_key.
     assert!(
-        missing.contains(&RuntimeKind::Script),
+        missing.contains(&RuntimeKind::Mcp),
         "Script must be missing; got {missing:?}"
     );
     assert!(
@@ -1379,9 +1379,9 @@ async fn registered_runtime_health_empty_available_reports_all_required_as_missi
 #[tokio::test]
 async fn registered_runtime_health_deduplicates_duplicate_required_kinds() {
     use crate::services::{RegisteredRuntimeHealth, RuntimeBackendHealth};
-    let health = RegisteredRuntimeHealth::new(vec![RuntimeKind::Script]);
+    let health = RegisteredRuntimeHealth::new(vec![RuntimeKind::Mcp]);
     let missing = health
-        .missing_runtime_backends(&[RuntimeKind::Mcp, RuntimeKind::Mcp, RuntimeKind::Script])
+        .missing_runtime_backends(&[RuntimeKind::Mcp, RuntimeKind::Mcp, RuntimeKind::Mcp])
         .await
         .expect("health check must succeed");
     assert_eq!(missing, vec![RuntimeKind::Mcp], "got {missing:?}");
@@ -1390,9 +1390,9 @@ async fn registered_runtime_health_deduplicates_duplicate_required_kinds() {
 #[tokio::test]
 async fn registered_runtime_health_returns_empty_when_all_required_available() {
     use crate::services::{RegisteredRuntimeHealth, RuntimeBackendHealth};
-    let health = RegisteredRuntimeHealth::new(vec![RuntimeKind::Script, RuntimeKind::Mcp]);
+    let health = RegisteredRuntimeHealth::new(vec![RuntimeKind::Mcp, RuntimeKind::Mcp]);
     let missing = health
-        .missing_runtime_backends(&[RuntimeKind::Script])
+        .missing_runtime_backends(&[RuntimeKind::Mcp])
         .await
         .expect("health check must succeed");
     assert!(

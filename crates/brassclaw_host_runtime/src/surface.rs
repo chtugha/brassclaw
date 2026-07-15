@@ -17,7 +17,6 @@ use crate::{
 
 const ALL_RUNTIME_KINDS: &[RuntimeKind] = &[
     RuntimeKind::Mcp,
-    RuntimeKind::Script,
     RuntimeKind::FirstParty,
     RuntimeKind::System,
 ];
@@ -432,7 +431,6 @@ fn canonical_effect_kinds(effects: &[EffectKind]) -> Vec<&'static str> {
 fn runtime_kind_token(runtime: RuntimeKind) -> &'static str {
     match runtime {
         RuntimeKind::Mcp => "mcp",
-        RuntimeKind::Script => "script",
         RuntimeKind::FirstParty => "first_party",
         RuntimeKind::System => "system",
     }

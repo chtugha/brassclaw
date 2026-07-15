@@ -177,7 +177,7 @@ mod tests {
     use brassclaw_host_api::{ExtensionId, PermissionMode, RuntimeKind, TrustClass};
 
     fn descriptor(effects: Vec<EffectKind>) -> CapabilityDescriptor {
-        descriptor_with_runtime(RuntimeKind::Script, effects)
+        descriptor_with_runtime(RuntimeKind::Mcp, effects)
     }
 
     fn descriptor_with_runtime(
@@ -223,7 +223,7 @@ mod tests {
         // read under selected root`. The planner forwards the
         // resolved filesystem backend; downstream composition picks
         // the actual root.
-        let desc = descriptor_with_runtime(RuntimeKind::Script, vec![EffectKind::ReadFilesystem]);
+        let desc = descriptor_with_runtime(RuntimeKind::Mcp, vec![EffectKind::ReadFilesystem]);
         let policy = policy_with(
             FilesystemBackendKind::HostWorkspace,
             ProcessBackendKind::None,
@@ -276,7 +276,7 @@ mod tests {
 
         for (effects, expected) in cases {
             let plan = plan_capability(
-                &descriptor_with_runtime(RuntimeKind::Script, effects),
+                &descriptor_with_runtime(RuntimeKind::Mcp, effects),
                 &policy,
             )
             .unwrap();
@@ -351,7 +351,7 @@ mod tests {
 
     #[test]
     fn rejects_network_capability_when_policy_denies_network() {
-        let desc = descriptor_with_runtime(RuntimeKind::Script, vec![EffectKind::Network]);
+        let desc = descriptor_with_runtime(RuntimeKind::Mcp, vec![EffectKind::Network]);
         let policy = policy_with(
             FilesystemBackendKind::ScopedVirtual,
             ProcessBackendKind::None,
@@ -367,7 +367,7 @@ mod tests {
 
     #[test]
     fn rejects_secret_capability_when_policy_denies_secrets() {
-        let desc = descriptor_with_runtime(RuntimeKind::Script, vec![EffectKind::UseSecret]);
+        let desc = descriptor_with_runtime(RuntimeKind::Mcp, vec![EffectKind::UseSecret]);
         let policy = policy_with(
             FilesystemBackendKind::ScopedVirtual,
             ProcessBackendKind::None,
@@ -386,7 +386,7 @@ mod tests {
         // A capability with empty `effects` (e.g. a pure
         // dispatch/observability capability) doesn't trigger any
         // fail-closed branches and just gets the policy's defaults.
-        let desc = descriptor_with_runtime(RuntimeKind::Script, vec![]);
+        let desc = descriptor_with_runtime(RuntimeKind::Mcp, vec![]);
         let policy = policy_with(
             FilesystemBackendKind::ScopedVirtual,
             ProcessBackendKind::None,

@@ -187,7 +187,7 @@ async fn event_stream_manager_routes_runtime_projection_without_generic_event_pa
             scope.clone(),
             capability.clone(),
             provider,
-            RuntimeKind::Script,
+            RuntimeKind::Mcp,
             42,
         ))
         .await
@@ -415,7 +415,7 @@ async fn event_stream_manager_runtime_resume_returns_updates_for_valid_cursor() 
             scope.clone(),
             capability,
             provider,
-            RuntimeKind::Script,
+            RuntimeKind::Mcp,
             12,
         ))
         .await
@@ -793,7 +793,7 @@ async fn replay_projection_service_projects_timeline_and_run_status_by_scope() {
         scope_a.clone(),
         capability.clone(),
         provider.clone(),
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
     ))
     .await
     .unwrap();
@@ -807,7 +807,7 @@ async fn replay_projection_service_projects_timeline_and_run_status_by_scope() {
         scope_a.clone(),
         capability.clone(),
         provider.clone(),
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         42,
     ))
     .await
@@ -908,7 +908,7 @@ async fn replay_projection_updates_resume_after_projection_cursor() {
         scope.clone(),
         capability.clone(),
         provider.clone(),
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
     ))
     .await
     .unwrap();
@@ -916,7 +916,7 @@ async fn replay_projection_updates_resume_after_projection_cursor() {
         scope.clone(),
         capability,
         provider,
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         12,
     ))
     .await
@@ -969,7 +969,7 @@ async fn replay_projection_folds_dispatch_lifecycle_into_capability_activity() {
         scope.clone(),
         capability.clone(),
         provider.clone(),
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
     ))
     .await
     .unwrap();
@@ -977,7 +977,7 @@ async fn replay_projection_folds_dispatch_lifecycle_into_capability_activity() {
         scope.clone(),
         capability.clone(),
         provider.clone(),
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         42,
     ))
     .await
@@ -998,7 +998,7 @@ async fn replay_projection_folds_dispatch_lifecycle_into_capability_activity() {
     assert_eq!(activity.thread_id, scope.thread_id);
     assert_eq!(activity.status, CapabilityActivityStatus::Completed);
     assert_eq!(activity.provider.as_ref(), Some(&provider));
-    assert_eq!(activity.runtime, Some(RuntimeKind::Script));
+    assert_eq!(activity.runtime, Some(RuntimeKind::Mcp));
     assert_eq!(activity.output_bytes, Some(42));
     assert_eq!(activity.error_kind, None);
 }
@@ -1016,7 +1016,7 @@ async fn replay_projection_folds_process_completed_into_completed_capability_act
         scope.clone(),
         capability.clone(),
         provider.clone(),
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         process_id,
     ))
     .await
@@ -1025,7 +1025,7 @@ async fn replay_projection_folds_process_completed_into_completed_capability_act
         scope.clone(),
         capability,
         provider,
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         process_id,
     ))
     .await
@@ -1120,7 +1120,7 @@ async fn replay_projection_updates_capability_activity_only_for_touched_invocati
         scope_a.clone(),
         capability,
         provider,
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         7,
     ))
     .await
@@ -1175,7 +1175,7 @@ async fn replay_projection_exposes_ordered_capability_activity_transitions() {
         tool_scope.clone(),
         capability.clone(),
         provider.clone(),
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
     ))
     .await
     .unwrap();
@@ -1183,7 +1183,7 @@ async fn replay_projection_exposes_ordered_capability_activity_transitions() {
         tool_scope.clone(),
         capability.clone(),
         provider,
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         7,
     ))
     .await
@@ -1265,7 +1265,7 @@ async fn replay_projection_capability_activity_stays_metadata_only() {
         scope.clone(),
         capability_id(),
         Some(provider_id()),
-        Some(RuntimeKind::Script),
+        Some(RuntimeKind::Mcp),
         "RAW_PROVIDER_ERROR_SENTINEL sk-secret /host/path TOOL_OUTPUT_SENTINEL",
     ))
     .await
@@ -1529,7 +1529,7 @@ async fn replay_projection_updates_preserve_running_process_state_after_checkpoi
             scope.clone(),
             capability.clone(),
             provider.clone(),
-            RuntimeKind::Script,
+            RuntimeKind::Mcp,
             process_id,
         ))
         .await
@@ -1538,7 +1538,7 @@ async fn replay_projection_updates_preserve_running_process_state_after_checkpoi
         scope.clone(),
         capability,
         provider,
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         0,
     ))
     .await
@@ -1582,7 +1582,7 @@ async fn replay_projection_keeps_spawned_process_run_active_until_terminal_proce
         scope.clone(),
         capability.clone(),
         provider.clone(),
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         process_id,
     ))
     .await
@@ -1591,7 +1591,7 @@ async fn replay_projection_keeps_spawned_process_run_active_until_terminal_proce
         scope.clone(),
         capability,
         provider,
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         0,
     ))
     .await
@@ -1792,7 +1792,7 @@ fn execution_context_for_scope(scope: ResourceScope) -> brassclaw_host_api::Exec
         mission_id: scope.mission_id.clone(),
         thread_id: scope.thread_id.clone(),
         extension_id: ExtensionId::new("caller").unwrap(),
-        runtime: RuntimeKind::Script,
+        runtime: RuntimeKind::Mcp,
         trust: TrustClass::UserTrusted,
         grants: CapabilitySet::default(),
         mounts: MountView::default(),
@@ -1842,7 +1842,7 @@ async fn replay_projection_re_sanitizes_unsanitized_runtime_events_from_custom_b
         parent_invocation_id: None,
         capability_id: capability_id(),
         provider: Some(provider_id()),
-        runtime: Some(RuntimeKind::Script),
+        runtime: Some(RuntimeKind::Mcp),
         process_id: Some(ProcessId::new()),
         output_bytes: None,
         error_kind: Some(raw.to_string()),
@@ -1913,7 +1913,7 @@ async fn replay_projection_dispatch_succeeded_does_not_clobber_terminal_process_
         scope.clone(),
         capability.clone(),
         provider.clone(),
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         process_id,
     ))
     .await
@@ -1922,7 +1922,7 @@ async fn replay_projection_dispatch_succeeded_does_not_clobber_terminal_process_
         scope.clone(),
         capability.clone(),
         provider.clone(),
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         process_id,
         "process_crashed",
     ))
@@ -1932,7 +1932,7 @@ async fn replay_projection_dispatch_succeeded_does_not_clobber_terminal_process_
         scope.clone(),
         capability,
         provider,
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         0,
     ))
     .await
@@ -1977,7 +1977,7 @@ async fn replay_projection_bounded_activity_window_preserves_terminal_process_st
         scope.clone(),
         capability.clone(),
         provider.clone(),
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         process_id,
     ))
     .await
@@ -1986,7 +1986,7 @@ async fn replay_projection_bounded_activity_window_preserves_terminal_process_st
         scope.clone(),
         capability.clone(),
         provider.clone(),
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         process_id,
         "process_crashed",
     ))
@@ -2006,7 +2006,7 @@ async fn replay_projection_bounded_activity_window_preserves_terminal_process_st
         scope.clone(),
         capability,
         provider,
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         0,
     ))
     .await
@@ -2052,7 +2052,7 @@ async fn replay_projection_dispatch_succeeded_does_not_clobber_terminal_process_
         scope.clone(),
         capability.clone(),
         provider.clone(),
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         process_id,
     ))
     .await
@@ -2061,7 +2061,7 @@ async fn replay_projection_dispatch_succeeded_does_not_clobber_terminal_process_
         scope.clone(),
         capability.clone(),
         provider.clone(),
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         process_id,
     ))
     .await
@@ -2070,7 +2070,7 @@ async fn replay_projection_dispatch_succeeded_does_not_clobber_terminal_process_
         scope.clone(),
         capability,
         provider,
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         0,
     ))
     .await
@@ -2405,7 +2405,7 @@ async fn replay_projection_snapshot_runs_reflect_current_stream_head_under_trunc
         scope.clone(),
         capability,
         provider,
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         7,
     ))
     .await
@@ -2452,7 +2452,7 @@ async fn replay_projection_snapshot_capability_activities_reflect_current_stream
         scope.clone(),
         capability,
         provider,
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         7,
     ))
     .await
@@ -2495,7 +2495,7 @@ async fn replay_projection_snapshot_runs_reflect_process_failed_under_truncation
         scope.clone(),
         capability.clone(),
         provider.clone(),
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         process_id,
     ))
     .await
@@ -2504,7 +2504,7 @@ async fn replay_projection_snapshot_runs_reflect_process_failed_under_truncation
         scope.clone(),
         capability,
         provider,
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         process_id,
         "boom",
     ))
@@ -2671,7 +2671,7 @@ async fn non_hook_runtime_events_project_with_no_hook_metadata() {
         parent_invocation_id: None,
         capability_id: capability_id(),
         provider: Some(provider_id()),
-        runtime: Some(RuntimeKind::Script),
+        runtime: Some(RuntimeKind::Mcp),
         process_id: Some(ProcessId::new()),
         output_bytes: Some(42),
         error_kind: None,

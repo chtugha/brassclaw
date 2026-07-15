@@ -133,7 +133,6 @@ impl From<DispatchError> for CapabilityInvocationError {
             | DispatchError::MissingRuntimeBackend { .. }
             | DispatchError::UnsupportedRuntime { .. }
             | DispatchError::Mcp { .. }
-            | DispatchError::Script { .. }
             | DispatchError::FirstParty { .. }) => Self::Dispatch {
                 kind: dispatch_error_kind(&other),
                 safe_summary: dispatch_error_safe_summary(&other),
@@ -217,14 +216,6 @@ mod tests {
             kind: RuntimeDispatchErrorKind::Backend,
         });
         assert_eq!(kind.as_str(), "Backend");
-    }
-
-    #[test]
-    fn dispatch_error_kind_forwards_script_runtime_kind_as_str() {
-        let kind = dispatch_error_kind(&DispatchError::Script {
-            kind: RuntimeDispatchErrorKind::OutputTooLarge,
-        });
-        assert_eq!(kind.as_str(), "OutputTooLarge");
     }
 
     #[test]

@@ -1080,7 +1080,7 @@ async fn mcp_runtime_rejects_non_mcp_or_undeclared_capability_before_reserving()
     assert!(matches!(
         non_mcp_err,
         McpError::ExtensionRuntimeMismatch {
-            actual: RuntimeKind::Script,
+            actual: RuntimeKind::Mcp,
             ..
         }
     ));

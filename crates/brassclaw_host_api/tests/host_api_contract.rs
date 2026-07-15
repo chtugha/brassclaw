@@ -260,7 +260,7 @@ fn dispatch_errors_preserve_typed_failure_kind() {
     );
     assert_eq!(
         DispatchError::MissingRuntimeBackend {
-            runtime: RuntimeKind::Script,
+            runtime: RuntimeKind::Mcp,
         }
         .failure_kind(),
         DispatchFailureKind::MissingRuntimeBackend

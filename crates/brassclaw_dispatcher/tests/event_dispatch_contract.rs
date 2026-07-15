@@ -19,11 +19,11 @@ async fn dispatcher_emits_events_for_wasm_and_script_success() {
     let registry = discover_legacy_fixture_registry(&fs).await;
     let governor = InMemoryResourceGovernor::new();
     let wasm_adapter = EchoAdapter::new(RuntimeKind::FirstParty);
-    let script_adapter = EchoAdapter::new(RuntimeKind::Script);
+    let script_adapter = EchoAdapter::new(RuntimeKind::Mcp);
     let events = InMemoryEventSink::new();
     let dispatcher = RuntimeDispatcher::new(&registry, &fs, &governor)
         .with_runtime_adapter(RuntimeKind::FirstParty, &wasm_adapter)
-        .with_runtime_adapter(RuntimeKind::Script, &script_adapter)
+        .with_runtime_adapter(RuntimeKind::Mcp, &script_adapter)
         .with_event_sink(&events);
 
     dispatcher
@@ -82,7 +82,7 @@ async fn dispatcher_emits_events_for_wasm_and_script_success() {
         recorded[3].capability_id,
         CapabilityId::new("echo-script.say").unwrap()
     );
-    assert_eq!(recorded[4].runtime, Some(RuntimeKind::Script));
+    assert_eq!(recorded[4].runtime, Some(RuntimeKind::Mcp));
     assert_eq!(
         recorded[5].provider,
         Some(ExtensionId::new("echo-script").unwrap())
@@ -146,7 +146,7 @@ async fn dispatcher_preserves_original_error_when_failure_event_sink_fails() {
     assert!(matches!(
         err,
         DispatchError::MissingRuntimeBackend {
-            runtime: RuntimeKind::Script
+            runtime: RuntimeKind::Mcp
         }
     ));
 }
@@ -191,7 +191,7 @@ async fn dispatcher_logs_release_failure_without_masking_dispatch_error() {
     assert!(matches!(
         err,
         DispatchError::MissingRuntimeBackend {
-            runtime: RuntimeKind::Script
+            runtime: RuntimeKind::Mcp
         }
     ));
     assert!(logs_contain(
@@ -206,10 +206,10 @@ async fn dispatcher_emits_redacted_runtime_error_kind_for_adapter_failure() {
     let registry = discover_legacy_fixture_registry(&fs).await;
     let governor = InMemoryResourceGovernor::new();
     let script_adapter =
-        FailingRuntimeAdapter::new(RuntimeKind::Script, RuntimeDispatchErrorKind::ExitFailure);
+        FailingRuntimeAdapter::new(RuntimeKind::Mcp, RuntimeDispatchErrorKind::ExitFailure);
     let events = InMemoryEventSink::new();
     let dispatcher = RuntimeDispatcher::new(&registry, &fs, &governor)
-        .with_runtime_adapter(RuntimeKind::Script, &script_adapter)
+        .with_runtime_adapter(RuntimeKind::Mcp, &script_adapter)
         .with_event_sink(&events);
 
     let err = dispatcher
@@ -230,7 +230,7 @@ async fn dispatcher_emits_redacted_runtime_error_kind_for_adapter_failure() {
 
     assert!(matches!(
         err,
-        DispatchError::Script {
+        DispatchError::Mcp {
             kind: RuntimeDispatchErrorKind::ExitFailure
         }
     ));
@@ -314,7 +314,7 @@ async fn dispatcher_emits_failed_event_for_missing_backend_without_reserving() {
     assert!(matches!(
         err,
         DispatchError::MissingRuntimeBackend {
-            runtime: RuntimeKind::Script
+            runtime: RuntimeKind::Mcp
         }
     ));
     assert_eq!(governor.reserved_for(&account), ResourceTally::default());
@@ -324,7 +324,7 @@ async fn dispatcher_emits_failed_event_for_missing_backend_without_reserving() {
     assert_eq!(recorded.len(), 2);
     assert_eq!(recorded[0].kind, RuntimeEventKind::DispatchRequested);
     assert_eq!(recorded[1].kind, RuntimeEventKind::DispatchFailed);
-    assert_eq!(recorded[1].runtime, Some(RuntimeKind::Script));
+    assert_eq!(recorded[1].runtime, Some(RuntimeKind::Mcp));
     assert_eq!(
         recorded[1].error_kind.as_deref(),
         Some("missing_runtime_backend")
@@ -428,7 +428,7 @@ fn adapter_result(
 ) -> Result<RuntimeAdapterResult, DispatchError> {
     let usage = ResourceUsage {
         output_bytes: serde_json::to_vec(&output).unwrap().len() as u64,
-        process_count: u32::from(matches!(runtime, RuntimeKind::Script | RuntimeKind::Mcp)),
+        process_count: u32::from(matches!(runtime, RuntimeKind::Mcp)),
         ..ResourceUsage::default()
     };
     let reservation = governor
@@ -455,7 +455,6 @@ fn dispatch_error_for_runtime(
             kind,
             safe_summary: None,
         },
-        RuntimeKind::Script => DispatchError::Script { kind },
         RuntimeKind::Mcp => DispatchError::Mcp { kind },
         RuntimeKind::System => DispatchError::UnsupportedRuntime {
             capability: CapabilityId::new("system.unsupported").unwrap(),

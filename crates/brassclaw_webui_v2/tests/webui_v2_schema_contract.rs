@@ -38,7 +38,7 @@ fn capability_activity() -> CapabilityActivityView {
         capability_id: CapabilityId::new("script.echo").expect("capability"),
         status: CapabilityActivityStatusView::Running,
         provider: Some(ExtensionId::new("script").expect("provider")),
-        runtime: Some(RuntimeKind::Script),
+        runtime: Some(RuntimeKind::Mcp),
         process_id: None,
         output_bytes: None,
         error_kind: None,

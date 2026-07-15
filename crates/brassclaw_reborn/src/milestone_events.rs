@@ -531,7 +531,7 @@ mod tests {
                 activity_id,
                 capability_id: capability_id.clone(),
                 provider: Some(provider.clone()),
-                runtime: Some(RuntimeKind::Script),
+                runtime: Some(RuntimeKind::Mcp),
                 reason_kind: CapabilityFailureKind::OperationFailed,
             });
 
@@ -552,7 +552,7 @@ mod tests {
         );
         assert_eq!(event.capability_id, capability_id);
         assert_eq!(event.provider.as_ref(), Some(&provider));
-        assert_eq!(event.runtime, Some(RuntimeKind::Script));
+        assert_eq!(event.runtime, Some(RuntimeKind::Mcp));
         assert_eq!(event.error_kind.as_deref(), Some("operation_failed"));
     }
 
@@ -578,7 +578,7 @@ mod tests {
                 activity_id,
                 capability_id: capability_id.clone(),
                 provider: Some(provider.clone()),
-                runtime: Some(RuntimeKind::Script),
+                runtime: Some(RuntimeKind::Mcp),
                 reason_kind: CapabilityFailureKind::OperationFailed,
             },
         ] {

@@ -115,7 +115,7 @@ async fn filesystem_event_log_append_assigns_monotonic_cursors() {
             scope.clone(),
             capability_id(),
             extension_id(),
-            RuntimeKind::Script,
+            RuntimeKind::Mcp,
             7,
         ))
         .await
@@ -250,7 +250,7 @@ async fn filesystem_event_log_replay_filters_by_read_scope() {
         scope_a.clone(),
         capability_id(),
         extension_id(),
-        RuntimeKind::Script,
+        RuntimeKind::Mcp,
         7,
     ))
     .await
@@ -448,7 +448,7 @@ async fn filesystem_event_log_resume_after_cursor_returns_only_new_records() {
             scope.clone(),
             capability_id(),
             extension_id(),
-            RuntimeKind::Script,
+            RuntimeKind::Mcp,
             7,
         ))
         .await

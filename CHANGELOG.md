@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+
+- *(phase-4)* `RuntimeKind::Script`, `ExtensionRuntime::Script`, `ExtensionRuntimeV2::Script`, `DispatchError::Script`, and `TrustedRuntimeKindWire::Script` are removed. v1-script-extension manifests must be re-authored as Tools, Recipes, or first-party ProductAdapters. Shell commands (`tool:shell`) remain available without script-runtime mounting. Historical event records with `"runtime": "script"` are deserialized via `TrustedRuntimeKindWire` as `RuntimeKind::Mcp` for backwards compatibility.
+
 ## [0.41.9] - 2026-08-01
 
 ### Fixed

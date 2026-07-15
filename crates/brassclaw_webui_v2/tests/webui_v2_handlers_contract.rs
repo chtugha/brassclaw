@@ -2256,7 +2256,7 @@ fn make_capability_activity_envelope(cursor: &str) -> ProductOutboundEnvelope {
             capability_id: CapabilityId::new("script.echo").expect("capability id"),
             status: CapabilityActivityStatusView::Running,
             provider: Some(ExtensionId::new("script").expect("provider id")),
-            runtime: Some(RuntimeKind::Script),
+            runtime: Some(RuntimeKind::Mcp),
             process_id: None,
             output_bytes: None,
             error_kind: None,

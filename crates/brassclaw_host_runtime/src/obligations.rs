@@ -2362,7 +2362,7 @@ mod tests {
         let dispatch = CapabilityDispatchResult {
             capability_id: capability_id.clone(),
             provider: context.extension_id.clone(),
-            runtime: RuntimeKind::Script,
+            runtime: RuntimeKind::Mcp,
             output: serde_json::json!({"secret": "sk-secret", "safe": "ok"}),
             display_preview: Some(CapabilityDisplayOutputPreview {
                 output_summary: Some("contains secret".to_string()),
@@ -2443,7 +2443,7 @@ mod tests {
         let dispatch = CapabilityDispatchResult {
             capability_id: capability_id.clone(),
             provider: context.extension_id.clone(),
-            runtime: RuntimeKind::Script,
+            runtime: RuntimeKind::Mcp,
             output: leaky_payload,
             display_preview: None,
             usage: ResourceUsage::default(),
@@ -2529,7 +2529,7 @@ mod tests {
         let dispatch = CapabilityDispatchResult {
             capability_id: capability_id.clone(),
             provider: context.extension_id.clone(),
-            runtime: RuntimeKind::Script,
+            runtime: RuntimeKind::Mcp,
             output: serde_json::Value::String("leak AKIAIOSFODNN7EXAMPLE".to_string()),
             display_preview: None,
             usage: ResourceUsage::default(),
@@ -2603,7 +2603,7 @@ mod tests {
             mission_id: resource_scope.mission_id.clone(),
             thread_id: resource_scope.thread_id.clone(),
             extension_id: ExtensionId::new("caller").unwrap(),
-            runtime: RuntimeKind::Script,
+            runtime: RuntimeKind::Mcp,
             trust: TrustClass::Sandbox,
             grants: CapabilitySet::default(),
             mounts: MountView::default(),

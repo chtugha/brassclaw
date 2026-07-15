@@ -123,7 +123,7 @@ where
         }
         for runtime in &config.required_runtime_backends {
             match runtime {
-                RuntimeKind::Script | RuntimeKind::Mcp | RuntimeKind::FirstParty => {}
+                RuntimeKind::Mcp | RuntimeKind::FirstParty => {}
                 RuntimeKind::System => self.push_issue(
                     &mut issues,
                     ProductionWiringComponent::RuntimeBackend,
@@ -131,13 +131,6 @@ where
                     None,
                 ),
             }
-        }
-        if config.requires_runtime(RuntimeKind::Script) {
-            self.push_missing(
-                &mut issues,
-                ProductionWiringComponent::McpRuntime,
-                self.mcp_runtime.is_some(),
-            );
         }
         if config.requires_runtime(RuntimeKind::Mcp) {
             self.push_missing(
