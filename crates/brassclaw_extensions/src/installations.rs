@@ -861,9 +861,8 @@ description = "test extension"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/{extension_id}.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]

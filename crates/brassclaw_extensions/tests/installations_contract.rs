@@ -31,9 +31,8 @@ description = "test"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/acme.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]

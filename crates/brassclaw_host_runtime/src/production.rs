@@ -1621,8 +1621,8 @@ description = "test extension"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "sandboxed_process"
+kind = "mcp"
+transport = "stdio"
 command = "echo"
 
 [[capabilities]]

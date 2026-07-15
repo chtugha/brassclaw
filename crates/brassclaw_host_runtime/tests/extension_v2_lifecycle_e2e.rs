@@ -308,9 +308,8 @@ description = "Script lifecycle extension"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "alpine:latest"
+kind = "mcp"
+transport = "stdio"
 command = "script-echo"
 args = ["--json"]
 

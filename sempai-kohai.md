@@ -485,47 +485,90 @@ The `ForensicBuilder` (Step 6) accumulates segment data only when `SempaiSlot::A
 
 ### Step 6 — Interceptor service: standalone architecture + DB schema
 
-**Goal**: Implement the interceptor as a standalone async service with its own database. The interceptor is the permanent boundary between prompt assembly and the tokenizer. Every prompt passes through it and is stored before being forwarded.
+**Goal**: Implement the interceptor as a standalone async service with its own database. The interceptor sits permanently between prompt assembly and the tokenizer and operates as a binary-state switch: in `Passthrough` state every prompt is saved and forwarded immediately; in `Intercepting` state every prompt is saved and routed to the Sempai for audit before being forwarded.
 
-#### 6.1 Architecture
+#### 6.1 Architecture and state machine
 
-The interceptor is not a function call inside the orchestrator loop. It is a separate `tokio` task (or microservice process) that communicates with the orchestrator via a bounded channel. The orchestrator submits an assembled prompt to the interceptor channel and suspends. The interceptor stores the prompt, waits for the Sempai to audit it, then sends back the (possibly modified) prompt. The orchestrator resumes and sends the result to the tokenizer and then to Kohai.
+The interceptor is a separate `tokio` task that communicates with the orchestrator via a bounded channel. The orchestrator submits an assembled prompt and suspends until the interceptor returns a response. The interceptor responds immediately in `Passthrough` mode, or after Sempai review in `Intercepting` mode.
 
 ```
 Orchestrator assembles prompt
           │
-          │ PromptInterceptRequest { prompt_id, final_messages, forensic_packet }
+          │ PromptInterceptRequest { prompt_id, final_messages, forensic_packet, model_params }
           ▼
-  ┌───────────────────────────────────┐
-  │  InterceptorService               │
-  │  ┌─────────────────────────────┐  │
-  │  │ interceptor_db              │  │
-  │  │  · prompts                  │  │
-  │  │  · prompt_segments          │  │
-  │  │  · prompt_tokenized         │  │
-  │  │  · sempai_audits            │  │
-  │  │  · proposed_updates         │  │
-  │  └─────────────────────────────┘  │
-  │                                   │
-  │  Waits for Sempai connection ──────┼──→ Sempai (LLM provider)
-  │  or human connection ─────────────┼──→ Human reviewer (iPhone push)
-  └───────────────────────────────────┘
+  ┌─────────────────────────────────────────────────────────┐
+  │  InterceptorService                                     │
+  │                                                         │
+  │  state: Passthrough ◄──────────────────────────────┐   │
+  │    │  save prompt to DB                             │   │
+  │    │  forward to tokenizer → Kohai immediately      │   │
+  │    │                                     on disconnect  │
+  │    │  on Sempai connection_established   │           │   │
+  │    ▼                                    │           │   │
+  │  state: Intercepting ───────────────────┘           │   │
+  │    │  save prompt to DB                             │   │
+  │    │  build KV-cache-aware Sempai audit prompt      │   │
+  │    │  send to Sempai provider                       │   │
+  │    │  receive audit response                        │   │
+  │    │  forward revised prompt to tokenizer → Kohai   │   │
+  │    └───────────────────────────────────────────────►┘   │
+  │                                                         │
+  │  ┌─────────────────────────────┐                        │
+  │  │ interceptor_db              │                        │
+  │  │  · interceptor_prompts      │                        │
+  │  │  · interceptor_prompt_final │                        │
+  │  │  · interceptor_prompt_segs  │                        │
+  │  │  · interceptor_prompt_tok   │                        │
+  │  │  · interceptor_audits       │                        │
+  │  │  · interceptor_proposed_upd │                        │
+  │  └─────────────────────────────┘                        │
+  └─────────────────────────────────────────────────────────┘
           │
           │ PromptInterceptResponse { prompt_id, revised_messages, audit_summary, proposed_updates }
           ▼
   Orchestrator forwards to tokenizer → Kohai
 ```
 
-The interceptor service is created at runtime boot and wired into `RebornRuntime`. It exposes a single async method:
+**State transitions:**
+- `Passthrough` → `Intercepting`: Sempai provider calls `establish_connection()` on the interceptor. On success a keepalive loop starts.
+- `Intercepting` → `Passthrough`: keepalive heartbeat is missed (connection dead), or Sempai provider returns a connection error. Transition is immediate — the in-flight prompt (if any) completes in `Passthrough` mode.
+
+**There is no fixed timeout for switching states.** The keepalive interval is size-adaptive: a larger forensic packet gives the Sempai more processing time before a missed beat is considered a disconnect. The keepalive period is:
+
+```
+keepalive_interval = base_interval_ms + (forensic_packet_bytes / BYTES_PER_MS_FACTOR)
+```
+
+where `base_interval_ms` defaults to `BRASSCLAW_SEMPAI_KEEPALIVE_BASE_MS` (default: 2 000 ms) and `BYTES_PER_MS_FACTOR` defaults to `BRASSCLAW_SEMPAI_BYTES_PER_MS` (default: 500 bytes/ms). Both are configurable env vars. Two consecutive missed beats triggers `Passthrough` transition.
+
+The interceptor service is created at runtime boot and wired into `RebornRuntime`. It exposes:
 
 ```rust
 pub trait PromptInterceptorService: Send + Sync {
-    /// Submit an assembled prompt for interception. Suspends until the
-    /// Sempai (or human reviewer) has completed the audit.
+    /// Submit an assembled prompt. Returns immediately in Passthrough mode;
+    /// suspends until Sempai audit completes in Intercepting mode.
     async fn intercept(
         &self,
         request: PromptInterceptRequest,
     ) -> Result<PromptInterceptResponse, InterceptorError>;
+
+    /// Called by the Sempai provider to establish an interception connection.
+    /// Transitions the interceptor to Intercepting state and starts the
+    /// keepalive loop.
+    async fn establish_connection(&self, session_id: SempaiSessionId) -> Result<(), InterceptorError>;
+
+    /// Keepalive ping from the Sempai. Must arrive within the size-adaptive
+    /// interval or the connection is considered dead.
+    async fn keepalive(&self, session_id: SempaiSessionId) -> Result<(), InterceptorError>;
+
+    /// Current state of the interceptor (for monitoring/WebUI).
+    fn state(&self) -> InterceptorState;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub enum InterceptorState {
+    Passthrough,
+    Intercepting { session_id: SempaiSessionId },
 }
 ```
 
@@ -588,11 +631,14 @@ CREATE TABLE interceptor_prompts (
     id              TEXT    PRIMARY KEY,   -- PromptId (UUID)
     run_id          TEXT    NOT NULL,
     thread_id       TEXT    NOT NULL,
-    status          TEXT    NOT NULL DEFAULT 'pending',
-    -- status values: pending | sempai_connected | human_connected
-    --                audited | forwarded | error
+    -- route: passthrough = saved + forwarded without Sempai review
+    --        intercepted  = saved + routed to Sempai before forwarding
+    route           TEXT    NOT NULL DEFAULT 'passthrough',
+    -- status: saved | forwarded | auditing | audited | error
+    status          TEXT    NOT NULL DEFAULT 'saved',
     assembled_at    TEXT    NOT NULL,
     forwarded_at    TEXT,                  -- set when Kohai receives the prompt
+    audit_started_at TEXT,
     audit_completed_at TEXT,
     model_params_json  TEXT NOT NULL,      -- ModelParams serialised (zstd compressed)
     created_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
@@ -700,6 +746,9 @@ pub trait InterceptorStore: Send + Sync {
     async fn list_pending_updates(&self) -> Result<Vec<PendingArtifactUpdate>, DbError>;
     async fn set_auto_validation(&self, update_id: &str, result: ValidationResult, notes: &str) -> Result<(), DbError>;
     async fn set_manual_validation(&self, update_id: &str, result: ValidationResult, by: &str, notes: &str) -> Result<(), DbError>;
+    /// List prompts that were routed through Passthrough (never Sempai-audited).
+    /// Used for optional backlog replay on Sempai reconnection.
+    async fn list_passthrough_prompts(&self, since: Option<chrono::DateTime<chrono::Utc>>) -> Result<Vec<StoredPrompt>, DbError>;
 }
 ```
 
@@ -716,7 +765,8 @@ Added as a supertrait of `Database`. Implemented for both `PostgresDb` and `LibS
 - Unit test: `save_prompt` + `save_segment` + `save_tokenized` + `save_audit` lifecycle for both backends.
 - Unit test: zstd compress/decompress round-trip for all JSON columns.
 - Unit test: packet exceeding 4 MiB strips verbatim content and sets the flag.
-- Unit test: `list_pending_prompts` returns only prompts with `status = 'pending'`.
+- Unit test: `list_passthrough_prompts` returns only `route = 'passthrough'` rows.
+- Unit test: `Passthrough` prompt has `route = 'passthrough'`; `Intercepting` prompt has `route = 'intercepted'`.
 
 ---
 

@@ -611,8 +611,8 @@ description = "Script Echo demo extension"
 trust = "untrusted"
 
 [runtime]
-kind = "script"
-runner = "sandboxed_process"
+kind = "mcp"
+transport = "stdio"
 command = "sh"
 args = ["-c", "cat"]
 

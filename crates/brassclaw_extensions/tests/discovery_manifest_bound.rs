@@ -158,9 +158,8 @@ description = "{id} extension"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/{id}.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[host_api]]

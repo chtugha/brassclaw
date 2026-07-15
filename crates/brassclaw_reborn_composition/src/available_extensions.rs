@@ -123,8 +123,6 @@ fn runtime_kind(runtime: &ExtensionRuntime) -> LifecycleExtensionRuntimeKind {
         ExtensionRuntime::Mcp { .. } => LifecycleExtensionRuntimeKind::McpServer,
         ExtensionRuntime::FirstParty { .. } => LifecycleExtensionRuntimeKind::FirstParty,
         ExtensionRuntime::System { .. } => LifecycleExtensionRuntimeKind::System,
-        // Script extensions are legacy; treat them as first-party for lifecycle purposes.
-        ExtensionRuntime::Script { .. } => LifecycleExtensionRuntimeKind::FirstParty,
     }
 }
 
@@ -1613,9 +1611,8 @@ description = "fixture extension"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/fixture.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "fixture-load"
 
 [[capabilities]]

@@ -3460,9 +3460,8 @@ description = "Lifecycle fixture extension"
 trust = "first_party_requested"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/fixture.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "fixture-load"
 
 [[capabilities]]
@@ -3495,9 +3494,8 @@ description = "Installed local fixture extension"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/fixture.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "fixture-load"
 
 [[host_api]]

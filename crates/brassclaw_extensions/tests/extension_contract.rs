@@ -12,10 +12,8 @@ fn v2_manifest_builds_capability_descriptors_from_schema_refs() {
     assert_eq!(manifest.descriptor_trust_default, TrustClass::Sandbox);
     assert!(matches!(
         manifest.runtime,
-        ExtensionRuntime::Script { ref image, ref runner, ref command, .. }
-            if image.as_deref() == Some("wasm/echo.wasm")
-                && runner == "docker"
-                && command == "wasm-load"
+        ExtensionRuntime::Mcp { ref transport, ref command, .. }
+            if transport == "stdio" && command.as_deref() == Some("wasm-load")
     ));
 
     let package = package_from_manifest(manifest, "echo");
@@ -24,7 +22,7 @@ fn v2_manifest_builds_capability_descriptors_from_schema_refs() {
     let descriptor = &package.capabilities[0];
     assert_eq!(descriptor.id.as_str(), "echo.say");
     assert_eq!(descriptor.provider.as_str(), "echo");
-    assert_eq!(descriptor.runtime, RuntimeKind::Script);
+    assert_eq!(descriptor.runtime, RuntimeKind::Mcp);
     assert_eq!(descriptor.trust_ceiling, TrustClass::Sandbox);
     assert_eq!(descriptor.default_permission, PermissionMode::Allow);
     assert_eq!(descriptor.effects, vec![EffectKind::DispatchCapability]);
@@ -123,21 +121,21 @@ fn registry_rejects_host_bundled_package_with_mutated_parameters_schema() {
 }
 
 #[test]
-fn script_and_mcp_runtime_metadata_stays_declarative() {
-    let script = parse_manifest(SCRIPT_MANIFEST);
-    assert_eq!(script.runtime_kind(), RuntimeKind::Script);
+fn mcp_runtime_metadata_stays_declarative() {
+    let mcp_legacy = parse_manifest(SCRIPT_MANIFEST);
+    assert_eq!(mcp_legacy.runtime_kind(), RuntimeKind::Mcp);
     assert!(matches!(
-        script.runtime,
-        ExtensionRuntime::Script {
-            ref runner,
-            image: Some(ref image),
+        mcp_legacy.runtime,
+        ExtensionRuntime::Mcp {
+            ref transport,
             ref command,
             ref args,
-        } if runner == "docker" && image == "python:3.12-slim" && command == "pytest" && args == &["tests/".to_string()]
+            ..
+        } if transport == "stdio" && command.as_deref() == Some("pytest") && args == &["tests/".to_string()]
     ));
     assert_eq!(
-        package_from_manifest(script, "project-tools").capabilities[0].runtime,
-        RuntimeKind::Script
+        package_from_manifest(mcp_legacy, "project-tools").capabilities[0].runtime,
+        RuntimeKind::Mcp
     );
 
     let mcp = parse_manifest(MCP_MANIFEST);
@@ -391,7 +389,7 @@ fn capability_provider_host_api_contract_accepts_valid_manifest() {
     let descriptor = &package.capabilities[0];
     assert_eq!(descriptor.id.as_str(), "telegram.send_message");
     assert_eq!(descriptor.provider.as_str(), "telegram");
-    assert_eq!(descriptor.runtime, RuntimeKind::Script);
+    assert_eq!(descriptor.runtime, RuntimeKind::Mcp);
     assert_eq!(descriptor.trust_ceiling, TrustClass::UserTrusted);
     assert_eq!(descriptor.default_permission, PermissionMode::Ask);
     assert_eq!(descriptor.effects, vec![EffectKind::Network]);
@@ -922,8 +920,8 @@ fn lifecycle_package(id: &str, capability: &str, version: &str) -> ExtensionPack
         id,
         capability,
         version,
-        "script",
-        "runner = \"docker\"\nimage = \"wasm/tool.wasm\"\ncommand = \"wasm-load\"",
+        "mcp",
+        "transport = \"stdio\"\ncommand = \"wasm-load\"",
     );
     package_from_manifest(parse_manifest(&manifest), id)
 }
@@ -1036,9 +1034,8 @@ description = "Echo demo extension"
 trust = "untrusted"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/echo.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -1060,9 +1057,8 @@ description = "Echo demo extension"
 trust = "untrusted"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/echo.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -1085,9 +1081,8 @@ description = "Telegram adapter"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/telegram.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[host_api]]
@@ -1106,9 +1101,8 @@ description = "Telegram adapter"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/telegram.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[host_api]]
@@ -1136,9 +1130,8 @@ description = "Project-local CLI helpers"
 trust = "untrusted"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "python:3.12-slim"
+kind = "mcp"
+transport = "stdio"
 command = "pytest"
 args = ["tests/"]
 
@@ -1195,9 +1188,8 @@ description = "hookext extension"
 trust = "untrusted"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/tool.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -1319,9 +1311,8 @@ trust = "untrusted"
 hooks = ["not-a-table"]
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/tool.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]

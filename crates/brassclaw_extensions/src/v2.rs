@@ -384,12 +384,6 @@ pub struct CapabilityDeclV2 {
 /// v2 runtime declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExtensionRuntimeV2 {
-    Script {
-        runner: String,
-        image: Option<String>,
-        command: String,
-        args: Vec<String>,
-    },
     Mcp {
         transport: String,
         command: Option<String>,
@@ -407,7 +401,6 @@ pub enum ExtensionRuntimeV2 {
 impl ExtensionRuntimeV2 {
     pub fn kind(&self) -> RuntimeKind {
         match self {
-            Self::Script { .. } => RuntimeKind::Script,
             Self::Mcp { .. } => RuntimeKind::Mcp,
             Self::FirstParty { .. } => RuntimeKind::FirstParty,
             Self::System { .. } => RuntimeKind::System,
@@ -420,7 +413,7 @@ impl ExtensionRuntimeV2 {
     /// an explicit decision here rather than silently defaulting to `false`.
     fn installed_allows(&self) -> bool {
         match self {
-            Self::Mcp { .. } | Self::Script { .. } => true,
+            Self::Mcp { .. } => true,
             Self::FirstParty { .. } | Self::System { .. } => false,
         }
     }
@@ -1199,70 +1192,6 @@ fn validate_mcp_http_url(transport: &str, value: &str) -> Result<(), ManifestV2E
     Ok(())
 }
 
-/// Reject Docker image references that look like filesystem paths, URLs,
-/// or that contain path traversal components. The reference must match
-/// Docker's grammar: `[registry[:port]/]name[:tag][@digest]`. This is a
-/// conservative check — anything containing `://`, `..`, `\`, leading `/`,
-/// drive letters, or whitespace is rejected up front so a malformed
-/// manifest is caught at parse time rather than at container run time.
-fn validate_docker_image_reference(image: &str) -> Result<(), ManifestV2Error> {
-    if image.trim().is_empty() {
-        return Err(ManifestV2Error::Invalid {
-            reason: "script image is required for docker runner".to_string(),
-        });
-    }
-    if image.starts_with('-') {
-        return Err(ManifestV2Error::Invalid {
-            reason: "script image must not start with '-' (cli flag injection)".to_string(),
-        });
-    }
-    if image.chars().any(char::is_whitespace) {
-        return Err(ManifestV2Error::Invalid {
-            reason: "script image must not contain whitespace".to_string(),
-        });
-    }
-    if image.starts_with('/') || image.starts_with('\\') {
-        return Err(ManifestV2Error::Invalid {
-            reason: "script image must not be an absolute path".to_string(),
-        });
-    }
-    if image.contains('\\') {
-        return Err(ManifestV2Error::Invalid {
-            reason: "script image must not contain backslash characters".to_string(),
-        });
-    }
-    if image.contains("://") {
-        return Err(ManifestV2Error::Invalid {
-            reason: "script image must not contain a URL scheme".to_string(),
-        });
-    }
-    if image.starts_with("file:") {
-        return Err(ManifestV2Error::Invalid {
-            reason: "script image must not use file: scheme".to_string(),
-        });
-    }
-    if image.contains("..") {
-        return Err(ManifestV2Error::Invalid {
-            reason: "script image must not contain '..' (traversal)".to_string(),
-        });
-    }
-    if image.split('/').any(|component| component == ".") {
-        return Err(ManifestV2Error::Invalid {
-            reason: "script image must not have '.' path components".to_string(),
-        });
-    }
-    if image.len() >= 3
-        && image.as_bytes()[0].is_ascii_alphabetic()
-        && image.as_bytes()[1] == b':'
-        && (image.as_bytes()[2] == b'/' || image.as_bytes()[2] == b'\\')
-    {
-        return Err(ManifestV2Error::Invalid {
-            reason: "script image must not be a Windows drive path".to_string(),
-        });
-    }
-    Ok(())
-}
-
 fn requested_trust_to_descriptor_trust(requested: RequestedTrustClass) -> TrustClass {
     match requested {
         RequestedTrustClass::ThirdParty => TrustClass::UserTrusted,
@@ -1478,14 +1407,6 @@ struct RawHostApiRefV2 {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum RawRuntimeV2 {
-    Script {
-        runner: String,
-        #[serde(default)]
-        image: Option<String>,
-        command: String,
-        #[serde(default)]
-        args: Vec<String>,
-    },
     Mcp {
         transport: String,
         #[serde(default)]
@@ -1506,33 +1427,6 @@ enum RawRuntimeV2 {
 impl RawRuntimeV2 {
     fn into_runtime(self) -> Result<ExtensionRuntimeV2, ManifestV2Error> {
         match self {
-            Self::Script {
-                runner,
-                image,
-                command,
-                args,
-            } => {
-                if runner.trim().is_empty() {
-                    return Err(ManifestV2Error::Invalid {
-                        reason: "script runner must not be empty".to_string(),
-                    });
-                }
-                if command.trim().is_empty() {
-                    return Err(ManifestV2Error::Invalid {
-                        reason: "script command must not be empty".to_string(),
-                    });
-                }
-                if runner == "docker" {
-                    let image_str = image.as_deref().unwrap_or_default();
-                    validate_docker_image_reference(image_str)?;
-                }
-                Ok(ExtensionRuntimeV2::Script {
-                    runner,
-                    image,
-                    command,
-                    args,
-                })
-            }
             Self::Mcp {
                 transport,
                 command,

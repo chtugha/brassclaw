@@ -79,9 +79,8 @@ description = "{id} extension"
 trust = "untrusted"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/{id}.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "{id}-load"
 
 [[capabilities]]
@@ -654,9 +653,8 @@ description = "{id} extension"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/{id}.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "{id}-load"
 
 [[host_api]]

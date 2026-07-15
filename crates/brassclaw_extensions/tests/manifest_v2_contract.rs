@@ -38,9 +38,8 @@ description = "test"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/example.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -68,7 +67,7 @@ fn parses_minimum_valid_v2_manifest_for_installed_third_party_extension() {
     assert_eq!(manifest.source, ManifestSource::InstalledLocal);
     assert_eq!(manifest.requested_trust, RequestedTrustClass::ThirdParty);
     assert_eq!(manifest.descriptor_trust_default, TrustClass::UserTrusted);
-    assert_eq!(manifest.runtime.kind(), RuntimeKind::Script);
+    assert_eq!(manifest.runtime.kind(), RuntimeKind::Mcp);
     assert_eq!(manifest.capabilities.len(), 1);
     let cap = &manifest.capabilities[0];
     assert_eq!(cap.visibility, CapabilityVisibility::Model);
@@ -352,9 +351,8 @@ trust = "third_party"
 oops = true
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/echo.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -395,9 +393,8 @@ description = "x"
 trust = "first_party_requested"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/echo.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -550,9 +547,8 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/echo.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -586,9 +582,8 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/echo.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -625,9 +620,8 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/echo.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -667,9 +661,8 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/echo.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -699,9 +692,8 @@ version = "0.1"
 description = "x"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/echo.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -733,9 +725,8 @@ description = "{description}"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/echo.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -761,56 +752,6 @@ output_schema_ref = "schemas/acme/echo.output.v1.json"
 }
 
 
-
-#[test]
-fn rejects_script_image_with_host_or_url_or_traversal_paths() {
-    for bad in [
-        "",
-        " ",
-        "/abs/path.wasm",
-        "../escape.wasm",
-        "foo/../bar.wasm",
-        "https://evil.example.com/x.wasm",
-        "file:///tmp/x.wasm",
-        r"C:\windows.wasm",
-        "c:/win.wasm",
-        "has space.wasm",
-        "wasm/./echo.wasm",
-    ] {
-        let toml = format!(
-            r#"
-schema_version = "{schema}"
-id = "acme-tools"
-name = "x"
-version = "0.1"
-description = "x"
-trust = "third_party"
-
-[runtime]
-kind = "script"
-runner = "docker"
-image = "{bad}"
-command = "test"
-
-[[capabilities]]
-id = "acme-tools.echo"
-description = "echo"
-default_permission = "allow"
-visibility = "host_internal"
-input_schema_ref = "schemas/acme/echo.input.v1.json"
-output_schema_ref = "schemas/acme/echo.output.v1.json"
-"#,
-            schema = MANIFEST_SCHEMA_VERSION,
-            bad = bad.replace('\\', "\\\\"),
-        );
-        let err = ExtensionManifestV2::parse(&toml, ManifestSource::InstalledLocal, &catalog())
-            .unwrap_err();
-        assert!(
-            matches!(err, ManifestV2Error::Invalid { .. }),
-            "script image {bad:?} should be rejected, got {err:?}"
-        );
-    }
-}
 
 #[test]
 fn mcp_runtime_enforces_transport_and_shape() {
@@ -878,9 +819,8 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/echo.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -914,9 +854,8 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/echo.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -950,9 +889,8 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/echo.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -983,9 +921,8 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/echo.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -1043,9 +980,8 @@ description = "two capabilities"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/acme.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -1115,9 +1051,8 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/acme.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -1154,9 +1089,8 @@ description = "x"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/acme.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[capabilities]]
@@ -1264,9 +1198,8 @@ description = "Telegram product adapter and tools"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/telegram.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[host_api]]
@@ -1533,9 +1466,8 @@ description = "Telegram product adapter and tools"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "wasm/telegram.wasm"
+kind = "mcp"
+transport = "stdio"
 command = "wasm-load"
 
 [[host_api]]

@@ -2182,8 +2182,8 @@ description = "Script runner"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "sandboxed_process"
+kind = "mcp"
+transport = "stdio"
 command = "pytest"
 args = ["tests/"]
 
@@ -2203,8 +2203,8 @@ description = "Script runner"
 trust = "third_party"
 
 [runtime]
-kind = "script"
-runner = "sandboxed_process"
+kind = "mcp"
+transport = "stdio"
 command = "pytest"
 args = ["tests/"]
 

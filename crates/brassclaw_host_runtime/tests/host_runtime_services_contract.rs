@@ -4665,8 +4665,8 @@ description = "Script integration extension"
 trust = "untrusted"
 
 [runtime]
-kind = "script"
-runner = "sandboxed_process"
+kind = "mcp"
+transport = "stdio"
 command = "echo"
 args = []
 
@@ -4705,8 +4705,8 @@ description = "Script integration extension"
 trust = "untrusted"
 
 [runtime]
-kind = "script"
-runner = "sandboxed_process"
+kind = "mcp"
+transport = "stdio"
 command = "echo"
 args = []
 

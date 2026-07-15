@@ -390,9 +390,8 @@ description = "Script integration extension"
 trust = "untrusted"
 
 [runtime]
-kind = "script"
-runner = "docker"
-image = "example/script:latest"
+kind = "mcp"
+transport = "stdio"
 command = "echo"
 args = []
 
