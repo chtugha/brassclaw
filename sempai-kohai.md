@@ -10,9 +10,9 @@
 BrassClaw currently treats all LLM providers as interchangeable inference backends selected by a single "Use" button. The Sempai–Kohai model introduces a hard role distinction and an independent interception service that sits permanently between prompt assembly and the tokenizer.
 
 - **Kohai** (後輩 — "junior") is the primary inference provider. It receives the final assembled and tokenized prompt, executes tool calls, writes code, and produces visible output. The existing `llm.active_provider` maps directly onto the Kohai role.
-- **Sempai** (先輩 — "senior") is the teaching and auditing provider. It is never visible in normal output. It operates through a **standalone interceptor service** that receives every fully-assembled prompt before it reaches the tokenizer. The interceptor stores the prompt and all segment-level construction data in its own database, then waits for the Sempai to connect and audit. After the Sempai completes its audit, the (possibly modified) prompt is forwarded to the tokenizer and then to the Kohai model.
+- **Sempai** (先輩 — "senior") is the teaching and auditing provider. It is never visible in normal output. It operates through a **standalone interceptor service** that permanently sits between prompt assembly and the tokenizer. The interceptor operates as a binary-state switch: in **`Passthrough`** state it saves every prompt and immediately forwards it to the tokenizer → Kohai with zero Sempai involvement; in **`Intercepting`** state it saves every prompt, routes it to the Sempai for audit, and only forwards the (possibly modified) prompt after the audit completes. The interceptor switches to `Intercepting` when the Sempai successfully establishes a connection, and immediately reverts to `Passthrough` on disconnection.
 
-The interceptor is not a function call inside the loop engine. It is a service boundary. The prompt does not move forward until the interceptor has persisted it and the Sempai has reviewed it.
+The interceptor is not a function call inside the loop engine. It is a service boundary. In `Passthrough` state the only overhead is one DB write and one DB status update — the prompt is never held. In `Intercepting` state the prompt is held until the Sempai audit completes.
 
 ---
 
@@ -180,7 +180,9 @@ pub enum ComponentType {
 }
 ```
 
-A `ComponentTypeSet` is `Vec<ComponentType>` with a helper `fn contains(role: ProviderRole) -> bool`.
+A `ComponentTypeSet` is `Vec<ComponentType>` with a helper `fn contains_role(role: ContextRole) -> bool`.
+
+Note: `ContextRole` (defined in Step 10.3) is the query-side type used when filtering. `ProviderRole` (LLM-level `Kohai`/`Sempai`) is a separate concern — do not conflate the two. `ComponentType::Kohai` maps to `ContextRole::Kohai`, etc., but the mapping is explicit: a `ProviderRole` is never passed directly to `ComponentTypeSet::contains_role`.
 
 #### 1.3 Skill frontmatter gains `types` field
 
@@ -322,9 +324,13 @@ ActionDef {
 }
 ```
 
-Write tools (`bob_create_employee`, `bob_terminate_employee`, `bob_upload_*`, `bob_create_*`, `bob_delete_*`) use `requires_approval: RequiresApproval::Required` and `effect: Effect::WriteExternal`.
+Write tools (`bob_create_employee`, `bob_terminate_employee`, `bob_upload_*`, `bob_create_*`, `bob_delete_*`) use `requires_approval: true` and `effect: Effect::WriteExternal`.
+
+Read-only tools use `requires_approval: false`.
 
 All tools tagged with `component_types: [Agent, Kohai]` (or `[Agent, LLM]` for metadata/reporting tools) matching the skill bundle.
+
+> **Security note**: HiBob credentials must **not** be assembled in recipe text or passed through the agent's visible context. The `Authorization` header must be constructed and injected at the HTTP capability layer (sealed before the agent sees the request), using the values from `SecretsStore` fetched by key name. The recipe documents the key names (`hibob_service_user_id`, `hibob_service_user_token`) and the header template, but the actual secret values are resolved and injected by the capability executor — never interpolated into a string the agent assembles or logs.
 
 #### 2.5 Tests
 
@@ -392,32 +398,39 @@ interface SetActiveLlmRequest {
 }
 ```
 
-Server side:
+Server side (actual return type matches the existing `set_active_llm` signature which returns `LlmConfigSnapshot`):
 
 ```rust
 pub async fn set_active_llm(
     caller: WebUiAuthenticatedCaller,
     request: SetActiveLlmRequest,
     services: &dyn RebornServicesApi,
-) -> Result<(), RebornServicesError> {
-    // Cannot assign same provider to both roles.
-    let other_key = match request.role.unwrap_or(ProviderRole::Kohai) {
+) -> Result<LlmConfigSnapshot, RebornServicesError> {
+    // Resolve role once to avoid matching twice on a field that could
+    // theoretically differ between two separate match arms.
+    let role = request.role.unwrap_or(ProviderRole::Kohai);
+
+    // Cannot assign the same provider to both roles simultaneously.
+    let other_key = match role {
         ProviderRole::Kohai  => "llm.sempai_provider",
         ProviderRole::Sempai => "llm.kohai_provider",
     };
     let other = services.db.get_setting(other_key).await?;
-    if other.as_deref() == Some(&request.provider_id) {
+    if other.as_deref() == Some(request.provider_id.as_str()) {
         return Err(RebornServicesError::Conflict {
             reason: "provider_already_assigned_to_other_role".into(),
         });
     }
-    let key = match request.role.unwrap_or(ProviderRole::Kohai) {
+
+    let key = match role {
         ProviderRole::Kohai  => "llm.kohai_provider",
         ProviderRole::Sempai => "llm.sempai_provider",
     };
     services.db.set_setting(key, &request.provider_id).await?;
     services.llm_reload_handle.reload().await?;
-    Ok(())
+
+    // Return the updated snapshot so callers can refresh their UI state.
+    services.get_llm_config(caller).await
 }
 ```
 
@@ -452,10 +465,12 @@ File: `crates/brassclaw_llm/src/sempai_slot.rs` (new)
 ```rust
 /// Represents the availability state of the configured Sempai provider.
 pub enum SempaiSlot {
-    /// No Sempai provider configured. The interceptor service starts but
-    /// queues prompts indefinitely until a Sempai is configured.
+    /// No Sempai provider configured. The interceptor runs in Passthrough
+    /// state — every prompt is saved and forwarded immediately without audit.
     Unconfigured,
-    /// A Sempai provider is configured and ready to receive interception calls.
+    /// A Sempai provider is configured and available to accept connections.
+    /// The interceptor transitions to Intercepting state when the Sempai
+    /// calls establish_connection().
     Active(Arc<dyn LlmProvider>),
 }
 ```
@@ -544,6 +559,7 @@ where `base_interval_ms` defaults to `BRASSCLAW_SEMPAI_KEEPALIVE_BASE_MS` (defau
 The interceptor service is created at runtime boot and wired into `RebornRuntime`. It exposes:
 
 ```rust
+#[async_trait::async_trait]
 pub trait PromptInterceptorService: Send + Sync {
     /// Submit an assembled prompt. Returns immediately in Passthrough mode;
     /// suspends until Sempai audit completes in Intercepting mode.
@@ -627,7 +643,9 @@ This migration creates all interceptor tables. No `tenant_id` columns — single
 
 ```sql
 -- One row per assembled prompt entering the interceptor.
-CREATE TABLE interceptor_prompts (
+-- All CREATE TABLE / CREATE INDEX statements use IF NOT EXISTS so migrations
+-- are idempotent and safe to re-run (matches project convention).
+CREATE TABLE IF NOT EXISTS interceptor_prompts (
     id              TEXT    PRIMARY KEY,   -- PromptId (UUID)
     run_id          TEXT    NOT NULL,
     thread_id       TEXT    NOT NULL,
@@ -640,66 +658,71 @@ CREATE TABLE interceptor_prompts (
     forwarded_at    TEXT,                  -- set when Kohai receives the prompt
     audit_started_at TEXT,
     audit_completed_at TEXT,
-    model_params_json  TEXT NOT NULL,      -- ModelParams serialised (zstd compressed)
+    -- ModelParams stored as plain JSON TEXT (not zstd — small, no gain).
+    model_params_json  TEXT NOT NULL,
     created_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
-CREATE INDEX idx_ip_run_id    ON interceptor_prompts(run_id);
-CREATE INDEX idx_ip_thread_id ON interceptor_prompts(thread_id);
-CREATE INDEX idx_ip_status    ON interceptor_prompts(status);
+CREATE INDEX IF NOT EXISTS idx_ip_run_id    ON interceptor_prompts(run_id);
+CREATE INDEX IF NOT EXISTS idx_ip_thread_id ON interceptor_prompts(thread_id);
+CREATE INDEX IF NOT EXISTS idx_ip_status    ON interceptor_prompts(status);
 
 -- The final assembled messages for each prompt (before Sempai review).
-CREATE TABLE interceptor_prompt_final (
+-- messages_blob stores zstd-compressed bytes. BLOB type is correct for
+-- compressed binary — TEXT cannot store arbitrary byte sequences reliably.
+-- PostgreSQL equivalent: BYTEA. libSQL equivalent: BLOB.
+CREATE TABLE IF NOT EXISTS interceptor_prompt_final (
     prompt_id       TEXT    PRIMARY KEY REFERENCES interceptor_prompts(id),
-    messages_json   TEXT    NOT NULL       -- Vec<AssembledMessage> zstd compressed
+    messages_blob   BLOB    NOT NULL,      -- Vec<AssembledMessage> → JSON → zstd → bytes
+    uncompressed_len INTEGER NOT NULL      -- for the 4 MiB size check on read
 );
 
 -- The tokenized version of each prompt (stored after tokenization, post-audit).
-CREATE TABLE interceptor_prompt_tokenized (
+-- token_ids stored as plain JSON array TEXT (small, no compression benefit).
+CREATE TABLE IF NOT EXISTS interceptor_prompt_tokenized (
     prompt_id       TEXT    PRIMARY KEY REFERENCES interceptor_prompts(id),
-    token_ids_json  TEXT    NOT NULL,      -- Vec<u32> JSON
+    token_ids_json  TEXT    NOT NULL,      -- JSON array of u32 token ids
     token_count     INTEGER NOT NULL,
     tokenized_at    TEXT    NOT NULL
 );
 
 -- Per-segment decision data. Each segment of the prompt creation process
 -- sends its data here as it finishes, tagged with the prompt_id.
-CREATE TABLE interceptor_prompt_segments (
+-- Large text fields (decision_path, escape_paths, verbatim_content) are
+-- stored as BLOB (zstd compressed) to keep row sizes manageable.
+CREATE TABLE IF NOT EXISTS interceptor_prompt_segments (
     id              TEXT    PRIMARY KEY,
     prompt_id       TEXT    NOT NULL REFERENCES interceptor_prompts(id),
     segment_name    TEXT    NOT NULL,
     source          TEXT    NOT NULL,
     token_count     INTEGER NOT NULL,
-    -- The decision path: every choice made and every alternative not taken.
-    decision_path_json   TEXT NOT NULL,
-    -- What this segment chose to include and why.
-    chosen_content  TEXT    NOT NULL,
-    -- Content before reduction rules were applied.
-    verbatim_content TEXT   NOT NULL,
-    -- Escape paths: what else could have been chosen here, and the conditions
-    -- under which those alternatives would have been selected instead.
-    escape_paths_json TEXT  NOT NULL,
+    -- Decision path and escape paths compressed: BLOB.
+    decision_path_blob   BLOB NOT NULL,
+    -- chosen_content and verbatim_content compressed: BLOB.
+    chosen_content_blob  BLOB NOT NULL,
+    verbatim_content_blob BLOB NOT NULL,
+    escape_paths_blob BLOB  NOT NULL,
     segment_order   INTEGER NOT NULL,      -- position in the final prompt
     received_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
-CREATE INDEX idx_ips_prompt_id ON interceptor_prompt_segments(prompt_id);
+CREATE INDEX IF NOT EXISTS idx_ips_prompt_id ON interceptor_prompt_segments(prompt_id);
 
 -- Sempai audit results (one per prompt).
-CREATE TABLE interceptor_audits (
+CREATE TABLE IF NOT EXISTS interceptor_audits (
     id                  TEXT PRIMARY KEY,
     prompt_id           TEXT NOT NULL REFERENCES interceptor_prompts(id),
-    audited_by          TEXT NOT NULL,     -- "sempai" | "human:<user_id>"
+    audited_by          TEXT NOT NULL,     -- "sempai" | "sempai:replay" | "human:<user_id>"
     audit_summary       TEXT NOT NULL,
     was_modified        INTEGER NOT NULL DEFAULT 0,
-    revised_messages_json TEXT,            -- NULL if unchanged
+    revised_messages_blob BLOB,            -- NULL if unchanged; zstd compressed
     created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
-CREATE INDEX idx_ia_prompt_id ON interceptor_audits(prompt_id);
+CREATE INDEX IF NOT EXISTS idx_ia_prompt_id ON interceptor_audits(prompt_id);
 
 -- Proposed artifact updates from the Sempai (queued, never auto-applied).
-CREATE TABLE interceptor_proposed_updates (
+CREATE TABLE IF NOT EXISTS interceptor_proposed_updates (
     id              TEXT    PRIMARY KEY,
     audit_id        TEXT    NOT NULL REFERENCES interceptor_audits(id),
     artifact_kind   TEXT    NOT NULL,   -- "skill" | "recipe" | "tool"
@@ -722,8 +745,8 @@ CREATE TABLE interceptor_proposed_updates (
     created_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
-CREATE INDEX idx_ipu_audit_id ON interceptor_proposed_updates(audit_id);
-CREATE INDEX idx_ipu_status   ON interceptor_proposed_updates(status);
+CREATE INDEX IF NOT EXISTS idx_ipu_audit_id ON interceptor_proposed_updates(audit_id);
+CREATE INDEX IF NOT EXISTS idx_ipu_status   ON interceptor_proposed_updates(status);
 ```
 
 PostgreSQL variant uses `UUID`, `TIMESTAMPTZ`, `JSONB` instead of `TEXT` where appropriate.
@@ -733,7 +756,7 @@ PostgreSQL variant uses `UUID`, `TIMESTAMPTZ`, `JSONB` instead of `TEXT` where a
 File: `src/db/interceptor_store.rs` (new)
 
 ```rust
-#[async_trait]
+#[async_trait::async_trait]
 pub trait InterceptorStore: Send + Sync {
     async fn save_prompt(&self, req: &PromptInterceptRequest) -> Result<(), DbError>;
     async fn save_segment(&self, prompt_id: &PromptId, seg: &SegmentRecord) -> Result<(), DbError>;
@@ -742,7 +765,10 @@ pub trait InterceptorStore: Send + Sync {
     async fn queue_proposed_update(&self, audit_id: &str, update: &ProposedArtifactUpdate) -> Result<(), DbError>;
     async fn set_prompt_status(&self, prompt_id: &PromptId, status: PromptStatus) -> Result<(), DbError>;
     async fn get_prompt(&self, prompt_id: &PromptId) -> Result<Option<StoredPrompt>, DbError>;
-    async fn list_pending_prompts(&self) -> Result<Vec<StoredPrompt>, DbError>;
+    /// List prompts awaiting manual human review (route = 'passthrough', no audit row).
+    /// Replaces the old `list_pending_prompts` — there are no "pending" prompts in the
+    /// Passthrough/Intercepting model; prompts in Passthrough are forwarded immediately.
+    async fn list_unaudited_prompts(&self, since: Option<chrono::DateTime<chrono::Utc>>) -> Result<Vec<StoredPrompt>, DbError>;
     async fn list_pending_updates(&self) -> Result<Vec<PendingArtifactUpdate>, DbError>;
     async fn set_auto_validation(&self, update_id: &str, result: ValidationResult, notes: &str) -> Result<(), DbError>;
     async fn set_manual_validation(&self, update_id: &str, result: ValidationResult, by: &str, notes: &str) -> Result<(), DbError>;
@@ -756,17 +782,21 @@ Added as a supertrait of `Database`. Implemented for both `PostgresDb` and `LibS
 
 #### 6.6 Size and compression
 
-- `messages_json`, `model_params_json`, `token_ids_json`, `decision_path_json`, `escape_paths_json`: all stored compressed (zstd level 3), decompressed on read.
-- Max uncompressed `messages_json` size: 4 MiB. If exceeded, `verbatim_content` fields in segments are stripped and flagged.
-- `interceptor_prompts` rows older than 90 days are archived to a cold table (`interceptor_prompts_archive`) on a nightly background job, not deleted.
+- `messages_blob`, `decision_path_blob`, `chosen_content_blob`, `verbatim_content_blob`, `escape_paths_blob`, `revised_messages_blob`: stored as `BLOB`/`BYTEA` containing zstd-compressed bytes (level 3). Decompressed in the `InterceptorStore` implementation before returning to callers.
+- `model_params_json`, `token_ids_json`: stored as plain JSON `TEXT` — these fields are small and frequent to query; compression overhead is not justified.
+- The 4 MiB threshold is checked on the **uncompressed** payload size. The `interceptor_prompt_final.uncompressed_len` column records this so the implementation can skip decompression when checking the limit.
+- If a prompt's uncompressed messages exceed 4 MiB, `verbatim_content_blob` fields in all its segments are replaced with a single-byte `[0x00]` marker blob and a `verbatim_stripped = 1` flag is added to the segment row. `chosen_content_blob` is always retained.
+- `interceptor_prompts` rows older than 90 days are archived to `interceptor_prompts_archive` on a nightly background job, not deleted. Archive table has identical schema.
+- PostgreSQL uses `BYTEA` for all BLOB columns; `JSONB` for JSON columns that are queried by field.
 
 #### 6.7 Tests
 
 - Unit test: `save_prompt` + `save_segment` + `save_tokenized` + `save_audit` lifecycle for both backends.
-- Unit test: zstd compress/decompress round-trip for all JSON columns.
-- Unit test: packet exceeding 4 MiB strips verbatim content and sets the flag.
+- Unit test: zstd compress/decompress round-trip for all BLOB columns.
+- Unit test: uncompressed payload exceeding 4 MiB strips `verbatim_content_blob` fields and sets `verbatim_stripped`.
 - Unit test: `list_passthrough_prompts` returns only `route = 'passthrough'` rows.
 - Unit test: `Passthrough` prompt has `route = 'passthrough'`; `Intercepting` prompt has `route = 'intercepted'`.
+- Unit test: `uncompressed_len` stored correctly for a known payload.
 
 ---
 
@@ -781,6 +811,9 @@ File: `crates/brassclaw_engine/src/types/forensic.rs` (new)
 ```rust
 /// Full forensic description of a single assembled prompt.
 /// This is the payload sent to the interceptor and from there to the Sempai.
+/// NOTE: `model_params` is NOT duplicated here — it lives on `PromptInterceptRequest`
+/// which wraps this packet. The Sempai prompt constructor reads model_params from
+/// the request, not from this packet, to avoid having two sources of truth.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PromptForensicPacket {
     pub prompt_id: PromptId,
@@ -798,7 +831,9 @@ pub struct PromptForensicPacket {
     pub agent_design: AgentDesign,
     pub v2_design: V2DesignSnapshot,
     pub recipe_skill_tool_registry: RegistrySnapshot,
-    pub model_params: ModelParams,
+    /// model_params is intentionally absent here — it is on PromptInterceptRequest.
+    /// TokenAccounting already contains model_id, model_max_len, and budget values
+    /// derived from model params; those are the forensic-relevant fields.
     pub assembled_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -1099,7 +1134,7 @@ ActionDef {
     name: "interceptor_notify_reviewer",
     description: "Send a push notification to the reviewer device. Fires when the Sempai disconnects or when passthrough-routed prompts accumulate.",
     effect: Effect::WriteExternal,
-    requires_approval: RequiresApproval::Never,
+    requires_approval: false,   // notification-only; no approval gate needed
     parameters: json_schema!({
         "event":        { "type": "string",  "enum": ["sempai_disconnected", "passthrough_accumulating", "sempai_reconnected", "backlog_replay_complete"] },
         "prompt_count": { "type": "integer" },
@@ -1223,7 +1258,7 @@ On reject:
 
 #### 9.4 Notification
 
-When a proposed update reaches `status = 'awaiting_manual'`, the same `interceptor_notify_reviewer` tool (Step 8.4) fires a push notification to the reviewer's iPhone with a summary of the proposed change.
+When a proposed update reaches `status = 'awaiting_manual'`, the same `interceptor_notify_reviewer` tool (Step 8.6) fires a push notification to the reviewer's iPhone with a summary of the proposed change.
 
 #### 9.5 Tests
 
@@ -1270,7 +1305,7 @@ Markdown body includes:
 
 #### 10.2 `skills/sempai/iphone_connect/SKILL.md`
 
-Already defined in Step 8.4. Confirmed `types: [sempai, agent]`.
+Already defined in Step 8.6. Confirmed `types: [sempai, agent]`.
 
 #### 10.3 `ComponentType` filtering in `SkillRegistry`
 
@@ -1333,19 +1368,19 @@ pub struct RecipeStep {
 #### 11.2 DB table for recipes
 
 ```sql
-CREATE TABLE recipes (
+CREATE TABLE IF NOT EXISTS recipes (
     id              TEXT    PRIMARY KEY,
     name            TEXT    NOT NULL,
     description     TEXT    NOT NULL,
     version         INTEGER NOT NULL DEFAULT 1,
-    types_json      TEXT    NOT NULL,    -- Vec<ComponentType> JSON
-    steps_json      TEXT    NOT NULL,    -- Vec<RecipeStep> JSON (zstd compressed)
+    types_json      TEXT    NOT NULL,    -- Vec<ComponentType> JSON (plain JSON, not compressed)
+    steps_json      BLOB    NOT NULL,    -- Vec<RecipeStep> zstd-compressed JSON (use uncompressed_len from caller)
     created_by      TEXT    NOT NULL,    -- "user" | "sempai" | "system"
     created_at      TEXT    NOT NULL,
     updated_at      TEXT    NOT NULL
 );
 
-CREATE INDEX idx_recipes_name ON recipes(name);
+CREATE INDEX IF NOT EXISTS idx_recipes_name ON recipes(name);
 ```
 
 No `tenant_id` — single shared store, consistent with the interceptor tables.
@@ -1355,7 +1390,7 @@ No `tenant_id` — single shared store, consistent with the interceptor tables.
 File: `src/db/recipe_registry.rs` (new)
 
 ```rust
-#[async_trait]
+#[async_trait::async_trait]
 pub trait RecipeRegistry: Send + Sync {
     async fn register(&self, recipe: &Recipe) -> Result<(), DbError>;
     async fn get(&self, id: &str) -> Result<Option<Recipe>, DbError>;
