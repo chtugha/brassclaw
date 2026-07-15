@@ -911,6 +911,49 @@ fn phase_4_deleted_wasm_and_script_paths() {
          Subprocess-with-docker isolation moved to `brassclaw_process_sandbox::image::validate_reference`; \
          the bespoke script module must not reappear unless a new boundary rule reintroduces it."
     );
+
+    let forbidden_script_patterns: &[(&str, &str)] = &[
+        (
+            "RuntimeKind::Script",
+            "RuntimeKind::Script was removed in Phase 4; use RuntimeKind::Mcp instead",
+        ),
+        (
+            "ExtensionRuntime::Script",
+            "ExtensionRuntime::Script was removed in Phase 4; use ExtensionRuntime::Mcp instead",
+        ),
+        (
+            "ExtensionRuntimeV2::Script",
+            "ExtensionRuntimeV2::Script was removed in Phase 4; use ExtensionRuntimeV2::Mcp instead",
+        ),
+        (
+            "DispatchError::Script",
+            "DispatchError::Script was removed in Phase 4; use DispatchError::Mcp instead",
+        ),
+    ];
+
+    let this_test_file = workspace.join(
+        "crates/brassclaw_architecture/tests/reborn_dependency_boundaries.rs",
+    );
+
+    let mut script_enum_violations: Vec<String> = Vec::new();
+    scan_for_forbidden_patterns(
+        &workspace.join("crates"),
+        &workspace,
+        &this_test_file,
+        forbidden_script_patterns,
+        &mut script_enum_violations,
+    );
+
+    assert!(
+        script_enum_violations.is_empty(),
+        "Phase 4 removed RuntimeKind::Script, ExtensionRuntime::Script, \
+         ExtensionRuntimeV2::Script, and DispatchError::Script from all production source. \
+         Note: TrustedRuntimeKindWire::Script is intentionally retained in \
+         brassclaw_events/src/runtime_event.rs as a backwards-compatible wire alias \
+         that deserialises historical event records as RuntimeKind::Mcp. \
+         The following files contain a forbidden pattern that must be removed:\n{}",
+        script_enum_violations.join("\n")
+    );
 }
 
 #[test]
@@ -2374,6 +2417,54 @@ fn collect_forbidden_uses(
                         line_number + 1,
                         rule.pattern,
                         rule.reason
+                    ));
+                }
+            }
+        }
+    }
+}
+
+fn scan_for_forbidden_patterns(
+    dir: &std::path::Path,
+    root: &std::path::Path,
+    skip_file: &std::path::Path,
+    patterns: &[(&str, &str)],
+    violations: &mut Vec<String>,
+) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries {
+        let Ok(entry) = entry else { continue };
+        let path = entry.path();
+        if path.is_dir() {
+            if path.file_name().and_then(|n| n.to_str()) == Some("target") {
+                continue;
+            }
+            scan_for_forbidden_patterns(&path, root, skip_file, patterns, violations);
+            continue;
+        }
+        if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+            continue;
+        }
+        if path == skip_file {
+            continue;
+        }
+        let contents = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let relative = path.strip_prefix(root).unwrap_or(&path);
+        for (line_number, line) in contents.lines().enumerate() {
+            for (pattern, reason) in patterns {
+                if line.contains(pattern) {
+                    violations.push(format!(
+                        "{}:{} contains `{}` ({})",
+                        relative.display(),
+                        line_number + 1,
+                        pattern,
+                        reason,
                     ));
                 }
             }

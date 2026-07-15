@@ -75,7 +75,7 @@ This document tracks feature parity between BrassClaw (Rust implementation) and 
 | CLI/TUI | ✅ | ✅ | - | Ratatui-based TUI |
 | HTTP webhook | ✅ | ✅ | - | axum with secret validation |
 | REPL (simple) | ✅ | ✅ | - | For testing |
-| WASM channels | ❌ | ✅ | - | BrassClaw innovation; host resolves owner scope vs sender identity |
+| WASM channels | ❌ | ❌ | - | Removed in Phase 4 (v1-removal). Channels now use MCP or ProductAdapter runtime. |
 | WhatsApp | ✅ | ❌ | P1 | Baileys (Web), same-phone mode with echo detection |
 | Telegram | ✅ | ✅ | - | WASM channel(MTProto), polling-first setup, DM pairing, caption, /start, bot_username, DM topics, web/UI ownership claim flow, owner-scoped persistence |
 | Discord | ✅ | 🚧 | P2 | Gateway `MESSAGE_CREATE` intake restored via websocket queue + WASM poll; Gateway DMs now respect pairing; thread parent binding inheritance and reply/thread parity still incomplete |
@@ -218,7 +218,7 @@ This document tracks feature parity between BrassClaw (Rust implementation) and 
 | Command | OpenClaw | BrassClaw | Priority | Notes |
 |---------|----------|----------|----------|-------|
 | `run` (agent) | ✅ | ✅ | - | Default command |
-| `tool install/list/remove` | ✅ | ✅ | - | WASM tools |
+| `tool install/list/remove` | ✅ | ✅ | - | MCP / first-party tools |
 | `gateway start/stop` | ✅ | ❌ | P2 | |
 | `onboard` (wizard) | ✅ | ✅ | - | Interactive setup |
 | `tui` | ✅ | ✅ | - | Ratatui TUI |
@@ -239,7 +239,7 @@ This document tracks feature parity between BrassClaw (Rust implementation) and 
 | `webhooks` | ✅ | ❌ | P3 | Webhook config |
 | `message send` | ✅ | ❌ | P2 | Send to channels |
 | `browser` | ✅ | ❌ | P3 | Browser automation |
-| `sandbox` | ✅ | ✅ | - | WASM sandbox |
+| `sandbox` | ✅ | ✅ | - | Process sandbox via `brassclaw_process_sandbox`; WASM sandbox removed in Phase 4 |
 | `doctor` | ✅ | 🚧 | P2 | 16 subsystem checks |
 | `logs` | ✅ | 🚧 | P3 | `logs` (gateway.log tail), `--follow` (SSE live stream), `--level` (get/set). No DB-persisted log history. |
 | `traces` | ➖ | 🚧 | - | <ul><li>BrassClaw-native Trace Commons client MVP, not an OpenClaw parity feature.</li><li>Local opt-in capture, redaction, queueing, queue-status diagnostics, scoped web APIs, revocation, and periodic credit notices.</li><li>CLI opt-in writes the runtime/web user-scope policy that autonomous capture reads, and credentialed submit/status/revoke calls use bounded no-redirect HTTP.</li><li>Authenticated web paths are user-scoped and keep ingestion endpoint/credential settings out of user-managed policy updates.</li><li>Private TraceDAO server ingest/review/export/audit/retention/vector/credit infrastructure now lives in the standalone `tracedao-server` repository, with BrassClaw retaining CLI/client integration wrappers.</li></ul> |
@@ -335,8 +335,9 @@ Trace Commons issuer/TenantCtx note: the server-side `zmanian/tracedao-server` s
 | Block-level streaming | ✅ | ❌ | |
 | Tool-level streaming | ✅ | ❌ | |
 | Z.AI tool_stream | ✅ | ❌ | Real-time tool call streaming |
-| Plugin tools | ✅ | ✅ | WASM tools |
-| GSuite WASM tools | ✅ | 🚧 | Reborn bundles operation-level Google Drive/Docs/Sheets/Slides WASM packages with host-mediated HTTP egress, product-auth scoped bearer injection, and manifest-declared Google OAuth setup metadata; full live-recorded parity remains follow-up |
+| Plugin tools | ✅ | ✅ | MCP / first-party tools; WASM tools removed in Phase 4 |
+| GSuite tools | ✅ | 🚧 | Reborn bundles operation-level Google Drive/Docs/Sheets/Slides tool set with host-mediated HTTP egress, product-auth scoped bearer injection, and manifest-declared Google OAuth setup metadata; full live-recorded parity remains follow-up |
+| Script runtime | ➖ | ❌ | Removed in Phase 4 (v1-removal). Scripts were a closed black box preventing Recipe/Skill learning. Replaced by composing Recipes over `tool:shell`. |
 | Hosted MCP extensions | ✅ | 🚧 | Reborn composes host-mediated MCP runtime, bundles the current Notion MCP supported tool set, wires Notion ProductAuth OAuth exchange/refresh, can use Reborn ProductAuth DCR OAuth setup through the host callback origin, and can activate hosted MCP packages with live `tools/list` schema discovery through host-staged product-auth credentials |
 | NEAR AI MCP extension | ✅ | 🚧 | Host-bundled Reborn MCP extension exposes `nearai.search` via host-mediated HTTP and `llm_nearai_api_key`; manifest-declared product-auth credentials can now be staged through the hosted MCP runtime/discovery bridge, while NEAR remains a static supported-tool adapter |
 | Tool policies (allow/deny) | ✅ | ✅ | |
@@ -493,15 +494,15 @@ Trace Commons issuer/TenantCtx note: the server-side `zmanian/tracedao-server` s
 
 | Feature | OpenClaw | BrassClaw | Notes |
 |---------|----------|----------|-------|
-| Dynamic loading | ✅ | ✅ | WASM modules |
-| Manifest validation | ✅ | ✅ | WASM metadata; `modelCatalog`, `channelConfigs`, `setup.providers`, `setup.requiresRuntime`, `activation.onStartup` contracts |
+| Dynamic loading | ✅ | ✅ | MCP / first-party modules; WASM runtime removed in Phase 4 |
+| Manifest validation | ✅ | ✅ | Extension manifest v2: `runtime`, `capabilities`, `auth`, `setup.providers`, `activation.onStartup` contracts |
 | HTTP path registration | ✅ | ❌ | Plugin routes |
 | Workspace-relative install | ✅ | ✅ | ~/.brassclaw/tools/ |
-| Channel plugins | ✅ | ✅ | WASM channels |
+| Channel plugins | ✅ | 🚧 | MCP / ProductAdapter; WASM channel runtime removed in Phase 4 |
 | Auth plugins | ✅ | ❌ | |
 | Memory plugins | ✅ | ❌ | Custom backends + selectable memory slot |
 | Context-engine plugins | ✅ | ❌ | Custom context management + subagent/context hooks; `info.id` slot match enforced |
-| Tool plugins | ✅ | ✅ | WASM tools |
+| Tool plugins | ✅ | ✅ | MCP / first-party tools; WASM tool runtime removed in Phase 4 |
 | Hook plugins | ✅ | ✅ | Declarative hooks from extension capabilities |
 | Provider plugins | ✅ | ❌ | Manifest-backed catalogs/aliases/suppressions; setup auth metadata |
 | Plugin CLI (`install`, `list`) | ✅ | ✅ | `tool` subcommand |
