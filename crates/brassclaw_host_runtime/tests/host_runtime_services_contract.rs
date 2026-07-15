@@ -22,15 +22,13 @@ use brassclaw_capabilities::{
     CapabilityObligationRequest, CapabilitySpawnRequest,
 };
 use brassclaw_event_projections::{
-    AuditProjectionError, AuditProjectionRequest, AuditProjectionService, AuditProjectionStage,
-    EventProjectionService, ProjectionCursor, ProjectionError, ProjectionRequest, ProjectionScope,
-    ReplayAuditProjectionService, ReplayEventProjectionService, RunProjectionStatus,
-    TimelineEntryKind,
+    EventProjectionService, ProjectionRequest, ProjectionScope, ReplayEventProjectionService,
+    RunProjectionStatus, TimelineEntryKind,
 };
 use brassclaw_events::{
-    DurableAuditLog, DurableAuditSink, DurableEventLog, DurableEventSink, EventCursor, EventError,
-    EventReplay, EventStreamKey, InMemoryAuditSink, InMemoryDurableAuditLog,
-    InMemoryDurableEventLog, InMemoryEventSink, ReadScope, RuntimeEventKind,
+    DurableAuditLog, DurableAuditSink, DurableEventLog, DurableEventSink, EventStreamKey,
+    InMemoryAuditSink, InMemoryDurableAuditLog, InMemoryDurableEventLog, InMemoryEventSink,
+    ReadScope, RuntimeEventKind,
 };
 use brassclaw_extensions::{
     ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource,
@@ -62,7 +60,7 @@ use brassclaw_processes::{
     ProcessServices, ProcessStart, ProcessStatus, ProcessStore,
 };
 use brassclaw_reborn_event_store::{
-    RebornEventStoreConfig, RebornEventStoreError, RebornProfile, build_reborn_event_stores,
+    RebornEventStoreConfig, RebornEventStoreError, RebornProfile,
 };
 use brassclaw_resources::{
     InMemoryResourceGovernor, JsonFileResourceGovernorStore, PersistentResourceGovernor,
@@ -3121,14 +3119,6 @@ impl InMemoryRecordingCombinedRunStateApprovalStore {
             separate_save_calls: AtomicUsize::new(0),
         }
     }
-
-    fn combined_calls(&self) -> usize {
-        self.combined_calls.load(Ordering::SeqCst)
-    }
-
-    fn separate_save_calls(&self) -> usize {
-        self.separate_save_calls.load(Ordering::SeqCst)
-    }
 }
 
 #[async_trait]
@@ -3442,41 +3432,6 @@ async fn approve_spawn_for_services(
         .unwrap()
 }
 
-struct SentinelApprovalAuthorizer;
-
-#[async_trait]
-impl TrustAwareCapabilityDispatchAuthorizer for SentinelApprovalAuthorizer {
-    async fn authorize_dispatch_with_trust(
-        &self,
-        context: &ExecutionContext,
-        descriptor: &CapabilityDescriptor,
-        estimate: &ResourceEstimate,
-        trust_decision: &TrustDecision,
-    ) -> Decision {
-        if context.grants.grants.is_empty() {
-            Decision::RequireApproval {
-                request: ApprovalRequest {
-                    id: ApprovalRequestId::new(),
-                    correlation_id: context.correlation_id,
-                    requested_by: Principal::Extension(context.extension_id.clone()),
-                    action: Box::new(Action::Dispatch {
-                        capability: descriptor.id.clone(),
-                        estimated_resources: estimate.clone(),
-                    }),
-                    invocation_fingerprint: None,
-                    reason: "APPROVAL_REASON_SENTINEL_3022 /tmp/private-approval-reason"
-                        .to_string(),
-                    reusable_scope: None,
-                },
-            }
-        } else {
-            GrantAuthorizer::new()
-                .authorize_dispatch_with_trust(context, descriptor, estimate, trust_decision)
-                .await
-        }
-    }
-}
-
 struct ApprovalThenGrantAuthorizer;
 
 #[async_trait]
@@ -3540,73 +3495,6 @@ impl TrustAwareCapabilityDispatchAuthorizer for ApprovalThenGrantAuthorizer {
     }
 }
 
-struct ApprovalThenSecretObligationAuthorizer {
-    handle: SecretHandle,
-}
-
-#[async_trait]
-impl TrustAwareCapabilityDispatchAuthorizer for ApprovalThenSecretObligationAuthorizer {
-    async fn authorize_dispatch_with_trust(
-        &self,
-        context: &ExecutionContext,
-        descriptor: &CapabilityDescriptor,
-        estimate: &ResourceEstimate,
-        _trust_decision: &TrustDecision,
-    ) -> Decision {
-        if context.grants.grants.is_empty() {
-            Decision::RequireApproval {
-                request: ApprovalRequest {
-                    id: ApprovalRequestId::new(),
-                    correlation_id: context.correlation_id,
-                    requested_by: Principal::Extension(context.extension_id.clone()),
-                    action: Box::new(Action::Dispatch {
-                        capability: descriptor.id.clone(),
-                        estimated_resources: estimate.clone(),
-                    }),
-                    invocation_fingerprint: None,
-                    reason: "approval required".to_string(),
-                    reusable_scope: None,
-                },
-            }
-        } else {
-            Decision::Allow {
-                obligations: Obligations::new(vec![Obligation::InjectSecretOnce {
-                    handle: self.handle.clone(),
-                }])
-                .unwrap(),
-            }
-        }
-    }
-}
-
-
-
-
-struct FailingDurableAuditLog;
-
-#[async_trait]
-impl DurableAuditLog for FailingDurableAuditLog {
-    async fn append(
-        &self,
-        _record: AuditEnvelope,
-    ) -> Result<brassclaw_events::EventLogEntry<AuditEnvelope>, EventError> {
-        Err(EventError::DurableLog {
-            reason: "simulated audit backend failure at /tmp/audit-backend-secret".to_string(),
-        })
-    }
-
-    async fn read_after_cursor(
-        &self,
-        _stream: &EventStreamKey,
-        _filter: &ReadScope,
-        _after: Option<EventCursor>,
-        _limit: usize,
-    ) -> Result<EventReplay<AuditEnvelope>, EventError> {
-        Err(EventError::DurableLog {
-            reason: "simulated audit replay failure".to_string(),
-        })
-    }
-}
 
 struct ObligatingAuthorizer {
     obligations: Vec<Obligation>,
@@ -4364,19 +4252,6 @@ impl McpExecutor for ClientErrorMcpExecutor {
     }
 }
 
-struct PanicMcpExecutor;
-
-#[async_trait]
-impl McpExecutor for PanicMcpExecutor {
-    async fn execute_extension_json(
-        &self,
-        _governor: &dyn ResourceGovernor,
-        _request: McpExecutionRequest<'_>,
-    ) -> Result<McpExecutionResult, McpError> {
-        panic!("health-only test must not execute MCP runtime")
-    }
-}
-
 fn registry_with_manifest(manifest: &str) -> ExtensionRegistry {
     registry_with_manifests(&[manifest])
 }
@@ -4535,15 +4410,6 @@ fn capability_grants_with_effects(
     grants
 }
 
-fn mount_view(alias: &str, target: &str, permissions: MountPermissions) -> MountView {
-    MountView::new(vec![MountGrant::new(
-        MountAlias::new(alias).unwrap(),
-        VirtualPath::new(target).unwrap(),
-        permissions,
-    )])
-    .unwrap()
-}
-
 fn local_manifest_trust_policy(
     extension_id: &str,
     allowed_effects: Vec<EffectKind>,
@@ -4645,27 +4511,6 @@ fn assert_local_only_runtime_policy_rejected(
         }),
         "runtime policy should report {expected_implementation}: {report:?}"
     );
-}
-
-fn read_directory_text(root: &std::path::Path) -> String {
-    let mut output = String::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(path) = stack.pop() {
-        let entries = std::fs::read_dir(&path)
-            .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
-        for entry in entries {
-            let entry = entry.unwrap_or_else(|err| panic!("failed to read dir entry: {err}"));
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else {
-                output.push_str(&std::fs::read_to_string(&path).unwrap_or_else(|err| {
-                    panic!("failed to read {} as utf-8 text: {err}", path.display())
-                }));
-            }
-        }
-    }
-    output
 }
 
 fn sample_scope(invocation_id: InvocationId) -> ResourceScope {
@@ -4771,22 +4616,6 @@ fn mcp_capability_id() -> CapabilityId {
 
 fn process_sandbox_capability_id() -> CapabilityId {
     CapabilityId::new("system.process_sandbox.run").unwrap()
-}
-
-fn governor_with_default_limit(account: ResourceAccount) -> InMemoryResourceGovernor {
-    let governor = InMemoryResourceGovernor::new();
-    governor
-        .set_limit(
-            account,
-            ResourceLimits {
-                max_concurrency_slots: Some(10),
-                max_network_egress_bytes: Some(10_000),
-                max_output_bytes: Some(100_000),
-                ..ResourceLimits::default()
-            },
-        )
-        .unwrap();
-    governor
 }
 
 fn sample_account() -> ResourceAccount {

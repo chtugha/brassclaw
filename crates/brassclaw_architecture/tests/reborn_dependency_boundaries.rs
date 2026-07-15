@@ -418,9 +418,6 @@ fn reborn_host_runtime_services_do_not_expose_lower_substrate_handles() {
     let host_runtime_contract =
         std::fs::read_to_string(root.join("docs/reborn/contracts/host-runtime.md"))
             .expect("host runtime contract must be readable");
-    let host_runtime_manifest =
-        std::fs::read_to_string(root.join("crates/brassclaw_host_runtime/Cargo.toml"))
-            .expect("host runtime Cargo.toml must be readable");
     let mcp = std::fs::read_to_string(root.join("crates/brassclaw_mcp/src/lib.rs"))
         .expect("MCP runtime lib.rs must be readable");
     let mcp_manifest = std::fs::read_to_string(root.join("crates/brassclaw_mcp/Cargo.toml"))

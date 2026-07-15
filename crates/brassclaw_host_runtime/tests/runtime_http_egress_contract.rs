@@ -23,17 +23,13 @@ use brassclaw_mcp::{
 };
 use brassclaw_network::{
     NetworkHttpEgress, NetworkHttpError, NetworkHttpRequest, NetworkHttpResponse, NetworkUsage,
-    PolicyNetworkHttpEgress, ReqwestNetworkTransport,
 };
 use brassclaw_resources::InMemoryResourceGovernor;
-use brassclaw_secrets::{InMemorySecretStore, SecretMaterial, SecretStore};
+use brassclaw_secrets::{InMemorySecretStore, SecretMaterial};
 use serde_json::{Value, json};
 use std::{
     fs,
-    io::{Read, Write},
-    net::TcpListener,
     sync::{Arc, Mutex},
-    time::Duration,
 };
 use tempfile::tempdir;
 
@@ -180,8 +176,6 @@ fn tool_call_http_egress_returns_network_error_when_partial_response_is_missing(
     );
     assert_eq!(error.response_bytes(), 5);
 }
-
-fn require_zeroize_on_drop<T: ?Sized + zeroize::ZeroizeOnDrop>(_: &T) {}
 
 
 
@@ -2124,34 +2118,6 @@ struct JsonRpcMcpNetwork {
     requests: Arc<Mutex<Vec<NetworkHttpRequest>>>,
 }
 
-#[derive(Clone)]
-struct UrlEchoNetwork {
-    requests: Arc<Mutex<Vec<NetworkHttpRequest>>>,
-}
-
-impl UrlEchoNetwork {
-    fn new() -> Self {
-        Self {
-            requests: Arc::new(Mutex::new(Vec::new())),
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl NetworkHttpEgress for UrlEchoNetwork {
-    async fn execute(
-        &self,
-        request: NetworkHttpRequest,
-    ) -> Result<NetworkHttpResponse, NetworkHttpError> {
-        self.requests.lock().unwrap().push(request.clone());
-        Err(NetworkHttpError::Transport {
-            reason: format!("upstream rejected {}", request.url),
-            request_bytes: request.body.len() as u64,
-            response_bytes: 0,
-        })
-    }
-}
-
 impl JsonRpcMcpNetwork {
     fn new() -> Self {
         Self {
@@ -2301,13 +2267,6 @@ async fn execute_path_placeholder_egress(
         .await
         .map(|response| (response, network_recorder.clone()))
         .map_err(|error| (error, network_recorder))
-}
-
-fn credential_reason(error: &RuntimeHttpEgressError) -> &str {
-    match error {
-        RuntimeHttpEgressError::Credential { reason } => reason,
-        other => panic!("expected credential error, got {other:?}"),
-    }
 }
 
 fn block_on_test<T, F>(future: F) -> T
@@ -2560,28 +2519,4 @@ fn caller_supplied_policy() -> NetworkPolicy {
         deny_private_ip_ranges: false,
         max_egress_bytes: Some(1),
     }
-}
-
-fn local_http_policy() -> NetworkPolicy {
-    NetworkPolicy {
-        allowed_targets: vec![NetworkTargetPattern {
-            scheme: Some(NetworkScheme::Http),
-            host_pattern: "127.0.0.1".to_string(),
-            port: None,
-        }],
-        deny_private_ip_ranges: false,
-        max_egress_bytes: Some(1024),
-    }
-}
-
-fn single_response_server(response: &'static str) -> (String, std::thread::JoinHandle<()>) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-    let handle = std::thread::spawn(move || {
-        let (mut stream, _) = listener.accept().unwrap();
-        let mut request = [0_u8; 1024];
-        let _ = stream.read(&mut request).unwrap();
-        stream.write_all(response.as_bytes()).unwrap();
-    });
-    (format!("http://127.0.0.1:{port}/test"), handle)
 }
