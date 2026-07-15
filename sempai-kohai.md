@@ -940,57 +940,103 @@ Each segment source calls `builder.push_segment(...)` as soon as its segment is 
 
 ---
 
-### Step 8 — Interceptor service: connection model, Sempai wait, human/iPhone review
+### Step 8 — Interceptor service: connection model, keepalive, state transitions, human/iPhone review
 
-**Goal**: Implement the full interceptor service runtime — how it waits for the Sempai, what happens when a human connects instead, and how the iPhone push-notification skill enables remote human review.
+**Goal**: Implement the full interceptor service runtime — the binary `Passthrough`/`Intercepting` state machine, the size-adaptive keepalive mechanism, the Sempai audit flow in `Intercepting` state, the backlog replay setting, the human review API, and the iPhone push notification skill.
 
-#### 8.1 Interceptor service runtime
+#### 8.1 Service struct and state machine
 
 File: `crates/brassclaw_engine/src/sempai/interceptor_service.rs` (new)
 
 ```rust
 pub struct InterceptorService {
-    /// The Sempai provider slot (shared with SwappableLlmProvider).
-    sempai_slot: Arc<RwLock<SempaiSlot>>,
-    /// The interceptor's own database handle.
+    state: Arc<RwLock<InterceptorState>>,
     db: Arc<dyn InterceptorStore>,
-    /// Channel for receiving interception requests from the orchestrator.
-    request_rx: tokio::sync::mpsc::Receiver<InterceptorRequest>,
-    /// Notification channel for signalling when a pending prompt is ready.
-    notify: Arc<tokio::sync::Notify>,
+    config: InterceptorConfig,
+}
+
+pub struct InterceptorConfig {
+    /// Base keepalive interval in milliseconds.
+    /// Env: BRASSCLAW_SEMPAI_KEEPALIVE_BASE_MS (default: 2_000)
+    pub keepalive_base_ms: u64,
+    /// Additional ms per byte of forensic packet size.
+    /// Env: BRASSCLAW_SEMPAI_BYTES_PER_MS (default: 500, i.e. 500 bytes = +1 ms)
+    pub bytes_per_ms_factor: u64,
+    /// How many consecutive missed beats before declaring disconnect.
+    /// Default: 2
+    pub missed_beats_threshold: u32,
+    /// Replay passthrough-routed prompts to Sempai on reconnection.
+    /// Env: BRASSCLAW_SEMPAI_REPLAY_BACKLOG (default: false)
+    pub replay_backlog_on_connect: bool,
 }
 ```
 
-The service loop:
+**Passthrough path** (state = `Passthrough`):
 
 ```
-loop {
-    wait for next PromptInterceptRequest from orchestrator channel
+receive PromptInterceptRequest
+  1. save_prompt(route = 'passthrough', status = 'saved')
+  2. save all segments
+  3. set status = 'forwarded', forwarded_at = now
+  4. return PromptInterceptResponse { revised_messages = original, was_modified = false, audit_summary = "" }
+```
 
-    1. Assign PromptId (if not already set)
-    2. Persist prompt: save_prompt(), save all segments that have pushed so far
-    3. Set status = 'pending'
-    4. Notify any connected Sempai or human reviewer
-    5. Wait for audit response (indefinitely — no timeout, no fallback)
-    6. Persist audit: save_audit(), queue_proposed_updates()
-    7. Set status = 'audited'
-    8. Persist tokenized version: save_tokenized()
-    9. Set status = 'forwarded'
-    10. Return PromptInterceptResponse to orchestrator
+No audit happens. The prompt reaches the tokenizer → Kohai immediately. Total interceptor overhead in `Passthrough` state is one DB write + one DB update.
+
+**Intercepting path** (state = `Intercepting`):
+
+```
+receive PromptInterceptRequest
+  1. save_prompt(route = 'intercepted', status = 'saved')
+  2. save all segments
+  3. set status = 'auditing', audit_started_at = now
+  4. build Sempai audit prompt (KV-cache-aware — see 8.2)
+  5. call Sempai provider (single call, no retry)
+  6. parse structured JSON response
+  7. save_audit(audited_by = 'sempai', ...)
+  8. queue_proposed_updates(...)
+  9. set status = 'audited', audit_completed_at = now
+  10. set status = 'forwarded', forwarded_at = now
+  11. return PromptInterceptResponse { revised_messages, was_modified, audit_summary, proposed_updates }
+```
+
+#### 8.2 Size-adaptive keepalive mechanism
+
+The Sempai sends `keepalive(session_id)` pings to the interceptor. The required interval is calculated per-prompt based on the forensic packet's compressed byte size:
+
+```rust
+fn keepalive_deadline(packet_bytes: usize, config: &InterceptorConfig) -> Duration {
+    let extra_ms = (packet_bytes as u64) / config.bytes_per_ms_factor;
+    Duration::from_millis(config.keepalive_base_ms + extra_ms)
 }
 ```
 
-**The interceptor never times out and never falls back.** If no Sempai or human is connected, prompts queue in the database with `status = 'pending'`. The orchestrator waits. The user's turn is suspended — not failed — until a reviewer connects and processes the queue.
+The interceptor tracks the last received ping timestamp per session. A background watcher task checks every `keepalive_base_ms / 2` milliseconds. If `now - last_ping > keepalive_deadline(current_packet_bytes)` for two consecutive checks, the connection is declared dead:
 
-This is intentional. The interceptor is a quality gate, not a passthrough. Unchecked prompts do not reach Kohai.
+1. State transitions immediately to `Passthrough`.
+2. The in-flight prompt (if in `auditing` status) is re-routed: `route` updated to `'passthrough'`, `status` updated to `'forwarded'`, original messages returned to the orchestrator.
+3. `interceptor_notify_reviewer` fires (see 8.4) to alert the human that the Sempai disconnected.
 
-#### 8.2 Sempai audit flow
+On explicit disconnect (Sempai calls `establish_connection` with a new `session_id`, or the LLM provider returns a terminal error), the same path fires immediately without waiting for the keepalive watcher.
 
-When a prompt has `status = 'pending'` and `SempaiSlot::Active(provider)`:
+#### 8.3 Sempai audit prompt construction
 
-1. Build the Sempai interception prompt from the forensic packet and all stored segment data, following KV-cache token-saving rules (stable reference content first, variable prompt-specific content last).
-2. Call `provider.complete(sempai_messages, ...)` — single call, no retry decorator.
-3. Parse the structured JSON response:
+The Sempai interception prompt is assembled following KV-cache token-saving rules: **stable content first, variable content last**.
+
+Stable prefix (shared across many prompts — high cache hit rate):
+1. `sempai_core` skill text (from `skills/sempai/core/SKILL.md`)
+2. Full recipe/skill/tool registry snapshot (changes infrequently)
+3. Orchestrator, Monty, agent, v2 design snapshots
+
+Variable suffix (unique per prompt — always a cache miss, kept at the end):
+4. `PromptForensicPacket` header (prompt_id, run_id, assembled_at)
+5. Per-segment decision data and escape paths
+6. Token accounting and KV-cache analysis for this prompt
+7. All model parameters for this prompt
+8. The original user query
+9. The final assembled messages
+
+The prompt is built from `crates/brassclaw_engine/prompts/sempai_intercept.md` (`include_str!()`). The Sempai must respond with this JSON envelope:
 
 ```json
 {
@@ -1009,76 +1055,86 @@ When a prompt has `status = 'pending'` and `SempaiSlot::Active(provider)`:
 }
 ```
 
-4. If the JSON response is malformed, write the raw response to `interceptor_audits.audit_summary` with a parse-error prefix and treat `was_modified = false` (original messages forwarded unchanged). Malformed responses are flagged in the WebUI.
+If the JSON response is malformed, the raw response is stored in `interceptor_audits.audit_summary` with a `[PARSE_ERROR]` prefix and `was_modified = false`. The original messages are forwarded unchanged. Malformed responses are visible in the WebUI audit list.
 
-The Sempai interception prompt is built from `crates/brassclaw_engine/prompts/sempai_intercept.md` (`include_str!()`). It includes:
-- The full `PromptForensicPacket` as formatted JSON.
-- Per-segment decision data and escape paths.
-- All model parameters (`model_max_len`, `temperature`, etc.).
-- The complete recipe/skill/tool registry snapshot.
-- Orchestrator, Monty, agent, and v2 design snapshots.
-- KV-cache analysis with actionable guidance.
-- The original user query.
+#### 8.4 Backlog replay on reconnection
 
-#### 8.3 Human review flow
+When the Sempai reconnects (`establish_connection` succeeds) and `replay_backlog_on_connect = true`:
 
-When `SempaiSlot::Unconfigured` and a human connects to the interceptor:
+1. `list_passthrough_prompts(since = last_disconnect_at)` is called.
+2. Each passthrough prompt is replayed through the Sempai audit flow in chronological order before live prompts are processed.
+3. Replay runs in a background task — it does not block the live interception channel.
+4. Replay audits are stored with `audited_by = 'sempai:replay'`.
 
-The interceptor exposes a review API (internal, not public WebUI routes):
+Default (`replay_backlog_on_connect = false`): on reconnection only new prompts are intercepted. Passthrough prompts remain in the DB with `route = 'passthrough'` and are available for manual human review.
+
+#### 8.5 Human review API
+
+The interceptor exposes a review API (internal routes, same bearer auth as WebUI):
 
 ```
-GET  /internal/interceptor/queue              — list pending prompts
-GET  /internal/interceptor/prompt/{id}        — full prompt + forensic data
-POST /internal/interceptor/prompt/{id}/audit  — submit human audit result
+GET  /internal/interceptor/state                  — current state (Passthrough/Intercepting)
+GET  /internal/interceptor/prompts                — list all prompts with route + status
+GET  /internal/interceptor/prompts/{id}           — full prompt + forensic data
+POST /internal/interceptor/prompts/{id}/audit     — submit human audit result
 ```
 
-A human reviewer (authenticated via the same bearer token as the WebUI) can:
-- Read the pending prompt and its full forensic packet.
-- Submit an audit: `{ audit_summary, revised_messages?, proposed_updates? }`.
-- The interceptor service wakes up, persists the audit, and forwards the prompt.
+A human reviewer can read any stored prompt (passthrough or intercepted) and submit:
+```json
+{ "audit_summary": "...", "revised_messages": [...], "proposed_updates": [...] }
+```
 
-#### 8.4 iPhone auto-connect skill
+Human-submitted audits are stored with `audited_by = 'human:<user_id>'`. They do not unblock any waiting orchestrator (the prompt was already forwarded in passthrough mode) — they are retrospective annotations that feed the validation queue.
+
+#### 8.6 iPhone push notification skill
 
 File: `skills/sempai/iphone_connect/SKILL.md` (new)
 
 Component types: `[Sempai, Agent]`
 
-This skill equips the Sempai and agent with the tools needed to send a push notification to the operator's iPhone when the interceptor has pending prompts awaiting human review.
-
-The skill uses the existing HTTP capability to call a push notification endpoint (APNs-compatible or a webhook relay). It does not require a native iOS app — a webhook-to-push service (e.g., Pushover, Gotify, or a custom APNs relay) receives the HTTP call.
-
-Tools defined in this skill bundle:
+Uses the existing HTTP capability to POST to a configured webhook relay (Pushover, Gotify, or custom APNs relay). No native iOS app required.
 
 ```rust
 ActionDef {
     name: "interceptor_notify_reviewer",
-    description: "Send a push notification to the configured reviewer device when prompts are awaiting human review in the interceptor queue.",
+    description: "Send a push notification to the reviewer device. Fires when the Sempai disconnects or when passthrough-routed prompts accumulate.",
     effect: Effect::WriteExternal,
-    requires_approval: RequiresApproval::Never,   // notification only, not a write
+    requires_approval: RequiresApproval::Never,
     parameters: json_schema!({
-        "pending_count": { "type": "integer" },
-        "oldest_prompt_age_secs": { "type": "integer" },
-        "summary": { "type": "string" }
+        "event":        { "type": "string",  "enum": ["sempai_disconnected", "passthrough_accumulating", "sempai_reconnected", "backlog_replay_complete"] },
+        "prompt_count": { "type": "integer" },
+        "summary":      { "type": "string"  }
     }),
 }
 ```
 
+The interceptor calls `interceptor_notify_reviewer` on:
+- `sempai_disconnected` — immediately when keepalive watcher fires the `Passthrough` transition.
+- `passthrough_accumulating` — when `N` prompts have accumulated in passthrough route since last Sempai connection (`N` = `BRASSCLAW_SEMPAI_NOTIFY_PASSTHROUGH_COUNT`, default: 10), with exponential backoff capped at 1 notification per 5 minutes.
+- `sempai_reconnected` — when `establish_connection` succeeds.
+- `backlog_replay_complete` — when replay finishes (if `replay_backlog_on_connect = true`).
+
 Configuration:
 ```
-BRASSCLAW_REVIEWER_PUSH_URL      — webhook or APNs relay URL
-BRASSCLAW_REVIEWER_PUSH_TOKEN    — authentication token for the push service
-BRASSCLAW_REVIEWER_PUSH_DEVICE   — device identifier (for APNs direct or Pushover user key)
+BRASSCLAW_REVIEWER_PUSH_URL            — webhook or APNs relay URL
+BRASSCLAW_REVIEWER_PUSH_TOKEN          — auth token for the push service
+BRASSCLAW_REVIEWER_PUSH_DEVICE         — device/user key
+BRASSCLAW_SEMPAI_NOTIFY_PASSTHROUGH_COUNT — prompts before accumulation alert (default: 10)
 ```
 
-The interceptor service calls `interceptor_notify_reviewer` automatically when a prompt has been in `status = 'pending'` for longer than `BRASSCLAW_INTERCEPTOR_NOTIFY_AFTER_SECS` (default: 30 s). Subsequent notifications are sent at exponential backoff (max 1 per 5 minutes) until the queue is cleared.
+#### 8.7 Tests
 
-#### 8.5 Tests
-
-- Unit test: interceptor service queues a prompt, waits, and returns the audit result.
-- Unit test: malformed Sempai JSON is stored with error prefix; original messages forwarded.
-- Unit test: `interceptor_notify_reviewer` tool fires after the configured delay.
-- Unit test: human review API accepts audit and wakes the waiting orchestrator.
-- Integration test: end-to-end — orchestrator submits prompt → interceptor stores it → mock Sempai connects → audit returned → revised messages forwarded to Kohai.
+- Unit test: `Passthrough` path stores prompt with `route = 'passthrough'` and returns original messages immediately.
+- Unit test: `Intercepting` path routes through Sempai and returns audit result.
+- Unit test: keepalive deadline scales correctly with packet byte size.
+- Unit test: two missed keepalive beats → state transitions to `Passthrough`; in-flight prompt re-routed.
+- Unit test: explicit disconnect (terminal provider error) → immediate `Passthrough` transition.
+- Unit test: malformed Sempai JSON → `[PARSE_ERROR]` stored; original messages returned.
+- Unit test: `replay_backlog_on_connect = true` → `list_passthrough_prompts` called on reconnect; replay runs in background.
+- Unit test: `replay_backlog_on_connect = false` → no replay on reconnect; passthrough prompts stay unaudited.
+- Unit test: `interceptor_notify_reviewer` fires on `sempai_disconnected` event immediately.
+- Unit test: human review API stores retrospective audit with `audited_by = 'human:<id>'`.
+- Integration test: `Passthrough` → Sempai connects → `Intercepting` → Sempai disconnects → `Passthrough`; all state recorded correctly in DB.
 
 ---
 
@@ -1332,22 +1388,42 @@ The automatic validation in Step 9.2 is updated: `validate_recipe_patch()` now f
 
 File: `crates/brassclaw_reborn/tests/sempai_kohai_e2e.rs` (new)
 
-Scenario:
+Setup: configure a mock Kohai provider (echoes `"kohai_response"`) and a mock Sempai provider (parses forensic packet; appends `"[sempai_audited]"` to system message; proposes a skill update for `ibm_bob_people` and a new recipe `bob_onboard_employee`).
 
-1. Configure a mock Kohai provider (echoes `"kohai_response"`).
-2. Configure a mock Sempai provider (parses forensic packet; appends `"[sempai_audited]"` to system message; proposes a skill update for `ibm_bob_people`; proposes a new recipe `bob_onboard_employee`).
-3. Submit a user turn.
-4. Assert: orchestrator submitted prompt to interceptor channel and suspended.
-5. Assert: interceptor stored prompt with `status = 'pending'`; all segments stored in `interceptor_prompt_segments`.
-6. Assert: mock Sempai connected and returned audit response.
-7. Assert: `interceptor_audits` has one row with `was_modified = true` and `audited_by = "sempai"`.
-8. Assert: Kohai received the **modified** prompt (with `"[sempai_audited]"` in system message).
-9. Assert: `interceptor_prompt_tokenized` row stored after tokenization.
-10. Assert: `interceptor_proposed_updates` has two rows (one skill update, one new recipe); both at `status = 'awaiting_manual'` after Gate 1.
-11. Assert: admin approves the skill update → Gate 2 passes → `SkillRegistry` reflects new `ibm_bob_people` version.
-12. Assert: admin approves the recipe → `RecipeRegistry` contains `bob_onboard_employee`.
-13. Assert: original `ibm_bob_people` version is no longer active after approval.
-14. Configure `BRASSCLAW_REVIEWER_PUSH_URL` mock endpoint. Assert: `interceptor_notify_reviewer` fires when `status = 'pending'` exceeds 30 s.
+**Sub-scenario A — Passthrough (Sempai not connected):**
+
+1. Submit a user turn. Assert: interceptor is in `Passthrough` state.
+2. Assert: prompt stored with `route = 'passthrough'`, `status = 'forwarded'`.
+3. Assert: Kohai received the original unmodified messages.
+4. Assert: no `interceptor_audits` row for this prompt.
+
+**Sub-scenario B — Sempai connects and intercepts:**
+
+5. Call `establish_connection(session_id)` on interceptor. Assert: state = `Intercepting`.
+6. Submit a second user turn.
+7. Assert: prompt stored with `route = 'intercepted'`, `status = 'auditing'` then `'audited'`.
+8. Assert: mock Sempai received the KV-cache-structured audit prompt (stable prefix first, variable suffix last).
+9. Assert: `interceptor_audits` row with `was_modified = true`, `audited_by = "sempai"`.
+10. Assert: Kohai received the **modified** messages (with `"[sempai_audited]"` in system segment).
+11. Assert: `interceptor_prompt_tokenized` row stored post-audit.
+12. Assert: `interceptor_proposed_updates` has two rows; both `status = 'awaiting_manual'` after Gate 1.
+
+**Sub-scenario C — Sempai disconnects (missed keepalive):**
+
+13. Stop sending `keepalive()` pings. Wait two keepalive intervals.
+14. Assert: state = `Passthrough`. Assert: `interceptor_notify_reviewer` fired with `event = "sempai_disconnected"`.
+15. Submit a third turn. Assert: `route = 'passthrough'`; original messages forwarded immediately.
+
+**Sub-scenario D — Validation queue (Gate 1 + Gate 2):**
+
+16. Assert: admin approves the skill update → `SkillRegistry` reflects new `ibm_bob_people` version; original no longer active.
+17. Assert: admin approves the recipe → `RecipeRegistry` contains `bob_onboard_employee`.
+
+**Sub-scenario E — Backlog replay on reconnect:**
+
+18. Set `replay_backlog_on_connect = true`. Call `establish_connection` again.
+19. Assert: passthrough prompts from sub-scenarios A and C replayed in background; `interceptor_audits` gains rows with `audited_by = "sempai:replay"`.
+20. Assert: `interceptor_notify_reviewer` fired with `event = "backlog_replay_complete"`.
 
 #### 12.2 Documentation updates
 
@@ -1407,9 +1483,11 @@ Every subsystem touched by this plan, with the step that addresses each impact:
 | All JSON columns | zstd level 3 compression on write; decompress on read | 6 |
 | Prompt archival | Rows older than 90 days moved to cold archive table, not deleted | 6 |
 | Forensic builder overhead when no Sempai | `#[inline(always)]` no-ops; `SempaiSlot::Unconfigured` guard | 5, 7 |
-| Interceptor queue growth | Prompts queue indefinitely by design; monitor via `/interceptor/queue` route | 8 |
-| iPhone notification rate | Exponential backoff; max 1 notification per 5 minutes | 8 |
-| Sempai call is never retried | No retry decorator on Sempai LLM call | 8 |
+| Passthrough overhead | One DB write + one DB update per prompt; no Sempai call | 8 |
+| Keepalive watcher | Checks every keepalive_base_ms/2; size-adaptive deadline per packet | 8 |
+| In-flight prompt on disconnect | Re-routed to passthrough immediately; original messages returned | 8 |
+| Sempai call is never retried | No retry decorator on Sempai LLM call; malformed → original forwarded | 8 |
+| iPhone notification rate | Exponential backoff; max 1 per 5 min for accumulation alerts | 8 |
 | Auto-validation is synchronous Rust | No LLM call in Gate 1; no OOM risk | 9 |
 | Recipe step graph validation | Cycle detection runs in O(n) before acceptance | 9, 11 |
 
@@ -1447,5 +1525,5 @@ Steps 2 and 3 can be merged in parallel immediately after Step 1 is merged.
 
 ---
 
-*Document version: 2.0 — complete rewrite incorporating standalone interceptor architecture, IBM Bob dual-connection design, four-type component system, two-step validation, and human/iPhone review.*
+*Document version: 2.1 — revised interceptor to binary Passthrough/Intercepting state machine with size-adaptive keepalive, configurable backlog replay, and immediate passthrough fallback on disconnect.*
 *Author: generated by BrassClaw planning agent.*
