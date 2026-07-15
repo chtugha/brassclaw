@@ -6,13 +6,34 @@ use brassclaw_skills::{normalize_safe_relative_path, parse_skill_md, validate_sk
 
 type BuildResult<T> = Result<T, Box<dyn std::error::Error>>;
 
+/// Skills carried over from v1 SKILL.md into v2 `MemoryDoc`-backed
+/// storage by the Phase-5 migration tool at startup. Each name MUST
+/// match a directory under `skills/` at build time — the build script
+/// fails loudly if the file is missing, so a renamed or removed v1
+/// directory surfaces at compile time instead of silently disappearing
+/// at runtime.
+const MIGRATED_SKILL_NAMES: &[&str] = &[
+    "coding",
+    "commit",
+    "code-review",
+    "github",
+    "plan-mode",
+    "web-browse",
+    "security-review",
+    "qa-review",
+];
+
+const MIGRATED_SKILLS_CATALOG_PATH: &str = "migrated_skills_catalog.json";
+
 fn main() -> BuildResult<()> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
     let repo_root = manifest_dir
         .parent()
         .and_then(Path::parent)
         .ok_or_else(|| build_error("brassclaw_reborn_composition lives under crates/"))?;
-    embed_reborn_skills(repo_root)
+    embed_reborn_skills(repo_root)?;
+    embed_migrated_skills_catalog(repo_root)?;
+    Ok(())
 }
 
 fn embed_reborn_skills(repo_root: &Path) -> BuildResult<()> {
@@ -174,4 +195,61 @@ fn build_error(reason: impl Into<String>) -> Box<dyn std::error::Error> {
         std::io::ErrorKind::InvalidData,
         reason.into(),
     ))
+}
+
+/// Embed the v1→v2 migration catalog at compile time.
+///
+/// For each name in `MIGRATED_SKILL_NAMES`, parse the matching
+/// `skills/<name>/SKILL.md` and emit a JSON entry containing the
+/// parsed `SkillManifest` + body content. The runtime migration tool
+/// (`crate::migrated_skills`) reads this catalog and persists any
+/// missing entries to the libSQL-backed `MemoryDoc` `Store` at first
+/// startup.
+///
+/// The catalog is embedded as a static JSON blob alongside the
+/// existing `/projects/system/skills/<name>/SKILL.md` filesystem
+/// materialization (which the loop layer still consults). Phase 6
+/// removes the filesystem path entirely; until then both runtime
+/// paths are equivalent and the migration catalog is the authoritative
+/// v2 source.
+fn embed_migrated_skills_catalog(repo_root: &Path) -> BuildResult<()> {
+    let skills_dir = repo_root.join("skills");
+    let out_dir = PathBuf::from(env::var("OUT_DIR")?);
+    let catalog_path = out_dir.join(MIGRATED_SKILLS_CATALOG_PATH);
+
+    let mut entries = Vec::with_capacity(MIGRATED_SKILL_NAMES.len());
+    for name in MIGRATED_SKILL_NAMES {
+        let skill_md = skills_dir.join(name).join("SKILL.md");
+        if !path_is_real_file(&skill_md)? {
+            return Err(build_error(format!(
+                "migrated skill `{name}` has no SKILL.md at {}",
+                skill_md.display()
+            )));
+        }
+        let content = fs::read_to_string(&skill_md)?;
+        let parsed = parse_skill_md(&content).map_err(|error| {
+            build_error(format!(
+                "migrate-skill `{name}` at {}: {error}",
+                skill_md.display()
+            ))
+        })?;
+        if parsed.manifest.name != *name {
+            return Err(build_error(format!(
+                "migrated skill `{name}` manifest.name `{}` does not match directory name",
+                parsed.manifest.name
+            )));
+        }
+        entries.push(serde_json::json!({
+            "name": name,
+            "manifest": parsed.manifest,
+            "prompt_content": parsed.prompt_content,
+        }));
+    }
+
+    println!(
+        "cargo:rerun-if-changed={}",
+        skills_dir.join("coding/SKILL.md").display()
+    );
+    fs::write(catalog_path, serde_json::to_string(&entries)?)?;
+    Ok(())
 }

@@ -133,6 +133,11 @@ pub struct SkillRepairRecord {
 /// Serialized to/from the `metadata` JSON field of a `MemoryDoc` with
 /// `DocType::Skill`. All fields use `#[serde(default)]` for forward
 /// compatibility — old skills missing new fields deserialize gracefully.
+///
+/// Note: `Default` is intentionally NOT derived. The `trust` field's
+/// security-relevant default (`SkillTrust::Installed`) is set explicitly
+/// at every construction site so that no caller can accidentally emit a
+/// `V2SkillMetadata` whose trust level escaped review.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct V2SkillMetadata {
     /// Skill name (matches the MemoryDoc title minus the "skill:" prefix).

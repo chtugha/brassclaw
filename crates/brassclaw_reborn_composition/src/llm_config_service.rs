@@ -256,10 +256,19 @@ impl RebornLlmConfigService {
                     .unwrap_or(false),
                 token_budget: definition_budget,
                 context_window_tokens: definition_context_window,
+                // Sempai–Kohai additive fields: not yet populated (Step 4).
+                is_kohai: false,
+                is_sempai: false,
             });
         }
 
-        Ok(LlmConfigSnapshot { providers, active })
+        Ok(LlmConfigSnapshot {
+            providers,
+            active: active.clone(),
+            // Sempai–Kohai additive fields: kept in sync with `active`.
+            kohai_active: active,
+            sempai_active: None,
+        })
     }
 
     /// Build a transient provider from a probe request and run a closure

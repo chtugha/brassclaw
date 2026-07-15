@@ -1064,6 +1064,34 @@ async fn build_local_dev_store_graph(
         .await;
     }
 
+    // One-time v1 SKILL.md → v2 MemoryDoc migration. Idempotent: stable
+    // DocIds derived from the skill name make re-runs a no-op for
+    // unchanged entries; entries whose SKILL.md source has shifted since
+    // the last install are refreshed in place. Non-fatal: if the migration
+    // encounters an unexpected store error we keep booting — the
+    // filesystem loading path still serves the same skills in tandem.
+    match crate::migrated_skills::migrate_v1_skills_to_memory_docs(
+        memory_doc_store.as_ref(),
+    )
+    .await
+    {
+        Ok(outcome) if outcome.scanned > 0 => {
+            tracing::debug!(
+                "v1→v2 skill migration: scanned={} inserted={} refreshed={} unchanged={}",
+                outcome.scanned,
+                outcome.inserted,
+                outcome.refreshed,
+                outcome.unchanged,
+            );
+        }
+        Ok(_) => {}
+        Err(error) => {
+            tracing::warn!(
+                "v1→v2 skill migration failed (continuing): {error}"
+            );
+        }
+    }
+
     let local_runtime = Arc::new(RebornLocalRuntimeServices {
         approval_requests: Arc::clone(&approval_requests),
         capability_leases: Arc::clone(&capability_leases),

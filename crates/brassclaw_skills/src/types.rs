@@ -9,6 +9,8 @@ use std::path::PathBuf;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+use crate::component_type::{ComponentType, ComponentTypeSet};
+
 /// Maximum number of keywords allowed per skill to prevent scoring manipulation.
 const MAX_KEYWORDS_PER_SKILL: usize = 20;
 
@@ -161,6 +163,13 @@ pub struct SkillManifest {
     /// Gating requirements (binaries, env vars, config files, companion skills).
     #[serde(default)]
     pub requires: GatingRequirements,
+    /// Component type tags — which execution contexts this skill is available in.
+    ///
+    /// Defaults to `[llm, kohai, agent]` (all contexts except Sempai) so that
+    /// existing SKILL.md files without this field parse without error and are
+    /// not accidentally exposed in Sempai audit prompts.
+    #[serde(default = "ComponentTypeSet::default_types")]
+    pub types: Vec<ComponentType>,
 }
 
 fn default_version() -> String {
@@ -519,6 +528,7 @@ requires:
                 activation: ActivationCriteria::default(),
                 credentials: vec![],
                 requires: GatingRequirements::default(),
+                types: ComponentTypeSet::default_types(),
             },
             prompt_content: "test prompt".to_string(),
             trust: SkillTrust::Trusted,
@@ -788,5 +798,44 @@ credentials:
             criteria.setup_marker.as_deref(),
             Some("commitments/.developer-setup-complete")
         );
+    }
+
+    #[test]
+    fn skill_manifest_without_types_defaults_to_llm_kohai_agent() {
+        let yaml = r#"
+name: simple-skill
+description: No types field
+"#;
+        let manifest: SkillManifest = serde_yml::from_str(yaml).expect("parse failed");
+        assert!(manifest.types.contains(&ComponentType::Llm));
+        assert!(manifest.types.contains(&ComponentType::Kohai));
+        assert!(manifest.types.contains(&ComponentType::Agent));
+        assert!(!manifest.types.contains(&ComponentType::Sempai));
+    }
+
+    #[test]
+    fn skill_manifest_with_sempai_type_tag() {
+        let yaml = r#"
+name: sempai-skill
+types: [sempai]
+"#;
+        let manifest: SkillManifest = serde_yml::from_str(yaml).expect("parse failed");
+        assert_eq!(manifest.types, vec![ComponentType::Sempai]);
+        let set = ComponentTypeSet(manifest.types.clone());
+        assert!(set.is_sempai_visible());
+        assert!(!set.is_kohai_visible());
+    }
+
+    #[test]
+    fn skill_manifest_with_all_types() {
+        let yaml = r#"
+name: universal-skill
+types: [llm, kohai, sempai, agent]
+"#;
+        let manifest: SkillManifest = serde_yml::from_str(yaml).expect("parse failed");
+        let set = ComponentTypeSet(manifest.types.clone());
+        assert!(set.is_kohai_visible());
+        assert!(set.is_sempai_visible());
+        assert!(set.is_agent_visible());
     }
 }

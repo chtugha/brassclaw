@@ -842,6 +842,10 @@ fn automation_info(automation_id: &str, name: &str, cron: &str) -> RebornAutomat
 }
 
 fn llm_snapshot(provider_id: &str) -> LlmConfigSnapshot {
+    let selection = LlmActiveSelection {
+        provider_id: provider_id.to_string(),
+        model: Some("model-a".to_string()),
+    };
     LlmConfigSnapshot {
         providers: vec![LlmProviderView {
             id: provider_id.to_string(),
@@ -858,11 +862,12 @@ fn llm_snapshot(provider_id: &str) -> LlmConfigSnapshot {
             can_list_models: true,
             token_budget: None,
             context_window_tokens: None,
+            is_kohai: true,
+            is_sempai: false,
         }],
-        active: Some(LlmActiveSelection {
-            provider_id: provider_id.to_string(),
-            model: Some("model-a".to_string()),
-        }),
+        active: Some(selection.clone()),
+        kohai_active: Some(selection),
+        sempai_active: None,
     }
 }
 

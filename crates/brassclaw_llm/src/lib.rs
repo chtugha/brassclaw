@@ -12,6 +12,7 @@
 mod anthropic_oauth;
 mod anthropic_thinking;
 pub mod auth;
+pub mod role;
 #[cfg(feature = "bedrock")]
 mod bedrock;
 pub mod circuit_breaker;
@@ -102,6 +103,7 @@ pub use resolution::{
 pub use response_cache::{CachedProvider, ResponseCacheConfig};
 pub use retry::{RetryConfig, RetryProvider};
 pub use rig_adapter::RigAdapter;
+pub use role::ProviderRole;
 pub use runtime::{LlmReloadHandle, SwappableLlmProvider};
 pub use session::{NearWalletSignedMessage, SessionConfig, SessionManager, create_session_manager};
 pub use smart_routing::{SmartRoutingConfig, SmartRoutingProvider, TaskComplexity};

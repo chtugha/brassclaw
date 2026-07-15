@@ -76,6 +76,8 @@ pub use auth_prompt::{AuthChallengeProvider, AuthChallengeView};
 mod fetch_cached_content;
 #[cfg(feature = "libsql")]
 mod memory_doc_libsql_store;
+#[cfg(feature = "libsql")]
+mod migrated_skills;
 pub(crate) mod plan_library;
 #[cfg(feature = "root-llm-provider")]
 mod provider_admin;

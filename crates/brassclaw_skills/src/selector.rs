@@ -539,6 +539,7 @@ mod tests {
                 },
                 credentials: vec![],
                 requires: GatingRequirements::default(),
+                types: crate::component_type::ComponentTypeSet::default_types(),
             },
             prompt_content: "Test prompt".to_string(),
             trust: SkillTrust::Trusted,

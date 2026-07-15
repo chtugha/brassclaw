@@ -36,6 +36,7 @@
 //! In v2, the Python orchestrator handles trust labels and the policy engine
 //! controls tool access via capability leases.
 
+pub mod component_type;
 pub mod gating;
 pub mod install_metadata;
 pub mod management;
@@ -51,6 +52,7 @@ pub mod catalog;
 pub mod registry;
 
 // Re-export core types at crate root for convenience.
+pub use component_type::{ComponentType, ComponentTypeSet};
 pub use types::{
     ActivationCriteria, GatingRequirements, LoadedSkill, MAX_PROMPT_FILE_SIZE,
     ProviderRefreshStrategy, SkillCredentialLocation, SkillCredentialSpec, SkillManifest,

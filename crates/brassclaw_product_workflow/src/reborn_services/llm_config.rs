@@ -191,8 +191,22 @@ pub struct CodexLoginStart {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LlmConfigSnapshot {
     pub providers: Vec<LlmProviderView>,
+    /// Active Kohai (primary inference) selection.
+    /// This field is always kept in sync with `kohai_active` so that old
+    /// clients reading only `active` observe the Kohai selection unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active: Option<LlmActiveSelection>,
+
+    // ── Sempai–Kohai additive fields (all optional for back-compat) ─────────
+    /// Kohai (primary inference) active selection.
+    /// Identical to `active`; kept in sync so new clients can use the typed
+    /// name while old clients keep reading `active`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kohai_active: Option<LlmActiveSelection>,
+    /// Sempai (auditor) active selection.
+    /// Absent means the interceptor runs in Passthrough — no Sempai is wired.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sempai_active: Option<LlmActiveSelection>,
 }
 
 /// One provider in the merged catalog, annotated for the settings UI.
@@ -227,6 +241,14 @@ pub struct LlmProviderView {
     /// `None` means the provider definition does not specify a window size.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window_tokens: Option<u32>,
+
+    // ── Sempai–Kohai additive fields (default false — skipped when absent) ──
+    /// `true` when this provider is the active Kohai selection.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_kohai: bool,
+    /// `true` when this provider is the active Sempai selection.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_sempai: bool,
 }
 
 /// The active provider + model selection.
