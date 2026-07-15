@@ -77,41 +77,47 @@ The recipe for each group encodes everything needed for the agent to make a corr
 Each recipe carries:
 ```yaml
 auth:
-  type: basic
-  credential_key: hibob_service_user_id     # stored in BrassClaw secrets
-  credential_secret: hibob_service_user_token
+  type: basic_auth
+  username_secret: hibob_service_user_id      # stored in BrassClaw secrets
+  password_secret: hibob_service_user_token   # token for the service user
 base_url: https://api.hibob.com/v1
 headers:
-  Authorization: "Basic base64({credential_key}:{credential_secret})"
   Content-Type: application/json
   Accept: application/json
+# The Authorization: Basic base64(id:token) header is injected automatically
+# by the HTTP capability layer using the two secrets above — it is never
+# assembled as a string visible to the agent.
 response_format: json
 error_handling:
   401: credential_invalid
   403: permission_missing
   429: rate_limited        # Bob enforces per-endpoint rate limits
   404: not_found
+  422: validation_error
 ```
 
 ---
 
-### Connection Type 2 — Interference (openai_compatible provider for Sempai)
+### Connection Type 2 — Interference (openai_completions provider for Sempai)
 
-The Interference connection is a **standard LLM provider** registered in `providers.json` using the `openai_compatible` protocol. It is the connection used when IBM Bob is assigned to the **Sempai role**. It connects to the HiBob API endpoint that exposes an OpenAI-compatible chat completions interface.
+The Interference connection is a **standard LLM provider** registered in `providers.json` using the `openai_completions` protocol (the wire name for `ProviderProtocol::OpenAiCompletions`). It is the connection used when IBM Bob is assigned to the **Sempai role**. It connects to the HiBob API endpoint that exposes an OpenAI-compatible chat completions interface.
 
-No wrapper or custom Rust client is needed — the existing `openai_compatible` protocol handler in `crates/brassclaw_llm` covers this exactly.
+No wrapper or custom Rust client is needed — the existing `openai_completions` protocol handler in `crates/brassclaw_llm` covers this exactly, via the `RigAdapter` path.
+
+> **Protocol name note**: `ProviderProtocol::OpenAiCompletions` serialises as `"openai_completions"` (snake_case). The string `"openai_compatible"` is the _provider id_ of the generic user-configurable slot, not a protocol name. Do not conflate the two.
 
 ```json
 {
   "id": "ibm_bob_inference",
-  "aliases": ["hibob_inference", "bob_inference"],
-  "protocol": "openai_compatible",
-  "display_name": "IBM Bob (Inference)",
+  "aliases": ["hibob_inference", "bob_inference", "bob_sempai"],
+  "protocol": "openai_completions",
+  "display_name": "IBM Bob (Inference / Sempai)",
   "setup": {
-    "kind": "api_key",
+    "kind": "open_ai_compatible",
     "display_name": "IBM Bob Inference",
     "key_url": "https://app.hibob.com/settings/service-users",
-    "can_list_models": false
+    "can_list_models": false,
+    "notes": "Set api_key to base64(serviceUserId:token). Assign this provider to the Sempai role for prompt interception."
   },
   "env": {
     "api_key":  "HIBOB_INFERENCE_TOKEN",
@@ -186,13 +192,28 @@ Note: `ContextRole` (defined in Step 10.3) is the query-side type used when filt
 
 #### 1.3 Skill frontmatter gains `types` field
 
-Extend the YAML skill frontmatter schema in `crates/brassclaw_skills/src/schema.rs`:
+Extend `SkillManifest` in `crates/brassclaw_skills/src/types.rs` with a new optional field:
 
-```yaml
-types: [llm, kohai, agent]   # replaces the old role_only field (removed)
+```rust
+pub struct SkillManifest {
+    // ... all existing fields unchanged ...
+
+    /// Component type tags — which execution contexts this skill is available in.
+    /// Must be `#[serde(default)]` so existing SKILL.md files without this
+    /// field continue to parse without error. The default returns `[Llm, Kohai, Agent]`.
+    #[serde(default = "ComponentTypeSet::default_types")]
+    pub types: Vec<ComponentType>,
+}
 ```
 
-Default when absent: `[llm, kohai, agent]` — i.e. universally available except to the Sempai auditor, which is the conservative default.
+The `types` field **must carry `#[serde(default)]`** — every existing SKILL.md file in `skills/` omits this field; without `serde(default)` the parser would reject every existing skill.
+
+YAML example:
+```yaml
+types: [llm, kohai, agent]   # the default when absent
+```
+
+`ComponentTypeSet::default_types()` returns `vec![ComponentType::Llm, ComponentType::Kohai, ComponentType::Agent]` — available to all contexts except Sempai. This is the conservative default that protects existing skills from accidentally appearing in Sempai audit prompts.
 
 `SkillRegistry::select_for_thread()` is updated to filter by `ComponentTypeSet` intersection with the caller's role context.
 
@@ -219,29 +240,50 @@ INSERT INTO settings (key, value)
 
 Both Postgres and libSQL run this via `Database::run_migrations()`.
 
-#### 1.6 `LlmConfigResponse` update
+#### 1.6 `LlmConfigSnapshot` additive extension
+
+`LlmConfigSnapshot` already exists with the following shape that **must be preserved** for back-compat:
 
 ```rust
-pub struct LlmConfigResponse {
-    /// The Kohai (primary inference) provider id.
-    pub kohai_provider_id: Option<String>,
-    /// The Sempai (auditor) provider id. Absent = interceptor disabled.
-    pub sempai_provider_id: Option<String>,
-    /// Back-compat alias for kohai_provider_id. Clients that only know
-    /// the old field continue to work.
-    pub active_provider_id: Option<String>,
-    pub providers: Vec<LlmProviderInfo>,
+pub struct LlmConfigSnapshot {
+    pub providers: Vec<LlmProviderView>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active: Option<LlmActiveSelection>,
+}
+```
+
+This step extends it **additively only** — existing fields are never renamed or removed:
+
+```rust
+pub struct LlmConfigSnapshot {
+    pub providers: Vec<LlmProviderView>,   // unchanged
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active: Option<LlmActiveSelection>,  // unchanged; mirrors kohai_active
+
+    // ── New fields (all optional/skip_serializing_if for back-compat) ──────
+    /// Kohai (primary inference) active selection.
+    /// After this step, `active` and `kohai_active` are always kept in sync
+    /// so old clients reading `active` continue to see the Kohai selection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kohai_active: Option<LlmActiveSelection>,
+    /// Sempai (auditor) active selection. Absent = interceptor runs in Passthrough.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sempai_active: Option<LlmActiveSelection>,
 }
 
-pub struct LlmProviderInfo {
-    pub id: String,
-    pub display_name: String,
-    pub model: String,
-    pub configured: bool,
+// LlmProviderView gains two new boolean fields (default false — skipped when absent):
+pub struct LlmProviderView {
+    // ... all existing fields unchanged ...
+    /// True when this provider is the active Kohai selection.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_kohai: bool,
+    /// True when this provider is the active Sempai selection.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_sempai: bool,
 }
 ```
+
+> **Important**: The existing `active` field in `LlmConfigSnapshot` is always kept in sync with `kohai_active` so that clients that only know `active` observe the Kohai selection unchanged. No existing test or client is broken.
 
 #### 1.7 Tests
 
@@ -286,12 +328,20 @@ activation:
   keywords: [...]
   tags: ["ibm_bob", "hr", "<group>"]
 credentials:
-  - name: hibob_service_user_id
-    location: { type: header, header: Authorization, template: "Basic base64({id}:{secret})" }
-    secret_name: hibob_service_user_token
+  - name: hibob_service_user_token
+    provider: hibob
+    location:
+      type: basic_auth
+      username: "{{secret:hibob_service_user_id}}"
+      # `username` is the service user ID; `name` above is the secret key for
+      # the token (password). The HTTP capability layer injects the header:
+      #   Authorization: Basic base64(username:token)
+      # No credential value ever appears in recipe text or agent context.
     hosts: ["api.hibob.com"]
 ---
 ```
+
+> **`SkillCredentialLocation::BasicAuth` shape**: `{ type: basic_auth, username: <value> }`. The `name` at the outer level is the secret key for the password/token. The `username` here is a literal string for the credential spec — in practice the service user ID is loaded from a separate secret (`hibob_service_user_id`) at the HTTP capability layer, not inlined into the SKILL.md text. If a two-secret basic-auth pattern is needed, the capability executor must be extended to support a `username_secret` field; that extension is tracked in Step 2 as a sub-task.
 
 #### 2.3 Skill bundles created (one per API group)
 
@@ -311,22 +361,29 @@ Each tool is registered in `crates/brassclaw_extensions/capabilities/ibm_bob/<gr
 
 ```rust
 ActionDef {
-    name: "bob_search_employees",
-    description: "Search for employees in IBM Bob using filters. POST /v1/people/search.",
-    effect: Effect::ReadExternal,
-    requires_approval: RequiresApproval::Never,
-    parameters: json_schema!({
-        "filters": { "type": "array", "description": "Bob search filter objects" },
-        "fields":  { "type": "array", "items": { "type": "string" },
-                     "description": "Fields to return (dot-path format)" },
-        "humanReadable": { "type": "boolean", "default": true }
+    name: "bob_search_employees".to_string(),
+    description: "Search for employees in IBM Bob using filters. POST /v1/people/search.".to_string(),
+    effects: vec![EffectType::ReadExternal, EffectType::CredentialedNetwork],
+    requires_approval: false,
+    parameters_schema: json!({
+        "type": "object",
+        "properties": {
+            "filters": { "type": "array", "description": "Bob search filter objects" },
+            "fields":  { "type": "array", "items": { "type": "string" },
+                         "description": "Fields to return (dot-path format)" },
+            "humanReadable": { "type": "boolean", "default": true }
+        }
     }),
+    model_tool_surface: ModelToolSurface::FullSchema,
+    discovery: None,
 }
 ```
 
-Write tools (`bob_create_employee`, `bob_terminate_employee`, `bob_upload_*`, `bob_create_*`, `bob_delete_*`) use `requires_approval: true` and `effect: Effect::WriteExternal`.
+Write tools (`bob_create_employee`, `bob_terminate_employee`, `bob_upload_*`, `bob_create_*`, `bob_delete_*`) use `requires_approval: true` and `effects: vec![EffectType::WriteExternal, EffectType::CredentialedNetwork]`.
 
-Read-only tools use `requires_approval: false`.
+Read-only tools use `requires_approval: false` and `effects: vec![EffectType::ReadExternal, EffectType::CredentialedNetwork]`.
+
+> **`ActionDef` field names**: `effects: Vec<EffectType>` (plural, not `effect: Effect`). All IBM Bob tools must also include `EffectType::CredentialedNetwork` because every call uses the stored `hibob_service_user_token` credential.
 
 All tools tagged with `component_types: [Agent, Kohai]` (or `[Agent, LLM]` for metadata/reporting tools) matching the skill bundle.
 
@@ -337,25 +394,28 @@ All tools tagged with `component_types: [Agent, Kohai]` (or `[Agent, LLM]` for m
 - Unit test: each skill bundle parses through `SkillRegistry::load_skill()`.
 - Unit test: all 17 skill bundles resolve correct `ComponentTypeSet`.
 - Unit test: `bob_search_employees` tool definition round-trips through capability registry.
-- Unit test: write tools have `RequiresApproval::Required`.
+- Unit test: write tools have `requires_approval: true`.
 - Unit test: metadata group tools have `ComponentType::Llm` in their type set.
+- Unit test: all Bob tools have `EffectType::CredentialedNetwork` in their `effects` vec.
 
 ---
 
-### Step 3 — IBM Bob: Interference connection (openai_compatible Sempai provider)
+### Step 3 — IBM Bob: Interference connection (openai_completions Sempai provider)
 
-**Goal**: Register the IBM Bob Inference provider in `providers.json` so it appears in the WebUI provider list and can be assigned to the Sempai role. This is a pure data change — no new Rust code required because `openai_compatible` already handles this protocol.
+**Goal**: Register the IBM Bob Inference provider in `providers.json` so it appears in the WebUI provider list and can be assigned to the Sempai role. This is a pure data change — no new Rust code required because `openai_completions` (`ProviderProtocol::OpenAiCompletions`) already handles this protocol via `RigAdapter`.
 
 #### 3.1 `providers.json` entry
+
+Add to `providers.json` (same file loaded by `ProviderRegistry` via `include_str!`):
 
 ```json
 {
   "id": "ibm_bob_inference",
   "aliases": ["hibob_inference", "bob_inference", "bob_sempai"],
-  "protocol": "openai_compatible",
+  "protocol": "openai_completions",
   "display_name": "IBM Bob (Inference / Sempai)",
   "setup": {
-    "kind": "api_key",
+    "kind": "open_ai_compatible",
     "display_name": "IBM Bob Inference",
     "key_url": "https://app.hibob.com/settings/service-users",
     "can_list_models": false,
@@ -379,7 +439,8 @@ All tools tagged with `component_types: [Agent, Kohai]` (or `[Agent, LLM]` for m
 
 - Unit test: `ibm_bob_inference` resolves through `ProviderRegistry::find("ibm_bob_inference")`.
 - Unit test: alias `"bob_inference"` resolves to the same definition.
-- Unit test: `protocol` field is `openai_compatible` — no custom factory dispatch needed.
+- Unit test: `protocol` field deserialises to `ProviderProtocol::OpenAiCompletions` (wire value `"openai_completions"`).
+- Unit test: the existing `test_openai_compatible_providers_have_base_url` test still passes (the new entry has `defaults.base_url`).
 
 ---
 
@@ -389,25 +450,46 @@ All tools tagged with `component_types: [Agent, Kohai]` (or `[Agent, LLM]` for m
 
 #### 4.1 API change: `POST /api/webchat/v2/llm/active`
 
-Extended request body:
+The existing `SetActiveLlmRequest` struct (defined in `crates/brassclaw_product_workflow/src/reborn_services/llm_config.rs`) is extended with a `role` field:
 
-```typescript
-interface SetActiveLlmRequest {
-  provider_id: string;
-  role: "kohai" | "sempai";  // required; defaults to "kohai" if absent (back-compat)
+```rust
+// Before (existing):
+pub struct SetActiveLlmRequest {
+    pub provider_id: String,
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
+// After (this step adds `role`):
+pub struct SetActiveLlmRequest {
+    pub provider_id: String,
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Which role to assign this provider to.
+    /// Defaults to Kohai when absent for back-compat with existing clients.
+    #[serde(default)]
+    pub role: Option<ProviderRole>,
 }
 ```
 
-Server side (actual return type matches the existing `set_active_llm` signature which returns `LlmConfigSnapshot`):
+The TypeScript interface the frontend sends:
+```typescript
+interface SetActiveLlmRequest {
+  provider_id: string;
+  model?: string;
+  role?: "kohai" | "sempai";  // absent = Kohai (back-compat)
+}
+```
+
+`set_active_llm` implementation inside `LlmConfigService::set_active()` (in `crates/brassclaw_reborn_composition/src/llm_config_service.rs`):
 
 ```rust
-pub async fn set_active_llm(
+async fn set_active(
+    &self,
     caller: WebUiAuthenticatedCaller,
     request: SetActiveLlmRequest,
-    services: &dyn RebornServicesApi,
-) -> Result<LlmConfigSnapshot, RebornServicesError> {
-    // Resolve role once to avoid matching twice on a field that could
-    // theoretically differ between two separate match arms.
+) -> Result<LlmConfigSnapshot, LlmConfigServiceError> {
+    // Resolve role once — default to Kohai for back-compat.
     let role = request.role.unwrap_or(ProviderRole::Kohai);
 
     // Cannot assign the same provider to both roles simultaneously.
@@ -415,24 +497,40 @@ pub async fn set_active_llm(
         ProviderRole::Kohai  => "llm.sempai_provider",
         ProviderRole::Sempai => "llm.kohai_provider",
     };
-    let other = services.db.get_setting(other_key).await?;
-    if other.as_deref() == Some(request.provider_id.as_str()) {
-        return Err(RebornServicesError::Conflict {
-            reason: "provider_already_assigned_to_other_role".into(),
-        });
+    if let Some(other_id) = self.db.get_setting(other_key).await? {
+        if other_id.trim_matches('"') == request.provider_id {
+            return Err(LlmConfigServiceError::Conflict {
+                reason: "provider_already_assigned_to_other_role".into(),
+            });
+        }
     }
 
     let key = match role {
         ProviderRole::Kohai  => "llm.kohai_provider",
         ProviderRole::Sempai => "llm.sempai_provider",
     };
-    services.db.set_setting(key, &request.provider_id).await?;
-    services.llm_reload_handle.reload().await?;
+    self.db.set_setting(key, &serde_json::to_string(&request.provider_id)?).await?;
 
-    // Return the updated snapshot so callers can refresh their UI state.
-    services.get_llm_config(caller).await
+    // Also keep the legacy "llm.active_provider" key in sync with Kohai
+    // so existing code that reads the old key continues to work.
+    if role == ProviderRole::Kohai {
+        self.db.set_setting(
+            "llm.active_provider",
+            &serde_json::to_string(&request.provider_id)?,
+        ).await?;
+    }
+
+    // Hot-reload both providers. reload() takes the current LlmConfig and
+    // SessionManager — both are already held by LlmConfigService.
+    self.reload_handle.reload(&self.llm_config, Arc::clone(&self.session)).await
+        .map_err(LlmConfigServiceError::Reload)?;
+
+    // Return the updated snapshot.
+    self.get_snapshot(caller).await
 }
 ```
+
+> **`LlmReloadHandle::reload()` signature**: takes `(&self, config: &LlmConfig, session: Arc<SessionManager>)`. It is not zero-arg. `LlmConfigService` already holds references to both. Do not call `.reload()` without arguments.
 
 #### 4.2 Frontend provider card update
 
@@ -464,6 +562,10 @@ File: `crates/brassclaw_llm/src/sempai_slot.rs` (new)
 
 ```rust
 /// Represents the availability state of the configured Sempai provider.
+///
+/// Does NOT derive Copy — `Active` carries an `Arc<dyn LlmProvider>`.
+/// Does NOT derive PartialEq or Eq — `Arc<dyn LlmProvider>` is not PartialEq.
+#[derive(Clone)]
 pub enum SempaiSlot {
     /// No Sempai provider configured. The interceptor runs in Passthrough
     /// state — every prompt is saved and forwarded immediately without audit.
@@ -477,14 +579,35 @@ pub enum SempaiSlot {
 
 #### 5.2 `SwappableLlmProvider` gains Sempai field
 
+**The real `SwappableLlmProvider` uses a single `RwLock<ProviderSnapshot>` — not separate per-field `RwLock`s.** To preserve the existing atomicity guarantee (a reader always sees a consistent slice from one snapshot), the Sempai slot is added **inside `ProviderSnapshot`**:
+
 ```rust
-pub struct SwappableLlmProvider {
-    kohai: Arc<RwLock<Arc<dyn LlmProvider>>>,
-    sempai: Arc<RwLock<SempaiSlot>>,
+// Existing (do not change structure):
+struct ProviderSnapshot {
+    inner:                 Arc<dyn LlmProvider>,
+    model_name:            &'static str,
+    active_model_name:     Arc<str>,
+    cost_per_token:        (Decimal, Decimal),
+    cache_write_multiplier: Decimal,
+    cache_read_discount:   Decimal,
+    // ── New field added by this step ──────────────────────────────────────
+    sempai:                SempaiSlot,
 }
 ```
 
-`LlmReloadHandle::reload()` loads both `llm.kohai_provider` and `llm.sempai_provider` from settings, creates both providers (or `Unconfigured`), and atomically swaps both `RwLock`s.
+`ProviderSnapshot::capture()` is extended to accept an optional Sempai provider and store it as `SempaiSlot::Active(provider)` or `SempaiSlot::Unconfigured`.
+
+`SwappableLlmProvider` gains a `sempai_slot()` accessor that returns `SempaiSlot` (cloned from the snapshot under read lock):
+
+```rust
+impl SwappableLlmProvider {
+    pub fn sempai_slot(&self) -> SempaiSlot {
+        read(&self.state).sempai.clone()
+    }
+}
+```
+
+`LlmReloadHandle::reload()` already takes `config: &LlmConfig` and `session: Arc<SessionManager>`. The implementation reads both `llm.kohai_provider` and `llm.sempai_provider` from settings (via `config`), creates both provider instances (or `Unconfigured`), builds a new `ProviderSnapshot` with both, and atomically swaps via `SwappableLlmProvider::swap()`. No second `RwLock` or second `swap()` call is needed.
 
 #### 5.3 Forensic builder overhead guard
 
@@ -703,6 +826,9 @@ CREATE TABLE IF NOT EXISTS interceptor_prompt_segments (
     verbatim_content_blob BLOB NOT NULL,
     escape_paths_blob BLOB  NOT NULL,
     segment_order   INTEGER NOT NULL,      -- position in the final prompt
+    -- Set to 1 when verbatim_content_blob is stripped (replaced with [0x00] marker)
+    -- because the prompt's uncompressed size exceeded 4 MiB. See §6.6.
+    verbatim_stripped INTEGER NOT NULL DEFAULT 0,
     received_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
@@ -917,18 +1043,24 @@ pub struct SkillSelectionOutcome {
 
 File: `crates/brassclaw_engine/src/executor/forensic_builder.rs` (new)
 
-Each prompt-assembly subsystem receives a `ForensicBuilder` reference and calls `push_segment()` **immediately when its segment is complete** — it does not wait for all other segments. The builder accumulates state in a `Vec` protected by a `Mutex`. At the end of assembly, `build()` seals the packet.
+Each prompt-assembly subsystem receives a `ForensicBuilder` reference and calls `push_segment()` **immediately when its segment is complete** — it does not wait for all other segments. The builder accumulates all state inside a single `Mutex<ForensicBuilderInner>` so that **all public methods take `&self`** (shared ref). This is required because `push_segment` is called from concurrent contexts and must use `&self`, and all other `record_*` methods must be consistent with it.
 
 ```rust
+struct ForensicBuilderInner {
+    segments: Vec<PromptSegment>,
+    token_accounting: Option<TokenAccounting>,
+    reduction_decisions: Vec<ReductionDecision>,
+    skill_selection: Option<SkillSelectionOutcome>,
+    kv_analysis: Option<KvCacheAnalysis>,
+    // ... other fields
+}
+
 pub struct ForensicBuilder {
     prompt_id: PromptId,
     run_id: RunId,
     original_query: String,
-    segments: Mutex<Vec<PromptSegment>>,
-    token_accounting: Option<TokenAccounting>,
-    reduction_decisions: Vec<ReductionDecision>,
-    skill_selection: Option<SkillSelectionOutcome>,
-    // ... other fields
+    // Single Mutex covering all mutable state so &self works on all methods.
+    inner: Mutex<ForensicBuilderInner>,
 }
 
 impl ForensicBuilder {
@@ -936,17 +1068,23 @@ impl ForensicBuilder {
 
     /// Called by each prompt segment source immediately when it finishes.
     /// Thread-safe — multiple segments may push concurrently.
-    pub fn push_segment(&self, seg: PromptSegment) { ... }
+    /// Takes &self (not &mut self) — all state lives behind the inner Mutex.
+    pub fn push_segment(&self, seg: PromptSegment) {
+        self.inner.lock().unwrap_or_else(|p| p.into_inner()).segments.push(seg);
+    }
 
-    pub fn record_token_accounting(&mut self, ta: TokenAccounting) { ... }
-    pub fn record_reduction(&mut self, rd: ReductionDecision) { ... }
-    pub fn record_skill_selection(&mut self, ss: SkillSelectionOutcome) { ... }
-    pub fn record_kv_analysis(&mut self, kv: KvCacheAnalysis) { ... }
+    /// All record_* methods also take &self for the same reason.
+    pub fn record_token_accounting(&self, ta: TokenAccounting) { ... }
+    pub fn record_reduction(&self, rd: ReductionDecision) { ... }
+    pub fn record_skill_selection(&self, ss: SkillSelectionOutcome) { ... }
+    pub fn record_kv_analysis(&self, kv: KvCacheAnalysis) { ... }
 
     /// Seal the packet. Consumes the builder.
     pub fn build(self, final_messages: Vec<AssembledMessage>, model_params: ModelParams) -> PromptForensicPacket { ... }
 }
 ```
+
+> **Why all `&self`**: `push_segment` is called from multiple concurrent callers on a shared `Arc<ForensicBuilder>`, so it cannot be `&mut self`. All other `record_*` methods must also be `&self` (not `&mut self`) for the API to be consistent and safe when the builder is behind an `Arc`. The single `Mutex<ForensicBuilderInner>` is the correct abstraction.
 
 When `SempaiSlot::Unconfigured`, `push_segment` is an `#[inline(always)]` no-op and `build` returns a minimal stub. The interceptor service checks the slot state before persisting anything.
 
@@ -1131,15 +1269,21 @@ Uses the existing HTTP capability to POST to a configured webhook relay (Pushove
 
 ```rust
 ActionDef {
-    name: "interceptor_notify_reviewer",
-    description: "Send a push notification to the reviewer device. Fires when the Sempai disconnects or when passthrough-routed prompts accumulate.",
-    effect: Effect::WriteExternal,
+    name: "interceptor_notify_reviewer".to_string(),
+    description: "Send a push notification to the reviewer device. Fires when the Sempai disconnects or when passthrough-routed prompts accumulate.".to_string(),
+    effects: vec![EffectType::WriteExternal, EffectType::CredentialedNetwork],
     requires_approval: false,   // notification-only; no approval gate needed
-    parameters: json_schema!({
-        "event":        { "type": "string",  "enum": ["sempai_disconnected", "passthrough_accumulating", "sempai_reconnected", "backlog_replay_complete"] },
-        "prompt_count": { "type": "integer" },
-        "summary":      { "type": "string"  }
+    parameters_schema: json!({
+        "type": "object",
+        "properties": {
+            "event":        { "type": "string",  "enum": ["sempai_disconnected", "passthrough_accumulating", "sempai_reconnected", "backlog_replay_complete"] },
+            "prompt_count": { "type": "integer" },
+            "summary":      { "type": "string"  }
+        },
+        "required": ["event", "summary"]
     }),
+    model_tool_surface: ModelToolSurface::FullSchema,
+    discovery: None,
 }
 ```
 
@@ -1223,7 +1367,7 @@ pub fn auto_validate_update(update: &ProposedArtifactUpdate) -> AutoValidationRe
 
 Checks performed:
 - **Skill patch**: YAML frontmatter parses correctly; `types` field contains only valid `ComponentType` values; `name` and `version` fields present and valid; Markdown body non-empty.
-- **Tool patch**: `ActionDef` schema validates; `effect` and `requires_approval` fields present; parameter JSON Schema is valid; tool name does not collide with a built-in tool.
+- **Tool patch**: `ActionDef` schema validates; `effects` (plural, `Vec<EffectType>`) and `requires_approval` fields present and valid; parameter JSON Schema is valid (must be a JSON Schema object); tool name does not collide with a built-in tool.
 - **Recipe patch**: `Recipe` struct deserialises; all `step_id` values unique; `on_success`/`on_failure` references valid step IDs; no cycles in the step graph.
 - **Type consistency**: if the update changes the `types` field, the new set must be a superset of the types required by any existing usage of this component in active threads.
 
@@ -1234,7 +1378,9 @@ On pass: `auto_validated = 1`, `status = 'awaiting_manual'`.
 
 Gate 2 is a human action via the WebUI admin panel.
 
-New WebUI routes (admin scope only):
+> **Admin scope implementation**: There is no `WebUiCallerScope::Admin` enum in this codebase. Admin-only route gating must be implemented by checking the authenticated caller's user record against a DB-stored role or permission flag. Concretely: define a guard function `require_admin(caller: &WebUiAuthenticatedCaller, db: &dyn Database) -> Result<(), RebornServicesError>` that looks up the user in the DB and verifies an admin flag before the handler proceeds. The specific DB column/table for user roles must be confirmed against `src/db/` before implementing (tracked as a sub-task in Step 9).
+
+New WebUI routes (admin-gated via `require_admin` guard):
 
 ```
 GET  /api/webchat/v2/sempai/updates                       — list updates by status
@@ -1266,7 +1412,7 @@ When a proposed update reaches `status = 'awaiting_manual'`, the same `intercept
 - Unit test: valid skill patch passes Gate 1; `status = 'awaiting_manual'`.
 - Unit test: approve → `apply_approved_update()` → skill registry hot-reloaded with new version.
 - Unit test: reject → original skill unchanged; `status = 'rejected'`.
-- Unit test: tool patch with missing `effect` field fails Gate 1.
+- Unit test: tool patch with missing `effects` field (or with an empty `effects` vec when `CredentialedNetwork` is required) fails Gate 1.
 - Unit test: recipe patch with a cyclic step graph fails Gate 1.
 - Integration test: Sempai proposes skill patch → Gate 1 passes → admin approves → `SkillRegistry` reflects new version; old version is no longer active.
 
@@ -1369,15 +1515,18 @@ pub struct RecipeStep {
 
 ```sql
 CREATE TABLE IF NOT EXISTS recipes (
-    id              TEXT    PRIMARY KEY,
-    name            TEXT    NOT NULL,
-    description     TEXT    NOT NULL,
-    version         INTEGER NOT NULL DEFAULT 1,
-    types_json      TEXT    NOT NULL,    -- Vec<ComponentType> JSON (plain JSON, not compressed)
-    steps_json      BLOB    NOT NULL,    -- Vec<RecipeStep> zstd-compressed JSON (use uncompressed_len from caller)
-    created_by      TEXT    NOT NULL,    -- "user" | "sempai" | "system"
-    created_at      TEXT    NOT NULL,
-    updated_at      TEXT    NOT NULL
+    id                   TEXT    PRIMARY KEY,
+    name                 TEXT    NOT NULL,
+    description          TEXT    NOT NULL,
+    version              INTEGER NOT NULL DEFAULT 1,
+    types_json           TEXT    NOT NULL,    -- Vec<ComponentType> JSON (plain JSON, not compressed)
+    steps_json           BLOB    NOT NULL,    -- Vec<RecipeStep> zstd-compressed JSON
+    -- Uncompressed byte length of steps_json before compression.
+    -- Used to check the 4 MiB guard without decompressing.
+    steps_uncompressed_len INTEGER NOT NULL DEFAULT 0,
+    created_by           TEXT    NOT NULL,    -- "user" | "sempai" | "system"
+    created_at           TEXT    NOT NULL,
+    updated_at           TEXT    NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_recipes_name ON recipes(name);
@@ -1560,5 +1709,5 @@ Steps 2 and 3 can be merged in parallel immediately after Step 1 is merged.
 
 ---
 
-*Document version: 2.1 — revised interceptor to binary Passthrough/Intercepting state machine with size-adaptive keepalive, configurable backlog replay, and immediate passthrough fallback on disconnect.*
+*Document version: 2.3 — comprehensive correctness review: fixed `ProviderProtocol` wire name (`openai_completions`, not `openai_compatible`); fixed `SetActiveLlmRequest` to be additive extension with `Option<ProviderRole>`; fixed `LlmConfigSnapshot` extension to be purely additive (preserve existing `providers`/`active` fields); fixed `ActionDef` field names (`effects: Vec<EffectType>`, not `effect: Effect`); fixed `RequiresApproval::Required` → `true`; fixed `SwappableLlmProvider` extension to use single `ProviderSnapshot` lock; fixed `LlmReloadHandle::reload()` to show correct two-arg signature; fixed `InterceptorState` derive (no `Copy`, no bare `PartialEq` on struct variant); added `SempaiSessionId` newtype definition; fixed `SkillManifest.types` to use `#[serde(default)]` with correct file location; added `verbatim_stripped` column to `interceptor_prompt_segments`; added `steps_uncompressed_len` column to `recipes`; fixed `ForensicBuilder` to use single inner `Mutex` with all `&self` methods; fixed `EffectType::CredentialedNetwork` added to all Bob tools; fixed recipe credential YAML to use `SkillCredentialLocation::BasicAuth` shape; added admin-scope guard implementation note; fixed IBM Bob provider `setup.kind` to `open_ai_compatible`.*
 *Author: generated by BrassClaw planning agent.*
