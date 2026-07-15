@@ -11,9 +11,9 @@
 //! `DocId` derived from the skill name, so re-running on a populated
 //! store either no-ops (when both content and `content_hash` match) or
 //! refreshes the row in place (when the SKILL.md source changed since
-//! the prior install). User-edited skills retain their `source` value
-//! through their `metadata` — the migration only touches entries whose
-//! `source == V2SkillSource::Migrated` are skipped over.
+//! the prior install). User-edited skills — those whose stored `source`
+//! field differs from `"migrated"` — are never overwritten; only
+//! migration-sourced entries are eligible for refresh.
 //!
 //! The migration tool runs once per startup from
 //! `crate::factory::build_local_dev` (and the parallel libsql and
@@ -143,10 +143,14 @@ fn assemble_memory_doc(
     entry: &CatalogEntry,
     metadata: V2SkillMetadata,
 ) -> MemoryDoc {
+    // Capture now once so created_at and updated_at are identical for
+    // newly-inserted docs (avoids a spurious microsecond-level divergence
+    // caused by two separate Utc::now() calls).
+    let now = chrono::Utc::now();
+    // V2SkillMetadata only contains String, u32, Vec, and Option types —
+    // serde_json serialization cannot fail in practice. The fallback is a
+    // defensive guard against future additions of a custom Serialize impl.
     let metadata_json = serde_json::to_value(&metadata).unwrap_or_else(|error| {
-        // V2SkillMetadata serialization is infallible; this branch is
-        // a defensive guard against future schema additions declaring
-        // a custom Serialize impl.
         serde_json::Value::String(format!("<metadata encode failed: {error}>"))
     });
     MemoryDoc {
@@ -159,8 +163,8 @@ fn assemble_memory_doc(
         source_thread_id: None,
         tags: entry.manifest.activation.tags.clone(),
         metadata: metadata_json,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
+        created_at: now,
+        updated_at: now,
     }
 }
 

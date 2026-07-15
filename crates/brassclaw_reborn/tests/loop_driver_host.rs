@@ -1390,7 +1390,7 @@ async fn build_libsql_thread_service(
     db: Arc<libsql::Database>,
 ) -> brassclaw_threads::FilesystemSessionThreadService<brassclaw_filesystem::LibSqlRootFilesystem> {
     use brassclaw_filesystem::{LibSqlRootFilesystem, ScopedFilesystem};
-    use brassclaw_host_api::{MountAlias, MountGrant, MountPermissions};
+    use brassclaw_host_api::{MountAlias, MountGrant, MountPermissions, MountView, VirtualPath};
 
     let fs = LibSqlRootFilesystem::new(db);
     fs.run_migrations().await.unwrap();

@@ -543,15 +543,14 @@
     "model_env": "HIBOB_INFERENCE_MODEL",
     "default_model": "bob-latest",
     "context_window_tokens": 32768,
-    "description": "IBM Bob (HiBob) inference API — OpenAI-compatible endpoint for Sempai audit role",
+    "description": "IBM Bob (HiBob) inference API — OpenAI-compatible endpoint for Sempai audit role. Set api_key to base64(serviceUserId:token) and assign this provider to the Sempai role.",
     "unsupported_params": [],
     "setup": {
       "kind": "open_ai_compatible",
       "secret_name": "llm_ibm_bob_inference_api_key",
       "key_url": "https://app.hibob.com/settings/service-users",
       "display_name": "IBM Bob (Inference / Sempai)",
-      "can_list_models": false,
-      "notes": "Set api_key to base64(serviceUserId:token). Assign this provider to the Sempai role for prompt interception."
+      "can_list_models": false
     }
   }
 ]

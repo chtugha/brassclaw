@@ -256,8 +256,10 @@ impl RebornLlmConfigService {
                     .unwrap_or(false),
                 token_budget: definition_budget,
                 context_window_tokens: definition_context_window,
-                // Sempai–Kohai additive fields: not yet populated (Step 4).
-                is_kohai: false,
+                // is_kohai mirrors the legacy `active` flag until Step 4 wires
+                // the separate kohai/sempai DB settings slots.
+                is_kohai: info.active,
+                // is_sempai stays false until Step 4 adds the Sempai slot.
                 is_sempai: false,
             });
         }

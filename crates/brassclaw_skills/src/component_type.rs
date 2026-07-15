@@ -16,7 +16,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ComponentType {
-    /// Available during general LLM interaction (both Kohai and Sempai contexts).
+    /// Available during general LLM interaction and Kohai prompt assembly.
+    ///
+    /// Note: `Llm` alone does **not** grant Sempai visibility. To appear in
+    /// Sempai audit prompts a component must carry an explicit `Sempai` tag.
+    /// This conservative default prevents existing skills from accidentally
+    /// surfacing in Sempai audit context.
     Llm,
     /// Available only when assembling prompts for the Kohai inference model.
     Kohai,

@@ -1,12 +1,15 @@
--- V33: Sempai–Kohai schema marker and new provider-role settings seeds.
+-- V33: Sempai–Kohai schema marker.
 --
--- The active provider selection is now split into two named slots:
---   llm.kohai_provider  — primary inference model (maps to former llm.active_provider)
---   llm.sempai_provider — audit/interception model (new; absent = passthrough mode)
+-- This migration records that the database has been updated to support the
+-- Sempai–Kohai dual-role provider architecture. No schema changes are needed
+-- in the v1 settings table: the new llm.kohai_provider and llm.sempai_provider
+-- keys follow the existing per-user (user_id, key) convention and are written
+-- at runtime via the normal settings API — no seed rows are required.
 --
--- Both Postgres and libSQL run this via Database::run_migrations().
--- The settings table is key-value; no schema column changes are needed.
+-- A no-op DDL statement is used so refinery records this migration in its
+-- schema_migrations table without requiring any data writes.
 
-INSERT INTO settings (key, value)
-  VALUES ('schema.sempai_kohai_version', '"1"')
-  ON CONFLICT DO NOTHING;
+DO $$ BEGIN
+  -- intentional no-op: schema version marker only
+  NULL;
+END $$;

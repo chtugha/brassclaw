@@ -38,20 +38,31 @@ fn main() -> BuildResult<()> {
 
 fn embed_reborn_skills(repo_root: &Path) -> BuildResult<()> {
     let skills_dir = repo_root.join("skills");
+    let archive_skills_dir = repo_root.join("archive").join("skills-v1");
     println!("cargo:rerun-if-changed={}", skills_dir.display());
+    println!("cargo:rerun-if-changed={}", archive_skills_dir.display());
 
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     let summaries_out_path = out_dir.join("embedded_reborn_skill_summaries.json");
     let bundles_out_path = out_dir.join("embedded_reborn_skill_bundles.json");
-    if !path_is_real_dir(&skills_dir)? {
+    // Phase 5 migration moved the v1 SKILL.md content into MemoryDoc-backed
+    // storage at startup; the source-of-truth skills/ directory is removed
+    // in Phase 6. Fall back to archive/skills-v1/ if it exists so rebuilt
+    // binaries from older trees still embed the same content, and emit
+    // empty arrays if neither location is present.
+    let resolved_skills_dir = if path_is_real_dir(&skills_dir)? {
+        skills_dir.clone()
+    } else if path_is_real_dir(&archive_skills_dir)? {
+        archive_skills_dir.clone()
+    } else {
         fs::write(summaries_out_path, "[]")?;
         fs::write(bundles_out_path, "[]")?;
         return Ok(());
-    }
+    };
 
     let mut skill_summaries = Vec::new();
     let mut skill_bundles = Vec::new();
-    let mut entries = fs::read_dir(&skills_dir)?.collect::<Result<Vec<_>, _>>()?;
+    let mut entries = fs::read_dir(&resolved_skills_dir)?.collect::<Result<Vec<_>, _>>()?;
     entries = entries
         .into_iter()
         .filter_map(|entry| match non_symlink_file_type(&entry) {
@@ -199,33 +210,54 @@ fn build_error(reason: impl Into<String>) -> Box<dyn std::error::Error> {
 
 /// Embed the v1→v2 migration catalog at compile time.
 ///
-/// For each name in `MIGRATED_SKILL_NAMES`, parse the matching
-/// `skills/<name>/SKILL.md` and emit a JSON entry containing the
+/// For each name in `MIGRATED_SKILL_NAMES`, parses the matching
+/// `skills/<name>/SKILL.md` and emits a JSON entry containing the
 /// parsed `SkillManifest` + body content. The runtime migration tool
 /// (`crate::migrated_skills`) reads this catalog and persists any
 /// missing entries to the libSQL-backed `MemoryDoc` `Store` at first
 /// startup.
 ///
-/// The catalog is embedded as a static JSON blob alongside the
-/// existing `/projects/system/skills/<name>/SKILL.md` filesystem
-/// materialization (which the loop layer still consults). Phase 6
-/// removes the filesystem path entirely; until then both runtime
-/// paths are equivalent and the migration catalog is the authoritative
-/// v2 source.
+/// Phase 6 removed the source-of-truth `skills/` directory. We still
+/// resolve the catalog from `archive/skills-v1/` (kept as a build-only
+/// reference blob) so rebuilds reproduce the same embedded content; if
+/// the directory is absent we emit an empty catalog rather than panic,
+/// and the runtime migrator then becomes a no-op for first-time boots.
 fn embed_migrated_skills_catalog(repo_root: &Path) -> BuildResult<()> {
     let skills_dir = repo_root.join("skills");
+    let archive_skills_dir = repo_root.join("archive").join("skills-v1");
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     let catalog_path = out_dir.join(MIGRATED_SKILLS_CATALOG_PATH);
 
+    let resolved_skills_dir = if path_is_real_dir(&skills_dir)? {
+        skills_dir.clone()
+    } else if path_is_real_dir(&archive_skills_dir)? {
+        archive_skills_dir.clone()
+    } else {
+        fs::write(catalog_path, "[]")?;
+        println!(
+            "cargo:warning=brassclaw_reborn_composition: no skills/ source found; \
+             embedded migration catalog will be empty"
+        );
+        return Ok(());
+    };
+
     let mut entries = Vec::with_capacity(MIGRATED_SKILL_NAMES.len());
     for name in MIGRATED_SKILL_NAMES {
-        let skill_md = skills_dir.join(name).join("SKILL.md");
+        let skill_md = resolved_skills_dir.join(name).join("SKILL.md");
         if !path_is_real_file(&skill_md)? {
-            return Err(build_error(format!(
-                "migrated skill `{name}` has no SKILL.md at {}",
+            // Phase 6 made the v1 source optional: missing SKILL.md is
+            // logged at warning level, the catalog is still emitted
+            // (without the missing entry), and the runtime migrator
+            // simply has nothing to migrate for that name.
+            println!(
+                "cargo:warning=brassclaw_reborn_composition: migrated skill `{name}` \
+                 has no SKILL.md at {}, embedding without it",
                 skill_md.display()
-            )));
+            );
+            continue;
         }
+        // Trigger a catalog rebuild whenever any migrated skill's SKILL.md changes.
+        println!("cargo:rerun-if-changed={}", skill_md.display());
         let content = fs::read_to_string(&skill_md)?;
         let parsed = parse_skill_md(&content).map_err(|error| {
             build_error(format!(
@@ -246,10 +278,6 @@ fn embed_migrated_skills_catalog(repo_root: &Path) -> BuildResult<()> {
         }));
     }
 
-    println!(
-        "cargo:rerun-if-changed={}",
-        skills_dir.join("coding/SKILL.md").display()
-    );
     fs::write(catalog_path, serde_json::to_string(&entries)?)?;
     Ok(())
 }

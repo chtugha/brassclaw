@@ -598,11 +598,14 @@ fn reborn_turns_public_surface_keeps_runner_api_explicit() {
 #[test]
 fn reborn_loop_support_llm_wiring_stays_out_of_root_src() {
     let root = workspace_root();
-    let root_lib =
-        std::fs::read_to_string(root.join("src/lib.rs")).expect("root src/lib.rs must be readable");
+    // Phase 6 removed the legacy v1 `src/` tree entirely. The
+    // negative-assertion guard that this test used to read
+    // `src/lib.rs` for is now expressed as an absence check on the
+    // directory itself plus any stray wiring file that would try to
+    // re-introduce v1-side Reborn ownership.
     assert!(
-        !root_lib.contains("pub mod reborn_loop_support;"),
-        "Reborn loop LLM wiring must live under crates/brassclaw_reborn, not root src/lib.rs"
+        !root.join("src").exists(),
+        "Phase 6 removed the v1 root `src/` tree; its recreation is forbidden"
     );
     assert!(
         !root.join("src/reborn_loop_support.rs").exists(),
