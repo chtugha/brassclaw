@@ -15,6 +15,7 @@
 //! value — only a boolean `api_key_set`.
 
 use async_trait::async_trait;
+use brassclaw_llm::ProviderRole;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 
@@ -293,6 +294,11 @@ pub struct SetActiveLlmRequest {
     pub provider_id: String,
     #[serde(default)]
     pub model: Option<String>,
+    /// Which role to assign this provider to.
+    /// Defaults to [`ProviderRole::Kohai`] when absent for back-compat with
+    /// existing clients that do not send a role field.
+    #[serde(default)]
+    pub role: Option<ProviderRole>,
 }
 
 /// Probe a provider. Deserialize-only (may carry a secret).
@@ -338,6 +344,9 @@ pub enum LlmConfigServiceError {
     },
     /// The named provider does not exist in the merged catalog.
     NotFound,
+    /// The provider is already assigned to the other role; assigning the same
+    /// provider to both Kohai and Sempai simultaneously is not allowed.
+    Conflict { reason: String },
     /// The configuration backend (filesystem / secret store / reload) failed
     /// transiently or is not wired.
     Unavailable,
@@ -352,6 +361,9 @@ pub(super) fn map_llm_config_error(error: LlmConfigServiceError) -> RebornServic
         }
         LlmConfigServiceError::NotFound => {
             RebornServicesError::from_status(RebornServicesErrorCode::NotFound, 404, false)
+        }
+        LlmConfigServiceError::Conflict { .. } => {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 409, false)
         }
         LlmConfigServiceError::Unavailable => RebornServicesError::service_unavailable(true),
         LlmConfigServiceError::Internal => RebornServicesError::internal_invariant(),

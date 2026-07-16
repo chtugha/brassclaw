@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(phase-4)* `RuntimeKind::Script`, `ExtensionRuntime::Script`, `ExtensionRuntimeV2::Script`, `DispatchError::Script`, and `TrustedRuntimeKindWire::Script` are removed. v1-script-extension manifests must be re-authored as Tools, Recipes, or first-party ProductAdapters. Shell commands (`tool:shell`) remain available without script-runtime mounting. Historical event records with `"runtime": "script"` are deserialized via `TrustedRuntimeKindWire` as `RuntimeKind::Mcp` for backwards compatibility.
 
+### Changed
+
+- *(reborn-cli)* document the standalone `config init` atomic-write dependency on `tempfile` and call out the default runner cadence change to 5s heartbeats / 200ms polling (down from 10s / 2s).
+- *(reborn)* expose runtime poll settings and document the standalone turn-runner cadence change for callers using `TurnRunnerSettings::default()`.
+
 ## [0.41.9] - 2026-08-01
 
 ### Fixed
@@ -78,13 +83,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(agent-loop)* Fix all clippy errors introduced by subtasks 1–5: `.last()` → `.next_back()` on `DoubleEndedIterator`, char comparison patterns, redundant closures, collapsible `if let` chains, manual `.min().max()` → `.clamp()`.
 - *(reborn-composition)* Fix `info!`/`warn!` in background task code — project rule violation that would corrupt the terminal REPL UI; downgraded to `debug!`.
 - *(reborn-composition)* Fix test compilation: missing `content_cache_slot`/`plan_state_slot` fields in test constructor and missing `skill_context_tokens` arg.
-
-## [Unreleased]
-
-### Changed
-
-- *(reborn-cli)* document the standalone `config init` atomic-write dependency on `tempfile` and call out the default runner cadence change to 5s heartbeats / 200ms polling (down from 10s / 2s).
-- *(reborn)* expose runtime poll settings and document the standalone turn-runner cadence change for callers using `TurnRunnerSettings::default()`.
 
 ## [0.29.1](https://github.com/chtugha/brassclaw/compare/brassclaw-v0.29.0...brassclaw-v0.29.1) - 2026-06-04
 

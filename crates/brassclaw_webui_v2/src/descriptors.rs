@@ -47,6 +47,25 @@ pub const WEBUI_V2_ROUTE_LIST_SKILLS: &str = "webui.v2.list_skills";
 pub const WEBUI_V2_ROUTE_INSTALL_SKILL: &str = "webui.v2.install_skill";
 pub const WEBUI_V2_ROUTE_REMOVE_SKILL: &str = "webui.v2.remove_skill";
 
+// Phase 7 — Recipe-Skill-Tool library. Each mutating route is a
+// state-machine transition on a `MemoryDoc.metadata.validation_status`
+// field; review endpoints that fail the agent's structured JSON
+// extraction fall through to the LLM review mission registered at
+// runtime startup.
+pub const WEBUI_V2_ROUTE_LIST_RECIPES: &str = "webui.v2.list_recipes";
+pub const WEBUI_V2_ROUTE_LIST_TOOL_SKILLS: &str = "webui.v2.list_tool_skills";
+pub const WEBUI_V2_ROUTE_GET_RECIPE: &str = "webui.v2.get_recipe";
+pub const WEBUI_V2_ROUTE_GET_TOOL_SKILL: &str = "webui.v2.get_tool_skill";
+pub const WEBUI_V2_ROUTE_LIST_VALIDATION_QUEUE: &str = "webui.v2.list_validation_queue";
+pub const WEBUI_V2_ROUTE_COUNT_VALIDATION_QUEUE: &str = "webui.v2.count_validation_queue";
+pub const WEBUI_V2_ROUTE_VALIDATE_RECIPE: &str = "webui.v2.validate_recipe";
+pub const WEBUI_V2_ROUTE_REJECT_RECIPE: &str = "webui.v2.reject_recipe";
+pub const WEBUI_V2_ROUTE_REQUEST_RECIPE_REVIEW: &str = "webui.v2.request_recipe_review";
+pub const WEBUI_V2_ROUTE_VALIDATE_TOOL_SKILL: &str = "webui.v2.validate_tool_skill";
+pub const WEBUI_V2_ROUTE_REJECT_TOOL_SKILL: &str = "webui.v2.reject_tool_skill";
+pub const WEBUI_V2_ROUTE_REQUEST_TOOL_SKILL_REVIEW: &str = "webui.v2.request_tool_skill_review";
+pub const WEBUI_V2_ROUTE_RECORD_RECIPE_OUTCOME: &str = "webui.v2.record_recipe_outcome";
+
 pub const WEBUI_V2_PATTERN_CREATE_THREAD: &str = "/api/webchat/v2/threads";
 pub const WEBUI_V2_PATTERN_LIST_THREADS: &str = "/api/webchat/v2/threads";
 pub const WEBUI_V2_PATTERN_DELETE_THREAD: &str = "/api/webchat/v2/threads/{thread_id}";
@@ -84,6 +103,36 @@ pub const WEBUI_V2_PATTERN_UPDATE_TOOL_PERMISSION: &str =
 pub const WEBUI_V2_PATTERN_LIST_SKILLS: &str = "/api/webchat/v2/skills";
 pub const WEBUI_V2_PATTERN_INSTALL_SKILL: &str = "/api/webchat/v2/skills/install";
 pub const WEBUI_V2_PATTERN_REMOVE_SKILL: &str = "/api/webchat/v2/skills/{name}";
+
+// Phase 7 — Recipe-Skill-Tool learning pipeline.
+//
+// The Recipe Library is the agent's persistent cookbook; the validation
+// queue surfaces post-extraction rows that need an operator review pass,
+// and the outcome endpoint feeds back into the engine `MetricRecorder`
+// for Wilson lower-bound + tier reclassifications.
+pub const WEBUI_V2_PATTERN_LIST_RECIPES: &str = "/api/webchat/v2/recipes";
+pub const WEBUI_V2_PATTERN_LIST_TOOL_SKILLS: &str = "/api/webchat/v2/tool-skills";
+pub const WEBUI_V2_PATTERN_GET_RECIPE: &str =
+    "/api/webchat/v2/recipes/{project_id}/{recipe_id}";
+pub const WEBUI_V2_PATTERN_GET_TOOL_SKILL: &str =
+    "/api/webchat/v2/tool-skills/{project_id}/{skill_id}";
+pub const WEBUI_V2_PATTERN_VALIDATE_RECIPE: &str =
+    "/api/webchat/v2/recipes/{project_id}/{recipe_id}/validate";
+pub const WEBUI_V2_PATTERN_REJECT_RECIPE: &str =
+    "/api/webchat/v2/recipes/{project_id}/{recipe_id}/reject";
+pub const WEBUI_V2_PATTERN_REQUEST_RECIPE_REVIEW: &str =
+    "/api/webchat/v2/recipes/{project_id}/{recipe_id}/review-request";
+pub const WEBUI_V2_PATTERN_VALIDATE_TOOL_SKILL: &str =
+    "/api/webchat/v2/tool-skills/{project_id}/{skill_id}/validate";
+pub const WEBUI_V2_PATTERN_REJECT_TOOL_SKILL: &str =
+    "/api/webchat/v2/tool-skills/{project_id}/{skill_id}/reject";
+pub const WEBUI_V2_PATTERN_REQUEST_TOOL_SKILL_REVIEW: &str =
+    "/api/webchat/v2/tool-skills/{project_id}/{skill_id}/review-request";
+pub const WEBUI_V2_PATTERN_RECORD_RECIPE_OUTCOME: &str =
+    "/api/webchat/v2/recipes/{project_id}/{recipe_id}/outcomes";
+pub const WEBUI_V2_PATTERN_VALIDATION_QUEUE: &str = "/api/webchat/v2/validation-queue";
+pub const WEBUI_V2_PATTERN_VALIDATION_QUEUE_COUNT: &str =
+    "/api/webchat/v2/validation-queue/count";
 
 /// Return the canonical [`IngressRouteDescriptor`] set for the WebChat v2
 /// beta route surface.
@@ -125,6 +174,19 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         list_skills_descriptor(),
         install_skill_descriptor(),
         remove_skill_descriptor(),
+        list_recipes_descriptor(),
+        list_tool_skills_descriptor(),
+        get_recipe_descriptor(),
+        get_tool_skill_descriptor(),
+        list_validation_queue_descriptor(),
+        count_validation_queue_descriptor(),
+        validate_recipe_descriptor(),
+        reject_recipe_descriptor(),
+        request_recipe_review_descriptor(),
+        validate_tool_skill_descriptor(),
+        reject_tool_skill_descriptor(),
+        request_tool_skill_review_descriptor(),
+        record_recipe_outcome_descriptor(),
     ]
 }
 
@@ -589,6 +651,188 @@ fn remove_skill_descriptor() -> IngressRouteDescriptor {
         WEBUI_V2_PATTERN_REMOVE_SKILL,
         mutation_policy(
             BodyLimitPolicy::NoBody,
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn list_recipes_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_LIST_RECIPES,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_LIST_RECIPES,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn list_tool_skills_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_LIST_TOOL_SKILLS,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_LIST_TOOL_SKILLS,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn get_recipe_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_RECIPE,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_GET_RECIPE,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn get_tool_skill_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_TOOL_SKILL,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_GET_TOOL_SKILL,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn list_validation_queue_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_LIST_VALIDATION_QUEUE,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_VALIDATION_QUEUE,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn count_validation_queue_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_COUNT_VALIDATION_QUEUE,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_VALIDATION_QUEUE_COUNT,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn validate_recipe_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_VALIDATE_RECIPE,
+        NetworkMethod::Put,
+        WEBUI_V2_PATTERN_VALIDATE_RECIPE,
+        mutation_policy(
+            body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn reject_recipe_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_REJECT_RECIPE,
+        NetworkMethod::Put,
+        WEBUI_V2_PATTERN_REJECT_RECIPE,
+        mutation_policy(
+            body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn request_recipe_review_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_REQUEST_RECIPE_REVIEW,
+        NetworkMethod::Put,
+        WEBUI_V2_PATTERN_REQUEST_RECIPE_REVIEW,
+        mutation_policy(
+            body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn validate_tool_skill_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_VALIDATE_TOOL_SKILL,
+        NetworkMethod::Put,
+        WEBUI_V2_PATTERN_VALIDATE_TOOL_SKILL,
+        mutation_policy(
+            body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn reject_tool_skill_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_REJECT_TOOL_SKILL,
+        NetworkMethod::Put,
+        WEBUI_V2_PATTERN_REJECT_TOOL_SKILL,
+        mutation_policy(
+            body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn request_tool_skill_review_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_REQUEST_TOOL_SKILL_REVIEW,
+        NetworkMethod::Put,
+        WEBUI_V2_PATTERN_REQUEST_TOOL_SKILL_REVIEW,
+        mutation_policy(
+            body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn record_recipe_outcome_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_RECORD_RECIPE_OUTCOME,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_RECORD_RECIPE_OUTCOME,
+        mutation_policy(
+            body_limit_kib(4),
             mutation_rate_limit(),
             AuditTraceClass::UserAction,
             AllowedEffectPath::ProductWorkflow,

@@ -72,8 +72,8 @@ use brassclaw_turns::{
         LoopHostMilestoneSink, LoopInputAckToken, LoopInputBatch, LoopInputCursor, LoopInputPort,
         LoopModelBudgetAccountant, LoopModelPolicyGuard, LoopModelPort, LoopModelRequest,
         LoopModelResponse, LoopProgressEvent, LoopProgressPort, LoopPromptBundle,
-        LoopPromptBundleAuthority, LoopPromptBundleRequest, LoopPromptPort, LoopRunContext,
-        LoopRunInfoPort, LoopTranscriptPort, NoOpBudgetAccountant, NoOpPolicyGuard,
+        LoopPromptBundleAuthority, LoopPromptBundleRequest, LoopPromptPort, LoopRecipePort,
+        LoopRunContext, LoopRunInfoPort, LoopTranscriptPort, NoOpBudgetAccountant, NoOpPolicyGuard,
         ProviderToolCall, ProviderToolDefinition, RunScopedHookMilestoneSink,
         StageCheckpointPayloadRequest, SystemInferencePort, UpdateAssistantDraft,
         VisibleCapabilityRequest, VisibleCapabilitySurface,
@@ -955,6 +955,7 @@ where
     profiled_capabilities: Option<ProfiledCapabilityHostRuntime>,
     subagent_prompt_composer: Option<SubagentPromptComposer>,
     driver_requirements: HashMap<LoopDriverRegistryKey, DriverRequirements>,
+    recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>>,
 }
 
 /// Per-host-build callback that produces a fresh hook-gate factory bound
@@ -1019,6 +1020,7 @@ where
             profiled_capabilities: None,
             subagent_prompt_composer: None,
             driver_requirements: HashMap::new(),
+            recipe_lookup: None,
         }
     }
 
@@ -1318,6 +1320,19 @@ where
 
     pub fn with_model_policy_guard(mut self, policy_guard: Arc<dyn LoopModelPolicyGuard>) -> Self {
         self.model_policy_guard = policy_guard;
+        self
+    }
+
+    /// Install the Recipe-Skill-Tool lookup library (Phase 7). When set,
+    /// the executor consults the library before invoking the LLM: high-tier
+    /// matches short-circuit the request and the agent performs the action
+    /// autonomously. When unset, the executor falls through to the LLM
+    /// (Tier 2) — pre-Phase-7 behavior.
+    pub fn with_recipe_lookup(
+        mut self,
+        lookup: Arc<dyn brassclaw_turns::run_profile::RecipeLookup>,
+    ) -> Self {
+        self.recipe_lookup = Some(lookup);
         self
     }
 
@@ -1650,6 +1665,7 @@ where
             progress,
             compaction,
             cancellation,
+            recipe_lookup: self.recipe_lookup.clone(),
             _event_subscription: event_subscription,
         })
     }
@@ -1717,6 +1733,7 @@ pub struct RebornLoopDriverHost {
     progress: Arc<dyn LoopProgressPort>,
     compaction: Arc<dyn LoopCompactionPort>,
     cancellation: Arc<dyn LoopCancellationPort>,
+    recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>>,
     _event_subscription: Option<EventTriggeredHookSubscriptionHandle>,
 }
 
@@ -1746,6 +1763,39 @@ impl LoopCancellationPort for RebornLoopDriverHost {
 
     async fn cancellation_requested(&self) -> LoopCancellationSignal {
         self.cancellation.cancellation_requested().await
+    }
+}
+
+impl LoopRecipePort for RebornLoopDriverHost {
+    fn recipe_lookup(&self) -> Option<&dyn brassclaw_turns::run_profile::RecipeLookup> {
+        // Recipe-Skill-Tool (Phase 7) — opt-in. The composition layer wires
+        // this through `RebornLoopDriverHostFactory::with_recipe_lookup`,
+        // keeping the agent-loop crate free of brassclaw_engine deps. When
+        // not wired, the executor falls through to the LLM (Tier 2).
+        self.recipe_lookup.as_deref()
+    }
+}
+
+#[async_trait]
+impl brassclaw_turns::run_profile::LoopInterceptorPort for RebornLoopDriverHost {
+    async fn on_prompt_assembled(
+        &self,
+        _run_id: &str,
+        _iteration: u32,
+        _prompt_snapshot: serde_json::Value,
+    ) -> Option<String> {
+        // Phase 8: wire to the live InterceptorService once it is
+        // allocated in RebornLoopDriverHostFactory.
+        None
+    }
+
+    async fn on_kohai_response(
+        &self,
+        _packet_id: &str,
+        _response_text: &str,
+        _usage_json: Option<serde_json::Value>,
+    ) {
+        // Phase 8: forward to the live InterceptorService.
     }
 }
 

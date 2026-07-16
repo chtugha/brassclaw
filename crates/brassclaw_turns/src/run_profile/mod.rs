@@ -20,6 +20,7 @@ mod model_work;
 mod policy;
 mod prompt;
 mod prompt_text;
+mod recipe_lookup;
 mod refs;
 mod resolver;
 mod skill_context;
@@ -56,13 +57,14 @@ pub use host::{
     LoopInputBatch, LoopInputCursor, LoopInputCursorToken, LoopInputPort, LoopInterruptKind,
     LoopModelCapabilityView, LoopModelMessage, LoopModelPort, LoopModelRequest, LoopModelResponse,
     LoopModelRouteSnapshot, LoopModelUsage, LoopProcessRef, LoopProgressEvent, LoopProgressPort,
-    LoopPromptBundle, LoopPromptBundleAuthority, LoopPromptBundleGrant, LoopPromptBundleRef,
-    LoopPromptBundleRequest, LoopPromptPort, LoopRunContext, LoopRunInfoPort, LoopSafeSummary,
-    LoopTranscriptPort, ModelStreamChunk, ParentLoopOutput, ProcessHandleSummary, PromptMode,
-    ProviderToolCall, ProviderToolCallCapabilityIds, ProviderToolCallReference,
-    ProviderToolCallReplay, ProviderToolDefinition, StageCheckpointPayloadRequest,
-    UpdateAssistantDraft, VisibleCapabilityRequest, VisibleCapabilitySurface,
-    sanitize_model_visible_text, validate_model_route_component_value,
+    LoopInterceptorPort, LoopPromptBundle, LoopPromptBundleAuthority, LoopPromptBundleGrant,
+    LoopPromptBundleRef, LoopPromptBundleRequest, LoopPromptPort, LoopRecipePort, LoopRunContext,
+    LoopRunInfoPort, LoopSafeSummary, LoopTranscriptPort, ModelStreamChunk, NoInterceptor,
+    NoRecipeLookup, ParentLoopOutput,
+    ProcessHandleSummary, PromptMode, ProviderToolCall, ProviderToolCallCapabilityIds,
+    ProviderToolCallReference, ProviderToolCallReplay, ProviderToolDefinition,
+    StageCheckpointPayloadRequest, UpdateAssistantDraft, VisibleCapabilityRequest,
+    VisibleCapabilitySurface, sanitize_model_visible_text, validate_model_route_component_value,
 };
 pub use instruction_bundle::{
     InMemoryInstructionMaterializationStore, InstructionBundle, InstructionBundleBuilder,
@@ -98,6 +100,9 @@ pub use policy::{
     SteeringPolicy,
 };
 pub use prompt::HostManagedLoopPromptPort;
+pub use recipe_lookup::{
+    RecipeLookup, RecipeLookupError, RecipeMatchDto, RecipeStepDto, ToolSkillMatchDto,
+};
 pub use refs::{
     CapabilitySurfaceProfileId, CheckpointSchemaId, ConcurrencyClass, ContextProfileId,
     LoopDriverId, ModelProfileId, ResourceBudgetTier, RunClassId, RunProfileFingerprint,

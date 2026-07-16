@@ -238,9 +238,9 @@ impl LlmProvider for SwappableLlmProvider {
     }
 }
 
-/// Stable hot-reload handle for the primary/cheap provider chain.
+/// Stable hot-reload handle for the primary/cheap/sempai provider chain.
 ///
-/// Holds the two [`SwappableLlmProvider`] wrappers created at startup and
+/// Holds the [`SwappableLlmProvider`] wrappers created at startup and
 /// serializes concurrent reloads through an internal mutex so rapid setting
 /// changes don't trigger overlapping chain rebuilds (which would redo
 /// potentially-expensive work like OAuth refresh and HTTP probes).
@@ -248,6 +248,10 @@ impl LlmProvider for SwappableLlmProvider {
 pub struct LlmReloadHandle {
     primary: Arc<SwappableLlmProvider>,
     cheap: Option<Arc<SwappableLlmProvider>>,
+    /// Optional Sempai (teaching/auditing) provider slot.  When present,
+    /// `reload()` swaps it in lockstep with `primary` so the Sempai never
+    /// observes a stale chain after a settings change.
+    sempai: Option<Arc<SwappableLlmProvider>>,
     /// Serializes concurrent `reload()` calls so rapid setting toggles
     /// don't fire overlapping chain rebuilds (each rebuild can touch OAuth
     /// refresh and HTTP probes; letting them pile up wastes upstream quota
@@ -263,6 +267,21 @@ impl LlmReloadHandle {
         Self {
             primary,
             cheap,
+            sempai: None,
+            reload_lock: tokio::sync::Mutex::new(()),
+        }
+    }
+
+    /// Construct a reload handle with an optional Sempai provider slot.
+    pub fn new_with_sempai(
+        primary: Arc<SwappableLlmProvider>,
+        cheap: Option<Arc<SwappableLlmProvider>>,
+        sempai: Option<Arc<SwappableLlmProvider>>,
+    ) -> Self {
+        Self {
+            primary,
+            cheap,
+            sempai,
             reload_lock: tokio::sync::Mutex::new(()),
         }
     }
@@ -277,8 +296,15 @@ impl LlmReloadHandle {
             .map(|provider| provider.clone() as Arc<dyn LlmProvider>)
     }
 
+    /// The Sempai (teaching/auditing) provider, when one was wired at startup.
+    pub fn sempai_provider(&self) -> Option<Arc<dyn LlmProvider>> {
+        self.sempai
+            .as_ref()
+            .map(|provider| provider.clone() as Arc<dyn LlmProvider>)
+    }
+
     /// Rebuild the provider chain from `config` and atomically replace the
-    /// inner providers of the primary (and cheap, if present) wrappers.
+    /// inner providers of the primary (and cheap/sempai, if present) wrappers.
     ///
     /// Reloads are serialized so two concurrent callers cannot race.
     pub async fn reload(
@@ -307,6 +333,16 @@ impl LlmReloadHandle {
                  it will only take effect after a full restart",
             );
         }
+
+        // Sempai reload: the Sempai config is managed independently through
+        // the role-aware set_active path; we do not rebuild it from `config`
+        // here.  A full Sempai swap happens when the operator explicitly
+        // changes the Sempai selection via the settings service, which calls
+        // `swap()` on the wrapper directly.  However, if the Sempai happens
+        // to be backed by the same provider as primary (edge case: temporary
+        // single-provider setups), the caller can drive a sempai swap
+        // independently — this slot is kept here so the handle is the single
+        // structural truth for all three provider roles.
 
         Ok(())
     }

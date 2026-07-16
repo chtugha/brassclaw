@@ -15,11 +15,6 @@ Start with these deeper docs as needed:
 - `crates/brassclaw_llm/CLAUDE.md`
 - `crates/brassclaw_safety/CLAUDE.md`
 - `crates/brassclaw_reborn_webui_ingress/CLAUDE.md`
-- `src/agent/CLAUDE.md`
-- `src/channels/web/CLAUDE.md`
-- `src/db/CLAUDE.md`
-- `src/tools/README.md`
-- `src/workspace/README.md`
 - `tests/e2e/CLAUDE.md`
 
 ## Architecture Mental Model
@@ -30,7 +25,7 @@ BrassClaw Reborn is organized in three conceptual layers:
 - **Loops** own agent behavior. They manage planning, tool dispatch, turn sequencing, approval gates, checkpointing, retries, and completion. A loop is the unit of agentic execution. Product code must not implement a second loop or bypass the loop runner.
 - **Kernel** owns authority. It controls trust decisions, secret resolution, safety policy enforcement, sandboxing, capability grants, and session identity. Kernel boundaries are not negotiable from product or loop code.
 
-The legacy v1 runtime in `src/` follows a different model (Channel/Agent/AppBuilder). Do not mix the two models. New Reborn work belongs in `crates/`.
+New Reborn work belongs in `crates/`.
 
 ## Where to Work
 
@@ -42,18 +37,15 @@ The legacy v1 runtime in `src/` follows a different model (Channel/Agent/AppBuil
 | Config resolution and profiles | `crates/brassclaw_reborn_config/` |
 | Agent loop driver | `crates/brassclaw_agent_loop/` |
 | LLM providers and routing | `crates/brassclaw_llm/` |
-| Skills system | `crates/brassclaw_skills/`, `skills/` |
+| Skills system | `crates/brassclaw_skills/` |
 | Security, safety, prompt injection | `crates/brassclaw_safety/` |
 | WebUI v2 server (React SPA) | `crates/brassclaw_webui_v2/`, `crates/brassclaw_webui_v2_static/` |
 | WebUI ingress / gateway adapter | `crates/brassclaw_reborn_webui_ingress/` |
 | Extensions lifecycle | `crates/brassclaw_extensions/` |
 | Host runtime shell access | `crates/brassclaw_host_runtime/` (hosts the in-kernel script lane via `services/script_runtime`) |
 | Embeddings | `crates/brassclaw_embeddings/` |
-| Dual-backend persistence | `src/db/` |
-| Legacy v1 agent runtime | `src/agent/` — do not modify unless the task explicitly targets v1 |
-| Legacy v1 web gateway | `src/channels/web/` — do not modify unless the task explicitly targets v1 |
 
-When a task touches only `crates/` and makes no reference to v1 behavior, do not open or edit files under `src/`.
+When a task touches only `crates/` there is no longer a v1 `src/` tree — all v1 code was removed in Phase 6.
 
 ## Subagent and Loop Rules
 

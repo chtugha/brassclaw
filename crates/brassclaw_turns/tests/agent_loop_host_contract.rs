@@ -35,7 +35,8 @@ use brassclaw_turns::{
         LoopModelGatewayError, LoopModelGatewayRequest, LoopModelMessage, LoopModelPolicyGuard,
         LoopModelPort, LoopModelRequest, LoopModelResponse, LoopProgressEvent, LoopProgressPort,
         LoopPromptBundle, LoopPromptBundleAuthority, LoopPromptBundleRef, LoopPromptBundleRequest,
-        LoopPromptPort, LoopRunContext, LoopRunInfoPort, LoopSafeSummary, LoopTranscriptPort,
+        LoopInterceptorPort, LoopPromptPort, LoopRecipePort, LoopRunContext, LoopRunInfoPort,
+        LoopSafeSummary, LoopTranscriptPort, RecipeLookup,
         ModelWorkOutcome, ModelWorkRequest, ParentLoopOutput, PromptMode,
         PromptSkillContextMetadata, VisibleCapabilityRequest, VisibleCapabilitySurface,
     },
@@ -2700,6 +2701,32 @@ impl LoopCancellationPort for RecordingAgentLoopHost {
 
     async fn cancellation_requested(&self) -> LoopCancellationSignal {
         std::future::pending().await
+    }
+}
+
+impl LoopRecipePort for RecordingAgentLoopHost {
+    fn recipe_lookup(&self) -> Option<&dyn RecipeLookup> {
+        None
+    }
+}
+
+#[async_trait::async_trait]
+impl LoopInterceptorPort for RecordingAgentLoopHost {
+    async fn on_prompt_assembled(
+        &self,
+        _run_id: &str,
+        _iteration: u32,
+        _prompt_snapshot: serde_json::Value,
+    ) -> Option<String> {
+        None
+    }
+
+    async fn on_kohai_response(
+        &self,
+        _packet_id: &str,
+        _response_text: &str,
+        _usage_json: Option<serde_json::Value>,
+    ) {
     }
 }
 

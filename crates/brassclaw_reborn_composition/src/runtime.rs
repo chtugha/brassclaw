@@ -2169,6 +2169,15 @@ pub async fn build_reborn_runtime(
         })?
     };
 
+    #[cfg(feature = "libsql")]
+    let recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>> = {
+        let store = Arc::clone(&local_runtime.memory_doc_store)
+            as Arc<dyn brassclaw_engine::traits::store::Store>;
+        Some(Arc::new(crate::recipe_library::RecipeLibrary::new(store)))
+    };
+    #[cfg(not(feature = "libsql"))]
+    let recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>> = None;
+
     let composition = build_default_planned_runtime(DefaultPlannedRuntimeParts {
         turn_state: Arc::clone(&turn_state_store),
         thread_service: Arc::clone(&thread_service),
@@ -2228,6 +2237,7 @@ pub async fn build_reborn_runtime(
         hook_security_audit_sink: Some(Arc::new(brassclaw_events::TracingSecurityAuditSink)),
         turn_event_sink: None,
         hook_dispatcher_builder_factory,
+        recipe_lookup,
     })?;
     let default_resolved_run_profile = composition
         .run_profile_resolver
@@ -2740,11 +2750,24 @@ struct LlmGatewayBundle {
 /// The pieces the LLM-config settings service needs to hot-swap the running
 /// provider: the reload handle wrapping the live `SwappableLlmProvider`, and
 /// the session manager to rebuild the chain against.
+///
+/// The `sempai_swappable` field holds the live [`SwappableLlmProvider`] for the
+/// Sempai (teaching/auditing) role.  It is allocated at startup so the settings
+/// service can call `swap()` on it whenever the operator changes the Sempai
+/// selection, without requiring a restart or a gateway rebuild.
 #[cfg(feature = "root-llm-provider")]
 pub(crate) struct RebornLlmReloadParts {
     pub(crate) reload_handle: Arc<brassclaw_llm::LlmReloadHandle>,
     pub(crate) session: Arc<brassclaw_llm::SessionManager>,
     pub(crate) nearai_login_states: Arc<crate::llm_config_service::NearAiLoginStateStore>,
+    /// Live hot-swap wrapper for the Sempai provider.  `None` at cold boot
+    /// until a Sempai selection is written through the settings service, which
+    /// allocates the wrapper and wires it here on first use.
+    ///
+    /// Phase 8 wires this into the live `InterceptorService` inside
+    /// `RebornLoopDriverHostFactory`; until then it is scaffolding.
+    #[allow(dead_code)]
+    pub(crate) sempai_swappable: Option<Arc<brassclaw_llm::SwappableLlmProvider>>,
 }
 
 #[cfg(feature = "root-llm-provider")]
@@ -2817,6 +2840,7 @@ fn wrap_swappable_gateway(
             reload_handle,
             session,
             nearai_login_states: Arc::new(crate::llm_config_service::NearAiLoginStateStore::new()),
+            sempai_swappable: None,
         },
     })
 }

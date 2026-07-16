@@ -9,10 +9,11 @@ use crate::{family::LoopFamily, state::LoopExecutionState, strategies::TurnEndKi
 use super::{
     AgentLoopExecutorError, AssistantReplyInput, BudgetInput, BudgetStep, CancelCheck,
     CapabilityInput, CheckpointInput, CheckpointKind, CheckpointStage, DefaultExecutorPipeline,
-    DrainInput, ExecutorStage, ExitInput, InputStep, ModelInput, ModelStep, PendingInputAck,
-    PromptInput, PromptStep, ReplyAdmissionInput, ReplyAdmissionStep, StageContext, StopInput,
-    StopObservationInput, StopObservationStep, StopStep, TurnCompletedStep,
-    UserFacingInputDrainMode,
+    DrainInput, ExecutorStage, ExitInput, InputStep, InterceptorPacketId, InterceptorPromptInput,
+    ModelInput, ModelStep, PendingInputAck, PromptInput, PromptStep, RecipeInput, RecipeStep,
+    ReplyAdmissionInput, ReplyAdmissionStep, StageContext, StopInput, StopObservationInput,
+    StopObservationStep, StopStep, TurnCompletedStep, UserFacingInputDrainMode,
+    notify_interceptor_kohai_response,
 };
 
 impl DefaultExecutorPipeline {
@@ -85,6 +86,19 @@ impl DefaultExecutorPipeline {
                 InputStep::Exit(exit) => return Ok(exit),
             }
 
+            // Recipe-Skill-Tool (Phase 7) — observe the pending request
+            // before allocating tokens to a full prompt assembly. The
+            // current cut always returns `Continue`; Tier 0 / Tier 1
+            // selection arrives once the composition-side `RecipeLibrary`
+            // adapter is wired.
+            state = match self
+                .recipe
+                .process(ctx, RecipeInput { state })
+                .await?
+            {
+                RecipeStep::Continue { state: next } => *next,
+            };
+
             let prompt = match self
                 .prompt
                 .process(
@@ -99,9 +113,26 @@ impl DefaultExecutorPipeline {
                 PromptStep::Prepared(prompt) => *prompt,
                 PromptStep::Exit(exit) => return Ok(exit),
             };
-            // Cache the message count before `prompt.messages` is moved into `ModelInput`.
+            // Cache the message count before `prompt.messages` is moved.
             let prompt_message_count = prompt.messages.len();
-            state = prompt.state;
+
+            // Interceptor — capture the assembled prompt for Sempai telemetry.
+            // In routing state this is a complete no-op (host returns None).
+            let interceptor_out = self
+                .interceptor
+                .process(
+                    ctx,
+                    InterceptorPromptInput {
+                        state: prompt.state,
+                        messages: prompt.messages,
+                        capability_surface_version: prompt.surface.version.as_str().to_string(),
+                        visible_capability_count: prompt.surface.descriptors.len(),
+                    },
+                )
+                .await?;
+            let interceptor_packet_id = interceptor_out.packet_id;
+            state = interceptor_out.state;
+            let intercepted_messages = interceptor_out.messages;
             pending_input_ack = prompt.pending_input_ack;
 
             state = CheckpointStage
@@ -139,7 +170,7 @@ impl DefaultExecutorPipeline {
                     ctx,
                     ModelInput {
                         state,
-                        messages: prompt.messages,
+                        messages: intercepted_messages,
                         surface_version: prompt.surface.version.clone(),
                         capability_view: prompt.capability_view,
                     },
@@ -151,11 +182,32 @@ impl DefaultExecutorPipeline {
                     response
                 }
                 ModelStep::RetryIteration(next) => {
+                    // On retry we have no response — reset the packet id so the
+                    // interceptor doesn't attempt to close a packet that was
+                    // never opened for this iteration.
+                    let _ = InterceptorPacketId::default();
                     state = *next;
                     continue;
                 }
                 ModelStep::Exit(exit) => return Ok(exit),
             };
+
+            // Interceptor — close the ForensicPacket with the Kohai response.
+            // In routing state (no packet_id) this is a no-op.
+            {
+                let response_text = model_response
+                    .chunks
+                    .iter()
+                    .map(|c| c.safe_text_delta.as_str())
+                    .collect::<String>();
+                notify_interceptor_kohai_response(
+                    ctx,
+                    &interceptor_packet_id,
+                    &response_text,
+                    model_response.usage,
+                )
+                .await;
+            }
 
             // Capture provider-reported usage before the `match` consumes
             // `model_response`. Only assistant-reply turns feed the

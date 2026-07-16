@@ -14,6 +14,7 @@ pub mod message;
 pub mod mission;
 pub mod project;
 pub mod provenance;
+pub mod recipe;
 pub mod step;
 pub mod thread;
 

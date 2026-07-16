@@ -355,7 +355,7 @@ mod tests {
             LoopDriverId, LoopInputAckToken, LoopInputBatch, LoopInputCursor, LoopInputPort,
             LoopModelPort, LoopModelRequest, LoopModelResponse, LoopProgressEvent,
             LoopProgressPort, LoopPromptBundle, LoopPromptBundleRequest, LoopPromptPort,
-            LoopRunContext, LoopRunInfoPort, LoopSafeSummary, LoopTranscriptPort,
+            LoopRecipePort, LoopRunContext, LoopRunInfoPort, LoopSafeSummary, LoopTranscriptPort,
             StageCheckpointPayloadRequest, UpdateAssistantDraft, VisibleCapabilityRequest,
             VisibleCapabilitySurface,
         },
@@ -807,6 +807,33 @@ mod tests {
 
         async fn cancellation_requested(&self) -> LoopCancellationSignal {
             self.inner.cancellation_requested().await
+        }
+    }
+
+    impl LoopRecipePort for ResumePayloadHost {
+        fn recipe_lookup(&self) -> Option<&dyn brassclaw_turns::run_profile::RecipeLookup> {
+            self.inner.recipe_lookup()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl brassclaw_turns::run_profile::LoopInterceptorPort for ResumePayloadHost {
+        async fn on_prompt_assembled(
+            &self,
+            run_id: &str,
+            iteration: u32,
+            prompt_snapshot: serde_json::Value,
+        ) -> Option<String> {
+            self.inner.on_prompt_assembled(run_id, iteration, prompt_snapshot).await
+        }
+
+        async fn on_kohai_response(
+            &self,
+            packet_id: &str,
+            response_text: &str,
+            usage_json: Option<serde_json::Value>,
+        ) {
+            self.inner.on_kohai_response(packet_id, response_text, usage_json).await
         }
     }
 

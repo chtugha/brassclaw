@@ -775,6 +775,8 @@ fn parse_doc_type(raw: &str) -> Result<DocType, brassclaw_engine::types::error::
         "Note" => Ok(DocType::Note),
         "Skill" => Ok(DocType::Skill),
         "Plan" => Ok(DocType::Plan),
+        "Recipe" => Ok(DocType::Recipe),
+        "ToolSkill" => Ok(DocType::ToolSkill),
         other => Err(brassclaw_engine::types::error::EngineError::Store {
             reason: format!("memory_docs.doc_type '{other}' is not recognised"),
         }),

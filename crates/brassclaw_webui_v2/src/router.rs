@@ -16,17 +16,24 @@ use crate::descriptors::{
     WEBUI_V2_PATTERN_ACTIVATE_EXTENSION, WEBUI_V2_PATTERN_CANCEL_RUN,
     WEBUI_V2_PATTERN_COMPLETE_NEARAI_WALLET_LOGIN, WEBUI_V2_PATTERN_CREATE_THREAD,
     WEBUI_V2_PATTERN_DELETE_LLM_PROVIDER, WEBUI_V2_PATTERN_DELETE_THREAD,
-    WEBUI_V2_PATTERN_GET_LLM_CONFIG, WEBUI_V2_PATTERN_GET_TIMELINE,
+    WEBUI_V2_PATTERN_GET_LLM_CONFIG, WEBUI_V2_PATTERN_GET_RECIPE,
+    WEBUI_V2_PATTERN_GET_TIMELINE, WEBUI_V2_PATTERN_GET_TOOL_SKILL,
     WEBUI_V2_PATTERN_INSTALL_EXTENSION, WEBUI_V2_PATTERN_INSTALL_SKILL,
     WEBUI_V2_PATTERN_LIST_AUTOMATIONS, WEBUI_V2_PATTERN_LIST_CONNECTABLE_CHANNELS,
     WEBUI_V2_PATTERN_LIST_EXTENSION_REGISTRY, WEBUI_V2_PATTERN_LIST_EXTENSIONS,
-    WEBUI_V2_PATTERN_LIST_LLM_MODELS, WEBUI_V2_PATTERN_LIST_SKILLS, WEBUI_V2_PATTERN_LIST_TOOLS,
+    WEBUI_V2_PATTERN_LIST_LLM_MODELS, WEBUI_V2_PATTERN_LIST_RECIPES,
+    WEBUI_V2_PATTERN_LIST_SKILLS, WEBUI_V2_PATTERN_LIST_TOOLS,
+    WEBUI_V2_PATTERN_LIST_TOOL_SKILLS, WEBUI_V2_PATTERN_RECORD_RECIPE_OUTCOME,
+    WEBUI_V2_PATTERN_REJECT_RECIPE, WEBUI_V2_PATTERN_REJECT_TOOL_SKILL,
     WEBUI_V2_PATTERN_REMOVE_EXTENSION, WEBUI_V2_PATTERN_REMOVE_SKILL,
-    WEBUI_V2_PATTERN_RESOLVE_GATE, WEBUI_V2_PATTERN_SEND_MESSAGE, WEBUI_V2_PATTERN_SET_ACTIVE_LLM,
-    WEBUI_V2_PATTERN_SETUP_EXTENSION, WEBUI_V2_PATTERN_START_CODEX_LOGIN,
-    WEBUI_V2_PATTERN_START_NEARAI_LOGIN, WEBUI_V2_PATTERN_STREAM_EVENTS,
-    WEBUI_V2_PATTERN_STREAM_EVENTS_WS, WEBUI_V2_PATTERN_TEST_LLM_CONNECTION,
-    WEBUI_V2_PATTERN_UPDATE_TOOL_PERMISSION,
+    WEBUI_V2_PATTERN_REQUEST_RECIPE_REVIEW, WEBUI_V2_PATTERN_REQUEST_TOOL_SKILL_REVIEW,
+    WEBUI_V2_PATTERN_RESOLVE_GATE, WEBUI_V2_PATTERN_SEND_MESSAGE,
+    WEBUI_V2_PATTERN_SET_ACTIVE_LLM, WEBUI_V2_PATTERN_SETUP_EXTENSION,
+    WEBUI_V2_PATTERN_START_CODEX_LOGIN, WEBUI_V2_PATTERN_START_NEARAI_LOGIN,
+    WEBUI_V2_PATTERN_STREAM_EVENTS, WEBUI_V2_PATTERN_STREAM_EVENTS_WS,
+    WEBUI_V2_PATTERN_TEST_LLM_CONNECTION, WEBUI_V2_PATTERN_UPDATE_TOOL_PERMISSION,
+    WEBUI_V2_PATTERN_VALIDATE_RECIPE, WEBUI_V2_PATTERN_VALIDATE_TOOL_SKILL,
+    WEBUI_V2_PATTERN_VALIDATION_QUEUE, WEBUI_V2_PATTERN_VALIDATION_QUEUE_COUNT,
 };
 use crate::handlers;
 use crate::sse_capacity::{DEFAULT_SSE_MAX_CONCURRENT_PER_CALLER, SseCapacity};
@@ -168,6 +175,58 @@ pub fn webui_v2_router_with_options(state: WebUiV2State, options: WebUiV2RouteOp
         .route(
             WEBUI_V2_PATTERN_REMOVE_SKILL,
             delete(handlers::remove_skill),
+        )
+        // Phase 7 — Recipe-Skill-Tool library surface. The listing
+        // endpoints catalogue what the agent has already learned;
+        // per-id GETs back the Recipe Manager detail pane; the
+        // validation queue + status transition routes drive the
+        // post-extraction review tab; outcomes feed the engine
+        // `MetricRecorder` for Wilson + tier math.
+        .route(WEBUI_V2_PATTERN_LIST_RECIPES, get(handlers::list_recipes))
+        .route(
+            WEBUI_V2_PATTERN_LIST_TOOL_SKILLS,
+            get(handlers::list_tool_skills),
+        )
+        .route(WEBUI_V2_PATTERN_GET_RECIPE, get(handlers::get_recipe))
+        .route(
+            WEBUI_V2_PATTERN_GET_TOOL_SKILL,
+            get(handlers::get_tool_skill),
+        )
+        .route(
+            WEBUI_V2_PATTERN_VALIDATION_QUEUE,
+            get(handlers::list_validation_queue),
+        )
+        .route(
+            WEBUI_V2_PATTERN_VALIDATION_QUEUE_COUNT,
+            get(handlers::count_validation_queue),
+        )
+        .route(
+            WEBUI_V2_PATTERN_VALIDATE_RECIPE,
+            put(handlers::validate_recipe),
+        )
+        .route(
+            WEBUI_V2_PATTERN_REJECT_RECIPE,
+            put(handlers::reject_recipe),
+        )
+        .route(
+            WEBUI_V2_PATTERN_REQUEST_RECIPE_REVIEW,
+            put(handlers::request_recipe_review),
+        )
+        .route(
+            WEBUI_V2_PATTERN_VALIDATE_TOOL_SKILL,
+            put(handlers::validate_tool_skill),
+        )
+        .route(
+            WEBUI_V2_PATTERN_REJECT_TOOL_SKILL,
+            put(handlers::reject_tool_skill),
+        )
+        .route(
+            WEBUI_V2_PATTERN_REQUEST_TOOL_SKILL_REVIEW,
+            put(handlers::request_tool_skill_review),
+        )
+        .route(
+            WEBUI_V2_PATTERN_RECORD_RECIPE_OUTCOME,
+            post(handlers::record_recipe_outcome),
         )
         // Safety configuration endpoints
         .route(

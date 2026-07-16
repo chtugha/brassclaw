@@ -104,7 +104,8 @@ struct StubServices {
     get_llm_config_calls: Mutex<usize>,
     upsert_llm_provider_calls: Mutex<Vec<String>>,
     delete_llm_provider_calls: Mutex<Vec<String>>,
-    set_active_llm_calls: Mutex<Vec<(String, Option<String>)>>,
+    #[allow(clippy::type_complexity)]
+    set_active_llm_calls: Mutex<Vec<(String, Option<String>, Option<brassclaw_product_workflow::ProviderRole>)>>,
     test_llm_connection_calls: Mutex<Vec<String>>,
     list_llm_models_calls: Mutex<Vec<String>>,
     next_create_thread_error: Mutex<Option<RebornServicesError>>,
@@ -546,7 +547,7 @@ impl RebornServicesApi for StubServices {
         self.set_active_llm_calls
             .lock()
             .expect("lock")
-            .push((request.provider_id.clone(), request.model.clone()));
+            .push((request.provider_id.clone(), request.model.clone(), request.role));
         Ok(llm_snapshot(&request.provider_id))
     }
 
@@ -1746,7 +1747,7 @@ async fn llm_provider_routes_dispatch_to_facade_methods() {
             .lock()
             .expect("lock")
             .as_slice(),
-        [("openai".to_string(), Some("gpt-5".to_string()))]
+        [("openai".to_string(), Some("gpt-5".to_string()), None)]
     );
     assert_eq!(
         services

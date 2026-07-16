@@ -86,6 +86,9 @@ mod provider_admin_product_command;
 #[cfg(feature = "root-llm-provider")]
 mod provider_repo;
 mod readiness;
+mod recipe_library;
+#[cfg(feature = "libsql")]
+mod recipe_store;
 #[cfg(feature = "libsql")]
 mod reduction_rules_store;
 mod runtime;

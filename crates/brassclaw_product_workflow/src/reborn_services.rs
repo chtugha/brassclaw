@@ -905,6 +905,199 @@ pub trait RebornServicesApi: Send + Sync {
             false,
         ))
     }
+
+    // ── Recipe-Skill-Tool library ────────────────────────────
+    //
+    // Phase 7 surface. Defaults return `501` so facades that don't
+    // wire a [`RecipeStore`] inherit a safe surface; the default
+    // `RebornServices` overrides these via `with_recipe_store`.
+
+    /// List the caller's Recipe library.
+    async fn list_recipes(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+    ) -> Result<crate::recipes::RecipeListResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// List the caller's ToolSkill library.
+    async fn list_tool_skills(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+    ) -> Result<crate::recipes::ToolSkillListResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Fetch one Recipe by id (full payload).
+    async fn get_recipe(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _recipe_id: &str,
+    ) -> Result<crate::recipes::RecipeDetail, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Fetch one ToolSkill by id (full payload).
+    async fn get_tool_skill(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _skill_id: &str,
+    ) -> Result<crate::recipes::ToolSkillDetail, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// List validation-queue rows (post-extraction review).
+    async fn list_validation_queue(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+    ) -> Result<crate::recipes::ValidationQueueListResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Count validation-queue rows by `validation_status`.
+    async fn count_validation_queue(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _status: &str,
+    ) -> Result<crate::recipes::ValidationQueueCountResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Promote a Recipe to `validated`.
+    async fn validate_recipe(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _recipe_id: &str,
+        _request: crate::recipes::UpdateValidationStatusRequest,
+    ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Reject a Recipe (soft delete → moves to garbage after 30 days).
+    async fn reject_recipe(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _recipe_id: &str,
+        _request: crate::recipes::UpdateValidationStatusRequest,
+    ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Send a Recipe back into the review queue for an LLM
+    /// review-and-fix cycle. Requires `feedback` in the request body
+    /// so the review mission has context to work with.
+    async fn request_recipe_review(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _recipe_id: &str,
+        _request: crate::recipes::UpdateValidationStatusRequest,
+    ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Promote a ToolSkill to `validated`.
+    async fn validate_tool_skill(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _skill_id: &str,
+        _request: crate::recipes::UpdateValidationStatusRequest,
+    ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    async fn reject_tool_skill(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _skill_id: &str,
+        _request: crate::recipes::UpdateValidationStatusRequest,
+    ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    async fn request_tool_skill_review(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _skill_id: &str,
+        _request: crate::recipes::UpdateValidationStatusRequest,
+    ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Record one execution outcome (success/failure) for a Recipe or
+    /// ToolSkill. Drives the Wilson/tier counters via the engine
+    /// `MetricRecorder`.
+    async fn record_recipe_outcome(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _request: crate::recipes::RecordOutcomeRequest,
+    ) -> Result<crate::recipes::RecordOutcomeResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
 }
 
 /// Default facade implementation composed at the WebUI boundary.
@@ -950,6 +1143,10 @@ pub struct RebornServices {
     live_total_input_setter: Option<Arc<dyn Fn(Option<usize>) + Send + Sync>>,
     /// Live-setter for inline-control-tokens.
     live_inline_control_setter: Option<Arc<dyn Fn(Option<usize>) + Send + Sync>>,
+    /// Recipe-Skill-Tool library port backing `/recipes/*` and
+    /// `/tool-skills/*` plus the validation queue. When unwired,
+    /// the trait defaults above return `501`.
+    recipe_store: Option<Arc<dyn crate::recipes::RecipeStore>>,
 }
 
 impl RebornServices {
@@ -987,6 +1184,7 @@ impl RebornServices {
             live_max_output_setter: None,
             live_total_input_setter: None,
             live_inline_control_setter: None,
+            recipe_store: None,
         }
     }
 
@@ -1191,6 +1389,20 @@ impl RebornServices {
         invalidator: CacheInvalidatorFn,
     ) -> Self {
         self.reduction_rules_cache_invalidator = Some(invalidator);
+        self
+    }
+
+    /// Wire the Recipe-Skill-Tool persistence port. Composition
+    /// builds this from the libSQL `MemoryDoc` store; the trait
+    /// methods (list/validate/reject/record-outcome) all default to
+    /// `501` when this setter has not been called, so misconfigured
+    /// deployments fail loud rather than silently serving the empty
+    /// stub responses.
+    pub fn with_recipe_store(
+        mut self,
+        store: Arc<dyn crate::recipes::RecipeStore>,
+    ) -> Self {
+        self.recipe_store = Some(store);
         self
     }
 
@@ -2704,6 +2916,318 @@ impl RebornServicesApi for RebornServices {
             description: request.description,
         })
     }
+
+    // ── Recipe-Skill-Tool library methods ────────────────────────
+    //
+    // Each method checks `recipe_store` first; with the setter
+    // unwired, the trait defaults raise `501` so callers see the same
+    // shape regardless of whether composition wired the
+    // [libsql] MemoryDocStore. Validation status transitions route
+    // through the same store; on `request_*_review` we accept the
+    // feedback string the operator pastes so the review mission has
+    // context for the LLM fix.
+
+    async fn list_recipes(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+    ) -> Result<crate::recipes::RecipeListResponse, RebornServicesError> {
+        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let user_id = caller.user_id.to_string();
+        let recipes = store
+            .list_recipes(&user_id, project_id)
+            .await
+            .map_err(map_recipe_store_error)?;
+        Ok(crate::recipes::RecipeListResponse { recipes })
+    }
+
+    async fn list_tool_skills(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+    ) -> Result<crate::recipes::ToolSkillListResponse, RebornServicesError> {
+        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let user_id = caller.user_id.to_string();
+        let tool_skills = store
+            .list_tool_skills(&user_id, project_id)
+            .await
+            .map_err(map_recipe_store_error)?;
+        Ok(crate::recipes::ToolSkillListResponse { tool_skills })
+    }
+
+    async fn get_recipe(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+        recipe_id: &str,
+    ) -> Result<crate::recipes::RecipeDetail, RebornServicesError> {
+        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let user_id = caller.user_id.to_string();
+        store
+            .get_recipe(&user_id, project_id, recipe_id)
+            .await
+            .map_err(map_recipe_store_error)?
+            .ok_or_else(|| recipe_not_found("recipe", recipe_id))
+    }
+
+    async fn get_tool_skill(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+        skill_id: &str,
+    ) -> Result<crate::recipes::ToolSkillDetail, RebornServicesError> {
+        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let user_id = caller.user_id.to_string();
+        store
+            .get_tool_skill(&user_id, project_id, skill_id)
+            .await
+            .map_err(map_recipe_store_error)?
+            .ok_or_else(|| recipe_not_found("tool_skill", skill_id))
+    }
+
+    async fn list_validation_queue(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+    ) -> Result<crate::recipes::ValidationQueueListResponse, RebornServicesError> {
+        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let user_id = caller.user_id.to_string();
+        let items = store
+            .list_validation_queue(&user_id, project_id)
+            .await
+            .map_err(map_recipe_store_error)?;
+        Ok(crate::recipes::ValidationQueueListResponse { items })
+    }
+
+    async fn count_validation_queue(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+        status: &str,
+    ) -> Result<crate::recipes::ValidationQueueCountResponse, RebornServicesError> {
+        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let user_id = caller.user_id.to_string();
+        let count = store
+            .count_by_status(&user_id, project_id, status)
+            .await
+            .map_err(map_recipe_store_error)?;
+        Ok(crate::recipes::ValidationQueueCountResponse {
+            count,
+            status: status.to_string(),
+        })
+    }
+
+    async fn validate_recipe(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+        recipe_id: &str,
+        request: crate::recipes::UpdateValidationStatusRequest,
+    ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
+        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let user_id = caller.user_id.to_string();
+        store
+            .update_recipe_validation_status(
+                &user_id,
+                project_id,
+                recipe_id,
+                "validated",
+                request.feedback.as_deref(),
+            )
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
+    async fn reject_recipe(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+        recipe_id: &str,
+        request: crate::recipes::UpdateValidationStatusRequest,
+    ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
+        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let user_id = caller.user_id.to_string();
+        store
+            .update_recipe_validation_status(
+                &user_id,
+                project_id,
+                recipe_id,
+                "rejected",
+                request.feedback.as_deref(),
+            )
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
+    async fn request_recipe_review(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+        recipe_id: &str,
+        request: crate::recipes::UpdateValidationStatusRequest,
+    ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
+        // Reviewer must attach feedback — the LLM review mission
+        // uses it as the "why are you fixing this?" context prompt.
+        let feedback = request.feedback.as_deref().ok_or_else(|| {
+            RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                400,
+                false,
+            )
+        })?;
+        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let user_id = caller.user_id.to_string();
+        store
+            .update_recipe_validation_status(
+                &user_id,
+                project_id,
+                recipe_id,
+                "review_requested",
+                Some(feedback),
+            )
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
+    async fn validate_tool_skill(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+        skill_id: &str,
+        request: crate::recipes::UpdateValidationStatusRequest,
+    ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
+        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let user_id = caller.user_id.to_string();
+        store
+            .update_skill_validation_status(
+                &user_id,
+                project_id,
+                skill_id,
+                "validated",
+                request.feedback.as_deref(),
+            )
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
+    async fn reject_tool_skill(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+        skill_id: &str,
+        request: crate::recipes::UpdateValidationStatusRequest,
+    ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
+        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let user_id = caller.user_id.to_string();
+        store
+            .update_skill_validation_status(
+                &user_id,
+                project_id,
+                skill_id,
+                "rejected",
+                request.feedback.as_deref(),
+            )
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
+    async fn request_tool_skill_review(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+        skill_id: &str,
+        request: crate::recipes::UpdateValidationStatusRequest,
+    ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
+        let feedback = request.feedback.as_deref().ok_or_else(|| {
+            RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                400,
+                false,
+            )
+        })?;
+        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let user_id = caller.user_id.to_string();
+        store
+            .update_skill_validation_status(
+                &user_id,
+                project_id,
+                skill_id,
+                "review_requested",
+                Some(feedback),
+            )
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
+    async fn record_recipe_outcome(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+        request: crate::recipes::RecordOutcomeRequest,
+    ) -> Result<crate::recipes::RecordOutcomeResponse, RebornServicesError> {
+        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let user_id = caller.user_id.to_string();
+        store
+            .record_outcome(&user_id, project_id, request)
+            .await
+            .map_err(map_recipe_store_error)
+    }
+}
+
+/// Default error mapping for [`crate::recipes::RecipeStoreError`] →
+/// `RebornServicesError`. Mirrors the reduction-rule mapping at the top
+/// of the file: `Invalid` / `NotFound` → 400, `Unavailable` → 503,
+/// `Internal` → 500.
+fn map_recipe_store_error(
+    error: crate::recipes::RecipeStoreError,
+) -> RebornServicesError {
+    match error {
+        crate::recipes::RecipeStoreError::Invalid(_) => {
+            RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                400,
+                false,
+            )
+        }
+        crate::recipes::RecipeStoreError::NotFound(_) => {
+            RebornServicesError::from_status(
+                RebornServicesErrorCode::InvalidRequest,
+                404,
+                false,
+            )
+        }
+        crate::recipes::RecipeStoreError::Unavailable(_) => {
+            RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            )
+        }
+        crate::recipes::RecipeStoreError::Internal(reason) => {
+            tracing::error!("❌ Recipe store internal error: {reason}");
+            RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Internal,
+                RebornServicesErrorKind::Internal,
+                500,
+                false,
+            )
+        }
+    }
+}
+
+fn recipe_store_unavailable() -> RebornServicesError {
+    RebornServicesError::from_status_kind(
+        RebornServicesErrorCode::Unavailable,
+        RebornServicesErrorKind::ServiceUnavailable,
+        503,
+        false,
+    )
+}
+
+fn recipe_not_found(kind: &str, id: &str) -> RebornServicesError {
+    tracing::debug!("recipe/skill lookup miss: {kind} '{id}'");
+    RebornServicesError::from_status(RebornServicesErrorCode::NotFound, 404, false)
 }
 
 impl RebornServices {

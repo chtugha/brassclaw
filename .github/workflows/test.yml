@@ -47,8 +47,6 @@ jobs:
       has_engine_replay_risk: ${{ steps.non_diff.outputs.has_engine_replay_risk || steps.diff.outputs.has_engine_replay_risk }}
       has_runtime_heavy_risk: ${{ steps.non_diff.outputs.has_runtime_heavy_risk || steps.diff.outputs.has_runtime_heavy_risk }}
       has_web_risk: ${{ steps.non_diff.outputs.has_web_risk || steps.diff.outputs.has_web_risk }}
-      has_telegram_risk: ${{ steps.non_diff.outputs.has_telegram_risk || steps.diff.outputs.has_telegram_risk }}
-      has_slack_risk: ${{ steps.non_diff.outputs.has_slack_risk || steps.diff.outputs.has_slack_risk }}
       has_legacy_tests: ${{ steps.non_diff.outputs.has_legacy_tests || steps.diff.outputs.has_legacy_tests }}
     steps:
       - id: non_diff
@@ -67,8 +65,6 @@ jobs:
           # workflow. The merge queue runs only smoke coverage for web-risk
           # changes so queued merges remain fast.
           echo "has_web_risk=false" >> "$GITHUB_OUTPUT"
-          echo "has_telegram_risk=true" >> "$GITHUB_OUTPUT"
-          echo "has_slack_risk=true" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         with:
@@ -101,7 +97,7 @@ jobs:
             echo "has_engine_replay_risk=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if has_match '^(crates/brassclaw_(common|safety|skills)/|src/(agent|auth|bridge|config|context|db|extensions|gate|history|hooks|orchestrator|ownership|pairing|safety|sandbox|secrets|setup|skills|tools|webhooks|worker|workspace)/|src/channels/channel\.rs$|src/channels/manager\.rs$|src/channels/relay/|src/channels/wasm/|channels-src/telegram/|migrations/|src/app\.rs$|src/main\.rs$|src/lib\.rs$|tests/telegram_auth_integration\.rs$|tests/e2e_thread_scheduling\.rs$|\.github/workflows/(test|nightly-deep-ci)\.yml$)'; then
+          if has_match '^(crates/brassclaw_(common|safety|skills)/|src/(agent|auth|bridge|config|context|db|extensions|gate|history|hooks|orchestrator|ownership|pairing|safety|sandbox|secrets|setup|skills|tools|webhooks|worker|workspace)/|src/channels/channel\.rs$|src/channels/manager\.rs$|src/channels/relay/|src/channels/wasm/|migrations/|src/app\.rs$|src/main\.rs$|src/lib\.rs$|tests/e2e_thread_scheduling\.rs$|\.github/workflows/(test|nightly-deep-ci)\.yml$)'; then
             echo "has_runtime_heavy_risk=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_runtime_heavy_risk=false" >> "$GITHUB_OUTPUT"
@@ -111,18 +107,6 @@ jobs:
             echo "has_web_risk=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_web_risk=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          if has_match '^(channels-src/telegram/|src/channels/wasm/|tests/telegram_auth_integration\.rs$|tests/e2e_telegram_message_routing\.rs$|tests/e2e/scenarios/test_telegram_.*|\.github/workflows/(test|nightly-deep-ci)\.yml$)'; then
-            echo "has_telegram_risk=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_telegram_risk=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          if has_match '^(channels-src/slack/|src/channels/wasm/|tests/slack_auth_integration\.rs$|\.github/workflows/(test|nightly-deep-ci)\.yml$)'; then
-            echo "has_slack_risk=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_slack_risk=false" >> "$GITHUB_OUTPUT"
           fi
 
   matrix-config:
@@ -285,63 +269,14 @@ jobs:
           persist-credentials: false
       - name: Install Rust
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-        with:
-          targets: wasm32-wasip2
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           key: heavy-integration
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      - name: Build Telegram WASM channel
-        run: cargo build --manifest-path channels-src/telegram/Cargo.toml --target wasm32-wasip2 --release
       - name: Run thread scheduling integration tests
         run: |
           timeout --signal=INT --kill-after=30s 15m \
             cargo test --no-default-features --features libsql,integration -- --nocapture
-
-  telegram-integration-tests:
-    name: Telegram Integration Tests (${{ matrix.partition }})
-    needs: changes
-    if: >
-      needs.changes.outputs.docs_only != 'true' &&
-      needs.changes.outputs.has_legacy_tests == 'true' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_call' || needs.changes.outputs.has_runtime_heavy_risk == 'true')
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: true
-      matrix:
-        partition:
-          - 1/2
-          - 2/2
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          ref: ${{ inputs.ref || github.sha }}
-          persist-credentials: false
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-        with:
-          targets: wasm32-wasip2
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-        with:
-          key: telegram-integration-${{ matrix.partition }}
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      - name: Build Telegram WASM channel
-        run: cargo build --manifest-path channels-src/telegram/Cargo.toml --target wasm32-wasip2 --release
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@62b0f2dec647a8e604c6a0fda0e38530180dce20 # v2
-        with:
-          tool: cargo-nextest
-      - name: Run Telegram integration tests
-        env:
-          NEXTEST_PROFILE: ci
-        run: |
-          timeout --signal=INT --kill-after=30s 15m \
-            cargo nextest run \
-              --profile ci \
-              --features integration \
-              --partition hash:${{ matrix.partition }}
 
   replay-required:
     name: Replay Required
@@ -368,64 +303,6 @@ jobs:
     with:
       ref: ${{ inputs.ref || github.sha }}
       mode: smoke
-
-  telegram-tests:
-    name: Telegram Channel Tests
-    needs: changes
-    if: >
-      needs.changes.outputs.docs_only != 'true' &&
-      needs.changes.outputs.has_legacy_tests == 'true' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_call' || needs.changes.outputs.has_telegram_risk == 'true')
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          ref: ${{ inputs.ref || github.sha }}
-          persist-credentials: false
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-        with:
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      - name: Run Telegram Channel Tests
-        run: |
-          timeout --signal=INT --kill-after=30s 10m \
-            cargo test --manifest-path channels-src/telegram/Cargo.toml -- --nocapture
-
-  slack-tests:
-    name: Slack Channel Tests
-    needs: changes
-    if: >
-      needs.changes.outputs.docs_only != 'true' &&
-      needs.changes.outputs.has_legacy_tests == 'true' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_call' || needs.changes.outputs.has_slack_risk == 'true')
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          ref: ${{ inputs.ref || github.sha }}
-          persist-credentials: false
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-        with:
-          targets: wasm32-wasip2
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-        with:
-          key: slack-integration
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      - name: Build Slack WASM channel
-        env:
-          CARGO_NET_RETRY: 10
-          CARGO_NET_GIT_FETCH_WITH_CLI: true
-        run: cargo build --manifest-path channels-src/slack/Cargo.toml --target wasm32-wasip2 --release
-      - name: Run Slack integration tests
-        run: |
-          timeout --signal=INT --kill-after=30s 15m \
-            cargo test --features integration -- --nocapture
 
   windows-build:
     name: Windows Build (${{ matrix.name }})
@@ -577,12 +454,9 @@ jobs:
       - tests
       - hooks-parity-tests
       - heavy-integration-tests
-      - telegram-integration-tests
       - replay-required
       - web-e2e-smoke
       - web-e2e-full
-      - telegram-tests
-      - slack-tests
       - docker-build
       - windows-build
       - version-check
@@ -622,7 +496,6 @@ jobs:
 
           if [[ "$event" == "push" || "$event" == "workflow_call" || "${{ needs.changes.outputs.has_runtime_heavy_risk }}" == "true" ]]; then
             require_success "heavy-integration-tests" "${{ needs.heavy-integration-tests.result }}"
-            require_success "telegram-integration-tests" "${{ needs.telegram-integration-tests.result }}"
           fi
 
           if [[ "$event" != "push" && ( "$event" == "workflow_call" || "${{ needs.changes.outputs.has_engine_replay_risk }}" == "true" ) ]]; then
@@ -635,14 +508,6 @@ jobs:
 
           if [[ "$event" == "merge_group" && "${{ needs.changes.outputs.has_web_risk }}" == "true" ]]; then
             require_success "web-e2e-full" "${{ needs.web-e2e-full.result }}"
-          fi
-
-          if [[ "$event" == "push" || "$event" == "workflow_call" || "${{ needs.changes.outputs.has_telegram_risk }}" == "true" ]]; then
-            require_success "telegram-tests" "${{ needs.telegram-tests.result }}"
-          fi
-
-          if [[ "$event" == "push" || "$event" == "workflow_call" || "${{ needs.changes.outputs.has_slack_risk }}" == "true" ]]; then
-            require_success "slack-tests" "${{ needs.slack-tests.result }}"
           fi
 
           if [[ "$event" == "push" || ( "$event" == "workflow_call" && "${{ inputs.include_docker }}" == "true" ) ]]; then

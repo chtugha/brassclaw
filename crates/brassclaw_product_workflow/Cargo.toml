@@ -27,6 +27,7 @@ brassclaw_auth = { path = "../brassclaw_auth", version = "0.1.0" }
 brassclaw_events = { path = "../brassclaw_events", version = "0.1.0" }
 brassclaw_host_api = { path = "../brassclaw_host_api", version = "0.1.0" }
 brassclaw_conversations = { path = "../brassclaw_conversations", version = "0.1.0" }
+brassclaw_llm = { path = "../brassclaw_llm", version = "0.1.0" }
 brassclaw_outbound = { path = "../brassclaw_outbound", version = "0.1.0" }
 brassclaw_product_adapters = { path = "../brassclaw_product_adapters", version = "0.1.0" }
 brassclaw_run_state = { path = "../brassclaw_run_state", version = "0.1.0" }

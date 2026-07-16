@@ -879,6 +879,32 @@ impl LoopCancellationPort for MockAgentLoopDriverHost {
     }
 }
 
+impl brassclaw_turns::run_profile::LoopRecipePort for MockAgentLoopDriverHost {
+    fn recipe_lookup(&self) -> Option<&dyn brassclaw_turns::run_profile::RecipeLookup> {
+        None
+    }
+}
+
+#[async_trait::async_trait]
+impl brassclaw_turns::run_profile::LoopInterceptorPort for MockAgentLoopDriverHost {
+    async fn on_prompt_assembled(
+        &self,
+        _run_id: &str,
+        _iteration: u32,
+        _prompt_snapshot: serde_json::Value,
+    ) -> Option<String> {
+        None
+    }
+
+    async fn on_kohai_response(
+        &self,
+        _packet_id: &str,
+        _response_text: &str,
+        _usage_json: Option<serde_json::Value>,
+    ) {
+    }
+}
+
 /// Builds a valid run context for tests.
 pub fn test_run_context(label: &str) -> LoopRunContext {
     let suffix = safe_ref_suffix(label);

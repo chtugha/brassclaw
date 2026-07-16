@@ -272,9 +272,22 @@ pub(crate) fn build_webui_services_with_connectable_channels(
                 brassclaw_engine::executor::orchestrator::invalidate_reduction_rules_cache();
             },
         ));
-        tracing::debug!("ReductionRuleStore wired through MemoryDocLibSqlStore");
+        // Recipe-Skill-Tool library — same engine `Store`, projected
+        // through `memory_doc.metadata` round-trips. The
+        // `RecipeStore` trait gives the WebUI a stable wire shape
+        // for the Recipe Manager page, the validation queue, and
+        // outcome recording without forcing a recompile every time
+        // the engine schema grows a new metric.
+        let recipe_store = crate::recipe_store::StoreBackedRecipeStore::open(Arc::clone(&dyn_store));
+        api = api.with_recipe_store(
+            Arc::new(recipe_store)
+                as Arc<dyn brassclaw_product_workflow::RecipeStore>,
+        );
+        tracing::debug!(
+            "ReductionRuleStore + RecipeStore wired through MemoryDocLibSqlStore"
+        );
     } else {
-        tracing::debug!("MemoryDocLibSqlStore is None - reduction-rule endpoints will return 501");
+        tracing::debug!("MemoryDocLibSqlStore is None - reduction-rule + recipe endpoints will return 501");
     }
 
     #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]

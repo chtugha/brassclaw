@@ -2067,6 +2067,93 @@ pub struct LoopCancellationSignal {
     pub requested_at: DateTime<Utc>,
 }
 
+/// Recipe-Skill-Tool lookup port — opt-in. Hosts that want Tier 0/1
+/// short-circuiting implement this; hosts without a recipe library
+/// inherit the default no-op `LoopRecipePort::noop` and the executor
+/// simply skips Tier 0/1 branching on each turn.
+pub trait LoopRecipePort: Send + Sync {
+    /// Returns `None` if no recipe library is wired into this host.
+    fn recipe_lookup(&self) -> Option<&dyn crate::run_profile::RecipeLookup>;
+}
+
+/// Default no-op implementation so hosts without a Recipe library still
+/// satisfy the trait bound.
+pub struct NoRecipeLookup;
+impl LoopRecipePort for NoRecipeLookup {
+    fn recipe_lookup(&self) -> Option<&dyn crate::run_profile::RecipeLookup> {
+        None
+    }
+}
+
+/// Prompt interceptor port — opt-in.
+///
+/// Hosts that wire the Sempai–Kohai interceptor implement this port so
+/// the executor can hand off the assembled prompt (and later the Kohai
+/// response) for capture and optional Sempai review.
+///
+/// The port deliberately uses owned `String`/`serde_json::Value` rather
+/// than `brassclaw_interceptor` types to keep `brassclaw_turns` free of
+/// a dependency on the interceptor crate.  The executor in
+/// `brassclaw_agent_loop` owns the translation from executor-internal
+/// types into the richer `ForensicPacket` shape.
+///
+/// Hosts without a wired interceptor inherit the default no-op impl from
+/// `NoInterceptor` and the executor simply skips interceptor calls.
+#[async_trait::async_trait]
+pub trait LoopInterceptorPort: Send + Sync {
+    /// Called after `PromptStage` completes with the final assembled
+    /// prompt.  The host assigns and returns a stable `packet_id` string
+    /// that the executor carries forward to correlate the Kohai response.
+    ///
+    /// `prompt_snapshot` is a JSON representation of the assembled
+    /// messages + segment metadata + token accounting.  Returns `None`
+    /// when no interceptor is wired (routing continues unchanged).
+    async fn on_prompt_assembled(
+        &self,
+        run_id: &str,
+        iteration: u32,
+        prompt_snapshot: serde_json::Value,
+    ) -> Option<String>;
+
+    /// Called after `ModelStage` completes with the Kohai response text
+    /// and actual token usage.  `packet_id` is the value returned by
+    /// `on_prompt_assembled`.  The host closes the forensic packet in its
+    /// store.
+    ///
+    /// `usage_json` shape: `{"input_tokens":N,"output_tokens":N,...}` or
+    /// `null` when the provider did not report usage.
+    async fn on_kohai_response(
+        &self,
+        packet_id: &str,
+        response_text: &str,
+        usage_json: Option<serde_json::Value>,
+    );
+}
+
+/// Default no-op implementation so hosts without an interceptor still
+/// satisfy the trait bound.
+pub struct NoInterceptor;
+
+#[async_trait::async_trait]
+impl LoopInterceptorPort for NoInterceptor {
+    async fn on_prompt_assembled(
+        &self,
+        _run_id: &str,
+        _iteration: u32,
+        _prompt_snapshot: serde_json::Value,
+    ) -> Option<String> {
+        None
+    }
+
+    async fn on_kohai_response(
+        &self,
+        _packet_id: &str,
+        _response_text: &str,
+        _usage_json: Option<serde_json::Value>,
+    ) {
+    }
+}
+
 pub trait AgentLoopDriverHost:
     LoopRunInfoPort
     + LoopContextPort
@@ -2079,6 +2166,8 @@ pub trait AgentLoopDriverHost:
     + LoopProgressPort
     + LoopCompactionPort
     + LoopCancellationPort
+    + LoopRecipePort
+    + LoopInterceptorPort
     + Send
     + Sync
 {
@@ -2096,6 +2185,8 @@ impl<T> AgentLoopDriverHost for T where
         + LoopProgressPort
         + LoopCompactionPort
         + LoopCancellationPort
+        + LoopRecipePort
+        + LoopInterceptorPort
         + Send
         + Sync
 {

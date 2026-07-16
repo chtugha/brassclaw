@@ -135,6 +135,16 @@ impl RebornHome {
     pub fn providers_file_path(&self) -> PathBuf {
         self.path.join("providers.json")
     }
+
+    /// Absolute path of the persisted Sempai provider selection.
+    ///
+    /// `$BRASSCLAW_REBORN_HOME/sempai_provider.json`. Stores the Sempai role
+    /// selection as `{"provider_id":"<id>","model":"<model>"}`. The file is
+    /// **optional**: when absent the interceptor runs in `Passthrough` state
+    /// (no Sempai configured). Written and read by the composition root.
+    pub fn sempai_provider_file_path(&self) -> PathBuf {
+        self.path.join("sempai_provider.json")
+    }
 }
 
 fn validate_non_empty(value: &OsString, name: &'static str) -> Result<(), RebornConfigError> {

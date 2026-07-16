@@ -26,7 +26,7 @@ use brassclaw_turns::{
     loop_exit::LoopExitEvidencePort,
     run_profile::{
         AgentLoopHostError, InstructionSafetyContext, LoopCapabilityPort, LoopHostMilestoneSink,
-        LoopModelBudgetAccountant, LoopModelPolicyGuard, LoopRunContext,
+        LoopModelBudgetAccountant, LoopModelPolicyGuard, LoopRunContext, RecipeLookup,
     },
     runner::TurnRunTransitionPort,
 };
@@ -146,6 +146,11 @@ where
     /// the hook framework dormant: no dispatcher is composed and the runtime
     /// behaves exactly as it did before hooks existed.
     pub hook_dispatcher_builder_factory: Option<HookDispatcherBuilderFactory>,
+    /// Recipe-Skill-Tool library (Phase 7). When `Some`, the executor consults
+    /// the library before invoking the LLM — high-tier matches short-circuit
+    /// the request (Tier 0/1). When `None`, the executor falls through to the
+    /// LLM (Tier 2 — pre-Phase-7 behavior).
+    pub recipe_lookup: Option<Arc<dyn RecipeLookup>>,
 }
 
 pub trait RuntimeSubagentGoalStore:
@@ -541,6 +546,9 @@ where
     host_factory = host_factory.with_identity_context_source(parts.identity_context_source);
     if let Some(ceiling) = parts.config.identity_token_ceiling {
         host_factory = host_factory.with_identity_token_ceiling(Some(ceiling));
+    }
+    if let Some(lookup) = parts.recipe_lookup {
+        host_factory = host_factory.with_recipe_lookup(lookup);
     }
     let host_factory = Arc::new(host_factory);
 

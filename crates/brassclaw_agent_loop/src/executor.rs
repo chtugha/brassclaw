@@ -11,11 +11,13 @@ mod checkpoint;
 mod exit_helpers;
 mod gates;
 mod input;
+mod interceptor;
 mod loop_exit;
 mod mapping;
 mod model;
 mod pipeline;
 mod prompt;
+mod recipe;
 mod reply_admission;
 mod turn_stop;
 
@@ -40,6 +42,10 @@ use gates::{AwaitDependentRunGateInput, AwaitDependentRunGateStage, GateInput, G
 #[cfg(test)]
 use input::consume_drainable_inputs;
 use input::{DrainInput, InputStage, InputStep, UserFacingInputDrainMode};
+use interceptor::{
+    InterceptorPacketId, InterceptorPromptInput, InterceptorStage,
+    notify_interceptor_kohai_response,
+};
 use loop_exit::{ExitInput, ExitStage};
 use mapping::{
     batch_policy_kind, blocked_kind, capability_batch_counts, capability_error_class,
@@ -50,6 +56,7 @@ use mapping::{
 use model::{ModelInput, ModelStage, ModelStep};
 use pipeline::{DefaultExecutorPipeline, ExecutorStage, StageContext};
 use prompt::{PromptInput, PromptStage, PromptStep};
+use recipe::{RecipeInput, RecipeStage, RecipeStep};
 use reply_admission::{ReplyAdmissionInput, ReplyAdmissionStage, ReplyAdmissionStep};
 use turn_stop::{StopInput, StopObservationInput, StopObservationStep, StopStage, StopStep};
 

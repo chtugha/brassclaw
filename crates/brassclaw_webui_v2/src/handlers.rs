@@ -22,20 +22,23 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use brassclaw_product_workflow::{
     CodexLoginStart, LifecyclePackageKind, LifecyclePackageRef, LlmConfigSnapshot, LlmModelsResult,
     LlmProbeRequest, LlmProbeResult, NearAiLoginRequest, NearAiLoginStart,
-    NearAiWalletLoginRequest, NearAiWalletLoginResult, ProductWorkflowError, ProjectionCursor,
-    RebornCancelRunResponse, RebornConnectableChannelListResponse, RebornCreateThreadResponse,
-    RebornDeleteThreadRequest, RebornDeleteThreadResponse, RebornExtensionActionResponse,
-    RebornExtensionListResponse, RebornExtensionRegistryResponse, RebornInstallSkillRequest,
-    RebornListAutomationsResponse, RebornListCapabilitiesResponse, RebornListSkillsResponse,
-    RebornListThreadsResponse, RebornResolveGateResponse, RebornServicesApi, RebornServicesError,
-    RebornServicesErrorCode, RebornServicesErrorKind, RebornSetupExtensionResponse,
-    RebornSkillInstallResult, RebornSkillRemoveResult, RebornStreamEventsRequest,
-    RebornSubmitTurnResponse, RebornTimelineRequest, RebornTimelineResponse,
-    RebornUpdateCapabilityPermissionRequest, RebornUpdateCapabilityPermissionResponse,
-    SetActiveLlmRequest, UpsertLlmProviderRequest, WebUiAuthenticatedCaller, WebUiCancelRunRequest,
-    WebUiCreateThreadRequest, WebUiInboundValidationCode, WebUiInboundValidationError,
-    WebUiListAutomationsRequest, WebUiListThreadsRequest, WebUiResolveGateRequest,
-    WebUiSendMessageRequest, WebUiSetupExtensionRequest,
+    NearAiWalletLoginRequest, NearAiWalletLoginResult, OutcomeKind, ProductWorkflowError,
+    ProjectionCursor, RebornCancelRunResponse, RebornConnectableChannelListResponse,
+    RebornCreateThreadResponse, RebornDeleteThreadRequest, RebornDeleteThreadResponse,
+    RebornExtensionActionResponse, RebornExtensionListResponse, RebornExtensionRegistryResponse,
+    RebornInstallSkillRequest, RebornListAutomationsResponse, RebornListCapabilitiesResponse,
+    RebornListSkillsResponse, RebornListThreadsResponse, RebornResolveGateResponse,
+    RebornServicesApi, RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind,
+    RebornSetupExtensionResponse, RebornSkillInstallResult, RebornSkillRemoveResult,
+    RebornStreamEventsRequest, RebornSubmitTurnResponse, RebornTimelineRequest,
+    RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
+    RebornUpdateCapabilityPermissionResponse, RecordOutcomeRequest, RecordOutcomeResponse,
+    RecipeDetail, RecipeListResponse, SetActiveLlmRequest, ToolSkillDetail, ToolSkillListResponse,
+    UpdateValidationStatusRequest, UpdateValidationStatusResponse, UpsertLlmProviderRequest,
+    ValidationQueueCountResponse, ValidationQueueListResponse, WebUiAuthenticatedCaller,
+    WebUiCancelRunRequest, WebUiCreateThreadRequest, WebUiInboundValidationCode,
+    WebUiInboundValidationError, WebUiListAutomationsRequest, WebUiListThreadsRequest,
+    WebUiResolveGateRequest, WebUiSendMessageRequest, WebUiSetupExtensionRequest,
 };
 use futures::SinkExt;
 use futures::stream::Stream;
@@ -968,6 +971,247 @@ pub async fn remove_skill(
 ) -> Result<Json<RebornSkillRemoveResult>, WebUiV2HttpError> {
     let result = state.services().remove_skill(caller, name).await?;
     Ok(Json(result))
+}
+
+/// `GET /api/webchat/v2/recipes`
+///
+/// List the caller's Recipe library. The query parameter `project_id`
+/// is required — Recipes are scoped per `(user_id, project_id)` in the
+/// engine `Store`. Without a wired `RecipeStore` (e.g. the libsql
+/// feature off), this handler returns 501.
+pub async fn list_recipes(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Query(query): Query<RecipeListQuery>,
+) -> Result<Json<RecipeListResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .list_recipes(caller, &query.project_id)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/webchat/v2/tool-skills`
+///
+/// List the caller's ToolSkill library.
+pub async fn list_tool_skills(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Query(query): Query<RecipeListQuery>,
+) -> Result<Json<ToolSkillListResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .list_tool_skills(caller, &query.project_id)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/webchat/v2/recipes/{recipe_id}`
+///
+/// Fetch one Recipe by id. Returns 404 when the id is unknown so the
+/// WebUI's detail pane can show a friendly "no longer exists" banner.
+pub async fn get_recipe(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((project_id, recipe_id)): Path<(String, String)>,
+) -> Result<Json<RecipeDetail>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .get_recipe(caller, &project_id, &recipe_id)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/webchat/v2/tool-skills/{skill_id}`
+///
+/// Fetch one ToolSkill by id.
+pub async fn get_tool_skill(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((project_id, skill_id)): Path<(String, String)>,
+) -> Result<Json<ToolSkillDetail>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .get_tool_skill(caller, &project_id, &skill_id)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/webchat/v2/validation-queue`
+///
+/// List post-extraction rows that need an operator review pass.
+/// Filtered server-side to `pending` / `auto_passed` / `upgrade_queued`
+/// / `review_requested`; the WebUI renders the same shape across tabs.
+pub async fn list_validation_queue(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Query(query): Query<RecipeListQuery>,
+) -> Result<Json<ValidationQueueListResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .list_validation_queue(caller, &query.project_id)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/webchat/v2/validation-queue/count?status=...`
+///
+/// Count rows by validation status. Used for tab badges ("N items
+/// pending review", "M rejected").
+pub async fn count_validation_queue(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Query(query): Query<ValidationCountQuery>,
+) -> Result<Json<ValidationQueueCountResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .count_validation_queue(caller, &query.project_id, &query.status)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `PUT /api/webchat/v2/recipes/{recipe_id}/validate`
+///
+/// Mark a Recipe as validated. Optional `feedback` body is recorded
+/// but typically empty for plain validate-pass.
+pub async fn validate_recipe(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((project_id, recipe_id)): Path<(String, String)>,
+    Json(body): Json<UpdateValidationStatusRequest>,
+) -> Result<Json<UpdateValidationStatusResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .validate_recipe(caller, &project_id, &recipe_id, body)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `PUT /api/webchat/v2/recipes/{recipe_id}/reject`
+///
+/// Mark a Recipe as rejected (soft delete path — 30-day window until
+/// it auto-routes to garbage).
+pub async fn reject_recipe(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((project_id, recipe_id)): Path<(String, String)>,
+    Json(body): Json<UpdateValidationStatusRequest>,
+) -> Result<Json<UpdateValidationStatusResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .reject_recipe(caller, &project_id, &recipe_id, body)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `PUT /api/webchat/v2/recipes/{recipe_id}/review-request`
+///
+/// Ask the LLM review mission to fix a failing Recipe. `feedback`
+/// body is required — it becomes the review mission's prompt context.
+pub async fn request_recipe_review(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((project_id, recipe_id)): Path<(String, String)>,
+    Json(body): Json<UpdateValidationStatusRequest>,
+) -> Result<Json<UpdateValidationStatusResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .request_recipe_review(caller, &project_id, &recipe_id, body)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `PUT /api/webchat/v2/skills/{project_id}/{skill_id}/validate`
+///
+/// Move a ToolSkill from `auto_passed` to `validated`. Only valid from
+/// the `auto_passed` state — transitions from other states are rejected.
+pub async fn validate_tool_skill(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((project_id, skill_id)): Path<(String, String)>,
+    Json(body): Json<UpdateValidationStatusRequest>,
+) -> Result<Json<UpdateValidationStatusResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .validate_tool_skill(caller, &project_id, &skill_id, body)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `PUT /api/webchat/v2/skills/{project_id}/{skill_id}/reject`
+///
+/// Move a ToolSkill to `rejected`. Valid from `auto_passed`,
+/// `review_requested`, and `upgrade_queued` states.
+pub async fn reject_tool_skill(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((project_id, skill_id)): Path<(String, String)>,
+    Json(body): Json<UpdateValidationStatusRequest>,
+) -> Result<Json<UpdateValidationStatusResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .reject_tool_skill(caller, &project_id, &skill_id, body)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `PUT /api/webchat/v2/skills/{project_id}/{skill_id}/review-request`
+///
+/// Send a ToolSkill to the LLM review mission. `feedback` body is
+/// required — it becomes the review mission's prompt context. Only
+/// valid from the `auto_passed` state.
+pub async fn request_tool_skill_review(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((project_id, skill_id)): Path<(String, String)>,
+    Json(body): Json<UpdateValidationStatusRequest>,
+) -> Result<Json<UpdateValidationStatusResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .request_tool_skill_review(caller, &project_id, &skill_id, body)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `POST /api/webchat/v2/recipes/{recipe_id}/outcomes`
+///
+/// Record a Recipe execution outcome (success/failure) — drives the
+/// Wilson lower-bound + tier counters via the engine `MetricRecorder`.
+pub async fn record_recipe_outcome(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path((project_id, recipe_id)): Path<(String, String)>,
+    Json(body): Json<RecordOutcomeRequestBody>,
+) -> Result<Json<RecordOutcomeResponse>, WebUiV2HttpError> {
+    let request = RecordOutcomeRequest {
+        id: recipe_id,
+        kind: OutcomeKind::Recipe,
+        success: body.success,
+    };
+    let response = state
+        .services()
+        .record_recipe_outcome(caller, &project_id, request)
+        .await?;
+    Ok(Json(response))
+}
+
+/// Query parameters for the list endpoints. `project_id` is required
+/// — the wire enforces it so the engine can scope queries by
+/// `(user_id, project_id)` without guessing.
+#[derive(Debug, Deserialize)]
+pub struct RecipeListQuery {
+    pub project_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ValidationCountQuery {
+    pub project_id: String,
+    pub status: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RecordOutcomeRequestBody {
+    pub success: bool,
 }
 
 pub mod reduction_rules;

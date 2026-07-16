@@ -44,6 +44,7 @@ mod lifecycle;
 mod outbound_delivery;
 mod policy;
 mod reborn_services;
+mod recipes;
 mod reduction_rules;
 mod safety_config;
 mod safety_config_store;
@@ -128,6 +129,13 @@ pub use policy::{
     BeforeInboundPolicy, BeforeInboundPolicyOutcome, BeforeInboundPolicyRequest,
     NoopBeforeInboundPolicy,
 };
+pub use recipes::{
+    OutcomeKind, RecipeDetail, RecipeKind, RecipeListRequest, RecipeListResponse, RecipeStore,
+    RecipeStoreError, RecipeSummary, RecordOutcomeRequest, RecordOutcomeResponse,
+    ToolSkillDetail, ToolSkillListResponse, ToolSkillSummary, UpdateValidationStatusRequest,
+    UpdateValidationStatusResponse, ValidationQueueCountResponse, ValidationQueueItem,
+    ValidationQueueListResponse, ValidationStatusValue,
+};
 pub use reborn_services::CapabilityPermissionStore;
 pub use reborn_services::{
     RebornInstallSkillRequest, SkillsProductFacade, UnsupportedSkillsProductFacade,
@@ -153,6 +161,7 @@ pub use brassclaw_product_adapters::{
     ProductOutboundPayload, ProductProjectionItem, ProductProjectionState, ProductWorkSummaryPhase,
     ProgressKind, ProgressUpdateView, ProjectionCursor,
 };
+pub use brassclaw_llm::ProviderRole;
 pub use reborn_services::{
     AUTOMATION_LIST_DEFAULT_PAGE_SIZE, AUTOMATION_LIST_MAX_PAGE_SIZE, AutomationProductFacade,
     CodexLoginStart, ConnectableChannelsProductFacade, ExtensionCredentialSetupService,

@@ -5,7 +5,8 @@ use crate::planner::AgentLoopPlannerInternal;
 
 use super::{
     AgentLoopExecutorError, AssistantReplyStage, BudgetStage, CapabilityStage, ExitStage,
-    InputStage, ModelStage, PromptStage, ReplyAdmissionStage, StopStage,
+    InputStage, InterceptorStage, ModelStage, PromptStage, RecipeStage, ReplyAdmissionStage,
+    StopStage,
 };
 
 #[derive(Clone, Copy)]
@@ -29,7 +30,9 @@ pub(crate) trait ExecutorStage<Input>: Send + Sync {
 pub(crate) struct DefaultExecutorPipeline {
     pub(crate) budget: BudgetStage,
     pub(crate) input: InputStage,
+    pub(crate) recipe: RecipeStage,
     pub(crate) prompt: PromptStage,
+    pub(crate) interceptor: InterceptorStage,
     pub(crate) model: ModelStage,
     pub(crate) reply_admission: ReplyAdmissionStage,
     pub(crate) assistant_reply: AssistantReplyStage,

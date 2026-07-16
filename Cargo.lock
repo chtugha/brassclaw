@@ -1875,6 +1875,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "brassclaw_interceptor"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "brassclaw_llm"
 version = "0.1.0"
 dependencies = [
@@ -2114,6 +2128,7 @@ dependencies = [
  "brassclaw_events",
  "brassclaw_host_api",
  "brassclaw_host_runtime",
+ "brassclaw_llm",
  "brassclaw_loop_support",
  "brassclaw_outbound",
  "brassclaw_product_adapters",

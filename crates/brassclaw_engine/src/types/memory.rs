@@ -46,6 +46,12 @@ pub enum DocType {
     Skill,
     /// Structured execution plan with steps, status, and progress tracking.
     Plan,
+    /// Cookbook entry linking a trigger to an ordered sequence of tool-skill
+    /// invocations (Phase 7 Recipe-Skill-Tool learning pipeline).
+    Recipe,
+    /// Tight description of ONE tool usage pattern (mid-layer of the
+    /// Recipe-Skill-Tool hierarchy; token-cheap alternative to Skill blobs).
+    ToolSkill,
 }
 
 /// A memory document — structured durable knowledge.

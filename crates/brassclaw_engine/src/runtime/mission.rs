@@ -1527,9 +1527,9 @@ impl MissionManager {
         let mut rx = mgr.thread_manager.subscribe_events();
 
         /// Minimum steps for a thread to be a skill extraction candidate.
-        const SKILL_EXTRACTION_MIN_STEPS: usize = 5;
+        const SKILL_EXTRACTION_MIN_STEPS: usize = 3;
         /// Minimum distinct action executions for skill extraction.
-        const SKILL_EXTRACTION_MIN_ACTIONS: usize = 3;
+        const SKILL_EXTRACTION_MIN_ACTIONS: usize = 2;
 
         let insights_interval = mgr.insights_interval;
 

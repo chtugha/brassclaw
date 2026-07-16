@@ -128,6 +128,8 @@ fn doc_type_weight(doc_type: DocType) -> f64 {
         DocType::Summary => 0.1, // Background context
         DocType::Note => 0.05,   // Scratch notes, lowest priority
         DocType::Plan => 0.3,    // Execution plans with structured steps
+        DocType::Recipe => 0.35, // Recipes chain ToolSkills — useful past Skill
+        DocType::ToolSkill => 0.4,  // ToolSkills describe how to call a tool
     }
 }
 

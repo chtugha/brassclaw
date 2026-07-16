@@ -577,3 +577,29 @@ impl LoopCancellationPort for ForbiddenResumeHost {
         std::future::pending().await
     }
 }
+
+impl brassclaw_turns::run_profile::LoopRecipePort for ForbiddenResumeHost {
+    fn recipe_lookup(&self) -> Option<&dyn brassclaw_turns::run_profile::RecipeLookup> {
+        None
+    }
+}
+
+#[async_trait::async_trait]
+impl brassclaw_turns::run_profile::LoopInterceptorPort for ForbiddenResumeHost {
+    async fn on_prompt_assembled(
+        &self,
+        _run_id: &str,
+        _iteration: u32,
+        _prompt_snapshot: serde_json::Value,
+    ) -> Option<String> {
+        None
+    }
+
+    async fn on_kohai_response(
+        &self,
+        _packet_id: &str,
+        _response_text: &str,
+        _usage_json: Option<serde_json::Value>,
+    ) {
+    }
+}

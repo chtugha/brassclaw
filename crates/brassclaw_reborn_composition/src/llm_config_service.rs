@@ -22,6 +22,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use brassclaw_llm::ProviderRole;
 use brassclaw_llm::registry::{ProviderDefinition, ProviderProtocol, ProviderRegistry};
 use brassclaw_llm::{NearWalletSignedMessage, OpenAiCodexConfig, OpenAiCodexSessionManager};
 use brassclaw_product_workflow::{
@@ -194,6 +195,9 @@ impl RebornLlmConfigService {
         let builtin_registry = brassclaw_llm::ProviderRegistry::try_load_from_path(None)
             .map_err(|_| LlmConfigServiceError::Unavailable)?;
 
+        // Read the persisted Sempai selection (best-effort; absent = no Sempai).
+        let sempai_sel = read_sempai_selection(self.boot.home().sempai_provider_file_path());
+
         let mut providers = Vec::with_capacity(list.providers.len());
         let mut active = None;
         for info in list.providers {
@@ -229,6 +233,10 @@ impl RebornLlmConfigService {
                         max_output: b.max_output,
                     });
             let definition_context_window = builtin_def.and_then(|def| def.context_window_tokens);
+            let is_kohai = info.active;
+            let is_sempai = sempai_sel
+                .as_ref()
+                .is_some_and(|s| s.provider_id == info.id);
             providers.push(LlmProviderView {
                 id: info.id,
                 description: info.description,
@@ -256,20 +264,18 @@ impl RebornLlmConfigService {
                     .unwrap_or(false),
                 token_budget: definition_budget,
                 context_window_tokens: definition_context_window,
-                // is_kohai mirrors the legacy `active` flag until Step 4 wires
-                // the separate kohai/sempai DB settings slots.
-                is_kohai: info.active,
-                // is_sempai stays false until Step 4 adds the Sempai slot.
-                is_sempai: false,
+                is_kohai,
+                is_sempai,
             });
         }
 
         Ok(LlmConfigSnapshot {
             providers,
             active: active.clone(),
-            // Sempai–Kohai additive fields: kept in sync with `active`.
+            // `active` and `kohai_active` are always kept in sync so that old
+            // clients reading `active` observe the Kohai selection unchanged.
             kohai_active: active,
-            sempai_active: None,
+            sempai_active: sempai_sel,
         })
     }
 
@@ -589,16 +595,65 @@ impl LlmConfigService for RebornLlmConfigService {
         caller: WebUiAuthenticatedCaller,
         request: SetActiveLlmRequest,
     ) -> Result<LlmConfigSnapshot, LlmConfigServiceError> {
-        // Allow empty provider_id to deactivate the current provider
+        let role = request.role.unwrap_or(ProviderRole::Kohai);
+
+        // Validate provider id (allow empty string to clear the slot).
         let id = if request.provider_id.trim().is_empty() {
             String::new()
         } else {
             validate_provider_id(&request.provider_id)?
         };
-        self.set_provider_async(id, request.model)
-            .await
-            .map_err(map_admin_error)?;
-        self.refresh_running_provider().await;
+
+        // Guard: same provider cannot occupy both roles simultaneously.
+        if !id.is_empty() {
+            let conflict = match role {
+                ProviderRole::Kohai => {
+                    // Would be Kohai — check that it is not already the Sempai.
+                    let sempai_path = self.boot.home().sempai_provider_file_path();
+                    read_sempai_selection(sempai_path)
+                        .is_some_and(|sel| sel.provider_id == id)
+                }
+                ProviderRole::Sempai => {
+                    // Would be Sempai — check that it is not already the Kohai.
+                    self.admin_list_async()
+                        .await
+                        .map_err(map_admin_error)?
+                        .providers
+                        .into_iter()
+                        .any(|p| p.active && p.id == id)
+                }
+            };
+            if conflict {
+                return Err(LlmConfigServiceError::Conflict {
+                    reason: "provider_already_assigned_to_other_role".into(),
+                });
+            }
+        }
+
+        match role {
+            ProviderRole::Kohai => {
+                self.set_provider_async(id, request.model)
+                    .await
+                    .map_err(map_admin_error)?;
+                self.refresh_running_provider().await;
+            }
+            ProviderRole::Sempai => {
+                let sempai_path = self.boot.home().sempai_provider_file_path();
+                write_sempai_selection(
+                    sempai_path,
+                    if id.is_empty() {
+                        None
+                    } else {
+                        Some(LlmActiveSelection {
+                            provider_id: id,
+                            model: request.model,
+                        })
+                    },
+                )
+                .map_err(|_| LlmConfigServiceError::Unavailable)?;
+            }
+        }
+
         self.snapshot(caller).await
     }
 
@@ -1056,6 +1111,46 @@ fn validate_provider_id(id: &str) -> Result<String, LlmConfigServiceError> {
     Ok(trimmed.to_string())
 }
 
+/// Read the persisted Sempai provider selection from a JSON file.
+///
+/// Returns `None` if the file is absent, empty, or malformed. This is a
+/// synchronous disk read — callers that need async must wrap with
+/// `spawn_blocking`.
+fn read_sempai_selection(
+    path: std::path::PathBuf,
+) -> Option<LlmActiveSelection> {
+    let bytes = std::fs::read(&path).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+/// Write (or clear) the persisted Sempai provider selection.
+///
+/// Passing `None` removes the file so that the absent-file case correctly
+/// means "no Sempai configured". Write errors are propagated to the caller.
+fn write_sempai_selection(
+    path: std::path::PathBuf,
+    selection: Option<LlmActiveSelection>,
+) -> std::io::Result<()> {
+    match selection {
+        None => {
+            // Remove the file; ignore "not found" since the goal is no file.
+            match std::fs::remove_file(&path) {
+                Ok(()) | Err(_) => Ok(()),
+            }
+        }
+        Some(sel) => {
+            // Ensure the parent directory exists (create on first use).
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let json = serde_json::to_vec(&sel).map_err(|e| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
+            })?;
+            std::fs::write(&path, json)
+        }
+    }
+}
+
 fn map_admin_error(error: crate::RebornProviderAdminError) -> LlmConfigServiceError {
     use crate::RebornProviderAdminError as E;
     match error {
@@ -1074,6 +1169,7 @@ fn map_admin_error(error: crate::RebornProviderAdminError) -> LlmConfigServiceEr
 mod tests {
     use super::*;
     use brassclaw_host_api::{AgentId, ProjectId, TenantId, UserId};
+    use brassclaw_llm::ProviderRole;
     use brassclaw_reborn_config::{RebornHome, RebornProfile};
     use brassclaw_secrets::InMemorySecretStore;
 
@@ -1432,6 +1528,170 @@ mod tests {
         assert!(
             !keys.exists("acme").await.expect("key exists check"),
             "new key must roll back when active selection fails"
+        );
+    }
+
+    // ── Step 4: role-aware set_active tests ─────────────────────────────────
+
+    fn set_active_request(provider_id: &str, role: Option<ProviderRole>) -> SetActiveLlmRequest {
+        SetActiveLlmRequest {
+            provider_id: provider_id.to_string(),
+            model: None,
+            role,
+        }
+    }
+
+    #[tokio::test]
+    async fn set_active_absent_role_defaults_to_kohai() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let reborn_home = temp.path().join("reborn-home");
+        let boot = boot_for_home(&reborn_home);
+        let service = RebornLlmConfigService::new(boot.clone(), key_store());
+
+        // Register a custom provider so set_provider_async can succeed.
+        service
+            .upsert_provider(caller(), upsert_request("acme", None, false))
+            .await
+            .expect("upsert");
+
+        let snapshot = service
+            .set_active(caller(), set_active_request("acme", None))
+            .await
+            .expect("set_active without role");
+
+        assert_eq!(
+            snapshot.kohai_active.as_ref().map(|s| s.provider_id.as_str()),
+            Some("acme"),
+            "absent role must default to Kohai"
+        );
+        assert!(snapshot.sempai_active.is_none());
+        assert_eq!(
+            snapshot.active.as_ref().map(|s| s.provider_id.as_str()),
+            Some("acme"),
+            "legacy `active` field must stay in sync with Kohai"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_active_sempai_role_writes_file_and_updates_snapshot() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let reborn_home = temp.path().join("reborn-home");
+        std::fs::create_dir_all(&reborn_home).expect("mkdir");
+        let boot = boot_for_home(&reborn_home);
+        let service = RebornLlmConfigService::new(boot.clone(), key_store());
+
+        let snapshot = service
+            .set_active(
+                caller(),
+                set_active_request("ibm_bob_inference", Some(ProviderRole::Sempai)),
+            )
+            .await
+            .expect("set_active Sempai");
+
+        assert_eq!(
+            snapshot.sempai_active.as_ref().map(|s| s.provider_id.as_str()),
+            Some("ibm_bob_inference"),
+            "Sempai selection must appear in sempai_active"
+        );
+        // Sempai file must exist on disk.
+        let path = boot.home().sempai_provider_file_path();
+        assert!(path.exists(), "sempai_provider.json must be written");
+        let sel = read_sempai_selection(path).expect("readable");
+        assert_eq!(sel.provider_id, "ibm_bob_inference");
+    }
+
+    #[tokio::test]
+    async fn set_active_sempai_conflict_with_kohai_is_rejected() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let reborn_home = temp.path().join("reborn-home");
+        let boot = boot_for_home(&reborn_home);
+        let service = RebornLlmConfigService::new(boot.clone(), key_store());
+
+        // Make acme the active Kohai provider.
+        service
+            .upsert_provider(caller(), upsert_request("acme", None, true))
+            .await
+            .expect("upsert as kohai");
+
+        // Trying to assign the same provider as Sempai must fail.
+        let err = service
+            .set_active(
+                caller(),
+                set_active_request("acme", Some(ProviderRole::Sempai)),
+            )
+            .await
+            .expect_err("conflict must be rejected");
+
+        assert!(
+            matches!(err, LlmConfigServiceError::Conflict { .. }),
+            "expected Conflict, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_active_kohai_conflict_with_sempai_is_rejected() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let reborn_home = temp.path().join("reborn-home");
+        std::fs::create_dir_all(&reborn_home).expect("mkdir");
+        let boot = boot_for_home(&reborn_home);
+        let service = RebornLlmConfigService::new(boot.clone(), key_store());
+
+        // First assign ibm_bob_inference as Sempai.
+        service
+            .set_active(
+                caller(),
+                set_active_request("ibm_bob_inference", Some(ProviderRole::Sempai)),
+            )
+            .await
+            .expect("set sempai");
+
+        // Now trying to assign the same provider as Kohai must fail.
+        let err = service
+            .set_active(
+                caller(),
+                set_active_request("ibm_bob_inference", Some(ProviderRole::Kohai)),
+            )
+            .await
+            .expect_err("conflict must be rejected");
+
+        assert!(
+            matches!(err, LlmConfigServiceError::Conflict { .. }),
+            "expected Conflict, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_active_sempai_clear_removes_file() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let reborn_home = temp.path().join("reborn-home");
+        std::fs::create_dir_all(&reborn_home).expect("mkdir");
+        let boot = boot_for_home(&reborn_home);
+        let service = RebornLlmConfigService::new(boot.clone(), key_store());
+
+        // Set Sempai then clear it with empty provider_id.
+        service
+            .set_active(
+                caller(),
+                set_active_request("ibm_bob_inference", Some(ProviderRole::Sempai)),
+            )
+            .await
+            .expect("set sempai");
+
+        let snapshot = service
+            .set_active(
+                caller(),
+                SetActiveLlmRequest {
+                    provider_id: String::new(),
+                    model: None,
+                    role: Some(ProviderRole::Sempai),
+                },
+            )
+            .await
+            .expect("clear sempai");
+
+        assert!(
+            snapshot.sempai_active.is_none(),
+            "clearing Sempai must remove sempai_active from snapshot"
         );
     }
 }
