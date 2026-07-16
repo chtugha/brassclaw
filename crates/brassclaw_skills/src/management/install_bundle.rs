@@ -15,6 +15,7 @@ use super::{
     SKILL_FILE_NAME, SkillInstallSource, SkillManagementContext, SkillManagementError,
     SkillManagementErrorKind, SkillSource, USER_SKILLS_ROOT, filesystem_error,
     log_skill_filesystem_phase, scoped_sibling, skill_root_scoped_path, skill_scoped_path,
+    write_filesystem_error,
 };
 
 pub const MAX_INSTALL_BUNDLE_FILES: usize = 256;
@@ -53,7 +54,7 @@ pub(super) async fn publish_skill_install(
                 .await
                 .map_err(|error| {
                     log_skill_filesystem_phase("write_bundle_file_failed", skill_name, &file_path);
-                    filesystem_error(error)
+                    write_filesystem_error(error)
                 })?;
         }
         if source == SkillInstallSource::InstalledUrl {
@@ -81,7 +82,7 @@ pub(super) async fn publish_skill_install(
             .await
             .map_err(|error| {
                 log_skill_filesystem_phase("write_file_failed", skill_name, &skill_path);
-                filesystem_error(error)
+                write_filesystem_error(error)
             })?;
         Ok(())
     }
@@ -372,7 +373,7 @@ async fn create_dir_all(
         })
         .map_err(|error| {
             log_skill_filesystem_phase("create_dir_all_failed", skill_name, path);
-            filesystem_error(error)
+            write_filesystem_error(error)
         })
 }
 
@@ -387,9 +388,12 @@ async fn cleanup_partial_install(
             skill_name,
             scoped_path = %skill_dir,
             error = ?error,
-            "skill install failed to clean up partial bundle"
+            "skill install failed to clean up partial bundle; directory may remain in partial state"
         );
-        return Err(filesystem_error(error));
+        // Cleanup failure leaves the directory in a partial state, which is an invalid skill.
+        return Err(SkillManagementError::new(
+            SkillManagementErrorKind::InvalidSkill,
+        ));
     }
     Ok(())
 }

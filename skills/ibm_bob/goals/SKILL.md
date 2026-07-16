@@ -1,7 +1,7 @@
 ---
 name: ibm_bob_goals
 description: Create, track, and evaluate individual and team performance goals within IBM Bob's goal management system.
-types: [ibm_bob]
+types: [llm, kohai, agent]
 ---
 
 # IBM Bob – Goals

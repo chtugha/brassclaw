@@ -1,7 +1,7 @@
 ---
 name: ibm_bob_onboarding
 description: Manage employee onboarding workflows, task checklists, welcome packets, and new-hire completion tracking in IBM Bob.
-types: [ibm_bob]
+types: [llm, kohai, agent]
 ---
 
 # IBM Bob – Onboarding

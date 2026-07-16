@@ -1,7 +1,7 @@
 ---
 name: ibm_bob_reports
 description: Generate, retrieve, and export HR reports including headcount, turnover, compensation, and custom report definitions from IBM Bob.
-types: [ibm_bob]
+types: [llm, kohai, agent]
 ---
 
 # IBM Bob – Reports

@@ -1,7 +1,7 @@
 ---
 name: ibm_bob_job_catalog
 description: Manage the job catalog in IBM Bob — job families, job levels, titles, grades, and compensation bands.
-types: [ibm_bob]
+types: [llm, kohai, agent]
 ---
 
 # IBM Bob – Job Catalog

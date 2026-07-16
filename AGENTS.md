@@ -10,10 +10,8 @@ Start with these deeper docs as needed:
 - `crates/brassclaw_reborn_cli/AGENTS.md`
 - `crates/brassclaw_reborn/CLAUDE.md`
 - `crates/brassclaw_reborn_composition/CLAUDE.md`
-- `crates/brassclaw_reborn_config/CLAUDE.md`
 - `crates/brassclaw_agent_loop/CLAUDE.md`
 - `crates/brassclaw_llm/CLAUDE.md`
-- `crates/brassclaw_safety/CLAUDE.md`
 - `crates/brassclaw_reborn_webui_ingress/CLAUDE.md`
 - `tests/e2e/CLAUDE.md`
 
@@ -44,6 +42,7 @@ New Reborn work belongs in `crates/`.
 | Extensions lifecycle | `crates/brassclaw_extensions/` |
 | Host runtime shell access | `crates/brassclaw_host_runtime/` (hosts the in-kernel script lane via `services/script_runtime`) |
 | Embeddings | `crates/brassclaw_embeddings/` |
+| Recipe-Skill-Tool library | `crates/brassclaw_engine/src/memory/` (types, matcher, validator, similarity), `crates/brassclaw_reborn_composition/src/recipe_store.rs` + `recipe_library.rs` (REST store + loop adapter), `crates/brassclaw_turns/src/run_profile/recipe_lookup.rs` (trait) |
 
 When a task touches only `crates/` there is no longer a v1 `src/` tree — all v1 code was removed in Phase 6.
 
@@ -127,7 +126,7 @@ cargo test --features integration
 
 ## Before Finishing
 
-- Confirm whether behavior changes require updates to `FEATURE_PARITY.md`, specs, API docs, or `CHANGELOG.md`.
+- Confirm whether behavior changes require updates to specs, API docs, or `CHANGELOG.md`.
 - Run the most targeted tests and clippy checks that cover the change.
 - Re-check security-sensitive paths when touching auth, secrets, network listeners, sandboxing, or approvals.
 - Keep the final diff scoped to the task. Avoid unrelated file churn.

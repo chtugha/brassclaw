@@ -1,7 +1,7 @@
 ---
 name: ibm_bob_workforce
 description: Access workforce planning data, headcount forecasts, organizational structure snapshots, and position management via IBM Bob.
-types: [ibm_bob]
+types: [llm, kohai, agent]
 ---
 
 # IBM Bob – Workforce

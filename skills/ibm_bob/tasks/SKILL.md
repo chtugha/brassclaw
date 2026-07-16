@@ -1,7 +1,7 @@
 ---
 name: ibm_bob_tasks
 description: Create, assign, and track HR tasks and to-do items for employees and managers via IBM Bob.
-types: [ibm_bob]
+types: [llm, kohai, agent]
 ---
 
 # IBM Bob – Tasks

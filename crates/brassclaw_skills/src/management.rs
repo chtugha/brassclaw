@@ -514,7 +514,7 @@ pub async fn remove_skill(
         .await
         .map_err(|error| {
             log_skill_filesystem_phase("delete_dir_failed", request.name, &skill_dir);
-            filesystem_error(error)
+            write_filesystem_error(error)
         })?;
     tracing::debug!("skill remove completed");
     Ok(SkillRemoveResult {
@@ -859,5 +859,14 @@ fn filesystem_error(error: FilesystemError) -> SkillManagementError {
             SkillManagementError::new(SkillManagementErrorKind::FilesystemDenied)
         }
         _ => SkillManagementError::new(SkillManagementErrorKind::FilesystemDenied),
+    }
+}
+
+fn write_filesystem_error(error: FilesystemError) -> SkillManagementError {
+    match error {
+        FilesystemError::Backend { .. } => {
+            SkillManagementError::new(SkillManagementErrorKind::FilesystemDenied)
+        }
+        other => filesystem_error(other),
     }
 }

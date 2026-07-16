@@ -1,7 +1,7 @@
 ---
 name: ibm_bob_attendance_projects
 description: Query and manage attendance project codes, project-level hour allocations, and project-based time tracking entries via IBM Bob HR.
-types: [ibm_bob]
+types: [llm, kohai, agent]
 ---
 
 # IBM Bob – Attendance Projects

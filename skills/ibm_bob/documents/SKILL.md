@@ -1,7 +1,7 @@
 ---
 name: ibm_bob_documents
 description: Upload, retrieve, and manage HR documents, contracts, and employee files stored in IBM Bob.
-types: [ibm_bob]
+types: [llm, kohai, agent]
 ---
 
 # IBM Bob – Documents

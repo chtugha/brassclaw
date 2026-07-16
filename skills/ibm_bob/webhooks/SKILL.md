@@ -1,7 +1,7 @@
 ---
 name: ibm_bob_webhooks
 description: Register, inspect, and manage IBM Bob webhook subscriptions for HR event notifications.
-types: [ibm_bob]
+types: [llm, kohai, agent]
 ---
 
 # IBM Bob – Webhooks

@@ -1379,4 +1379,242 @@ mod tests {
         assert!(parse_project_id(&too_long).is_err());
         assert!(parse_project_id("good-id_42").is_ok());
     }
+
+    #[tokio::test]
+    async fn review_requested_to_rejected_is_valid() {
+        let (typed, erased) = make_pair();
+        let project = project_id("bootstrap");
+        let r = sample_recipe("r1", ValidationStatus::ReviewRequested);
+        save_recipe_doc(&typed, project, &r).await;
+        let store = StoreBackedRecipeStore::open(erased);
+
+        let resp = store
+            .update_recipe_validation_status("user1", "bootstrap", "r1", "rejected", None)
+            .await
+            .expect("review_requested → rejected must be a valid transition");
+        assert_eq!(resp.previous_status, "review_requested");
+        assert_eq!(resp.new_status, "rejected");
+
+        let current = store
+            .get_recipe("user1", "bootstrap", "r1")
+            .await
+            .expect("get")
+            .expect("some");
+        assert!(
+            current.recipe["rejected_at"].is_string(),
+            "rejected_at must be set when moving to rejected state"
+        );
+    }
+
+    #[tokio::test]
+    async fn review_requested_to_validated_is_blocked() {
+        let (typed, erased) = make_pair();
+        let project = project_id("bootstrap");
+        let r = sample_recipe("r1", ValidationStatus::ReviewRequested);
+        save_recipe_doc(&typed, project, &r).await;
+        let store = StoreBackedRecipeStore::open(erased);
+
+        let result = store
+            .update_recipe_validation_status("user1", "bootstrap", "r1", "validated", None)
+            .await;
+        assert!(
+            matches!(result, Err(RecipeStoreError::Invalid(_))),
+            "ReviewRequested → Validated must be blocked — user must wait for automated review to fix the item first"
+        );
+    }
+
+    #[tokio::test]
+    async fn upgrade_queued_to_validated_is_blocked() {
+        let (typed, erased) = make_pair();
+        let project = project_id("bootstrap");
+        let r = sample_recipe("r1", ValidationStatus::UpgradeQueued);
+        save_recipe_doc(&typed, project, &r).await;
+        let store = StoreBackedRecipeStore::open(erased);
+
+        let result = store
+            .update_recipe_validation_status("user1", "bootstrap", "r1", "validated", None)
+            .await;
+        assert!(
+            matches!(result, Err(RecipeStoreError::Invalid(_))),
+            "UpgradeQueued → Validated must be blocked — must go through audition merge flow"
+        );
+    }
+
+    #[tokio::test]
+    async fn validated_is_terminal_for_user_actions() {
+        let (typed, erased) = make_pair();
+        let project = project_id("bootstrap");
+        let r = sample_recipe("r1", ValidationStatus::Validated);
+        save_recipe_doc(&typed, project, &r).await;
+        let store = StoreBackedRecipeStore::open(erased);
+
+        for target in &["pending", "auto_passed", "review_requested", "rejected", "garbage"] {
+            let result = store
+                .update_recipe_validation_status("user1", "bootstrap", "r1", target, None)
+                .await;
+            assert!(
+                matches!(result, Err(RecipeStoreError::Invalid(_))),
+                "Validated → {target} must be blocked — validated is a terminal state for user-initiated transitions"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn garbage_is_terminal_for_user_actions() {
+        let (typed, erased) = make_pair();
+        let project = project_id("bootstrap");
+        let r = sample_recipe("r1", ValidationStatus::Garbage);
+        save_recipe_doc(&typed, project, &r).await;
+        let store = StoreBackedRecipeStore::open(erased);
+
+        for target in &["pending", "auto_passed", "validated", "review_requested", "rejected"] {
+            let result = store
+                .update_recipe_validation_status("user1", "bootstrap", "r1", target, None)
+                .await;
+            assert!(
+                matches!(result, Err(RecipeStoreError::Invalid(_))),
+                "Garbage → {target} must be blocked — garbage items require manual deletion, not user re-promotion"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn upgrade_queued_to_rejected_is_valid_discard_path() {
+        let (typed, erased) = make_pair();
+        let project = project_id("bootstrap");
+        let mut r = sample_recipe("r1", ValidationStatus::UpgradeQueued);
+        r.similarity_parent_id = Some("existing-recipe-abc".to_string());
+        save_recipe_doc(&typed, project, &r).await;
+        let store = StoreBackedRecipeStore::open(erased);
+
+        let resp = store
+            .update_recipe_validation_status("user1", "bootstrap", "r1", "rejected", None)
+            .await
+            .expect("UpgradeQueued → Rejected must be allowed (user discards duplicate)");
+        assert_eq!(resp.previous_status, "upgrade_queued");
+        assert_eq!(resp.new_status, "rejected");
+    }
+
+    #[tokio::test]
+    async fn auto_passed_to_rejected_sets_rejected_at() {
+        let (typed, erased) = make_pair();
+        let project = project_id("bootstrap");
+        let r = sample_recipe("r1", ValidationStatus::AutoPassed);
+        save_recipe_doc(&typed, project, &r).await;
+        let store = StoreBackedRecipeStore::open(erased);
+
+        let resp = store
+            .update_recipe_validation_status("user1", "bootstrap", "r1", "rejected", None)
+            .await
+            .expect("auto_passed → rejected must be valid");
+        assert_eq!(resp.new_status, "rejected");
+
+        let current = store
+            .get_recipe("user1", "bootstrap", "r1")
+            .await
+            .expect("get")
+            .expect("some");
+        assert!(
+            current.recipe["rejected_at"].is_string(),
+            "rejected_at must be stamped when moving to rejected from auto_passed"
+        );
+    }
+
+    #[tokio::test]
+    async fn record_outcomes_progression_promotes_tier() {
+        let (typed, erased) = make_pair();
+        let project = project_id("bootstrap");
+        let s = sample_skill("s1", ValidationStatus::Validated);
+        save_skill_doc(&typed, project, &s).await;
+        let store = StoreBackedRecipeStore::open(erased.clone());
+
+        for i in 1u64..=20 {
+            let resp = store
+                .record_outcome(
+                    "user1",
+                    "bootstrap",
+                    RecordOutcomeRequest {
+                        id: "s1".to_string(),
+                        kind: OutcomeKind::ToolSkill,
+                        success: true,
+                    },
+                )
+                .await
+                .expect("outcome");
+            assert!(resp.recorded, "outcome {i} must be recorded");
+        }
+        let current = store
+            .get_tool_skill("user1", "bootstrap", "s1")
+            .await
+            .expect("get")
+            .expect("some");
+        assert_eq!(current.tool_skill["usage_count"], 20);
+        assert_eq!(current.tool_skill["success_count"], 20);
+        assert_eq!(current.tool_skill["tier"], "mature");
+    }
+
+    #[tokio::test]
+    async fn skill_validation_invalid_transitions_blocked() {
+        let (typed, erased) = make_pair();
+        let project = project_id("bootstrap");
+        let validated = sample_skill("validated", ValidationStatus::Validated);
+        let garbage = sample_skill("garbage", ValidationStatus::Garbage);
+        let pending = sample_skill("pending", ValidationStatus::Pending);
+        save_skill_doc(&typed, project, &validated).await;
+        save_skill_doc(&typed, project, &garbage).await;
+        save_skill_doc(&typed, project, &pending).await;
+        let store = StoreBackedRecipeStore::open(erased);
+
+        let result = store
+            .update_skill_validation_status("user1", "bootstrap", "validated", "rejected", None)
+            .await;
+        assert!(
+            matches!(result, Err(RecipeStoreError::Invalid(_))),
+            "Validated → Rejected must be blocked"
+        );
+
+        let result = store
+            .update_skill_validation_status("user1", "bootstrap", "garbage", "validated", None)
+            .await;
+        assert!(
+            matches!(result, Err(RecipeStoreError::Invalid(_))),
+            "Garbage → Validated must be blocked"
+        );
+
+        let result = store
+            .update_skill_validation_status("user1", "bootstrap", "pending", "validated", None)
+            .await;
+        assert!(
+            matches!(result, Err(RecipeStoreError::Invalid(_))),
+            "Pending → Validated must be blocked — skips auto-validation"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_validation_queue_sorts_by_created_at_ascending() {
+        let (typed, erased) = make_pair();
+        let project = project_id("bootstrap");
+        let now = Utc::now();
+        let mut r1 = sample_recipe("r1", ValidationStatus::AutoPassed);
+        let mut r2 = sample_recipe("r2", ValidationStatus::AutoPassed);
+        let mut r3 = sample_recipe("r3", ValidationStatus::AutoPassed);
+        r1.created_at = now - chrono::Duration::seconds(30);
+        r1.updated_at = r1.created_at;
+        r2.created_at = now - chrono::Duration::seconds(20);
+        r2.updated_at = r2.created_at;
+        r3.created_at = now - chrono::Duration::seconds(10);
+        r3.updated_at = r3.created_at;
+        save_recipe_doc(&typed, project, &r1).await;
+        save_recipe_doc(&typed, project, &r2).await;
+        save_recipe_doc(&typed, project, &r3).await;
+        let store = StoreBackedRecipeStore::open(erased);
+        let items = store
+            .list_validation_queue("user1", "bootstrap")
+            .await
+            .expect("list");
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0].id, "r1", "oldest item must appear first");
+        assert_eq!(items[1].id, "r2");
+        assert_eq!(items[2].id, "r3", "newest item must appear last");
+    }
 }

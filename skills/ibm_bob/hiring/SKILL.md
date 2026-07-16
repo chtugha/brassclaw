@@ -1,7 +1,7 @@
 ---
 name: ibm_bob_hiring
 description: Manage open positions, job postings, candidates, interviews, and offers in IBM Bob's applicant tracking system (ATS).
-types: [ibm_bob]
+types: [llm, kohai, agent]
 ---
 
 # IBM Bob – Hiring

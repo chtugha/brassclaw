@@ -1,7 +1,7 @@
 ---
 name: ibm_bob_learning
 description: Access and manage employee learning paths, training enrollments, course completions, and certifications via IBM Bob's learning module.
-types: [ibm_bob]
+types: [llm, kohai, agent]
 ---
 
 # IBM Bob – Learning
