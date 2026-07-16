@@ -111,6 +111,12 @@ curl -fsSL https://raw.githubusercontent.com/chtugha/brassclaw/main/uninstall.sh
 
 The uninstaller stops and disables the service, removes the binary, and optionally removes your configuration (you will be prompted).
 
+To completely wipe everything (binary, service, config, and all data) without any prompts:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/chtugha/brassclaw/main/uninstall.sh | sudo bash -s -- --wipe
+```
+
 ### Option B: macOS — manual binary install
 
 ```bash

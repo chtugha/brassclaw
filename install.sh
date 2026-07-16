@@ -15,9 +15,10 @@ set -euo pipefail
 # ── configurable ──────────────────────────────────────────────────────────────
 GITHUB_REPO="chtugha/brassclaw"
 # The installed binary is always named "brassclaw-reborn" — that is the Reborn
-# CLI binary.  The legacy "brassclaw" stub printed "main binary is disabled"
-# and must not be used.
+# CLI binary.
 BINARY_NAME="brassclaw-reborn"
+# Legacy binary name used by older installs; cleaned up automatically on upgrade.
+LEGACY_BINARY_NAME="brassclaw"
 CONFIG_DIR="${BRASSCLAW_REBORN_HOME:-$HOME/.brassclaw/reborn}"
 SERVICE_NAME="brassclaw"
 SYSTEMD_DIR="/etc/systemd/system"
@@ -148,6 +149,15 @@ download_binary() {
     # Install the artifact under the canonical binary name
     mv "$tmp_dir/$artifact" "$INSTALL_DIR/$BINARY_NAME"
     log_info "Installed to $INSTALL_DIR/$BINARY_NAME"
+
+    # Remove the legacy binary if present (left behind by older installs)
+    for legacy in "$INSTALL_DIR/$LEGACY_BINARY_NAME" "$INSTALL_DIR/$LEGACY_BINARY_NAME.bak"; do
+        if [[ -f "$legacy" ]]; then
+            rm -f "$legacy"
+            log_info "Removed legacy binary: $legacy"
+        fi
+    done
+
     trap - EXIT
     rm -rf "$tmp_dir"
 }
