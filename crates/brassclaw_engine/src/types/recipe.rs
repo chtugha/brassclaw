@@ -178,12 +178,15 @@ pub struct Recipe {
 }
 
 impl Recipe {
-    /// `(successes + failures == 0)` → neutral `1.0` so Tier 0 eligibility
-    /// falls through to usage+Wilson checks (which already enforce ≥ N).
+    /// Observed success rate. Returns `0.0` when no interactions have been
+    /// recorded — no evidence means no confidence, not perfect confidence.
+    /// Tier 0 eligibility is gated separately by `wilson_lower ≥ 0.70` and
+    /// a minimum usage count, so callers that need to distinguish
+    /// "new recipe" from "high-confidence recipe" should use `wilson_lower`.
     pub fn confidence(&self) -> f64 {
         let total = self.success_count + self.failure_count;
         if total == 0 {
-            return 1.0;
+            return 0.0;
         }
         self.success_count as f64 / total as f64
     }
@@ -268,10 +271,12 @@ pub struct ToolSkill {
 }
 
 impl ToolSkill {
+    /// Observed success rate. Returns `0.0` when no interactions have been
+    /// recorded. See `Recipe::confidence` for the rationale.
     pub fn confidence(&self) -> f64 {
         let total = self.success_count + self.failure_count;
         if total == 0 {
-            return 1.0;
+            return 0.0;
         }
         self.success_count as f64 / total as f64
     }
@@ -279,12 +284,16 @@ impl ToolSkill {
     /// Approximate token cost when injected as Tier 1 prompt content.
     /// 4 chars ≈ 1 token (rough heuristic; matches `RecipeValidator` ceiling).
     pub fn estimated_tokens(&self) -> usize {
-        let mut total_chars = self.description.len() + self.preconditions.len()
+        let mut total_chars = self.description.len()
+            + self.preconditions.len()
             + self.error_handling.len();
         if let Some(snippet) = &self.code_snippet {
             total_chars += snippet.len();
         }
         total_chars += self.param_template.to_string().len();
+        for param in &self.param_schema {
+            total_chars += param.name.len() + param.param_type.len() + param.description.len();
+        }
         total_chars / 4
     }
 
@@ -417,7 +426,7 @@ mod tests {
         r.usage_count = 0;
         r.success_count = 0;
         r.failure_count = 0;
-        assert_eq!(r.confidence(), 1.0);
+        assert_eq!(r.confidence(), 0.0);
     }
 
     #[test]

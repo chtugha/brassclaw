@@ -15,9 +15,10 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use brassclaw_engine::memory::metric_outcome::MetricRecorder;
 use brassclaw_engine::memory::recipe_matcher::{
-    RecipeMatch as EngineRecipeMatch, RecipeMatcher, ToolSkillMatch,
+    RecipeMatch as EngineRecipeMatch, RecipeMatcher, ToolSkillMatch, RECIPE_MIN_MATCH,
 };
 use brassclaw_engine::traits::store::Store;
 use brassclaw_engine::types::project::ProjectId;
@@ -64,16 +65,14 @@ impl RecipeLibrary {
         ProjectId::from_slug("default", "local")
     }
 
-    /// Apply the score threshold for surfacing a Recipe match. Mirrors
-    /// `RecipeMatcher::RECIPE_MIN_MATCH`; we re-check on the
-    /// composition side because the matcher's threshold is `pub(crate)`.
     fn above_threshold(score: f64) -> bool {
-        score >= 0.5
+        score >= RECIPE_MIN_MATCH
     }
 }
 
+#[async_trait]
 impl RecipeLookup for RecipeLibrary {
-    fn find_recipe(
+    async fn find_recipe(
         &self,
         user_input: &str,
     ) -> Result<Option<RecipeMatchDto>, RecipeLookupError> {
@@ -82,64 +81,54 @@ impl RecipeLookup for RecipeLibrary {
         // after scoping. The single-tenant v2 design treats `local` /
         // `default` as the canonical scopes.
         let project_id = Self::default_project_scope();
-        let result = tokio::runtime::Handle::current().block_on(self.matcher().find_recipe(
-            project_id,
-            "default",
-            user_input,
-        ));
-        let result = result.map_err(|e| RecipeLookupError::Backend(e.to_string()))?;
+        let result = self
+            .matcher()
+            .find_recipe(project_id, "default", user_input)
+            .await
+            .map_err(|e| RecipeLookupError::Backend(e.to_string()))?;
         Ok(match result {
             Some((hit, score)) if Self::above_threshold(score) => Some(to_dto(hit, score)),
             _ => None,
         })
     }
 
-    fn find_skills(
+    async fn find_skills(
         &self,
         user_input: &str,
     ) -> Result<Vec<ToolSkillMatchDto>, RecipeLookupError> {
         let project_id = Self::default_project_scope();
-        let ranked = tokio::runtime::Handle::current().block_on(self.matcher().find_skills(
-            project_id,
-            "default",
-            user_input,
-        ));
-        let ranked = ranked.map_err(|e| RecipeLookupError::Backend(e.to_string()))?;
+        let ranked = self
+            .matcher()
+            .find_skills(project_id, "default", user_input)
+            .await
+            .map_err(|e| RecipeLookupError::Backend(e.to_string()))?;
         Ok(ranked.into_iter().map(skill_to_dto).collect())
     }
 
-    fn record_recipe_outcome(
+    async fn record_recipe_outcome(
         &self,
         recipe_id: &str,
         success: bool,
     ) -> Result<(), RecipeLookupError> {
         let project_id = Self::default_project_scope();
-        let recorder = self.recorder.clone();
-        let recipe_id_owned = recipe_id.to_string();
-        let outcome = tokio::runtime::Handle::current().block_on(async move {
-            recorder
-                .record_recipe(project_id, "default", &recipe_id_owned, success)
-                .await
-        });
-        outcome.map_err(|e| RecipeLookupError::Backend(e.to_string()))?;
+        self.recorder
+            .record_recipe(project_id, "default", recipe_id, success)
+            .await
+            .map_err(|e| RecipeLookupError::Backend(e.to_string()))?;
         debug!(recipe_id, success, "recipe_library: recipe outcome recorded");
         Ok(())
     }
 
-    fn record_skill_outcome(
+    async fn record_skill_outcome(
         &self,
         skill_id: &str,
         success: bool,
     ) -> Result<(), RecipeLookupError> {
         let project_id = Self::default_project_scope();
-        let recorder = self.recorder.clone();
-        let skill_id_owned = skill_id.to_string();
-        let outcome = tokio::runtime::Handle::current().block_on(async move {
-            recorder
-                .record_tool_skill(project_id, "default", &skill_id_owned, success)
-                .await
-        });
-        outcome.map_err(|e| RecipeLookupError::Backend(e.to_string()))?;
+        self.recorder
+            .record_tool_skill(project_id, "default", skill_id, success)
+            .await
+            .map_err(|e| RecipeLookupError::Backend(e.to_string()))?;
         debug!(skill_id, success, "recipe_library: skill outcome recorded");
         Ok(())
     }
@@ -186,22 +175,23 @@ fn skill_to_dto(skill: ToolSkillMatch) -> ToolSkillMatchDto {
 #[allow(dead_code)]
 pub(crate) struct DisabledRecipeLookup;
 
+#[async_trait]
 impl RecipeLookup for DisabledRecipeLookup {
-    fn find_recipe(
+    async fn find_recipe(
         &self,
         _user_input: &str,
     ) -> Result<Option<RecipeMatchDto>, RecipeLookupError> {
         Ok(None)
     }
 
-    fn find_skills(
+    async fn find_skills(
         &self,
         _user_input: &str,
     ) -> Result<Vec<ToolSkillMatchDto>, RecipeLookupError> {
         Ok(Vec::new())
     }
 
-    fn record_recipe_outcome(
+    async fn record_recipe_outcome(
         &self,
         _recipe_id: &str,
         _success: bool,
@@ -209,7 +199,7 @@ impl RecipeLookup for DisabledRecipeLookup {
         Ok(())
     }
 
-    fn record_skill_outcome(
+    async fn record_skill_outcome(
         &self,
         _skill_id: &str,
         _success: bool,

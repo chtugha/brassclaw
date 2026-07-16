@@ -13,9 +13,24 @@
 //! - **Tier 2 — full LLM reasoning**: no Recipe matches; fall through
 //!   to the existing prompt/model/capability pipeline unchanged.
 //!
-//! The third (default) branch is what this initial cut always returns;
-//! Tier 0 and Tier 1 plumbing arrives in the next iteration once the
-//! composition-side `RecipeLibrary` adapter is wired.
+//! ## Structural debt
+//!
+//! The stage is positioned before `PromptStage` so that Tier 0 can avoid
+//! prompt assembly entirely. However, the assembled prompt messages (which
+//! carry the user's full text) are not yet available here — only
+//! `LoopExecutionState` is in scope.
+//!
+//! To resolve this properly, one of the following is required:
+//! 1. Add a cached `last_user_text: Option<String>` field to
+//!    `LoopExecutionState` that `InputStage` populates when it drains
+//!    user input — the cheapest option, no extra DB round-trip.
+//! 2. Move the stage between `PromptStage` and `ModelStage` and change
+//!    `RecipeInput` to wrap `PromptOutput` — enables Tier 1 injection
+//!    directly into the assembled messages, but Tier 0 short-circuiting
+//!    would still require a pre-prompt pass.
+//!
+//! Until one of the above paths is implemented, `find_recipe` / `find_skills`
+//! are not called and the stage is a pipeline hook-point only (Tier 2 always).
 use async_trait::async_trait;
 use tracing::debug;
 
@@ -47,8 +62,18 @@ impl ExecutorStage<RecipeInput> for RecipeStage {
         ctx: StageContext<'_>,
         input: RecipeInput,
     ) -> Result<RecipeStep, AgentLoopExecutorError> {
-        let lookup = ctx.host.recipe_lookup();
-        if lookup.is_none() {
+        // See module-level structural debt comment: user text is not yet
+        // accessible from `LoopExecutionState` at this pipeline position.
+        // Tier 0/1 dispatch requires `last_user_text` in state (option 1)
+        // or stage repositioning (option 2). Until then, skip the lookup.
+        if ctx.host.recipe_lookup().is_some() {
+            debug!(
+                iteration = input.state.iteration,
+                "recipe stage: library wired but user text unavailable at this \
+                 pipeline position — falling through to LLM (Tier 2). \
+                 See module doc for resolution options."
+            );
+        } else {
             debug!(iteration = input.state.iteration, "recipe stage: no library wired");
         }
         Ok(RecipeStep::Continue {

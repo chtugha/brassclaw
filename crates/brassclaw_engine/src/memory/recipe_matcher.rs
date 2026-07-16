@@ -24,7 +24,7 @@ use crate::types::project::ProjectId;
 use crate::types::recipe::{Recipe, RecipeTrigger, ToolSkill, ValidationStatus};
 
 /// Minimum match score before a Recipe is surfaced for any tier.
-const RECIPE_MIN_MATCH: f64 = 0.5;
+pub const RECIPE_MIN_MATCH: f64 = 0.5;
 
 /// How many ToolSkill entries to return per lookup (Tier 1 budget).
 const SKILL_TIER1_LIMIT: usize = 5;
@@ -279,11 +279,14 @@ fn score_trigger(trigger: &RecipeTrigger, user_input: &str) -> f64 {
     }
 }
 
-// 10MB compiled regex cap — prevents LLM-authored regex from ReDoS-ing the
-// executor pipeline when a Recipe with a Pattern trigger gets hot.
+// 10 000-byte compiled regex cap — prevents LLM-authored regex from ReDoS-ing
+// the executor pipeline when a Recipe with a Pattern trigger gets hot.
+// 10 MB was too permissive: a 10 MB NFA is large enough to exhibit
+// exponential backtracking on adversarial inputs. 10 000 bytes rejects
+// genuinely pathological regexes while still allowing typical trigger patterns.
 fn regex_limited(pattern: &str) -> Result<regex::Regex, regex::Error> {
     regex::RegexBuilder::new(pattern)
-        .size_limit(10 * 1024 * 1024)
+        .size_limit(10_000)
         .build()
 }
 

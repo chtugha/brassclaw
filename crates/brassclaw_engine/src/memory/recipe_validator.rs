@@ -200,13 +200,15 @@ fn check_description_length(desc: &str, kind: &str, result: &mut ValidationResul
 }
 
 fn check_description_actionable(desc: &str, kind: &str, result: &mut ValidationResult) {
-    const VERBS: &[&str] = &[
-        "use", "run", "create", "check", "extract", "process", "analyze", "configure", "list",
-        "fetch", "send", "compute", "apply", "build", "deploy", "format", "validate", "inspect",
-        "open", "close", "delete", "update", "render", "compile", "test", "sign",
-    ];
-    let desc_lower = desc.to_lowercase();
-    let has_verb = VERBS.iter().any(|v| desc_lower.contains(v));
+    use std::sync::OnceLock;
+    static VERB_RE: OnceLock<regex::Regex> = OnceLock::new();
+    let re = VERB_RE.get_or_init(|| {
+        regex::Regex::new(
+            r"\b(use|run|create|check|extract|process|analyze|configure|list|fetch|send|compute|apply|build|deploy|format|validate|inspect|open|close|delete|update|render|compile|test|sign)\b",
+        )
+        .expect("actionable-verb regex is a compile-time literal — infallible")
+    });
+    let has_verb = re.is_match(&desc.to_lowercase());
     if !has_verb {
         result.warnings.push(format!(
             "{kind} description does not contain an actionable verb — consider 'Use when …' phrasing"
@@ -240,7 +242,7 @@ fn check_trigger(
                 if p.is_empty() {
                     result.errors.push(format!("Pattern[#{i}] is empty"));
                 } else if let Err(error) = regex::RegexBuilder::new(p)
-                    .size_limit(10 * 1024 * 1024)
+                    .size_limit(10_000)
                     .build()
                 {
                     result.errors.push(format!("Pattern[#{i}] regex invalid: {error}"));

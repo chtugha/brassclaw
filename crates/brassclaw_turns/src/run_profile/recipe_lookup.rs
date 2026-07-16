@@ -13,6 +13,8 @@
 
 use std::fmt;
 
+use async_trait::async_trait;
+
 /// Lightweight DTO for a Recipe step — `RecipeStage` doesn't need the
 /// full schema; it only invokes the step's `tool` with `params`.
 #[derive(Debug, Clone)]
@@ -76,29 +78,37 @@ impl fmt::Display for RecipeLookupError {
 impl std::error::Error for RecipeLookupError {}
 
 /// Lookup contract for the Recipe-Skill-Tool pipeline.
+///
+/// All methods are `async` — the backing store is typically a DB and must
+/// not be driven via `block_on()` inside a running Tokio runtime (deadlock
+/// risk on single-threaded or work-stealing executors).
+#[async_trait]
 pub trait RecipeLookup: Send + Sync {
     /// Best matching validated Recipe for `user_input`, or `None` if no
     /// trigger fires above the matcher's threshold.
-    fn find_recipe(
+    async fn find_recipe(
         &self,
         user_input: &str,
     ) -> Result<Option<RecipeMatchDto>, RecipeLookupError>;
 
     /// Compact ToolSkill entries for Tier 1 prompt injection. Already
     /// ranked by the matcher; caller takes only as many as its budget allows.
-    fn find_skills(&self, user_input: &str) -> Result<Vec<ToolSkillMatchDto>, RecipeLookupError>;
+    async fn find_skills(
+        &self,
+        user_input: &str,
+    ) -> Result<Vec<ToolSkillMatchDto>, RecipeLookupError>;
 
     /// Atomically record an outcome on a Recipe — implementation MUST
     /// be a single SQL transaction so concurrent updates don't race the
     /// Wilson recomputation.
-    fn record_recipe_outcome(
+    async fn record_recipe_outcome(
         &self,
         recipe_id: &str,
         success: bool,
     ) -> Result<(), RecipeLookupError>;
 
     /// Same atomicity requirement as `record_recipe_outcome`.
-    fn record_skill_outcome(
+    async fn record_skill_outcome(
         &self,
         skill_id: &str,
         success: bool,
