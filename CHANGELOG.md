@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.50.0] - 2026-07-16
+
 ### Added
 
 - *(sempai-kohai)* **Phase 8 — Live interceptor wiring**: `RebornLoopDriverHost` now persists a [`ForensicPacket`](crates/brassclaw_interceptor/src/packet.rs) for every agent-loop turn when an [`InterceptorStore`](crates/brassclaw_interceptor/src/store.rs) is wired in. `on_prompt_assembled` creates and saves the packet (status `AwaitingKohai`); `on_kohai_response` retrieves and closes it (status `Complete`). `RebornLoopDriverHostFactory::with_interceptor_store()` and `DefaultPlannedRuntimeParts::interceptor_store` expose the injection point. Default behavior is unchanged (no-op `NoopInterceptorStore`).
