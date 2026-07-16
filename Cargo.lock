@@ -1256,7 +1256,7 @@ dependencies = [
 
 [[package]]
 name = "brassclaw"
-version = "0.41.9"
+version = "0.51.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -2224,7 +2224,7 @@ dependencies = [
 
 [[package]]
 name = "brassclaw_reborn_cli"
-version = "0.41.7"
+version = "0.51.0"
 dependencies = [
  "anyhow",
  "async-trait",
