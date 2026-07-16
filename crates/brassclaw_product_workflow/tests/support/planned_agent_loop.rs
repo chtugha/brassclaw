@@ -308,6 +308,7 @@ impl ProductLiveAgentLoopHarness {
             hook_security_audit_sink: None,
             turn_event_sink: None,
             recipe_lookup: None,
+            interceptor_store: None,
         })
         .expect("product-live planned AgentLoop harness should build");
 

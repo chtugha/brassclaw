@@ -2194,6 +2194,7 @@ dependencies = [
  "brassclaw_hooks",
  "brassclaw_host_api",
  "brassclaw_host_runtime",
+ "brassclaw_interceptor",
  "brassclaw_llm",
  "brassclaw_loop_support",
  "brassclaw_processes",

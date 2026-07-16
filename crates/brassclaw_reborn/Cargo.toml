@@ -50,6 +50,7 @@ chrono = "0.4"
 futures-util = { version = "0.3", default-features = false }
 brassclaw_agent_loop = { path = "../brassclaw_agent_loop", version = "0.1.0" }
 brassclaw_events = { path = "../brassclaw_events", version = "0.1.0" }
+brassclaw_interceptor = { path = "../brassclaw_interceptor", version = "0.1.0" }
 brassclaw_hooks = { path = "../brassclaw_hooks", version = "0.1.0" }
 brassclaw_host_api = { path = "../brassclaw_host_api", version = "0.1.0" }
 brassclaw_host_runtime = { path = "../brassclaw_host_runtime", version = "0.1.0" }

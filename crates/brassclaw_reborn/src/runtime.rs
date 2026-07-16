@@ -151,6 +151,10 @@ where
     /// the request (Tier 0/1). When `None`, the executor falls through to the
     /// LLM (Tier 2 — pre-Phase-7 behavior).
     pub recipe_lookup: Option<Arc<dyn RecipeLookup>>,
+    /// Sempai–Kohai interceptor store (Phase 8). When `Some`, each agent-loop
+    /// turn persists a [`brassclaw_interceptor::ForensicPacket`] capturing the
+    /// assembled prompt and Kohai response. When `None`, a no-op store is used.
+    pub interceptor_store: Option<Arc<dyn brassclaw_interceptor::InterceptorStore>>,
 }
 
 pub trait RuntimeSubagentGoalStore:
@@ -549,6 +553,9 @@ where
     }
     if let Some(lookup) = parts.recipe_lookup {
         host_factory = host_factory.with_recipe_lookup(lookup);
+    }
+    if let Some(store) = parts.interceptor_store {
+        host_factory = host_factory.with_interceptor_store(store);
     }
     let host_factory = Arc::new(host_factory);
 

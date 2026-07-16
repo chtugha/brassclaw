@@ -2238,6 +2238,7 @@ pub async fn build_reborn_runtime(
         turn_event_sink: None,
         hook_dispatcher_builder_factory,
         recipe_lookup,
+        interceptor_store: None,
     })?;
     let default_resolved_run_profile = composition
         .run_profile_resolver

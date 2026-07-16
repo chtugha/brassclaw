@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(sempai-kohai)* **Phase 8 — Live interceptor wiring**: `RebornLoopDriverHost` now persists a [`ForensicPacket`](crates/brassclaw_interceptor/src/packet.rs) for every agent-loop turn when an [`InterceptorStore`](crates/brassclaw_interceptor/src/store.rs) is wired in. `on_prompt_assembled` creates and saves the packet (status `AwaitingKohai`); `on_kohai_response` retrieves and closes it (status `Complete`). `RebornLoopDriverHostFactory::with_interceptor_store()` and `DefaultPlannedRuntimeParts::interceptor_store` expose the injection point. Default behavior is unchanged (no-op `NoopInterceptorStore`).
+- *(sempai-kohai)* **IBM Bob skill bundles** (`skills/ibm_bob/`): 17 skill files covering Attendance, Tasks, Goals, Learning, Workforce, Job Catalog, Timeoff, People, Custom Tables, Employee Tables, Hiring, Documents, Metadata, Onboarding, Reports, Webhooks, and Attendance Projects — all with valid `types: [llm, kohai, agent]` component-type annotations.
+- *(sempai-kohai)* **Sempai skill bundles** (`skills/sempai/`): `core` and `iphone_connect` skill files with `types: [sempai]` — visible only to the Sempai audit provider, not exposed to Kohai.
+
+### Fixed
+
+- *(skills)* `FilesystemError::Backend` during bundle file or directory writes now correctly maps to `FilesystemDenied` (previously misclassified as `InvalidSkill`). Metadata-sidecar write failures (`/.brassclaw-install.json`) still map to `InvalidSkill` to distinguish "metadata not writable" from "storage rejected the write". Cleanup failure (partial install directory could not be deleted) reports `InvalidSkill` to signal that the partial state was not removed.
+
 ### Removed
 
 - *(phase-4)* `RuntimeKind::Script`, `ExtensionRuntime::Script`, `ExtensionRuntimeV2::Script`, `DispatchError::Script`, and `TrustedRuntimeKindWire::Script` are removed. v1-script-extension manifests must be re-authored as Tools, Recipes, or first-party ProductAdapters. Shell commands (`tool:shell`) remain available without script-runtime mounting. Historical event records with `"runtime": "script"` are deserialized via `TrustedRuntimeKindWire` as `RuntimeKind::Mcp` for backwards compatibility.

@@ -6,6 +6,10 @@ use std::{
 };
 
 use async_trait::async_trait;
+use brassclaw_interceptor::{
+    CapturedPrompt, ForensicPacket, InterceptorStore, KohaiUsage, NoopInterceptorStore,
+    PacketId, TokenAccountingSnapshot,
+};
 use brassclaw_events::{
     DurableEventLog, EventCursor, EventStreamKey, ReadScope, SecurityAuditSink,
 };
@@ -956,6 +960,10 @@ where
     subagent_prompt_composer: Option<SubagentPromptComposer>,
     driver_requirements: HashMap<LoopDriverRegistryKey, DriverRequirements>,
     recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>>,
+    /// Optional forensic packet store for the Sempai–Kohai interceptor.
+    /// When `None` (default), a [`NoopInterceptorStore`] is used and no
+    /// packets are persisted.
+    interceptor_store: Arc<dyn InterceptorStore>,
 }
 
 /// Per-host-build callback that produces a fresh hook-gate factory bound
@@ -1021,6 +1029,7 @@ where
             subagent_prompt_composer: None,
             driver_requirements: HashMap::new(),
             recipe_lookup: None,
+            interceptor_store: Arc::new(NoopInterceptorStore),
         }
     }
 
@@ -1333,6 +1342,15 @@ where
         lookup: Arc<dyn brassclaw_turns::run_profile::RecipeLookup>,
     ) -> Self {
         self.recipe_lookup = Some(lookup);
+        self
+    }
+
+    /// Install a live [`InterceptorStore`] for Sempai–Kohai forensic packet
+    /// persistence. Each turn through the agent loop will create and persist
+    /// a [`ForensicPacket`] capturing the assembled prompt and Kohai response.
+    /// Without this, a [`NoopInterceptorStore`] is used and no packets are saved.
+    pub fn with_interceptor_store(mut self, store: Arc<dyn InterceptorStore>) -> Self {
+        self.interceptor_store = store;
         self
     }
 
@@ -1666,6 +1684,7 @@ where
             compaction,
             cancellation,
             recipe_lookup: self.recipe_lookup.clone(),
+            interceptor_store: Arc::clone(&self.interceptor_store),
             _event_subscription: event_subscription,
         })
     }
@@ -1734,6 +1753,7 @@ pub struct RebornLoopDriverHost {
     compaction: Arc<dyn LoopCompactionPort>,
     cancellation: Arc<dyn LoopCancellationPort>,
     recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>>,
+    interceptor_store: Arc<dyn InterceptorStore>,
     _event_subscription: Option<EventTriggeredHookSubscriptionHandle>,
 }
 
@@ -1780,22 +1800,112 @@ impl LoopRecipePort for RebornLoopDriverHost {
 impl brassclaw_turns::run_profile::LoopInterceptorPort for RebornLoopDriverHost {
     async fn on_prompt_assembled(
         &self,
-        _run_id: &str,
-        _iteration: u32,
-        _prompt_snapshot: serde_json::Value,
+        run_id: &str,
+        iteration: u32,
+        prompt_snapshot: serde_json::Value,
     ) -> Option<String> {
-        // Phase 8: wire to the live InterceptorService once it is
-        // allocated in RebornLoopDriverHostFactory.
-        None
+        // Build a minimal CapturedPrompt from the snapshot JSON so we can
+        // persist a ForensicPacket keyed by a fresh PacketId.
+        let messages: Vec<(String, String)> = prompt_snapshot
+            .get("messages")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|m| {
+                        let role = m.get("role")?.as_str()?.to_string();
+                        let content = m
+                            .get("content_ref")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        Some((role, content))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let message_count = messages.len() as u32;
+        let capability_surface_version = prompt_snapshot
+            .get("capability_surface_version")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let visible_capability_count = prompt_snapshot
+            .get("visible_capability_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as u32;
+        let captured = CapturedPrompt {
+            messages,
+            segments: Vec::new(),
+            token_accounting: TokenAccountingSnapshot {
+                context_window_limit: 0,
+                max_output_tokens: 0,
+                total_input_estimated: 0,
+                message_count,
+                kv_cache_optimised: false,
+            },
+            capability_surface_version,
+            visible_capability_count,
+        };
+        let packet = ForensicPacket::new(run_id, iteration, captured);
+        let packet_id = packet.id.as_str().to_string();
+        if let Err(error) = self.interceptor_store.save(&packet).await {
+            tracing::debug!(
+                run_id,
+                iteration,
+                packet_id = %packet_id,
+                error = %error,
+                "interceptor: failed to save forensic packet (non-fatal)"
+            );
+        }
+        Some(packet_id)
     }
 
     async fn on_kohai_response(
         &self,
-        _packet_id: &str,
-        _response_text: &str,
-        _usage_json: Option<serde_json::Value>,
+        packet_id: &str,
+        response_text: &str,
+        usage_json: Option<serde_json::Value>,
     ) {
-        // Phase 8: forward to the live InterceptorService.
+        let id = PacketId(packet_id.to_string());
+        let usage = usage_json.as_ref().and_then(|u| {
+            Some(KohaiUsage {
+                input_tokens: u.get("input_tokens")?.as_u64()? as u32,
+                output_tokens: u.get("output_tokens")?.as_u64()? as u32,
+                cache_read_input_tokens: u
+                    .get("cache_read_input_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32,
+                cache_creation_input_tokens: u
+                    .get("cache_creation_input_tokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32,
+            })
+        });
+        let closed = match self.interceptor_store.get(&id).await {
+            Ok(Some(packet)) => packet.with_kohai_response(response_text, usage),
+            Ok(None) => {
+                tracing::debug!(
+                    packet_id,
+                    "interceptor: packet not found for kohai response; creating tombstone"
+                );
+                return;
+            }
+            Err(error) => {
+                tracing::debug!(
+                    packet_id,
+                    error = %error,
+                    "interceptor: failed to load forensic packet (non-fatal)"
+                );
+                return;
+            }
+        };
+        if let Err(error) = self.interceptor_store.save(&closed).await {
+            tracing::debug!(
+                packet_id,
+                error = %error,
+                "interceptor: failed to save closed forensic packet (non-fatal)"
+            );
+        }
     }
 }
 
