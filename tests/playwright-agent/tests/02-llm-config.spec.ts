@@ -29,7 +29,7 @@ test.describe('LLM Configuration Tests', () => {
     // Adapter defaults to "open_ai_completions" (OpenAI Compatible), which is what we want
     // No need to select it explicitly
     
-    await page.getByLabel('Base URL').fill('http://192.168.10.223:8000/v1');
+    await page.getByLabel('Base URL').fill('http://192.168.10.171:8000/v1');
     await page.getByLabel('Default model').fill('Qwen/Qwen2.5-7B-Instruct-AWQ');
     
     // Save

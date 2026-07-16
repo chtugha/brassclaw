@@ -22,7 +22,7 @@ test.describe('Debug Error Message', () => {
     // Fill in provider details
     await page.fill('input[name="display_name"]', 'Test OpenAI Provider');
     await page.selectOption('select[name="adapter"]', 'open_ai_completions');
-    await page.fill('input[name="base_url"]', 'http://192.168.10.223:8000/v1');
+    await page.fill('input[name="base_url"]', 'http://192.168.10.171:8000/v1');
     await page.fill('input[name="default_model"]', 'Qwen/Qwen2.5-7B-Instruct-AWQ');
     
     // Take screenshot before save

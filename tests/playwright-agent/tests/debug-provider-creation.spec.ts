@@ -53,7 +53,7 @@ test('Debug provider creation', async ({ page }) => {
   const timestamp = Date.now();
   await page.getByLabel('Display name').fill(`Test-${timestamp}`);
   await page.getByLabel('Provider ID').fill(`test-${timestamp}`);
-  await page.getByLabel('Base URL').fill('http://192.168.10.223:8000/v1');
+  await page.getByLabel('Base URL').fill('http://192.168.10.171:8000/v1');
   await page.getByLabel('Default model').fill('Qwen/Qwen2.5-7B-Instruct-AWQ');
   
   // Take screenshot before save

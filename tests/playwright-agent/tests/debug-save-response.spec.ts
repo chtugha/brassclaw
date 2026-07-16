@@ -22,7 +22,7 @@ test.describe('Debug Save Response', () => {
     // Fill in provider details
     await page.getByLabel('Display name').fill('Debug Test Provider');
     await page.getByLabel('Provider ID').fill('debug-test-provider');
-    await page.getByLabel('Base URL').fill('http://192.168.10.223:8000/v1');
+    await page.getByLabel('Base URL').fill('http://192.168.10.171:8000/v1');
     await page.getByLabel('Default model').fill('Qwen/Qwen2.5-7B-Instruct-AWQ');
     
     console.log('\n=== BEFORE CLICKING SAVE ===');

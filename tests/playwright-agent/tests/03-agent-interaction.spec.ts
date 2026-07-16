@@ -25,8 +25,8 @@ test.describe('Agent Interaction Tests', () => {
     // Fill in provider details
     await page.getByLabel('Display name').fill(providerName);
     await page.getByLabel('Provider ID').fill(providerId);
-    await page.getByLabel('Base URL').fill('http://192.168.10.223:8000/v1');
-    await page.getByLabel('Default model').fill('Qwen/Qwen2.5-7B-Instruct-AWQ');
+    await page.getByLabel('Base URL').fill('http://192.168.10.171:8000/v1');
+    await page.getByLabel('Default model').fill('cyankiwi/Ornith-1.0-9B-AWQ-INT4');
     
     // Save
     await page.getByRole('button', { name: 'Save' }).click();
