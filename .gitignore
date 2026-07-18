@@ -77,3 +77,4 @@ tests/fixtures/llm_traces/live/*.log
 
 # Local test artifacts
 .anvil/
+*.egg-info/
