@@ -77,7 +77,7 @@ Reborn should reuse the existing BrassClaw harness where possible:
 - `tests/fixtures/llm_traces/README.md`
 - `tests/support/LIVE_TESTING.md`
 - `.github/workflows/replay-gate.yml`
-- `.github/workflows/e2e.yml`
+- `.github/workflows/reborn-e2e.yml`
 - `.github/workflows/live-canary.yml`
 - `scripts/check-boundaries.sh`
 - `scripts/check_gateway_boundaries.py`

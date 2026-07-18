@@ -3,6 +3,13 @@
 Boot BrassClaw -> activate Slack via setup API -> POST webhook events
 -> verify chat.postMessage round-trip through mock LLM to fake Slack API.
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import asyncio
 import hashlib

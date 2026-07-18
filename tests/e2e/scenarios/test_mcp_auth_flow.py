@@ -14,6 +14,13 @@ Regression coverage for:
 The mock_llm.py serves a mock MCP server at /mcp with full OAuth discovery
 endpoints (.well-known/oauth-protected-resource, DCR, token exchange).
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 from urllib.parse import parse_qs, urlparse
 

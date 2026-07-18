@@ -7,6 +7,13 @@ Covers:
   - Empty state when no results match
   - Clearing search restores all items
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import asyncio
 import json

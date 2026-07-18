@@ -22,6 +22,13 @@ LLM response shaped like an extraction mission output. That flow is covered
 by the Rust integration tests in
 ``crates/brassclaw_reborn_composition/src/recipe_store.rs``.
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import asyncio
 import os

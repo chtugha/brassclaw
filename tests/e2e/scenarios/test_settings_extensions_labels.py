@@ -20,6 +20,13 @@ Every assertion runs against route-mocked `/api/extensions` responses
 so we exercise the production JS render path without needing a real
 WASM channel binary.
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import json
 

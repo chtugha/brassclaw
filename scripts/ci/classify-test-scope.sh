@@ -33,7 +33,7 @@ is_shared_test_path() {
     scripts/ci/classify-test-scope.sh|scripts/ci/test-classify-test-scope.sh|scripts/ci/package-feature-flags.sh)
       return 0
       ;;
-    .github/workflows/test.yml|.github/workflows/reborn-tests.yml|.github/workflows/reborn-integration.yml|.github/workflows/reborn-e2e.yml|.github/workflows/nightly-deep-ci.yml)
+    .github/workflows/reborn-tests.yml|.github/workflows/reborn-integration.yml|.github/workflows/reborn-e2e.yml)
       return 0
       ;;
     crates/brassclaw_common/*|crates/brassclaw_host_api/*|crates/brassclaw_host_runtime/*|crates/brassclaw_loop_support/*)

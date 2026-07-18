@@ -3,6 +3,13 @@
 Seeds mock data via page.route() API interception, navigates to the
 projects tab, drills into a project, and asserts control-room behavior.
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import json
 

@@ -23,9 +23,15 @@ if [ "${partition_index_int}" -ge "${partition_count_int}" ]; then
   exit 1
 fi
 
+# All root integration tests in tests/*.rs are Reborn tests now that the
+# v1 src/ tree was removed in Phase 6. The non-`reborn_`-prefixed files
+# (engine_v2_skill_codeact, sighup_reload_integration, e2e_trace_*,
+# trace_format, status_cli, dockerfile_runtime_home, trace_llm_tests) used
+# to be run only by the legacy "Tests (Legacy)" workflow; they are now
+# partitioned here so the Reborn workflow owns all root integration coverage.
 mapfile -t test_names < <(
   {
-    find tests -maxdepth 1 -type f -name 'reborn_*.rs' -print
+    find tests -maxdepth 1 -type f -name '*.rs' -print
     if [ -f tests/support_unit_tests.rs ]; then
       printf '%s\n' tests/support_unit_tests.rs
     fi

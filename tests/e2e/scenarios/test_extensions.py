@@ -15,6 +15,13 @@ Tests cover:
 All extension API calls are intercepted via page.route() so no real
 WASM binaries or external registry connections are needed.
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import json
 

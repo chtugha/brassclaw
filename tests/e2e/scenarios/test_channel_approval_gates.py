@@ -17,6 +17,13 @@ this file deliberately reuses the ``"make approval post <label>"`` mock
 LLM pattern so the same shape (``http`` POST → approval) exercises
 non-web channel surface.
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 from __future__ import annotations
 

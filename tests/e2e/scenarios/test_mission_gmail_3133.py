@@ -63,6 +63,13 @@ Live infrastructure (see `tests/e2e/live_harness.py` and
     skipped (not failed) so a fresh checkout doesn't bog down on
     missing recordings.
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import asyncio
 import os

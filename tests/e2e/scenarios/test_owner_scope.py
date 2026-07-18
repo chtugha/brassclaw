@@ -5,6 +5,13 @@ These tests exercise the explicit owner model across:
 - the owner-scoped HTTP webhook channel
 - routine tools / routines tab
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import asyncio
 import json

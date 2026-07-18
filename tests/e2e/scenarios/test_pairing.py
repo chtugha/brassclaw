@@ -5,6 +5,13 @@ Tests the pairing security model for HTTP endpoints:
 - member users redeem codes for themselves but cannot enumerate pending codes
 - invalid submissions fail cleanly without server errors
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import httpx
 

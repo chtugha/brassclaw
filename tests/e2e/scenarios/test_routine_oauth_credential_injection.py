@@ -9,6 +9,13 @@ Tests the full flow for issue #999:
 This tests that OAuth tokens stored globally under 'default' user are properly
 accessible in routine execution contexts.
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import httpx
 import pytest

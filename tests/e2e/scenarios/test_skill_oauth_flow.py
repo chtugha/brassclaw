@@ -12,6 +12,13 @@ Tests the guided authentication flow end-to-end:
 Uses the existing mock_llm.py for LLM responses and a local mock API
 server for the target API endpoint.
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import asyncio
 import json

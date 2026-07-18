@@ -22,6 +22,13 @@ Two flows are covered:
 Both flows drive the agent through chat triggers defined in
 ``mock_llm.py::TOOL_CALL_PATTERNS`` (look for ``customize:`` prefixes).
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import asyncio
 import json

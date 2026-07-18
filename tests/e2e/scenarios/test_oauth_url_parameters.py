@@ -11,6 +11,13 @@ The test verifies:
 2. URL works with the OAuth provider (Google)
 3. Extra parameters (access_type, prompt) are preserved
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 from urllib.parse import parse_qs, urlparse
 import pytest

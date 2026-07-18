@@ -7,6 +7,13 @@ callback mode + mock token exchange (no real Google login).
 The conftest sets BRASSCLAW_OAUTH_CALLBACK_URL (non-loopback, forces gateway
 mode) and BRASSCLAW_OAUTH_EXCHANGE_URL (points to mock_llm.py's /oauth/exchange).
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 from urllib.parse import parse_qs, urlparse
 

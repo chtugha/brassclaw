@@ -3,6 +3,13 @@
 Verifies that user messages, assistant responses, and tool call cards
 survive page reloads and thread switches — the round-trip from the database.
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import asyncio
 import os

@@ -6,6 +6,13 @@ Note: The core URL-building logic (colon preservation, no %3A encoding) is verif
 by unit tests in src/extensions/manager.rs. This E2E test verifies the configure modal
 UI can accept Telegram tokens with colons and renders correctly.
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import json
 

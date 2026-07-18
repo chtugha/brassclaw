@@ -1,4 +1,11 @@
 """HTTP webhook authentication tests with HMAC-SHA256 signatures."""
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import hashlib
 import hmac

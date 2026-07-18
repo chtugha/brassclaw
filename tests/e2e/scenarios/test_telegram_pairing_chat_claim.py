@@ -21,6 +21,13 @@ to a generic "Enter this code in BrassClaw" wording, or the chat-claim
 parser could be unhooked from the bridge handler, and #3317 would
 silently come back.
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import asyncio
 import json

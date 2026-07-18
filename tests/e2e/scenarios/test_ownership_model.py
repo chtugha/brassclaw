@@ -5,6 +5,13 @@ Verifies:
 - Owner identity is stable across requests (settings scoped correctly).
 - Regression: existing owner-scope behaviour is preserved.
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import uuid
 

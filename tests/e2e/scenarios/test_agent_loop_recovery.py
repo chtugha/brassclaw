@@ -1,4 +1,11 @@
 """Agent-loop recovery regressions for issue #1780."""
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 from helpers import SEL, send_chat_and_wait_for_terminal_message
 

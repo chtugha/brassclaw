@@ -12,7 +12,7 @@ on:
     branches:
       - main
     paths:
-      - "crates/ironclaw_*/**"
+      - "crates/brassclaw_*/**"
       - "docs/reborn/**"
       - "scripts/reborn-e2e-rust.sh"
       - "tests/e2e/**"
@@ -25,7 +25,7 @@ on:
     branches:
       - main
     paths:
-      - "crates/ironclaw_*/**"
+      - "crates/brassclaw_*/**"
       - "docs/reborn/**"
       - "scripts/reborn-e2e-rust.sh"
       - "tests/e2e/**"
@@ -43,6 +43,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build:
+    name: Build brassclaw (libsql)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: reborn-e2e-build
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+      - name: Build brassclaw with libSQL
+        run: cargo build --no-default-features --features libsql
+
+      - name: Upload binary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: brassclaw-reborn-e2e-binary
+          path: target/debug/brassclaw
+          retention-days: 1
+
   rust-reborn:
     name: Rust Reborn (${{ matrix.group }})
     runs-on: ubuntu-latest
@@ -77,6 +107,7 @@ jobs:
 
   gateway-smoke:
     name: Reborn gateway smoke
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -86,17 +117,14 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-
-      - name: Restore Rust cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          key: reborn-e2e-gateway-smoke
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          name: brassclaw-reborn-e2e-binary
+          path: target/debug/
 
-      - name: Build brassclaw with libSQL
-        run: cargo build --no-default-features --features libsql
+      - name: Make binary executable
+        run: chmod +x target/debug/brassclaw
 
       - name: Install Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -116,7 +144,90 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: reborn-e2e-screenshots
+          name: reborn-e2e-screenshots-gateway-smoke
+          path: tests/e2e/screenshots/
+          if-no-files-found: ignore
+
+  # Python E2E matrix for the kept (current Reborn) scenarios. The legacy
+  # v1-era scenarios (WASM lifecycle, v1 channels/pairing/ownership, etc.)
+  # were either deleted or given a module-level pytest.skip during the legacy
+  # CI cleanup — see tests/e2e/CLAUDE.md and the cleanup plan. Only scenarios
+  # that are v2/reborn-prefixed or documented current are listed here.
+  python-e2e:
+    name: Reborn Python E2E (${{ matrix.group }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: core
+            files: >-
+              tests/e2e/scenarios/test_connection.py
+              tests/e2e/scenarios/test_chat.py
+              tests/e2e/scenarios/test_sse_reconnect.py
+              tests/e2e/scenarios/test_html_injection.py
+              tests/e2e/scenarios/test_csp.py
+              tests/e2e/scenarios/test_dom_resource_limits.py
+          - group: features
+            files: >-
+              tests/e2e/scenarios/test_skills.py
+              tests/e2e/scenarios/test_tool_approval.py
+              tests/e2e/scenarios/test_extension_uninstall_cleanup.py
+              tests/e2e/scenarios/test_oauth_refresh.py
+          - group: v2-engine
+            files: >-
+              tests/e2e/scenarios/test_v2_engine_auth_flow.py
+              tests/e2e/scenarios/test_v2_engine_approval_flow.py
+              tests/e2e/scenarios/test_v2_engine_tool_lifecycle.py
+              tests/e2e/scenarios/test_v2_engine_auth_cancel.py
+              tests/e2e/scenarios/test_v2_engine_error_handling.py
+              tests/e2e/scenarios/test_v2_engine_oauth_google.py
+              tests/e2e/scenarios/test_v2_kernel_auth_gateway_flow.py
+              tests/e2e/scenarios/test_v2_thread_visibility.py
+              tests/e2e/scenarios/test_v2_activity_shell.py
+          - group: v2-auth
+            files: >-
+              tests/e2e/scenarios/test_v2_auth_oauth_matrix.py
+              tests/e2e/scenarios/test_v2_github_pat_flow.py
+              tests/e2e/scenarios/test_v2_gsuite_oauth_flow.py
+              tests/e2e/scenarios/test_v2_notion_mcp_oauth_flow.py
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: brassclaw-reborn-e2e-binary
+          path: target/debug/
+
+      - name: Make binary executable
+        run: chmod +x target/debug/brassclaw
+
+      - name: Install Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install E2E dependencies
+        run: |
+          cd tests/e2e
+          pip install -e .
+          playwright install --with-deps chromium
+
+      - name: Run Python E2E (${{ matrix.group }})
+        run: pytest ${{ matrix.files }} -v --timeout=120
+
+      - name: Upload screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: reborn-e2e-screenshots-${{ matrix.group }}
           path: tests/e2e/screenshots/
           if-no-files-found: ignore
 
@@ -125,16 +236,26 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     needs:
+      - build
       - rust-reborn
       - gateway-smoke
+      - python-e2e
     steps:
       - name: Check Reborn E2E jobs
         run: |
+          if [[ "${{ needs.build.result }}" != "success" ]]; then
+            echo "Build failed"
+            exit 1
+          fi
           if [[ "${{ needs.rust-reborn.result }}" != "success" ]]; then
             echo "Rust Reborn E2E failed"
             exit 1
           fi
           if [[ "${{ needs.gateway-smoke.result }}" != "success" ]]; then
             echo "Reborn gateway smoke failed"
+            exit 1
+          fi
+          if [[ "${{ needs.python-e2e.result }}" != "success" ]]; then
+            echo "Reborn Python E2E failed"
             exit 1
           fi

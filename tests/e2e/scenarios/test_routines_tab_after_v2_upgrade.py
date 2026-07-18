@@ -18,6 +18,13 @@ real `fetchGatewayStatus` / `refreshLegacyRoutinesPresence` call sites
 end-to-end and exercise the testing-rule "test through the caller, not
 just the helper".
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import json
 

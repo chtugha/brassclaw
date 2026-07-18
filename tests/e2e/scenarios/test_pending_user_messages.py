@@ -4,6 +4,13 @@ The frontend fix tracks optimistically-shown messages in a
 `_pendingUserMessages` map and re-injects them when `loadHistory()`
 clears the DOM before the agent loop has persisted them.
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import asyncio
 

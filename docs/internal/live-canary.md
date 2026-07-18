@@ -10,7 +10,7 @@ BrassClaw now has two complementary regression systems:
 
 The implementation lives in:
 
-- `.github/workflows/test.yml` for the normal blocking test lanes;
+- `.github/workflows/reborn-tests.yml` for the normal blocking test lanes;
 - `.github/workflows/live-canary.yml` for scheduled and manual live lanes;
 - `scripts/live-canary/run.sh` for lane dispatch;
 - `scripts/live-canary/scrub-artifacts.sh` for artifact scanning;

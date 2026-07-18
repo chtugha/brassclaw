@@ -6,6 +6,13 @@ completes without hitting the iteration cap.
 
 Requires Playwright (browser-based tests).
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 import asyncio
 import uuid

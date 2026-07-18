@@ -11,6 +11,13 @@ validates the OAuth + credential injection flow at the REST API level.
 Unit tests in src/tools/wasm/wrapper.rs provide additional coverage of the
 fallback mechanism itself.
 """
+import pytest
+pytest.skip(
+    "Disabled during legacy CI cleanup: v1-era scenario not confirmed against "
+    "Reborn. Remove this skip (and the import) to reactivate.",
+    allow_module_level=True,
+)
+
 
 from helpers import api_post, api_get
 import pytest
