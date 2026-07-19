@@ -11,6 +11,8 @@
 //! local-disk) is made at the filesystem layer — the consumer-store level no
 //! longer carries per-backend impls.
 
+pub mod pg_store;
+
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, MutexGuard, OnceLock, Weak},

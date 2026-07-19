@@ -24,6 +24,7 @@ mod capability_surface_filter;
 mod compaction_task;
 mod filesystem_checkpoint_state;
 mod filesystem_skill_bundle_source;
+pub mod pg_checkpoint_state_store;
 pub mod identity_context;
 mod input_port;
 mod input_queue;
@@ -63,6 +64,7 @@ pub use compaction_task::{
     HostManagedLoopCompactionPort, default_host_managed_loop_compaction_port,
 };
 pub use filesystem_checkpoint_state::FilesystemCheckpointStateStore;
+pub use pg_checkpoint_state_store::PgCheckpointStateStore;
 pub use filesystem_skill_bundle_source::{FilesystemSkillBundleRoot, FilesystemSkillBundleSource};
 pub use identity_context::{
     HostIdentityContextBuildError, HostIdentityContextCandidate, HostIdentityContextSource,

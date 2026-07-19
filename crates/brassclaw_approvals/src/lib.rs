@@ -4,6 +4,8 @@
 //! authorization leases. It does not prompt users, execute capabilities, or
 //! dispatch runtime work.
 
+pub mod pg_store;
+
 use brassclaw_authorization::{CapabilityLease, CapabilityLeaseError, CapabilityLeaseStore};
 use brassclaw_events::AuditSink;
 use brassclaw_host_api::{

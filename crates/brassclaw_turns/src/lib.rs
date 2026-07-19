@@ -15,6 +15,7 @@ mod ids;
 mod lifecycle;
 pub mod loop_exit;
 mod memory;
+pub mod pg_turn_state_store;
 mod request;
 mod response;
 pub mod run_profile;
@@ -50,6 +51,7 @@ pub use events::{
     TurnEventSink, TurnLifecycleEvent,
 };
 pub use filesystem_store::FilesystemTurnStateStore;
+pub use pg_turn_state_store::PgTurnStateStore;
 pub use ids::{
     AcceptedMessageRef, CapabilityActivityId, GateRef, IdempotencyKey, LoopDiagnosticRef,
     LoopExitId, LoopGateRef, LoopMessageRef, LoopResultRef, LoopUsageSummaryRef,
