@@ -164,7 +164,11 @@ pub(crate) enum RebornStorageInput {
     Postgres {
         pool: deadpool_postgres::Pool,
         url: brassclaw_secrets::SecretMaterial,
+        /// Pre-resolved master key (takes priority over per-boot table lookup).
         secret_master_key: Option<brassclaw_secrets::SecretMaterial>,
+        /// `$BRASSCLAW_REBORN_HOME` path, used by per-boot master-key resolution
+        /// to locate the raw-key file when `secret_master_key` is `None`.
+        reborn_home: PathBuf,
     },
 }
 
@@ -267,6 +271,7 @@ impl RebornBuildInput {
         pool: deadpool_postgres::Pool,
         url: brassclaw_secrets::SecretMaterial,
         secret_master_key: brassclaw_secrets::SecretMaterial,
+        reborn_home: PathBuf,
     ) -> Self {
         Self::new(
             profile,
@@ -275,10 +280,38 @@ impl RebornBuildInput {
                 pool,
                 url,
                 secret_master_key: Some(secret_master_key),
+                reborn_home,
             },
         )
     }
 
+    /// Build a Postgres input that resolves the master key at boot time from
+    /// `brassclaw_secrets_master` using the ceremony selector (§4.4).
+    ///
+    /// `reborn_home` is the resolved `$BRASSCLAW_REBORN_HOME` path, required
+    /// for the raw-key-on-disk ceremony to locate `.secrets-master-key`.
+    #[cfg(feature = "postgres")]
+    pub fn postgres_with_reborn_home(
+        profile: RebornCompositionProfile,
+        owner_id: impl Into<String>,
+        pool: deadpool_postgres::Pool,
+        url: brassclaw_secrets::SecretMaterial,
+        reborn_home: PathBuf,
+    ) -> Self {
+        Self::new(
+            profile,
+            owner_id,
+            RebornStorageInput::Postgres {
+                pool,
+                url,
+                secret_master_key: None,
+                reborn_home,
+            },
+        )
+    }
+
+    /// Deprecated: prefer `postgres_with_reborn_home`. Kept for call sites that
+    /// pass an explicit pre-resolved key.
     #[cfg(feature = "postgres")]
     pub fn postgres_with_resolved_secret_master_key(
         profile: RebornCompositionProfile,
@@ -293,6 +326,7 @@ impl RebornBuildInput {
                 pool,
                 url,
                 secret_master_key: None,
+                reborn_home: PathBuf::new(),
             },
         )
     }

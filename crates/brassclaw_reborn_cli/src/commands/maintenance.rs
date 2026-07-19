@@ -132,28 +132,8 @@ impl BackfillEmbeddingsCommand {
 // shared helpers
 // ---------------------------------------------------------------------------
 
-/// Build a Postgres pool from `BRASSCLAW_PG_URL` or `DATABASE_URL`.
+/// Build a Postgres pool using the §6.4 lifecycle (embedded PG with
+/// orphaned-server detection, or external URL from env).
 async fn build_pg_pool() -> anyhow::Result<deadpool_postgres::Pool> {
-    let url = std::env::var("BRASSCLAW_PG_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .map_err(|_| {
-            anyhow::anyhow!(
-                "no PostgreSQL URL found; set BRASSCLAW_PG_URL or start \
-                 `brassclaw serve` first to have embedded PostgreSQL started automatically"
-            )
-        })?;
-
-    let config: tokio_postgres::Config = url
-        .parse()
-        .map_err(|e| anyhow::anyhow!("invalid PostgreSQL URL: {e}"))?;
-    let manager = deadpool_postgres::Manager::new(config, tokio_postgres::NoTls);
-    let pool = deadpool_postgres::Pool::builder(manager)
-        .max_size(4)
-        .build()
-        .map_err(|e| anyhow::anyhow!("failed to build PG pool: {e}"))?;
-    let _ = pool
-        .get()
-        .await
-        .map_err(|e| anyhow::anyhow!("cannot connect to PostgreSQL: {e}"))?;
-    Ok(pool)
+    crate::commands::config::pg_lifecycle::build_pg_pool().await
 }

@@ -659,11 +659,13 @@ async fn start_postgres_and_upgrade_input(
         .map(|s| s.owner_id().to_string())
         .unwrap_or_else(|| "reborn-cli".to_string());
 
-    let pg_input = RebornBuildInput::postgres_with_resolved_secret_master_key(
+    let reborn_home = boot_config.home().path().to_path_buf();
+    let pg_input = RebornBuildInput::postgres_with_reborn_home(
         RebornCompositionProfile::Production,
         owner_id,
         pool,
         SecretMaterial::from(pg_url),
+        reborn_home,
     );
 
     // Replace the local-dev build input with the Postgres-backed one while

@@ -51,7 +51,7 @@ use brassclaw_resources::InMemoryResourceGovernor;
 use brassclaw_resources::{FilesystemResourceGovernorStore, PersistentResourceGovernor};
 use brassclaw_run_state::{InMemoryApprovalRequestStore, InMemoryRunStateStore};
 #[cfg(feature = "postgres")]
-use brassclaw_secrets::FilesystemCredentialBroker;
+use brassclaw_secrets::{FilesystemCredentialBroker, PgCredentialBroker, PgSecretStore};
 use brassclaw_secrets::FilesystemSecretStore;
 use brassclaw_secrets::SecretStore;
 use brassclaw_threads::InMemorySessionThreadService;
@@ -1641,6 +1641,7 @@ async fn build_production_shaped(
             pool,
             url,
             secret_master_key,
+            reborn_home,
         } => {
             let production_wiring = production_wiring(
                 production_trust_policy,
@@ -1648,7 +1649,8 @@ async fn build_production_shaped(
                 turn_run_wake_notifier,
                 runtime_process_binding,
             )?;
-            let secret_master_key = resolve_secret_master_key(secret_master_key).await?;
+            let secret_master_key =
+                resolve_secret_master_key(secret_master_key, &pool, &reborn_home).await?;
             let context = RebornProductionBuildContext {
                 profile,
                 wiring_config,
@@ -1657,7 +1659,7 @@ async fn build_production_shaped(
                 oauth_provider_configs,
                 oauth_dcr_provider_configs,
             };
-            build_postgres_production(context, pool, url, secret_master_key).await
+            build_postgres_production(context, pool, url, secret_master_key, reborn_home).await
         }
     }
 }
@@ -1665,10 +1667,30 @@ async fn build_production_shaped(
 #[cfg(feature = "postgres")]
 async fn resolve_secret_master_key(
     explicit: Option<brassclaw_secrets::SecretMaterial>,
+    pool: &deadpool_postgres::Pool,
+    reborn_home: &std::path::Path,
 ) -> Result<brassclaw_secrets::SecretMaterial, RebornBuildError> {
-    resolve_explicit_or_keychain_master_key(explicit)
-        .await?
-        .ok_or(RebornBuildError::MissingSecretMasterKey)
+    // If an explicit key was pre-resolved (e.g. upgrade path with env var or
+    // keychain), use it directly — skip the DB table lookup.
+    if let Some(key) = explicit {
+        return Ok(key);
+    }
+
+    // Per-boot ceremony: read the master key from brassclaw_secrets_master.
+    let pg_pool = pool.clone();
+    match crate::secrets_master::resolve_pg_master_key(&pg_pool, "default", reborn_home)
+        .await
+        .map_err(|e| RebornBuildError::InvalidConfig { reason: e.to_string() })?
+    {
+        crate::secrets_master::ResolvedMasterKey::Key(key) => Ok(key),
+        crate::secrets_master::ResolvedMasterKey::NotYetInitialized => {
+            // Fresh install — fall back to keychain/env for first-run wizard
+            // boot (the wizard will populate brassclaw_secrets_master later).
+            resolve_explicit_or_keychain_master_key(None)
+                .await?
+                .ok_or(RebornBuildError::MissingSecretMasterKey)
+        }
+    }
 }
 
 #[cfg(feature = "postgres")]
@@ -1881,6 +1903,30 @@ where
     }
 }
 
+/// Credential bundle used inside [`ProductionStoreBundle`].
+///
+/// The Filesystem variant wraps the legacy VFS-backed stores; the Postgres
+/// variant wraps [`PgSecretStore`] and [`PgCredentialBroker`] which write
+/// encrypted rows directly to `brassclaw_secrets`.
+#[cfg(feature = "postgres")]
+enum ProductionCredentialBundle<F: RootFilesystem + 'static> {
+    Filesystem(FilesystemSecretCredentialStores<F>),
+    Postgres {
+        secret_store: Arc<PgSecretStore>,
+        credential_broker: Arc<PgCredentialBroker>,
+    },
+}
+
+#[cfg(feature = "postgres")]
+impl<F: RootFilesystem + 'static> ProductionCredentialBundle<F> {
+    fn secret_store(&self) -> Arc<dyn brassclaw_secrets::SecretStore> {
+        match self {
+            Self::Filesystem(s) => s.secret_store.clone(),
+            Self::Postgres { secret_store, .. } => secret_store.clone(),
+        }
+    }
+}
+
 #[cfg(feature = "postgres")]
 async fn build_filesystem_secret_credential_stores<F>(
     scoped_filesystem: Arc<ScopedFilesystem<F>>,
@@ -1918,7 +1964,7 @@ where
     filesystem: Arc<F>,
     scoped_filesystem: Arc<ScopedFilesystem<F>>,
     leases: Arc<FilesystemCapabilityLeaseStore<F>>,
-    secret_credentials: FilesystemSecretCredentialStores<F>,
+    secret_credentials: ProductionCredentialBundle<F>,
     event_store: brassclaw_reborn_event_store::RebornEventStoreConfig,
 }
 
@@ -1927,8 +1973,14 @@ impl<F> ProductionStoreBundle<F>
 where
     F: RootFilesystem + 'static,
 {
-    fn new(
+    /// Build a bundle backed by the Postgres secret stores.
+    ///
+    /// `PgSecretStore` and `PgCredentialBroker` write encrypted rows directly
+    /// into `brassclaw_secrets`; this replaces the old VFS-backed stores that
+    /// used the `PostgresRootFilesystem` blob columns.
+    fn new_postgres(
         filesystem: Arc<F>,
+        pg_pool: deadpool_postgres::Pool,
         secret_master_key: brassclaw_secrets::SecretMaterial,
         event_store: brassclaw_reborn_event_store::RebornEventStoreConfig,
     ) -> Result<Self, RebornBuildError> {
@@ -1936,16 +1988,27 @@ where
         let leases = Arc::new(FilesystemCapabilityLeaseStore::new(Arc::clone(
             &scoped_filesystem,
         )));
-        let secret_credentials = FilesystemSecretCredentialStores::from_master_key(
-            Arc::clone(&scoped_filesystem),
-            secret_master_key,
-        )?;
-
+        let secret_store = Arc::new(
+            PgSecretStore::new(pg_pool.clone(), secret_master_key.clone(), "default")
+                .map_err(|e| RebornBuildError::InvalidConfig {
+                    reason: format!("PgSecretStore init failed: {e}"),
+                })?,
+        );
+        let credential_broker = Arc::new(
+            PgCredentialBroker::new(pg_pool, secret_master_key, "default").map_err(|e| {
+                RebornBuildError::InvalidConfig {
+                    reason: format!("PgCredentialBroker init failed: {e}"),
+                }
+            })?,
+        );
         Ok(Self {
             filesystem,
             scoped_filesystem,
             leases,
-            secret_credentials,
+            secret_credentials: ProductionCredentialBundle::Postgres {
+                secret_store,
+                credential_broker,
+            },
             event_store,
         })
     }
@@ -1970,9 +2033,19 @@ where
         oauth_provider_configs,
         oauth_dcr_provider_configs,
     } = context;
-    let secret_store: Arc<dyn SecretStore> = stores.secret_credentials.secret_store.clone();
+    // Destructure stores up front so we can move fields individually without
+    // running into the partial-move restriction on enum pattern matches.
+    let ProductionStoreBundle {
+        filesystem: stores_filesystem,
+        scoped_filesystem: stores_scoped_fs,
+        leases: stores_leases,
+        secret_credentials,
+        event_store: stores_event_store,
+    } = stores;
+
+    let secret_store: Arc<dyn SecretStore> = secret_credentials.secret_store();
     let trigger_create_hook = Arc::new(ScopedFilesystemTriggerCreatorPairingHook::new(Arc::clone(
-        &stores.scoped_filesystem,
+        &stores_scoped_fs,
     )));
     let mut first_party_registry = match prebuilt_tools {
         Some(tools) => builtin_first_party_handlers_from_tools_with_trigger(
@@ -1988,32 +2061,41 @@ where
             trigger_create_hook,
         )?,
     };
-    let product_auth_filesystem = Arc::clone(&stores.scoped_filesystem);
+    let product_auth_filesystem = Arc::clone(&stores_scoped_fs);
     let services = HostRuntimeServices::new(
         Arc::new(builtin_extension_registry()?),
-        Arc::clone(&stores.filesystem),
+        Arc::clone(&stores_filesystem),
         Arc::new(InMemoryResourceGovernor::new()),
         Arc::new(GrantAuthorizer::new()),
-        ProcessServices::filesystem(Arc::clone(&stores.scoped_filesystem)),
+        ProcessServices::filesystem(Arc::clone(&stores_scoped_fs)),
         CapabilitySurfaceVersion::new("reborn-app-v1")?,
     )
     .with_trust_policy(production_wiring.trust_policy)
     .with_runtime_policy(production_wiring.runtime_policy)
-    .with_capability_leases(stores.leases)
-    .with_secret_store(Arc::clone(&stores.secret_credentials.secret_store))
-    .with_credential_broker(stores.secret_credentials.credential_broker)
+    .with_capability_leases(stores_leases)
+    .with_secret_store(Arc::clone(&secret_store));
+    // Wire credential broker — use the Postgres-native stores when available
+    // so OAuth credentials are persisted to brassclaw_secrets rather than the
+    // legacy VFS blob columns (§4.4 Issue 3).
+    let services = match secret_credentials {
+        ProductionCredentialBundle::Filesystem(creds) => services
+            .with_credential_broker(creds.credential_broker),
+        ProductionCredentialBundle::Postgres { credential_broker, .. } => services
+            .with_credential_broker(credential_broker),
+    };
+    let services = services
     .with_security_audit_sink(Arc::new(brassclaw_events::TracingSecurityAuditSink))
     .try_with_host_http_egress_with_body_store(
         brassclaw_network::PolicyNetworkHttpEgress::new(
             brassclaw_network::ReqwestNetworkTransport::default(),
         ),
-        Arc::clone(&stores.scoped_filesystem),
+        Arc::clone(&stores_scoped_fs),
     )?
-    .with_filesystem_resource_governor(Arc::clone(&stores.scoped_filesystem))
-    .with_reborn_event_store_config(profile.to_event_store_profile(), stores.event_store)
+    .with_filesystem_resource_governor(Arc::clone(&stores_scoped_fs))
+    .with_reborn_event_store_config(profile.to_event_store_profile(), stores_event_store)
     .await?
-    .with_filesystem_run_state(Arc::clone(&stores.scoped_filesystem))
-    .with_filesystem_turn_state_store(Arc::clone(&stores.scoped_filesystem))
+    .with_filesystem_run_state(Arc::clone(&stores_scoped_fs))
+    .with_filesystem_turn_state_store(Arc::clone(&stores_scoped_fs))
     .with_run_profile_resolver(planned_run_profile_resolver()?)
     .with_turn_run_wake_notifier(production_wiring.turn_run_wake_notifier);
     let product_auth_runtime_ports = require_product_auth_runtime_ports(&services)?;
@@ -2139,6 +2221,7 @@ async fn build_postgres_production(
     pool: deadpool_postgres::Pool,
     url: brassclaw_secrets::SecretMaterial,
     secret_master_key: brassclaw_secrets::SecretMaterial,
+    _reborn_home: std::path::PathBuf,
 ) -> Result<RebornServices, RebornBuildError> {
     use brassclaw_filesystem::PostgresRootFilesystem;
 
@@ -2147,8 +2230,12 @@ async fn build_postgres_production(
     // brassclaw_pg::run_migrations() (called before this function) already
     // applies V021 (triggers DDL) — no separate trigger-repository migration needed.
     let trigger_repository = Arc::new(brassclaw_triggers::PostgresTriggerRepository::new(pool.clone()));
-    let stores = ProductionStoreBundle::new(
+    // Build stores with PgSecretStore + PgCredentialBroker so that all secret
+    // and OAuth credential writes go to the `brassclaw_secrets` table rather
+    // than the legacy VFS blob columns (§4.4 Issue 3).
+    let stores = ProductionStoreBundle::new_postgres(
         filesystem,
+        pool.clone(),
         secret_master_key,
         brassclaw_reborn_event_store::RebornEventStoreConfig::Postgres { url },
     )?;

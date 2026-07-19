@@ -113,15 +113,26 @@ pub struct RebornLlmConfigService {
     nearai_session: Option<Arc<brassclaw_llm::SessionManager>>,
     nearai_login_states: Arc<NearAiLoginStateStore>,
     codex_login_attempts: Arc<tokio::sync::Mutex<HashMap<String, CodexLoginAttempt>>>,
-    /// Postgres pool for dual-writing role assignments to `brassclaw_config`.
+    /// Postgres pool for dual-writing role assignments to `brassclaw_config`
+    /// and for reading role selections (Sempai/Embedding) from DB.
     ///
-    /// When present, `set_active(Sempai)` and `set_active(Embedding)` also
-    /// call `db_config::save_config_key` so the factory's
-    /// `resolve_pg_embedding_provider` (which reads `embedding.provider_id`
-    /// from `brassclaw_config`) picks up the selection on the next restart.
-    /// The file write always happens first; the DB write is best-effort.
+    /// When present, `set_active(Sempai/Embedding)` writes to
+    /// `brassclaw_config` in addition to the local JSON file so the factory's
+    /// `resolve_pg_embedding_provider` picks up the selection on the next
+    /// restart. `build_snapshot` also reads role selections from DB when the
+    /// pool is present, so the WebUI always reflects the DB-authoritative state.
     #[cfg(feature = "postgres")]
     pg_pool: Option<Arc<brassclaw_pg::PgPool>>,
+    /// DB-backed provider repo for upsert/delete operations.
+    ///
+    /// When present, `upsert_provider` and `delete_provider` write to
+    /// `brassclaw_llm_providers` instead of `providers.json`. The file-based
+    /// `repo` is retained as fallback for non-postgres configurations.
+    #[cfg(feature = "postgres")]
+    pg_provider_repo: Option<Arc<crate::pg_provider_repo::PgProviderRepo>>,
+    /// Tenant ID for DB operations.
+    #[cfg(feature = "postgres")]
+    db_tenant_id: String,
 }
 
 impl RebornLlmConfigService {
@@ -137,6 +148,10 @@ impl RebornLlmConfigService {
             codex_login_attempts: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             #[cfg(feature = "postgres")]
             pg_pool: None,
+            #[cfg(feature = "postgres")]
+            pg_provider_repo: None,
+            #[cfg(feature = "postgres")]
+            db_tenant_id: "default".to_string(),
         }
     }
 
@@ -146,15 +161,29 @@ impl RebornLlmConfigService {
         self
     }
 
-    /// Attach a Postgres pool for dual-writing role assignments to `brassclaw_config`.
+    /// Attach a Postgres pool for dual-writing role assignments to `brassclaw_config`
+    /// and reading role selections from DB.
     ///
-    /// When set, `set_active(Sempai)` and `set_active(Embedding)` write to
-    /// `brassclaw_config` in addition to the local JSON file so the production
-    /// factory (`resolve_pg_embedding_provider`) picks up the selection on the
-    /// next restart.
+    /// When set, `set_active(Sempai/Embedding)` writes to `brassclaw_config`
+    /// and `build_snapshot` reads role selections from DB.
     #[cfg(feature = "postgres")]
     pub fn with_pg_pool(mut self, pool: Arc<brassclaw_pg::PgPool>) -> Self {
         self.pg_pool = Some(pool);
+        self
+    }
+
+    /// Attach the DB-backed provider repo and tenant ID.
+    ///
+    /// When set, `upsert_provider` and `delete_provider` write to
+    /// `brassclaw_llm_providers` instead of `providers.json`.
+    #[cfg(feature = "postgres")]
+    pub fn with_pg_provider_repo(
+        mut self,
+        repo: Arc<crate::pg_provider_repo::PgProviderRepo>,
+        tenant_id: impl Into<String>,
+    ) -> Self {
+        self.pg_provider_repo = Some(repo);
+        self.db_tenant_id = tenant_id.into();
         self
     }
 
@@ -196,7 +225,7 @@ impl RebornLlmConfigService {
         let Some(pool) = self.pg_pool.as_ref() else {
             return;
         };
-        let tenant_id = "default";
+        let tenant_id = self.db_tenant_id.as_str();
 
         // provider_id —— empty means "clear the role slot".
         let pid_result = if provider_id_value.is_empty() {
@@ -221,6 +250,49 @@ impl RebornLlmConfigService {
             tracing::debug!(key = model_key, error = %e,
                             "role DB write failed (file write already succeeded)");
         }
+    }
+
+    /// Read a role's `LlmActiveSelection` from `brassclaw_config` (DB) when a pool
+    /// is available, falling back to the legacy JSON file when not.
+    ///
+    /// This is the read counterpart to `save_role_to_db`. It ensures that
+    /// `build_snapshot` and `set_active` conflict checks reflect the DB-authoritative
+    /// role assignments rather than potentially-stale JSON files.
+    #[cfg(feature = "postgres")]
+    async fn read_role_sel_from_db_or_file(
+        &self,
+        provider_id_key: &str,
+        model_key: &str,
+        file_path: std::path::PathBuf,
+    ) -> Option<LlmActiveSelection> {
+        use crate::db_config::list_config_keys;
+
+        if let Some(pool) = self.pg_pool.as_ref() {
+            let tenant_id = &self.db_tenant_id;
+            // Best-effort: if DB read fails, fall back to file.
+            if let Ok(rows) = list_config_keys(pool, tenant_id).await {
+                let kv: std::collections::HashMap<String, String> = rows.into_iter().collect();
+                let provider_id = kv.get(provider_id_key)?.to_string();
+                if provider_id.is_empty() {
+                    return None;
+                }
+                let model = kv.get(model_key).map(|s| s.clone()).filter(|s| !s.is_empty());
+                return Some(LlmActiveSelection { provider_id, model });
+            }
+        }
+        // Fallback: read from the legacy file (pre-postgres or non-postgres builds).
+        read_role_selection(file_path)
+    }
+
+    /// Non-postgres build: always falls back to the file.
+    #[cfg(not(feature = "postgres"))]
+    async fn read_role_sel_from_db_or_file(
+        &self,
+        _provider_id_key: &str,
+        _model_key: &str,
+        file_path: std::path::PathBuf,
+    ) -> Option<LlmActiveSelection> {
+        read_role_selection(file_path)
     }
 
     /// Persist-then-reload: the file write already happened; refresh the
@@ -266,9 +338,16 @@ impl RebornLlmConfigService {
         let builtin_registry = brassclaw_llm::ProviderRegistry::try_load_from_path(None)
             .map_err(|_| LlmConfigServiceError::Unavailable)?;
 
-        // Read the persisted Sempai and Embedding selections (best-effort; absent = not set).
-        let sempai_sel = read_role_selection(self.boot.home().sempai_provider_file_path());
-        let embedding_sel = read_role_selection(self.boot.home().embedding_provider_file_path());
+        // Read the persisted Sempai and Embedding selections.
+        // Prefer DB (authoritative for postgres builds) over file fallback.
+        let sempai_sel = self.read_role_sel_from_db_or_file(
+            "llm.sempai.provider_id", "llm.sempai.model",
+            self.boot.home().sempai_provider_file_path(),
+        ).await;
+        let embedding_sel = self.read_role_sel_from_db_or_file(
+            "embedding.provider_id", "embedding.model",
+            self.boot.home().embedding_provider_file_path(),
+        ).await;
 
         let mut providers = Vec::with_capacity(list.providers.len());
         let mut active = None;
@@ -425,17 +504,21 @@ impl RebornLlmConfigService {
         &self,
         request: &LlmProbeRequest,
     ) -> Result<bool, LlmConfigServiceError> {
-        let providers_path = self.boot.home().providers_file_path();
-        let provider_id = request.provider_id.clone();
-        let registry = tokio::task::spawn_blocking(move || {
-            brassclaw_llm::ProviderRegistry::try_load_from_path(Some(providers_path.as_path()))
-        })
-        .await
-        .map_err(|_| LlmConfigServiceError::Unavailable)?
-        .map_err(|_| LlmConfigServiceError::Unavailable)?;
-        let Some(definition) = registry.find(&provider_id) else {
-            return Ok(false);
+        // Try DB-backed repo first (single provider lookup, no full registry scan).
+        let definition = self.load_provider_by_id(&request.provider_id).await?;
+
+        let definition = if let Some(d) = definition {
+            d
+        } else {
+            // Fall back to built-in registry (compiled-in providers are not stored in DB).
+            let builtin_registry = brassclaw_llm::ProviderRegistry::try_load_from_path(None)
+                .map_err(|_| LlmConfigServiceError::Unavailable)?;
+            let Some(d) = builtin_registry.find(&request.provider_id).cloned() else {
+                return Ok(false);
+            };
+            d
         };
+
         let Some(protocol) = parse_adapter(&request.adapter) else {
             return Ok(false);
         };
@@ -474,12 +557,9 @@ impl RebornLlmConfigService {
         previous_definition: Option<ProviderDefinition>,
     ) {
         let overlay_result = if let Some(previous_definition) = previous_definition {
-            self.repo
-                .upsert_async(previous_definition)
-                .await
-                .map(|_| ())
+            self.upsert_provider_definition(previous_definition).await.map(|_| ())
         } else {
-            self.repo.delete_async(id).await.map(|_| ())
+            self.delete_provider_definition(id).await.map(|_| ())
         };
         if let Err(error) = overlay_result {
             tracing::warn!(
@@ -488,6 +568,71 @@ impl RebornLlmConfigService {
                 "failed to roll back LLM provider overlay after active-selection failure",
             );
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Provider repo abstraction helpers (DB or file, depending on wiring)
+    // ------------------------------------------------------------------
+
+    /// Load a single provider definition by id (for rollback / previous-state tracking).
+    ///
+    /// Uses the DB-backed repo when wired; falls back to the file-based repo.
+    async fn load_provider_by_id(
+        &self,
+        id: &str,
+    ) -> Result<Option<ProviderDefinition>, LlmConfigServiceError> {
+        #[cfg(feature = "postgres")]
+        if let Some(pg_repo) = self.pg_provider_repo.as_ref() {
+            return pg_repo
+                .get(id)
+                .await
+                .map_err(|_| LlmConfigServiceError::Unavailable);
+        }
+        // File-based fallback.
+        let overlay = self
+            .repo
+            .load_async()
+            .await
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        Ok(overlay.into_iter().find(|d| d.id.eq_ignore_ascii_case(id)))
+    }
+
+    /// Upsert a provider definition into the DB-backed repo (or file fallback).
+    async fn upsert_provider_definition(
+        &self,
+        definition: ProviderDefinition,
+    ) -> Result<bool, LlmConfigServiceError> {
+        #[cfg(feature = "postgres")]
+        if let Some(pg_repo) = self.pg_provider_repo.as_ref() {
+            return pg_repo
+                .upsert(definition)
+                .await
+                .map_err(|_| LlmConfigServiceError::Unavailable);
+        }
+        self.repo
+            .upsert_async(definition)
+            .await
+            .map_err(|_| LlmConfigServiceError::Unavailable)
+    }
+
+    /// Delete a provider definition from the DB-backed repo (or file fallback).
+    ///
+    /// Returns `true` if the provider was found and deleted.
+    async fn delete_provider_definition(
+        &self,
+        id: &str,
+    ) -> Result<bool, LlmConfigServiceError> {
+        #[cfg(feature = "postgres")]
+        if let Some(pg_repo) = self.pg_provider_repo.as_ref() {
+            return pg_repo
+                .delete(id)
+                .await
+                .map_err(|_| LlmConfigServiceError::Unavailable);
+        }
+        self.repo
+            .delete_async(id)
+            .await
+            .map_err(|_| LlmConfigServiceError::Unavailable)
     }
 
     async fn rollback_provider_key(&self, id: &str, previous_key: Option<SecretString>) {
@@ -564,15 +709,9 @@ impl LlmConfigService for RebornLlmConfigService {
                 .await
                 .map_err(|_| LlmConfigServiceError::Unavailable)?
         };
-        let previous_overlay = self
-            .repo
-            .load_async()
-            .await
-            .map_err(|_| LlmConfigServiceError::Unavailable)?;
-        let previous_definition = previous_overlay
-            .iter()
-            .find(|definition| definition.id.eq_ignore_ascii_case(&id))
-            .cloned();
+        // Load the current overlay to find the previous definition for rollback.
+        // Use the DB-backed repo when available; fall back to the file-based repo.
+        let previous_definition = self.load_provider_by_id(&id).await?;
 
         // Editing a built-in must PRESERVE its compiled-in definition (protocol,
         // setup hints, env-var names) and overlay only what the operator
@@ -624,7 +763,8 @@ impl LlmConfigService for RebornLlmConfigService {
                 .map_err(|_| LlmConfigServiceError::Unavailable)?;
         }
 
-        if self.repo.upsert_async(definition).await.is_err() {
+        // Upsert via DB-backed repo (when available) or file-based repo.
+        if self.upsert_provider_definition(definition).await.is_err() {
             if has_new_key {
                 self.rollback_provider_key(&id, previous_key).await;
             }
@@ -652,11 +792,8 @@ impl LlmConfigService for RebornLlmConfigService {
         provider_id: String,
     ) -> Result<LlmConfigSnapshot, LlmConfigServiceError> {
         let id = validate_provider_id(&provider_id)?;
-        let removed = self
-            .repo
-            .delete_async(&id)
-            .await
-            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        // Delete via DB-backed repo (when available) or file-based repo.
+        let removed = self.delete_provider_definition(&id).await?;
         if !removed {
             return Err(LlmConfigServiceError::NotFound);
         }
@@ -687,9 +824,12 @@ impl LlmConfigService for RebornLlmConfigService {
             let conflict = match role {
                 ProviderRole::Kohai => {
                     // Would be Kohai — check that it is not already the Sempai.
-                    let sempai_path = self.boot.home().sempai_provider_file_path();
-                    read_role_selection(sempai_path)
-                        .is_some_and(|sel| sel.provider_id == id)
+                    // Use DB-authoritative read (falls back to file when no pool).
+                    let sempai_sel = self.read_role_sel_from_db_or_file(
+                        "llm.sempai.provider_id", "llm.sempai.model",
+                        self.boot.home().sempai_provider_file_path(),
+                    ).await;
+                    sempai_sel.is_some_and(|sel| sel.provider_id == id)
                 }
                 ProviderRole::Sempai => {
                     // Would be Sempai — check that it is not already the Kohai.

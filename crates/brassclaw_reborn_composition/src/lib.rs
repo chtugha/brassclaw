@@ -92,6 +92,8 @@ pub(crate) mod pg_memory_doc_store;
 pub(crate) mod pg_token_settings_store;
 #[cfg(feature = "postgres")]
 pub mod retention_sweep;
+#[cfg(feature = "postgres")]
+pub mod secrets_master;
 pub(crate) mod plan_library;
 #[cfg(feature = "root-llm-provider")]
 mod provider_admin;
