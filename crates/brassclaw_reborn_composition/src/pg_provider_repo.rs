@@ -62,7 +62,7 @@ impl PgProviderRepo {
 
         let mut providers = Vec::with_capacity(rows.len());
         for row in &rows {
-            let json: serde_json::Value = row.get(0);
+            let json: serde_json::Value = row.try_get("definition").map_err(|e| PgProviderRepoError::Db(e.to_string()))?;
             let def: ProviderDefinition =
                 serde_json::from_value(json).map_err(|e| PgProviderRepoError::Parse {
                     reason: e.to_string(),
@@ -90,11 +90,11 @@ impl PgProviderRepo {
         let existing_active: bool = client
             .query_one(
                 "SELECT EXISTS (SELECT 1 FROM brassclaw_llm_providers \
-                 WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL)",
+                 WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL) AS exists",
                 &[&self.tenant_id, &definition.id],
             )
             .await
-            .map(|r| r.get(0))
+            .map(|r| r.try_get::<_, bool>("exists").unwrap_or(false))
             .unwrap_or(false);
 
         client
@@ -148,7 +148,7 @@ impl PgProviderRepo {
         match row {
             None => Ok(None),
             Some(r) => {
-                let json: serde_json::Value = r.get(0);
+                let json: serde_json::Value = r.try_get("definition").map_err(|e| PgProviderRepoError::Db(e.to_string()))?;
                 let def =
                     serde_json::from_value(json).map_err(|e| PgProviderRepoError::Parse {
                         reason: e.to_string(),

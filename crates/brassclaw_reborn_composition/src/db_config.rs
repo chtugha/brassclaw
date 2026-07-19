@@ -148,9 +148,11 @@ pub async fn load_config_snapshot(
     // Build a flat key→value map.
     let mut kv: BTreeMap<String, String> = BTreeMap::new();
     for row in &rows {
-        let key: String = row.get(0);
-        let value: String = row.get(1);
-        kv.insert(key, value);
+        let key: String = row.try_get("key").unwrap_or_default();
+        let value: String = row.try_get("value").unwrap_or_default();
+        if !key.is_empty() {
+            kv.insert(key, value);
+        }
     }
 
     Ok(assemble_config(&kv))
@@ -171,7 +173,11 @@ pub async fn list_config_keys(
 
     Ok(rows
         .iter()
-        .map(|r| (r.get::<_, String>(0), r.get::<_, String>(1)))
+        .filter_map(|r| {
+            let key: String = r.try_get("key").ok()?;
+            let value: String = r.try_get("value").ok()?;
+            Some((key, value))
+        })
         .collect())
 }
 
