@@ -2660,3 +2660,140 @@ fn collect_forbidden_uses_detects_violation() {
         violations
     );
 }
+
+/// Phase 9 invariant: no `std::fs::read_to_string` or `File::open` in any
+/// non-migration production path.
+///
+/// After Phase 6 (libSQL removal), all persistent state lives in Postgres.
+/// The only legitimate filesystem reads in production code are:
+/// - The `migrate-from-libsql` migration module (reads legacy config.toml /
+///   providers.json to migrate them into the DB).
+/// - The architecture tests themselves (which read source files).
+///
+/// Any other use of the blocking filesystem-read APIs is either dead code or
+/// a regression that re-introduces file-based state. This test enforces the
+/// invariant crate-wide so a future contributor who adds a new `File::open`
+/// outside the migration gate fails clearly.
+#[test]
+fn no_direct_fs_reads_outside_migration_path() {
+    let root = workspace_root();
+    let crates_dir = root.join("crates");
+    let this_test_file = root.join(
+        "crates/brassclaw_architecture/tests/reborn_dependency_boundaries.rs",
+    );
+    let composition_test_file = root.join(
+        "crates/brassclaw_architecture/tests/reborn_composition_boundaries.rs",
+    );
+
+    // Patterns that signal a blocking filesystem read in production code.
+    let forbidden_patterns: &[(&str, &str)] = &[
+        (
+            "std::fs::read_to_string",
+            "production code must not read files directly; all state lives in Postgres",
+        ),
+        (
+            "fs::read_to_string",
+            "production code must not read files directly; all state lives in Postgres",
+        ),
+        (
+            "File::open",
+            "production code must not open files directly; all state lives in Postgres",
+        ),
+    ];
+
+    let mut violations = Vec::new();
+    scan_for_direct_fs_reads(
+        &crates_dir,
+        &root,
+        &this_test_file,
+        &composition_test_file,
+        forbidden_patterns,
+        &mut violations,
+    );
+
+    assert!(
+        violations.is_empty(),
+        "Direct filesystem reads are forbidden in non-migration production code (Phase 9 \
+         invariant: all state lives in Postgres). The migrate-from-libsql migration module \
+         is the only permitted exception. Violations found:\n{}",
+        violations.join("\n")
+    );
+}
+
+/// Walk `dir` recursively looking for Rust source files that contain any of
+/// the given `patterns`. Skips:
+/// - `tests/` subdirectories (test code may read fixture files)
+/// - files whose path component includes `migration` (the migrate-from-libsql
+///   module is the permitted exception)
+/// - lines that are inside a `#[cfg(test)]` block (inline test modules)
+/// - comment-only lines (lines where the first non-whitespace char is `//`)
+/// - the two architecture test files passed as `skip_a` / `skip_b`
+fn scan_for_direct_fs_reads(
+    dir: &std::path::Path,
+    root: &std::path::Path,
+    skip_a: &std::path::Path,
+    skip_b: &std::path::Path,
+    patterns: &[(&str, &str)],
+    violations: &mut Vec<String>,
+) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries {
+        let Ok(entry) = entry else { continue };
+        let path = entry.path();
+        if path.is_dir() {
+            // Skip `target/` and `tests/` subtrees — test code is exempt.
+            let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if dir_name == "target" || dir_name == "tests" {
+                continue;
+            }
+            scan_for_direct_fs_reads(&path, root, skip_a, skip_b, patterns, violations);
+            continue;
+        }
+        if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+            continue;
+        }
+        // Skip this test file and the companion composition test file.
+        if path == skip_a || path == skip_b {
+            continue;
+        }
+        // Skip migration modules — they are the permitted exception.
+        let path_str = path.to_string_lossy();
+        if path_str.contains("migration") || path_str.contains("migrate") {
+            continue;
+        }
+
+        let contents = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        // Strip inline `#[cfg(test)]` blocks from consideration.
+        let production = match contents.find("#[cfg(test)]\nmod ") {
+            Some(idx) => &contents[..idx],
+            None => &contents,
+        };
+
+        let relative = path.strip_prefix(root).unwrap_or(&path);
+        for (line_number, line) in production.lines().enumerate() {
+            // Skip comment-only lines.
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            for (pattern, reason) in patterns {
+                if line.contains(pattern) {
+                    violations.push(format!(
+                        "{}:{} contains `{}` ({})",
+                        relative.display(),
+                        line_number + 1,
+                        pattern,
+                        reason,
+                    ));
+                }
+            }
+        }
+    }
+}
+

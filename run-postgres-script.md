@@ -9,7 +9,7 @@
 > segment sizing, and critical ordering constraints — it does not duplicate spec detail.
 > Always open `integrate-postgres.md` as the primary reference when executing a segment.
 >
-> **Status:** S13 complete. S14 not started.
+> **Status:** S15 complete. S16 not started.
 
 ---
 
@@ -68,8 +68,8 @@ The hardened-unit test (`MemoryDenyWriteExecute=yes` + `jit=off`) is a hard gate
 | S11 | Phase 5 | Hooks rename + auth + factory wiring ✅ | `cargo clippy --all` + parity tests |
 | S12 | Phase 7-code | Migration module (`migrate-from-libsql`) — written BEFORE Phase 6 merges ✅ | migration integration test green |
 | S13 | Phase 6 | libSQL removal ✅ | `cargo build --release` clean |
-| S14 | Phase 8 | File-based config removal | `cargo clippy --all` |
-| S15 | Phase 9 | Systemd unit + docs | review gate |
+| S14 | Phase 8 | File-based config removal ✅ | `cargo clippy --all` |
+| S15 | Phase 9 | Systemd unit + docs ✅ | review gate |
 | S16 | Phase 10 | Integration + E2E tests | all gates green → cut release |
 | S17 | Phase 11 | `BRASSCLAW_REBORN_PROFILE` → three-knob refactor (independent track) | `cargo clippy --all` |
 

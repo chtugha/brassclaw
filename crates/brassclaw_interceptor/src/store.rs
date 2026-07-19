@@ -1,8 +1,9 @@
 //! `InterceptorStore` — persistence trait for `ForensicPacket`s.
 //!
-//! The production implementation is [`crate::PgInterceptorStore`] backed by
-//! `brassclaw_forensic_packets` (V026).  [`NoopInterceptorStore`] is used in
-//! test hosts that do not need storage assertions.
+//! [`crate::PgInterceptorStore`] is the sole durable implementation, backed by
+//! the `brassclaw_forensic_packets` table (migration V026).
+//! [`NoopInterceptorStore`] is retained for test hosts and noop mode only;
+//! it discards all writes and returns empty reads.
 //!
 //! # Storage contract
 //!

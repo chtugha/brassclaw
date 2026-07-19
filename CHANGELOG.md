@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(postgres-migration)* **Phase 9 — Systemd unit + documentation**: Two systemd service unit templates (`deploy/brassclaw.service` for single-host embedded Postgres, `deploy/brassclaw-external-pg.service` for multi-tenant external Postgres) with all hardening directives (`MemoryDenyWriteExecute=yes`, `SystemCallFilter=@system-service`, `ProtectSystem=strict`, `NoNewPrivileges=yes`, and full address-family restrictions).
+- *(postgres-migration)* **Operator guide** (`docs/operator-guide.md`): covers prerequisites, fresh-install sequence (§7.1), upgrade-from-libSQL sequence (§7.2), `master.key` ownership requirements, `master.key` DR backup mandate, `rewrap` vs `rotate` distinction, config management via `brassclaw config`, and `brassclaw maintenance prune-old-data`.
+
+### Changed
+
+- *(agents)* `AGENTS.md` Database Rules section: retired the dual-backend (PostgreSQL + libSQL) mandate. All persistence now uses Postgres; in-memory backends are acceptable for unit tests only.
+- *(agents)* `AGENTS.md` Key Environment Variables section: documented the two-tier env model (bootstrap tier + operator-trusted tier). Removed retired `LLM_BACKEND`, `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` variable table entries; added `BRASSCLAW_PG_URL`, `BRASSCLAW_EMBEDDED_PG_PORT`, `BRASSCLAW_SECRETS_PASSPHRASE_FILE`.
+- *(claude)* `CLAUDE.md`: purged stale v1 `src/` sections (`src/db/`, `src/channels/`, `src/agent/`, `src/workspace/`, `src/sandbox/`, `src/registry/`, `src/tunnel/` — all removed in Phase 6). Updated Database section, Key Traits table, env var table, and Project Structure to reflect the Postgres-only Reborn codebase.
+- *(interceptor)* `crates/brassclaw_interceptor/src/store.rs` module doc: updated to state that `PgInterceptorStore` is the sole durable implementation and `NoopInterceptorStore` is retained for tests/noop mode only (retiring the stale dual-backend statement).
+- *(crates-agents)* `crates/AGENTS.md`: updated Storage and persistence routing guidance and Testing section to reflect Postgres-only persistence.
+
 ## [0.50.0] - 2026-07-16
 
 ### Added

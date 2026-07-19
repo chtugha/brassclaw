@@ -1,4 +1,4 @@
-# /etc/systemd/system/brassclaw.service — single-host with embedded PG
+# /etc/systemd/system/brassclaw.service — multi-tenant with external PG
 # Copy this file to /etc/systemd/system/brassclaw.service and complete the
 # EnvironmentFile= block before starting the service.  See the operator guide
 # at docs/operator-guide.md for fresh-install and upgrade sequences.
@@ -13,21 +13,19 @@ WorkingDirectory=/opt/brassclaw
 
 # Bootstrap tier — non-secret; safe as inline Environment=
 Environment=BRASSCLAW_REBORN_HOME=/var/lib/brassclaw
-# NOTE: Use BRASSCLAW_REBORN_PROFILE until Phase 11 ships. Phase 11 renames this
-# to BRASSCLAW_RUNTIME_PROFILE (and expands the value set to 12 RuntimeProfile
-# variants). Until then, valid values are: local-dev, local-dev-yolo, production.
-# local-dev maps to the LocalSafe policy for single-host serve deployments.
-Environment=BRASSCLAW_REBORN_PROFILE=local-dev
+Environment=BRASSCLAW_RUNTIME_PROFILE=hosted_safe
 Environment=BRASSCLAW_REBORN_LOG=brassclaw=info
-# BRASSCLAW_PG_URL is OPTIONAL for local-* profiles — omit to use embedded Postgres:
-# Environment=BRASSCLAW_PG_URL=postgresql://brassclaw@127.0.0.1:5434/brassclaw
-# Optional — override embedded PG port if 5434 is taken:
+# BRASSCLAW_PG_URL is REQUIRED for non-local profiles (hosted_*, enterprise_*,
+# secure_default, sandboxed, experiment). Omitting it triggers fail-closed.
+Environment=BRASSCLAW_PG_URL=postgresql://brassclaw@db.internal:5432/brassclaw
+# Optional — override embedded PG port (not used when PG_URL is set):
 # Environment=BRASSCLAW_EMBEDDED_PG_PORT=5435
 
 # Operator-trusted tier (secrets + identity values, never inline) — read by
 # systemd as root. File must be root:root 0600.
-# Contents: BRASSCLAW_SECRETS_PASSPHRASE_FILE (path to brassclaw-readable file,
-#   set ONLY if you ran 'brassclaw secrets rewrap --strategy passphrase-file=...'),
+# Contents: BRASSCLAW_SECRETS_PASSPHRASE_FILE (REQUIRED if master key is
+#   passphrase-wrapped — run 'brassclaw secrets rewrap --strategy passphrase-file=...'
+#   once before first boot),
 #   BRASSCLAW_REBORN_WEBUI_TOKEN, BRASSCLAW_REBORN_WEBUI_USER_ID, API keys.
 EnvironmentFile=/etc/brassclaw/secrets.env
 

@@ -188,24 +188,19 @@ BrassClaw Reborn uses a four-layer model:
 1. **Products** — UX surfaces and deployment shapes (CLI, web server, daemon). Products wire together loops, capabilities, and host access. They do not implement agent logic.
 2. **Loops** — Agent behavior drivers. A loop manages planning, tool dispatch, turn sequencing, approval gates, checkpointing, retries, and completion. All agentic execution passes through the loop runner.
 3. **Kernel** — Authority and policy enforcement. Trust decisions, secret resolution, safety policy, sandboxing, capability grants, and session identity live here. Kernel boundaries are enforced; product and loop code cannot override them.
-4. **Infrastructure** — Shared services: LLM providers, persistence, embeddings, WASM runtime, skills, extensions, and observability.
+4. **Infrastructure** — Shared services: LLM providers, Postgres persistence, embeddings, skills, extensions, and observability.
 
-The legacy v1 runtime (`src/`) uses a Channel/Agent/AppBuilder model. Do not mix v1 and Reborn patterns. New work belongs in `crates/`.
+New work belongs in `crates/`. The v1 `src/` tree was removed in Phase 6.
 
 ### Key Traits
 
 | Trait | Location | Purpose |
 |-------|----------|---------|
-| `Database` | `src/db/` | Dual-backend persistence abstraction |
-| `Channel` | `src/channels/channel.rs` | Normalizes external input to `IncomingMessage` |
-| `Tool` | `src/tools/tool.rs` | Extensible tool interface |
 | `LlmProvider` | `crates/brassclaw_llm/` | Multi-provider LLM integration |
-| `SuccessEvaluator` | `src/evaluation/` | Rule-based and LLM-based success evaluation |
 | `EmbeddingProvider` | `crates/brassclaw_embeddings/` | Vector embedding interface |
-| `NetworkPolicyDecider` | `src/` | Outbound network policy |
-| `Hook` | `src/hooks/` | Lifecycle hook points |
-| `Observer` | `src/observability/` | Pluggable event recording |
-| `Tunnel` | `src/tunnel/` | Public internet exposure |
+| `Hook` | `crates/brassclaw_hooks/` | Lifecycle hook points |
+| `TurnCoordinator` | `crates/brassclaw_turns/` | Turn coordination contract |
+| `HostRuntime` | `crates/brassclaw_host_runtime/` | Host service access |
 
 All I/O is async with tokio. Use `Arc<T>` for shared state, `RwLock` for concurrent access.
 
@@ -237,6 +232,10 @@ crates/
 │   ├── brassclaw_reborn_config/    # Config resolution, profiles, home resolution
 │   └── brassclaw_reborn_webui_ingress/  # WebUI v2 gateway adapter and ingress
 │
+├── Persistence
+│   ├── brassclaw_pg/               # Postgres pool, migration runner, SQL migrations V000–V026
+│   └── brassclaw_embedded_postgres/ # Self-managed embedded Postgres lifecycle
+│
 ├── Agent loops and engine
 │   ├── brassclaw_agent_loop/       # Planned AgentLoop driver
 │   ├── brassclaw_engine/           # Engine v2: planning, CodeAct, tool loop
@@ -253,10 +252,6 @@ crates/
 │
 ├── Safety and security
 │   └── brassclaw_safety/           # Prompt injection, validation, leak detection, policy
-│
-├── WASM (Phase 4 removed)
-│   └── brassclaw_wasm/             # Removed: Wasmtime sandbox, host functions, fuel metering
-│                                    # Replaced by brassclaw_process_sandbox (subprocess + docker-image gating)
 │
 ├── WebUI v2
 │   ├── brassclaw_webui_v2/         # React SPA server, routes, bearer-token auth
@@ -278,27 +273,6 @@ crates/
 │   └── brassclaw_architecture/     # Architectural invariant tests
 │
 └── (additional shared utility crates)
-
-src/                                # Legacy v1 runtime — do not modify for Reborn work
-├── lib.rs, main.rs, app.rs         # v1 entrypoints
-├── agent/                          # v1 agent loop — see src/agent/CLAUDE.md
-├── channels/                       # v1 channels (cli, http, web) — v1 wasm channel removed in Phase 4
-│   └── web/                        # v1 web gateway — see src/channels/web/CLAUDE.md
-├── db/                             # Dual-backend persistence — see src/db/CLAUDE.md
-├── tools/                          # v1 tool system and registry
-├── workspace/                      # Persistent memory system
-├── secrets/                        # AES-256-GCM secrets, OS keychain master key
-├── safety/                         # Re-export shim for crates/brassclaw_safety
-├── sandbox/                        # v1 Docker sandbox
-├── worker/                         # Container and job workers
-├── orchestrator/                   # Internal HTTP API for sandbox containers
-├── setup/                          # 7-step onboarding wizard
-├── skills/                         # v1 skills shim
-├── hooks/                          # Lifecycle hooks (6 points)
-├── tunnel/                         # Tunnel abstraction (cloudflare, ngrok, tailscale)
-├── registry/                       # Extension registry catalog and installer
-├── observability/                  # Pluggable event/metric recording
-└── context/, estimation/, evaluation/, profile.rs, settings.rs
 
 skills/                             # SKILL.md files (trusted user skills)
 
@@ -324,11 +298,6 @@ When modifying a module with a spec, read the spec first. Code follows spec; spe
 | `crates/brassclaw_embeddings/` | `crates/brassclaw_embeddings/AGENTS.md` |
 | `crates/brassclaw_reborn_webui_ingress/` | `crates/brassclaw_reborn_webui_ingress/CLAUDE.md` |
 | `crates/brassclaw_engine/` | `crates/brassclaw_engine/CLAUDE.md` |
-| `src/agent/` | `src/agent/CLAUDE.md` |
-| `src/channels/web/` | `src/channels/web/CLAUDE.md` |
-| `src/db/` | `src/db/CLAUDE.md` |
-| `src/tools/` | `src/tools/README.md` |
-| `src/workspace/` | `src/workspace/README.md` |
 | `tests/e2e/` | `tests/e2e/CLAUDE.md` |
 
 ## Token Budget
@@ -359,27 +328,30 @@ See `.env.example` for all environment variables.
 
 ### Key Reborn Variables
 
+**Bootstrap tier** (fixed set, read before the DB starts — safe as inline `Environment=` in the systemd unit):
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `BRASSCLAW_REBORN_HOME` | `~/.brassclaw/reborn` | Reborn state root |
-| `BRASSCLAW_REBORN_PROFILE` | `local-dev` | Boot profile |
+| `BRASSCLAW_REBORN_PROFILE` | `local-dev` | Boot profile (`local-dev`, `local-dev-yolo`, `production`; renamed to `BRASSCLAW_RUNTIME_PROFILE` in Phase 11) |
 | `BRASSCLAW_REBORN_LOG` | — | Log filter (e.g., `brassclaw=debug`) |
-| `LLM_BACKEND` | — | Provider: `openai`, `anthropic`, `ollama`, `nearai`, `bedrock`, `openai_compatible`, `tinfoil` |
-| `LLM_BASE_URL` | — | LLM endpoint base URL |
-| `LLM_MODEL` | — | Model name or ID |
-| `LLM_API_KEY` | — | API key |
+| `BRASSCLAW_PG_URL` | — | External Postgres URL; optional for local profiles, required for hosted/production |
+| `BRASSCLAW_EMBEDDED_PG_PORT` | 5434 | Override embedded Postgres port |
+| `BRASSCLAW_SECRETS_PASSPHRASE_FILE` | — | Path to master-key passphrase file; set only for passphrase-wrapped ceremony |
 
-LLM backends are documented in `crates/brassclaw_llm/CLAUDE.md`.
+**Operator-trusted tier** (data-driven, read by configured name after DB is up — set via `EnvironmentFile=` in the systemd unit):
+
+The *names* of these vars live in `brassclaw_config`; the *values* are read from the environment at runtime and never persisted to the DB. Includes `BRASSCLAW_REBORN_WEBUI_TOKEN`, `BRASSCLAW_REBORN_WEBUI_USER_ID`, provider API keys, OAuth secrets, and trigger auth tokens.
+
+LLM provider configuration is managed via `brassclaw config set` or the first-run wizard and stored in the DB. See `crates/brassclaw_llm/CLAUDE.md`.
 
 ## Database
 
-Dual-backend: PostgreSQL + libSQL/Turso. All new persistence features must support both backends.
+All persistence uses Postgres (`brassclaw_pg` crate + embedded Postgres via `brassclaw_embedded_postgres`). In-memory backends are acceptable for unit tests only.
 
-- Add new DB operations to the shared `Database` trait first, then implement both backends.
 - Treat bootstrap config, DB-backed settings, and encrypted secrets as distinct layers.
 - Do not break config precedence, bootstrap env loading, DB-backed config reload, or post-secrets LLM re-resolution.
-
-See `src/db/CLAUDE.md` and `.claude/rules/database.md`.
+- All config lives in the `brassclaw_config` Postgres table; provider definitions in `brassclaw_llm_providers`.
 
 ## WebUI v2
 

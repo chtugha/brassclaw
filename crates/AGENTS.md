@@ -127,7 +127,7 @@ Boundary rule: if you need an upstream crate in a low-level crate, stop and chec
 | `brassclaw_product_adapters` | `brassclaw_product_adapters/AGENTS.md`, `brassclaw_product_adapters/CLAUDE.md` | Product-adapter contracts: adapter trait, auth, egress, identity, workflow, external/projection/inbound, redaction, fakes. | Host runtime internals or specific WASM runner implementation. |
 | `brassclaw_product_adapter_registry` | `brassclaw_product_adapter_registry/AGENTS.md`, `brassclaw_product_adapter_registry/CLAUDE.md` | ProductAdapter host-api projection and installation registry. | Adapter execution or product workflow orchestration. |
 | `brassclaw_product_workflow` | `brassclaw_product_workflow/AGENTS.md`, `brassclaw_product_workflow/CLAUDE.md` | Product-facing workflow facade: inbound turns, bindings, ledger, workflow/errors, Reborn service bridges. | Low-level runtime lane internals or direct provider-specific transports. |
-| `brassclaw_product_workflow_storage` | `brassclaw_product_workflow_storage/AGENTS.md`, `Cargo.toml` | Durable libSQL/PostgreSQL adapters for the product workflow idempotency ledger. | Workflow orchestration, direct dispatch, or divergence between libSQL and PostgreSQL behavior. |
+| `brassclaw_product_workflow_storage` | `brassclaw_product_workflow_storage/AGENTS.md`, `Cargo.toml` | Durable PostgreSQL adapters for the product workflow idempotency ledger. | Workflow orchestration or direct dispatch. |
 | `brassclaw_telegram_v2_adapter` | `brassclaw_telegram_v2_adapter/AGENTS.md`, `Cargo.toml`, `src/lib.rs` | Telegram ProductAdapter tracer bullet: payload parsing, rendering, adapter implementation. | Shared adapter contracts or registry semantics. |
 | `brassclaw_reborn_webui_ingress` | `brassclaw_reborn_webui_ingress/AGENTS.md`, `Cargo.toml` | Host-owned listener binding, authenticator implementations, and serve loop for Reborn WebChat v2. | Product/API route semantics, transcript storage, v1 channel code, product adapter transport shims. |
 
@@ -146,7 +146,7 @@ Boundary rule: if you need an upstream crate in a low-level crate, stop and chec
 ## Common Change Routes
 
 - Host API shape: `brassclaw_host_api` -> matching `docs/reborn/contracts/*.md` -> affected service/runtime crates -> `brassclaw_architecture`.
-- Storage and persistence: owning domain crate for schemas/queries; preserve libSQL/PostgreSQL parity where applicable. Product workflow ledger adapters live in `brassclaw_product_workflow_storage`; event/audit store backends live in `brassclaw_reborn_event_store`.
+- Storage and persistence: owning domain crate for schemas/queries; all production persistence uses Postgres. Product workflow ledger adapters live in `brassclaw_product_workflow_storage`; event/audit store backends live in `brassclaw_reborn_event_store`.
 - Files/memory: `brassclaw_filesystem` for mount/path authority; `brassclaw_memory` for memory documents/search/chunking/indexing.
 - Events/projections/outbound: `brassclaw_events` for canonical redacted events; `brassclaw_event_projections` for projection model; `brassclaw_event_streams` for transport-neutral live/replay streams; `brassclaw_outbound` for metadata-only delivery/subscription policy; adapters for concrete delivery.
 - Trust/auth/approval: `brassclaw_trust` -> `brassclaw_authorization` -> `brassclaw_run_state`/`brassclaw_approvals` -> `brassclaw_capabilities` as needed.
@@ -179,7 +179,7 @@ cargo test --workspace --all-features
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
 
-Persistence behavior must support PostgreSQL and libSQL where applicable. If local Postgres is unavailable, follow crate-local skip flags only when docs/tests explicitly permit them.
+Persistence behavior targets PostgreSQL. Integration tests that require a live DB may be skipped when Postgres is unavailable by following crate-local `skip` flags where docs/tests explicitly permit.
 
 ## Guardrails
 

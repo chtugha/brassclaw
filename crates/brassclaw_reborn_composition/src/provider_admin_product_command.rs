@@ -10,7 +10,7 @@ use serde::Serialize;
 
 use crate::{
     RebornModelRoutesState, RebornProviderAdmin, RebornProviderAdminError, RebornProviderSelection,
-    RebornProviderStatus, RebornProviderWriteOutcome, RebornV1State,
+    RebornProviderStatus, RebornV1State,
 };
 
 pub struct RebornProviderAdminProductCommandService {
@@ -112,33 +112,6 @@ impl From<RebornProviderSelection> for ProductSafeProviderSelection {
             provider_known: selection.provider_known,
             model: selection.model,
         }
-    }
-}
-
-#[derive(Serialize)]
-struct ProductSafeProviderWriteOutcome {
-    provider_id: String,
-    model: String,
-    api_key_required: bool,
-    missing_api_key: bool,
-    v1_state: RebornV1State,
-}
-
-impl From<RebornProviderWriteOutcome> for ProductSafeProviderWriteOutcome {
-    fn from(outcome: RebornProviderWriteOutcome) -> Self {
-        Self {
-            provider_id: outcome.provider_id,
-            model: outcome.model,
-            api_key_required: outcome.api_key_required,
-            missing_api_key: outcome.missing_api_key,
-            v1_state: outcome.v1_state,
-        }
-    }
-}
-
-impl ProductSafeProviderWriteOutcome {
-    fn to_value(&self) -> Result<serde_json::Value, serde_json::Error> {
-        serde_json::to_value(self)
     }
 }
 

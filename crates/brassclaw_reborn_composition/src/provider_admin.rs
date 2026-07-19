@@ -147,16 +147,6 @@ pub struct RebornProviderSelection {
     pub base_url: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct RebornProviderWriteOutcome {
-    pub provider_id: String,
-    pub model: String,
-    pub api_key_env: Option<String>,
-    pub api_key_required: bool,
-    pub missing_api_key: bool,
-    pub v1_state: RebornV1State,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum RebornV1State {
     #[serde(rename = "not-used")]

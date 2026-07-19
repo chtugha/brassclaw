@@ -184,7 +184,7 @@ pub use profile::{RebornCompositionProfile, RebornCompositionProfileParseError};
 pub use provider_admin::{
     RebornModelRoutesState, RebornProviderAdmin, RebornProviderAdminError, RebornProviderInfo,
     RebornProviderList, RebornProviderMetadata, RebornProviderSelection, RebornProviderStatus,
-    RebornProviderWriteOutcome, RebornV1State,
+    RebornV1State,
 };
 #[cfg(feature = "root-llm-provider")]
 pub use provider_admin_product_command::RebornProviderAdminProductCommandService;

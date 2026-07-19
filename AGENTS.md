@@ -67,8 +67,7 @@ When a task touches only `crates/` there is no longer a v1 `src/` tree — all v
 
 ## Database Rules
 
-- New persistence behavior must support both PostgreSQL and libSQL.
-- Add new DB operations to the shared DB trait first, then implement both backends.
+- All persistence uses Postgres. In-memory backends are acceptable for unit tests only.
 - Treat bootstrap config, DB-backed settings, and encrypted secrets as distinct layers; do not collapse them.
 - Do not break config precedence, bootstrap env loading, DB-backed config reload, or post-secrets LLM re-resolution.
 
@@ -89,15 +88,20 @@ When a task touches only `crates/` there is no longer a v1 `src/` tree — all v
 
 ## Key Environment Variables
 
+**Bootstrap tier** (fixed set, read before the DB starts — set in the systemd unit's `Environment=` block):
+
 | Variable | Purpose |
 |----------|---------|
 | `BRASSCLAW_REBORN_HOME` | Reborn state root (default: `~/.brassclaw/reborn`) |
-| `BRASSCLAW_REBORN_PROFILE` | Boot profile: `local-dev`, `local-dev-yolo`, `production`, `migration-dry-run` |
+| `BRASSCLAW_REBORN_PROFILE` | Boot profile: `local-dev`, `local-dev-yolo`, `production` (renamed to `BRASSCLAW_RUNTIME_PROFILE` in Phase 11) |
 | `BRASSCLAW_REBORN_LOG` | Log filter for Reborn runtime (e.g., `brassclaw=debug`) |
-| `LLM_BACKEND` | LLM provider: `openai`, `anthropic`, `ollama`, `nearai`, `bedrock`, `openai_compatible`, `tinfoil` |
-| `LLM_BASE_URL` | Base URL for the LLM endpoint |
-| `LLM_MODEL` | Model name/ID to use |
-| `LLM_API_KEY` | API key for the LLM provider |
+| `BRASSCLAW_PG_URL` | External Postgres URL (optional for local profiles; required for hosted/production) |
+| `BRASSCLAW_EMBEDDED_PG_PORT` | Override embedded Postgres port (default: 5434) |
+| `BRASSCLAW_SECRETS_PASSPHRASE_FILE` | Path to master-key file; set only when using passphrase-wrapped ceremony |
+
+**Operator-trusted tier** (data-driven, read by configured name after the DB is up — set in `secrets.env` via `EnvironmentFile=`):
+
+The *names* of these env vars are stored in `brassclaw_config`; the *values* are read from the environment at runtime and never persisted. Includes: `BRASSCLAW_REBORN_WEBUI_TOKEN`, `BRASSCLAW_REBORN_WEBUI_USER_ID`, provider API keys, OAuth secrets, trigger auth tokens.
 
 ## Build and Test
 
