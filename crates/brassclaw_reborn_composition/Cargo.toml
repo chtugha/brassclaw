@@ -32,7 +32,6 @@ postgres = [
     "brassclaw_host_runtime/postgres",
     "brassclaw_reborn_event_store/postgres",
     "brassclaw_resources/postgres",
-    "brassclaw_run_state/postgres",
 ]
 [dependencies]
 brassclaw_pg = { path = "../brassclaw_pg" }

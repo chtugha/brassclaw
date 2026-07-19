@@ -7,7 +7,7 @@ publish = false
 [features]
 default = []
 test-support = []
-postgres = ["dep:deadpool-postgres", "brassclaw_filesystem/postgres", "brassclaw_resources/postgres", "brassclaw_run_state/postgres"]
+postgres = ["dep:deadpool-postgres", "brassclaw_filesystem/postgres", "brassclaw_resources/postgres"]
 
 [dependencies]
 async-trait = "0.1"

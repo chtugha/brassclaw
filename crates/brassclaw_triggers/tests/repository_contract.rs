@@ -988,7 +988,7 @@ async fn postgres_repository_rejects_malformed_persisted_rows() {
         client
             .execute(
                 &format!(
-                    "UPDATE trigger_records SET {column} = $1 WHERE tenant_id = $2 AND trigger_id = $3"
+                    "UPDATE brassclaw_triggers SET {column} = $1 WHERE tenant_id = $2 AND trigger_id = $3"
                 ),
                 &[&value, &tenant_id.as_str(), &trigger_id.to_string()],
             )
@@ -1005,7 +1005,7 @@ async fn postgres_repository_rejects_malformed_persisted_rows() {
         .await;
 
         client
-            .execute("DELETE FROM trigger_records", &[])
+            .execute("DELETE FROM brassclaw_triggers", &[])
             .await
             .expect("clear malformed row");
         repo.upsert_trigger(sample_record(

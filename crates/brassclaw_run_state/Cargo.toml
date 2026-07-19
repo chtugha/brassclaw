@@ -6,7 +6,6 @@ publish = false
 
 [features]
 default = []
-postgres = []
 
 [dependencies]
 async-trait = "0.1"

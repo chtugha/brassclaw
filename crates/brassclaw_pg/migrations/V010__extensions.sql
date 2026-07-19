@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS brassclaw_extension_manifests (
     tenant_id   TEXT        NOT NULL,
     name        TEXT        NOT NULL,
     version     TEXT        NOT NULL,
-    manifest    JSONB       NOT NULL,
+    manifest    TEXT        NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (tenant_id, name, version)

@@ -209,8 +209,14 @@ impl BudgetGateStore for PgBudgetGateStore {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 let payload = serde_json::to_value(&gate).map_err(map_json_b)?;
-                let gate_kind = format!("{:?}", gate.needed.dimension).to_lowercase();
-                let requested_amount: f64 = 0.0; // amount not directly accessible as numeric
+                // Use Display (not Debug) — Debug gives "InputTokens", Display gives "input_tokens".
+                let gate_kind = gate.needed.dimension.to_string();
+                let requested_amount: f64 = match &gate.needed.requested {
+                    crate::ResourceValue::Decimal(d) => {
+                        d.to_string().parse::<f64>().unwrap_or(0.0)
+                    }
+                    crate::ResourceValue::Integer(i) => *i as f64,
+                };
                 let client = self.pool.get().await.map_err(map_pool_b)?;
                 client
                     .execute(

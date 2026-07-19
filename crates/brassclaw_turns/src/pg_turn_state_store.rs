@@ -25,6 +25,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use brassclaw_host_api::{ThreadId, UserId};
 use brassclaw_pg::PgPool;
+use heck::ToSnakeCase;
 use serde_json::Value;
 
 use crate::{
@@ -45,6 +46,20 @@ use crate::{
         RelinquishRunRequest, TurnRunTransitionPort,
     },
 };
+
+/// Convert a [`TurnStatus`] to the snake_case DB column value.
+///
+/// `TurnStatus` has no `#[serde(rename_all = "snake_case")]` — the serde
+/// representation is PascalCase. The DB `status` column stores snake_case
+/// values derived by converting PascalCase variant names via `heck::ToSnakeCase`
+/// (e.g. `RecoveryRequired` → `"recovery_required"`). Do NOT use `.to_lowercase()`
+/// — `"RecoveryRequired".to_lowercase()` yields `"recoveryrequired"` (missing
+/// underscore). This function will be used when writing per-run indexed rows.
+// TODO(S6): used when per-run row indexing is added alongside snapshot rows.
+#[allow(dead_code)]
+fn turn_status_str(status: crate::TurnStatus) -> String {
+    format!("{:?}", status).to_snake_case()
+}
 
 /// Maximum number of optimistic-CAS retries before surfacing `TurnError::Unavailable`.
 const PG_CAS_RETRIES: usize = 12;
@@ -132,7 +147,7 @@ impl PgTurnStateStore {
         let row = client
             .query_opt(
                 "SELECT payload, version FROM brassclaw_turns \
-                 WHERE tenant_id = $1 AND turn_id = $2",
+                 WHERE tenant_id = $1 AND turn_id = $2 AND status = 'snapshot'",
                 &[&self.tenant_id, &thread_id.as_str()],
             )
             .await
@@ -160,19 +175,23 @@ impl PgTurnStateStore {
     ) -> Result<bool, TurnError> {
         let payload = serde_json::to_value(snapshot).map_err(map_json_ser)?;
         let next_version = expected_version + 1;
+        // Snapshot rows use the thread_id as both `id` (PK) and `turn_id`.
+        // `run_id` is NULL for snapshot rows; `status` uses the 'snapshot' sentinel.
+        // The unique index on (tenant_id, turn_id) drives the ON CONFLICT CAS.
+        let thread_id_str = thread_id.as_str();
 
         let client = self.pool.get().await.map_err(map_pg_pool)?;
-        // INSERT for a fresh row; on conflict UPDATE only if version matches.
         let rows = client
             .execute(
-                "INSERT INTO brassclaw_turns (tenant_id, turn_id, payload, version) \
-                 VALUES ($1, $2, $3, 1) \
+                "INSERT INTO brassclaw_turns \
+                 (id, tenant_id, turn_id, status, payload, version) \
+                 VALUES ($1, $2, $1, 'snapshot', $3, 1) \
                  ON CONFLICT (tenant_id, turn_id) DO UPDATE \
                  SET payload = excluded.payload, version = $4, updated_at = now() \
                  WHERE brassclaw_turns.version = $5",
                 &[
+                    &thread_id_str,
                     &self.tenant_id,
-                    &thread_id.as_str(),
                     &payload,
                     &next_version,
                     &expected_version,
@@ -228,6 +247,67 @@ impl PgTurnStateStore {
         Err(TurnError::Unavailable {
             reason: "turn state Postgres CAS retries exhausted".to_string(),
         })
+    }
+
+    /// Return all snapshot `thread_id`s for this tenant, ordered by `updated_at DESC`.
+    ///
+    /// Used by whole-tenant scans in [`claim_next_run`] and
+    /// [`recover_expired_leases`] when no `scope_filter` is provided.
+    async fn list_snapshot_thread_ids(&self) -> Result<Vec<ThreadId>, TurnError> {
+        let client = self.pool.get().await.map_err(map_pg_pool)?;
+        let rows = client
+            .query(
+                "SELECT turn_id FROM brassclaw_turns \
+                 WHERE tenant_id = $1 AND status = 'snapshot' \
+                 ORDER BY updated_at DESC",
+                &[&self.tenant_id],
+            )
+            .await
+            .map_err(map_pg)?;
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                let s: String = r.get(0);
+                ThreadId::from_trusted(s)
+            })
+            .collect())
+    }
+
+    /// Resolve the [`ThreadId`] of the snapshot that owns `run_id`.
+    ///
+    /// `TurnRunTransitionPort` methods only carry a `run_id`; the snapshot is
+    /// keyed by `thread_id`. This helper scans snapshot rows whose `payload`
+    /// contains a run record with the given `run_id` and returns the first
+    /// matching `turn_id` (= `thread_id` for snapshot rows).
+    ///
+    /// Returns `TurnError::ScopeNotFound` if no snapshot contains this run.
+    async fn find_thread_id_for_run(
+        &self,
+        run_id: TurnRunId,
+    ) -> Result<ThreadId, TurnError> {
+        let run_id_str = run_id.to_string();
+        let client = self.pool.get().await.map_err(map_pg_pool)?;
+        // The payload is a TurnPersistenceSnapshot; runs is an array of
+        // TurnRunRecord objects each of which has a "run_id" field.
+        let row = client
+            .query_opt(
+                "SELECT turn_id FROM brassclaw_turns \
+                 WHERE tenant_id = $1 AND status = 'snapshot' \
+                   AND payload->'runs' @> $2::jsonb",
+                &[
+                    &self.tenant_id,
+                    &format!("[{{\"run_id\":\"{}\"}}]", run_id_str),
+                ],
+            )
+            .await
+            .map_err(map_pg)?;
+        match row {
+            Some(r) => {
+                let thread_id_str: String = r.get(0);
+                Ok(ThreadId::from_trusted(thread_id_str))
+            }
+            None => Err(TurnError::ScopeNotFound),
+        }
     }
 }
 
@@ -466,28 +546,44 @@ impl TurnRunTransitionPort for PgTurnStateStore {
         &self,
         request: ClaimRunRequest,
     ) -> Result<Option<ClaimedTurnRun>, TurnError> {
-        // claim_next_run looks across all threads in a tenant. Use the
-        // scope_filter thread_id when present; fall back to a sentinel that
-        // scans the whole-tenant pool snapshot row (keyed by thread_id="__global__").
-        let thread_id = request
-            .scope_filter
-            .as_ref()
-            .map(|s| s.thread_id.clone())
-            .unwrap_or_else(|| ThreadId::from_trusted("__global__".to_string()));
-        self.apply(&thread_id, |store| {
-            let request = request.clone();
-            async move {
-                let outcome = store.claim_next_run(request).await;
-                (outcome, store)
+        // When a scope_filter is present, use its thread_id directly — the
+        // caller knows which thread to look in.  When absent (whole-tenant
+        // claim), iterate all snapshot rows for this tenant: load each one
+        // into a transient InMemoryTurnStateStore and attempt claim_next_run;
+        // stop at the first snapshot that yields a run.
+        if let Some(scope) = &request.scope_filter {
+            let thread_id = scope.thread_id.clone();
+            return self
+                .apply(&thread_id, |store| {
+                    let request = request.clone();
+                    async move {
+                        let outcome = store.claim_next_run(request).await;
+                        (outcome, store)
+                    }
+                })
+                .await;
+        }
+        // Whole-tenant scan: load all snapshot thread_ids, try each.
+        let thread_ids = self.list_snapshot_thread_ids().await?;
+        for thread_id in thread_ids {
+            let result = self
+                .apply(&thread_id, |store| {
+                    let request = request.clone();
+                    async move {
+                        let outcome = store.claim_next_run(request).await;
+                        (outcome, store)
+                    }
+                })
+                .await?;
+            if result.is_some() {
+                return Ok(result);
             }
-        })
-        .await
+        }
+        Ok(None)
     }
 
     async fn heartbeat(&self, request: HeartbeatRequest) -> Result<EventCursor, TurnError> {
-        // heartbeat is run-id scoped; composition must pass the correct
-        // thread_id via the store instance scope. Use global sentinel fallback.
-        let thread_id = ThreadId::from_trusted("__global__".to_string());
+        let thread_id = self.find_thread_id_for_run(request.run_id).await?;
         self.apply(&thread_id, |store| {
             let request = request.clone();
             async move {
@@ -502,26 +598,43 @@ impl TurnRunTransitionPort for PgTurnStateStore {
         &self,
         request: RecoverExpiredLeasesRequest,
     ) -> Result<RecoverExpiredLeasesResponse, TurnError> {
-        let thread_id = request
-            .scope_filter
-            .as_ref()
-            .map(|s| s.thread_id.clone())
-            .unwrap_or_else(|| ThreadId::from_trusted("__global__".to_string()));
-        self.apply(&thread_id, |store| {
-            let request = request.clone();
-            async move {
-                let outcome = store.recover_expired_leases(request).await;
-                (outcome, store)
-            }
+        if let Some(scope) = &request.scope_filter {
+            let thread_id = scope.thread_id.clone();
+            return self
+                .apply(&thread_id, |store| {
+                    let request = request.clone();
+                    async move {
+                        let outcome = store.recover_expired_leases(request).await;
+                        (outcome, store)
+                    }
+                })
+                .await;
+        }
+        // Whole-tenant expiry sweep: apply to every snapshot.
+        let thread_ids = self.list_snapshot_thread_ids().await?;
+        let mut all_recovered = Vec::new();
+        for thread_id in thread_ids {
+            let response = self
+                .apply(&thread_id, |store| {
+                    let request = request.clone();
+                    async move {
+                        let outcome = store.recover_expired_leases(request).await;
+                        (outcome, store)
+                    }
+                })
+                .await?;
+            all_recovered.extend(response.recovered);
+        }
+        Ok(RecoverExpiredLeasesResponse {
+            recovered: all_recovered,
         })
-        .await
     }
 
     async fn record_model_route_snapshot(
         &self,
         request: RecordModelRouteSnapshotRequest,
     ) -> Result<TurnRunState, TurnError> {
-        let thread_id = ThreadId::from_trusted("__global__".to_string());
+        let thread_id = self.find_thread_id_for_run(request.run_id).await?;
         self.apply(&thread_id, |store| {
             let request = request.clone();
             async move {
@@ -533,7 +646,7 @@ impl TurnRunTransitionPort for PgTurnStateStore {
     }
 
     async fn block_run(&self, request: BlockRunRequest) -> Result<TurnRunState, TurnError> {
-        let thread_id = ThreadId::from_trusted("__global__".to_string());
+        let thread_id = self.find_thread_id_for_run(request.run_id).await?;
         self.apply(&thread_id, |store| {
             let request = request.clone();
             async move {
@@ -545,7 +658,7 @@ impl TurnRunTransitionPort for PgTurnStateStore {
     }
 
     async fn complete_run(&self, request: CompleteRunRequest) -> Result<TurnRunState, TurnError> {
-        let thread_id = ThreadId::from_trusted("__global__".to_string());
+        let thread_id = self.find_thread_id_for_run(request.run_id).await?;
         self.apply(&thread_id, |store| {
             let request = request.clone();
             async move {
@@ -560,7 +673,7 @@ impl TurnRunTransitionPort for PgTurnStateStore {
         &self,
         request: CancelRunCompletionRequest,
     ) -> Result<TurnRunState, TurnError> {
-        let thread_id = ThreadId::from_trusted("__global__".to_string());
+        let thread_id = self.find_thread_id_for_run(request.run_id).await?;
         self.apply(&thread_id, |store| {
             let request = request.clone();
             async move {
@@ -572,7 +685,7 @@ impl TurnRunTransitionPort for PgTurnStateStore {
     }
 
     async fn fail_run(&self, request: FailRunRequest) -> Result<TurnRunState, TurnError> {
-        let thread_id = ThreadId::from_trusted("__global__".to_string());
+        let thread_id = self.find_thread_id_for_run(request.run_id).await?;
         self.apply(&thread_id, |store| {
             let request = request.clone();
             async move {
@@ -587,7 +700,7 @@ impl TurnRunTransitionPort for PgTurnStateStore {
         &self,
         request: RelinquishRunRequest,
     ) -> Result<TurnRunState, TurnError> {
-        let thread_id = ThreadId::from_trusted("__global__".to_string());
+        let thread_id = self.find_thread_id_for_run(request.run_id).await?;
         self.apply(&thread_id, |store| {
             let request = request.clone();
             async move {
@@ -602,7 +715,7 @@ impl TurnRunTransitionPort for PgTurnStateStore {
         &self,
         request: ApplyValidatedLoopExitRequest,
     ) -> Result<TurnRunState, TurnError> {
-        let thread_id = ThreadId::from_trusted("__global__".to_string());
+        let thread_id = self.find_thread_id_for_run(request.run_id).await?;
         self.apply(&thread_id, |store| {
             let request = request.clone();
             async move {
