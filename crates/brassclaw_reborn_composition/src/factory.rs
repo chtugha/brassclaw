@@ -2144,13 +2144,9 @@ async fn build_postgres_production(
 
     let filesystem = Arc::new(PostgresRootFilesystem::new(pool.clone()));
     filesystem.run_migrations().await?;
+    // brassclaw_pg::run_migrations() (called before this function) already
+    // applies V021 (triggers DDL) — no separate trigger-repository migration needed.
     let trigger_repository = Arc::new(brassclaw_triggers::PostgresTriggerRepository::new(pool.clone()));
-    trigger_repository
-        .run_migrations()
-        .await
-        .map_err(|error| RebornBuildError::InvalidConfig {
-            reason: format!("PostgreSQL trigger repository migrations failed: {error}"),
-        })?;
     let stores = ProductionStoreBundle::new(
         filesystem,
         secret_master_key,
@@ -2269,7 +2265,11 @@ async fn resolve_pg_embedding_provider(
 
     // Build the provider.
     let session = Arc::new(SessionManager::new(SessionConfig::default()));
-    let deps = ProviderDeps { session, bedrock_setup: None };
+    let deps = ProviderDeps {
+        session,
+        #[cfg(feature = "bedrock")]
+        bedrock_setup: None,
+    };
     let raw_provider = create_provider(&embeddings_config, deps).await?;
 
     // Wrap in EmbeddingRoleAdapter with default cache config.

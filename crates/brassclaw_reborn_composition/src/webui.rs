@@ -145,6 +145,13 @@ pub(crate) fn build_webui_services_with_connectable_channels(
         if let Some(states) = runtime.webui_nearai_login_states() {
             llm_config = llm_config.with_nearai_login_states(states);
         }
+        // Wire PG pool for dual-writing role assignments to brassclaw_config (§3, §4.2).
+        // When present, set_active(Sempai/Embedding) also persists to the DB so the
+        // production factory picks up the selection on restart.
+        #[cfg(feature = "postgres")]
+        if let Some(pool) = services.pg_pool.clone() {
+            llm_config = llm_config.with_pg_pool(pool);
+        }
         api = api.with_llm_config_service(Arc::new(llm_config));
     }
 

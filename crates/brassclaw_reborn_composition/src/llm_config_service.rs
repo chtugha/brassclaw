@@ -113,6 +113,15 @@ pub struct RebornLlmConfigService {
     nearai_session: Option<Arc<brassclaw_llm::SessionManager>>,
     nearai_login_states: Arc<NearAiLoginStateStore>,
     codex_login_attempts: Arc<tokio::sync::Mutex<HashMap<String, CodexLoginAttempt>>>,
+    /// Postgres pool for dual-writing role assignments to `brassclaw_config`.
+    ///
+    /// When present, `set_active(Sempai)` and `set_active(Embedding)` also
+    /// call `db_config::save_config_key` so the factory's
+    /// `resolve_pg_embedding_provider` (which reads `embedding.provider_id`
+    /// from `brassclaw_config`) picks up the selection on the next restart.
+    /// The file write always happens first; the DB write is best-effort.
+    #[cfg(feature = "postgres")]
+    pg_pool: Option<Arc<brassclaw_pg::PgPool>>,
 }
 
 impl RebornLlmConfigService {
@@ -126,12 +135,26 @@ impl RebornLlmConfigService {
             nearai_session: None,
             nearai_login_states: Arc::new(NearAiLoginStateStore::new()),
             codex_login_attempts: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            #[cfg(feature = "postgres")]
+            pg_pool: None,
         }
     }
 
     /// Attach the live-reload trigger (from the runtime).
     pub fn with_reload_trigger(mut self, reload: Arc<dyn LlmReloadTrigger>) -> Self {
         self.reload = Some(reload);
+        self
+    }
+
+    /// Attach a Postgres pool for dual-writing role assignments to `brassclaw_config`.
+    ///
+    /// When set, `set_active(Sempai)` and `set_active(Embedding)` write to
+    /// `brassclaw_config` in addition to the local JSON file so the production
+    /// factory (`resolve_pg_embedding_provider`) picks up the selection on the
+    /// next restart.
+    #[cfg(feature = "postgres")]
+    pub fn with_pg_pool(mut self, pool: Arc<brassclaw_pg::PgPool>) -> Self {
+        self.pg_pool = Some(pool);
         self
     }
 
@@ -150,6 +173,54 @@ impl RebornLlmConfigService {
 
     fn admin(&self) -> RebornProviderAdmin {
         RebornProviderAdmin::new(self.boot.clone())
+    }
+
+    /// Dual-write a role's provider_id + model to `brassclaw_config`.
+    ///
+    /// Called after the file write succeeds.  Errors are logged at `debug!`
+    /// level and swallowed — the file is the authoritative source and a
+    /// DB write failure must not undo an already-committed file write.
+    ///
+    /// When `provider_id` is empty the key is deleted so a cleared slot
+    /// does not leave a stale row in the DB.
+    #[cfg(feature = "postgres")]
+    async fn save_role_to_db(
+        &self,
+        provider_id_key: &str,
+        provider_id_value: &str,
+        model_key: &str,
+        model_value: &str,
+    ) {
+        use crate::db_config::{ConfigWriteContext, delete_config_key, save_config_key};
+
+        let Some(pool) = self.pg_pool.as_ref() else {
+            return;
+        };
+        let tenant_id = "default";
+
+        // provider_id —— empty means "clear the role slot".
+        let pid_result = if provider_id_value.is_empty() {
+            delete_config_key(pool, tenant_id, provider_id_key).await
+        } else {
+            save_config_key(pool, tenant_id, provider_id_key, provider_id_value,
+                            ConfigWriteContext::Operator).await
+        };
+        if let Err(e) = pid_result {
+            tracing::debug!(key = provider_id_key, error = %e,
+                            "role DB write failed (file write already succeeded)");
+        }
+
+        // model —— write when non-empty; delete when empty (slot cleared or unset).
+        let model_result = if model_value.is_empty() {
+            delete_config_key(pool, tenant_id, model_key).await
+        } else {
+            save_config_key(pool, tenant_id, model_key, model_value,
+                            ConfigWriteContext::Operator).await
+        };
+        if let Err(e) = model_result {
+            tracing::debug!(key = model_key, error = %e,
+                            "role DB write failed (file write already succeeded)");
+        }
     }
 
     /// Persist-then-reload: the file write already happened; refresh the
@@ -654,12 +725,17 @@ impl LlmConfigService for RebornLlmConfigService {
                         None
                     } else {
                         Some(LlmActiveSelection {
-                            provider_id: id,
-                            model: request.model,
+                            provider_id: id.clone(),
+                            model: request.model.clone(),
                         })
                     },
                 )
                 .map_err(|_| LlmConfigServiceError::Unavailable)?;
+                // Dual-write to brassclaw_config so the production factory
+                // (`resolve_pg_embedding_provider`) reads the right value on restart.
+                #[cfg(feature = "postgres")]
+                self.save_role_to_db("llm.sempai.provider_id", if id.is_empty() { "" } else { &id },
+                                     "llm.sempai.model",       request.model.as_deref().unwrap_or("")).await;
             }
             ProviderRole::Embedding => {
                 let embedding_path = self.boot.home().embedding_provider_file_path();
@@ -669,12 +745,17 @@ impl LlmConfigService for RebornLlmConfigService {
                         None
                     } else {
                         Some(LlmActiveSelection {
-                            provider_id: id,
-                            model: request.model,
+                            provider_id: id.clone(),
+                            model: request.model.clone(),
                         })
                     },
                 )
                 .map_err(|_| LlmConfigServiceError::Unavailable)?;
+                // Dual-write to brassclaw_config so the production factory reads
+                // `embedding.provider_id` on restart (§3, §4.2).
+                #[cfg(feature = "postgres")]
+                self.save_role_to_db("embedding.provider_id", if id.is_empty() { "" } else { &id },
+                                     "embedding.model",        request.model.as_deref().unwrap_or("")).await;
             }
         }
 

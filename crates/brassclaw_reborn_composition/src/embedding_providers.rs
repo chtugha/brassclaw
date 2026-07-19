@@ -99,6 +99,9 @@ impl Default for EmbeddingsConfig {
 #[derive(Clone)]
 pub(crate) struct ProviderDeps {
     pub session: Arc<brassclaw_llm::SessionManager>,
+    /// Bedrock connection parameters. `Some` only when the `bedrock` feature
+    /// is enabled and the operator has configured a Bedrock embedding provider.
+    #[cfg(feature = "bedrock")]
     pub bedrock_setup: Option<BedrockEmbeddingSetup>,
 }
 
@@ -106,6 +109,10 @@ pub(crate) struct ProviderDeps {
 ///
 /// Defined here (not re-using `brassclaw_llm::BedrockConfig`) so the embeddings
 /// layer does not couple to LLM-side config types.
+///
+/// Only compiled when the `bedrock` feature is active — the fields are
+/// consumed exclusively by `BedrockEmbeddings::new`.
+#[cfg(feature = "bedrock")]
 #[derive(Debug, Clone)]
 pub(crate) struct BedrockEmbeddingSetup {
     pub region: String,
@@ -160,7 +167,6 @@ pub(crate) async fn create_provider(
             }
             #[cfg(not(feature = "bedrock"))]
             {
-                let _ = deps.bedrock_setup;
                 tracing::debug!("embeddings configured for Bedrock but the `bedrock` feature is disabled");
                 None
             }

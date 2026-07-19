@@ -284,7 +284,7 @@ pub async fn run_backfill_embeddings(
     let client = pool.get().await?;
     let rows = client
         .query(
-            "SELECT id, tenant_id, user_id, agent_id, project_id, content, source_ref \
+            "SELECT id, tenant_id, user_id, agent_id, project_id, content \
              FROM brassclaw_memory_chat_records \
              WHERE tenant_id = $1 \
                AND source_ref IS NULL \
@@ -324,15 +324,9 @@ pub async fn run_backfill_embeddings(
             Ok(v) => v,
             Err(e) => { tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping"); result.failed += 1; continue; }
         };
-        let source_ref_existing: Option<String> = match row.try_get("source_ref").map_err(&map_col) {
-            Ok(v) => v,
-            Err(e) => { tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping"); result.failed += 1; continue; }
-        };
-
-        // Derive source_ref from chat_record_id.
-        let source_ref = source_ref_existing
-            .clone()
-            .unwrap_or_else(|| format!("/memory/chat/{id}"));
+        // source_ref is always NULL for rows returned by this query.
+        // Derive the canonical VFS path from the chat_record_id.
+        let source_ref = format!("/memory/chat/{id}");
 
         let scope = match MemoryDocumentScope::new_with_agent(
             &t_id,
@@ -357,24 +351,23 @@ pub async fn run_backfill_embeddings(
             .await
         {
             Ok(()) => {
-                // Update source_ref if it was NULL.
-                if source_ref_existing.is_none() {
-                    if let Ok(c2) = pool.get().await {
-                        if let Err(e) = c2
-                            .execute(
-                                "UPDATE brassclaw_memory_chat_records \
-                                 SET source_ref = $1 WHERE id = $2 AND tenant_id = $3",
-                                &[&source_ref, &id, &t_id],
-                            )
-                            .await
-                        {
-                            tracing::debug!(
-                                chat_record_id = %id,
-                                error = %e,
-                                "backfill-embeddings: source_ref update failed (best-effort)"
-                            );
-                        }
-                    }
+                // The query only fetches source_ref IS NULL rows, so source_ref
+                // is always derived here.  Update it best-effort so the row is
+                // skipped on the next backfill run.
+                if let Ok(c2) = pool.get().await
+                    && let Err(e) = c2
+                        .execute(
+                            "UPDATE brassclaw_memory_chat_records \
+                             SET source_ref = $1 WHERE id = $2 AND tenant_id = $3",
+                            &[&source_ref, &id, &t_id],
+                        )
+                        .await
+                {
+                    tracing::debug!(
+                        chat_record_id = %id,
+                        error = %e,
+                        "backfill-embeddings: source_ref update failed (best-effort)"
+                    );
                 }
                 result.indexed += 1;
             }
