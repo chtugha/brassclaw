@@ -13,6 +13,7 @@ pub(crate) mod models;
 pub(crate) mod profile;
 pub(crate) mod repl;
 pub(crate) mod run;
+pub(crate) mod secrets;
 pub(crate) mod serve;
 pub(crate) mod serve_sso;
 pub(crate) mod skills;
@@ -49,6 +50,8 @@ pub(crate) enum Command {
     Repl(repl::ReplCommand),
     /// Initialize the minimal Reborn runtime shell and exit.
     Run(run::RunCommand),
+    /// Manage Reborn secrets master-key wrapping (passphrase strategies).
+    Secrets(secrets::SecretsCommand),
     /// Start the Reborn WebUI service.
     Serve(serve::ServeCommand),
     /// Inspect configured Reborn skills.
@@ -87,6 +90,9 @@ impl Command {
                 command.execute(crate::context::RebornCliContext::resolve_from_env()?)
             }
             Self::Run(command) => {
+                command.execute(crate::context::RebornCliContext::resolve_from_env()?)
+            }
+            Self::Secrets(command) => {
                 command.execute(crate::context::RebornCliContext::resolve_from_env()?)
             }
             Self::Serve(command) => {

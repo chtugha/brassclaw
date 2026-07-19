@@ -148,8 +148,12 @@ pub async fn load_config_snapshot(
     // Build a flat key→value map.
     let mut kv: BTreeMap<String, String> = BTreeMap::new();
     for row in &rows {
-        let key: String = row.try_get("key").unwrap_or_default();
-        let value: String = row.try_get("value").unwrap_or_default();
+        let Ok(key): Result<String, _> = row.try_get("key") else {
+            continue;
+        };
+        let Ok(value): Result<String, _> = row.try_get("value") else {
+            continue;
+        };
         if !key.is_empty() {
             kv.insert(key, value);
         }

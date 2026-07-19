@@ -62,6 +62,11 @@ impl PruneOldDataCommand {
         let pool = build_pg_pool().await?;
         let pool = std::sync::Arc::new(pool);
 
+        // Step 2: run schema migrations (idempotent) before any DB operation.
+        brassclaw_pg::migrations::run_migrations(&pool)
+            .await
+            .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
+
         println!("brassclaw maintenance prune-old-data: running retention sweep…");
         brassclaw_reborn_composition::retention_sweep::run_sweep(&pool)
             .await
@@ -99,6 +104,11 @@ impl BackfillEmbeddingsCommand {
     async fn run_async(self) -> anyhow::Result<()> {
         let pool = build_pg_pool().await?;
         let pool = std::sync::Arc::new(pool);
+
+        // Step 2: run schema migrations (idempotent) before any DB operation.
+        brassclaw_pg::migrations::run_migrations(&pool)
+            .await
+            .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
 
         println!(
             "brassclaw maintenance backfill-embeddings: tenant={}, batch_size={}",

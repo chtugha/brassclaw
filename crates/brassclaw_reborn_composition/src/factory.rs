@@ -1903,28 +1903,14 @@ where
     }
 }
 
-/// Credential bundle used inside [`ProductionStoreBundle`].
+/// Postgres-native secret and credential stores bundled for [`ProductionStoreBundle`].
 ///
-/// The Filesystem variant wraps the legacy VFS-backed stores; the Postgres
-/// variant wraps [`PgSecretStore`] and [`PgCredentialBroker`] which write
-/// encrypted rows directly to `brassclaw_secrets`.
+/// [`PgSecretStore`] and [`PgCredentialBroker`] write encrypted rows directly
+/// to `brassclaw_secrets`, replacing the legacy VFS blob columns.
 #[cfg(feature = "postgres")]
-enum ProductionCredentialBundle<F: RootFilesystem + 'static> {
-    Filesystem(FilesystemSecretCredentialStores<F>),
-    Postgres {
-        secret_store: Arc<PgSecretStore>,
-        credential_broker: Arc<PgCredentialBroker>,
-    },
-}
-
-#[cfg(feature = "postgres")]
-impl<F: RootFilesystem + 'static> ProductionCredentialBundle<F> {
-    fn secret_store(&self) -> Arc<dyn brassclaw_secrets::SecretStore> {
-        match self {
-            Self::Filesystem(s) => s.secret_store.clone(),
-            Self::Postgres { secret_store, .. } => secret_store.clone(),
-        }
-    }
+struct ProductionCredentialBundle {
+    secret_store: Arc<PgSecretStore>,
+    credential_broker: Arc<PgCredentialBroker>,
 }
 
 #[cfg(feature = "postgres")]
@@ -1964,7 +1950,7 @@ where
     filesystem: Arc<F>,
     scoped_filesystem: Arc<ScopedFilesystem<F>>,
     leases: Arc<FilesystemCapabilityLeaseStore<F>>,
-    secret_credentials: ProductionCredentialBundle<F>,
+    secret_credentials: ProductionCredentialBundle,
     event_store: brassclaw_reborn_event_store::RebornEventStoreConfig,
 }
 
@@ -2005,7 +1991,7 @@ where
             filesystem,
             scoped_filesystem,
             leases,
-            secret_credentials: ProductionCredentialBundle::Postgres {
+            secret_credentials: ProductionCredentialBundle {
                 secret_store,
                 credential_broker,
             },
@@ -2033,8 +2019,7 @@ where
         oauth_provider_configs,
         oauth_dcr_provider_configs,
     } = context;
-    // Destructure stores up front so we can move fields individually without
-    // running into the partial-move restriction on enum pattern matches.
+    // Destructure stores up front to move fields individually.
     let ProductionStoreBundle {
         filesystem: stores_filesystem,
         scoped_filesystem: stores_scoped_fs,
@@ -2043,7 +2028,9 @@ where
         event_store: stores_event_store,
     } = stores;
 
-    let secret_store: Arc<dyn SecretStore> = secret_credentials.secret_store();
+    // PgSecretStore implements SecretStore; coerce to trait object for the
+    // provider composition and product-auth wiring that needs Arc<dyn SecretStore>.
+    let secret_store: Arc<dyn SecretStore> = secret_credentials.secret_store.clone();
     let trigger_create_hook = Arc::new(ScopedFilesystemTriggerCreatorPairingHook::new(Arc::clone(
         &stores_scoped_fs,
     )));
@@ -2062,6 +2049,8 @@ where
         )?,
     };
     let product_auth_filesystem = Arc::clone(&stores_scoped_fs);
+    // Wire the Postgres-native secret store and credential broker so all secret
+    // and OAuth credential writes go to brassclaw_secrets (§4.4 Issue 3).
     let services = HostRuntimeServices::new(
         Arc::new(builtin_extension_registry()?),
         Arc::clone(&stores_filesystem),
@@ -2073,16 +2062,8 @@ where
     .with_trust_policy(production_wiring.trust_policy)
     .with_runtime_policy(production_wiring.runtime_policy)
     .with_capability_leases(stores_leases)
-    .with_secret_store(Arc::clone(&secret_store));
-    // Wire credential broker — use the Postgres-native stores when available
-    // so OAuth credentials are persisted to brassclaw_secrets rather than the
-    // legacy VFS blob columns (§4.4 Issue 3).
-    let services = match secret_credentials {
-        ProductionCredentialBundle::Filesystem(creds) => services
-            .with_credential_broker(creds.credential_broker),
-        ProductionCredentialBundle::Postgres { credential_broker, .. } => services
-            .with_credential_broker(credential_broker),
-    };
+    .with_secret_store(Arc::clone(&secret_store))
+    .with_credential_broker(secret_credentials.credential_broker);
     let services = services
     .with_security_audit_sink(Arc::new(brassclaw_events::TracingSecurityAuditSink))
     .try_with_host_http_egress_with_body_store(

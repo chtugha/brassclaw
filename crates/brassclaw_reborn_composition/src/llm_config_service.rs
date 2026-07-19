@@ -276,7 +276,7 @@ impl RebornLlmConfigService {
                 if provider_id.is_empty() {
                     return None;
                 }
-                let model = kv.get(model_key).map(|s| s.clone()).filter(|s| !s.is_empty());
+                let model = kv.get(model_key).cloned().filter(|s| !s.is_empty());
                 return Some(LlmActiveSelection { provider_id, model });
             }
         }

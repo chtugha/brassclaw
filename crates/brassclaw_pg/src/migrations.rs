@@ -176,13 +176,26 @@ async fn detect_pre_existing_tables(
         pre_existing.push((15_i32, "safety"));
     }
 
-    // root_filesystem_entries (VFS)
-    let vfs_exist: bool = client
+    // VFS backing tables — all three are created together by PostgresRootFilesystem::run_migrations
+    // outside refinery. Revision 18 H1 fix: checking only root_filesystem_entries missed the two
+    // sibling tables (root_filesystem_index_specs, root_filesystem_events). If ANY of the three
+    // is present, the entire V018 bundle has been applied and must be pre-seeded.
+    let vfs_entries_exist: bool = client
         .query_one(&table_check("root_filesystem_entries"), &[])
         .await
         .map(|r| r.get(0))
         .unwrap_or(false);
-    if vfs_exist {
+    let vfs_index_specs_exist: bool = client
+        .query_one(&table_check("root_filesystem_index_specs"), &[])
+        .await
+        .map(|r| r.get(0))
+        .unwrap_or(false);
+    let vfs_events_exist: bool = client
+        .query_one(&table_check("root_filesystem_events"), &[])
+        .await
+        .map(|r| r.get(0))
+        .unwrap_or(false);
+    if vfs_entries_exist || vfs_index_specs_exist || vfs_events_exist {
         pre_existing.push((18_i32, "root_filesystem"));
     }
 
@@ -333,6 +346,65 @@ mod tests {
             assert_eq!(
                 checksum, "pre-seeded",
                 "V017 row must be pre-seeded (not applied by refinery runner)"
+            );
+        }
+
+        /// S2 prerequisite test: verify the `vector` extension is installed by V000
+        /// and that the pgvector `<=>` cosine-distance operator is available.
+        ///
+        /// This is the §4.30.3 prerequisite: the chunk system's `embedding` indexed key
+        /// is stored as a `vector(N)` column in the VFS backing table, and
+        /// `Filter::VectorNearest` translates to a pgvector `<=>` cosine query in
+        /// `PostgresRootFilesystem`. The extension must be available after migrations run.
+        #[tokio::test]
+        async fn pgvector_extension_available_and_cosine_operator_works() {
+            let pg_url = std::env::var("TEST_PG_URL")
+                .unwrap_or_else(|_| "postgresql://brassclaw@127.0.0.1:5434/brassclaw".to_string());
+            let pool = build_pool(&pg_url).expect("build pool");
+            run_migrations(&pool).await.expect("migrations");
+
+            let client = pool.get().await.expect("get client");
+
+            // Verify the vector extension is registered.
+            let row = client
+                .query_one(
+                    "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')",
+                    &[],
+                )
+                .await
+                .expect("pg_extension query");
+            let ext_installed: bool = row.get(0);
+            assert!(ext_installed, "pgvector extension must be installed by V000");
+
+            // Verify the <=> cosine-distance operator works: cast literal arrays to vector
+            // and compute cosine distance. This exercises the same operator that
+            // PostgresRootFilesystem uses for Filter::VectorNearest queries.
+            // '[1,0,0]'::vector <=> '[1,0,0]'::vector = 0.0 (identical vectors, zero distance).
+            let row = client
+                .query_one(
+                    "SELECT ('[1,0,0]'::vector <=> '[1,0,0]'::vector)::float4",
+                    &[],
+                )
+                .await
+                .expect("pgvector <=> operator must be available after V000");
+            let cosine_distance: f32 = row.get(0);
+            assert!(
+                cosine_distance.abs() < 1e-5,
+                "cosine distance of identical vectors must be ~0.0, got {cosine_distance}"
+            );
+
+            // Verify orthogonal vectors have distance ~1.0.
+            let row = client
+                .query_one(
+                    "SELECT ('[1,0,0]'::vector <=> '[0,1,0]'::vector)::float4",
+                    &[],
+                )
+                .await
+                .expect("pgvector <=> operator must work for orthogonal vectors");
+            let cosine_distance_orth: f32 = row.get(0);
+            assert!(
+                (cosine_distance_orth - 1.0_f32).abs() < 1e-5,
+                "cosine distance of orthogonal vectors must be ~1.0, got {cosine_distance_orth}"
             );
         }
     }

@@ -113,11 +113,11 @@ pub async fn resolve_pg_master_key(
 
     match algorithm.as_str() {
         "raw-key-on-disk" => {
-            // Warn if BRASSCLAW_SECRETS_PASSPHRASE_FILE is also set (stale env).
+            // Log (debug) if BRASSCLAW_SECRETS_PASSPHRASE_FILE is also set (stale env).
             if passphrase_file_path().is_some() {
-                tracing::warn!(
-                    "BRASSCLAW_SECRETS_PASSPHRASE_FILE is set but master key is not wrapped. \
-                     The file will be ignored. Run \
+                tracing::debug!(
+                    "BRASSCLAW_SECRETS_PASSPHRASE_FILE is set but master key is not wrapped; \
+                     the env var will be ignored. Run \
                      'brassclaw secrets rewrap --strategy passphrase-file=<path>' \
                      to switch to passphrase ceremony."
                 );
@@ -186,7 +186,58 @@ fn passphrase_file_path() -> Option<std::path::PathBuf> {
         .map(std::path::PathBuf::from)
 }
 
-/// Unwrap an AES-256-GCM key from `base64(nonce[12] || ciphertext)` using an
+/// Public wrapper so the `secrets rewrap` CLI command can unwrap an existing
+/// passphrase-wrapped key during a passphrase-change operation.
+pub fn unwrap_master_key_argon2id(
+    wrapped_key_b64: &str,
+    passphrase: &str,
+) -> Result<Vec<u8>, MasterKeyResolveError> {
+    unwrap_key_argon2id(wrapped_key_b64, passphrase)
+}
+
+/// Wrap `master_key_bytes` with an Argon2id-derived AES-256-GCM key.
+///
+/// Returns `base64(salt[32] || nonce[12] || ciphertext)` suitable for storing
+/// in `brassclaw_secrets_master.wrapped_key`.  Key derivation parameters match
+/// [`unwrap_key_argon2id`] (m=65536, t=3, p=1).
+pub fn wrap_master_key_argon2id(
+    master_key_bytes: &[u8],
+    passphrase: &str,
+) -> Result<String, MasterKeyResolveError> {
+    use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::Aead};
+    use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
+
+    // Generate a random 32-byte salt and 12-byte nonce.
+    let mut salt = [0u8; 32];
+    let mut nonce_bytes = [0u8; 12];
+    use std::io::Read as _;
+    std::fs::File::open("/dev/urandom")
+        .and_then(|mut f| {
+            f.read_exact(&mut salt)?;
+            f.read_exact(&mut nonce_bytes)
+        })
+        .map_err(|e| MasterKeyResolveError::Unwrap {
+            reason: format!("failed to read random bytes: {e}"),
+        })?;
+
+    let wrapping_key = derive_wrapping_key(passphrase.as_bytes(), &salt)?;
+    let cipher = Aes256Gcm::new_from_slice(&wrapping_key).map_err(|e| {
+        MasterKeyResolveError::Unwrap { reason: e.to_string() }
+    })?;
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    let ciphertext = cipher.encrypt(nonce, master_key_bytes).map_err(|e| {
+        MasterKeyResolveError::Unwrap { reason: format!("AES-GCM encrypt: {e}") }
+    })?;
+
+    // Layout: salt[32] || nonce[12] || ciphertext
+    let mut blob = Vec::with_capacity(32 + 12 + ciphertext.len());
+    blob.extend_from_slice(&salt);
+    blob.extend_from_slice(&nonce_bytes);
+    blob.extend_from_slice(&ciphertext);
+    Ok(B64.encode(&blob))
+}
+
+/// Unwrap an AES-256-GCM key from `base64(salt[32] || nonce[12] || ciphertext)` using an
 /// Argon2id-derived wrapping key.
 ///
 /// Key derivation parameters must match the `rewrap` command that wrote the row.
@@ -277,6 +328,54 @@ mod tests {
         assert_eq!(path.to_string_lossy(), "/run/secrets/passphrase");
     }
 
+    /// Round-trip: wrap a known key with a passphrase, then unwrap it and
+    /// verify the plaintext matches.  This exercises both the Argon2id KDF
+    /// and the AES-256-GCM encrypt/decrypt path end-to-end.
+    #[test]
+    fn wrap_unwrap_round_trip() {
+        let master_key = b"this-is-a-32-byte-test-master-ke"; // 32 bytes
+        let passphrase = "correct-horse-battery-staple";
+
+        let wrapped = wrap_master_key_argon2id(master_key, passphrase)
+            .expect("wrap should succeed");
+
+        let recovered = unwrap_master_key_argon2id(&wrapped, passphrase)
+            .expect("unwrap should succeed");
+
+        assert_eq!(recovered, master_key, "recovered key must equal original");
+    }
+
+    /// Wrong passphrase must fail decryption (AES-GCM authentication tag fails).
+    #[test]
+    fn unwrap_wrong_passphrase_fails() {
+        let master_key = b"this-is-a-32-byte-test-master-ke";
+        let wrapped = wrap_master_key_argon2id(master_key, "correct-passphrase")
+            .expect("wrap should succeed");
+
+        let result = unwrap_master_key_argon2id(&wrapped, "wrong-passphrase");
+        assert!(result.is_err(), "decryption with wrong passphrase must fail");
+    }
+
+    /// Two calls to wrap produce different blobs (different random salt/nonce),
+    /// but both unwrap to the same plaintext key.
+    #[test]
+    fn wrap_is_non_deterministic() {
+        let master_key = b"this-is-a-32-byte-test-master-ke";
+        let passphrase = "same-passphrase";
+
+        let wrapped1 = wrap_master_key_argon2id(master_key, passphrase)
+            .expect("first wrap should succeed");
+        let wrapped2 = wrap_master_key_argon2id(master_key, passphrase)
+            .expect("second wrap should succeed");
+
+        assert_ne!(wrapped1, wrapped2, "each wrap must produce a unique ciphertext");
+
+        let key1 = unwrap_master_key_argon2id(&wrapped1, passphrase).expect("unwrap 1");
+        let key2 = unwrap_master_key_argon2id(&wrapped2, passphrase).expect("unwrap 2");
+        assert_eq!(key1, master_key);
+        assert_eq!(key2, master_key);
+    }
+
     struct EnvGuard {
         key: &'static str,
         prev: Option<String>,
@@ -284,18 +383,22 @@ mod tests {
     impl EnvGuard {
         fn set(key: &'static str, value: &str) -> Self {
             let prev = std::env::var(key).ok();
-            // Safety: test-only, single-threaded.
+            // SAFETY: single-threaded test context (`cargo test` runs each
+            // `#[test]` fn sequentially within the same thread group); no other
+            // thread reads this env var concurrently.
             unsafe { std::env::set_var(key, value) };
             Self { key, prev }
         }
         fn unset(key: &'static str) -> Self {
             let prev = std::env::var(key).ok();
+            // SAFETY: same single-threaded test context as `set`.
             unsafe { std::env::remove_var(key) };
             Self { key, prev }
         }
     }
     impl Drop for EnvGuard {
         fn drop(&mut self) {
+            // SAFETY: restoring the env var on drop; same single-threaded test context.
             unsafe {
                 match &self.prev {
                     Some(v) => std::env::set_var(self.key, v),
