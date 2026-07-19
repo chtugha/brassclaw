@@ -1582,6 +1582,7 @@ dependencies = [
 name = "brassclaw_embedded_postgres"
 version = "0.1.0"
 dependencies = [
+ "brassclaw_pg",
  "hex",
  "libc",
  "postgresql_embedded",

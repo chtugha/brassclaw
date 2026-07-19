@@ -51,7 +51,6 @@ fn run_dry(context: RebornCliContext) -> anyhow::Result<()> {
     println!("version: {}", env!("CARGO_PKG_VERSION"));
     println!("reborn_home: {}", config.home().path().display());
     println!("home_source: {}", config.home().source_label());
-    println!("profile: {}", config.profile());
     println!("v1_state: not-used");
     println!("runtime_driver: planned-agent-loop");
     println!(

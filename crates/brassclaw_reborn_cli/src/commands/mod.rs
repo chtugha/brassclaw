@@ -10,7 +10,7 @@ pub(crate) mod logs;
 pub(crate) mod maintenance;
 pub(crate) mod migrate;
 pub(crate) mod models;
-pub(crate) mod profile;
+pub(crate) mod runtime_profile;
 pub(crate) mod repl;
 pub(crate) mod run;
 pub(crate) mod secrets;
@@ -44,8 +44,9 @@ pub(crate) enum Command {
     Migrate(migrate::MigrateCommand),
     /// Inspect Reborn model slots and route status.
     Models(models::ModelsCommand),
-    /// Inspect supported Reborn boot profiles.
-    Profile(profile::ProfileCommand),
+    /// Inspect supported Reborn runtime profiles.
+    #[clap(name = "runtime-profile")]
+    RuntimeProfile(runtime_profile::RuntimeProfileCommand),
     /// Start the composed Reborn CLI REPL.
     Repl(repl::ReplCommand),
     /// Initialize the minimal Reborn runtime shell and exit.
@@ -85,7 +86,7 @@ impl Command {
                 command.execute(crate::context::RebornCliContext::resolve_from_env()?)
             }
             Self::Models(command) => command.execute(),
-            Self::Profile(command) => command.execute(),
+            Self::RuntimeProfile(command) => command.execute(),
             Self::Repl(command) => {
                 command.execute(crate::context::RebornCliContext::resolve_from_env()?)
             }

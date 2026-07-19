@@ -13,7 +13,8 @@ pub(crate) struct StatusCommand;
 impl StatusCommand {
     pub(crate) fn execute(self, context: RebornCliContext) -> anyhow::Result<()> {
         let home = context.boot_config().home().path().to_path_buf();
-        let profile = context.boot_config().profile();
+        let runtime_profile = std::env::var("BRASSCLAW_RUNTIME_PROFILE")
+            .unwrap_or_else(|_| "local_dev".to_string());
 
         println!();
         println!("  BrassClaw Status");
@@ -25,8 +26,8 @@ impl StatusCommand {
         // Reborn home directory
         kv("Reborn home", &home.display().to_string(), 12);
 
-        // Active boot profile
-        kv("Profile", &profile.to_string(), 12);
+        // Active runtime profile
+        kv("Profile", &runtime_profile, 12);
 
         // Database backend (env-only, no connection attempted)
         let db_backend = std::env::var("DATABASE_BACKEND")

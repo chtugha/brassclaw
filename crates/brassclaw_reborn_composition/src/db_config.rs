@@ -242,8 +242,12 @@ fn some_if_any<T>(section: T, present: bool) -> Option<T> {
 }
 
 fn assemble_boot(kv: &BTreeMap<String, String>) -> Option<BootSection> {
-    let profile = get_str(kv, "boot.profile").map(str::to_string);
-    some_if_any(BootSection { profile: profile.clone() }, profile.is_some())
+    // boot.profile was removed in Phase 11. The key may still exist in older
+    // DB rows but is no longer surfaced in the config snapshot.
+    let _legacy_profile = get_str(kv, "boot.profile");
+    // Return Some only if any relevant boot key is present (currently none remain).
+    let _ = kv; // suppress unused-var lint
+    None
 }
 
 fn assemble_identity(kv: &BTreeMap<String, String>) -> Option<IdentitySection> {

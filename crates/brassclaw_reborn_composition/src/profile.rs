@@ -10,8 +10,6 @@ pub enum RebornCompositionProfile {
     Disabled,
     LocalDev,
     LocalDevYolo,
-    Production,
-    MigrationDryRun,
 }
 
 impl RebornCompositionProfile {
@@ -20,8 +18,6 @@ impl RebornCompositionProfile {
             Self::Disabled => "disabled",
             Self::LocalDev => "local-dev",
             Self::LocalDevYolo => "local-dev-yolo",
-            Self::Production => "production",
-            Self::MigrationDryRun => "migration-dry-run",
         }
     }
 
@@ -29,19 +25,9 @@ impl RebornCompositionProfile {
         self != Self::Disabled
     }
 
-    pub fn requires_production_shape(self) -> bool {
-        matches!(self, Self::Production | Self::MigrationDryRun)
-    }
-
     pub fn to_event_store_profile(self) -> brassclaw_reborn_event_store::RebornProfile {
-        match self {
-            Self::Disabled | Self::LocalDev | Self::LocalDevYolo => {
-                brassclaw_reborn_event_store::RebornProfile::LocalDev
-            }
-            Self::Production | Self::MigrationDryRun => {
-                brassclaw_reborn_event_store::RebornProfile::Production
-            }
-        }
+        // All active local-dev profiles use the LocalDev event store path.
+        brassclaw_reborn_event_store::RebornProfile::LocalDev
     }
 }
 
@@ -54,8 +40,6 @@ impl FromStr for RebornCompositionProfile {
             "disabled" => Ok(Self::Disabled),
             "local-dev" => Ok(Self::LocalDev),
             "local-dev-yolo" => Ok(Self::LocalDevYolo),
-            "production" => Ok(Self::Production),
-            "migration-dry-run" => Ok(Self::MigrationDryRun),
             _ => Err(RebornCompositionProfileParseError { value: normalized }),
         }
     }

@@ -67,11 +67,11 @@ fn help_mentions_reborn_commands() {
 #[test]
 fn profile_list_shows_supported_profiles_without_reborn_home() {
     let output = Command::new(reborn_bin())
-        .arg("profile")
+        .arg("runtime-profile")
         .arg("list")
         .env_clear()
         .output()
-        .expect("brassclaw-reborn profile list should run");
+        .expect("brassclaw runtime-profile list should run");
 
     assert!(
         output.status.success(),
@@ -80,15 +80,15 @@ fn profile_list_shows_supported_profiles_without_reborn_home() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("BrassClaw Reborn profiles"),
+        stdout.contains("BrassClaw runtime profiles"),
         "stdout: {stdout}"
     );
-    assert!(stdout.contains("local-dev (default)"), "stdout: {stdout}");
-    assert!(stdout.contains("local-dev-yolo"), "stdout: {stdout}");
-    assert!(stdout.contains("production"), "stdout: {stdout}");
-    assert!(stdout.contains("migration-dry-run"), "stdout: {stdout}");
+    assert!(stdout.contains("local_dev (default)"), "stdout: {stdout}");
+    assert!(stdout.contains("local_safe"), "stdout: {stdout}");
+    assert!(stdout.contains("local_yolo"), "stdout: {stdout}");
+    assert!(stdout.contains("hosted_safe"), "stdout: {stdout}");
     assert!(
-        stdout.contains("BRASSCLAW_REBORN_PROFILE"),
+        stdout.contains("BRASSCLAW_RUNTIME_PROFILE"),
         "stdout: {stdout}"
     );
 }
@@ -96,12 +96,12 @@ fn profile_list_shows_supported_profiles_without_reborn_home() {
 #[test]
 fn profile_list_json_is_stable_and_does_not_resolve_reborn_home() {
     let output = Command::new(reborn_bin())
-        .arg("profile")
+        .arg("runtime-profile")
         .arg("list")
         .arg("--json")
         .env_clear()
         .output()
-        .expect("brassclaw-reborn profile list --json should run");
+        .expect("brassclaw runtime-profile list --json should run");
 
     assert!(
         output.status.success(),
@@ -110,28 +110,28 @@ fn profile_list_json_is_stable_and_does_not_resolve_reborn_home() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     let json: serde_json::Value = serde_json::from_str(stdout.trim()).expect("valid JSON");
-    assert_eq!(json["selector"], "BRASSCLAW_REBORN_PROFILE");
+    assert_eq!(json["selector"], "BRASSCLAW_RUNTIME_PROFILE");
     let profiles = json["profiles"].as_array().expect("profiles array");
-    assert_eq!(profiles.len(), 4);
+    assert_eq!(profiles.len(), 12);
     assert!(
         profiles
             .iter()
-            .any(|profile| profile["name"] == "local-dev" && profile["default"] == true)
+            .any(|profile| profile["name"] == "local_dev" && profile["default"] == true)
     );
     assert!(
         profiles
             .iter()
-            .any(|profile| profile["name"] == "local-dev-yolo" && profile["default"] == false)
+            .any(|profile| profile["name"] == "local_safe" && profile["default"] == false)
     );
     assert!(
         profiles
             .iter()
-            .any(|profile| profile["name"] == "production" && profile["default"] == false)
+            .any(|profile| profile["name"] == "local_yolo" && profile["default"] == false)
     );
     assert!(
         profiles
             .iter()
-            .any(|profile| profile["name"] == "migration-dry-run" && profile["default"] == false)
+            .any(|profile| profile["name"] == "hosted_safe" && profile["default"] == false)
     );
 }
 
@@ -329,32 +329,28 @@ fn assert_skill_source(json: &serde_json::Value, name: &str, source: &str) {
 }
 
 #[test]
-fn skills_list_rejects_unsupported_profiles() {
-    for profile in ["production", "migration-dry-run"] {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let output = Command::new(reborn_bin())
-            .arg("skills")
-            .arg("list")
-            .env_clear()
-            .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
-            .env("BRASSCLAW_REBORN_PROFILE", profile)
-            .output()
-            .expect("brassclaw-reborn skills list should run");
+fn skills_list_fails_closed_for_non_local_runtime_profile() {
+    // A non-local BRASSCLAW_RUNTIME_PROFILE without BRASSCLAW_PG_URL must
+    // error before reaching skill listing.
+    let temp = tempfile::tempdir().expect("tempdir");
+    let output = Command::new(reborn_bin())
+        .arg("skills")
+        .arg("list")
+        .env_clear()
+        .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
+        .env("BRASSCLAW_RUNTIME_PROFILE", "hosted_safe")
+        .output()
+        .expect("brassclaw-reborn skills list should run");
 
-        assert!(
-            !output.status.success(),
-            "skills list should reject profile={profile}"
-        );
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            stderr.contains("brassclaw-reborn skills currently supports profile=local-dev"),
-            "stderr: {stderr}"
-        );
-        assert!(
-            stderr.contains(&format!("profile={profile}")),
-            "stderr: {stderr}"
-        );
-    }
+    assert!(
+        !output.status.success(),
+        "skills list should fail for non-local profile without BRASSCLAW_PG_URL"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("requires BRASSCLAW_PG_URL"),
+        "stderr must mention BRASSCLAW_PG_URL, got: {stderr}"
+    );
 }
 
 #[test]

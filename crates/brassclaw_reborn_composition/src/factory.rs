@@ -457,14 +457,6 @@ pub async fn build_reborn_services(
         RebornCompositionProfile::LocalDev | RebornCompositionProfile::LocalDevYolo => {
             build_local_dev(input).await
         }
-        RebornCompositionProfile::Production | RebornCompositionProfile::MigrationDryRun => {
-            #[cfg(feature = "postgres")]
-            return build_production_shaped(input).await;
-            #[cfg(not(feature = "postgres"))]
-            return Err(RebornBuildError::InvalidConfig {
-                reason: "production profile requires the 'postgres' feature".to_string(),
-            });
-        }
     }
 }
 
@@ -2409,8 +2401,6 @@ fn readiness_for(
         RebornCompositionProfile::LocalDev | RebornCompositionProfile::LocalDevYolo => {
             RebornReadinessState::DevOnly
         }
-        RebornCompositionProfile::Production => RebornReadinessState::ProductionValidated,
-        RebornCompositionProfile::MigrationDryRun => RebornReadinessState::MigrationDryRunValidated,
     };
     RebornReadiness {
         profile,
@@ -3264,16 +3254,14 @@ mod tests {
     }
 
     #[test]
-    fn production_readiness_reflects_product_auth_presence() {
-        let without_auth = readiness_for(RebornCompositionProfile::Production, true, true, false);
-        assert_eq!(
-            without_auth.state,
-            RebornReadinessState::ProductionValidated
-        );
+    fn local_dev_readiness_reflects_product_auth_presence() {
+        let without_auth =
+            readiness_for(RebornCompositionProfile::LocalDev, true, true, false);
+        assert_eq!(without_auth.state, RebornReadinessState::DevOnly);
         assert!(!without_auth.facades.product_auth);
 
-        let with_auth = readiness_for(RebornCompositionProfile::Production, true, true, true);
-        assert_eq!(with_auth.state, RebornReadinessState::ProductionValidated);
+        let with_auth = readiness_for(RebornCompositionProfile::LocalDev, true, true, true);
+        assert_eq!(with_auth.state, RebornReadinessState::DevOnly);
         assert!(with_auth.facades.product_auth);
     }
 

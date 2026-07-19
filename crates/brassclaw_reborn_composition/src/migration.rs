@@ -189,11 +189,6 @@ async fn write_config_to_db(
     if let Some(v) = &config.api_version {
         rows.push(("api_version".to_string(), v.clone()));
     }
-    if let Some(boot) = &config.boot
-        && let Some(v) = &boot.profile
-    {
-        rows.push(("boot.profile".to_string(), v.clone()));
-    }
     if let Some(id) = &config.identity {
         if let Some(v) = &id.tenant { rows.push(("identity.tenant".to_string(), v.clone())); }
         if let Some(v) = &id.default_agent { rows.push(("identity.default_agent".to_string(), v.clone())); }

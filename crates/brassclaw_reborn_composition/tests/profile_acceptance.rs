@@ -27,21 +27,6 @@ fn profile_parse_accepts_kebab_and_snake_case() {
             .unwrap(),
         RebornCompositionProfile::LocalDevYolo
     );
-    assert_eq!(
-        "migration-dry-run"
-            .parse::<RebornCompositionProfile>()
-            .unwrap(),
-        RebornCompositionProfile::MigrationDryRun
-    );
-}
-
-#[test]
-fn full_graph_profiles_match_production_strictness() {
-    assert!(!RebornCompositionProfile::Disabled.requires_production_shape());
-    assert!(!RebornCompositionProfile::LocalDev.requires_production_shape());
-    assert!(!RebornCompositionProfile::LocalDevYolo.requires_production_shape());
-    assert!(RebornCompositionProfile::Production.requires_production_shape());
-    assert!(RebornCompositionProfile::MigrationDryRun.requires_production_shape());
 }
 
 #[test]

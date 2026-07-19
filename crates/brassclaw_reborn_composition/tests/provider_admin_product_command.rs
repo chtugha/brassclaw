@@ -14,7 +14,7 @@ use brassclaw_product_workflow::{
     ProductCommandContext, ProductWorkflowError,
 };
 use brassclaw_reborn_composition::{RebornProviderAdmin, RebornProviderAdminProductCommandService};
-use brassclaw_reborn_config::{RebornBootConfig, RebornHome, RebornProfile};
+use brassclaw_reborn_config::{RebornBootConfig, RebornHome};
 use chrono::Utc;
 
 fn sample_command_envelope(
@@ -73,7 +73,7 @@ fn workflow_for_reborn_home(
         None,
     )
     .expect("valid reborn home");
-    let admin = RebornProviderAdmin::new(RebornBootConfig::new(home, RebornProfile::LocalDev));
+    let admin = RebornProviderAdmin::new(RebornBootConfig::new(home));
     let command_service = Arc::new(RebornProviderAdminProductCommandService::new(admin));
     let inbound = Arc::new(FakeInboundTurnService::new());
     let ledger = Arc::new(FakeIdempotencyLedger::new());

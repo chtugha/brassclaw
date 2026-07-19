@@ -34,7 +34,7 @@
 
 use std::borrow::Cow;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::Deserialize;
 use thiserror::Error;
@@ -96,14 +96,16 @@ pub struct RebornConfigFile {
     pub embedding: Option<EmbeddingSection>,
 }
 
+/// Boot section of the operator TOML. Previously held `profile` — removed in
+/// Phase 11. Use `BRASSCLAW_RUNTIME_PROFILE` env var instead.
+///
+/// # Migration note
+/// If your `config.toml` still contains `[boot]\nprofile = "..."`, remove that
+/// line. The `deny_unknown_fields` serde attribute will reject the file if the
+/// old field is present.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct BootSection {
-    /// Composition profile name. Stringly typed; composition validates
-    /// against `RebornCompositionProfile`. Examples: `"local-dev"`,
-    /// `"local-dev-yolo"`, `"production"`, `"migration-dry-run"`.
-    pub profile: Option<String>,
-}
+pub struct BootSection {}
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -574,11 +576,6 @@ impl RebornConfigFile {
         if let Some(api_version) = self.api_version.as_deref() {
             check(Cow::Borrowed("api_version"), api_version)?;
             validate_api_version(api_version, attributed_path)?;
-        }
-        if let Some(boot) = &self.boot
-            && let Some(profile) = &boot.profile
-        {
-            check(Cow::Borrowed("boot.profile"), profile)?;
         }
         if let Some(identity) = &self.identity {
             if let Some(tenant) = &identity.tenant {

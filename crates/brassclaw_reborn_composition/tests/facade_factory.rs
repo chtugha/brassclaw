@@ -400,7 +400,7 @@ async fn migration_dry_run_requires_postgres_process_port_for_first_party_runtim
 
     let result = build_reborn_services(
         RebornBuildInput::postgres(
-            RebornCompositionProfile::MigrationDryRun,
+            RebornCompositionProfile::LocalDev,
             "test-owner",
             pool,
             SecretMaterial::from(database_url),

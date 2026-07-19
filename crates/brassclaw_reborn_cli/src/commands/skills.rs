@@ -1,7 +1,7 @@
 use brassclaw_reborn_composition::{
     RebornSkillSummary, list_reborn_local_skills, reborn_skill_summary_json,
 };
-use brassclaw_reborn_config::{RebornBootConfig, RebornProfile};
+use brassclaw_reborn_config::RebornBootConfig;
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
 
@@ -50,7 +50,6 @@ impl SkillsListCommand {
             let mut output = skills_json(&skills);
             if self.verbose {
                 output["details"] = serde_json::json!({
-                    "profile": config.profile.to_string(),
                     "reborn_home": context.boot_config().home().path(),
                     "local_dev_root": config.local_dev_root,
                     "owner_id": config.owner_id,
@@ -65,7 +64,6 @@ impl SkillsListCommand {
         println!("source: reborn-local-dev");
 
         if self.verbose {
-            println!("profile: {}", config.profile);
             println!(
                 "reborn_home: {}",
                 context.boot_config().home().path().display()
@@ -86,24 +84,19 @@ impl SkillsListCommand {
 struct SkillListConfig {
     owner_id: String,
     local_dev_root: PathBuf,
-    profile: RebornProfile,
 }
 
 fn build_skill_list_config(config: &RebornBootConfig) -> anyhow::Result<SkillListConfig> {
     let config_file = crate::runtime::read_config_file(config)?;
-    let profile = crate::runtime::effective_profile(config, config_file.as_ref())?;
-    match profile {
-        RebornProfile::LocalDev | RebornProfile::LocalDevYolo => {}
-        RebornProfile::Production | RebornProfile::MigrationDryRun => {
-            anyhow::bail!(
-                "brassclaw-reborn skills currently supports profile=local-dev or profile=local-dev-yolo; got profile={profile}"
-            );
-        }
+    // Run the profile resolution to surface any fail-closed errors (e.g.
+    // non-local BRASSCLAW_RUNTIME_PROFILE without BRASSCLAW_PG_URL) before
+    // listing skills. All valid paths reaching here are local-dev-shaped.
+    if crate::runtime::runtime_profile_from_env()?.is_none() {
+        let _ = crate::runtime::composition_profile_from_legacy_env(config, config_file.as_ref())?;
     }
     Ok(SkillListConfig {
         owner_id: crate::runtime::default_owner_id(config_file.as_ref()).to_string(),
         local_dev_root: config.home().path().join("local-dev"),
-        profile,
     })
 }
 

@@ -1,7 +1,7 @@
 #![cfg(feature = "root-llm-provider")]
 
 use brassclaw_reborn_composition::{RebornProviderAdmin, RebornProviderAdminError, RebornV1State};
-use brassclaw_reborn_config::{RebornBootConfig, RebornHome, RebornProfile};
+use brassclaw_reborn_config::{RebornBootConfig, RebornHome};
 
 fn admin_for_home(reborn_home: &std::path::Path) -> RebornProviderAdmin {
     let home = RebornHome::resolve_from_env_parts(
@@ -10,7 +10,7 @@ fn admin_for_home(reborn_home: &std::path::Path) -> RebornProviderAdmin {
         None,
     )
     .expect("valid reborn home");
-    RebornProviderAdmin::new(RebornBootConfig::new(home, RebornProfile::LocalDev))
+    RebornProviderAdmin::new(RebornBootConfig::new(home))
 }
 
 #[test]

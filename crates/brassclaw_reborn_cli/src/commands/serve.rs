@@ -660,7 +660,7 @@ async fn start_postgres_and_upgrade_input(
 
     let reborn_home = boot_config.home().path().to_path_buf();
     let pg_input = RebornBuildInput::postgres_with_reborn_home(
-        RebornCompositionProfile::Production,
+        RebornCompositionProfile::LocalDev,
         owner_id,
         pool,
         SecretMaterial::from(pg_url),

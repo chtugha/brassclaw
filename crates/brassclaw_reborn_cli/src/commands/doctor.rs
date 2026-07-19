@@ -13,7 +13,6 @@ impl DoctorCommand {
         println!("BrassClaw Reborn doctor");
         println!("reborn_home: {}", report.home_path().display());
         println!("home_source: {}", report.home_source_label());
-        println!("profile: {}", report.profile());
         println!("v1_state: {}", report.v1_state());
         println!("driver_registry: initialized");
         Ok(())

@@ -5,17 +5,23 @@ use std::{future::Future, thread};
 
 use anyhow::Context;
 
-
+use brassclaw_host_api::runtime_policy::RuntimeProfile;
 use brassclaw_reborn_composition::{
     OAuthClientConfig, PollSettings, RebornBuildInput, RebornCompositionProfile,
     RebornLocalRuntimeProfileOptions, RebornRuntimeIdentity, RebornRuntimeInput,
     TurnRunnerSettings, build_reborn_runtime, local_runtime_build_input_with_options,
 };
-use brassclaw_reborn_config::{REBORN_PROFILE_ENV, RebornBootConfig, RebornProfile};
+use brassclaw_reborn_config::RebornBootConfig;
 use secrecy::SecretString;
 use tokio_util::sync::CancellationToken;
 
 use crate::context::RebornCliContext;
+
+/// Environment variable for the new fine-grained runtime profile knob.
+pub(crate) const RUNTIME_PROFILE_ENV: &str = "BRASSCLAW_RUNTIME_PROFILE";
+
+/// Legacy environment variable — deprecated in Phase 11. Use `RUNTIME_PROFILE_ENV`.
+const REBORN_PROFILE_ENV: &str = "BRASSCLAW_REBORN_PROFILE";
 
 #[cfg(test)]
 mod test_env;
@@ -110,7 +116,6 @@ async fn with_run_local_trigger_fire_access_checker(
 
 fn print_runtime_banner(config: &RebornBootConfig) {
     eprintln!("brassclaw-reborn: runtime started");
-    eprintln!("  profile     : {}", config.profile());
     eprintln!("  reborn_home : {}", config.home().path().display());
     eprintln!();
 }
@@ -366,21 +371,30 @@ pub(crate) fn build_services_input_with_options(
     } else {
         local_dev_root.join("workspace")
     };
-    let profile = effective_profile(config, config_file.as_ref())?;
+    // BRASSCLAW_RUNTIME_PROFILE wins over legacy BRASSCLAW_REBORN_PROFILE.
+    // For non-local RuntimeProfile values the fail-closed guard in
+    // runtime_profile_from_env() will already have errored out, so by the
+    // time we reach here we know the effective profile is local.
+    let composition = if let Some(rt_profile) = runtime_profile_from_env()? {
+        // Translate the fine-grained RuntimeProfile to the coarse composition
+        // profile — only local variants are reachable here (fail-closed guard
+        // above already rejected non-local profiles without PG_URL).
+        match rt_profile {
+            RuntimeProfile::LocalYolo => RebornCompositionProfile::LocalDevYolo,
+            _ => RebornCompositionProfile::LocalDev,
+        }
+    } else {
+        composition_profile_from_legacy_env(config, config_file.as_ref())?
+    };
     let mut services_input = local_runtime_build_input_with_options(
-        composition_profile(profile),
+        composition,
         owner_id,
         local_dev_root,
         RebornLocalRuntimeProfileOptions {
             confirm_host_access: options.confirm_host_access,
         },
     )
-    .with_context(|| {
-        format!(
-            "brassclaw-reborn run currently supports profile=local-dev or profile=local-dev-yolo; \
-                     got profile={profile}. Production wiring lands in a follow-up slice."
-        )
-    })?
+    .with_context(|| "brassclaw-reborn run currently supports profile=local-dev or profile=local-dev-yolo")?
     .with_local_dev_workspace_root(workspace_root);
     if services_input.requires_local_dev_confirmed_host_home_root() {
         let host_home_root =
@@ -495,14 +509,6 @@ fn confirmed_host_home_root(options: RuntimeInputOptions) -> anyhow::Result<Path
         .context("HOME or USERPROFILE must be set")
 }
 
-fn composition_profile(profile: RebornProfile) -> RebornCompositionProfile {
-    match profile {
-        RebornProfile::LocalDev => RebornCompositionProfile::LocalDev,
-        RebornProfile::LocalDevYolo => RebornCompositionProfile::LocalDevYolo,
-        RebornProfile::Production => RebornCompositionProfile::Production,
-        RebornProfile::MigrationDryRun => RebornCompositionProfile::MigrationDryRun,
-    }
-}
 
 pub(crate) fn read_config_file(
     config: &RebornBootConfig,
@@ -553,26 +559,87 @@ fn regex_skill_activation_enabled(
         .unwrap_or(true)
 }
 
-pub(crate) fn effective_profile(
-    config: &RebornBootConfig,
-    config_file: Option<&brassclaw_reborn_config::RebornConfigFile>,
-) -> anyhow::Result<RebornProfile> {
-    // Env wins over file. `RebornBootConfig` already parsed/validated env,
-    // so if the variable is present we keep that value.
-    if std::env::var_os(REBORN_PROFILE_ENV).is_some() {
-        return Ok(config.profile());
+/// Resolve the new `BRASSCLAW_RUNTIME_PROFILE` env var.
+///
+/// Returns `None` when the variable is absent (caller falls back to the local
+/// composition profile mapping).  Emits a fail-closed error when:
+/// - The value cannot be parsed as a `RuntimeProfile` wire name.
+/// - A non-local profile is set but `BRASSCLAW_PG_URL` is unset.
+pub(crate) fn runtime_profile_from_env() -> anyhow::Result<Option<RuntimeProfile>> {
+    let Some(raw) = std::env::var_os(RUNTIME_PROFILE_ENV) else {
+        return Ok(None);
+    };
+    let raw = raw.to_string_lossy();
+    let profile: RuntimeProfile = raw.parse().map_err(|_| {
+        anyhow::anyhow!(
+            "{RUNTIME_PROFILE_ENV}={raw} is not a recognised runtime profile. \
+             Valid values: secure_default, local_safe, local_dev, local_yolo, \
+             hosted_safe, hosted_dev, hosted_yolo_tenant_scoped, \
+             enterprise_safe, enterprise_dev, enterprise_yolo_dedicated, \
+             sandboxed, experiment"
+        )
+    })?;
+    // Fail-closed guard: non-local profiles require an external Postgres URL.
+    if !profile.is_local() && std::env::var_os("BRASSCLAW_PG_URL").is_none() {
+        anyhow::bail!(
+            "Non-local runtime profile '{profile}' requires BRASSCLAW_PG_URL. \
+             Embedded Postgres is for single-host local deployments only. \
+             Set BRASSCLAW_PG_URL to an external Postgres URL or use a local \
+             runtime profile (local_dev, local_safe, local_yolo)."
+        );
     }
+    Ok(Some(profile))
+}
 
-    let Some(profile) = config_file
-        .and_then(|file| file.boot.as_ref())
-        .and_then(|boot| boot.profile.as_deref())
-    else {
-        return Ok(config.profile());
+/// Emit a deprecation warning when `BRASSCLAW_REBORN_PROFILE` is set and
+/// translate its value to the equivalent local composition profile.
+///
+/// When `BRASSCLAW_RUNTIME_PROFILE` is also set it wins; this function is
+/// only invoked for the old-var path.  Parses the raw env string directly —
+/// `RebornProfile` and `config.profile()` were removed in Phase 11.
+///
+/// Returns the `RebornCompositionProfile` to use for this boot.
+pub(crate) fn composition_profile_from_legacy_env(
+    _config: &RebornBootConfig,
+    _config_file: Option<&brassclaw_reborn_config::RebornConfigFile>,
+) -> anyhow::Result<RebornCompositionProfile> {
+    let Some(raw_os) = std::env::var_os(REBORN_PROFILE_ENV) else {
+        // No legacy var set — default to local-dev.
+        return Ok(RebornCompositionProfile::LocalDev);
     };
 
-    profile.parse::<RebornProfile>().map_err(|error| {
-        anyhow::anyhow!("config file [boot].profile `{profile}` is invalid: {error}")
-    })
+    let raw = raw_os.to_string_lossy();
+    eprintln!(
+        "WARNING: BRASSCLAW_REBORN_PROFILE is deprecated. \
+         Use BRASSCLAW_RUNTIME_PROFILE instead. \
+         See 'brassclaw runtime-profile list' for available values."
+    );
+
+    match raw.as_ref() {
+        "local-dev" => Ok(RebornCompositionProfile::LocalDev),
+        "local-dev-yolo" => Ok(RebornCompositionProfile::LocalDevYolo),
+        "production" => {
+            eprintln!(
+                "WARNING: BRASSCLAW_REBORN_PROFILE=production is deprecated and no longer \
+                 implies a security policy. Defaulting to BRASSCLAW_RUNTIME_PROFILE=local_dev. \
+                 Set BRASSCLAW_RUNTIME_PROFILE explicitly for your deployment tier."
+            );
+            Ok(RebornCompositionProfile::LocalDev)
+        }
+        "migration-dry-run" => {
+            anyhow::bail!(
+                "BRASSCLAW_REBORN_PROFILE=migration-dry-run is removed. \
+                 Use 'brassclaw migrate --dry-run' instead."
+            )
+        }
+        other => {
+            anyhow::bail!(
+                "BRASSCLAW_REBORN_PROFILE={other} is not a recognised profile value. \
+                 Use BRASSCLAW_RUNTIME_PROFILE with one of: local_dev, local_safe, local_yolo, \
+                 hosted_safe, etc. (see 'brassclaw runtime-profile list')."
+            )
+        }
+    }
 }
 
 fn reject_unsupported_runtime_sections(
@@ -664,8 +731,9 @@ mod tests {
 
     use super::with_run_local_trigger_fire_access_checker;
     use super::{
-        RuntimeInputCaller, RuntimeInputOptions, block_on_cli, build_runtime_input,
-        build_runtime_input_with_options, resolve_google_oauth_config,
+        RUNTIME_PROFILE_ENV, RuntimeInputCaller, RuntimeInputOptions, block_on_cli,
+        build_runtime_input, build_runtime_input_with_options, resolve_google_oauth_config,
+        runtime_profile_from_env,
     };
 
     fn clear_trigger_poller_env() -> (EnvGuard, EnvGuard) {
@@ -704,7 +772,6 @@ default_owner = "custom-owner"
             Some(reborn_home.into_os_string()),
             None,
             None,
-            None,
         )
         .expect("boot config");
 
@@ -737,7 +804,6 @@ regex_activation_enabled = false
             Some(reborn_home.into_os_string()),
             None,
             None,
-            None,
         )
         .expect("boot config");
 
@@ -751,6 +817,8 @@ regex_activation_enabled = false
     fn build_runtime_input_rejects_local_dev_yolo_without_host_access_confirmation() {
         let _lock = lock_trigger_env();
         let (_enabled, _interval) = clear_trigger_poller_env();
+        // Use BRASSCLAW_RUNTIME_PROFILE env var to request yolo mode.
+        let _profile = EnvGuard::set(RUNTIME_PROFILE_ENV, "local_yolo");
 
         let temp = tempfile::tempdir().expect("tempdir");
         let reborn_home = temp.path().join("reborn-home");
@@ -759,7 +827,6 @@ regex_activation_enabled = false
             Some(reborn_home.into_os_string()),
             None,
             None,
-            Some("local-dev-yolo".into()),
         )
         .expect("boot config");
 
@@ -775,6 +842,8 @@ regex_activation_enabled = false
     fn build_runtime_input_accepts_confirmed_local_dev_yolo_profile() {
         let _lock = lock_trigger_env();
         let (_enabled, _interval) = clear_trigger_poller_env();
+        // Use BRASSCLAW_RUNTIME_PROFILE env var to request yolo mode.
+        let _profile = EnvGuard::set(RUNTIME_PROFILE_ENV, "local_yolo");
 
         let temp = tempfile::tempdir().expect("tempdir");
         let reborn_home = temp.path().join("reborn-home");
@@ -783,7 +852,6 @@ regex_activation_enabled = false
             Some(reborn_home.into_os_string()),
             None,
             None,
-            Some("local-dev-yolo".into()),
         )
         .expect("boot config");
 
@@ -832,7 +900,6 @@ default_project = "project-alpha"
             Some(reborn_home.into_os_string()),
             None,
             None,
-            None,
         )
         .expect("boot config");
 
@@ -866,7 +933,6 @@ enabled = true
         .expect("write config");
         let config = RebornBootConfig::resolve_from_env_parts(
             Some(reborn_home.into_os_string()),
-            None,
             None,
             None,
         )
@@ -905,7 +971,6 @@ enabled = true
         .expect("write config");
         let config = RebornBootConfig::resolve_from_env_parts(
             Some(reborn_home.into_os_string()),
-            None,
             None,
             None,
         )
@@ -1031,7 +1096,6 @@ default_project = "project-alpha"
             Some(reborn_home.into_os_string()),
             None,
             None,
-            None,
         )
         .expect("boot config");
 
@@ -1058,7 +1122,6 @@ poll_interval_secs = 42
         .expect("write config");
         let config = RebornBootConfig::resolve_from_env_parts(
             Some(reborn_home.into_os_string()),
-            None,
             None,
             None,
         )
@@ -1091,7 +1154,6 @@ poll_interval_secs = 42
 
         let config = RebornBootConfig::resolve_from_env_parts(
             Some(reborn_home.to_string_lossy().to_string().into()),
-            None,
             None,
             None,
         )
@@ -1129,7 +1191,6 @@ poll_interval_secs = 15
             Some(reborn_home.to_string_lossy().to_string().into()),
             None,
             None,
-            None,
         )
         .expect("boot config");
 
@@ -1157,7 +1218,6 @@ poll_interval_secs = 15
 
         let config = RebornBootConfig::resolve_from_env_parts(
             Some(reborn_home.to_string_lossy().to_string().into()),
-            None,
             None,
             None,
         )

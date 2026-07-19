@@ -1,4 +1,4 @@
-use brassclaw_reborn_config::{RebornBootConfig, RebornDoctorReport, RebornProfile};
+use brassclaw_reborn_config::{RebornBootConfig, RebornDoctorReport};
 
 #[test]
 fn doctor_report_is_side_effect_free_and_states_v1_is_not_used() {
@@ -7,13 +7,11 @@ fn doctor_report_is_side_effect_free_and_states_v1_is_not_used() {
         Some(temp.path().join("reborn-home").into_os_string()),
         None,
         None,
-        Some("migration-dry-run".into()),
     )
     .expect("boot config should resolve");
 
     let report = RebornDoctorReport::from_config(config);
 
-    assert_eq!(report.profile(), RebornProfile::MigrationDryRun);
     assert_eq!(report.home_source_label(), "BRASSCLAW_REBORN_HOME");
     assert_eq!(report.v1_state(), "not-used");
     assert!(!report.home_path().exists());

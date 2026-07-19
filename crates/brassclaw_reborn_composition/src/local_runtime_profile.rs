@@ -8,8 +8,6 @@ use crate::{RebornBuildInput, RebornCompositionProfile};
 
 #[derive(Debug, Error)]
 pub enum RebornLocalRuntimeProfileError {
-    #[error("profile={profile} is not a local Reborn runtime profile")]
-    UnsupportedProfile { profile: RebornCompositionProfile },
     #[error("failed to resolve local runtime policy: {0}")]
     Policy(#[from] ResolveError),
 }
@@ -42,7 +40,8 @@ pub fn local_runtime_build_input_with_options(
     root: PathBuf,
     options: RebornLocalRuntimeProfileOptions,
 ) -> Result<RebornBuildInput, RebornLocalRuntimeProfileError> {
-    let policy = local_runtime_policy(profile, options)?;
+    let runtime_profile = composition_to_runtime_profile(profile);
+    let policy = local_runtime_policy(runtime_profile, options)?;
     Ok(
         RebornBuildInput::local_dev_with_profile(profile, owner_id, root)
             .with_runtime_policy(policy),
@@ -51,16 +50,7 @@ pub fn local_runtime_build_input_with_options(
 
 /// Resolved policy for the standalone local development runtime profile.
 pub fn local_dev_runtime_policy() -> Result<ResolvedRuntimePolicy, ResolveError> {
-    local_runtime_policy(
-        RebornCompositionProfile::LocalDev,
-        RebornLocalRuntimeProfileOptions::default(),
-    )
-    .map_err(|error| match error {
-        RebornLocalRuntimeProfileError::Policy(error) => error,
-        RebornLocalRuntimeProfileError::UnsupportedProfile { .. } => {
-            unreachable!("local-dev is a local runtime profile")
-        }
-    })
+    local_runtime_policy(RuntimeProfile::LocalDev, RebornLocalRuntimeProfileOptions::default())
 }
 
 /// Resolved policy for trusted single-user local development with inherited
@@ -69,32 +59,27 @@ pub fn local_dev_yolo_runtime_policy(
     confirm_host_access: bool,
 ) -> Result<ResolvedRuntimePolicy, ResolveError> {
     local_runtime_policy(
-        RebornCompositionProfile::LocalDevYolo,
+        RuntimeProfile::LocalYolo,
         RebornLocalRuntimeProfileOptions {
             confirm_host_access,
         },
     )
-    .map_err(|error| match error {
-        RebornLocalRuntimeProfileError::Policy(error) => error,
-        RebornLocalRuntimeProfileError::UnsupportedProfile { .. } => {
-            unreachable!("local-dev-yolo is a local runtime profile")
+}
+
+/// Map a local `RebornCompositionProfile` to the matching `RuntimeProfile`.
+fn composition_to_runtime_profile(profile: RebornCompositionProfile) -> RuntimeProfile {
+    match profile {
+        RebornCompositionProfile::LocalDev | RebornCompositionProfile::Disabled => {
+            RuntimeProfile::LocalDev
         }
-    })
+        RebornCompositionProfile::LocalDevYolo => RuntimeProfile::LocalYolo,
+    }
 }
 
 fn local_runtime_policy(
-    profile: RebornCompositionProfile,
+    runtime_profile: RuntimeProfile,
     options: RebornLocalRuntimeProfileOptions,
 ) -> Result<ResolvedRuntimePolicy, RebornLocalRuntimeProfileError> {
-    let runtime_profile = match profile {
-        RebornCompositionProfile::LocalDev => RuntimeProfile::LocalDev,
-        RebornCompositionProfile::LocalDevYolo => RuntimeProfile::LocalYolo,
-        RebornCompositionProfile::Disabled
-        | RebornCompositionProfile::Production
-        | RebornCompositionProfile::MigrationDryRun => {
-            return Err(RebornLocalRuntimeProfileError::UnsupportedProfile { profile });
-        }
-    };
     let request = brassclaw_runtime_policy::ResolveRequest {
         yolo_disclosure_acknowledged: options.confirm_host_access,
         ..brassclaw_runtime_policy::ResolveRequest::new(

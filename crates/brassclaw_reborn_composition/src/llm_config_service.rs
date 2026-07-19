@@ -1470,7 +1470,7 @@ mod tests {
     use super::*;
     use brassclaw_host_api::{AgentId, ProjectId, TenantId, UserId};
     use brassclaw_llm::ProviderRole;
-    use brassclaw_reborn_config::{RebornHome, RebornProfile};
+    use brassclaw_reborn_config::RebornHome;
     use brassclaw_secrets::InMemorySecretStore;
 
     fn boot_for_home(reborn_home: &std::path::Path) -> RebornBootConfig {
@@ -1480,7 +1480,7 @@ mod tests {
             None,
         )
         .expect("valid reborn home");
-        RebornBootConfig::new(home, RebornProfile::LocalDev)
+        RebornBootConfig::new(home)
     }
 
     fn key_store() -> LlmKeyStore {

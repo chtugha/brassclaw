@@ -12,6 +12,11 @@ repository = "https://github.com/chtugha/brassclaw"
 [lints]
 workspace = true
 
+[features]
+# Integration tests that require actually downloading and running PostgreSQL.
+# Run with: cargo test -p brassclaw_embedded_postgres --features integration
+integration = []
+
 [dependencies]
 postgresql_embedded = { version = "0.21", features = ["tokio"] }
 sha2 = "0.10"
@@ -22,5 +27,6 @@ tracing = "0.1"
 libc = "0.2"
 
 [dev-dependencies]
+brassclaw_pg = { path = "../brassclaw_pg" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
 tempfile = "3"

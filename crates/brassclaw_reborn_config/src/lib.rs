@@ -7,8 +7,7 @@
 //!
 //! Three layers of boot-time input live here:
 //!
-//! - [`RebornBootConfig`] — home + profile resolved from env vars at
-//!   process start. The original API; unchanged.
+//! - [`RebornBootConfig`] — home resolved from env vars at process start.
 //! - [`RebornConfigFile`] — the operator-edited TOML at
 //!   `$BRASSCLAW_REBORN_HOME/config.toml`. Read once at process start;
 //!   provides the *selection* layer of the three-layer config model
@@ -21,7 +20,6 @@ mod budget;
 mod config_file;
 mod doctor;
 mod home;
-mod profile;
 mod secrets_guard;
 
 pub use boot::RebornBootConfig;
@@ -40,5 +38,4 @@ pub use config_file::{
 };
 pub use doctor::RebornDoctorReport;
 pub use home::{REBORN_HOME_ENV, RebornConfigError, RebornHome, RebornHomeSource};
-pub use profile::{REBORN_PROFILE_ENV, RebornProfile};
 pub use secrets_guard::{InlineSecretError, reject_inline_secret};

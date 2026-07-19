@@ -67,7 +67,6 @@ impl ConfigPathCommand {
         println!("BrassClaw Reborn config path");
         println!("reborn_home: {}", report.home_path().display());
         println!("home_source: {}", report.home_source_label());
-        println!("profile: {}", report.profile());
         println!("config_file: config.toml (read-only at boot; settings are DB-backed)");
         println!("providers: DB-backed (brassclaw_llm_providers table)");
         println!("home_path: {}", home.path().display());
