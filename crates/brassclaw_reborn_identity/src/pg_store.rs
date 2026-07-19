@@ -105,15 +105,7 @@ impl PgRebornIdentityStore {
         identity: &ResolveExternalIdentity,
         now: &str,
     ) -> Result<UserId, RebornIdentityError> {
-        let id = format!(
-            "{}:{}:{}:{}:{}:{}",
-            key.tenant_id,
-            key.surface_kind,
-            key.provider_kind,
-            key.provider_instance_id,
-            key.external_subject_id,
-            user_id.as_str()
-        );
+        let id = ulid::Ulid::new().to_string();
         let client = self.connect().await?;
         client
             .execute(
@@ -340,7 +332,7 @@ impl RebornIdentityResolver for PgRebornIdentityStore {
             .unwrap_or("");
         let subject = key.external_subject_id.as_str();
         let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
-        let id = format!("{tenant}:{surface}:{provider}:{instance}:{subject}");
+        let id = ulid::Ulid::new().to_string();
 
         let client = self.connect().await?;
         client
@@ -377,7 +369,7 @@ impl RebornIdentityResolver for PgRebornIdentityStore {
             .unwrap_or("");
         let subject = identity.external_subject_id.as_str();
         let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
-        let id = format!("{tenant}:{surface}:{provider}:{instance}:{subject}");
+        let id = ulid::Ulid::new().to_string();
 
         // Seed identity row (DO NOTHING so a returning user's existing row wins).
         {

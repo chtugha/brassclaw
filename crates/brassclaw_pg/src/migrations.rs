@@ -139,7 +139,8 @@ async fn detect_pre_existing_tables(
         pre_existing.push((17_i32, "hooks"));
     }
 
-    // trigger_records — created by PostgresTriggerRepository::run_migrations
+    // trigger_records — the pre-V021 table name created outside refinery.
+    // V021 renames it to brassclaw_triggers; both names are checked here.
     let triggers_exist: bool = client
         .query_one(&table_check("trigger_records"), &[])
         .await

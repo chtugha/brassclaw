@@ -4962,14 +4962,14 @@ referencing a non-existent `libsql` feature.
 - [ ] **Integration test (revision 17 end-to-end)** — assign `embedding` role to a provider (use `MockEmbeddings` or a local Ollama model), trigger `memory_write`, assert: (1) row in `brassclaw_memory_chat_records` with `source_ref` set, (2) chunk rows under `/memory/chat/<chat_record_id>/*.chunks/` with `embedding` indexed key non-NULL, (3) `memory_search` with vector enabled returns the memory via vector similarity; this test gates the chunk-system wiring activation — it surfaces latent bugs in the existing (currently-unwired) indexer path (R17-M)
 
 ### Phase 5 — Hooks and auth
-- [ ] Rename `brassclaw_hooks_postgres` → `brassclaw_hooks_pg`: update workspace `members` array in root `Cargo.toml` and all dependent `[dependencies]` entries that reference `brassclaw_hooks_postgres` by name (L5)
-- [ ] Strip the `#[cfg(feature = "postgres")]` module declarations from `lib.rs` in the renamed crate (`mod backend`, `mod hashing`, `mod schema`, and their re-exports are currently gated at the module level in `lib.rs` — making deps mandatory in `Cargo.toml` alone is insufficient; the `lib.rs` cfg attributes must also be removed so the modules are compiled unconditionally) (H3)
-- [ ] Remove the `postgres` optional feature from `brassclaw_hooks_pg/Cargo.toml`; make `deadpool-postgres` and `tokio-postgres` unconditional deps
-- [ ] **Port `brassclaw_hooks_parity` tests into `brassclaw_hooks_pg`** before deleting the crate: copy `tests/parity_matrix.rs` (deterministic cross-backend parity matrix) and `tests/multi_host_adversarial.rs` (concurrent-write correctness: N concurrent writers, cross-host replay, LRU eviction races, per-key cap under flood, clock-skew) into `crates/brassclaw_hooks_pg/tests/`. These are the only regression gate for concurrent-write correctness; deleting without porting removes that gate.
-- [ ] Delete `brassclaw_hooks_libsql` and `brassclaw_hooks_parity` **after** the port above is complete and CI is green
-- [ ] `PgAuthProductServices`
-- [ ] Wire `brassclaw_reborn_composition::factory` to single Postgres path; wire `PostgresPredicateStateBackend` via `PredicateEvaluator::with_state_backend(...)` (currently the production hooks factory uses an in-memory predicate backend — L6)
-- [ ] Pool drop before `managed_pg.shutdown().await`
+- [x] Rename `brassclaw_hooks_postgres` → `brassclaw_hooks_pg`: update workspace `members` array in root `Cargo.toml` and all dependent `[dependencies]` entries that reference `brassclaw_hooks_postgres` by name (L5)
+- [x] Strip the `#[cfg(feature = "postgres")]` module declarations from `lib.rs` in the renamed crate (`mod backend`, `mod hashing`, `mod schema`, and their re-exports are currently gated at the module level in `lib.rs` — making deps mandatory in `Cargo.toml` alone is insufficient; the `lib.rs` cfg attributes must also be removed so the modules are compiled unconditionally) (H3)
+- [x] Remove the `postgres` optional feature from `brassclaw_hooks_pg/Cargo.toml`; make `deadpool-postgres` and `tokio-postgres` unconditional deps
+- [x] **Port `brassclaw_hooks_parity` tests into `brassclaw_hooks_pg`** before deleting the crate: copy `tests/parity_matrix.rs` (deterministic cross-backend parity matrix) and `tests/multi_host_adversarial.rs` (concurrent-write correctness: N concurrent writers, cross-host replay, LRU eviction races, per-key cap under flood, clock-skew) into `crates/brassclaw_hooks_pg/tests/`. These are the only regression gate for concurrent-write correctness; deleting without porting removes that gate.
+- [x] Delete `brassclaw_hooks_libsql` and `brassclaw_hooks_parity` **after** the port above is complete and CI is green
+- [x] `PgAuthProductServices`
+- [x] Wire `brassclaw_reborn_composition::factory` to single Postgres path; wire `PostgresPredicateStateBackend` via `PredicateEvaluator::with_state_backend(...)` (currently the production hooks factory uses an in-memory predicate backend — L6)
+- [x] Pool drop before `managed_pg.shutdown().await` — `serve.rs` now starts `ManagedPostgres` (or uses `BRASSCLAW_PG_URL`), builds a pool, upgrades the build input to `RebornBuildInput::postgres_with_resolved_secret_master_key`, and calls `managed_pg.shutdown().await` only after `runtime.shutdown().await` has consumed (and dropped) the runtime and its pool; see `start_postgres_and_upgrade_input` in `brassclaw_reborn_cli/src/commands/serve.rs`
 
 ### Phase 6 — libSQL removal
 - [ ] Rebase `replay` feature onto embedded Postgres test rig (§9.2)
@@ -5121,9 +5121,9 @@ referencing a non-existent `libsql` feature.
 | `Cargo.toml` (workspace) | Add `brassclaw_embedded_postgres`, `brassclaw_pg`; add `migrate-from-libsql` (default-on for upgrade release); remove `brassclaw_hooks_libsql`; rebase `replay`, remove `import` (§9.2) |
 | `crates/brassclaw_embedded_postgres/` | **New crate** |
 | `crates/brassclaw_pg/` | **New crate** (migrations + pool) |
-| `crates/brassclaw_hooks_pg/` | Rename from `brassclaw_hooks_postgres`; strip `#[cfg(feature = "postgres")]` module declarations from `lib.rs`; make deps unconditional |
-| `crates/brassclaw_hooks_libsql/` | **Deleted** |
-| `crates/brassclaw_hooks_parity/` | **Port adversarial+parity tests into `brassclaw_hooks_pg/tests/`, then delete** (see §5.2) |
+| `crates/brassclaw_hooks_pg/` | ✅ Renamed from `brassclaw_hooks_postgres`; `#[cfg(feature = "postgres")]` declarations stripped from `lib.rs`; deps made unconditional |
+| `crates/brassclaw_hooks_libsql/` | ✅ **Deleted** |
+| `crates/brassclaw_hooks_parity/` | ✅ **Adversarial+parity tests ported into `brassclaw_hooks_pg/tests/`, crate deleted** (see §5.2) |
 | `crates/brassclaw_reborn_config/src/config_file.rs` | Remove `write()`; retain `load()` behind `migrate-from-libsql` (needed by §8.1 step 3 + §4.4 rewrap step 2 — removed in the same next release that drops `migrate-from-libsql`, per §5.4) |
 | `crates/brassclaw_reborn_config/src/home.rs` | Remove `config_file_path()`, `providers_file_path()`, `sempai_provider_file_path()` |
 | `crates/brassclaw_reborn_config/Cargo.toml` | Remove `toml_edit`, `fs4`, `tempfile`. **Keep `toml`**. Do NOT add `deadpool-postgres`. |

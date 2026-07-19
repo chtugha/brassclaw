@@ -256,7 +256,7 @@ impl OutboundStateStore for PgOutboundStateStore {
                 scope: record.scope.clone(),
                 thread_id: record.thread_id.clone(),
                 cursor: serde_json::from_value(existing_cursor.clone())
-                    .unwrap_or(None),
+                    .map_err(|_| OutboundError::Serialization)?,
             };
             validate_subscription_identity(&existing_record, &record)?;
         }

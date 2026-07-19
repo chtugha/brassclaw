@@ -151,7 +151,8 @@ async fn build_pg_pool() -> anyhow::Result<deadpool_postgres::Pool> {
         .max_size(4)
         .build()
         .map_err(|e| anyhow::anyhow!("failed to build PG pool: {e}"))?;
-    pool.get()
+    let _ = pool
+        .get()
         .await
         .map_err(|e| anyhow::anyhow!("cannot connect to PostgreSQL: {e}"))?;
     Ok(pool)

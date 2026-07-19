@@ -1,5 +1,3 @@
-#![cfg(feature = "postgres")]
-
 use brassclaw_host_api::{AgentId, ProjectId, TenantId, Timestamp, UserId};
 use brassclaw_triggers::{
     ActiveTriggerScanCursor, ClearActiveFireRequest, InMemoryTriggerRepository,
@@ -932,8 +930,8 @@ async fn postgres_repository_contract_parity() {
     let Some((_container, pool)) = postgres_pool_or_skip().await else {
         return;
     };
+    brassclaw_pg::migrations::run_migrations(&pool).await.expect("run migrations");
     let repo = PostgresTriggerRepository::new(pool.clone());
-    repo.run_migrations().await.expect("run migrations");
     assert_round_trip_and_scoped_isolation(&repo).await;
 
     clear_postgres_triggers(&pool).await;
@@ -966,10 +964,10 @@ async fn postgres_repository_run_migrations_is_idempotent() {
     let Some((_container, pool)) = postgres_pool_or_skip().await else {
         return;
     };
-    let repo = PostgresTriggerRepository::new(pool);
-
-    repo.run_migrations().await.expect("first run migrations");
-    repo.run_migrations().await.expect("second run migrations");
+    // Validates schema-level idempotency via brassclaw_pg::migrations::run_migrations.
+    // The deprecated repo.run_migrations() is a no-op and no longer tested here.
+    brassclaw_pg::migrations::run_migrations(&pool).await.expect("first run migrations");
+    brassclaw_pg::migrations::run_migrations(&pool).await.expect("second run migrations");
 }
 
 #[tokio::test]
@@ -977,8 +975,8 @@ async fn postgres_repository_rejects_malformed_persisted_rows() {
     let Some((_container, pool)) = postgres_pool_or_skip().await else {
         return;
     };
+    brassclaw_pg::migrations::run_migrations(&pool).await.expect("run migrations");
     let repo = PostgresTriggerRepository::new(pool.clone());
-    repo.run_migrations().await.expect("run migrations");
     let trigger_id = TriggerId::parse("01HZZZZZZZZZZZZZZZZZZZZZZZ").expect("ulid");
     let tenant_id = tenant("tenant-a");
     let record = sample_record(trigger_id, tenant_id.clone(), ts(1_704_067_260));
@@ -1188,7 +1186,7 @@ async fn clear_postgres_triggers(pool: &deadpool_postgres::Pool) {
     pool.get()
         .await
         .expect("postgres connection")
-        .execute("DELETE FROM trigger_records", &[])
+        .execute("DELETE FROM brassclaw_triggers", &[])
         .await
         .expect("clear trigger records");
 }
@@ -2387,8 +2385,8 @@ mod fire_claim_contract {
         let Some((_container, pool)) = postgres_pool_or_skip().await else {
             return;
         };
+        brassclaw_pg::migrations::run_migrations(&pool).await.expect("run migrations");
         let repo = PostgresTriggerRepository::new(pool.clone());
-        repo.run_migrations().await.expect("run migrations");
         assert_durable_fire_claim_contract(&repo).await;
         clear_postgres_triggers(&pool).await;
     }
@@ -2398,8 +2396,8 @@ mod fire_claim_contract {
         let Some((_container, pool)) = postgres_pool_or_skip().await else {
             return;
         };
+        brassclaw_pg::migrations::run_migrations(&pool).await.expect("run migrations");
         let repo = PostgresTriggerRepository::new(pool.clone());
-        repo.run_migrations().await.expect("run migrations");
         assert_durable_claim_is_atomic(std::sync::Arc::new(repo)).await;
         clear_postgres_triggers(&pool).await;
     }
@@ -2409,8 +2407,8 @@ mod fire_claim_contract {
         let Some((_container, pool)) = postgres_pool_or_skip().await else {
             return;
         };
+        brassclaw_pg::migrations::run_migrations(&pool).await.expect("run migrations");
         let repo = PostgresTriggerRepository::new(pool.clone());
-        repo.run_migrations().await.expect("run migrations");
         assert_mark_fire_accepted_is_idempotent_under_concurrency(
             std::sync::Arc::new(repo),
             TriggerId::parse("01J00000000000000000000016").expect("ulid"),
@@ -2425,8 +2423,8 @@ mod fire_claim_contract {
         let Some((_container, pool)) = postgres_pool_or_skip().await else {
             return;
         };
+        brassclaw_pg::migrations::run_migrations(&pool).await.expect("run migrations");
         let repo = PostgresTriggerRepository::new(pool.clone());
-        repo.run_migrations().await.expect("run migrations");
         assert_mark_fire_replayed_is_idempotent_under_concurrency(
             std::sync::Arc::new(repo),
             TriggerId::parse("01J00000000000000000000017").expect("ulid"),

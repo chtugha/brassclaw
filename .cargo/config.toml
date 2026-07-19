@@ -10,11 +10,11 @@
 #   difference is measurable (tens of seconds on a cold incremental build).
 #
 # mold does NOT support macOS; ld64.lld is the correct macOS alternative.
-#[target.aarch64-apple-darwin]
-#linker = "/usr/bin/clang"
-#rustflags = [
-#    "-C", "link-arg=-fuse-ld=/opt/homebrew/bin/ld64.lld",
-#]
+[target.aarch64-apple-darwin]
+linker = "/usr/bin/clang"
+rustflags = [
+    "-C", "link-arg=-fuse-ld=/opt/homebrew/bin/ld64.lld",
+]
 
 # ── Cross-compilation target (unchanged) ──────────────────────────────────────
 [target.x86_64-unknown-linux-musl]
@@ -47,9 +47,11 @@ protocol = "sparse"
 [profile.dev]
 split-debuginfo = "unpacked"
 incremental = true
+debug = 1
 
 # Slightly faster incremental test builds; full optimisation for release stays
 # at the cargo default (opt-level = 3).
 [profile.test]
 split-debuginfo = "unpacked"
 incremental = true
+debug = 1

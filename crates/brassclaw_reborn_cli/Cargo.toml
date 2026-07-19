@@ -41,6 +41,8 @@ libsql = [
 ]
 [dependencies]
 anyhow = "1"
+brassclaw_embedded_postgres = { path = "../brassclaw_embedded_postgres" }
+brassclaw_pg = { path = "../brassclaw_pg" }
 deadpool-postgres = "0.14"
 tokio-postgres = "0.7"
 async-trait = "0.1"

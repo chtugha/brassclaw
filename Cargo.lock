@@ -2245,6 +2245,8 @@ version = "0.51.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "brassclaw_embedded_postgres",
+ "brassclaw_pg",
  "brassclaw_reborn_composition",
  "brassclaw_reborn_config",
  "brassclaw_reborn_traces",
@@ -2420,6 +2422,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-postgres",
+ "ulid",
  "uuid",
 ]
 
@@ -2646,6 +2649,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "brassclaw_host_api",
+ "brassclaw_pg",
  "brassclaw_turns",
  "chrono",
  "cron",

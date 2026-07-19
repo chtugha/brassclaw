@@ -5,7 +5,6 @@ use std::{future::Future, thread};
 
 use anyhow::Context;
 
-use brassclaw_reborn_composition::host_api::{AgentId, TenantId, UserId};
 
 use brassclaw_reborn_composition::{
     OAuthClientConfig, PollSettings, RebornBuildInput, RebornCompositionProfile,

@@ -7,9 +7,9 @@ use anyhow::{Context, anyhow};
 use brassclaw_reborn_composition::build_webui_services;
 use brassclaw_reborn_composition::host_api::{AgentId, ProjectId, TenantId, UserId};
 use brassclaw_reborn_composition::{
-    GoogleOAuthRouteConfig, RebornBuildInput, RebornReadiness, RebornRuntimeIdentity,
-    RebornRuntimeInput, WebuiAuthenticator, WebuiServeConfig, build_reborn_runtime,
-    webui_v2_app_with_lifecycle,
+    GoogleOAuthRouteConfig, RebornBuildInput, RebornCompositionProfile, RebornReadiness,
+    RebornRuntimeIdentity, RebornRuntimeInput, WebuiAuthenticator, WebuiServeConfig,
+    build_reborn_runtime, webui_v2_app_with_lifecycle,
 };
 use brassclaw_reborn_config::IdentitySection;
 use brassclaw_reborn_webui_ingress::{
@@ -322,6 +322,18 @@ impl ServeCommand {
             .context("failed to build tokio runtime for `serve`")?;
 
         rt.block_on(async move {
+            // Start (or reuse) the embedded Postgres server and upgrade the
+            // build input to the Postgres-backed production profile. Falls
+            // back to the local-dev path when the `postgres` feature is off.
+            #[cfg(feature = "postgres")]
+            let (mut runtime_input, managed_pg) = start_postgres_and_upgrade_input(
+                runtime_input,
+                context.boot_config(),
+            )
+            .await?;
+            #[cfg(not(feature = "postgres"))]
+            let managed_pg: Option<brassclaw_embedded_postgres::ManagedPostgres> = None;
+
             runtime_input = with_local_trigger_fire_access_checker(
                 runtime_input,
                 &user_store_path,
@@ -475,7 +487,22 @@ impl ServeCommand {
 
             // Always drain the Reborn runtime, even on serve error, so
             // background tasks and turn-runner state shut down cleanly.
+            // The runtime owns the Postgres pool (via `RebornServices`);
+            // dropping it here by consuming the runtime closes all pool
+            // connections BEFORE managed_pg.shutdown() is called below
+            // (§2.2, §5.5: pool must be dropped before pg_ctl stop).
             let shutdown_result = runtime.shutdown().await;
+
+            // Shut down the embedded Postgres server only after the pool
+            // held by the runtime has been dropped (runtime.shutdown()
+            // consumed `runtime`). If `BRASSCLAW_PG_URL` was used instead,
+            // `managed_pg` is None and this is a no-op.
+            if let Some(pg) = managed_pg
+                && let Err(error) = pg.shutdown().await
+            {
+                tracing::warn!(%error, "embedded Postgres shutdown failed");
+            }
+
             serve_result.context("WebChat v2 serve loop failed")?;
             shutdown_result.context("Reborn runtime shutdown failed")?;
             Ok::<(), anyhow::Error>(())
@@ -570,6 +597,80 @@ fn canonical_host_name(host: &str) -> &str {
         return host;
     }
     host.split_once(':').map(|(host, _)| host).unwrap_or(host)
+}
+
+/// Start (or reuse) the embedded Postgres server for the serve path and
+/// upgrade the `RebornRuntimeInput` from a local-dev input to a
+/// Postgres-backed production input.
+///
+/// # Startup sequence
+///
+/// 1. If `BRASSCLAW_PG_URL` is set, use it directly — no embedded server
+///    is started (`managed_pg` is `None`).
+/// 2. Otherwise start (or reuse an orphaned) `ManagedPostgres` via
+///    `EmbeddedPostgresConfig::from_reborn_home`.
+/// 3. Build a `deadpool_postgres::Pool` via `brassclaw_pg::pool::build_pool`.
+/// 4. Run the schema migrations (`brassclaw_pg::migrations::run_migrations`).
+/// 5. Replace the local-dev `RebornBuildInput` inside `runtime_input` with a
+///    Postgres-backed production one (`RebornBuildInput::postgres`).
+///
+/// # Shutdown ordering
+///
+/// The caller (serve) MUST call `runtime.shutdown().await` before calling
+/// `managed_pg.shutdown().await`. `runtime.shutdown()` consumes the runtime,
+/// which owns the `RebornServices` struct, which holds the `Arc<PgPool>`.
+/// Dropping the runtime drops the last pool Arc, closing all connections.
+/// Only then is it safe to call `pg_ctl stop` (§2.2, §5.5).
+#[cfg(feature = "postgres")]
+async fn start_postgres_and_upgrade_input(
+    input: RebornRuntimeInput,
+    boot_config: &brassclaw_reborn_config::RebornBootConfig,
+) -> anyhow::Result<(RebornRuntimeInput, Option<brassclaw_embedded_postgres::ManagedPostgres>)> {
+    use brassclaw_embedded_postgres::{EmbeddedPostgresConfig, ManagedPostgres};
+    use brassclaw_pg::migrations;
+    use brassclaw_pg::pool::build_pool;
+    // SecretMaterial is secrecy::SecretString — use directly to avoid
+    // depending on brassclaw_secrets as a direct CLI dep.
+    use secrecy::SecretString as SecretMaterial;
+
+    // If the operator supplied an external PG URL, use it directly.
+    let (pg_url, managed_pg) =
+        if let Ok(url) = std::env::var("BRASSCLAW_PG_URL") {
+            (url, None)
+        } else {
+            let config = EmbeddedPostgresConfig::from_reborn_home(boot_config.home().path());
+            let managed = ManagedPostgres::start(config)
+                .await
+                .map_err(|e| anyhow!("failed to start embedded Postgres: {e}"))?;
+            let url = managed.connection_url();
+            (url, Some(managed))
+        };
+
+    let pool = build_pool(&pg_url)
+        .map_err(|e| anyhow!("failed to build Postgres connection pool: {e}"))?;
+
+    migrations::run_migrations(&pool)
+        .await
+        .map_err(|e| anyhow!("Postgres schema migrations failed: {e}"))?;
+
+    // Carry the owner_id from the existing local-dev input so the runtime's
+    // actor identity is preserved.
+    let owner_id = input.services.as_ref()
+        .map(|s| s.owner_id().to_string())
+        .unwrap_or_else(|| "reborn-cli".to_string());
+
+    let pg_input = RebornBuildInput::postgres_with_resolved_secret_master_key(
+        RebornCompositionProfile::Production,
+        owner_id,
+        pool,
+        SecretMaterial::from(pg_url),
+    );
+
+    // Replace the local-dev build input with the Postgres-backed one while
+    // preserving every other runtime-level setting on `input`.
+    let mut upgraded = input;
+    upgraded.services = Some(pg_input);
+    Ok((upgraded, managed_pg))
 }
 
 /// Wires the local trigger-fire access checker into `runtime_input`.

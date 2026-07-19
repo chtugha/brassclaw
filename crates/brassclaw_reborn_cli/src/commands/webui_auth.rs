@@ -13,14 +13,14 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{Context, anyhow};
+use anyhow::anyhow;
 use brassclaw_reborn_composition::host_api::{AgentId, ProjectId, TenantId};
 use brassclaw_reborn_composition::{PublicRouteMount, RebornIdentityResolver, WebuiAuthenticator};
 use brassclaw_reborn_webui_ingress::{SignedSessionLoginConfig, build_signed_session_login};
 use secrecy::SecretString;
 
 use crate::commands::serve_sso::SsoStartupConfig;
-use crate::commands::user_directory::{LocalTriggerAccessBootstrap, WebuiUserDirectory};
+use crate::commands::user_directory::WebuiUserDirectory;
 
 /// The composed WebChat v2 auth surface: the authenticator the protected
 /// routes verify bearers with, plus the optional public login-route mount
@@ -35,6 +35,10 @@ pub(crate) struct WebuiAuthSurface {
 /// Carries the substrate path of the local trigger-access store plus the
 /// scope an admitted user's access row is seeded under. The store is opened
 /// here (next to the rest of the auth wiring), not by `serve.rs`.
+///
+/// Fields not yet read — PG pool wiring is deferred until embedded-PG
+/// startup runs before runtime construction (TODO above `let _ = local_trigger_access`).
+#[allow(dead_code)]
 pub(crate) struct LocalTriggerAccessBootstrapConfig {
     pub(crate) access_store_path: PathBuf,
     pub(crate) tenant_id: TenantId,
@@ -88,7 +92,7 @@ pub(crate) async fn build_webui_auth_surface(
         )
     })?;
 
-    let mut user_directory = WebuiUserDirectory::new(
+    let user_directory = WebuiUserDirectory::new(
         identity_resolver,
         tenant_id.clone(),
         sso.allowed_email_domains,

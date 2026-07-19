@@ -9,7 +9,7 @@
 > segment sizing, and critical ordering constraints — it does not duplicate spec detail.
 > Always open `integrate-postgres.md` as the primary reference when executing a segment.
 >
-> **Status:** Not started.
+> **Status:** S11 complete. S12 not started.
 
 ---
 
@@ -65,7 +65,7 @@ The hardened-unit test (`MemoryDenyWriteExecute=yes` + `jit=off`) is a hard gate
 | S8 | Phase 4c | Runtime stores: token settings, safety config, memory docs, retention sweep | `cargo clippy --all` + unit tests |
 | S9 | Phase 4d | Trigger + conversation + outbound + subagent-goal stores | `cargo clippy --all` + unit tests |
 | S10 | Phase 4e | Interceptor store + chat-memory + chunk/embedding wiring | `cargo clippy --all` + integration test |
-| S11 | Phase 5 | Hooks rename + auth + factory wiring | `cargo clippy --all` + parity tests |
+| S11 | Phase 5 | Hooks rename + auth + factory wiring ✅ | `cargo clippy --all` + parity tests |
 | S12 | Phase 7-code | Migration module (`migrate-from-libsql`) — written BEFORE Phase 6 merges | migration integration test green |
 | S13 | Phase 6 | libSQL removal (merges ONLY after S12 is green in CI) | `cargo build --release` clean |
 | S14 | Phase 8 | File-based config removal | `cargo clippy --all` |
@@ -294,19 +294,21 @@ Work items (do in this sub-order — each depends on the previous):
 
 ### S11 — Hooks Rename + Auth + Factory Wiring
 
-**integrate-postgres.md reference:** §4 (hooks DDL), Phase 5 checklist  
-**Entry:** S10 complete  
-**Crates modified:** `crates/brassclaw_hooks_postgres/` (→ renamed `brassclaw_hooks_pg`), `crates/brassclaw_reborn_composition/`
+**integrate-postgres.md reference:** §4 (hooks DDL), Phase 5 checklist
+**Entry:** S10 complete
+**Crates modified:** `crates/brassclaw_hooks_pg/`, `crates/brassclaw_reborn_composition/`
 
-Work items:
-- Rename `brassclaw_hooks_postgres` → `brassclaw_hooks_pg`; update workspace `members` + all dependent `[dependencies]` entries
-- Strip `#[cfg(feature = "postgres")]` module declarations from `lib.rs` (not just `Cargo.toml` — the `lib.rs` cfg attributes must also go)
-- Remove `postgres` optional feature from `brassclaw_hooks_pg/Cargo.toml`; make `deadpool-postgres` + `tokio-postgres` unconditional
-- **Port** `brassclaw_hooks_parity` tests into `brassclaw_hooks_pg/tests/` (`parity_matrix.rs` + `multi_host_adversarial.rs`) before deleting the crate
-- Delete `brassclaw_hooks_libsql` and `brassclaw_hooks_parity` after port is CI-green
-- `PgAuthProductServices`
-- Wire `brassclaw_reborn_composition::factory` to single Postgres path; wire `PostgresPredicateStateBackend` via `PredicateEvaluator::with_state_backend(...)`
-- Pool drop before `managed_pg.shutdown().await`
+> **Status: All Phase 5 work items complete.**
+
+Work items (completed — retained for record):
+- ~~Rename `brassclaw_hooks_postgres` → `brassclaw_hooks_pg`; update workspace `members` + all dependent `[dependencies]` entries~~
+- ~~Strip `#[cfg(feature = "postgres")]` module declarations from `lib.rs` (not just `Cargo.toml` — the `lib.rs` cfg attributes must also go)~~
+- ~~Remove `postgres` optional feature from `brassclaw_hooks_pg/Cargo.toml`; make `deadpool-postgres` + `tokio-postgres` unconditional~~
+- ~~**Port** `brassclaw_hooks_parity` tests into `brassclaw_hooks_pg/tests/` (`parity_matrix.rs` + `multi_host_adversarial.rs`) before deleting the crate~~
+- ~~Delete `brassclaw_hooks_libsql` and `brassclaw_hooks_parity` after port is CI-green~~
+- ~~`PgAuthProductServices`~~
+- ~~Wire `brassclaw_reborn_composition::factory` to single Postgres path; wire `PostgresPredicateStateBackend` via `PredicateEvaluator::with_state_backend(...)`~~
+- ~~Pool drop before `managed_pg.shutdown().await` — `serve.rs` now starts `ManagedPostgres` (or uses `BRASSCLAW_PG_URL`), upgrades the runtime input to the Postgres production profile, and calls `managed_pg.shutdown().await` only after `runtime.shutdown()` has consumed the runtime and its pool~~
 
 **Exit gate:** `cargo clippy --all -- -D warnings` clean; `cargo test -p brassclaw_hooks_pg` (parity + adversarial tests) green
 
