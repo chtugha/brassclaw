@@ -113,8 +113,16 @@ pub async fn run_sweep(pool: &Arc<PgPool>) -> Result<(), Box<dyn std::error::Err
         )
         .await?;
     for row in packet_rows {
-        let packet_id: String = row.get(0);
-        // Null out links before deleting the packet.
+        let packet_id: String = match row.try_get("id") {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::debug!(error = %e, "retention sweep: bad forensic packet row — skipping");
+                continue;
+            }
+        };
+        // Null out links before deleting the packet.  Must succeed before the
+        // DELETE so we never leave dangling forensic_packet_id references in
+        // memory rows pointing to a packet that no longer exists.
         client
             .execute(
                 "UPDATE brassclaw_memory_chat_records \
@@ -122,8 +130,7 @@ pub async fn run_sweep(pool: &Arc<PgPool>) -> Result<(), Box<dyn std::error::Err
                  WHERE forensic_packet_id = $1",
                 &[&packet_id],
             )
-            .await
-            .unwrap_or_default();
+            .await?;
         client
             .execute(
                 "DELETE FROM brassclaw_forensic_packets WHERE id = $1",
@@ -267,22 +274,22 @@ pub async fn run_backfill_embeddings(
     let indexer = ChunkingMemoryDocumentIndexer::new(Arc::clone(&repository))
         .with_embedding_provider(Arc::new(DynWrapper(embedding_provider)));
 
-    // Fetch rows needing backfill in batches.
+    // Fetch rows needing backfill: any record whose source_ref is NULL has not
+    // yet had Path B (chunk + embed) run.  Records with a non-NULL source_ref
+    // already have chunk rows under the VFS; re-indexing them is handled by the
+    // caller if a dimension change is requested (idempotent by design).
+    //
+    // The previous sub-select against brassclaw_root_filesystem_index_specs used
+    // columns (entry_id, index_key, index_value) that do not exist in the V018
+    // schema — that join would have failed at runtime.  The source_ref NULL check
+    // is the correct and sufficient backfill predicate.
     let client = pool.get().await?;
     let rows = client
         .query(
             "SELECT id, tenant_id, user_id, agent_id, project_id, content, source_ref \
              FROM brassclaw_memory_chat_records \
              WHERE tenant_id = $1 \
-               AND (source_ref IS NULL \
-                    OR EXISTS ( \
-                        SELECT 1 FROM brassclaw_root_filesystem_index_specs ris \
-                        JOIN brassclaw_root_filesystem rf \
-                          ON rf.id = ris.entry_id \
-                        WHERE rf.path LIKE ('%' || id || '%') \
-                          AND ris.index_key = 'embedding' \
-                          AND ris.index_value IS NULL \
-                    )) \
+               AND source_ref IS NULL \
              ORDER BY created_at ASC \
              LIMIT $2",
             &[&tenant_id, &batch_size],
@@ -293,13 +300,36 @@ pub async fn run_backfill_embeddings(
 
     let mut result = BackfillResult::default();
     for row in rows {
-        let id: String = row.get(0);
-        let t_id: String = row.get(1);
-        let user_id: String = row.get(2);
-        let agent_id: Option<String> = row.get(3);
-        let project_id: Option<String> = row.get(4);
-        let content: String = row.get(5);
-        let source_ref_existing: Option<String> = row.get(6);
+        let map_col =
+            |e: tokio_postgres::Error| format!("column decode: {e}");
+        let id: String = match row.try_get("id").map_err(&map_col) {
+            Ok(v) => v,
+            Err(e) => { tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping"); result.failed += 1; continue; }
+        };
+        let t_id: String = match row.try_get("tenant_id").map_err(&map_col) {
+            Ok(v) => v,
+            Err(e) => { tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping"); result.failed += 1; continue; }
+        };
+        let user_id: String = match row.try_get("user_id").map_err(&map_col) {
+            Ok(v) => v,
+            Err(e) => { tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping"); result.failed += 1; continue; }
+        };
+        let agent_id: Option<String> = match row.try_get("agent_id").map_err(&map_col) {
+            Ok(v) => v,
+            Err(e) => { tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping"); result.failed += 1; continue; }
+        };
+        let project_id: Option<String> = match row.try_get("project_id").map_err(&map_col) {
+            Ok(v) => v,
+            Err(e) => { tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping"); result.failed += 1; continue; }
+        };
+        let content: String = match row.try_get("content").map_err(&map_col) {
+            Ok(v) => v,
+            Err(e) => { tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping"); result.failed += 1; continue; }
+        };
+        let source_ref_existing: Option<String> = match row.try_get("source_ref").map_err(&map_col) {
+            Ok(v) => v,
+            Err(e) => { tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping"); result.failed += 1; continue; }
+        };
 
         // Derive source_ref from chat_record_id.
         let source_ref = source_ref_existing
@@ -331,14 +361,22 @@ pub async fn run_backfill_embeddings(
             Ok(()) => {
                 // Update source_ref if it was NULL.
                 if source_ref_existing.is_none() {
-                    let c2 = pool.get().await?;
-                    c2.execute(
-                        "UPDATE brassclaw_memory_chat_records \
-                         SET source_ref = $1 WHERE id = $2 AND tenant_id = $3",
-                        &[&source_ref, &id, &t_id],
-                    )
-                    .await
-                    .unwrap_or_default();
+                    if let Ok(c2) = pool.get().await {
+                        if let Err(e) = c2
+                            .execute(
+                                "UPDATE brassclaw_memory_chat_records \
+                                 SET source_ref = $1 WHERE id = $2 AND tenant_id = $3",
+                                &[&source_ref, &id, &t_id],
+                            )
+                            .await
+                        {
+                            tracing::debug!(
+                                chat_record_id = %id,
+                                error = %e,
+                                "backfill-embeddings: source_ref update failed (best-effort)"
+                            );
+                        }
+                    }
                 }
                 result.indexed += 1;
             }

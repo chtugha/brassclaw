@@ -88,7 +88,7 @@ rustls = { version = "0.23", optional = true, default-features = false }
 rustls-native-certs = { version = "0.8", optional = true }
 webpki-roots = { version = "0.26", optional = true }
 
-# Database - libSQL/Turso (optional embedded database)
+# Database - libSQL/Turso (upgrade-release migration path only)
 libsql = { version = "0.6", optional = true, default-features = false, features = ["core", "replication", "remote", "tls"] }
 
 # Error handling
@@ -206,8 +206,10 @@ subtle = "2"  # Constant-time comparisons for token validation
 rig-core = { version = "0.30", default-features = false, features = ["reqwest-rustls"] }
 
 # AWS Bedrock: deps now live in `brassclaw_llm` (LLM provider) and
-# `brassclaw_embeddings` (Titan embeddings); the top-level `bedrock` feature
+# `brassclaw_reborn_composition`; the top-level `bedrock` feature
 # (below) re-exposes both via crate-feature forwarding.
+# Note: brassclaw_embeddings no longer carries concrete Bedrock impls (moved
+# to brassclaw_reborn_composition in S10 refactor).
 
 # Docker sandbox
 bollard = "0.18"
@@ -314,9 +316,10 @@ libsql = ["migrate-from-libsql"]
 # dedicated CI job instead of the default Rust test matrix.
 integration = []
 # Replay-gate snapshot tests run in a dedicated CI job.
-replay = []
+# Rebased onto the embedded Postgres test rig (§9.2 — Phase 6).
+replay = ["postgres"]
 html-to-markdown = ["dep:html-to-markdown-rs", "dep:readabilityrs"]
-bedrock = ["brassclaw_llm/bedrock", "brassclaw_embeddings/bedrock", "brassclaw_reborn_composition/bedrock"]
+bedrock = ["brassclaw_llm/bedrock", "brassclaw_reborn_composition/bedrock"]
 tui = ["dep:brassclaw_tui"]
 import = ["dep:json5"]
 # Conditional gate for memory-substrate regression tests that anticipate

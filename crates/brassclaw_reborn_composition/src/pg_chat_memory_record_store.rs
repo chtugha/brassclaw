@@ -143,11 +143,14 @@ impl PgChatMemoryRecordStore {
     }
 }
 
-/// Mint a new ULID-compatible unique identifier string.
+/// Mint a new ULID string.
+///
+/// ULIDs are 26-character Crockford base32 strings that sort lexicographically
+/// by creation time, making them suitable as primary keys in time-ordered
+/// tables.  The `chat_record_id` is used as the chunk subtree path
+/// `/memory/chat/<chat_record_id>` so time-sortability is important.
 fn ulid_str() -> String {
-    // Use UUID v4 as a ULID-compatible unique identifier to avoid
-    // pulling in a ulid crate dependency.
-    uuid::Uuid::new_v4().to_string().replace('-', "")
+    ulid::Ulid::new().to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -161,6 +164,8 @@ impl ChatMemoryWriterPort for PgChatMemoryRecordStore {
         scope: &MemoryDocumentScope,
         kind: &str,
         content: &str,
+        run_id: Option<&str>,
+        iteration: Option<u32>,
     ) -> Option<String> {
         let input = ChatMemoryRecordInput {
             tenant_id: scope.tenant_id().to_string(),
@@ -168,8 +173,8 @@ impl ChatMemoryWriterPort for PgChatMemoryRecordStore {
             project_id: scope.project_id().map(str::to_string),
             agent_id: scope.agent_id().map(str::to_string),
             session_thread_id: None,
-            run_id: None,
-            iteration: None,
+            run_id: run_id.map(str::to_string),
+            iteration,
             kind: kind.to_string(),
             content: content.to_string(),
             summary: None,

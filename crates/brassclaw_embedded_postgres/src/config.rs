@@ -1,7 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use thiserror::Error;
-
 /// Configuration for the embedded PostgreSQL instance.
 #[derive(Debug, Clone)]
 pub struct EmbeddedPostgresConfig {
@@ -26,13 +24,6 @@ pub struct EmbeddedPostgresConfig {
     /// Name of the Postgres superuser created during initdb.
     /// Default: `brassclaw`
     pub superuser: String,
-}
-
-/// Error returned when the embedded-Postgres port is already in use.
-#[derive(Debug, Error)]
-#[error("embedded PG port {port} in use — set BRASSCLAW_PG_URL or BRASSCLAW_EMBEDDED_PG_PORT")]
-pub struct PortInUse {
-    pub port: u16,
 }
 
 impl EmbeddedPostgresConfig {

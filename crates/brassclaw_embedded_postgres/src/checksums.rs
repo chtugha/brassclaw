@@ -33,12 +33,17 @@ impl Checksums {
                 Some("d6a3c1c5db8867dbcb9ebd1ecabd8e03e0ad4e1c49e4ea59cde1c18a7a17a0bc")
             }
             "darwin-aarch64" => {
-                // sha256 of postgresql-16.4.0-1-osx-binaries.zip (ARM64)
-                Some("e3f9e7a2b1c4d5f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2")
+                // TODO: populate with the real SHA-256 of postgresql-16.4.0-1-osx-binaries.zip
+                // (ARM64) before shipping macOS builds. Download from get.enterprisedb.com and
+                // run: shasum -a 256 postgresql-16.4.0-1-osx-binaries.zip
+                // Returning None causes build_pool to fail with UnsupportedPlatform rather than
+                // silently accepting or rejecting archives with a placeholder digest.
+                None
             }
             "darwin-x86_64" => {
-                // sha256 of postgresql-16.4.0-1-osx-binaries.zip (x86_64)
-                Some("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2")
+                // TODO: populate with the real SHA-256 of postgresql-16.4.0-1-osx-binaries.zip
+                // (x86_64) before shipping macOS builds. See darwin-aarch64 note above.
+                None
             }
             _ => None,
         }

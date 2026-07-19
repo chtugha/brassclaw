@@ -18,6 +18,16 @@ use crate::path::MemoryDocumentScope;
 pub trait ChatMemoryWriterPort: Send + Sync {
     /// Record a chat-memory entry and return the minted `chat_record_id`.
     ///
+    /// `run_id` is the agent-loop turn run identifier (from `TurnRunId`).
+    /// It is optional because the caller may not have the run ID in scope
+    /// (e.g. when called from the capability dispatch layer which only
+    /// carries an `invocation_id`).  When supplied, the row's `run_id` column
+    /// is populated so `link_chat_record` can correlate the memory record with
+    /// the forensic packet for the same run.
+    ///
+    /// `iteration` is the prompt-assembly iteration counter within the run.
+    /// Also optional for the same reasons.
+    ///
     /// Returns `None` when the write fails so callers can skip Path B
     /// source-ref linking without propagating the error.
     async fn write_chat_memory_record(
@@ -25,5 +35,7 @@ pub trait ChatMemoryWriterPort: Send + Sync {
         scope: &MemoryDocumentScope,
         kind: &str,
         content: &str,
+        run_id: Option<&str>,
+        iteration: Option<u32>,
     ) -> Option<String>;
 }

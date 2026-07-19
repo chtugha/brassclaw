@@ -179,13 +179,30 @@ async fn resolve_pg_install_dir(
     let mut pg = PostgreSQL::new(settings);
     pg.setup().await.map_err(|e| EmbeddedPostgresError::InitDb(e.to_string()))?;
 
-    // Verify the downloaded archive checksum (if the archive is still present).
-    // postgresql_embedded extracts the archive after download; the archive itself
-    // may not persist after extraction. Checksum verification is best-effort here:
-    // if the archive is gone (already extracted), we skip the check.
-    // In a production hardening pass, the pre-extraction hook should verify.
+    // The installation root is the directory postgresql_embedded extracted into.
+    // It is the same value we supplied as `installation_dir`.
+    let install_dir = config.bin_cache_dir.clone();
 
-    Ok(config.bin_cache_dir.clone())
+    // Verify the checksum of the downloaded archive if it is still present on
+    // disk. postgresql_embedded may remove the archive after extraction; when
+    // it is absent the check is skipped (best-effort). A missing archive on a
+    // cached installation is normal and not an error.
+    let archive_glob_base = install_dir.clone();
+    if let Ok(mut entries) = tokio::fs::read_dir(&archive_glob_base).await {
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let name = entry.file_name();
+            let s = name.to_string_lossy();
+            // Match the compressed archive before extraction (tar.gz or zip).
+            if (s.ends_with(".tar.gz") || s.ends_with(".zip"))
+                && s.contains("postgresql")
+            {
+                download::verify_archive(&entry.path())?;
+                break;
+            }
+        }
+    }
+
+    Ok(install_dir)
 }
 
 #[cfg(test)]

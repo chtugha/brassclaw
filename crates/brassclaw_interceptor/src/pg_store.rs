@@ -199,19 +199,26 @@ fn unpack_usage(usage: Option<KohaiUsage>) -> (Option<i32>, Option<i32>, Option<
 }
 
 fn row_to_packet(row: &tokio_postgres::Row) -> Result<ForensicPacket, InterceptorError> {
-    let status_str: String = row.get(3);
+    let map_col = |e: tokio_postgres::Error| InterceptorError::Internal { reason: e.to_string() };
+
+    let status_str: String = row.try_get("status").map_err(map_col)?;
     let status = parse_packet_status(&status_str)?;
-    let prompt_json: serde_json::Value = row.get(6);
+    let prompt_json: serde_json::Value = row.try_get("prompt").map_err(map_col)?;
     let prompt: CapturedPrompt = serde_json::from_value(prompt_json).map_err(map_json)?;
-    let sempai_review_json: Option<serde_json::Value> = row.get(12);
+    let sempai_review_json: Option<serde_json::Value> =
+        row.try_get("sempai_review").map_err(map_col)?;
     let sempai_review: Option<SempaiReviewOutcome> = sempai_review_json
         .map(serde_json::from_value)
         .transpose()
         .map_err(map_json)?;
-    let input_tokens: Option<i32> = row.get(8);
-    let output_tokens: Option<i32> = row.get(9);
-    let cache_read: Option<i32> = row.get(10);
-    let cache_create: Option<i32> = row.get(11);
+    let input_tokens: Option<i32> =
+        row.try_get("kohai_input_tokens").map_err(map_col)?;
+    let output_tokens: Option<i32> =
+        row.try_get("kohai_output_tokens").map_err(map_col)?;
+    let cache_read: Option<i32> =
+        row.try_get("kohai_cache_read_input_tokens").map_err(map_col)?;
+    let cache_create: Option<i32> =
+        row.try_get("kohai_cache_creation_input_tokens").map_err(map_col)?;
     let kohai_usage = match (input_tokens, output_tokens, cache_read, cache_create) {
         (Some(i), Some(o), Some(cr), Some(cc)) => Some(KohaiUsage {
             input_tokens: i as u32,
@@ -221,15 +228,16 @@ fn row_to_packet(row: &tokio_postgres::Row) -> Result<ForensicPacket, Intercepto
         }),
         _ => None,
     };
+    let iteration: i32 = row.try_get("iteration").map_err(map_col)?;
     Ok(ForensicPacket {
-        id: PacketId(row.get(0)),
+        id: PacketId(row.try_get("id").map_err(map_col)?),
         status,
-        run_id: row.get(1),
-        iteration: row.get::<_, i32>(2) as u32,
-        captured_at: row.get(4),
-        completed_at: row.get(5),
+        run_id: row.try_get("run_id").map_err(map_col)?,
+        iteration: iteration as u32,
+        captured_at: row.try_get("captured_at").map_err(map_col)?,
+        completed_at: row.try_get("completed_at").map_err(map_col)?,
         prompt,
-        kohai_response: row.get(7),
+        kohai_response: row.try_get("kohai_response").map_err(map_col)?,
         kohai_usage,
         sempai_review,
     })

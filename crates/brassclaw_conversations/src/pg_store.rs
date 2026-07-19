@@ -95,23 +95,18 @@ impl ConversationStateRepository for PgConversationStateStore {
         let new_revision = expected_revision + 1;
 
         if expected_revision == 0 {
-            // Initial insert with ON CONFLICT to handle concurrent bootstrap.
-            // The WHERE guard ensures only one revision=0 writer wins.
+            // Initial insert — use DO NOTHING so that exactly one concurrent
+            // bootstrapper wins.  If rows_affected = 0 a concurrent writer
+            // already inserted the row; the caller must reload and retry.
+            // (DO UPDATE would overwrite the concurrent winner's row, breaking
+            // the CAS guarantee required by §4.25.)
             let rows = client
                 .execute(
                     "INSERT INTO brassclaw_conversation_state \
                          (tenant_id, state_blob, revision) \
                          VALUES ($1, $2, $3) \
-                         ON CONFLICT (tenant_id) DO UPDATE \
-                         SET state_blob = EXCLUDED.state_blob, \
-                             revision   = EXCLUDED.revision \
-                         WHERE brassclaw_conversation_state.revision = $4",
-                    &[
-                        &self.tenant_id,
-                        &blob,
-                        &new_revision,
-                        &expected_revision,
-                    ],
+                         ON CONFLICT (tenant_id) DO NOTHING",
+                    &[&self.tenant_id, &blob, &new_revision],
                 )
                 .await
                 .map_err(|error| InboundTurnError::DurableState {

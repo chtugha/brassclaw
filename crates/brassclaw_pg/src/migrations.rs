@@ -282,10 +282,57 @@ mod tests {
             run_migrations(&pool).await.expect("second run (idempotent)");
         }
 
+        /// Verify that a DB that already has the hooks tables (created by the old
+        /// inline-DDL path in `brassclaw_hooks_pg`) does not cause refinery to
+        /// re-apply V017 and fail with "table already exists".
+        ///
+        /// Approach: create the hooks tables manually, then run migrations and
+        /// assert no error. The reconcile_history pre-seeding must insert a V017
+        /// history row so refinery skips the migration entirely.
         #[tokio::test]
         async fn pre_existing_hooks_tables_do_not_trip_refinery() {
-            // This test would need a DB pre-seeded with the hooks tables.
-            // In CI it is driven by the `seed-hooks-then-migrate` test helper.
+            let pg_url = std::env::var("TEST_PG_URL")
+                .unwrap_or_else(|_| "postgresql://brassclaw@127.0.0.1:5434/brassclaw_test_parity".to_string());
+            let pool = build_pool(&pg_url).expect("build pool");
+
+            // Pre-create the hooks tables exactly as brassclaw_hooks_pg would.
+            let client = pool.get().await.expect("get client");
+            client
+                .batch_execute(
+                    "CREATE TABLE IF NOT EXISTS hooks_predicate_invocations (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        tenant_id TEXT NOT NULL,
+                        hook_id TEXT NOT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                    );
+                    CREATE TABLE IF NOT EXISTS hooks_predicate_values (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        invocation_id TEXT NOT NULL,
+                        key TEXT NOT NULL,
+                        value TEXT NOT NULL
+                    );",
+                )
+                .await
+                .expect("seed hooks tables");
+            drop(client);
+
+            // Running migrations must not fail even though V017 tables already exist.
+            run_migrations(&pool).await.expect("migrations must not fail on pre-existing hooks tables");
+
+            // Verify V017 history row was inserted by reconcile_history (not by refinery runner).
+            let client = pool.get().await.expect("get client");
+            let row = client
+                .query_one(
+                    "SELECT checksum FROM refinery_schema_history WHERE version = 17",
+                    &[],
+                )
+                .await
+                .expect("V017 history row must exist");
+            let checksum: String = row.get(0);
+            assert_eq!(
+                checksum, "pre-seeded",
+                "V017 row must be pre-seeded (not applied by refinery runner)"
+            );
         }
     }
 }

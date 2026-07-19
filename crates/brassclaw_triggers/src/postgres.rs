@@ -19,7 +19,6 @@ const TRIGGER_COLUMNS: &str = "\
     name, source, schedule_expression, completion_policy, prompt, \
     state, next_run_at, last_run_at, last_fired_slot, last_status, \
     active_fire_slot, active_run_ref, created_at";
-const TRIGGER_MIGRATION_ADVISORY_LOCK: i64 = 717_263_529;
 
 /// PostgreSQL-backed [`TriggerRepository`] storing trigger records.
 pub struct PostgresTriggerRepository {
@@ -31,24 +30,16 @@ impl PostgresTriggerRepository {
         Self { pool }
     }
 
+    /// Run DDL migrations for the trigger table.
+    ///
+    /// # Deprecation
+    ///
+    /// Schema is now managed by `brassclaw_pg::run_migrations()` (V021).
+    /// This method is a no-op and will be removed once all call sites are
+    /// updated to call `brassclaw_pg::run_migrations()` during service startup.
+    #[deprecated(note = "DDL moved to brassclaw_pg V021; call brassclaw_pg::run_migrations() instead")]
     pub async fn run_migrations(&self) -> Result<(), TriggerError> {
-        let mut client = self.connect().await?;
-        let tx = client
-            .transaction()
-            .await
-            .map_err(|error| backend_error("begin trigger migration", error))?;
-        tx.execute(
-            "SELECT pg_advisory_xact_lock($1)",
-            &[&TRIGGER_MIGRATION_ADVISORY_LOCK],
-        )
-        .await
-        .map_err(|error| backend_error("acquire trigger migration advisory lock", error))?;
-        tx.batch_execute(POSTGRES_TRIGGER_SCHEMA)
-            .await
-            .map_err(|error| backend_error("run trigger migrations", error))?;
-        tx.commit()
-            .await
-            .map_err(|error| backend_error("commit trigger migration", error))
+        Ok(())
     }
 
     async fn connect(&self) -> Result<deadpool_postgres::Object, TriggerError> {
@@ -964,39 +955,3 @@ fn backend_error(operation: &str, error: impl std::fmt::Display) -> TriggerError
     }
 }
 
-const POSTGRES_TRIGGER_SCHEMA: &str = r#"
-CREATE TABLE IF NOT EXISTS brassclaw_triggers (
-    trigger_id TEXT NOT NULL,
-    tenant_id TEXT NOT NULL,
-    creator_user_id TEXT NOT NULL,
-    agent_id TEXT,
-    project_id TEXT,
-    name TEXT NOT NULL,
-    source TEXT NOT NULL,
-    schedule_expression TEXT NOT NULL,
-    completion_policy TEXT NOT NULL,
-    prompt TEXT NOT NULL,
-    state TEXT NOT NULL,
-    next_run_at TEXT NOT NULL,
-    last_run_at TEXT,
-    last_fired_slot TEXT,
-    last_status TEXT,
-    active_fire_slot TEXT,
-    active_run_ref TEXT,
-    created_at TEXT NOT NULL,
-    PRIMARY KEY (tenant_id, trigger_id)
-);
-
-CREATE INDEX IF NOT EXISTS brassclaw_triggers_state_next_run_at_idx
-    ON brassclaw_triggers (state, next_run_at, tenant_id, trigger_id);
-
-CREATE INDEX IF NOT EXISTS brassclaw_triggers_tenant_created_at_idx
-    ON brassclaw_triggers (tenant_id, created_at, trigger_id);
-
-CREATE INDEX IF NOT EXISTS brassclaw_triggers_scoped_list_idx
-    ON brassclaw_triggers (tenant_id, creator_user_id, agent_id, project_id, created_at, trigger_id);
-
-CREATE INDEX IF NOT EXISTS brassclaw_triggers_active_fire_slot_idx
-    ON brassclaw_triggers (active_fire_slot, tenant_id, trigger_id)
-    WHERE active_fire_slot IS NOT NULL;
-"#;

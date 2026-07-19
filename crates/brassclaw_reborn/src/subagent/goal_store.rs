@@ -280,14 +280,19 @@ impl SubagentGoalStore for PgSubagentGoalStore {
     ) -> Result<(), SubagentGoalStoreError> {
         Self::validate(&goal)?;
         let run_id_str = run_id.to_string();
-        let id = format!("{}:{}", scope.tenant_id.as_str(), run_id_str);
+        // Surrogate ULID primary key — unique per row, not derived from run_id.
+        let id = ulid::Ulid::new().to_string();
         let client = self.connect().await?;
-        client
+        // Conflict on the (tenant_id, run_id) unique constraint, not on the
+        // surrogate PK (id).  Return DuplicateKey when 0 rows are affected so
+        // the caller knows a goal for this run already exists.
+        let rows = client
             .execute(
                 "INSERT INTO brassclaw_subagent_goals \
                      (id, tenant_id, run_id, task, handoff) \
                      VALUES ($1, $2, $3, $4, $5) \
-                     ON CONFLICT (id) DO NOTHING",
+                     ON CONFLICT ON CONSTRAINT brassclaw_subagent_goals_tenant_run_unique \
+                     DO NOTHING",
                 &[
                     &id,
                     &scope.tenant_id.as_str(),
@@ -300,6 +305,9 @@ impl SubagentGoalStore for PgSubagentGoalStore {
             .map_err(|error| SubagentGoalStoreError::Backend {
                 reason: format!("pg subagent goal put: {error}"),
             })?;
+        if rows == 0 {
+            return Err(SubagentGoalStoreError::DuplicateKey { run_id });
+        }
         Ok(())
     }
 

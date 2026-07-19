@@ -1576,15 +1576,7 @@ name = "brassclaw_embeddings"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "aws-config",
- "aws-sdk-bedrockruntime",
- "aws-smithy-types",
- "brassclaw_llm",
  "lru 0.16.4",
- "reqwest 0.12.28",
- "secrecy",
- "serde",
- "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.18",
  "tokio",
@@ -2243,6 +2235,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-test",
+ "ulid",
  "wat",
 ]
 
@@ -2366,6 +2359,7 @@ dependencies = [
  "tower-http 0.6.11",
  "tracing",
  "tracing-test",
+ "ulid",
  "url",
  "uuid",
 ]

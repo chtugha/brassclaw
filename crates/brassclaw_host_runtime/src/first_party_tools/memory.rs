@@ -216,7 +216,14 @@ pub(super) async fn dispatch(
     let output = match request.capability_id.as_str() {
         MEMORY_SEARCH_CAPABILITY_ID => dispatch_search(&services, &request.input).await?,
         MEMORY_WRITE_CAPABILITY_ID => {
-            dispatch_write(&services, &request.input, services.chat_memory_writer.as_deref()).await?
+            let invocation_id = request.scope.invocation_id.to_string();
+            dispatch_write(
+                &services,
+                &request.input,
+                services.chat_memory_writer.as_deref(),
+                Some(invocation_id.as_str()),
+            )
+            .await?
         }
         MEMORY_READ_CAPABILITY_ID => dispatch_read(&services, &request.input).await?,
         MEMORY_TREE_CAPABILITY_ID => dispatch_tree(&services, &request.input).await?,
@@ -480,6 +487,10 @@ async fn dispatch_write(
     services: &MemoryServices,
     input: &Value,
     chat_memory_writer: Option<&dyn ChatMemoryWriterPort>,
+    // Best-effort run correlator — the invocation_id from the capability
+    // request scope.  Passed through to Path A so `link_chat_record` can
+    // join the memory row to its forensic packet.  `None` in test paths.
+    run_id: Option<&str>,
 ) -> Result<Value, FirstPartyCapabilityError> {
     let MemoryWriteCommand {
         resolved_path,
@@ -509,10 +520,9 @@ async fn dispatch_write(
             .await?;
             // Path A — best-effort chat-memory record.
             if let Some(writer) = chat_memory_writer {
-                // Reconstruct the final content from the result for record content.
-                // Use the new_string as the change summary; full content not available here.
+                // Use the new_string as the change content; full document not available here.
                 writer
-                    .write_chat_memory_record(&services.scope, "patch", &new_string)
+                    .write_chat_memory_record(&services.scope, "patch", &new_string, run_id, None)
                     .await;
             }
             Ok(result)
@@ -528,7 +538,7 @@ async fn dispatch_write(
             // Path A — best-effort chat-memory record.
             if let Some(writer) = chat_memory_writer {
                 writer
-                    .write_chat_memory_record(&services.scope, "append", &content)
+                    .write_chat_memory_record(&services.scope, "append", &content, run_id, None)
                     .await;
             }
             Ok(json!({
@@ -552,7 +562,7 @@ async fn dispatch_write(
             // Path A — best-effort chat-memory record.
             if let Some(writer) = chat_memory_writer {
                 writer
-                    .write_chat_memory_record(&services.scope, "replace", &content)
+                    .write_chat_memory_record(&services.scope, "replace", &content, run_id, None)
                     .await;
             }
             Ok(json!({

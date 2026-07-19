@@ -25,7 +25,7 @@ BEGIN
     END IF;
 END $$;
 
--- All columns match POSTGRES_TRIGGER_SCHEMA in postgres.rs exactly.
+-- All columns match the TRIGGER_COLUMNS constant in postgres.rs exactly.
 -- Date columns are TEXT (RFC-3339 formatted) — do NOT change to TIMESTAMPTZ;
 -- PostgresTriggerRepository uses fmt_ts() string round-trips.
 CREATE TABLE IF NOT EXISTS brassclaw_triggers (
@@ -60,11 +60,18 @@ CREATE INDEX IF NOT EXISTS brassclaw_triggers_active_fire_slot_idx
     ON brassclaw_triggers (active_fire_slot, tenant_id, trigger_id)
     WHERE active_fire_slot IS NOT NULL;
 
--- Add updated_at column + trigger (not in original POSTGRES_TRIGGER_SCHEMA).
+-- Add updated_at column + trigger (not in original schema bootstrap).
 DO $$
 BEGIN
+    -- Scope the trigger lookup to the brassclaw_triggers table by OID to avoid
+    -- matching a same-named trigger on a different table in a multi-schema DB.
     IF NOT EXISTS (
-        SELECT 1 FROM pg_trigger WHERE tgname = 'brassclaw_triggers_updated_at'
+        SELECT 1 FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE t.tgname = 'brassclaw_triggers_updated_at'
+          AND c.relname = 'brassclaw_triggers'
+          AND n.nspname = current_schema()
     ) THEN
         IF NOT EXISTS (
             SELECT 1 FROM information_schema.columns

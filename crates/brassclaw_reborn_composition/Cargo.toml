@@ -33,7 +33,6 @@ postgres = [
     "brassclaw_reborn_event_store/postgres",
     "brassclaw_resources/postgres",
     "brassclaw_run_state/postgres",
-    "brassclaw_triggers/postgres",
 ]
 [dependencies]
 brassclaw_pg = { path = "../brassclaw_pg" }
@@ -113,6 +112,7 @@ tokio-util = { version = "0.7", features = ["rt"] }
 toml = "0.8"
 tracing = "0.1"
 url = "2"
+ulid = "1"
 uuid = { version = "1", features = ["v4", "v5"] }
 
 aws-config             = { version = "1", features = ["behavior-version-latest"], optional = true }

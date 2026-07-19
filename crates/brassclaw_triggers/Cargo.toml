@@ -8,8 +8,6 @@ publish = false
 
 [features]
 default = []
-# postgres feature kept for compatibility but deps are now unconditional
-postgres = []
 
 [dependencies]
 async-trait = "0.1"

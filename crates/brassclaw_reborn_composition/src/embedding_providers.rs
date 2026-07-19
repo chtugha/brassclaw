@@ -23,7 +23,7 @@
 //! Concrete provider structs are crate-private; downstream code holds
 //! `Arc<dyn brassclaw_embeddings::EmbeddingProvider>` only.
 
-#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+#[cfg(feature = "root-llm-provider")]
 use std::sync::Arc;
 
 pub(crate) use brassclaw_embeddings::default_dimension_for_model;
