@@ -26,7 +26,7 @@
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 use std::sync::Arc;
 
-pub use brassclaw_embeddings::default_dimension_for_model;
+pub(crate) use brassclaw_embeddings::default_dimension_for_model;
 use secrecy::{ExposeSecret, SecretString};
 
 // ---------------------------------------------------------------------------
@@ -56,6 +56,7 @@ pub(crate) struct EmbeddingsConfig {
     /// Base URL for the NEAR AI embeddings endpoint.
     pub nearai_base_url: String,
     /// Maximum entries in the embedding LRU cache (default 10,000).
+    #[allow(dead_code)]
     pub cache_size: usize,
 }
 
@@ -142,12 +143,27 @@ pub(crate) async fn create_provider(
                 .with_model(&config.model, config.dimension)) as Arc<dyn brassclaw_embeddings::EmbeddingProvider>)
         }
         "bedrock" => {
-            let Some(_setup) = deps.bedrock_setup.as_ref() else {
-                tracing::debug!("embeddings configured for Bedrock but no Bedrock setup available");
-                return None;
-            };
-            tracing::debug!("bedrock embedding provider not enabled in this build");
-            None
+            #[cfg(feature = "bedrock")]
+            {
+                let Some(setup) = deps.bedrock_setup.as_ref() else {
+                    tracing::debug!("embeddings configured for Bedrock but no Bedrock setup available");
+                    return None;
+                };
+                tracing::debug!(model = %config.model, region = %setup.region, dim = %config.dimension, "embeddings via Bedrock");
+                match BedrockEmbeddings::new(setup, &config.model, config.dimension).await {
+                    Ok(provider) => Some(Arc::new(provider) as Arc<dyn brassclaw_embeddings::EmbeddingProvider>),
+                    Err(e) => {
+                        tracing::debug!(error = %e, "failed to initialise Bedrock embeddings provider");
+                        None
+                    }
+                }
+            }
+            #[cfg(not(feature = "bedrock"))]
+            {
+                let _ = deps.bedrock_setup;
+                tracing::debug!("embeddings configured for Bedrock but the `bedrock` feature is disabled");
+                None
+            }
         }
         "ollama" => {
             if let Err(e) = check_base_url(&config.ollama_base_url, "ollama_base_url") {
@@ -457,5 +473,142 @@ impl EmbeddingProvider for OllamaEmbeddings {
             }
         }
         Ok(result.embeddings)
+    }
+}
+
+// ── AWS Bedrock (Titan Text Embeddings V2) ────────────────────────────────
+
+#[cfg(feature = "bedrock")]
+struct BedrockEmbeddings {
+    client: aws_sdk_bedrockruntime::Client,
+    model: String,
+    dimension: usize,
+}
+
+#[cfg(feature = "bedrock")]
+impl BedrockEmbeddings {
+    async fn new(
+        setup: &BedrockEmbeddingSetup,
+        model: impl Into<String>,
+        dimension: usize,
+    ) -> Result<Self, EmbeddingError> {
+        let mut builder = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(aws_config::Region::new(setup.region.clone()));
+        if let Some(ref profile) = setup.profile {
+            builder = builder.profile_name(profile);
+        }
+        let sdk_config = builder.load().await;
+        Ok(Self {
+            client: aws_sdk_bedrockruntime::Client::new(&sdk_config),
+            model: model.into(),
+            dimension,
+        })
+    }
+}
+
+#[cfg(feature = "bedrock")]
+#[derive(Debug, Serialize)]
+struct BedrockTitanEmbeddingRequest<'a> {
+    #[serde(rename = "inputText")]
+    input_text: &'a str,
+    dimensions: usize,
+    normalize: bool,
+}
+
+#[cfg(feature = "bedrock")]
+#[derive(Debug, Deserialize)]
+struct BedrockTitanEmbeddingResponse {
+    embedding: Vec<f32>,
+}
+
+#[cfg(feature = "bedrock")]
+fn map_bedrock_error<R: std::fmt::Debug>(
+    error: &aws_sdk_bedrockruntime::error::SdkError<
+        aws_sdk_bedrockruntime::operation::invoke_model::InvokeModelError,
+        R,
+    >,
+) -> EmbeddingError {
+    use aws_sdk_bedrockruntime::error::SdkError;
+    use aws_sdk_bedrockruntime::operation::invoke_model::InvokeModelError;
+    match error {
+        SdkError::ServiceError(svc) => match svc.err() {
+            InvokeModelError::ThrottlingException(_) => {
+                EmbeddingError::RateLimited { retry_after: None }
+            }
+            InvokeModelError::AccessDeniedException(_) => EmbeddingError::AuthFailed,
+            InvokeModelError::ValidationException(e) => EmbeddingError::InvalidResponse(
+                format!("Bedrock validation error: {}", e.message().unwrap_or("unknown")),
+            ),
+            InvokeModelError::ModelNotReadyException(e) => EmbeddingError::HttpError(format!(
+                "Bedrock model not ready: {}",
+                e.message().unwrap_or("unknown")
+            )),
+            other => EmbeddingError::HttpError(format!("Bedrock service error: {other:?}")),
+        },
+        SdkError::TimeoutError(_) => {
+            EmbeddingError::HttpError("Bedrock request timed out".to_string())
+        }
+        other => EmbeddingError::HttpError(format!("Bedrock request failed: {other:?}")),
+    }
+}
+
+#[cfg(feature = "bedrock")]
+#[async_trait]
+impl EmbeddingProvider for BedrockEmbeddings {
+    fn dimension(&self) -> usize {
+        self.dimension
+    }
+
+    fn model_name(&self) -> &str {
+        &self.model
+    }
+
+    fn max_input_length(&self) -> usize {
+        32_000
+    }
+
+    async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
+        if text.len() > self.max_input_length() {
+            return Err(EmbeddingError::TextTooLong {
+                length: text.len(),
+                max: self.max_input_length(),
+            });
+        }
+
+        let request = BedrockTitanEmbeddingRequest {
+            input_text: text,
+            dimensions: self.dimension,
+            normalize: true,
+        };
+
+        let body = serde_json::to_vec(&request).map_err(|e| {
+            EmbeddingError::InvalidResponse(format!("failed to serialize request: {e}"))
+        })?;
+
+        let response = self
+            .client
+            .invoke_model()
+            .model_id(&self.model)
+            .content_type("application/json")
+            .accept("application/json")
+            .body(aws_smithy_types::Blob::new(body))
+            .send()
+            .await
+            .map_err(|e| map_bedrock_error(&e))?;
+
+        let result: BedrockTitanEmbeddingResponse =
+            serde_json::from_slice(response.body.as_ref()).map_err(|e| {
+                EmbeddingError::InvalidResponse(format!("failed to parse response: {e}"))
+            })?;
+
+        if result.embedding.len() != self.dimension {
+            return Err(EmbeddingError::InvalidResponse(format!(
+                "Bedrock returned embedding of dimension {}, expected {}",
+                result.embedding.len(),
+                self.dimension,
+            )));
+        }
+
+        Ok(result.embedding)
     }
 }

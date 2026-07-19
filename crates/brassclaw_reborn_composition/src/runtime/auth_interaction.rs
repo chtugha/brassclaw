@@ -57,17 +57,7 @@ impl LocalDevAuthInteractionReadModel {
     }
 
     async fn snapshot(&self) -> Result<TurnPersistenceSnapshot, ProductWorkflowError> {
-        #[cfg(feature = "libsql")]
-        {
-            self.turn_state
-                .persistence_snapshot()
-                .await
-                .map_err(|_| auth_read_model_unavailable())
-        }
-        #[cfg(not(feature = "libsql"))]
-        {
-            Ok(self.turn_state.persistence_snapshot())
-        }
+        Ok(self.turn_state.persistence_snapshot())
     }
 
     async fn blocked_auth_runs(

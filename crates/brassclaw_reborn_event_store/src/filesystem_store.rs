@@ -45,7 +45,17 @@ use brassclaw_events::{
 use brassclaw_filesystem::{FilesystemError, RootFilesystem, ScopedFilesystem, SeqNo};
 use brassclaw_host_api::{AuditEnvelope, ResourceScope, ScopedPath};
 
-use crate::{StreamKind, durable_error};
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum StreamKind {
+    Runtime,
+    Audit,
+}
+
+fn durable_error(reason: impl Into<String>) -> EventError {
+    EventError::DurableLog {
+        reason: reason.into(),
+    }
+}
 
 /// Filesystem-backed durable runtime event log.
 pub struct FilesystemDurableEventLog<F>

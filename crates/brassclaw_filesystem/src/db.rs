@@ -73,7 +73,7 @@ pub(crate) fn direct_children(
     Ok(entries.into_values().collect())
 }
 
-#[cfg(any(feature = "postgres", feature = "libsql"))]
+#[cfg(feature = "postgres")]
 pub(crate) fn child_path_like_pattern(path: &VirtualPath) -> String {
     let mut pattern = String::new();
     for character in path.as_str().trim_end_matches('/').chars() {
@@ -89,12 +89,12 @@ pub(crate) fn child_path_like_pattern(path: &VirtualPath) -> String {
     pattern
 }
 
-#[cfg(any(feature = "postgres", feature = "libsql"))]
+#[cfg(feature = "postgres")]
 pub(crate) fn not_found(path: VirtualPath, operation: FilesystemOperation) -> FilesystemError {
     FilesystemError::NotFound { path, operation }
 }
 
-#[cfg(any(feature = "postgres", feature = "libsql"))]
+#[cfg(feature = "postgres")]
 pub(crate) fn is_not_found<T>(result: &Result<T, FilesystemError>) -> bool {
     matches!(result, Err(FilesystemError::NotFound { .. }))
 }
@@ -112,7 +112,7 @@ pub(crate) fn db_error(
     }
 }
 
-#[cfg(any(feature = "postgres", feature = "libsql"))]
+#[cfg(feature = "postgres")]
 pub(crate) fn system_time_from_unix_seconds(seconds: i64) -> Option<SystemTime> {
     if seconds < 0 {
         return None;
@@ -128,7 +128,7 @@ pub(crate) fn system_time_from_unix_seconds(seconds: i64) -> Option<SystemTime> 
 /// placeholder masked which subsystem actually failed, so a real failure
 /// reported a fictional path. Backends now use this helper instead, and
 /// the variant explicitly omits `path`.
-#[cfg(any(feature = "postgres", feature = "libsql"))]
+#[cfg(feature = "postgres")]
 pub(crate) fn infrastructure_error(
     operation: FilesystemOperation,
     reason: impl Into<String>,
@@ -152,7 +152,7 @@ pub(crate) fn infrastructure_pg_error(
 /// so the only non-identifier characters we strip are the prefix's slashes.
 /// Length capped at 62 to fit Postgres' 63-char identifier cap so libsql
 /// and postgres share one naming convention.
-#[cfg(any(feature = "postgres", feature = "libsql"))]
+#[cfg(feature = "postgres")]
 pub(crate) fn sql_index_name(prefix: &str, name: &str) -> String {
     let prefix_clean: String = prefix
         .trim_matches('/')
@@ -188,7 +188,7 @@ pub(crate) fn sql_index_name(prefix: &str, name: &str) -> String {
 /// Reviewer note (PR #3661): this is **NOT** suitable for user-supplied
 /// LIKE input — use [`escape_like_literal`] instead, which escapes every
 /// special character including a trailing `%`.
-#[cfg(any(feature = "postgres", feature = "libsql"))]
+#[cfg(feature = "postgres")]
 pub(crate) fn escape_like_with_trailing_wildcard(pattern: &str) -> String {
     let mut out = String::with_capacity(pattern.len());
     let mut chars = pattern.chars().peekable();
@@ -206,7 +206,7 @@ pub(crate) fn escape_like_with_trailing_wildcard(pattern: &str) -> String {
 /// Fully-literal LIKE escape for user-supplied values. PR #3661 reviewer
 /// fix: a literal prefix like `tenant:%` must not become a wildcard at
 /// query time, so every `%`, `_`, and `!` is escaped.
-#[cfg(any(feature = "postgres", feature = "libsql"))]
+#[cfg(feature = "postgres")]
 pub(crate) fn escape_like_literal(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for c in value.chars() {
@@ -226,7 +226,7 @@ pub(crate) fn escape_like_literal(value: &str) -> String {
 /// which silently masked a corrupt negative version to `0` — indistinguishable
 /// from a legitimately fresh row. This helper surfaces the corruption as
 /// [`FilesystemError::CorruptRecordVersion`] so the operator sees it.
-#[cfg(any(feature = "postgres", feature = "libsql"))]
+#[cfg(feature = "postgres")]
 pub(crate) fn record_version_from_i64(
     path: &VirtualPath,
     raw: i64,
@@ -246,7 +246,7 @@ pub(crate) fn record_version_from_i64(
 /// `WHERE version = ?` clause would never match. Surface
 /// `CorruptRecordVersion` instead of letting the write silently
 /// VersionMismatch.
-#[cfg(any(feature = "postgres", feature = "libsql"))]
+#[cfg(feature = "postgres")]
 pub(crate) fn record_version_to_i64(
     path: &VirtualPath,
     version: crate::RecordVersion,
@@ -263,7 +263,7 @@ pub(crate) fn record_version_to_i64(
 /// rejects with a cryptic backend error and Postgres rejects loudly but
 /// without naming what overflowed. Surface a typed `Backend` error
 /// naming the operation and value instead.
-#[cfg(any(feature = "postgres", feature = "libsql"))]
+#[cfg(feature = "postgres")]
 pub(crate) fn page_offset_to_i64(path: &VirtualPath, offset: u64) -> Result<i64, FilesystemError> {
     i64::try_from(offset).map_err(|_| FilesystemError::Backend {
         path: path.clone(),

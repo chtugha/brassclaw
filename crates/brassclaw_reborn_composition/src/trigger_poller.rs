@@ -235,35 +235,12 @@ impl<S> LocalTriggerTurnSnapshotSource<S> {
     }
 }
 
-#[cfg(feature = "libsql")]
-#[async_trait]
-impl<F> TriggerTurnSnapshotSource
-    for LocalTriggerTurnSnapshotSource<brassclaw_turns::FilesystemTurnStateStore<F>>
-where
-    F: brassclaw_filesystem::RootFilesystem + Send + Sync + 'static,
-{
-    async fn snapshot(&self) -> Result<TurnPersistenceSnapshot, TriggerError> {
-        self.store
-            .persistence_snapshot()
-            .await
-            .map_err(trigger_backend_error)
-    }
-}
-
-#[cfg(not(feature = "libsql"))]
 #[async_trait]
 impl TriggerTurnSnapshotSource
     for LocalTriggerTurnSnapshotSource<brassclaw_turns::InMemoryTurnStateStore>
 {
     async fn snapshot(&self) -> Result<TurnPersistenceSnapshot, TriggerError> {
         Ok(self.store.persistence_snapshot())
-    }
-}
-
-#[cfg(feature = "libsql")]
-fn trigger_backend_error(error: impl std::fmt::Display) -> TriggerError {
-    TriggerError::Backend {
-        reason: error.to_string(),
     }
 }
 

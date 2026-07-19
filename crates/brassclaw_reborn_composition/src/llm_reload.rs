@@ -38,13 +38,6 @@ impl RebornLlmReloadAdapter {
         }
     }
 
-    /// Attach a callback that fires after a successful provider reload.
-    /// The callback receives the new active provider ID and can update
-    /// live budget slots, context-window overrides, etc.
-    pub(crate) fn with_on_provider_changed(mut self, f: ProviderChangedCallback) -> Self {
-        self.on_provider_changed = Some(f);
-        self
-    }
 }
 
 #[async_trait]

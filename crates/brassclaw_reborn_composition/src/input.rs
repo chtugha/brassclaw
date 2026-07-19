@@ -260,28 +260,6 @@ impl RebornBuildInput {
         })
     }
 
-    #[cfg(feature = "libsql")]
-    pub fn libsql(
-        profile: RebornCompositionProfile,
-        owner_id: impl Into<String>,
-        db: Arc<libsql::Database>,
-        path_or_url: impl Into<String>,
-        auth_token: Option<brassclaw_secrets::SecretMaterial>,
-        secret_master_key: brassclaw_secrets::SecretMaterial,
-    ) -> Self {
-        Self::new(
-            profile,
-            owner_id,
-            RebornStorageInput::Libsql {
-                db,
-                path_or_url: path_or_url.into(),
-                auth_token,
-                secret_master_key: Some(secret_master_key),
-            },
-        )
-    }
-
-
     #[cfg(feature = "postgres")]
     pub fn postgres(
         profile: RebornCompositionProfile,

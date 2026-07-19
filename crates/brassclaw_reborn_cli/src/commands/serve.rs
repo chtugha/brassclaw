@@ -341,7 +341,7 @@ impl ServeCommand {
             // runs on a 24 h cadence, so aborting it on graceful shutdown is
             // safe.  Only runs on the production Postgres path; local-dev
             // without embedded PG has no pool to sweep.
-            if let Some(pg_pool) = runtime.services().pg_pool.as_ref() {
+            if let Some(pg_pool) = runtime.services().pg_pool() {
                 brassclaw_reborn_composition::retention_sweep::spawn_retention_sweep(
                     std::sync::Arc::clone(pg_pool),
                 );

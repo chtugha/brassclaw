@@ -62,9 +62,6 @@ use brassclaw_reborn::runtime::{
     DefaultPlannedRuntimeBuildError, DefaultPlannedRuntimeConfig, DefaultPlannedRuntimeParts,
     build_default_planned_runtime,
 };
-#[cfg(any(feature = "libsql", feature = "postgres"))]
-use brassclaw_reborn::subagent::goal_store::FilesystemSubagentGoalStore;
-#[cfg(not(any(feature = "libsql", feature = "postgres")))]
 use brassclaw_reborn::subagent::goal_store::InMemoryBoundedSubagentGoalStore;
 use brassclaw_reborn::subagent::{
     flavors::StaticSubagentDefinitionResolver, gate_resolution::BoundedSubagentGateResolutionStore,
@@ -248,20 +245,6 @@ pub struct RebornRuntime {
     /// Hot-swap handle for the live LLM provider, when one was wired at boot.
     #[cfg(feature = "root-llm-provider")]
     llm_reload: Option<RebornLlmReloadParts>,
-    /// Live conversation-history token budget shared with the baked-in
-    /// `DefaultContextStrategy`. Updating this slot takes effect on the next
-    /// turn without a restart or a registry rebuild.
-    /// Present whenever a per-provider token budget was resolved at startup.
-    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-    live_context_budget: Option<brassclaw_agent_loop::LiveTokenBudget>,
-    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-    live_max_output: Option<brassclaw_agent_loop::LiveTokenBudget>,
-    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-    live_total_input: Option<brassclaw_agent_loop::LiveTokenBudget>,
-    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-    live_inline_control: Option<brassclaw_agent_loop::LiveTokenBudget>,
-    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-    live_context_window: Option<brassclaw_agent_loop::LiveTokenBudget>,
 }
 
 pub(crate) type LocalDevSelectableSkillContextSource =
@@ -430,14 +413,6 @@ impl LocalDevApprovalTurnRunLocator {
     async fn snapshot(
         &self,
     ) -> Result<TurnPersistenceSnapshot, brassclaw_product_workflow::ProductWorkflowError> {
-        #[cfg(feature = "libsql")]
-        {
-            self.turn_state
-                .persistence_snapshot()
-                .await
-                .map_err(|_| approval_turn_locator_unavailable())
-        }
-        #[cfg(not(feature = "libsql"))]
         {
             Ok(self.turn_state.persistence_snapshot())
         }
@@ -545,13 +520,6 @@ fn snapshot_run_actor_matches(
         .any(|turn| turn.turn_id == run.turn_id && turn.scope == run.scope && turn.actor == *actor)
 }
 
-#[cfg(feature = "libsql")]
-fn approval_turn_locator_unavailable() -> brassclaw_product_workflow::ProductWorkflowError {
-    brassclaw_product_workflow::ProductWorkflowError::Transient {
-        reason: "approval turn-run locator unavailable".to_string(),
-    }
-}
-
 impl RebornRuntime {
     /// Snapshot of the substrate facades produced by `build_reborn_services`.
     /// Exposed for diagnostics / readiness reporting; **not** for traffic.
@@ -600,39 +568,6 @@ impl RebornRuntime {
         Some(crate::nearai_login_serve::nearai_login_callback_mount(
             session, reload, boot, states,
         ))
-    }
-
-    /// Live conversation-history token budget slot. Calling `.set()` on the
-    /// returned clone takes effect on the very next turn — no restart needed.
-    /// `None` when the feature gates are not active or no budget was wired.
-    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-    pub(crate) fn live_context_budget(&self) -> Option<brassclaw_agent_loop::LiveTokenBudget> {
-        self.live_context_budget.clone()
-    }
-
-    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-    pub(crate) fn live_max_output(&self) -> Option<brassclaw_agent_loop::LiveTokenBudget> {
-        self.live_max_output.clone()
-    }
-
-    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-    pub(crate) fn live_total_input(&self) -> Option<brassclaw_agent_loop::LiveTokenBudget> {
-        self.live_total_input.clone()
-    }
-
-    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-    pub(crate) fn live_inline_control(&self) -> Option<brassclaw_agent_loop::LiveTokenBudget> {
-        self.live_inline_control.clone()
-    }
-
-    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-    pub(crate) fn live_context_window(&self) -> Option<brassclaw_agent_loop::LiveTokenBudget> {
-        self.live_context_window.clone()
-    }
-
-    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-    pub(crate) fn actor_user_id_string(&self) -> String {
-        self.actor_user_id.as_str().to_string()
     }
 
     /// Live LLM-provider reload trigger for the settings service. Returns the
@@ -1598,39 +1533,9 @@ pub async fn build_reborn_runtime(
     let loop_checkpoint_store = Arc::clone(&local_runtime.loop_checkpoint_store);
     let thread_service = Arc::clone(&local_runtime.thread_service);
 
-    // Override token budgets with per-provider DB values when they exist.
-    // Runs once at startup — O(1) DB read, no per-turn cost.
-    // Per-provider DB wins over file-config for every field that has a runtime slot.
-    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-    let (
-        conversation_context_tokens,
-        skill_context_tokens,
-        identity_token_ceiling,
-        capability_surface_tokens,
-        resolved_max_output_tokens,
-        resolved_inline_control_tokens,
-        resolved_total_input_tokens,
-        resolved_cache_retention,
-    ) = {
-        let provider_id = llm.as_ref().map(|l| l.provider_id().to_string());
-        resolve_active_provider_token_budgets(
-            &local_runtime.token_settings_store,
-            provider_id.as_deref(),
-            &owner_id,
-            conversation_context_tokens,
-            skill_context_tokens,
-            identity_token_ceiling,
-            capability_surface_tokens,
-        )
-        .await
-    };
-    #[cfg(not(all(feature = "libsql", feature = "root-llm-provider")))]
     let resolved_max_output_tokens: Option<u32> = None;
-    #[cfg(not(all(feature = "libsql", feature = "root-llm-provider")))]
     let resolved_inline_control_tokens: Option<usize> = None;
-    #[cfg(not(all(feature = "libsql", feature = "root-llm-provider")))]
     let resolved_total_input_tokens: Option<usize> = None;
-    #[cfg(not(all(feature = "libsql", feature = "root-llm-provider")))]
     #[allow(unused_variables)]
     let resolved_cache_retention: Option<String> = None;
 
@@ -1683,38 +1588,19 @@ pub async fn build_reborn_runtime(
     #[allow(unused_variables)]
     let resolved_cache_retention_final: Option<String> = None;
 
-    #[cfg_attr(
-        not(all(feature = "libsql", feature = "root-llm-provider")),
-        allow(unused_variables)
-    )]
+    #[allow(unused_variables)]
     let live_context_budget: Option<brassclaw_agent_loop::LiveTokenBudget> =
         conversation_context_tokens.map(|n| brassclaw_agent_loop::LiveTokenBudget::new(Some(n)));
-
-    #[cfg_attr(
-        not(all(feature = "libsql", feature = "root-llm-provider")),
-        allow(unused_variables)
-    )]
+    #[allow(unused_variables)]
     let live_max_output: Option<brassclaw_agent_loop::LiveTokenBudget> = resolved_max_output_tokens
         .map(|n| brassclaw_agent_loop::LiveTokenBudget::new(Some(n as usize)));
-
-    #[cfg_attr(
-        not(all(feature = "libsql", feature = "root-llm-provider")),
-        allow(unused_variables)
-    )]
+    #[allow(unused_variables)]
     let live_total_input: Option<brassclaw_agent_loop::LiveTokenBudget> =
         resolved_total_input_tokens.map(|n| brassclaw_agent_loop::LiveTokenBudget::new(Some(n)));
-
-    #[cfg_attr(
-        not(all(feature = "libsql", feature = "root-llm-provider")),
-        allow(unused_variables)
-    )]
+    #[allow(unused_variables)]
     let live_inline_control: Option<brassclaw_agent_loop::LiveTokenBudget> =
         resolved_inline_control_tokens.map(|n| brassclaw_agent_loop::LiveTokenBudget::new(Some(n)));
-
-    #[cfg_attr(
-        not(all(feature = "libsql", feature = "root-llm-provider")),
-        allow(unused_variables)
-    )]
+    #[allow(unused_variables)]
     let live_context_window: Option<brassclaw_agent_loop::LiveTokenBudget> =
         resolved_context_window_tokens
             .map(|n| brassclaw_agent_loop::LiveTokenBudget::new(Some(n as usize)));
@@ -1908,11 +1794,6 @@ pub async fn build_reborn_runtime(
     let durable_milestone_sink: Arc<dyn LoopHostMilestoneSink> = Arc::new(
         DurableLoopHostMilestoneSink::new(Arc::clone(&event_log), milestone_scope),
     );
-    #[cfg(any(feature = "libsql", feature = "postgres"))]
-    let subagent_goal_store = Arc::new(FilesystemSubagentGoalStore::new(Arc::clone(
-        &local_runtime.subagent_goal_filesystem,
-    )));
-    #[cfg(not(any(feature = "libsql", feature = "postgres")))]
     let subagent_goal_store = Arc::new(InMemoryBoundedSubagentGoalStore::new());
     if trusted_laptop_access {
         append_trusted_laptop_access_audit(&audit_log, &thread_scope, &actor_user_id).await?;
@@ -2022,14 +1903,8 @@ pub async fn build_reborn_runtime(
         })?
     };
 
-    #[cfg(feature = "libsql")]
-    let recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>> = {
-        let store = Arc::clone(&local_runtime.memory_doc_store)
-            as Arc<dyn brassclaw_engine::traits::store::Store>;
-        Some(Arc::new(crate::recipe_library::RecipeLibrary::new(store)))
-    };
-    // Postgres production path: use PgMemoryDocStore when the pool is wired.
-    #[cfg(all(not(feature = "libsql"), feature = "postgres"))]
+    // Use PgMemoryDocStore when the pool is wired; otherwise no recipe lookup.
+    #[cfg(feature = "postgres")]
     let recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>> =
         services.pg_memory_doc_store.as_ref().map(|store| {
             let dyn_store: Arc<dyn brassclaw_engine::traits::store::Store> =
@@ -2037,7 +1912,7 @@ pub async fn build_reborn_runtime(
             Arc::new(crate::recipe_library::RecipeLibrary::new(dyn_store))
                 as Arc<dyn brassclaw_turns::run_profile::RecipeLookup>
         });
-    #[cfg(not(any(feature = "libsql", feature = "postgres")))]
+    #[cfg(not(feature = "postgres"))]
     let recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>> = None;
 
     let composition = build_default_planned_runtime(DefaultPlannedRuntimeParts {
@@ -2318,16 +2193,6 @@ pub async fn build_reborn_runtime(
         boot,
         #[cfg(feature = "root-llm-provider")]
         llm_reload,
-        #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-        live_context_budget,
-        #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-        live_max_output,
-        #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-        live_total_input,
-        #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-        live_inline_control,
-        #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-        live_context_window,
     })
 }
 
@@ -2777,84 +2642,6 @@ fn build_stub_gateway() -> Arc<dyn brassclaw_loop_support::HostManagedModelGatew
     }
 
     Arc::new(StubGateway)
-}
-
-/// Resolve the active provider's per-provider token budgets from the DB.
-/// Falls back to the file-config value for each field if no per-provider row
-/// exists or if the DB field is `None`.
-///
-/// Returns an 8-tuple:
-///   (conversation, skills, identity, capability_surface, max_output,
-///    inline_control, total_input, cache_retention)
-///
-/// `max_output` is returned as `Option<u32>` because it is forwarded directly
-/// to `CompletionRequest.max_tokens` which expects `u32`.
-///
-/// Only available when both libsql and root-llm-provider features are on.
-#[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-#[allow(clippy::type_complexity)]
-async fn resolve_active_provider_token_budgets(
-    store: &crate::token_settings_store::DbTokenSettingsStore,
-    provider_id: Option<&str>,
-    user_id: &str,
-    file_conversation: Option<usize>,
-    file_skills: Option<usize>,
-    file_identity: Option<usize>,
-    file_capability_surface: Option<usize>,
-) -> (
-    Option<usize>,
-    Option<usize>,
-    Option<usize>,
-    Option<usize>,
-    Option<u32>,
-    Option<usize>,
-    Option<usize>,
-    Option<String>,
-) {
-    use brassclaw_product_workflow::TokenSettingsStore as _;
-    let Some(provider_id) = provider_id else {
-        return (
-            file_conversation,
-            file_skills,
-            file_identity,
-            file_capability_surface,
-            None,
-            None,
-            None,
-            None,
-        );
-    };
-    let db = match store
-        .get_provider_token_settings(user_id, provider_id)
-        .await
-    {
-        Ok(d) => d,
-        Err(_) => {
-            return (
-                file_conversation,
-                file_skills,
-                file_identity,
-                file_capability_surface,
-                None,
-                None,
-                None,
-                None,
-            );
-        }
-    };
-    // Per-provider DB value wins; fall back to file-config when DB field is None.
-    // max_output: DB value as u32 (saturating cast — budgets fit in u32).
-    let max_output = db.max_output.map(|v| v.try_into().unwrap_or(u32::MAX));
-    (
-        db.conversation_history.or(file_conversation),
-        db.skills.or(file_skills),
-        db.identity.or(file_identity),
-        db.capability_surface.or(file_capability_surface),
-        max_output,
-        db.inline_control,
-        db.total_input,
-        db.cache_retention,
-    )
 }
 
 #[cfg(test)]

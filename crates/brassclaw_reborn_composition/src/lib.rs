@@ -100,8 +100,11 @@ mod provider_admin_product_command;
 #[cfg(feature = "root-llm-provider")]
 mod provider_repo;
 mod readiness;
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 mod recipe_library;
+#[cfg(feature = "postgres")]
+pub(crate) mod recipe_store;
+#[cfg(feature = "postgres")]
+pub(crate) mod reduction_rules_store;
 mod runtime;
 mod runtime_input;
 mod skill_listing;
@@ -415,6 +418,7 @@ use brassclaw_host_api::{
 use brassclaw_host_runtime::{CapabilitySurfaceVersion, HostRuntimeServices};
 #[cfg(feature = "postgres")]
 use brassclaw_processes::{FilesystemProcessResultStore, FilesystemProcessStore};
+#[cfg(feature = "postgres")]
 use brassclaw_reborn_event_store::RebornEventStoreConfig;
 use brassclaw_reborn_event_store::RebornEventStoreError;
 use brassclaw_resources::ResourceError;
@@ -422,9 +426,12 @@ use brassclaw_resources::ResourceError;
 use brassclaw_resources::{FilesystemResourceGovernorStore, PersistentResourceGovernor};
 use brassclaw_run_state::RunStateError;
 use brassclaw_secrets::SecretError;
+#[cfg(feature = "postgres")]
 use brassclaw_secrets::SecretMaterial;
+#[cfg(feature = "postgres")]
 use brassclaw_trust::TrustPolicy;
 use brassclaw_turns::TurnError;
+#[cfg(feature = "postgres")]
 use brassclaw_turns::TurnRunWakeNotifier;
 use thiserror::Error;
 
@@ -531,6 +538,7 @@ where
 }
 
 /// PostgreSQL substrate handles needed to build production host-runtime services.
+#[cfg(feature = "postgres")]
 pub struct PostgresProductionSubstrateConfig<TPolicy, TWake>
 where
     TPolicy: TrustPolicy + 'static,
@@ -598,7 +606,7 @@ where
     factory::build_postgres_production_host_runtime_services(config).await
 }
 
-#[cfg(all(test, any(feature = "libsql", feature = "postgres")))]
+#[cfg(all(test, feature = "postgres"))]
 mod mount_view_tests {
     use super::*;
     use brassclaw_filesystem::{FilesystemError, FilesystemOperation, InMemoryBackend};
@@ -782,7 +790,7 @@ mod mount_view_tests {
     }
 }
 
-#[cfg(all(test, any(feature = "libsql", feature = "postgres")))]
+#[cfg(all(test, feature = "postgres"))]
 mod two_tenant_isolation_tests {
     //! Regression test for the cross-tenant collision finding from the
     //! 2026-05-17 serrrfirat review.

@@ -33,11 +33,7 @@ use brassclaw_events::{
 use brassclaw_extensions::{
     ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource,
 };
-#[cfg(feature = "libsql")]
-use brassclaw_filesystem::LibSqlRootFilesystem;
-#[cfg(feature = "libsql")]
-use brassclaw_filesystem::ScopedFilesystem;
-use brassclaw_filesystem::{LocalFilesystem, RootFilesystem};
+use brassclaw_filesystem::LocalFilesystem;
 use brassclaw_host_api::*;
 use brassclaw_host_runtime::{
     BuiltinObligationHandler, BuiltinObligationServices, CancelReason, CancelRuntimeWorkRequest,
@@ -59,9 +55,6 @@ use brassclaw_processes::{
     ProcessExecutor, ProcessHost, ProcessManager, ProcessResultRecord, ProcessResultStore,
     ProcessServices, ProcessStart, ProcessStatus, ProcessStore,
 };
-use brassclaw_reborn_event_store::{
-    RebornEventStoreConfig, RebornEventStoreError, RebornProfile,
-};
 use brassclaw_resources::{
     InMemoryResourceGovernor, JsonFileResourceGovernorStore, PersistentResourceGovernor,
     ResourceAccount, ResourceError, ResourceGovernor, ResourceLimits, ResourceTally,
@@ -77,14 +70,6 @@ use brassclaw_triggers::InMemoryTriggerRepository;
 use brassclaw_trust::{
     AdminConfig, AdminEntry, AuthorityCeiling, EffectiveTrustClass, HostTrustAssignment,
     HostTrustPolicy, TrustDecision, TrustProvenance,
-};
-#[cfg(feature = "libsql")]
-use brassclaw_turns::FilesystemTurnStateStore;
-#[cfg(feature = "libsql")]
-use brassclaw_turns::{
-    AcceptedMessageRef, IdempotencyKey, InMemoryRunProfileResolver, ReplyTargetBindingRef,
-    RunProfileRequest, SourceBindingRef, SubmitTurnRequest, SubmitTurnResponse, TurnActor,
-    TurnCoordinator, TurnScope, TurnStateStore,
 };
 use brassclaw_turns::{NoopTurnRunWakeNotifier, TurnRunWake, TurnRunWakeNotifier};
 use chrono::{Duration as ChronoDuration, Utc};
@@ -536,117 +521,14 @@ async fn production_wiring_validation_rejects_unsupported_runtime_requirements()
 // composed through `with_filesystem_run_state`; the run-state store layer
 // no longer owns its own per-SQL persistence. The deleted tests were:
 //
-//   - `libsql_run_state_store_selection_satisfies_production_run_state_guardrails`
-//   - `libsql_run_state_store_selection_persists_runtime_approval_block`
-//
 // The equivalent guardrail surface for the filesystem-backed wiring is
 // exercised by `tests/reborn_durable_restart_integration.rs` (services
 // graph restart over `LocalFilesystem`) and the `brassclaw_run_state`
 // contract suite.
 
-#[cfg(feature = "libsql")]
-#[tokio::test]
-async fn production_root_filesystem_selection_accepts_libsql_root_filesystem() {
-    let db_dir = tempfile::tempdir().unwrap();
-    let db_path = db_dir.path().join("root-filesystem.db");
-    let db = Arc::new(libsql::Builder::new_local(db_path).build().await.unwrap());
-    let filesystem = Arc::new(LibSqlRootFilesystem::new(db));
-    filesystem.run_migrations().await.unwrap();
-
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(SCRIPT_MANIFEST)),
-        Arc::new(LocalFilesystem::new()),
-        Arc::new(InMemoryResourceGovernor::new()),
-        Arc::new(GrantAuthorizer::new()),
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    )
-    .with_libsql_root_filesystem(Arc::clone(&filesystem));
-
-    let path = VirtualPath::new("/engine/tenants/t1/users/u1/root-selection.txt").unwrap();
-    filesystem.write_file(&path, b"selected").await.unwrap();
-    assert_eq!(filesystem.read_file(&path).await.unwrap(), b"selected");
-
-    let report = services
-        .validate_production_wiring(&ProductionWiringConfig::new([]))
-        .expect_err("other local services remain intentionally unready");
-    assert!(
-        !report.contains(
-            ProductionWiringComponent::Filesystem,
-            ProductionWiringIssueKind::LocalOnlyImplementation
-        ),
-        "LibSqlRootFilesystem must satisfy production filesystem selection: {report:?}"
-    );
-}
-
-/// Construct an [`Arc<ScopedFilesystem<LibSqlRootFilesystem>>`] that exposes
-/// the `/turns` mount alias over a libSQL-backed [`RootFilesystem`]. Mirrors
-/// the production composition shape: the `/turns` alias rewrites to a
-/// tenant/user-scoped target inside `/engine`, and the filesystem backend
-/// supplies durable storage. Used by tests that previously constructed
-/// `LibSqlTurnStateStore` directly.
-#[cfg(feature = "libsql")]
-async fn libsql_scoped_turns_fs(
-    db: Arc<libsql::Database>,
-) -> Arc<ScopedFilesystem<LibSqlRootFilesystem>> {
-    let filesystem = Arc::new(LibSqlRootFilesystem::new(db));
-    filesystem.run_migrations().await.unwrap();
-    let view = MountView::new(vec![MountGrant::new(
-        MountAlias::new("/turns").unwrap(),
-        VirtualPath::new("/engine/tenants/tenant1/users/user1/turns").unwrap(),
-        MountPermissions::read_write_list_delete(),
-    )])
-    .unwrap();
-    Arc::new(ScopedFilesystem::with_fixed_view(filesystem, view))
-}
-
-#[cfg(feature = "libsql")]
-#[tokio::test]
-async fn production_turn_state_selection_accepts_filesystem_turn_state_store() {
-    let db_dir = tempfile::tempdir().unwrap();
-    let db_path = db_dir.path().join("turn-state.db");
-    let db = Arc::new(libsql::Builder::new_local(db_path).build().await.unwrap());
-    let scoped = libsql_scoped_turns_fs(Arc::clone(&db)).await;
-
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(SCRIPT_MANIFEST)),
-        Arc::new(LocalFilesystem::new()),
-        Arc::new(InMemoryResourceGovernor::new()),
-        Arc::new(GrantAuthorizer::new()),
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    )
-    .with_filesystem_turn_state_store(scoped);
-
-    let report = services
-        .validate_production_wiring(&ProductionWiringConfig::new([]))
-        .expect_err("other local services remain intentionally unready");
-    assert!(
-        !report.contains(
-            ProductionWiringComponent::TurnState,
-            ProductionWiringIssueKind::Missing
-        ),
-        "FilesystemTurnStateStore must satisfy production turn-state presence: {report:?}"
-    );
-    assert!(
-        !report.contains(
-            ProductionWiringComponent::TurnState,
-            ProductionWiringIssueKind::LocalOnlyImplementation
-        ),
-        "FilesystemTurnStateStore over LibSqlRootFilesystem must not be classified local-only: {report:?}"
-    );
-}
-
 #[derive(Debug, Default)]
 struct RecordingTurnRunWakeNotifier {
     wakes: Mutex<Vec<TurnRunWake>>,
-}
-
-impl RecordingTurnRunWakeNotifier {
-    #[cfg(feature = "libsql")]
-    fn wakes(&self) -> Vec<TurnRunWake> {
-        self.wakes.lock().unwrap().clone()
-    }
 }
 
 impl TurnRunWakeNotifier for RecordingTurnRunWakeNotifier {
@@ -657,76 +539,6 @@ impl TurnRunWakeNotifier for RecordingTurnRunWakeNotifier {
         self.wakes.lock().unwrap().push(wake);
         Ok(())
     }
-}
-
-#[cfg(feature = "libsql")]
-#[tokio::test]
-async fn production_turn_coordinator_uses_configured_store_and_notifier() {
-    let db_dir = tempfile::tempdir().unwrap();
-    let db_path = db_dir.path().join("turn-coordinator.db");
-    let db = Arc::new(libsql::Builder::new_local(db_path).build().await.unwrap());
-    let notifier = Arc::new(RecordingTurnRunWakeNotifier::default());
-    let scoped = libsql_scoped_turns_fs(Arc::clone(&db)).await;
-
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(SCRIPT_MANIFEST)),
-        Arc::new(LocalFilesystem::new()),
-        Arc::new(InMemoryResourceGovernor::new()),
-        Arc::new(GrantAuthorizer::new()),
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    )
-    .with_filesystem_turn_state_store(Arc::clone(&scoped))
-    .with_run_profile_resolver(Arc::new(InMemoryRunProfileResolver::default()))
-    .with_turn_run_wake_notifier(Arc::clone(&notifier));
-
-    let coordinator = services
-        .turn_coordinator_for_production()
-        .expect("production-ready turn wiring should build coordinator");
-    let request = submit_turn_request("thread-production-turn-coordinator", "idem-production-turn");
-    let response = coordinator.submit_turn(request.clone()).await.unwrap();
-    let SubmitTurnResponse::Accepted { run_id, .. } = response;
-
-    let reopened = FilesystemTurnStateStore::new(scoped);
-    let state = reopened
-        .get_run_state(brassclaw_turns::GetRunStateRequest {
-            scope: request.scope,
-            run_id,
-        })
-        .await
-        .unwrap();
-    assert_eq!(state.run_id, run_id);
-    assert_eq!(notifier.wakes().len(), 1);
-    assert_eq!(notifier.wakes()[0].run_id, run_id);
-}
-
-#[cfg(feature = "libsql")]
-#[tokio::test]
-async fn production_turn_coordinator_requires_explicit_run_profile_resolver() {
-    let db_dir = tempfile::tempdir().unwrap();
-    let db_path = db_dir.path().join("turn-coordinator-missing-resolver.db");
-    let db = Arc::new(libsql::Builder::new_local(db_path).build().await.unwrap());
-    let scoped = libsql_scoped_turns_fs(Arc::clone(&db)).await;
-
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(SCRIPT_MANIFEST)),
-        Arc::new(LocalFilesystem::new()),
-        Arc::new(InMemoryResourceGovernor::new()),
-        Arc::new(GrantAuthorizer::new()),
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    )
-    .with_filesystem_turn_state_store(scoped)
-    .with_turn_run_wake_notifier(Arc::new(RecordingTurnRunWakeNotifier::default()));
-
-    let report = match services.turn_coordinator_for_production() {
-        Ok(_) => panic!("production turn coordinator must fail closed without a resolver"),
-        Err(report) => report,
-    };
-    assert!(report.contains(
-        ProductionWiringComponent::RunProfileResolver,
-        ProductionWiringIssueKind::Missing
-    ));
 }
 
 #[tokio::test]
@@ -781,130 +593,6 @@ async fn production_wiring_validation_accepts_configured_turn_wake_notifier() {
             ProductionWiringIssueKind::LocalOnlyImplementation
         ),
         "configured turn wake notifier must not be classified local-only: {report:?}"
-    );
-}
-
-#[tokio::test]
-async fn production_event_store_config_rejects_jsonl_without_single_node_acceptance() {
-    let temp = tempfile::tempdir().unwrap();
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(SCRIPT_MANIFEST)),
-        Arc::new(LocalFilesystem::new()),
-        Arc::new(InMemoryResourceGovernor::new()),
-        Arc::new(GrantAuthorizer::new()),
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    );
-
-    let result = services
-        .with_reborn_event_store_config(
-            RebornProfile::Production,
-            RebornEventStoreConfig::Jsonl {
-                root: temp.path().join("reborn-event-store"),
-                accept_single_node_durable: false,
-            },
-        )
-        .await;
-
-    assert!(matches!(
-        result,
-        Err(RebornEventStoreError::ProductionJsonlRequiresAcceptance)
-    ));
-}
-
-#[tokio::test]
-async fn local_reborn_event_store_config_does_not_satisfy_production_wiring() {
-    let temp = tempfile::tempdir().unwrap();
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(SCRIPT_MANIFEST)),
-        Arc::new(LocalFilesystem::new()),
-        Arc::new(InMemoryResourceGovernor::new()),
-        Arc::new(GrantAuthorizer::new()),
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    )
-    .with_reborn_event_store_config(
-        RebornProfile::LocalDev,
-        RebornEventStoreConfig::Jsonl {
-            root: temp.path().join("local-reborn-event-store"),
-            accept_single_node_durable: false,
-        },
-    )
-    .await
-    .unwrap();
-
-    let report = services
-        .validate_production_wiring(&ProductionWiringConfig::new([]))
-        .expect_err("LocalDev stores are not production-verified event/audit sinks");
-
-    assert!(
-        report.contains(
-            ProductionWiringComponent::EventSink,
-            ProductionWiringIssueKind::UnverifiedProductionImplementation
-        ),
-        "LocalDev Reborn event store must not satisfy production event sink guardrail: {report:?}"
-    );
-    assert!(
-        report.contains(
-            ProductionWiringComponent::AuditSink,
-            ProductionWiringIssueKind::UnverifiedProductionImplementation
-        ),
-        "LocalDev Reborn audit store must not satisfy production audit sink guardrail: {report:?}"
-    );
-}
-
-#[tokio::test]
-async fn production_event_store_config_installs_verified_event_and_audit_sinks() {
-    let temp = tempfile::tempdir().unwrap();
-    let services = HostRuntimeServices::new(
-        Arc::new(registry_with_manifest(SCRIPT_MANIFEST)),
-        Arc::new(LocalFilesystem::new()),
-        Arc::new(InMemoryResourceGovernor::new()),
-        Arc::new(GrantAuthorizer::new()),
-        ProcessServices::in_memory(),
-        CapabilitySurfaceVersion::new("surface-v1").unwrap(),
-    )
-    .with_reborn_event_store_config(
-        RebornProfile::Production,
-        RebornEventStoreConfig::Jsonl {
-            root: temp.path().join("accepted-reborn-event-store"),
-            accept_single_node_durable: true,
-        },
-    )
-    .await
-    .unwrap();
-
-    let report = services
-        .validate_production_wiring(&ProductionWiringConfig::new([]))
-        .expect_err("other local test services are still not production-ready");
-
-    assert!(
-        !report.contains(
-            ProductionWiringComponent::EventSink,
-            ProductionWiringIssueKind::Missing
-        ),
-        "event sink must be installed from Reborn event store config: {report:?}"
-    );
-    assert!(
-        !report.contains(
-            ProductionWiringComponent::AuditSink,
-            ProductionWiringIssueKind::Missing
-        ),
-        "audit sink must be installed from Reborn event store config: {report:?}"
-    );
-    assert!(
-        !report.contains(
-            ProductionWiringComponent::EventSink,
-            ProductionWiringIssueKind::UnverifiedProductionImplementation
-        ),
-        "Reborn durable event store adapter must not be treated as erased unverified sink: {report:?}"
-    );
-    assert!(
-        !report.contains(
-            ProductionWiringComponent::AuditSink,
-            ProductionWiringIssueKind::UnverifiedProductionImplementation
-        ),
-        "Reborn durable audit store adapter must not be treated as erased unverified sink: {report:?}"
     );
 }
 
@@ -4631,29 +4319,6 @@ fn sample_network_policy() -> NetworkPolicy {
         }],
         deny_private_ip_ranges: true,
         max_egress_bytes: Some(10_000),
-    }
-}
-
-#[cfg(feature = "libsql")]
-fn submit_turn_request(thread: &str, idempotency_key: &str) -> SubmitTurnRequest {
-    SubmitTurnRequest {
-        scope: TurnScope::new(
-            TenantId::new("tenant1").unwrap(),
-            Some(AgentId::new("agent1").unwrap()),
-            Some(ProjectId::new("project1").unwrap()),
-            ThreadId::new(thread).unwrap(),
-        ),
-        actor: TurnActor::new(UserId::new("user1").unwrap()),
-        accepted_message_ref: AcceptedMessageRef::new(format!("message-{thread}")).unwrap(),
-        source_binding_ref: SourceBindingRef::new("source-web").unwrap(),
-        reply_target_binding_ref: ReplyTargetBindingRef::new("reply-web").unwrap(),
-        requested_run_profile: Some(RunProfileRequest::new("default").unwrap()),
-        idempotency_key: IdempotencyKey::new(idempotency_key).unwrap(),
-        received_at: Utc::now(),
-        requested_run_id: None,
-        parent_run_id: None,
-        subagent_depth: 0,
-        spawn_tree_root_run_id: None,
     }
 }
 

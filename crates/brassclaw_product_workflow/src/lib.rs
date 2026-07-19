@@ -149,7 +149,7 @@ pub use reduction_rules::{
 };
 pub use safety_config::{SafetyConfigResponse, SafetyEntry, UpdateSafetyConfigRequest};
 pub use pg_safety_config_store::PgSafetyConfigStore;
-pub use safety_config_store::{SafetyCategory, SafetyConfigStore, SqliteSafetyConfigStore};
+pub use safety_config_store::{SafetyCategory, SafetyConfigStore};
 pub use token_settings::{TokenSettingsResponse, UpdateTokenSettingsRequest};
 pub use token_settings_store::TokenSettingsStore;
 // Projection/event types that route handlers need to thread through SSE

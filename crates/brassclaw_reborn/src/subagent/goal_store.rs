@@ -387,12 +387,10 @@ impl brassclaw_loop_support::SubagentSpawnGoalStore for PgSubagentGoalStore {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
-    #[cfg(feature = "filesystem-goal-store")]
-    use brassclaw_filesystem::{InMemoryBackend, ScopedFilesystem};
     use brassclaw_host_api::{AgentId, ProjectId, TenantId, ThreadId};
-    #[cfg(feature = "filesystem-goal-store")]
-    use brassclaw_host_api::{MountAlias, MountGrant, MountPermissions, MountView, VirtualPath};
 
     fn scope(thread_id: &str) -> TurnScope {
         TurnScope::new(
@@ -579,128 +577,11 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "filesystem-goal-store")]
-    fn scoped_goal_filesystem() -> Arc<ScopedFilesystem<InMemoryBackend>> {
-        let mounts = MountView::new(vec![MountGrant::new(
-            MountAlias::new("/turns").unwrap(),
-            VirtualPath::new("/turns").unwrap(),
-            MountPermissions::read_write_list_delete(),
-        )])
-        .unwrap();
-        Arc::new(ScopedFilesystem::with_fixed_view(
-            Arc::new(InMemoryBackend::new()),
-            mounts,
-        ))
-    }
-
-    #[cfg(feature = "filesystem-goal-store")]
-    async fn assert_goal_store_contract(store: &dyn SubagentGoalStore) {
-        let owner_scope = scope("thread-goal");
-        let other_scope = scope("thread-goal-other");
-        let run_id = TurnRunId::new();
-        let expected = SubagentGoal {
-            task: "durable task".to_string(),
-            handoff: Some("handoff".to_string()),
-        };
-
-        store
-            .put_goal(&owner_scope, run_id, expected.clone())
-            .await
-            .unwrap();
-        assert_eq!(
-            store.get_goal(&owner_scope, run_id).await.unwrap(),
-            expected
-        );
-        assert!(matches!(
-            store.get_goal(&other_scope, run_id).await,
-            Err(SubagentGoalStoreError::NotFound { .. })
-        ));
-        store.delete_goal(&other_scope, run_id).await.unwrap();
-        assert!(store.get_goal(&owner_scope, run_id).await.is_ok());
-        assert_eq!(
-            store
-                .put_goal(&owner_scope, run_id, goal("duplicate"))
-                .await
-                .unwrap_err(),
-            SubagentGoalStoreError::DuplicateKey { run_id }
-        );
-        assert!(matches!(
-            store
-                .put_goal(
-                    &owner_scope,
-                    TurnRunId::new(),
-                    SubagentGoal {
-                        task: "x".repeat(MAX_GOAL_BYTES + 1),
-                        handoff: None,
-                    },
-                )
-                .await,
-            Err(SubagentGoalStoreError::PayloadTooLarge { .. })
-        ));
-        store.delete_goal(&owner_scope, run_id).await.unwrap();
-        store.delete_goal(&owner_scope, run_id).await.unwrap();
-        assert!(matches!(
-            store.get_goal(&owner_scope, run_id).await,
-            Err(SubagentGoalStoreError::NotFound { .. })
-        ));
-    }
-
-    #[cfg(feature = "filesystem-goal-store")]
-    #[tokio::test]
-    async fn filesystem_goal_store_satisfies_subagent_goal_contract() {
-        let store = FilesystemSubagentGoalStore::new(scoped_goal_filesystem());
-        assert_goal_store_contract(&store).await;
-    }
-
-    #[cfg(feature = "filesystem-goal-store")]
-    #[test]
-    fn filesystem_goal_path_uses_alias_relative_named_scope_axes() {
-        let owner_scope = scope("thread-goal-path");
-        let run_id = TurnRunId::new();
-
-        let path = goal_path(&owner_scope, run_id).unwrap();
-
-        assert_eq!(
-            path.as_str(),
-            format!(
-                "/turns/subagent-goals/agents/agent-alpha/projects/project-alpha/threads/thread-goal-path/{}.json",
-                run_id.as_uuid()
-            )
-        );
-        assert!(
-            !path.as_str().contains("tenant-alpha"),
-            "resource scope already supplies tenant isolation"
-        );
-    }
-
-    #[cfg(feature = "filesystem-goal-store")]
-    #[tokio::test]
-    async fn filesystem_goal_store_reopens_over_same_backend() {
-        let filesystem = scoped_goal_filesystem();
-        let first = FilesystemSubagentGoalStore::new(Arc::clone(&filesystem));
-        let owner_scope = scope("thread-goal");
-        let run_id = TurnRunId::new();
-        let expected = goal("survives reopen");
-
-        first
-            .put_goal(&owner_scope, run_id, expected.clone())
-            .await
-            .unwrap();
-        let reopened = FilesystemSubagentGoalStore::new(filesystem);
-
-        assert_eq!(
-            reopened.get_goal(&owner_scope, run_id).await.unwrap(),
-            expected
-        );
-    }
-
     #[test]
     fn goal_store_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<Arc<dyn SubagentGoalStore>>();
         assert_send_sync::<InMemoryBoundedSubagentGoalStore>();
-        #[cfg(feature = "filesystem-goal-store")]
-        assert_send_sync::<FilesystemSubagentGoalStore<InMemoryBackend>>();
     }
 }
 

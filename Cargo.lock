@@ -2168,7 +2168,6 @@ dependencies = [
  "brassclaw_turns",
  "chrono",
  "deadpool-postgres",
- "libsql",
  "secrecy",
  "serde",
  "serde_json",
@@ -2284,6 +2283,9 @@ name = "brassclaw_reborn_composition"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "aws-config",
+ "aws-sdk-bedrockruntime",
+ "aws-smithy-types",
  "axum 0.8.9",
  "base64 0.22.1",
  "brassclaw_agent_loop",
@@ -2392,7 +2394,6 @@ dependencies = [
  "chrono",
  "deadpool-postgres",
  "hex",
- "libsql",
  "rustls 0.23.40",
  "rustls-native-certs 0.8.3",
  "secrecy",

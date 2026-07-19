@@ -631,7 +631,7 @@ fn reborn_loop_support_llm_wiring_stays_out_of_root_src() {
         reborn_manifest.contains("optional = true")
             && reborn_manifest.contains("default-features = false")
             && reborn_manifest.contains("root-llm-provider"),
-        "brassclaw_reborn may reuse root LLM code only behind an explicit feature, without enabling the root app's default postgres/libsql/tui feature set"
+        "brassclaw_reborn may reuse root LLM code only behind an explicit feature, without enabling the root app's default postgres/tui feature set"
     );
 
     // The composition root — the only crate that should pull `brassclaw_reborn`

@@ -10,9 +10,7 @@ use brassclaw_authorization::{
     CapabilityLeaseStatus, CapabilityLeaseStore, FilesystemCapabilityLeaseStore, GrantAuthorizer,
     TrustAwareCapabilityDispatchAuthorizer,
 };
-use brassclaw_events::{
-    DurableAuditSink, DurableEventSink, EventStreamKey, ReadScope, RuntimeEventKind,
-};
+use brassclaw_events::{DurableEventSink, EventStreamKey, ReadScope, RuntimeEventKind};
 use brassclaw_extensions::{
     ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource,
 };
@@ -27,9 +25,8 @@ use brassclaw_processes::{
     ProcessExecutionResult, ProcessExecutor, ProcessManager, ProcessServices, ProcessStart,
     ProcessStatus, ProcessStore,
 };
-use brassclaw_reborn_event_store::{
-    RebornEventStoreConfig, RebornEventStores, RebornProfile, build_reborn_event_stores,
-};
+use brassclaw_events::{InMemoryDurableAuditLog, InMemoryDurableEventLog};
+use brassclaw_reborn_event_store::RebornEventStores;
 use brassclaw_resources::InMemoryResourceGovernor;
 use brassclaw_run_state::{
     ApprovalRequestStore, FilesystemApprovalRequestStore, FilesystemRunStateStore, RunStateStore,
@@ -43,12 +40,19 @@ use brassclaw_trust::{
 use chrono::Utc;
 use serde_json::{Value, json};
 
+fn in_memory_event_stores() -> RebornEventStores {
+    RebornEventStores {
+        events: Arc::new(InMemoryDurableEventLog::new()),
+        audit: Arc::new(InMemoryDurableAuditLog::new()),
+    }
+}
+
 #[tokio::test]
 async fn approval_resume_survives_filesystem_service_restart_and_consumes_lease_once() {
     let temp = tempfile::tempdir().unwrap();
     let engine_root = temp.path().join("engine");
-    let event_root = temp.path().join("events");
-    let first = durable_services(&engine_root, &event_root).await;
+    let shared_events = in_memory_event_stores();
+    let first = durable_services(&engine_root, shared_events.clone()).await;
     let first_runtime = first.services.host_runtime_for_local_testing();
     let context = execution_context_without_grants_for_scope(sample_scope(InvocationId::new()));
     let scope = context.resource_scope.clone();
@@ -70,7 +74,7 @@ async fn approval_resume_survives_filesystem_service_restart_and_consumes_lease_
     )
     .await;
 
-    let second = durable_services(&engine_root, &event_root).await;
+    let second = durable_services(&engine_root, shared_events.clone()).await;
     assert_blocked_run(
         second.run_state.as_ref(),
         &scope,
@@ -121,7 +125,7 @@ async fn approval_resume_survives_filesystem_service_restart_and_consumes_lease_
         CapabilityLeaseStatus::Consumed
     );
 
-    let third = durable_services(&engine_root, &event_root).await;
+    let third = durable_services(&engine_root, shared_events.clone()).await;
     let completed_run = third
         .run_state
         .get(&scope, context.invocation_id)
@@ -247,81 +251,6 @@ async fn process_result_and_output_survive_filesystem_service_restart_with_scope
     );
 }
 
-#[tokio::test]
-async fn jsonl_event_and_audit_replay_survive_reopen_without_raw_sentinels() {
-    let temp = tempfile::tempdir().unwrap();
-    let engine_root = temp.path().join("engine");
-    let event_root = temp.path().join("events");
-    let event_stores = jsonl_event_stores(&event_root).await;
-    let services = base_services(
-        &engine_root,
-        event_stores.clone(),
-        Arc::new(AuditAuthorizer),
-    )
-    .with_audit_sink(Arc::new(DurableAuditSink::new(Arc::clone(
-        &event_stores.audit,
-    ))));
-    let scope = sample_scope(InvocationId::new());
-    let payload = json!({
-        "message": "DURABLE_RESTART_RAW_INPUT /tmp/durable-private-path",
-        "secret": "DURABLE_RESTART_SECRET_sk_live_secret",
-        "output": "DURABLE_RESTART_OUTPUT",
-    });
-
-    let outcome = services
-        .host_runtime_for_local_testing()
-        .invoke_capability(RuntimeCapabilityRequest::new(
-            execution_context_with_dispatch_grant_for_scope(script_capability_id(), scope.clone()),
-            script_capability_id(),
-            ResourceEstimate::default(),
-            payload.clone(),
-            trust_decision_with_dispatch_authority(),
-        ))
-        .await
-        .unwrap();
-    assert!(matches!(
-        outcome,
-        RuntimeCapabilityOutcome::Completed(completed) if completed.output == payload
-    ));
-
-    let reopened = jsonl_event_stores(&event_root).await;
-    let event_replay = reopened
-        .events
-        .read_after_cursor(
-            &EventStreamKey::from_scope(&scope),
-            &ReadScope::any(),
-            None,
-            10,
-        )
-        .await
-        .unwrap();
-    assert_eq!(event_replay.entries.len(), 3);
-    let audit_replay = reopened
-        .audit
-        .read_after_cursor(
-            &EventStreamKey::from_scope(&scope),
-            &ReadScope::any(),
-            None,
-            10,
-        )
-        .await
-        .unwrap();
-    assert_eq!(audit_replay.entries.len(), 2);
-
-    let serialized = serde_json::to_string(&(event_replay, audit_replay)).unwrap();
-    for forbidden in [
-        "DURABLE_RESTART_RAW_INPUT",
-        "/tmp/durable-private-path",
-        "DURABLE_RESTART_SECRET",
-        "DURABLE_RESTART_OUTPUT",
-    ] {
-        assert!(
-            !serialized.contains(forbidden),
-            "durable replay leaked {forbidden}: {serialized}"
-        );
-    }
-}
-
 type DurableProcessServices = ProcessServices<
     FilesystemProcessStore<LocalFilesystem>,
     FilesystemProcessResultStore<LocalFilesystem>,
@@ -342,8 +271,7 @@ struct DurableServices {
     events: RebornEventStores,
 }
 
-async fn durable_services(engine_root: &Path, event_root: &Path) -> DurableServices {
-    let event_stores = jsonl_event_stores(event_root).await;
+async fn durable_services(engine_root: &Path, event_stores: RebornEventStores) -> DurableServices {
     // All three filesystem-backed stores now take `Arc<ScopedFilesystem<F>>`
     // (run_state migrated in commit 475588153; capability lease in 34e3c68cb).
     let scoped_fs = scoped_engine_filesystem(engine_root);
@@ -388,18 +316,6 @@ fn base_services(
     .with_event_sink(Arc::new(DurableEventSink::new(Arc::clone(
         &event_stores.events,
     ))))
-}
-
-async fn jsonl_event_stores(event_root: &Path) -> RebornEventStores {
-    build_reborn_event_stores(
-        RebornProfile::LocalDev,
-        RebornEventStoreConfig::Jsonl {
-            root: event_root.to_path_buf(),
-            accept_single_node_durable: false,
-        },
-    )
-    .await
-    .unwrap()
 }
 
 fn filesystem_process_services(engine_root: &Path) -> DurableProcessServices {
@@ -601,24 +517,6 @@ impl TrustAwareCapabilityDispatchAuthorizer for ApprovalThenGrantAuthorizer {
     }
 }
 
-struct AuditAuthorizer;
-
-#[async_trait]
-impl TrustAwareCapabilityDispatchAuthorizer for AuditAuthorizer {
-    async fn authorize_dispatch_with_trust(
-        &self,
-        _context: &ExecutionContext,
-        _descriptor: &CapabilityDescriptor,
-        _estimate: &ResourceEstimate,
-        _trust_decision: &TrustDecision,
-    ) -> Decision {
-        Decision::Allow {
-            obligations: Obligations::new(vec![Obligation::AuditBefore, Obligation::AuditAfter])
-                .unwrap(),
-        }
-    }
-}
-
 struct SuccessProcessExecutor;
 
 #[async_trait]
@@ -673,52 +571,6 @@ fn execution_context_without_grants_for_scope(scope: ResourceScope) -> Execution
     };
     context.validate().unwrap();
     context
-}
-
-fn execution_context_with_dispatch_grant_for_scope(
-    capability: CapabilityId,
-    scope: ResourceScope,
-) -> ExecutionContext {
-    let context = ExecutionContext {
-        invocation_id: scope.invocation_id,
-        correlation_id: CorrelationId::new(),
-        process_id: None,
-        parent_process_id: None,
-        tenant_id: scope.tenant_id.clone(),
-        user_id: scope.user_id.clone(),
-        agent_id: scope.agent_id.clone(),
-        project_id: scope.project_id.clone(),
-        mission_id: scope.mission_id.clone(),
-        thread_id: scope.thread_id.clone(),
-        extension_id: ExtensionId::new("caller").unwrap(),
-        runtime: RuntimeKind::Mcp,
-        trust: TrustClass::UserTrusted,
-        grants: capability_grants(capability),
-        mounts: MountView::default(),
-        resource_scope: scope,
-    };
-    context.validate().unwrap();
-    context
-}
-
-fn capability_grants(capability: CapabilityId) -> CapabilitySet {
-    let mut grants = CapabilitySet::default();
-    grants.grants.push(CapabilityGrant {
-        id: CapabilityGrantId::new(),
-        capability,
-        grantee: Principal::Extension(ExtensionId::new("caller").unwrap()),
-        issued_by: Principal::HostRuntime,
-        constraints: GrantConstraints {
-            allowed_effects: vec![EffectKind::DispatchCapability],
-            mounts: MountView::default(),
-            network: NetworkPolicy::default(),
-            secrets: Vec::new(),
-            resource_ceiling: None,
-            expires_at: None,
-            max_invocations: None,
-        },
-    });
-    grants
 }
 
 fn process_start(

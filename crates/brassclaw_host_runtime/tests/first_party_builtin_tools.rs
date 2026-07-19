@@ -13,8 +13,6 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use brassclaw_authorization::GrantAuthorizer;
 use brassclaw_events::InMemoryAuditSink;
 use brassclaw_extensions::ExtensionRegistry;
-#[cfg(feature = "libsql")]
-use brassclaw_filesystem::LibSqlRootFilesystem;
 use brassclaw_filesystem::{InMemoryBackend, LocalFilesystem, RootFilesystem};
 use brassclaw_host_api::runtime_policy::{
     ApprovalPolicy, AuditMode, DeploymentMode, EffectiveRuntimePolicy, FilesystemBackendKind,
@@ -5156,49 +5154,6 @@ async fn builtin_coding_blocks_sensitive_host_paths_like_v1() {
         std::fs::read_to_string(temp.path().join("raw-output.txt")).unwrap(),
         "raw created\n"
     );
-}
-
-#[cfg(feature = "libsql")]
-#[tokio::test]
-async fn builtin_coding_blocks_sensitive_resolved_libsql_paths() {
-    let db_dir = tempfile::tempdir().unwrap();
-    let db_path = db_dir.path().join("filesystem.db");
-    let db = Arc::new(libsql::Builder::new_local(db_path).build().await.unwrap());
-    let filesystem = LibSqlRootFilesystem::new(db);
-    filesystem.run_migrations().await.unwrap();
-    filesystem
-        .create_dir_all(&VirtualPath::new("/projects/p").unwrap())
-        .await
-        .unwrap();
-    filesystem
-        .write_file(
-            &VirtualPath::new("/projects/p/.env").unwrap(),
-            b"TOKEN=secret\n",
-        )
-        .await
-        .unwrap();
-
-    let mounts = MountView::new(vec![MountGrant::new(
-        MountAlias::new("/workspace").unwrap(),
-        VirtualPath::new("/projects/p/.env").unwrap(),
-        MountPermissions::read_only(),
-    )])
-    .unwrap();
-    let runtime = runtime_with_filesystem(filesystem);
-    let context = execution_context_with_mounts(all_builtin_capability_ids(), mounts);
-
-    for (capability, input) in [
-        (READ_FILE_CAPABILITY_ID, json!({"path": "/workspace"})),
-        (
-            GREP_CAPABILITY_ID,
-            json!({"path": "/workspace", "pattern": "TOKEN"}),
-        ),
-    ] {
-        let error = invoke_with_context(&runtime, capability, input, context.clone())
-            .await
-            .unwrap_err();
-        assert_eq!(error, RuntimeFailureKind::Authorization);
-    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

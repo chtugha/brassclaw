@@ -10,7 +10,11 @@ use crate::{RebornCompositionError, RebornRuntimeProcessBinding};
 /// backend.
 #[derive(Clone, Debug)]
 pub struct RebornProductionRuntimePolicy {
+    // Fields are read by `into_parts` which is compiled only under the
+    // `postgres` feature; suppress the false-positive dead-code lint.
+    #[cfg_attr(not(feature = "postgres"), allow(dead_code))]
     runtime_policy: EffectiveRuntimePolicy,
+    #[cfg_attr(not(feature = "postgres"), allow(dead_code))]
     process_binding: RebornRuntimeProcessBinding,
 }
 
@@ -42,6 +46,7 @@ impl RebornProductionRuntimePolicy {
         })
     }
 
+    #[cfg(feature = "postgres")]
     pub(crate) fn into_parts(self) -> (EffectiveRuntimePolicy, RebornRuntimeProcessBinding) {
         (self.runtime_policy, self.process_binding)
     }

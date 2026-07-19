@@ -1,7 +1,4 @@
-use std::{
-    path::Path,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use brassclaw_event_projections::{
@@ -27,9 +24,6 @@ use brassclaw_reborn::loop_driver_host::{
 };
 use brassclaw_reborn::milestone_events::{
     DurableLoopHostMilestoneScope, DurableLoopHostMilestoneSink,
-};
-use brassclaw_reborn_event_store::{
-    RebornEventStoreConfig, RebornProfile, build_reborn_event_stores,
 };
 use brassclaw_threads::{
     AcceptInboundMessageRequest, EnsureThreadRequest, InMemorySessionThreadService, MessageContent,
@@ -64,39 +58,6 @@ async fn in_memory_durable_log_replays_loop_model_reply_milestones() {
     let audit: Arc<dyn DurableAuditLog> = Arc::new(InMemoryDurableAuditLog::new());
 
     drive_model_reply_milestones_and_assert_projection(events, audit).await;
-}
-
-#[tokio::test]
-async fn jsonl_durable_log_replays_loop_model_reply_milestones() {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let event_root = temp_dir.path().join("reborn-events");
-    let stores = build_reborn_event_stores(
-        RebornProfile::Test,
-        RebornEventStoreConfig::Jsonl {
-            root: event_root.clone(),
-            accept_single_node_durable: true,
-        },
-    )
-    .await
-    .unwrap();
-
-    drive_model_reply_milestones_and_assert_projection(stores.events, stores.audit).await;
-
-    let raw_jsonl = read_all_file_bytes_lossy(&event_root);
-    for forbidden in [
-        "RAW_PROMPT_SENTINEL",
-        "RAW_ASSISTANT_SENTINEL",
-        "RAW_PROVIDER_ERROR",
-        "sk-secret",
-        "/Users/firat",
-        "/tmp/assistant.txt",
-        "/var/provider.log",
-    ] {
-        assert!(
-            !raw_jsonl.contains(forbidden),
-            "raw JSONL leaked {forbidden}"
-        );
-    }
 }
 
 #[tokio::test]
@@ -648,22 +609,6 @@ fn loop_milestone_for_scope(scope: TurnScope) -> LoopHostMilestone {
             requested_model_profile_id: None,
         },
     }
-}
-
-fn read_all_file_bytes_lossy(root: &Path) -> String {
-    let mut output = String::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(path) = stack.pop() {
-        let metadata = std::fs::metadata(&path).unwrap();
-        if metadata.is_dir() {
-            for entry in std::fs::read_dir(path).unwrap() {
-                stack.push(entry.unwrap().path());
-            }
-        } else {
-            output.push_str(&String::from_utf8_lossy(&std::fs::read(path).unwrap()));
-        }
-    }
-    output
 }
 
 struct HostFixture {

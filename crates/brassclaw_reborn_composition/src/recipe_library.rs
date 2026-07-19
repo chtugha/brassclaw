@@ -13,18 +13,25 @@
 //! recipe only causes the prompt stage to inject the matched ToolSkill
 //! summaries (Tier 1) — a soft signal that the LLM can choose to follow.
 
+use async_trait::async_trait;
+use brassclaw_turns::run_profile::{RecipeLookup, RecipeLookupError, RecipeMatchDto, ToolSkillMatchDto};
+
+#[cfg(feature = "postgres")]
 use std::sync::Arc;
 
-use async_trait::async_trait;
+#[cfg(feature = "postgres")]
 use brassclaw_engine::memory::metric_outcome::MetricRecorder;
+#[cfg(feature = "postgres")]
 use brassclaw_engine::memory::recipe_matcher::{
     RecipeMatch as EngineRecipeMatch, RecipeMatcher, ToolSkillMatch, RECIPE_MIN_MATCH,
 };
+#[cfg(feature = "postgres")]
 use brassclaw_engine::traits::store::Store;
+#[cfg(feature = "postgres")]
 use brassclaw_engine::types::project::ProjectId;
-use brassclaw_turns::run_profile::{
-    RecipeLookup, RecipeLookupError, RecipeMatchDto, RecipeStepDto, ToolSkillMatchDto,
-};
+#[cfg(feature = "postgres")]
+use brassclaw_turns::run_profile::RecipeStepDto;
+#[cfg(feature = "postgres")]
 use tracing::debug;
 
 /// Recipe library backed by the engine `Store`.
@@ -37,12 +44,14 @@ use tracing::debug;
 ///
 /// Cheap to clone — the inner `Store` is `Arc`-shared with the rest of
 /// the composition surface.
+#[cfg(feature = "postgres")]
 #[derive(Clone)]
 pub(crate) struct RecipeLibrary {
     store: Arc<dyn Store>,
     recorder: MetricRecorder,
 }
 
+#[cfg(feature = "postgres")]
 impl std::fmt::Debug for RecipeLibrary {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -51,6 +60,7 @@ impl std::fmt::Debug for RecipeLibrary {
     }
 }
 
+#[cfg(feature = "postgres")]
 impl RecipeLibrary {
     pub(crate) fn new(store: Arc<dyn Store>) -> Self {
         let recorder = MetricRecorder::new(Arc::clone(&store));
@@ -70,6 +80,7 @@ impl RecipeLibrary {
     }
 }
 
+#[cfg(feature = "postgres")]
 #[async_trait]
 impl RecipeLookup for RecipeLibrary {
     async fn find_recipe(
@@ -134,6 +145,7 @@ impl RecipeLookup for RecipeLibrary {
     }
 }
 
+#[cfg(feature = "postgres")]
 fn to_dto(hit: EngineRecipeMatch, match_score: f64) -> RecipeMatchDto {
     RecipeMatchDto {
         id: hit.id,
@@ -156,6 +168,7 @@ fn to_dto(hit: EngineRecipeMatch, match_score: f64) -> RecipeMatchDto {
     }
 }
 
+#[cfg(feature = "postgres")]
 fn skill_to_dto(skill: ToolSkillMatch) -> ToolSkillMatchDto {
     ToolSkillMatchDto {
         id: skill.id,

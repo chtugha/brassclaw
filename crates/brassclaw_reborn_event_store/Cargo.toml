@@ -12,7 +12,6 @@ publish = false
 
 [features]
 default = []
-libsql = ["dep:libsql"]
 postgres = [
     "dep:tokio-postgres-rustls",
     "dep:rustls",
@@ -24,7 +23,6 @@ postgres = [
 [dependencies]
 async-trait = "0.1"
 brassclaw_pg = { path = "../brassclaw_pg" }
-libsql = { version = "0.6", optional = true, default-features = false, features = ["core", "replication", "remote", "tls"] }
 deadpool-postgres = "0.14"
 hex = "0.4"
 brassclaw_events = { path = "../brassclaw_events", version = "0.1.0" }

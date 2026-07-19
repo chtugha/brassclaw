@@ -289,7 +289,7 @@ brassclaw_trust = { path = "crates/brassclaw_trust", version = "0.1.0" }
 brassclaw_embeddings = { path = "crates/brassclaw_embeddings", version = "0.1.0", features = ["testing"] }
 
 [features]
-default = ["postgres", "migrate-from-libsql", "html-to-markdown", "tui"]
+default = ["postgres", "html-to-markdown", "tui"]
 postgres = [
     "dep:deadpool-postgres",
     "dep:tokio-postgres",
@@ -316,7 +316,7 @@ integration = []
 # Replay-gate snapshot tests run in a dedicated CI job.
 replay = []
 html-to-markdown = ["dep:html-to-markdown-rs", "dep:readabilityrs"]
-bedrock = ["brassclaw_llm/bedrock", "brassclaw_embeddings/bedrock"]
+bedrock = ["brassclaw_llm/bedrock", "brassclaw_embeddings/bedrock", "brassclaw_reborn_composition/bedrock"]
 tui = ["dep:brassclaw_tui"]
 import = ["dep:json5"]
 # Conditional gate for memory-substrate regression tests that anticipate

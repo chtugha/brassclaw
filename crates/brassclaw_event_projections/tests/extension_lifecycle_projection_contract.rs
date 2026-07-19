@@ -1,4 +1,4 @@
-use std::{fs, path::Path, sync::Arc};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use brassclaw_event_projections::{
@@ -16,25 +16,13 @@ use brassclaw_host_api::{
     DecisionSummary, EffectKind, ExtensionId, ExtensionLifecycleOperation, HostPortCatalog,
     InvocationId, ProjectId, ResourceScope, TenantId, UserId, VirtualPath,
 };
-use brassclaw_reborn_event_store::{
-    RebornEventStoreConfig, RebornProfile, build_reborn_event_stores,
-};
+use brassclaw_events::InMemoryDurableAuditLog;
 use chrono::Utc;
 
 #[tokio::test]
 async fn extension_lifecycle_projects_metadata_only_from_durable_audit_log() {
-    let temp = tempfile::tempdir().unwrap();
-    let store_root = temp.path().join("reborn-event-store");
-    let stores = build_reborn_event_stores(
-        RebornProfile::LocalDev,
-        RebornEventStoreConfig::Jsonl {
-            root: store_root.clone(),
-            accept_single_node_durable: false,
-        },
-    )
-    .await
-    .unwrap();
-    let audit_log = Arc::clone(&stores.audit);
+    let audit_log = Arc::new(InMemoryDurableAuditLog::new());
+    let audit_log = Arc::clone(&audit_log);
     let lifecycle_sink = Arc::new(DurableExtensionLifecycleAuditSink::new(Arc::new(
         DurableAuditSink::new(Arc::clone(&audit_log)),
     )));
@@ -106,7 +94,6 @@ async fn extension_lifecycle_projects_metadata_only_from_durable_audit_log() {
     }));
 
     let projection_json = serde_json::to_string(&snapshot).unwrap();
-    let jsonl_bytes = read_directory_text(&store_root);
     for forbidden in [
         "extension_raw_description_sentinel_3022",
         "extension_raw_asset_sentinel_3022",
@@ -115,10 +102,6 @@ async fn extension_lifecycle_projects_metadata_only_from_durable_audit_log() {
         assert!(
             !projection_json.contains(forbidden),
             "extension lifecycle projection leaked {forbidden}: {projection_json}"
-        );
-        assert!(
-            !jsonl_bytes.contains(forbidden),
-            "durable extension lifecycle audit bytes leaked {forbidden}: {jsonl_bytes}"
         );
     }
 }
@@ -204,22 +187,6 @@ fn extension_resource_scope() -> ResourceScope {
         mission_id: None,
         thread_id: None,
         invocation_id: InvocationId::new(),
-    }
-}
-
-fn read_directory_text(root: &Path) -> String {
-    let mut output = String::new();
-    read_directory_text_into(root, &mut output);
-    output
-}
-
-fn read_directory_text_into(path: &Path, output: &mut String) {
-    if path.is_dir() {
-        for entry in fs::read_dir(path).unwrap() {
-            read_directory_text_into(&entry.unwrap().path(), output);
-        }
-    } else if path.is_file() {
-        output.push_str(&fs::read_to_string(path).unwrap_or_default());
     }
 }
 

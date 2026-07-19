@@ -1120,7 +1120,7 @@ pub struct RebornServices {
     thread_operation_locks: Arc<ThreadOperationLocks>,
     extension_registry: Option<Arc<dyn brassclaw_host_api::CapabilityRegistry>>,
     capability_permission_store: Option<Arc<dyn CapabilityPermissionStore>>,
-    safety_config_store: Option<Arc<crate::safety_config_store::SqliteSafetyConfigStore>>,
+    safety_config_store: Option<Arc<dyn crate::safety_config_store::SafetyConfigStore>>,
     token_settings_store: Option<Arc<dyn crate::token_settings_store::TokenSettingsStore>>,
     /// Reduction-rule persistence port backing `/tokens/reduction-rules/*`.
     /// When unwired, the default `501` responses keep the WebUI surface
@@ -1307,7 +1307,7 @@ impl RebornServices {
     /// Attach the safety configuration store for managing safety rules.
     pub fn with_safety_config_store(
         mut self,
-        safety_config_store: Arc<crate::safety_config_store::SqliteSafetyConfigStore>,
+        safety_config_store: Arc<dyn crate::safety_config_store::SafetyConfigStore>,
     ) -> Self {
         self.safety_config_store = Some(safety_config_store);
         self
@@ -2308,8 +2308,6 @@ impl RebornServicesApi for RebornServices {
         &self,
         caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
-        use crate::safety_config_store::SafetyConfigStore;
-
         let Some(store) = &self.safety_config_store else {
             return Err(RebornServicesError::from_status_kind(
                 RebornServicesErrorCode::Unavailable,
@@ -2342,8 +2340,6 @@ impl RebornServicesApi for RebornServices {
         caller: WebUiAuthenticatedCaller,
         request: crate::safety_config::UpdateSafetyConfigRequest,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
-        use crate::safety_config_store::SafetyConfigStore;
-
         let Some(store) = &self.safety_config_store else {
             return Err(RebornServicesError::from_status_kind(
                 RebornServicesErrorCode::Unavailable,
@@ -2375,8 +2371,6 @@ impl RebornServicesApi for RebornServices {
         &self,
         caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
-        use crate::safety_config_store::SafetyConfigStore;
-
         let Some(store) = &self.safety_config_store else {
             return Err(RebornServicesError::from_status_kind(
                 RebornServicesErrorCode::Unavailable,
@@ -2408,8 +2402,6 @@ impl RebornServicesApi for RebornServices {
         caller: WebUiAuthenticatedCaller,
         request: crate::safety_config::UpdateSafetyConfigRequest,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
-        use crate::safety_config_store::SafetyConfigStore;
-
         let Some(store) = &self.safety_config_store else {
             return Err(RebornServicesError::from_status_kind(
                 RebornServicesErrorCode::Unavailable,
@@ -2441,8 +2433,6 @@ impl RebornServicesApi for RebornServices {
         &self,
         caller: WebUiAuthenticatedCaller,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
-        use crate::safety_config_store::SafetyConfigStore;
-
         let Some(store) = &self.safety_config_store else {
             return Err(RebornServicesError::from_status_kind(
                 RebornServicesErrorCode::Unavailable,
@@ -2474,8 +2464,6 @@ impl RebornServicesApi for RebornServices {
         caller: WebUiAuthenticatedCaller,
         request: crate::safety_config::UpdateSafetyConfigRequest,
     ) -> Result<crate::safety_config::SafetyConfigResponse, RebornServicesError> {
-        use crate::safety_config_store::SafetyConfigStore;
-
         let Some(store) = &self.safety_config_store else {
             return Err(RebornServicesError::from_status_kind(
                 RebornServicesErrorCode::Unavailable,

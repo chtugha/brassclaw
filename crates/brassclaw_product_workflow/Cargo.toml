@@ -36,7 +36,6 @@ brassclaw_turns = { path = "../brassclaw_turns", version = "0.1.0" }
 brassclaw_pg = { path = "../brassclaw_pg" }
 deadpool-postgres = "0.14"
 tokio-postgres = "0.7"
-libsql = { version = "0.6", default-features = false, features = ["core", "replication", "remote", "tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 secrecy = { version = "0.10", features = ["serde"] }

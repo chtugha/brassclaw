@@ -11,16 +11,18 @@ repository = "https://github.com/chtugha/brassclaw"
 publish = false
 
 [features]
-default = ["migrate-from-libsql"]
+default = []
 # Upgrade-release gate: compiles the libSQL→Postgres data migration module.
 # Default-on for the upgrade release. Removed in the release after.
-migrate-from-libsql = ["dep:libsql", "brassclaw_reborn_event_store/libsql"]
+migrate-from-libsql = ["dep:libsql"]
 # Wire a host-managed LLM model gateway into the assembled runtime.
 root-llm-provider = [
     "dep:brassclaw_llm",
     "brassclaw_llm/registry-provider-factory",
     "brassclaw_reborn/root-llm-provider",
 ]
+# Enable AWS Bedrock embedding provider (Titan Text Embeddings V2).
+bedrock = ["dep:aws-config", "dep:aws-sdk-bedrockruntime", "dep:aws-smithy-types"]
 # Expose test-only helpers (mock LLM gateway, budget runtime accessors).
 test-support = []
 # Backward-compat alias.
@@ -112,6 +114,10 @@ toml = "0.8"
 tracing = "0.1"
 url = "2"
 uuid = { version = "1", features = ["v4", "v5"] }
+
+aws-config             = { version = "1", features = ["behavior-version-latest"], optional = true }
+aws-sdk-bedrockruntime = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio", "behavior-version-latest"], optional = true }
+aws-smithy-types       = { version = "1", optional = true }
 
 [dev-dependencies]
 async-trait = "0.1"

@@ -28,8 +28,9 @@ use brassclaw_filesystem::{
     MountDescriptor, RootFilesystem, StorageClass,
 };
 use brassclaw_filesystem::{LocalFilesystem, ScopedFilesystem};
-use brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy;
 use brassclaw_host_api::runtime_policy::{FilesystemBackendKind, ProcessBackendKind, SecretMode};
+#[cfg(feature = "postgres")]
+use brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy;
 use brassclaw_host_api::{
     EffectKind, ExtensionId, HostPath, MountPermissions, MountView, PackageId, RuntimeHttpEgress,
     UserId, VirtualPath,
@@ -289,6 +290,12 @@ impl RebornServices {
     pub(crate) fn secret_store(&self) -> Arc<dyn SecretStore> {
         Arc::clone(&self.secret_store)
     }
+
+    /// The Postgres connection pool, if this composition uses a Postgres backend.
+    #[cfg(feature = "postgres")]
+    pub fn pg_pool(&self) -> Option<&Arc<deadpool_postgres::Pool>> {
+        self.pg_pool.as_ref()
+    }
 }
 
 pub(crate) struct RebornLocalRuntimeServices {
@@ -486,6 +493,7 @@ fn compose_product_auth_services(
     Arc::new(services)
 }
 
+#[cfg(feature = "postgres")]
 fn production_config(
     required_runtime_backends: Vec<brassclaw_host_api::RuntimeKind>,
     require_runtime_http_egress: bool,
@@ -1295,8 +1303,6 @@ fn write_local_dev_secret_master_key(path: &Path, key: &str) -> Result<(), Rebor
     }
 }
 
-// Intentionally uncfg'd: called from both libsql and no-libsql local-dev root
-// filesystem paths.
 fn local_dev_mount_descriptor(
     virtual_root: &str,
     backend_id: &str,
@@ -1846,6 +1852,7 @@ where
     credential_broker: Arc<FilesystemCredentialBroker<F>>,
 }
 
+#[cfg(feature = "postgres")]
 impl<F> FilesystemSecretCredentialStores<F>
 where
     F: RootFilesystem + 'static,
@@ -1915,6 +1922,7 @@ where
     event_store: brassclaw_reborn_event_store::RebornEventStoreConfig,
 }
 
+#[cfg(feature = "postgres")]
 impl<F> ProductionStoreBundle<F>
 where
     F: RootFilesystem + 'static,
@@ -1941,25 +1949,6 @@ where
             event_store,
         })
     }
-}
-
-#[cfg(feature = "postgres")]
-async fn build_backend_production<F>(
-    context: RebornProductionBuildContext,
-    stores: ProductionStoreBundle<F>,
-    trigger_repository: Arc<dyn TriggerRepository>,
-) -> Result<RebornServices, RebornBuildError>
-where
-    F: RootFilesystem + 'static,
-{
-    build_backend_production_with_tools(
-        context,
-        stores,
-        trigger_repository,
-        None,
-        None,
-    )
-    .await
 }
 
 #[cfg(feature = "postgres")]
@@ -2135,16 +2124,10 @@ where
         pg_pool,
         #[cfg(feature = "root-llm-provider")]
         secret_store,
-        #[cfg(feature = "libsql")]
-        safety_config_store: None,
         #[cfg(feature = "postgres")]
         pg_safety_config_store,
-        #[cfg(feature = "libsql")]
-        token_settings_store: None,
         #[cfg(feature = "postgres")]
         pg_token_settings_store,
-        #[cfg(feature = "libsql")]
-        memory_doc_store: None,
         #[cfg(feature = "postgres")]
         pg_memory_doc_store,
     })
@@ -2249,7 +2232,7 @@ async fn resolve_pg_embedding_provider(
     pool: &deadpool_postgres::Pool,
     tenant_id: &str,
 ) -> Option<Arc<dyn brassclaw_memory::EmbeddingProvider>> {
-    use crate::embedding_providers::{EmbeddingsConfig, ProviderDeps, create_provider};
+    use crate::embedding_providers::{ProviderDeps, create_provider};
     use crate::embedding_role_adapter::EmbeddingRoleAdapter;
     use crate::pg_provider_repo::PgProviderRepo;
     use brassclaw_embeddings::EmbeddingCacheConfig;
@@ -2298,7 +2281,7 @@ async fn resolve_pg_embedding_provider(
 fn build_embeddings_config_from_provider(
     provider_def: Option<&brassclaw_llm::ProviderDefinition>,
     model_override: &Option<String>,
-) -> Option<EmbeddingsConfig> {
+) -> Option<crate::embedding_providers::EmbeddingsConfig> {
     use crate::embedding_providers::{EmbeddingsConfig, default_dimension_for_model};
     use brassclaw_llm::registry::ProviderProtocol;
 
@@ -2405,9 +2388,6 @@ mod tests {
     };
     use brassclaw_product_workflow::{LifecyclePackageKind, LifecyclePackageRef};
     use brassclaw_trust::{AuthorityCeiling, EffectiveTrustClass, TrustDecision, TrustProvenance};
-    #[cfg(feature = "libsql")]
-    use secrecy::ExposeSecret;
-
     use crate::{
         extension_lifecycle::ExtensionActivationMode, runtime::SKILL_ACTIVATE_CAPABILITY_ID,
     };
@@ -2527,9 +2507,6 @@ mod tests {
             capability_leases: Arc::clone(&base_runtime.capability_leases),
             turn_state: Arc::clone(&base_runtime.turn_state),
             trigger_repository: Arc::clone(&base_runtime.trigger_repository),
-            #[cfg(not(any(feature = "libsql", feature = "postgres")))]
-            trigger_conversation_services: base_runtime.trigger_conversation_services.clone(),
-            
             trigger_conversation_services: tokio::sync::OnceCell::new(),
             checkpoint_state_store: Arc::clone(&base_runtime.checkpoint_state_store),
             loop_checkpoint_store: Arc::clone(&base_runtime.loop_checkpoint_store),
@@ -2547,10 +2524,6 @@ mod tests {
             memory_mounts: base_runtime.memory_mounts.clone(),
             skill_filesystem: Arc::clone(&base_runtime.skill_filesystem),
             workspace_filesystem: Arc::clone(&base_runtime.workspace_filesystem),
-            #[cfg(feature = "libsql")]
-            identity_filesystem: Arc::clone(&base_runtime.identity_filesystem),
-            #[cfg(feature = "libsql")]
-            identity_substrate_db: Arc::clone(&base_runtime.identity_substrate_db),
             subagent_goal_filesystem: Arc::new(ScopedFilesystem::with_fixed_view(
                 Arc::new(failing_root),
                 MountView::new(vec![MountGrant::new(
@@ -2567,12 +2540,6 @@ mod tests {
             event_log: Arc::clone(&base_runtime.event_log),
             audit_log: Arc::clone(&base_runtime.audit_log),
             extension_registry: Arc::clone(&base_runtime.extension_registry),
-            #[cfg(feature = "libsql")]
-            safety_config_store: Arc::clone(&base_runtime.safety_config_store),
-            #[cfg(feature = "libsql")]
-            token_settings_store: Arc::clone(&base_runtime.token_settings_store),
-            #[cfg(feature = "libsql")]
-            memory_doc_store: Arc::clone(&base_runtime.memory_doc_store),
             content_cache_slot: brassclaw_reborn::content_cache_port::CurrentCacheBridgeSlot::new(),
             plan_state_slot: crate::plan_library::CurrentPlanStateSlot::new(),
         })
@@ -2687,183 +2654,6 @@ mod tests {
         assert_eq!(
             search["results"][0]["path"],
             serde_json::json!("projects/alpha/notes.md")
-        );
-    }
-
-    #[cfg(feature = "libsql")]
-    #[tokio::test]
-    async fn local_dev_memory_documents_persist_across_rebuilds() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let local_dev_root = dir.path().join("local-dev");
-        let owner = "local-dev-durable-memory-owner";
-
-        let services =
-            build_reborn_services(RebornBuildInput::local_dev(owner, local_dev_root.clone()))
-                .await
-                .expect("first local-dev services build");
-        let runtime = services
-            .host_runtime
-            .as_ref()
-            .expect("host runtime composed");
-
-        invoke_json(
-            runtime.as_ref(),
-            MEMORY_WRITE_CAPABILITY_ID,
-            memory_context(MEMORY_WRITE_CAPABILITY_ID),
-            serde_json::json!({
-                "target": "projects/durable/notes.md",
-                "content": "local dev durable mounted memory root search marker",
-                "append": false
-            }),
-        )
-        .await
-        .expect("memory_write should persist through the libsql /memory root");
-        drop(services);
-
-        let rebuilt =
-            build_reborn_services(RebornBuildInput::local_dev(owner, local_dev_root.clone()))
-                .await
-                .expect("rebuilt local-dev services");
-        let runtime = rebuilt.host_runtime.as_ref().expect("rebuilt host runtime");
-
-        let tree = invoke_json(
-            runtime.as_ref(),
-            MEMORY_TREE_CAPABILITY_ID,
-            memory_context(MEMORY_TREE_CAPABILITY_ID),
-            serde_json::json!({"path": "", "depth": 3}),
-        )
-        .await
-        .expect("memory_tree should list rebuilt libsql memory documents");
-        assert!(
-            tree.to_string().contains("durable/"),
-            "memory_tree should include the persisted memory document: {tree}"
-        );
-
-        let search = invoke_json(
-            runtime.as_ref(),
-            MEMORY_SEARCH_CAPABILITY_ID,
-            memory_context(MEMORY_SEARCH_CAPABILITY_ID),
-            serde_json::json!({"query": "durable mounted memory root search marker", "limit": 5}),
-        )
-        .await
-        .expect("memory_search should query rebuilt libsql memory documents");
-        assert_eq!(search["result_count"], serde_json::json!(1));
-        assert_eq!(
-            search["results"][0]["path"],
-            serde_json::json!("projects/durable/notes.md")
-        );
-    }
-
-    #[cfg(feature = "libsql")]
-    #[tokio::test]
-    async fn local_dev_default_product_auth_preserves_manual_token_across_rebuilds() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let local_dev_root = dir.path().join("local-dev");
-        let owner = "local-dev-durable-auth-owner";
-        let services =
-            build_reborn_services(RebornBuildInput::local_dev(owner, local_dev_root.clone()))
-                .await
-                .expect("local-dev services build");
-        let product_auth = services.product_auth.as_ref().expect("product auth");
-        let scope = AuthProductScope::new(
-            ResourceScope::local_default(UserId::new(owner).unwrap(), InvocationId::new()).unwrap(),
-            AuthSurface::Callback,
-        );
-        let mut scope = scope;
-        scope.resource.thread_id = Some(brassclaw_host_api::ThreadId::new("auth-thread").unwrap());
-
-        let challenge = product_auth
-            .request_manual_token_setup(crate::RebornManualTokenSetupRequest::new(
-                scope.clone(),
-                brassclaw_auth::AuthProviderId::new("github").unwrap(),
-                CredentialAccountLabel::new("work github").unwrap(),
-                brassclaw_auth::AuthContinuationRef::SetupOnly,
-                chrono::Utc::now() + chrono::Duration::minutes(5),
-            ))
-            .await
-            .unwrap();
-        let submitted = product_auth
-            .submit_manual_token(crate::RebornManualTokenSubmitRequest::new(
-                scope.clone(),
-                challenge.interaction_id,
-                secrecy::SecretString::from("ghp_local_dev_pat"),
-            ))
-            .await
-            .unwrap();
-
-        let account = product_auth
-            .credential_account_service()
-            .get_account(brassclaw_auth::CredentialAccountLookupRequest::new(
-                scope.clone(),
-                submitted.account_id,
-            ))
-            .await
-            .unwrap()
-            .expect("manual-token submit should create account");
-        let access_secret = account.access_secret.expect("manual token access secret");
-        assert!(
-            access_secret.as_str().starts_with("product-auth-manual-"),
-            "local-dev default product-auth must create durable SecretStore-backed handles"
-        );
-
-        let rebuilt =
-            build_reborn_services(RebornBuildInput::local_dev(owner, local_dev_root.clone()))
-                .await
-                .expect("local-dev services rebuild");
-        let rebuilt_product_auth = rebuilt.product_auth.as_ref().expect("product auth");
-        let rebuilt_account = rebuilt_product_auth
-            .credential_account_service()
-            .get_account(brassclaw_auth::CredentialAccountLookupRequest::new(
-                scope.clone(),
-                submitted.account_id,
-            ))
-            .await
-            .unwrap()
-            .expect("manual-token account should survive local-dev rebuild");
-        assert_eq!(rebuilt_account.access_secret.as_ref(), Some(&access_secret));
-
-        let rebuilt_filesystem = build_local_dev_root_filesystem(
-            &local_dev_root,
-            &local_dev_root.join("workspace"),
-            None,
-        )
-        .await
-        .expect("local-dev filesystem rebuild")
-        .filesystem;
-        let rebuilt_secret_store = build_local_dev_secret_store(
-            &local_dev_root,
-            local_dev_scoped_filesystem(rebuilt_filesystem),
-        )
-        .expect("local-dev secret store rebuild");
-        let lease = rebuilt_secret_store
-            .lease_once(&scope.resource, &access_secret)
-            .await
-            .expect("manual token secret should survive local-dev rebuild");
-        let raw_secret = rebuilt_secret_store
-            .consume(&scope.resource, lease.id)
-            .await
-            .expect("manual token secret should decrypt after local-dev rebuild");
-        assert_eq!(raw_secret.expose_secret(), "ghp_local_dev_pat");
-
-        let flows = product_auth
-            .flow_record_source()
-            .expect("local-dev product-auth flow source")
-            .flows_for_owner(brassclaw_auth::AuthFlowOwnerScope {
-                tenant_id: scope.resource.tenant_id.clone(),
-                user_id: scope.resource.user_id.clone(),
-                agent_id: scope.resource.agent_id.clone(),
-                project_id: scope.resource.project_id.clone(),
-                thread_id: scope.resource.thread_id.clone().unwrap(),
-            })
-            .await
-            .unwrap();
-        let completed_flow = flows
-            .iter()
-            .find(|flow| flow.credential_account_id == Some(submitted.account_id))
-            .expect("manual-token completion should remain visible to auth gates");
-        assert_eq!(
-            completed_flow.status,
-            brassclaw_auth::AuthFlowStatus::Completed
         );
     }
 
@@ -3192,63 +2982,6 @@ mod tests {
         let services = attach_hosted_mcp_runtime(services).expect("attach is optional");
 
         assert!(services.product_auth_provider_runtime_ports().is_none());
-    }
-
-    #[cfg(feature = "libsql")]
-    #[tokio::test]
-    async fn local_dev_services_persist_thread_records_across_rebuilds() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let root = dir.path().join("local-dev");
-        let scope = brassclaw_threads::ThreadScope {
-            tenant_id: brassclaw_host_api::TenantId::new("persist-tenant").unwrap(),
-            agent_id: brassclaw_host_api::AgentId::new("persist-agent").unwrap(),
-            project_id: None,
-            owner_user_id: Some(brassclaw_host_api::UserId::new("persist-owner").unwrap()),
-            mission_id: None,
-        };
-        let thread_id = brassclaw_host_api::ThreadId::new("persisted-thread").unwrap();
-
-        let services =
-            build_reborn_services(RebornBuildInput::local_dev("persist-owner", root.clone()))
-                .await
-                .expect("first local-dev services build");
-        services
-            .local_runtime
-            .as_ref()
-            .expect("local runtime")
-            .thread_service
-            .ensure_thread(brassclaw_threads::EnsureThreadRequest {
-                scope: scope.clone(),
-                thread_id: Some(thread_id.clone()),
-                created_by_actor_id: "persist-owner".to_string(),
-                title: Some("Persisted thread".to_string()),
-                metadata_json: None,
-            })
-            .await
-            .expect("persist thread");
-        drop(services);
-
-        let rebuilt =
-            build_reborn_services(RebornBuildInput::local_dev("persist-owner", root.clone()))
-                .await
-                .expect("rebuilt local-dev services");
-        let history = rebuilt
-            .local_runtime
-            .as_ref()
-            .expect("rebuilt local runtime")
-            .thread_service
-            .list_thread_history(brassclaw_threads::ThreadHistoryRequest {
-                scope,
-                thread_id: thread_id.clone(),
-            })
-            .await
-            .expect("read persisted thread");
-
-        assert_eq!(history.thread.thread_id, thread_id);
-        assert!(
-            root.join("reborn-local-dev.db").exists(),
-            "local-dev should use a libSQL database under the local-dev root"
-        );
     }
 
     #[tokio::test]

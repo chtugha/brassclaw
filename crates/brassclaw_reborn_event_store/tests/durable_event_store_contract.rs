@@ -1,5 +1,5 @@
 #[cfg(feature = "postgres")]
-use brassclaw_events::{EventCursor, EventStreamKey, ReadScope, RuntimeEvent, RuntimeEventKind};
+use brassclaw_events::{EventCursor, EventStreamKey, ReadScope, RuntimeEvent};
 #[cfg(feature = "postgres")]
 use brassclaw_host_api::{
     ActionResultSummary, ActionSummary, AgentId, AuditEnvelope, AuditEventId, AuditStage,

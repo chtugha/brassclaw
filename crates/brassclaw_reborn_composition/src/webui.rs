@@ -135,86 +135,7 @@ pub(crate) fn build_webui_services_with_connectable_channels(
     if let Some(boot) = runtime.webui_boot_config() {
         let keys = crate::LlmKeyStore::new(runtime.services().secret_store());
         let mut llm_config = crate::RebornLlmConfigService::new(boot.clone(), keys);
-        if let Some(mut adapter) = runtime.webui_llm_reload_adapter() {
-            // Wire the per-provider budget refresh callback on provider change so
-            // live budget slots update without a restart when the active provider
-            // is switched through the settings UI.
-            #[cfg(feature = "libsql")]
-            {
-                let budget_slot = runtime.live_context_budget();
-                let max_output_slot = runtime.live_max_output();
-                let total_input_slot = runtime.live_total_input();
-                let inline_control_slot = runtime.live_inline_control();
-                let context_window_slot = runtime.live_context_window();
-                let token_store = services
-                    .local_runtime
-                    .as_ref()
-                    .map(|lr| Arc::clone(&lr.token_settings_store));
-                let owner_id = runtime.actor_user_id_string();
-                // Load the provider registry once at wiring time so the
-                // on_provider_changed callback can read context_window_tokens
-                // from an in-memory snapshot rather than hitting disk on every
-                // provider switch in the UI.
-                let boot_registry = brassclaw_llm::ProviderRegistry::try_load_from_path(None)
-                    .ok()
-                    .map(Arc::new);
-                // All five live slots share this outer guard: if budget_slot or
-                // token_store is absent, the entire callback is skipped. This is
-                // intentional — without a store none of the slots can refresh.
-                if let (Some(slot), Some(store)) = (budget_slot, token_store) {
-                    let on_change: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(
-                        move |provider_id: &str| {
-                            let slot = slot.clone();
-                            let max_out = max_output_slot.clone();
-                            let total_in = total_input_slot.clone();
-                            let inline_ctl = inline_control_slot.clone();
-                            let ctx_win = context_window_slot.clone();
-                            let store = Arc::clone(&store);
-                            let owner = owner_id.clone();
-                            let pid = provider_id.to_string();
-                            let registry = boot_registry.clone();
-                            tokio::spawn(async move {
-                                use brassclaw_product_workflow::TokenSettingsStore as _;
-                                match store.get_provider_token_settings(&owner, &pid).await {
-                                    Ok(row) => {
-                                        slot.set(row.conversation_history);
-                                        if let Some(s) = &max_out {
-                                            s.set(row.max_output);
-                                        }
-                                        if let Some(s) = &total_in {
-                                            s.set(row.total_input);
-                                        }
-                                        if let Some(s) = &inline_ctl {
-                                            s.set(row.inline_control);
-                                        }
-                                    }
-                                    Err(_) => {
-                                        tracing::debug!(
-                                            provider = %pid,
-                                            "on_provider_changed: failed to load token settings, live slots not updated"
-                                        );
-                                    }
-                                }
-                                if let Some(s) = &ctx_win {
-                                    if let Some(reg) = &registry {
-                                        let window = reg
-                                            .find(&pid)
-                                            .and_then(|d| d.context_window_tokens)
-                                            .map(|v| v as usize);
-                                        s.set(window);
-                                    } else {
-                                        tracing::debug!(
-                                            provider = %pid,
-                                            "on_provider_changed: provider registry not available at boot, context_window slot not updated"
-                                        );
-                                    }
-                                }
-                            });
-                        },
-                    );
-                    adapter = adapter.with_on_provider_changed(on_change);
-                }
-            }
+        if let Some(adapter) = runtime.webui_llm_reload_adapter() {
             llm_config = llm_config
                 .with_reload_trigger(Arc::new(adapter) as Arc<dyn crate::LlmReloadTrigger>);
         }
@@ -227,28 +148,20 @@ pub(crate) fn build_webui_services_with_connectable_channels(
         api = api.with_llm_config_service(Arc::new(llm_config));
     }
 
-    // Wire the safety configuration store — libsql (local-dev) or postgres (production).
+    // Wire the safety configuration store (Postgres path).
     #[cfg(feature = "postgres")]
     if let Some(safety_config_store) = &services.pg_safety_config_store {
         tracing::debug!("wiring PgSafetyConfigStore into WebUI API");
-        api = api.with_safety_config_store(Arc::clone(safety_config_store));
-    }
-    #[cfg(feature = "libsql")]
-    if let Some(safety_config_store) = &services.safety_config_store {
-        tracing::debug!("wiring SafetyConfigStore into WebUI API");
-        api = api.with_safety_config_store(Arc::clone(safety_config_store));
+        api = api.with_safety_config_store(
+            Arc::clone(safety_config_store)
+                as Arc<dyn brassclaw_product_workflow::SafetyConfigStore>,
+        );
     }
 
-    // Wire the token settings store — libsql (local-dev) or postgres (production).
+    // Wire the token settings store (Postgres path).
     #[cfg(feature = "postgres")]
     if let Some(token_settings_store) = &services.pg_token_settings_store {
         tracing::debug!("wiring PgTokenSettingsStore into WebUI API");
-        api = api.with_token_settings_store(Arc::clone(token_settings_store)
-            as Arc<dyn brassclaw_product_workflow::TokenSettingsStore>);
-    }
-    #[cfg(feature = "libsql")]
-    if let Some(token_settings_store) = &services.token_settings_store {
-        tracing::debug!("wiring TokenSettingsStore into WebUI API");
         api = api.with_token_settings_store(Arc::clone(token_settings_store)
             as Arc<dyn brassclaw_product_workflow::TokenSettingsStore>);
     }
@@ -279,62 +192,12 @@ pub(crate) fn build_webui_services_with_connectable_channels(
         );
         tracing::debug!("ReductionRuleStore + RecipeStore wired through PgMemoryDocStore");
     }
-    #[cfg(feature = "libsql")]
-    if let Some(memory_doc_store) = services.memory_doc_store.clone() {
-        let dyn_store: Arc<dyn brassclaw_engine::traits::store::Store> =
-            Arc::clone(&memory_doc_store) as Arc<dyn brassclaw_engine::traits::store::Store>;
-        let reduction_rule_store = crate::reduction_rules_store::StoreBackedReductionRuleStore::open(
-            Arc::clone(&dyn_store),
-        );
-        api = api.with_reduction_rule_store(
-            Arc::new(reduction_rule_store)
-                as Arc<dyn brassclaw_product_workflow::ReductionRuleStore>,
-        );
-        api = api.with_reduction_rules_cache_invalidator(Arc::new(
-            |_project_id: &str, _user_id: &str| {
-                brassclaw_engine::executor::orchestrator::invalidate_reduction_rules_cache();
-            },
-        ));
-        let recipe_store = crate::recipe_store::StoreBackedRecipeStore::open(Arc::clone(&dyn_store));
-        api = api.with_recipe_store(
-            Arc::new(recipe_store)
-                as Arc<dyn brassclaw_product_workflow::RecipeStore>,
-        );
-        tracing::debug!(
-            "ReductionRuleStore + RecipeStore wired through MemoryDocLibSqlStore"
-        );
-    }
 
-    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-    if let Some(budget) = runtime.live_context_budget() {
-        api = api.with_live_context_budget_setter(Arc::new(move |v| budget.set(v)));
-    }
-    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-    if let Some(slot) = runtime.live_max_output() {
-        api = api.with_live_max_output_setter(Arc::new(move |v| slot.set(v)));
-    }
-    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-    if let Some(slot) = runtime.live_total_input() {
-        api = api.with_live_total_input_setter(Arc::new(move |v| slot.set(v)));
-    }
-    #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]
-    if let Some(slot) = runtime.live_inline_control() {
-        api = api.with_live_inline_control_setter(Arc::new(move |v| slot.set(v)));
-    }
-
-    // Wire the extension registry and capability permission store for Tools API
+    // Wire the extension registry for Tools API
     if let Some(local_runtime) = &services.local_runtime {
         tracing::debug!("wiring ExtensionRegistry into WebUI API");
         api = api.with_extension_registry(Arc::clone(&local_runtime.extension_registry)
             as Arc<dyn brassclaw_host_api::CapabilityRegistry>);
-
-        // Wire capability permission store when available (local-dev with libsql)
-        #[cfg(feature = "libsql")]
-        if let Some(safety_config_store) = &services.safety_config_store {
-            tracing::debug!("wiring CapabilityPermissionStore into WebUI API");
-            api = api.with_capability_permission_store(Arc::clone(safety_config_store)
-                as Arc<dyn brassclaw_product_workflow::CapabilityPermissionStore>);
-        }
     } else {
         tracing::debug!("ExtensionRegistry is None - tools endpoints will return empty list");
     }

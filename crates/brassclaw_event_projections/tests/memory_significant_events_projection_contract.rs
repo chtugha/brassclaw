@@ -1,4 +1,4 @@
-use std::{fs, path::Path, sync::Arc};
+use std::sync::Arc;
 
 use brassclaw_event_projections::{
     AuditProjectionRequest, AuditProjectionService, AuditProjectionStage, DurableMemoryAuditSink,
@@ -16,24 +16,12 @@ use brassclaw_memory::{
     MemoryBackendFilesystemAdapter, MemoryContext, MemoryDocumentPath, MemoryDocumentScope,
     MemorySearchRequest, RepositoryMemoryBackend, content_sha256,
 };
-use brassclaw_reborn_event_store::{
-    RebornEventStoreConfig, RebornProfile, build_reborn_event_stores,
-};
+use brassclaw_events::InMemoryDurableAuditLog;
 
 #[tokio::test]
-async fn memory_write_index_and_search_project_metadata_only_from_jsonl_audit_log() {
-    let temp = tempfile::tempdir().unwrap();
-    let store_root = temp.path().join("reborn-event-store");
-    let stores = build_reborn_event_stores(
-        RebornProfile::LocalDev,
-        RebornEventStoreConfig::Jsonl {
-            root: store_root.clone(),
-            accept_single_node_durable: false,
-        },
-    )
-    .await
-    .unwrap();
-    let audit_log = Arc::clone(&stores.audit);
+async fn memory_write_index_and_search_project_metadata_only_from_durable_audit_log() {
+    let audit_log = Arc::new(InMemoryDurableAuditLog::new());
+    let audit_log = Arc::clone(&audit_log);
     let audit_sink: Arc<dyn AuditSink> = Arc::new(DurableAuditSink::new(Arc::clone(&audit_log)));
     let memory_events = Arc::new(DurableMemoryAuditSink::new(audit_sink));
 
@@ -162,7 +150,6 @@ async fn memory_write_index_and_search_project_metadata_only_from_jsonl_audit_lo
     assert_eq!(search_metadata.vector, Some(false));
 
     let projection_json = serde_json::to_string(&snapshot).unwrap();
-    let jsonl_bytes = read_directory_text(&store_root);
     for forbidden in [
         "RAW_DOCUMENT_CONTENT_SENTINEL_3022",
         "/Users/firatsertgoz/.ssh/id_ed25519",
@@ -173,26 +160,13 @@ async fn memory_write_index_and_search_project_metadata_only_from_jsonl_audit_lo
             !projection_json.contains(forbidden),
             "memory significant-event projection leaked {forbidden}: {projection_json}"
         );
-        assert!(
-            !jsonl_bytes.contains(forbidden),
-            "durable memory significant-event bytes leaked {forbidden}: {jsonl_bytes}"
-        );
     }
 }
 
 #[tokio::test]
 async fn memory_write_projects_under_thread_scoped_audit_context() {
-    let temp = tempfile::tempdir().unwrap();
-    let stores = build_reborn_event_stores(
-        RebornProfile::LocalDev,
-        RebornEventStoreConfig::Jsonl {
-            root: temp.path().join("reborn-event-store"),
-            accept_single_node_durable: false,
-        },
-    )
-    .await
-    .unwrap();
-    let audit_log = Arc::clone(&stores.audit);
+    let audit_log = Arc::new(InMemoryDurableAuditLog::new());
+    let audit_log = Arc::clone(&audit_log);
     let audit_sink: Arc<dyn AuditSink> = Arc::new(DurableAuditSink::new(Arc::clone(&audit_log)));
     let memory_events = Arc::new(DurableMemoryAuditSink::new(audit_sink));
     let repository = Arc::new(InMemoryMemoryDocumentRepository::new());
@@ -289,18 +263,3 @@ fn thread_resource_scope() -> ResourceScope {
     }
 }
 
-fn read_directory_text(root: &Path) -> String {
-    let mut output = String::new();
-    read_directory_text_into(root, &mut output);
-    output
-}
-
-fn read_directory_text_into(path: &Path, output: &mut String) {
-    if path.is_dir() {
-        for entry in fs::read_dir(path).unwrap() {
-            read_directory_text_into(&entry.unwrap().path(), output);
-        }
-    } else if path.is_file() {
-        output.push_str(&fs::read_to_string(path).unwrap_or_default());
-    }
-}
