@@ -22,8 +22,6 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 use ulid::Ulid;
 
-#[cfg(feature = "libsql")]
-mod libsql;
 mod postgres;
 mod trusted_submit;
 mod worker;
@@ -733,9 +731,6 @@ pub trait TriggerRepository: Send + Sync {
     ) -> Result<Option<TriggerRecord>, TriggerError>;
 }
 
-/// Feature-gated durable libSQL repository type for composition/test wiring.
-#[cfg(feature = "libsql")]
-pub use libsql::LibSqlTriggerRepository;
 /// Durable PostgreSQL repository type for composition/test wiring.
 pub use postgres::PostgresTriggerRepository;
 pub use worker::{

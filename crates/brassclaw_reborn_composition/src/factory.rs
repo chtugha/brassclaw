@@ -4,51 +4,36 @@ use std::{
     sync::Arc,
 };
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use crate::product_auth_durable::{FilesystemAuthProductServices, UnavailableAuthProviderClient};
 #[cfg(feature = "postgres")]
 use crate::pg_auth_product_services::PgAuthProductServices;
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_auth::AuthProviderClient;
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_authorization::FilesystemCapabilityLeaseStore;
 use brassclaw_authorization::GrantAuthorizer;
-#[cfg(not(feature = "libsql"))]
 use brassclaw_authorization::InMemoryCapabilityLeaseStore;
-#[cfg(not(any(feature = "libsql", feature = "postgres")))]
 use brassclaw_conversations::InMemoryConversationServices;
 use brassclaw_conversations::{
     AdapterInstallationId, AdapterKind, ConversationActorPairingService, ExternalActorRef,
 };
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_conversations::{InboundTurnError, RebornFilesystemConversationServices};
-#[cfg(feature = "libsql")]
-use brassclaw_events::{DurableAuditLog, DurableEventLog};
-#[cfg(not(feature = "libsql"))]
 use brassclaw_events::{
     DurableAuditLog, DurableEventLog, InMemoryDurableAuditLog, InMemoryDurableEventLog,
 };
 use brassclaw_extensions::{
     ExtensionInstallationStore, ExtensionLifecycleService, ExtensionRegistry,
 };
-#[cfg(not(feature = "libsql"))]
 use brassclaw_filesystem::InMemoryBackend;
-#[cfg(feature = "libsql")]
-use brassclaw_filesystem::LibSqlRootFilesystem;
 use brassclaw_filesystem::{
     BackendCapabilities, BackendId, BackendKind, CompositeRootFilesystem, ContentKind, IndexPolicy,
     MountDescriptor, RootFilesystem, StorageClass,
 };
 use brassclaw_filesystem::{LocalFilesystem, ScopedFilesystem};
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy;
 use brassclaw_host_api::runtime_policy::{FilesystemBackendKind, ProcessBackendKind, SecretMode};
 use brassclaw_host_api::{
     EffectKind, ExtensionId, HostPath, MountPermissions, MountView, PackageId, RuntimeHttpEgress,
     UserId, VirtualPath,
 };
-#[cfg(feature = "libsql")]
-use brassclaw_host_api::{MountAlias, MountGrant};
 use brassclaw_host_runtime::{
     BuiltinFirstPartyTools, CapabilitySurfaceVersion, FirstPartyCapabilityRegistry,
     HostRuntimeHttpEgressPort, HostRuntimeServices, LocalHostProcessPort,
@@ -56,25 +41,14 @@ use brassclaw_host_runtime::{
     builtin_first_party_handlers_from_tools_with_trigger,
     builtin_first_party_handlers_with_trigger_create_hook, builtin_first_party_package,
 };
-#[cfg(feature = "libsql")]
-use brassclaw_loop_support::FilesystemCheckpointStateStore;
 use brassclaw_processes::ProcessServices;
 use brassclaw_product_workflow::ProductAuthTurnGateResumeDispatcher;
 use brassclaw_resources::InMemoryResourceGovernor;
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_resources::{FilesystemResourceGovernorStore, PersistentResourceGovernor};
-#[cfg(feature = "libsql")]
-use brassclaw_run_state::{FilesystemApprovalRequestStore, FilesystemRunStateStore};
-#[cfg(not(feature = "libsql"))]
 use brassclaw_run_state::{InMemoryApprovalRequestStore, InMemoryRunStateStore};
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_secrets::FilesystemCredentialBroker;
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_secrets::FilesystemSecretStore;
 use brassclaw_secrets::SecretStore;
-#[cfg(feature = "libsql")]
-use brassclaw_threads::FilesystemSessionThreadService;
-#[cfg(not(feature = "libsql"))]
 use brassclaw_threads::InMemorySessionThreadService;
 use brassclaw_threads::SessionThreadService;
 use brassclaw_triggers::{
@@ -82,12 +56,8 @@ use brassclaw_triggers::{
     TRIGGER_TRUSTED_EXTERNAL_ACTOR_NAMESPACE, TriggerError, TriggerRecord, TriggerRepository,
 };
 use brassclaw_trust::{AdminConfig, AdminEntry, HostTrustAssignment, HostTrustPolicy};
-#[cfg(feature = "libsql")]
-use brassclaw_turns::FilesystemTurnStateStore;
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_turns::InMemoryRunProfileResolver;
 use brassclaw_turns::{CheckpointStateStore, DefaultTurnCoordinator, LoopCheckpointStore};
-#[cfg(not(feature = "libsql"))]
 use brassclaw_turns::{
     InMemoryCheckpointStateStore, InMemoryLoopCheckpointStore, InMemoryTurnStateStore,
 };
@@ -138,8 +108,6 @@ pub(crate) type LocalDevRootFilesystem = CompositeRootFilesystem;
 /// (see `RebornRuntime::open_reborn_identity_resolver`).
 struct LocalDevRootFilesystemBundle {
     filesystem: Arc<LocalDevRootFilesystem>,
-    #[cfg(feature = "libsql")]
-    database: Arc<libsql::Database>,
 }
 
 type LocalDevWorkspaceFilesystems = (
@@ -149,43 +117,18 @@ type LocalDevWorkspaceFilesystems = (
 );
 
 const LOCAL_DEV_DEFAULT_SYSTEM_PROMPT_PATH: &str = "system/prompts/default-system.md";
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 const LOCAL_DEV_SECRETS_MASTER_KEY_PATH: &str = ".reborn-local-dev-secrets-master-key";
 
-#[cfg(feature = "libsql")]
-pub(crate) type LocalDevTurnStateStore = FilesystemTurnStateStore<LocalDevRootFilesystem>;
-#[cfg(not(feature = "libsql"))]
 pub(crate) type LocalDevTurnStateStore = InMemoryTurnStateStore;
 
-#[cfg(feature = "libsql")]
-type LocalDevResourceGovernor =
-    PersistentResourceGovernor<FilesystemResourceGovernorStore<LocalDevRootFilesystem>>;
-#[cfg(not(feature = "libsql"))]
 type LocalDevResourceGovernor = InMemoryResourceGovernor;
 
-#[cfg(feature = "libsql")]
-type LocalDevRunStateStore = FilesystemRunStateStore<LocalDevRootFilesystem>;
-#[cfg(not(feature = "libsql"))]
 type LocalDevRunStateStore = InMemoryRunStateStore;
 
-#[cfg(feature = "libsql")]
-pub(crate) type LocalDevApprovalRequestStore =
-    FilesystemApprovalRequestStore<LocalDevRootFilesystem>;
-#[cfg(not(feature = "libsql"))]
 pub(crate) type LocalDevApprovalRequestStore = InMemoryApprovalRequestStore;
 
-#[cfg(feature = "libsql")]
-pub(crate) type LocalDevCapabilityLeaseStore =
-    FilesystemCapabilityLeaseStore<LocalDevRootFilesystem>;
-#[cfg(not(feature = "libsql"))]
 pub(crate) type LocalDevCapabilityLeaseStore = InMemoryCapabilityLeaseStore;
 
-#[cfg(feature = "libsql")]
-type LocalDevProcessServices = ProcessServices<
-    brassclaw_processes::FilesystemProcessStore<LocalDevRootFilesystem>,
-    brassclaw_processes::FilesystemProcessResultStore<LocalDevRootFilesystem>,
->;
-#[cfg(not(feature = "libsql"))]
 type LocalDevProcessServices = ProcessServices<
     brassclaw_processes::InMemoryProcessStore,
     brassclaw_processes::InMemoryProcessResultStore,
@@ -285,7 +228,6 @@ where
     ))))
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 pub(crate) fn apply_production_runtime_process_binding<F, G, S, R>(
     services: HostRuntimeServices<F, G, S, R>,
     binding: RebornRuntimeProcessBinding,
@@ -321,21 +263,18 @@ pub struct RebornServices {
     /// rather than standing up a second authority.
     #[cfg(feature = "root-llm-provider")]
     pub(crate) secret_store: Arc<dyn SecretStore>,
-    /// Safety configuration store for managing safety rules and settings.
-    /// Available when libsql feature is enabled for local-dev mode.
-    #[cfg(feature = "libsql")]
-    pub(crate) safety_config_store:
-        Option<Arc<brassclaw_product_workflow::SqliteSafetyConfigStore>>,
-    /// Token settings store for managing per-section token limits.
-    /// Available when libsql feature is enabled for local-dev mode.
-    #[cfg(feature = "libsql")]
-    pub(crate) token_settings_store: Option<Arc<crate::token_settings_store::DbTokenSettingsStore>>,
-    /// Libsql-backed engine `Store` for `MemoryDoc` operations. Required by
-    /// the reduction-rule read path (`orchestrator::load_reduction_rules`)
-    /// and the WebUI `ReductionRuleStore` adapter. Wired through to the
-    /// runtime by `build_webui_services_with_connectable_channels`.
-    #[cfg(feature = "libsql")]
-    pub(crate) memory_doc_store: Option<Arc<crate::memory_doc_libsql_store::MemoryDocLibSqlStore>>,
+    /// Postgres-backed safety config store (production path).
+    #[cfg(feature = "postgres")]
+    pub(crate) pg_safety_config_store:
+        Option<Arc<brassclaw_product_workflow::PgSafetyConfigStore>>,
+    /// Postgres-backed token settings store (production path).
+    #[cfg(feature = "postgres")]
+    pub(crate) pg_token_settings_store:
+        Option<Arc<crate::pg_token_settings_store::PgTokenSettingsStore>>,
+    /// Postgres-backed engine `Store` for `MemoryDoc` operations (production path).
+    #[cfg(feature = "postgres")]
+    pub(crate) pg_memory_doc_store:
+        Option<Arc<crate::pg_memory_doc_store::PgMemoryDocStore>>,
 }
 
 impl RebornServices {
@@ -351,28 +290,11 @@ pub(crate) struct RebornLocalRuntimeServices {
     pub(crate) capability_leases: Arc<LocalDevCapabilityLeaseStore>,
     pub(crate) turn_state: Arc<LocalDevTurnStateStore>,
     pub(crate) trigger_repository: Arc<dyn TriggerRepository>,
-    #[cfg(not(any(feature = "libsql", feature = "postgres")))]
-    pub(crate) trigger_conversation_services: InMemoryConversationServices,
-    #[cfg(any(feature = "libsql", feature = "postgres"))]
     pub(crate) trigger_conversation_services:
         tokio::sync::OnceCell<RebornFilesystemConversationServices>,
     pub(crate) checkpoint_state_store: Arc<dyn CheckpointStateStore>,
     pub(crate) loop_checkpoint_store: Arc<dyn LoopCheckpointStore>,
     pub(crate) thread_service: Arc<dyn SessionThreadService>,
-    /// Scoped filesystem backing the canonical Reborn identity store, so it
-    /// rides the host `RootFilesystem` abstraction like every other durable
-    /// Reborn store rather than a raw DB handle. Only the WebUI v2 SSO surface
-    /// reads it today, hence `dead_code` when that feature is off.
-    #[cfg(feature = "libsql")]
-    #[allow(dead_code)]
-    pub(crate) identity_filesystem: Arc<ScopedFilesystem<LocalDevRootFilesystem>>,
-    /// Raw libSQL substrate handle backing `reborn-local-dev.db`. Carried ONLY
-    /// for the one-time legacy WebUI `user_identities` fold (a substrate-level
-    /// read that belongs in this host layer, not the identity crate); the
-    /// steady-state identity store goes through `identity_filesystem` above.
-    #[cfg(feature = "libsql")]
-    #[allow(dead_code)]
-    pub(crate) identity_substrate_db: Arc<libsql::Database>,
     /// Resource governor handle used by the budget accountant. Kept here
     /// separately from the type-erased `dyn HostRuntime` so the runtime
     /// composer can construct a `GovernorBackedAccountant` without losing
@@ -386,18 +308,6 @@ pub(crate) struct RebornLocalRuntimeServices {
     /// stream".
     #[allow(dead_code)]
     pub(crate) budget_event_sink: Arc<dyn brassclaw_resources::BudgetEventSink>,
-    /// Safety configuration store for managing safety rules and settings.
-    #[cfg(feature = "libsql")]
-    pub(crate) safety_config_store: Arc<brassclaw_product_workflow::SqliteSafetyConfigStore>,
-    /// Token settings store for managing per-section token limits.
-    #[cfg(feature = "libsql")]
-    pub(crate) token_settings_store: Arc<crate::token_settings_store::DbTokenSettingsStore>,
-    /// Libsql-backed engine `Store` for `MemoryDoc` operations. Owns the
-    /// `memory_docs` table on the local-dev substrate; the reduction-rule
-    /// read path and the `StoreBackedReductionRuleStore` both go through
-    /// this `Arc<MemoryDocLibSqlStore>`.
-    #[cfg(feature = "libsql")]
-    pub(crate) memory_doc_store: Arc<crate::memory_doc_libsql_store::MemoryDocLibSqlStore>,
     /// Same sink as `budget_event_sink` but typed as the concrete
     /// `InMemoryBudgetEventSink` so the runtime can expose `drain()` /
     /// `snapshot()` to tests without leaking the concrete type into the
@@ -428,7 +338,6 @@ pub(crate) struct RebornLocalRuntimeServices {
     pub(crate) memory_mounts: MountView,
     pub(crate) skill_filesystem: Arc<ScopedFilesystem<LocalDevRootFilesystem>>,
     pub(crate) workspace_filesystem: Arc<ScopedFilesystem<LocalDevRootFilesystem>>,
-    #[cfg(any(feature = "libsql", feature = "postgres"))]
     pub(crate) subagent_goal_filesystem: Arc<ScopedFilesystem<LocalDevRootFilesystem>>,
     /// Tenant-scoped root filesystem used for third-party extension hook
     /// discovery (`/system/extensions/<tenant>`). The runtime derives the
@@ -450,7 +359,6 @@ pub(crate) struct RebornLocalRuntimeServices {
     pub(crate) plan_state_slot: crate::plan_library::CurrentPlanStateSlot,
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 impl RebornLocalRuntimeServices {
     pub(crate) async fn durable_trigger_conversation_services(
         &self,
@@ -486,15 +394,6 @@ struct RebornLocalDevStoreGraphInput {
     default_system_prompt_path: PathBuf,
     trigger_repository: Arc<dyn TriggerRepository>,
     extension_registry: Arc<ExtensionRegistry>,
-    /// Raw libSQL substrate handle, carried so the canonical Reborn identity
-    /// store rides the same `reborn-local-dev.db` instead of opening a second
-    /// handle (see `RebornRuntime::open_reborn_identity_resolver`).
-    #[cfg(feature = "libsql")]
-    identity_substrate_db: Arc<libsql::Database>,
-    /// Active provider ID at boot time, used for the one-time per-provider
-    /// token settings migration.  `None` when no LLM is configured.
-    #[cfg(feature = "libsql")]
-    active_provider_id: Option<String>,
 }
 
 impl std::fmt::Debug for RebornServices {
@@ -522,12 +421,12 @@ impl RebornServices {
             pg_pool: None,
             #[cfg(feature = "root-llm-provider")]
             secret_store: Arc::new(brassclaw_secrets::InMemorySecretStore::new()),
-            #[cfg(feature = "libsql")]
-            safety_config_store: None,
-            #[cfg(feature = "libsql")]
-            token_settings_store: None,
-            #[cfg(feature = "libsql")]
-            memory_doc_store: None,
+            #[cfg(feature = "postgres")]
+            pg_safety_config_store: None,
+            #[cfg(feature = "postgres")]
+            pg_token_settings_store: None,
+            #[cfg(feature = "postgres")]
+            pg_memory_doc_store: None,
         }
     }
 }
@@ -576,7 +475,6 @@ fn compose_product_auth_services(
     Arc::new(services)
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 fn production_config(
     required_runtime_backends: Vec<brassclaw_host_api::RuntimeKind>,
     require_runtime_http_egress: bool,
@@ -657,16 +555,7 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
     crate::bundled_skills::ensure_bundled_reborn_skills_installed(&root).await?;
     let filesystem_bundle =
         build_local_dev_root_filesystem(&root, &workspace_root, host_home_root.as_ref()).await?;
-    // Clone the raw libSQL handle for the canonical identity store before
-    // `filesystem` moves out of the bundle, so the resolver rides the same
-    // substrate DB the runtime owns rather than a second handle.
-    #[cfg(feature = "libsql")]
-    let identity_substrate_db = Arc::clone(&filesystem_bundle.database);
     let filesystem = filesystem_bundle.filesystem;
-    #[cfg(feature = "libsql")]
-    let trigger_repository =
-        local_dev_trigger_repository(Arc::clone(&filesystem_bundle.database)).await?;
-    #[cfg(not(feature = "libsql"))]
     let trigger_repository = local_dev_trigger_repository();
     let (skill_filesystem, workspace_filesystem, runtime_workspace_mounts) =
         build_workspace_filesystems(
@@ -689,21 +578,6 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
         extension_registry.capabilities().count()
     );
 
-    // Resolve active provider ID for the startup token-settings migration.
-    // We read the config file directly here (sync, best-effort) so we don't
-    // need to thread RebornBootConfig all the way through.
-    #[cfg(feature = "libsql")]
-    let startup_active_provider_id: Option<String> = {
-        use brassclaw_reborn_config::RebornConfigFile;
-        let config_file_path = root.join("config.toml");
-        RebornConfigFile::load(&config_file_path)
-            .ok()
-            .flatten()
-            .and_then(|cf| cf.llm)
-            .and_then(|llm| llm.get("default").and_then(|slot| slot.provider_id.clone()))
-            .filter(|id| !id.is_empty())
-    };
-
     let mut store_graph = build_local_dev_store_graph(RebornLocalDevStoreGraphInput {
         filesystem: Arc::clone(&filesystem),
         owner_user_id,
@@ -714,26 +588,16 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
         default_system_prompt_path,
         trigger_repository,
         extension_registry: Arc::clone(&extension_registry),
-        #[cfg(feature = "libsql")]
-        identity_substrate_db,
-        #[cfg(feature = "libsql")]
-        active_provider_id: startup_active_provider_id,
     })
     .await?;
 
     let turn_coordinator: Arc<dyn brassclaw_turns::TurnCoordinator> = Arc::new(
         DefaultTurnCoordinator::new(Arc::clone(&store_graph.turn_state)),
     );
-    #[cfg(any(feature = "libsql", feature = "postgres"))]
     let local_dev_product_auth_filesystem = local_dev_scoped_filesystem(Arc::clone(&filesystem));
-    #[cfg(any(feature = "libsql", feature = "postgres"))]
     let local_dev_secret_store =
         build_local_dev_secret_store(&root, Arc::clone(&local_dev_product_auth_filesystem))?;
-    #[cfg(any(feature = "libsql", feature = "postgres"))]
     let secret_store: Arc<dyn SecretStore> = local_dev_secret_store.clone();
-    #[cfg(not(any(feature = "libsql", feature = "postgres")))]
-    let secret_store: Arc<dyn SecretStore> =
-        Arc::new(brassclaw_secrets::InMemorySecretStore::new());
     let local_dev_trust_policy = Arc::new(local_dev_first_party_trust_policy()?);
     let local_dev_trust_invalidation_bus = Arc::new(brassclaw_trust::InvalidationBus::new());
     let mut services = HostRuntimeServices::new(
@@ -781,7 +645,6 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
             compose_product_auth_services(ports, turn_coordinator.clone(), provider_composition)
         }
         None => {
-            #[cfg(any(feature = "libsql", feature = "postgres"))]
             {
                 let durable_services = Arc::new(FilesystemAuthProductServices::new(
                     local_dev_product_auth_filesystem,
@@ -806,24 +669,6 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
                     None => services,
                 };
                 Arc::new(services)
-            }
-            #[cfg(not(any(feature = "libsql", feature = "postgres")))]
-            {
-                let services = RebornProductAuthServices::local_dev_in_memory(
-                    auth_continuation_dispatcher(turn_coordinator.clone()),
-                );
-                let services = match provider_composition.client.clone() {
-                    Some(provider_client) => services.with_provider_client(provider_client),
-                    None => services,
-                };
-                let services = match provider_composition.dcr_registry.clone() {
-                    Some(registry) => services.with_dcr_oauth_registry(registry),
-                    None => services,
-                };
-                Arc::new(match provider_composition.gate_registry.clone() {
-                    Some(registry) => services.with_oauth_gate_registry(registry),
-                    None => services,
-                })
             }
         }
     };
@@ -949,25 +794,9 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
         pg_pool: None,
         #[cfg(feature = "root-llm-provider")]
         secret_store,
-        #[cfg(feature = "libsql")]
-        safety_config_store: {
-            tracing::info!("✅ Wiring SafetyConfigStore into RebornServices");
-            Some(Arc::clone(&store_graph.local_runtime.safety_config_store))
-        },
-        #[cfg(feature = "libsql")]
-        token_settings_store: {
-            tracing::info!("✅ Wiring TokenSettingsStore into RebornServices");
-            Some(Arc::clone(&store_graph.local_runtime.token_settings_store))
-        },
-        #[cfg(feature = "libsql")]
-        memory_doc_store: {
-            tracing::info!("✅ Wiring MemoryDocLibSqlStore into RebornServices");
-            Some(Arc::clone(&store_graph.local_runtime.memory_doc_store))
-        },
     })
 }
 
-#[cfg(feature = "libsql")]
 async fn build_local_dev_store_graph(
     input: RebornLocalDevStoreGraphInput,
 ) -> Result<RebornLocalDevStoreGraph, RebornBuildError> {
@@ -981,203 +810,7 @@ async fn build_local_dev_store_graph(
         default_system_prompt_path,
         trigger_repository,
         extension_registry,
-        identity_substrate_db,
-        active_provider_id,
     } = input;
-    let scoped_filesystem = local_dev_scoped_filesystem(Arc::clone(&filesystem));
-    let event_log = local_dev_event_log(Arc::clone(&filesystem))?;
-    let audit_log = local_dev_audit_log(Arc::clone(&filesystem))?;
-    let run_state = Arc::new(FilesystemRunStateStore::new(Arc::clone(&scoped_filesystem)));
-    let approval_requests = Arc::new(FilesystemApprovalRequestStore::new(Arc::clone(
-        &scoped_filesystem,
-    )));
-    let capability_leases = Arc::new(FilesystemCapabilityLeaseStore::new(Arc::clone(
-        &scoped_filesystem,
-    )));
-    let turn_state = Arc::new(FilesystemTurnStateStore::new(Arc::clone(
-        &scoped_filesystem,
-    )));
-    let checkpoint_state_store: Arc<dyn CheckpointStateStore> = Arc::new(
-        FilesystemCheckpointStateStore::new(Arc::clone(&scoped_filesystem)),
-    );
-    let loop_checkpoint_store: Arc<dyn LoopCheckpointStore> = turn_state.clone();
-    let thread_service: Arc<dyn SessionThreadService> = Arc::new(
-        FilesystemSessionThreadService::new(Arc::clone(&scoped_filesystem)),
-    );
-    let BudgetSinks {
-        budget_event_sink,
-        in_memory_budget_event_sink,
-        broadcast_budget_event_sink,
-        budget_gate_store,
-    } = build_budget_sinks();
-    let resource_governor: Arc<LocalDevResourceGovernor> = Arc::new(
-        PersistentResourceGovernor::new(FilesystemResourceGovernorStore::new(Arc::clone(
-            &scoped_filesystem,
-        )))
-        .with_event_sink(Arc::clone(&budget_event_sink)),
-    );
-    let skill_mounts =
-        skill_management_mount_view().map_err(|error| RebornBuildError::InvalidConfig {
-            reason: error.to_string(),
-        })?;
-    let memory_mounts =
-        memory_mount_view(MountPermissions::read_write_list_delete()).map_err(|error| {
-            RebornBuildError::InvalidConfig {
-                reason: error.to_string(),
-            }
-        })?;
-    let skill_management =
-        build_local_skill_management_port(owner_user_id.clone(), Arc::clone(&filesystem))?;
-
-    // Create the safety configuration store, ensuring the tables exist.
-    let safety_config_store = Arc::new(
-        brassclaw_product_workflow::SqliteSafetyConfigStore::open(Arc::clone(
-            &identity_substrate_db,
-        ))
-        .await
-        .map_err(|error| RebornBuildError::InvalidConfig {
-            reason: format!("SafetyConfigStore schema migration failed: {error}"),
-        })?,
-    );
-    tracing::info!("✅ SafetyConfigStore created successfully in build_local_dev_store_graph");
-
-    // Create the token settings store (shares the same DB as safety config).
-    // `open` runs `CREATE TABLE IF NOT EXISTS` so pre-migration DBs get the
-    // settings table on the first startup after upgrade.
-    let token_settings_store = Arc::new(
-        crate::token_settings_store::DbTokenSettingsStore::open(Arc::clone(&identity_substrate_db))
-            .await
-            .map_err(|error| RebornBuildError::InvalidConfig {
-                reason: format!("TokenSettingsStore schema migration failed: {error}"),
-            })?,
-    );
-    tracing::info!("✅ TokenSettingsStore created successfully in build_local_dev_store_graph");
-
-    // Open the libSQL-backed `Store` for engine `MemoryDoc` operations. The
-    // reduction-rule pipeline persists its ruleset as a tagged `MemoryDoc`
-    // (see `crate::reduction_rules_store`), so this `Store` is the
-    // read path the orchestrator's `__get_reduction_rules__` host call
-    // walks and the `StoreBackedReductionRuleStore` write path that the
-    // WebUI `PUT /tokens/reduction-rules` endpoint routes through.
-    let memory_doc_store = Arc::new(
-        crate::memory_doc_libsql_store::MemoryDocLibSqlStore::open(Arc::clone(&identity_substrate_db))
-            .await
-            .map_err(|error| RebornBuildError::InvalidConfig {
-                reason: format!("MemoryDocLibSqlStore schema migration failed: {error}"),
-            })?,
-    );
-    tracing::info!("✅ MemoryDocLibSqlStore created successfully in build_local_dev_store_graph");
-
-    // One-time forward migration: promote global token settings to the active
-    // provider's per-provider row.  Non-destructive; no-op if already done.
-    if let Some(ref provider_id) = active_provider_id {
-        crate::token_settings_store::migrate_global_tokens_to_active_provider(
-            &token_settings_store,
-            provider_id,
-            owner_user_id.as_str(),
-        )
-        .await;
-    }
-
-    // One-time v1 SKILL.md → v2 MemoryDoc migration. Idempotent: stable
-    // DocIds derived from the skill name make re-runs a no-op for
-    // unchanged entries; entries whose SKILL.md source has shifted since
-    // the last install are refreshed in place. Non-fatal: if the migration
-    // encounters an unexpected store error we keep booting — the
-    // filesystem loading path still serves the same skills in tandem.
-    match crate::migrated_skills::migrate_v1_skills_to_memory_docs(
-        memory_doc_store.as_ref(),
-    )
-    .await
-    {
-        Ok(outcome) if outcome.scanned > 0 => {
-            tracing::debug!(
-                "v1→v2 skill migration: scanned={} inserted={} refreshed={} unchanged={}",
-                outcome.scanned,
-                outcome.inserted,
-                outcome.refreshed,
-                outcome.unchanged,
-            );
-        }
-        Ok(_) => {}
-        Err(error) => {
-            tracing::warn!(
-                "v1→v2 skill migration failed (continuing): {error}"
-            );
-        }
-    }
-
-    let local_runtime = Arc::new(RebornLocalRuntimeServices {
-        approval_requests: Arc::clone(&approval_requests),
-        capability_leases: Arc::clone(&capability_leases),
-        turn_state: Arc::clone(&turn_state),
-        trigger_repository: Arc::clone(&trigger_repository),
-        #[cfg(not(any(feature = "libsql", feature = "postgres")))]
-        trigger_conversation_services,
-        #[cfg(any(feature = "libsql", feature = "postgres"))]
-        trigger_conversation_services: tokio::sync::OnceCell::new(),
-        checkpoint_state_store,
-        loop_checkpoint_store,
-        thread_service,
-        resource_governor: Arc::clone(&resource_governor)
-            as Arc<dyn brassclaw_resources::ResourceGovernor>,
-        budget_event_sink,
-        in_memory_budget_event_sink,
-        broadcast_budget_event_sink,
-        budget_gate_store,
-        skill_management,
-        extension_management: None,
-        runtime_http_egress: None,
-        host_runtime_http_egress: None,
-        skill_mounts,
-        memory_mounts,
-        skill_filesystem,
-        workspace_filesystem,
-        subagent_goal_filesystem: Arc::clone(&scoped_filesystem),
-        identity_filesystem: Arc::clone(&scoped_filesystem),
-        identity_substrate_db,
-        extension_filesystem: Arc::clone(&filesystem),
-        workspace_mounts,
-        local_dev_storage_root,
-        default_system_prompt_path,
-        event_log,
-        audit_log,
-        extension_registry,
-        safety_config_store,
-        token_settings_store,
-        memory_doc_store,
-        content_cache_slot: brassclaw_reborn::content_cache_port::CurrentCacheBridgeSlot::new(),
-        plan_state_slot: crate::plan_library::CurrentPlanStateSlot::new(),
-    });
-    let process_services = ProcessServices::filesystem(Arc::clone(&scoped_filesystem));
-
-    Ok(RebornLocalDevStoreGraph {
-        run_state,
-        approval_requests,
-        capability_leases,
-        turn_state,
-        local_runtime,
-        resource_governor,
-        process_services,
-        trigger_repository,
-    })
-}
-
-#[cfg(not(feature = "libsql"))]
-async fn build_local_dev_store_graph(
-    input: RebornLocalDevStoreGraphInput,
-) -> Result<RebornLocalDevStoreGraph, RebornBuildError> {
-    let RebornLocalDevStoreGraphInput {
-        filesystem,
-        owner_user_id,
-        skill_filesystem,
-        workspace_filesystem,
-        workspace_mounts,
-        local_dev_storage_root,
-        default_system_prompt_path,
-        trigger_repository,
-    } = input;
-    #[cfg(feature = "postgres")]
     let subagent_goal_filesystem = local_dev_scoped_filesystem(Arc::clone(&filesystem));
     let event_log = local_dev_event_log(Arc::clone(&filesystem))?;
     let audit_log = local_dev_audit_log(Arc::clone(&filesystem))?;
@@ -1211,16 +844,11 @@ async fn build_local_dev_store_graph(
         })?;
     let skill_management =
         build_local_skill_management_port(owner_user_id, Arc::clone(&filesystem))?;
-    #[cfg(not(any(feature = "libsql", feature = "postgres")))]
-    let trigger_conversation_services = local_dev_trigger_conversation_services();
     let local_runtime = Arc::new(RebornLocalRuntimeServices {
         approval_requests: Arc::clone(&approval_requests),
         capability_leases: Arc::clone(&capability_leases),
         turn_state: Arc::clone(&turn_state),
         trigger_repository: Arc::clone(&trigger_repository),
-        #[cfg(not(any(feature = "libsql", feature = "postgres")))]
-        trigger_conversation_services,
-        #[cfg(any(feature = "libsql", feature = "postgres"))]
         trigger_conversation_services: tokio::sync::OnceCell::new(),
         checkpoint_state_store,
         loop_checkpoint_store,
@@ -1239,7 +867,6 @@ async fn build_local_dev_store_graph(
         memory_mounts,
         skill_filesystem,
         workspace_filesystem,
-        #[cfg(feature = "postgres")]
         subagent_goal_filesystem,
         extension_filesystem: Arc::clone(&filesystem),
         workspace_mounts,
@@ -1247,7 +874,7 @@ async fn build_local_dev_store_graph(
         default_system_prompt_path,
         event_log,
         audit_log,
-        extension_registry: Arc::new(ExtensionRegistry::new()),
+        extension_registry,
         content_cache_slot: brassclaw_reborn::content_cache_port::CurrentCacheBridgeSlot::new(),
         plan_state_slot: crate::plan_library::CurrentPlanStateSlot::new(),
     });
@@ -1265,66 +892,22 @@ async fn build_local_dev_store_graph(
     })
 }
 
-#[cfg(feature = "libsql")]
-async fn local_dev_trigger_repository(
-    database: Arc<libsql::Database>,
-) -> Result<Arc<dyn TriggerRepository>, RebornBuildError> {
-    let repository = brassclaw_triggers::LibSqlTriggerRepository::new(database);
-    repository
-        .run_migrations()
-        .await
-        .map_err(|error| RebornBuildError::InvalidConfig {
-            reason: format!("local-dev trigger repository migrations failed: {error}"),
-        })?;
-    Ok(Arc::new(repository))
-}
-
-#[cfg(not(feature = "libsql"))]
 fn local_dev_trigger_repository() -> Arc<dyn TriggerRepository> {
     Arc::new(brassclaw_triggers::InMemoryTriggerRepository::default())
-}
-
-#[cfg(not(any(feature = "libsql", feature = "postgres")))]
-fn local_dev_trigger_conversation_services() -> InMemoryConversationServices {
-    InMemoryConversationServices::default()
 }
 
 fn local_dev_trigger_create_hook(
     local_runtime: &Arc<RebornLocalRuntimeServices>,
 ) -> Arc<dyn TriggerCreateHook> {
-    #[cfg(any(feature = "libsql", feature = "postgres"))]
-    {
-        Arc::new(LocalRuntimeTriggerCreatorPairingHook {
-            runtime: Arc::clone(local_runtime),
-        })
-    }
-    #[cfg(not(any(feature = "libsql", feature = "postgres")))]
-    {
-        Arc::new(InMemoryTriggerCreatorPairingHook {
-            conversations: local_runtime.trigger_conversation_services.clone(),
-        })
-    }
+    Arc::new(LocalRuntimeTriggerCreatorPairingHook {
+        runtime: Arc::clone(local_runtime),
+    })
 }
 
-#[cfg(not(any(feature = "libsql", feature = "postgres")))]
-struct InMemoryTriggerCreatorPairingHook {
-    conversations: InMemoryConversationServices,
-}
-
-#[cfg(not(any(feature = "libsql", feature = "postgres")))]
-#[async_trait::async_trait]
-impl TriggerCreateHook for InMemoryTriggerCreatorPairingHook {
-    async fn after_trigger_persisted(&self, record: &TriggerRecord) -> Result<(), TriggerError> {
-        pair_trigger_creator(&self.conversations, record).await
-    }
-}
-
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 struct LocalRuntimeTriggerCreatorPairingHook {
     runtime: Arc<RebornLocalRuntimeServices>,
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 #[async_trait::async_trait]
 impl TriggerCreateHook for LocalRuntimeTriggerCreatorPairingHook {
     async fn after_trigger_persisted(&self, record: &TriggerRecord) -> Result<(), TriggerError> {
@@ -1339,7 +922,6 @@ impl TriggerCreateHook for LocalRuntimeTriggerCreatorPairingHook {
     }
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 struct ScopedFilesystemTriggerCreatorPairingHook<F>
 where
     F: RootFilesystem + 'static,
@@ -1348,7 +930,6 @@ where
     conversations: tokio::sync::OnceCell<RebornFilesystemConversationServices>,
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 impl<F> ScopedFilesystemTriggerCreatorPairingHook<F>
 where
     F: RootFilesystem + 'static,
@@ -1361,7 +942,6 @@ where
     }
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 #[async_trait::async_trait]
 impl<F> TriggerCreateHook for ScopedFilesystemTriggerCreatorPairingHook<F>
 where
@@ -1414,7 +994,6 @@ async fn pair_trigger_creator(
 
 enum TriggerPairingFailureSource {
     TypedIdentity,
-    #[cfg(any(feature = "libsql", feature = "postgres"))]
     ConversationInit,
     ActorPairing,
 }
@@ -1423,7 +1002,6 @@ impl TriggerPairingFailureSource {
     fn as_str(&self) -> &'static str {
         match self {
             Self::TypedIdentity => "typed_identity",
-            #[cfg(any(feature = "libsql", feature = "postgres"))]
             Self::ConversationInit => "conversation_init",
             Self::ActorPairing => "actor_pairing",
         }
@@ -1472,63 +1050,6 @@ fn build_budget_sinks() -> BudgetSinks {
     }
 }
 
-#[cfg(feature = "libsql")]
-async fn build_local_dev_root_filesystem(
-    root: &Path,
-    workspace_root: &Path,
-    host_home_root: Option<&LocalDevHostHomeRoot>,
-) -> Result<LocalDevRootFilesystemBundle, RebornBuildError> {
-    let db_path = root.join("reborn-local-dev.db");
-    let db = Arc::new(
-        libsql::Builder::new_local(&db_path)
-            .build()
-            .await
-            .map_err(|error| RebornBuildError::InvalidConfig {
-                reason: format!("local-dev libSQL database could not be opened: {error}"),
-            })?,
-    );
-    let database = Arc::new(LibSqlRootFilesystem::new(Arc::clone(&db)));
-    database.run_migrations().await?;
-
-    let local = Arc::new(local_dev_project_filesystem(
-        root,
-        workspace_root,
-        host_home_root,
-    )?);
-    let mut root = CompositeRootFilesystem::new();
-    root.mount(
-        local_dev_mount_descriptor(
-            "/tenants",
-            "local-dev-reborn-state",
-            BackendKind::DatabaseFilesystem,
-            StorageClass::StructuredRecords,
-            ContentKind::StructuredRecord,
-            IndexPolicy::NotIndexed,
-            database.capabilities(),
-        )?,
-        Arc::clone(&database),
-    )?;
-    mount_local_dev_memory_root(&mut root, Arc::clone(&database))?;
-    root.mount(
-        local_dev_mount_descriptor(
-            "/events",
-            "local-dev-events",
-            BackendKind::DatabaseFilesystem,
-            StorageClass::StructuredRecords,
-            ContentKind::StructuredRecord,
-            IndexPolicy::NotIndexed,
-            database.capabilities(),
-        )?,
-        database,
-    )?;
-    mount_local_dev_project_roots(&mut root, local)?;
-    Ok(LocalDevRootFilesystemBundle {
-        filesystem: Arc::new(root),
-        database: db,
-    })
-}
-
-#[cfg(not(feature = "libsql"))]
 async fn build_local_dev_root_filesystem(
     root: &Path,
     workspace_root: &Path,
@@ -1630,7 +1151,6 @@ fn mount_local_dev_project_roots(
     Ok(())
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 fn build_local_dev_secret_store<F>(
     root: &Path,
     scoped_filesystem: Arc<ScopedFilesystem<F>>,
@@ -1646,7 +1166,6 @@ where
     )))
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 fn resolve_local_dev_secret_master_key(
     root: &Path,
 ) -> Result<brassclaw_secrets::SecretMaterial, RebornBuildError> {
@@ -1673,7 +1192,7 @@ fn resolve_local_dev_secret_master_key(
     Ok(brassclaw_secrets::SecretMaterial::from(key))
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
+
 fn write_local_dev_secret_master_key(path: &Path, key: &str) -> Result<(), RebornBuildError> {
     #[cfg(unix)]
     {
@@ -1778,55 +1297,18 @@ fn local_dev_mount_descriptor(
     })
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 fn local_dev_scoped_filesystem(
     filesystem: Arc<LocalDevRootFilesystem>,
 ) -> Arc<ScopedFilesystem<LocalDevRootFilesystem>> {
     crate::wrap_scoped(filesystem)
 }
 
-#[cfg(feature = "libsql")]
-fn local_dev_event_log(
-    filesystem: Arc<LocalDevRootFilesystem>,
-) -> Result<Arc<dyn DurableEventLog>, RebornBuildError> {
-    let scoped = Arc::new(ScopedFilesystem::with_fixed_view(
-        filesystem,
-        MountView::new(vec![MountGrant::new(
-            MountAlias::new("/events")?,
-            VirtualPath::new("/events")?,
-            MountPermissions::read_write_list_delete(),
-        )])?,
-    ));
-    Ok(Arc::new(
-        brassclaw_reborn_event_store::FilesystemDurableEventLog::new(scoped),
-    ))
-}
-
-#[cfg(feature = "libsql")]
-fn local_dev_audit_log(
-    filesystem: Arc<LocalDevRootFilesystem>,
-) -> Result<Arc<dyn DurableAuditLog>, RebornBuildError> {
-    let scoped = Arc::new(ScopedFilesystem::with_fixed_view(
-        filesystem,
-        MountView::new(vec![MountGrant::new(
-            MountAlias::new("/events")?,
-            VirtualPath::new("/events")?,
-            MountPermissions::read_write_list_delete(),
-        )])?,
-    ));
-    Ok(Arc::new(
-        brassclaw_reborn_event_store::FilesystemDurableAuditLog::new(scoped),
-    ))
-}
-
-#[cfg(not(feature = "libsql"))]
 fn local_dev_event_log(
     _filesystem: Arc<LocalDevRootFilesystem>,
 ) -> Result<Arc<dyn DurableEventLog>, RebornBuildError> {
     Ok(Arc::new(InMemoryDurableEventLog::new()))
 }
 
-#[cfg(not(feature = "libsql"))]
 fn local_dev_audit_log(
     _filesystem: Arc<LocalDevRootFilesystem>,
 ) -> Result<Arc<dyn DurableAuditLog>, RebornBuildError> {
@@ -2116,20 +1598,7 @@ async fn build_production_shaped(
         oauth_provider_configs,
         oauth_dcr_provider_configs,
     } = input;
-    #[cfg(any(feature = "libsql", feature = "postgres"))]
     let wiring_config = production_config(required_runtime_backends, require_runtime_http_egress);
-    #[cfg(not(any(feature = "libsql", feature = "postgres")))]
-    let _ = (
-        production_trust_policy,
-        runtime_policy,
-        turn_run_wake_notifier,
-        runtime_process_binding,
-        required_runtime_backends,
-        require_runtime_http_egress,
-        product_auth_ports,
-        oauth_provider_configs,
-        oauth_dcr_provider_configs,
-    );
 
     match storage {
         RebornStorageInput::Disabled | RebornStorageInput::LocalDev { .. } => {
@@ -2139,30 +1608,6 @@ async fn build_production_shaped(
                     profile
                 ),
             })
-        }
-        #[cfg(feature = "libsql")]
-        RebornStorageInput::Libsql {
-            db,
-            path_or_url,
-            auth_token,
-            secret_master_key,
-        } => {
-            let production_wiring = production_wiring(
-                production_trust_policy,
-                runtime_policy,
-                turn_run_wake_notifier,
-                runtime_process_binding,
-            )?;
-            let secret_master_key = resolve_secret_master_key(secret_master_key).await?;
-            let context = RebornProductionBuildContext {
-                profile,
-                wiring_config,
-                production_wiring,
-                product_auth_ports,
-                oauth_provider_configs,
-                oauth_dcr_provider_configs,
-            };
-            build_libsql_production(context, db, path_or_url, auth_token, secret_master_key).await
         }
         #[cfg(feature = "postgres")]
         RebornStorageInput::Postgres {
@@ -2190,7 +1635,6 @@ async fn build_production_shaped(
     }
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 async fn resolve_secret_master_key(
     explicit: Option<brassclaw_secrets::SecretMaterial>,
 ) -> Result<brassclaw_secrets::SecretMaterial, RebornBuildError> {
@@ -2199,7 +1643,6 @@ async fn resolve_secret_master_key(
         .ok_or(RebornBuildError::MissingSecretMasterKey)
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 struct RebornProductionWiring {
     trust_policy: Arc<HostTrustPolicy>,
     runtime_policy: EffectiveRuntimePolicy,
@@ -2207,7 +1650,6 @@ struct RebornProductionWiring {
     runtime_process_binding: RebornRuntimeProcessBinding,
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 struct RebornProductionBuildContext {
     profile: RebornCompositionProfile,
     wiring_config: brassclaw_host_runtime::ProductionWiringConfig,
@@ -2217,7 +1659,6 @@ struct RebornProductionBuildContext {
     oauth_dcr_provider_configs: Vec<crate::input::OAuthDcrProviderBackendConfig>,
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 fn production_wiring(
     trust_policy: Option<Arc<HostTrustPolicy>>,
     runtime_policy: Option<EffectiveRuntimePolicy>,
@@ -2240,7 +1681,6 @@ fn production_wiring(
     })
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 fn validate_production_process_binding(
     runtime_policy: &EffectiveRuntimePolicy,
     binding: &RebornRuntimeProcessBinding,
@@ -2252,7 +1692,6 @@ fn validate_production_process_binding(
         })
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 fn planned_run_profile_resolver() -> Result<Arc<InMemoryRunProfileResolver>, RebornBuildError> {
     Ok(Arc::new(
         brassclaw_reborn::planned_driver_factory::default_planned_run_profile_resolver().map_err(
@@ -2263,35 +1702,12 @@ fn planned_run_profile_resolver() -> Result<Arc<InMemoryRunProfileResolver>, Reb
     ))
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 type FilesystemProductionHostRuntimeServices<F> = HostRuntimeServices<
     F,
     PersistentResourceGovernor<FilesystemResourceGovernorStore<F>>,
     brassclaw_processes::FilesystemProcessStore<F>,
     brassclaw_processes::FilesystemProcessResultStore<F>,
 >;
-
-#[cfg(feature = "libsql")]
-pub(crate) async fn build_libsql_production_host_runtime_services<TPolicy, TWake>(
-    config: crate::LibSqlProductionSubstrateConfig<TPolicy, TWake>,
-) -> Result<crate::LibSqlProductionHostRuntimeServices, crate::RebornCompositionError>
-where
-    TPolicy: brassclaw_trust::TrustPolicy + 'static,
-    TWake: brassclaw_turns::TurnRunWakeNotifier + 'static,
-{
-    let filesystem = Arc::new(LibSqlRootFilesystem::new(Arc::clone(&config.database)));
-    filesystem.run_migrations().await?;
-    build_filesystem_production_host_runtime_services(
-        filesystem,
-        config.event_store,
-        config.secret_master_key,
-        config.trust_policy,
-        config.runtime_policy,
-        config.turn_run_wake_notifier,
-        config.surface_version,
-    )
-    .await
-}
 
 #[cfg(feature = "postgres")]
 pub(crate) async fn build_postgres_production_host_runtime_services<TPolicy, TWake>(
@@ -2317,7 +1733,6 @@ where
     .await
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 async fn build_filesystem_production_host_runtime_services<F, TPolicy, TWake>(
     filesystem: Arc<F>,
     event_store: brassclaw_reborn_event_store::RebornEventStoreConfig,
@@ -2393,7 +1808,6 @@ where
 /// The secret store and credential broker are deliberately built together from
 /// one scoped filesystem and one crypto handle so production composition does
 /// not grow parallel ad hoc secret/credential stores.
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 struct FilesystemSecretCredentialStores<F>
 where
     F: RootFilesystem + 'static,
@@ -2402,7 +1816,6 @@ where
     credential_broker: Arc<FilesystemCredentialBroker<F>>,
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 impl<F> FilesystemSecretCredentialStores<F>
 where
     F: RootFilesystem + 'static,
@@ -2431,7 +1844,6 @@ where
     }
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 async fn build_filesystem_secret_credential_stores<F>(
     scoped_filesystem: Arc<ScopedFilesystem<F>>,
     master_key: Option<brassclaw_secrets::SecretMaterial>,
@@ -2445,7 +1857,6 @@ where
     FilesystemSecretCredentialStores::from_master_key(scoped_filesystem, master_key)
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 async fn resolve_explicit_or_keychain_master_key(
     explicit: Option<brassclaw_secrets::SecretMaterial>,
 ) -> Result<Option<brassclaw_secrets::SecretMaterial>, brassclaw_secrets::SecretError> {
@@ -2460,7 +1871,6 @@ async fn resolve_explicit_or_keychain_master_key(
     }
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 struct ProductionStoreBundle<F>
 where
     F: RootFilesystem + 'static,
@@ -2472,7 +1882,6 @@ where
     event_store: brassclaw_reborn_event_store::RebornEventStoreConfig,
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 impl<F> ProductionStoreBundle<F>
 where
     F: RootFilesystem + 'static,
@@ -2501,7 +1910,6 @@ where
     }
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 async fn build_backend_production<F>(
     context: RebornProductionBuildContext,
     stores: ProductionStoreBundle<F>,
@@ -2515,19 +1923,17 @@ where
         stores,
         trigger_repository,
         None,
-        #[cfg(feature = "postgres")]
         None,
     )
     .await
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 async fn build_backend_production_with_tools<F>(
     context: RebornProductionBuildContext,
     stores: ProductionStoreBundle<F>,
     trigger_repository: Arc<dyn TriggerRepository>,
     prebuilt_tools: Option<BuiltinFirstPartyTools>,
-    #[cfg(feature = "postgres")] pg_pool: Option<Arc<deadpool_postgres::Pool>>,
+    pg_pool: Option<Arc<deadpool_postgres::Pool>>,
 ) -> Result<RebornServices, RebornBuildError>
 where
     F: RootFilesystem + 'static,
@@ -2660,6 +2066,30 @@ where
     let host_runtime: Arc<dyn brassclaw_host_runtime::HostRuntime> =
         Arc::new(services.host_runtime_for_production(&wiring_config)?);
 
+    // Build the three Postgres-backed WebUI stores from the shared pool.
+    // tenant_id "default" matches the hardcoded tenant used by the embedded-PG
+    // production path everywhere else in this composition (see build_postgres_memory_tools).
+    #[cfg(feature = "postgres")]
+    let (pg_safety_config_store, pg_token_settings_store, pg_memory_doc_store) =
+        if let Some(ref pool) = pg_pool {
+            (
+                Some(Arc::new(brassclaw_product_workflow::PgSafetyConfigStore::new(
+                    Arc::clone(pool),
+                    "default",
+                ))),
+                Some(Arc::new(crate::pg_token_settings_store::PgTokenSettingsStore::new(
+                    Arc::clone(pool),
+                    "default",
+                ))),
+                Some(Arc::new(crate::pg_memory_doc_store::PgMemoryDocStore::new(
+                    Arc::clone(pool),
+                    "default",
+                ))),
+            )
+        } else {
+            (None, None, None)
+        };
+
     Ok(RebornServices {
         host_runtime: Some(host_runtime),
         turn_coordinator: Some(turn_coordinator),
@@ -2672,44 +2102,20 @@ where
         secret_store,
         #[cfg(feature = "libsql")]
         safety_config_store: None,
+        #[cfg(feature = "postgres")]
+        pg_safety_config_store,
         #[cfg(feature = "libsql")]
         token_settings_store: None,
+        #[cfg(feature = "postgres")]
+        pg_token_settings_store,
         #[cfg(feature = "libsql")]
         memory_doc_store: None,
+        #[cfg(feature = "postgres")]
+        pg_memory_doc_store,
     })
 }
 
 #[cfg(feature = "libsql")]
-async fn build_libsql_production(
-    context: RebornProductionBuildContext,
-    db: Arc<libsql::Database>,
-    path_or_url: String,
-    auth_token: Option<brassclaw_secrets::SecretMaterial>,
-    secret_master_key: brassclaw_secrets::SecretMaterial,
-) -> Result<RebornServices, RebornBuildError> {
-    use brassclaw_filesystem::LibSqlRootFilesystem;
-
-    let filesystem = Arc::new(LibSqlRootFilesystem::new(Arc::clone(&db)));
-    filesystem.run_migrations().await?;
-    let trigger_repository = Arc::new(brassclaw_triggers::LibSqlTriggerRepository::new(db));
-    trigger_repository
-        .run_migrations()
-        .await
-        .map_err(|error| RebornBuildError::InvalidConfig {
-            reason: format!("libSQL trigger repository migrations failed: {error}"),
-        })?;
-    let stores = ProductionStoreBundle::new(
-        filesystem,
-        secret_master_key,
-        brassclaw_reborn_event_store::RebornEventStoreConfig::Libsql {
-            path_or_url,
-            auth_token,
-        },
-    )?;
-
-    build_backend_production(context, stores, trigger_repository).await
-}
-
 #[cfg(feature = "postgres")]
 async fn build_postgres_production(
     context: RebornProductionBuildContext,
@@ -2934,7 +2340,7 @@ mod tests {
         NewCredentialAccount, ProviderScope,
     };
     use brassclaw_filesystem::FilesystemError;
-    #[cfg(any(feature = "libsql", feature = "postgres"))]
+    
     use brassclaw_filesystem::{
         DirEntry, FileStat, FilesystemOperation, RootFilesystem, VersionedEntry,
     };
@@ -2979,10 +2385,10 @@ mod tests {
         }
     }
 
-    #[cfg(any(feature = "libsql", feature = "postgres"))]
+    
     struct FailingConversationStateFilesystem;
 
-    #[cfg(any(feature = "libsql", feature = "postgres"))]
+    
     #[async_trait::async_trait]
     impl RootFilesystem for FailingConversationStateFilesystem {
         async fn get(&self, path: &VirtualPath) -> Result<Option<VersionedEntry>, FilesystemError> {
@@ -3043,7 +2449,7 @@ mod tests {
         assert_eq!(reason, "trigger creator actor pairing failed");
     }
 
-    #[cfg(any(feature = "libsql", feature = "postgres"))]
+    
     async fn local_runtime_with_failing_trigger_conversations() -> Arc<RebornLocalRuntimeServices> {
         let local_dev_root = tempfile::tempdir().expect("tempdir");
         let owner_user_id = "pairing-owner";
@@ -3078,7 +2484,7 @@ mod tests {
             trigger_repository: Arc::clone(&base_runtime.trigger_repository),
             #[cfg(not(any(feature = "libsql", feature = "postgres")))]
             trigger_conversation_services: base_runtime.trigger_conversation_services.clone(),
-            #[cfg(any(feature = "libsql", feature = "postgres"))]
+            
             trigger_conversation_services: tokio::sync::OnceCell::new(),
             checkpoint_state_store: Arc::clone(&base_runtime.checkpoint_state_store),
             loop_checkpoint_store: Arc::clone(&base_runtime.loop_checkpoint_store),
@@ -3127,7 +2533,7 @@ mod tests {
         })
     }
 
-    #[cfg(any(feature = "libsql", feature = "postgres"))]
+    
     #[tokio::test]
     async fn durable_trigger_conversation_services_propagates_init_error() {
         let runtime = local_runtime_with_failing_trigger_conversations().await;
@@ -3143,7 +2549,7 @@ mod tests {
         ));
     }
 
-    #[cfg(any(feature = "libsql", feature = "postgres"))]
+    
     #[tokio::test]
     async fn local_runtime_trigger_create_hook_maps_conversation_init_error_to_backend() {
         let hook = LocalRuntimeTriggerCreatorPairingHook {

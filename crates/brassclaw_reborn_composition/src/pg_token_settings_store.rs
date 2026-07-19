@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Postgres-backed [`TokenSettingsStore`] implementation.
 //!
 //! Per-provider token limits are stored in `brassclaw_token_settings` (V014),

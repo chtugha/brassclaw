@@ -1,16 +1,8 @@
 //! Durable product workflow [`IdempotencyLedger`] storage adapters.
 
-#![cfg_attr(
-    not(any(feature = "libsql", feature = "postgres")),
-    allow(dead_code, unused_imports)
-)]
-
 use std::sync::Arc;
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use async_trait::async_trait;
-#[cfg(feature = "libsql")]
-use brassclaw_filesystem::LibSqlRootFilesystem;
 #[cfg(feature = "postgres")]
 use brassclaw_filesystem::PostgresRootFilesystem;
 use brassclaw_filesystem::{
@@ -18,7 +10,6 @@ use brassclaw_filesystem::{
     RootFilesystem,
 };
 use brassclaw_host_api::VirtualPath;
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_product_workflow::IdempotencyLedger;
 use brassclaw_product_workflow::{
     ActionFingerprintKey, ActionPhase, IdempotencyDecision, ProductInboundAction,
@@ -175,61 +166,6 @@ impl FilesystemIdempotencyLedger {
                 Err(error) => return Err(filesystem_error("release action", error)),
             }
         }
-    }
-}
-
-/// libSQL-backed product workflow idempotency ledger using the shared
-/// SQL filesystem backend for persistence.
-#[cfg(feature = "libsql")]
-pub struct RebornLibSqlIdempotencyLedger {
-    inner: FilesystemIdempotencyLedger,
-}
-
-#[cfg(feature = "libsql")]
-impl RebornLibSqlIdempotencyLedger {
-    pub fn new(filesystem: Arc<LibSqlRootFilesystem>) -> Self {
-        Self {
-            inner: FilesystemIdempotencyLedger::new(filesystem),
-        }
-    }
-
-    pub fn with_in_flight_lease(
-        filesystem: Arc<LibSqlRootFilesystem>,
-        in_flight_lease: Duration,
-    ) -> Self {
-        Self {
-            inner: FilesystemIdempotencyLedger::with_in_flight_lease(filesystem, in_flight_lease),
-        }
-    }
-
-    pub fn with_root(
-        filesystem: Arc<LibSqlRootFilesystem>,
-        root: VirtualPath,
-        in_flight_lease: Duration,
-    ) -> Self {
-        Self {
-            inner: FilesystemIdempotencyLedger::with_root(filesystem, root, in_flight_lease),
-        }
-    }
-}
-
-#[cfg(feature = "libsql")]
-#[async_trait]
-impl IdempotencyLedger for RebornLibSqlIdempotencyLedger {
-    async fn begin_or_replay(
-        &self,
-        fingerprint: ActionFingerprintKey,
-        received_at: DateTime<Utc>,
-    ) -> Result<IdempotencyDecision, ProductWorkflowError> {
-        self.inner.begin_or_replay(fingerprint, received_at).await
-    }
-
-    async fn settle(&self, action: ProductInboundAction) -> Result<(), ProductWorkflowError> {
-        self.inner.settle(action).await
-    }
-
-    async fn release(&self, action: ProductInboundAction) -> Result<(), ProductWorkflowError> {
-        self.inner.release(action).await
     }
 }
 

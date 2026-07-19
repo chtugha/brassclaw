@@ -38,8 +38,6 @@ use brassclaw_events::{
     SecurityAuditSink,
 };
 use brassclaw_extensions::{ExtensionRegistry, SharedExtensionRegistry};
-#[cfg(feature = "libsql")]
-use brassclaw_filesystem::LibSqlRootFilesystem;
 #[cfg(feature = "postgres")]
 use brassclaw_filesystem::PostgresRootFilesystem;
 use brassclaw_filesystem::{LocalFilesystem, RootFilesystem, ScopedFilesystem};

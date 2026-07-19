@@ -6,15 +6,12 @@
 //! validation, and concrete storage adapters that should not live in the
 //! substrate crate.
 //!
-//! Backend dispatch happens at the [`RootFilesystem`] layer: the `Libsql` /
-//! `Postgres` variants of [`RebornEventStoreConfig`] open a backend-specific
-//! `RootFilesystem` (libSQL / PostgreSQL) and route the durable log through
-//! [`FilesystemDurableEventLog`] / [`FilesystemDurableAuditLog`] over a
-//! [`ScopedFilesystem`] anchored at `/events`. The legacy per-backend
-//! `LibSql*` / `Postgres*` impls that spoke SQL directly were removed during
-//! the `src/db/` dissolution pass — see the design-doc entry "Legacy
-//! per-backend store cleanup" in
-//! `docs/plans/2026-05-16-scoped-filesystem-tenant-isolation.md`.
+//! Backend dispatch happens at the [`RootFilesystem`] layer: the `Postgres`
+//! variant of [`RebornEventStoreConfig`] opens a
+//! [`PostgresRootFilesystem`](brassclaw_filesystem::PostgresRootFilesystem) and
+//! routes the durable log through [`FilesystemDurableEventLog`] /
+//! [`FilesystemDurableAuditLog`] over a [`ScopedFilesystem`] anchored at
+//! `/events`.
 //!
 //! KNOWN LIMITATION (PR #3171 review #39): replay filtering currently stops
 //! at project / mission / thread / process scope. The `ResourceScope` carries
@@ -35,12 +32,12 @@ use std::{
 use async_trait::async_trait;
 use brassclaw_events::{
     DurableAuditLog, DurableEventLog, EventCursor, EventError, EventLogEntry, EventReplay,
-    EventStreamKey, InMemoryDurableAuditLog, InMemoryDurableEventLog, ReadScope, RuntimeEvent,
+    EventStreamKey, ReadScope, RuntimeEvent,
 };
-#[cfg(any(feature = "libsql", feature = "postgres"))]
+#[cfg(feature = "postgres")]
 use brassclaw_filesystem::{RootFilesystem, ScopedFilesystem};
 use brassclaw_host_api::{AgentId, AuditEnvelope};
-#[cfg(any(feature = "libsql", feature = "postgres"))]
+#[cfg(feature = "postgres")]
 use brassclaw_host_api::{MountAlias, MountGrant, MountPermissions, MountView, VirtualPath};
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -55,37 +52,17 @@ pub use pg_store::{PgDurableAuditLog, PgDurableEventLog};
 
 /// Backend configuration for Reborn durable event/audit stores.
 ///
-/// The `Libsql` / `Postgres` variants open a backend-specific
-/// [`RootFilesystem`] internally and route the durable log through
-/// [`FilesystemDurableEventLog`] / [`FilesystemDurableAuditLog`]. Production
-/// callers that match on this enum see the same external shape; backend
-/// dispatch now happens at the filesystem layer rather than at the
-/// consumer-store layer.
+/// The `Postgres` variant opens a
+/// [`PostgresRootFilesystem`](brassclaw_filesystem::PostgresRootFilesystem)
+/// and routes the durable log through [`FilesystemDurableEventLog`] /
+/// [`FilesystemDurableAuditLog`].
 #[derive(Debug)]
 pub enum RebornEventStoreConfig {
-    /// In-memory reference backend. Valid only for explicit local/test
-    /// profiles; production rejects it before returning a service graph.
-    InMemory,
-    /// Single-node durable JSONL backend rooted outside V1 migrations and DB
-    /// traits. Production must explicitly accept this single-node durability
-    /// mode so it cannot become an implicit memory-style fallback.
-    Jsonl {
-        root: PathBuf,
-        accept_single_node_durable: bool,
-    },
     /// PostgreSQL backend configuration. The store opens a
     /// [`PostgresRootFilesystem`](brassclaw_filesystem::PostgresRootFilesystem)
     /// over the provided URL and runs durable-log ops through the unified
     /// filesystem dispatch fabric.
     Postgres { url: SecretString },
-    /// libSQL backend configuration. The store opens a
-    /// [`LibSqlRootFilesystem`](brassclaw_filesystem::LibSqlRootFilesystem)
-    /// over the provided local path or remote URL and runs durable-log ops
-    /// through the unified filesystem dispatch fabric.
-    Libsql {
-        path_or_url: String,
-        auth_token: Option<SecretString>,
-    },
 }
 
 /// Reborn composition profile controlling which fallbacks are legal.
@@ -106,16 +83,6 @@ pub struct RebornEventStores {
 /// Redacted factory/configuration errors.
 #[derive(Debug, Error)]
 pub enum RebornEventStoreError {
-    #[error("production Reborn event store cannot use in-memory storage")]
-    ProductionInMemoryDisabled,
-    #[error("production JSONL event store requires explicit single-node durable acceptance")]
-    ProductionJsonlRequiresAcceptance,
-    #[error("production Reborn event store cannot use cleartext http:// libSQL URL")]
-    ProductionLibsqlClearTextDisabled,
-    #[error(
-        "production Reborn libSQL event store requires an explicit local path or remote URL scheme"
-    )]
-    ProductionLibsqlAmbiguousTarget,
     #[error(
         "remote Reborn Postgres event store requires sslmode=require (sslmode=disable rejected)"
     )]
@@ -136,11 +103,12 @@ pub enum RebornEventStoreError {
 }
 
 impl RebornEventStoreError {
+    #[allow(dead_code)]
     fn io(operation: &'static str, source: std::io::Error) -> Self {
         Self::Io { operation, source }
     }
 
-    #[cfg(any(feature = "libsql", feature = "postgres"))]
+    #[cfg(feature = "postgres")]
     fn backend<E>(backend: &'static str, operation: &'static str, _source: E) -> Self {
         Self::BackendOperation { backend, operation }
     }
@@ -148,35 +116,10 @@ impl RebornEventStoreError {
 
 /// Build durable event and audit logs for a standalone Reborn composition path.
 pub async fn build_reborn_event_stores(
-    profile: RebornProfile,
+    _profile: RebornProfile,
     config: RebornEventStoreConfig,
 ) -> Result<RebornEventStores, RebornEventStoreError> {
     match config {
-        RebornEventStoreConfig::InMemory => {
-            if profile == RebornProfile::Production {
-                return Err(RebornEventStoreError::ProductionInMemoryDisabled);
-            }
-            Ok(RebornEventStores {
-                events: Arc::new(InMemoryDurableEventLog::new()),
-                audit: Arc::new(InMemoryDurableAuditLog::new()),
-            })
-        }
-        RebornEventStoreConfig::Jsonl {
-            root,
-            accept_single_node_durable,
-        } => {
-            if profile == RebornProfile::Production && !accept_single_node_durable {
-                return Err(RebornEventStoreError::ProductionJsonlRequiresAcceptance);
-            }
-            create_secure_dir_all(&root)
-                .await
-                .map_err(|source| RebornEventStoreError::io("initialize jsonl root", source))?;
-            let store = JsonlStore::new(root);
-            Ok(RebornEventStores {
-                events: Arc::new(JsonlDurableEventLog::from_store(store.clone())),
-                audit: Arc::new(JsonlDurableAuditLog::from_store(store)),
-            })
-        }
         RebornEventStoreConfig::Postgres { url } => {
             #[cfg(feature = "postgres")]
             {
@@ -190,33 +133,14 @@ pub async fn build_reborn_event_stores(
                 })
             }
         }
-        RebornEventStoreConfig::Libsql {
-            path_or_url,
-            auth_token,
-        } => {
-            if profile == RebornProfile::Production {
-                validate_production_libsql_target(&path_or_url)?;
-            }
-            #[cfg(feature = "libsql")]
-            {
-                libsql_backed::build(path_or_url, auth_token).await
-            }
-            #[cfg(not(feature = "libsql"))]
-            {
-                let _ = (path_or_url, auth_token);
-                Err(RebornEventStoreError::BackendUnavailable { backend: "libsql" })
-            }
-        }
     }
 }
 
 /// Build a [`RebornEventStores`] from any [`RootFilesystem`] by routing the
 /// durable log through [`FilesystemDurableEventLog`] /
 /// [`FilesystemDurableAuditLog`] over a [`ScopedFilesystem`] anchored at
-/// `/events`. Production composition reuses this on top of a libSQL /
-/// PostgreSQL `RootFilesystem` so the backend choice is a property of the
-/// filesystem rather than of the durable-log impl.
-#[cfg(any(feature = "libsql", feature = "postgres"))]
+/// `/events`.
+#[cfg(feature = "postgres")]
 fn wrap_root_filesystem_as_event_stores<F>(
     root: Arc<F>,
 ) -> Result<RebornEventStores, RebornEventStoreError>
@@ -233,7 +157,7 @@ where
 /// Wrap a [`RootFilesystem`] in a [`ScopedFilesystem`] whose [`MountView`]
 /// grants the `/events` plane the permissions the durable log needs
 /// (append → write, tail → read+list).
-#[cfg(any(feature = "libsql", feature = "postgres"))]
+#[cfg(feature = "postgres")]
 fn build_events_scoped_filesystem<F>(
     root: Arc<F>,
 ) -> Result<Arc<ScopedFilesystem<F>>, RebornEventStoreError>
@@ -266,196 +190,6 @@ where
         operation: "construct events mount view",
     })?;
     Ok(Arc::new(ScopedFilesystem::with_fixed_view(root, view)))
-}
-
-/// Classification of a libSQL `path_or_url` for production policy decisions.
-///
-/// Scheme detection is case-insensitive so `HTTPS://` / `LibSQL://` cannot
-/// silently fall through to the local-file path and create a node-local
-/// SQLite file named after the URL.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LibsqlTargetClass {
-    /// `http://` (any case). Production rejects to prevent cleartext auth
-    /// tokens crossing the wire.
-    RemoteCleartext,
-    /// `https://` or `libsql://` (any case). Acceptable in production.
-    RemoteSecure,
-    /// `:memory:` reference backend. Production rejects: durable history must
-    /// not silently disappear on restart.
-    InMemory,
-    /// Absolute filesystem path (`/abs/...`). Acceptable in production.
-    LocalAbsolute,
-    /// Explicit relative-path syntax (`./...`, `../...`). Acceptable in
-    /// production because the relative-path intent is unambiguous.
-    LocalRelative,
-    /// Bare token with no scheme and no path syntax (e.g. `events.db`,
-    /// `db.example.com`). Ambiguous: could be a remote hostname typo or a
-    /// CWD-relative file. Production rejects to fail closed.
-    Bare,
-}
-
-fn classify_libsql_target(path_or_url: &str) -> LibsqlTargetClass {
-    if path_or_url == ":memory:" {
-        return LibsqlTargetClass::InMemory;
-    }
-    if let Some(scheme_end) = path_or_url.find("://") {
-        let scheme = &path_or_url[..scheme_end];
-        if scheme.eq_ignore_ascii_case("http") {
-            return LibsqlTargetClass::RemoteCleartext;
-        }
-        if scheme.eq_ignore_ascii_case("https") || scheme.eq_ignore_ascii_case("libsql") {
-            return LibsqlTargetClass::RemoteSecure;
-        }
-        // Unknown scheme: treat as bare so production fails closed instead of
-        // accidentally routing through `Builder::new_local`.
-        return LibsqlTargetClass::Bare;
-    }
-    if path_or_url.starts_with('/') {
-        return LibsqlTargetClass::LocalAbsolute;
-    }
-    if path_or_url.starts_with("./") || path_or_url.starts_with("../") {
-        return LibsqlTargetClass::LocalRelative;
-    }
-    LibsqlTargetClass::Bare
-}
-
-fn validate_production_libsql_target(path_or_url: &str) -> Result<(), RebornEventStoreError> {
-    match classify_libsql_target(path_or_url) {
-        LibsqlTargetClass::RemoteCleartext => {
-            Err(RebornEventStoreError::ProductionLibsqlClearTextDisabled)
-        }
-        LibsqlTargetClass::InMemory => Err(RebornEventStoreError::ProductionInMemoryDisabled),
-        LibsqlTargetClass::Bare => Err(RebornEventStoreError::ProductionLibsqlAmbiguousTarget),
-        LibsqlTargetClass::RemoteSecure
-        | LibsqlTargetClass::LocalAbsolute
-        | LibsqlTargetClass::LocalRelative => Ok(()),
-    }
-}
-
-#[cfg(feature = "libsql")]
-mod libsql_backed {
-    //! libSQL-backed [`RootFilesystem`] construction for the durable event
-    //! store. The connection lives behind the standard
-    //! [`FilesystemDurableEventLog`] / [`FilesystemDurableAuditLog`] surface
-    //! so this module only owns URL → `libsql::Database` plumbing and the
-    //! filesystem-layer migration.
-
-    use std::{path::Path, sync::Arc};
-
-    use brassclaw_filesystem::LibSqlRootFilesystem;
-    use secrecy::{ExposeSecret, SecretString};
-
-    use super::{RebornEventStoreError, RebornEventStores, wrap_root_filesystem_as_event_stores};
-
-    pub(super) async fn build(
-        path_or_url: String,
-        auth_token: Option<SecretString>,
-    ) -> Result<RebornEventStores, RebornEventStoreError> {
-        let db = build_database(&path_or_url, auth_token).await?;
-        let filesystem = Arc::new(LibSqlRootFilesystem::new(db));
-        filesystem
-            .run_migrations()
-            .await
-            .map_err(|source| RebornEventStoreError::backend("libsql", "run migrations", source))?;
-        wrap_root_filesystem_as_event_stores(filesystem)
-    }
-
-    async fn build_database(
-        path_or_url: &str,
-        auth_token: Option<SecretString>,
-    ) -> Result<Arc<libsql::Database>, RebornEventStoreError> {
-        let db = if is_remote_libsql(path_or_url) {
-            libsql::Builder::new_remote(
-                path_or_url.to_string(),
-                auth_token
-                    .as_ref()
-                    .map(|token| token.expose_secret().to_string())
-                    .unwrap_or_default(),
-            )
-            .build()
-            .await
-        } else if path_or_url == ":memory:" {
-            libsql::Builder::new_local(path_or_url).build().await
-        } else {
-            let path = Path::new(path_or_url);
-            // `Path::parent()` returns `Some("")` for a bare filename like
-            // `events.db`, and `create_dir_all("")` fails with ENOENT. Skip
-            // parent creation when the parent is empty so common configs like
-            // `path_or_url = "events.db"` work without forcing callers to
-            // write `./events.db`.
-            if let Some(parent) = path.parent()
-                && !parent.as_os_str().is_empty()
-            {
-                tokio::fs::create_dir_all(parent).await.map_err(|source| {
-                    RebornEventStoreError::io("initialize libsql parent", source)
-                })?;
-            }
-            libsql::Builder::new_local(path_or_url).build().await
-        };
-        db.map(Arc::new)
-            .map_err(|source| RebornEventStoreError::backend("libsql", "connect", source))
-    }
-
-    /// Detect a remote libSQL endpoint by recognised URL scheme.
-    ///
-    /// Scheme matching is case-insensitive: `HTTPS://...`, `LibSQL://...`, and
-    /// `HTTP://...` would otherwise fall through to `Builder::new_local(...)`
-    /// and silently create a node-local SQLite path like `HTTPS:/host/...`,
-    /// stranding durable history on one node and ignoring the auth token.
-    ///
-    /// A bare value with no scheme (e.g. `db.example.com` or `events.db`) is
-    /// treated as local here — production composition (in `lib.rs`) is
-    /// responsible for rejecting that ambiguity before we get this far. See
-    /// `validate_production_libsql_target`.
-    fn is_remote_libsql(path_or_url: &str) -> bool {
-        let Some(scheme_end) = path_or_url.find("://") else {
-            return false;
-        };
-        let scheme = &path_or_url[..scheme_end];
-        scheme.eq_ignore_ascii_case("libsql")
-            || scheme.eq_ignore_ascii_case("https")
-            || scheme.eq_ignore_ascii_case("http")
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::is_remote_libsql;
-
-        #[test]
-        fn case_insensitive_remote_scheme_detection() {
-            // Regression for chtugha/brassclaw#3171 review finding: mixed-case
-            // schemes previously fell through to `Builder::new_local`. The
-            // detector now matches scheme case-insensitively.
-            for url in [
-                "libsql://example.invalid",
-                "LIBSQL://example.invalid",
-                "LibSQL://example.invalid",
-                "https://example.invalid",
-                "HTTPS://example.invalid",
-                "Https://example.invalid",
-                "http://example.invalid",
-                "HTTP://example.invalid",
-            ] {
-                assert!(is_remote_libsql(url), "expected `{url}` to be remote");
-            }
-        }
-
-        #[test]
-        fn unscheme_values_are_local() {
-            // Bare values and explicit local-path syntax are not remote — the
-            // production gate in lib.rs handles ambiguity for production
-            // profiles separately.
-            for url in [
-                ":memory:",
-                "/var/lib/brassclaw/events.db",
-                "./events.db",
-                "events.db",
-                "db.example.com",
-            ] {
-                assert!(!is_remote_libsql(url), "expected `{url}` to be local");
-            }
-        }
-    }
 }
 
 #[cfg(feature = "postgres")]
@@ -818,6 +552,7 @@ impl JsonlDurableEventLog {
     // [`build_reborn_event_stores`] so the single-node-durable acceptance
     // gate (`Jsonl { accept_single_node_durable: true }`) cannot be bypassed
     // by directly wrapping a `JsonlDurableEventLog` in a `DurableEventSink`.
+    #[allow(dead_code)]
     fn from_store(store: JsonlStore) -> Self {
         Self { store }
     }
@@ -873,6 +608,7 @@ pub struct JsonlDurableAuditLog {
 
 impl JsonlDurableAuditLog {
     // See `JsonlDurableEventLog` — no public constructor by design.
+    #[allow(dead_code)]
     fn from_store(store: JsonlStore) -> Self {
         Self { store }
     }
@@ -929,6 +665,7 @@ struct JsonlStore {
 }
 
 impl JsonlStore {
+    #[cfg_attr(not(test), allow(dead_code))]
     fn new(root: PathBuf) -> Self {
         Self {
             root,
@@ -1523,112 +1260,19 @@ fn agent_component(agent_id: Option<&AgentId>) -> String {
     }
 }
 
-/// Create a directory tree with restrictive permissions on first creation.
-///
-/// On Unix we use mode `0o700` so a freshly-created tenant/user directory is
-/// not world-listable under the typical `umask 022`. Existing directories
-/// retain their current permissions — `create_dir_all` on an existing path
-/// is a no-op and never re-applies the requested mode. On non-Unix
-/// platforms this falls back to `tokio::fs::create_dir_all`.
-async fn create_secure_dir_all(path: &Path) -> std::io::Result<()> {
+async fn create_secure_dir_all(path: &std::path::Path) -> std::io::Result<()> {
     let mut builder = tokio::fs::DirBuilder::new();
     builder.recursive(true);
     #[cfg(unix)]
-    {
-        // `tokio::fs::DirBuilder::mode` is an inherent cfg(unix) method —
-        // no `DirBuilderExt` import is required.
-        builder.mode(0o700);
-    }
+    builder.mode(0o700);
     builder.create(path).await
 }
 
 #[cfg(test)]
 mod tests {
-    use brassclaw_host_api::{
-        AgentId, CapabilityId, InvocationId, ProjectId, ResourceScope, TenantId, UserId,
-    };
+    use brassclaw_host_api::{AgentId, TenantId, UserId};
 
     use super::*;
-
-    fn jsonl_scope() -> ResourceScope {
-        ResourceScope {
-            tenant_id: TenantId::new("default").expect("tenant id"),
-            user_id: UserId::new("alice").expect("user id"),
-            agent_id: Some(AgentId::new("default").expect("agent id")),
-            project_id: Some(ProjectId::new("project-a").expect("project id")),
-            mission_id: None,
-            thread_id: None,
-            invocation_id: InvocationId::new(),
-        }
-    }
-
-    async fn jsonl_event_log(root: std::path::PathBuf) -> Arc<dyn DurableEventLog> {
-        build_reborn_event_stores(
-            RebornProfile::LocalDev,
-            RebornEventStoreConfig::Jsonl {
-                root,
-                accept_single_node_durable: false,
-            },
-        )
-        .await
-        .expect("build jsonl event store")
-        .events
-    }
-
-    #[tokio::test]
-    async fn jsonl_head_cursor_reports_latest_and_rejects_future() {
-        // The JSONL production backend's head_cursor is the replay/live
-        // boundary probe taken at subscription start. A cursor-arithmetic bug
-        // or a missed ReplayGap would silently misclassify replay vs live, so
-        // exercise the empty-stream, post-append, mid-stream, and future-cursor
-        // cases directly. Mirrors the filesystem backend contract test.
-        let temp = tempfile::tempdir().expect("tempdir");
-        let log = jsonl_event_log(temp.path().join("event-store")).await;
-        let scope = jsonl_scope();
-        let stream = EventStreamKey::from_scope(&scope);
-        let capability = CapabilityId::new("demo.echo").expect("capability id");
-
-        // Empty stream: head is origin (no records yet).
-        assert_eq!(
-            log.head_cursor(&stream, EventCursor::origin())
-                .await
-                .expect("head of empty stream"),
-            EventCursor::origin()
-        );
-
-        for _ in 0..3 {
-            log.append(RuntimeEvent::dispatch_requested(
-                scope.clone(),
-                capability.clone(),
-            ))
-            .await
-            .expect("append");
-        }
-
-        // Head is the latest appended cursor.
-        assert_eq!(
-            log.head_cursor(&stream, EventCursor::origin())
-                .await
-                .expect("head after 3 appends"),
-            EventCursor::new(3)
-        );
-        // Probing from a valid mid-stream cursor still returns the true head.
-        assert_eq!(
-            log.head_cursor(&stream, EventCursor::new(2))
-                .await
-                .expect("head from mid-stream cursor"),
-            EventCursor::new(3)
-        );
-        // A cursor beyond head is a foreign/future cursor -> ReplayGap.
-        let err = log
-            .head_cursor(&stream, EventCursor::new(99))
-            .await
-            .expect_err("future cursor must be rejected");
-        assert!(
-            matches!(err, EventError::ReplayGap { .. }),
-            "expected ReplayGap, got {err:?}"
-        );
-    }
 
     #[tokio::test]
     async fn jsonl_stream_lock_registry_prunes_released_locks() {
@@ -1651,167 +1295,6 @@ mod tests {
 
         let _lock_b = store.stream_lock(StreamKind::Runtime, &stream_b).await;
         assert_eq!(store.locks.lock().await.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn production_rejects_cleartext_http_libsql_url() {
-        let result = build_reborn_event_stores(
-            RebornProfile::Production,
-            RebornEventStoreConfig::Libsql {
-                path_or_url: "http://libsql.example.com:8080".to_string(),
-                auth_token: None,
-            },
-        )
-        .await;
-        assert!(matches!(
-            result,
-            Err(RebornEventStoreError::ProductionLibsqlClearTextDisabled)
-        ));
-    }
-
-    #[tokio::test]
-    async fn local_dev_allows_cleartext_http_libsql_url() {
-        // Non-production profiles can still use http:// for local sqld.
-        // The build call will fail on the actual connection attempt below
-        // for an unreachable address, but it must NOT fail with the
-        // cleartext-disabled error.
-        let result = build_reborn_event_stores(
-            RebornProfile::LocalDev,
-            RebornEventStoreConfig::Libsql {
-                path_or_url: "http://127.0.0.1:1".to_string(),
-                auth_token: None,
-            },
-        )
-        .await;
-        assert!(!matches!(
-            result,
-            Err(RebornEventStoreError::ProductionLibsqlClearTextDisabled)
-        ));
-    }
-
-    // --- libSQL production-target classification (issues #34, #36, #41) ---
-
-    #[tokio::test]
-    async fn production_rejects_in_memory_libsql_target() {
-        // Regression for chtugha/brassclaw#3171 review finding: a libSQL
-        // `:memory:` config previously bypassed the InMemory production gate
-        // by reaching `Builder::new_local`, creating an ephemeral DB whose
-        // history is lost on restart.
-        let result = build_reborn_event_stores(
-            RebornProfile::Production,
-            RebornEventStoreConfig::Libsql {
-                path_or_url: ":memory:".to_string(),
-                auth_token: None,
-            },
-        )
-        .await;
-        assert!(matches!(
-            result,
-            Err(RebornEventStoreError::ProductionInMemoryDisabled)
-        ));
-    }
-
-    #[tokio::test]
-    async fn production_rejects_mixed_case_cleartext_libsql_url() {
-        // Mixed-case `HTTP://` previously skipped `is_remote_libsql` and
-        // fell through to a node-local SQLite path like `HTTP:/host/...`.
-        for url in [
-            "HTTP://libsql.example.com",
-            "Http://libsql.example.com",
-            "hTTp://libsql.example.com",
-        ] {
-            let result = build_reborn_event_stores(
-                RebornProfile::Production,
-                RebornEventStoreConfig::Libsql {
-                    path_or_url: url.to_string(),
-                    auth_token: None,
-                },
-            )
-            .await;
-            assert!(
-                matches!(
-                    result,
-                    Err(RebornEventStoreError::ProductionLibsqlClearTextDisabled)
-                ),
-                "expected `{url}` to be rejected as cleartext"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn production_accepts_mixed_case_secure_libsql_scheme() {
-        // The classifier must treat `HTTPS://` and `LibSQL://` as remote
-        // secure schemes regardless of case, instead of routing to the local
-        // path. The build call below will fail on the actual connection
-        // attempt against an unreachable host, but the failure must NOT be
-        // one of the production policy rejections.
-        for url in ["HTTPS://example.invalid", "LibSQL://example.invalid"] {
-            let result = build_reborn_event_stores(
-                RebornProfile::Production,
-                RebornEventStoreConfig::Libsql {
-                    path_or_url: url.to_string(),
-                    auth_token: None,
-                },
-            )
-            .await;
-            match result {
-                Err(RebornEventStoreError::ProductionInMemoryDisabled)
-                | Err(RebornEventStoreError::ProductionLibsqlClearTextDisabled)
-                | Err(RebornEventStoreError::ProductionLibsqlAmbiguousTarget) => {
-                    panic!("`{url}` should pass policy classification, got policy reject")
-                }
-                _ => {}
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn production_rejects_bare_hostname_libsql_target() {
-        // `path_or_url = "db.example.com"` previously went down the local
-        // path and silently created `./db.example.com`, ignoring the auth
-        // token and stranding durable history on one node. Production now
-        // fails closed on any value without an explicit scheme or path
-        // prefix.
-        let result = build_reborn_event_stores(
-            RebornProfile::Production,
-            RebornEventStoreConfig::Libsql {
-                path_or_url: "db.example.com".to_string(),
-                auth_token: None,
-            },
-        )
-        .await;
-        assert!(matches!(
-            result,
-            Err(RebornEventStoreError::ProductionLibsqlAmbiguousTarget)
-        ));
-    }
-
-    #[cfg(feature = "libsql")]
-    #[tokio::test]
-    async fn local_dev_still_allows_bare_relative_libsql_path() {
-        // The bare-path rejection is a production-only policy. LocalDev /
-        // Test must still allow `events.db` for ergonomic test/demo configs.
-        let temp = tempfile::tempdir().expect("tempdir");
-        let cwd = std::env::current_dir().expect("cwd");
-        std::env::set_current_dir(temp.path()).expect("chdir to tempdir");
-        let result = build_reborn_event_stores(
-            RebornProfile::LocalDev,
-            RebornEventStoreConfig::Libsql {
-                path_or_url: "events.db".to_string(),
-                auth_token: None,
-            },
-        )
-        .await;
-        let _ = std::env::set_current_dir(cwd);
-        assert!(
-            !matches!(
-                result,
-                Err(RebornEventStoreError::ProductionLibsqlAmbiguousTarget)
-            ),
-            "LocalDev must accept bare relative paths"
-        );
-        // The build itself should succeed for a bare filename in cwd.
-        result.expect("local libsql with bare relative path should build");
     }
 
     // --- Path component mapping (issues #40, #44) ---
@@ -1887,30 +1370,4 @@ mod tests {
 
     // --- JSONL file/directory permissions (issue #38) ---
 
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn jsonl_root_directory_uses_restrictive_permissions() {
-        use std::os::unix::fs::PermissionsExt;
-        let temp = tempfile::tempdir().expect("tempdir");
-        let root = temp.path().join("event-store");
-        let stores = build_reborn_event_stores(
-            RebornProfile::LocalDev,
-            RebornEventStoreConfig::Jsonl {
-                root: root.clone(),
-                accept_single_node_durable: false,
-            },
-        )
-        .await
-        .expect("build jsonl stores");
-        let _ = stores; // keep the type-check trivial
-        let mode = std::fs::metadata(&root)
-            .expect("root metadata")
-            .permissions()
-            .mode()
-            & 0o777;
-        assert_eq!(
-            mode, 0o700,
-            "newly created jsonl root must not be world-listable"
-        );
-    }
 }

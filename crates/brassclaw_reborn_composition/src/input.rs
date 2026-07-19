@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use brassclaw_auth::{AuthProductError, CredentialAccountLabel, OAuthClientId, OAuthRedirectUri};
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_host_api::runtime_policy::ProcessBackendKind;
 use brassclaw_host_api::runtime_policy::{
     EffectiveRuntimePolicy, FilesystemBackendKind, NetworkMode, SecretMode,
@@ -88,14 +87,12 @@ pub enum RebornRuntimeProcessBinding {
     },
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RebornRuntimeProcessBindingError {
     MissingTenantSandboxProcessPort,
     UnexpectedTenantSandboxProcessPort { process_backend: ProcessBackendKind },
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 impl std::fmt::Display for RebornRuntimeProcessBindingError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -119,7 +116,6 @@ impl RebornRuntimeProcessBinding {
         Self::TenantSandbox { process_port }
     }
 
-    #[cfg(any(feature = "libsql", feature = "postgres"))]
     pub(crate) fn validate_for_production_policy(
         &self,
         runtime_policy: &EffectiveRuntimePolicy,
@@ -163,13 +159,6 @@ pub(crate) enum RebornStorageInput {
         root: PathBuf,
         workspace_root: Option<PathBuf>,
         host_home_root: Option<PathBuf>,
-    },
-    #[cfg(feature = "libsql")]
-    Libsql {
-        db: Arc<libsql::Database>,
-        path_or_url: String,
-        auth_token: Option<brassclaw_secrets::SecretMaterial>,
-        secret_master_key: Option<brassclaw_secrets::SecretMaterial>,
     },
     #[cfg(feature = "postgres")]
     Postgres {
@@ -292,25 +281,6 @@ impl RebornBuildInput {
         )
     }
 
-    #[cfg(feature = "libsql")]
-    pub fn libsql_with_resolved_secret_master_key(
-        profile: RebornCompositionProfile,
-        owner_id: impl Into<String>,
-        db: Arc<libsql::Database>,
-        path_or_url: impl Into<String>,
-        auth_token: Option<brassclaw_secrets::SecretMaterial>,
-    ) -> Self {
-        Self::new(
-            profile,
-            owner_id,
-            RebornStorageInput::Libsql {
-                db,
-                path_or_url: path_or_url.into(),
-                auth_token,
-                secret_master_key: None,
-            },
-        )
-    }
 
     #[cfg(feature = "postgres")]
     pub fn postgres(

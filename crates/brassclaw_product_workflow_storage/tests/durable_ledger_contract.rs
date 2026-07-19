@@ -1,13 +1,8 @@
-#![cfg(any(feature = "libsql", feature = "postgres"))]
+#![cfg(feature = "postgres")]
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use std::sync::Arc;
-#[cfg(feature = "postgres")]
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[cfg(feature = "libsql")]
-use brassclaw_filesystem::LibSqlRootFilesystem;
-#[cfg(feature = "postgres")]
 use brassclaw_filesystem::PostgresRootFilesystem;
 use brassclaw_host_api::VirtualPath;
 use brassclaw_product_adapters::{
@@ -17,9 +12,6 @@ use brassclaw_product_workflow::{
     ActionFingerprintKey, IdempotencyDecision, IdempotencyLedger, ProductInboundAction,
     ProductWorkflowError, SourceBindingKey,
 };
-#[cfg(feature = "libsql")]
-use brassclaw_product_workflow_storage::RebornLibSqlIdempotencyLedger;
-#[cfg(feature = "postgres")]
 use brassclaw_product_workflow_storage::RebornPostgresIdempotencyLedger;
 use chrono::{Duration, Utc};
 
@@ -45,29 +37,12 @@ fn custom_root(suffix: &str) -> VirtualPath {
     .expect("valid custom ledger root")
 }
 
-#[cfg(feature = "postgres")]
 fn unique_suffix(name: &str) -> String {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system clock after unix epoch")
         .as_nanos();
     format!("{name}-{nanos}")
-}
-
-#[cfg(feature = "libsql")]
-async fn libsql_filesystem(path: &str) -> Arc<LibSqlRootFilesystem> {
-    let db = Arc::new(
-        libsql::Builder::new_local(path)
-            .build()
-            .await
-            .expect("build libsql db"),
-    );
-    let filesystem = Arc::new(LibSqlRootFilesystem::new(db));
-    filesystem
-        .run_migrations()
-        .await
-        .expect("run libsql filesystem migrations");
-    filesystem
 }
 
 async fn assert_settled_action_survives_reopen_and_replays(
@@ -275,113 +250,6 @@ async fn assert_actor_identity_is_part_of_fingerprint_path(
     ));
 }
 
-#[cfg(feature = "libsql")]
-#[tokio::test]
-async fn libsql_settled_action_survives_reopen_and_replays() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let db_path = dir.path().join("workflow-ledger.db");
-    let db_path = db_path.display().to_string();
-    let ledger = RebornLibSqlIdempotencyLedger::new(libsql_filesystem(&db_path).await);
-    let reopened = RebornLibSqlIdempotencyLedger::new(libsql_filesystem(&db_path).await);
-
-    assert_settled_action_survives_reopen_and_replays(&ledger, &reopened, "libsql-settled-replay")
-        .await;
-}
-
-#[cfg(feature = "libsql")]
-#[tokio::test]
-async fn libsql_in_flight_action_blocks_until_lease_expires() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let db_path = dir.path().join("workflow-ledger.db");
-    let ledger = RebornLibSqlIdempotencyLedger::with_in_flight_lease(
-        libsql_filesystem(&db_path.display().to_string()).await,
-        Duration::seconds(10),
-    );
-    assert_in_flight_action_blocks_until_lease_expires(&ledger, "libsql-lease").await;
-}
-
-#[cfg(feature = "libsql")]
-#[tokio::test]
-async fn libsql_release_allows_retry_without_waiting_for_lease() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let db_path = dir.path().join("workflow-ledger.db");
-    let ledger = RebornLibSqlIdempotencyLedger::with_in_flight_lease(
-        libsql_filesystem(&db_path.display().to_string()).await,
-        Duration::seconds(60),
-    );
-    assert_release_allows_retry_without_waiting_for_lease(&ledger, "libsql-release").await;
-}
-
-#[cfg(feature = "libsql")]
-#[tokio::test]
-async fn libsql_duplicate_reservation_contention_serializes() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let db_path = dir.path().join("workflow-ledger.db");
-    let db_path = db_path.display().to_string();
-    let first = RebornLibSqlIdempotencyLedger::with_in_flight_lease(
-        libsql_filesystem(&db_path).await,
-        Duration::seconds(10),
-    );
-    let second = RebornLibSqlIdempotencyLedger::with_in_flight_lease(
-        libsql_filesystem(&db_path).await,
-        Duration::seconds(10),
-    );
-
-    assert_duplicate_reservation_contention_serializes(&first, &second, "libsql-contention").await;
-}
-
-#[cfg(feature = "libsql")]
-#[tokio::test]
-async fn libsql_superseded_reservation_cannot_settle() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let db_path = dir.path().join("workflow-ledger.db");
-    let ledger = RebornLibSqlIdempotencyLedger::with_in_flight_lease(
-        libsql_filesystem(&db_path.display().to_string()).await,
-        Duration::seconds(10),
-    );
-
-    assert_superseded_reservation_cannot_settle(&ledger, "libsql-superseded").await;
-}
-
-#[cfg(feature = "libsql")]
-#[tokio::test]
-async fn libsql_settle_missing_reservation_returns_transient() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let db_path = dir.path().join("workflow-ledger.db");
-    let ledger =
-        RebornLibSqlIdempotencyLedger::new(libsql_filesystem(&db_path.display().to_string()).await);
-
-    assert_settle_missing_reservation_returns_transient(&ledger, "libsql-missing-settle").await;
-}
-
-#[cfg(feature = "libsql")]
-#[tokio::test]
-async fn libsql_custom_root_isolated_from_default_root() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let db_path = dir.path().join("workflow-ledger.db");
-    let filesystem = libsql_filesystem(&db_path.display().to_string()).await;
-    let custom = RebornLibSqlIdempotencyLedger::with_root(
-        Arc::clone(&filesystem),
-        custom_root("libsql"),
-        Duration::seconds(60),
-    );
-    let default = RebornLibSqlIdempotencyLedger::new(filesystem);
-
-    assert_custom_root_isolated_from_default_root(&custom, &default, "libsql-custom-root").await;
-}
-
-#[cfg(feature = "libsql")]
-#[tokio::test]
-async fn libsql_actor_identity_is_part_of_fingerprint_path() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let db_path = dir.path().join("workflow-ledger.db");
-    let db_path = db_path.display().to_string();
-    let ledger = RebornLibSqlIdempotencyLedger::new(libsql_filesystem(&db_path).await);
-
-    assert_actor_identity_is_part_of_fingerprint_path(&ledger, "libsql-actor-isolation").await;
-}
-
-#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn postgres_settled_action_survives_reopen_and_replays_when_configured() {
     let Some(filesystem) = postgres_filesystem().await else {
@@ -398,7 +266,6 @@ async fn postgres_settled_action_survives_reopen_and_replays_when_configured() {
     .await;
 }
 
-#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn postgres_in_flight_action_blocks_until_lease_expires_when_configured() {
     let Some(filesystem) = postgres_filesystem().await else {
@@ -411,7 +278,6 @@ async fn postgres_in_flight_action_blocks_until_lease_expires_when_configured() 
         .await;
 }
 
-#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn postgres_release_allows_retry_without_waiting_for_lease_when_configured() {
     let Some(filesystem) = postgres_filesystem().await else {
@@ -427,7 +293,6 @@ async fn postgres_release_allows_retry_without_waiting_for_lease_when_configured
     .await;
 }
 
-#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn postgres_duplicate_reservation_contention_serializes_when_configured() {
     let Some(filesystem) = postgres_filesystem().await else {
@@ -448,7 +313,6 @@ async fn postgres_duplicate_reservation_contention_serializes_when_configured() 
     .await;
 }
 
-#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn postgres_superseded_reservation_cannot_settle_when_configured() {
     let Some(filesystem) = postgres_filesystem().await else {
@@ -461,7 +325,6 @@ async fn postgres_superseded_reservation_cannot_settle_when_configured() {
         .await;
 }
 
-#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn postgres_settle_missing_reservation_returns_transient_when_configured() {
     let Some(filesystem) = postgres_filesystem().await else {
@@ -476,7 +339,6 @@ async fn postgres_settle_missing_reservation_returns_transient_when_configured()
     .await;
 }
 
-#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn postgres_custom_root_isolated_from_default_root_when_configured() {
     let Some(filesystem) = postgres_filesystem().await else {
@@ -497,7 +359,6 @@ async fn postgres_custom_root_isolated_from_default_root_when_configured() {
     .await;
 }
 
-#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn postgres_actor_identity_is_part_of_fingerprint_path_when_configured() {
     let Some(filesystem) = postgres_filesystem().await else {
@@ -512,7 +373,6 @@ async fn postgres_actor_identity_is_part_of_fingerprint_path_when_configured() {
     .await;
 }
 
-#[cfg(feature = "postgres")]
 async fn postgres_filesystem() -> Option<Arc<PostgresRootFilesystem>> {
     let url = match std::env::var("BRASSCLAW_PRODUCT_WORKFLOW_POSTGRES_URL") {
         Ok(url) => url,

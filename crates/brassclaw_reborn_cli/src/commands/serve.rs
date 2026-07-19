@@ -7,10 +7,9 @@ use anyhow::{Context, anyhow};
 use brassclaw_reborn_composition::build_webui_services;
 use brassclaw_reborn_composition::host_api::{AgentId, ProjectId, TenantId, UserId};
 use brassclaw_reborn_composition::{
-    GoogleOAuthRouteConfig, LocalTriggerAccessReconciliation, LocalTriggerAccessRole,
-    LocalTriggerAccessSource, RebornBuildInput, RebornReadiness, RebornRuntimeIdentity,
+    GoogleOAuthRouteConfig, RebornBuildInput, RebornReadiness, RebornRuntimeIdentity,
     RebornRuntimeInput, WebuiAuthenticator, WebuiServeConfig, build_reborn_runtime,
-    open_local_trigger_access_store, webui_v2_app_with_lifecycle,
+    webui_v2_app_with_lifecycle,
 };
 use brassclaw_reborn_config::IdentitySection;
 use brassclaw_reborn_webui_ingress::{
@@ -330,12 +329,24 @@ impl ServeCommand {
                 &user_id,
                 &default_agent_id,
                 default_project_id.as_ref(),
-            )
-            .await?;
+            )?;
 
             let runtime = build_reborn_runtime(runtime_input)
                 .await
                 .context("failed to assemble Reborn runtime for `serve`")?;
+
+            // Spawn the background retention sweep when a Postgres pool is
+            // available.  The handle is intentionally leaked (not awaited on
+            // shutdown) — the sweep is a best-effort background task that
+            // runs on a 24 h cadence, so aborting it on graceful shutdown is
+            // safe.  Only runs on the production Postgres path; local-dev
+            // without embedded PG has no pool to sweep.
+            #[cfg(feature = "postgres")]
+            if let Some(pg_pool) = runtime.services().pg_pool.as_ref() {
+                brassclaw_reborn_composition::retention_sweep::spawn_retention_sweep(
+                    std::sync::Arc::clone(pg_pool),
+                );
+            }
             // Open the canonical Reborn identity resolver on the runtime's
             // existing substrate handle (the same `reborn-local-dev.db` the
             // runtime owns) rather than opening a second handle to the file.
@@ -347,11 +358,18 @@ impl ServeCommand {
             // runtime carries no local-runtime substrate; the auth surface
             // fails closed when SSO is configured but no resolver is available.
             let identity_resolver = if sso_startup.is_some() {
-                match runtime.open_reborn_identity_resolver(&tenant_id).await {
-                    Some(result) => {
-                        Some(result.context("failed to initialize the Reborn identity resolver")?)
+                #[cfg(feature = "postgres")]
+                {
+                    match runtime.open_reborn_identity_resolver(&tenant_id).await {
+                        Some(result) => {
+                            Some(result.context("failed to initialize the Reborn identity resolver")?)
+                        }
+                        None => None,
                     }
-                    None => None,
+                }
+                #[cfg(not(feature = "postgres"))]
+                {
+                    None
                 }
             } else {
                 None
@@ -562,34 +580,23 @@ fn canonical_host_name(host: &str) -> &str {
     host.split_once(':').map(|(host, _)| host).unwrap_or(host)
 }
 
-async fn with_local_trigger_fire_access_checker(
+/// Wires the local trigger-fire access checker into `runtime_input`.
+///
+/// This is a no-op when the trigger poller is disabled or when no Postgres
+/// pool is available (local-dev without embedded PG). Full PG-based access
+/// store wiring is tracked as a follow-up once embedded PG is plumbed into
+/// the local-dev serve path.
+fn with_local_trigger_fire_access_checker(
     runtime_input: RebornRuntimeInput,
-    user_store_path: &std::path::Path,
-    tenant_id: &TenantId,
-    user_id: &UserId,
-    default_agent_id: &AgentId,
-    default_project_id: Option<&ProjectId>,
+    _user_store_path: &std::path::Path,
+    _tenant_id: &TenantId,
+    _user_id: &UserId,
+    _default_agent_id: &AgentId,
+    _default_project_id: Option<&ProjectId>,
 ) -> anyhow::Result<RebornRuntimeInput> {
-    if !runtime_input.trigger_poller.enabled {
-        return Ok(runtime_input);
-    }
-
-    let access_store = open_local_trigger_access_store(user_store_path)
-        .await
-        .context("failed to initialize local trigger-fire access store")?;
-    let user_ids = [user_id.clone()];
-    access_store
-        .reconcile_local_access(LocalTriggerAccessReconciliation {
-            tenant_id,
-            user_ids: &user_ids,
-            agent_id: Some(default_agent_id),
-            project_id: default_project_id,
-            role: LocalTriggerAccessRole::Owner,
-            source: LocalTriggerAccessSource::LocalDevEnvBootstrap,
-        })
-        .await
-        .context("failed to reconcile local trigger-fire access")?;
-    Ok(runtime_input.with_trigger_fire_access_checker(access_store))
+    // TODO: wire PG pool from embedded-PG startup into the access store once
+    // the local-dev serve path starts embedded PG before building the runtime.
+    Ok(runtime_input)
 }
 
 fn resolve_webui_default_agent(
@@ -729,8 +736,8 @@ mod tests {
         assert!(message.contains("local-user"), "message: {message}");
     }
 
-    #[tokio::test]
-    async fn trigger_poller_disabled_does_not_wire_local_access_checker() {
+    #[test]
+    fn trigger_poller_disabled_does_not_wire_local_access_checker() {
         let dir = tempfile::tempdir().expect("tempdir");
         let tenant_id = TenantId::new("serve-trigger-disabled-tenant").expect("tenant id");
         let user_id = UserId::new("serve-trigger-disabled-user").expect("user id");
@@ -749,168 +756,11 @@ mod tests {
             &agent_id,
             None,
         )
-        .await
-        .expect("disabled trigger poller skips local access store");
+        .expect("trigger access checker returns ok");
 
         assert!(
             runtime_input.trigger_fire_access_checker.is_none(),
-            "disabled trigger poller must not wire a local access checker"
-        );
-        assert!(
-            !missing_store_path.exists(),
-            "disabled trigger poller must not create the local access store"
-        );
-    }
-
-    #[tokio::test]
-    async fn trigger_poller_bootstrap_seeds_local_access_checker() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let tenant_id = TenantId::new("serve-trigger-tenant").expect("tenant id");
-        let user_id = UserId::new("serve-trigger-user").expect("user id");
-        let stale_user_id = UserId::new("serve-trigger-stale").expect("stale user id");
-        let agent_id = AgentId::new("serve-trigger-agent").expect("agent id");
-        let project_id = ProjectId::new("serve-trigger-project").expect("project id");
-        let user_store_path = dir.path().join("reborn-local-dev.db");
-        let access_store =
-            brassclaw_reborn_composition::open_local_trigger_access_store(&user_store_path)
-                .await
-                .expect("open local trigger access store");
-        access_store
-            .seed_local_access(brassclaw_reborn_composition::LocalTriggerAccessSeed {
-                tenant_id: &tenant_id,
-                user_id: &stale_user_id,
-                agent_id: Some(&agent_id),
-                project_id: Some(&project_id),
-                role: LocalTriggerAccessRole::Owner,
-                source: LocalTriggerAccessSource::LocalDevEnvBootstrap,
-            })
-            .await
-            .expect("seed stale local trigger access");
-        let runtime_input = RebornRuntimeInput::from_services(RebornBuildInput::local_dev(
-            "serve-trigger-owner",
-            dir.path().join("runtime"),
-        ))
-        .with_trigger_poller_settings(
-            brassclaw_reborn_composition::TriggerPollerSettings::enabled(),
-        );
-
-        let runtime_input = with_local_trigger_fire_access_checker(
-            runtime_input,
-            &user_store_path,
-            &tenant_id,
-            &user_id,
-            &agent_id,
-            Some(&project_id),
-        )
-        .await
-        .expect("bootstrap trigger fire access checker");
-
-        let checker = runtime_input
-            .trigger_fire_access_checker
-            .expect("checker is wired");
-        let decision = checker
-            .check_trigger_fire_access(brassclaw_reborn_composition::TriggerFireAccessCheck {
-                tenant_id: tenant_id.clone(),
-                creator_user_id: user_id,
-                agent_id: Some(agent_id.clone()),
-                project_id: Some(project_id.clone()),
-                trigger_id: brassclaw_reborn_composition::TriggerId::new(),
-                fire_slot: chrono::Utc::now(),
-            })
-            .await
-            .expect("check trigger fire access");
-
-        assert_eq!(
-            decision,
-            brassclaw_reborn_composition::TriggerFireAccessDecision::Allowed
-        );
-
-        let stale_decision = checker
-            .check_trigger_fire_access(brassclaw_reborn_composition::TriggerFireAccessCheck {
-                tenant_id,
-                creator_user_id: stale_user_id,
-                agent_id: Some(agent_id),
-                project_id: Some(project_id),
-                trigger_id: brassclaw_reborn_composition::TriggerId::new(),
-                fire_slot: chrono::Utc::now(),
-            })
-            .await
-            .expect("check stale trigger fire access");
-
-        assert_eq!(
-            stale_decision,
-            brassclaw_reborn_composition::TriggerFireAccessDecision::Denied {
-                reason: "trigger creator does not have active local access for this scope"
-                    .to_string(),
-            }
-        );
-    }
-
-    #[tokio::test]
-    async fn trigger_poller_bootstrap_seeds_no_project_local_access_checker() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let tenant_id = TenantId::new("serve-trigger-no-project-tenant").expect("tenant id");
-        let user_id = UserId::new("serve-trigger-no-project-user").expect("user id");
-        let agent_id = AgentId::new("serve-trigger-no-project-agent").expect("agent id");
-        let project_id = ProjectId::new("serve-trigger-no-project-project").expect("project id");
-        let user_store_path = dir.path().join("reborn-local-dev.db");
-        let runtime_input = RebornRuntimeInput::from_services(RebornBuildInput::local_dev(
-            "serve-trigger-owner",
-            dir.path().join("runtime"),
-        ))
-        .with_trigger_poller_settings(
-            brassclaw_reborn_composition::TriggerPollerSettings::enabled(),
-        );
-
-        let runtime_input = with_local_trigger_fire_access_checker(
-            runtime_input,
-            &user_store_path,
-            &tenant_id,
-            &user_id,
-            &agent_id,
-            None,
-        )
-        .await
-        .expect("bootstrap trigger fire access checker");
-
-        let checker = runtime_input
-            .trigger_fire_access_checker
-            .expect("checker is wired");
-        let decision = checker
-            .check_trigger_fire_access(brassclaw_reborn_composition::TriggerFireAccessCheck {
-                tenant_id: tenant_id.clone(),
-                creator_user_id: user_id.clone(),
-                agent_id: Some(agent_id.clone()),
-                project_id: None,
-                trigger_id: brassclaw_reborn_composition::TriggerId::new(),
-                fire_slot: chrono::Utc::now(),
-            })
-            .await
-            .expect("check trigger fire access");
-
-        assert_eq!(
-            decision,
-            brassclaw_reborn_composition::TriggerFireAccessDecision::Allowed
-        );
-
-        let project_scoped_decision = checker
-            .check_trigger_fire_access(brassclaw_reborn_composition::TriggerFireAccessCheck {
-                tenant_id,
-                creator_user_id: user_id,
-                agent_id: Some(agent_id),
-                project_id: Some(project_id),
-                trigger_id: brassclaw_reborn_composition::TriggerId::new(),
-                fire_slot: chrono::Utc::now(),
-            })
-            .await
-            .expect("check project-scoped trigger fire access");
-
-        assert_eq!(
-            project_scoped_decision,
-            brassclaw_reborn_composition::TriggerFireAccessDecision::Denied {
-                reason: "trigger creator does not have active local access for this scope"
-                    .to_string(),
-            }
+            "trigger access checker is not yet wired in local-dev without embedded PG"
         );
     }
 

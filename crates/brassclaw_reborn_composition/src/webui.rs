@@ -227,19 +227,25 @@ pub(crate) fn build_webui_services_with_connectable_channels(
         api = api.with_llm_config_service(Arc::new(llm_config));
     }
 
-    // Wire the safety configuration store when available (local-dev with libsql)
+    // Wire the safety configuration store — libsql (local-dev) or postgres (production).
+    #[cfg(feature = "postgres")]
+    if let Some(safety_config_store) = &services.pg_safety_config_store {
+        tracing::debug!("wiring PgSafetyConfigStore into WebUI API");
+        api = api.with_safety_config_store(Arc::clone(safety_config_store));
+    }
     #[cfg(feature = "libsql")]
     if let Some(safety_config_store) = &services.safety_config_store {
         tracing::debug!("wiring SafetyConfigStore into WebUI API");
         api = api.with_safety_config_store(Arc::clone(safety_config_store));
-    } else {
-        tracing::debug!("SafetyConfigStore is None - safety endpoints will not work");
     }
 
-    #[cfg(not(feature = "libsql"))]
-    tracing::debug!("libsql feature not enabled - SafetyConfigStore not available");
-
-    // Wire the token settings store when available (local-dev with libsql)
+    // Wire the token settings store — libsql (local-dev) or postgres (production).
+    #[cfg(feature = "postgres")]
+    if let Some(token_settings_store) = &services.pg_token_settings_store {
+        tracing::debug!("wiring PgTokenSettingsStore into WebUI API");
+        api = api.with_token_settings_store(Arc::clone(token_settings_store)
+            as Arc<dyn brassclaw_product_workflow::TokenSettingsStore>);
+    }
     #[cfg(feature = "libsql")]
     if let Some(token_settings_store) = &services.token_settings_store {
         tracing::debug!("wiring TokenSettingsStore into WebUI API");
@@ -247,15 +253,32 @@ pub(crate) fn build_webui_services_with_connectable_channels(
             as Arc<dyn brassclaw_product_workflow::TokenSettingsStore>);
     }
 
-    // Wire the libsql-backed engine `Store` through the
-    // `StoreBackedReductionRuleStore` adapter so the WebUI v2
-    // `/tokens/reduction-rules/*` endpoints read/write the same
-    // `MemoryDoc`-tagged rows the orchestrator's
-    // `__get_reduction_rules__` host call consumes on the over-budget
-    // turn. Engines' `invalidate_reduction_rules_cache()` is a
-    // process-wide flush today; the closure accepts (`project_id`,
-    // `user_id`) so the slot type stays scoped for the future
-    // per-(project, user) cache flush without breaking the wired surface.
+    // Wire the engine `Store` through `StoreBackedReductionRuleStore` and
+    // `StoreBackedRecipeStore` — postgres (production) or libsql (local-dev).
+    // This is what backs `/tokens/reduction-rules/*` and the Recipe Manager WebUI.
+    #[cfg(feature = "postgres")]
+    if let Some(memory_doc_store) = services.pg_memory_doc_store.clone() {
+        let dyn_store: Arc<dyn brassclaw_engine::traits::store::Store> =
+            Arc::clone(&memory_doc_store) as Arc<dyn brassclaw_engine::traits::store::Store>;
+        let reduction_rule_store = crate::reduction_rules_store::StoreBackedReductionRuleStore::open(
+            Arc::clone(&dyn_store),
+        );
+        api = api.with_reduction_rule_store(
+            Arc::new(reduction_rule_store)
+                as Arc<dyn brassclaw_product_workflow::ReductionRuleStore>,
+        );
+        api = api.with_reduction_rules_cache_invalidator(Arc::new(
+            |_project_id: &str, _user_id: &str| {
+                brassclaw_engine::executor::orchestrator::invalidate_reduction_rules_cache();
+            },
+        ));
+        let recipe_store = crate::recipe_store::StoreBackedRecipeStore::open(Arc::clone(&dyn_store));
+        api = api.with_recipe_store(
+            Arc::new(recipe_store)
+                as Arc<dyn brassclaw_product_workflow::RecipeStore>,
+        );
+        tracing::debug!("ReductionRuleStore + RecipeStore wired through PgMemoryDocStore");
+    }
     #[cfg(feature = "libsql")]
     if let Some(memory_doc_store) = services.memory_doc_store.clone() {
         let dyn_store: Arc<dyn brassclaw_engine::traits::store::Store> =
@@ -272,12 +295,6 @@ pub(crate) fn build_webui_services_with_connectable_channels(
                 brassclaw_engine::executor::orchestrator::invalidate_reduction_rules_cache();
             },
         ));
-        // Recipe-Skill-Tool library — same engine `Store`, projected
-        // through `memory_doc.metadata` round-trips. The
-        // `RecipeStore` trait gives the WebUI a stable wire shape
-        // for the Recipe Manager page, the validation queue, and
-        // outcome recording without forcing a recompile every time
-        // the engine schema grows a new metric.
         let recipe_store = crate::recipe_store::StoreBackedRecipeStore::open(Arc::clone(&dyn_store));
         api = api.with_recipe_store(
             Arc::new(recipe_store)
@@ -286,8 +303,6 @@ pub(crate) fn build_webui_services_with_connectable_channels(
         tracing::debug!(
             "ReductionRuleStore + RecipeStore wired through MemoryDocLibSqlStore"
         );
-    } else {
-        tracing::debug!("MemoryDocLibSqlStore is None - reduction-rule + recipe endpoints will return 501");
     }
 
     #[cfg(all(feature = "libsql", feature = "root-llm-provider"))]

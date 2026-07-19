@@ -8,7 +8,6 @@ publish = false
 default = []
 test-support = []
 postgres = ["dep:deadpool-postgres", "brassclaw_filesystem/postgres", "brassclaw_resources/postgres", "brassclaw_run_state/postgres"]
-libsql = ["dep:libsql", "brassclaw_filesystem/libsql", "brassclaw_resources/libsql", "brassclaw_run_state/libsql"]
 
 [dependencies]
 async-trait = "0.1"
@@ -46,7 +45,6 @@ brassclaw_skills = { path = "../brassclaw_skills" }
 brassclaw_triggers = { path = "../brassclaw_triggers" }
 brassclaw_trust = { path = "../brassclaw_trust" }
 brassclaw_turns = { path = "../brassclaw_turns" }
-libsql = { version = "0.6", optional = true, default-features = false, features = ["core", "replication", "remote", "tls"] }
 jsonschema = { version = "0.45", default-features = false }
 libc = "0.2"
 rust_decimal = { version = "1", features = ["serde", "serde-with-str"] }

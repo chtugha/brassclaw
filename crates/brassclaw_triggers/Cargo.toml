@@ -8,7 +8,6 @@ publish = false
 
 [features]
 default = []
-libsql = ["dep:libsql"]
 # postgres feature kept for compatibility but deps are now unconditional
 postgres = []
 
@@ -20,7 +19,6 @@ hex = "0.4"
 deadpool-postgres = "0.14"
 brassclaw_host_api = { path = "../brassclaw_host_api" }
 brassclaw_turns = { path = "../brassclaw_turns" }
-libsql = { version = "0.6", optional = true, default-features = false, features = ["core", "replication", "remote", "tls"] }
 tokio-postgres = "0.7"
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"

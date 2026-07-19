@@ -71,14 +71,11 @@ mod product_auth_providers;
 mod product_auth_runtime_credentials;
 mod product_auth_serve;
 mod product_live_adapters;
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 mod production_runtime_policy;
 mod profile;
 mod projection;
 pub use auth_prompt::{AuthChallengeProvider, AuthChallengeView};
 mod fetch_cached_content;
-#[cfg(feature = "libsql")]
-mod memory_doc_libsql_store;
 #[cfg(feature = "migrate-from-libsql")]
 pub mod migration;
 #[cfg(feature = "postgres")]
@@ -90,8 +87,6 @@ pub(crate) mod pg_chat_memory_record_store;
 pub(crate) mod pg_memory_doc_store;
 pub(crate) mod pg_token_settings_store;
 pub mod retention_sweep;
-#[cfg(feature = "libsql")]
-mod migrated_skills;
 pub(crate) mod plan_library;
 #[cfg(feature = "root-llm-provider")]
 mod provider_admin;
@@ -101,17 +96,11 @@ mod provider_admin_product_command;
 mod provider_repo;
 mod readiness;
 mod recipe_library;
-#[cfg(feature = "libsql")]
-mod recipe_store;
-#[cfg(feature = "libsql")]
-mod reduction_rules_store;
 mod runtime;
 mod runtime_input;
 mod skill_listing;
 #[cfg(feature = "test-support")]
 pub mod test_support;
-#[cfg(feature = "libsql")]
-mod token_settings_store;
 mod trigger_poller;
 mod trigger_poller_trusted_submit;
 mod web_access;
@@ -178,7 +167,6 @@ pub use product_live_adapters::{
     ProductLivePlannedRuntimeAdapters, ProductLiveVisibleCapabilityRequestConfig,
     capability_allowlist, visible_capability_request_for_run,
 };
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 pub use production_runtime_policy::RebornProductionRuntimePolicy;
 pub use profile::{RebornCompositionProfile, RebornCompositionProfileParseError};
 #[cfg(feature = "root-llm-provider")]
@@ -227,17 +215,15 @@ pub mod host_api {
 /// binaries reach it through this composition facade instead of taking a
 /// direct `brassclaw_reborn` dependency (the
 /// `reborn_cli_binary_crate_stays_separate_from_v1_root` architecture
-/// boundary forbids that). The store is a reborn-owned repository;
-/// [`open_local_trigger_access_store`] opens it so the libSQL substrate handle
-/// stays private to this facade and callers never construct one.
+/// boundary forbids that).
 pub use brassclaw_reborn::local_trigger_access::{
     LocalTriggerAccessReconciliation, LocalTriggerAccessRole, LocalTriggerAccessSeed,
-    LocalTriggerAccessSource, RebornLibSqlLocalTriggerAccessStore,
+    LocalTriggerAccessSource, PgRebornLocalTriggerAccessStore,
     RebornLocalTriggerAccessStoreError,
 };
 
 #[async_trait::async_trait]
-impl runtime_input::TriggerFireAccessChecker for RebornLibSqlLocalTriggerAccessStore {
+impl runtime_input::TriggerFireAccessChecker for PgRebornLocalTriggerAccessStore {
     async fn check_trigger_fire_access(
         &self,
         request: runtime_input::TriggerFireAccessCheck,
@@ -319,90 +305,11 @@ pub fn open_reborn_identity_resolver(
     )
 }
 
-/// Open the reborn-owned local trigger access store on the substrate DB at
-/// `path`, creating the parent directory and running its idempotent
-/// migrations.
-pub async fn open_local_trigger_access_store(
-    path: &std::path::Path,
-) -> Result<std::sync::Arc<RebornLibSqlLocalTriggerAccessStore>, RebornLocalTriggerAccessStoreError>
-{
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|err| RebornLocalTriggerAccessStoreError::Backend(err.to_string()))?;
-    }
-    let db = std::sync::Arc::new(
-        libsql::Builder::new_local(path)
-            .build()
-            .await
-            .map_err(|err| RebornLocalTriggerAccessStoreError::Backend(err.to_string()))?,
-    );
-    Ok(std::sync::Arc::new(
-        RebornLibSqlLocalTriggerAccessStore::open(db).await?,
-    ))
-}
-
-#[cfg(test)]
-mod webui_user_access_checker_tests {
-    use super::*;
-    use crate::runtime_input::{
-        TriggerFireAccessCheck, TriggerFireAccessChecker, TriggerFireAccessDecision,
-    };
-    use brassclaw_host_api::{AgentId, ProjectId, TenantId, UserId};
-
-    #[tokio::test]
-    async fn user_store_trigger_fire_checker_uses_exact_seeded_scope() {
-        let root = tempfile::tempdir().expect("tempdir");
-        let store = open_local_trigger_access_store(&root.path().join("reborn-local-dev.db"))
-            .await
-            .expect("open local trigger access store");
-        let tenant_id = TenantId::new("checker-tenant").expect("tenant id");
-        let user_id = UserId::new("checker-user").expect("user id");
-        let other_user_id = UserId::new("checker-other-user").expect("user id");
-        let agent_id = AgentId::new("checker-agent").expect("agent id");
-        let project_id = ProjectId::new("checker-project").expect("project id");
-
-        store
-            .seed_local_access(LocalTriggerAccessSeed {
-                tenant_id: &tenant_id,
-                user_id: &user_id,
-                agent_id: Some(&agent_id),
-                project_id: Some(&project_id),
-                role: LocalTriggerAccessRole::Owner,
-                source: LocalTriggerAccessSource::LocalDevEnvBootstrap,
-            })
-            .await
-            .expect("seed local access");
-
-        let allowed = store
-            .check_trigger_fire_access(TriggerFireAccessCheck {
-                tenant_id: tenant_id.clone(),
-                creator_user_id: user_id,
-                agent_id: Some(agent_id.clone()),
-                project_id: Some(project_id.clone()),
-                trigger_id: TriggerId::new(),
-                fire_slot: chrono::Utc::now(),
-            })
-            .await
-            .expect("check access");
-        assert_eq!(allowed, TriggerFireAccessDecision::Allowed);
-
-        let denied = store
-            .check_trigger_fire_access(TriggerFireAccessCheck {
-                tenant_id,
-                creator_user_id: other_user_id,
-                agent_id: Some(agent_id),
-                project_id: Some(project_id),
-                trigger_id: TriggerId::new(),
-                fire_slot: chrono::Utc::now(),
-            })
-            .await
-            .expect("check access");
-        assert!(matches!(
-            denied,
-            TriggerFireAccessDecision::Denied { reason }
-                if reason.contains("does not have active local access")
-        ));
-    }
+/// Build the reborn-owned local trigger access store over a Postgres pool.
+pub fn open_local_trigger_access_store(
+    pool: deadpool_postgres::Pool,
+) -> std::sync::Arc<PgRebornLocalTriggerAccessStore> {
+    std::sync::Arc::new(PgRebornLocalTriggerAccessStore::new(pool))
 }
 
 /// Reborn model purpose slot names exposed for diagnostic callers.
@@ -490,46 +397,27 @@ pub fn reborn_runtime_readiness_snapshot() -> RebornRuntimeReadinessSnapshot {
 }
 
 use brassclaw_authorization::CapabilityLeaseError;
-#[cfg(feature = "libsql")]
-use brassclaw_filesystem::LibSqlRootFilesystem;
 #[cfg(feature = "postgres")]
 use brassclaw_filesystem::PostgresRootFilesystem;
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_filesystem::{RootFilesystem, ScopedFilesystem};
 use brassclaw_host_api::ProcessBackendKind;
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_host_api::{
     MountAlias, MountGrant, MountPermissions, MountView, ResourceScope, SYSTEM_RESERVED_ID,
     VirtualPath,
 };
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_host_runtime::{CapabilitySurfaceVersion, HostRuntimeServices};
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_processes::{FilesystemProcessResultStore, FilesystemProcessStore};
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_reborn_event_store::RebornEventStoreConfig;
 use brassclaw_reborn_event_store::RebornEventStoreError;
 use brassclaw_resources::ResourceError;
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_resources::{FilesystemResourceGovernorStore, PersistentResourceGovernor};
 use brassclaw_run_state::RunStateError;
 use brassclaw_secrets::SecretError;
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_secrets::SecretMaterial;
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_trust::TrustPolicy;
 use brassclaw_turns::TurnError;
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_turns::TurnRunWakeNotifier;
 use thiserror::Error;
-
-#[cfg(feature = "libsql")]
-pub type LibSqlProductionHostRuntimeServices = HostRuntimeServices<
-    LibSqlRootFilesystem,
-    PersistentResourceGovernor<FilesystemResourceGovernorStore<LibSqlRootFilesystem>>,
-    FilesystemProcessStore<LibSqlRootFilesystem>,
-    FilesystemProcessResultStore<LibSqlRootFilesystem>,
->;
 
 #[cfg(feature = "postgres")]
 pub type PostgresProductionHostRuntimeServices = HostRuntimeServices<
@@ -544,7 +432,6 @@ pub type PostgresProductionHostRuntimeServices = HostRuntimeServices<
 /// `/tenants/<tenant>/users/<user>/<alias>` for the caller's scope, so
 /// two tenants sharing one underlying [`RootFilesystem`] cannot collide
 /// on identically-shaped paths.
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 const PER_USER_ALIASES: &[&str] = &[
     "/processes",
     "/secrets",
@@ -577,7 +464,6 @@ const PER_USER_ALIASES: &[&str] = &[
 /// `/tenants/__system__/users/__system__/<alias>`. Production code uses
 /// it for process-global records whose paths already encode per-tenant
 /// identity (event-log stream keys, conversation singleton state).
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 pub fn invocation_mount_view(
     scope: &ResourceScope,
 ) -> Result<MountView, brassclaw_host_api::HostApiError> {
@@ -587,7 +473,6 @@ pub fn invocation_mount_view(
     )
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 fn resource_scope_path_segment(value: &str) -> &str {
     if value == SYSTEM_RESERVED_ID {
         "__system__"
@@ -596,7 +481,6 @@ fn resource_scope_path_segment(value: &str) -> &str {
     }
 }
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 fn invocation_mount_view_for_segments(
     tenant_id: &str,
     user_id: &str,
@@ -630,7 +514,6 @@ fn invocation_mount_view_for_segments(
 /// [`invocation_mount_view`]. The returned filesystem is the single
 /// production handle — every consumer-store call routes per-scope
 /// through this one instance.
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 pub fn wrap_scoped<F>(root: Arc<F>) -> Arc<ScopedFilesystem<F>>
 where
     F: RootFilesystem,
@@ -638,24 +521,7 @@ where
     Arc::new(ScopedFilesystem::new(root, invocation_mount_view))
 }
 
-/// libSQL substrate handles needed to build production host-runtime services.
-#[cfg(feature = "libsql")]
-pub struct LibSqlProductionSubstrateConfig<TPolicy, TWake>
-where
-    TPolicy: TrustPolicy + 'static,
-    TWake: TurnRunWakeNotifier + 'static,
-{
-    pub database: Arc<libsql::Database>,
-    pub event_store: RebornEventStoreConfig,
-    pub secret_master_key: Option<SecretMaterial>,
-    pub trust_policy: Arc<TPolicy>,
-    pub runtime_policy: RebornProductionRuntimePolicy,
-    pub turn_run_wake_notifier: Arc<TWake>,
-    pub surface_version: CapabilitySurfaceVersion,
-}
-
 /// PostgreSQL substrate handles needed to build production host-runtime services.
-#[cfg(feature = "postgres")]
 pub struct PostgresProductionSubstrateConfig<TPolicy, TWake>
 where
     TPolicy: TrustPolicy + 'static,
@@ -704,26 +570,6 @@ pub enum RebornCompositionError {
     ProductionWiring {
         report: brassclaw_host_runtime::ProductionWiringReport,
     },
-}
-
-/// Build production-wired host-runtime services over libSQL-backed substrates.
-///
-/// This is deliberately substrate-only: no app/web setup, no runtime adapter
-/// registration, and no product loop construction.
-///
-/// Initialization runs substrate migrations and secret decryptability checks
-/// sequentially against the shared database. Earlier successful migrations are
-/// not rolled back if a later substrate fails; each migration is expected to be
-/// idempotent so callers can fix the underlying failure and retry composition.
-#[cfg(feature = "libsql")]
-pub async fn build_libsql_production_host_runtime_services<TPolicy, TWake>(
-    config: LibSqlProductionSubstrateConfig<TPolicy, TWake>,
-) -> Result<LibSqlProductionHostRuntimeServices, RebornCompositionError>
-where
-    TPolicy: TrustPolicy + 'static,
-    TWake: TurnRunWakeNotifier + 'static,
-{
-    factory::build_libsql_production_host_runtime_services(config).await
 }
 
 /// Build production-wired host-runtime services over PostgreSQL-backed substrates.

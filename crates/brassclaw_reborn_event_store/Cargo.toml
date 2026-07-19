@@ -12,6 +12,7 @@ publish = false
 
 [features]
 default = []
+libsql = ["dep:libsql"]
 postgres = [
     "dep:tokio-postgres-rustls",
     "dep:rustls",
@@ -19,17 +20,16 @@ postgres = [
     "dep:webpki-roots",
     "brassclaw_filesystem/postgres",
 ]
-libsql = ["dep:libsql", "brassclaw_filesystem/libsql"]
 
 [dependencies]
 async-trait = "0.1"
 brassclaw_pg = { path = "../brassclaw_pg" }
+libsql = { version = "0.6", optional = true, default-features = false, features = ["core", "replication", "remote", "tls"] }
 deadpool-postgres = "0.14"
 hex = "0.4"
 brassclaw_events = { path = "../brassclaw_events", version = "0.1.0" }
 brassclaw_filesystem = { path = "../brassclaw_filesystem", version = "0.1.0" }
 brassclaw_host_api = { path = "../brassclaw_host_api", version = "0.1.0" }
-libsql = { version = "0.6", optional = true, default-features = false, features = ["core", "replication", "remote", "tls"] }
 rustls = { version = "0.23", optional = true, default-features = false, features = ["ring"] }
 rustls-native-certs = { version = "0.8", optional = true }
 secrecy = "0.10"

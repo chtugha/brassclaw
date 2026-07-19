@@ -2,8 +2,6 @@ use std::any::type_name;
 
 use std::sync::Arc;
 
-#[cfg(feature = "libsql")]
-use super::LibSqlRootFilesystem;
 #[cfg(feature = "postgres")]
 use super::PostgresRootFilesystem;
 use super::{
@@ -34,7 +32,7 @@ where
     S: ProcessStore + 'static,
     R: ProcessResultStore + 'static,
 {
-    #[cfg(any(feature = "postgres", feature = "libsql"))]
+    #[cfg(feature = "postgres")]
     fn with_root_filesystem<T>(self, filesystem: Arc<T>) -> HostRuntimeServices<T, G, S, R>
     where
         T: RootFilesystem + 'static,
@@ -127,14 +125,6 @@ where
         self,
         filesystem: Arc<PostgresRootFilesystem>,
     ) -> HostRuntimeServices<PostgresRootFilesystem, G, S, R> {
-        self.with_root_filesystem(filesystem)
-    }
-
-    #[cfg(feature = "libsql")]
-    pub fn with_libsql_root_filesystem(
-        self,
-        filesystem: Arc<LibSqlRootFilesystem>,
-    ) -> HostRuntimeServices<LibSqlRootFilesystem, G, S, R> {
         self.with_root_filesystem(filesystem)
     }
 

@@ -11,45 +11,23 @@ repository = "https://github.com/chtugha/brassclaw"
 publish = false
 
 [features]
-default = ["libsql"]
+default = ["migrate-from-libsql"]
 # Upgrade-release gate: compiles the libSQL→Postgres data migration module.
-# Default-on via the libsql alias so existing builds continue to work.
-# Removed together with the migration module in the release after the upgrade.
-migrate-from-libsql = [
-    "dep:libsql",
-    "brassclaw_filesystem/libsql",
-    "brassclaw_host_runtime/libsql",
-    "brassclaw_reborn_event_store/libsql",
-    "brassclaw_resources/libsql",
-    "brassclaw_run_state/libsql",
-    "brassclaw_triggers/libsql",
-]
-# Wire a host-managed LLM model gateway into the assembled runtime via
-# brassclaw_reborn's `LlmProviderModelGateway`. Off by default so this crate
-# stays substrate-only when callers don't want a model gateway in the
-# composed runtime. Mirrors `brassclaw_reborn`'s own `root-llm-provider`
-# feature shape (optional dep, `default-features = false`).
+# Default-on for the upgrade release. Removed in the release after.
+migrate-from-libsql = ["dep:libsql", "brassclaw_reborn_event_store/libsql"]
+# Wire a host-managed LLM model gateway into the assembled runtime.
 root-llm-provider = [
     "dep:brassclaw_llm",
     "brassclaw_llm/registry-provider-factory",
     "brassclaw_reborn/root-llm-provider",
 ]
-# Expose test-only helpers (mock LLM gateway, budget runtime accessors)
-# so integration tests in this crate's `tests/` directory and downstream
-# crates can drive `build_reborn_runtime` with a stub model gateway
-# (via `RebornRuntimeInput::with_model_gateway_override`) and inspect the
-# budget pipeline end-to-end. Enable with `cargo test --features
-# test-support` (plus whatever feature surface the test crate also requires).
+# Expose test-only helpers (mock LLM gateway, budget runtime accessors).
 test-support = []
-libsql = [
-    "migrate-from-libsql",
-    "brassclaw_reborn/filesystem-goal-store",
-    "brassclaw_reborn/webui-user-store",
-]
+# Backward-compat alias.
+libsql = ["migrate-from-libsql"]
 postgres = [
     "brassclaw_filesystem/postgres",
     "brassclaw_host_runtime/postgres",
-    "brassclaw_reborn/filesystem-goal-store",
     "brassclaw_reborn_event_store/postgres",
     "brassclaw_resources/postgres",
     "brassclaw_run_state/postgres",

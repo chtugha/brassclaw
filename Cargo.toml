@@ -313,14 +313,12 @@ libsql = ["migrate-from-libsql"]
 # Opt-in feature for especially heavy integration-test targets that run in a
 # dedicated CI job instead of the default Rust test matrix.
 integration = []
-# Replay-gate snapshot tests promoted out of `--ignored` into a dedicated CI
-# job. Enabled by `.github/workflows/replay-gate.yml`; implies `libsql` so the
-# test rig can spin up its embedded database.
-replay = ["libsql"]
+# Replay-gate snapshot tests run in a dedicated CI job.
+replay = []
 html-to-markdown = ["dep:html-to-markdown-rs", "dep:readabilityrs"]
 bedrock = ["brassclaw_llm/bedrock", "brassclaw_embeddings/bedrock"]
 tui = ["dep:brassclaw_tui"]
-import = ["dep:json5", "libsql"]
+import = ["dep:json5"]
 # Conditional gate for memory-substrate regression tests that anticipate
 # specific guards: `ensure_path_matches_context`/`ensure_scope_matches_context`
 # fail-closed checks, deterministic tie-breaking by path ascending,

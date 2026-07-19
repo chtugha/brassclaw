@@ -17,13 +17,11 @@
 
 mod backend;
 mod catalog;
-#[cfg(any(feature = "postgres", feature = "libsql"))]
+#[cfg(feature = "postgres")]
 mod db;
 mod hsm;
 mod in_memory;
 mod index;
-#[cfg(feature = "libsql")]
-mod libsql;
 mod local;
 #[cfg(feature = "postgres")]
 mod postgres;
@@ -38,8 +36,6 @@ pub use catalog::{CompositeRootFilesystem, FilesystemCatalog, MountDescriptor, P
 pub use hsm::HsmBackend;
 pub use in_memory::InMemoryBackend;
 pub use index::{Filter, IndexKey, IndexKind, IndexName, IndexSpec, IndexValue, Page};
-#[cfg(feature = "libsql")]
-pub use libsql::LibSqlRootFilesystem;
 pub use local::LocalFilesystem;
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresRootFilesystem;

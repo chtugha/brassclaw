@@ -12,7 +12,6 @@ publish = false
 
 [features]
 default = []
-libsql = ["brassclaw_filesystem/libsql"]
 postgres = ["brassclaw_filesystem/postgres"]
 
 [dependencies]
@@ -26,9 +25,8 @@ tracing = "0.1"
 
 [dev-dependencies]
 deadpool-postgres = "0.14"
-brassclaw_filesystem = { path = "../brassclaw_filesystem", features = ["libsql", "postgres"] }
+brassclaw_filesystem = { path = "../brassclaw_filesystem", features = ["postgres"] }
 brassclaw_product_adapters = { path = "../brassclaw_product_adapters" }
-libsql = { version = "0.6", default-features = false, features = ["core", "replication", "remote", "tls"] }
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 tokio-postgres = "0.7"

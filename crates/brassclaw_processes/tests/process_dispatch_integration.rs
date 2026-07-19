@@ -17,9 +17,6 @@ use brassclaw_events::{
 };
 use brassclaw_host_api::*;
 use brassclaw_processes::*;
-use brassclaw_reborn_event_store::{
-    RebornEventStoreConfig, RebornProfile, build_reborn_event_stores,
-};
 use serde_json::json;
 use tokio::{sync::Notify, time::timeout};
 
@@ -81,19 +78,8 @@ async fn process_services_complete_background_process_through_process_host_and_e
 }
 
 #[tokio::test]
-async fn process_services_completed_lifecycle_projects_from_jsonl_durable_log_metadata_only() {
-    let temp = tempfile::tempdir().unwrap();
-    let store_root = temp.path().join("reborn-event-store");
-    let stores = build_reborn_event_stores(
-        RebornProfile::LocalDev,
-        RebornEventStoreConfig::Jsonl {
-            root: store_root.clone(),
-            accept_single_node_durable: false,
-        },
-    )
-    .await
-    .unwrap();
-    let event_log = Arc::clone(&stores.events);
+async fn process_services_completed_lifecycle_projects_from_durable_log_metadata_only() {
+    let event_log: Arc<dyn DurableEventLog> = Arc::new(InMemoryDurableEventLog::new());
     let event_sink: Arc<dyn EventSink> = Arc::new(DurableEventSink::new(Arc::clone(&event_log)));
     let process_store = Arc::new(EventingProcessStore::new(
         InMemoryProcessStore::new(),
@@ -155,7 +141,6 @@ async fn process_services_completed_lifecycle_projects_from_jsonl_durable_log_me
     assert_eq!(snapshot.runs[0].process_id, Some(process_id));
 
     let projection_json = serde_json::to_string(&snapshot).unwrap();
-    let jsonl_bytes = read_directory_text(&store_root);
     for forbidden in [
         "PROCESS_INPUT_SENTINEL_3022",
         "/tmp/private-process-path",
@@ -165,10 +150,6 @@ async fn process_services_completed_lifecycle_projects_from_jsonl_durable_log_me
         assert!(
             !projection_json.contains(forbidden),
             "process projection leaked {forbidden}: {projection_json}"
-        );
-        assert!(
-            !jsonl_bytes.contains(forbidden),
-            "durable process event bytes leaked {forbidden}: {jsonl_bytes}"
         );
     }
 }
@@ -546,27 +527,6 @@ fn process_start_with_input(
         resource_reservation_id: None,
         input,
     }
-}
-
-fn read_directory_text(root: &std::path::Path) -> String {
-    let mut output = String::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(path) = stack.pop() {
-        let entries = std::fs::read_dir(&path)
-            .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
-        for entry in entries {
-            let entry = entry.unwrap_or_else(|err| panic!("failed to read dir entry: {err}"));
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else {
-                output.push_str(&std::fs::read_to_string(&path).unwrap_or_else(|err| {
-                    panic!("failed to read {} as utf-8 text: {err}", path.display())
-                }));
-            }
-        }
-    }
-    output
 }
 
 fn sample_scope(invocation_id: InvocationId, tenant: &str, user: &str) -> ResourceScope {

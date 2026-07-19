@@ -4,7 +4,7 @@ use brassclaw_host_api::{HostApiError, VirtualPath};
 
 use crate::{DirEntry, FileType, FilesystemError, FilesystemOperation};
 
-#[cfg(any(feature = "postgres", feature = "libsql"))]
+#[cfg(feature = "postgres")]
 pub(crate) fn directory_write_error(path: VirtualPath) -> FilesystemError {
     FilesystemError::Backend {
         path,
@@ -13,7 +13,7 @@ pub(crate) fn directory_write_error(path: VirtualPath) -> FilesystemError {
     }
 }
 
-#[cfg(any(feature = "postgres", feature = "libsql"))]
+#[cfg(feature = "postgres")]
 pub(crate) fn directory_append_error(path: VirtualPath) -> FilesystemError {
     FilesystemError::Backend {
         path,
@@ -22,7 +22,7 @@ pub(crate) fn directory_append_error(path: VirtualPath) -> FilesystemError {
     }
 }
 
-#[cfg(any(feature = "postgres", feature = "libsql"))]
+#[cfg(feature = "postgres")]
 pub(crate) fn virtual_path_prefixes(path: &VirtualPath) -> Result<Vec<VirtualPath>, HostApiError> {
     let mut prefixes = Vec::new();
     let mut current = String::new();
@@ -37,7 +37,7 @@ pub(crate) fn virtual_path_prefixes(path: &VirtualPath) -> Result<Vec<VirtualPat
     Ok(prefixes)
 }
 
-#[cfg(any(feature = "postgres", feature = "libsql"))]
+#[cfg(feature = "postgres")]
 pub(crate) fn direct_children(
     parent: &VirtualPath,
     rows: Vec<(VirtualPath, u64, FileType)>,

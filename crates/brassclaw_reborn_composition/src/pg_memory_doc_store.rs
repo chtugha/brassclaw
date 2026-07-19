@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Postgres-backed engine [`Store`] implementation (MemoryDoc surface only).
 //!
 //! Implements the three `MemoryDoc` operations (`save_memory_doc`,

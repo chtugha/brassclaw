@@ -43,7 +43,6 @@ mod tests;
 const MAX_OWNER_SESSION_ROOTS_PER_SURFACE: usize = 1024;
 const MAX_OWNER_RECORDS_PER_ROOT: usize = 1024;
 
-#[cfg(any(feature = "libsql", feature = "postgres"))]
 pub(crate) use provider::UnavailableAuthProviderClient;
 
 /// Durable production implementation of the product-auth ports.

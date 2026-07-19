@@ -1,4 +1,4 @@
-#![cfg(any(feature = "libsql", feature = "postgres"))]
+#![cfg(feature = "postgres")]
 
 use brassclaw_host_api::{AgentId, ProjectId, TenantId, Timestamp, UserId};
 use brassclaw_triggers::{
@@ -9,12 +9,7 @@ use brassclaw_triggers::{
 use brassclaw_turns::TurnRunId;
 use chrono::{TimeZone, Utc};
 
-#[cfg(feature = "libsql")]
-use {
-    brassclaw_triggers::LibSqlTriggerRepository, libsql::params, std::sync::Arc, tempfile::tempdir,
-};
 
-#[cfg(feature = "postgres")]
 use brassclaw_triggers::PostgresTriggerRepository;
 
 fn ts(seconds: i64) -> Timestamp {
@@ -932,123 +927,6 @@ async fn assert_persists_trigger_state_fire_gate(repo: &impl TriggerRepository) 
     assert_eq!(due_records[0].trigger_id, trigger_id);
 }
 
-#[cfg(feature = "libsql")]
-async fn build_libsql_repo_with_db() -> (
-    tempfile::TempDir,
-    Arc<libsql::Database>,
-    LibSqlTriggerRepository,
-) {
-    let dir = tempdir().expect("tempdir");
-    let db_path = dir.path().join("triggers.db");
-    let db = Arc::new(
-        libsql::Builder::new_local(db_path.display().to_string())
-            .build()
-            .await
-            .expect("build libsql db"),
-    );
-    let repo = LibSqlTriggerRepository::new(db.clone());
-    repo.run_migrations().await.expect("run migrations");
-    (dir, db, repo)
-}
-
-#[cfg(feature = "libsql")]
-async fn build_libsql_repo() -> (tempfile::TempDir, LibSqlTriggerRepository) {
-    let (dir, _db, repo) = build_libsql_repo_with_db().await;
-    (dir, repo)
-}
-
-#[cfg(feature = "libsql")]
-#[tokio::test]
-async fn libsql_repository_contract_parity() {
-    let (_dir, repo) = build_libsql_repo().await;
-    assert_round_trip_and_scoped_isolation(&repo).await;
-
-    let (_dir, repo) = build_libsql_repo().await;
-    assert_round_trip_preserves_optional_run_metadata_and_completion_policy(&repo).await;
-
-    let (_dir, repo) = build_libsql_repo().await;
-    assert_round_trip_preserves_null_optional_scope_fields(&repo).await;
-
-    let (_dir, repo) = build_libsql_repo().await;
-    assert_upsert_preserves_original_created_at(&repo).await;
-
-    let (_dir, repo) = build_libsql_repo().await;
-    assert_due_query_clamps_limit_and_respects_state_gate(&repo).await;
-
-    let (_dir, repo) = build_libsql_repo().await;
-    assert_active_query_lists_active_records_in_deterministic_order(&repo).await;
-
-    let (_dir, repo) = build_libsql_repo().await;
-    assert_active_query_paginates_same_slot_same_tenant_by_trigger_id(&repo).await;
-
-    let (_dir, repo) = build_libsql_repo().await;
-    assert_rejects_validation_failures_before_persistence(&repo).await;
-
-    let (_dir, repo) = build_libsql_repo().await;
-    assert_persists_trigger_state_fire_gate(&repo).await;
-}
-
-#[cfg(feature = "libsql")]
-#[tokio::test]
-async fn libsql_repository_run_migrations_is_idempotent() {
-    let dir = tempdir().expect("tempdir");
-    let db_path = dir.path().join("triggers.db");
-    let db = Arc::new(
-        libsql::Builder::new_local(db_path.display().to_string())
-            .build()
-            .await
-            .expect("build libsql db"),
-    );
-    let repo = LibSqlTriggerRepository::new(db);
-
-    repo.run_migrations().await.expect("first run migrations");
-    repo.run_migrations().await.expect("second run migrations");
-}
-
-#[cfg(feature = "libsql")]
-#[tokio::test]
-async fn libsql_repository_rejects_malformed_persisted_rows() {
-    let (_dir, db, repo) = build_libsql_repo_with_db().await;
-    let trigger_id = TriggerId::parse("01HZZZZZZZZZZZZZZZZZZZZZZZ").expect("ulid");
-    let tenant_id = tenant("tenant-a");
-    let record = sample_record(trigger_id, tenant_id.clone(), ts(1_704_067_260));
-
-    repo.upsert_trigger(record).await.expect("insert record");
-
-    let conn = db.connect().expect("connect raw libsql");
-    for (column, value, expected_field, read_mode) in malformed_row_cases() {
-        conn.execute(
-            &format!(
-                "UPDATE trigger_records SET {column} = ?1 WHERE tenant_id = ?2 AND trigger_id = ?3"
-            ),
-            params![value, tenant_id.as_str(), trigger_id.to_string()],
-        )
-        .await
-        .expect("corrupt persisted row");
-
-        assert_malformed_row_error(
-            &repo,
-            tenant_id.clone(),
-            trigger_id,
-            expected_field,
-            read_mode,
-        )
-        .await;
-
-        conn.execute("DELETE FROM trigger_records", ())
-            .await
-            .expect("clear malformed row");
-        repo.upsert_trigger(sample_record(
-            trigger_id,
-            tenant_id.clone(),
-            ts(1_704_067_260),
-        ))
-        .await
-        .expect("restore valid row");
-    }
-}
-
-#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn postgres_repository_contract_parity() {
     let Some((_container, pool)) = postgres_pool_or_skip().await else {
@@ -1083,7 +961,6 @@ async fn postgres_repository_contract_parity() {
     assert_persists_trigger_state_fire_gate(&repo).await;
 }
 
-#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn postgres_repository_run_migrations_is_idempotent() {
     let Some((_container, pool)) = postgres_pool_or_skip().await else {
@@ -1095,7 +972,6 @@ async fn postgres_repository_run_migrations_is_idempotent() {
     repo.run_migrations().await.expect("second run migrations");
 }
 
-#[cfg(feature = "postgres")]
 #[tokio::test]
 async fn postgres_repository_rejects_malformed_persisted_rows() {
     let Some((_container, pool)) = postgres_pool_or_skip().await else {
@@ -1230,7 +1106,6 @@ async fn assert_malformed_row_error(
     );
 }
 
-#[cfg(feature = "postgres")]
 async fn postgres_pool_or_skip() -> Option<(
     testcontainers_modules::testcontainers::ContainerAsync<
         testcontainers_modules::postgres::Postgres,
@@ -1262,7 +1137,6 @@ async fn postgres_pool_or_skip() -> Option<(
     Some((container, pool))
 }
 
-#[cfg(feature = "postgres")]
 async fn start_postgres_container() -> Option<(
     testcontainers_modules::testcontainers::ContainerAsync<
         testcontainers_modules::postgres::Postgres,
@@ -1310,7 +1184,6 @@ async fn start_postgres_container() -> Option<(
     ))
 }
 
-#[cfg(feature = "postgres")]
 async fn clear_postgres_triggers(pool: &deadpool_postgres::Pool) {
     pool.get()
         .await
@@ -2509,45 +2382,6 @@ mod fire_claim_contract {
         assert_fire_clear_contract(&repo).await;
     }
 
-    #[cfg(feature = "libsql")]
-    #[tokio::test]
-    async fn libsql_repository_fire_claim_contract() {
-        let (_dir, repo) = build_libsql_repo().await;
-        assert_durable_fire_claim_contract(&repo).await;
-    }
-
-    #[cfg(feature = "libsql")]
-    #[tokio::test]
-    async fn libsql_repository_fire_claim_is_atomic() {
-        let (_dir, repo) = build_libsql_repo().await;
-        assert_durable_claim_is_atomic(std::sync::Arc::new(repo)).await;
-    }
-
-    #[cfg(feature = "libsql")]
-    #[tokio::test]
-    async fn libsql_repository_mark_fire_accepted_is_idempotent_under_concurrency() {
-        let (_dir, repo) = build_libsql_repo().await;
-        assert_mark_fire_accepted_is_idempotent_under_concurrency(
-            std::sync::Arc::new(repo),
-            TriggerId::parse("01J00000000000000000000014").expect("ulid"),
-            tenant("tenant-accepted-concurrent"),
-        )
-        .await;
-    }
-
-    #[cfg(feature = "libsql")]
-    #[tokio::test]
-    async fn libsql_repository_mark_fire_replayed_is_idempotent_under_concurrency() {
-        let (_dir, repo) = build_libsql_repo().await;
-        assert_mark_fire_replayed_is_idempotent_under_concurrency(
-            std::sync::Arc::new(repo),
-            TriggerId::parse("01J00000000000000000000015").expect("ulid"),
-            tenant("tenant-replayed-concurrent"),
-        )
-        .await;
-    }
-
-    #[cfg(feature = "postgres")]
     #[tokio::test]
     async fn postgres_repository_fire_claim_contract() {
         let Some((_container, pool)) = postgres_pool_or_skip().await else {
@@ -2559,7 +2393,6 @@ mod fire_claim_contract {
         clear_postgres_triggers(&pool).await;
     }
 
-    #[cfg(feature = "postgres")]
     #[tokio::test]
     async fn postgres_repository_fire_claim_is_atomic() {
         let Some((_container, pool)) = postgres_pool_or_skip().await else {
@@ -2571,7 +2404,6 @@ mod fire_claim_contract {
         clear_postgres_triggers(&pool).await;
     }
 
-    #[cfg(feature = "postgres")]
     #[tokio::test]
     async fn postgres_repository_mark_fire_accepted_is_idempotent_under_concurrency() {
         let Some((_container, pool)) = postgres_pool_or_skip().await else {
@@ -2588,7 +2420,6 @@ mod fire_claim_contract {
         clear_postgres_triggers(&pool).await;
     }
 
-    #[cfg(feature = "postgres")]
     #[tokio::test]
     async fn postgres_repository_mark_fire_replayed_is_idempotent_under_concurrency() {
         let Some((_container, pool)) = postgres_pool_or_skip().await else {
