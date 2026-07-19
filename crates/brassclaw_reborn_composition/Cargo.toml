@@ -75,6 +75,7 @@ brassclaw_filesystem = { path = "../brassclaw_filesystem" }
 brassclaw_first_party_extensions = { path = "../brassclaw_first_party_extensions" }
 brassclaw_engine = { path = "../brassclaw_engine" }
 brassclaw_hooks = { path = "../brassclaw_hooks" }
+brassclaw_hooks_pg = { path = "../brassclaw_hooks_pg" }
 brassclaw_host_api = { path = "../brassclaw_host_api" }
 brassclaw_agent_loop = { path = "../brassclaw_agent_loop" }
 brassclaw_host_runtime = { path = "../brassclaw_host_runtime" }

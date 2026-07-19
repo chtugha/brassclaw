@@ -25,6 +25,23 @@ use super::projection::{
     MAX_TOTAL_HOOKS_PER_TENANT, enforce_root_containment, tenant_extension_root,
 };
 
+/// Build a `PredicateStateBackend` from a Postgres pool when available,
+/// falling back to in-memory for local-dev / non-pool paths.
+pub(crate) fn predicate_backend(
+    pool: Option<Arc<deadpool_postgres::Pool>>,
+) -> Arc<dyn PredicateStateBackend> {
+    match pool {
+        Some(p) => {
+            tracing::debug!("hooks: using PostgresPredicateStateBackend");
+            Arc::new(brassclaw_hooks_pg::PostgresPredicateStateBackend::new((*p).clone()))
+        }
+        None => {
+            tracing::debug!("hooks: using InMemoryPredicateStateBackend (no pool)");
+            Arc::new(InMemoryPredicateStateBackend::new())
+        }
+    }
+}
+
 /// Build the error returned when a per-run install replay fails inside the
 /// [`HookDispatcherBuilderFactory`] closure. Every install set replayed there
 /// was already validated against a scratch builder at composition time, so this
@@ -247,18 +264,14 @@ pub(super) fn project_hook_entries(
 pub fn build_hook_dispatcher_builder_factory(
     config: HooksActivationConfig,
     registry: &HookProjectionRegistry,
+    pool: Option<Arc<deadpool_postgres::Pool>>,
 ) -> Result<Option<HookDispatcherBuilderFactory>, RebornBuildError> {
-    // Production path: the first-party catalog is empty
-    // (`install_first_party_hooks` is a no-op). All other wiring lives in the
-    // shared helper.
+    let backend = predicate_backend(pool);
     build_hook_dispatcher_builder_factory_with(
         config,
         registry,
-        // No tenant id/root threaded through the convenience entry point; the
-        // projection registry has already passed admission caps + containment
-        // in `build_hook_projection_registry`. A synthetic tenant label is used
-        // only for any quarantine audit emitted during install-time validation.
         None,
+        Some(backend),
         install_first_party_hooks,
     )
 }
@@ -278,15 +291,15 @@ pub fn build_hook_dispatcher_builder_factory_for_tenant(
     config: HooksActivationConfig,
     registry: &HookProjectionRegistry,
     tenant_id: &brassclaw_host_api::TenantId,
+    pool: Option<Arc<deadpool_postgres::Pool>>,
 ) -> Result<Option<HookDispatcherBuilderFactory>, RebornBuildError> {
-    // The tenant-derived extension root is the same root discovery/admission
-    // computed; recomputing it here is deterministic (pure function of the
-    // tenant id) and keeps the audit-context seam tenant-aware end to end.
+    let backend = predicate_backend(pool);
     let root = tenant_extension_root(tenant_id)?;
     build_hook_dispatcher_builder_factory_with(
         config,
         registry,
         Some((tenant_id, &root)),
+        Some(backend),
         install_first_party_hooks,
     )
 }
@@ -308,6 +321,7 @@ pub(super) fn build_hook_dispatcher_builder_factory_with<F>(
         &brassclaw_host_api::TenantId,
         &brassclaw_host_api::VirtualPath,
     )>,
+    backend: Option<Arc<dyn PredicateStateBackend>>,
     install_first_party: F,
 ) -> Result<Option<HookDispatcherBuilderFactory>, RebornBuildError>
 where
@@ -320,12 +334,14 @@ where
         return Ok(None);
     }
 
-    // In-memory predicate-state backend for v1. Swappable: a durable
-    // Postgres/libSQL backend (#3933) drops in here without touching the rest
-    // of the wiring.
-    let backend: Arc<dyn PredicateStateBackend> = Arc::new(InMemoryPredicateStateBackend::new());
+    let (backend, is_in_memory) = match backend {
+        Some(b) => (b, false),
+        None => (Arc::new(InMemoryPredicateStateBackend::new()) as Arc<dyn PredicateStateBackend>, true),
+    };
     let evaluator = Arc::new(PredicateEvaluator::with_state_backend(Arc::clone(&backend)));
-    evaluator.warn_in_memory_backend_active_in_production();
+    if is_in_memory {
+        evaluator.warn_in_memory_backend_active_in_production();
+    }
 
     let registrar = HookRegistrar::new(Arc::clone(&evaluator));
 

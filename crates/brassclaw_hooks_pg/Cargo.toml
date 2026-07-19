@@ -1,0 +1,37 @@
+[package]
+name = "brassclaw_hooks_pg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Durable PostgreSQL-backed PredicateStateBackend for the reborn hook framework."
+authors = ["NEAR AI <support@near.ai>"]
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/chtugha/brassclaw"
+repository = "https://github.com/chtugha/brassclaw"
+
+[features]
+default = []
+# Enable the heavy multi-host adversarial suite. Mirrors the workspace-wide
+# `integration` gate used for DB-backed tests.
+integration = []
+
+[dependencies]
+async-trait = "0.1"
+blake3 = "1"
+chrono = { version = "0.4", features = ["serde"] }
+deadpool-postgres = "0.14"
+brassclaw_hooks = { path = "../brassclaw_hooks" }
+brassclaw_host_api = { path = "../brassclaw_host_api" }
+rust_decimal = { version = "1", features = ["serde", "serde-with-str", "db-tokio-postgres"] }
+thiserror = "2"
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4"] }
+tracing = "0.1"
+
+[dev-dependencies]
+brassclaw_hooks = { path = "../brassclaw_hooks", features = ["contract-tests"] }
+brassclaw_host_api = { path = "../brassclaw_host_api" }
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+rust_decimal = { version = "1", features = ["serde"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "sync"] }
+uuid = { version = "1", features = ["v4"] }

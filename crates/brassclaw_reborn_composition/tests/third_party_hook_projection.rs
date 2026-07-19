@@ -197,7 +197,7 @@ async fn projection_for(
 }
 
 fn ids_at(registry: &HookProjectionRegistry, point: HookPointSpec) -> Vec<HookId> {
-    let factory = build_hook_dispatcher_builder_factory(both_flags_on(), registry)
+    let factory = build_hook_dispatcher_builder_factory(both_flags_on(), registry, None)
         .expect("factory builds")
         .expect("flag ON yields a factory");
     factory()
@@ -210,7 +210,7 @@ fn ids_at(registry: &HookProjectionRegistry, point: HookPointSpec) -> Vec<HookId
 }
 
 fn before_capability_ids(registry: &HookProjectionRegistry) -> Vec<HookId> {
-    let factory = build_hook_dispatcher_builder_factory(both_flags_on(), registry)
+    let factory = build_hook_dispatcher_builder_factory(both_flags_on(), registry, None)
         .expect("factory builds")
         .expect("flag ON yields a factory");
     factory()
@@ -419,7 +419,7 @@ async fn matrix_before_capability_installed_deny_is_allowed_and_fires() {
     );
     let registry = projection_for(&fs, &tenant, both_flags_on()).await;
 
-    let factory = build_hook_dispatcher_builder_factory(both_flags_on(), &registry)
+    let factory = build_hook_dispatcher_builder_factory(both_flags_on(), &registry, None)
         .expect("factory")
         .expect("flag ON yields factory");
     let dispatcher = factory().expect("mint hook builder").build_arc();
@@ -530,7 +530,7 @@ async fn matrix_owning_extension_is_derived_not_spoofable() {
     );
     let registry = projection_for(&fs, &tenant, both_flags_on()).await;
 
-    let factory = build_hook_dispatcher_builder_factory(both_flags_on(), &registry)
+    let factory = build_hook_dispatcher_builder_factory(both_flags_on(), &registry, None)
         .expect("factory")
         .expect("flag ON yields factory");
     let dispatcher = factory().expect("mint hook builder").build_arc();

@@ -187,7 +187,7 @@ fn truthy_tokens_enable_only_canonical_values() {
 fn disabled_config_yields_no_factory() {
     let registry = projection(ExtensionRegistry::new());
     let result =
-        build_hook_dispatcher_builder_factory(HooksActivationConfig::disabled(), &registry)
+        build_hook_dispatcher_builder_factory(HooksActivationConfig::disabled(), &registry, None)
             .expect("disabled build never errors");
     assert!(result.is_none(), "flag OFF must compose no dispatcher");
 }
@@ -200,7 +200,7 @@ fn enabled_config_with_empty_production_catalog_yields_valid_zero_binding_factor
     // the empty-catalog-is-valid contract.
     let registry = projection(ExtensionRegistry::new());
     let factory =
-        build_hook_dispatcher_builder_factory(HooksActivationConfig::enabled(), &registry)
+        build_hook_dispatcher_builder_factory(HooksActivationConfig::enabled(), &registry, None)
             .expect("enabled build with empty registry + empty catalog succeeds")
             .expect("flag ON yields a factory even with an empty catalog");
     // The factory mints a valid dispatcher with no first-party bindings.
@@ -223,6 +223,7 @@ fn activation_installs_a_test_first_party_hook_through_the_real_path() {
         HooksActivationConfig::enabled(),
         &registry,
         None,
+        None,
         install_test_first_party_hook,
     )
     .expect("enabled build with a test first-party hook succeeds")
@@ -240,7 +241,7 @@ fn activation_installs_a_test_first_party_hook_through_the_real_path() {
 fn factory_mints_independent_dispatchers_per_call() {
     let registry = projection(ExtensionRegistry::new());
     let factory =
-        build_hook_dispatcher_builder_factory(HooksActivationConfig::enabled(), &registry)
+        build_hook_dispatcher_builder_factory(HooksActivationConfig::enabled(), &registry, None)
             .expect("enabled build succeeds")
             .expect("flag ON yields a factory");
     let a = factory().expect("mint hook builder").build_arc();
@@ -318,6 +319,7 @@ fn valid_extension_hook_manifest_installs_at_installed_tier() {
         HooksActivationConfig::enabled(),
         &registry,
         None,
+        None,
         install_test_first_party_hook,
     )
     .expect("enabled build with a valid extension hook succeeds")
@@ -358,7 +360,7 @@ body = { mode = "nonsense" }
     ));
 
     let factory =
-        build_hook_dispatcher_builder_factory(HooksActivationConfig::enabled(), &registry)
+        build_hook_dispatcher_builder_factory(HooksActivationConfig::enabled(), &registry, None)
             .expect("malformed INSTALLED manifest must NOT fail the build (quarantine)")
             .expect("flag ON yields a factory");
     let dispatcher = factory().expect("mint hook builder").build_arc();
@@ -388,7 +390,7 @@ body = { mode = "nonsense" }
         ManifestSource::HostBundled,
     ));
 
-    match build_hook_dispatcher_builder_factory(HooksActivationConfig::enabled(), &registry) {
+    match build_hook_dispatcher_builder_factory(HooksActivationConfig::enabled(), &registry, None) {
         Err(RebornBuildError::InvalidConfig { reason }) => {
             assert!(
                 reason.contains("brassclaw.broken") && reason.contains("broken-hook"),
@@ -427,7 +429,7 @@ body = { mode = "nonsense" }
     ]);
 
     let factory =
-        build_hook_dispatcher_builder_factory(HooksActivationConfig::enabled(), &registry)
+        build_hook_dispatcher_builder_factory(HooksActivationConfig::enabled(), &registry, None)
             .expect("partial-invalid set must quarantine, not fail the build")
             .expect("flag ON yields a factory");
     let dispatcher = factory().expect("mint hook builder").build_arc();
@@ -468,7 +470,7 @@ body = { mode = "predicate", spec = { type = "deny_capability", reason = "wider-
     ));
 
     let factory =
-        build_hook_dispatcher_builder_factory(HooksActivationConfig::enabled(), &registry)
+        build_hook_dispatcher_builder_factory(HooksActivationConfig::enabled(), &registry, None)
             .expect("ungranted wider-scope INSTALLED hook must quarantine, not fail the build")
             .expect("flag ON yields a factory");
     let dispatcher = factory().expect("mint hook builder").build_arc();
@@ -508,7 +510,7 @@ body = { mode = "wasm", export = "evaluate" }
     ]);
 
     let factory =
-        build_hook_dispatcher_builder_factory(HooksActivationConfig::enabled(), &registry)
+        build_hook_dispatcher_builder_factory(HooksActivationConfig::enabled(), &registry, None)
             .expect("predicate-only sibling must still build after a WASM-bodied hook is dropped")
             .expect("flag ON yields a factory");
     let dispatcher = factory().expect("mint hook builder").build_arc();
@@ -588,7 +590,7 @@ fn surplus_extensions_beyond_consider_cap_are_quarantined() {
     let registry = projection_with(&refs);
 
     let factory =
-        build_hook_dispatcher_builder_factory(HooksActivationConfig::enabled(), &registry)
+        build_hook_dispatcher_builder_factory(HooksActivationConfig::enabled(), &registry, None)
             .expect("surplus extensions must quarantine, not fail the build")
             .expect("flag ON yields a factory");
     let dispatcher = factory().expect("mint hook builder").build_arc();

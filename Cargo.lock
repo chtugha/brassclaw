@@ -1815,6 +1815,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "brassclaw_hooks_pg"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "blake3",
+ "brassclaw_hooks",
+ "brassclaw_host_api",
+ "chrono",
+ "deadpool-postgres",
+ "rust_decimal",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-postgres",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "brassclaw_hooks_postgres"
 version = "0.1.0"
 dependencies = [
@@ -2341,6 +2359,7 @@ dependencies = [
  "brassclaw_first_party_extension_ports",
  "brassclaw_first_party_extensions",
  "brassclaw_hooks",
+ "brassclaw_hooks_pg",
  "brassclaw_host_api",
  "brassclaw_host_runtime",
  "brassclaw_interceptor",

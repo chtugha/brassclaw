@@ -2163,6 +2163,7 @@ pub async fn build_reborn_runtime(
             hooks_config,
             &projection_registry,
             &validated_identity.tenant_id,
+            None, // local-dev: in-memory predicate backend
         )
         .map_err(|error| RebornRuntimeError::InvalidArgument {
             reason: format!("hook framework activation failed: {error}"),
