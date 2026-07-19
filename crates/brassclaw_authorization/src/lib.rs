@@ -5,6 +5,9 @@
 //! runtime internals. The first slices implement grant- and lease-backed gates
 //! for capability dispatch.
 
+pub mod pg_store;
+pub use pg_store::PgCapabilityLeaseStore;
+
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex, MutexGuard},

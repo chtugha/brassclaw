@@ -13,8 +13,6 @@ publish = false
 [features]
 default = []
 postgres = [
-    "dep:deadpool-postgres",
-    "dep:tokio-postgres",
     "dep:tokio-postgres-rustls",
     "dep:rustls",
     "dep:rustls-native-certs",
@@ -25,7 +23,8 @@ libsql = ["dep:libsql", "brassclaw_filesystem/libsql"]
 
 [dependencies]
 async-trait = "0.1"
-deadpool-postgres = { version = "0.14", optional = true }
+brassclaw_pg = { path = "../brassclaw_pg" }
+deadpool-postgres = "0.14"
 hex = "0.4"
 brassclaw_events = { path = "../brassclaw_events", version = "0.1.0" }
 brassclaw_filesystem = { path = "../brassclaw_filesystem", version = "0.1.0" }
@@ -39,7 +38,7 @@ serde_json = "1"
 sha2 = "0.10"
 thiserror = "2"
 tokio = { version = "1", features = ["fs", "io-util", "rt", "sync", "time"] }
-tokio-postgres = { version = "0.7", optional = true, features = ["with-serde_json-1"] }
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-serde_json-1", "with-uuid-1"] }
 tokio-postgres-rustls = { version = "0.13", optional = true }
 tracing = "0.1"
 urlencoding = "2"

@@ -48,8 +48,10 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 
 mod filesystem_store;
+pub mod pg_store;
 
 pub use filesystem_store::{FilesystemDurableAuditLog, FilesystemDurableEventLog};
+pub use pg_store::{PgDurableAuditLog, PgDurableEventLog};
 
 /// Backend configuration for Reborn durable event/audit stores.
 ///

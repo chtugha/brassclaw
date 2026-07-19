@@ -385,6 +385,7 @@ fn descriptors_match_except_schema(
 pub mod host_api;
 mod hosted_mcp_discovery;
 mod installations;
+pub mod pg_store;
 mod lifecycle;
 mod registry;
 pub mod v2;
@@ -416,6 +417,7 @@ pub use installations::{
 pub use lifecycle::{
     ExtensionLifecycleEvent, ExtensionLifecycleEventSink, ExtensionLifecycleService,
 };
+pub use pg_store::PgExtensionInstallationStore;
 pub use registry::{ExtensionRegistry, SharedExtensionRegistry};
 
 /// Filesystem-backed extension discovery.

@@ -15,12 +15,14 @@ mod error;
 mod filesystem_service;
 mod identifiers;
 mod in_memory;
+pub mod pg_service;
 mod service;
 mod summary_artifacts;
 mod title;
 mod tool_result_reference;
 
 pub use filesystem_service::FilesystemSessionThreadService;
+pub use pg_service::PgSessionThreadService;
 // `title::derive_thread_title` is deliberately NOT re-exported here —
 // it is an internal helper consumed only by the two backend impls in
 // this crate, and keeping it off the public surface avoids committing

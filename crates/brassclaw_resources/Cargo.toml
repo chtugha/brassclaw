@@ -14,12 +14,13 @@ publish = false
 [features]
 default = []
 libsql = ["dep:libsql"]
-postgres = ["dep:deadpool-postgres", "dep:tokio-postgres"]
+postgres = []
 
 [dependencies]
+brassclaw_pg = { path = "../brassclaw_pg" }
 chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = { version = "0.10", features = ["serde"] }
-deadpool-postgres = { version = "0.14", optional = true }
+deadpool-postgres = "0.14"
 fs2 = "0.4"
 brassclaw_filesystem = { path = "../brassclaw_filesystem", version = "0.1.0" }
 brassclaw_host_api = { path = "../brassclaw_host_api", version = "0.1.0" }
@@ -28,8 +29,8 @@ rust_decimal = { version = "1", features = ["serde", "serde-with-str"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
-tokio-postgres = { version = "0.7", optional = true }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-serde_json-1", "with-uuid-1"] }
 tracing = "0.1"
 uuid = { version = "1", features = ["v4", "serde"] }
 

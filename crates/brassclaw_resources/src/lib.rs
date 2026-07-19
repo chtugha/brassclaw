@@ -23,12 +23,14 @@ mod event;
 mod filesystem_store;
 mod gate;
 mod period;
+pub mod pg_store;
 
 pub use event::{
     BroadcastBudgetEventSink, BudgetEvent, BudgetEventSink, CompositeBudgetEventSink,
     InMemoryBudgetEventSink, NoOpBudgetEventSink,
 };
 pub use filesystem_store::{FilesystemBudgetGateStore, FilesystemResourceGovernorStore};
+pub use pg_store::{PgBudgetGateStore, PgResourceGovernorStore};
 pub use gate::{
     BudgetApprovalGate, BudgetGateError, BudgetGateId, BudgetGateOutcome, BudgetGateStatus,
     BudgetGateStore, InMemoryBudgetGateStore,
