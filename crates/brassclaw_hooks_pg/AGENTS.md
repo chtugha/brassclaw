@@ -1,12 +1,11 @@
-# Agent Map — brassclaw_hooks_postgres
+# Agent Map — brassclaw_hooks_pg
 
 ## Start Here
 
 - No crate-local `CLAUDE.md` exists yet; use this map plus the contracts below.
-- Read `src/lib.rs` first — it documents why this is a separate crate, the
-  dual-backend split (Postgres here, libSQL in `brassclaw_hooks_libsql`, parity
-  in `brassclaw_hooks_parity`), and the shared two-table typed schema.
-- Read `Cargo.toml` for actual dependencies and the `postgres` feature gate.
+- Read `src/lib.rs` first — it documents why this is a separate crate and the
+  shared two-table typed schema.
+- Read `Cargo.toml` for actual dependencies.
 - The trait contract this crate implements lives in
   `brassclaw_hooks::predicate_state` (`PredicateStateBackend`); the shared
   contract harness is exposed via that crate's `contract-tests` feature.
@@ -19,11 +18,12 @@
 - The Postgres predicate-state schema (`hooks_predicate_invocations` /
   `hooks_predicate_values`) and its migration SQL.
 - Crate-local public API, tests, and fixtures needed to prove that ownership.
+- Cross-backend parity matrix + multi-host adversarial suite in `tests/`.
 
 ## Do Not Move In Here
 
-- The `PredicateStateBackend` trait itself, the in-memory backend, or the
-  libSQL backend (those live in `brassclaw_hooks` / `brassclaw_hooks_libsql`).
+- The `PredicateStateBackend` trait itself or the in-memory backend (those
+  live in `brassclaw_hooks`).
 - Evaluator policy, hook-framework wiring, or backend selection.
 - Secrets, raw connection strings, host names, schema details, or raw DB
   error text in errors, events, logs, or docs — `PredicateBackendError`
@@ -32,14 +32,13 @@
 
 ## Validation
 
-- Fast local check: `cargo test -p brassclaw_hooks_postgres`
+- Fast local check: `cargo test -p brassclaw_hooks_pg`
 - Postgres-backed integration/adversarial tests are env-gated on
   `BRASSCLAW_HOOKS_POSTGRES_URL` / `DATABASE_URL` and skip (passing) when no
   DB is reachable; run them against a live Postgres to exercise the advisory
   locks, cap fail-closed, and LRU eviction paths.
-- If production persistence behavior changes, keep PostgreSQL/libSQL parity:
-  update the libSQL counterpart (`brassclaw_hooks_libsql`) and the
-  cross-backend parity suite (`brassclaw_hooks_parity`) in lockstep.
+- Parity matrix (`tests/parity_matrix.rs`) runs the in-memory leg unconditionally
+  and the Postgres leg when a DB URL is set.
 
 ## Agent Notes
 

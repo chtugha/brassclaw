@@ -226,13 +226,12 @@ against the same key behave deterministically per the clock each call was
 given. The host runtime is responsible for supplying a sane `now`
 (`Utc::now()` in production).
 
-### Three backends
+### Two backends
 
 | Backend | Crate | Durable? | Multi-host dedup? |
 |---------|-------|----------|-------------------|
 | `InMemoryPredicateStateBackend` | `brassclaw_hooks` | no (process-local) | **no** — dedup is process-local |
-| `PostgresPredicateStateBackend` | `brassclaw_hooks_postgres` | yes | yes (SQL `UNIQUE`/`PRIMARY KEY`) |
-| `LibSqlPredicateStateBackend` | `brassclaw_hooks_libsql` | yes | yes (SQL `UNIQUE`/`PRIMARY KEY`) |
+| `PostgresPredicateStateBackend` | `brassclaw_hooks_pg` | yes | yes (SQL `UNIQUE`/`PRIMARY KEY`) |
 
 Dedup is scoped to the counter **key** — `(tenant_id, hook_id,
 capability[, field], event_id)` — not global on `event_id`, so two
@@ -256,7 +255,7 @@ identical in the parity matrix.
 
 ### LRU eviction — intended divergence
 
-- All three backends enforce a **per-tenant / per-scope** LRU quota,
+- Both backends enforce a **per-tenant / per-scope** LRU quota,
   `MAX_KEYS_PER_TENANT` (2 048): a noisy tenant flooding distinct scopes
   evicts *its own* oldest scopes (LRU victim = least-recently-active key)
   and `evictions_observed()` advances; a quiet co-tenant's scope is never
@@ -264,8 +263,8 @@ identical in the parity matrix.
   eviction count) in the parity matrix's `lru` script.
 - The in-memory backend **additionally** enforces a global
   `MAX_HISTORY_KEYS` (8 192) cap across all tenants, because a process has
-  a bounded heap. The durable backends do **not** have a global key
-  ceiling (a database is the source of truth and is reaped by
+  a bounded heap. The durable Postgres backend does **not** have a global
+  key ceiling (a database is the source of truth and is reaped by
   `evict_older_than`, not by a fixed key count). This is an **intended**
   divergence; the parity matrix deliberately stays under the per-tenant
   quota so it compares apples-to-apples and does not exercise the global
@@ -292,10 +291,10 @@ aligned with the active key count. Without a reaper, the per-tenant quota
 degrades gracefully (it over-counts expired keys) rather than failing open,
 but the eviction counter will be noisy.
 
-### Multi-host guarantees (proven in PR 4/4)
+### Multi-host guarantees
 
-The cross-backend adversarial parity suite (`brassclaw_hooks_parity`)
-proves the durable backends provide, and the in-memory backend explicitly
+The cross-backend adversarial parity suite in `brassclaw_hooks_pg/tests/`
+proves the durable Postgres backend provides, and the in-memory backend explicitly
 does not:
 
 1. **N concurrent writers across 2+ hosts** against one database — no
@@ -327,18 +326,16 @@ backend, which is now the source of truth.
 
 ### Test layout
 
-- **Trait + in-memory + contract harness** (`brassclaw_hooks`, PR 1/4):
+- **Trait + in-memory + contract harness** (`brassclaw_hooks`):
   the `predicate_state::contract` module + `predicate_backend_contract_test!`
   macro behind the `contract-tests` feature.
-- **Postgres backend + contract + adversarial** (`brassclaw_hooks_postgres`,
-  PR 2/4): env-gated on `BRASSCLAW_HOOKS_POSTGRES_URL` / `DATABASE_URL`.
-- **libSQL backend + contract + adversarial** (`brassclaw_hooks_libsql`,
-  PR 3/4): embedded temp-file db, runs anywhere.
+- **Postgres backend + contract + adversarial** (`brassclaw_hooks_pg`):
+  env-gated on `BRASSCLAW_HOOKS_POSTGRES_URL` / `DATABASE_URL`.
 - **Cross-backend parity matrix + multi-host adversarial**
-  (`brassclaw_hooks_parity`, PR 4/4): one scripted sequence fed to all
-  three backends with cross-assertion of identical observation logs;
-  multi-host scenarios behind `--features integration`. The in-memory and
-  libSQL legs run unconditionally; the Postgres leg compiles under
-  `--features postgres` and runs only with a reachable DB URL (a
-  real-Postgres CI run is required to fully exercise the Postgres parity
-  leg before merge).
+  (`brassclaw_hooks_pg/tests/parity_matrix.rs`,
+  `brassclaw_hooks_pg/tests/multi_host_adversarial.rs`): one scripted
+  sequence fed to in-memory and Postgres with cross-assertion of identical
+  observation logs; multi-host scenarios behind `--features integration`.
+  The in-memory leg runs unconditionally; the Postgres leg runs only with a
+  reachable DB URL (a real-Postgres CI run is required to fully exercise
+  the parity leg before merge).

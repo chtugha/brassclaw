@@ -79,6 +79,8 @@ pub use auth_prompt::{AuthChallengeProvider, AuthChallengeView};
 mod fetch_cached_content;
 #[cfg(feature = "libsql")]
 mod memory_doc_libsql_store;
+#[cfg(feature = "migrate-from-libsql")]
+pub mod migration;
 #[cfg(feature = "postgres")]
 pub(crate) mod embedding_role_adapter;
 #[cfg(feature = "postgres")]

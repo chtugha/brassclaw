@@ -129,7 +129,7 @@ async fn detect_pre_existing_tables(
 
     let mut pre_existing = Vec::new();
 
-    // hooks tables — created by brassclaw_hooks_postgres inline DDL
+    // hooks tables — created by brassclaw_hooks_pg inline DDL
     let hooks_exist: bool = client
         .query_one(&table_check("hooks_predicate_invocations"), &[])
         .await

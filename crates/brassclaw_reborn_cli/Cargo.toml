@@ -16,7 +16,7 @@ publish = false
 dist = false
 
 [features]
-default = ["root-llm-provider", "libsql"]
+default = ["root-llm-provider", "migrate-from-libsql"]
 # Wire a real LLM provider into the assembled runtime. Mirrors the same
 # `root-llm-provider` feature on `brassclaw_reborn_composition` /
 # `brassclaw_reborn`, so building without it produces a CLI binary that
@@ -25,13 +25,20 @@ default = ["root-llm-provider", "libsql"]
 root-llm-provider = [
     "brassclaw_reborn_composition/root-llm-provider",
 ]
-# Enable libSQL database support for local-dev storage, including the
-# safety configuration store and other local-dev features.
+# Upgrade-release gate: compiles the libSQL→Postgres data migration module.
+# Default-on so existing installations migrate automatically.
+migrate-from-libsql = [
+    "brassclaw_reborn_composition/migrate-from-libsql",
+]
+# Backward-compat alias for the duration of the upgrade release.
 libsql = [
+    "migrate-from-libsql",
     "brassclaw_reborn_composition/libsql",
 ]
 [dependencies]
 anyhow = "1"
+deadpool-postgres = "0.14"
+tokio-postgres = "0.7"
 async-trait = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4.3"

@@ -12,6 +12,18 @@ publish = false
 
 [features]
 default = ["libsql"]
+# Upgrade-release gate: compiles the libSQL→Postgres data migration module.
+# Default-on via the libsql alias so existing builds continue to work.
+# Removed together with the migration module in the release after the upgrade.
+migrate-from-libsql = [
+    "dep:libsql",
+    "brassclaw_filesystem/libsql",
+    "brassclaw_host_runtime/libsql",
+    "brassclaw_reborn_event_store/libsql",
+    "brassclaw_resources/libsql",
+    "brassclaw_run_state/libsql",
+    "brassclaw_triggers/libsql",
+]
 # Wire a host-managed LLM model gateway into the assembled runtime via
 # brassclaw_reborn's `LlmProviderModelGateway`. Off by default so this crate
 # stays substrate-only when callers don't want a model gateway in the
@@ -30,15 +42,9 @@ root-llm-provider = [
 # test-support` (plus whatever feature surface the test crate also requires).
 test-support = []
 libsql = [
-    "dep:libsql",
-    "brassclaw_filesystem/libsql",
-    "brassclaw_host_runtime/libsql",
+    "migrate-from-libsql",
     "brassclaw_reborn/filesystem-goal-store",
     "brassclaw_reborn/webui-user-store",
-    "brassclaw_reborn_event_store/libsql",
-    "brassclaw_resources/libsql",
-    "brassclaw_run_state/libsql",
-    "brassclaw_triggers/libsql",
 ]
 postgres = [
     "brassclaw_filesystem/postgres",

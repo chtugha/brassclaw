@@ -7,6 +7,7 @@ pub(crate) mod doctor;
 pub(crate) mod extension;
 pub(crate) mod hooks;
 pub(crate) mod logs;
+pub(crate) mod migrate;
 pub(crate) mod models;
 pub(crate) mod profile;
 pub(crate) mod repl;
@@ -35,6 +36,8 @@ pub(crate) enum Command {
     Hooks(hooks::HooksCommand),
     /// Inspect Reborn logs.
     Logs(logs::LogsCommand),
+    /// Migrate local state from libSQL / file-based storage to PostgreSQL.
+    Migrate(migrate::MigrateCommand),
     /// Inspect Reborn model slots and route status.
     Models(models::ModelsCommand),
     /// Inspect supported Reborn boot profiles.
@@ -69,6 +72,9 @@ impl Command {
             }
             Self::Hooks(command) => command.execute(),
             Self::Logs(command) => command.execute(),
+            Self::Migrate(command) => {
+                command.execute(crate::context::RebornCliContext::resolve_from_env()?)
+            }
             Self::Models(command) => command.execute(),
             Self::Profile(command) => command.execute(),
             Self::Repl(command) => {
