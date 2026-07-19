@@ -60,19 +60,14 @@ fn provider_admin_payload(
             ProductSafeProviderStatus::from(admin.status().map_err(provider_admin_workflow_error)?)
                 .to_value()
         }
-        ProductModelCommand::Set { model } => ProductSafeProviderWriteOutcome::from(
-            admin
-                .set_model(&model)
-                .map_err(provider_admin_workflow_error)?,
-        )
-        .to_value(),
-        ProductModelCommand::SetProvider { provider, model } => {
-            ProductSafeProviderWriteOutcome::from(
-                admin
-                    .set_provider(&provider, model.as_deref())
-                    .map_err(provider_admin_workflow_error)?,
-            )
-            .to_value()
+        // Phase 8: set_model and set_provider are no longer file-based.
+        // Provider/model writes now go through LlmConfigService::set_active
+        // (DB-backed). Return a transient error to surface this at runtime.
+        ProductModelCommand::Set { model: _ } | ProductModelCommand::SetProvider { .. } => {
+            return Err(ProductWorkflowError::Transient {
+                reason: "model/provider writes via product command are not supported in this build; \
+                         use the WebUI settings or `brassclaw config set` instead".to_string(),
+            });
         }
     };
     payload.map_err(|error| ProductWorkflowError::Transient {
@@ -166,12 +161,6 @@ fn provider_admin_workflow_error(error: RebornProviderAdminError) -> ProductWork
                 config_load_error_reason(source.as_ref())
             ),
         },
-        RebornProviderAdminError::UpdateConfig { source, .. } => ProductWorkflowError::Transient {
-            reason: format!(
-                "update Reborn config failed: {}",
-                config_update_error_reason(source.as_ref())
-            ),
-        },
     }
 }
 
@@ -200,28 +189,6 @@ fn config_load_error_reason(error: &brassclaw_reborn_config::RebornConfigFileErr
             found, reason, ..
         } => {
             format!("api_version `{found}` could not be parsed: {reason}")
-        }
-    }
-}
-
-fn config_update_error_reason(
-    error: &brassclaw_reborn_config::RebornConfigFileUpdateError,
-) -> String {
-    match error {
-        brassclaw_reborn_config::RebornConfigFileUpdateError::Lock { source, .. } => {
-            format!("lock failed: {source}")
-        }
-        brassclaw_reborn_config::RebornConfigFileUpdateError::Read { source, .. } => {
-            format!("read failed: {source}")
-        }
-        brassclaw_reborn_config::RebornConfigFileUpdateError::Parse { source, .. } => {
-            format!("TOML parse failed: {source}")
-        }
-        brassclaw_reborn_config::RebornConfigFileUpdateError::Validate { source, .. } => {
-            format!("validation failed: {}", config_load_error_reason(source))
-        }
-        brassclaw_reborn_config::RebornConfigFileUpdateError::Write { source, .. } => {
-            format!("write failed: {source}")
         }
     }
 }

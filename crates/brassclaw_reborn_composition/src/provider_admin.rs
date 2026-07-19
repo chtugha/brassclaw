@@ -1,16 +1,14 @@
 //! Reborn provider-admin facade.
 //!
-//! This is the typed provider/model administration surface shared by the
-//! standalone CLI and product command workflow. It deliberately edits only
-//! Reborn `$BRASSCLAW_REBORN_HOME/config.toml` and reads the shared provider
-//! catalog through `brassclaw_llm`.
+//! This is the read side of the provider/model administration surface shared
+//! by the standalone CLI and product command workflow. It reads the boot
+//! `config.toml` for the current Kohai slot selection and the shared provider
+//! catalog through `brassclaw_llm`. Writes go through the DB-backed
+//! `PgProviderRepo` / `db_config::save_config_key` in the composition root.
 
 use std::{fmt, path::PathBuf};
 
-use brassclaw_reborn_config::{
-    DefaultLlmSlotUpdate, LlmSlotFieldUpdate, LlmSlotSelection, RebornBootConfig, RebornConfigFile,
-    begin_default_llm_slot_update, update_default_llm_slot,
-};
+use brassclaw_reborn_config::{LlmSlotSelection, RebornBootConfig, RebornConfigFile};
 use serde::Serialize;
 use thiserror::Error;
 
@@ -30,10 +28,11 @@ impl RebornProviderAdmin {
         verbose: bool,
     ) -> Result<RebornProviderList, RebornProviderAdminError> {
         let home = self.boot.home();
+        let config_path = home.path().join("config.toml");
         let registry = self.load_registry()?;
-        let config = RebornConfigFile::load(&home.config_file_path()).map_err(|source| {
+        let config = RebornConfigFile::load(&config_path).map_err(|source| {
             RebornProviderAdminError::LoadConfig {
-                path: home.config_file_path(),
+                path: config_path.clone(),
                 source: Box::new(source),
             }
         })?;
@@ -43,7 +42,6 @@ impl RebornProviderAdmin {
             let def = registry.find(provider).ok_or_else(|| {
                 RebornProviderAdminError::UnknownProvider {
                     provider: provider.to_string(),
-                    providers_file: home.providers_file_path(),
                     known: known_provider_ids(&registry),
                 }
             })?;
@@ -57,18 +55,17 @@ impl RebornProviderAdmin {
 
         Ok(RebornProviderList {
             providers,
-            config_file: home.config_file_path(),
-            providers_file: home.providers_file_path(),
             v1_state: RebornV1State::NotUsed,
         })
     }
 
     pub fn status(&self) -> Result<RebornProviderStatus, RebornProviderAdminError> {
         let home = self.boot.home();
+        let config_path = home.path().join("config.toml");
         let registry = self.load_registry()?;
-        let config = RebornConfigFile::load(&home.config_file_path()).map_err(|source| {
+        let config = RebornConfigFile::load(&config_path).map_err(|source| {
             RebornProviderAdminError::LoadConfig {
-                path: home.config_file_path(),
+                path: config_path.clone(),
                 source: Box::new(source),
             }
         })?;
@@ -86,140 +83,14 @@ impl RebornProviderAdmin {
                 api_key_env: selection.api_key_env,
                 base_url: selection.base_url,
             }),
-            config_file: home.config_file_path(),
-            providers_file: home.providers_file_path(),
-            v1_state: RebornV1State::NotUsed,
-        })
-    }
-
-    pub fn set_model(
-        &self,
-        model: &str,
-    ) -> Result<RebornProviderWriteOutcome, RebornProviderAdminError> {
-        let model = model.trim();
-        if model.is_empty() {
-            return Err(RebornProviderAdminError::InvalidRequest {
-                reason: "model name cannot be empty".to_string(),
-            });
-        }
-
-        let home = self.boot.home();
-        let config_path = home.config_file_path();
-        let session = begin_default_llm_slot_update(&config_path).map_err(|source| {
-            RebornProviderAdminError::UpdateConfig {
-                path: config_path.clone(),
-                source: Box::new(source),
-            }
-        })?;
-        let provider_id = session
-            .default_llm_slot()
-            .map_err(|source| RebornProviderAdminError::UpdateConfig {
-                path: config_path.clone(),
-                source: Box::new(source),
-            })?
-            .as_ref()
-            .and_then(|selection| selection.provider_id.as_deref())
-            .ok_or_else(|| RebornProviderAdminError::InvalidRequest {
-                reason: "no default Reborn provider is configured; set a provider first"
-                    .to_string(),
-            })?
-            .to_string();
-
-        let registry = self.load_registry()?;
-        let provider_def = registry.find(&provider_id);
-        let canonical_id = provider_def
-            .map(|def| def.id.clone())
-            .unwrap_or_else(|| provider_id.to_string());
-        session
-            .apply(&DefaultLlmSlotUpdate {
-                provider_id: LlmSlotFieldUpdate::Set(canonical_id.clone()),
-                model: LlmSlotFieldUpdate::Set(model.to_string()),
-                ..Default::default()
-            })
-            .map_err(|source| RebornProviderAdminError::UpdateConfig {
-                path: config_path.clone(),
-                source: Box::new(source),
-            })?;
-
-        Ok(RebornProviderWriteOutcome {
-            provider_id: canonical_id,
-            model: model.to_string(),
-            api_key_env: provider_def.and_then(|def| def.api_key_env.clone()),
-            api_key_required: provider_def.is_some_and(|def| def.api_key_required),
-            missing_api_key: provider_def.is_some_and(|def| {
-                def.api_key_env.as_deref().is_some_and(|api_key_env| {
-                    def.api_key_required && std::env::var_os(api_key_env).is_none()
-                })
-            }),
-            config_file: config_path,
-            v1_state: RebornV1State::NotUsed,
-        })
-    }
-
-    pub fn set_provider(
-        &self,
-        provider: &str,
-        model: Option<&str>,
-    ) -> Result<RebornProviderWriteOutcome, RebornProviderAdminError> {
-        let provider = provider.trim();
-        if provider.is_empty() {
-            return Err(RebornProviderAdminError::InvalidRequest {
-                reason: "provider id cannot be empty".to_string(),
-            });
-        }
-
-        let home = self.boot.home();
-        let config_path = home.config_file_path();
-        let registry = self.load_registry()?;
-        let def =
-            registry
-                .find(provider)
-                .ok_or_else(|| RebornProviderAdminError::UnknownProvider {
-                    provider: provider.to_string(),
-                    providers_file: home.providers_file_path(),
-                    known: known_provider_ids(&registry),
-                })?;
-        let model = model
-            .map(str::trim)
-            .filter(|model| !model.is_empty())
-            .unwrap_or(&def.default_model);
-
-        update_default_llm_slot(
-            &config_path,
-            &DefaultLlmSlotUpdate {
-                provider_id: LlmSlotFieldUpdate::Set(def.id.clone()),
-                model: LlmSlotFieldUpdate::Set(model.to_string()),
-                api_key_env: def
-                    .api_key_env
-                    .clone()
-                    .map(LlmSlotFieldUpdate::Set)
-                    .unwrap_or(LlmSlotFieldUpdate::Remove),
-                base_url: LlmSlotFieldUpdate::Remove,
-            },
-        )
-        .map_err(|source| RebornProviderAdminError::UpdateConfig {
-            path: config_path.clone(),
-            source: Box::new(source),
-        })?;
-
-        Ok(RebornProviderWriteOutcome {
-            provider_id: def.id.clone(),
-            model: model.to_string(),
-            api_key_env: def.api_key_env.clone(),
-            api_key_required: def.api_key_required,
-            missing_api_key: def.api_key_env.as_deref().is_some_and(|api_key_env| {
-                def.api_key_required && std::env::var_os(api_key_env).is_none()
-            }),
-            config_file: config_path,
             v1_state: RebornV1State::NotUsed,
         })
     }
 
     fn load_registry(&self) -> Result<brassclaw_llm::ProviderRegistry, RebornProviderAdminError> {
-        let providers_path = self.boot.home().providers_file_path();
-        brassclaw_llm::ProviderRegistry::try_load_from_path(Some(providers_path.as_path())).map_err(
+        // Built-ins only; custom providers are now in brassclaw_llm_providers (DB).
+        brassclaw_llm::ProviderRegistry::try_load_from_path(None).map_err(
             |error| RebornProviderAdminError::LoadRegistry {
-                path: providers_path,
                 reason: error.to_string(),
             },
         )
@@ -229,10 +100,6 @@ impl RebornProviderAdmin {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RebornProviderList {
     pub providers: Vec<RebornProviderInfo>,
-    #[serde(skip_serializing)]
-    pub config_file: PathBuf,
-    #[serde(skip_serializing)]
-    pub providers_file: PathBuf,
     pub v1_state: RebornV1State,
 }
 
@@ -268,10 +135,6 @@ pub struct RebornProviderMetadata {
 pub struct RebornProviderStatus {
     pub routes: RebornModelRoutesState,
     pub default: Option<RebornProviderSelection>,
-    #[serde(skip_serializing)]
-    pub config_file: PathBuf,
-    #[serde(skip_serializing)]
-    pub providers_file: PathBuf,
     pub v1_state: RebornV1State,
 }
 
@@ -291,8 +154,6 @@ pub struct RebornProviderWriteOutcome {
     pub api_key_env: Option<String>,
     pub api_key_required: bool,
     pub missing_api_key: bool,
-    #[serde(skip_serializing)]
-    pub config_file: PathBuf,
     pub v1_state: RebornV1State,
 }
 
@@ -341,26 +202,20 @@ impl fmt::Display for RebornModelRoutesState {
 
 #[derive(Debug, Error)]
 pub enum RebornProviderAdminError {
-    #[error("load Reborn provider catalog `{}`: {reason}", path.display())]
-    LoadRegistry { path: PathBuf, reason: String },
+    #[error("load Reborn provider catalog: {reason}")]
+    LoadRegistry { reason: String },
     #[error("load Reborn config `{}`: {source}", path.display())]
     LoadConfig {
         path: PathBuf,
         source: Box<brassclaw_reborn_config::RebornConfigFileError>,
     },
-    #[error("unknown Reborn LLM provider `{provider}` in {}; available providers: {}", providers_file.display(), known.join(", "))]
+    #[error("unknown Reborn LLM provider `{provider}`; available providers: {}", known.join(", "))]
     UnknownProvider {
         provider: String,
-        providers_file: PathBuf,
         known: Vec<String>,
     },
     #[error("{reason}")]
     InvalidRequest { reason: String },
-    #[error("update Reborn config `{}`: {source}", path.display())]
-    UpdateConfig {
-        path: PathBuf,
-        source: Box<brassclaw_reborn_config::RebornConfigFileUpdateError>,
-    },
 }
 
 #[derive(Debug, Clone)]

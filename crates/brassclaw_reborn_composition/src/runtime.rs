@@ -561,12 +561,11 @@ impl RebornRuntime {
     /// `None` when no LLM seam or boot config was wired.
     #[cfg(feature = "root-llm-provider")]
     pub fn nearai_login_callback_mount(&self) -> Option<crate::webui_serve::PublicRouteMount> {
-        let boot = self.boot.clone()?;
         let session = self.webui_llm_session()?;
         let reload = self.webui_llm_reload_trigger()?;
         let states = self.webui_nearai_login_states()?;
         Some(crate::nearai_login_serve::nearai_login_callback_mount(
-            session, reload, boot, states,
+            session, reload, states,
         ))
     }
 

@@ -157,7 +157,7 @@ async fn step3_migrate_config(
     tenant_id: &str,
     dry_run: bool,
 ) -> Result<bool, MigrationError> {
-    let config_path = home.config_file_path();
+    let config_path = home.path().join("config.toml");
     if !config_path.exists() {
         return Ok(false);
     }
@@ -291,7 +291,7 @@ async fn step4_migrate_providers(
     tenant_id: &str,
     dry_run: bool,
 ) -> Result<bool, MigrationError> {
-    let providers_path = home.providers_file_path();
+    let providers_path = home.path().join("providers.json");
     if !providers_path.exists() {
         return Ok(false);
     }
@@ -346,7 +346,7 @@ async fn step5_migrate_sempai(
     tenant_id: &str,
     dry_run: bool,
 ) -> Result<bool, MigrationError> {
-    let sempai_path = home.sempai_provider_file_path();
+    let sempai_path = home.path().join("sempai_provider.json");
     if !sempai_path.exists() {
         return Ok(false);
     }
@@ -794,6 +794,7 @@ async fn migrate_hooks_predicate_invocations(
     conn: &libsql::Connection,
     pool: &PgPool,
 ) -> Result<(), MigrationError> {
+    // libSQL column name is `recorded_at`; PG target column is `occurred_at` (TIMESTAMPTZ NOT NULL).
     let rows = query_all(
         conn,
         "SELECT key_hash, scope_hash, event_id, recorded_at \
@@ -812,7 +813,7 @@ async fn migrate_hooks_predicate_invocations(
         client
             .execute(
                 "INSERT INTO hooks_predicate_invocations \
-                     (key_hash, scope_hash, event_id, recorded_at) \
+                     (key_hash, scope_hash, event_id, occurred_at) \
                  VALUES ($1, $2, $3, \
                          COALESCE(NULLIF($4,'')::TIMESTAMPTZ, NOW())) \
                  ON CONFLICT DO NOTHING",
@@ -832,6 +833,7 @@ async fn migrate_hooks_predicate_values(
     conn: &libsql::Connection,
     pool: &PgPool,
 ) -> Result<(), MigrationError> {
+    // libSQL column name is `recorded_at`; PG target column is `occurred_at` (TIMESTAMPTZ NOT NULL).
     let rows = query_all(
         conn,
         "SELECT key_hash, scope_hash, event_id, value, recorded_at \
@@ -851,7 +853,7 @@ async fn migrate_hooks_predicate_values(
         client
             .execute(
                 "INSERT INTO hooks_predicate_values \
-                     (key_hash, scope_hash, event_id, value, recorded_at) \
+                     (key_hash, scope_hash, event_id, value, occurred_at) \
                  VALUES ($1, $2, $3, $4::NUMERIC, \
                          COALESCE(NULLIF($5,'')::TIMESTAMPTZ, NOW())) \
                  ON CONFLICT DO NOTHING",
@@ -868,15 +870,29 @@ async fn migrate_hooks_predicate_values(
     Ok(())
 }
 
-/// Migrate `trigger_records` → `brassclaw_triggers` (straight TEXT-to-TEXT upsert).
+/// Migrate `trigger_records` → `brassclaw_triggers`.
+///
+/// The libSQL `trigger_records` table uses the OLD schema from before the
+/// `brassclaw_triggers` redesign:
+///   `id, tenant_id, creator_user_id, name, description,
+///    trigger_kind, trigger_config, status, created_at, updated_at`
+///
+/// The PG `brassclaw_triggers` schema (V021) has completely different columns
+/// (`trigger_id`, `source`, `schedule_expression`, `completion_policy`,
+/// `prompt`, `state`, `next_run_at`, …). Only the columns common to both
+/// schemas are mapped; required PG columns with no libSQL equivalent receive
+/// safe sentinel defaults so the row can be inserted. The migrated rows will
+/// not be fully functional in the new schema — they serve only as a
+/// data-preservation record. Operators should re-create triggers via the UI
+/// after upgrading.
 async fn migrate_trigger_records(
     conn: &libsql::Connection,
     pool: &PgPool,
 ) -> Result<(), MigrationError> {
     let rows = query_all(
         conn,
-        "SELECT id, tenant_id, creator_user_id, name, description, \
-                trigger_kind, trigger_config, status, created_at, updated_at \
+        "SELECT id, tenant_id, creator_user_id, name, \
+                trigger_kind, trigger_config, status, created_at \
          FROM trigger_records",
     )
     .await?;
@@ -885,34 +901,42 @@ async fn migrate_trigger_records(
     }
     let client = pool.get().await?;
     for row in rows {
-        let id: String = get_text(&row, 0)?;
+        // `id` → `trigger_id` (PK renamed in new schema)
+        let trigger_id: String = get_text(&row, 0)?;
         let tenant_id: String = get_text(&row, 1)?;
         let creator_user_id: String = get_text(&row, 2)?;
         let name: String = get_text_opt(&row, 3).unwrap_or_default();
-        let description: String = get_text_opt(&row, 4).unwrap_or_default();
-        let trigger_kind: String = get_text(&row, 5)?;
-        let trigger_config: String = get_text_opt(&row, 6).unwrap_or_default();
-        let status: String = get_text_opt(&row, 7).unwrap_or_else(|| "active".to_string());
-        let created_at: String = get_text_opt(&row, 8).unwrap_or_default();
-        let updated_at: String = get_text_opt(&row, 9).unwrap_or_default();
+        // `trigger_kind` is the closest equivalent to `source` (both describe
+        // what fires the trigger). `trigger_config` is folded into `prompt` as
+        // a JSON-encoded payload so the original config is not lost on disk.
+        let trigger_kind: String = get_text_opt(&row, 4).unwrap_or_default();
+        let trigger_config: String = get_text_opt(&row, 5).unwrap_or_default();
+        // `status` had values 'active'/'inactive'; `state` uses 'scheduled'/
+        // 'paused'/'completed'. Map 'inactive' → 'paused', everything else →
+        // 'scheduled' (safe default — the trigger will fire again on next boot
+        // unless the operator explicitly pauses/completes it).
+        let state: &str = match get_text_opt(&row, 6).as_deref() {
+            Some("inactive") => "paused",
+            _ => "scheduled",
+        };
+        let created_at: String = get_text_opt(&row, 7).unwrap_or_default();
         client
             .execute(
                 "INSERT INTO brassclaw_triggers \
-                     (id, tenant_id, creator_user_id, name, description, \
-                      trigger_kind, trigger_config, status, created_at, updated_at) \
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) \
+                     (trigger_id, tenant_id, creator_user_id, name, source, \
+                      schedule_expression, completion_policy, prompt, state, \
+                      next_run_at, created_at) \
+                 VALUES ($1, $2, $3, $4, $5, '', 'run_once', $6, $7, '', $8) \
                  ON CONFLICT DO NOTHING",
                 &[
-                    &id,
+                    &trigger_id,
                     &tenant_id,
                     &creator_user_id,
                     &name,
-                    &description,
                     &trigger_kind,
                     &trigger_config,
-                    &status,
+                    &state,
                     &created_at,
-                    &updated_at,
                 ],
             )
             .await?;
@@ -920,45 +944,29 @@ async fn migrate_trigger_records(
     Ok(())
 }
 
-/// Migrate `local_reborn_access` → `brassclaw_local_access` (straight TEXT-to-TEXT).
+/// Skip `local_reborn_access` — the libSQL and PG schemas are incompatible.
+///
+/// The libSQL `local_reborn_access` table stored bearer-token hashes
+/// (`id, tenant_id, user_id, token_hash, created_at, updated_at`) for
+/// local-dev HTTP auth. The PG `brassclaw_local_access` table stores access
+/// grants with a role/status/source model (`tenant_id, user_id, agent_id,
+/// project_id, role, status, source, created_at, updated_at`) that is
+/// re-seeded at every `brassclaw serve` startup by
+/// `PgRebornLocalTriggerAccessStore::seed_local_access`. Token hashes from
+/// the old table are not portable to the new schema and should not be
+/// migrated — the table is re-populated automatically on first serve.
 async fn migrate_local_reborn_access(
-    conn: &libsql::Connection,
-    pool: &PgPool,
+    _conn: &libsql::Connection,
+    _pool: &PgPool,
 ) -> Result<(), MigrationError> {
-    let rows = query_all(
-        conn,
-        "SELECT id, tenant_id, user_id, token_hash, created_at, updated_at \
-         FROM local_reborn_access",
-    )
-    .await?;
-    if rows.is_empty() {
-        return Ok(());
-    }
-    let client = pool.get().await?;
-    for row in rows {
-        let id: String = get_text(&row, 0)?;
-        let tenant_id: String = get_text(&row, 1)?;
-        let user_id: String = get_text(&row, 2)?;
-        let token_hash: String = get_text(&row, 3)?;
-        let created_at: String = get_text_opt(&row, 4).unwrap_or_default();
-        let updated_at: String = get_text_opt(&row, 5).unwrap_or_default();
-        client
-            .execute(
-                "INSERT INTO brassclaw_local_access \
-                     (id, tenant_id, user_id, token_hash, created_at, updated_at) \
-                 VALUES ($1, $2, $3, $4, $5, $6) \
-                 ON CONFLICT DO NOTHING",
-                &[
-                    &id,
-                    &tenant_id,
-                    &user_id,
-                    &token_hash,
-                    &created_at,
-                    &updated_at,
-                ],
-            )
-            .await?;
-    }
+    // No-op: incompatible schemas; `brassclaw_local_access` is re-seeded at
+    // serve startup by PgRebornLocalTriggerAccessStore::seed_local_access.
+    tracing::debug!(
+        "migrate_local_reborn_access: skipped — \
+         local_reborn_access (token-hash store) is incompatible with \
+         brassclaw_local_access (role/status/source grant store); \
+         brassclaw_local_access is re-seeded at startup"
+    );
     Ok(())
 }
 

@@ -14,6 +14,7 @@
 
 use std::path::Path;
 
+use base64::Engine as _;
 use brassclaw_pg::PgPool;
 use secrecy::SecretString;
 use thiserror::Error;

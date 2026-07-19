@@ -122,7 +122,7 @@ pub fn resolve_reborn_runtime_llm(
     if let Some(selection) = config_file.and_then(|file| file.default_llm_slot()) {
         match resolve_llm_selection_against_catalog(
             selection,
-            Some(boot.home().providers_file_path().as_path()),
+            Some(&boot.home().path().join("providers.json")),
         ) {
             Ok(config) => return Ok(Some(ResolvedRebornLlm::from_llm_config(config))),
             // Provider is named in config.toml but a required field (base_url,
@@ -173,7 +173,7 @@ fn resolve_llm_from_env(
     boot: &RebornBootConfig,
 ) -> Result<Option<ResolvedRebornLlm>, RebornLlmCatalogError> {
     match brassclaw_llm::resolve_llm_config_from_env(Some(
-        boot.home().providers_file_path().as_path(),
+        &boot.home().path().join("providers.json"),
     )) {
         Ok(maybe_config) => Ok(maybe_config.map(ResolvedRebornLlm::from_llm_config)),
         // MissingBaseUrl and MissingApiKey convert to RequestFailed / AuthFailed

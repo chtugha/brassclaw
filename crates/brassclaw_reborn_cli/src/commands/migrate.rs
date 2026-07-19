@@ -49,7 +49,8 @@ impl MigrateCommand {
 
             // Resolve tenant_id: CLI flag → config.toml → "default"
             let tenant_id = self.tenant.clone().unwrap_or_else(|| {
-                brassclaw_reborn_config::RebornConfigFile::load(&home.config_file_path())
+                brassclaw_reborn_config::RebornConfigFile::load(
+                    &home.path().join("config.toml"))
                     .ok()
                     .flatten()
                     .and_then(|c| c.identity)

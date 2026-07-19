@@ -140,12 +140,11 @@ impl ModelsStatusCommand {
 #[cfg(feature = "root-llm-provider")]
 impl ModelsSetCommand {
     fn execute(self) -> anyhow::Result<()> {
-        let context = RebornCliContext::resolve_from_env()?;
-        let admin =
-            brassclaw_reborn_composition::RebornProviderAdmin::new(context.boot_config().clone());
-        let outcome = admin.set_model(&self.model)?;
-        print_write_outcome(WriteOutcomeKind::Model, &outcome);
-        Ok(())
+        anyhow::bail!(
+            "brassclaw models set is no longer supported. \
+             Use `brassclaw config set llm.default.model {}` instead.",
+            self.model
+        )
     }
 }
 
@@ -159,12 +158,11 @@ impl ModelsSetCommand {
 #[cfg(feature = "root-llm-provider")]
 impl ModelsSetProviderCommand {
     fn execute(self) -> anyhow::Result<()> {
-        let context = RebornCliContext::resolve_from_env()?;
-        let admin =
-            brassclaw_reborn_composition::RebornProviderAdmin::new(context.boot_config().clone());
-        let outcome = admin.set_provider(&self.provider, self.model.as_deref())?;
-        print_write_outcome(WriteOutcomeKind::Provider, &outcome);
-        Ok(())
+        anyhow::bail!(
+            "brassclaw models set-provider is no longer supported. \
+             Use `brassclaw config set llm.default.provider_id {}` instead.",
+            self.provider
+        )
     }
 }
 
@@ -222,8 +220,7 @@ impl ModelsStatusCommand {
 #[cfg(feature = "root-llm-provider")]
 fn print_provider_list(list: &brassclaw_reborn_composition::RebornProviderList, verbose: bool) {
     println!("BrassClaw Reborn LLM providers");
-    println!("config_file: {}", list.config_file.display());
-    println!("providers_file: {}", list.providers_file.display());
+    println!("providers: DB-backed (brassclaw_llm_providers)");
     match list.providers.iter().find(|provider| provider.active) {
         Some(provider) => println!(
             "active: {} ({})",
@@ -291,7 +288,7 @@ fn print_provider_detail(list: &brassclaw_reborn_composition::RebornProviderList
     println!("Default model: {}", provider.default_model);
     println!("Active: {}", if provider.active { "yes" } else { "no" });
     let Some(metadata) = provider.metadata.as_ref() else {
-        println!("Provider catalog: {}", list.providers_file.display());
+        println!("providers: DB-backed (brassclaw_llm_providers)");
         println!("v1_state: {}", list.v1_state);
         return;
     };
@@ -315,15 +312,13 @@ fn print_provider_detail(list: &brassclaw_reborn_composition::RebornProviderList
         println!("Credential kind: {kind}");
     }
     println!("Can list models: {}", metadata.can_list_models);
-    println!("Provider catalog: {}", list.providers_file.display());
+    println!("providers: DB-backed (brassclaw_llm_providers)");
     println!("v1_state: {}", list.v1_state);
 }
 
 #[cfg(feature = "root-llm-provider")]
 fn print_status(status: &brassclaw_reborn_composition::RebornProviderStatus) {
     println!("BrassClaw Reborn model status");
-    println!("config_file: {}", status.config_file.display());
-    println!("providers_file: {}", status.providers_file.display());
     match status.default.as_ref() {
         Some(selection) => {
             println!(
@@ -354,40 +349,3 @@ fn print_status(status: &brassclaw_reborn_composition::RebornProviderStatus) {
     println!("v1_state: {}", status.v1_state);
 }
 
-#[cfg(feature = "root-llm-provider")]
-#[derive(Debug, Clone, Copy)]
-enum WriteOutcomeKind {
-    Model,
-    Provider,
-}
-
-#[cfg(feature = "root-llm-provider")]
-fn print_write_outcome(
-    kind: WriteOutcomeKind,
-    outcome: &brassclaw_reborn_composition::RebornProviderWriteOutcome,
-) {
-    match kind {
-        WriteOutcomeKind::Model => {
-            println!(
-                "Model set to `{}` for provider `{}`",
-                outcome.model, outcome.provider_id
-            );
-        }
-        WriteOutcomeKind::Provider => {
-            println!(
-                "Provider set to `{}`, model set to `{}`",
-                outcome.provider_id, outcome.model
-            );
-        }
-    }
-    println!("Saved to {}", outcome.config_file.display());
-    if outcome.missing_api_key
-        && let Some(api_key_env) = outcome.api_key_env.as_deref()
-    {
-        println!(
-            "Note: `{}` requires credentials. Set {api_key_env} before running with this provider.",
-            outcome.provider_id
-        );
-    }
-    println!("v1_state: {}", outcome.v1_state);
-}

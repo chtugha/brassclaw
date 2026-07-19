@@ -2062,7 +2062,7 @@ where
     .with_trust_policy(production_wiring.trust_policy)
     .with_runtime_policy(production_wiring.runtime_policy)
     .with_capability_leases(stores_leases)
-    .with_secret_store(Arc::clone(&secret_store))
+    .with_secret_store_dyn(Arc::clone(&secret_store))
     .with_credential_broker(secret_credentials.credential_broker);
     let services = services
     .with_security_audit_sink(Arc::new(brassclaw_events::TracingSecurityAuditSink))

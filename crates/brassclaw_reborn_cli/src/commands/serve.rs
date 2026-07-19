@@ -69,8 +69,9 @@ impl ServeCommand {
             },
         )?;
         let boot_config = context.boot_config();
+        let config_path = boot_config.home().path().join("config.toml");
         let config_file =
-            brassclaw_reborn_config::RebornConfigFile::load(&boot_config.home().config_file_path())
+            brassclaw_reborn_config::RebornConfigFile::load(&config_path)
                 .map_err(anyhow::Error::from)?;
 
         // Tenant id is host-trusted (operator-owned config), never
@@ -99,15 +100,13 @@ impl ServeCommand {
         let token_value = env::var(env_token_var).map_err(|_| {
             anyhow!(
                 "{env_token_var} must be set to the WebChat v2 bearer token. \
-                 Override the variable name via `[webui].env_token_var` in {}.",
-                boot_config.home().config_file_path().display(),
+                 Override the variable name via `[webui].env_token_var` in config.toml.",
             )
         })?;
         let user_id_raw = env::var(env_user_id_var).map_err(|_| {
             anyhow!(
                 "{env_user_id_var} must be set to the UserId an env-bearer-authenticated caller maps to. \
-                 Override the variable name via `[webui].env_user_id_var` in {}.",
-                boot_config.home().config_file_path().display(),
+                 Override the variable name via `[webui].env_user_id_var` in config.toml.",
             )
         })?;
         let user_id = UserId::new(&user_id_raw)

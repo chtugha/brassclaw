@@ -3,14 +3,9 @@
 //!
 //! The merged catalog (compiled-in built-ins + this overlay) is *read*
 //! through `brassclaw_llm::ProviderRegistry`. This module owns the *write*
-//! side the webui2 settings surface needs: adding, editing, and removing
-//! the operator's custom provider definitions. Built-in providers are never
-//! stored here — an overlay entry whose `id` matches a built-in simply
-//! overrides it, because `ProviderRegistry::new` resolves later entries last.
-//!
-//! Writes are atomic (temp file + rename) and guarded by the same exclusive
-//! `.lock` sidecar discipline `brassclaw_reborn_config` uses for `config.toml`,
-//! so concurrent CLI / webui edits cannot interleave.
+//! side for file-based provider overlay operations. After Phase 8, the
+//! production path uses `PgProviderRepo` (DB-backed). This file-based repo
+//! is retained for migration compatibility and non-postgres test builds.
 //!
 //! API-key *values* never live in this file — the catalog rejects inline
 //! secrets. Keys are stored separately in the scoped secret store and
@@ -78,7 +73,6 @@ impl ProviderRepo {
     /// Returns `true` when an existing entry with the same id was replaced,
     /// `false` when the definition was appended.
     pub fn upsert(&self, definition: ProviderDefinition) -> Result<bool, ProviderRepoError> {
-        let _lock = self.acquire_lock()?;
         let mut overlay = self.load()?;
         let replaced = if let Some(slot) = overlay
             .iter_mut()
@@ -114,7 +108,6 @@ impl ProviderRepo {
     /// the overlay, so removing a built-in id is a no-op that returns
     /// `false`; the caller decides whether that is an error.
     pub fn delete(&self, id: &str) -> Result<bool, ProviderRepoError> {
-        let _lock = self.acquire_lock()?;
         let mut overlay = self.load()?;
         let before = overlay.len();
         overlay.retain(|existing| !existing.id.eq_ignore_ascii_case(id));
@@ -167,43 +160,6 @@ impl ProviderRepo {
             })?;
         Ok(())
     }
-
-    fn acquire_lock(&self) -> Result<fs::File, ProviderRepoError> {
-        use fs4::FileExt as _;
-
-        let lock_path = lock_path_for(&self.path);
-        if let Some(parent) = lock_path.parent() {
-            fs::create_dir_all(parent).map_err(|source| ProviderRepoError::Lock {
-                path: lock_path.clone(),
-                source,
-            })?;
-        }
-        let file = fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&lock_path)
-            .map_err(|source| ProviderRepoError::Lock {
-                path: lock_path.clone(),
-                source,
-            })?;
-        file.lock_exclusive()
-            .map_err(|source| ProviderRepoError::Lock {
-                path: lock_path,
-                source,
-            })?;
-        Ok(file)
-    }
-}
-
-fn lock_path_for(path: &Path) -> PathBuf {
-    let Some(file_name) = path.file_name() else {
-        return path.with_extension("lock");
-    };
-    let mut lock_name = file_name.to_os_string();
-    lock_name.push(".lock");
-    path.with_file_name(lock_name)
 }
 
 /// Errors surfaced when reading or rewriting the provider overlay.
@@ -226,12 +182,6 @@ pub enum ProviderRepoError {
         path: PathBuf,
         #[source]
         source: serde_json::Error,
-    },
-    #[error("could not lock provider overlay `{}`: {source}", path.display())]
-    Lock {
-        path: PathBuf,
-        #[source]
-        source: std::io::Error,
     },
     #[error("could not write provider overlay `{}`: {source}", path.display())]
     Write {

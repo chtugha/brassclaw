@@ -9,7 +9,7 @@
 > segment sizing, and critical ordering constraints — it does not duplicate spec detail.
 > Always open `integrate-postgres.md` as the primary reference when executing a segment.
 >
-> **Status:** S11 complete. S12 not started.
+> **Status:** S13 complete. S14 not started.
 
 ---
 
@@ -66,8 +66,8 @@ The hardened-unit test (`MemoryDenyWriteExecute=yes` + `jit=off`) is a hard gate
 | S9 | Phase 4d | Trigger + conversation + outbound + subagent-goal stores | `cargo clippy --all` + unit tests |
 | S10 | Phase 4e | Interceptor store + chat-memory + chunk/embedding wiring | `cargo clippy --all` + integration test |
 | S11 | Phase 5 | Hooks rename + auth + factory wiring ✅ | `cargo clippy --all` + parity tests |
-| S12 | Phase 7-code | Migration module (`migrate-from-libsql`) — written BEFORE Phase 6 merges | migration integration test green |
-| S13 | Phase 6 | libSQL removal (merges ONLY after S12 is green in CI) | `cargo build --release` clean |
+| S12 | Phase 7-code | Migration module (`migrate-from-libsql`) — written BEFORE Phase 6 merges ✅ | migration integration test green |
+| S13 | Phase 6 | libSQL removal ✅ | `cargo build --release` clean |
 | S14 | Phase 8 | File-based config removal | `cargo clippy --all` |
 | S15 | Phase 9 | Systemd unit + docs | review gate |
 | S16 | Phase 10 | Integration + E2E tests | all gates green → cut release |
@@ -298,7 +298,7 @@ Work items (do in this sub-order — each depends on the previous):
 **Entry:** S10 complete
 **Crates modified:** `crates/brassclaw_hooks_pg/`, `crates/brassclaw_reborn_composition/`
 
-> **Status: All Phase 5 work items complete.**
+> **Status: All Phase 5 work items complete.** (S11 complete)
 
 Work items (completed — retained for record):
 - ~~Rename `brassclaw_hooks_postgres` → `brassclaw_hooks_pg`; update workspace `members` + all dependent `[dependencies]` entries~~

@@ -13,11 +13,8 @@
 //!   `$BRASSCLAW_REBORN_HOME/config.toml`. Read once at process start;
 //!   provides the *selection* layer of the three-layer config model
 //!   (catalog → selection → runtime config). See `config_file.rs`.
-//! - Provider catalog — lives in `$BRASSCLAW_REBORN_HOME/providers.json`
-//!   in the v1 `providers.json` shape. This crate exposes the path via
-//!   [`RebornHome::providers_file_path`]; loading the file goes through
-//!   `brassclaw_llm::ProviderRegistry` in the composition root (this
-//!   crate has no workspace deps, per boundary rules).
+//! - Provider catalog — lives in `brassclaw_llm_providers` (DB-backed).
+//!   The composition root loads providers from DB via `PgProviderRepo`.
 
 mod boot;
 mod budget;
@@ -35,13 +32,11 @@ pub use budget::{
     ROUTINE_LIGHTWEIGHT_USD_ENV, ROUTINE_STANDARD_USD_ENV, USER_DAILY_USD_ENV,
 };
 pub use config_file::{
-    BootSection, BudgetSection, DefaultLlmSlotUpdate, DefaultLlmSlotUpdateSession, DriversSection,
-    EmbeddingSection, HarnessSection, IdentitySection, LlmSlotFieldUpdate, LlmSlotSelection,
-    PRESET_CHAT, PRESET_CODING, PRESET_LARGE, PRESET_SMALL_7B, PolicySection,
-    REBORN_CONFIG_API_VERSION, RebornConfigFile, RebornConfigFileError,
-    RebornConfigFileUpdateError, ResolvedTokenBudgets, RunnerSection, SkillsSection,
-    TokenDistributionPreset, TokensSection, TriggerPollerConfigSection, WebuiSection,
-    begin_default_llm_slot_update, resolve_with_profile, update_default_llm_slot,
+    BootSection, BudgetSection, DriversSection, EmbeddingSection, HarnessSection, IdentitySection,
+    LlmSlotSelection, PRESET_CHAT, PRESET_CODING, PRESET_LARGE, PRESET_SMALL_7B, PolicySection,
+    REBORN_CONFIG_API_VERSION, RebornConfigFile, RebornConfigFileError, ResolvedTokenBudgets,
+    RunnerSection, SkillsSection, TokenDistributionPreset, TokensSection,
+    TriggerPollerConfigSection, WebuiSection, resolve_with_profile,
 };
 pub use doctor::RebornDoctorReport;
 pub use home::{REBORN_HOME_ENV, RebornConfigError, RebornHome, RebornHomeSource};

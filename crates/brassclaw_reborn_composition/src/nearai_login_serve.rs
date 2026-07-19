@@ -21,7 +21,6 @@ use brassclaw_host_api::ingress::{
     RateLimitPolicy, RateLimitScope, StreamingMode, WebSocketOriginPolicy,
 };
 use brassclaw_host_api::{IngressScopeSource, NetworkMethod};
-use brassclaw_reborn_config::RebornBootConfig;
 use serde::Deserialize;
 
 use crate::LlmReloadTrigger;
@@ -45,7 +44,6 @@ const NEARAI_CALLBACK_RATE_MAX: NonZeroU32 = match NonZeroU32::new(60) {
 struct NearAiCallbackState {
     session: Arc<brassclaw_llm::SessionManager>,
     reload: Arc<dyn LlmReloadTrigger>,
-    boot: RebornBootConfig,
     states: Arc<NearAiLoginStateStore>,
 }
 
@@ -66,7 +64,7 @@ async fn nearai_callback(
     let Some(token) = query.token.filter(|token| !token.trim().is_empty()) else {
         return Redirect::to("/v2/settings/inference?nearai_login=error");
     };
-    match apply_nearai_login(&state.session, &state.boot, state.reload.as_ref(), &token).await {
+    match apply_nearai_login(&state.session, state.reload.as_ref(), &token).await {
         Ok(()) => Redirect::to("/v2/chat"),
         Err(error) => {
             tracing::warn!(%error, "NEAR AI login callback failed");
@@ -80,7 +78,6 @@ async fn nearai_callback(
 pub(crate) fn nearai_login_callback_mount(
     session: Arc<brassclaw_llm::SessionManager>,
     reload: Arc<dyn LlmReloadTrigger>,
-    boot: RebornBootConfig,
     states: Arc<NearAiLoginStateStore>,
 ) -> PublicRouteMount {
     let router = Router::new()
@@ -88,7 +85,6 @@ pub(crate) fn nearai_login_callback_mount(
         .with_state(NearAiCallbackState {
             session,
             reload,
-            boot,
             states,
         });
     PublicRouteMount::new(router, vec![nearai_callback_descriptor()])

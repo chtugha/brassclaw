@@ -342,22 +342,27 @@ pub struct LlmModelsResult {
 /// Port-level error surface. The facade maps this to the sanitized
 /// `RebornServicesError` taxonomy; no backend strings, paths, or secrets cross
 /// the boundary beyond the user-safe `reason` on `InvalidRequest`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum LlmConfigServiceError {
     /// Caller-supplied input was invalid. `reason` is user-safe.
+    #[error("invalid request: {reason}")]
     InvalidRequest {
         field: Option<String>,
         reason: String,
     },
     /// The named provider does not exist in the merged catalog.
+    #[error("provider not found")]
     NotFound,
     /// The provider is already assigned to the other role; assigning the same
     /// provider to both Kohai and Sempai simultaneously is not allowed.
+    #[error("provider role conflict: {reason}")]
     Conflict { reason: String },
     /// The configuration backend (filesystem / secret store / reload) failed
     /// transiently or is not wired.
+    #[error("llm config backend unavailable")]
     Unavailable,
     /// An internal invariant was violated.
+    #[error("llm config internal error")]
     Internal,
 }
 

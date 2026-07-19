@@ -43,7 +43,7 @@ impl RebornLlmReloadAdapter {
 #[async_trait]
 impl LlmReloadTrigger for RebornLlmReloadAdapter {
     async fn reload(&self) -> Result<(), String> {
-        let config_file = RebornConfigFile::load(&self.boot.home().config_file_path())
+        let config_file = RebornConfigFile::load(&self.boot.home().path().join("config.toml"))
             .map_err(|error| error.to_string())?;
         let Some(resolved) = resolve_reborn_runtime_llm(&self.boot, config_file.as_ref())
             .map_err(|error| error.to_string())?

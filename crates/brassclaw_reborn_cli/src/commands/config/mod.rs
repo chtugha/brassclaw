@@ -64,30 +64,13 @@ impl ConfigPathCommand {
         let report = RebornDoctorReport::from_config(context.boot_config().clone());
         let home = context.boot_config().home();
 
-        let config_path = home.config_file_path();
-        let providers_path = home.providers_file_path();
-        let exists = |path: &std::path::Path| {
-            if path.exists() {
-                "present"
-            } else {
-                "absent (optional; falls back to defaults)"
-            }
-        };
-
         println!("BrassClaw Reborn config path");
         println!("reborn_home: {}", report.home_path().display());
         println!("home_source: {}", report.home_source_label());
         println!("profile: {}", report.profile());
-        println!(
-            "config_file: {} ({})",
-            config_path.display(),
-            exists(&config_path)
-        );
-        println!(
-            "providers: {} ({})",
-            providers_path.display(),
-            exists(&providers_path)
-        );
+        println!("config_file: config.toml (read-only at boot; settings are DB-backed)");
+        println!("providers: DB-backed (brassclaw_llm_providers table)");
+        println!("home_path: {}", home.path().display());
         println!("v1_state: {}", report.v1_state());
         Ok(())
     }

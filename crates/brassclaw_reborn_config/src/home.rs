@@ -114,42 +114,11 @@ impl RebornHome {
         self.source.label()
     }
 
-    /// Absolute path of the operator-edited boot config TOML.
-    ///
-    /// `$BRASSCLAW_REBORN_HOME/config.toml`. The file is **optional**:
-    /// `RebornConfigFile::load` returns `Ok(None)` when it doesn't
-    /// exist, and the runtime falls back to compiled-in defaults.
-    pub fn config_file_path(&self) -> PathBuf {
-        self.path.join("config.toml")
-    }
-
-    /// Absolute path of the user-overlay LLM provider catalog.
-    ///
-    /// `$BRASSCLAW_REBORN_HOME/providers.json`. Same JSON shape as v1's
-    /// `~/.brassclaw/providers.json` so the same editor tooling and
-    /// operator muscle memory apply. The file is **optional**: when
-    /// it's missing, the runtime uses only the compiled-in built-in
-    /// provider definitions. Loading happens in the composition root
-    /// via `brassclaw_llm::ProviderRegistry`; this accessor just hands
-    /// out the path.
-    pub fn providers_file_path(&self) -> PathBuf {
-        self.path.join("providers.json")
-    }
-
-    /// Absolute path of the persisted Sempai provider selection.
-    ///
-    /// `$BRASSCLAW_REBORN_HOME/sempai_provider.json`. Stores the Sempai role
-    /// selection as `{"provider_id":"<id>","model":"<model>"}`. The file is
-    /// **optional**: when absent the interceptor runs in `Passthrough` state
-    /// (no Sempai configured). Written and read by the composition root.
-    pub fn sempai_provider_file_path(&self) -> PathBuf {
-        self.path.join("sempai_provider.json")
-    }
-
     /// Path to the persisted Embedding provider selection file.
     ///
-    /// `$BRASSCLAW_REBORN_HOME/embedding_provider.json`. Same format as
-    /// `sempai_provider.json`. Absent means no embedding provider is configured.
+    /// `$BRASSCLAW_REBORN_HOME/embedding_provider.json`. Absent means no
+    /// embedding provider is configured. Written and read by the composition
+    /// root when the `postgres` feature is not active (fallback path).
     pub fn embedding_provider_file_path(&self) -> PathBuf {
         self.path.join("embedding_provider.json")
     }

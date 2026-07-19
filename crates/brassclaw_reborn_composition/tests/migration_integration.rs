@@ -98,14 +98,14 @@ async fn seed_libsql_then_migrate_asserts_all_rows_in_pg() {
 
     // Write a minimal config.toml.
     std::fs::write(
-        home.config_file_path(),
+        home.path().join("config.toml"),
         b"[identity]\ntenant = \"test-tenant\"\ndefault_owner = \"test-user\"\n",
     )
     .unwrap();
 
     // Write a minimal providers.json.
     std::fs::write(
-        home.providers_file_path(),
+        home.path().join("providers.json"),
         br#"[{"id":"test-provider","protocol":"openai","model_env":"TEST_MODEL","default_model":"gpt-4o"}]"#,
     )
     .unwrap();
@@ -183,7 +183,7 @@ async fn seed_libsql_then_migrate_asserts_all_rows_in_pg() {
 
     // Source file renamed to .migrated
     assert!(
-        !home.config_file_path().exists(),
+        !home.path().join("config.toml").exists(),
         "config.toml should be renamed after migration"
     );
     assert!(
@@ -263,7 +263,7 @@ async fn dry_run_migration_writes_nothing() {
     )
     .unwrap();
     std::fs::write(
-        home.config_file_path(),
+        home.path().join("config.toml"),
         b"[identity]\ntenant = \"dry-tenant\"\n",
     )
     .unwrap();
@@ -273,7 +273,7 @@ async fn dry_run_migration_writes_nothing() {
         .expect("dry-run migration failed");
 
     // Dry-run: no files renamed.
-    assert!(home.config_file_path().exists(), "config.toml should NOT be renamed in dry-run");
+    assert!(home.path().join("config.toml").exists(), "config.toml should NOT be renamed in dry-run");
     assert!(!home.path().join("config.toml.migrated").exists());
 
     // Dry-run: nothing written to DB.
@@ -306,6 +306,13 @@ async fn seed_libsql_db(home_path: &std::path::Path) {
     let conn = db.connect().expect("connect libsql");
 
     // Create and seed the tables the migration reads.
+    // Note: hooks_predicate_invocations/values use `recorded_at` in libSQL
+    // (epoch-ms INTEGER or TEXT); the migration maps this to `occurred_at`
+    // (TIMESTAMPTZ) in PG.
+    // trigger_records uses the OLD libSQL schema (id/trigger_kind/trigger_config/
+    // status); the migration maps these to the new PG brassclaw_triggers columns.
+    // local_reborn_access is intentionally skipped — its schema is incompatible
+    // with brassclaw_local_access (token-hash store vs role/status/source grants).
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS safety_config (key TEXT NOT NULL, value TEXT NOT NULL);
          INSERT INTO safety_config (key, value) VALUES ('some_rule', 'enabled');
@@ -334,11 +341,11 @@ async fn seed_libsql_db(home_path: &std::path::Path) {
              (key_hash BLOB, scope_hash BLOB, event_id TEXT, value TEXT, recorded_at TEXT);
 
          CREATE TABLE IF NOT EXISTS trigger_records
-             (id TEXT, tenant_id TEXT, creator_user_id TEXT, name TEXT, description TEXT,
-              trigger_kind TEXT, trigger_config TEXT, status TEXT, created_at TEXT, updated_at TEXT);
+             (id TEXT, tenant_id TEXT, creator_user_id TEXT, name TEXT,
+              trigger_kind TEXT, trigger_config TEXT, status TEXT, created_at TEXT);
          INSERT INTO trigger_records
-             (id, tenant_id, creator_user_id, name, description, trigger_kind, trigger_config, status, created_at, updated_at)
-         VALUES ('tr-1', 'test-tenant', 'user-1', 'test', '', 'webhook', '{}', 'active', '', '');
+             (id, tenant_id, creator_user_id, name, trigger_kind, trigger_config, status, created_at)
+         VALUES ('tr-1', 'test-tenant', 'user-1', 'test', 'webhook', '{}', 'active', '');
 
          CREATE TABLE IF NOT EXISTS local_reborn_access
              (id TEXT, tenant_id TEXT, user_id TEXT, token_hash TEXT, created_at TEXT, updated_at TEXT);",

@@ -33,48 +33,6 @@ fn list_unknown_provider_returns_known_provider_context() {
 }
 
 #[test]
-fn set_model_empty_string_returns_invalid_request() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let admin = admin_for_home(&temp.path().join("reborn-home"));
-
-    for model in ["", "   "] {
-        let err = admin
-            .set_model(model)
-            .expect_err("empty model should reject before config access");
-        assert!(matches!(
-            err,
-            RebornProviderAdminError::InvalidRequest { reason }
-                if reason == "model name cannot be empty"
-        ));
-    }
-}
-
-#[test]
-fn set_model_reports_active_provider_credential_metadata() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let reborn_home = temp.path().join("reborn-home");
-    std::fs::create_dir_all(&reborn_home).expect("mkdir");
-    std::fs::write(
-        reborn_home.join("config.toml"),
-        r#"
-[llm.default]
-provider_id = "openai"
-model = "gpt-5-mini"
-api_key_env = "OPENAI_API_KEY"
-"#,
-    )
-    .expect("write config");
-    let admin = admin_for_home(&reborn_home);
-
-    let outcome = admin.set_model("gpt-5.3-codex").expect("set model");
-
-    assert_eq!(outcome.provider_id, "openai");
-    assert_eq!(outcome.model, "gpt-5.3-codex");
-    assert_eq!(outcome.api_key_env.as_deref(), Some("OPENAI_API_KEY"));
-    assert!(outcome.api_key_required);
-}
-
-#[test]
 fn provider_admin_json_omits_absolute_host_paths() {
     let temp = tempfile::tempdir().expect("tempdir");
     let admin = admin_for_home(&temp.path().join("reborn-home"));
