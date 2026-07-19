@@ -208,6 +208,10 @@ pub struct LlmConfigSnapshot {
     /// Absent means the interceptor runs in Passthrough — no Sempai is wired.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sempai_active: Option<LlmActiveSelection>,
+    /// Embedding provider selection.
+    /// Absent means no embedding provider is configured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embedding_active: Option<LlmActiveSelection>,
 }
 
 /// One provider in the merged catalog, annotated for the settings UI.
@@ -250,6 +254,9 @@ pub struct LlmProviderView {
     /// `true` when this provider is the active Sempai selection.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_sempai: bool,
+    /// `true` when this provider is the active Embedding selection.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_embedding: bool,
 }
 
 /// The active provider + model selection.

@@ -865,10 +865,12 @@ fn llm_snapshot(provider_id: &str) -> LlmConfigSnapshot {
             context_window_tokens: None,
             is_kohai: true,
             is_sempai: false,
+            is_embedding: false,
         }],
         active: Some(selection.clone()),
         kohai_active: Some(selection),
         sempai_active: None,
+        embedding_active: None,
     }
 }
 

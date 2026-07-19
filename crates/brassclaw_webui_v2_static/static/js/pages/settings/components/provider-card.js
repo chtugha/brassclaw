@@ -20,6 +20,8 @@ export function ProviderCard({
   builtinOverrides,
   isBusy,
   onUse,
+  onUseSempai,
+  onUseEmbedding,
   onConfigure,
   onDeactivate,
   onDelete,
@@ -186,6 +188,10 @@ export function ProviderCard({
                 <${Badge} tone="positive" label=${t("llm.active")} size="sm" />
               </button>
             `}
+            ${provider.is_sempai &&
+            html`<${Badge} tone="info" label=${t("llm.sempai")} size="sm" />`}
+            ${provider.is_embedding &&
+            html`<${Badge} tone="info" label=${t("llm.embedding")} size="sm" />`}
             ${provider.builtin && !isActive &&
             html`<${Badge} tone="muted" label=${t("llm.builtin")} size="sm" />`}
           </span>
@@ -227,6 +233,28 @@ export function ProviderCard({
           </div>
 
           <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-[var(--v2-panel-border)] pt-3">
+            ${configured && !provider.is_sempai && onUseSempai && html`
+              <${Button}
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled=${isBusy}
+                onClick=${() => onUseSempai(provider)}
+              >
+                ${t("llm.useSempai")}
+              <//>
+            `}
+            ${configured && !provider.is_embedding && onUseEmbedding && html`
+              <${Button}
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled=${isBusy}
+                onClick=${() => onUseEmbedding(provider)}
+              >
+                ${t("llm.useEmbedding")}
+              <//>
+            `}
             ${showConfigureAction &&
             html`
               <${Button}

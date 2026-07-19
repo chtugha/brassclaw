@@ -114,6 +114,27 @@ export function useLlmProviders({ settings: _settings, gatewayStatus }) {
     onSuccess: refresh,
   });
 
+  const setSempaiMutation = useMutation({
+    mutationFn: async (provider) => {
+      const model = providerDefaultModel(provider, builtinOverrides);
+      await setActiveLlm({ provider_id: provider.id, model, role: "sempai" });
+      return provider;
+    },
+    onSuccess: refresh,
+  });
+
+  const setEmbeddingMutation = useMutation({
+    mutationFn: async (provider) => {
+      const model = providerDefaultModel(provider, builtinOverrides);
+      await setActiveLlm({ provider_id: provider.id, model, role: "embedding" });
+      return provider;
+    },
+    onSuccess: refresh,
+  });
+
+  // Derived embedding state from snapshot
+  const embeddingProviderId = snapshot.embedding_active?.provider_id || "";
+
   return {
     providers,
     builtinProviders,
@@ -122,6 +143,7 @@ export function useLlmProviders({ settings: _settings, gatewayStatus }) {
     activeProviderId,
     selectedModel,
     hasActiveProvider,
+    embeddingProviderId,
     isLoading: providersQuery.isLoading,
     error: providersQuery.error,
     setActiveProvider: (provider) => setActiveMutation.mutateAsync(provider),
@@ -129,12 +151,16 @@ export function useLlmProviders({ settings: _settings, gatewayStatus }) {
     saveCustomProvider: (payload) => saveProviderMutation.mutateAsync(payload),
     saveBuiltinProvider: (payload) => saveProviderMutation.mutateAsync(payload),
     deleteCustomProvider: (provider) => deleteCustomMutation.mutateAsync(provider),
+    setSempaiProvider: (provider) => setSempaiMutation.mutateAsync(provider),
+    setEmbeddingProvider: (provider) => setEmbeddingMutation.mutateAsync(provider),
     testConnection: testLlmProviderConnection,
     listModels: listLlmProviderModels,
     isBusy:
       setActiveMutation.isPending ||
       saveProviderMutation.isPending ||
       deleteCustomMutation.isPending ||
-      deactivateMutation.isPending,
+      deactivateMutation.isPending ||
+      setSempaiMutation.isPending ||
+      setEmbeddingMutation.isPending,
   };
 }

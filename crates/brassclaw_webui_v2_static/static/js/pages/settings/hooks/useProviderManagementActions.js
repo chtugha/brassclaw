@@ -55,6 +55,30 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
     [openDialog, providerState, showMessage, t]
   );
 
+  const handleUseSempai = React.useCallback(
+    async (provider) => {
+      try {
+        await providerState.setSempaiProvider(provider);
+        showMessage("success", t("llm.sempaiActivated", { name: provider.name || provider.id }));
+      } catch (err) {
+        showMessage("error", err.message);
+      }
+    },
+    [providerState, showMessage, t]
+  );
+
+  const handleUseEmbedding = React.useCallback(
+    async (provider) => {
+      try {
+        await providerState.setEmbeddingProvider(provider);
+        showMessage("success", t("llm.embeddingActivated", { name: provider.name || provider.id }));
+      } catch (err) {
+        showMessage("error", err.message);
+      }
+    },
+    [providerState, showMessage, t]
+  );
+
   const handleSave = React.useCallback(
     async ({ form, apiKey, provider }) => {
       if (provider?.builtin) {
@@ -124,6 +148,8 @@ export function useProviderManagementActions({ settings, gatewayStatus, searchQu
     openDialog,
     closeDialog: () => setIsDialogOpen(false),
     handleUse,
+    handleUseSempai,
+    handleUseEmbedding,
     handleSave,
     handleDeactivate,
     handleDelete,

@@ -145,6 +145,14 @@ impl RebornHome {
     pub fn sempai_provider_file_path(&self) -> PathBuf {
         self.path.join("sempai_provider.json")
     }
+
+    /// Path to the persisted Embedding provider selection file.
+    ///
+    /// `$BRASSCLAW_REBORN_HOME/embedding_provider.json`. Same format as
+    /// `sempai_provider.json`. Absent means no embedding provider is configured.
+    pub fn embedding_provider_file_path(&self) -> PathBuf {
+        self.path.join("embedding_provider.json")
+    }
 }
 
 fn validate_non_empty(value: &OsString, name: &'static str) -> Result<(), RebornConfigError> {

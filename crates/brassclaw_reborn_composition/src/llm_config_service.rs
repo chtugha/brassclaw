@@ -195,8 +195,9 @@ impl RebornLlmConfigService {
         let builtin_registry = brassclaw_llm::ProviderRegistry::try_load_from_path(None)
             .map_err(|_| LlmConfigServiceError::Unavailable)?;
 
-        // Read the persisted Sempai selection (best-effort; absent = no Sempai).
-        let sempai_sel = read_sempai_selection(self.boot.home().sempai_provider_file_path());
+        // Read the persisted Sempai and Embedding selections (best-effort; absent = not set).
+        let sempai_sel = read_role_selection(self.boot.home().sempai_provider_file_path());
+        let embedding_sel = read_role_selection(self.boot.home().embedding_provider_file_path());
 
         let mut providers = Vec::with_capacity(list.providers.len());
         let mut active = None;
@@ -237,6 +238,9 @@ impl RebornLlmConfigService {
             let is_sempai = sempai_sel
                 .as_ref()
                 .is_some_and(|s| s.provider_id == info.id);
+            let is_embedding = embedding_sel
+                .as_ref()
+                .is_some_and(|s| s.provider_id == info.id);
             providers.push(LlmProviderView {
                 id: info.id,
                 description: info.description,
@@ -266,6 +270,7 @@ impl RebornLlmConfigService {
                 context_window_tokens: definition_context_window,
                 is_kohai,
                 is_sempai,
+                is_embedding,
             });
         }
 
@@ -276,6 +281,7 @@ impl RebornLlmConfigService {
             // clients reading `active` observe the Kohai selection unchanged.
             kohai_active: active,
             sempai_active: sempai_sel,
+            embedding_active: embedding_sel,
         })
     }
 
@@ -611,7 +617,7 @@ impl LlmConfigService for RebornLlmConfigService {
                 ProviderRole::Kohai => {
                     // Would be Kohai — check that it is not already the Sempai.
                     let sempai_path = self.boot.home().sempai_provider_file_path();
-                    read_sempai_selection(sempai_path)
+                    read_role_selection(sempai_path)
                         .is_some_and(|sel| sel.provider_id == id)
                 }
                 ProviderRole::Sempai => {
@@ -642,7 +648,7 @@ impl LlmConfigService for RebornLlmConfigService {
             }
             ProviderRole::Sempai => {
                 let sempai_path = self.boot.home().sempai_provider_file_path();
-                write_sempai_selection(
+                write_role_selection(
                     sempai_path,
                     if id.is_empty() {
                         None
@@ -655,11 +661,20 @@ impl LlmConfigService for RebornLlmConfigService {
                 )
                 .map_err(|_| LlmConfigServiceError::Unavailable)?;
             }
-            // Embedding role wiring is handled by the DB-backed config path (S10).
-            // This placeholder returns Unavailable until the embedding config store
-            // is wired in factory.rs (§3).
             ProviderRole::Embedding => {
-                return Err(LlmConfigServiceError::Unavailable);
+                let embedding_path = self.boot.home().embedding_provider_file_path();
+                write_role_selection(
+                    embedding_path,
+                    if id.is_empty() {
+                        None
+                    } else {
+                        Some(LlmActiveSelection {
+                            provider_id: id,
+                            model: request.model,
+                        })
+                    },
+                )
+                .map_err(|_| LlmConfigServiceError::Unavailable)?;
             }
         }
 
@@ -1120,23 +1135,21 @@ fn validate_provider_id(id: &str) -> Result<String, LlmConfigServiceError> {
     Ok(trimmed.to_string())
 }
 
-/// Read the persisted Sempai provider selection from a JSON file.
+/// Read a persisted provider role selection from a JSON file.
 ///
 /// Returns `None` if the file is absent, empty, or malformed. This is a
 /// synchronous disk read — callers that need async must wrap with
 /// `spawn_blocking`.
-fn read_sempai_selection(
-    path: std::path::PathBuf,
-) -> Option<LlmActiveSelection> {
+fn read_role_selection(path: std::path::PathBuf) -> Option<LlmActiveSelection> {
     let bytes = std::fs::read(&path).ok()?;
     serde_json::from_slice(&bytes).ok()
 }
 
-/// Write (or clear) the persisted Sempai provider selection.
+/// Write (or clear) a persisted provider role selection file.
 ///
 /// Passing `None` removes the file so that the absent-file case correctly
-/// means "no Sempai configured". Write errors are propagated to the caller.
-fn write_sempai_selection(
+/// means "role not configured". Write errors are propagated to the caller.
+fn write_role_selection(
     path: std::path::PathBuf,
     selection: Option<LlmActiveSelection>,
 ) -> std::io::Result<()> {
@@ -1605,7 +1618,7 @@ mod tests {
         // Sempai file must exist on disk.
         let path = boot.home().sempai_provider_file_path();
         assert!(path.exists(), "sempai_provider.json must be written");
-        let sel = read_sempai_selection(path).expect("readable");
+        let sel = read_role_selection(path).expect("readable");
         assert_eq!(sel.provider_id, "ibm_bob_inference");
     }
 
@@ -1701,6 +1714,97 @@ mod tests {
         assert!(
             snapshot.sempai_active.is_none(),
             "clearing Sempai must remove sempai_active from snapshot"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_active_embedding_role_writes_file_and_updates_snapshot() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let reborn_home = temp.path().join("reborn-home");
+        std::fs::create_dir_all(&reborn_home).expect("mkdir");
+        let boot = boot_for_home(&reborn_home);
+        let service = RebornLlmConfigService::new(boot.clone(), key_store());
+
+        let snapshot = service
+            .set_active(
+                caller(),
+                set_active_request("ibm_bob_inference", Some(ProviderRole::Embedding)),
+            )
+            .await
+            .expect("set_active Embedding");
+
+        assert_eq!(
+            snapshot.embedding_active.as_ref().map(|s| s.provider_id.as_str()),
+            Some("ibm_bob_inference"),
+            "Embedding selection must appear in embedding_active"
+        );
+        // Embedding file must exist on disk.
+        let path = boot.home().embedding_provider_file_path();
+        assert!(path.exists(), "embedding_provider.json must be written");
+        let sel = read_role_selection(path).expect("readable");
+        assert_eq!(sel.provider_id, "ibm_bob_inference");
+    }
+
+    #[tokio::test]
+    async fn set_active_embedding_clear_removes_file() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let reborn_home = temp.path().join("reborn-home");
+        std::fs::create_dir_all(&reborn_home).expect("mkdir");
+        let boot = boot_for_home(&reborn_home);
+        let service = RebornLlmConfigService::new(boot.clone(), key_store());
+
+        // Set Embedding then clear it with empty provider_id.
+        service
+            .set_active(
+                caller(),
+                set_active_request("ibm_bob_inference", Some(ProviderRole::Embedding)),
+            )
+            .await
+            .expect("set embedding");
+
+        let snapshot = service
+            .set_active(
+                caller(),
+                SetActiveLlmRequest {
+                    provider_id: String::new(),
+                    model: None,
+                    role: Some(ProviderRole::Embedding),
+                },
+            )
+            .await
+            .expect("clear embedding");
+
+        assert!(
+            snapshot.embedding_active.is_none(),
+            "clearing Embedding must remove embedding_active from snapshot"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_active_embedding_may_coexist_with_kohai() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let reborn_home = temp.path().join("reborn-home");
+        std::fs::create_dir_all(&reborn_home).expect("mkdir");
+        let boot = boot_for_home(&reborn_home);
+        let service = RebornLlmConfigService::new(boot.clone(), key_store());
+
+        // Make ibm_bob_inference both Kohai and Embedding — not a conflict.
+        service
+            .upsert_provider(caller(), upsert_request("ibm_bob_inference", None, true))
+            .await
+            .expect("upsert as kohai");
+
+        let snapshot = service
+            .set_active(
+                caller(),
+                set_active_request("ibm_bob_inference", Some(ProviderRole::Embedding)),
+            )
+            .await
+            .expect("embedding must coexist with kohai");
+
+        assert!(
+            snapshot.embedding_active.as_ref().is_some_and(|s| s.provider_id == "ibm_bob_inference"),
+            "embedding selection must be set even when provider is also kohai"
         );
     }
 }
