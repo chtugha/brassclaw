@@ -64,7 +64,7 @@ const CHUNKS_SUFFIX: &str = ".chunks";
 const VERSIONS_SUFFIX: &str = ".versions";
 
 /// Stable indexed-projection keys carried on memory records.
-pub(crate) mod fs_keys {
+pub mod fs_keys {
     pub const TENANT: &str = "tenant_id";
     pub const USER: &str = "user_id";
     pub const AGENT: &str = "agent_id";
@@ -74,6 +74,10 @@ pub(crate) mod fs_keys {
     pub const CHUNK_INDEX: &str = "chunk_index";
     pub const DOC_PATH: &str = "doc_relative_path";
     pub const VERSION: &str = "version";
+    /// Indexed key that links a chunk row back to the Path A chat-memory
+    /// record that produced it (§4.30.1).  Value is the `chat_record_id`
+    /// ULID string from `brassclaw_memory_chat_records.id`.
+    pub const CHAT_RECORD_ID: &str = "chat_record_id";
 }
 
 /// Filesystem-backed memory document repository.
@@ -268,6 +272,12 @@ where
             entry = entry.with_indexed(
                 Self::index_key(fs_keys::EMBEDDING),
                 IndexValue::Bytes(encode_embedding_blob(embedding)),
+            );
+        }
+        if let Some(chat_record_id) = &chunk.chat_record_id {
+            entry = entry.with_indexed(
+                Self::index_key(fs_keys::CHAT_RECORD_ID),
+                IndexValue::Text(chat_record_id.clone()),
             );
         }
         entry
@@ -1307,11 +1317,11 @@ mod tests {
             .unwrap();
         let hash = content_sha256("alpha beta gamma");
         let chunks = vec![
-            MemoryChunkWrite {
+            MemoryChunkWrite { chat_record_id: None,
                 content: "alpha beta".to_string(),
                 embedding: Some(vec![0.1, 0.2, 0.3]),
             },
-            MemoryChunkWrite {
+            MemoryChunkWrite { chat_record_id: None,
                 content: "gamma".to_string(),
                 embedding: None,
             },
@@ -1345,7 +1355,7 @@ mod tests {
         let (_, repo) = fresh_repo();
         let path = doc("notes/stale-chunks.md");
         repo.write_document(&path, b"orig").await.unwrap();
-        let chunks = vec![MemoryChunkWrite {
+        let chunks = vec![MemoryChunkWrite { chat_record_id: None,
             content: "orig".to_string(),
             embedding: None,
         }];
@@ -1387,7 +1397,7 @@ mod tests {
         let path = doc("notes/clearable.md");
         repo.write_document(&path, b"body").await.unwrap();
         let hash = content_sha256("body");
-        let chunks = vec![MemoryChunkWrite {
+        let chunks = vec![MemoryChunkWrite { chat_record_id: None,
             content: "body".to_string(),
             embedding: None,
         }];
@@ -1424,7 +1434,7 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &path,
             &hash,
-            &[MemoryChunkWrite {
+            &[MemoryChunkWrite { chat_record_id: None,
                 content: "body".to_string(),
                 embedding: None,
             }],
@@ -1464,7 +1474,7 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &folder_doc,
             &content_sha256("inside"),
-            &[MemoryChunkWrite {
+            &[MemoryChunkWrite { chat_record_id: None,
                 content: "inside".to_string(),
                 embedding: None,
             }],
@@ -1474,7 +1484,7 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &other_doc,
             &content_sha256("outside"),
-            &[MemoryChunkWrite {
+            &[MemoryChunkWrite { chat_record_id: None,
                 content: "outside".to_string(),
                 embedding: None,
             }],
@@ -1536,7 +1546,7 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &descendant,
             &hash,
-            &[MemoryChunkWrite {
+            &[MemoryChunkWrite { chat_record_id: None,
                 content: "body".to_string(),
                 embedding: None,
             }],
@@ -1586,7 +1596,7 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &path,
             &content_sha256("body"),
-            &[MemoryChunkWrite {
+            &[MemoryChunkWrite { chat_record_id: None,
                 content: "body".to_string(),
                 embedding: None,
             }],
@@ -1635,7 +1645,7 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &alpha,
             &content_sha256("alpha document text"),
-            &[MemoryChunkWrite {
+            &[MemoryChunkWrite { chat_record_id: None,
                 content: "alpha document text".to_string(),
                 embedding: None,
             }],
@@ -1645,7 +1655,7 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &beta,
             &content_sha256("beta document text"),
-            &[MemoryChunkWrite {
+            &[MemoryChunkWrite { chat_record_id: None,
                 content: "beta document text".to_string(),
                 embedding: None,
             }],
@@ -1676,7 +1686,7 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &alpha,
             &content_sha256("alpha"),
-            &[MemoryChunkWrite {
+            &[MemoryChunkWrite { chat_record_id: None,
                 content: "alpha".to_string(),
                 embedding: Some(vec![1.0, 0.0, 0.0]),
             }],
@@ -1686,7 +1696,7 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &beta,
             &content_sha256("beta"),
-            &[MemoryChunkWrite {
+            &[MemoryChunkWrite { chat_record_id: None,
                 content: "beta".to_string(),
                 embedding: Some(vec![0.0, 1.0, 0.0]),
             }],
@@ -1719,7 +1729,7 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &path,
             &content_sha256("v1"),
-            &[MemoryChunkWrite {
+            &[MemoryChunkWrite { chat_record_id: None,
                 content: "v1".to_string(),
                 embedding: None,
             }],
@@ -1744,7 +1754,7 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &path,
             &content_sha256("b"),
-            &[MemoryChunkWrite {
+            &[MemoryChunkWrite { chat_record_id: None,
                 content: "b".to_string(),
                 embedding: None,
             }],

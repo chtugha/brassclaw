@@ -43,7 +43,7 @@ pub use metadata::{
 pub use path::{MemoryDocumentPath, MemoryDocumentScope};
 pub use repo::{
     FilesystemMemoryDocumentRepository, InMemoryMemoryDocumentRepository, MemoryAppendOutcome,
-    MemoryDocumentRepository, MemoryWriteOutcome,
+    MemoryDocumentRepository, MemoryWriteOutcome, fs_keys,
 };
 pub use safety::{
     DEFAULT_PROMPT_PROTECTED_PATHS, DefaultPromptWriteSafetyPolicy, PromptProtectedPathClass,

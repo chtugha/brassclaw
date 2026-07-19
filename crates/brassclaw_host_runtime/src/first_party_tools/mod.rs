@@ -303,6 +303,22 @@ pub struct BuiltinFirstPartyTools {
     memory_state: memory::MemoryCapabilityState,
 }
 
+impl BuiltinFirstPartyTools {
+    /// Wire an embedding provider into the memory capability (§4.30, S10).
+    ///
+    /// When set, `build_backend()` wires the provider into the
+    /// `ChunkingMemoryDocumentIndexer` so chunk writes produce embeddings, and
+    /// `dispatch_search()` enables `.with_vector(true)`.
+    pub fn with_memory_embedding_provider(
+        mut self,
+        embedding_provider: Arc<dyn brassclaw_memory::EmbeddingProvider>,
+    ) -> Self {
+        self.memory_state =
+            memory::MemoryCapabilityState::with_embedding_provider(embedding_provider);
+        self
+    }
+}
+
 #[async_trait]
 impl FirstPartyCapabilityHandler for BuiltinFirstPartyTools {
     async fn dispatch(

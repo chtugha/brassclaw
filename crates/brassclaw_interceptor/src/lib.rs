@@ -47,6 +47,7 @@
 pub mod error;
 pub mod mode;
 pub mod packet;
+pub mod pg_store;
 pub mod store;
 
 // Convenience re-exports so callers only need to import from `brassclaw_interceptor`.
@@ -56,4 +57,5 @@ pub use packet::{
     CapturedPrompt, ForensicPacket, KohaiUsage, PacketId, PacketStatus, PromptSegment,
     SempaiReviewOutcome, TokenAccountingSnapshot,
 };
+pub use pg_store::PgInterceptorStore;
 pub use store::{InterceptorStore, NoopInterceptorStore};

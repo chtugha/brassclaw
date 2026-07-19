@@ -1,10 +1,8 @@
 //! `InterceptorStore` — persistence trait for `ForensicPacket`s.
 //!
-//! Implementations must support both PostgreSQL and libSQL to satisfy the
-//! workspace dual-backend requirement.  The initial implementation uses
-//! a file-based store under `$BRASSCLAW_REBORN_HOME/interceptor/` so the
-//! feature ships without a migration.  A DB-backed implementation can be
-//! added in a follow-up behind a feature flag.
+//! The production implementation is [`crate::PgInterceptorStore`] backed by
+//! `brassclaw_forensic_packets` (V026).  [`NoopInterceptorStore`] is used in
+//! test hosts that do not need storage assertions.
 //!
 //! # Storage contract
 //!

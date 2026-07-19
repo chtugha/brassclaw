@@ -52,6 +52,9 @@ postgres = [
 [dependencies]
 brassclaw_pg = { path = "../brassclaw_pg" }
 async-trait = "0.1"
+brassclaw_embeddings = { path = "../brassclaw_embeddings" }
+brassclaw_memory = { path = "../brassclaw_memory" }
+brassclaw_interceptor = { path = "../brassclaw_interceptor" }
 base64 = "0.22"
 chrono = "0.4"
 hex = "0.4"

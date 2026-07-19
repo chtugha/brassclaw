@@ -39,11 +39,26 @@ struct MemoryServices {
     scope: MemoryDocumentScope,
     context: MemoryContext,
     backend: Arc<dyn MemoryBackend>,
+    /// Whether vector (embedding) search is active for this request.
+    /// `true` when an embedding provider was resolved at startup.
+    embedding_active: bool,
 }
 
-#[derive(Default)]
 pub(super) struct MemoryCapabilityState {
     cached_backend: Mutex<Option<CachedMemoryBackend>>,
+    /// Optional embedding provider wired at composition startup (§4.30, S10).
+    /// When `Some`, `build_backend()` wires it into the indexer and
+    /// `dispatch_search()` enables `.with_vector(true)`.
+    embedding_provider: Option<Arc<dyn brassclaw_memory::EmbeddingProvider>>,
+}
+
+impl Default for MemoryCapabilityState {
+    fn default() -> Self {
+        Self {
+            cached_backend: Mutex::new(None),
+            embedding_provider: None,
+        }
+    }
 }
 
 impl std::fmt::Debug for MemoryCapabilityState {
@@ -51,6 +66,7 @@ impl std::fmt::Debug for MemoryCapabilityState {
         formatter
             .debug_struct("MemoryCapabilityState")
             .field("cached_backend", &"<cached-memory-backend>")
+            .field("embedding_active", &self.embedding_provider.is_some())
             .finish()
     }
 }
@@ -225,15 +241,30 @@ fn memory_services(
         request.scope.clone(),
         brassclaw_host_api::CorrelationId::new(),
     );
+    let embedding_active = state.embedding_provider.is_some();
     let backend = state.backend_for(request)?;
     Ok(MemoryServices {
         scope,
         context,
         backend,
+        embedding_active,
     })
 }
 
 impl MemoryCapabilityState {
+    /// Construct with an active embedding provider (§4.30, S10).
+    ///
+    /// When set, `build_backend()` wires the provider into the
+    /// `ChunkingMemoryDocumentIndexer` so chunk writes produce embeddings.
+    pub(super) fn with_embedding_provider(
+        embedding_provider: Arc<dyn brassclaw_memory::EmbeddingProvider>,
+    ) -> Self {
+        Self {
+            cached_backend: Mutex::new(None),
+            embedding_provider: Some(embedding_provider),
+        }
+    }
+
     fn backend_for(
         &self,
         request: &FirstPartyCapabilityRequest,
@@ -251,7 +282,8 @@ impl MemoryCapabilityState {
 
         let filesystem = Arc::clone(&request.services.filesystem);
         let audit_sink = request.services.audit_sink.clone();
-        let backend = build_backend(Arc::clone(&filesystem), audit_sink.clone());
+        let backend =
+            build_backend(Arc::clone(&filesystem), audit_sink.clone(), self.embedding_provider.clone());
         *cached_backend = Some(CachedMemoryBackend {
             filesystem,
             audit_sink,
@@ -272,14 +304,47 @@ fn audit_sinks_match(
     }
 }
 
+/// Thin wrapper that makes `Arc<dyn EmbeddingProvider>` satisfy the `P: EmbeddingProvider`
+/// bound on `ChunkingMemoryDocumentIndexer::with_embedding_provider`.
+struct DynEmbeddingProviderWrapper(Arc<dyn brassclaw_memory::EmbeddingProvider>);
+
+#[async_trait]
+impl brassclaw_memory::EmbeddingProvider for DynEmbeddingProviderWrapper {
+    fn dimension(&self) -> usize {
+        self.0.dimension()
+    }
+
+    fn model_name(&self) -> &str {
+        self.0.model_name()
+    }
+
+    async fn embed(
+        &self,
+        text: &str,
+    ) -> Result<Vec<f32>, brassclaw_memory::EmbeddingError> {
+        self.0.embed(text).await
+    }
+
+    async fn embed_batch(
+        &self,
+        texts: &[String],
+    ) -> Result<Vec<Vec<f32>>, brassclaw_memory::EmbeddingError> {
+        self.0.embed_batch(texts).await
+    }
+}
+
 fn build_backend(
     filesystem: Arc<dyn RootFilesystem>,
     audit_sink: Option<Arc<dyn AuditSink>>,
+    embedding_provider: Option<Arc<dyn brassclaw_memory::EmbeddingProvider>>,
 ) -> Arc<dyn MemoryBackend> {
     let repository = Arc::new(FilesystemMemoryDocumentRepository::new(filesystem));
-    let indexer = Arc::new(ChunkingMemoryDocumentIndexer::new(Arc::clone(&repository)));
+    let mut indexer = ChunkingMemoryDocumentIndexer::new(Arc::clone(&repository));
+    if let Some(provider) = embedding_provider {
+        indexer = indexer.with_embedding_provider(Arc::new(DynEmbeddingProviderWrapper(provider)));
+    }
     let mut backend = RepositoryMemoryBackend::new(Arc::clone(&repository))
-        .with_indexer(indexer)
+        .with_indexer(Arc::new(indexer))
         .with_capabilities(MemoryBackendCapabilities {
             file_documents: true,
             metadata: true,
@@ -338,7 +403,7 @@ async fn dispatch_search(
         .map_err(|_| input_error())?
         .with_limit(limit)
         .with_pre_fusion_limit(limit.max(20))
-        .with_vector(false);
+        .with_vector(services.embedding_active);
     let results = services
         .backend
         .search(&services.context, request)

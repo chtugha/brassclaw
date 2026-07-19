@@ -50,10 +50,14 @@ impl ChunkConfig {
 }
 
 /// A new chunk to insert for a document.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct MemoryChunkWrite {
     pub content: String,
     pub embedding: Option<Vec<f32>>,
+    /// Optional back-link to the `brassclaw_memory_chat_records` row that
+    /// produced this chunk (§4.30.1). Stored as an indexed key
+    /// `fs_keys::CHAT_RECORD_ID` on the chunk VFS entry.
+    pub chat_record_id: Option<String>,
 }
 
 /// Split a document into overlapping chunks using current workspace semantics.

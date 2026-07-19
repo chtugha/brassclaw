@@ -14,7 +14,7 @@ use crate::events::{
     MemorySignificantEventSource, record_memory_significant_event,
 };
 use crate::metadata::resolve_document_metadata;
-use crate::path::{MemoryDocumentPath, memory_error, valid_memory_path};
+use crate::path::{MemoryDocumentPath, MemoryDocumentScope, memory_error, valid_memory_path};
 use crate::repo::MemoryDocumentRepository;
 
 /// Hook invoked after successful memory document writes so derived state can be refreshed.
@@ -30,6 +30,24 @@ pub trait MemoryDocumentIndexer: Send + Sync {
         let _ = audit_context;
         self.reindex_document(path).await
     }
+
+    /// File-less chunk creation (revision 17). Chunks and embeds `content`
+    /// directly from an in-memory string without requiring a parent document
+    /// to exist on the VFS.
+    ///
+    /// `scope` carries the tenant/user/agent/project context needed to
+    /// build the `MemoryDocumentPath`.  `source_ref` is a canonical VFS path
+    /// such as `/memory/chat/<chat_record_id>`; the relative part is the
+    /// suffix after `/memory/` (e.g. `chat/<id>`).  `chat_record_id`, when
+    /// supplied, is stored as an `fs_keys::CHAT_RECORD_ID` indexed key on
+    /// each chunk row so the chunk system can join back to the Path A row.
+    async fn index_content(
+        &self,
+        scope: &MemoryDocumentScope,
+        source_ref: &str,
+        content: &str,
+        chat_record_id: Option<&str>,
+    ) -> Result<(), FilesystemError>;
 }
 
 /// Outcome of a hash-guarded chunk replacement attempt.
@@ -215,6 +233,7 @@ where
                     .map(|content| MemoryChunkWrite {
                         content,
                         embedding: None,
+                        chat_record_id: None,
                     })
                     .collect();
                 self.replace_document_chunks_and_record(
@@ -265,6 +284,76 @@ where
         .await?;
         Ok(())
     }
+
+    async fn index_content(
+        &self,
+        scope: &MemoryDocumentScope,
+        source_ref: &str,
+        content: &str,
+        chat_record_id: Option<&str>,
+    ) -> Result<(), FilesystemError> {
+        // Derive relative_path from source_ref: strip the leading "/memory/" prefix.
+        let relative_path = source_ref
+            .strip_prefix("/memory/")
+            .unwrap_or_else(|| source_ref.trim_start_matches('/'));
+
+        let path = MemoryDocumentPath::new_with_agent(
+            scope.tenant_id(),
+            scope.user_id(),
+            scope.agent_id(),
+            scope.project_id(),
+            relative_path,
+        )
+        .map_err(|error| {
+            memory_error(
+                valid_memory_path(),
+                FilesystemOperation::WriteFile,
+                format!("index_content: invalid path '{source_ref}': {error}"),
+            )
+        })?;
+
+        let content_hash = content_sha256(content);
+        let chunk_texts = chunk_document(content, self.chunk_config.clone());
+        if chunk_texts.is_empty() {
+            self.replace_document_chunks_and_record(&path, &content_hash, &[], None)
+                .await?;
+            return Ok(());
+        }
+
+        let chunks = match build_chunk_writes_with_record_id(
+            &path,
+            chunk_texts.clone(),
+            self.embedding_provider.as_deref(),
+            chat_record_id,
+        )
+        .await
+        {
+            Ok(chunks) => chunks,
+            Err(error) => {
+                // Embedding outage degrades to text-only chunks (same contract as
+                // reindex_document_with_audit_context).
+                let text_only: Vec<MemoryChunkWrite> = chunk_texts
+                    .into_iter()
+                    .map(|c| MemoryChunkWrite {
+                        content: c,
+                        embedding: None,
+                        chat_record_id: None,
+                    })
+                    .collect();
+                self.replace_document_chunks_and_record(
+                    &path,
+                    &content_hash,
+                    &text_only,
+                    None,
+                )
+                .await?;
+                return Err(error);
+            }
+        };
+        self.replace_document_chunks_and_record(&path, &content_hash, &chunks, None)
+            .await?;
+        Ok(())
+    }
 }
 
 async fn build_chunk_writes(
@@ -272,12 +361,24 @@ async fn build_chunk_writes(
     chunk_texts: Vec<String>,
     embedding_provider: Option<&dyn EmbeddingProvider>,
 ) -> Result<Vec<MemoryChunkWrite>, FilesystemError> {
+    build_chunk_writes_with_record_id(path, chunk_texts, embedding_provider, None).await
+}
+
+/// Like `build_chunk_writes` but also stamps an optional `chat_record_id`
+/// onto every produced chunk (§4.30.1).
+async fn build_chunk_writes_with_record_id(
+    path: &MemoryDocumentPath,
+    chunk_texts: Vec<String>,
+    embedding_provider: Option<&dyn EmbeddingProvider>,
+    chat_record_id: Option<&str>,
+) -> Result<Vec<MemoryChunkWrite>, FilesystemError> {
     let Some(provider) = embedding_provider else {
         return Ok(chunk_texts
             .into_iter()
             .map(|content| MemoryChunkWrite {
                 content,
                 embedding: None,
+                chat_record_id: chat_record_id.map(str::to_owned),
             })
             .collect());
     };
@@ -314,6 +415,7 @@ async fn build_chunk_writes(
             Ok(MemoryChunkWrite {
                 content,
                 embedding: Some(embedding),
+                chat_record_id: chat_record_id.map(str::to_owned),
             })
         })
         .collect()

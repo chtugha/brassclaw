@@ -605,6 +605,7 @@ impl LlmConfigService for RebornLlmConfigService {
         };
 
         // Guard: same provider cannot occupy both roles simultaneously.
+        // Embedding may coexist with Kohai or Sempai; Kohai+Sempai still conflict.
         if !id.is_empty() {
             let conflict = match role {
                 ProviderRole::Kohai => {
@@ -622,6 +623,8 @@ impl LlmConfigService for RebornLlmConfigService {
                         .into_iter()
                         .any(|p| p.active && p.id == id)
                 }
+                // Embedding may coexist with any other role — no conflict check.
+                ProviderRole::Embedding => false,
             };
             if conflict {
                 return Err(LlmConfigServiceError::Conflict {
@@ -651,6 +654,12 @@ impl LlmConfigService for RebornLlmConfigService {
                     },
                 )
                 .map_err(|_| LlmConfigServiceError::Unavailable)?;
+            }
+            // Embedding role wiring is handled by the DB-backed config path (S10).
+            // This placeholder returns Unavailable until the embedding config store
+            // is wired in factory.rs (§3).
+            ProviderRole::Embedding => {
+                return Err(LlmConfigServiceError::Unavailable);
             }
         }
 

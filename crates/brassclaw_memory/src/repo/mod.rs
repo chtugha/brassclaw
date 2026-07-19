@@ -16,7 +16,7 @@ use crate::search::{MemorySearchRequest, MemorySearchResult};
 mod filesystem;
 mod in_memory;
 
-pub use filesystem::FilesystemMemoryDocumentRepository;
+pub use filesystem::{FilesystemMemoryDocumentRepository, fs_keys};
 pub use in_memory::InMemoryMemoryDocumentRepository;
 
 /// Result of an optimistic atomic append attempt.
