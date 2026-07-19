@@ -41,7 +41,6 @@ libsql = [
     "brassclaw_triggers/libsql",
 ]
 postgres = [
-    "dep:deadpool-postgres",
     "brassclaw_filesystem/postgres",
     "brassclaw_host_runtime/postgres",
     "brassclaw_reborn/filesystem-goal-store",
@@ -56,7 +55,8 @@ async-trait = "0.1"
 base64 = "0.22"
 chrono = "0.4"
 hex = "0.4"
-deadpool-postgres = { version = "0.14", optional = true }
+deadpool-postgres = "0.14"
+tokio-postgres = "0.7"
 futures = "0.3"
 brassclaw_auth = { path = "../brassclaw_auth" }
 brassclaw_common = { path = "../brassclaw_common" }

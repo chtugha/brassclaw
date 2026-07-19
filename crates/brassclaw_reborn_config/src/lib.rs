@@ -39,7 +39,8 @@ pub use config_file::{
     HarnessSection, IdentitySection, LlmSlotFieldUpdate, LlmSlotSelection, PRESET_CHAT,
     PRESET_CODING, PRESET_LARGE, PRESET_SMALL_7B, PolicySection, REBORN_CONFIG_API_VERSION,
     RebornConfigFile, RebornConfigFileError, RebornConfigFileUpdateError, ResolvedTokenBudgets,
-    RunnerSection, TokenDistributionPreset, TokensSection, TriggerPollerConfigSection,
+    RunnerSection, SkillsSection, TokenDistributionPreset, TokensSection,
+    TriggerPollerConfigSection, WebuiSection,
     begin_default_llm_slot_update, resolve_with_profile, update_default_llm_slot,
 };
 pub use doctor::RebornDoctorReport;

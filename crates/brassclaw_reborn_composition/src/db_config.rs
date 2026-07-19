@@ -24,12 +24,11 @@
 use std::collections::BTreeMap;
 
 use brassclaw_pg::PgPool;
-use brassclaw_reborn_config::config_file::{
+use brassclaw_reborn_config::{
     BootSection, BudgetSection, DriversSection, HarnessSection, IdentitySection, LlmSlotSelection,
     PolicySection, RebornConfigFile, RunnerSection, SkillsSection, TokensSection,
-    TriggerPollerConfigSection, WebuiSection,
+    TriggerPollerConfigSection, WebuiSection, reject_inline_secret,
 };
-use brassclaw_reborn_config::secrets_guard::reject_inline_secret;
 use thiserror::Error;
 
 /// Error type for config DB operations.

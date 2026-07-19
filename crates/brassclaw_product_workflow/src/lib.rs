@@ -46,6 +46,7 @@ mod policy;
 mod reborn_services;
 mod recipes;
 mod reduction_rules;
+mod pg_safety_config_store;
 mod safety_config;
 mod safety_config_store;
 mod token_settings;
@@ -147,6 +148,7 @@ pub use reduction_rules::{
     sort_for_storage,
 };
 pub use safety_config::{SafetyConfigResponse, SafetyEntry, UpdateSafetyConfigRequest};
+pub use pg_safety_config_store::PgSafetyConfigStore;
 pub use safety_config_store::{SafetyCategory, SafetyConfigStore, SqliteSafetyConfigStore};
 pub use token_settings::{TokenSettingsResponse, UpdateTokenSettingsRequest};
 pub use token_settings_store::TokenSettingsStore;

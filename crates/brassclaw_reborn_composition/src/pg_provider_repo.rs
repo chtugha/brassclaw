@@ -24,7 +24,7 @@
 //! var name). API key *values* are never stored here; they live in the scoped
 //! secret store and are injected at provider-build time by `LlmKeyStore`.
 
-use brassclaw_llm::registry::ProviderDefinition;
+use brassclaw_llm::ProviderDefinition;
 use brassclaw_pg::PgPool;
 use thiserror::Error;
 

@@ -32,6 +32,7 @@ mod bundled_skills;
 mod default_system_prompt;
 pub mod db_config;
 mod error;
+#[cfg(feature = "root-llm-provider")]
 pub mod pg_provider_repo;
 mod extension_installation_store;
 mod extension_lifecycle;
@@ -78,6 +79,9 @@ pub use auth_prompt::{AuthChallengeProvider, AuthChallengeView};
 mod fetch_cached_content;
 #[cfg(feature = "libsql")]
 mod memory_doc_libsql_store;
+pub(crate) mod pg_memory_doc_store;
+pub(crate) mod pg_token_settings_store;
+pub mod retention_sweep;
 #[cfg(feature = "libsql")]
 mod migrated_skills;
 pub(crate) mod plan_library;
