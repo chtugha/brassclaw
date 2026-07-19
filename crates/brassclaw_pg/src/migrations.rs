@@ -49,7 +49,8 @@ pub async fn run_migrations(pool: &Pool) -> Result<(), PgError> {
 async fn reconcile_history(
     client: &deadpool_postgres::Client,
 ) -> Result<(), PgError> {
-    // Check if refinery history table exists and is empty.
+    // Check if refinery history table exists (refinery creates it on first run).
+    // If it already exists, refinery has run before — no pre-seeding needed.
     let history_exists: bool = client
         .query_one(
             "SELECT EXISTS (
@@ -60,8 +61,8 @@ async fn reconcile_history(
             &[],
         )
         .await
-        .map(|row| row.get::<_, bool>(0))
-        .unwrap_or(false);
+        .map_err(|e| PgError::Migration(e.to_string()))?
+        .get::<_, bool>(0);
 
     if history_exists {
         // Refinery has already been run; no pre-seeding needed.
@@ -79,29 +80,45 @@ async fn reconcile_history(
         "detected pre-existing tables; pre-seeding refinery history"
     );
 
-    // Create the history table if it does not exist yet (refinery creates it
-    // on first run, but we need it before the runner executes).
+    // Create the refinery history table with the exact schema refinery uses
+    // (refinery-core-0.8/src/traits/mod.rs ASSERT_MIGRATIONS_TABLE_QUERY):
+    //   version INT4 PRIMARY KEY, name VARCHAR(255), applied_on VARCHAR(255),
+    //   checksum VARCHAR(255)
+    // We must create it here so we can insert rows before the runner sees it.
     client
         .batch_execute(
             "CREATE TABLE IF NOT EXISTS refinery_schema_history (
-                version     INT         NOT NULL PRIMARY KEY,
-                name        TEXT        NOT NULL,
-                applied_on  TEXT        NOT NULL,
-                checksum    TEXT        NOT NULL
+                version     INT4        PRIMARY KEY,
+                name        VARCHAR(255) NOT NULL,
+                applied_on  VARCHAR(255) NOT NULL,
+                checksum    VARCHAR(255) NOT NULL
             )",
         )
         .await
         .map_err(|e| PgError::Migration(e.to_string()))?;
 
     // Insert placeholder rows for all pre-refinery migration versions.
-    // The checksum value "pre-seeded" is a marker that this row was
-    // synthesised, not applied by refinery. Refinery will not re-run
-    // a version that already has a history row.
+    //
+    // IMPORTANT — two refinery invariants must be satisfied or the runner will
+    // panic / reject the row when it reads it back:
+    //
+    // 1. `checksum` must be a valid u64 decimal string.
+    //    refinery parses it as: checksum.parse::<u64>().expect("checksum must be
+    //    a valid u64"). Using any non-numeric value (e.g. "pre-seeded") causes a
+    //    panic when refinery reads the history table. We use "0" as the sentinel.
+    //
+    // 2. `applied_on` must be a strict RFC 3339 timestamp string.
+    //    refinery parses it as: OffsetDateTime::parse(&applied_on, &Rfc3339).
+    //    PostgreSQL's NOW()::TEXT produces locale-dependent output
+    //    ("2024-01-01 00:00:00+00") which fails RFC 3339 parsing.
+    //    to_char() with the ISO 8601 / RFC 3339 format produces the required form.
     for (version, name) in pre_existing {
         client
             .execute(
                 "INSERT INTO refinery_schema_history (version, name, applied_on, checksum)
-                 VALUES ($1, $2, NOW()::TEXT, 'pre-seeded')
+                 VALUES ($1, $2,
+                         to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'),
+                         '0')
                  ON CONFLICT (version) DO NOTHING",
                 &[&version, &name],
             )
@@ -114,98 +131,66 @@ async fn reconcile_history(
 
 /// Detect tables that were created by the old inline-DDL path (outside refinery).
 /// Returns a list of `(migration_version, migration_name)` pairs to pre-seed.
+/// Parameterized helper: returns true if `table_name` exists in `current_schema()`.
+async fn table_exists(
+    client: &deadpool_postgres::Client,
+    table_name: &str,
+) -> Result<bool, PgError> {
+    client
+        .query_one(
+            "SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = $1
+                  AND table_schema = current_schema()
+            )",
+            &[&table_name],
+        )
+        .await
+        .map(|r| r.get(0))
+        .map_err(|e| PgError::Migration(e.to_string()))
+}
+
 async fn detect_pre_existing_tables(
     client: &deadpool_postgres::Client,
 ) -> Result<Vec<(i32, &'static str)>, PgError> {
-    let table_check = |name: &str| {
-        format!(
-            "SELECT EXISTS (
-                SELECT 1 FROM information_schema.tables
-                WHERE table_name = '{name}'
-                  AND table_schema = current_schema()
-            )"
-        )
-    };
-
     let mut pre_existing = Vec::new();
 
     // hooks tables — created by brassclaw_hooks_pg inline DDL
-    let hooks_exist: bool = client
-        .query_one(&table_check("hooks_predicate_invocations"), &[])
-        .await
-        .map(|r| r.get(0))
-        .unwrap_or(false);
-    if hooks_exist {
+    if table_exists(client, "hooks_predicate_invocations").await? {
         pre_existing.push((17_i32, "hooks"));
     }
 
     // trigger_records — the pre-V021 table name created outside refinery.
-    // V021 renames it to brassclaw_triggers; both names are checked here.
-    let triggers_exist: bool = client
-        .query_one(&table_check("trigger_records"), &[])
-        .await
-        .map(|r| r.get(0))
-        .unwrap_or(false);
-    // Also check brassclaw_triggers (already renamed)
-    let brassclaw_triggers_exist: bool = client
-        .query_one(&table_check("brassclaw_triggers"), &[])
-        .await
-        .map(|r| r.get(0))
-        .unwrap_or(false);
-    if triggers_exist || brassclaw_triggers_exist {
+    // V021 renames it to brassclaw_triggers; check both names so that an
+    // already-renamed deployment is also covered.
+    let triggers_exist = table_exists(client, "trigger_records").await?
+        || table_exists(client, "brassclaw_triggers").await?;
+    if triggers_exist {
         pre_existing.push((21_i32, "triggers"));
     }
 
     // settings table (libSQL DbTokenSettingsStore)
-    let settings_exist: bool = client
-        .query_one(&table_check("settings"), &[])
-        .await
-        .map(|r| r.get(0))
-        .unwrap_or(false);
-    if settings_exist {
+    if table_exists(client, "settings").await? {
         pre_existing.push((14_i32, "token_settings"));
     }
 
     // safety_config table
-    let safety_exist: bool = client
-        .query_one(&table_check("safety_config"), &[])
-        .await
-        .map(|r| r.get(0))
-        .unwrap_or(false);
-    if safety_exist {
+    if table_exists(client, "safety_config").await? {
         pre_existing.push((15_i32, "safety"));
     }
 
-    // VFS backing tables — all three are created together by PostgresRootFilesystem::run_migrations
-    // outside refinery. Revision 18 H1 fix: checking only root_filesystem_entries missed the two
-    // sibling tables (root_filesystem_index_specs, root_filesystem_events). If ANY of the three
-    // is present, the entire V018 bundle has been applied and must be pre-seeded.
-    let vfs_entries_exist: bool = client
-        .query_one(&table_check("root_filesystem_entries"), &[])
-        .await
-        .map(|r| r.get(0))
-        .unwrap_or(false);
-    let vfs_index_specs_exist: bool = client
-        .query_one(&table_check("root_filesystem_index_specs"), &[])
-        .await
-        .map(|r| r.get(0))
-        .unwrap_or(false);
-    let vfs_events_exist: bool = client
-        .query_one(&table_check("root_filesystem_events"), &[])
-        .await
-        .map(|r| r.get(0))
-        .unwrap_or(false);
-    if vfs_entries_exist || vfs_index_specs_exist || vfs_events_exist {
+    // VFS backing tables — all three are created together by
+    // PostgresRootFilesystem::run_migrations outside refinery.
+    // If ANY of the three is present the entire V018 bundle has been applied.
+    let vfs_exist = table_exists(client, "root_filesystem_entries").await?
+        || table_exists(client, "root_filesystem_index_specs").await?
+        || table_exists(client, "root_filesystem_events").await?;
+    if vfs_exist {
         pre_existing.push((18_i32, "root_filesystem"));
     }
 
     // memory_docs table
-    let memory_docs_exist: bool = client
-        .query_one(&table_check("memory_docs"), &[])
-        .await
-        .map(|r| r.get(0))
-        .unwrap_or(false);
-    if memory_docs_exist {
+    if table_exists(client, "memory_docs").await? {
         pre_existing.push((16_i32, "memory_docs"));
     }
 
@@ -334,6 +319,7 @@ mod tests {
             run_migrations(&pool).await.expect("migrations must not fail on pre-existing hooks tables");
 
             // Verify V017 history row was inserted by reconcile_history (not by refinery runner).
+            // The pre-seeded checksum is "0" (a valid u64 sentinel — see reconcile_history).
             let client = pool.get().await.expect("get client");
             let row = client
                 .query_one(
@@ -344,8 +330,8 @@ mod tests {
                 .expect("V017 history row must exist");
             let checksum: String = row.get(0);
             assert_eq!(
-                checksum, "pre-seeded",
-                "V017 row must be pre-seeded (not applied by refinery runner)"
+                checksum, "0",
+                "V017 row must be pre-seeded with checksum '0' (a valid u64 sentinel)"
             );
         }
 

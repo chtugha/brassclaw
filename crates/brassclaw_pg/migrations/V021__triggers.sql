@@ -28,6 +28,8 @@ END $$;
 -- All columns match the TRIGGER_COLUMNS constant in postgres.rs exactly.
 -- Date columns are TEXT (RFC-3339 formatted) — do NOT change to TIMESTAMPTZ;
 -- PostgresTriggerRepository uses fmt_ts() string round-trips.
+-- The state CHECK constraint enforces TriggerState wire values; postgres.rs
+-- queries only ever write one of the three valid values via state.as_str().
 CREATE TABLE IF NOT EXISTS brassclaw_triggers (
     trigger_id             TEXT        NOT NULL,
     tenant_id              TEXT        NOT NULL,
@@ -39,7 +41,10 @@ CREATE TABLE IF NOT EXISTS brassclaw_triggers (
     schedule_expression    TEXT        NOT NULL,
     completion_policy      TEXT        NOT NULL,
     prompt                 TEXT        NOT NULL,
-    state                  TEXT        NOT NULL,
+    -- state: TriggerState snake_case wire values (serde rename_all = "snake_case"):
+    --   Scheduled→'scheduled', Paused→'paused', Completed→'completed'
+    state                  TEXT        NOT NULL
+        CHECK (state IN ('scheduled','paused','completed')),
     next_run_at            TEXT        NOT NULL,
     last_run_at            TEXT,
     last_fired_slot        TEXT,
