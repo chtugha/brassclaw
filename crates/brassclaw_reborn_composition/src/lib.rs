@@ -82,6 +82,8 @@ mod memory_doc_libsql_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod embedding_role_adapter;
 #[cfg(feature = "postgres")]
+pub(crate) mod pg_auth_product_services;
+#[cfg(feature = "postgres")]
 pub(crate) mod pg_chat_memory_record_store;
 pub(crate) mod pg_memory_doc_store;
 pub(crate) mod pg_token_settings_store;

@@ -29,6 +29,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 use brassclaw_embeddings::{CachedEmbeddingProvider, EmbeddingCacheConfig};
 use brassclaw_memory::EmbeddingError as MemoryEmbeddingError;
 
@@ -61,6 +62,7 @@ pub(crate) struct EmbeddingRoleAdapter {
 
 impl EmbeddingRoleAdapter {
     /// Wrap an embeddings provider with the default LRU cache configuration.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
     pub(crate) fn new_cached(
         provider: Arc<dyn brassclaw_embeddings::EmbeddingProvider>,
         cache_config: EmbeddingCacheConfig,

@@ -6,6 +6,8 @@ use std::{
 
 #[cfg(any(feature = "libsql", feature = "postgres"))]
 use crate::product_auth_durable::{FilesystemAuthProductServices, UnavailableAuthProviderClient};
+#[cfg(feature = "postgres")]
+use crate::pg_auth_product_services::PgAuthProductServices;
 #[cfg(any(feature = "libsql", feature = "postgres"))]
 use brassclaw_auth::AuthProviderClient;
 #[cfg(any(feature = "libsql", feature = "postgres"))]
@@ -308,6 +310,12 @@ pub struct RebornServices {
     pub product_auth: Option<Arc<RebornProductAuthServices>>,
     pub readiness: RebornReadiness,
     pub(crate) local_runtime: Option<Arc<RebornLocalRuntimeServices>>,
+    /// Postgres connection pool threaded from the production build path so
+    /// `build_reborn_runtime` can pass it to the hooks predicate-state backend
+    /// (`PostgresPredicateStateBackend`) instead of the in-memory fallback.
+    /// `None` in local-dev until embedded PG is wired (Phase 6).
+    #[cfg(feature = "postgres")]
+    pub(crate) pg_pool: Option<Arc<deadpool_postgres::Pool>>,
     /// Shared scoped secret store. Exposed so runtime-level features (e.g.
     /// operator LLM-key storage) can reuse the same instance product-auth uses
     /// rather than standing up a second authority.
@@ -510,6 +518,8 @@ impl RebornServices {
             product_auth: None,
             readiness: RebornReadiness::disabled(),
             local_runtime: None,
+            #[cfg(feature = "postgres")]
+            pg_pool: None,
             #[cfg(feature = "root-llm-provider")]
             secret_store: Arc::new(brassclaw_secrets::InMemorySecretStore::new()),
             #[cfg(feature = "libsql")]
@@ -934,6 +944,9 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
         product_auth: Some(product_auth),
         readiness: readiness_for(profile, true, true, true),
         local_runtime: Some(Arc::clone(&store_graph.local_runtime)),
+        // No PG pool in local-dev until embedded PG is wired (Phase 6).
+        #[cfg(feature = "postgres")]
+        pg_pool: None,
         #[cfg(feature = "root-llm-provider")]
         secret_store,
         #[cfg(feature = "libsql")]
@@ -2497,7 +2510,15 @@ async fn build_backend_production<F>(
 where
     F: RootFilesystem + 'static,
 {
-    build_backend_production_with_tools(context, stores, trigger_repository, None).await
+    build_backend_production_with_tools(
+        context,
+        stores,
+        trigger_repository,
+        None,
+        #[cfg(feature = "postgres")]
+        None,
+    )
+    .await
 }
 
 #[cfg(any(feature = "libsql", feature = "postgres"))]
@@ -2506,6 +2527,7 @@ async fn build_backend_production_with_tools<F>(
     stores: ProductionStoreBundle<F>,
     trigger_repository: Arc<dyn TriggerRepository>,
     prebuilt_tools: Option<BuiltinFirstPartyTools>,
+    #[cfg(feature = "postgres")] pg_pool: Option<Arc<deadpool_postgres::Pool>>,
 ) -> Result<RebornServices, RebornBuildError>
 where
     F: RootFilesystem + 'static,
@@ -2580,6 +2602,20 @@ where
     let turn_coordinator: Arc<dyn brassclaw_turns::TurnCoordinator> =
         Arc::new(services.turn_coordinator_for_production()?);
     let product_auth_ports = product_auth_ports.unwrap_or_else(|| {
+        #[cfg(feature = "postgres")]
+        if let Some(ref pool) = pg_pool {
+            let durable = Arc::new(PgAuthProductServices::new(
+                Arc::clone(pool),
+                Arc::clone(&secret_store),
+            ));
+            return RebornProductAuthServicePorts::from_shared_with_provider(
+                durable,
+                provider_composition
+                    .client
+                    .clone()
+                    .unwrap_or_else(|| Arc::new(UnavailableAuthProviderClient)),
+            );
+        }
         let durable = Arc::new(FilesystemAuthProductServices::new(
             product_auth_filesystem,
             Arc::clone(&secret_store),
@@ -2630,6 +2666,8 @@ where
         readiness: readiness_for(profile, true, true, product_auth_ready),
         product_auth: Some(product_auth_services),
         local_runtime: None,
+        #[cfg(feature = "postgres")]
+        pg_pool,
         #[cfg(feature = "root-llm-provider")]
         secret_store,
         #[cfg(feature = "libsql")]
@@ -2696,11 +2734,30 @@ async fn build_postgres_production(
         brassclaw_reborn_event_store::RebornEventStoreConfig::Postgres { url },
     )?;
 
+    // Clone pool before consuming it in build_postgres_memory_tools so it can
+    // be threaded through to auth and hooks wiring. Pool drop must happen
+    // before managed_pg.shutdown().await (Phase 6 note §4 item).
+    let shared_pool = Arc::new(pool.clone());
+
+    // Run product-auth schema migrations (CREATE TABLE IF NOT EXISTS — idempotent).
+    crate::pg_auth_product_services::run_auth_migrations(&shared_pool)
+        .await
+        .map_err(|error| RebornBuildError::InvalidConfig {
+            reason: format!("product-auth PostgreSQL migrations failed: {error}"),
+        })?;
+
     // S10: Resolve tenant_id and optional embedding provider; wire
     // PgInterceptorStore and PgChatMemoryRecordStore (Path A).
     let pg_tools = build_postgres_memory_tools(pool).await;
 
-    build_backend_production_with_tools(context, stores, trigger_repository, Some(pg_tools)).await
+    build_backend_production_with_tools(
+        context,
+        stores,
+        trigger_repository,
+        Some(pg_tools),
+        Some(Arc::clone(&shared_pool)),
+    )
+    .await
 }
 
 /// Build a `BuiltinFirstPartyTools` with PostgreSQL-backed memory stores and
@@ -2718,8 +2775,12 @@ async fn build_postgres_memory_tools(pool: deadpool_postgres::Pool) -> BuiltinFi
     let tenant_id = "default";
 
     // Resolve embedding.provider_id from brassclaw_config (best-effort).
+    // Only available when the root-llm-provider feature is also active.
+    #[cfg(feature = "root-llm-provider")]
     let embedding_provider: Option<Arc<dyn brassclaw_memory::EmbeddingProvider>> =
         resolve_pg_embedding_provider(&pool, tenant_id).await;
+    #[cfg(not(feature = "root-llm-provider"))]
+    let embedding_provider: Option<Arc<dyn brassclaw_memory::EmbeddingProvider>> = None;
 
     // Build PgInterceptorStore and PgChatMemoryRecordStore.
     let interceptor_store = Arc::new(brassclaw_interceptor::PgInterceptorStore::new(
@@ -2743,7 +2804,7 @@ async fn build_postgres_memory_tools(pool: deadpool_postgres::Pool) -> BuiltinFi
 ///
 /// Returns `None` when no `embedding.provider_id` is configured or the provider
 /// cannot be resolved.  All errors are logged at debug level and swallowed.
-#[cfg(feature = "postgres")]
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 async fn resolve_pg_embedding_provider(
     pool: &deadpool_postgres::Pool,
     tenant_id: &str,
@@ -2792,7 +2853,7 @@ async fn resolve_pg_embedding_provider(
 }
 
 /// Build `EmbeddingsConfig` from a provider definition (optional) and a model override.
-#[cfg(feature = "postgres")]
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 fn build_embeddings_config_from_provider(
     provider_def: Option<&brassclaw_llm::ProviderDefinition>,
     model_override: &Option<String>,

@@ -887,6 +887,7 @@ body = { mode = "nonsense" }
             HooksActivationConfig::enabled(),
             &registry,
             &real_tenant,
+            None,
         )
         .expect("malformed untrusted hook is quarantined, build succeeds")
         .expect("flag ON yields a factory")

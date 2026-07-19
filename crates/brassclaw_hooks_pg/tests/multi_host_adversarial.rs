@@ -16,7 +16,7 @@
 //! 2. Cross-host replay — interleaved id submissions, exactly-once counting.
 //! 3. LRU eviction race — concurrent inserts past the per-tenant quota.
 //! 4. Per-key cap under attacker flood — fail-closed `WindowOverflow`, bounded.
-//! 4b. Cap-boundary race: exactly one of two concurrent writers wins the last slot.
+//!    4b. Cap-boundary race: exactly one of two concurrent writers wins the last slot.
 //! 5. Clock-skew — window follows the caller-supplied clock basis.
 
 #![cfg(feature = "integration")]

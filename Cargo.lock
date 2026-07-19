@@ -1781,59 +1781,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "brassclaw_hooks_libsql"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "blake3",
- "brassclaw_hooks",
- "brassclaw_host_api",
- "chrono",
- "libsql",
- "rust_decimal",
- "tempfile",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "brassclaw_hooks_parity"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "brassclaw_hooks",
- "brassclaw_hooks_libsql",
- "brassclaw_hooks_postgres",
- "brassclaw_host_api",
- "chrono",
- "deadpool-postgres",
- "libsql",
- "rust_decimal",
- "tempfile",
- "tokio",
- "tokio-postgres",
-]
-
-[[package]]
 name = "brassclaw_hooks_pg"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "blake3",
- "brassclaw_hooks",
- "brassclaw_host_api",
- "chrono",
- "deadpool-postgres",
- "rust_decimal",
- "thiserror 2.0.18",
- "tokio",
- "tokio-postgres",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "brassclaw_hooks_postgres"
 version = "0.1.0"
 dependencies = [
  "async-trait",

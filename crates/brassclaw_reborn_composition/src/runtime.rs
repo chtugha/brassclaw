@@ -2159,11 +2159,20 @@ pub async fn build_reborn_runtime(
         .map_err(|error| RebornRuntimeError::InvalidArgument {
             reason: format!("hook projection registry assembly failed: {error}"),
         })?;
+        // Pass the Postgres pool when available so the hooks predicate-state
+        // backend uses PostgresPredicateStateBackend instead of the in-memory
+        // fallback (L6 fix). In local-dev the pool is None until embedded PG
+        // is wired (Phase 6); in production the pool flows from
+        // build_postgres_production via services.pg_pool.
+        #[cfg(feature = "postgres")]
+        let hooks_pg_pool = services.pg_pool.as_ref().map(Arc::clone);
+        #[cfg(not(feature = "postgres"))]
+        let hooks_pg_pool: Option<std::sync::Arc<deadpool_postgres::Pool>> = None;
         crate::hooks::build_hook_dispatcher_builder_factory_for_tenant(
             hooks_config,
             &projection_registry,
             &validated_identity.tenant_id,
-            None, // local-dev: in-memory predicate backend
+            hooks_pg_pool,
         )
         .map_err(|error| RebornRuntimeError::InvalidArgument {
             reason: format!("hook framework activation failed: {error}"),
