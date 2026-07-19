@@ -18,12 +18,12 @@ use crate::path::MemoryDocumentScope;
 pub trait ChatMemoryWriterPort: Send + Sync {
     /// Record a chat-memory entry and return the minted `chat_record_id`.
     ///
-    /// `run_id` is the agent-loop turn run identifier (from `TurnRunId`).
-    /// It is optional because the caller may not have the run ID in scope
-    /// (e.g. when called from the capability dispatch layer which only
-    /// carries an `invocation_id`).  When supplied, the row's `run_id` column
-    /// is populated so `link_chat_record` can correlate the memory record with
-    /// the forensic packet for the same run.
+    /// `run_id` is the agent-loop `TurnRunId` for the run that triggered the
+    /// `memory_write` call.  Always `None` at the capability dispatch layer
+    /// (`ResourceScope` only carries `invocation_id`, not the `TurnRunId`).
+    /// When a future integration exposes the `TurnRunId` at the dispatch layer,
+    /// pass it here so `link_chat_record` can correlate the memory row with
+    /// the forensic packet for that run.
     ///
     /// `iteration` is the prompt-assembly iteration counter within the run.
     /// Also optional for the same reasons.
@@ -38,4 +38,13 @@ pub trait ChatMemoryWriterPort: Send + Sync {
         run_id: Option<&str>,
         iteration: Option<u32>,
     ) -> Option<String>;
+
+    /// Update `source_ref` on an existing Path A row after Path B writes the
+    /// chunk subtree (§4.30.1 step 5).  Best-effort — errors are swallowed.
+    ///
+    /// Default is a no-op so non-Postgres implementations do not need to
+    /// implement this.
+    async fn update_source_ref(&self, chat_record_id: &str, source_ref: &str) {
+        let _ = (chat_record_id, source_ref);
+    }
 }

@@ -122,10 +122,12 @@ impl PgChatMemoryRecordStore {
     ///
     /// `source_ref` is the canonical VFS path of the chunk subtree for this
     /// chat record (e.g. `/memory/chat/<chat_record_id>`).
-    #[allow(dead_code)] // Path B posthook — wired in §7.4 revision 17 write path
-    pub(crate) async fn update_source_ref(
+    ///
+    /// The WHERE clause uses only `id` because ULIDs are globally unique —
+    /// the additional `tenant_id` filter is unnecessary and the tenant context
+    /// is not available from the `ChatMemoryWriterPort` trait call site.
+    async fn set_source_ref(
         &self,
-        tenant_id: &str,
         chat_record_id: &str,
         source_ref: &str,
     ) -> Result<(), ChatMemoryRecordError> {
@@ -133,9 +135,9 @@ impl PgChatMemoryRecordStore {
         client
             .execute(
                 "UPDATE brassclaw_memory_chat_records \
-                 SET source_ref = $3 \
-                 WHERE id = $1 AND tenant_id = $2",
-                &[&chat_record_id, &tenant_id, &source_ref],
+                 SET source_ref = $2 \
+                 WHERE id = $1",
+                &[&chat_record_id, &source_ref],
             )
             .await
             .map_err(map_pg)?;
@@ -190,6 +192,16 @@ impl ChatMemoryWriterPort for PgChatMemoryRecordStore {
                 );
                 None
             }
+        }
+    }
+
+    async fn update_source_ref(&self, chat_record_id: &str, source_ref: &str) {
+        if let Err(err) = self.set_source_ref(chat_record_id, source_ref).await {
+            tracing::debug!(
+                chat_record_id = %chat_record_id,
+                error = %err,
+                "update_source_ref best-effort update failed"
+            );
         }
     }
 }

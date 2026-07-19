@@ -11,9 +11,9 @@ use brassclaw_host_api::{
 use brassclaw_memory::{
     ChatMemoryWriterPort, ChunkingMemoryDocumentIndexer, DocumentMetadata,
     FilesystemMemoryDocumentRepository, MemoryBackend, MemoryBackendCapabilities,
-    MemoryBackendWriteOptions, MemoryContext, MemoryDocumentPath, MemoryDocumentScope,
-    MemoryEventSinkError, MemorySearchRequest, MemoryWriteOutcome, PromptSafetyAllowanceId,
-    PromptSafetyReasonCode, PromptWriteOperation, PromptWriteSafetyEvent,
+    MemoryBackendWriteOptions, MemoryContext, MemoryDocumentIndexer, MemoryDocumentPath,
+    MemoryDocumentScope, MemoryEventSinkError, MemorySearchRequest, MemoryWriteOutcome,
+    PromptSafetyAllowanceId, PromptSafetyReasonCode, PromptWriteOperation, PromptWriteSafetyEvent,
     PromptWriteSafetyEventKind, PromptWriteSafetyEventSink, RepositoryMemoryBackend,
     content_bytes_sha256,
 };
@@ -36,6 +36,10 @@ const BOOTSTRAP_PATH: &str = "BOOTSTRAP.md";
 const MAX_MEMORY_PATCH_RETRIES: usize = 8;
 const MEMORY_PROMPT_SAFETY_EXTENSION_ID: &str = "memory.prompt_safety";
 
+/// Backend and optional Path B indexer produced by [`build_backend`].
+/// `None` indexer means embedding is inactive for this request.
+type BackendAndIndexer = (Arc<dyn MemoryBackend>, Option<Arc<dyn MemoryDocumentIndexer>>);
+
 struct MemoryServices {
     scope: MemoryDocumentScope,
     context: MemoryContext,
@@ -46,6 +50,10 @@ struct MemoryServices {
     /// Optional Path A chat-memory record writer. Present only in the
     /// Postgres production path.
     chat_memory_writer: Option<Arc<dyn ChatMemoryWriterPort>>,
+    /// Optional Path B indexer for file-less chunk creation (§4.30.1, S10).
+    /// Present only when an embedding provider is active.  Called after
+    /// Path A to produce chunk rows under `/memory/chat/<chat_record_id>/`.
+    indexer: Option<Arc<dyn MemoryDocumentIndexer>>,
 }
 
 pub(super) struct MemoryCapabilityState {
@@ -83,6 +91,10 @@ struct CachedMemoryBackend {
     filesystem: Arc<dyn RootFilesystem>,
     audit_sink: Option<Arc<dyn AuditSink>>,
     backend: Arc<dyn MemoryBackend>,
+    /// Indexer kept alongside the backend so Path B can call `index_content`
+    /// directly without going through the backend's internal indexer.
+    /// `None` when no embedding provider was active at build time.
+    indexer: Option<Arc<dyn MemoryDocumentIndexer>>,
 }
 
 struct AuditPromptWriteSafetyEventSink {
@@ -216,12 +228,15 @@ pub(super) async fn dispatch(
     let output = match request.capability_id.as_str() {
         MEMORY_SEARCH_CAPABILITY_ID => dispatch_search(&services, &request.input).await?,
         MEMORY_WRITE_CAPABILITY_ID => {
-            let invocation_id = request.scope.invocation_id.to_string();
             dispatch_write(
                 &services,
                 &request.input,
                 services.chat_memory_writer.as_deref(),
-                Some(invocation_id.as_str()),
+                // `run_id` is the TurnRunId from the agent loop, which is not
+                // available in the capability dispatch scope (only invocation_id
+                // is carried here). Pass None so link_chat_record is skipped
+                // rather than storing a semantically wrong invocation_id.
+                None,
             )
             .await?
         }
@@ -259,13 +274,14 @@ fn memory_services(
         brassclaw_host_api::CorrelationId::new(),
     );
     let embedding_active = state.embedding_provider.is_some();
-    let backend = state.backend_for(request)?;
+    let (backend, indexer) = state.backend_and_indexer_for(request)?;
     Ok(MemoryServices {
         scope,
         context,
         backend,
         embedding_active,
         chat_memory_writer: state.chat_memory_writer.clone(),
+        indexer,
     })
 }
 
@@ -308,10 +324,10 @@ impl MemoryCapabilityState {
         self.chat_memory_writer.take()
     }
 
-    fn backend_for(
+    fn backend_and_indexer_for(
         &self,
         request: &FirstPartyCapabilityRequest,
-    ) -> Result<Arc<dyn MemoryBackend>, FirstPartyCapabilityError> {
+    ) -> Result<BackendAndIndexer, FirstPartyCapabilityError> {
         let mut cached_backend = self.cached_backend.lock().map_err(|_| operation_error())?;
         if let Some(cached) = cached_backend.as_ref()
             && Arc::ptr_eq(&cached.filesystem, &request.services.filesystem)
@@ -320,19 +336,20 @@ impl MemoryCapabilityState {
                 request.services.audit_sink.as_ref(),
             )
         {
-            return Ok(Arc::clone(&cached.backend));
+            return Ok((Arc::clone(&cached.backend), cached.indexer.clone()));
         }
 
         let filesystem = Arc::clone(&request.services.filesystem);
         let audit_sink = request.services.audit_sink.clone();
-        let backend =
+        let (backend, indexer) =
             build_backend(Arc::clone(&filesystem), audit_sink.clone(), self.embedding_provider.clone());
         *cached_backend = Some(CachedMemoryBackend {
             filesystem,
             audit_sink,
             backend: Arc::clone(&backend),
+            indexer: indexer.clone(),
         });
-        Ok(backend)
+        Ok((backend, indexer))
     }
 }
 
@@ -376,34 +393,63 @@ impl brassclaw_memory::EmbeddingProvider for DynEmbeddingProviderWrapper {
     }
 }
 
+/// Build the memory backend and optionally a separate indexer handle for Path B.
+///
+/// Returns `(backend, indexer_for_path_b)` where `indexer_for_path_b` is
+/// `Some` only when an embedding provider was supplied (embedding active).
+/// The indexer is wired into the backend for write-path chunk production AND
+/// returned separately so `dispatch_write` can call `index_content` directly
+/// for file-less chat-memory chunking (§4.30.1).
 fn build_backend(
     filesystem: Arc<dyn RootFilesystem>,
     audit_sink: Option<Arc<dyn AuditSink>>,
     embedding_provider: Option<Arc<dyn brassclaw_memory::EmbeddingProvider>>,
-) -> Arc<dyn MemoryBackend> {
+) -> BackendAndIndexer {
     let repository = Arc::new(FilesystemMemoryDocumentRepository::new(filesystem));
-    let mut indexer = ChunkingMemoryDocumentIndexer::new(Arc::clone(&repository));
-    if let Some(provider) = embedding_provider {
-        indexer = indexer.with_embedding_provider(Arc::new(DynEmbeddingProviderWrapper(provider)));
-    }
+    let vector_active = embedding_provider.is_some();
+
+    // Build the indexer.  When embedding is active, keep a separate Arc for
+    // Path B (index_content) before moving it into the backend.
+    let indexer_arc: Arc<dyn MemoryDocumentIndexer> = if let Some(provider) = &embedding_provider {
+        Arc::new(
+            ChunkingMemoryDocumentIndexer::new(Arc::clone(&repository))
+                .with_embedding_provider(Arc::new(DynEmbeddingProviderWrapper(Arc::clone(
+                    provider,
+                )))),
+        )
+    } else {
+        Arc::new(ChunkingMemoryDocumentIndexer::new(Arc::clone(&repository)))
+    };
+    let path_b_indexer = if vector_active { Some(Arc::clone(&indexer_arc)) } else { None };
+
     let mut backend = RepositoryMemoryBackend::new(Arc::clone(&repository))
-        .with_indexer(Arc::new(indexer))
+        .with_indexer(indexer_arc)
         .with_capabilities(MemoryBackendCapabilities {
             file_documents: true,
             metadata: true,
             versioning: true,
             prompt_write_safety: true,
             full_text_search: true,
+            // Enable vector search and embedding-generation only when an embedding
+            // provider is active — the backend uses these to embed the query text
+            // before issuing the pgvector <=> cosine search (§4.30.3).
+            vector_search: vector_active,
+            embeddings: vector_active,
             delete: true,
             transactions: true,
             ..MemoryBackendCapabilities::default()
         });
+    if let Some(provider) = embedding_provider {
+        // Wire provider into the backend so it can embed search query text (§4.30.3).
+        backend =
+            backend.with_embedding_provider(Arc::new(DynEmbeddingProviderWrapper(provider)));
+    }
     if let Some(audit_sink) = audit_sink {
         backend = backend.with_prompt_write_safety_event_sink(Arc::new(
             AuditPromptWriteSafetyEventSink { audit_sink },
         ));
     }
-    Arc::new(backend)
+    (Arc::new(backend), path_b_indexer)
 }
 
 fn ensure_memory_mount(
@@ -487,9 +533,9 @@ async fn dispatch_write(
     services: &MemoryServices,
     input: &Value,
     chat_memory_writer: Option<&dyn ChatMemoryWriterPort>,
-    // Best-effort run correlator — the invocation_id from the capability
-    // request scope.  Passed through to Path A so `link_chat_record` can
-    // join the memory row to its forensic packet.  `None` in test paths.
+    // Best-effort run correlator — the TurnRunId for the agent-loop run that
+    // triggered this memory_write.  `None` at the capability dispatch layer
+    // (ResourceScope only carries invocation_id, not the TurnRunId).
     run_id: Option<&str>,
 ) -> Result<Value, FirstPartyCapabilityError> {
     let MemoryWriteCommand {
@@ -519,12 +565,22 @@ async fn dispatch_write(
             )
             .await?;
             // Path A — best-effort chat-memory record.
-            if let Some(writer) = chat_memory_writer {
-                // Use the new_string as the change content; full document not available here.
+            // Use the new_string as the change content; full document not available here.
+            let chat_record_id = if let Some(writer) = chat_memory_writer {
                 writer
-                    .write_chat_memory_record(&services.scope, "patch", &new_string, run_id, None)
-                    .await;
-            }
+                    .write_chat_memory_record(
+                        &services.scope,
+                        "patch",
+                        &new_string,
+                        run_id,
+                        None,
+                    )
+                    .await
+            } else {
+                None
+            };
+            // Path B — best-effort chunk + embed (only when embedding is active).
+            run_path_b(services, chat_memory_writer, chat_record_id.as_deref(), &new_string).await;
             Ok(result)
         }
         MemoryWriteOperation::Append { content } => {
@@ -536,11 +592,21 @@ async fn dispatch_write(
             )
             .await?;
             // Path A — best-effort chat-memory record.
-            if let Some(writer) = chat_memory_writer {
+            let chat_record_id = if let Some(writer) = chat_memory_writer {
                 writer
-                    .write_chat_memory_record(&services.scope, "append", &content, run_id, None)
-                    .await;
-            }
+                    .write_chat_memory_record(
+                        &services.scope,
+                        "append",
+                        &content,
+                        run_id,
+                        None,
+                    )
+                    .await
+            } else {
+                None
+            };
+            // Path B — best-effort chunk + embed (only when embedding is active).
+            run_path_b(services, chat_memory_writer, chat_record_id.as_deref(), &content).await;
             Ok(json!({
                 "status": "written",
                 "path": resolved_path,
@@ -560,17 +626,68 @@ async fn dispatch_write(
                 .await
                 .map_err(|_| operation_error())?;
             // Path A — best-effort chat-memory record.
-            if let Some(writer) = chat_memory_writer {
+            let chat_record_id = if let Some(writer) = chat_memory_writer {
                 writer
-                    .write_chat_memory_record(&services.scope, "replace", &content, run_id, None)
-                    .await;
-            }
+                    .write_chat_memory_record(
+                        &services.scope,
+                        "replace",
+                        &content,
+                        run_id,
+                        None,
+                    )
+                    .await
+            } else {
+                None
+            };
+            // Path B — best-effort chunk + embed (only when embedding is active).
+            run_path_b(services, chat_memory_writer, chat_record_id.as_deref(), &content).await;
             Ok(json!({
                 "status": "written",
                 "path": resolved_path,
                 "append": false,
                 "content_length": content.len(),
             }))
+        }
+    }
+}
+
+/// Execute Path B: file-less chunk creation and `source_ref` update.
+///
+/// Called after every Path A write when embedding is active.  Best-effort:
+/// on embedding API error a `debug!` log is emitted and the function returns
+/// without failing the overall write (Path A is already committed and durable).
+/// The `chat_memory_writer` is used to update `source_ref` on the Path A row
+/// after the chunk subtree is written (§4.30.1 step 5).
+///
+/// Silently skipped when `services.embedding_active` is `false` or when
+/// `chat_record_id` is `None` (Path A write failed).
+async fn run_path_b(
+    services: &MemoryServices,
+    chat_memory_writer: Option<&dyn ChatMemoryWriterPort>,
+    chat_record_id: Option<&str>,
+    content: &str,
+) {
+    // Only execute when embedding is active AND Path A produced a record id.
+    let (Some(indexer), Some(id)) = (services.indexer.as_ref(), chat_record_id) else {
+        return;
+    };
+    let source_ref = format!("/memory/chat/{id}");
+    match indexer
+        .index_content(&services.scope, &source_ref, content, Some(id))
+        .await
+    {
+        Ok(()) => {
+            // Update source_ref on the Path A row (best-effort).
+            if let Some(writer) = chat_memory_writer {
+                writer.update_source_ref(id, &source_ref).await;
+            }
+        }
+        Err(e) => {
+            tracing::debug!(
+                chat_record_id = %id,
+                error = %e,
+                "Path B chunk/embed failed (best-effort); Path A record is intact"
+            );
         }
     }
 }

@@ -210,16 +210,14 @@ pub async fn delete_chat_record_with_chunk_cascade(
 /// Result returned by [`run_backfill_embeddings`].
 #[derive(Debug, Default)]
 pub struct BackfillResult {
-    /// Number of chat-memory records successfully re-indexed.
+    /// Number of chat-memory records successfully indexed.
     pub indexed: usize,
-    /// Number of records skipped (already have a source_ref with embeddings).
-    pub skipped: usize,
     /// Number of records that failed indexing (error logged per-record).
     pub failed: usize,
 }
 
-/// Backfill embeddings for `brassclaw_memory_chat_records` rows that either
-/// have no `source_ref` or whose chunk subtree contains `embedding = NULL` rows.
+/// Backfill embeddings for `brassclaw_memory_chat_records` rows whose
+/// `source_ref` is NULL (Path B has not yet produced a chunk subtree for them).
 ///
 /// Reads chat-memory records in batches, reconstructs the `MemoryDocumentScope`,
 /// calls `indexer.index_content(...)` for each, and updates `source_ref` when

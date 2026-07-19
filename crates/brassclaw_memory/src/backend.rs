@@ -314,10 +314,7 @@ where
         }
     }
 
-    pub fn with_indexer<I>(mut self, indexer: Arc<I>) -> Self
-    where
-        I: MemoryDocumentIndexer + 'static,
-    {
+    pub fn with_indexer(mut self, indexer: Arc<dyn MemoryDocumentIndexer>) -> Self {
         self.indexer = Some(indexer);
         self
     }

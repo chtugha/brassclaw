@@ -21,7 +21,7 @@ enum MaintenanceSubcommand {
     /// Backfill vector embeddings for existing chat-memory records.
     ///
     /// Iterates `brassclaw_memory_chat_records` rows whose `source_ref` is NULL
-    /// or whose chunk subtree has no embedding vector, chunks and embeds each
+    /// (Path B has not yet run for those records), chunks and embeds each
     /// record's content, and writes chunk rows under the VFS.  Idempotent: safe
     /// to interrupt and resume.
     ///

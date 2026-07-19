@@ -41,16 +41,30 @@ fn stub(method: &'static str) -> EngineError {
     }
 }
 
+fn doc_type_to_str(dt: DocType) -> &'static str {
+    match dt {
+        DocType::Summary  => "Summary",
+        DocType::Lesson   => "Lesson",
+        DocType::Issue    => "Issue",
+        DocType::Spec     => "Spec",
+        DocType::Note     => "Note",
+        DocType::Skill    => "Skill",
+        DocType::Plan     => "Plan",
+        DocType::Recipe   => "Recipe",
+        DocType::ToolSkill => "ToolSkill",
+    }
+}
+
 fn parse_doc_type(raw: &str) -> Result<DocType, EngineError> {
     match raw {
-        "Summary" => Ok(DocType::Summary),
-        "Lesson" => Ok(DocType::Lesson),
-        "Issue" => Ok(DocType::Issue),
-        "Spec" => Ok(DocType::Spec),
-        "Note" => Ok(DocType::Note),
-        "Skill" => Ok(DocType::Skill),
-        "Plan" => Ok(DocType::Plan),
-        "Recipe" => Ok(DocType::Recipe),
+        "Summary"  => Ok(DocType::Summary),
+        "Lesson"   => Ok(DocType::Lesson),
+        "Issue"    => Ok(DocType::Issue),
+        "Spec"     => Ok(DocType::Spec),
+        "Note"     => Ok(DocType::Note),
+        "Skill"    => Ok(DocType::Skill),
+        "Plan"     => Ok(DocType::Plan),
+        "Recipe"   => Ok(DocType::Recipe),
         "ToolSkill" => Ok(DocType::ToolSkill),
         other => Err(EngineError::Store {
             reason: format!("brassclaw_memory_docs.doc_type '{other}' is not recognised"),
@@ -176,7 +190,7 @@ impl Store for PgMemoryDocStore {
         let client = self.pool.get().await.map_err(map_pool)?;
         let id_str = doc.id.0.to_string();
         let project_id_str = doc.project_id.to_string();
-        let doc_type_str = format!("{:?}", doc.doc_type);
+        let doc_type_str = doc_type_to_str(doc.doc_type);
         let source_thread_id = doc.source_thread_id.map(|t| t.0.to_string());
         let metadata_json = serde_json::to_string(&doc.metadata).unwrap_or_else(|_| "{}".to_string());
         let created_at_str = doc.created_at.to_rfc3339();
