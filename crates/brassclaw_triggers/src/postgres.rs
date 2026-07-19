@@ -13,7 +13,7 @@ use crate::{
     reject_non_future_next_run_at, reject_run_ref_rewrite,
 };
 
-const TRIGGER_TABLE: &str = "trigger_records";
+const TRIGGER_TABLE: &str = "brassclaw_triggers";
 const TRIGGER_COLUMNS: &str = "\
     trigger_id, tenant_id, creator_user_id, agent_id, project_id, \
     name, source, schedule_expression, completion_policy, prompt, \
@@ -84,7 +84,7 @@ impl TriggerRepository for PostgresTriggerRepository {
         client
             .execute(
                 r#"
-                INSERT INTO trigger_records (
+                INSERT INTO brassclaw_triggers (
                     trigger_id, tenant_id, creator_user_id, agent_id, project_id,
                     name, source, schedule_expression, completion_policy, prompt,
                     state, next_run_at, last_run_at, last_fired_slot, last_status,
@@ -965,7 +965,7 @@ fn backend_error(operation: &str, error: impl std::fmt::Display) -> TriggerError
 }
 
 const POSTGRES_TRIGGER_SCHEMA: &str = r#"
-CREATE TABLE IF NOT EXISTS trigger_records (
+CREATE TABLE IF NOT EXISTS brassclaw_triggers (
     trigger_id TEXT NOT NULL,
     tenant_id TEXT NOT NULL,
     creator_user_id TEXT NOT NULL,
@@ -987,16 +987,16 @@ CREATE TABLE IF NOT EXISTS trigger_records (
     PRIMARY KEY (tenant_id, trigger_id)
 );
 
-CREATE INDEX IF NOT EXISTS trigger_records_state_next_run_at_idx
-    ON trigger_records (state, next_run_at, tenant_id, trigger_id);
+CREATE INDEX IF NOT EXISTS brassclaw_triggers_state_next_run_at_idx
+    ON brassclaw_triggers (state, next_run_at, tenant_id, trigger_id);
 
-CREATE INDEX IF NOT EXISTS trigger_records_tenant_created_at_idx
-    ON trigger_records (tenant_id, created_at, trigger_id);
+CREATE INDEX IF NOT EXISTS brassclaw_triggers_tenant_created_at_idx
+    ON brassclaw_triggers (tenant_id, created_at, trigger_id);
 
-CREATE INDEX IF NOT EXISTS trigger_records_scoped_list_idx
-    ON trigger_records (tenant_id, creator_user_id, agent_id, project_id, created_at, trigger_id);
+CREATE INDEX IF NOT EXISTS brassclaw_triggers_scoped_list_idx
+    ON brassclaw_triggers (tenant_id, creator_user_id, agent_id, project_id, created_at, trigger_id);
 
-CREATE INDEX IF NOT EXISTS trigger_records_active_fire_slot_idx
-    ON trigger_records (active_fire_slot, tenant_id, trigger_id)
+CREATE INDEX IF NOT EXISTS brassclaw_triggers_active_fire_slot_idx
+    ON brassclaw_triggers (active_fire_slot, tenant_id, trigger_id)
     WHERE active_fire_slot IS NOT NULL;
 "#;

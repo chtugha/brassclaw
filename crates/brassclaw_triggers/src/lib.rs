@@ -24,7 +24,6 @@ use ulid::Ulid;
 
 #[cfg(feature = "libsql")]
 mod libsql;
-#[cfg(feature = "postgres")]
 mod postgres;
 mod trusted_submit;
 mod worker;
@@ -737,8 +736,7 @@ pub trait TriggerRepository: Send + Sync {
 /// Feature-gated durable libSQL repository type for composition/test wiring.
 #[cfg(feature = "libsql")]
 pub use libsql::LibSqlTriggerRepository;
-/// Feature-gated durable PostgreSQL repository type for composition/test wiring.
-#[cfg(feature = "postgres")]
+/// Durable PostgreSQL repository type for composition/test wiring.
 pub use postgres::PostgresTriggerRepository;
 pub use worker::{
     TriggerActiveRunLookup, TriggerActiveRunState, TriggerActiveRunStateRequest,

@@ -27,9 +27,11 @@
 
 mod filesystem_store;
 mod key;
+pub mod pg_store;
 
 pub use filesystem_store::FilesystemRebornIdentityStore;
 pub use key::{ExternalSubjectId, IdentityKeyError, ProviderInstanceId, ProviderKind};
+pub use pg_store::PgRebornIdentityStore;
 
 use async_trait::async_trait;
 use brassclaw_host_api::{TenantId, UserId};

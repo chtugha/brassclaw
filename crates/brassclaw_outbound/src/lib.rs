@@ -11,12 +11,14 @@ mod error;
 mod filesystem_store;
 mod ids;
 mod memory;
+mod pg_store;
 mod resolution_engine;
 mod service;
 mod store;
 mod types;
 mod validation;
 
+pub use pg_store::PgOutboundStateStore;
 pub use communication_preferences::{
     CommunicationPreferenceKey, CommunicationPreferenceRecord, CommunicationPreferenceRepository,
 };

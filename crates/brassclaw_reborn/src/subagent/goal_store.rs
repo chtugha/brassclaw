@@ -418,6 +418,155 @@ fn lock(inner: &Mutex<GoalStoreInner>) -> MutexGuard<'_, GoalStoreInner> {
     }
 }
 
+// ── PgSubagentGoalStore ───────────────────────────────────────────────────
+
+/// PostgreSQL-backed subagent goal store.
+///
+/// One row per `(tenant_id, run_id)`. Table created by V024.
+pub struct PgSubagentGoalStore {
+    pool: deadpool_postgres::Pool,
+}
+
+impl PgSubagentGoalStore {
+    pub fn new(pool: deadpool_postgres::Pool) -> Self {
+        Self { pool }
+    }
+
+    async fn connect(
+        &self,
+    ) -> Result<deadpool_postgres::Object, SubagentGoalStoreError> {
+        self.pool.get().await.map_err(|error| SubagentGoalStoreError::Backend {
+            reason: format!("pg subagent goal store connect: {error}"),
+        })
+    }
+
+    fn validate(goal: &SubagentGoal) -> Result<(), SubagentGoalStoreError> {
+        let bytes = goal.byte_len();
+        if bytes > MAX_GOAL_BYTES {
+            return Err(SubagentGoalStoreError::PayloadTooLarge {
+                bytes,
+                max: MAX_GOAL_BYTES,
+            });
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl SubagentGoalStore for PgSubagentGoalStore {
+    async fn put_goal(
+        &self,
+        scope: &TurnScope,
+        run_id: TurnRunId,
+        goal: SubagentGoal,
+    ) -> Result<(), SubagentGoalStoreError> {
+        Self::validate(&goal)?;
+        let run_id_str = run_id.to_string();
+        let id = format!("{}:{}", scope.tenant_id.as_str(), run_id_str);
+        let client = self.connect().await?;
+        client
+            .execute(
+                "INSERT INTO brassclaw_subagent_goals \
+                     (id, tenant_id, run_id, task, handoff) \
+                     VALUES ($1, $2, $3, $4, $5) \
+                     ON CONFLICT (id) DO NOTHING",
+                &[
+                    &id,
+                    &scope.tenant_id.as_str(),
+                    &run_id_str,
+                    &goal.task.as_str(),
+                    &goal.handoff.as_deref(),
+                ],
+            )
+            .await
+            .map_err(|error| SubagentGoalStoreError::Backend {
+                reason: format!("pg subagent goal put: {error}"),
+            })?;
+        Ok(())
+    }
+
+    async fn get_goal(
+        &self,
+        scope: &TurnScope,
+        run_id: TurnRunId,
+    ) -> Result<SubagentGoal, SubagentGoalStoreError> {
+        let run_id_str = run_id.to_string();
+        let client = self.connect().await?;
+        let row = client
+            .query_opt(
+                "SELECT task, handoff \
+                 FROM brassclaw_subagent_goals \
+                 WHERE tenant_id = $1 AND run_id = $2 \
+                 LIMIT 1",
+                &[&scope.tenant_id.as_str(), &run_id_str],
+            )
+            .await
+            .map_err(|error| SubagentGoalStoreError::Backend {
+                reason: format!("pg subagent goal get: {error}"),
+            })?;
+        let Some(row) = row else {
+            return Err(SubagentGoalStoreError::NotFound { run_id });
+        };
+        let task: String = row.try_get("task").map_err(|error| SubagentGoalStoreError::Backend {
+            reason: format!("pg subagent goal read task: {error}"),
+        })?;
+        let handoff: Option<String> =
+            row.try_get("handoff").map_err(|error| SubagentGoalStoreError::Backend {
+                reason: format!("pg subagent goal read handoff: {error}"),
+            })?;
+        Ok(SubagentGoal { task, handoff })
+    }
+
+    async fn delete_goal(
+        &self,
+        scope: &TurnScope,
+        run_id: TurnRunId,
+    ) -> Result<(), SubagentGoalStoreError> {
+        let run_id_str = run_id.to_string();
+        let client = self.connect().await?;
+        client
+            .execute(
+                "DELETE FROM brassclaw_subagent_goals \
+                 WHERE tenant_id = $1 AND run_id = $2",
+                &[&scope.tenant_id.as_str(), &run_id_str],
+            )
+            .await
+            .map_err(|error| SubagentGoalStoreError::Backend {
+                reason: format!("pg subagent goal delete: {error}"),
+            })?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl brassclaw_loop_support::SubagentSpawnGoalStore for PgSubagentGoalStore {
+    async fn put_goal(
+        &self,
+        scope: &TurnScope,
+        run_id: TurnRunId,
+        goal: brassclaw_loop_support::SubagentGoalRecord,
+    ) -> Result<(), brassclaw_turns::run_profile::AgentLoopHostError> {
+        SubagentGoalStore::put_goal(
+            self,
+            scope,
+            run_id,
+            SubagentGoal { task: goal.task, handoff: goal.handoff },
+        )
+        .await
+        .map_err(map_goal_error)
+    }
+
+    async fn delete_goal(
+        &self,
+        scope: &TurnScope,
+        run_id: TurnRunId,
+    ) -> Result<(), brassclaw_turns::run_profile::AgentLoopHostError> {
+        SubagentGoalStore::delete_goal(self, scope, run_id)
+            .await
+            .map_err(map_goal_error)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -736,3 +885,4 @@ mod tests {
         assert_send_sync::<FilesystemSubagentGoalStore<InMemoryBackend>>();
     }
 }
+

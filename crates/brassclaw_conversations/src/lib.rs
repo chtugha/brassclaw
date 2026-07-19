@@ -5,18 +5,13 @@
 //! identifiers into canonical tenant/thread/message/binding references without
 //! asking the turn coordinator to parse raw channel payloads or store message
 //! content.
-//!
-//! Durable persistence is provided by [`FilesystemConversationStateStore`]
-//! over a [`ScopedFilesystem`](brassclaw_filesystem::ScopedFilesystem). The
-//! `RootFilesystem` choice (libSQL-backed, PostgreSQL-backed, in-memory, or
-//! local-disk) is made at the filesystem layer — the consumer-store level
-//! no longer carries per-backend impls.
 
 mod error;
 mod filesystem_store;
 mod ids;
 mod inbound;
 mod memory;
+mod pg_store;
 mod state_store;
 mod traits;
 mod trusted_trigger;
@@ -26,6 +21,7 @@ pub use error::InboundTurnError;
 pub use filesystem_store::{
     FilesystemConversationStateStore, RebornFilesystemConversationServices,
 };
+pub use pg_store::PgConversationStateStore;
 pub use ids::{
     AdapterInstallationId, AdapterKind, ExternalActorRef, ExternalConversationIdentity,
     ExternalConversationRef, ExternalEventId, InboundMessageContentRef,

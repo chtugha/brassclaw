@@ -21,7 +21,6 @@ pub mod content_cache_port;
 pub mod driver_registry;
 pub mod failure_categories;
 pub mod hook_gate_refs;
-#[cfg(feature = "webui-user-store")]
 pub mod local_trigger_access;
 pub mod loop_driver_host;
 pub mod loop_exit_applier;

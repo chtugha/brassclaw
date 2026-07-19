@@ -47,6 +47,7 @@ libsql-restart-tests = [
 [dependencies]
 async-trait = "0.1"
 chrono = "0.4"
+deadpool-postgres = "0.14"
 futures-util = { version = "0.3", default-features = false }
 brassclaw_agent_loop = { path = "../brassclaw_agent_loop", version = "0.1.0" }
 brassclaw_events = { path = "../brassclaw_events", version = "0.1.0" }

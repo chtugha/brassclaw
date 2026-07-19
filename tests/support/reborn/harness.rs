@@ -893,6 +893,8 @@ impl RebornBinaryE2EHarness {
             hook_dispatcher_builder_factory: None,
             hook_security_audit_sink: None,
             turn_event_sink: None,
+            recipe_lookup: None,
+            interceptor_store: None,
         })?;
         let binding_service: Arc<dyn ConversationBindingService> =
             Arc::new(product_harness.binding_service()?);
