@@ -9,12 +9,13 @@ use brassclaw_host_api::{
     EffectKind, ExtensionId, PermissionMode, ResourceUsage, RuntimeDispatchErrorKind,
 };
 use brassclaw_memory::{
-    ChunkingMemoryDocumentIndexer, DocumentMetadata, FilesystemMemoryDocumentRepository,
-    MemoryBackend, MemoryBackendCapabilities, MemoryBackendWriteOptions, MemoryContext,
-    MemoryDocumentPath, MemoryDocumentScope, MemoryEventSinkError, MemorySearchRequest,
-    MemoryWriteOutcome, PromptSafetyAllowanceId, PromptSafetyReasonCode, PromptWriteOperation,
-    PromptWriteSafetyEvent, PromptWriteSafetyEventKind, PromptWriteSafetyEventSink,
-    RepositoryMemoryBackend, content_bytes_sha256,
+    ChatMemoryWriterPort, ChunkingMemoryDocumentIndexer, DocumentMetadata,
+    FilesystemMemoryDocumentRepository, MemoryBackend, MemoryBackendCapabilities,
+    MemoryBackendWriteOptions, MemoryContext, MemoryDocumentPath, MemoryDocumentScope,
+    MemoryEventSinkError, MemorySearchRequest, MemoryWriteOutcome, PromptSafetyAllowanceId,
+    PromptSafetyReasonCode, PromptWriteOperation, PromptWriteSafetyEvent,
+    PromptWriteSafetyEventKind, PromptWriteSafetyEventSink, RepositoryMemoryBackend,
+    content_bytes_sha256,
 };
 use chrono::Utc;
 use chrono_tz::Tz;
@@ -42,6 +43,9 @@ struct MemoryServices {
     /// Whether vector (embedding) search is active for this request.
     /// `true` when an embedding provider was resolved at startup.
     embedding_active: bool,
+    /// Optional Path A chat-memory record writer. Present only in the
+    /// Postgres production path.
+    chat_memory_writer: Option<Arc<dyn ChatMemoryWriterPort>>,
 }
 
 pub(super) struct MemoryCapabilityState {
@@ -50,6 +54,9 @@ pub(super) struct MemoryCapabilityState {
     /// When `Some`, `build_backend()` wires it into the indexer and
     /// `dispatch_search()` enables `.with_vector(true)`.
     embedding_provider: Option<Arc<dyn brassclaw_memory::EmbeddingProvider>>,
+    /// Optional Path A chat-memory record writer (§4.29, S10).
+    /// When `Some`, called on every successful `memory_write` dispatch.
+    chat_memory_writer: Option<Arc<dyn ChatMemoryWriterPort>>,
 }
 
 impl Default for MemoryCapabilityState {
@@ -57,6 +64,7 @@ impl Default for MemoryCapabilityState {
         Self {
             cached_backend: Mutex::new(None),
             embedding_provider: None,
+            chat_memory_writer: None,
         }
     }
 }
@@ -207,7 +215,9 @@ pub(super) async fn dispatch(
     let services = memory_services(state, request)?;
     let output = match request.capability_id.as_str() {
         MEMORY_SEARCH_CAPABILITY_ID => dispatch_search(&services, &request.input).await?,
-        MEMORY_WRITE_CAPABILITY_ID => dispatch_write(&services, &request.input).await?,
+        MEMORY_WRITE_CAPABILITY_ID => {
+            dispatch_write(&services, &request.input, services.chat_memory_writer.as_deref()).await?
+        }
         MEMORY_READ_CAPABILITY_ID => dispatch_read(&services, &request.input).await?,
         MEMORY_TREE_CAPABILITY_ID => dispatch_tree(&services, &request.input).await?,
         _ => return Err(operation_error()),
@@ -248,6 +258,7 @@ fn memory_services(
         context,
         backend,
         embedding_active,
+        chat_memory_writer: state.chat_memory_writer.clone(),
     })
 }
 
@@ -255,14 +266,39 @@ impl MemoryCapabilityState {
     /// Construct with an active embedding provider (§4.30, S10).
     ///
     /// When set, `build_backend()` wires the provider into the
-    /// `ChunkingMemoryDocumentIndexer` so chunk writes produce embeddings.
+    /// `ChunkingMemoryDocumentIndexer` so chunk writes produce embeddings, and
+    /// `dispatch_search()` enables `.with_vector(true)`.
     pub(super) fn with_embedding_provider(
         embedding_provider: Arc<dyn brassclaw_memory::EmbeddingProvider>,
     ) -> Self {
         Self {
             cached_backend: Mutex::new(None),
             embedding_provider: Some(embedding_provider),
+            chat_memory_writer: None,
         }
+    }
+
+    /// Add a Path A chat-memory record writer (§4.29, S10).
+    pub(super) fn with_chat_memory_writer(
+        mut self,
+        writer: Arc<dyn ChatMemoryWriterPort>,
+    ) -> Self {
+        self.chat_memory_writer = Some(writer);
+        self
+    }
+
+    /// Set the chat-memory writer from an `Option` (no-op when `None`).
+    pub(super) fn with_chat_memory_writer_opt(
+        mut self,
+        writer: Option<Arc<dyn ChatMemoryWriterPort>>,
+    ) -> Self {
+        self.chat_memory_writer = writer;
+        self
+    }
+
+    /// Take the current chat-memory writer, leaving `None` in its place.
+    pub(super) fn take_chat_memory_writer(&mut self) -> Option<Arc<dyn ChatMemoryWriterPort>> {
+        self.chat_memory_writer.take()
     }
 
     fn backend_for(
@@ -443,6 +479,7 @@ fn search_query(input: &Value) -> Result<&str, FirstPartyCapabilityError> {
 async fn dispatch_write(
     services: &MemoryServices,
     input: &Value,
+    chat_memory_writer: Option<&dyn ChatMemoryWriterPort>,
 ) -> Result<Value, FirstPartyCapabilityError> {
     let MemoryWriteCommand {
         resolved_path,
@@ -460,7 +497,7 @@ async fn dispatch_write(
             new_string,
             replace_all,
         } => {
-            patch_document(
+            let result = patch_document(
                 services,
                 &path,
                 &resolved_path,
@@ -469,7 +506,16 @@ async fn dispatch_write(
                 &new_string,
                 replace_all,
             )
-            .await
+            .await?;
+            // Path A — best-effort chat-memory record.
+            if let Some(writer) = chat_memory_writer {
+                // Reconstruct the final content from the result for record content.
+                // Use the new_string as the change summary; full content not available here.
+                writer
+                    .write_chat_memory_record(&services.scope, "patch", &new_string)
+                    .await;
+            }
+            Ok(result)
         }
         MemoryWriteOperation::Append { content } => {
             append_document(
@@ -479,6 +525,12 @@ async fn dispatch_write(
                 content.as_bytes(),
             )
             .await?;
+            // Path A — best-effort chat-memory record.
+            if let Some(writer) = chat_memory_writer {
+                writer
+                    .write_chat_memory_record(&services.scope, "append", &content)
+                    .await;
+            }
             Ok(json!({
                 "status": "written",
                 "path": resolved_path,
@@ -497,6 +549,12 @@ async fn dispatch_write(
                 )
                 .await
                 .map_err(|_| operation_error())?;
+            // Path A — best-effort chat-memory record.
+            if let Some(writer) = chat_memory_writer {
+                writer
+                    .write_chat_memory_record(&services.scope, "replace", &content)
+                    .await;
+            }
             Ok(json!({
                 "status": "written",
                 "path": resolved_path,

@@ -48,8 +48,10 @@ use brassclaw_host_api::{
 #[cfg(feature = "libsql")]
 use brassclaw_host_api::{MountAlias, MountGrant};
 use brassclaw_host_runtime::{
-    CapabilitySurfaceVersion, FirstPartyCapabilityRegistry, HostRuntimeHttpEgressPort,
-    HostRuntimeServices, LocalHostProcessPort, ProductAuthProviderRuntimePorts, TriggerCreateHook,
+    BuiltinFirstPartyTools, CapabilitySurfaceVersion, FirstPartyCapabilityRegistry,
+    HostRuntimeHttpEgressPort, HostRuntimeServices, LocalHostProcessPort,
+    ProductAuthProviderRuntimePorts, TriggerCreateHook,
+    builtin_first_party_handlers_from_tools_with_trigger,
     builtin_first_party_handlers_with_trigger_create_hook, builtin_first_party_package,
 };
 #[cfg(feature = "libsql")]
@@ -2495,6 +2497,19 @@ async fn build_backend_production<F>(
 where
     F: RootFilesystem + 'static,
 {
+    build_backend_production_with_tools(context, stores, trigger_repository, None).await
+}
+
+#[cfg(any(feature = "libsql", feature = "postgres"))]
+async fn build_backend_production_with_tools<F>(
+    context: RebornProductionBuildContext,
+    stores: ProductionStoreBundle<F>,
+    trigger_repository: Arc<dyn TriggerRepository>,
+    prebuilt_tools: Option<BuiltinFirstPartyTools>,
+) -> Result<RebornServices, RebornBuildError>
+where
+    F: RootFilesystem + 'static,
+{
     let RebornProductionBuildContext {
         profile,
         wiring_config,
@@ -2507,10 +2522,20 @@ where
     let trigger_create_hook = Arc::new(ScopedFilesystemTriggerCreatorPairingHook::new(Arc::clone(
         &stores.scoped_filesystem,
     )));
-    let mut first_party_registry = builtin_first_party_registry_with_trigger_create_hook(
-        trigger_repository,
-        trigger_create_hook,
-    )?;
+    let mut first_party_registry = match prebuilt_tools {
+        Some(tools) => builtin_first_party_handlers_from_tools_with_trigger(
+            tools,
+            trigger_repository,
+            trigger_create_hook,
+        )
+        .map_err(|error| RebornBuildError::InvalidConfig {
+            reason: format!("built-in first-party handlers are invalid: {error}"),
+        })?,
+        None => builtin_first_party_registry_with_trigger_create_hook(
+            trigger_repository,
+            trigger_create_hook,
+        )?,
+    };
     let product_auth_filesystem = Arc::clone(&stores.scoped_filesystem);
     let services = HostRuntimeServices::new(
         Arc::new(builtin_extension_registry()?),
@@ -2658,7 +2683,7 @@ async fn build_postgres_production(
 
     let filesystem = Arc::new(PostgresRootFilesystem::new(pool.clone()));
     filesystem.run_migrations().await?;
-    let trigger_repository = Arc::new(brassclaw_triggers::PostgresTriggerRepository::new(pool));
+    let trigger_repository = Arc::new(brassclaw_triggers::PostgresTriggerRepository::new(pool.clone()));
     trigger_repository
         .run_migrations()
         .await
@@ -2671,7 +2696,143 @@ async fn build_postgres_production(
         brassclaw_reborn_event_store::RebornEventStoreConfig::Postgres { url },
     )?;
 
-    build_backend_production(context, stores, trigger_repository).await
+    // S10: Resolve tenant_id and optional embedding provider; wire
+    // PgInterceptorStore and PgChatMemoryRecordStore (Path A).
+    let pg_tools = build_postgres_memory_tools(pool).await;
+
+    build_backend_production_with_tools(context, stores, trigger_repository, Some(pg_tools)).await
+}
+
+/// Build a `BuiltinFirstPartyTools` with PostgreSQL-backed memory stores and
+/// optionally an embedding provider resolved from `brassclaw_config`.
+///
+/// Runs best-effort: errors in config load or embedding resolution degrade
+/// silently rather than aborting boot (the stores / embedding are optional).
+#[cfg(feature = "postgres")]
+async fn build_postgres_memory_tools(pool: deadpool_postgres::Pool) -> BuiltinFirstPartyTools {
+    use std::sync::Arc;
+
+    use crate::pg_chat_memory_record_store::PgChatMemoryRecordStore;
+
+    // Default tenant — embeddings config is a process-global setting.
+    let tenant_id = "default";
+
+    // Resolve embedding.provider_id from brassclaw_config (best-effort).
+    let embedding_provider: Option<Arc<dyn brassclaw_memory::EmbeddingProvider>> =
+        resolve_pg_embedding_provider(&pool, tenant_id).await;
+
+    // Build PgInterceptorStore and PgChatMemoryRecordStore.
+    let interceptor_store = Arc::new(brassclaw_interceptor::PgInterceptorStore::new(
+        Arc::new(pool.clone()),
+        tenant_id,
+    ));
+    let chat_memory_store = Arc::new(PgChatMemoryRecordStore::new(
+        Arc::new(pool),
+        interceptor_store,
+    ));
+
+    let mut tools = BuiltinFirstPartyTools::default()
+        .with_chat_memory_writer(chat_memory_store);
+    if let Some(provider) = embedding_provider {
+        tools = tools.with_memory_embedding_provider(provider);
+    }
+    tools
+}
+
+/// Resolve the embedding provider from `brassclaw_config` for the given tenant.
+///
+/// Returns `None` when no `embedding.provider_id` is configured or the provider
+/// cannot be resolved.  All errors are logged at debug level and swallowed.
+#[cfg(feature = "postgres")]
+async fn resolve_pg_embedding_provider(
+    pool: &deadpool_postgres::Pool,
+    tenant_id: &str,
+) -> Option<Arc<dyn brassclaw_memory::EmbeddingProvider>> {
+    use crate::embedding_role_adapter::EmbeddingRoleAdapter;
+    use crate::pg_provider_repo::PgProviderRepo;
+    use brassclaw_embeddings::{EmbeddingCacheConfig, ProviderDeps, create_provider};
+    use brassclaw_llm::{SessionConfig, SessionManager};
+
+    // Load config snapshot to get embedding.provider_id.
+    let config = match crate::db_config::load_config_snapshot(pool, tenant_id).await {
+        Ok(c) => c,
+        Err(err) => {
+            tracing::debug!(error = %err, "failed to load config for embedding resolution");
+            return None;
+        }
+    };
+    let embedding = config.embedding?;
+    let provider_id = embedding.provider_id?;
+    if provider_id.is_empty() {
+        return None;
+    }
+    let model = embedding.model.clone();
+
+    // Look up the provider definition from the DB.
+    let provider_repo = PgProviderRepo::new(pool.clone(), tenant_id.to_string());
+    let providers = match provider_repo.load().await {
+        Ok(p) => p,
+        Err(err) => {
+            tracing::debug!(error = %err, "failed to load providers for embedding resolution");
+            return None;
+        }
+    };
+    let provider_def = providers.into_iter().find(|p| p.id == provider_id);
+
+    // Build the embeddings config from the provider definition.
+    let embeddings_config = build_embeddings_config_from_provider(provider_def.as_ref(), &model)?;
+
+    // Build the provider.
+    let session = Arc::new(SessionManager::new(SessionConfig::default()));
+    let deps = ProviderDeps { session, bedrock_setup: None };
+    let raw_provider = create_provider(&embeddings_config, deps).await?;
+
+    // Wrap in EmbeddingRoleAdapter with default cache config.
+    Some(EmbeddingRoleAdapter::new_cached(raw_provider, EmbeddingCacheConfig::default()))
+}
+
+/// Build `EmbeddingsConfig` from a provider definition (optional) and a model override.
+#[cfg(feature = "postgres")]
+fn build_embeddings_config_from_provider(
+    provider_def: Option<&brassclaw_llm::ProviderDefinition>,
+    model_override: &Option<String>,
+) -> Option<brassclaw_embeddings::EmbeddingsConfig> {
+    use brassclaw_embeddings::{EmbeddingsConfig, default_dimension_for_model};
+    use brassclaw_llm::registry::ProviderProtocol;
+
+    let Some(def) = provider_def else {
+        tracing::debug!("embedding.provider_id not found in provider catalog — embedding disabled");
+        return None;
+    };
+
+    // Map ProviderProtocol to the EmbeddingsConfig provider string.
+    let provider_str = match def.protocol {
+        ProviderProtocol::Ollama => "ollama",
+        ProviderProtocol::NearAi => "nearai",
+        ProviderProtocol::Bedrock => "bedrock",
+        // OpenAI-compatible variants all use the openai embeddings backend.
+        _ => "openai",
+    };
+
+    let model = model_override
+        .clone()
+        .unwrap_or_else(|| def.default_model.clone());
+    let dimension = default_dimension_for_model(&model);
+    let base_url = def.default_base_url.clone();
+
+    let config = EmbeddingsConfig {
+        enabled: true,
+        provider: provider_str.to_string(),
+        model,
+        dimension,
+        openai_base_url: base_url,
+        // API key resolved from env via api_key_env at composition startup.
+        openai_api_key: def.api_key_env.as_deref().and_then(|var| {
+            std::env::var(var).ok().map(secrecy::SecretString::from)
+        }),
+        ..EmbeddingsConfig::default()
+    };
+    Some(config)
 }
 
 fn readiness_for(

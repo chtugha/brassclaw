@@ -25,8 +25,8 @@ use std::collections::BTreeMap;
 
 use brassclaw_pg::PgPool;
 use brassclaw_reborn_config::{
-    BootSection, BudgetSection, DriversSection, HarnessSection, IdentitySection, LlmSlotSelection,
-    PolicySection, RebornConfigFile, RunnerSection, SkillsSection, TokensSection,
+    BootSection, BudgetSection, DriversSection, EmbeddingSection, HarnessSection, IdentitySection,
+    LlmSlotSelection, PolicySection, RebornConfigFile, RunnerSection, SkillsSection, TokensSection,
     TriggerPollerConfigSection, WebuiSection, reject_inline_secret,
 };
 use thiserror::Error;
@@ -223,6 +223,7 @@ fn assemble_config(kv: &BTreeMap<String, String>) -> RebornConfigFile {
         webui: assemble_webui(kv),
         budget: assemble_budget(kv),
         trigger_poller: assemble_trigger_poller(kv),
+        embedding: assemble_embedding(kv),
     }
 }
 
@@ -468,6 +469,13 @@ fn assemble_trigger_poller(kv: &BTreeMap<String, String>) -> Option<TriggerPolle
         },
         any,
     )
+}
+
+fn assemble_embedding(kv: &BTreeMap<String, String>) -> Option<EmbeddingSection> {
+    let provider_id = get_str(kv, "embedding.provider_id").map(str::to_string);
+    let model = get_str(kv, "embedding.model").map(str::to_string);
+    let any = provider_id.is_some() || model.is_some();
+    some_if_any(EmbeddingSection { provider_id, model }, any)
 }
 
 #[cfg(test)]

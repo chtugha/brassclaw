@@ -218,6 +218,26 @@ pub fn builtin_first_party_handlers_with_trigger_create_hook(
     Ok(registry)
 }
 
+/// Create a first-party capability registry from a pre-built [`BuiltinFirstPartyTools`]
+/// handler (with stores wired) and a trigger-create hook.
+///
+/// Used by the composition layer (S10) to wire `PgInterceptorStore`,
+/// `PgChatMemoryRecordStore`, and an `EmbeddingRoleAdapter` into the handler
+/// before inserting it into the registry.
+pub fn builtin_first_party_handlers_from_tools_with_trigger(
+    tools: BuiltinFirstPartyTools,
+    trigger_repository: Arc<dyn brassclaw_triggers::TriggerRepository>,
+    trigger_create_hook: Arc<dyn TriggerCreateHook>,
+) -> Result<FirstPartyCapabilityRegistry, HostApiError> {
+    let mut registry = builtin_first_party_registry_from_tools(tools)?;
+    trigger_management::insert_handlers_with_create_hook(
+        &mut registry,
+        trigger_repository,
+        trigger_create_hook,
+    )?;
+    Ok(registry)
+}
+
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
 pub fn builtin_first_party_handlers_with_trigger_clock(
@@ -234,7 +254,13 @@ pub fn builtin_first_party_handlers_with_trigger_clock(
 }
 
 fn builtin_first_party_base_registry() -> Result<FirstPartyCapabilityRegistry, HostApiError> {
-    let handler = Arc::new(BuiltinFirstPartyTools::default());
+    builtin_first_party_registry_from_tools(BuiltinFirstPartyTools::default())
+}
+
+fn builtin_first_party_registry_from_tools(
+    tools: BuiltinFirstPartyTools,
+) -> Result<FirstPartyCapabilityRegistry, HostApiError> {
+    let handler = Arc::new(tools);
     let mut registry = FirstPartyCapabilityRegistry::new()
         .with_handler(CapabilityId::new(ECHO_CAPABILITY_ID)?, handler.clone())
         .with_handler(CapabilityId::new(TIME_CAPABILITY_ID)?, handler.clone())
@@ -313,8 +339,19 @@ impl BuiltinFirstPartyTools {
         mut self,
         embedding_provider: Arc<dyn brassclaw_memory::EmbeddingProvider>,
     ) -> Self {
-        self.memory_state =
-            memory::MemoryCapabilityState::with_embedding_provider(embedding_provider);
+        self.memory_state = memory::MemoryCapabilityState::with_embedding_provider(embedding_provider)
+            .with_chat_memory_writer_opt(self.memory_state.take_chat_memory_writer());
+        self
+    }
+
+    /// Wire a Path A chat-memory record writer (§4.29, S10).
+    ///
+    /// Called on every successful `memory_write` dispatch, best-effort.
+    pub fn with_chat_memory_writer(
+        mut self,
+        writer: Arc<dyn brassclaw_memory::ChatMemoryWriterPort>,
+    ) -> Self {
+        self.memory_state = self.memory_state.with_chat_memory_writer(writer);
         self
     }
 }

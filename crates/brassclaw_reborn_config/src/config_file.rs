@@ -98,6 +98,10 @@ pub struct RebornConfigFile {
     /// Trigger poller lifecycle settings. All fields optional; absent section
     /// leaves the worker at the compiled defaults in the composition root.
     pub trigger_poller: Option<TriggerPollerConfigSection>,
+    /// Embedding provider selection. When set, the composition root resolves
+    /// the referenced provider and wires it as the embedding backend for
+    /// memory-chunk indexing (Path B) and vector search (§4.30).
+    pub embedding: Option<EmbeddingSection>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -427,6 +431,20 @@ pub struct TriggerPollerConfigSection {
     /// Prevents synchronized thundering-herd across instances. Default 0.
     /// Range `0..=3600` is enforced at boot by the CLI settings layer.
     pub tick_jitter_max_secs: Option<u64>,
+}
+
+/// `[embedding]` section. References the provider used for memory-chunk
+/// embedding (Path B) and vector search. The provider must exist in the
+/// merged `ProviderRegistry`. API key values are never stored here —
+/// they live in the scoped secret store and are resolved by `LlmKeyStore`
+/// at composition startup.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EmbeddingSection {
+    /// Provider id from the provider catalog. Required for embedding to be active.
+    pub provider_id: Option<String>,
+    /// Override the provider's `default_model`. Optional.
+    pub model: Option<String>,
 }
 
 /// One `[llm.<slot>]` entry. The slot name (typically `"default"` or

@@ -5,6 +5,7 @@
 //! backend cataloging, and backend routing.
 
 mod backend;
+pub mod chat_memory;
 mod chunking;
 #[cfg(any(test, feature = "contract-tests"))]
 pub mod contract_tests;
@@ -23,6 +24,7 @@ mod write_metadata;
 pub use backend::{
     MemoryBackend, MemoryBackendCapabilities, MemoryContext, RepositoryMemoryBackend,
 };
+pub use chat_memory::ChatMemoryWriterPort;
 pub use chunking::{
     ChunkConfig, MemoryChunkWrite, chunk_document, content_bytes_sha256, content_sha256,
 };

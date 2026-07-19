@@ -71,6 +71,7 @@ impl EmbeddingRoleAdapter {
     }
 
     /// Wrap an embeddings provider without a cache (for tests / backfill worker).
+    #[allow(dead_code)] // Used by backfill-embeddings CLI (S10 item 8)
     pub(crate) fn new_uncached(
         provider: Arc<dyn brassclaw_embeddings::EmbeddingProvider>,
     ) -> Arc<dyn brassclaw_memory::EmbeddingProvider> {

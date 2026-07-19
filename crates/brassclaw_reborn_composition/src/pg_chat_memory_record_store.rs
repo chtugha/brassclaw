@@ -12,6 +12,8 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use brassclaw_memory::{ChatMemoryWriterPort, MemoryDocumentScope};
 use brassclaw_pg::PgPool;
 use thiserror::Error;
 
@@ -120,6 +122,7 @@ impl PgChatMemoryRecordStore {
     ///
     /// `source_ref` is the canonical VFS path of the chunk subtree for this
     /// chat record (e.g. `/memory/chat/<chat_record_id>`).
+    #[allow(dead_code)] // Path B posthook — wired in §7.4 revision 17 write path
     pub(crate) async fn update_source_ref(
         &self,
         tenant_id: &str,
@@ -145,4 +148,43 @@ fn ulid_str() -> String {
     // Use UUID v4 as a ULID-compatible unique identifier to avoid
     // pulling in a ulid crate dependency.
     uuid::Uuid::new_v4().to_string().replace('-', "")
+}
+
+// ---------------------------------------------------------------------------
+// ChatMemoryWriterPort implementation
+// ---------------------------------------------------------------------------
+
+#[async_trait]
+impl ChatMemoryWriterPort for PgChatMemoryRecordStore {
+    async fn write_chat_memory_record(
+        &self,
+        scope: &MemoryDocumentScope,
+        kind: &str,
+        content: &str,
+    ) -> Option<String> {
+        let input = ChatMemoryRecordInput {
+            tenant_id: scope.tenant_id().to_string(),
+            user_id: scope.user_id().to_string(),
+            project_id: scope.project_id().map(str::to_string),
+            agent_id: scope.agent_id().map(str::to_string),
+            session_thread_id: None,
+            run_id: None,
+            iteration: None,
+            kind: kind.to_string(),
+            content: content.to_string(),
+            summary: None,
+            forensic_packet_id: None,
+        };
+        match self.write_record(&input).await {
+            Ok(id) => Some(id),
+            Err(err) => {
+                tracing::debug!(
+                    error = %err,
+                    kind = %kind,
+                    "Path A chat-memory record write failed (best-effort)"
+                );
+                None
+            }
+        }
+    }
 }

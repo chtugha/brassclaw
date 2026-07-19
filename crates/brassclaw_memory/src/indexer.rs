@@ -47,7 +47,12 @@ pub trait MemoryDocumentIndexer: Send + Sync {
         source_ref: &str,
         content: &str,
         chat_record_id: Option<&str>,
-    ) -> Result<(), FilesystemError>;
+    ) -> Result<(), FilesystemError> {
+        // Default: no-op. Implementations that support file-less chunk
+        // creation (§4.30.1) override this.
+        let _ = (scope, source_ref, content, chat_record_id);
+        Ok(())
+    }
 }
 
 /// Outcome of a hash-guarded chunk replacement attempt.
