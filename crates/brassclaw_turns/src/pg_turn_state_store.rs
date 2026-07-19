@@ -324,7 +324,7 @@ impl TurnSpawnTreeStateStore for PgTurnStateStore {
             })
             .await;
         let pre_resolved = PreResolvedRunProfileResolver::new(profile_resolution);
-        let thread_id = request.scope.thread_id.clone();
+        let thread_id = request.child_scope.thread_id.clone();
         self.apply(&thread_id, |store| {
             let request = request.clone();
             let pre_resolved = pre_resolved.clone();
@@ -365,11 +365,14 @@ impl TurnSpawnTreeStateStore for PgTurnStateStore {
     ) -> Result<SpawnTreeReservation, TurnError> {
         let thread_id = scope.thread_id.clone();
         let scope = scope.clone();
-        self.apply(&thread_id, |store| async move {
-            let outcome = store
-                .reserve_tree_descendants(&scope, root_run_id, delta, cap)
-                .await;
-            (outcome, store)
+        self.apply(&thread_id, |store| {
+            let scope = scope.clone();
+            async move {
+                let outcome = store
+                    .reserve_tree_descendants(&scope, root_run_id, delta, cap)
+                    .await;
+                (outcome, store)
+            }
         })
         .await
     }
@@ -382,11 +385,14 @@ impl TurnSpawnTreeStateStore for PgTurnStateStore {
     ) -> Result<(), TurnError> {
         let thread_id = scope.thread_id.clone();
         let scope = scope.clone();
-        self.apply(&thread_id, |store| async move {
-            let outcome = store
-                .release_tree_descendants(&scope, root_run_id, delta)
-                .await;
-            (outcome, store)
+        self.apply(&thread_id, |store| {
+            let scope = scope.clone();
+            async move {
+                let outcome = store
+                    .release_tree_descendants(&scope, root_run_id, delta)
+                    .await;
+                (outcome, store)
+            }
         })
         .await
     }
