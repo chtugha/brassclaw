@@ -16,7 +16,11 @@ publish = false
 dist = false
 
 [features]
-default = ["root-llm-provider", "migrate-from-libsql"]
+default = ["root-llm-provider", "migrate-from-libsql", "postgres"]
+# Postgres is the primary persistent backend. Always on in production.
+postgres = [
+    "brassclaw_reborn_composition/postgres",
+]
 # Wire a real LLM provider into the assembled runtime. Mirrors the same
 # `root-llm-provider` feature on `brassclaw_reborn_composition` /
 # `brassclaw_reborn`, so building without it produces a CLI binary that

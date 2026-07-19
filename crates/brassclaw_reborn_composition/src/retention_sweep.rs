@@ -1,4 +1,4 @@
-//! Background retention sweep task.
+//! Background retention sweep task and backfill-embeddings operation.
 //!
 //! Pruning runs inside the `brassclaw serve` process only (not via `pg_cron`).
 //! Call [`spawn_retention_sweep`] from the serve startup path; it runs
@@ -137,4 +137,221 @@ pub async fn run_sweep(pool: &Arc<PgPool>) -> Result<(), Box<dyn std::error::Err
     // Phase 5 factory wiring will pass the config value here; for now no-op.
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Chunk-cascade delete helper (§4.30.2)
+// ---------------------------------------------------------------------------
+
+/// Delete all chunk VFS rows for a given chat-memory record, then delete the
+/// record itself.  The chunk deletion is transactional with the record deletion:
+/// if the chunk delete fails, the record is NOT deleted.
+///
+/// `source_ref` must be a non-empty path (e.g. `/memory/chat/<id>`).
+pub async fn delete_chat_record_with_chunk_cascade(
+    pool: &Arc<PgPool>,
+    tenant_id: &str,
+    record_id: &str,
+    source_ref: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if source_ref.is_empty() {
+        // Nothing to cascade — just delete the record.
+        let client = pool.get().await?;
+        client
+            .execute(
+                "DELETE FROM brassclaw_memory_chat_records \
+                 WHERE id = $1 AND tenant_id = $2",
+                &[&record_id, &tenant_id],
+            )
+            .await?;
+        return Ok(());
+    }
+
+    // Build the chunk subtree prefix: <source_ref>/*.chunks/
+    // The VFS stores chunk entries at paths like
+    //   /memory/chat/<id>/<file>.chunks/<index>
+    // A LIKE match on the source_ref prefix covers all chunk variants.
+    let chunk_prefix = format!("{source_ref}/%");
+
+    let mut client = pool.get().await?;
+    let tx = client.transaction().await?;
+
+    // 1. Delete chunk rows first (§4.30.2 — must succeed before record delete).
+    tx.execute(
+        "DELETE FROM brassclaw_root_filesystem \
+         WHERE path LIKE $1 AND tenant_id = $2",
+        &[&chunk_prefix, &tenant_id],
+    )
+    .await?;
+
+    // 2. Delete the Path A record.
+    tx.execute(
+        "DELETE FROM brassclaw_memory_chat_records \
+         WHERE id = $1 AND tenant_id = $2",
+        &[&record_id, &tenant_id],
+    )
+    .await?;
+
+    tx.commit().await?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Backfill embeddings (§4.30.5, §8.1 step 10)
+// ---------------------------------------------------------------------------
+
+/// Result returned by [`run_backfill_embeddings`].
+#[derive(Debug, Default)]
+pub struct BackfillResult {
+    /// Number of chat-memory records successfully re-indexed.
+    pub indexed: usize,
+    /// Number of records skipped (already have a source_ref with embeddings).
+    pub skipped: usize,
+    /// Number of records that failed indexing (error logged per-record).
+    pub failed: usize,
+}
+
+/// Backfill embeddings for `brassclaw_memory_chat_records` rows that either
+/// have no `source_ref` or whose chunk subtree contains `embedding = NULL` rows.
+///
+/// Reads chat-memory records in batches, reconstructs the `MemoryDocumentScope`,
+/// calls `indexer.index_content(...)` for each, and updates `source_ref` when
+/// the indexer succeeds.  Idempotent: safe to interrupt and resume.
+///
+/// Returns `Ok(BackfillResult)` with counts.  Per-record errors are logged at
+/// `debug!` level and counted in `failed` — they do not abort the batch.
+///
+/// Returns `Err(...)` only for fatal I/O errors (pool exhausted, bad SQL).
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+pub async fn run_backfill_embeddings(
+    pool: Arc<PgPool>,
+    tenant_id: &str,
+    batch_size: i64,
+) -> Result<BackfillResult, Box<dyn std::error::Error + Send + Sync>> {
+    use brassclaw_filesystem::PostgresRootFilesystem;
+    use brassclaw_memory::{
+        ChunkingMemoryDocumentIndexer, FilesystemMemoryDocumentRepository, MemoryDocumentIndexer,
+        MemoryDocumentScope,
+    };
+
+    // Resolve embedding provider from DB config (same logic as factory).
+    let raw_pool: deadpool_postgres::Pool = (*pool).clone();
+    let embedding_provider =
+        crate::factory::resolve_pg_embedding_provider_pub(&raw_pool, tenant_id).await;
+
+    let Some(embedding_provider) = embedding_provider else {
+        tracing::debug!("backfill-embeddings: no embedding role provider configured — nothing to do");
+        return Ok(BackfillResult::default());
+    };
+
+    // Build indexer over PostgresRootFilesystem.
+    let filesystem = Arc::new(PostgresRootFilesystem::new((*pool).clone()));
+    let repository = Arc::new(FilesystemMemoryDocumentRepository::new(
+        filesystem as Arc<dyn brassclaw_filesystem::RootFilesystem>,
+    ));
+
+    // Thin wrapper so `Arc<dyn EmbeddingProvider>` satisfies the `P: EmbeddingProvider`
+    // bound on `with_embedding_provider` (same pattern as memory.rs).
+    struct DynWrapper(Arc<dyn brassclaw_memory::EmbeddingProvider>);
+    #[async_trait::async_trait]
+    impl brassclaw_memory::EmbeddingProvider for DynWrapper {
+        fn dimension(&self) -> usize { self.0.dimension() }
+        fn model_name(&self) -> &str { self.0.model_name() }
+        async fn embed(&self, text: &str) -> Result<Vec<f32>, brassclaw_memory::EmbeddingError> {
+            self.0.embed(text).await
+        }
+        async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, brassclaw_memory::EmbeddingError> {
+            self.0.embed_batch(texts).await
+        }
+    }
+    let indexer = ChunkingMemoryDocumentIndexer::new(Arc::clone(&repository))
+        .with_embedding_provider(Arc::new(DynWrapper(embedding_provider)));
+
+    // Fetch rows needing backfill in batches.
+    let client = pool.get().await?;
+    let rows = client
+        .query(
+            "SELECT id, tenant_id, user_id, agent_id, project_id, content, source_ref \
+             FROM brassclaw_memory_chat_records \
+             WHERE tenant_id = $1 \
+               AND (source_ref IS NULL \
+                    OR EXISTS ( \
+                        SELECT 1 FROM brassclaw_root_filesystem_index_specs ris \
+                        JOIN brassclaw_root_filesystem rf \
+                          ON rf.id = ris.entry_id \
+                        WHERE rf.path LIKE ('%' || id || '%') \
+                          AND ris.index_key = 'embedding' \
+                          AND ris.index_value IS NULL \
+                    )) \
+             ORDER BY created_at ASC \
+             LIMIT $2",
+            &[&tenant_id, &batch_size],
+        )
+        .await?;
+    // Drop client so we don't hold the connection during indexing.
+    drop(client);
+
+    let mut result = BackfillResult::default();
+    for row in rows {
+        let id: String = row.get(0);
+        let t_id: String = row.get(1);
+        let user_id: String = row.get(2);
+        let agent_id: Option<String> = row.get(3);
+        let project_id: Option<String> = row.get(4);
+        let content: String = row.get(5);
+        let source_ref_existing: Option<String> = row.get(6);
+
+        // Derive source_ref from chat_record_id.
+        let source_ref = source_ref_existing
+            .clone()
+            .unwrap_or_else(|| format!("/memory/chat/{id}"));
+
+        let scope = match MemoryDocumentScope::new_with_agent(
+            &t_id,
+            &user_id,
+            agent_id.as_deref(),
+            project_id.as_deref(),
+        ) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::debug!(
+                    chat_record_id = %id,
+                    error = %e,
+                    "backfill-embeddings: invalid scope — skipping"
+                );
+                result.failed += 1;
+                continue;
+            }
+        };
+
+        match indexer
+            .index_content(&scope, &source_ref, &content, Some(&id))
+            .await
+        {
+            Ok(()) => {
+                // Update source_ref if it was NULL.
+                if source_ref_existing.is_none() {
+                    let c2 = pool.get().await?;
+                    c2.execute(
+                        "UPDATE brassclaw_memory_chat_records \
+                         SET source_ref = $1 WHERE id = $2 AND tenant_id = $3",
+                        &[&source_ref, &id, &t_id],
+                    )
+                    .await
+                    .unwrap_or_default();
+                }
+                result.indexed += 1;
+            }
+            Err(e) => {
+                tracing::debug!(
+                    chat_record_id = %id,
+                    error = %e,
+                    "backfill-embeddings: indexing failed — skipping"
+                );
+                result.failed += 1;
+            }
+        }
+    }
+
+    Ok(result)
 }

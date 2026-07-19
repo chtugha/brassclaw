@@ -112,19 +112,6 @@ pub(crate) fn db_error(
     }
 }
 
-#[cfg(feature = "libsql")]
-pub(crate) fn libsql_db_error(
-    path: VirtualPath,
-    operation: FilesystemOperation,
-    error: libsql::Error,
-) -> FilesystemError {
-    FilesystemError::Backend {
-        path,
-        operation,
-        reason: error.to_string(),
-    }
-}
-
 #[cfg(any(feature = "postgres", feature = "libsql"))]
 pub(crate) fn system_time_from_unix_seconds(seconds: i64) -> Option<SystemTime> {
     if seconds < 0 {
@@ -156,14 +143,6 @@ pub(crate) fn infrastructure_error(
 pub(crate) fn infrastructure_pg_error(
     operation: FilesystemOperation,
     error: tokio_postgres::Error,
-) -> FilesystemError {
-    infrastructure_error(operation, error.to_string())
-}
-
-#[cfg(feature = "libsql")]
-pub(crate) fn infrastructure_libsql_error(
-    operation: FilesystemOperation,
-    error: libsql::Error,
 ) -> FilesystemError {
     infrastructure_error(operation, error.to_string())
 }

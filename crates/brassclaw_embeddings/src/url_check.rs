@@ -23,14 +23,14 @@
 
 use std::net::{IpAddr, Ipv4Addr};
 
-use crate::provider::EmbeddingError;
+use crate::EmbeddingError;
 
 /// Validate a base URL configured for an embedding provider.
 ///
 /// Returns `Err(EmbeddingError::InvalidUrl { .. })` on parse failure,
 /// non-http(s) scheme, missing host, or an `AlwaysBlocked` literal IP host.
-pub(crate) fn check_base_url(url: &str, field_name: &str) -> Result<(), EmbeddingError> {
-    let parsed = reqwest::Url::parse(url).map_err(|e| EmbeddingError::InvalidUrl {
+pub fn check_base_url(url: &str, field_name: &str) -> Result<(), EmbeddingError> {
+    let parsed = ::url::Url::parse(url).map_err(|e| EmbeddingError::InvalidUrl {
         url: url.to_string(),
         reason: format!("{field_name}: {e}"),
     })?;

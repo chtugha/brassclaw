@@ -341,7 +341,6 @@ impl ServeCommand {
             // runs on a 24 h cadence, so aborting it on graceful shutdown is
             // safe.  Only runs on the production Postgres path; local-dev
             // without embedded PG has no pool to sweep.
-            #[cfg(feature = "postgres")]
             if let Some(pg_pool) = runtime.services().pg_pool.as_ref() {
                 brassclaw_reborn_composition::retention_sweep::spawn_retention_sweep(
                     std::sync::Arc::clone(pg_pool),
@@ -358,18 +357,11 @@ impl ServeCommand {
             // runtime carries no local-runtime substrate; the auth surface
             // fails closed when SSO is configured but no resolver is available.
             let identity_resolver = if sso_startup.is_some() {
-                #[cfg(feature = "postgres")]
-                {
-                    match runtime.open_reborn_identity_resolver(&tenant_id).await {
-                        Some(result) => {
-                            Some(result.context("failed to initialize the Reborn identity resolver")?)
-                        }
-                        None => None,
+                match runtime.open_reborn_identity_resolver(&tenant_id).await {
+                    Some(result) => {
+                        Some(result.context("failed to initialize the Reborn identity resolver")?)
                     }
-                }
-                #[cfg(not(feature = "postgres"))]
-                {
-                    None
+                    None => None,
                 }
             } else {
                 None

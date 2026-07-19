@@ -26,12 +26,6 @@ pub enum EmbeddingError {
     InvalidUrl { url: String, reason: String },
 }
 
-impl From<reqwest::Error> for EmbeddingError {
-    fn from(e: reqwest::Error) -> Self {
-        EmbeddingError::HttpError(e.to_string())
-    }
-}
-
 /// Trait for embedding providers.
 #[async_trait]
 pub trait EmbeddingProvider: Send + Sync {

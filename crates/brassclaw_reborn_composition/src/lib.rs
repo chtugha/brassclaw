@@ -79,13 +79,18 @@ mod fetch_cached_content;
 #[cfg(feature = "migrate-from-libsql")]
 pub mod migration;
 #[cfg(feature = "postgres")]
+pub(crate) mod embedding_providers;
+#[cfg(feature = "postgres")]
 pub(crate) mod embedding_role_adapter;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_auth_product_services;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_chat_memory_record_store;
+#[cfg(feature = "postgres")]
 pub(crate) mod pg_memory_doc_store;
+#[cfg(feature = "postgres")]
 pub(crate) mod pg_token_settings_store;
+#[cfg(feature = "postgres")]
 pub mod retention_sweep;
 pub(crate) mod plan_library;
 #[cfg(feature = "root-llm-provider")]
@@ -95,6 +100,7 @@ mod provider_admin_product_command;
 #[cfg(feature = "root-llm-provider")]
 mod provider_repo;
 mod readiness;
+#[cfg(any(feature = "libsql", feature = "postgres"))]
 mod recipe_library;
 mod runtime;
 mod runtime_input;
@@ -405,11 +411,14 @@ use brassclaw_host_api::{
     MountAlias, MountGrant, MountPermissions, MountView, ResourceScope, SYSTEM_RESERVED_ID,
     VirtualPath,
 };
+#[cfg(feature = "postgres")]
 use brassclaw_host_runtime::{CapabilitySurfaceVersion, HostRuntimeServices};
+#[cfg(feature = "postgres")]
 use brassclaw_processes::{FilesystemProcessResultStore, FilesystemProcessStore};
 use brassclaw_reborn_event_store::RebornEventStoreConfig;
 use brassclaw_reborn_event_store::RebornEventStoreError;
 use brassclaw_resources::ResourceError;
+#[cfg(feature = "postgres")]
 use brassclaw_resources::{FilesystemResourceGovernorStore, PersistentResourceGovernor};
 use brassclaw_run_state::RunStateError;
 use brassclaw_secrets::SecretError;

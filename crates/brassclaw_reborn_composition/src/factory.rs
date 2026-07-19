@@ -8,10 +8,10 @@ use crate::product_auth_durable::{FilesystemAuthProductServices, UnavailableAuth
 #[cfg(feature = "postgres")]
 use crate::pg_auth_product_services::PgAuthProductServices;
 use brassclaw_auth::AuthProviderClient;
+#[cfg(feature = "postgres")]
 use brassclaw_authorization::FilesystemCapabilityLeaseStore;
 use brassclaw_authorization::GrantAuthorizer;
 use brassclaw_authorization::InMemoryCapabilityLeaseStore;
-use brassclaw_conversations::InMemoryConversationServices;
 use brassclaw_conversations::{
     AdapterInstallationId, AdapterKind, ConversationActorPairingService, ExternalActorRef,
 };
@@ -35,17 +35,21 @@ use brassclaw_host_api::{
     UserId, VirtualPath,
 };
 use brassclaw_host_runtime::{
-    BuiltinFirstPartyTools, CapabilitySurfaceVersion, FirstPartyCapabilityRegistry,
-    HostRuntimeHttpEgressPort, HostRuntimeServices, LocalHostProcessPort,
-    ProductAuthProviderRuntimePorts, TriggerCreateHook,
-    builtin_first_party_handlers_from_tools_with_trigger,
+    CapabilitySurfaceVersion, FirstPartyCapabilityRegistry, HostRuntimeHttpEgressPort,
+    HostRuntimeServices, LocalHostProcessPort, ProductAuthProviderRuntimePorts, TriggerCreateHook,
     builtin_first_party_handlers_with_trigger_create_hook, builtin_first_party_package,
+};
+#[cfg(feature = "postgres")]
+use brassclaw_host_runtime::{
+    BuiltinFirstPartyTools, builtin_first_party_handlers_from_tools_with_trigger,
 };
 use brassclaw_processes::ProcessServices;
 use brassclaw_product_workflow::ProductAuthTurnGateResumeDispatcher;
 use brassclaw_resources::InMemoryResourceGovernor;
+#[cfg(feature = "postgres")]
 use brassclaw_resources::{FilesystemResourceGovernorStore, PersistentResourceGovernor};
 use brassclaw_run_state::{InMemoryApprovalRequestStore, InMemoryRunStateStore};
+#[cfg(feature = "postgres")]
 use brassclaw_secrets::FilesystemCredentialBroker;
 use brassclaw_secrets::FilesystemSecretStore;
 use brassclaw_secrets::SecretStore;
@@ -56,6 +60,7 @@ use brassclaw_triggers::{
     TRIGGER_TRUSTED_EXTERNAL_ACTOR_NAMESPACE, TriggerError, TriggerRecord, TriggerRepository,
 };
 use brassclaw_trust::{AdminConfig, AdminEntry, HostTrustAssignment, HostTrustPolicy};
+#[cfg(feature = "postgres")]
 use brassclaw_turns::InMemoryRunProfileResolver;
 use brassclaw_turns::{CheckpointStateStore, DefaultTurnCoordinator, LoopCheckpointStore};
 use brassclaw_turns::{
@@ -228,6 +233,7 @@ where
     ))))
 }
 
+#[cfg(feature = "postgres")]
 pub(crate) fn apply_production_runtime_process_binding<F, G, S, R>(
     services: HostRuntimeServices<F, G, S, R>,
     binding: RebornRuntimeProcessBinding,
@@ -445,7 +451,12 @@ pub async fn build_reborn_services(
             build_local_dev(input).await
         }
         RebornCompositionProfile::Production | RebornCompositionProfile::MigrationDryRun => {
-            build_production_shaped(input).await
+            #[cfg(feature = "postgres")]
+            return build_production_shaped(input).await;
+            #[cfg(not(feature = "postgres"))]
+            return Err(RebornBuildError::InvalidConfig {
+                reason: "production profile requires the 'postgres' feature".to_string(),
+            });
         }
     }
 }
@@ -794,6 +805,12 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
         pg_pool: None,
         #[cfg(feature = "root-llm-provider")]
         secret_store,
+        #[cfg(feature = "postgres")]
+        pg_safety_config_store: None,
+        #[cfg(feature = "postgres")]
+        pg_token_settings_store: None,
+        #[cfg(feature = "postgres")]
+        pg_memory_doc_store: None,
     })
 }
 
@@ -922,6 +939,7 @@ impl TriggerCreateHook for LocalRuntimeTriggerCreatorPairingHook {
     }
 }
 
+#[cfg(feature = "postgres")]
 struct ScopedFilesystemTriggerCreatorPairingHook<F>
 where
     F: RootFilesystem + 'static,
@@ -930,6 +948,7 @@ where
     conversations: tokio::sync::OnceCell<RebornFilesystemConversationServices>,
 }
 
+#[cfg(feature = "postgres")]
 impl<F> ScopedFilesystemTriggerCreatorPairingHook<F>
 where
     F: RootFilesystem + 'static,
@@ -942,6 +961,7 @@ where
     }
 }
 
+#[cfg(feature = "postgres")]
 #[async_trait::async_trait]
 impl<F> TriggerCreateHook for ScopedFilesystemTriggerCreatorPairingHook<F>
 where
@@ -1581,6 +1601,7 @@ fn nearai_allowed_effects() -> Vec<EffectKind> {
     ]
 }
 
+#[cfg(feature = "postgres")]
 async fn build_production_shaped(
     input: RebornBuildInput,
 ) -> Result<RebornServices, RebornBuildError> {
@@ -1635,6 +1656,7 @@ async fn build_production_shaped(
     }
 }
 
+#[cfg(feature = "postgres")]
 async fn resolve_secret_master_key(
     explicit: Option<brassclaw_secrets::SecretMaterial>,
 ) -> Result<brassclaw_secrets::SecretMaterial, RebornBuildError> {
@@ -1643,6 +1665,7 @@ async fn resolve_secret_master_key(
         .ok_or(RebornBuildError::MissingSecretMasterKey)
 }
 
+#[cfg(feature = "postgres")]
 struct RebornProductionWiring {
     trust_policy: Arc<HostTrustPolicy>,
     runtime_policy: EffectiveRuntimePolicy,
@@ -1650,6 +1673,7 @@ struct RebornProductionWiring {
     runtime_process_binding: RebornRuntimeProcessBinding,
 }
 
+#[cfg(feature = "postgres")]
 struct RebornProductionBuildContext {
     profile: RebornCompositionProfile,
     wiring_config: brassclaw_host_runtime::ProductionWiringConfig,
@@ -1659,6 +1683,7 @@ struct RebornProductionBuildContext {
     oauth_dcr_provider_configs: Vec<crate::input::OAuthDcrProviderBackendConfig>,
 }
 
+#[cfg(feature = "postgres")]
 fn production_wiring(
     trust_policy: Option<Arc<HostTrustPolicy>>,
     runtime_policy: Option<EffectiveRuntimePolicy>,
@@ -1681,6 +1706,7 @@ fn production_wiring(
     })
 }
 
+#[cfg(feature = "postgres")]
 fn validate_production_process_binding(
     runtime_policy: &EffectiveRuntimePolicy,
     binding: &RebornRuntimeProcessBinding,
@@ -1692,6 +1718,7 @@ fn validate_production_process_binding(
         })
 }
 
+#[cfg(feature = "postgres")]
 fn planned_run_profile_resolver() -> Result<Arc<InMemoryRunProfileResolver>, RebornBuildError> {
     Ok(Arc::new(
         brassclaw_reborn::planned_driver_factory::default_planned_run_profile_resolver().map_err(
@@ -1702,6 +1729,7 @@ fn planned_run_profile_resolver() -> Result<Arc<InMemoryRunProfileResolver>, Reb
     ))
 }
 
+#[cfg(feature = "postgres")]
 type FilesystemProductionHostRuntimeServices<F> = HostRuntimeServices<
     F,
     PersistentResourceGovernor<FilesystemResourceGovernorStore<F>>,
@@ -1733,6 +1761,7 @@ where
     .await
 }
 
+#[cfg(feature = "postgres")]
 async fn build_filesystem_production_host_runtime_services<F, TPolicy, TWake>(
     filesystem: Arc<F>,
     event_store: brassclaw_reborn_event_store::RebornEventStoreConfig,
@@ -1808,6 +1837,7 @@ where
 /// The secret store and credential broker are deliberately built together from
 /// one scoped filesystem and one crypto handle so production composition does
 /// not grow parallel ad hoc secret/credential stores.
+#[cfg(feature = "postgres")]
 struct FilesystemSecretCredentialStores<F>
 where
     F: RootFilesystem + 'static,
@@ -1844,6 +1874,7 @@ where
     }
 }
 
+#[cfg(feature = "postgres")]
 async fn build_filesystem_secret_credential_stores<F>(
     scoped_filesystem: Arc<ScopedFilesystem<F>>,
     master_key: Option<brassclaw_secrets::SecretMaterial>,
@@ -1857,6 +1888,7 @@ where
     FilesystemSecretCredentialStores::from_master_key(scoped_filesystem, master_key)
 }
 
+#[cfg(feature = "postgres")]
 async fn resolve_explicit_or_keychain_master_key(
     explicit: Option<brassclaw_secrets::SecretMaterial>,
 ) -> Result<Option<brassclaw_secrets::SecretMaterial>, brassclaw_secrets::SecretError> {
@@ -1871,6 +1903,7 @@ async fn resolve_explicit_or_keychain_master_key(
     }
 }
 
+#[cfg(feature = "postgres")]
 struct ProductionStoreBundle<F>
 where
     F: RootFilesystem + 'static,
@@ -1910,6 +1943,7 @@ where
     }
 }
 
+#[cfg(feature = "postgres")]
 async fn build_backend_production<F>(
     context: RebornProductionBuildContext,
     stores: ProductionStoreBundle<F>,
@@ -1928,6 +1962,7 @@ where
     .await
 }
 
+#[cfg(feature = "postgres")]
 async fn build_backend_production_with_tools<F>(
     context: RebornProductionBuildContext,
     stores: ProductionStoreBundle<F>,
@@ -2115,7 +2150,6 @@ where
     })
 }
 
-#[cfg(feature = "libsql")]
 #[cfg(feature = "postgres")]
 async fn build_postgres_production(
     context: RebornProductionBuildContext,
@@ -2215,9 +2249,10 @@ async fn resolve_pg_embedding_provider(
     pool: &deadpool_postgres::Pool,
     tenant_id: &str,
 ) -> Option<Arc<dyn brassclaw_memory::EmbeddingProvider>> {
+    use crate::embedding_providers::{EmbeddingsConfig, ProviderDeps, create_provider};
     use crate::embedding_role_adapter::EmbeddingRoleAdapter;
     use crate::pg_provider_repo::PgProviderRepo;
-    use brassclaw_embeddings::{EmbeddingCacheConfig, ProviderDeps, create_provider};
+    use brassclaw_embeddings::EmbeddingCacheConfig;
     use brassclaw_llm::{SessionConfig, SessionManager};
 
     // Load config snapshot to get embedding.provider_id.
@@ -2263,8 +2298,8 @@ async fn resolve_pg_embedding_provider(
 fn build_embeddings_config_from_provider(
     provider_def: Option<&brassclaw_llm::ProviderDefinition>,
     model_override: &Option<String>,
-) -> Option<brassclaw_embeddings::EmbeddingsConfig> {
-    use brassclaw_embeddings::{EmbeddingsConfig, default_dimension_for_model};
+) -> Option<EmbeddingsConfig> {
+    use crate::embedding_providers::{EmbeddingsConfig, default_dimension_for_model};
     use brassclaw_llm::registry::ProviderProtocol;
 
     let Some(def) = provider_def else {
@@ -2300,6 +2335,16 @@ fn build_embeddings_config_from_provider(
         ..EmbeddingsConfig::default()
     };
     Some(config)
+}
+
+/// Public alias for `resolve_pg_embedding_provider` — used by the
+/// `backfill-embeddings` CLI command in `retention_sweep.rs`.
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+pub(crate) async fn resolve_pg_embedding_provider_pub(
+    pool: &deadpool_postgres::Pool,
+    tenant_id: &str,
+) -> Option<Arc<dyn brassclaw_memory::EmbeddingProvider>> {
+    resolve_pg_embedding_provider(pool, tenant_id).await
 }
 
 fn readiness_for(

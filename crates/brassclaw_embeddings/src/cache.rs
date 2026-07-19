@@ -12,8 +12,7 @@ use async_trait::async_trait;
 use lru::LruCache;
 use sha2::{Digest, Sha256};
 
-use crate::config::DEFAULT_EMBEDDING_CACHE_SIZE;
-use crate::provider::{EmbeddingError, EmbeddingProvider};
+use crate::{DEFAULT_EMBEDDING_CACHE_SIZE, EmbeddingError, EmbeddingProvider};
 
 /// Configuration for the embedding cache.
 #[derive(Debug, Clone)]
