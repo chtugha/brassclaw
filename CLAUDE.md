@@ -4,6 +4,17 @@
 
 ## Build and Test
 
+> **Mandatory:** All `cargo build`, `cargo test`, `cargo clippy`, and `cargo check` invocations
+> **must** be launched in a `screen` session so the terminal is not blocked and implementation
+> can continue while compilation runs.
+>
+> ```bash
+> screen -dmS <name> bash -c 'cd /Volumes/SSDE/brassclaw && <cargo command> 2>&1 | tee /tmp/<name>.log; echo "EXIT:$?" >> /tmp/<name>.log'
+> # Check progress / result at any time:
+> tail -f /tmp/<name>.log
+> grep "^EXIT:" /tmp/<name>.log   # non-empty = finished
+> ```
+
 ```bash
 cargo fmt                                                              # format
 cargo clippy --all --benches --tests --examples --all-features         # lint (zero warnings)

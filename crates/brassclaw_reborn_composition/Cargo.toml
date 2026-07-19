@@ -51,6 +51,7 @@ postgres = [
     "brassclaw_triggers/postgres",
 ]
 [dependencies]
+brassclaw_pg = { path = "../brassclaw_pg" }
 async-trait = "0.1"
 base64 = "0.22"
 chrono = "0.4"

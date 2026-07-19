@@ -11,8 +11,10 @@ mod crypto;
 mod filesystem_store;
 pub mod keychain;
 mod legacy_store;
+pub mod pg_store;
 
 pub use filesystem_store::{FilesystemCredentialBroker, FilesystemSecretStore};
+pub use pg_store::{PgCredentialBroker, PgSecretStore};
 
 use std::collections::HashMap;
 use std::fmt;

@@ -1,0 +1,26 @@
+[package]
+name = "brassclaw_embedded_postgres"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Embedded PostgreSQL lifecycle management for brassclaw (download, initdb, pg_ctl, health check)."
+authors = ["NEAR AI <support@near.ai>"]
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/chtugha/brassclaw"
+repository = "https://github.com/chtugha/brassclaw"
+
+[lints]
+workspace = true
+
+[dependencies]
+postgresql_embedded = { version = "0.21", features = ["tokio"] }
+sha2 = "0.10"
+hex = "0.4"
+thiserror = "2"
+tokio = { version = "1", features = ["process", "fs", "net", "time", "rt", "macros"] }
+tracing = "0.1"
+libc = "0.2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
+tempfile = "3"
