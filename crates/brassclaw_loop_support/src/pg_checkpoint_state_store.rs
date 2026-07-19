@@ -14,12 +14,11 @@ use brassclaw_pg::PgPool;
 use chrono::Utc;
 
 use brassclaw_turns::{
-    CheckpointStateRecord, CheckpointStateStore, GetCheckpointStateRequest,
-    LoopCheckpointStateRef, PutCheckpointStateRequest, RedactedCheckpointPayload, TurnError,
-    checkpoint_state_metadata_matches_request, checkpoint_state_record_matches_request,
+    CheckpointStateRecord, CheckpointStateStore,
+    GetCheckpointStateRequest, LoopCheckpointStateRef, PutCheckpointStateRequest,
+    RedactedCheckpointPayload, TurnError, checkpoint_state_record_matches_request,
     new_checkpoint_state_ref,
 };
-
 fn map_pg_pool(e: deadpool_postgres::PoolError) -> TurnError {
     TurnError::Unavailable {
         reason: e.to_string(),

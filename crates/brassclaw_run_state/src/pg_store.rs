@@ -15,7 +15,7 @@ use brassclaw_host_api::{ApprovalRequest, InvocationId, ResourceScope};
 use brassclaw_pg::PgPool;
 use serde_json::Value;
 
-use crate::{ApprovalStatus, RunRecord, RunStart, RunStateError, RunStateStore, RunStatus};
+use crate::{RunRecord, RunStart, RunStateError, RunStateStore, RunStatus};
 
 fn map_pg_pool(e: deadpool_postgres::PoolError) -> RunStateError {
     RunStateError::Backend(e.to_string())
