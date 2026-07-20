@@ -29,11 +29,9 @@ mod available_extensions;
 mod budget;
 mod budget_events;
 mod bundled_skills;
-mod default_system_prompt;
 pub mod db_config;
+mod default_system_prompt;
 mod error;
-#[cfg(feature = "root-llm-provider")]
-pub mod pg_provider_repo;
 mod extension_installation_store;
 mod extension_lifecycle;
 mod extension_lifecycle_capabilities;
@@ -66,6 +64,8 @@ mod oauth_dcr;
 mod oauth_dcr_protocol;
 mod oauth_gate;
 mod oauth_provider_client;
+#[cfg(feature = "root-llm-provider")]
+pub mod pg_provider_repo;
 mod product_auth_durable;
 mod product_auth_providers;
 mod product_auth_runtime_credentials;
@@ -75,13 +75,13 @@ mod production_runtime_policy;
 mod profile;
 mod projection;
 pub use auth_prompt::{AuthChallengeProvider, AuthChallengeView};
-mod fetch_cached_content;
-#[cfg(feature = "migrate-from-libsql")]
-pub mod migration;
 #[cfg(feature = "postgres")]
 pub(crate) mod embedding_providers;
 #[cfg(feature = "postgres")]
 pub(crate) mod embedding_role_adapter;
+mod fetch_cached_content;
+#[cfg(feature = "migrate-from-libsql")]
+pub mod migration;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_auth_product_services;
 #[cfg(feature = "postgres")]
@@ -90,10 +90,6 @@ pub(crate) mod pg_chat_memory_record_store;
 pub(crate) mod pg_memory_doc_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_token_settings_store;
-#[cfg(feature = "postgres")]
-pub mod retention_sweep;
-#[cfg(feature = "postgres")]
-pub mod secrets_master;
 pub(crate) mod plan_library;
 #[cfg(feature = "root-llm-provider")]
 mod provider_admin;
@@ -107,8 +103,12 @@ mod recipe_library;
 pub(crate) mod recipe_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod reduction_rules_store;
+#[cfg(feature = "postgres")]
+pub mod retention_sweep;
 mod runtime;
 mod runtime_input;
+#[cfg(feature = "postgres")]
+pub mod secrets_master;
 mod skill_listing;
 #[cfg(feature = "test-support")]
 pub mod test_support;
@@ -229,8 +229,7 @@ pub mod host_api {
 /// boundary forbids that).
 pub use brassclaw_reborn::local_trigger_access::{
     LocalTriggerAccessReconciliation, LocalTriggerAccessRole, LocalTriggerAccessSeed,
-    LocalTriggerAccessSource, PgRebornLocalTriggerAccessStore,
-    RebornLocalTriggerAccessStoreError,
+    LocalTriggerAccessSource, PgRebornLocalTriggerAccessStore, RebornLocalTriggerAccessStoreError,
 };
 
 #[async_trait::async_trait]

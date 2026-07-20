@@ -1398,10 +1398,7 @@ impl RebornServices {
     /// `501` when this setter has not been called, so misconfigured
     /// deployments fail loud rather than silently serving the empty
     /// stub responses.
-    pub fn with_recipe_store(
-        mut self,
-        store: Arc<dyn crate::recipes::RecipeStore>,
-    ) -> Self {
+    pub fn with_recipe_store(mut self, store: Arc<dyn crate::recipes::RecipeStore>) -> Self {
         self.recipe_store = Some(store);
         self
     }
@@ -2920,7 +2917,10 @@ impl RebornServicesApi for RebornServices {
         caller: WebUiAuthenticatedCaller,
         project_id: &str,
     ) -> Result<crate::recipes::RecipeListResponse, RebornServicesError> {
-        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let store = self
+            .recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?;
         let user_id = caller.user_id.to_string();
         let recipes = store
             .list_recipes(&user_id, project_id)
@@ -2934,7 +2934,10 @@ impl RebornServicesApi for RebornServices {
         caller: WebUiAuthenticatedCaller,
         project_id: &str,
     ) -> Result<crate::recipes::ToolSkillListResponse, RebornServicesError> {
-        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let store = self
+            .recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?;
         let user_id = caller.user_id.to_string();
         let tool_skills = store
             .list_tool_skills(&user_id, project_id)
@@ -2949,7 +2952,10 @@ impl RebornServicesApi for RebornServices {
         project_id: &str,
         recipe_id: &str,
     ) -> Result<crate::recipes::RecipeDetail, RebornServicesError> {
-        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let store = self
+            .recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?;
         let user_id = caller.user_id.to_string();
         store
             .get_recipe(&user_id, project_id, recipe_id)
@@ -2964,7 +2970,10 @@ impl RebornServicesApi for RebornServices {
         project_id: &str,
         skill_id: &str,
     ) -> Result<crate::recipes::ToolSkillDetail, RebornServicesError> {
-        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let store = self
+            .recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?;
         let user_id = caller.user_id.to_string();
         store
             .get_tool_skill(&user_id, project_id, skill_id)
@@ -2978,7 +2987,10 @@ impl RebornServicesApi for RebornServices {
         caller: WebUiAuthenticatedCaller,
         project_id: &str,
     ) -> Result<crate::recipes::ValidationQueueListResponse, RebornServicesError> {
-        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let store = self
+            .recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?;
         let user_id = caller.user_id.to_string();
         let items = store
             .list_validation_queue(&user_id, project_id)
@@ -2993,7 +3005,10 @@ impl RebornServicesApi for RebornServices {
         project_id: &str,
         status: &str,
     ) -> Result<crate::recipes::ValidationQueueCountResponse, RebornServicesError> {
-        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let store = self
+            .recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?;
         let user_id = caller.user_id.to_string();
         let count = store
             .count_by_status(&user_id, project_id, status)
@@ -3012,7 +3027,10 @@ impl RebornServicesApi for RebornServices {
         recipe_id: &str,
         request: crate::recipes::UpdateValidationStatusRequest,
     ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
-        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let store = self
+            .recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?;
         let user_id = caller.user_id.to_string();
         store
             .update_recipe_validation_status(
@@ -3033,7 +3051,10 @@ impl RebornServicesApi for RebornServices {
         recipe_id: &str,
         request: crate::recipes::UpdateValidationStatusRequest,
     ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
-        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let store = self
+            .recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?;
         let user_id = caller.user_id.to_string();
         store
             .update_recipe_validation_status(
@@ -3057,13 +3078,12 @@ impl RebornServicesApi for RebornServices {
         // Reviewer must attach feedback — the LLM review mission
         // uses it as the "why are you fixing this?" context prompt.
         let feedback = request.feedback.as_deref().ok_or_else(|| {
-            RebornServicesError::from_status(
-                RebornServicesErrorCode::InvalidRequest,
-                400,
-                false,
-            )
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 400, false)
         })?;
-        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let store = self
+            .recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?;
         let user_id = caller.user_id.to_string();
         store
             .update_recipe_validation_status(
@@ -3084,7 +3104,10 @@ impl RebornServicesApi for RebornServices {
         skill_id: &str,
         request: crate::recipes::UpdateValidationStatusRequest,
     ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
-        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let store = self
+            .recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?;
         let user_id = caller.user_id.to_string();
         store
             .update_skill_validation_status(
@@ -3105,7 +3128,10 @@ impl RebornServicesApi for RebornServices {
         skill_id: &str,
         request: crate::recipes::UpdateValidationStatusRequest,
     ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
-        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let store = self
+            .recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?;
         let user_id = caller.user_id.to_string();
         store
             .update_skill_validation_status(
@@ -3127,13 +3153,12 @@ impl RebornServicesApi for RebornServices {
         request: crate::recipes::UpdateValidationStatusRequest,
     ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
         let feedback = request.feedback.as_deref().ok_or_else(|| {
-            RebornServicesError::from_status(
-                RebornServicesErrorCode::InvalidRequest,
-                400,
-                false,
-            )
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 400, false)
         })?;
-        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let store = self
+            .recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?;
         let user_id = caller.user_id.to_string();
         store
             .update_skill_validation_status(
@@ -3153,7 +3178,10 @@ impl RebornServicesApi for RebornServices {
         project_id: &str,
         request: crate::recipes::RecordOutcomeRequest,
     ) -> Result<crate::recipes::RecordOutcomeResponse, RebornServicesError> {
-        let store = self.recipe_store.as_ref().ok_or_else(recipe_store_unavailable)?;
+        let store = self
+            .recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?;
         let user_id = caller.user_id.to_string();
         store
             .record_outcome(&user_id, project_id, request)
@@ -3166,32 +3194,20 @@ impl RebornServicesApi for RebornServices {
 /// `RebornServicesError`. Mirrors the reduction-rule mapping at the top
 /// of the file: `Invalid` / `NotFound` → 400, `Unavailable` → 503,
 /// `Internal` → 500.
-fn map_recipe_store_error(
-    error: crate::recipes::RecipeStoreError,
-) -> RebornServicesError {
+fn map_recipe_store_error(error: crate::recipes::RecipeStoreError) -> RebornServicesError {
     match error {
         crate::recipes::RecipeStoreError::Invalid(_) => {
-            RebornServicesError::from_status(
-                RebornServicesErrorCode::InvalidRequest,
-                400,
-                false,
-            )
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 400, false)
         }
         crate::recipes::RecipeStoreError::NotFound(_) => {
-            RebornServicesError::from_status(
-                RebornServicesErrorCode::InvalidRequest,
-                404,
-                false,
-            )
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 404, false)
         }
-        crate::recipes::RecipeStoreError::Unavailable(_) => {
-            RebornServicesError::from_status_kind(
-                RebornServicesErrorCode::Unavailable,
-                RebornServicesErrorKind::ServiceUnavailable,
-                503,
-                false,
-            )
-        }
+        crate::recipes::RecipeStoreError::Unavailable(_) => RebornServicesError::from_status_kind(
+            RebornServicesErrorCode::Unavailable,
+            RebornServicesErrorKind::ServiceUnavailable,
+            503,
+            false,
+        ),
         crate::recipes::RecipeStoreError::Internal(reason) => {
             tracing::error!("❌ Recipe store internal error: {reason}");
             RebornServicesError::from_status_kind(

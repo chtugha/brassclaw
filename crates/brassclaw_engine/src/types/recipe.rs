@@ -284,9 +284,8 @@ impl ToolSkill {
     /// Approximate token cost when injected as Tier 1 prompt content.
     /// 4 chars ≈ 1 token (rough heuristic; matches `RecipeValidator` ceiling).
     pub fn estimated_tokens(&self) -> usize {
-        let mut total_chars = self.description.len()
-            + self.preconditions.len()
-            + self.error_handling.len();
+        let mut total_chars =
+            self.description.len() + self.preconditions.len() + self.error_handling.len();
         if let Some(snippet) = &self.code_snippet {
             total_chars += snippet.len();
         }
@@ -381,7 +380,8 @@ mod tests {
         Recipe {
             id: "r1".into(),
             name: "github-issue-triage".into(),
-            description: "Triage new GitHub issues by severity and triage them into the right label".into(),
+            description:
+                "Triage new GitHub issues by severity and triage them into the right label".into(),
             trigger: RecipeTrigger::Keyword {
                 keywords: vec!["github".into(), "issue".into(), "triage".into()],
                 threshold: 0.5,

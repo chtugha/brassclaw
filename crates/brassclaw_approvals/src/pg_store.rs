@@ -182,11 +182,9 @@ impl ApprovalRequestStore for PgApprovalRequestStore {
             .await;
         match result {
             Ok(_) => Ok(record),
-            Err(e) if is_unique_violation(&e) => {
-                Err(RunStateError::ApprovalRequestAlreadyExists {
-                    request_id: record.request.id,
-                })
-            }
+            Err(e) if is_unique_violation(&e) => Err(RunStateError::ApprovalRequestAlreadyExists {
+                request_id: record.request.id,
+            }),
             Err(e) => Err(map_pg(e)),
         }
     }
@@ -238,10 +236,7 @@ impl ApprovalRequestStore for PgApprovalRequestStore {
             .execute(
                 "DELETE FROM brassclaw_approvals \
                  WHERE id = $1 AND tenant_id = $2 AND status = 'pending'",
-                &[
-                    &request_id.as_uuid().to_string(),
-                    &self.tenant_id,
-                ],
+                &[&request_id.as_uuid().to_string(), &self.tenant_id],
             )
             .await
             .map_err(map_pg)?;

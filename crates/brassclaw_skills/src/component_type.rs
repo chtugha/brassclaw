@@ -45,7 +45,11 @@ impl ComponentTypeSet {
     ///
     /// `[Llm, Kohai, Agent]` — available in all contexts except Sempai audit.
     pub fn default_types() -> Vec<ComponentType> {
-        vec![ComponentType::Llm, ComponentType::Kohai, ComponentType::Agent]
+        vec![
+            ComponentType::Llm,
+            ComponentType::Kohai,
+            ComponentType::Agent,
+        ]
     }
 
     /// Returns `true` when this set contains `ty`.
@@ -104,7 +108,14 @@ mod tests {
     #[test]
     fn component_type_yaml_roundtrip() {
         let types: Vec<ComponentType> = serde_yml::from_str("- llm\n- kohai\n- agent").unwrap();
-        assert_eq!(types, vec![ComponentType::Llm, ComponentType::Kohai, ComponentType::Agent]);
+        assert_eq!(
+            types,
+            vec![
+                ComponentType::Llm,
+                ComponentType::Kohai,
+                ComponentType::Agent
+            ]
+        );
     }
 
     #[test]

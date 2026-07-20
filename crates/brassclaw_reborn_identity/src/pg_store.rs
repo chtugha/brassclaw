@@ -132,14 +132,11 @@ impl PgRebornIdentityStore {
             .map_err(|error| RebornIdentityError::Backend(error.to_string()))?;
 
         // Re-read the winner's user_id (either ours or the racing inserter).
-        let winner = self
-            .identity_user(key)
-            .await?
-            .ok_or_else(|| {
-                RebornIdentityError::Backend(
-                    "identity record vanished during reconciliation".to_string(),
-                )
-            })?;
+        let winner = self.identity_user(key).await?.ok_or_else(|| {
+            RebornIdentityError::Backend(
+                "identity record vanished during reconciliation".to_string(),
+            )
+        })?;
         Ok(winner)
     }
 }
@@ -345,8 +342,14 @@ impl RebornIdentityResolver for PgRebornIdentityStore {
                                   provider_instance_id, external_subject_id) \
                      DO UPDATE SET user_id = EXCLUDED.user_id",
                 &[
-                    &id, &tenant, &surface, &provider, &instance,
-                    &subject, &user_id.as_str(), &now.as_str(),
+                    &id,
+                    &tenant,
+                    &surface,
+                    &provider,
+                    &instance,
+                    &subject,
+                    &user_id.as_str(),
+                    &now.as_str(),
                 ],
             )
             .await
@@ -383,7 +386,12 @@ impl RebornIdentityResolver for PgRebornIdentityStore {
                          ON CONFLICT (tenant_id, surface_kind, provider_kind, \
                                       provider_instance_id, external_subject_id) DO NOTHING",
                     &[
-                        &id, &tenant, &surface, &provider, &instance, &subject,
+                        &id,
+                        &tenant,
+                        &surface,
+                        &provider,
+                        &instance,
+                        &subject,
                         &user_id.as_str(),
                         &identity.email.as_deref(),
                         &identity.email_verified,

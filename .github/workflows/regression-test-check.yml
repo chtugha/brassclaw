@@ -64,14 +64,10 @@ jobs:
 
           TOUCHES_HIGH_RISK=false
           HIGH_RISK_PATTERNS=(
-            "src/context/state.rs"
-            "src/agent/session.rs"
-            "src/llm/circuit_breaker.rs"
-            "src/llm/retry.rs"
-            "src/llm/failover.rs"
-            "src/agent/self_repair.rs"
-            "src/agent/agentic_loop.rs"
-            "src/tools/execute.rs"
+            "crates/brassclaw_run_state/src/"
+            "crates/brassclaw_agent_loop/src/"
+            "crates/brassclaw_llm/src/"
+            "crates/brassclaw_host_runtime/src/"
             "crates/brassclaw_safety/src/"
           )
 
@@ -117,7 +113,7 @@ jobs:
           ALL_EXEMPT=true
           while IFS= read -r file; do
             case "$file" in
-              src/channels/web/static/*) ;;
+              crates/brassclaw_webui_v2_static/*) ;;
               *.md) ;;
               *) ALL_EXEMPT=false; break ;;
             esac

@@ -79,9 +79,8 @@ impl DockerProcessSandboxConfig {
         tools_host_path: impl Into<PathBuf>,
         cache_host_path: impl Into<PathBuf>,
     ) -> Result<Self, ProcessSandboxPlanError> {
-        validate_docker_image_reference(image).map_err(|reason| {
-            ProcessSandboxPlanError::InvalidDockerImageReference { reason }
-        })?;
+        validate_docker_image_reference(image)
+            .map_err(|reason| ProcessSandboxPlanError::InvalidDockerImageReference { reason })?;
         Ok(Self {
             docker_bin: "docker".to_string(),
             image: image.to_string(),

@@ -29,8 +29,8 @@ use brassclaw_hooks::predicate_state::{
     InvocationKey, MAX_KEYS_PER_TENANT, MAX_SAMPLES_PER_KEY, PredicateBackendError,
     PredicateEventId, PredicateStateBackend, ValueKey,
 };
-use brassclaw_host_api::TenantId;
 use brassclaw_hooks_pg::PostgresPredicateStateBackend;
+use brassclaw_host_api::TenantId;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 
@@ -315,15 +315,31 @@ async fn scenario_cross_host_replay_exactly_once(
 
     let vkey = val_key("alpha", "cap.spend", "amount");
     let s1 = host_a
-        .record_value(&vkey, &ev("v-shared"), at_secs(0), Decimal::from(50), window)
+        .record_value(
+            &vkey,
+            &ev("v-shared"),
+            at_secs(0),
+            Decimal::from(50),
+            window,
+        )
         .await
         .expect("ok");
     assert_eq!(s1, Decimal::from(50));
     let s2 = host_b
-        .record_value(&vkey, &ev("v-shared"), at_secs(1), Decimal::from(50), window)
+        .record_value(
+            &vkey,
+            &ev("v-shared"),
+            at_secs(1),
+            Decimal::from(50),
+            window,
+        )
         .await
         .expect("ok");
-    assert_eq!(s2, Decimal::from(50), "cross-host value replay must not double-count");
+    assert_eq!(
+        s2,
+        Decimal::from(50),
+        "cross-host value replay must not double-count"
+    );
 }
 
 async fn scenario_per_key_cap_fails_closed_under_flood(
@@ -396,26 +412,37 @@ async fn scenario_cap_boundary_race_admits_exactly_one(
         let key = key.clone();
         let host_a = Arc::clone(&host_a);
         tokio::spawn(async move {
-            host_a.record_invocation(&key, &ev("race-a"), now, window).await
+            host_a
+                .record_invocation(&key, &ev("race-a"), now, window)
+                .await
         })
     };
     let hb = {
         let key = key.clone();
         let host_b = Arc::clone(&host_b);
         tokio::spawn(async move {
-            host_b.record_invocation(&key, &ev("race-b"), now, window).await
+            host_b
+                .record_invocation(&key, &ev("race-b"), now, window)
+                .await
         })
     };
     let ra = ha.await.expect("joined a");
     let rb = hb.await.expect("joined b");
 
     let results = [&ra, &rb];
-    let oks: Vec<u32> = results.iter().filter_map(|r| r.as_ref().ok().copied()).collect();
+    let oks: Vec<u32> = results
+        .iter()
+        .filter_map(|r| r.as_ref().ok().copied())
+        .collect();
     let overflows = results
         .iter()
         .filter(|r| matches!(r, Err(PredicateBackendError::WindowOverflow { .. })))
         .count();
-    assert_eq!(oks.len(), 1, "exactly one writer wins; got ra={ra:?}, rb={rb:?}");
+    assert_eq!(
+        oks.len(),
+        1,
+        "exactly one writer wins; got ra={ra:?}, rb={rb:?}"
+    );
     assert_eq!(overflows, 1, "loser fails closed; got ra={ra:?}, rb={rb:?}");
     assert_eq!(oks[0] as usize, MAX_SAMPLES_PER_KEY);
 
@@ -428,7 +455,10 @@ async fn scenario_cap_boundary_race_admits_exactly_one(
         )
         .await;
     assert!(
-        matches!(overflow_again, Err(PredicateBackendError::WindowOverflow { .. })),
+        matches!(
+            overflow_again,
+            Err(PredicateBackendError::WindowOverflow { .. })
+        ),
         "after boundary race key is at cap; fresh id must fail closed, got {overflow_again:?}"
     );
 }
@@ -478,7 +508,12 @@ async fn scenario_lru_eviction_race_holds_quota<C, Fut>(
             let _permit = sem.acquire_owned().await.expect("permit");
             let key = inv_key("alpha", &format!("alpha.cap.{i}"));
             backend
-                .record_invocation(&key, &ev(&format!("a-{i}")), at_millis(i as i64 + 1), window)
+                .record_invocation(
+                    &key,
+                    &ev(&format!("a-{i}")),
+                    at_millis(i as i64 + 1),
+                    window,
+                )
                 .await
                 .expect("ok");
         }));
@@ -494,6 +529,12 @@ async fn scenario_lru_eviction_race_holds_quota<C, Fut>(
     assert_eq!(beta_count, 1, "quiet tenant scope must survive the flood");
 
     let alpha_scopes = count_scopes("alpha").await;
-    assert!(alpha_scopes <= MAX_KEYS_PER_TENANT, "noisy tenant capped; got {alpha_scopes}");
-    assert!(backend.evictions_observed() >= 1, "eviction counter must advance");
+    assert!(
+        alpha_scopes <= MAX_KEYS_PER_TENANT,
+        "noisy tenant capped; got {alpha_scopes}"
+    );
+    assert!(
+        backend.evictions_observed() >= 1,
+        "eviction counter must advance"
+    );
 }

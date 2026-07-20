@@ -37,12 +37,16 @@ pub enum ConfigError {
     #[error("database error: {0}")]
     Db(String),
 
-    #[error("config value for `{key}` looks like inline secret material — \
-             store secret values in env vars, not in config")]
+    #[error(
+        "config value for `{key}` looks like inline secret material — \
+             store secret values in env vars, not in config"
+    )]
     InlineSecretForbidden { key: String },
 
-    #[error("config key `{key}` ends with `_env` and may only be written by operators, \
-             not by an agent session")]
+    #[error(
+        "config key `{key}` ends with `_env` and may only be written by operators, \
+             not by an agent session"
+    )]
     EnvKeyWriteForbidden { key: String },
 }
 
@@ -88,8 +92,10 @@ pub async fn save_config_key(
     caller: ConfigWriteContext,
 ) -> Result<(), ConfigError> {
     // Guard 1: inline-secret check (applies regardless of context).
-    reject_inline_secret(key.to_owned(), value).map_err(|_| ConfigError::InlineSecretForbidden {
-        key: key.to_string(),
+    reject_inline_secret(key.to_owned(), value).map_err(|_| {
+        ConfigError::InlineSecretForbidden {
+            key: key.to_string(),
+        }
     })?;
 
     // Guard 2: _env suffix gate for agent sessions.
@@ -273,8 +279,7 @@ fn assemble_identity(kv: &BTreeMap<String, String>) -> Option<IdentitySection> {
 fn assemble_policy(kv: &BTreeMap<String, String>) -> Option<PolicySection> {
     let deployment_mode = get_str(kv, "policy.deployment_mode").map(str::to_string);
     let default_profile = get_str(kv, "policy.default_profile").map(str::to_string);
-    let default_approval_policy =
-        get_str(kv, "policy.default_approval_policy").map(str::to_string);
+    let default_approval_policy = get_str(kv, "policy.default_approval_policy").map(str::to_string);
     let any =
         deployment_mode.is_some() || default_profile.is_some() || default_approval_policy.is_some();
     some_if_any(
@@ -294,7 +299,13 @@ fn assemble_drivers(kv: &BTreeMap<String, String>) -> Option<DriversSection> {
         .get("drivers.additional")
         .and_then(|v| serde_json::from_str::<Vec<String>>(v).ok());
     let any = default.is_some() || additional.is_some();
-    some_if_any(DriversSection { default, additional }, any)
+    some_if_any(
+        DriversSection {
+            default,
+            additional,
+        },
+        any,
+    )
 }
 
 fn assemble_harness(kv: &BTreeMap<String, String>) -> Option<HarnessSection> {
@@ -512,15 +523,9 @@ mod tests {
         ]);
         let config = assemble_config(&map);
         let llm = config.llm.unwrap();
-        assert_eq!(
-            llm["default"].provider_id.as_deref(),
-            Some("openai")
-        );
+        assert_eq!(llm["default"].provider_id.as_deref(), Some("openai"));
         assert_eq!(llm["default"].model.as_deref(), Some("gpt-4o"));
-        assert_eq!(
-            llm["kohai"].provider_id.as_deref(),
-            Some("anthropic")
-        );
+        assert_eq!(llm["kohai"].provider_id.as_deref(), Some("anthropic"));
     }
 
     #[test]
@@ -564,10 +569,7 @@ mod tests {
     fn boolean_serialization_round_trip() {
         let map = kv(&[("tokens.capability_focus_enabled", "true")]);
         let config = assemble_config(&map);
-        assert_eq!(
-            config.tokens.unwrap().capability_focus_enabled,
-            Some(true)
-        );
+        assert_eq!(config.tokens.unwrap().capability_focus_enabled, Some(true));
     }
 
     #[test]

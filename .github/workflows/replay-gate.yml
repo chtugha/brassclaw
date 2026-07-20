@@ -60,7 +60,6 @@ jobs:
           cargo insta test \
             --check \
             --test-runner nextest \
-            --no-default-features \
             --features "libsql,replay" \
             --test reborn_trace_core_builtin_tools_parity \
             --test reborn_recorded_trace_parity \

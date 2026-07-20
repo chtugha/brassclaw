@@ -4,6 +4,7 @@ use brassclaw_event_projections::{
     AuditProjectionRequest, AuditProjectionService, AuditProjectionStage, DurableMemoryAuditSink,
     ProjectionScope, ReplayAuditProjectionService,
 };
+use brassclaw_events::InMemoryDurableAuditLog;
 use brassclaw_events::{AuditSink, DurableAuditSink};
 use brassclaw_host_api::{
     AgentId, CorrelationId, InvocationId, MissionId, ProjectId, ResourceScope, TenantId, ThreadId,
@@ -13,7 +14,6 @@ use brassclaw_memory::{
     InMemoryMemoryDocumentRepository, MemoryBackend, MemoryContext, MemoryDocumentPath,
     MemoryDocumentRepository, MemoryDocumentScope, RepositoryMemoryBackend, content_sha256,
 };
-use brassclaw_events::InMemoryDurableAuditLog;
 
 #[tokio::test]
 async fn memory_prompt_safety_rejection_projects_metadata_only_from_durable_audit_log() {
@@ -204,4 +204,3 @@ fn thread_resource_scope() -> ResourceScope {
         invocation_id: InvocationId::new(),
     }
 }
-

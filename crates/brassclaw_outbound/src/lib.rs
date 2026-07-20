@@ -18,7 +18,6 @@ mod store;
 mod types;
 mod validation;
 
-pub use pg_store::PgOutboundStateStore;
 pub use communication_preferences::{
     CommunicationPreferenceKey, CommunicationPreferenceRecord, CommunicationPreferenceRepository,
 };
@@ -36,6 +35,7 @@ pub use ids::{
     TriggerOriginRef,
 };
 pub use memory::InMemoryOutboundStateStore;
+pub use pg_store::PgOutboundStateStore;
 pub use service::{
     OutboundPolicyService, ReplyTargetBindingValidator, ThreadProjectionAccessPolicy,
 };

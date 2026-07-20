@@ -159,10 +159,8 @@ pub(crate) fn build_webui_services_with_connectable_channels(
     #[cfg(feature = "postgres")]
     if let Some(safety_config_store) = &services.pg_safety_config_store {
         tracing::debug!("wiring PgSafetyConfigStore into WebUI API");
-        api = api.with_safety_config_store(
-            Arc::clone(safety_config_store)
-                as Arc<dyn brassclaw_product_workflow::SafetyConfigStore>,
-        );
+        api = api.with_safety_config_store(Arc::clone(safety_config_store)
+            as Arc<dyn brassclaw_product_workflow::SafetyConfigStore>);
     }
 
     // Wire the token settings store (Postgres path).
@@ -180,22 +178,21 @@ pub(crate) fn build_webui_services_with_connectable_channels(
     if let Some(memory_doc_store) = services.pg_memory_doc_store.clone() {
         let dyn_store: Arc<dyn brassclaw_engine::traits::store::Store> =
             Arc::clone(&memory_doc_store) as Arc<dyn brassclaw_engine::traits::store::Store>;
-        let reduction_rule_store = crate::reduction_rules_store::StoreBackedReductionRuleStore::open(
-            Arc::clone(&dyn_store),
-        );
-        api = api.with_reduction_rule_store(
-            Arc::new(reduction_rule_store)
-                as Arc<dyn brassclaw_product_workflow::ReductionRuleStore>,
-        );
+        let reduction_rule_store =
+            crate::reduction_rules_store::StoreBackedReductionRuleStore::open(Arc::clone(
+                &dyn_store,
+            ));
+        api = api.with_reduction_rule_store(Arc::new(reduction_rule_store)
+            as Arc<dyn brassclaw_product_workflow::ReductionRuleStore>);
         api = api.with_reduction_rules_cache_invalidator(Arc::new(
             |_project_id: &str, _user_id: &str| {
                 brassclaw_engine::executor::orchestrator::invalidate_reduction_rules_cache();
             },
         ));
-        let recipe_store = crate::recipe_store::StoreBackedRecipeStore::open(Arc::clone(&dyn_store));
+        let recipe_store =
+            crate::recipe_store::StoreBackedRecipeStore::open(Arc::clone(&dyn_store));
         api = api.with_recipe_store(
-            Arc::new(recipe_store)
-                as Arc<dyn brassclaw_product_workflow::RecipeStore>,
+            Arc::new(recipe_store) as Arc<dyn brassclaw_product_workflow::RecipeStore>
         );
         tracing::debug!("ReductionRuleStore + RecipeStore wired through PgMemoryDocStore");
     }

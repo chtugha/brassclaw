@@ -48,9 +48,7 @@ pub(super) struct RecipeInput {
 pub(super) enum RecipeStep {
     /// Fall through to `prompt` (Tier 2): either no recipe matched or
     /// the matched recipe is below the Wilson threshold.
-    Continue {
-        state: Box<LoopExecutionState>,
-    },
+    Continue { state: Box<LoopExecutionState> },
 }
 
 #[async_trait]
@@ -74,7 +72,10 @@ impl ExecutorStage<RecipeInput> for RecipeStage {
                  See module doc for resolution options."
             );
         } else {
-            debug!(iteration = input.state.iteration, "recipe stage: no library wired");
+            debug!(
+                iteration = input.state.iteration,
+                "recipe stage: no library wired"
+            );
         }
         Ok(RecipeStep::Continue {
             state: Box::new(input.state),

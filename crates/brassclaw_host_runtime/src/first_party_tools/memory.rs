@@ -38,7 +38,10 @@ const MEMORY_PROMPT_SAFETY_EXTENSION_ID: &str = "memory.prompt_safety";
 
 /// Backend and optional Path B indexer produced by [`build_backend`].
 /// `None` indexer means embedding is inactive for this request.
-type BackendAndIndexer = (Arc<dyn MemoryBackend>, Option<Arc<dyn MemoryDocumentIndexer>>);
+type BackendAndIndexer = (
+    Arc<dyn MemoryBackend>,
+    Option<Arc<dyn MemoryDocumentIndexer>>,
+);
 
 struct MemoryServices {
     scope: MemoryDocumentScope,
@@ -302,10 +305,7 @@ impl MemoryCapabilityState {
     }
 
     /// Add a Path A chat-memory record writer (§4.29, S10).
-    pub(super) fn with_chat_memory_writer(
-        mut self,
-        writer: Arc<dyn ChatMemoryWriterPort>,
-    ) -> Self {
+    pub(super) fn with_chat_memory_writer(mut self, writer: Arc<dyn ChatMemoryWriterPort>) -> Self {
         self.chat_memory_writer = Some(writer);
         self
     }
@@ -341,8 +341,11 @@ impl MemoryCapabilityState {
 
         let filesystem = Arc::clone(&request.services.filesystem);
         let audit_sink = request.services.audit_sink.clone();
-        let (backend, indexer) =
-            build_backend(Arc::clone(&filesystem), audit_sink.clone(), self.embedding_provider.clone());
+        let (backend, indexer) = build_backend(
+            Arc::clone(&filesystem),
+            audit_sink.clone(),
+            self.embedding_provider.clone(),
+        );
         *cached_backend = Some(CachedMemoryBackend {
             filesystem,
             audit_sink,
@@ -378,10 +381,7 @@ impl brassclaw_memory::EmbeddingProvider for DynEmbeddingProviderWrapper {
         self.0.model_name()
     }
 
-    async fn embed(
-        &self,
-        text: &str,
-    ) -> Result<Vec<f32>, brassclaw_memory::EmbeddingError> {
+    async fn embed(&self, text: &str) -> Result<Vec<f32>, brassclaw_memory::EmbeddingError> {
         self.0.embed(text).await
     }
 
@@ -412,15 +412,18 @@ fn build_backend(
     // Path B (index_content) before moving it into the backend.
     let indexer_arc: Arc<dyn MemoryDocumentIndexer> = if let Some(provider) = &embedding_provider {
         Arc::new(
-            ChunkingMemoryDocumentIndexer::new(Arc::clone(&repository))
-                .with_embedding_provider(Arc::new(DynEmbeddingProviderWrapper(Arc::clone(
-                    provider,
-                )))),
+            ChunkingMemoryDocumentIndexer::new(Arc::clone(&repository)).with_embedding_provider(
+                Arc::new(DynEmbeddingProviderWrapper(Arc::clone(provider))),
+            ),
         )
     } else {
         Arc::new(ChunkingMemoryDocumentIndexer::new(Arc::clone(&repository)))
     };
-    let path_b_indexer = if vector_active { Some(Arc::clone(&indexer_arc)) } else { None };
+    let path_b_indexer = if vector_active {
+        Some(Arc::clone(&indexer_arc))
+    } else {
+        None
+    };
 
     let mut backend = RepositoryMemoryBackend::new(Arc::clone(&repository))
         .with_indexer(indexer_arc)
@@ -441,8 +444,7 @@ fn build_backend(
         });
     if let Some(provider) = embedding_provider {
         // Wire provider into the backend so it can embed search query text (§4.30.3).
-        backend =
-            backend.with_embedding_provider(Arc::new(DynEmbeddingProviderWrapper(provider)));
+        backend = backend.with_embedding_provider(Arc::new(DynEmbeddingProviderWrapper(provider)));
     }
     if let Some(audit_sink) = audit_sink {
         backend = backend.with_prompt_write_safety_event_sink(Arc::new(
@@ -568,19 +570,19 @@ async fn dispatch_write(
             // Use the new_string as the change content; full document not available here.
             let chat_record_id = if let Some(writer) = chat_memory_writer {
                 writer
-                    .write_chat_memory_record(
-                        &services.scope,
-                        "patch",
-                        &new_string,
-                        run_id,
-                        None,
-                    )
+                    .write_chat_memory_record(&services.scope, "patch", &new_string, run_id, None)
                     .await
             } else {
                 None
             };
             // Path B — best-effort chunk + embed (only when embedding is active).
-            run_path_b(services, chat_memory_writer, chat_record_id.as_deref(), &new_string).await;
+            run_path_b(
+                services,
+                chat_memory_writer,
+                chat_record_id.as_deref(),
+                &new_string,
+            )
+            .await;
             Ok(result)
         }
         MemoryWriteOperation::Append { content } => {
@@ -594,19 +596,19 @@ async fn dispatch_write(
             // Path A — best-effort chat-memory record.
             let chat_record_id = if let Some(writer) = chat_memory_writer {
                 writer
-                    .write_chat_memory_record(
-                        &services.scope,
-                        "append",
-                        &content,
-                        run_id,
-                        None,
-                    )
+                    .write_chat_memory_record(&services.scope, "append", &content, run_id, None)
                     .await
             } else {
                 None
             };
             // Path B — best-effort chunk + embed (only when embedding is active).
-            run_path_b(services, chat_memory_writer, chat_record_id.as_deref(), &content).await;
+            run_path_b(
+                services,
+                chat_memory_writer,
+                chat_record_id.as_deref(),
+                &content,
+            )
+            .await;
             Ok(json!({
                 "status": "written",
                 "path": resolved_path,
@@ -628,19 +630,19 @@ async fn dispatch_write(
             // Path A — best-effort chat-memory record.
             let chat_record_id = if let Some(writer) = chat_memory_writer {
                 writer
-                    .write_chat_memory_record(
-                        &services.scope,
-                        "replace",
-                        &content,
-                        run_id,
-                        None,
-                    )
+                    .write_chat_memory_record(&services.scope, "replace", &content, run_id, None)
                     .await
             } else {
                 None
             };
             // Path B — best-effort chunk + embed (only when embedding is active).
-            run_path_b(services, chat_memory_writer, chat_record_id.as_deref(), &content).await;
+            run_path_b(
+                services,
+                chat_memory_writer,
+                chat_record_id.as_deref(),
+                &content,
+            )
+            .await;
             Ok(json!({
                 "status": "written",
                 "path": resolved_path,

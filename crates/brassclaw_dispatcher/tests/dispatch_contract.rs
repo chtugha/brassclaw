@@ -478,10 +478,7 @@ impl RuntimeAdapter<LocalFilesystem, InMemoryResourceGovernor> for RecordingAdap
 
         let usage = ResourceUsage {
             output_bytes: serde_json::to_vec(&self.output).unwrap().len() as u64,
-            process_count: u32::from(matches!(
-                self.runtime,
-                RuntimeKind::Mcp
-            )),
+            process_count: u32::from(matches!(self.runtime, RuntimeKind::Mcp)),
             ..ResourceUsage::default()
         };
         let reservation = request

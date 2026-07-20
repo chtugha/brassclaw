@@ -30,9 +30,9 @@ mod wrappers;
 
 pub use cancellation::{ProcessCancellationRegistry, ProcessCancellationToken};
 pub use filesystem_store::{FilesystemProcessResultStore, FilesystemProcessStore};
-pub use pg_store::{PgProcessResultStore, PgProcessStore};
 pub use host::{ProcessHost, ProcessSubscription};
 pub use memory_store::{InMemoryProcessResultStore, InMemoryProcessStore};
+pub use pg_store::{PgProcessResultStore, PgProcessStore};
 pub use services::{
     BackgroundErrorHandler, BackgroundFailure, BackgroundFailureStage, BackgroundProcessManager,
     ProcessServices,

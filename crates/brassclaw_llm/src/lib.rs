@@ -12,7 +12,6 @@
 mod anthropic_oauth;
 mod anthropic_thinking;
 pub mod auth;
-pub mod role;
 #[cfg(feature = "bedrock")]
 mod bedrock;
 pub mod circuit_breaker;
@@ -39,6 +38,7 @@ pub mod response_cache;
 mod responses_reasoning;
 pub mod retry;
 mod rig_adapter;
+pub mod role;
 pub mod runtime;
 pub mod session;
 pub mod smart_routing;

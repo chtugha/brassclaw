@@ -250,12 +250,13 @@ impl PgSubagentGoalStore {
         Self { pool }
     }
 
-    async fn connect(
-        &self,
-    ) -> Result<deadpool_postgres::Object, SubagentGoalStoreError> {
-        self.pool.get().await.map_err(|error| SubagentGoalStoreError::Backend {
-            reason: format!("pg subagent goal store connect: {error}"),
-        })
+    async fn connect(&self) -> Result<deadpool_postgres::Object, SubagentGoalStoreError> {
+        self.pool
+            .get()
+            .await
+            .map_err(|error| SubagentGoalStoreError::Backend {
+                reason: format!("pg subagent goal store connect: {error}"),
+            })
     }
 
     fn validate(goal: &SubagentGoal) -> Result<(), SubagentGoalStoreError> {
@@ -333,13 +334,16 @@ impl SubagentGoalStore for PgSubagentGoalStore {
         let Some(row) = row else {
             return Err(SubagentGoalStoreError::NotFound { run_id });
         };
-        let task: String = row.try_get("task").map_err(|error| SubagentGoalStoreError::Backend {
-            reason: format!("pg subagent goal read task: {error}"),
-        })?;
+        let task: String =
+            row.try_get("task")
+                .map_err(|error| SubagentGoalStoreError::Backend {
+                    reason: format!("pg subagent goal read task: {error}"),
+                })?;
         let handoff: Option<String> =
-            row.try_get("handoff").map_err(|error| SubagentGoalStoreError::Backend {
-                reason: format!("pg subagent goal read handoff: {error}"),
-            })?;
+            row.try_get("handoff")
+                .map_err(|error| SubagentGoalStoreError::Backend {
+                    reason: format!("pg subagent goal read handoff: {error}"),
+                })?;
         Ok(SubagentGoal { task, handoff })
     }
 
@@ -376,7 +380,10 @@ impl brassclaw_loop_support::SubagentSpawnGoalStore for PgSubagentGoalStore {
             self,
             scope,
             run_id,
-            SubagentGoal { task: goal.task, handoff: goal.handoff },
+            SubagentGoal {
+                task: goal.task,
+                handoff: goal.handoff,
+            },
         )
         .await
         .map_err(map_goal_error)
@@ -592,4 +599,3 @@ mod tests {
         assert_send_sync::<InMemoryBoundedSubagentGoalStore>();
     }
 }
-

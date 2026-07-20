@@ -7,7 +7,6 @@ use brassclaw_triggers::{
 use brassclaw_turns::TurnRunId;
 use chrono::{TimeZone, Utc};
 
-
 use brassclaw_triggers::PostgresTriggerRepository;
 
 fn ts(seconds: i64) -> Timestamp {
@@ -930,7 +929,9 @@ async fn postgres_repository_contract_parity() {
     let Some((_container, pool)) = postgres_pool_or_skip().await else {
         return;
     };
-    brassclaw_pg::migrations::run_migrations(&pool).await.expect("run migrations");
+    brassclaw_pg::migrations::run_migrations(&pool)
+        .await
+        .expect("run migrations");
     let repo = PostgresTriggerRepository::new(pool.clone());
     assert_round_trip_and_scoped_isolation(&repo).await;
 
@@ -966,8 +967,12 @@ async fn postgres_repository_run_migrations_is_idempotent() {
     };
     // Validates schema-level idempotency via brassclaw_pg::migrations::run_migrations.
     // The deprecated repo.run_migrations() is a no-op and no longer tested here.
-    brassclaw_pg::migrations::run_migrations(&pool).await.expect("first run migrations");
-    brassclaw_pg::migrations::run_migrations(&pool).await.expect("second run migrations");
+    brassclaw_pg::migrations::run_migrations(&pool)
+        .await
+        .expect("first run migrations");
+    brassclaw_pg::migrations::run_migrations(&pool)
+        .await
+        .expect("second run migrations");
 }
 
 #[tokio::test]
@@ -975,7 +980,9 @@ async fn postgres_repository_rejects_malformed_persisted_rows() {
     let Some((_container, pool)) = postgres_pool_or_skip().await else {
         return;
     };
-    brassclaw_pg::migrations::run_migrations(&pool).await.expect("run migrations");
+    brassclaw_pg::migrations::run_migrations(&pool)
+        .await
+        .expect("run migrations");
     let repo = PostgresTriggerRepository::new(pool.clone());
     let trigger_id = TriggerId::parse("01HZZZZZZZZZZZZZZZZZZZZZZZ").expect("ulid");
     let tenant_id = tenant("tenant-a");
@@ -2385,7 +2392,9 @@ mod fire_claim_contract {
         let Some((_container, pool)) = postgres_pool_or_skip().await else {
             return;
         };
-        brassclaw_pg::migrations::run_migrations(&pool).await.expect("run migrations");
+        brassclaw_pg::migrations::run_migrations(&pool)
+            .await
+            .expect("run migrations");
         let repo = PostgresTriggerRepository::new(pool.clone());
         assert_durable_fire_claim_contract(&repo).await;
         clear_postgres_triggers(&pool).await;
@@ -2396,7 +2405,9 @@ mod fire_claim_contract {
         let Some((_container, pool)) = postgres_pool_or_skip().await else {
             return;
         };
-        brassclaw_pg::migrations::run_migrations(&pool).await.expect("run migrations");
+        brassclaw_pg::migrations::run_migrations(&pool)
+            .await
+            .expect("run migrations");
         let repo = PostgresTriggerRepository::new(pool.clone());
         assert_durable_claim_is_atomic(std::sync::Arc::new(repo)).await;
         clear_postgres_triggers(&pool).await;
@@ -2407,7 +2418,9 @@ mod fire_claim_contract {
         let Some((_container, pool)) = postgres_pool_or_skip().await else {
             return;
         };
-        brassclaw_pg::migrations::run_migrations(&pool).await.expect("run migrations");
+        brassclaw_pg::migrations::run_migrations(&pool)
+            .await
+            .expect("run migrations");
         let repo = PostgresTriggerRepository::new(pool.clone());
         assert_mark_fire_accepted_is_idempotent_under_concurrency(
             std::sync::Arc::new(repo),
@@ -2423,7 +2436,9 @@ mod fire_claim_contract {
         let Some((_container, pool)) = postgres_pool_or_skip().await else {
             return;
         };
-        brassclaw_pg::migrations::run_migrations(&pool).await.expect("run migrations");
+        brassclaw_pg::migrations::run_migrations(&pool)
+            .await
+            .expect("run migrations");
         let repo = PostgresTriggerRepository::new(pool.clone());
         assert_mark_fire_replayed_is_idempotent_under_concurrency(
             std::sync::Arc::new(repo),

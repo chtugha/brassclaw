@@ -36,7 +36,9 @@ mod integration {
     /// Pick an unused loopback TCP port.  The listener is closed immediately
     /// after binding so the port is available for PG to bind.
     async fn free_port() -> u16 {
-        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind loopback");
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind loopback");
         listener.local_addr().expect("local addr").port()
     }
 
@@ -92,11 +94,17 @@ mod integration {
         drop(pool);
 
         // Explicit shutdown must succeed.
-        managed.shutdown().await.expect("graceful shutdown must succeed");
+        managed
+            .shutdown()
+            .await
+            .expect("graceful shutdown must succeed");
 
         // After shutdown the port must be free again.
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let port = managed.connection_url().split(':').last()
+        let port = managed
+            .connection_url()
+            .split(':')
+            .last()
             .and_then(|s| s.split('/').next())
             .and_then(|s| s.parse::<u16>().ok())
             .expect("parse port from connection url");
@@ -203,7 +211,10 @@ mod integration {
         drop(client);
         drop(pool);
 
-        external_managed.shutdown().await.expect("external shutdown");
+        external_managed
+            .shutdown()
+            .await
+            .expect("external shutdown");
     }
 
     // ─── T4: SIGKILL → restart → orphaned-server detection and reuse ─────
@@ -319,7 +330,10 @@ mod integration {
             .expect("second start (config get)");
 
         // server_b.shutdown() must be a no-op (owns_server = false).
-        server_b.shutdown().await.expect("shutdown on non-owner must not fail");
+        server_b
+            .shutdown()
+            .await
+            .expect("shutdown on non-owner must not fail");
 
         // The original server is still live.
         let client = pool_a.get().await.expect("pool_a client");
@@ -328,7 +342,10 @@ mod integration {
             .await
             .expect("server must still be running after non-owner shutdown");
         let val: i32 = row.get(0);
-        assert_eq!(val, 1, "server must still serve queries after non-owner shutdown");
+        assert_eq!(
+            val, 1,
+            "server must still serve queries after non-owner shutdown"
+        );
         drop(client);
         drop(pool_a);
 

@@ -14,7 +14,9 @@
 //! summaries (Tier 1) — a soft signal that the LLM can choose to follow.
 
 use async_trait::async_trait;
-use brassclaw_turns::run_profile::{RecipeLookup, RecipeLookupError, RecipeMatchDto, ToolSkillMatchDto};
+use brassclaw_turns::run_profile::{
+    RecipeLookup, RecipeLookupError, RecipeMatchDto, ToolSkillMatchDto,
+};
 
 #[cfg(feature = "postgres")]
 use std::sync::Arc;
@@ -23,7 +25,7 @@ use std::sync::Arc;
 use brassclaw_engine::memory::metric_outcome::MetricRecorder;
 #[cfg(feature = "postgres")]
 use brassclaw_engine::memory::recipe_matcher::{
-    RecipeMatch as EngineRecipeMatch, RecipeMatcher, ToolSkillMatch, RECIPE_MIN_MATCH,
+    RECIPE_MIN_MATCH, RecipeMatch as EngineRecipeMatch, RecipeMatcher, ToolSkillMatch,
 };
 #[cfg(feature = "postgres")]
 use brassclaw_engine::traits::store::Store;
@@ -126,7 +128,10 @@ impl RecipeLookup for RecipeLibrary {
             .record_recipe(project_id, "default", recipe_id, success)
             .await
             .map_err(|e| RecipeLookupError::Backend(e.to_string()))?;
-        debug!(recipe_id, success, "recipe_library: recipe outcome recorded");
+        debug!(
+            recipe_id,
+            success, "recipe_library: recipe outcome recorded"
+        );
         Ok(())
     }
 

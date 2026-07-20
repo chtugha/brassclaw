@@ -5973,7 +5973,13 @@ evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
         rules_json: serde_json::Value,
     ) -> crate::types::memory::MemoryDoc {
         use crate::types::memory::{DocType, MemoryDoc};
-        let mut doc = MemoryDoc::new(project_id, user_id, DocType::Note, "rules", rules_json.to_string());
+        let mut doc = MemoryDoc::new(
+            project_id,
+            user_id,
+            DocType::Note,
+            "rules",
+            rules_json.to_string(),
+        );
         doc.tags.push("reduction_rule".to_string());
         doc
     }
@@ -5995,35 +6001,179 @@ evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
                 &self,
                 project_id: crate::types::project::ProjectId,
                 user_id: &str,
-            ) -> Result<Vec<crate::types::memory::MemoryDoc>, crate::types::error::EngineError> {
+            ) -> Result<Vec<crate::types::memory::MemoryDoc>, crate::types::error::EngineError>
+            {
                 self.calls.fetch_add(1, Ordering::Relaxed);
                 self.inner.list_memory_docs(project_id, user_id).await
             }
             // ── delegate everything else ──────────────────────────────────
-            async fn save_thread(&self, t: &crate::types::thread::Thread) -> Result<(), crate::types::error::EngineError> { self.inner.save_thread(t).await }
-            async fn load_thread(&self, id: crate::types::thread::ThreadId) -> Result<Option<crate::types::thread::Thread>, crate::types::error::EngineError> { self.inner.load_thread(id).await }
-            async fn list_threads(&self, p: crate::types::project::ProjectId, u: &str) -> Result<Vec<crate::types::thread::Thread>, crate::types::error::EngineError> { self.inner.list_threads(p, u).await }
-            async fn update_thread_state(&self, id: crate::types::thread::ThreadId, s: crate::types::thread::ThreadState) -> Result<(), crate::types::error::EngineError> { self.inner.update_thread_state(id, s).await }
-            async fn save_step(&self, step: &crate::types::step::Step) -> Result<(), crate::types::error::EngineError> { self.inner.save_step(step).await }
-            async fn load_steps(&self, id: crate::types::thread::ThreadId) -> Result<Vec<crate::types::step::Step>, crate::types::error::EngineError> { self.inner.load_steps(id).await }
-            async fn append_events(&self, evts: &[crate::types::event::ThreadEvent]) -> Result<(), crate::types::error::EngineError> { self.inner.append_events(evts).await }
-            async fn load_events(&self, id: crate::types::thread::ThreadId) -> Result<Vec<crate::types::event::ThreadEvent>, crate::types::error::EngineError> { self.inner.load_events(id).await }
-            async fn save_project(&self, p: &crate::types::project::Project) -> Result<(), crate::types::error::EngineError> { self.inner.save_project(p).await }
-            async fn load_project(&self, id: crate::types::project::ProjectId) -> Result<Option<crate::types::project::Project>, crate::types::error::EngineError> { self.inner.load_project(id).await }
-            async fn list_all_projects(&self) -> Result<Vec<crate::types::project::Project>, crate::types::error::EngineError> { self.inner.list_all_projects().await }
-            async fn save_conversation(&self, c: &crate::types::conversation::ConversationSurface) -> Result<(), crate::types::error::EngineError> { self.inner.save_conversation(c).await }
-            async fn load_conversation(&self, id: crate::types::conversation::ConversationId) -> Result<Option<crate::types::conversation::ConversationSurface>, crate::types::error::EngineError> { self.inner.load_conversation(id).await }
-            async fn list_conversations(&self, u: &str) -> Result<Vec<crate::types::conversation::ConversationSurface>, crate::types::error::EngineError> { self.inner.list_conversations(u).await }
-            async fn save_memory_doc(&self, doc: &crate::types::memory::MemoryDoc) -> Result<(), crate::types::error::EngineError> { self.inner.save_memory_doc(doc).await }
-            async fn load_memory_doc(&self, id: crate::types::memory::DocId) -> Result<Option<crate::types::memory::MemoryDoc>, crate::types::error::EngineError> { self.inner.load_memory_doc(id).await }
-            async fn list_memory_docs_by_owner(&self, u: &str) -> Result<Vec<crate::types::memory::MemoryDoc>, crate::types::error::EngineError> { self.inner.list_memory_docs_by_owner(u).await }
-            async fn save_lease(&self, l: &crate::types::capability::CapabilityLease) -> Result<(), crate::types::error::EngineError> { self.inner.save_lease(l).await }
-            async fn load_active_leases(&self, id: crate::types::thread::ThreadId) -> Result<Vec<crate::types::capability::CapabilityLease>, crate::types::error::EngineError> { self.inner.load_active_leases(id).await }
-            async fn revoke_lease(&self, id: crate::types::capability::LeaseId, reason: &str) -> Result<(), crate::types::error::EngineError> { self.inner.revoke_lease(id, reason).await }
-            async fn save_mission(&self, m: &crate::types::mission::Mission) -> Result<(), crate::types::error::EngineError> { self.inner.save_mission(m).await }
-            async fn load_mission(&self, id: crate::types::mission::MissionId) -> Result<Option<crate::types::mission::Mission>, crate::types::error::EngineError> { self.inner.load_mission(id).await }
-            async fn list_missions(&self, p: crate::types::project::ProjectId, u: &str) -> Result<Vec<crate::types::mission::Mission>, crate::types::error::EngineError> { self.inner.list_missions(p, u).await }
-            async fn update_mission_status(&self, id: crate::types::mission::MissionId, s: crate::types::mission::MissionStatus) -> Result<(), crate::types::error::EngineError> { self.inner.update_mission_status(id, s).await }
+            async fn save_thread(
+                &self,
+                t: &crate::types::thread::Thread,
+            ) -> Result<(), crate::types::error::EngineError> {
+                self.inner.save_thread(t).await
+            }
+            async fn load_thread(
+                &self,
+                id: crate::types::thread::ThreadId,
+            ) -> Result<Option<crate::types::thread::Thread>, crate::types::error::EngineError>
+            {
+                self.inner.load_thread(id).await
+            }
+            async fn list_threads(
+                &self,
+                p: crate::types::project::ProjectId,
+                u: &str,
+            ) -> Result<Vec<crate::types::thread::Thread>, crate::types::error::EngineError>
+            {
+                self.inner.list_threads(p, u).await
+            }
+            async fn update_thread_state(
+                &self,
+                id: crate::types::thread::ThreadId,
+                s: crate::types::thread::ThreadState,
+            ) -> Result<(), crate::types::error::EngineError> {
+                self.inner.update_thread_state(id, s).await
+            }
+            async fn save_step(
+                &self,
+                step: &crate::types::step::Step,
+            ) -> Result<(), crate::types::error::EngineError> {
+                self.inner.save_step(step).await
+            }
+            async fn load_steps(
+                &self,
+                id: crate::types::thread::ThreadId,
+            ) -> Result<Vec<crate::types::step::Step>, crate::types::error::EngineError>
+            {
+                self.inner.load_steps(id).await
+            }
+            async fn append_events(
+                &self,
+                evts: &[crate::types::event::ThreadEvent],
+            ) -> Result<(), crate::types::error::EngineError> {
+                self.inner.append_events(evts).await
+            }
+            async fn load_events(
+                &self,
+                id: crate::types::thread::ThreadId,
+            ) -> Result<Vec<crate::types::event::ThreadEvent>, crate::types::error::EngineError>
+            {
+                self.inner.load_events(id).await
+            }
+            async fn save_project(
+                &self,
+                p: &crate::types::project::Project,
+            ) -> Result<(), crate::types::error::EngineError> {
+                self.inner.save_project(p).await
+            }
+            async fn load_project(
+                &self,
+                id: crate::types::project::ProjectId,
+            ) -> Result<Option<crate::types::project::Project>, crate::types::error::EngineError>
+            {
+                self.inner.load_project(id).await
+            }
+            async fn list_all_projects(
+                &self,
+            ) -> Result<Vec<crate::types::project::Project>, crate::types::error::EngineError>
+            {
+                self.inner.list_all_projects().await
+            }
+            async fn save_conversation(
+                &self,
+                c: &crate::types::conversation::ConversationSurface,
+            ) -> Result<(), crate::types::error::EngineError> {
+                self.inner.save_conversation(c).await
+            }
+            async fn load_conversation(
+                &self,
+                id: crate::types::conversation::ConversationId,
+            ) -> Result<
+                Option<crate::types::conversation::ConversationSurface>,
+                crate::types::error::EngineError,
+            > {
+                self.inner.load_conversation(id).await
+            }
+            async fn list_conversations(
+                &self,
+                u: &str,
+            ) -> Result<
+                Vec<crate::types::conversation::ConversationSurface>,
+                crate::types::error::EngineError,
+            > {
+                self.inner.list_conversations(u).await
+            }
+            async fn save_memory_doc(
+                &self,
+                doc: &crate::types::memory::MemoryDoc,
+            ) -> Result<(), crate::types::error::EngineError> {
+                self.inner.save_memory_doc(doc).await
+            }
+            async fn load_memory_doc(
+                &self,
+                id: crate::types::memory::DocId,
+            ) -> Result<Option<crate::types::memory::MemoryDoc>, crate::types::error::EngineError>
+            {
+                self.inner.load_memory_doc(id).await
+            }
+            async fn list_memory_docs_by_owner(
+                &self,
+                u: &str,
+            ) -> Result<Vec<crate::types::memory::MemoryDoc>, crate::types::error::EngineError>
+            {
+                self.inner.list_memory_docs_by_owner(u).await
+            }
+            async fn save_lease(
+                &self,
+                l: &crate::types::capability::CapabilityLease,
+            ) -> Result<(), crate::types::error::EngineError> {
+                self.inner.save_lease(l).await
+            }
+            async fn load_active_leases(
+                &self,
+                id: crate::types::thread::ThreadId,
+            ) -> Result<
+                Vec<crate::types::capability::CapabilityLease>,
+                crate::types::error::EngineError,
+            > {
+                self.inner.load_active_leases(id).await
+            }
+            async fn revoke_lease(
+                &self,
+                id: crate::types::capability::LeaseId,
+                reason: &str,
+            ) -> Result<(), crate::types::error::EngineError> {
+                self.inner.revoke_lease(id, reason).await
+            }
+            async fn save_mission(
+                &self,
+                m: &crate::types::mission::Mission,
+            ) -> Result<(), crate::types::error::EngineError> {
+                self.inner.save_mission(m).await
+            }
+            async fn load_mission(
+                &self,
+                id: crate::types::mission::MissionId,
+            ) -> Result<Option<crate::types::mission::Mission>, crate::types::error::EngineError>
+            {
+                self.inner.load_mission(id).await
+            }
+            async fn list_missions(
+                &self,
+                p: crate::types::project::ProjectId,
+                u: &str,
+            ) -> Result<Vec<crate::types::mission::Mission>, crate::types::error::EngineError>
+            {
+                self.inner.list_missions(p, u).await
+            }
+            async fn update_mission_status(
+                &self,
+                id: crate::types::mission::MissionId,
+                s: crate::types::mission::MissionStatus,
+            ) -> Result<(), crate::types::error::EngineError> {
+                self.inner.update_mission_status(id, s).await
+            }
         }
 
         let project_id = crate::types::project::ProjectId::new();
@@ -6080,8 +6230,7 @@ evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
 
         invalidate_reduction_rules_cache();
 
-        let store: Arc<dyn Store> =
-            Arc::new(crate::tests::InMemoryStore::with_docs(vec![doc]));
+        let store: Arc<dyn Store> = Arc::new(crate::tests::InMemoryStore::with_docs(vec![doc]));
         let rules = load_reduction_rules(project_id, user_id, Some(&store)).await;
         assert!(
             rules.is_empty(),
@@ -6105,36 +6254,180 @@ evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
                 &self,
                 _project_id: crate::types::project::ProjectId,
                 _user_id: &str,
-            ) -> Result<Vec<crate::types::memory::MemoryDoc>, crate::types::error::EngineError> {
+            ) -> Result<Vec<crate::types::memory::MemoryDoc>, crate::types::error::EngineError>
+            {
                 self.calls.fetch_add(1, Ordering::Relaxed);
                 Err(crate::types::error::EngineError::Store {
                     reason: "simulated DB failure".into(),
                 })
             }
-            async fn save_thread(&self, _: &crate::types::thread::Thread) -> Result<(), crate::types::error::EngineError> { Ok(()) }
-            async fn load_thread(&self, _: crate::types::thread::ThreadId) -> Result<Option<crate::types::thread::Thread>, crate::types::error::EngineError> { Ok(None) }
-            async fn list_threads(&self, _: crate::types::project::ProjectId, _: &str) -> Result<Vec<crate::types::thread::Thread>, crate::types::error::EngineError> { Ok(vec![]) }
-            async fn update_thread_state(&self, _: crate::types::thread::ThreadId, _: crate::types::thread::ThreadState) -> Result<(), crate::types::error::EngineError> { Ok(()) }
-            async fn save_step(&self, _: &crate::types::step::Step) -> Result<(), crate::types::error::EngineError> { Ok(()) }
-            async fn load_steps(&self, _: crate::types::thread::ThreadId) -> Result<Vec<crate::types::step::Step>, crate::types::error::EngineError> { Ok(vec![]) }
-            async fn append_events(&self, _: &[crate::types::event::ThreadEvent]) -> Result<(), crate::types::error::EngineError> { Ok(()) }
-            async fn load_events(&self, _: crate::types::thread::ThreadId) -> Result<Vec<crate::types::event::ThreadEvent>, crate::types::error::EngineError> { Ok(vec![]) }
-            async fn save_project(&self, _: &crate::types::project::Project) -> Result<(), crate::types::error::EngineError> { Ok(()) }
-            async fn load_project(&self, _: crate::types::project::ProjectId) -> Result<Option<crate::types::project::Project>, crate::types::error::EngineError> { Ok(None) }
-            async fn list_all_projects(&self) -> Result<Vec<crate::types::project::Project>, crate::types::error::EngineError> { Ok(vec![]) }
-            async fn save_conversation(&self, _: &crate::types::conversation::ConversationSurface) -> Result<(), crate::types::error::EngineError> { Ok(()) }
-            async fn load_conversation(&self, _: crate::types::conversation::ConversationId) -> Result<Option<crate::types::conversation::ConversationSurface>, crate::types::error::EngineError> { Ok(None) }
-            async fn list_conversations(&self, _: &str) -> Result<Vec<crate::types::conversation::ConversationSurface>, crate::types::error::EngineError> { Ok(vec![]) }
-            async fn save_memory_doc(&self, _: &crate::types::memory::MemoryDoc) -> Result<(), crate::types::error::EngineError> { Ok(()) }
-            async fn load_memory_doc(&self, _: crate::types::memory::DocId) -> Result<Option<crate::types::memory::MemoryDoc>, crate::types::error::EngineError> { Ok(None) }
-            async fn list_memory_docs_by_owner(&self, _: &str) -> Result<Vec<crate::types::memory::MemoryDoc>, crate::types::error::EngineError> { Ok(vec![]) }
-            async fn save_lease(&self, _: &crate::types::capability::CapabilityLease) -> Result<(), crate::types::error::EngineError> { Ok(()) }
-            async fn load_active_leases(&self, _: crate::types::thread::ThreadId) -> Result<Vec<crate::types::capability::CapabilityLease>, crate::types::error::EngineError> { Ok(vec![]) }
-            async fn revoke_lease(&self, _: crate::types::capability::LeaseId, _: &str) -> Result<(), crate::types::error::EngineError> { Ok(()) }
-            async fn save_mission(&self, _: &crate::types::mission::Mission) -> Result<(), crate::types::error::EngineError> { Ok(()) }
-            async fn load_mission(&self, _: crate::types::mission::MissionId) -> Result<Option<crate::types::mission::Mission>, crate::types::error::EngineError> { Ok(None) }
-            async fn list_missions(&self, _: crate::types::project::ProjectId, _: &str) -> Result<Vec<crate::types::mission::Mission>, crate::types::error::EngineError> { Ok(vec![]) }
-            async fn update_mission_status(&self, _: crate::types::mission::MissionId, _: crate::types::mission::MissionStatus) -> Result<(), crate::types::error::EngineError> { Ok(()) }
+            async fn save_thread(
+                &self,
+                _: &crate::types::thread::Thread,
+            ) -> Result<(), crate::types::error::EngineError> {
+                Ok(())
+            }
+            async fn load_thread(
+                &self,
+                _: crate::types::thread::ThreadId,
+            ) -> Result<Option<crate::types::thread::Thread>, crate::types::error::EngineError>
+            {
+                Ok(None)
+            }
+            async fn list_threads(
+                &self,
+                _: crate::types::project::ProjectId,
+                _: &str,
+            ) -> Result<Vec<crate::types::thread::Thread>, crate::types::error::EngineError>
+            {
+                Ok(vec![])
+            }
+            async fn update_thread_state(
+                &self,
+                _: crate::types::thread::ThreadId,
+                _: crate::types::thread::ThreadState,
+            ) -> Result<(), crate::types::error::EngineError> {
+                Ok(())
+            }
+            async fn save_step(
+                &self,
+                _: &crate::types::step::Step,
+            ) -> Result<(), crate::types::error::EngineError> {
+                Ok(())
+            }
+            async fn load_steps(
+                &self,
+                _: crate::types::thread::ThreadId,
+            ) -> Result<Vec<crate::types::step::Step>, crate::types::error::EngineError>
+            {
+                Ok(vec![])
+            }
+            async fn append_events(
+                &self,
+                _: &[crate::types::event::ThreadEvent],
+            ) -> Result<(), crate::types::error::EngineError> {
+                Ok(())
+            }
+            async fn load_events(
+                &self,
+                _: crate::types::thread::ThreadId,
+            ) -> Result<Vec<crate::types::event::ThreadEvent>, crate::types::error::EngineError>
+            {
+                Ok(vec![])
+            }
+            async fn save_project(
+                &self,
+                _: &crate::types::project::Project,
+            ) -> Result<(), crate::types::error::EngineError> {
+                Ok(())
+            }
+            async fn load_project(
+                &self,
+                _: crate::types::project::ProjectId,
+            ) -> Result<Option<crate::types::project::Project>, crate::types::error::EngineError>
+            {
+                Ok(None)
+            }
+            async fn list_all_projects(
+                &self,
+            ) -> Result<Vec<crate::types::project::Project>, crate::types::error::EngineError>
+            {
+                Ok(vec![])
+            }
+            async fn save_conversation(
+                &self,
+                _: &crate::types::conversation::ConversationSurface,
+            ) -> Result<(), crate::types::error::EngineError> {
+                Ok(())
+            }
+            async fn load_conversation(
+                &self,
+                _: crate::types::conversation::ConversationId,
+            ) -> Result<
+                Option<crate::types::conversation::ConversationSurface>,
+                crate::types::error::EngineError,
+            > {
+                Ok(None)
+            }
+            async fn list_conversations(
+                &self,
+                _: &str,
+            ) -> Result<
+                Vec<crate::types::conversation::ConversationSurface>,
+                crate::types::error::EngineError,
+            > {
+                Ok(vec![])
+            }
+            async fn save_memory_doc(
+                &self,
+                _: &crate::types::memory::MemoryDoc,
+            ) -> Result<(), crate::types::error::EngineError> {
+                Ok(())
+            }
+            async fn load_memory_doc(
+                &self,
+                _: crate::types::memory::DocId,
+            ) -> Result<Option<crate::types::memory::MemoryDoc>, crate::types::error::EngineError>
+            {
+                Ok(None)
+            }
+            async fn list_memory_docs_by_owner(
+                &self,
+                _: &str,
+            ) -> Result<Vec<crate::types::memory::MemoryDoc>, crate::types::error::EngineError>
+            {
+                Ok(vec![])
+            }
+            async fn save_lease(
+                &self,
+                _: &crate::types::capability::CapabilityLease,
+            ) -> Result<(), crate::types::error::EngineError> {
+                Ok(())
+            }
+            async fn load_active_leases(
+                &self,
+                _: crate::types::thread::ThreadId,
+            ) -> Result<
+                Vec<crate::types::capability::CapabilityLease>,
+                crate::types::error::EngineError,
+            > {
+                Ok(vec![])
+            }
+            async fn revoke_lease(
+                &self,
+                _: crate::types::capability::LeaseId,
+                _: &str,
+            ) -> Result<(), crate::types::error::EngineError> {
+                Ok(())
+            }
+            async fn save_mission(
+                &self,
+                _: &crate::types::mission::Mission,
+            ) -> Result<(), crate::types::error::EngineError> {
+                Ok(())
+            }
+            async fn load_mission(
+                &self,
+                _: crate::types::mission::MissionId,
+            ) -> Result<Option<crate::types::mission::Mission>, crate::types::error::EngineError>
+            {
+                Ok(None)
+            }
+            async fn list_missions(
+                &self,
+                _: crate::types::project::ProjectId,
+                _: &str,
+            ) -> Result<Vec<crate::types::mission::Mission>, crate::types::error::EngineError>
+            {
+                Ok(vec![])
+            }
+            async fn update_mission_status(
+                &self,
+                _: crate::types::mission::MissionId,
+                _: crate::types::mission::MissionStatus,
+            ) -> Result<(), crate::types::error::EngineError> {
+                Ok(())
+            }
         }
 
         let project_id = crate::types::project::ProjectId::new();
@@ -6142,7 +6435,9 @@ evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
 
         invalidate_reduction_rules_cache();
 
-        let store = Arc::new(AlwaysFailStore { calls: AtomicUsize::new(0) });
+        let store = Arc::new(AlwaysFailStore {
+            calls: AtomicUsize::new(0),
+        });
         let store_dyn: Arc<dyn Store> = store.clone();
 
         let rules = load_reduction_rules(project_id, user_id, Some(&store_dyn)).await;

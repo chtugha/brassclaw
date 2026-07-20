@@ -267,8 +267,7 @@ impl HookManifestEntry {
                     | crate::predicate::OnExceededAction::DenyWithCode { reason, .. }
                     | crate::predicate::OnExceededAction::PauseApproval { reason }
                     | crate::predicate::OnExceededAction::PauseApprovalWithCode {
-                        reason,
-                        ..
+                        reason, ..
                     } => vec![reason.as_str()],
                 };
                 (Some(when), reasons, window)

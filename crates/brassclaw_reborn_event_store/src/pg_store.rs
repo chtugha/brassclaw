@@ -16,15 +16,21 @@ use brassclaw_pg::PgPool;
 use serde_json::Value;
 
 fn map_pool(e: deadpool_postgres::PoolError) -> EventError {
-    EventError::DurableLog { reason: e.to_string() }
+    EventError::DurableLog {
+        reason: e.to_string(),
+    }
 }
 
 fn map_pg(e: tokio_postgres::Error) -> EventError {
-    EventError::DurableLog { reason: e.to_string() }
+    EventError::DurableLog {
+        reason: e.to_string(),
+    }
 }
 
 fn map_json(e: serde_json::Error) -> EventError {
-    EventError::Serialize { reason: e.to_string() }
+    EventError::Serialize {
+        reason: e.to_string(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -48,10 +54,7 @@ impl PgDurableEventLog {
 
 #[async_trait]
 impl DurableEventLog for PgDurableEventLog {
-    async fn append(
-        &self,
-        event: RuntimeEvent,
-    ) -> Result<EventLogEntry<RuntimeEvent>, EventError> {
+    async fn append(&self, event: RuntimeEvent) -> Result<EventLogEntry<RuntimeEvent>, EventError> {
         let payload = serde_json::to_value(&event).map_err(map_json)?;
         let kind = format!("{:?}", event.kind);
         let run_id = event.scope.invocation_id.to_string();
@@ -218,10 +221,7 @@ impl DurableAuditLog for PgDurableAuditLog {
             let record: AuditEnvelope = serde_json::from_value(payload).map_err(map_json)?;
             let cursor = EventCursor::new(seq as u64);
             last_cursor = cursor;
-            entries.push(EventLogEntry {
-                cursor,
-                record,
-            });
+            entries.push(EventLogEntry { cursor, record });
         }
         let next_cursor = if entries.is_empty() {
             after.unwrap_or_else(EventCursor::origin)

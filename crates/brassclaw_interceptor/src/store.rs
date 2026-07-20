@@ -30,16 +30,10 @@ pub trait InterceptorStore: Send + Sync {
     async fn save(&self, packet: &ForensicPacket) -> Result<(), InterceptorError>;
 
     /// Retrieve a packet by id.  Returns `None` if the id is unknown.
-    async fn get(
-        &self,
-        packet_id: &PacketId,
-    ) -> Result<Option<ForensicPacket>, InterceptorError>;
+    async fn get(&self, packet_id: &PacketId) -> Result<Option<ForensicPacket>, InterceptorError>;
 
     /// Return the most recent packets, newest first, capped at `limit`.
-    async fn list_recent(
-        &self,
-        limit: usize,
-    ) -> Result<Vec<ForensicPacket>, InterceptorError>;
+    async fn list_recent(&self, limit: usize) -> Result<Vec<ForensicPacket>, InterceptorError>;
 }
 
 /// An `InterceptorStore` that discards all writes and returns empty reads.
@@ -54,10 +48,7 @@ impl InterceptorStore for NoopInterceptorStore {
         Ok(())
     }
 
-    async fn get(
-        &self,
-        _packet_id: &PacketId,
-    ) -> Result<Option<ForensicPacket>, InterceptorError> {
+    async fn get(&self, _packet_id: &PacketId) -> Result<Option<ForensicPacket>, InterceptorError> {
         Ok(None)
     }
 

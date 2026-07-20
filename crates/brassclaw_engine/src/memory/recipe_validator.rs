@@ -47,10 +47,7 @@ impl RecipeValidator {
     /// `available_tools` should be the list of tool names registered in
     /// the current capability surface; empty list allows a "structural"
     /// validation pass that callers can re-run when tool inventory changes.
-    pub fn validate_tool_skill(
-        skill: &ToolSkill,
-        available_tools: &[String],
-    ) -> ValidationResult {
+    pub fn validate_tool_skill(skill: &ToolSkill, available_tools: &[String]) -> ValidationResult {
         let mut result = ValidationResult::ok();
 
         check_name_format(&skill.name, "ToolSkill", &mut result);
@@ -65,7 +62,9 @@ impl RecipeValidator {
         }
 
         if skill.tool_name.is_empty() {
-            result.errors.push("ToolSkill.tool_name must not be empty".to_string());
+            result
+                .errors
+                .push("ToolSkill.tool_name must not be empty".to_string());
         } else if !available_tools.is_empty()
             && !available_tools.iter().any(|t| t == &skill.tool_name)
         {
@@ -87,7 +86,8 @@ impl RecipeValidator {
 
         if tool_name_count(&skill.description) > 3 {
             result.warnings.push(
-                "ToolSkill may cover too many tools. Consider splitting into focused units.".to_string(),
+                "ToolSkill may cover too many tools. Consider splitting into focused units."
+                    .to_string(),
             );
         }
 
@@ -108,21 +108,22 @@ impl RecipeValidator {
     ///
     /// `existing_skill_names` is the list of currently-validated Skill
     /// names; a Recipe referencing an unknown skill is hard-failed.
-    pub fn validate_recipe(
-        recipe: &Recipe,
-        existing_skill_names: &[String],
-    ) -> ValidationResult {
+    pub fn validate_recipe(recipe: &Recipe, existing_skill_names: &[String]) -> ValidationResult {
         let mut result = ValidationResult::ok();
 
         check_name_format(&recipe.name, "Recipe", &mut result);
         check_description_length(&recipe.description, "Recipe", &mut result);
 
         if recipe.steps.is_empty() {
-            result.errors.push("Recipe must have at least one step".to_string());
+            result
+                .errors
+                .push("Recipe must have at least one step".to_string());
         }
         for (i, step) in recipe.steps.iter().enumerate() {
             if step.skill.is_empty() {
-                result.errors.push(format!("step #{i} has empty skill name"));
+                result
+                    .errors
+                    .push(format!("step #{i} has empty skill name"));
                 continue;
             }
             if !existing_skill_names.is_empty()
@@ -134,7 +135,9 @@ impl RecipeValidator {
                 ));
             }
             if step.tool.is_empty() {
-                result.errors.push(format!("step #{i} tool must not be empty"));
+                result
+                    .errors
+                    .push(format!("step #{i} tool must not be empty"));
             }
         }
 
@@ -155,15 +158,14 @@ impl RecipeValidator {
 
 fn check_name_format(name: &str, kind: &str, result: &mut ValidationResult) {
     if name.is_empty() {
-        result
-            .errors
-            .push(format!("{kind} name must not be empty"));
+        result.errors.push(format!("{kind} name must not be empty"));
         return;
     }
     if name.len() > 64 {
-        result
-            .errors
-            .push(format!("{kind} name exceeds 64 chars ({} chars)", name.len()));
+        result.errors.push(format!(
+            "{kind} name exceeds 64 chars ({} chars)",
+            name.len()
+        ));
     }
     if name.contains("--") {
         result
@@ -216,15 +218,13 @@ fn check_description_actionable(desc: &str, kind: &str, result: &mut ValidationR
     }
 }
 
-fn check_trigger(
-    trigger: &RecipeTrigger,
-    source: &RecipeSource,
-    result: &mut ValidationResult,
-) {
+fn check_trigger(trigger: &RecipeTrigger, source: &RecipeSource, result: &mut ValidationResult) {
     match trigger {
         RecipeTrigger::Exact { command } => {
             if command.is_empty() {
-                result.errors.push("Exact trigger command must not be empty".to_string());
+                result
+                    .errors
+                    .push("Exact trigger command must not be empty".to_string());
             } else if command.len() > 200 {
                 result.errors.push(format!(
                     "Exact trigger command exceeds 200 chars ({} chars)",
@@ -241,11 +241,10 @@ fn check_trigger(
             for (i, p) in patterns.iter().enumerate() {
                 if p.is_empty() {
                     result.errors.push(format!("Pattern[#{i}] is empty"));
-                } else if let Err(error) = regex::RegexBuilder::new(p)
-                    .size_limit(10_000)
-                    .build()
-                {
-                    result.errors.push(format!("Pattern[#{i}] regex invalid: {error}"));
+                } else if let Err(error) = regex::RegexBuilder::new(p).size_limit(10_000).build() {
+                    result
+                        .errors
+                        .push(format!("Pattern[#{i}] regex invalid: {error}"));
                 }
             }
         }
@@ -254,7 +253,9 @@ fn check_trigger(
             threshold,
         } => {
             if keywords.is_empty() {
-                result.errors.push("Keyword trigger must have at least one keyword".to_string());
+                result
+                    .errors
+                    .push("Keyword trigger must have at least one keyword".to_string());
             }
             if !(0.0..=1.0).contains(threshold) {
                 result.errors.push(format!(
@@ -265,16 +266,16 @@ fn check_trigger(
     }
 }
 
-fn check_param_schema_entry(
-    param: &ToolSkillParam,
-    index: usize,
-    result: &mut ValidationResult,
-) {
+fn check_param_schema_entry(param: &ToolSkillParam, index: usize, result: &mut ValidationResult) {
     if param.name.is_empty() {
-        result.errors.push(format!("param_schema[#{index}].name empty"));
+        result
+            .errors
+            .push(format!("param_schema[#{index}].name empty"));
     }
     if param.param_type.is_empty() {
-        result.errors.push(format!("param_schema[#{index}].param_type empty"));
+        result
+            .errors
+            .push(format!("param_schema[#{index}].param_type empty"));
     }
     if param.description.is_empty() {
         result.warnings.push(format!(
@@ -316,7 +317,8 @@ mod tests {
             id: "s1".into(),
             name: valid_skill_name().into(),
             tool_name: "builtin.shell".into(),
-            description: "Run git status to inspect the working tree and summarize dirty paths".into(),
+            description: "Run git status to inspect the working tree and summarize dirty paths"
+                .into(),
             param_template: serde_json::json!({}),
             param_schema: vec![ToolSkillParam {
                 name: "path".into(),
@@ -420,10 +422,12 @@ mod tests {
         };
         r.source = RecipeSource::Extracted;
         let result = RecipeValidator::validate_recipe(&r, &["step-skill".into()]);
-        assert!(result
-            .errors
-            .iter()
-            .any(|e| e.contains("Pattern triggers are restricted")));
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("Pattern triggers are restricted"))
+        );
     }
 
     #[test]
@@ -442,7 +446,12 @@ mod tests {
         let mut r = base_recipe();
         r.steps.clear();
         let result = RecipeValidator::validate_recipe(&r, &[]);
-        assert!(result.errors.iter().any(|e| e.contains("at least one step")));
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("at least one step"))
+        );
     }
 
     fn base_recipe() -> Recipe {

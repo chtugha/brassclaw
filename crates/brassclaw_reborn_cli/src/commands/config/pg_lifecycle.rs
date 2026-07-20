@@ -29,9 +29,7 @@
 /// migrations before use.
 pub(crate) async fn build_pg_pool() -> anyhow::Result<deadpool_postgres::Pool> {
     // Prefer an explicit PG URL (external or already-running embedded instance).
-    if let Ok(url) = std::env::var("BRASSCLAW_PG_URL")
-        .or_else(|_| std::env::var("DATABASE_URL"))
-    {
+    if let Ok(url) = std::env::var("BRASSCLAW_PG_URL").or_else(|_| std::env::var("DATABASE_URL")) {
         return connect_url(&url).await;
     }
 

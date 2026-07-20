@@ -91,11 +91,7 @@ impl DefaultExecutorPipeline {
             // current cut always returns `Continue`; Tier 0 / Tier 1
             // selection arrives once the composition-side `RecipeLibrary`
             // adapter is wired.
-            state = match self
-                .recipe
-                .process(ctx, RecipeInput { state })
-                .await?
-            {
+            state = match self.recipe.process(ctx, RecipeInput { state }).await? {
                 RecipeStep::Continue { state: next } => *next,
             };
 

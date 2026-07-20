@@ -8,7 +8,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use brassclaw_pg::PgPool;
-use brassclaw_product_workflow::{TokenSettingsResponse, TokenSettingsStore, UpdateTokenSettingsRequest};
+use brassclaw_product_workflow::{
+    TokenSettingsResponse, TokenSettingsStore, UpdateTokenSettingsRequest,
+};
 use serde_json::Value;
 
 fn map_pool(e: deadpool_postgres::PoolError) -> Box<dyn std::error::Error + Send + Sync> {

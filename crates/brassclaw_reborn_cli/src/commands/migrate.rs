@@ -49,8 +49,7 @@ impl MigrateCommand {
 
             // Resolve tenant_id: CLI flag → config.toml → "default"
             let tenant_id = self.tenant.clone().unwrap_or_else(|| {
-                brassclaw_reborn_config::RebornConfigFile::load(
-                    &home.path().join("config.toml"))
+                brassclaw_reborn_config::RebornConfigFile::load(&home.path().join("config.toml"))
                     .ok()
                     .flatten()
                     .and_then(|c| c.identity)
@@ -71,7 +70,10 @@ impl MigrateCommand {
             println!("  config.toml      : {}", status(report.config_migrated));
             println!("  providers.json   : {}", status(report.providers_migrated));
             println!("  sempai_provider  : {}", status(report.sempai_migrated));
-            println!("  secrets master   : {}", status(report.secrets_master_migrated));
+            println!(
+                "  secrets master   : {}",
+                status(report.secrets_master_migrated)
+            );
             println!("  reborn-local-dev : {}", status(report.libsql_db_migrated));
             if report.boot_initialized_set {
                 println!("  boot.initialized : set");
@@ -89,21 +91,25 @@ impl MigrateCommand {
 }
 
 fn status(migrated: bool) -> &'static str {
-    if migrated { "migrated" } else { "not found (skipped)" }
+    if migrated {
+        "migrated"
+    } else {
+        "not found (skipped)"
+    }
 }
 
 /// Build a Postgres pool for the migrate command. Uses `BRASSCLAW_PG_URL` if
 /// set, otherwise reports an error asking the user to start `brassclaw serve`
 /// first (which starts embedded PG automatically).
-async fn build_pg_pool(
-    _context: &RebornCliContext,
-) -> anyhow::Result<deadpool_postgres::Pool> {
-    let url = std::env::var("BRASSCLAW_PG_URL").or_else(|_| std::env::var("DATABASE_URL")).map_err(|_| {
-        anyhow::anyhow!(
-            "no PostgreSQL URL found; set BRASSCLAW_PG_URL or start `brassclaw serve` \
+async fn build_pg_pool(_context: &RebornCliContext) -> anyhow::Result<deadpool_postgres::Pool> {
+    let url = std::env::var("BRASSCLAW_PG_URL")
+        .or_else(|_| std::env::var("DATABASE_URL"))
+        .map_err(|_| {
+            anyhow::anyhow!(
+                "no PostgreSQL URL found; set BRASSCLAW_PG_URL or start `brassclaw serve` \
              first to have embedded PostgreSQL started automatically"
-        )
-    })?;
+            )
+        })?;
 
     let config: tokio_postgres::Config = url
         .parse()

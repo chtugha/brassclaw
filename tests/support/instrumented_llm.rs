@@ -14,8 +14,8 @@ use rust_decimal::Decimal;
 use tokio::sync::Mutex;
 
 use brassclaw_llm::{
-    CompletionRequest, CompletionResponse, LlmError, LlmProvider, ModelMetadata, ToolCompletionRequest,
-    ToolCompletionResponse,
+    CompletionRequest, CompletionResponse, LlmError, LlmProvider, ModelMetadata,
+    ToolCompletionRequest, ToolCompletionResponse,
 };
 
 /// Metrics captured for a single LLM call.

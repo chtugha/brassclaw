@@ -275,11 +275,9 @@ mod tests {
         ];
 
         for (effects, expected) in cases {
-            let plan = plan_capability(
-                &descriptor_with_runtime(RuntimeKind::Mcp, effects),
-                &policy,
-            )
-            .unwrap();
+            let plan =
+                plan_capability(&descriptor_with_runtime(RuntimeKind::Mcp, effects), &policy)
+                    .unwrap();
             assert_eq!(
                 (
                     plan.requires_filesystem,

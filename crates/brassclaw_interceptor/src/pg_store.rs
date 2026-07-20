@@ -22,15 +22,21 @@ use crate::packet::{
 use crate::store::InterceptorStore;
 
 fn map_pool(error: deadpool_postgres::PoolError) -> InterceptorError {
-    InterceptorError::StoreUnavailable { reason: error.to_string() }
+    InterceptorError::StoreUnavailable {
+        reason: error.to_string(),
+    }
 }
 
 fn map_pg(error: tokio_postgres::Error) -> InterceptorError {
-    InterceptorError::Internal { reason: error.to_string() }
+    InterceptorError::Internal {
+        reason: error.to_string(),
+    }
 }
 
 fn map_json(error: serde_json::Error) -> InterceptorError {
-    InterceptorError::Internal { reason: format!("json: {error}") }
+    InterceptorError::Internal {
+        reason: format!("json: {error}"),
+    }
 }
 
 /// PostgreSQL-backed persistence for [`ForensicPacket`]s.
@@ -44,7 +50,10 @@ pub struct PgInterceptorStore {
 
 impl PgInterceptorStore {
     pub fn new(pool: Arc<PgPool>, tenant_id: impl Into<String>) -> Self {
-        Self { pool, tenant_id: tenant_id.into() }
+        Self {
+            pool,
+            tenant_id: tenant_id.into(),
+        }
     }
 
     /// Retroactively associate a `chat_record_id` with the first memory record
@@ -65,7 +74,12 @@ impl PgInterceptorStore {
                  AND run_id = $2 \
                  AND iteration = $4 \
                  AND chat_record_id IS NULL",
-                &[&self.tenant_id, &run_id, &chat_record_id, &(iteration as i32)],
+                &[
+                    &self.tenant_id,
+                    &run_id,
+                    &chat_record_id,
+                    &(iteration as i32),
+                ],
             )
             .await
             .map_err(map_pg)?;
@@ -199,7 +213,9 @@ fn unpack_usage(usage: Option<KohaiUsage>) -> (Option<i32>, Option<i32>, Option<
 }
 
 fn row_to_packet(row: &tokio_postgres::Row) -> Result<ForensicPacket, InterceptorError> {
-    let map_col = |e: tokio_postgres::Error| InterceptorError::Internal { reason: e.to_string() };
+    let map_col = |e: tokio_postgres::Error| InterceptorError::Internal {
+        reason: e.to_string(),
+    };
 
     let status_str: String = row.try_get("status").map_err(map_col)?;
     let status = parse_packet_status(&status_str)?;
@@ -211,14 +227,14 @@ fn row_to_packet(row: &tokio_postgres::Row) -> Result<ForensicPacket, Intercepto
         .map(serde_json::from_value)
         .transpose()
         .map_err(map_json)?;
-    let input_tokens: Option<i32> =
-        row.try_get("kohai_input_tokens").map_err(map_col)?;
-    let output_tokens: Option<i32> =
-        row.try_get("kohai_output_tokens").map_err(map_col)?;
-    let cache_read: Option<i32> =
-        row.try_get("kohai_cache_read_input_tokens").map_err(map_col)?;
-    let cache_create: Option<i32> =
-        row.try_get("kohai_cache_creation_input_tokens").map_err(map_col)?;
+    let input_tokens: Option<i32> = row.try_get("kohai_input_tokens").map_err(map_col)?;
+    let output_tokens: Option<i32> = row.try_get("kohai_output_tokens").map_err(map_col)?;
+    let cache_read: Option<i32> = row
+        .try_get("kohai_cache_read_input_tokens")
+        .map_err(map_col)?;
+    let cache_create: Option<i32> = row
+        .try_get("kohai_cache_creation_input_tokens")
+        .map_err(map_col)?;
     let kohai_usage = match (input_tokens, output_tokens, cache_read, cache_create) {
         (Some(i), Some(o), Some(cr), Some(cc)) => Some(KohaiUsage {
             input_tokens: i as u32,

@@ -28,11 +28,15 @@ use brassclaw_engine::types::{is_shared_owner, shared_owner_candidates};
 use brassclaw_pg::PgPool;
 
 fn map_pool(e: deadpool_postgres::PoolError) -> EngineError {
-    EngineError::Store { reason: e.to_string() }
+    EngineError::Store {
+        reason: e.to_string(),
+    }
 }
 
 fn map_pg(e: tokio_postgres::Error) -> EngineError {
-    EngineError::Store { reason: e.to_string() }
+    EngineError::Store {
+        reason: e.to_string(),
+    }
 }
 
 fn stub(method: &'static str) -> EngineError {
@@ -43,28 +47,28 @@ fn stub(method: &'static str) -> EngineError {
 
 fn doc_type_to_str(dt: DocType) -> &'static str {
     match dt {
-        DocType::Summary  => "Summary",
-        DocType::Lesson   => "Lesson",
-        DocType::Issue    => "Issue",
-        DocType::Spec     => "Spec",
-        DocType::Note     => "Note",
-        DocType::Skill    => "Skill",
-        DocType::Plan     => "Plan",
-        DocType::Recipe   => "Recipe",
+        DocType::Summary => "Summary",
+        DocType::Lesson => "Lesson",
+        DocType::Issue => "Issue",
+        DocType::Spec => "Spec",
+        DocType::Note => "Note",
+        DocType::Skill => "Skill",
+        DocType::Plan => "Plan",
+        DocType::Recipe => "Recipe",
         DocType::ToolSkill => "ToolSkill",
     }
 }
 
 fn parse_doc_type(raw: &str) -> Result<DocType, EngineError> {
     match raw {
-        "Summary"  => Ok(DocType::Summary),
-        "Lesson"   => Ok(DocType::Lesson),
-        "Issue"    => Ok(DocType::Issue),
-        "Spec"     => Ok(DocType::Spec),
-        "Note"     => Ok(DocType::Note),
-        "Skill"    => Ok(DocType::Skill),
-        "Plan"     => Ok(DocType::Plan),
-        "Recipe"   => Ok(DocType::Recipe),
+        "Summary" => Ok(DocType::Summary),
+        "Lesson" => Ok(DocType::Lesson),
+        "Issue" => Ok(DocType::Issue),
+        "Spec" => Ok(DocType::Spec),
+        "Note" => Ok(DocType::Note),
+        "Skill" => Ok(DocType::Skill),
+        "Plan" => Ok(DocType::Plan),
+        "Recipe" => Ok(DocType::Recipe),
         "ToolSkill" => Ok(DocType::ToolSkill),
         other => Err(EngineError::Store {
             reason: format!("brassclaw_memory_docs.doc_type '{other}' is not recognised"),
@@ -121,18 +125,18 @@ impl PgMemoryDocStore {
 
     fn row_to_doc(&self, raw: MemoryDocRow) -> Result<MemoryDoc, EngineError> {
         use chrono::DateTime;
-        let id = DocId(uuid::Uuid::parse_str(&raw.id_str).map_err(|e| EngineError::Store {
-            reason: format!("brassclaw_memory_docs.id is not UUID: {e}"),
-        })?);
+        let id = DocId(
+            uuid::Uuid::parse_str(&raw.id_str).map_err(|e| EngineError::Store {
+                reason: format!("brassclaw_memory_docs.id is not UUID: {e}"),
+            })?,
+        );
         let source_thread_id = raw
             .source_thread_id
             .map(|s| {
                 uuid::Uuid::parse_str(&s)
                     .map(brassclaw_engine::types::thread::ThreadId)
                     .map_err(|e| EngineError::Store {
-                        reason: format!(
-                            "brassclaw_memory_docs.source_thread_id is not UUID: {e}"
-                        ),
+                        reason: format!("brassclaw_memory_docs.source_thread_id is not UUID: {e}"),
                     })
             })
             .transpose()?;
@@ -141,10 +145,14 @@ impl PgMemoryDocStore {
                 reason: format!("brassclaw_memory_docs.metadata malformed: {e}"),
             })?;
         let created_at = DateTime::parse_from_rfc3339(&raw.created_at_str)
-            .map_err(|e| EngineError::Store { reason: format!("created_at parse: {e}") })?
+            .map_err(|e| EngineError::Store {
+                reason: format!("created_at parse: {e}"),
+            })?
             .with_timezone(&chrono::Utc);
         let updated_at = DateTime::parse_from_rfc3339(&raw.updated_at_str)
-            .map_err(|e| EngineError::Store { reason: format!("updated_at parse: {e}") })?
+            .map_err(|e| EngineError::Store {
+                reason: format!("updated_at parse: {e}"),
+            })?
             .with_timezone(&chrono::Utc);
         Ok(MemoryDoc {
             id,
@@ -166,23 +174,68 @@ impl PgMemoryDocStore {
 impl Store for PgMemoryDocStore {
     // ── Non-MemoryDoc methods return stub errors (same as MemoryDocLibSqlStore) ──
 
-    async fn save_thread(&self, _: &Thread) -> Result<(), EngineError> { Err(stub("save_thread")) }
-    async fn load_thread(&self, _: EngineThreadId) -> Result<Option<Thread>, EngineError> { Err(stub("load_thread")) }
-    async fn list_threads(&self, _: ProjectId, _: &str) -> Result<Vec<Thread>, EngineError> { Err(stub("list_threads")) }
-    async fn update_thread_state(&self, _: EngineThreadId, _: ThreadState) -> Result<(), EngineError> { Err(stub("update_thread_state")) }
-    async fn save_step(&self, _: &Step) -> Result<(), EngineError> { Err(stub("save_step")) }
-    async fn load_steps(&self, _: EngineThreadId) -> Result<Vec<Step>, EngineError> { Err(stub("load_steps")) }
-    async fn append_events(&self, _: &[ThreadEvent]) -> Result<(), EngineError> { Err(stub("append_events")) }
-    async fn load_events(&self, _: EngineThreadId) -> Result<Vec<ThreadEvent>, EngineError> { Err(stub("load_events")) }
-    async fn save_project(&self, _: &Project) -> Result<(), EngineError> { Err(stub("save_project")) }
-    async fn load_project(&self, _: ProjectId) -> Result<Option<Project>, EngineError> { Err(stub("load_project")) }
-    async fn save_lease(&self, _: &CapabilityLease) -> Result<(), EngineError> { Err(stub("save_lease")) }
-    async fn load_active_leases(&self, _: EngineThreadId) -> Result<Vec<CapabilityLease>, EngineError> { Err(stub("load_active_leases")) }
-    async fn revoke_lease(&self, _: LeaseId, _: &str) -> Result<(), EngineError> { Err(stub("revoke_lease")) }
-    async fn save_mission(&self, _: &Mission) -> Result<(), EngineError> { Err(stub("save_mission")) }
-    async fn load_mission(&self, _: MissionId) -> Result<Option<Mission>, EngineError> { Err(stub("load_mission")) }
-    async fn list_missions(&self, _: ProjectId, _: &str) -> Result<Vec<Mission>, EngineError> { Err(stub("list_missions")) }
-    async fn update_mission_status(&self, _: MissionId, _: MissionStatus) -> Result<(), EngineError> { Err(stub("update_mission_status")) }
+    async fn save_thread(&self, _: &Thread) -> Result<(), EngineError> {
+        Err(stub("save_thread"))
+    }
+    async fn load_thread(&self, _: EngineThreadId) -> Result<Option<Thread>, EngineError> {
+        Err(stub("load_thread"))
+    }
+    async fn list_threads(&self, _: ProjectId, _: &str) -> Result<Vec<Thread>, EngineError> {
+        Err(stub("list_threads"))
+    }
+    async fn update_thread_state(
+        &self,
+        _: EngineThreadId,
+        _: ThreadState,
+    ) -> Result<(), EngineError> {
+        Err(stub("update_thread_state"))
+    }
+    async fn save_step(&self, _: &Step) -> Result<(), EngineError> {
+        Err(stub("save_step"))
+    }
+    async fn load_steps(&self, _: EngineThreadId) -> Result<Vec<Step>, EngineError> {
+        Err(stub("load_steps"))
+    }
+    async fn append_events(&self, _: &[ThreadEvent]) -> Result<(), EngineError> {
+        Err(stub("append_events"))
+    }
+    async fn load_events(&self, _: EngineThreadId) -> Result<Vec<ThreadEvent>, EngineError> {
+        Err(stub("load_events"))
+    }
+    async fn save_project(&self, _: &Project) -> Result<(), EngineError> {
+        Err(stub("save_project"))
+    }
+    async fn load_project(&self, _: ProjectId) -> Result<Option<Project>, EngineError> {
+        Err(stub("load_project"))
+    }
+    async fn save_lease(&self, _: &CapabilityLease) -> Result<(), EngineError> {
+        Err(stub("save_lease"))
+    }
+    async fn load_active_leases(
+        &self,
+        _: EngineThreadId,
+    ) -> Result<Vec<CapabilityLease>, EngineError> {
+        Err(stub("load_active_leases"))
+    }
+    async fn revoke_lease(&self, _: LeaseId, _: &str) -> Result<(), EngineError> {
+        Err(stub("revoke_lease"))
+    }
+    async fn save_mission(&self, _: &Mission) -> Result<(), EngineError> {
+        Err(stub("save_mission"))
+    }
+    async fn load_mission(&self, _: MissionId) -> Result<Option<Mission>, EngineError> {
+        Err(stub("load_mission"))
+    }
+    async fn list_missions(&self, _: ProjectId, _: &str) -> Result<Vec<Mission>, EngineError> {
+        Err(stub("list_missions"))
+    }
+    async fn update_mission_status(
+        &self,
+        _: MissionId,
+        _: MissionStatus,
+    ) -> Result<(), EngineError> {
+        Err(stub("update_mission_status"))
+    }
 
     // ── MemoryDoc operations (functional) ──
 
@@ -192,7 +245,8 @@ impl Store for PgMemoryDocStore {
         let project_id_str = doc.project_id.to_string();
         let doc_type_str = doc_type_to_str(doc.doc_type);
         let source_thread_id = doc.source_thread_id.map(|t| t.0.to_string());
-        let metadata_json = serde_json::to_string(&doc.metadata).unwrap_or_else(|_| "{}".to_string());
+        let metadata_json =
+            serde_json::to_string(&doc.metadata).unwrap_or_else(|_| "{}".to_string());
         let created_at_str = doc.created_at.to_rfc3339();
         let tags: Vec<String> = doc.tags.clone();
         client

@@ -69,10 +69,11 @@ impl ConversationStateRepository for PgConversationStateStore {
                         .map_err(|error| InboundTurnError::DurableState {
                             reason: format!("pg conversation state read revision: {error}"),
                         })?;
-                let state: InMemoryState =
-                    serde_json::from_value(blob).map_err(|error| InboundTurnError::DurableState {
+                let state: InMemoryState = serde_json::from_value(blob).map_err(|error| {
+                    InboundTurnError::DurableState {
                         reason: format!("pg conversation state deserialize: {error}"),
-                    })?;
+                    }
+                })?;
                 Ok(PersistedConversationState { state, revision })
             }
             None => Ok(PersistedConversationState {

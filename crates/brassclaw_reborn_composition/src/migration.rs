@@ -83,13 +83,17 @@ pub enum MigrationError {
 
 impl From<deadpool_postgres::PoolError> for MigrationError {
     fn from(e: deadpool_postgres::PoolError) -> Self {
-        Self::Db { reason: e.to_string() }
+        Self::Db {
+            reason: e.to_string(),
+        }
     }
 }
 
 impl From<tokio_postgres::Error> for MigrationError {
     fn from(e: tokio_postgres::Error) -> Self {
-        Self::Db { reason: e.to_string() }
+        Self::Db {
+            reason: e.to_string(),
+        }
     }
 }
 
@@ -124,9 +128,17 @@ pub async fn run_migration(
 
     // Step 8 — set boot.initialized if any artifact was migrated
     if any_migrated && !dry_run {
-        save_config_key(pool, tenant_id, "boot.initialized", "true", ConfigWriteContext::Operator)
-            .await
-            .map_err(|e| MigrationError::Db { reason: e.to_string() })?;
+        save_config_key(
+            pool,
+            tenant_id,
+            "boot.initialized",
+            "true",
+            ConfigWriteContext::Operator,
+        )
+        .await
+        .map_err(|e| MigrationError::Db {
+            reason: e.to_string(),
+        })?;
         return Ok(MigrationReport {
             config_migrated,
             providers_migrated,
@@ -163,7 +175,9 @@ async fn step3_migrate_config(
     }
 
     let config = RebornConfigFile::load(&config_path)
-        .map_err(|e| MigrationError::ConfigParse { reason: e.to_string() })?
+        .map_err(|e| MigrationError::ConfigParse {
+            reason: e.to_string(),
+        })?
         .unwrap_or_default();
 
     if !dry_run {
@@ -190,20 +204,39 @@ async fn write_config_to_db(
         rows.push(("api_version".to_string(), v.clone()));
     }
     if let Some(id) = &config.identity {
-        if let Some(v) = &id.tenant { rows.push(("identity.tenant".to_string(), v.clone())); }
-        if let Some(v) = &id.default_agent { rows.push(("identity.default_agent".to_string(), v.clone())); }
-        if let Some(v) = &id.default_owner { rows.push(("identity.default_owner".to_string(), v.clone())); }
-        if let Some(v) = &id.default_project { rows.push(("identity.default_project".to_string(), v.clone())); }
+        if let Some(v) = &id.tenant {
+            rows.push(("identity.tenant".to_string(), v.clone()));
+        }
+        if let Some(v) = &id.default_agent {
+            rows.push(("identity.default_agent".to_string(), v.clone()));
+        }
+        if let Some(v) = &id.default_owner {
+            rows.push(("identity.default_owner".to_string(), v.clone()));
+        }
+        if let Some(v) = &id.default_project {
+            rows.push(("identity.default_project".to_string(), v.clone()));
+        }
     }
     if let Some(p) = &config.policy {
-        if let Some(v) = &p.deployment_mode { rows.push(("policy.deployment_mode".to_string(), v.clone())); }
-        if let Some(v) = &p.default_profile { rows.push(("policy.default_profile".to_string(), v.clone())); }
-        if let Some(v) = &p.default_approval_policy { rows.push(("policy.default_approval_policy".to_string(), v.clone())); }
+        if let Some(v) = &p.deployment_mode {
+            rows.push(("policy.deployment_mode".to_string(), v.clone()));
+        }
+        if let Some(v) = &p.default_profile {
+            rows.push(("policy.default_profile".to_string(), v.clone()));
+        }
+        if let Some(v) = &p.default_approval_policy {
+            rows.push(("policy.default_approval_policy".to_string(), v.clone()));
+        }
     }
     if let Some(d) = &config.drivers {
-        if let Some(v) = &d.default { rows.push(("drivers.default".to_string(), v.clone())); }
+        if let Some(v) = &d.default {
+            rows.push(("drivers.default".to_string(), v.clone()));
+        }
         if let Some(v) = &d.additional {
-            rows.push(("drivers.additional".to_string(), serde_json::to_string(v).unwrap_or_default()));
+            rows.push((
+                "drivers.additional".to_string(),
+                serde_json::to_string(v).unwrap_or_default(),
+            ));
         }
     }
     if let Some(h) = &config.harness
@@ -212,8 +245,12 @@ async fn write_config_to_db(
         rows.push(("harness.id".to_string(), v.clone()));
     }
     if let Some(r) = &config.runner {
-        if let Some(v) = r.heartbeat_interval_secs { rows.push(("runner.heartbeat_interval_secs".to_string(), v.to_string())); }
-        if let Some(v) = r.poll_interval_ms { rows.push(("runner.poll_interval_ms".to_string(), v.to_string())); }
+        if let Some(v) = r.heartbeat_interval_secs {
+            rows.push(("runner.heartbeat_interval_secs".to_string(), v.to_string()));
+        }
+        if let Some(v) = r.poll_interval_ms {
+            rows.push(("runner.poll_interval_ms".to_string(), v.to_string()));
+        }
     }
     if let Some(s) = &config.skills
         && let Some(v) = s.regex_activation_enabled
@@ -221,38 +258,79 @@ async fn write_config_to_db(
         rows.push(("skills.regex_activation_enabled".to_string(), v.to_string()));
     }
     if let Some(t) = &config.tokens {
-        if let Some(v) = t.capability_focus_enabled { rows.push(("tokens.capability_focus_enabled".to_string(), v.to_string())); }
-        if let Some(v) = t.planning_mode_enabled { rows.push(("tokens.planning_mode_enabled".to_string(), v.to_string())); }
+        if let Some(v) = t.capability_focus_enabled {
+            rows.push(("tokens.capability_focus_enabled".to_string(), v.to_string()));
+        }
+        if let Some(v) = t.planning_mode_enabled {
+            rows.push(("tokens.planning_mode_enabled".to_string(), v.to_string()));
+        }
     }
     // LLM slots: llm.<slot>.provider_id, .model, .api_key_env, .base_url
     if let Some(llm) = &config.llm {
         for (slot, sel) in llm {
-            if let Some(v) = &sel.provider_id { rows.push((format!("llm.{slot}.provider_id"), v.clone())); }
-            if let Some(v) = &sel.model { rows.push((format!("llm.{slot}.model"), v.clone())); }
-            if let Some(v) = &sel.api_key_env { rows.push((format!("llm.{slot}.api_key_env"), v.clone())); }
-            if let Some(v) = &sel.base_url { rows.push((format!("llm.{slot}.base_url"), v.clone())); }
+            if let Some(v) = &sel.provider_id {
+                rows.push((format!("llm.{slot}.provider_id"), v.clone()));
+            }
+            if let Some(v) = &sel.model {
+                rows.push((format!("llm.{slot}.model"), v.clone()));
+            }
+            if let Some(v) = &sel.api_key_env {
+                rows.push((format!("llm.{slot}.api_key_env"), v.clone()));
+            }
+            if let Some(v) = &sel.base_url {
+                rows.push((format!("llm.{slot}.base_url"), v.clone()));
+            }
         }
     }
     if let Some(w) = &config.webui {
-        if let Some(v) = w.listen_port { rows.push(("webui.listen_port".to_string(), v.to_string())); }
-        if let Some(v) = &w.listen_host { rows.push(("webui.listen_host".to_string(), v.clone())); }
-        if let Some(v) = &w.env_token_var { rows.push(("webui.env_token_var".to_string(), v.clone())); }
-        if let Some(v) = &w.env_user_id_var { rows.push(("webui.env_user_id_var".to_string(), v.clone())); }
+        if let Some(v) = w.listen_port {
+            rows.push(("webui.listen_port".to_string(), v.to_string()));
+        }
+        if let Some(v) = &w.listen_host {
+            rows.push(("webui.listen_host".to_string(), v.clone()));
+        }
+        if let Some(v) = &w.env_token_var {
+            rows.push(("webui.env_token_var".to_string(), v.clone()));
+        }
+        if let Some(v) = &w.env_user_id_var {
+            rows.push(("webui.env_user_id_var".to_string(), v.clone()));
+        }
     }
     if let Some(b) = &config.budget {
-        if let Some(v) = b.user_daily_usd { rows.push(("budget.user_daily_usd".to_string(), v.to_string())); }
-        if let Some(v) = b.project_daily_usd { rows.push(("budget.project_daily_usd".to_string(), v.to_string())); }
-        if let Some(v) = b.mission_per_tick_usd { rows.push(("budget.mission_per_tick_usd".to_string(), v.to_string())); }
-        if let Some(v) = &b.default_tz { rows.push(("budget.default_tz".to_string(), v.clone())); }
+        if let Some(v) = b.user_daily_usd {
+            rows.push(("budget.user_daily_usd".to_string(), v.to_string()));
+        }
+        if let Some(v) = b.project_daily_usd {
+            rows.push(("budget.project_daily_usd".to_string(), v.to_string()));
+        }
+        if let Some(v) = b.mission_per_tick_usd {
+            rows.push(("budget.mission_per_tick_usd".to_string(), v.to_string()));
+        }
+        if let Some(v) = &b.default_tz {
+            rows.push(("budget.default_tz".to_string(), v.clone()));
+        }
     }
     if let Some(tp) = &config.trigger_poller {
-        if let Some(v) = tp.enabled { rows.push(("trigger_poller.enabled".to_string(), v.to_string())); }
-        if let Some(v) = tp.poll_interval_secs { rows.push(("trigger_poller.poll_interval_secs".to_string(), v.to_string())); }
-        if let Some(v) = tp.fires_per_tick { rows.push(("trigger_poller.fires_per_tick".to_string(), v.to_string())); }
+        if let Some(v) = tp.enabled {
+            rows.push(("trigger_poller.enabled".to_string(), v.to_string()));
+        }
+        if let Some(v) = tp.poll_interval_secs {
+            rows.push((
+                "trigger_poller.poll_interval_secs".to_string(),
+                v.to_string(),
+            ));
+        }
+        if let Some(v) = tp.fires_per_tick {
+            rows.push(("trigger_poller.fires_per_tick".to_string(), v.to_string()));
+        }
     }
     if let Some(e) = &config.embedding {
-        if let Some(v) = &e.provider_id { rows.push(("embedding.provider_id".to_string(), v.clone())); }
-        if let Some(v) = &e.model { rows.push(("embedding.model".to_string(), v.clone())); }
+        if let Some(v) = &e.provider_id {
+            rows.push(("embedding.provider_id".to_string(), v.clone()));
+        }
+        if let Some(v) = &e.model {
+            rows.push(("embedding.model".to_string(), v.clone()));
+        }
     }
 
     if rows.is_empty() {
@@ -291,12 +369,15 @@ async fn step4_migrate_providers(
         return Ok(false);
     }
 
-    let text = std::fs::read_to_string(&providers_path)
-        .map_err(|e| MigrationError::Io { reason: e.to_string() })?;
+    let text = std::fs::read_to_string(&providers_path).map_err(|e| MigrationError::Io {
+        reason: e.to_string(),
+    })?;
     // Parse as generic JSON values to avoid a hard dep on brassclaw_llm types
     // in the migrate-from-libsql feature path (root-llm-provider is optional).
-    let providers: Vec<serde_json::Value> = serde_json::from_str(&text)
-        .map_err(|e| MigrationError::ProvidersParse { reason: e.to_string() })?;
+    let providers: Vec<serde_json::Value> =
+        serde_json::from_str(&text).map_err(|e| MigrationError::ProvidersParse {
+            reason: e.to_string(),
+        })?;
 
     if !dry_run {
         let client = pool.get().await?;
@@ -308,8 +389,10 @@ async fn step4_migrate_providers(
                     reason: "provider missing `id` field".to_string(),
                 })?
                 .to_string();
-            let data = serde_json::to_string(&provider)
-                .map_err(|e| MigrationError::ProvidersParse { reason: e.to_string() })?;
+            let data =
+                serde_json::to_string(&provider).map_err(|e| MigrationError::ProvidersParse {
+                    reason: e.to_string(),
+                })?;
             client
                 .execute(
                     "INSERT INTO brassclaw_llm_providers (tenant_id, id, data) \
@@ -346,12 +429,15 @@ async fn step5_migrate_sempai(
         return Ok(false);
     }
 
-    let text = std::fs::read_to_string(&sempai_path)
-        .map_err(|e| MigrationError::Io { reason: e.to_string() })?;
+    let text = std::fs::read_to_string(&sempai_path).map_err(|e| MigrationError::Io {
+        reason: e.to_string(),
+    })?;
 
     // sempai_provider.json stores a LlmSlotSelection JSON object.
-    let sel: brassclaw_reborn_config::LlmSlotSelection = serde_json::from_str(&text)
-        .map_err(|e| MigrationError::ProvidersParse { reason: e.to_string() })?;
+    let sel: brassclaw_reborn_config::LlmSlotSelection =
+        serde_json::from_str(&text).map_err(|e| MigrationError::ProvidersParse {
+            reason: e.to_string(),
+        })?;
 
     if !dry_run {
         let client = pool.get().await?;
@@ -429,14 +515,19 @@ async fn step6_migrate_secrets_master(
 
     if !dry_run {
         // Copy the raw key file to the canonical location (0600).
-        std::fs::copy(&local_dev_key_path, &canonical_key_path)
-            .map_err(|e| MigrationError::Io { reason: format!("copy secrets key: {e}") })?;
+        std::fs::copy(&local_dev_key_path, &canonical_key_path).map_err(|e| {
+            MigrationError::Io {
+                reason: format!("copy secrets key: {e}"),
+            }
+        })?;
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&canonical_key_path, std::fs::Permissions::from_mode(0o600))
-                .map_err(|e| MigrationError::Io { reason: format!("chmod secrets key: {e}") })?;
+                .map_err(|e| MigrationError::Io {
+                reason: format!("chmod secrets key: {e}"),
+            })?;
         }
 
         // Upsert the secrets_master row — both wrapped_key and algorithm
@@ -490,10 +581,12 @@ async fn step7_migrate_libsql_db(
     let db = libsql::Builder::new_local(db_path.to_string_lossy().to_string())
         .build()
         .await
-        .map_err(|e| MigrationError::Db { reason: format!("open libsql db: {e}") })?;
-    let conn = db
-        .connect()
-        .map_err(|e| MigrationError::Db { reason: format!("connect libsql: {e}") })?;
+        .map_err(|e| MigrationError::Db {
+            reason: format!("open libsql db: {e}"),
+        })?;
+    let conn = db.connect().map_err(|e| MigrationError::Db {
+        reason: format!("connect libsql: {e}"),
+    })?;
 
     // Resolve boot_tenant and boot_user from the just-migrated config (step 3).
     let (boot_tenant, boot_user) = resolve_boot_identity(pool, tenant_id).await;
@@ -706,12 +799,10 @@ async fn migrate_root_filesystem(
             let id: String = get_text(&row, 0)?;
             let entry_id: String = get_text(&row, 1)?;
             let kind: String = get_text(&row, 2)?;
-            let dimension: Option<i64> = row[3]
-                .as_ref()
-                .and_then(|v| match v {
-                    libsql::Value::Integer(n) => Some(*n),
-                    _ => None,
-                });
+            let dimension: Option<i64> = row[3].as_ref().and_then(|v| match v {
+                libsql::Value::Integer(n) => Some(*n),
+                _ => None,
+            });
             client
                 .execute(
                     "INSERT INTO root_filesystem_index_specs (id, tenant_id, entry_id, kind, dimension) \
@@ -975,16 +1066,16 @@ async fn query_all(conn: &libsql::Connection, sql: &str) -> Result<Vec<LibSqlRow
     let mut rows = conn
         .query(sql, libsql::params![])
         .await
-        .map_err(|e| MigrationError::Db { reason: format!("libsql query '{sql}': {e}") })?;
+        .map_err(|e| MigrationError::Db {
+            reason: format!("libsql query '{sql}': {e}"),
+        })?;
 
     let col_count = rows.column_count();
     let mut result = Vec::new();
 
-    while let Some(row) = rows
-        .next()
-        .await
-        .map_err(|e| MigrationError::Db { reason: format!("libsql row iter: {e}") })?
-    {
+    while let Some(row) = rows.next().await.map_err(|e| MigrationError::Db {
+        reason: format!("libsql row iter: {e}"),
+    })? {
         let mut cols: LibSqlRow = Vec::with_capacity(col_count as usize);
         for i in 0..col_count {
             let val = row.get_value(i).ok();
@@ -1042,8 +1133,9 @@ fn rename_migrated(path: &Path) -> Result<(), MigrationError> {
         .map(|n| format!("{}.migrated", n.to_string_lossy()))
         .unwrap_or_else(|| "migrated".to_string());
     new_path.set_file_name(original_file_name);
-    std::fs::rename(path, &new_path)
-        .map_err(|e| MigrationError::Io { reason: format!("rename {}: {e}", path.display()) })
+    std::fs::rename(path, &new_path).map_err(|e| MigrationError::Io {
+        reason: format!("rename {}: {e}", path.display()),
+    })
 }
 
 /// Overwrite the file with zeros, then delete it. Best-effort: only the
@@ -1054,8 +1146,9 @@ fn zero_and_delete(path: &Path) -> Result<(), MigrationError> {
         let zeros = vec![0u8; metadata.len() as usize];
         let _ = std::fs::write(path, zeros);
     }
-    std::fs::remove_file(path)
-        .map_err(|e| MigrationError::Io { reason: format!("delete {}: {e}", path.display()) })
+    std::fs::remove_file(path).map_err(|e| MigrationError::Io {
+        reason: format!("delete {}: {e}", path.display()),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1074,13 +1167,19 @@ mod tests {
 
     #[test]
     fn report_any_migrated_true_when_config_migrated() {
-        let r = MigrationReport { config_migrated: true, ..Default::default() };
+        let r = MigrationReport {
+            config_migrated: true,
+            ..Default::default()
+        };
         assert!(r.any_migrated());
     }
 
     #[test]
     fn report_any_migrated_true_when_libsql_migrated() {
-        let r = MigrationReport { libsql_db_migrated: true, ..Default::default() };
+        let r = MigrationReport {
+            libsql_db_migrated: true,
+            ..Default::default()
+        };
         assert!(r.any_migrated());
     }
 }

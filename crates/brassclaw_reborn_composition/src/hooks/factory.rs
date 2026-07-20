@@ -33,7 +33,9 @@ pub(crate) fn predicate_backend(
     match pool {
         Some(p) => {
             tracing::debug!("hooks: using PostgresPredicateStateBackend");
-            Arc::new(brassclaw_hooks_pg::PostgresPredicateStateBackend::new((*p).clone()))
+            Arc::new(brassclaw_hooks_pg::PostgresPredicateStateBackend::new(
+                (*p).clone(),
+            ))
         }
         None => {
             tracing::debug!("hooks: using InMemoryPredicateStateBackend (no pool)");
@@ -336,7 +338,10 @@ where
 
     let (backend, is_in_memory) = match backend {
         Some(b) => (b, false),
-        None => (Arc::new(InMemoryPredicateStateBackend::new()) as Arc<dyn PredicateStateBackend>, true),
+        None => (
+            Arc::new(InMemoryPredicateStateBackend::new()) as Arc<dyn PredicateStateBackend>,
+            true,
+        ),
     };
     let evaluator = Arc::new(PredicateEvaluator::with_state_backend(Arc::clone(&backend)));
     if is_in_memory {

@@ -62,7 +62,9 @@ impl PgProviderRepo {
 
         let mut providers = Vec::with_capacity(rows.len());
         for row in &rows {
-            let json: serde_json::Value = row.try_get("definition").map_err(|e| PgProviderRepoError::Db(e.to_string()))?;
+            let json: serde_json::Value = row
+                .try_get("definition")
+                .map_err(|e| PgProviderRepoError::Db(e.to_string()))?;
             let def: ProviderDefinition =
                 serde_json::from_value(json).map_err(|e| PgProviderRepoError::Parse {
                     reason: e.to_string(),
@@ -132,10 +134,7 @@ impl PgProviderRepo {
     /// Get a single provider definition by `id` (including soft-deleted).
     ///
     /// Returns `None` if no row exists for the given id.
-    pub async fn get(
-        &self,
-        id: &str,
-    ) -> Result<Option<ProviderDefinition>, PgProviderRepoError> {
+    pub async fn get(&self, id: &str) -> Result<Option<ProviderDefinition>, PgProviderRepoError> {
         let client = self.pool.get().await?;
         let row = client
             .query_opt(
@@ -148,11 +147,12 @@ impl PgProviderRepo {
         match row {
             None => Ok(None),
             Some(r) => {
-                let json: serde_json::Value = r.try_get("definition").map_err(|e| PgProviderRepoError::Db(e.to_string()))?;
-                let def =
-                    serde_json::from_value(json).map_err(|e| PgProviderRepoError::Parse {
-                        reason: e.to_string(),
-                    })?;
+                let json: serde_json::Value = r
+                    .try_get("definition")
+                    .map_err(|e| PgProviderRepoError::Db(e.to_string()))?;
+                let def = serde_json::from_value(json).map_err(|e| PgProviderRepoError::Parse {
+                    reason: e.to_string(),
+                })?;
                 Ok(Some(def))
             }
         }

@@ -209,8 +209,11 @@ fn skill_overlap(candidate: &[&str], existing: &Recipe) -> f64 {
     if candidate.is_empty() {
         return 0.0;
     }
-    let existing_names: HashSet<String> =
-        existing.steps.iter().map(|s| s.skill.to_lowercase()).collect();
+    let existing_names: HashSet<String> = existing
+        .steps
+        .iter()
+        .map(|s| s.skill.to_lowercase())
+        .collect();
     let mut match_count = 0;
     for s in candidate {
         if existing_names.contains(&s.to_lowercase()) {

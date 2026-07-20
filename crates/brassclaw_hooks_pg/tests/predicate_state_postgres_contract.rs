@@ -22,8 +22,6 @@
 //! table at the start of each, giving every contract a fresh-empty
 //! backend exactly as the in-memory factory does.
 
-
-
 use std::sync::Arc;
 
 use brassclaw_hooks_pg::PostgresPredicateStateBackend;

@@ -231,8 +231,14 @@ impl RebornLlmConfigService {
         let pid_result = if provider_id_value.is_empty() {
             delete_config_key(pool, tenant_id, provider_id_key).await
         } else {
-            save_config_key(pool, tenant_id, provider_id_key, provider_id_value,
-                            ConfigWriteContext::Operator).await
+            save_config_key(
+                pool,
+                tenant_id,
+                provider_id_key,
+                provider_id_value,
+                ConfigWriteContext::Operator,
+            )
+            .await
         };
         if let Err(e) = pid_result {
             tracing::debug!(key = provider_id_key, error = %e,
@@ -243,8 +249,14 @@ impl RebornLlmConfigService {
         let model_result = if model_value.is_empty() {
             delete_config_key(pool, tenant_id, model_key).await
         } else {
-            save_config_key(pool, tenant_id, model_key, model_value,
-                            ConfigWriteContext::Operator).await
+            save_config_key(
+                pool,
+                tenant_id,
+                model_key,
+                model_value,
+                ConfigWriteContext::Operator,
+            )
+            .await
         };
         if let Err(e) = model_result {
             tracing::debug!(key = model_key, error = %e,
@@ -306,7 +318,10 @@ impl RebornLlmConfigService {
         if provider_id.is_empty() {
             return None;
         }
-        let model = kv.get("llm.sempai.model").cloned().filter(|s| !s.is_empty());
+        let model = kv
+            .get("llm.sempai.model")
+            .cloned()
+            .filter(|s| !s.is_empty());
         Some(LlmActiveSelection { provider_id, model })
     }
 
@@ -362,10 +377,13 @@ impl RebornLlmConfigService {
         // Read the persisted Sempai selection (DB only after Phase 8).
         // Embedding retains a file fallback for non-postgres builds.
         let sempai_sel = self.read_sempai_sel_from_db().await;
-        let embedding_sel = self.read_role_sel_from_db_or_file(
-            "embedding.provider_id", "embedding.model",
-            self.boot.home().embedding_provider_file_path(),
-        ).await;
+        let embedding_sel = self
+            .read_role_sel_from_db_or_file(
+                "embedding.provider_id",
+                "embedding.model",
+                self.boot.home().embedding_provider_file_path(),
+            )
+            .await;
 
         let mut providers = Vec::with_capacity(list.providers.len());
         let mut active = None;
@@ -566,16 +584,30 @@ impl RebornLlmConfigService {
             use crate::db_config::{ConfigWriteContext, save_config_key};
             if let Some(pool) = self.pg_pool.as_ref() {
                 let tenant = &self.db_tenant_id;
-                if let Err(e) = save_config_key(pool, tenant, "llm.default.provider_id", &id,
-                                                ConfigWriteContext::Operator).await {
+                if let Err(e) = save_config_key(
+                    pool,
+                    tenant,
+                    "llm.default.provider_id",
+                    &id,
+                    ConfigWriteContext::Operator,
+                )
+                .await
+                {
                     tracing::debug!(error = %e, "set_provider_async: DB write failed");
                     return Err(crate::RebornProviderAdminError::InvalidRequest {
                         reason: format!("provider DB write failed: {e}"),
                     });
                 }
                 let model_val = model.as_deref().unwrap_or("");
-                if let Err(e) = save_config_key(pool, tenant, "llm.default.model", model_val,
-                                                ConfigWriteContext::Operator).await {
+                if let Err(e) = save_config_key(
+                    pool,
+                    tenant,
+                    "llm.default.model",
+                    model_val,
+                    ConfigWriteContext::Operator,
+                )
+                .await
+                {
                     tracing::debug!(error = %e, "set_provider_async: model DB write failed");
                 }
                 return Ok(());
@@ -593,7 +625,9 @@ impl RebornLlmConfigService {
         previous_definition: Option<ProviderDefinition>,
     ) {
         let overlay_result = if let Some(previous_definition) = previous_definition {
-            self.upsert_provider_definition(previous_definition).await.map(|_| ())
+            self.upsert_provider_definition(previous_definition)
+                .await
+                .map(|_| ())
         } else {
             self.delete_provider_definition(id).await.map(|_| ())
         };
@@ -654,10 +688,7 @@ impl RebornLlmConfigService {
     /// Delete a provider definition from the DB-backed repo (or file fallback).
     ///
     /// Returns `true` if the provider was found and deleted.
-    async fn delete_provider_definition(
-        &self,
-        id: &str,
-    ) -> Result<bool, LlmConfigServiceError> {
+    async fn delete_provider_definition(&self, id: &str) -> Result<bool, LlmConfigServiceError> {
         #[cfg(feature = "postgres")]
         if let Some(pg_repo) = self.pg_provider_repo.as_ref() {
             return pg_repo
@@ -893,8 +924,13 @@ impl LlmConfigService for RebornLlmConfigService {
             ProviderRole::Sempai => {
                 // Phase 8: file write removed; DB is the sole write target.
                 #[cfg(feature = "postgres")]
-                self.save_role_to_db("llm.sempai.provider_id", if id.is_empty() { "" } else { &id },
-                                     "llm.sempai.model",       request.model.as_deref().unwrap_or("")).await;
+                self.save_role_to_db(
+                    "llm.sempai.provider_id",
+                    if id.is_empty() { "" } else { &id },
+                    "llm.sempai.model",
+                    request.model.as_deref().unwrap_or(""),
+                )
+                .await;
             }
             ProviderRole::Embedding => {
                 let embedding_path = self.boot.home().embedding_provider_file_path();
@@ -913,8 +949,13 @@ impl LlmConfigService for RebornLlmConfigService {
                 // Dual-write to brassclaw_config so the production factory reads
                 // `embedding.provider_id` on restart (§3, §4.2).
                 #[cfg(feature = "postgres")]
-                self.save_role_to_db("embedding.provider_id", if id.is_empty() { "" } else { &id },
-                                     "embedding.model",        request.model.as_deref().unwrap_or("")).await;
+                self.save_role_to_db(
+                    "embedding.provider_id",
+                    if id.is_empty() { "" } else { &id },
+                    "embedding.model",
+                    request.model.as_deref().unwrap_or(""),
+                )
+                .await;
             }
         }
 
@@ -1077,7 +1118,13 @@ impl LlmConfigService for RebornLlmConfigService {
             }
             #[cfg(feature = "postgres")]
             if let Err(error) = write_kohai_selection_to_db(
-                codex_pool.as_deref(), &codex_tenant, "openai_codex", None).await {
+                codex_pool.as_deref(),
+                &codex_tenant,
+                "openai_codex",
+                None,
+            )
+            .await
+            {
                 tracing::debug!(%error, "codex login: could not set active provider");
                 return;
             }
@@ -1133,8 +1180,7 @@ impl LlmConfigService for RebornLlmConfigService {
                 LlmConfigServiceError::Internal
             })?;
         #[cfg(feature = "postgres")]
-        write_kohai_selection_to_db(
-            self.pg_pool.as_deref(), &self.db_tenant_id, "nearai", None)
+        write_kohai_selection_to_db(self.pg_pool.as_deref(), &self.db_tenant_id, "nearai", None)
             .await
             .map_err(|error| {
                 tracing::debug!(%error, "NEAR AI wallet login: set active failed");
@@ -1247,15 +1293,25 @@ pub(crate) async fn write_kohai_selection_to_db(
     let Some(pool) = pool else {
         return Ok(());
     };
-    save_config_key(pool, tenant_id, "llm.default.provider_id", provider_id,
-                    ConfigWriteContext::Operator)
+    save_config_key(
+        pool,
+        tenant_id,
+        "llm.default.provider_id",
+        provider_id,
+        ConfigWriteContext::Operator,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    if let Some(m) = model {
+        save_config_key(
+            pool,
+            tenant_id,
+            "llm.default.model",
+            m,
+            ConfigWriteContext::Operator,
+        )
         .await
         .map_err(|e| e.to_string())?;
-    if let Some(m) = model {
-        save_config_key(pool, tenant_id, "llm.default.model", m,
-                        ConfigWriteContext::Operator)
-            .await
-            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -1443,9 +1499,8 @@ fn write_role_selection(
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            let json = serde_json::to_vec(&sel).map_err(|e| {
-                std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())
-            })?;
+            let json = serde_json::to_vec(&sel)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
             std::fs::write(&path, json)
         }
     }
@@ -1459,9 +1514,7 @@ fn map_admin_error(error: crate::RebornProviderAdminError) -> LlmConfigServiceEr
             field: None,
             reason,
         },
-        E::LoadRegistry { .. } | E::LoadConfig { .. } => {
-            LlmConfigServiceError::Unavailable
-        }
+        E::LoadRegistry { .. } | E::LoadConfig { .. } => LlmConfigServiceError::Unavailable,
     }
 }
 
@@ -1860,7 +1913,10 @@ mod tests {
             .expect("set_active without role");
 
         assert_eq!(
-            snapshot.kohai_active.as_ref().map(|s| s.provider_id.as_str()),
+            snapshot
+                .kohai_active
+                .as_ref()
+                .map(|s| s.provider_id.as_str()),
             Some("acme"),
             "absent role must default to Kohai"
         );
@@ -1996,7 +2052,10 @@ mod tests {
             .expect("set_active Embedding");
 
         assert_eq!(
-            snapshot.embedding_active.as_ref().map(|s| s.provider_id.as_str()),
+            snapshot
+                .embedding_active
+                .as_ref()
+                .map(|s| s.provider_id.as_str()),
             Some("ibm_bob_inference"),
             "Embedding selection must appear in embedding_active"
         );
@@ -2065,7 +2124,10 @@ mod tests {
             .expect("embedding must coexist with kohai");
 
         assert!(
-            snapshot.embedding_active.as_ref().is_some_and(|s| s.provider_id == "ibm_bob_inference"),
+            snapshot
+                .embedding_active
+                .as_ref()
+                .is_some_and(|s| s.provider_id == "ibm_bob_inference"),
             "embedding selection must be set even when provider is also kohai"
         );
     }

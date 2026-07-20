@@ -29,11 +29,15 @@ pub(crate) enum ChatMemoryRecordError {
 }
 
 fn map_pool(e: deadpool_postgres::PoolError) -> ChatMemoryRecordError {
-    ChatMemoryRecordError::Pool { reason: e.to_string() }
+    ChatMemoryRecordError::Pool {
+        reason: e.to_string(),
+    }
 }
 
 fn map_pg(e: tokio_postgres::Error) -> ChatMemoryRecordError {
-    ChatMemoryRecordError::Database { reason: e.to_string() }
+    ChatMemoryRecordError::Database {
+        reason: e.to_string(),
+    }
 }
 
 /// Input for a single Path A chat-memory write.
@@ -62,7 +66,10 @@ pub(crate) struct PgChatMemoryRecordStore {
 
 impl PgChatMemoryRecordStore {
     pub(crate) fn new(pool: Arc<PgPool>, interceptor_store: Arc<PgInterceptorStore>) -> Self {
-        Self { pool, interceptor_store }
+        Self {
+            pool,
+            interceptor_store,
+        }
     }
 
     /// Write a Path A chat-memory record.

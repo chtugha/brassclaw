@@ -19,7 +19,8 @@ use crate::{
     validation::{
         validate_advance_request, validate_communication_preference, validate_delivery_attempt,
         validate_delivery_identity, validate_delivery_status_request, validate_policy,
-        validate_subscription_identity, validate_subscription_record, validate_subscription_request,
+        validate_subscription_identity, validate_subscription_record,
+        validate_subscription_request,
     },
 };
 
@@ -199,8 +200,8 @@ impl OutboundStateStore for PgOutboundStateStore {
             Some(row) => {
                 let policy_blob: serde_json::Value =
                     row.try_get("policy").map_err(|_| OutboundError::Backend)?;
-                let policy: ThreadNotificationPolicy =
-                    serde_json::from_value(policy_blob).map_err(|_| OutboundError::Serialization)?;
+                let policy: ThreadNotificationPolicy = serde_json::from_value(policy_blob)
+                    .map_err(|_| OutboundError::Serialization)?;
                 Ok(policy)
             }
             None => Ok(ThreadNotificationPolicy::default_for_scope(scope)),
@@ -242,8 +243,9 @@ impl OutboundStateStore for PgOutboundStateStore {
             // already contains the full `ProjectionCursor` (which contains
             // scope/thread_id). Use the existing cursor as the stored record
             // and validate the new record against it.
-            let existing_cursor: serde_json::Value =
-                existing_row.try_get("cursor").map_err(|_| OutboundError::Backend)?;
+            let existing_cursor: serde_json::Value = existing_row
+                .try_get("cursor")
+                .map_err(|_| OutboundError::Backend)?;
             // The "identity" is: subscription_id fixed once inserted.
             // We check it via the row existing by the same id (already done
             // by the SELECT); the deeper actor/scope/thread constraints are
@@ -341,8 +343,8 @@ impl OutboundStateStore for PgOutboundStateStore {
             cursor: existing_cursor,
         };
         validate_advance_request(&record, &request)?;
-        let new_cursor =
-            serde_json::to_value(Some(&request.cursor)).map_err(|_| OutboundError::Serialization)?;
+        let new_cursor = serde_json::to_value(Some(&request.cursor))
+            .map_err(|_| OutboundError::Serialization)?;
         client
             .execute(
                 "UPDATE brassclaw_outbound_subscriptions \
@@ -363,8 +365,7 @@ impl OutboundStateStore for PgOutboundStateStore {
         let delivery_id = attempt.delivery_id.to_string();
         let scope_key = scope_json_key(&attempt.scope);
         let tenant_id = attempt.scope.tenant_id.to_string();
-        let payload =
-            serde_json::to_value(&attempt).map_err(|_| OutboundError::Serialization)?;
+        let payload = serde_json::to_value(&attempt).map_err(|_| OutboundError::Serialization)?;
 
         let client = self.connect().await?;
 
@@ -380,8 +381,9 @@ impl OutboundStateStore for PgOutboundStateStore {
             .await
             .map_err(|_| OutboundError::Backend)?;
         if let Some(existing_row) = existing {
-            let existing_blob: serde_json::Value =
-                existing_row.try_get("payload").map_err(|_| OutboundError::Backend)?;
+            let existing_blob: serde_json::Value = existing_row
+                .try_get("payload")
+                .map_err(|_| OutboundError::Backend)?;
             let existing_attempt: OutboundDeliveryAttempt =
                 serde_json::from_value(existing_blob).map_err(|_| OutboundError::Serialization)?;
             validate_delivery_identity(&existing_attempt, &attempt)?;
@@ -421,8 +423,7 @@ impl OutboundStateStore for PgOutboundStateStore {
         let Some(row) = row else {
             return Err(OutboundError::DeliveryNotFound);
         };
-        let blob: serde_json::Value =
-            row.try_get("payload").map_err(|_| OutboundError::Backend)?;
+        let blob: serde_json::Value = row.try_get("payload").map_err(|_| OutboundError::Backend)?;
         let mut attempt: OutboundDeliveryAttempt =
             serde_json::from_value(blob).map_err(|_| OutboundError::Serialization)?;
         if attempt.scope != request.scope {

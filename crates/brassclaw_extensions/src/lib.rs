@@ -385,8 +385,8 @@ fn descriptors_match_except_schema(
 pub mod host_api;
 mod hosted_mcp_discovery;
 mod installations;
-pub mod pg_store;
 mod lifecycle;
+pub mod pg_store;
 mod registry;
 pub mod v2;
 

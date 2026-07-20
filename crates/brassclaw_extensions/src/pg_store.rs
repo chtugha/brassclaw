@@ -22,15 +22,21 @@ use crate::installations::{
 use crate::{ExtensionId, ManifestSource};
 
 fn map_pool(e: deadpool_postgres::PoolError) -> ExtensionInstallationError {
-    ExtensionInstallationError::InvalidInstallation { reason: e.to_string() }
+    ExtensionInstallationError::InvalidInstallation {
+        reason: e.to_string(),
+    }
 }
 
 fn map_pg(e: tokio_postgres::Error) -> ExtensionInstallationError {
-    ExtensionInstallationError::InvalidInstallation { reason: e.to_string() }
+    ExtensionInstallationError::InvalidInstallation {
+        reason: e.to_string(),
+    }
 }
 
 fn map_json(e: serde_json::Error) -> ExtensionInstallationError {
-    ExtensionInstallationError::InvalidInstallation { reason: e.to_string() }
+    ExtensionInstallationError::InvalidInstallation {
+        reason: e.to_string(),
+    }
 }
 
 fn activation_str(state: ExtensionActivationState) -> &'static str {
@@ -41,12 +47,16 @@ fn activation_str(state: ExtensionActivationState) -> &'static str {
     }
 }
 
-fn manifest_from_raw_toml(raw: String) -> Result<ExtensionManifestRecord, ExtensionInstallationError> {
+fn manifest_from_raw_toml(
+    raw: String,
+) -> Result<ExtensionManifestRecord, ExtensionInstallationError> {
     let catalog = HostPortCatalog::empty();
     ExtensionManifestRecord::from_toml(raw, ManifestSource::InstalledLocal, &catalog, None)
 }
 
-fn installation_from_value(payload: Value) -> Result<ExtensionInstallation, ExtensionInstallationError> {
+fn installation_from_value(
+    payload: Value,
+) -> Result<ExtensionInstallation, ExtensionInstallationError> {
     serde_json::from_value(payload).map_err(map_json)
 }
 
@@ -206,7 +216,9 @@ impl ExtensionInstallationStore for PgExtensionInstallationStore {
         let payload = serde_json::to_value(&installation).map_err(map_json)?;
         let activation = activation_str(installation.activation_state());
         let extension_id = installation.extension_id().as_str().to_string();
-        let version = installation.manifest_ref().manifest_hash()
+        let version = installation
+            .manifest_ref()
+            .manifest_hash()
             .map(|h| h.as_str().to_string())
             .unwrap_or_default();
         let client = self.pool.get().await.map_err(map_pool)?;

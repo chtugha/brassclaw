@@ -46,9 +46,7 @@ pub async fn run_migrations(pool: &Pool) -> Result<(), PgError> {
 /// The check is: if `refinery_schema_history` is empty (fresh refinery install)
 /// AND any of the known pre-existing tables exist, insert synthetic history rows
 /// marking those migrations as already applied.
-async fn reconcile_history(
-    client: &deadpool_postgres::Client,
-) -> Result<(), PgError> {
+async fn reconcile_history(client: &deadpool_postgres::Client) -> Result<(), PgError> {
     // Check if refinery history table exists (refinery creates it on first run).
     // If it already exists, refinery has run before — no pre-seeding needed.
     let history_exists: bool = client
@@ -278,7 +276,9 @@ mod tests {
             let pool = build_pool(&pg_url).expect("build pool");
             // Run twice — must not fail.
             run_migrations(&pool).await.expect("first run");
-            run_migrations(&pool).await.expect("second run (idempotent)");
+            run_migrations(&pool)
+                .await
+                .expect("second run (idempotent)");
         }
 
         /// Verify that a DB that already has the hooks tables (created by the old
@@ -290,8 +290,9 @@ mod tests {
         /// history row so refinery skips the migration entirely.
         #[tokio::test]
         async fn pre_existing_hooks_tables_do_not_trip_refinery() {
-            let pg_url = std::env::var("TEST_PG_URL")
-                .unwrap_or_else(|_| "postgresql://brassclaw@127.0.0.1:5434/brassclaw_test_parity".to_string());
+            let pg_url = std::env::var("TEST_PG_URL").unwrap_or_else(|_| {
+                "postgresql://brassclaw@127.0.0.1:5434/brassclaw_test_parity".to_string()
+            });
             let pool = build_pool(&pg_url).expect("build pool");
 
             // Pre-create the hooks tables exactly as brassclaw_hooks_pg would.
@@ -316,7 +317,9 @@ mod tests {
             drop(client);
 
             // Running migrations must not fail even though V017 tables already exist.
-            run_migrations(&pool).await.expect("migrations must not fail on pre-existing hooks tables");
+            run_migrations(&pool)
+                .await
+                .expect("migrations must not fail on pre-existing hooks tables");
 
             // Verify V017 history row was inserted by reconcile_history (not by refinery runner).
             // The pre-seeded checksum is "0" (a valid u64 sentinel — see reconcile_history).
@@ -360,7 +363,10 @@ mod tests {
                 .await
                 .expect("pg_extension query");
             let ext_installed: bool = row.get(0);
-            assert!(ext_installed, "pgvector extension must be installed by V000");
+            assert!(
+                ext_installed,
+                "pgvector extension must be installed by V000"
+            );
 
             // Verify the <=> cosine-distance operator works: cast literal arrays to vector
             // and compute cosine distance. This exercises the same operator that

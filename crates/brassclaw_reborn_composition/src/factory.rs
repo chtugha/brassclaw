@@ -4,9 +4,9 @@ use std::{
     sync::Arc,
 };
 
-use crate::product_auth_durable::{FilesystemAuthProductServices, UnavailableAuthProviderClient};
 #[cfg(feature = "postgres")]
 use crate::pg_auth_product_services::PgAuthProductServices;
+use crate::product_auth_durable::{FilesystemAuthProductServices, UnavailableAuthProviderClient};
 use brassclaw_auth::AuthProviderClient;
 #[cfg(feature = "postgres")]
 use brassclaw_authorization::FilesystemCapabilityLeaseStore;
@@ -28,21 +28,21 @@ use brassclaw_filesystem::{
     MountDescriptor, RootFilesystem, StorageClass,
 };
 use brassclaw_filesystem::{LocalFilesystem, ScopedFilesystem};
-use brassclaw_host_api::runtime_policy::{FilesystemBackendKind, ProcessBackendKind, SecretMode};
 #[cfg(feature = "postgres")]
 use brassclaw_host_api::runtime_policy::EffectiveRuntimePolicy;
+use brassclaw_host_api::runtime_policy::{FilesystemBackendKind, ProcessBackendKind, SecretMode};
 use brassclaw_host_api::{
     EffectKind, ExtensionId, HostPath, MountPermissions, MountView, PackageId, RuntimeHttpEgress,
     UserId, VirtualPath,
+};
+#[cfg(feature = "postgres")]
+use brassclaw_host_runtime::{
+    BuiltinFirstPartyTools, builtin_first_party_handlers_from_tools_with_trigger,
 };
 use brassclaw_host_runtime::{
     CapabilitySurfaceVersion, FirstPartyCapabilityRegistry, HostRuntimeHttpEgressPort,
     HostRuntimeServices, LocalHostProcessPort, ProductAuthProviderRuntimePorts, TriggerCreateHook,
     builtin_first_party_handlers_with_trigger_create_hook, builtin_first_party_package,
-};
-#[cfg(feature = "postgres")]
-use brassclaw_host_runtime::{
-    BuiltinFirstPartyTools, builtin_first_party_handlers_from_tools_with_trigger,
 };
 use brassclaw_processes::ProcessServices;
 use brassclaw_product_workflow::ProductAuthTurnGateResumeDispatcher;
@@ -50,10 +50,10 @@ use brassclaw_resources::InMemoryResourceGovernor;
 #[cfg(feature = "postgres")]
 use brassclaw_resources::{FilesystemResourceGovernorStore, PersistentResourceGovernor};
 use brassclaw_run_state::{InMemoryApprovalRequestStore, InMemoryRunStateStore};
-#[cfg(feature = "postgres")]
-use brassclaw_secrets::{FilesystemCredentialBroker, PgCredentialBroker, PgSecretStore};
 use brassclaw_secrets::FilesystemSecretStore;
 use brassclaw_secrets::SecretStore;
+#[cfg(feature = "postgres")]
+use brassclaw_secrets::{FilesystemCredentialBroker, PgCredentialBroker, PgSecretStore};
 use brassclaw_threads::InMemorySessionThreadService;
 use brassclaw_threads::SessionThreadService;
 use brassclaw_triggers::{
@@ -272,16 +272,14 @@ pub struct RebornServices {
     pub(crate) secret_store: Arc<dyn SecretStore>,
     /// Postgres-backed safety config store (production path).
     #[cfg(feature = "postgres")]
-    pub(crate) pg_safety_config_store:
-        Option<Arc<brassclaw_product_workflow::PgSafetyConfigStore>>,
+    pub(crate) pg_safety_config_store: Option<Arc<brassclaw_product_workflow::PgSafetyConfigStore>>,
     /// Postgres-backed token settings store (production path).
     #[cfg(feature = "postgres")]
     pub(crate) pg_token_settings_store:
         Option<Arc<crate::pg_token_settings_store::PgTokenSettingsStore>>,
     /// Postgres-backed engine `Store` for `MemoryDoc` operations (production path).
     #[cfg(feature = "postgres")]
-    pub(crate) pg_memory_doc_store:
-        Option<Arc<crate::pg_memory_doc_store::PgMemoryDocStore>>,
+    pub(crate) pg_memory_doc_store: Option<Arc<crate::pg_memory_doc_store::PgMemoryDocStore>>,
 }
 
 impl RebornServices {
@@ -656,31 +654,29 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
             compose_product_auth_services(ports, turn_coordinator.clone(), provider_composition)
         }
         None => {
-            {
-                let durable_services = Arc::new(FilesystemAuthProductServices::new(
-                    local_dev_product_auth_filesystem,
-                    Arc::clone(&secret_store),
-                ));
-                let provider_client: Arc<dyn AuthProviderClient> = provider_composition
-                    .client
-                    .clone()
-                    .unwrap_or_else(|| Arc::new(UnavailableAuthProviderClient));
-                let services = RebornProductAuthServicePorts::from_shared_with_provider(
-                    Arc::clone(&durable_services),
-                    provider_client,
-                )
-                .into_services(auth_continuation_dispatcher(turn_coordinator.clone()))
-                .with_flow_record_source(durable_services);
-                let services = match provider_composition.dcr_registry.clone() {
-                    Some(registry) => services.with_dcr_oauth_registry(registry),
-                    None => services,
-                };
-                let services = match provider_composition.gate_registry.clone() {
-                    Some(registry) => services.with_oauth_gate_registry(registry),
-                    None => services,
-                };
-                Arc::new(services)
-            }
+            let durable_services = Arc::new(FilesystemAuthProductServices::new(
+                local_dev_product_auth_filesystem,
+                Arc::clone(&secret_store),
+            ));
+            let provider_client: Arc<dyn AuthProviderClient> = provider_composition
+                .client
+                .clone()
+                .unwrap_or_else(|| Arc::new(UnavailableAuthProviderClient));
+            let services = RebornProductAuthServicePorts::from_shared_with_provider(
+                Arc::clone(&durable_services),
+                provider_client,
+            )
+            .into_services(auth_continuation_dispatcher(turn_coordinator.clone()))
+            .with_flow_record_source(durable_services);
+            let services = match provider_composition.dcr_registry.clone() {
+                Some(registry) => services.with_dcr_oauth_registry(registry),
+                None => services,
+            };
+            let services = match provider_composition.gate_registry.clone() {
+                Some(registry) => services.with_oauth_gate_registry(registry),
+                None => services,
+            };
+            Arc::new(services)
         }
     };
     services = services.with_runtime_credential_account_resolver(Arc::new(
@@ -1212,7 +1208,6 @@ fn resolve_local_dev_secret_master_key(
     Ok(brassclaw_secrets::SecretMaterial::from(key))
 }
 
-
 fn write_local_dev_secret_master_key(path: &Path, key: &str) -> Result<(), RebornBuildError> {
     #[cfg(unix)]
     {
@@ -1672,8 +1667,9 @@ async fn resolve_secret_master_key(
     let pg_pool = pool.clone();
     match crate::secrets_master::resolve_pg_master_key(&pg_pool, "default", reborn_home)
         .await
-        .map_err(|e| RebornBuildError::InvalidConfig { reason: e.to_string() })?
-    {
+        .map_err(|e| RebornBuildError::InvalidConfig {
+            reason: e.to_string(),
+        })? {
         crate::secrets_master::ResolvedMasterKey::Key(key) => Ok(key),
         crate::secrets_master::ResolvedMasterKey::NotYetInitialized => {
             // Fresh install — fall back to keychain/env for first-run wizard
@@ -1967,10 +1963,11 @@ where
             &scoped_filesystem,
         )));
         let secret_store = Arc::new(
-            PgSecretStore::new(pg_pool.clone(), secret_master_key.clone(), "default")
-                .map_err(|e| RebornBuildError::InvalidConfig {
+            PgSecretStore::new(pg_pool.clone(), secret_master_key.clone(), "default").map_err(
+                |e| RebornBuildError::InvalidConfig {
                     reason: format!("PgSecretStore init failed: {e}"),
-                })?,
+                },
+            )?,
         );
         let credential_broker = Arc::new(
             PgCredentialBroker::new(pg_pool, secret_master_key, "default").map_err(|e| {
@@ -2057,20 +2054,20 @@ where
     .with_secret_store_dyn(Arc::clone(&secret_store))
     .with_credential_broker(secret_credentials.credential_broker);
     let services = services
-    .with_security_audit_sink(Arc::new(brassclaw_events::TracingSecurityAuditSink))
-    .try_with_host_http_egress_with_body_store(
-        brassclaw_network::PolicyNetworkHttpEgress::new(
-            brassclaw_network::ReqwestNetworkTransport::default(),
-        ),
-        Arc::clone(&stores_scoped_fs),
-    )?
-    .with_filesystem_resource_governor(Arc::clone(&stores_scoped_fs))
-    .with_reborn_event_store_config(profile.to_event_store_profile(), stores_event_store)
-    .await?
-    .with_filesystem_run_state(Arc::clone(&stores_scoped_fs))
-    .with_filesystem_turn_state_store(Arc::clone(&stores_scoped_fs))
-    .with_run_profile_resolver(planned_run_profile_resolver()?)
-    .with_turn_run_wake_notifier(production_wiring.turn_run_wake_notifier);
+        .with_security_audit_sink(Arc::new(brassclaw_events::TracingSecurityAuditSink))
+        .try_with_host_http_egress_with_body_store(
+            brassclaw_network::PolicyNetworkHttpEgress::new(
+                brassclaw_network::ReqwestNetworkTransport::default(),
+            ),
+            Arc::clone(&stores_scoped_fs),
+        )?
+        .with_filesystem_resource_governor(Arc::clone(&stores_scoped_fs))
+        .with_reborn_event_store_config(profile.to_event_store_profile(), stores_event_store)
+        .await?
+        .with_filesystem_run_state(Arc::clone(&stores_scoped_fs))
+        .with_filesystem_turn_state_store(Arc::clone(&stores_scoped_fs))
+        .with_run_profile_resolver(planned_run_profile_resolver()?)
+        .with_turn_run_wake_notifier(production_wiring.turn_run_wake_notifier);
     let product_auth_runtime_ports = require_product_auth_runtime_ports(&services)?;
     let services = attach_hosted_mcp_runtime(services)?;
     let provider_composition = compose_provider_client(
@@ -2152,14 +2149,18 @@ where
     let (pg_safety_config_store, pg_token_settings_store, pg_memory_doc_store) =
         if let Some(ref pool) = pg_pool {
             (
-                Some(Arc::new(brassclaw_product_workflow::PgSafetyConfigStore::new(
-                    Arc::clone(pool),
-                    "default",
-                ))),
-                Some(Arc::new(crate::pg_token_settings_store::PgTokenSettingsStore::new(
-                    Arc::clone(pool),
-                    "default",
-                ))),
+                Some(Arc::new(
+                    brassclaw_product_workflow::PgSafetyConfigStore::new(
+                        Arc::clone(pool),
+                        "default",
+                    ),
+                )),
+                Some(Arc::new(
+                    crate::pg_token_settings_store::PgTokenSettingsStore::new(
+                        Arc::clone(pool),
+                        "default",
+                    ),
+                )),
                 Some(Arc::new(crate::pg_memory_doc_store::PgMemoryDocStore::new(
                     Arc::clone(pool),
                     "default",
@@ -2202,7 +2203,9 @@ async fn build_postgres_production(
     filesystem.run_migrations().await?;
     // brassclaw_pg::run_migrations() (called before this function) already
     // applies V021 (triggers DDL) — no separate trigger-repository migration needed.
-    let trigger_repository = Arc::new(brassclaw_triggers::PostgresTriggerRepository::new(pool.clone()));
+    let trigger_repository = Arc::new(brassclaw_triggers::PostgresTriggerRepository::new(
+        pool.clone(),
+    ));
     // Build stores with PgSecretStore + PgCredentialBroker so that all secret
     // and OAuth credential writes go to the `brassclaw_secrets` table rather
     // than the legacy VFS blob columns (§4.4 Issue 3).
@@ -2271,8 +2274,7 @@ async fn build_postgres_memory_tools(pool: deadpool_postgres::Pool) -> BuiltinFi
         interceptor_store,
     ));
 
-    let mut tools = BuiltinFirstPartyTools::default()
-        .with_chat_memory_writer(chat_memory_store);
+    let mut tools = BuiltinFirstPartyTools::default().with_chat_memory_writer(chat_memory_store);
     if let Some(provider) = embedding_provider {
         tools = tools.with_memory_embedding_provider(provider);
     }
@@ -2333,7 +2335,10 @@ async fn resolve_pg_embedding_provider(
     let raw_provider = create_provider(&embeddings_config, deps).await?;
 
     // Wrap in EmbeddingRoleAdapter with default cache config.
-    Some(EmbeddingRoleAdapter::new_cached(raw_provider, EmbeddingCacheConfig::default()))
+    Some(EmbeddingRoleAdapter::new_cached(
+        raw_provider,
+        EmbeddingCacheConfig::default(),
+    ))
 }
 
 /// Build `EmbeddingsConfig` from a provider definition (optional) and a model override.
@@ -2372,9 +2377,10 @@ fn build_embeddings_config_from_provider(
         dimension,
         openai_base_url: base_url,
         // API key resolved from env via api_key_env at composition startup.
-        openai_api_key: def.api_key_env.as_deref().and_then(|var| {
-            std::env::var(var).ok().map(secrecy::SecretString::from)
-        }),
+        openai_api_key: def
+            .api_key_env
+            .as_deref()
+            .and_then(|var| std::env::var(var).ok().map(secrecy::SecretString::from)),
         ..EmbeddingsConfig::default()
     };
     Some(config)
@@ -2426,7 +2432,10 @@ mod tests {
         NewCredentialAccount, ProviderScope,
     };
     use brassclaw_filesystem::FilesystemError;
-    
+
+    use crate::{
+        extension_lifecycle::ExtensionActivationMode, runtime::SKILL_ACTIVATE_CAPABILITY_ID,
+    };
     use brassclaw_filesystem::{
         DirEntry, FileStat, FilesystemOperation, RootFilesystem, VersionedEntry,
     };
@@ -2446,9 +2455,6 @@ mod tests {
     };
     use brassclaw_product_workflow::{LifecyclePackageKind, LifecyclePackageRef};
     use brassclaw_trust::{AuthorityCeiling, EffectiveTrustClass, TrustDecision, TrustProvenance};
-    use crate::{
-        extension_lifecycle::ExtensionActivationMode, runtime::SKILL_ACTIVATE_CAPABILITY_ID,
-    };
 
     struct FailingConversationActorPairingService;
 
@@ -2468,10 +2474,8 @@ mod tests {
         }
     }
 
-    
     struct FailingConversationStateFilesystem;
 
-    
     #[async_trait::async_trait]
     impl RootFilesystem for FailingConversationStateFilesystem {
         async fn get(&self, path: &VirtualPath) -> Result<Option<VersionedEntry>, FilesystemError> {
@@ -2532,7 +2536,6 @@ mod tests {
         assert_eq!(reason, "trigger creator actor pairing failed");
     }
 
-    
     async fn local_runtime_with_failing_trigger_conversations() -> Arc<RebornLocalRuntimeServices> {
         let local_dev_root = tempfile::tempdir().expect("tempdir");
         let owner_user_id = "pairing-owner";
@@ -2603,7 +2606,6 @@ mod tests {
         })
     }
 
-    
     #[tokio::test]
     async fn durable_trigger_conversation_services_propagates_init_error() {
         let runtime = local_runtime_with_failing_trigger_conversations().await;
@@ -2619,7 +2621,6 @@ mod tests {
         ));
     }
 
-    
     #[tokio::test]
     async fn local_runtime_trigger_create_hook_maps_conversation_init_error_to_backend() {
         let hook = LocalRuntimeTriggerCreatorPairingHook {
@@ -3255,8 +3256,7 @@ mod tests {
 
     #[test]
     fn local_dev_readiness_reflects_product_auth_presence() {
-        let without_auth =
-            readiness_for(RebornCompositionProfile::LocalDev, true, true, false);
+        let without_auth = readiness_for(RebornCompositionProfile::LocalDev, true, true, false);
         assert_eq!(without_auth.state, RebornReadinessState::DevOnly);
         assert!(!without_auth.facades.product_auth);
 

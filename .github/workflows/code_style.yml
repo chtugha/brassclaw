@@ -54,7 +54,7 @@ jobs:
         run: |
           CHANGED_FILES="$(git diff --name-only "$BASE_SHA"..."$HEAD_SHA")"
 
-          if printf '%s\n' "$CHANGED_FILES" | grep -Eq '^(src/|crates/|channels-src/|tools-src/|tests/|migrations/|Cargo\.toml$|Cargo\.lock$|Dockerfile$|build\.rs$|scripts/check_no_panics\.py$|scripts/check_gateway_boundaries\.py$|\.github/workflows/code_style\.yml$)'; then
+          if printf '%s\n' "$CHANGED_FILES" | grep -Eq '^(src/|crates/|tests/|migrations/|Cargo\.toml$|Cargo\.lock$|Dockerfile$|scripts/check_no_panics\.py$|scripts/check_gateway_boundaries\.py$|\.github/workflows/code_style\.yml$)'; then
             echo "has_code=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_code=false" >> "$GITHUB_OUTPUT"
@@ -83,7 +83,7 @@ jobs:
     steps:
       - id: set
         run: |
-          FULL='[{"name":"all-features","flags":"--all-features"},{"name":"default","flags":""},{"name":"libsql-only","flags":"--no-default-features --features libsql"}]'
+          FULL='[{"name":"all-features","flags":"--all-features"},{"name":"default","flags":""}]'
           SLIM='[{"name":"all-features","flags":"--all-features"}]'
 
           if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "merge_group" ]; then
@@ -211,13 +211,6 @@ jobs:
         run: cargo test -p brassclaw_reborn_config
       - name: Test Reborn CLI binary crate
         run: cargo test -p brassclaw_reborn_cli
-      - name: Test Reborn libSQL restart integration
-        run: |
-          cargo test -p brassclaw_reborn \
-            --features libsql-restart-tests \
-            --test loop_driver_host \
-            turn_runner_worker_completes_after_libsql_turn_and_thread_services_reopen \
-            -- --nocapture
       - name: Test Reborn architecture boundaries
         run: cargo test -p brassclaw_architecture reborn
 

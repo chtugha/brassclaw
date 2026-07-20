@@ -134,9 +134,13 @@ impl RewrapCommand {
         let tenant_id = resolve_tenant_id(self.tenant.as_deref(), &reborn_home, &pool).await?;
 
         // Step 3: Read the existing master key (key-source rule).
-        let master_key_bytes =
-            resolve_master_key(&tenant_id, &reborn_home, self.old_passphrase_file.as_deref(), &pool)
-                .await?;
+        let master_key_bytes = resolve_master_key(
+            &tenant_id,
+            &reborn_home,
+            self.old_passphrase_file.as_deref(),
+            &pool,
+        )
+        .await?;
 
         // Step 4a: For raw-key strategy, write the hex key to the canonical
         // on-disk file BEFORE the DB upsert.  If the upsert fails, the key
@@ -144,9 +148,8 @@ impl RewrapCommand {
         if matches!(strategy, RewrapStrategy::RawKey) {
             let key_path = reborn_home.join(".secrets-master-key");
             let hex_key = hex::encode(&master_key_bytes);
-            std::fs::write(&key_path, &hex_key).with_context(|| {
-                format!("failed to write key file {}", key_path.display())
-            })?;
+            std::fs::write(&key_path, &hex_key)
+                .with_context(|| format!("failed to write key file {}", key_path.display()))?;
             // Restrict permissions: owner read-only.
             #[cfg(unix)]
             {
@@ -179,9 +182,7 @@ impl RewrapCommand {
             }
         }
 
-        println!(
-            "brassclaw secrets rewrap: tenant={tenant_id} strategy={algorithm} — done."
-        );
+        println!("brassclaw secrets rewrap: tenant={tenant_id} strategy={algorithm} — done.");
         Ok(())
     }
 
@@ -208,9 +209,7 @@ async fn resolve_tenant_id(
 
     // 2. identity.tenant from $REBORN_HOME/config.toml
     let config_path = reborn_home.join("config.toml");
-    if let Ok(Some(cfg)) =
-        brassclaw_reborn_config::RebornConfigFile::load(&config_path)
-    {
+    if let Ok(Some(cfg)) = brassclaw_reborn_config::RebornConfigFile::load(&config_path) {
         if let Some(tenant) = cfg.identity.and_then(|i| i.tenant) {
             if !tenant.trim().is_empty() {
                 return Ok(tenant);
@@ -219,10 +218,9 @@ async fn resolve_tenant_id(
     }
 
     // 3. brassclaw_config DB key identity.tenant
-    let snapshot =
-        brassclaw_reborn_composition::db_config::load_config_snapshot(pool, "default")
-            .await
-            .unwrap_or_default();
+    let snapshot = brassclaw_reborn_composition::db_config::load_config_snapshot(pool, "default")
+        .await
+        .unwrap_or_default();
     if let Some(tenant) = snapshot.identity.and_then(|i| i.tenant) {
         if !tenant.trim().is_empty() {
             return Ok(tenant);
@@ -263,12 +261,10 @@ async fn resolve_master_key(
 
     for path in &[&legacy, &canonical] {
         if path.exists() {
-            let hex = std::fs::read_to_string(path).with_context(|| {
-                format!("failed to read raw key file {}", path.display())
-            })?;
-            let key = hex::decode(hex.trim()).with_context(|| {
-                format!("raw key file {} is not valid hex", path.display())
-            })?;
+            let hex = std::fs::read_to_string(path)
+                .with_context(|| format!("failed to read raw key file {}", path.display()))?;
+            let key = hex::decode(hex.trim())
+                .with_context(|| format!("raw key file {} is not valid hex", path.display()))?;
             return Ok(key);
         }
     }
@@ -340,9 +336,8 @@ fn read_old_passphrase(
 ) -> anyhow::Result<secrecy::SecretString> {
     // 1. CLI flag
     if let Some(path) = flag_path {
-        let s = std::fs::read_to_string(path).with_context(|| {
-            format!("failed to read --old-passphrase-file {}", path.display())
-        })?;
+        let s = std::fs::read_to_string(path)
+            .with_context(|| format!("failed to read --old-passphrase-file {}", path.display()))?;
         return Ok(secrecy::SecretString::from(s.trim().to_string()));
     }
 
@@ -361,9 +356,8 @@ fn read_old_passphrase(
     if let Ok(cred_dir) = std::env::var("CREDENTIALS_DIRECTORY") {
         let cred_path = std::path::Path::new(&cred_dir).join("secrets-passphrase");
         if cred_path.exists() {
-            let s = std::fs::read_to_string(&cred_path).with_context(|| {
-                format!("failed to read {}", cred_path.display())
-            })?;
+            let s = std::fs::read_to_string(&cred_path)
+                .with_context(|| format!("failed to read {}", cred_path.display()))?;
             return Ok(secrecy::SecretString::from(s.trim().to_string()));
         }
     }
@@ -505,8 +499,7 @@ fn zero_and_remove(path: &std::path::Path) -> anyhow::Result<()> {
     f.flush()
         .with_context(|| format!("flush zero-write to {}", path.display()))?;
     drop(f);
-    std::fs::remove_file(path)
-        .with_context(|| format!("remove {}", path.display()))?;
+    std::fs::remove_file(path).with_context(|| format!("remove {}", path.display()))?;
     Ok(())
 }
 

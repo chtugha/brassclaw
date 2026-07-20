@@ -1,150 +1,96 @@
 # Labels for actions/labeler@v6
 # Maps file path globs to labels. Multiple labels can apply per PR.
+#
+# Updated for the post-Phase-6 crate structure. The v1 src/ tree was
+# removed; all code now lives under crates/.
 
 "scope: agent":
   - changed-files:
       - any-glob-to-any-file:
-          - src/agent/**
-
-"scope: channel":
-  - changed-files:
-      - any-glob-to-any-file:
-          - src/channels/channel.rs
-          - src/channels/manager.rs
-          - src/channels/mod.rs
-
-"scope: channel/cli":
-  - changed-files:
-      - any-glob-to-any-file:
-          - src/channels/cli/**
-          - src/cli/**
-
-"scope: channel/web":
-  - changed-files:
-      - any-glob-to-any-file:
-          - src/channels/web/**
-
-"scope: channel/wasm":
-  - changed-files:
-      - any-glob-to-any-file:
-          - src/channels/wasm/**
+          - crates/brassclaw_agent_loop/**
+          - crates/brassclaw_loop_support/**
+          - crates/brassclaw_turns/**
+          - crates/brassclaw_threads/**
 
 "scope: tool":
   - changed-files:
       - any-glob-to-any-file:
-          - src/tools/tool.rs
-          - src/tools/registry.rs
-          - src/tools/mod.rs
-          - src/tools/sandbox.rs
-
-"scope: tool/builtin":
-  - changed-files:
-      - any-glob-to-any-file:
-          - src/tools/builtin/**
-
-"scope: tool/wasm":
-  - changed-files:
-      - any-glob-to-any-file:
-          - src/tools/wasm/**
-
-"scope: tool/mcp":
-  - changed-files:
-      - any-glob-to-any-file:
-          - src/tools/mcp/**
-
-"scope: tool/builder":
-  - changed-files:
-      - any-glob-to-any-file:
-          - src/tools/builder/**
+          - crates/brassclaw_host_runtime/**
+          - crates/brassclaw_capabilities/**
 
 "scope: db":
   - changed-files:
       - any-glob-to-any-file:
-          - src/db/mod.rs
+          - crates/brassclaw_pg/**
+          - crates/brassclaw_reborn_event_store/**
+          - crates/brassclaw_embedded_postgres/**
 
 "scope: db/postgres":
   - changed-files:
       - any-glob-to-any-file:
-          - src/db/postgres.rs
+          - crates/brassclaw_pg/**
           - migrations/**
-
-"scope: db/libsql":
-  - changed-files:
-      - any-glob-to-any-file:
-          - src/db/libsql_backend.rs
-          - src/db/libsql_migrations.rs
 
 "scope: safety":
   - changed-files:
       - any-glob-to-any-file:
-          - src/safety/**
+          - crates/brassclaw_safety/**
 
 "scope: llm":
   - changed-files:
       - any-glob-to-any-file:
-          - src/llm/**
+          - crates/brassclaw_llm/**
 
 "scope: workspace":
   - changed-files:
       - any-glob-to-any-file:
-          - src/workspace/**
-
-"scope: orchestrator":
-  - changed-files:
-      - any-glob-to-any-file:
-          - src/orchestrator/**
-
-"scope: worker":
-  - changed-files:
-      - any-glob-to-any-file:
-          - src/worker/**
+          - crates/brassclaw_memory/**
+          - crates/brassclaw_filesystem/**
 
 "scope: secrets":
   - changed-files:
       - any-glob-to-any-file:
-          - src/secrets/**
+          - crates/brassclaw_secrets/**
 
 "scope: config":
   - changed-files:
       - any-glob-to-any-file:
-          - src/config.rs
-          - src/settings.rs
+          - crates/brassclaw_reborn_config/**
 
 "scope: extensions":
   - changed-files:
       - any-glob-to-any-file:
-          - src/extensions/**
-
-"scope: setup":
-  - changed-files:
-      - any-glob-to-any-file:
-          - src/setup/**
-
-"scope: evaluation":
-  - changed-files:
-      - any-glob-to-any-file:
-          - src/evaluation/**
-
-"scope: estimation":
-  - changed-files:
-      - any-glob-to-any-file:
-          - src/estimation/**
+          - crates/brassclaw_extensions/**
 
 "scope: sandbox":
   - changed-files:
       - any-glob-to-any-file:
-          - src/sandbox/**
+          - crates/brassclaw_process_sandbox/**
           - Dockerfile*
 
 "scope: hooks":
   - changed-files:
       - any-glob-to-any-file:
-          - src/hooks/**
+          - crates/brassclaw_hooks/**
+          - crates/brassclaw_hooks_pg/**
 
-"scope: pairing":
+"scope: composition":
   - changed-files:
       - any-glob-to-any-file:
-          - src/pairing/**
+          - crates/brassclaw_reborn_composition/**
+          - crates/brassclaw_reborn/**
+
+"scope: cli":
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/brassclaw_reborn_cli/**
+
+"scope: webui":
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/brassclaw_webui_v2/**
+          - crates/brassclaw_webui_v2_static/**
+          - crates/brassclaw_reborn_webui_ingress/**
 
 "scope: ci":
   - changed-files:
@@ -169,4 +115,4 @@
   - changed-files:
       - any-glob-to-any-file:
           - migrations/**
-          - src/db/libsql_migrations.rs
+          - crates/brassclaw_reborn_composition/src/migration.rs

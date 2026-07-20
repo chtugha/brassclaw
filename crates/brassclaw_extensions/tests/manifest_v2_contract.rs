@@ -751,8 +751,6 @@ output_schema_ref = "schemas/acme/echo.output.v1.json"
     }
 }
 
-
-
 #[test]
 fn mcp_runtime_enforces_transport_and_shape() {
     let cap_block = r#"

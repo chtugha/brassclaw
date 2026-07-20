@@ -16,16 +16,20 @@ use brassclaw_pg::PgPool;
 use serde_json::Value;
 
 use crate::types::{
-    ProcessError, ProcessRecord, ProcessResultRecord, ProcessStart, ProcessStatus,
-    ProcessStore, ProcessResultStore,
+    ProcessError, ProcessRecord, ProcessResultRecord, ProcessResultStore, ProcessStart,
+    ProcessStatus, ProcessStore,
 };
 
 fn map_pool(e: deadpool_postgres::PoolError) -> ProcessError {
-    ProcessError::InvalidStoredRecord { reason: e.to_string() }
+    ProcessError::InvalidStoredRecord {
+        reason: e.to_string(),
+    }
 }
 
 fn map_pg(e: tokio_postgres::Error) -> ProcessError {
-    ProcessError::InvalidStoredRecord { reason: e.to_string() }
+    ProcessError::InvalidStoredRecord {
+        reason: e.to_string(),
+    }
 }
 
 fn map_json(e: serde_json::Error) -> ProcessError {
@@ -86,9 +90,7 @@ impl PgProcessStore {
             None => Ok(None),
             Some(r) => {
                 let payload: Value = r.get(0);
-                Ok(Some(
-                    serde_json::from_value(payload).map_err(map_json)?,
-                ))
+                Ok(Some(serde_json::from_value(payload).map_err(map_json)?))
             }
         }
     }
@@ -176,7 +178,8 @@ impl ProcessStore for PgProcessStore {
         scope: &ResourceScope,
         process_id: ProcessId,
     ) -> Result<ProcessRecord, ProcessError> {
-        self.update_status(scope, process_id, ProcessStatus::Completed, None).await
+        self.update_status(scope, process_id, ProcessStatus::Completed, None)
+            .await
     }
 
     async fn fail(
@@ -185,7 +188,8 @@ impl ProcessStore for PgProcessStore {
         process_id: ProcessId,
         error_kind: String,
     ) -> Result<ProcessRecord, ProcessError> {
-        self.update_status(scope, process_id, ProcessStatus::Failed, Some(error_kind)).await
+        self.update_status(scope, process_id, ProcessStatus::Failed, Some(error_kind))
+            .await
     }
 
     async fn kill(
@@ -193,7 +197,8 @@ impl ProcessStore for PgProcessStore {
         scope: &ResourceScope,
         process_id: ProcessId,
     ) -> Result<ProcessRecord, ProcessError> {
-        self.update_status(scope, process_id, ProcessStatus::Killed, None).await
+        self.update_status(scope, process_id, ProcessStatus::Killed, None)
+            .await
     }
 
     async fn get(
@@ -299,7 +304,14 @@ impl ProcessResultStore for PgProcessResultStore {
         process_id: ProcessId,
         output: Value,
     ) -> Result<ProcessResultRecord, ProcessError> {
-        self.store_result(scope, process_id, ProcessStatus::Completed, Some(output), None).await
+        self.store_result(
+            scope,
+            process_id,
+            ProcessStatus::Completed,
+            Some(output),
+            None,
+        )
+        .await
     }
 
     async fn fail(
@@ -308,7 +320,14 @@ impl ProcessResultStore for PgProcessResultStore {
         process_id: ProcessId,
         error_kind: String,
     ) -> Result<ProcessResultRecord, ProcessError> {
-        self.store_result(scope, process_id, ProcessStatus::Failed, None, Some(error_kind)).await
+        self.store_result(
+            scope,
+            process_id,
+            ProcessStatus::Failed,
+            None,
+            Some(error_kind),
+        )
+        .await
     }
 
     async fn kill(
@@ -316,7 +335,8 @@ impl ProcessResultStore for PgProcessResultStore {
         scope: &ResourceScope,
         process_id: ProcessId,
     ) -> Result<ProcessResultRecord, ProcessError> {
-        self.store_result(scope, process_id, ProcessStatus::Killed, None, None).await
+        self.store_result(scope, process_id, ProcessStatus::Killed, None, None)
+            .await
     }
 
     async fn get(

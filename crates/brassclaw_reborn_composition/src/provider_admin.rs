@@ -89,11 +89,11 @@ impl RebornProviderAdmin {
 
     fn load_registry(&self) -> Result<brassclaw_llm::ProviderRegistry, RebornProviderAdminError> {
         // Built-ins only; custom providers are now in brassclaw_llm_providers (DB).
-        brassclaw_llm::ProviderRegistry::try_load_from_path(None).map_err(
-            |error| RebornProviderAdminError::LoadRegistry {
+        brassclaw_llm::ProviderRegistry::try_load_from_path(None).map_err(|error| {
+            RebornProviderAdminError::LoadRegistry {
                 reason: error.to_string(),
-            },
-        )
+            }
+        })
     }
 }
 

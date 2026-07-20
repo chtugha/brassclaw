@@ -55,9 +55,7 @@ pub fn validate_reference(image: &str) -> std::result::Result<(), String> {
         return Err("Docker image reference must not contain whitespace".to_string());
     }
     if image.chars().any(|ch| ch.is_control()) {
-        return Err(
-            "Docker image reference must not contain control characters".to_string(),
-        );
+        return Err("Docker image reference must not contain control characters".to_string());
     }
     for byte in image.bytes() {
         if !ALLOWED_BYTES.contains(&byte) {
@@ -98,9 +96,8 @@ fn reject_empty_or_dot_component(image: &str) -> std::result::Result<(), String>
 pub fn validate_reference_for_plan(
     image: &str,
 ) -> std::result::Result<(), super::ProcessSandboxPlanError> {
-    validate_reference(image).map_err(|reason| {
-        super::ProcessSandboxPlanError::InvalidDockerImageReference { reason }
-    })
+    validate_reference(image)
+        .map_err(|reason| super::ProcessSandboxPlanError::InvalidDockerImageReference { reason })
 }
 
 #[cfg(test)]

@@ -118,10 +118,22 @@ async fn seed_libsql_then_migrate_asserts_all_rows_in_pg() {
         .await
         .expect("migration failed");
 
-    assert!(report.config_migrated, "config.toml should have been migrated");
-    assert!(report.providers_migrated, "providers.json should have been migrated");
-    assert!(report.libsql_db_migrated, "reborn-local-dev.db should have been migrated");
-    assert!(report.boot_initialized_set, "boot.initialized should have been set");
+    assert!(
+        report.config_migrated,
+        "config.toml should have been migrated"
+    );
+    assert!(
+        report.providers_migrated,
+        "providers.json should have been migrated"
+    );
+    assert!(
+        report.libsql_db_migrated,
+        "reborn-local-dev.db should have been migrated"
+    );
+    assert!(
+        report.boot_initialized_set,
+        "boot.initialized should have been set"
+    );
 
     // Verify rows landed in PG.
     let client = scoped_pool.get().await.unwrap();
@@ -273,13 +285,19 @@ async fn dry_run_migration_writes_nothing() {
         .expect("dry-run migration failed");
 
     // Dry-run: no files renamed.
-    assert!(home.path().join("config.toml").exists(), "config.toml should NOT be renamed in dry-run");
+    assert!(
+        home.path().join("config.toml").exists(),
+        "config.toml should NOT be renamed in dry-run"
+    );
     assert!(!home.path().join("config.toml.migrated").exists());
 
     // Dry-run: nothing written to DB.
     let client = scoped_pool.get().await.unwrap();
     let row_count: i64 = client
-        .query_one("SELECT COUNT(*) FROM brassclaw_config WHERE tenant_id = 'dry-tenant'", &[])
+        .query_one(
+            "SELECT COUNT(*) FROM brassclaw_config WHERE tenant_id = 'dry-tenant'",
+            &[],
+        )
         .await
         .unwrap()
         .get(0);
@@ -290,7 +308,9 @@ async fn dry_run_migration_writes_nothing() {
 
     // Cleanup.
     let client = pool.get().await.unwrap();
-    let _ = client.execute(&format!("DROP SCHEMA {schema} CASCADE"), &[]).await;
+    let _ = client
+        .execute(&format!("DROP SCHEMA {schema} CASCADE"), &[])
+        .await;
 }
 
 // ---------------------------------------------------------------------------

@@ -64,6 +64,9 @@ allow = [
     "CC0-1.0",
     "Unlicense",
     "CDLA-Permissive-2.0",
+    # PostgreSQL License — OSI approved, used by postgresql_archive/commands/embedded
+    # (transitive deps of brassclaw_embedded_postgres).
+    "PostgreSQL",
 ]
 unused-allowed-license = "allow"
 

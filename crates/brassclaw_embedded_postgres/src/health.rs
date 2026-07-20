@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use tokio::net::TcpStream;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use tracing::debug;
 
 use crate::error::EmbeddedPostgresError;

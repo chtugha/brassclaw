@@ -65,8 +65,10 @@ fn provider_admin_payload(
         // (DB-backed). Return a transient error to surface this at runtime.
         ProductModelCommand::Set { model: _ } | ProductModelCommand::SetProvider { .. } => {
             return Err(ProductWorkflowError::Transient {
-                reason: "model/provider writes via product command are not supported in this build; \
-                         use the WebUI settings or `brassclaw config set` instead".to_string(),
+                reason:
+                    "model/provider writes via product command are not supported in this build; \
+                         use the WebUI settings or `brassclaw config set` instead"
+                        .to_string(),
             });
         }
     };

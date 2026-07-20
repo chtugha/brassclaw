@@ -224,5 +224,4 @@ mod tests {
             Err(error) => panic!("no SSO is a valid configuration, got error: {error}"),
         }
     }
-
 }

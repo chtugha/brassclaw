@@ -381,5 +381,4 @@ mod tests {
             .expect_err("no verified email on the allowlist must be rejected");
         assert!(matches!(err, UserDirectoryError::Unknown));
     }
-
 }

@@ -46,11 +46,11 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CredentialAccount, CredentialAccountId, CredentialAccountStore, CredentialBrokerError,
-    CredentialSession, CredentialSessionId, CredentialSessionStore, SecretLease, SecretLeaseId,
-    SecretLeaseStatus, SecretMaterial, SecretMetadata, SecretStore, SecretStoreError, SecretsCrypto,
-    __internal_session_for_filesystem_store, credential_account_aad, credential_session_aad,
-    filesystem_secret_aad,
+    __internal_session_for_filesystem_store, CredentialAccount, CredentialAccountId,
+    CredentialAccountStore, CredentialBrokerError, CredentialSession, CredentialSessionId,
+    CredentialSessionStore, SecretLease, SecretLeaseId, SecretLeaseStatus, SecretMaterial,
+    SecretMetadata, SecretStore, SecretStoreError, SecretsCrypto, credential_account_aad,
+    credential_session_aad, filesystem_secret_aad,
 };
 
 /// Size of the HKDF salt in bytes, matching `SecretsCrypto::SALT_SIZE = 32`.
@@ -127,9 +127,11 @@ fn encode_ciphertext(salt: &[u8], nonce_and_ct: &[u8]) -> String {
 
 /// Decode a base64 `ciphertext` column value → `(salt, nonce_and_ct)`.
 fn decode_ciphertext(stored: &str) -> Result<(Vec<u8>, Vec<u8>), SecretStoreError> {
-    let blob = B64.decode(stored).map_err(|e| SecretStoreError::StoreUnavailable {
-        reason: format!("ciphertext base64 decode error: {e}"),
-    })?;
+    let blob = B64
+        .decode(stored)
+        .map_err(|e| SecretStoreError::StoreUnavailable {
+            reason: format!("ciphertext base64 decode error: {e}"),
+        })?;
     if blob.len() < SALT_SIZE {
         return Err(SecretStoreError::StoreUnavailable {
             reason: format!(
@@ -150,8 +152,16 @@ fn decode_ciphertext_broker(stored: &str) -> Result<(Vec<u8>, Vec<u8>), Credenti
 
 /// `scope` column discriminator for a secret row.
 fn secret_scope_str(scope: &ResourceScope, handle: &SecretHandle) -> String {
-    let agent = scope.agent_id.as_ref().map(|a| a.to_string()).unwrap_or_default();
-    let project = scope.project_id.as_ref().map(|p| p.to_string()).unwrap_or_default();
+    let agent = scope
+        .agent_id
+        .as_ref()
+        .map(|a| a.to_string())
+        .unwrap_or_default();
+    let project = scope
+        .project_id
+        .as_ref()
+        .map(|p| p.to_string())
+        .unwrap_or_default();
     format!("secret:{agent}/{project}/{}", handle.as_str())
 }
 
@@ -167,7 +177,10 @@ fn account_scope_str(account_id: &CredentialAccountId) -> String {
 
 /// `scope` column discriminator for a credential session row.
 fn session_scope_str(session_id: CredentialSessionId) -> String {
-    format!("credential-session:{}", session_id.to_private_storage_string())
+    format!(
+        "credential-session:{}",
+        session_id.to_private_storage_string()
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -304,12 +317,12 @@ impl SecretStore for PgSecretStore {
         // (owner scope varies per invocation and is stored inside the
         // encrypted payload rather than the AAD, which must be stable).
         let aad = format!("pg-secret-lease:{lease_id}");
-        let (nonce_and_ct, salt) =
-            self.crypto
-                .encrypt(&payload_bytes, aad.as_bytes())
-                .map_err(|e| SecretStoreError::BackendMisconfigured {
-                    reason: format!("encrypt lease: {e:?}"),
-                })?;
+        let (nonce_and_ct, salt) = self
+            .crypto
+            .encrypt(&payload_bytes, aad.as_bytes())
+            .map_err(|e| SecretStoreError::BackendMisconfigured {
+                reason: format!("encrypt lease: {e:?}"),
+            })?;
         let ciphertext = encode_ciphertext(&salt, &nonce_and_ct);
 
         let client = self.pool.get().await.map_err(map_pg_pool_error)?;
@@ -480,12 +493,11 @@ impl PgCredentialBroker {
         payload_bytes: &[u8],
         aad: &[u8],
     ) -> Result<(), CredentialBrokerError> {
-        let (nonce_and_ct, salt) =
-            self.crypto
-                .encrypt(payload_bytes, aad)
-                .map_err(|e| CredentialBrokerError::BrokerUnavailable {
-                    reason: format!("encrypt error: {e:?}"),
-                })?;
+        let (nonce_and_ct, salt) = self.crypto.encrypt(payload_bytes, aad).map_err(|e| {
+            CredentialBrokerError::BrokerUnavailable {
+                reason: format!("encrypt error: {e:?}"),
+            }
+        })?;
 
         let ciphertext = encode_ciphertext(&salt, &nonce_and_ct);
         let client = self.pool.get().await.map_err(map_pg_pool_err_broker)?;
@@ -550,11 +562,10 @@ impl CredentialAccountStore for PgCredentialBroker {
         let payload = StoredAccountPayload {
             account: account.clone(),
         };
-        let payload_bytes = serde_json::to_vec(&payload).map_err(|e| {
-            CredentialBrokerError::BrokerUnavailable {
+        let payload_bytes =
+            serde_json::to_vec(&payload).map_err(|e| CredentialBrokerError::BrokerUnavailable {
                 reason: e.to_string(),
-            }
-        })?;
+            })?;
 
         self.write_encrypted_row(&scope_str, &name, &payload_bytes, &aad)
             .await?;
@@ -657,11 +668,10 @@ impl CredentialSessionStore for PgCredentialBroker {
             correlation_id: session_id.to_private_storage_string(),
             uses: 0,
         };
-        let payload_bytes = serde_json::to_vec(&payload).map_err(|e| {
-            CredentialBrokerError::BrokerUnavailable {
+        let payload_bytes =
+            serde_json::to_vec(&payload).map_err(|e| CredentialBrokerError::BrokerUnavailable {
                 reason: e.to_string(),
-            }
-        })?;
+            })?;
 
         self.write_encrypted_row(&scope_str, "session", &payload_bytes, &aad)
             .await?;
@@ -676,9 +686,7 @@ impl CredentialSessionStore for PgCredentialBroker {
         let scope_str = session_scope_str(session_id);
         let aad = credential_session_aad(scope, session_id);
 
-        let plaintext = self
-            .read_encrypted_row(&scope_str, "session", &aad)
-            .await?;
+        let plaintext = self.read_encrypted_row(&scope_str, "session", &aad).await?;
 
         match plaintext {
             None => Ok(None),
@@ -736,11 +744,10 @@ impl CredentialSessionStore for PgCredentialBroker {
         }
         payload.uses += 1;
 
-        let payload_bytes = serde_json::to_vec(&payload).map_err(|e| {
-            CredentialBrokerError::BrokerUnavailable {
+        let payload_bytes =
+            serde_json::to_vec(&payload).map_err(|e| CredentialBrokerError::BrokerUnavailable {
                 reason: e.to_string(),
-            }
-        })?;
+            })?;
         self.write_encrypted_row(&scope_str, "session", &payload_bytes, &aad)
             .await?;
 
@@ -759,19 +766,26 @@ fn resource_scope_key(scope: &ResourceScope) -> String {
         "tenant:{}/user:{}/agent:{}/project:{}",
         scope.tenant_id,
         scope.user_id,
-        scope.agent_id.as_ref().map(|a| a.to_string()).unwrap_or_default(),
-        scope.project_id.as_ref().map(|p| p.to_string()).unwrap_or_default(),
+        scope
+            .agent_id
+            .as_ref()
+            .map(|a| a.to_string())
+            .unwrap_or_default(),
+        scope
+            .project_id
+            .as_ref()
+            .map(|p| p.to_string())
+            .unwrap_or_default(),
     )
 }
 
 fn session_payload_to_session(
     bytes: &[u8],
 ) -> Result<Option<CredentialSession>, CredentialBrokerError> {
-    let payload: StoredSessionPayload = serde_json::from_slice(bytes).map_err(|e| {
-        CredentialBrokerError::BrokerUnavailable {
+    let payload: StoredSessionPayload =
+        serde_json::from_slice(bytes).map_err(|e| CredentialBrokerError::BrokerUnavailable {
             reason: format!("deserialize session: {e}"),
-        }
-    })?;
+        })?;
     let cid = CredentialSessionId::parse(&payload.correlation_id).map_err(|e| {
         CredentialBrokerError::BrokerUnavailable {
             reason: format!("invalid session id: {e}"),
@@ -790,4 +804,3 @@ fn session_payload_to_session(
         cid,
     )))
 }
-

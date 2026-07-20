@@ -176,11 +176,9 @@ impl RunStateStore for PgRunStateStore {
             .await;
         match result {
             Ok(_) => Ok(record),
-            Err(e) if is_unique_violation(&e) => {
-                Err(RunStateError::InvocationAlreadyExists {
-                    invocation_id: record.invocation_id,
-                })
-            }
+            Err(e) if is_unique_violation(&e) => Err(RunStateError::InvocationAlreadyExists {
+                invocation_id: record.invocation_id,
+            }),
             Err(e) => Err(map_pg(e)),
         }
     }

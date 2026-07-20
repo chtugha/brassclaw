@@ -48,9 +48,7 @@ impl ManagedPostgres {
     ///      something else.
     /// 4. Run `initdb` (skipped if data dir is non-empty).
     /// 5. Start the server and wait for it to accept connections.
-    pub async fn start(
-        config: EmbeddedPostgresConfig,
-    ) -> Result<Self, EmbeddedPostgresError> {
+    pub async fn start(config: EmbeddedPostgresConfig) -> Result<Self, EmbeddedPostgresError> {
         // Step 1: suppress env vars that could alter the downloaded version.
         download::suppress_postgresql_embedded_env();
 
@@ -81,7 +79,9 @@ impl ManagedPostgres {
         // Remove stale postmaster.pid if the PID is dead.
         let pid_file = config.data_dir.join("postmaster.pid");
         if pid_file.exists()
-            && health::check_postmaster_pid(&config.data_dir).await.is_none()
+            && health::check_postmaster_pid(&config.data_dir)
+                .await
+                .is_none()
         {
             debug!("removing stale postmaster.pid");
             let _ = tokio::fs::remove_file(&pid_file).await;
@@ -143,11 +143,7 @@ impl Drop for ManagedPostgres {
             return;
         }
 
-        let already_shutdown = self
-            .shutdown_lock
-            .try_lock()
-            .map(|g| *g)
-            .unwrap_or(true); // If the lock is held, shutdown is in progress.
+        let already_shutdown = self.shutdown_lock.try_lock().map(|g| *g).unwrap_or(true); // If the lock is held, shutdown is in progress.
 
         if already_shutdown {
             return;
@@ -177,7 +173,9 @@ async fn resolve_pg_install_dir(
     // Construct and initialize the PostgreSQL instance. This downloads the
     // binary archive if not already cached.
     let mut pg = PostgreSQL::new(settings);
-    pg.setup().await.map_err(|e| EmbeddedPostgresError::InitDb(e.to_string()))?;
+    pg.setup()
+        .await
+        .map_err(|e| EmbeddedPostgresError::InitDb(e.to_string()))?;
 
     // The installation root is the directory postgresql_embedded extracted into.
     // It is the same value we supplied as `installation_dir`.
@@ -193,9 +191,7 @@ async fn resolve_pg_install_dir(
             let name = entry.file_name();
             let s = name.to_string_lossy();
             // Match the compressed archive before extraction (tar.gz or zip).
-            if (s.ends_with(".tar.gz") || s.ends_with(".zip"))
-                && s.contains("postgresql")
-            {
+            if (s.ends_with(".tar.gz") || s.ends_with(".zip")) && s.contains("postgresql") {
                 download::verify_archive(&entry.path())?;
                 break;
             }

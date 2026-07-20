@@ -218,11 +218,7 @@ impl PgTurnStateStore {
     // ------------------------------------------------------------------
 
     /// Load-apply-CAS the snapshot keyed by `thread_id`.
-    async fn apply<T, A, Fut>(
-        &self,
-        thread_id: &ThreadId,
-        mut apply: A,
-    ) -> Result<T, TurnError>
+    async fn apply<T, A, Fut>(&self, thread_id: &ThreadId, mut apply: A) -> Result<T, TurnError>
     where
         A: FnMut(InMemoryTurnStateStore) -> Fut,
         Fut: std::future::Future<Output = (Result<T, TurnError>, InMemoryTurnStateStore)>,
@@ -281,10 +277,7 @@ impl PgTurnStateStore {
     /// matching `turn_id` (= `thread_id` for snapshot rows).
     ///
     /// Returns `TurnError::ScopeNotFound` if no snapshot contains this run.
-    async fn find_thread_id_for_run(
-        &self,
-        run_id: TurnRunId,
-    ) -> Result<ThreadId, TurnError> {
+    async fn find_thread_id_for_run(&self, run_id: TurnRunId) -> Result<ThreadId, TurnError> {
         let run_id_str = run_id.to_string();
         let client = self.pool.get().await.map_err(map_pg_pool)?;
         // The payload is a TurnPersistenceSnapshot; runs is an array of

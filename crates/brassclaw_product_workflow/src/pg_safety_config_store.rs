@@ -176,7 +176,13 @@ impl SafetyConfigStore for PgSafetyConfigStore {
                          SET is_enabled = $1 \
                          WHERE tenant_id = $2 AND user_id = $3 AND category = $4 \
                            AND pattern = $5 AND is_default = true",
-                        &[&entry.enabled, &self.tenant_id, &user_id, &cat, &entry.pattern],
+                        &[
+                            &entry.enabled,
+                            &self.tenant_id,
+                            &user_id,
+                            &cat,
+                            &entry.pattern,
+                        ],
                     )
                     .await
                     .map_err(map_pg)?;

@@ -259,10 +259,7 @@ fn score_trigger(trigger: &RecipeTrigger, user_input: &str) -> f64 {
             keywords,
             threshold,
         } => {
-            let keywords_set: HashSet<String> = keywords
-                .iter()
-                .map(|k| k.to_lowercase())
-                .collect();
+            let keywords_set: HashSet<String> = keywords.iter().map(|k| k.to_lowercase()).collect();
             let input_tokens = tokenize(user_input);
             let overlap = jaccard(&input_tokens, &keywords_set);
             if overlap >= *threshold { overlap } else { 0.0 }
@@ -270,8 +267,9 @@ fn score_trigger(trigger: &RecipeTrigger, user_input: &str) -> f64 {
         RecipeTrigger::Pattern { patterns } => {
             for pattern in patterns {
                 if let Ok(re) = regex_limited(pattern)
-                    && re.is_match(user_input) {
-                        return 0.95;
+                    && re.is_match(user_input)
+                {
+                    return 0.95;
                 }
             }
             0.0
@@ -285,9 +283,7 @@ fn score_trigger(trigger: &RecipeTrigger, user_input: &str) -> f64 {
 // exponential backtracking on adversarial inputs. 10 000 bytes rejects
 // genuinely pathological regexes while still allowing typical trigger patterns.
 fn regex_limited(pattern: &str) -> Result<regex::Regex, regex::Error> {
-    regex::RegexBuilder::new(pattern)
-        .size_limit(10_000)
-        .build()
+    regex::RegexBuilder::new(pattern).size_limit(10_000).build()
 }
 
 fn validation_kind(v: &crate::types::recipe::RecipeValidation) -> String {
@@ -331,7 +327,10 @@ mod tests {
 
     #[test]
     fn exact_trigger_scores_one_when_match() {
-        assert_eq!(score_trigger(&exact_trigger("git status"), "git status"), 1.0);
+        assert_eq!(
+            score_trigger(&exact_trigger("git status"), "git status"),
+            1.0
+        );
     }
 
     #[test]

@@ -37,15 +37,12 @@ fn platform_key() -> &'static str {
 /// describing the mismatch. On mismatch the caller must delete the archive.
 pub fn verify_archive(archive_path: &Path) -> Result<(), EmbeddedPostgresError> {
     let platform = platform_key();
-    let expected = Checksums::for_platform(platform).ok_or_else(|| {
-        EmbeddedPostgresError::UnsupportedPlatform(platform.to_string())
-    })?;
+    let expected = Checksums::for_platform(platform)
+        .ok_or_else(|| EmbeddedPostgresError::UnsupportedPlatform(platform.to_string()))?;
 
-    let data = std::fs::read(archive_path).map_err(|e| {
-        EmbeddedPostgresError::Io {
-            path: archive_path.display().to_string(),
-            reason: e.to_string(),
-        }
+    let data = std::fs::read(archive_path).map_err(|e| EmbeddedPostgresError::Io {
+        path: archive_path.display().to_string(),
+        reason: e.to_string(),
     })?;
 
     let mut hasher = Sha256::new();
@@ -65,9 +62,7 @@ pub fn verify_archive(archive_path: &Path) -> Result<(), EmbeddedPostgresError> 
 
     debug!(
         pg_version = PG_VERSION,
-        platform,
-        digest,
-        "archive checksum verified"
+        platform, digest, "archive checksum verified"
     );
     Ok(())
 }

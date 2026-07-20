@@ -103,7 +103,7 @@ jobs:
           # crates, migrations, or shared build config. Modernized from the
           # v1 src/ path filters that the legacy "Tests (Legacy)" workflow used
           # (src/agent, src/channels/wasm, src/db, etc. — all removed in Phase 6).
-          if has_match '^(crates/brassclaw_(reborn|reborn_composition|reborn_cli|reborn_config|agent_loop|threads|turns|capabilities|host_runtime|secrets|safety|hooks|hooks_postgres|hooks_libsql|hooks_parity|process_sandbox|processes|dispatcher|network|runtime_policy|authorization|trust|approvals|run_state|loop_support|common|memory|events|event_projections|event_streams|reborn_event_store)/|migrations/|Cargo\.toml$|Cargo\.lock$|build\.rs$|\.github/workflows/reborn-tests\.yml$)'; then
+          if has_match '^(crates/brassclaw_(reborn|reborn_composition|reborn_cli|reborn_config|agent_loop|threads|turns|capabilities|host_runtime|secrets|safety|hooks|hooks_postgres|process_sandbox|processes|dispatcher|network|runtime_policy|authorization|trust|approvals|run_state|loop_support|common|memory|events|event_projections|event_streams|reborn_event_store)/|migrations/|Cargo\.toml$|Cargo\.lock$|\.github/workflows/reborn-tests\.yml$)'; then
             echo "has_runtime_heavy_risk=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_runtime_heavy_risk=false" >> "$GITHUB_OUTPUT"
@@ -181,7 +181,7 @@ jobs:
           # Windows build is a compile check across feature combinations.
           # PRs/merge queue use the slim matrix (all-features only); push and
           # workflow_call use the full matrix. Mirrors the legacy workflow.
-          FULL='[{"name":"all-features","flags":"--no-default-features --features postgres,libsql,html-to-markdown,bedrock,import"},{"name":"default","flags":""},{"name":"libsql-only","flags":"--no-default-features --features libsql"}]'
+          FULL='[{"name":"all-features","flags":"--no-default-features --features postgres,libsql,html-to-markdown,bedrock,import"},{"name":"default","flags":""}]'
           SLIM='[{"name":"all-features","flags":"--no-default-features --features postgres,libsql,html-to-markdown,bedrock,import"}]'
 
           if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "merge_group" ]; then
@@ -267,54 +267,6 @@ jobs:
       - name: Run Reborn root tests
         run: scripts/ci/run-reborn-root-partition.sh
 
-  hooks-parity-tests:
-    name: Hooks Predicate-Backend Parity Tests
-    needs: changes
-    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.has_reborn_tests == 'true' && needs.changes.outputs.has_core_code == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: brassclaw_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      CARGO_PROFILE_DEV_DEBUG: 0
-      CARGO_PROFILE_TEST_DEBUG: 0
-      DATABASE_URL: postgres://postgres:postgres@localhost/brassclaw_test
-      # Turn a missing/unreachable Postgres into a HARD failure so the full
-      # cross-backend matrix (in-memory + libSQL + Postgres) cannot skip-pass.
-      BRASSCLAW_REQUIRE_POSTGRES: "1"
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          ref: ${{ inputs.ref || github.sha }}
-          persist-credentials: false
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-        with:
-          key: reborn-tests-hooks-parity
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      # Full parity matrix across all three backends: --features postgres
-      # compiles the Postgres leg, --features integration adds the multi-host
-      # adversarial suite, and BRASSCLAW_REQUIRE_POSTGRES=1 (set above) makes the
-      # Postgres leg mandatory. The libSQL leg always runs (embedded temp-file).
-      - name: Run hooks parity matrix + multi-host adversarial suite (all backends)
-        run: |
-          timeout --signal=INT --kill-after=30s 15m \
-            cargo test -p brassclaw_hooks_parity --features postgres,integration -- --nocapture
-
   heavy-integration-tests:
     name: Heavy Integration Tests
     needs: changes
@@ -342,7 +294,7 @@ jobs:
       - name: Run thread scheduling integration tests
         run: |
           timeout --signal=INT --kill-after=30s 15m \
-            cargo test --no-default-features --features libsql,integration -- --nocapture
+            cargo test --no-default-features --features postgres,libsql,integration -- --nocapture
 
   windows-build:
     name: Windows Build (${{ matrix.name }})
@@ -506,7 +458,6 @@ jobs:
       - matrix-config
       - crate-tests
       - root-reborn-parity-tests
-      - hooks-parity-tests
       - heavy-integration-tests
       - windows-build
       - bench-compile
@@ -545,10 +496,6 @@ jobs:
           require_success "package-matrix" "${{ needs.package-matrix.result }}"
           require_success "crate-tests" "${{ needs.crate-tests.result }}"
           require_success "root-reborn-parity-tests" "${{ needs.root-reborn-parity-tests.result }}"
-
-          if [[ "${{ needs.changes.outputs.has_core_code }}" == "true" ]]; then
-            require_success "hooks-parity-tests" "${{ needs.hooks-parity-tests.result }}"
-          fi
 
           if [[ "$event" == "push" || "$event" == "workflow_call" || "${{ needs.changes.outputs.has_runtime_heavy_risk }}" == "true" ]]; then
             require_success "heavy-integration-tests" "${{ needs.heavy-integration-tests.result }}"

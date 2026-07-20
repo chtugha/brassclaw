@@ -47,10 +47,9 @@ impl MetricRecorder {
             .ok_or_else(|| EngineError::Store {
                 reason: format!("recipe outcome: id '{recipe_id}' not found"),
             })?;
-        let mut recipe =
-            Recipe::from_metadata(&doc.metadata).map_err(|e| EngineError::Store {
-                reason: format!("recipe outcome: decode failed: {e}"),
-            })?;
+        let mut recipe = Recipe::from_metadata(&doc.metadata).map_err(|e| EngineError::Store {
+            reason: format!("recipe outcome: decode failed: {e}"),
+        })?;
         apply_outcome(
             &mut recipe.usage_count,
             &mut recipe.success_count,
@@ -61,11 +60,9 @@ impl MetricRecorder {
         );
         let updated_at = chrono::Utc::now();
         recipe.updated_at = updated_at;
-        doc.metadata = recipe
-            .to_metadata()
-            .map_err(|e| EngineError::Store {
-                reason: format!("recipe outcome: encode failed: {e}"),
-            })?;
+        doc.metadata = recipe.to_metadata().map_err(|e| EngineError::Store {
+            reason: format!("recipe outcome: encode failed: {e}"),
+        })?;
         doc.updated_at = updated_at;
         self.store.save_memory_doc(&doc).await
     }
@@ -98,11 +95,9 @@ impl MetricRecorder {
         );
         let updated_at = chrono::Utc::now();
         skill.updated_at = updated_at;
-        doc.metadata = skill
-            .to_metadata()
-            .map_err(|e| EngineError::Store {
-                reason: format!("tool skill outcome: encode failed: {e}"),
-            })?;
+        doc.metadata = skill.to_metadata().map_err(|e| EngineError::Store {
+            reason: format!("tool skill outcome: encode failed: {e}"),
+        })?;
         doc.updated_at = updated_at;
         self.store.save_memory_doc(&doc).await
     }
@@ -250,7 +245,14 @@ mod tests {
         let mut failure = 0;
         let mut w = 0.0;
         let mut tier = String::from("seedling");
-        apply_outcome(&mut usage, &mut success, &mut failure, &mut w, &mut tier, true);
+        apply_outcome(
+            &mut usage,
+            &mut success,
+            &mut failure,
+            &mut w,
+            &mut tier,
+            true,
+        );
         assert_eq!(usage, 1);
         assert_eq!(success, 1);
         assert_eq!(failure, 0);
@@ -283,7 +285,14 @@ mod tests {
         let initial_tier = classify_tier(usage, w);
         assert_eq!(initial_tier, "growing");
         let mut tier = initial_tier;
-        apply_outcome(&mut usage, &mut success, &mut failure, &mut w, &mut tier, false);
+        apply_outcome(
+            &mut usage,
+            &mut success,
+            &mut failure,
+            &mut w,
+            &mut tier,
+            false,
+        );
         assert_eq!(usage, 6);
         assert_eq!(failure, 1);
         assert_eq!(tier, "seedling", "got: {tier}");

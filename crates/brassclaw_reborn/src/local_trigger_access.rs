@@ -111,7 +111,9 @@ impl PgRebornLocalTriggerAccessStore {
         Self { pool }
     }
 
-    async fn connect(&self) -> Result<deadpool_postgres::Object, RebornLocalTriggerAccessStoreError> {
+    async fn connect(
+        &self,
+    ) -> Result<deadpool_postgres::Object, RebornLocalTriggerAccessStoreError> {
         self.pool
             .get()
             .await
@@ -203,9 +205,7 @@ impl PgRebornLocalTriggerAccessStore {
                     ],
                 )
                 .await
-                .map_err(|error| {
-                    RebornLocalTriggerAccessStoreError::Backend(error.to_string())
-                })?;
+                .map_err(|error| RebornLocalTriggerAccessStoreError::Backend(error.to_string()))?;
         }
 
         for user_id in reconciliation.user_ids {

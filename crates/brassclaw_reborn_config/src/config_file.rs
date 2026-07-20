@@ -821,9 +821,6 @@ mod tests {
         let toml = r#"
 api_version = "brassclaw.runtime/v1"
 
-[boot]
-profile = "local-dev"
-
 [identity]
 tenant = "acme"
 default_agent = "acme-bot"
@@ -861,8 +858,8 @@ api_key_env = "ANTHROPIC_API_KEY"
         let cfg = RebornConfigFile::parse_text(toml, &attributed()).expect("must parse");
         assert_eq!(cfg.api_version.as_deref(), Some("brassclaw.runtime/v1"));
         assert_eq!(
-            cfg.boot.as_ref().unwrap().profile.as_deref(),
-            Some("local-dev")
+            cfg.policy.as_ref().unwrap().default_profile.as_deref(),
+            Some("local_dev")
         );
         assert_eq!(
             cfg.identity.as_ref().unwrap().tenant.as_deref(),
@@ -937,10 +934,10 @@ provider_id = " sk-proj-1234567890abcdef1234567890 "
     }
 
     #[test]
-    fn rejects_inline_secret_in_boot_profile_before_profile_parse() {
+    fn rejects_inline_secret_in_policy_default_profile_before_profile_parse() {
         let toml = r#"
-[boot]
-profile = "sk-proj-1234567890abcdef1234567890"
+[policy]
+default_profile = "sk-proj-1234567890abcdef1234567890"
 "#;
         let err = RebornConfigFile::parse_text(toml, &attributed())
             .expect_err("inline secret must be rejected");

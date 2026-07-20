@@ -88,9 +88,15 @@ impl ConfigSetCommand {
             .await
             .map_err(|e| anyhow::anyhow!("migration failed: {e}"))?;
 
-        save_config_key(&pool, &self.tenant, &self.key, &self.value, ConfigWriteContext::Operator)
-            .await
-            .map_err(|e| anyhow::anyhow!("config set failed: {e}"))?;
+        save_config_key(
+            &pool,
+            &self.tenant,
+            &self.key,
+            &self.value,
+            ConfigWriteContext::Operator,
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("config set failed: {e}"))?;
 
         println!("set `{}` = `{}`", self.key, self.value);
         Ok(())
@@ -309,18 +315,27 @@ impl ConfigImportCommand {
         // Parse as a raw TOML Value and flatten to dot-path key→value pairs.
         // This avoids requiring `Serialize` on `RebornConfigFile` while still
         // accepting the `config.toml` shape for operator-written files.
-        let config_value: toml::Value = toml::from_str(&stdin_text)
-            .map_err(|e| anyhow::anyhow!("invalid config TOML: {e}"))?;
+        let config_value: toml::Value =
+            toml::from_str(&stdin_text).map_err(|e| anyhow::anyhow!("invalid config TOML: {e}"))?;
 
         let mut count = 0usize;
         for (key, value) in flatten_toml("", &config_value) {
-            save_config_key(&pool, &self.tenant, &key, &value, ConfigWriteContext::Operator)
-                .await
-                .map_err(|e| anyhow::anyhow!("failed to import key `{key}`: {e}"))?;
+            save_config_key(
+                &pool,
+                &self.tenant,
+                &key,
+                &value,
+                ConfigWriteContext::Operator,
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to import key `{key}`: {e}"))?;
             count += 1;
         }
 
-        println!("imported {count} config key(s) into tenant `{}`", self.tenant);
+        println!(
+            "imported {count} config key(s) into tenant `{}`",
+            self.tenant
+        );
         Ok(())
     }
 }
@@ -344,7 +359,10 @@ fn flatten_toml(prefix: &str, value: &toml::Value) -> Vec<(String, String)> {
         toml::Value::Integer(i) => vec![(prefix.to_string(), i.to_string())],
         toml::Value::Float(f) => vec![(prefix.to_string(), f.to_string())],
         toml::Value::Boolean(b) => {
-            vec![(prefix.to_string(), if *b { "true" } else { "false" }.to_string())]
+            vec![(
+                prefix.to_string(),
+                if *b { "true" } else { "false" }.to_string(),
+            )]
         }
         toml::Value::Array(arr) => {
             // Serialize arrays as JSON (the §4.2 contract for list fields).

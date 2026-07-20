@@ -245,7 +245,9 @@ pub async fn run_backfill_embeddings(
         crate::factory::resolve_pg_embedding_provider_pub(&raw_pool, tenant_id).await;
 
     let Some(embedding_provider) = embedding_provider else {
-        tracing::debug!("backfill-embeddings: no embedding role provider configured — nothing to do");
+        tracing::debug!(
+            "backfill-embeddings: no embedding role provider configured — nothing to do"
+        );
         return Ok(BackfillResult::default());
     };
 
@@ -260,12 +262,19 @@ pub async fn run_backfill_embeddings(
     struct DynWrapper(Arc<dyn brassclaw_memory::EmbeddingProvider>);
     #[async_trait::async_trait]
     impl brassclaw_memory::EmbeddingProvider for DynWrapper {
-        fn dimension(&self) -> usize { self.0.dimension() }
-        fn model_name(&self) -> &str { self.0.model_name() }
+        fn dimension(&self) -> usize {
+            self.0.dimension()
+        }
+        fn model_name(&self) -> &str {
+            self.0.model_name()
+        }
         async fn embed(&self, text: &str) -> Result<Vec<f32>, brassclaw_memory::EmbeddingError> {
             self.0.embed(text).await
         }
-        async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, brassclaw_memory::EmbeddingError> {
+        async fn embed_batch(
+            &self,
+            texts: &[String],
+        ) -> Result<Vec<Vec<f32>>, brassclaw_memory::EmbeddingError> {
             self.0.embed_batch(texts).await
         }
     }
@@ -298,31 +307,54 @@ pub async fn run_backfill_embeddings(
 
     let mut result = BackfillResult::default();
     for row in rows {
-        let map_col =
-            |e: tokio_postgres::Error| format!("column decode: {e}");
+        let map_col = |e: tokio_postgres::Error| format!("column decode: {e}");
         let id: String = match row.try_get("id").map_err(&map_col) {
             Ok(v) => v,
-            Err(e) => { tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping"); result.failed += 1; continue; }
+            Err(e) => {
+                tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping");
+                result.failed += 1;
+                continue;
+            }
         };
         let t_id: String = match row.try_get("tenant_id").map_err(&map_col) {
             Ok(v) => v,
-            Err(e) => { tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping"); result.failed += 1; continue; }
+            Err(e) => {
+                tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping");
+                result.failed += 1;
+                continue;
+            }
         };
         let user_id: String = match row.try_get("user_id").map_err(&map_col) {
             Ok(v) => v,
-            Err(e) => { tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping"); result.failed += 1; continue; }
+            Err(e) => {
+                tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping");
+                result.failed += 1;
+                continue;
+            }
         };
         let agent_id: Option<String> = match row.try_get("agent_id").map_err(&map_col) {
             Ok(v) => v,
-            Err(e) => { tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping"); result.failed += 1; continue; }
+            Err(e) => {
+                tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping");
+                result.failed += 1;
+                continue;
+            }
         };
         let project_id: Option<String> = match row.try_get("project_id").map_err(&map_col) {
             Ok(v) => v,
-            Err(e) => { tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping"); result.failed += 1; continue; }
+            Err(e) => {
+                tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping");
+                result.failed += 1;
+                continue;
+            }
         };
         let content: String = match row.try_get("content").map_err(&map_col) {
             Ok(v) => v,
-            Err(e) => { tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping"); result.failed += 1; continue; }
+            Err(e) => {
+                tracing::debug!(error = %e, "backfill-embeddings: bad row — skipping");
+                result.failed += 1;
+                continue;
+            }
         };
         // source_ref is always NULL for rows returned by this query.
         // Derive the canonical VFS path from the chat_record_id.

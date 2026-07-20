@@ -1317,11 +1317,13 @@ mod tests {
             .unwrap();
         let hash = content_sha256("alpha beta gamma");
         let chunks = vec![
-            MemoryChunkWrite { chat_record_id: None,
+            MemoryChunkWrite {
+                chat_record_id: None,
                 content: "alpha beta".to_string(),
                 embedding: Some(vec![0.1, 0.2, 0.3]),
             },
-            MemoryChunkWrite { chat_record_id: None,
+            MemoryChunkWrite {
+                chat_record_id: None,
                 content: "gamma".to_string(),
                 embedding: None,
             },
@@ -1355,7 +1357,8 @@ mod tests {
         let (_, repo) = fresh_repo();
         let path = doc("notes/stale-chunks.md");
         repo.write_document(&path, b"orig").await.unwrap();
-        let chunks = vec![MemoryChunkWrite { chat_record_id: None,
+        let chunks = vec![MemoryChunkWrite {
+            chat_record_id: None,
             content: "orig".to_string(),
             embedding: None,
         }];
@@ -1397,7 +1400,8 @@ mod tests {
         let path = doc("notes/clearable.md");
         repo.write_document(&path, b"body").await.unwrap();
         let hash = content_sha256("body");
-        let chunks = vec![MemoryChunkWrite { chat_record_id: None,
+        let chunks = vec![MemoryChunkWrite {
+            chat_record_id: None,
             content: "body".to_string(),
             embedding: None,
         }];
@@ -1434,7 +1438,8 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &path,
             &hash,
-            &[MemoryChunkWrite { chat_record_id: None,
+            &[MemoryChunkWrite {
+                chat_record_id: None,
                 content: "body".to_string(),
                 embedding: None,
             }],
@@ -1474,7 +1479,8 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &folder_doc,
             &content_sha256("inside"),
-            &[MemoryChunkWrite { chat_record_id: None,
+            &[MemoryChunkWrite {
+                chat_record_id: None,
                 content: "inside".to_string(),
                 embedding: None,
             }],
@@ -1484,7 +1490,8 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &other_doc,
             &content_sha256("outside"),
-            &[MemoryChunkWrite { chat_record_id: None,
+            &[MemoryChunkWrite {
+                chat_record_id: None,
                 content: "outside".to_string(),
                 embedding: None,
             }],
@@ -1546,7 +1553,8 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &descendant,
             &hash,
-            &[MemoryChunkWrite { chat_record_id: None,
+            &[MemoryChunkWrite {
+                chat_record_id: None,
                 content: "body".to_string(),
                 embedding: None,
             }],
@@ -1596,7 +1604,8 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &path,
             &content_sha256("body"),
-            &[MemoryChunkWrite { chat_record_id: None,
+            &[MemoryChunkWrite {
+                chat_record_id: None,
                 content: "body".to_string(),
                 embedding: None,
             }],
@@ -1645,7 +1654,8 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &alpha,
             &content_sha256("alpha document text"),
-            &[MemoryChunkWrite { chat_record_id: None,
+            &[MemoryChunkWrite {
+                chat_record_id: None,
                 content: "alpha document text".to_string(),
                 embedding: None,
             }],
@@ -1655,7 +1665,8 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &beta,
             &content_sha256("beta document text"),
-            &[MemoryChunkWrite { chat_record_id: None,
+            &[MemoryChunkWrite {
+                chat_record_id: None,
                 content: "beta document text".to_string(),
                 embedding: None,
             }],
@@ -1686,7 +1697,8 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &alpha,
             &content_sha256("alpha"),
-            &[MemoryChunkWrite { chat_record_id: None,
+            &[MemoryChunkWrite {
+                chat_record_id: None,
                 content: "alpha".to_string(),
                 embedding: Some(vec![1.0, 0.0, 0.0]),
             }],
@@ -1696,7 +1708,8 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &beta,
             &content_sha256("beta"),
-            &[MemoryChunkWrite { chat_record_id: None,
+            &[MemoryChunkWrite {
+                chat_record_id: None,
                 content: "beta".to_string(),
                 embedding: Some(vec![0.0, 1.0, 0.0]),
             }],
@@ -1729,7 +1742,8 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &path,
             &content_sha256("v1"),
-            &[MemoryChunkWrite { chat_record_id: None,
+            &[MemoryChunkWrite {
+                chat_record_id: None,
                 content: "v1".to_string(),
                 embedding: None,
             }],
@@ -1754,7 +1768,8 @@ mod tests {
         repo.replace_document_chunks_if_current(
             &path,
             &content_sha256("b"),
-            &[MemoryChunkWrite { chat_record_id: None,
+            &[MemoryChunkWrite {
+                chat_record_id: None,
                 content: "b".to_string(),
                 embedding: None,
             }],

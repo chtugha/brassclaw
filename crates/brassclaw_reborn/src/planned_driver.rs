@@ -824,7 +824,9 @@ mod tests {
             iteration: u32,
             prompt_snapshot: serde_json::Value,
         ) -> Option<String> {
-            self.inner.on_prompt_assembled(run_id, iteration, prompt_snapshot).await
+            self.inner
+                .on_prompt_assembled(run_id, iteration, prompt_snapshot)
+                .await
         }
 
         async fn on_kohai_response(
@@ -833,7 +835,9 @@ mod tests {
             response_text: &str,
             usage_json: Option<serde_json::Value>,
         ) {
-            self.inner.on_kohai_response(packet_id, response_text, usage_json).await
+            self.inner
+                .on_kohai_response(packet_id, response_text, usage_json)
+                .await
         }
     }
 

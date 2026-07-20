@@ -120,7 +120,10 @@ pub(crate) async fn step_value(
     value: Decimal,
     window: Duration,
 ) {
-    let outcome = match backend.record_value(key, event_id, now, value, window).await {
+    let outcome = match backend
+        .record_value(key, event_id, now, value, window)
+        .await
+    {
         Ok(s) => StepOutcome::Sum(s.normalize().to_string()),
         Err(PredicateBackendError::WindowOverflow { .. }) => StepOutcome::WindowOverflow,
         Err(other) => StepOutcome::OtherError(format!("{other:?}")),

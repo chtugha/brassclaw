@@ -176,11 +176,7 @@ pub struct KohaiUsage {
 impl ForensicPacket {
     /// Create a new packet from a captured prompt.  Status is
     /// `AwaitingKohai` — the Kohai response has not yet been received.
-    pub fn new(
-        run_id: impl Into<String>,
-        iteration: u32,
-        prompt: CapturedPrompt,
-    ) -> Self {
+    pub fn new(run_id: impl Into<String>, iteration: u32, prompt: CapturedPrompt) -> Self {
         Self {
             id: PacketId::new(),
             status: PacketStatus::AwaitingKohai,
@@ -274,7 +270,10 @@ mod tests {
         let packet = ForensicPacket::new("run-1", 0, make_prompt())
             .with_kohai_response("Sure, deploying now.", None);
         assert_eq!(packet.status, PacketStatus::Complete);
-        assert_eq!(packet.kohai_response.as_deref(), Some("Sure, deploying now."));
+        assert_eq!(
+            packet.kohai_response.as_deref(),
+            Some("Sure, deploying now.")
+        );
         assert!(packet.completed_at.is_some());
         assert!(packet.sempai_review.is_none());
     }
@@ -287,8 +286,8 @@ mod tests {
             proposed_recipe_updates: vec![],
             settings_adjustments: vec![],
         };
-        let packet = ForensicPacket::new("run-1", 0, make_prompt())
-            .with_sempai_review("OK", None, review);
+        let packet =
+            ForensicPacket::new("run-1", 0, make_prompt()).with_sempai_review("OK", None, review);
         assert_eq!(packet.status, PacketStatus::SempaiReviewed);
         assert!(packet.sempai_review.is_some());
     }

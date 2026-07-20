@@ -23,27 +23,39 @@ use crate::{
 };
 
 fn map_pool_r(e: deadpool_postgres::PoolError) -> ResourceError {
-    ResourceError::Storage { reason: e.to_string() }
+    ResourceError::Storage {
+        reason: e.to_string(),
+    }
 }
 
 fn map_pg_r(e: tokio_postgres::Error) -> ResourceError {
-    ResourceError::Storage { reason: e.to_string() }
+    ResourceError::Storage {
+        reason: e.to_string(),
+    }
 }
 
 fn map_json_r(e: serde_json::Error) -> ResourceError {
-    ResourceError::Storage { reason: e.to_string() }
+    ResourceError::Storage {
+        reason: e.to_string(),
+    }
 }
 
 fn map_pool_b(e: deadpool_postgres::PoolError) -> BudgetGateError {
-    BudgetGateError::Storage { reason: e.to_string() }
+    BudgetGateError::Storage {
+        reason: e.to_string(),
+    }
 }
 
 fn map_pg_b(e: tokio_postgres::Error) -> BudgetGateError {
-    BudgetGateError::Storage { reason: e.to_string() }
+    BudgetGateError::Storage {
+        reason: e.to_string(),
+    }
 }
 
 fn map_json_b(e: serde_json::Error) -> BudgetGateError {
-    BudgetGateError::Storage { reason: e.to_string() }
+    BudgetGateError::Storage {
+        reason: e.to_string(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -111,7 +123,7 @@ impl PgResourceGovernorStore {
                          SET payload = excluded.payload, version = $4, updated_at = now() \
                          WHERE brassclaw_resource_accounts.version = $5",
                         &[
-                            &format!("governor:{}", &self.tenant_id),
+                            &format!("governor:{}", self.tenant_id),
                             &self.tenant_id,
                             &payload,
                             &next_version,
@@ -169,7 +181,10 @@ impl PgBudgetGateStore {
         }
     }
 
-    fn read_gate_sync(&self, id: BudgetGateId) -> Result<Option<BudgetApprovalGate>, BudgetGateError> {
+    fn read_gate_sync(
+        &self,
+        id: BudgetGateId,
+    ) -> Result<Option<BudgetApprovalGate>, BudgetGateError> {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 let client = self.pool.get().await.map_err(map_pool_b)?;
@@ -205,16 +220,18 @@ impl PgBudgetGateStore {
 }
 
 impl BudgetGateStore for PgBudgetGateStore {
-    fn open(&self, _scope: &ResourceScope, gate: BudgetApprovalGate) -> Result<(), BudgetGateError> {
+    fn open(
+        &self,
+        _scope: &ResourceScope,
+        gate: BudgetApprovalGate,
+    ) -> Result<(), BudgetGateError> {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 let payload = serde_json::to_value(&gate).map_err(map_json_b)?;
                 // Use Display (not Debug) — Debug gives "InputTokens", Display gives "input_tokens".
                 let gate_kind = gate.needed.dimension.to_string();
                 let requested_amount: f64 = match &gate.needed.requested {
-                    crate::ResourceValue::Decimal(d) => {
-                        d.to_string().parse::<f64>().unwrap_or(0.0)
-                    }
+                    crate::ResourceValue::Decimal(d) => d.to_string().parse::<f64>().unwrap_or(0.0),
                     crate::ResourceValue::Integer(i) => *i as f64,
                 };
                 let client = self.pool.get().await.map_err(map_pool_b)?;
@@ -257,9 +274,14 @@ impl BudgetGateStore for PgBudgetGateStore {
                     return Err(BudgetGateError::AlreadyResolved { id });
                 }
                 gate.status = match outcome {
-                    BudgetGateOutcome::Approve { increased_limit, by } => {
-                        BudgetGateStatus::Approved { increased_limit, by, at }
-                    }
+                    BudgetGateOutcome::Approve {
+                        increased_limit,
+                        by,
+                    } => BudgetGateStatus::Approved {
+                        increased_limit,
+                        by,
+                        at,
+                    },
                     BudgetGateOutcome::Cancel { by } => BudgetGateStatus::Cancelled { by, at },
                 };
                 let new_status_str = Self::status_kind_str(&gate.status);
@@ -270,7 +292,12 @@ impl BudgetGateStore for PgBudgetGateStore {
                         "UPDATE brassclaw_budget_gates \
                          SET status = $1, payload = $2, updated_at = now() \
                          WHERE id = $3 AND tenant_id = $4 AND status = 'pending'",
-                        &[&new_status_str, &payload, &id.as_uuid().to_string(), &self.tenant_id],
+                        &[
+                            &new_status_str,
+                            &payload,
+                            &id.as_uuid().to_string(),
+                            &self.tenant_id,
+                        ],
                     )
                     .await
                     .map_err(map_pg_b)?;
@@ -328,7 +355,10 @@ impl BudgetGateStore for PgBudgetGateStore {
         self.read_gate_sync(id)
     }
 
-    fn list_pending(&self, _scope: &ResourceScope) -> Result<Vec<BudgetApprovalGate>, BudgetGateError> {
+    fn list_pending(
+        &self,
+        _scope: &ResourceScope,
+    ) -> Result<Vec<BudgetApprovalGate>, BudgetGateError> {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 let client = self.pool.get().await.map_err(map_pool_b)?;

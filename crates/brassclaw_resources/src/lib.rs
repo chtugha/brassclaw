@@ -30,7 +30,6 @@ pub use event::{
     InMemoryBudgetEventSink, NoOpBudgetEventSink,
 };
 pub use filesystem_store::{FilesystemBudgetGateStore, FilesystemResourceGovernorStore};
-pub use pg_store::{PgBudgetGateStore, PgResourceGovernorStore};
 pub use gate::{
     BudgetApprovalGate, BudgetGateError, BudgetGateId, BudgetGateOutcome, BudgetGateStatus,
     BudgetGateStore, InMemoryBudgetGateStore,
@@ -39,6 +38,7 @@ pub use period::{
     BudgetPeriod, BudgetThresholds, BudgetThresholdsError, PeriodUnit, period_bounds,
     period_has_rolled_over,
 };
+pub use pg_store::{PgBudgetGateStore, PgResourceGovernorStore};
 
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};

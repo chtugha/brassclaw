@@ -394,7 +394,9 @@ pub(crate) fn build_services_input_with_options(
             confirm_host_access: options.confirm_host_access,
         },
     )
-    .with_context(|| "brassclaw-reborn run currently supports profile=local-dev or profile=local-dev-yolo")?
+    .with_context(
+        || "brassclaw-reborn run currently supports profile=local-dev or profile=local-dev-yolo",
+    )?
     .with_local_dev_workspace_root(workspace_root);
     if services_input.requires_local_dev_confirmed_host_home_root() {
         let host_home_root =
@@ -508,7 +510,6 @@ fn confirmed_host_home_root(options: RuntimeInputOptions) -> anyhow::Result<Path
         .map(PathBuf::from)
         .context("HOME or USERPROFILE must be set")
 }
-
 
 pub(crate) fn read_config_file(
     config: &RebornBootConfig,

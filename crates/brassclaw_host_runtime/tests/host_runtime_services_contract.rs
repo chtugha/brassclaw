@@ -596,7 +596,6 @@ async fn production_wiring_validation_accepts_configured_turn_wake_notifier() {
     );
 }
 
-
 #[tokio::test]
 async fn production_wiring_validation_sees_underlying_in_memory_durable_logs() {
     let services = HostRuntimeServices::new(
@@ -949,7 +948,6 @@ async fn production_wiring_validation_tracks_tenant_sandbox_process_port_for_bui
     );
 }
 
-
 #[tokio::test]
 async fn process_lifecycle_projects_through_durable_replay_without_output_leaks() {
     let event_log = Arc::new(InMemoryDurableEventLog::new());
@@ -1236,7 +1234,6 @@ async fn host_runtime_services_resumes_approved_capability_and_consumes_lease_on
         "second resume must fail before a second dispatch"
     );
 }
-
 
 #[tokio::test]
 async fn host_runtime_services_resume_changed_input_fails_before_lease_claim_or_dispatch() {
@@ -1532,9 +1529,6 @@ async fn host_runtime_services_resume_runtime_policy_denial_fails_matching_block
     );
     assert!(fixture.events.events().is_empty());
 }
-
-
-
 
 #[tokio::test]
 async fn host_runtime_routes_system_process_sandbox_to_configured_executor() {
@@ -2011,8 +2005,6 @@ async fn host_runtime_spawn_process_sandbox_resume_host_failure_fails_after_appr
     );
 }
 
-
-
 #[tokio::test]
 async fn host_runtime_services_maps_mcp_client_failure_through_private_adapter() {
     let services = HostRuntimeServices::new(
@@ -2040,11 +2032,6 @@ async fn host_runtime_services_maps_mcp_client_failure_through_private_adapter()
 
     assert_failed_outcome(outcome, RuntimeFailureKind::Backend);
 }
-
-
-
-
-
 
 #[tokio::test]
 async fn host_runtime_services_releases_reservation_when_dispatch_preflight_fails_after_obligations()
@@ -2111,7 +2098,6 @@ async fn host_runtime_services_releases_reservation_when_dispatch_preflight_fail
     assert_eq!(run.status, RunStatus::Failed);
     assert_eq!(run.error_kind.as_deref(), Some("Dispatch"));
 }
-
 
 #[tokio::test]
 async fn host_runtime_services_cancel_and_status_share_process_result_and_cancellation_graph() {
@@ -3182,7 +3168,6 @@ impl TrustAwareCapabilityDispatchAuthorizer for ApprovalThenGrantAuthorizer {
         }
     }
 }
-
 
 struct ObligatingAuthorizer {
     obligations: Vec<Obligation>,

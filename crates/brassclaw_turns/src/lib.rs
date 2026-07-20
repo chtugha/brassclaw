@@ -51,7 +51,6 @@ pub use events::{
     TurnEventSink, TurnLifecycleEvent,
 };
 pub use filesystem_store::FilesystemTurnStateStore;
-pub use pg_turn_state_store::PgTurnStateStore;
 pub use ids::{
     AcceptedMessageRef, CapabilityActivityId, GateRef, IdempotencyKey, LoopDiagnosticRef,
     LoopExitId, LoopGateRef, LoopMessageRef, LoopResultRef, LoopUsageSummaryRef,
@@ -70,6 +69,7 @@ pub use loop_exit::{
     LoopExitViolationKind, LoopFailed, LoopFailureKind,
 };
 pub use memory::{InMemoryTurnStateStore, InMemoryTurnStateStoreLimits};
+pub use pg_turn_state_store::PgTurnStateStore;
 pub use request::{
     CancelRunRequest, GetRunStateRequest, ResumeTurnPrecondition, ResumeTurnRequest,
     SubmitChildRunRequest, SubmitTurnRequest, TurnTimestamp,

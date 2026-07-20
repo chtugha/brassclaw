@@ -5,6 +5,7 @@ use brassclaw_event_projections::{
     AuditProjectionRequest, AuditProjectionService, AuditProjectionStage, ProjectionScope,
     ReplayAuditProjectionService,
 };
+use brassclaw_events::InMemoryDurableAuditLog;
 use brassclaw_events::{AuditSink, DurableAuditSink, EventError};
 use brassclaw_extensions::{
     ExtensionError, ExtensionLifecycleEvent, ExtensionLifecycleEventSink,
@@ -16,7 +17,6 @@ use brassclaw_host_api::{
     DecisionSummary, EffectKind, ExtensionId, ExtensionLifecycleOperation, HostPortCatalog,
     InvocationId, ProjectId, ResourceScope, TenantId, UserId, VirtualPath,
 };
-use brassclaw_events::InMemoryDurableAuditLog;
 use chrono::Utc;
 
 #[tokio::test]

@@ -50,7 +50,13 @@ pub fn local_runtime_build_input_with_options(
 
 /// Resolved policy for the standalone local development runtime profile.
 pub fn local_dev_runtime_policy() -> Result<ResolvedRuntimePolicy, ResolveError> {
-    local_runtime_policy(RuntimeProfile::LocalDev, RebornLocalRuntimeProfileOptions::default())
+    local_runtime_policy(
+        RuntimeProfile::LocalDev,
+        RebornLocalRuntimeProfileOptions::default(),
+    )
+    .map_err(|e| match e {
+        RebornLocalRuntimeProfileError::Policy(re) => re,
+    })
 }
 
 /// Resolved policy for trusted single-user local development with inherited
@@ -64,6 +70,9 @@ pub fn local_dev_yolo_runtime_policy(
             confirm_host_access,
         },
     )
+    .map_err(|e| match e {
+        RebornLocalRuntimeProfileError::Policy(re) => re,
+    })
 }
 
 /// Map a local `RebornCompositionProfile` to the matching `RuntimeProfile`.

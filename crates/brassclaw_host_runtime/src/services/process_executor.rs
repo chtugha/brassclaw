@@ -206,10 +206,7 @@ mod tests {
         );
 
         let result = executor
-            .execute(sample_process_request(
-                "demo.background",
-                RuntimeKind::Mcp,
-            ))
+            .execute(sample_process_request("demo.background", RuntimeKind::Mcp))
             .await
             .unwrap();
 

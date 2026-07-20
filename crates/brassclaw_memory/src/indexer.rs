@@ -345,13 +345,8 @@ where
                         chat_record_id: None,
                     })
                     .collect();
-                self.replace_document_chunks_and_record(
-                    &path,
-                    &content_hash,
-                    &text_only,
-                    None,
-                )
-                .await?;
+                self.replace_document_chunks_and_record(&path, &content_hash, &text_only, None)
+                    .await?;
                 return Err(error);
             }
         };

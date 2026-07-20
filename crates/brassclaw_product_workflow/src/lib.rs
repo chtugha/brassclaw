@@ -42,11 +42,11 @@ mod inbound_turn;
 mod ledger;
 mod lifecycle;
 mod outbound_delivery;
+mod pg_safety_config_store;
 mod policy;
 mod reborn_services;
 mod recipes;
 mod reduction_rules;
-mod pg_safety_config_store;
 mod safety_config;
 mod safety_config_store;
 mod token_settings;
@@ -126,20 +126,21 @@ pub use outbound_delivery::{
     ProductOutboundStatusUpdateFailure, ProductOutboundTargetResolver,
     VerifiedProductOutboundTargetMetadata, prepare_and_render_product_outbound,
 };
+pub use pg_safety_config_store::PgSafetyConfigStore;
 pub use policy::{
     BeforeInboundPolicy, BeforeInboundPolicyOutcome, BeforeInboundPolicyRequest,
     NoopBeforeInboundPolicy,
 };
-pub use recipes::{
-    OutcomeKind, RecipeDetail, RecipeKind, RecipeListRequest, RecipeListResponse, RecipeStore,
-    RecipeStoreError, RecipeSummary, RecordOutcomeRequest, RecordOutcomeResponse,
-    ToolSkillDetail, ToolSkillListResponse, ToolSkillSummary, UpdateValidationStatusRequest,
-    UpdateValidationStatusResponse, ValidationQueueCountResponse, ValidationQueueItem,
-    ValidationQueueListResponse, ValidationStatusValue,
-};
 pub use reborn_services::CapabilityPermissionStore;
 pub use reborn_services::{
     RebornInstallSkillRequest, SkillsProductFacade, UnsupportedSkillsProductFacade,
+};
+pub use recipes::{
+    OutcomeKind, RecipeDetail, RecipeKind, RecipeListRequest, RecipeListResponse, RecipeStore,
+    RecipeStoreError, RecipeSummary, RecordOutcomeRequest, RecordOutcomeResponse, ToolSkillDetail,
+    ToolSkillListResponse, ToolSkillSummary, UpdateValidationStatusRequest,
+    UpdateValidationStatusResponse, ValidationQueueCountResponse, ValidationQueueItem,
+    ValidationQueueListResponse, ValidationStatusValue,
 };
 pub use reduction_rules::{
     AuthorReductionRuleRequest, AuthorReductionRuleResponse, REDUCTION_RULES_MAX_PER_USER,
@@ -148,7 +149,6 @@ pub use reduction_rules::{
     sort_for_storage,
 };
 pub use safety_config::{SafetyConfigResponse, SafetyEntry, UpdateSafetyConfigRequest};
-pub use pg_safety_config_store::PgSafetyConfigStore;
 pub use safety_config_store::{SafetyCategory, SafetyConfigStore};
 pub use token_settings::{TokenSettingsResponse, UpdateTokenSettingsRequest};
 pub use token_settings_store::TokenSettingsStore;
@@ -157,13 +157,13 @@ pub use token_settings_store::TokenSettingsStore;
 // so `brassclaw_webui_v2` consumes them via the facade crate and does not need
 // a direct dependency on `brassclaw_product_adapters` — the single-facade
 // boundary is enforced by `brassclaw_architecture`.
+pub use brassclaw_llm::ProviderRole;
 pub use brassclaw_product_adapters::{
     AuthPromptView, CapabilityActivityStatusView, CapabilityActivityView,
     CapabilityDisplayPreviewView, FinalReplyView, GatePromptView, ProductOutboundEnvelope,
     ProductOutboundPayload, ProductProjectionItem, ProductProjectionState, ProductWorkSummaryPhase,
     ProgressKind, ProgressUpdateView, ProjectionCursor,
 };
-pub use brassclaw_llm::ProviderRole;
 pub use reborn_services::{
     AUTOMATION_LIST_DEFAULT_PAGE_SIZE, AUTOMATION_LIST_MAX_PAGE_SIZE, AutomationProductFacade,
     CodexLoginStart, ConnectableChannelsProductFacade, ExtensionCredentialSetupService,

@@ -274,7 +274,8 @@ where
     // search over the `.chunks/` subtree returns nothing and the
     // isolation assertion below would be vacuously satisfied.
     let chunk = |content: &str| {
-        vec![MemoryChunkWrite { chat_record_id: None,
+        vec![MemoryChunkWrite {
+            chat_record_id: None,
             content: content.to_string(),
             embedding: None,
         }]

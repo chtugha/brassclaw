@@ -348,4 +348,3 @@ fn print_status(status: &brassclaw_reborn_composition::RebornProviderStatus) {
     }
     println!("v1_state: {}", status.v1_state);
 }
-

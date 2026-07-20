@@ -16,7 +16,6 @@ mod validation;
 pub use approval::{
     SandboxApprovalCredential, SandboxApprovalMount, SandboxProcessApprovalSummary,
 };
-pub use image::validate_reference as validate_docker_image_reference;
 pub use backend::{
     ProcessSandboxBackend, ProcessSandboxError, ProcessSandboxErrorKind, ProcessSandboxExecutor,
     SandboxPhaseOutput, SandboxProcessOutput, SandboxProcessRequest, SandboxProcessResult,
@@ -28,6 +27,7 @@ pub use docker::{
     DockerBrokerConfig, DockerProcessSandboxBackend, DockerProcessSandboxConfig,
     SandboxProcessPhase,
 };
+pub use image::validate_reference as validate_docker_image_reference;
 pub use plan::{
     ProcessSandboxPlanError, SandboxCommandPlan, SandboxCredentialBinding, SandboxInstallPlan,
     SandboxMount, SandboxMounts, SandboxNetworkPlan, SandboxProcessPlan,

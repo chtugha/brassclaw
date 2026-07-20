@@ -42,14 +42,11 @@ use brassclaw_engine::memory::metric_outcome::MetricRecorder;
 use brassclaw_engine::traits::store::Store;
 use brassclaw_engine::types::memory::{DocType, MemoryDoc};
 use brassclaw_engine::types::project::ProjectId;
-use brassclaw_engine::types::recipe::{
-    Recipe, RecipeSource, ToolSkill, ValidationStatus,
-};
+use brassclaw_engine::types::recipe::{Recipe, RecipeSource, ToolSkill, ValidationStatus};
 use brassclaw_product_workflow::{
-    OutcomeKind, RecipeDetail, RecipeKind, RecipeStore, RecipeStoreError,
-    RecipeSummary, RecordOutcomeRequest, RecordOutcomeResponse, ToolSkillDetail,
-    ToolSkillSummary, UpdateValidationStatusResponse,
-    ValidationQueueItem, ValidationStatusValue,
+    OutcomeKind, RecipeDetail, RecipeKind, RecipeStore, RecipeStoreError, RecipeSummary,
+    RecordOutcomeRequest, RecordOutcomeResponse, ToolSkillDetail, ToolSkillSummary,
+    UpdateValidationStatusResponse, ValidationQueueItem, ValidationStatusValue,
 };
 use chrono::Utc;
 
@@ -91,8 +88,8 @@ impl RecipeStore for StoreBackedRecipeStore {
         project_id: &str,
     ) -> Result<Vec<RecipeSummary>, RecipeStoreError> {
         let project_id_typed = parse_project_id(project_id)?;
-        let docs = load_filtered_docs(&self.store, project_id_typed, user_id, DocType::Recipe)
-            .await?;
+        let docs =
+            load_filtered_docs(&self.store, project_id_typed, user_id, DocType::Recipe).await?;
         let mut recipes: Vec<RecipeSummary> = Vec::with_capacity(docs.len());
         for doc in docs {
             match Recipe::from_metadata(&doc.metadata) {
@@ -116,8 +113,8 @@ impl RecipeStore for StoreBackedRecipeStore {
         project_id: &str,
     ) -> Result<Vec<ToolSkillSummary>, RecipeStoreError> {
         let project_id_typed = parse_project_id(project_id)?;
-        let docs = load_filtered_docs(&self.store, project_id_typed, user_id, DocType::ToolSkill)
-            .await?;
+        let docs =
+            load_filtered_docs(&self.store, project_id_typed, user_id, DocType::ToolSkill).await?;
         let mut skills: Vec<ToolSkillSummary> = Vec::with_capacity(docs.len());
         for doc in docs {
             match ToolSkill::from_metadata(&doc.metadata) {
@@ -189,9 +186,8 @@ impl RecipeStore for StoreBackedRecipeStore {
                 })?;
                 Ok(Some(ToolSkillDetail {
                     id: skill.id.clone(),
-                    tool_skill: serde_json::to_value(&skill).map_err(|e| {
-                        RecipeStoreError::Internal(format!("skill serialize: {e}"))
-                    })?,
+                    tool_skill: serde_json::to_value(&skill)
+                        .map_err(|e| RecipeStoreError::Internal(format!("skill serialize: {e}")))?,
                 }))
             }
         }
@@ -203,8 +199,8 @@ impl RecipeStore for StoreBackedRecipeStore {
         project_id: &str,
     ) -> Result<Vec<ValidationQueueItem>, RecipeStoreError> {
         let project_id_typed = parse_project_id(project_id)?;
-        let docs = load_filtered_docs(&self.store, project_id_typed, user_id, DocType::Recipe)
-            .await?;
+        let docs =
+            load_filtered_docs(&self.store, project_id_typed, user_id, DocType::Recipe).await?;
         let mut items: Vec<ValidationQueueItem> = Vec::new();
 
         for doc in docs {
@@ -217,8 +213,8 @@ impl RecipeStore for StoreBackedRecipeStore {
             }
         }
 
-        let docs = load_filtered_docs(&self.store, project_id_typed, user_id, DocType::ToolSkill)
-            .await?;
+        let docs =
+            load_filtered_docs(&self.store, project_id_typed, user_id, DocType::ToolSkill).await?;
         for doc in docs {
             let skill = match ToolSkill::from_metadata(&doc.metadata) {
                 Ok(s) => s,
@@ -242,16 +238,15 @@ impl RecipeStore for StoreBackedRecipeStore {
         let project_id_typed = parse_project_id(project_id)?;
         let mut count: u32 = 0;
         for kind in [DocType::Recipe, DocType::ToolSkill] {
-            let docs = load_filtered_docs(&self.store, project_id_typed, user_id, kind)
-                .await?;
+            let docs = load_filtered_docs(&self.store, project_id_typed, user_id, kind).await?;
             for doc in docs {
                 let value = match kind {
-                    DocType::Recipe => {
-                        Recipe::from_metadata(&doc.metadata).ok().map(|r| r.validation_status)
-                    }
-                    DocType::ToolSkill => {
-                        ToolSkill::from_metadata(&doc.metadata).ok().map(|s| s.validation_status)
-                    }
+                    DocType::Recipe => Recipe::from_metadata(&doc.metadata)
+                        .ok()
+                        .map(|r| r.validation_status),
+                    DocType::ToolSkill => ToolSkill::from_metadata(&doc.metadata)
+                        .ok()
+                        .map(|s| s.validation_status),
                     _ => None,
                 };
                 if let Some(actual) = value
@@ -282,9 +277,8 @@ impl RecipeStore for StoreBackedRecipeStore {
         )
         .await?
         .ok_or_else(|| RecipeStoreError::NotFound(format!("recipe '{recipe_id}'")))?;
-        let mut recipe = Recipe::from_metadata(&doc.metadata).map_err(|e| {
-            RecipeStoreError::Invalid(format!("recipe '{recipe_id}' decode: {e}"))
-        })?;
+        let mut recipe = Recipe::from_metadata(&doc.metadata)
+            .map_err(|e| RecipeStoreError::Invalid(format!("recipe '{recipe_id}' decode: {e}")))?;
         let previous_status = status_label(recipe.validation_status.clone());
         let target = parse_status(new_status)?;
         if !is_valid_transition(&recipe.validation_status, &target) {
@@ -303,13 +297,16 @@ impl RecipeStore for StoreBackedRecipeStore {
         }
         recipe.updated_at = Utc::now();
         let mut updated_doc = doc.clone();
-        updated_doc.metadata = recipe.to_metadata().map_err(|e| {
-            RecipeStoreError::Invalid(format!("recipe '{recipe_id}' encode: {e}"))
-        })?;
+        updated_doc.metadata = recipe
+            .to_metadata()
+            .map_err(|e| RecipeStoreError::Invalid(format!("recipe '{recipe_id}' encode: {e}")))?;
         updated_doc.updated_at = recipe.updated_at;
-        self.store.save_memory_doc(&updated_doc).await.map_err(|e| {
-            RecipeStoreError::Unavailable(format!("Store::save_memory_doc recipe: {e}"))
-        })?;
+        self.store
+            .save_memory_doc(&updated_doc)
+            .await
+            .map_err(|e| {
+                RecipeStoreError::Unavailable(format!("Store::save_memory_doc recipe: {e}"))
+            })?;
         tracing::debug!(
             user_id,
             recipe_id,
@@ -345,9 +342,8 @@ impl RecipeStore for StoreBackedRecipeStore {
         )
         .await?
         .ok_or_else(|| RecipeStoreError::NotFound(format!("skill '{skill_id}'")))?;
-        let mut skill = ToolSkill::from_metadata(&doc.metadata).map_err(|e| {
-            RecipeStoreError::Invalid(format!("skill '{skill_id}' decode: {e}"))
-        })?;
+        let mut skill = ToolSkill::from_metadata(&doc.metadata)
+            .map_err(|e| RecipeStoreError::Invalid(format!("skill '{skill_id}' decode: {e}")))?;
         let previous_status = status_label(skill.validation_status.clone());
         let target = parse_status(new_status)?;
         if !is_valid_transition(&skill.validation_status, &target) {
@@ -366,13 +362,16 @@ impl RecipeStore for StoreBackedRecipeStore {
         }
         skill.updated_at = Utc::now();
         let mut updated_doc = doc.clone();
-        updated_doc.metadata = skill.to_metadata().map_err(|e| {
-            RecipeStoreError::Invalid(format!("skill '{skill_id}' encode: {e}"))
-        })?;
+        updated_doc.metadata = skill
+            .to_metadata()
+            .map_err(|e| RecipeStoreError::Invalid(format!("skill '{skill_id}' encode: {e}")))?;
         updated_doc.updated_at = skill.updated_at;
-        self.store.save_memory_doc(&updated_doc).await.map_err(|e| {
-            RecipeStoreError::Unavailable(format!("Store::save_memory_doc skill: {e}"))
-        })?;
+        self.store
+            .save_memory_doc(&updated_doc)
+            .await
+            .map_err(|e| {
+                RecipeStoreError::Unavailable(format!("Store::save_memory_doc skill: {e}"))
+            })?;
         tracing::debug!(
             user_id,
             skill_id,
@@ -464,10 +463,7 @@ fn tool_skill_summary_from(skill: &ToolSkill) -> ToolSkillSummary {
     }
 }
 
-fn validation_item_for_recipe(
-    recipe: &Recipe,
-    kind: RecipeKind,
-) -> ValidationQueueItem {
+fn validation_item_for_recipe(recipe: &Recipe, kind: RecipeKind) -> ValidationQueueItem {
     ValidationQueueItem {
         id: recipe.id.clone(),
         name: recipe.name.clone(),
@@ -563,8 +559,14 @@ fn is_valid_transition(from: &ValidationStatus, to: &ValidationStatus) -> bool {
         (from, to),
         (ValidationStatus::AutoPassed, ValidationStatus::Validated)
             | (ValidationStatus::AutoPassed, ValidationStatus::Rejected)
-            | (ValidationStatus::AutoPassed, ValidationStatus::ReviewRequested)
-            | (ValidationStatus::ReviewRequested, ValidationStatus::Rejected)
+            | (
+                ValidationStatus::AutoPassed,
+                ValidationStatus::ReviewRequested
+            )
+            | (
+                ValidationStatus::ReviewRequested,
+                ValidationStatus::Rejected
+            )
             | (ValidationStatus::UpgradeQueued, ValidationStatus::Rejected)
     )
 }
@@ -580,8 +582,14 @@ async fn load_filtered_docs(
     store
         .list_memory_docs_with_shared(project_id, user_id)
         .await
-        .map(|docs| docs.into_iter().filter(|d| d.doc_type == doc_type).collect())
-        .map_err(|e| RecipeStoreError::Unavailable(format!("Store::list_memory_docs_with_shared: {e}")))
+        .map(|docs| {
+            docs.into_iter()
+                .filter(|d| d.doc_type == doc_type)
+                .collect()
+        })
+        .map_err(|e| {
+            RecipeStoreError::Unavailable(format!("Store::list_memory_docs_with_shared: {e}"))
+        })
 }
 
 async fn find_doc(
@@ -619,7 +627,11 @@ async fn find_own_doc(
     let docs = store
         .list_memory_docs(project_id, user_id)
         .await
-        .map(|docs| docs.into_iter().filter(|d| d.doc_type == doc_type).collect::<Vec<_>>())
+        .map(|docs| {
+            docs.into_iter()
+                .filter(|d| d.doc_type == doc_type)
+                .collect::<Vec<_>>()
+        })
         .map_err(|e| RecipeStoreError::Unavailable(format!("Store::list_memory_docs: {e}")))?;
     for doc in docs {
         let metadata_id = doc
@@ -643,9 +655,7 @@ async fn find_own_doc(
 /// orchestrator cache.
 fn parse_project_id(raw: &str) -> Result<ProjectId, RecipeStoreError> {
     if raw.is_empty() {
-        return Err(RecipeStoreError::Invalid(
-            "project_id is empty".to_string(),
-        ));
+        return Err(RecipeStoreError::Invalid("project_id is empty".to_string()));
     }
     if raw.len() > 64 {
         return Err(RecipeStoreError::Invalid(format!(
@@ -692,7 +702,11 @@ mod tests {
         async fn add(&self, doc: MemoryDoc) {
             self.docs.write().await.push(doc);
         }
-        fn matches_project_user(docs: &[MemoryDoc], project_id: ProjectId, user_id: &str) -> Vec<MemoryDoc> {
+        fn matches_project_user(
+            docs: &[MemoryDoc],
+            project_id: ProjectId,
+            user_id: &str,
+        ) -> Vec<MemoryDoc> {
             docs.iter()
                 .filter(|d| d.project_id == project_id && d.user_id == user_id)
                 .cloned()
@@ -705,10 +719,7 @@ mod tests {
         async fn save_thread(&self, _thread: &Thread) -> Result<(), EngineError> {
             unimplemented!("InMemoryEngineStore is recipe-test-only scope")
         }
-        async fn load_thread(
-            &self,
-            _id: ThreadId,
-        ) -> Result<Option<Thread>, EngineError> {
+        async fn load_thread(&self, _id: ThreadId) -> Result<Option<Thread>, EngineError> {
             unimplemented!("InMemoryEngineStore is recipe-test-only scope")
         }
         async fn list_threads(
@@ -728,22 +739,13 @@ mod tests {
         async fn save_step(&self, _step: &Step) -> Result<(), EngineError> {
             unimplemented!("InMemoryEngineStore is recipe-test-only scope")
         }
-        async fn load_steps(
-            &self,
-            _thread_id: ThreadId,
-        ) -> Result<Vec<Step>, EngineError> {
+        async fn load_steps(&self, _thread_id: ThreadId) -> Result<Vec<Step>, EngineError> {
             unimplemented!("InMemoryEngineStore is recipe-test-only scope")
         }
-        async fn append_events(
-            &self,
-            _events: &[ThreadEvent],
-        ) -> Result<(), EngineError> {
+        async fn append_events(&self, _events: &[ThreadEvent]) -> Result<(), EngineError> {
             unimplemented!("InMemoryEngineStore is recipe-test-only scope")
         }
-        async fn load_events(
-            &self,
-            _thread_id: ThreadId,
-        ) -> Result<Vec<ThreadEvent>, EngineError> {
+        async fn load_events(&self, _thread_id: ThreadId) -> Result<Vec<ThreadEvent>, EngineError> {
             unimplemented!("InMemoryEngineStore is recipe-test-only scope")
         }
         async fn save_project(
@@ -764,10 +766,7 @@ mod tests {
             docs.push(doc.clone());
             Ok(())
         }
-        async fn load_memory_doc(
-            &self,
-            id: DocId,
-        ) -> Result<Option<MemoryDoc>, EngineError> {
+        async fn load_memory_doc(&self, id: DocId) -> Result<Option<MemoryDoc>, EngineError> {
             Ok(self.docs.read().await.iter().find(|d| d.id == id).cloned())
         }
         async fn list_memory_docs(
@@ -781,10 +780,7 @@ mod tests {
                 user_id,
             ))
         }
-        async fn save_lease(
-            &self,
-            _lease: &CapabilityLease,
-        ) -> Result<(), EngineError> {
+        async fn save_lease(&self, _lease: &CapabilityLease) -> Result<(), EngineError> {
             unimplemented!("InMemoryEngineStore is recipe-test-only scope")
         }
         async fn load_active_leases(
@@ -793,23 +789,13 @@ mod tests {
         ) -> Result<Vec<CapabilityLease>, EngineError> {
             unimplemented!("InMemoryEngineStore is recipe-test-only scope")
         }
-        async fn revoke_lease(
-            &self,
-            _lease_id: LeaseId,
-            _reason: &str,
-        ) -> Result<(), EngineError> {
+        async fn revoke_lease(&self, _lease_id: LeaseId, _reason: &str) -> Result<(), EngineError> {
             unimplemented!("InMemoryEngineStore is recipe-test-only scope")
         }
-        async fn save_mission(
-            &self,
-            _mission: &Mission,
-        ) -> Result<(), EngineError> {
+        async fn save_mission(&self, _mission: &Mission) -> Result<(), EngineError> {
             unimplemented!("InMemoryEngineStore is recipe-test-only scope")
         }
-        async fn load_mission(
-            &self,
-            _id: MissionId,
-        ) -> Result<Option<Mission>, EngineError> {
+        async fn load_mission(&self, _id: MissionId) -> Result<Option<Mission>, EngineError> {
             unimplemented!("InMemoryEngineStore is recipe-test-only scope")
         }
         async fn list_missions(
@@ -964,7 +950,10 @@ mod tests {
     async fn list_recipes_returns_empty_when_store_empty() {
         let (_typed, erased) = make_pair();
         let store = StoreBackedRecipeStore::open(erased);
-        let result = store.list_recipes("user1", "bootstrap").await.expect("list");
+        let result = store
+            .list_recipes("user1", "bootstrap")
+            .await
+            .expect("list");
         assert!(result.is_empty());
     }
 
@@ -977,10 +966,16 @@ mod tests {
         save_recipe_doc(&typed, project, &r).await;
         save_skill_doc(&typed, project, &s).await;
         let store = StoreBackedRecipeStore::open(erased);
-        let recipes = store.list_recipes("user1", "bootstrap").await.expect("list");
+        let recipes = store
+            .list_recipes("user1", "bootstrap")
+            .await
+            .expect("list");
         assert_eq!(recipes.len(), 1);
         assert_eq!(recipes[0].id, "r1");
-        let skills = store.list_tool_skills("user1", "bootstrap").await.expect("list");
+        let skills = store
+            .list_tool_skills("user1", "bootstrap")
+            .await
+            .expect("list");
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].id, "s1");
     }
@@ -992,9 +987,15 @@ mod tests {
         let r = sample_recipe("alpha-recipe", ValidationStatus::Validated);
         save_recipe_doc(&typed, project, &r).await;
         let store = StoreBackedRecipeStore::open(erased);
-        let beta = store.list_recipes("user1", "beta").await.expect("list beta");
+        let beta = store
+            .list_recipes("user1", "beta")
+            .await
+            .expect("list beta");
         assert!(beta.is_empty(), "alpha recipe must not leak into beta");
-        let alpha = store.list_recipes("user1", "alpha").await.expect("list alpha");
+        let alpha = store
+            .list_recipes("user1", "alpha")
+            .await
+            .expect("list alpha");
         assert_eq!(alpha.len(), 1);
         assert_eq!(alpha[0].id, "alpha-recipe");
     }
@@ -1026,14 +1027,15 @@ mod tests {
         let json = result.recipe;
         assert_eq!(json["name"], "r1");
         assert_eq!(json["trigger"]["type"], "keyword");
-        let kw = json["trigger"]["keywords"].as_array().expect("keywords array");
+        let kw = json["trigger"]["keywords"]
+            .as_array()
+            .expect("keywords array");
         let kw_vec: Vec<String> = kw
             .iter()
             .map(|v| v.as_str().unwrap_or("").to_string())
             .collect();
         assert!(
-            kw_vec.contains(&"deploy".to_string())
-                && kw_vec.contains(&"release".to_string()),
+            kw_vec.contains(&"deploy".to_string()) && kw_vec.contains(&"release".to_string()),
             "keywords must round-trip through to_metadata/from_metadata"
         );
     }
@@ -1138,7 +1140,10 @@ mod tests {
             .expect("review");
         assert_eq!(resp.previous_status, "auto_passed");
         assert_eq!(resp.new_status, "review_requested");
-        assert_eq!(resp.review_attempts, 0, "user action must not bump review_attempts");
+        assert_eq!(
+            resp.review_attempts, 0,
+            "user action must not bump review_attempts"
+        );
 
         let current = store
             .get_recipe("user1", "bootstrap", "r1")
@@ -1202,13 +1207,7 @@ mod tests {
         let (_typed, erased) = make_pair();
         let store = StoreBackedRecipeStore::open(erased);
         let result = store
-            .update_recipe_validation_status(
-                "user1",
-                "bootstrap",
-                "missing",
-                "validated",
-                None,
-            )
+            .update_recipe_validation_status("user1", "bootstrap", "missing", "validated", None)
             .await;
         assert!(matches!(result, Err(RecipeStoreError::NotFound(_))));
     }
@@ -1270,7 +1269,10 @@ mod tests {
             .await
             .expect("review");
         assert_eq!(resp.previous_status, "auto_passed");
-        assert_eq!(resp.review_attempts, 0, "user action must not bump review_attempts");
+        assert_eq!(
+            resp.review_attempts, 0,
+            "user action must not bump review_attempts"
+        );
 
         let current = store
             .get_tool_skill("user1", "bootstrap", "s1")
@@ -1278,7 +1280,10 @@ mod tests {
             .expect("get")
             .expect("some");
         assert_eq!(current.tool_skill["review_attempts"], 0);
-        assert_eq!(current.tool_skill["review_feedback"], "please add error handling");
+        assert_eq!(
+            current.tool_skill["review_feedback"],
+            "please add error handling"
+        );
     }
 
     #[tokio::test]
@@ -1306,13 +1311,7 @@ mod tests {
         // invisible and the call returns NotFound — not an access error
         // that leaks the existence of the doc.
         let result = store
-            .update_recipe_validation_status(
-                "user1",
-                "bootstrap",
-                "shared-r1",
-                "validated",
-                None,
-            )
+            .update_recipe_validation_status("user1", "bootstrap", "shared-r1", "validated", None)
             .await;
         assert!(
             matches!(result, Err(RecipeStoreError::NotFound(_))),
@@ -1448,7 +1447,13 @@ mod tests {
         save_recipe_doc(&typed, project, &r).await;
         let store = StoreBackedRecipeStore::open(erased);
 
-        for target in &["pending", "auto_passed", "review_requested", "rejected", "garbage"] {
+        for target in &[
+            "pending",
+            "auto_passed",
+            "review_requested",
+            "rejected",
+            "garbage",
+        ] {
             let result = store
                 .update_recipe_validation_status("user1", "bootstrap", "r1", target, None)
                 .await;
@@ -1467,7 +1472,13 @@ mod tests {
         save_recipe_doc(&typed, project, &r).await;
         let store = StoreBackedRecipeStore::open(erased);
 
-        for target in &["pending", "auto_passed", "validated", "review_requested", "rejected"] {
+        for target in &[
+            "pending",
+            "auto_passed",
+            "validated",
+            "review_requested",
+            "rejected",
+        ] {
             let result = store
                 .update_recipe_validation_status("user1", "bootstrap", "r1", target, None)
                 .await;

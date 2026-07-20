@@ -696,7 +696,7 @@ async fn user_message_no_profile_uses_product_live_runtime_and_persists_reply() 
         hook_security_audit_sink: None,
         turn_event_sink: None,
         recipe_lookup: None,
-            interceptor_store: None,
+        interceptor_store: None,
     })
     .expect("product-live runtime should build");
 
@@ -865,7 +865,7 @@ async fn user_message_no_profile_can_cancel_product_live_run_from_product_path()
         hook_security_audit_sink: None,
         turn_event_sink: None,
         recipe_lookup: None,
-            interceptor_store: None,
+        interceptor_store: None,
     })
     .expect("product-live runtime should build");
 
@@ -1046,7 +1046,7 @@ async fn product_live_runtime_rejects_unretained_cancellation_factory() {
         hook_security_audit_sink: None,
         turn_event_sink: None,
         recipe_lookup: None,
-            interceptor_store: None,
+        interceptor_store: None,
     }) {
         Ok(_) => panic!("product-live readiness must reject inert cancellation"),
         Err(error) => error,

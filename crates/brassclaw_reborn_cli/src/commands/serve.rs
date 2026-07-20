@@ -70,9 +70,8 @@ impl ServeCommand {
         )?;
         let boot_config = context.boot_config();
         let config_path = boot_config.home().path().join("config.toml");
-        let config_file =
-            brassclaw_reborn_config::RebornConfigFile::load(&config_path)
-                .map_err(anyhow::Error::from)?;
+        let config_file = brassclaw_reborn_config::RebornConfigFile::load(&config_path)
+            .map_err(anyhow::Error::from)?;
 
         // Tenant id is host-trusted (operator-owned config), never
         // browser-influenced. Falls back to the same default the CLI's
@@ -325,11 +324,8 @@ impl ServeCommand {
             // build input to the Postgres-backed production profile. Falls
             // back to the local-dev path when the `postgres` feature is off.
             #[cfg(feature = "postgres")]
-            let (mut runtime_input, managed_pg) = start_postgres_and_upgrade_input(
-                runtime_input,
-                context.boot_config(),
-            )
-            .await?;
+            let (mut runtime_input, managed_pg) =
+                start_postgres_and_upgrade_input(runtime_input, context.boot_config()).await?;
             #[cfg(not(feature = "postgres"))]
             let managed_pg: Option<brassclaw_embedded_postgres::ManagedPostgres> = None;
 
@@ -624,7 +620,10 @@ fn canonical_host_name(host: &str) -> &str {
 async fn start_postgres_and_upgrade_input(
     input: RebornRuntimeInput,
     boot_config: &brassclaw_reborn_config::RebornBootConfig,
-) -> anyhow::Result<(RebornRuntimeInput, Option<brassclaw_embedded_postgres::ManagedPostgres>)> {
+) -> anyhow::Result<(
+    RebornRuntimeInput,
+    Option<brassclaw_embedded_postgres::ManagedPostgres>,
+)> {
     use brassclaw_embedded_postgres::{EmbeddedPostgresConfig, ManagedPostgres};
     use brassclaw_pg::migrations;
     use brassclaw_pg::pool::build_pool;
@@ -633,17 +632,16 @@ async fn start_postgres_and_upgrade_input(
     use secrecy::SecretString as SecretMaterial;
 
     // If the operator supplied an external PG URL, use it directly.
-    let (pg_url, managed_pg) =
-        if let Ok(url) = std::env::var("BRASSCLAW_PG_URL") {
-            (url, None)
-        } else {
-            let config = EmbeddedPostgresConfig::from_reborn_home(boot_config.home().path());
-            let managed = ManagedPostgres::start(config)
-                .await
-                .map_err(|e| anyhow!("failed to start embedded Postgres: {e}"))?;
-            let url = managed.connection_url();
-            (url, Some(managed))
-        };
+    let (pg_url, managed_pg) = if let Ok(url) = std::env::var("BRASSCLAW_PG_URL") {
+        (url, None)
+    } else {
+        let config = EmbeddedPostgresConfig::from_reborn_home(boot_config.home().path());
+        let managed = ManagedPostgres::start(config)
+            .await
+            .map_err(|e| anyhow!("failed to start embedded Postgres: {e}"))?;
+        let url = managed.connection_url();
+        (url, Some(managed))
+    };
 
     let pool = build_pool(&pg_url)
         .map_err(|e| anyhow!("failed to build Postgres connection pool: {e}"))?;
@@ -654,7 +652,9 @@ async fn start_postgres_and_upgrade_input(
 
     // Carry the owner_id from the existing local-dev input so the runtime's
     // actor identity is preserved.
-    let owner_id = input.services.as_ref()
+    let owner_id = input
+        .services
+        .as_ref()
         .map(|s| s.owner_id().to_string())
         .unwrap_or_else(|| "reborn-cli".to_string());
 

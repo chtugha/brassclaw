@@ -109,12 +109,16 @@ pub(super) async fn notify_interceptor_kohai_response(
     let Some(ref id) = packet_id.0 else {
         return;
     };
-    let usage_json = usage.map(|u| json!({
-        "input_tokens": u.input_tokens,
-        "output_tokens": u.output_tokens,
-        "cache_read_input_tokens": u.cache_read_input_tokens,
-        "cache_creation_input_tokens": u.cache_creation_input_tokens,
-    }));
-    ctx.host.on_kohai_response(id, response_text, usage_json).await;
+    let usage_json = usage.map(|u| {
+        json!({
+            "input_tokens": u.input_tokens,
+            "output_tokens": u.output_tokens,
+            "cache_read_input_tokens": u.cache_read_input_tokens,
+            "cache_creation_input_tokens": u.cache_creation_input_tokens,
+        })
+    });
+    ctx.host
+        .on_kohai_response(id, response_text, usage_json)
+        .await;
     debug!(packet_id = %id, "interceptor: kohai response captured");
 }

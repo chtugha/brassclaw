@@ -68,13 +68,17 @@ pub enum MasterKeyResolveError {
 
 impl From<deadpool_postgres::PoolError> for MasterKeyResolveError {
     fn from(e: deadpool_postgres::PoolError) -> Self {
-        Self::Db { reason: e.to_string() }
+        Self::Db {
+            reason: e.to_string(),
+        }
     }
 }
 
 impl From<tokio_postgres::Error> for MasterKeyResolveError {
     fn from(e: tokio_postgres::Error) -> Self {
-        Self::Db { reason: e.to_string() }
+        Self::Db {
+            reason: e.to_string(),
+        }
     }
 }
 
@@ -131,16 +135,18 @@ pub async fn resolve_pg_master_key(
                     reason: e.to_string(),
                 }
             })?;
-            Ok(ResolvedMasterKey::Key(SecretString::from(hex.trim().to_string())))
+            Ok(ResolvedMasterKey::Key(SecretString::from(
+                hex.trim().to_string(),
+            )))
         }
 
         "aes256gcm-argon2id" => {
             // Passphrase-wrapped ceremony.
             let passphrase = read_passphrase()?;
             let plaintext_key = unwrap_key_argon2id(&wrapped_key, &passphrase)?;
-            Ok(ResolvedMasterKey::Key(SecretString::from(
-                hex::encode(plaintext_key),
-            )))
+            Ok(ResolvedMasterKey::Key(SecretString::from(hex::encode(
+                plaintext_key,
+            ))))
         }
 
         other => Err(MasterKeyResolveError::UnknownAlgorithm {
@@ -168,8 +174,7 @@ fn read_passphrase() -> Result<String, MasterKeyResolveError> {
     }
 
     // 2. BRASSCLAW_SECRETS_PASSPHRASE_FILE env var
-    let path = passphrase_file_path()
-        .ok_or(MasterKeyResolveError::PassphraseFileNotSet)?;
+    let path = passphrase_file_path().ok_or(MasterKeyResolveError::PassphraseFileNotSet)?;
     std::fs::read_to_string(&path)
         .map(|s| s.trim().to_string())
         .map_err(|e| MasterKeyResolveError::PassphraseFileRead {
@@ -222,13 +227,17 @@ pub fn wrap_master_key_argon2id(
         })?;
 
     let wrapping_key = derive_wrapping_key(passphrase.as_bytes(), &salt)?;
-    let cipher = Aes256Gcm::new_from_slice(&wrapping_key).map_err(|e| {
-        MasterKeyResolveError::Unwrap { reason: e.to_string() }
-    })?;
+    let cipher =
+        Aes256Gcm::new_from_slice(&wrapping_key).map_err(|e| MasterKeyResolveError::Unwrap {
+            reason: e.to_string(),
+        })?;
     let nonce = Nonce::from_slice(&nonce_bytes);
-    let ciphertext = cipher.encrypt(nonce, master_key_bytes).map_err(|e| {
-        MasterKeyResolveError::Unwrap { reason: format!("AES-GCM encrypt: {e}") }
-    })?;
+    let ciphertext =
+        cipher
+            .encrypt(nonce, master_key_bytes)
+            .map_err(|e| MasterKeyResolveError::Unwrap {
+                reason: format!("AES-GCM encrypt: {e}"),
+            })?;
 
     // Layout: salt[32] || nonce[12] || ciphertext
     let mut blob = Vec::with_capacity(32 + 12 + ciphertext.len());
@@ -249,9 +258,11 @@ fn unwrap_key_argon2id(
     use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::Aead};
     use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
 
-    let blob = B64.decode(wrapped_key_b64).map_err(|e| {
-        MasterKeyResolveError::Base64 { reason: e.to_string() }
-    })?;
+    let blob = B64
+        .decode(wrapped_key_b64)
+        .map_err(|e| MasterKeyResolveError::Base64 {
+            reason: e.to_string(),
+        })?;
 
     // Layout: salt[32] || nonce[12] || ciphertext
     const SALT_LEN: usize = 32;
@@ -269,13 +280,17 @@ fn unwrap_key_argon2id(
     // Derive wrapping key: Argon2id, params matching rewrap.
     let wrapping_key = derive_wrapping_key(passphrase.as_bytes(), salt)?;
 
-    let cipher = Aes256Gcm::new_from_slice(&wrapping_key).map_err(|e| {
-        MasterKeyResolveError::Unwrap { reason: e.to_string() }
-    })?;
+    let cipher =
+        Aes256Gcm::new_from_slice(&wrapping_key).map_err(|e| MasterKeyResolveError::Unwrap {
+            reason: e.to_string(),
+        })?;
     let nonce = Nonce::from_slice(nonce_bytes);
-    let plaintext = cipher.decrypt(nonce, ciphertext).map_err(|e| {
-        MasterKeyResolveError::Unwrap { reason: format!("AES-GCM decrypt: {e}") }
-    })?;
+    let plaintext =
+        cipher
+            .decrypt(nonce, ciphertext)
+            .map_err(|e| MasterKeyResolveError::Unwrap {
+                reason: format!("AES-GCM decrypt: {e}"),
+            })?;
 
     Ok(plaintext)
 }
@@ -284,24 +299,23 @@ fn unwrap_key_argon2id(
 ///
 /// Parameters must match those used in `brassclaw secrets rewrap`:
 /// m=65536, t=3, p=1 (OWASP minimum for interactive).
-fn derive_wrapping_key(
-    passphrase: &[u8],
-    salt: &[u8],
-) -> Result<[u8; 32], MasterKeyResolveError> {
+fn derive_wrapping_key(passphrase: &[u8], salt: &[u8]) -> Result<[u8; 32], MasterKeyResolveError> {
     use argon2::{Argon2, Params, Version, password_hash::SaltString};
 
-    let params = Params::new(65536, 3, 1, Some(32)).map_err(|e| {
-        MasterKeyResolveError::Unwrap { reason: format!("argon2 params: {e}") }
+    let params = Params::new(65536, 3, 1, Some(32)).map_err(|e| MasterKeyResolveError::Unwrap {
+        reason: format!("argon2 params: {e}"),
     })?;
     let argon2 = Argon2::new(argon2::Algorithm::Argon2id, Version::V0x13, params);
     let salt_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(salt);
-    let salt_str = SaltString::from_b64(&salt_b64).map_err(|e| {
-        MasterKeyResolveError::Unwrap { reason: format!("argon2 salt: {e}") }
+    let salt_str = SaltString::from_b64(&salt_b64).map_err(|e| MasterKeyResolveError::Unwrap {
+        reason: format!("argon2 salt: {e}"),
     })?;
     let mut output = [0u8; 32];
     argon2
         .hash_password_into(passphrase, salt_str.as_str().as_bytes(), &mut output)
-        .map_err(|e| MasterKeyResolveError::Unwrap { reason: format!("argon2 hash: {e}") })?;
+        .map_err(|e| MasterKeyResolveError::Unwrap {
+            reason: format!("argon2 hash: {e}"),
+        })?;
     Ok(output)
 }
 
@@ -337,11 +351,11 @@ mod tests {
         let master_key = b"this-is-a-32-byte-test-master-ke"; // 32 bytes
         let passphrase = "correct-horse-battery-staple";
 
-        let wrapped = wrap_master_key_argon2id(master_key, passphrase)
-            .expect("wrap should succeed");
+        let wrapped =
+            wrap_master_key_argon2id(master_key, passphrase).expect("wrap should succeed");
 
-        let recovered = unwrap_master_key_argon2id(&wrapped, passphrase)
-            .expect("unwrap should succeed");
+        let recovered =
+            unwrap_master_key_argon2id(&wrapped, passphrase).expect("unwrap should succeed");
 
         assert_eq!(recovered, master_key, "recovered key must equal original");
     }
@@ -354,7 +368,10 @@ mod tests {
             .expect("wrap should succeed");
 
         let result = unwrap_master_key_argon2id(&wrapped, "wrong-passphrase");
-        assert!(result.is_err(), "decryption with wrong passphrase must fail");
+        assert!(
+            result.is_err(),
+            "decryption with wrong passphrase must fail"
+        );
     }
 
     /// Two calls to wrap produce different blobs (different random salt/nonce),
@@ -364,12 +381,15 @@ mod tests {
         let master_key = b"this-is-a-32-byte-test-master-ke";
         let passphrase = "same-passphrase";
 
-        let wrapped1 = wrap_master_key_argon2id(master_key, passphrase)
-            .expect("first wrap should succeed");
-        let wrapped2 = wrap_master_key_argon2id(master_key, passphrase)
-            .expect("second wrap should succeed");
+        let wrapped1 =
+            wrap_master_key_argon2id(master_key, passphrase).expect("first wrap should succeed");
+        let wrapped2 =
+            wrap_master_key_argon2id(master_key, passphrase).expect("second wrap should succeed");
 
-        assert_ne!(wrapped1, wrapped2, "each wrap must produce a unique ciphertext");
+        assert_ne!(
+            wrapped1, wrapped2,
+            "each wrap must produce a unique ciphertext"
+        );
 
         let key1 = unwrap_master_key_argon2id(&wrapped1, passphrase).expect("unwrap 1");
         let key2 = unwrap_master_key_argon2id(&wrapped2, passphrase).expect("unwrap 2");

@@ -14,10 +14,9 @@ use brassclaw_pg::PgPool;
 use chrono::Utc;
 
 use brassclaw_turns::{
-    CheckpointStateRecord, CheckpointStateStore,
-    GetCheckpointStateRequest, LoopCheckpointStateRef, PutCheckpointStateRequest,
-    RedactedCheckpointPayload, TurnError, checkpoint_state_record_matches_request,
-    new_checkpoint_state_ref,
+    CheckpointStateRecord, CheckpointStateStore, GetCheckpointStateRequest, LoopCheckpointStateRef,
+    PutCheckpointStateRequest, RedactedCheckpointPayload, TurnError,
+    checkpoint_state_record_matches_request, new_checkpoint_state_ref,
 };
 fn map_pg_pool(e: deadpool_postgres::PoolError) -> TurnError {
     TurnError::Unavailable {
@@ -162,20 +161,17 @@ impl CheckpointStateStore for PgCheckpointStateStore {
         let kind_str_col: String = r.get(5);
         let payload_bytes: Vec<u8> = r.get(6);
 
-        let state_ref = LoopCheckpointStateRef::new(state_ref_str).map_err(|e| {
-            TurnError::Unavailable {
+        let state_ref =
+            LoopCheckpointStateRef::new(state_ref_str).map_err(|e| TurnError::Unavailable {
                 reason: format!("invalid state_ref in DB: {e}"),
+            })?;
+        let schema_id = brassclaw_turns::CheckpointSchemaId::new(schema_id_str).map_err(|e| {
+            TurnError::Unavailable {
+                reason: format!("invalid schema_id in DB: {e}"),
             }
         })?;
-        let schema_id =
-            brassclaw_turns::CheckpointSchemaId::new(schema_id_str).map_err(|e| {
-                TurnError::Unavailable {
-                    reason: format!("invalid schema_id in DB: {e}"),
-                }
-            })?;
         let kind = kind_from_str(&kind_str_col)?;
-        let schema_version_typed =
-            brassclaw_turns::RunProfileVersion::new(sv as u64);
+        let schema_version_typed = brassclaw_turns::RunProfileVersion::new(sv as u64);
 
         let payload = RedactedCheckpointPayload::new(payload_bytes)
             .map_err(|reason| TurnError::Unavailable { reason })?;

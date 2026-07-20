@@ -112,8 +112,7 @@ pub const WEBUI_V2_PATTERN_REMOVE_SKILL: &str = "/api/webchat/v2/skills/{name}";
 // for Wilson lower-bound + tier reclassifications.
 pub const WEBUI_V2_PATTERN_LIST_RECIPES: &str = "/api/webchat/v2/recipes";
 pub const WEBUI_V2_PATTERN_LIST_TOOL_SKILLS: &str = "/api/webchat/v2/tool-skills";
-pub const WEBUI_V2_PATTERN_GET_RECIPE: &str =
-    "/api/webchat/v2/recipes/{project_id}/{recipe_id}";
+pub const WEBUI_V2_PATTERN_GET_RECIPE: &str = "/api/webchat/v2/recipes/{project_id}/{recipe_id}";
 pub const WEBUI_V2_PATTERN_GET_TOOL_SKILL: &str =
     "/api/webchat/v2/tool-skills/{project_id}/{skill_id}";
 pub const WEBUI_V2_PATTERN_VALIDATE_RECIPE: &str =
@@ -131,8 +130,7 @@ pub const WEBUI_V2_PATTERN_REQUEST_TOOL_SKILL_REVIEW: &str =
 pub const WEBUI_V2_PATTERN_RECORD_RECIPE_OUTCOME: &str =
     "/api/webchat/v2/recipes/{project_id}/{recipe_id}/outcomes";
 pub const WEBUI_V2_PATTERN_VALIDATION_QUEUE: &str = "/api/webchat/v2/validation-queue";
-pub const WEBUI_V2_PATTERN_VALIDATION_QUEUE_COUNT: &str =
-    "/api/webchat/v2/validation-queue/count";
+pub const WEBUI_V2_PATTERN_VALIDATION_QUEUE_COUNT: &str = "/api/webchat/v2/validation-queue/count";
 
 /// Return the canonical [`IngressRouteDescriptor`] set for the WebChat v2
 /// beta route surface.

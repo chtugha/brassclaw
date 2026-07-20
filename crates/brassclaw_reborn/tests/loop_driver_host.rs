@@ -23,12 +23,12 @@ use brassclaw_host_api::{
 };
 use brassclaw_host_runtime::{
     CancelRuntimeWorkOutcome, CancelRuntimeWorkRequest, CapabilitySurfacePolicy, HostRuntime,
-    HostRuntimeError, HostRuntimeHealth, HostRuntimeStatus,
-    RuntimeApprovalGate, RuntimeAuthGate, RuntimeBlockedReason, RuntimeCapabilityCompleted,
-    RuntimeCapabilityFailure, RuntimeCapabilityOutcome, RuntimeCapabilityRequest,
-    RuntimeCapabilityResumeRequest, RuntimeCapabilityUnknown, RuntimeFailureKind, RuntimeGateId,
-    RuntimeProcessHandle, RuntimeResourceGate, RuntimeStatusRequest, SurfaceKind,
-    VisibleCapability, VisibleCapabilityAccess,
+    HostRuntimeError, HostRuntimeHealth, HostRuntimeStatus, RuntimeApprovalGate, RuntimeAuthGate,
+    RuntimeBlockedReason, RuntimeCapabilityCompleted, RuntimeCapabilityFailure,
+    RuntimeCapabilityOutcome, RuntimeCapabilityRequest, RuntimeCapabilityResumeRequest,
+    RuntimeCapabilityUnknown, RuntimeFailureKind, RuntimeGateId, RuntimeProcessHandle,
+    RuntimeResourceGate, RuntimeStatusRequest, SurfaceKind, VisibleCapability,
+    VisibleCapabilityAccess,
 };
 use brassclaw_loop_support::{
     CapabilityAllowSet, CapabilityResolveError, CapabilityResultWrite,
@@ -80,9 +80,7 @@ use brassclaw_threads::{
     MessageKind, MessageStatus, SessionThreadService, SummaryModelContextPolicy,
     ThreadHistoryRequest, ThreadMessageId, ThreadScope,
 };
-use brassclaw_trust::{
-    AuthorityCeiling, EffectiveTrustClass, TrustDecision, TrustProvenance,
-};
+use brassclaw_trust::{AuthorityCeiling, EffectiveTrustClass, TrustDecision, TrustProvenance};
 use brassclaw_turns::{
     AcceptedMessageRef, AgentLoopDriver, AgentLoopDriverDescriptor, AgentLoopDriverError,
     AgentLoopDriverResumeRequest, AgentLoopDriverRunRequest, CancelRunRequest, CancelRunResponse,
@@ -2064,7 +2062,7 @@ async fn default_planned_runtime_composes_no_profile_coordinator_and_profiled_ho
         hook_security_audit_sink: None,
         turn_event_sink: Some(event_sink.clone()),
         recipe_lookup: None,
-            interceptor_store: None,
+        interceptor_store: None,
     })
     .unwrap();
 
@@ -2235,7 +2233,7 @@ async fn build_runtime_host_with_optional_hooks(
         turn_event_sink: None,
         hook_dispatcher_builder_factory: hook_factory,
         recipe_lookup: None,
-            interceptor_store: None,
+        interceptor_store: None,
     })
     .unwrap();
 
@@ -2567,7 +2565,7 @@ async fn product_live_runtime_builds_when_all_required_adapters_are_present() {
         hook_security_audit_sink: None,
         turn_event_sink: None,
         recipe_lookup: None,
-            interceptor_store: None,
+        interceptor_store: None,
     })
     .expect("all product-live adapters should satisfy readiness");
 
@@ -2681,7 +2679,7 @@ async fn product_live_parts_for_gate_test(
         hook_security_audit_sink: None,
         turn_event_sink: None,
         recipe_lookup: None,
-            interceptor_store: None,
+        interceptor_store: None,
     }
 }
 

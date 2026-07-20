@@ -114,7 +114,8 @@ impl ConfigInitCommand {
 
         // §6.1 non-interactive guard: if stdin is not a TTY and boot.initialized
         // is absent, we cannot run the interactive wizard.
-        if !already_initialized && !self.yes && !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+        if !already_initialized && !self.yes && !std::io::IsTerminal::is_terminal(&std::io::stdin())
+        {
             anyhow::bail!(
                 "brassclaw: first-run setup required. \
                  Run 'brassclaw config init' before starting the service."
@@ -133,12 +134,20 @@ impl ConfigInitCommand {
         inputs.write_to_db(&pool, &self.tenant).await?;
 
         // Mark initialized.
-        save_config_key(&pool, &self.tenant, "boot.initialized", "true",
-                        ConfigWriteContext::Operator)
-            .await
-            .map_err(|e| anyhow::anyhow!("failed to set boot.initialized: {e}"))?;
+        save_config_key(
+            &pool,
+            &self.tenant,
+            "boot.initialized",
+            "true",
+            ConfigWriteContext::Operator,
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to set boot.initialized: {e}"))?;
 
-        println!("✓  BrassClaw Reborn configured for tenant `{}`.", self.tenant);
+        println!(
+            "✓  BrassClaw Reborn configured for tenant `{}`.",
+            self.tenant
+        );
         println!("   Run `brassclaw serve` to start.");
         Ok(())
     }
@@ -162,7 +171,11 @@ impl ConfigInitCommand {
                 .clone()
                 .or_else(|| default_api_key_env_for(&provider))
                 .unwrap_or_default();
-            Some(LlmInputs { provider, model, api_key_env })
+            Some(LlmInputs {
+                provider,
+                model,
+                api_key_env,
+            })
         };
 
         Ok(WizardInputs {
@@ -186,7 +199,11 @@ impl ConfigInitCommand {
             let mut line = String::new();
             stdin().read_line(&mut line)?;
             let trimmed = line.trim().to_string();
-            Ok(if trimmed.is_empty() { default.to_string() } else { trimmed })
+            Ok(if trimmed.is_empty() {
+                default.to_string()
+            } else {
+                trimmed
+            })
         }
 
         fn prompt_optional(label: &str) -> anyhow::Result<Option<String>> {
@@ -195,7 +212,11 @@ impl ConfigInitCommand {
             let mut line = String::new();
             stdin().read_line(&mut line)?;
             let trimmed = line.trim().to_string();
-            Ok(if trimmed.is_empty() || trimmed == "skip" { None } else { Some(trimmed) })
+            Ok(if trimmed.is_empty() || trimmed == "skip" {
+                None
+            } else {
+                Some(trimmed)
+            })
         }
 
         println!();
@@ -222,14 +243,24 @@ impl ConfigInitCommand {
             Some(LlmInputs {
                 provider: provider_raw,
                 model,
-                api_key_env: if api_key_env == "(none)" { String::new() } else { api_key_env },
+                api_key_env: if api_key_env == "(none)" {
+                    String::new()
+                } else {
+                    api_key_env
+                },
             })
         };
 
         // Step 2 — WebUI access.
         println!("\n  Step 2/5  WebUI Access");
-        let webui_token_env = prompt("  Bearer token env var name", "BRASSCLAW_REBORN_WEBUI_TOKEN")?;
-        let webui_user_id_env = prompt("  WebUI user-id env var name", "BRASSCLAW_REBORN_WEBUI_USER_ID")?;
+        let webui_token_env = prompt(
+            "  Bearer token env var name",
+            "BRASSCLAW_REBORN_WEBUI_TOKEN",
+        )?;
+        let webui_user_id_env = prompt(
+            "  WebUI user-id env var name",
+            "BRASSCLAW_REBORN_WEBUI_USER_ID",
+        )?;
 
         // Step 3 — Identity (tenant already set from --tenant flag).
         println!("\n  Step 3/5  Identity");
@@ -237,7 +268,10 @@ impl ConfigInitCommand {
 
         // Step 4 — Budget.
         println!("\n  Step 4/5  Budget");
-        let budget_usd = prompt("  Daily user budget in USD (0 = unlimited)", &self.budget_usd)?;
+        let budget_usd = prompt(
+            "  Daily user budget in USD (0 = unlimited)",
+            &self.budget_usd,
+        )?;
 
         // Step 5 — SSO (optional).
         println!("\n  Step 5/5  SSO (optional)");
@@ -283,26 +317,50 @@ impl WizardInputs {
 
         // Step 1: LLM provider (into llm.default.* keys).
         if let Some(llm) = &self.llm {
-            save_config_key(pool, tenant_id, "llm.default.provider_id", &llm.provider, ctx)
-                .await
-                .map_err(|e| anyhow::anyhow!("failed to write llm.default.provider_id: {e}"))?;
+            save_config_key(
+                pool,
+                tenant_id,
+                "llm.default.provider_id",
+                &llm.provider,
+                ctx,
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to write llm.default.provider_id: {e}"))?;
             save_config_key(pool, tenant_id, "llm.default.model", &llm.model, ctx)
                 .await
                 .map_err(|e| anyhow::anyhow!("failed to write llm.default.model: {e}"))?;
             if !llm.api_key_env.is_empty() {
-                save_config_key(pool, tenant_id, "llm.default.api_key_env", &llm.api_key_env, ctx)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("failed to write llm.default.api_key_env: {e}"))?;
+                save_config_key(
+                    pool,
+                    tenant_id,
+                    "llm.default.api_key_env",
+                    &llm.api_key_env,
+                    ctx,
+                )
+                .await
+                .map_err(|e| anyhow::anyhow!("failed to write llm.default.api_key_env: {e}"))?;
             }
         }
 
         // Step 2: WebUI access.
-        save_config_key(pool, tenant_id, "webui.env_token_var", &self.webui_token_env, ctx)
-            .await
-            .map_err(|e| anyhow::anyhow!("failed to write webui.env_token_var: {e}"))?;
-        save_config_key(pool, tenant_id, "webui.env_user_id_var", &self.webui_user_id_env, ctx)
-            .await
-            .map_err(|e| anyhow::anyhow!("failed to write webui.env_user_id_var: {e}"))?;
+        save_config_key(
+            pool,
+            tenant_id,
+            "webui.env_token_var",
+            &self.webui_token_env,
+            ctx,
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to write webui.env_token_var: {e}"))?;
+        save_config_key(
+            pool,
+            tenant_id,
+            "webui.env_user_id_var",
+            &self.webui_user_id_env,
+            ctx,
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to write webui.env_user_id_var: {e}"))?;
 
         // Step 3: Identity.
         save_config_key(pool, tenant_id, "identity.default_owner", &self.owner, ctx)
@@ -313,9 +371,15 @@ impl WizardInputs {
             .map_err(|e| anyhow::anyhow!("failed to write identity.tenant: {e}"))?;
 
         // Step 4: Budget.
-        save_config_key(pool, tenant_id, "budget.user_daily_usd", &self.budget_usd, ctx)
-            .await
-            .map_err(|e| anyhow::anyhow!("failed to write budget.user_daily_usd: {e}"))?;
+        save_config_key(
+            pool,
+            tenant_id,
+            "budget.user_daily_usd",
+            &self.budget_usd,
+            ctx,
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to write budget.user_daily_usd: {e}"))?;
 
         // Step 5: SSO (optional).
         if let Some(base_url) = &self.webui_base_url {

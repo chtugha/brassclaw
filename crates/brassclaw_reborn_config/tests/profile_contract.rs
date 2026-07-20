@@ -26,9 +26,8 @@ fn boot_config_resolves_home_from_env_parts() {
 fn boot_config_resolves_home_default_from_env_parts() {
     let temp = tempfile::tempdir().expect("tempdir");
 
-    let config =
-        RebornBootConfig::resolve_from_env_parts(None, Some(temp.path().into()), None)
-            .expect("boot config should resolve");
+    let config = RebornBootConfig::resolve_from_env_parts(None, Some(temp.path().into()), None)
+        .expect("boot config should resolve");
 
     let home: RebornHome = config.into_parts();
     assert!(home.path().starts_with(temp.path()));

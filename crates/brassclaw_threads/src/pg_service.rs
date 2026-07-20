@@ -20,6 +20,7 @@ use brassclaw_pg::PgPool;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::summary_artifacts::find_overlapping_summary;
 use crate::{
     AcceptInboundMessageRequest, AcceptedInboundMessage, AcceptedInboundMessageReplay,
     AppendAssistantDraftRequest, AppendCapabilityDisplayPreviewRequest,
@@ -30,10 +31,9 @@ use crate::{
     ReplayAcceptedInboundMessageRequest, SessionThreadError, SessionThreadRecord,
     SessionThreadService, SummaryArtifact, SummaryModelContextPolicy, ThreadGoal, ThreadHistory,
     ThreadHistoryRequest, ThreadMessageId, ThreadMessageRecord, ThreadScope,
-    UpdateAssistantDraftRequest, UpdateThreadGoalRequest, UpdateToolResultReferenceRequest,
-    ToolResultReferenceEnvelope,
+    ToolResultReferenceEnvelope, UpdateAssistantDraftRequest, UpdateThreadGoalRequest,
+    UpdateToolResultReferenceRequest,
 };
-use crate::summary_artifacts::find_overlapping_summary;
 
 fn map_pool(e: deadpool_postgres::PoolError) -> SessionThreadError {
     SessionThreadError::Backend(e.to_string())
@@ -113,8 +113,7 @@ impl PgSessionThreadService {
             Some(r) => {
                 let payload: Value = r.get(0);
                 let version: i64 = r.get(1);
-                let snapshot: ThreadSnapshot =
-                    serde_json::from_value(payload).map_err(map_json)?;
+                let snapshot: ThreadSnapshot = serde_json::from_value(payload).map_err(map_json)?;
                 Ok((snapshot, version))
             }
         }
@@ -253,9 +252,9 @@ impl SessionThreadService for PgSessionThreadService {
         // Write; on conflict (another racing ensure) re-read and return existing.
         if !self.write_snapshot(&new_snapshot, version).await? {
             let (s2, _) = self.read_snapshot(&thread_id).await?;
-            return s2
-                .record
-                .ok_or_else(|| SessionThreadError::Backend("thread vanished after race".to_string()));
+            return s2.record.ok_or_else(|| {
+                SessionThreadError::Backend("thread vanished after race".to_string())
+            });
         }
         // Derive title if absent using the (empty) message list — no messages yet on new thread.
         // Title derivation is a best-effort read-time operation; skip on creation.
@@ -271,11 +270,13 @@ impl SessionThreadService for PgSessionThreadService {
         self.apply(&thread_id, |mut snapshot| {
             let request = request.clone();
             async move {
-                let record = snapshot.record.as_ref().ok_or_else(|| {
-                    SessionThreadError::UnknownThread {
-                        thread_id: request.thread_id.clone(),
-                    }
-                })?;
+                let record =
+                    snapshot
+                        .record
+                        .as_ref()
+                        .ok_or_else(|| SessionThreadError::UnknownThread {
+                            thread_id: request.thread_id.clone(),
+                        })?;
                 if record.scope != request.scope {
                     return Err(SessionThreadError::ThreadScopeMismatch {
                         thread_id: request.thread_id.clone(),
@@ -285,29 +286,30 @@ impl SessionThreadService for PgSessionThreadService {
                 // Idempotency check
                 if let (Some(sbid), Some(eid)) =
                     (&request.source_binding_id, &request.external_event_id)
-                    && let Some(entry) = snapshot.inbound_idempotency.iter().find(|e| {
-                        e.source_binding_id == *sbid && e.external_event_id == *eid
-                    })
+                    && let Some(entry) = snapshot
+                        .inbound_idempotency
+                        .iter()
+                        .find(|e| e.source_binding_id == *sbid && e.external_event_id == *eid)
                 {
-                        let message_id = ThreadMessageId::from_uuid(
-                            uuid::Uuid::parse_str(&entry.message_id)
-                                .map_err(|e| SessionThreadError::Backend(e.to_string()))?,
-                        );
-                        let seq = snapshot
-                            .messages
-                            .iter()
-                            .find(|m| m.message_id == message_id)
-                            .map(|m| m.sequence)
-                            .unwrap_or(0);
-                        return Ok((
-                            AcceptedInboundMessage {
-                                thread_id: request.thread_id,
-                                message_id,
-                                sequence: seq,
-                                idempotent_replay: true,
-                            },
-                            snapshot,
-                        ));
+                    let message_id = ThreadMessageId::from_uuid(
+                        uuid::Uuid::parse_str(&entry.message_id)
+                            .map_err(|e| SessionThreadError::Backend(e.to_string()))?,
+                    );
+                    let seq = snapshot
+                        .messages
+                        .iter()
+                        .find(|m| m.message_id == message_id)
+                        .map(|m| m.sequence)
+                        .unwrap_or(0);
+                    return Ok((
+                        AcceptedInboundMessage {
+                            thread_id: request.thread_id,
+                            message_id,
+                            sequence: seq,
+                            idempotent_replay: true,
+                        },
+                        snapshot,
+                    ));
                 }
 
                 let message_id = Self::new_message_id();
@@ -582,8 +584,7 @@ impl SessionThreadService for PgSessionThreadService {
                 let message_id = Self::new_message_id();
                 let sequence = snapshot.next_sequence + 1;
                 snapshot.next_sequence = sequence;
-                let content_str = serde_json::to_string(&request.preview)
-                    .unwrap_or_default();
+                let content_str = serde_json::to_string(&request.preview).unwrap_or_default();
                 let message = ThreadMessageRecord {
                     message_id,
                     thread_id: request.thread_id,
@@ -835,10 +836,7 @@ impl SessionThreadService for PgSessionThreadService {
         true
     }
 
-    async fn resolve_scope(
-        &self,
-        thread_id: ThreadId,
-    ) -> Result<ThreadScope, SessionThreadError> {
+    async fn resolve_scope(&self, thread_id: ThreadId) -> Result<ThreadScope, SessionThreadError> {
         let (snapshot, _) = self.read_snapshot(&thread_id).await?;
         snapshot
             .record
@@ -854,9 +852,12 @@ impl SessionThreadService for PgSessionThreadService {
         self.apply(&thread_id, |mut snapshot| {
             let request = request.clone();
             async move {
-                let record = snapshot.record.as_mut().ok_or(SessionThreadError::UnknownThread {
-                    thread_id: request.thread_id,
-                })?;
+                let record = snapshot
+                    .record
+                    .as_mut()
+                    .ok_or(SessionThreadError::UnknownThread {
+                        thread_id: request.thread_id,
+                    })?;
                 let goal = request.goal;
                 record.goal = Some(goal.clone());
                 Ok((goal, snapshot))
@@ -948,7 +949,10 @@ impl SessionThreadService for PgSessionThreadService {
                 threads.push(record);
             }
         }
-        Ok(ListThreadsForScopeResponse { threads, next_cursor: None })
+        Ok(ListThreadsForScopeResponse {
+            threads,
+            next_cursor: None,
+        })
     }
 }
 
@@ -973,9 +977,19 @@ fn check_thread_scope(
 }
 
 fn is_model_context_visible(message: &ThreadMessageRecord) -> bool {
-    matches!(message.kind, MessageKind::User | MessageKind::Assistant | MessageKind::ToolResultReference | MessageKind::CapabilityDisplayPreview)
-        && !matches!(message.status, MessageStatus::Redacted | MessageStatus::Deleted | MessageStatus::Draft | MessageStatus::Superseded)
-        && message.content.is_some()
+    matches!(
+        message.kind,
+        MessageKind::User
+            | MessageKind::Assistant
+            | MessageKind::ToolResultReference
+            | MessageKind::CapabilityDisplayPreview
+    ) && !matches!(
+        message.status,
+        MessageStatus::Redacted
+            | MessageStatus::Deleted
+            | MessageStatus::Draft
+            | MessageStatus::Superseded
+    ) && message.content.is_some()
 }
 
 fn context_messages_from_snapshot(
@@ -987,7 +1001,9 @@ fn context_messages_from_snapshot(
     // the most recent compacted window, mirroring the in_memory impl.
     let replacement_summaries: Vec<&SummaryArtifact> = summaries
         .iter()
-        .filter(|s| s.model_context_policy == Some(SummaryModelContextPolicy::ReplaceRangeWhenSelected))
+        .filter(|s| {
+            s.model_context_policy == Some(SummaryModelContextPolicy::ReplaceRangeWhenSelected)
+        })
         .collect();
 
     let mut skip_through: u64 = 0;

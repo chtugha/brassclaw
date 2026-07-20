@@ -6,10 +6,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use brassclaw_interceptor::{
-    CapturedPrompt, ForensicPacket, InterceptorStore, KohaiUsage, NoopInterceptorStore,
-    PacketId, TokenAccountingSnapshot,
-};
 use brassclaw_events::{
     DurableEventLog, EventCursor, EventStreamKey, ReadScope, SecurityAuditSink,
 };
@@ -21,6 +17,10 @@ use brassclaw_hooks::middleware::{
     HookedLoopTranscriptPort,
 };
 use brassclaw_host_api::ExtensionId;
+use brassclaw_interceptor::{
+    CapturedPrompt, ForensicPacket, InterceptorStore, KohaiUsage, NoopInterceptorStore, PacketId,
+    TokenAccountingSnapshot,
+};
 use brassclaw_loop_support::{
     CapabilityResolveError, CapabilitySurfaceProfileFilter, CapabilitySurfaceProfileResolver,
     EmptyLoopCapabilityPort, GuardedSystemInferencePort, HostIdentityContextSource, HostInputQueue,

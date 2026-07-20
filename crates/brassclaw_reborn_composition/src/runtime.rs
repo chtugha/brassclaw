@@ -286,32 +286,31 @@ async fn build_trigger_poller_services(
 ) -> Result<TriggerPollerServices, RebornRuntimeError> {
     let authorizer = build_trigger_fire_authorizer(authorizer_config, access_checker, tenant_id)?;
     let conversations = local_runtime
-            .durable_trigger_conversation_services()
-            .await
-            .map_err(|error| RebornRuntimeError::InvalidArgument {
-                reason: format!("trigger conversation services unavailable: {error}"),
-            })?;
+        .durable_trigger_conversation_services()
+        .await
+        .map_err(|error| RebornRuntimeError::InvalidArgument {
+            reason: format!("trigger conversation services unavailable: {error}"),
+        })?;
+    #[cfg(any(test, feature = "test-support"))]
+    let pairing_service: Arc<dyn brassclaw_conversations::ConversationActorPairingService> =
+        Arc::new(conversations.clone());
+    let TriggerPollerServicesInner {
+        materializer,
+        trusted_submitter,
+    } = build_trigger_poller_services_from_conversation_services(
+        conversations.clone(),
+        conversations,
+        turn_coordinator,
+        thread_service,
+        default_agent_id,
+        authorizer,
+    );
+    Ok(TriggerPollerServices {
+        materializer,
+        trusted_submitter,
         #[cfg(any(test, feature = "test-support"))]
-        let pairing_service: Arc<
-            dyn brassclaw_conversations::ConversationActorPairingService,
-        > = Arc::new(conversations.clone());
-        let TriggerPollerServicesInner {
-            materializer,
-            trusted_submitter,
-        } = build_trigger_poller_services_from_conversation_services(
-            conversations.clone(),
-            conversations,
-            turn_coordinator,
-            thread_service,
-            default_agent_id,
-            authorizer,
-        );
-        Ok(TriggerPollerServices {
-            materializer,
-            trusted_submitter,
-            #[cfg(any(test, feature = "test-support"))]
-            pairing_service,
-        })
+        pairing_service,
+    })
 }
 
 fn trigger_poller_authorization_required_error() -> RebornRuntimeError {
@@ -413,9 +412,7 @@ impl LocalDevApprovalTurnRunLocator {
     async fn snapshot(
         &self,
     ) -> Result<TurnPersistenceSnapshot, brassclaw_product_workflow::ProductWorkflowError> {
-        {
-            Ok(self.turn_state.persistence_snapshot())
-        }
+        { Ok(self.turn_state.persistence_snapshot()) }
     }
 }
 
@@ -653,11 +650,11 @@ impl RebornRuntime {
         >,
     > {
         let pool = self.services.pg_pool.as_ref()?;
-        let store =
-            brassclaw_reborn_identity::PgRebornIdentityStore::new((**pool).clone());
-        Some(Ok(
-            Arc::new(store) as Arc<dyn brassclaw_reborn_identity::RebornIdentityResolver>
-        ))
+        let store = brassclaw_reborn_identity::PgRebornIdentityStore::new((**pool).clone());
+        Some(Ok(Arc::new(store)
+            as Arc<
+                dyn brassclaw_reborn_identity::RebornIdentityResolver,
+            >))
     }
 
     pub(crate) fn webui_thread_service(&self) -> Arc<dyn SessionThreadService> {

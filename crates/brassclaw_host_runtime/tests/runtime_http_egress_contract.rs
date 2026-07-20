@@ -177,9 +177,6 @@ fn tool_call_http_egress_returns_network_error_when_partial_response_is_missing(
     assert_eq!(error.response_bytes(), 5);
 }
 
-
-
-
 #[tokio::test]
 async fn host_http_egress_rejects_path_placeholder_value_breaking_chars_before_transport() {
     for material in [
@@ -295,20 +292,6 @@ async fn host_http_egress_rejects_path_placeholder_target_url_errors_before_tran
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 #[tokio::test]
 async fn host_http_egress_forwards_timeout_to_network() {
     let network = RecordingNetwork::ok(NetworkHttpResponse {
@@ -346,7 +329,6 @@ async fn host_http_egress_forwards_timeout_to_network() {
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].timeout_ms, Some(250));
 }
-
 
 #[tokio::test]
 async fn host_http_egress_preserves_request_and_response_byte_accounting() {
@@ -678,7 +660,6 @@ async fn production_host_http_egress_rejects_cross_capability_staged_credentials
     ));
     assert!(network_recorder.lock().unwrap().is_empty());
 }
-
 
 #[tokio::test]
 async fn mcp_http_adapter_borrows_real_host_staged_network_policy() {
@@ -1266,8 +1247,6 @@ async fn host_http_egress_consumes_staged_policy_when_request_validation_fails()
     assert!(matches!(error, RuntimeHttpEgressError::Request { .. }));
     assert!(network_recorder.lock().unwrap().is_empty());
 }
-
-
 
 #[tokio::test]
 async fn host_http_egress_saves_sanitized_response_body_to_store() {
@@ -2023,16 +2002,6 @@ async fn host_http_egress_saves_redacted_response_body() {
     assert_eq!(writes.len(), 1);
     assert_eq!(writes[0].body, b"upstream echoed [REDACTED]".to_vec());
 }
-
-
-
-
-
-
-
-
-
-
 
 #[derive(Clone)]
 struct RecordingNetwork {

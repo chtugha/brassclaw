@@ -21,11 +21,15 @@ use crate::{
 };
 
 fn map_pool(e: deadpool_postgres::PoolError) -> CapabilityLeaseError {
-    CapabilityLeaseError::Persistence { reason: e.to_string() }
+    CapabilityLeaseError::Persistence {
+        reason: e.to_string(),
+    }
 }
 
 fn map_pg(e: tokio_postgres::Error) -> CapabilityLeaseError {
-    CapabilityLeaseError::Persistence { reason: e.to_string() }
+    CapabilityLeaseError::Persistence {
+        reason: e.to_string(),
+    }
 }
 
 fn status_str(status: CapabilityLeaseStatus) -> &'static str {
@@ -38,13 +42,15 @@ fn status_str(status: CapabilityLeaseStatus) -> &'static str {
 }
 
 fn lease_from_value(payload: Value) -> Result<CapabilityLease, CapabilityLeaseError> {
-    serde_json::from_value(payload)
-        .map_err(|e| CapabilityLeaseError::Persistence { reason: e.to_string() })
+    serde_json::from_value(payload).map_err(|e| CapabilityLeaseError::Persistence {
+        reason: e.to_string(),
+    })
 }
 
 fn lease_to_value(lease: &CapabilityLease) -> Result<Value, CapabilityLeaseError> {
-    serde_json::to_value(lease)
-        .map_err(|e| CapabilityLeaseError::Persistence { reason: e.to_string() })
+    serde_json::to_value(lease).map_err(|e| CapabilityLeaseError::Persistence {
+        reason: e.to_string(),
+    })
 }
 
 /// Postgres-backed [`CapabilityLeaseStore`].
@@ -171,7 +177,11 @@ impl CapabilityLeaseStore for PgCapabilityLeaseStore {
             .await
     }
 
-    async fn get(&self, scope: &ResourceScope, lease_id: CapabilityGrantId) -> Option<CapabilityLease> {
+    async fn get(
+        &self,
+        scope: &ResourceScope,
+        lease_id: CapabilityGrantId,
+    ) -> Option<CapabilityLease> {
         self.read_lease(scope, lease_id).await.ok().flatten()
     }
 

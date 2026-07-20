@@ -11,6 +11,7 @@ use brassclaw_authorization::{
     TrustAwareCapabilityDispatchAuthorizer,
 };
 use brassclaw_events::{DurableEventSink, EventStreamKey, ReadScope, RuntimeEventKind};
+use brassclaw_events::{InMemoryDurableAuditLog, InMemoryDurableEventLog};
 use brassclaw_extensions::{
     ExtensionManifest, ExtensionPackage, ExtensionRegistry, ManifestSource,
 };
@@ -25,7 +26,6 @@ use brassclaw_processes::{
     ProcessExecutionResult, ProcessExecutor, ProcessManager, ProcessServices, ProcessStart,
     ProcessStatus, ProcessStore,
 };
-use brassclaw_events::{InMemoryDurableAuditLog, InMemoryDurableEventLog};
 use brassclaw_reborn_event_store::RebornEventStores;
 use brassclaw_resources::InMemoryResourceGovernor;
 use brassclaw_run_state::{

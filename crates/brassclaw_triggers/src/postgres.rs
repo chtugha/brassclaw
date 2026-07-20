@@ -37,7 +37,9 @@ impl PostgresTriggerRepository {
     /// Schema is now managed by `brassclaw_pg::run_migrations()` (V021).
     /// This method is a no-op and will be removed once all call sites are
     /// updated to call `brassclaw_pg::run_migrations()` during service startup.
-    #[deprecated(note = "DDL moved to brassclaw_pg V021; call brassclaw_pg::run_migrations() instead")]
+    #[deprecated(
+        note = "DDL moved to brassclaw_pg V021; call brassclaw_pg::run_migrations() instead"
+    )]
     pub async fn run_migrations(&self) -> Result<(), TriggerError> {
         Ok(())
     }
@@ -954,4 +956,3 @@ fn backend_error(operation: &str, error: impl std::fmt::Display) -> TriggerError
         reason: format!("{operation}: {error}"),
     }
 }
-

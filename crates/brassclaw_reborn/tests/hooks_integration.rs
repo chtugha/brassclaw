@@ -45,8 +45,7 @@ use brassclaw_hooks::installed_hook::PredicateBackedBeforeCapabilityHook;
 use brassclaw_hooks::kinds::observer::NoteCategory;
 use brassclaw_hooks::ordering::HookPhase;
 use brassclaw_hooks::points::{
-    BeforeCapabilityHookContext, EventTriggeredHookContext,
-    ObserverHookContext,
+    BeforeCapabilityHookContext, EventTriggeredHookContext, ObserverHookContext,
 };
 use brassclaw_hooks::predicate::{
     CapabilityPredicate, HookPredicateSpec, OnExceededAction, ValueOrRateBound,
@@ -892,8 +891,6 @@ fn expect_denied_with(outcome: CapabilityOutcome, expected_kind: &str) {
         other => panic!("expected CapabilityOutcome::Denied, got {other:?}"),
     }
 }
-
-
 
 async fn wait_for_seen_events(seen: &Arc<SeenLog>, expected: usize) -> Vec<SeenRuntimeEvent> {
     let deadline = Instant::now() + Duration::from_secs(3);

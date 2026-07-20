@@ -4,6 +4,7 @@ use brassclaw_event_projections::{
     AuditProjectionRequest, AuditProjectionService, AuditProjectionStage, DurableMemoryAuditSink,
     ProjectionScope, ReplayAuditProjectionService,
 };
+use brassclaw_events::InMemoryDurableAuditLog;
 use brassclaw_events::{AuditSink, DurableAuditSink};
 use brassclaw_filesystem::{InMemoryBackend, RootFilesystem};
 use brassclaw_host_api::{
@@ -16,7 +17,6 @@ use brassclaw_memory::{
     MemoryBackendFilesystemAdapter, MemoryContext, MemoryDocumentPath, MemoryDocumentScope,
     MemorySearchRequest, RepositoryMemoryBackend, content_sha256,
 };
-use brassclaw_events::InMemoryDurableAuditLog;
 
 #[tokio::test]
 async fn memory_write_index_and_search_project_metadata_only_from_durable_audit_log() {
@@ -262,4 +262,3 @@ fn thread_resource_scope() -> ResourceScope {
         invocation_id: InvocationId::new(),
     }
 }
-

@@ -38,12 +38,12 @@ fn map_error(e: brassclaw_embeddings::EmbeddingError) -> MemoryEmbeddingError {
     match e {
         E::HttpError(s) => MemoryEmbeddingError::ProviderUnavailable { reason: s },
         E::InvalidResponse(s) => MemoryEmbeddingError::ProviderUnavailable { reason: s },
-        E::RateLimited { .. } => {
-            MemoryEmbeddingError::ProviderUnavailable { reason: "rate limited".into() }
-        }
-        E::AuthFailed => {
-            MemoryEmbeddingError::ProviderUnavailable { reason: "authentication failed".into() }
-        }
+        E::RateLimited { .. } => MemoryEmbeddingError::ProviderUnavailable {
+            reason: "rate limited".into(),
+        },
+        E::AuthFailed => MemoryEmbeddingError::ProviderUnavailable {
+            reason: "authentication failed".into(),
+        },
         E::TextTooLong { length, max } => MemoryEmbeddingError::TextTooLong { length, max },
         E::InvalidUrl { url, reason } => MemoryEmbeddingError::ProviderUnavailable {
             reason: format!("invalid URL {url}: {reason}"),
@@ -95,10 +95,7 @@ impl brassclaw_memory::EmbeddingProvider for EmbeddingRoleAdapter {
         self.inner.embed(text).await.map_err(map_error)
     }
 
-    async fn embed_batch(
-        &self,
-        texts: &[String],
-    ) -> Result<Vec<Vec<f32>>, MemoryEmbeddingError> {
+    async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, MemoryEmbeddingError> {
         self.inner.embed_batch(texts).await.map_err(map_error)
     }
 }

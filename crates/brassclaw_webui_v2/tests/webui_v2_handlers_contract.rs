@@ -40,10 +40,10 @@ use brassclaw_product_workflow::{
     RebornSetupExtensionResponse, RebornStreamEventsRequest, RebornStreamEventsResponse,
     RebornSubmitTurnResponse, RebornTimelineRequest, RebornTimelineResponse,
     ReductionRuleConfigView, ReductionRulesRequest, ReductionRulesResponse, RuleType,
-    SetActiveLlmRequest, TokenSettingsResponse, UpdateTokenSettingsRequest, UpsertLlmProviderRequest,
-    WebUiAuthenticatedCaller, WebUiCancelRunRequest, WebUiCreateThreadRequest,
-    WebUiListAutomationsRequest, WebUiListThreadsRequest, WebUiResolveGateRequest,
-    WebUiSendMessageRequest, WebUiSetupExtensionRequest,
+    SetActiveLlmRequest, TokenSettingsResponse, UpdateTokenSettingsRequest,
+    UpsertLlmProviderRequest, WebUiAuthenticatedCaller, WebUiCancelRunRequest,
+    WebUiCreateThreadRequest, WebUiListAutomationsRequest, WebUiListThreadsRequest,
+    WebUiResolveGateRequest, WebUiSendMessageRequest, WebUiSetupExtensionRequest,
 };
 use brassclaw_threads::SessionThreadRecord;
 use brassclaw_turns::{
@@ -105,7 +105,13 @@ struct StubServices {
     upsert_llm_provider_calls: Mutex<Vec<String>>,
     delete_llm_provider_calls: Mutex<Vec<String>>,
     #[allow(clippy::type_complexity)]
-    set_active_llm_calls: Mutex<Vec<(String, Option<String>, Option<brassclaw_product_workflow::ProviderRole>)>>,
+    set_active_llm_calls: Mutex<
+        Vec<(
+            String,
+            Option<String>,
+            Option<brassclaw_product_workflow::ProviderRole>,
+        )>,
+    >,
     test_llm_connection_calls: Mutex<Vec<String>>,
     list_llm_models_calls: Mutex<Vec<String>>,
     next_create_thread_error: Mutex<Option<RebornServicesError>>,
@@ -124,8 +130,7 @@ struct StubServices {
         Mutex<Option<Result<AuthorReductionRuleResponse, RebornServicesError>>>,
     get_token_settings_calls: Mutex<Vec<(WebUiAuthenticatedCaller, String)>>,
     update_token_settings_calls: Mutex<Vec<(String, UpdateTokenSettingsRequest)>>,
-    next_token_settings_response:
-        Mutex<Option<Result<TokenSettingsResponse, RebornServicesError>>>,
+    next_token_settings_response: Mutex<Option<Result<TokenSettingsResponse, RebornServicesError>>>,
 }
 
 impl StubServices {
@@ -544,10 +549,11 @@ impl RebornServicesApi for StubServices {
         _caller: WebUiAuthenticatedCaller,
         request: SetActiveLlmRequest,
     ) -> Result<LlmConfigSnapshot, RebornServicesError> {
-        self.set_active_llm_calls
-            .lock()
-            .expect("lock")
-            .push((request.provider_id.clone(), request.model.clone(), request.role));
+        self.set_active_llm_calls.lock().expect("lock").push((
+            request.provider_id.clone(),
+            request.model.clone(),
+            request.role,
+        ));
         Ok(llm_snapshot(&request.provider_id))
     }
 
@@ -3270,7 +3276,10 @@ async fn get_provider_token_settings_dispatches_through_facade() {
         .expect("lock")
         .clone();
     assert_eq!(calls.len(), 1, "facade called exactly once");
-    assert_eq!(calls[0].1, "anthropic", "provider_id must be threaded from path to facade");
+    assert_eq!(
+        calls[0].1, "anthropic",
+        "provider_id must be threaded from path to facade"
+    );
 }
 
 #[tokio::test]
@@ -3308,7 +3317,10 @@ async fn update_provider_token_settings_round_trips_body_and_provider_id() {
         .expect("lock")
         .clone();
     assert_eq!(calls.len(), 1, "facade called exactly once");
-    assert_eq!(calls[0].0, "ollama", "provider_id must be threaded from path to facade");
+    assert_eq!(
+        calls[0].0, "ollama",
+        "provider_id must be threaded from path to facade"
+    );
     assert_eq!(calls[0].1.conversation_history, Some(6000));
     assert_eq!(calls[0].1.max_output, Some(2048));
     assert_eq!(calls[0].1.cache_retention.as_deref(), Some("short"));

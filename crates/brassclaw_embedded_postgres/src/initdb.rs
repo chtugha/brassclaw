@@ -62,12 +62,13 @@ pub async fn run_initdb(
 
     // Skip if the cluster already exists.
     if data_dir.exists() {
-        let mut entries = tokio::fs::read_dir(data_dir).await.map_err(|e| {
-            EmbeddedPostgresError::Io {
-                path: data_dir.display().to_string(),
-                reason: e.to_string(),
-            }
-        })?;
+        let mut entries =
+            tokio::fs::read_dir(data_dir)
+                .await
+                .map_err(|e| EmbeddedPostgresError::Io {
+                    path: data_dir.display().to_string(),
+                    reason: e.to_string(),
+                })?;
         if entries.next_entry().await.ok().flatten().is_some() {
             debug!(
                 data_dir = %data_dir.display(),
@@ -77,12 +78,12 @@ pub async fn run_initdb(
         }
     }
 
-    tokio::fs::create_dir_all(data_dir).await.map_err(|e| {
-        EmbeddedPostgresError::Io {
+    tokio::fs::create_dir_all(data_dir)
+        .await
+        .map_err(|e| EmbeddedPostgresError::Io {
             path: data_dir.display().to_string(),
             reason: e.to_string(),
-        }
-    })?;
+        })?;
 
     let initdb = pg_bin_dir.join("initdb");
     let output = Command::new(&initdb)
@@ -105,12 +106,13 @@ pub async fn run_initdb(
 
     // Append tuning to postgresql.conf (the file was created by initdb above).
     let conf_path = data_dir.join("postgresql.conf");
-    let existing_conf = tokio::fs::read_to_string(&conf_path).await.map_err(|e| {
-        EmbeddedPostgresError::Io {
-            path: conf_path.display().to_string(),
-            reason: e.to_string(),
-        }
-    })?;
+    let existing_conf =
+        tokio::fs::read_to_string(&conf_path)
+            .await
+            .map_err(|e| EmbeddedPostgresError::Io {
+                path: conf_path.display().to_string(),
+                reason: e.to_string(),
+            })?;
     // Only append if the tuning block is not already present (idempotency guard).
     if !existing_conf.contains("brassclaw tuning") {
         let appended = format!(
@@ -127,7 +129,9 @@ pub async fn run_initdb(
 
     // Append loopback trust auth to pg_hba.conf.
     let hba_path = data_dir.join("pg_hba.conf");
-    let existing = tokio::fs::read_to_string(&hba_path).await.unwrap_or_default();
+    let existing = tokio::fs::read_to_string(&hba_path)
+        .await
+        .unwrap_or_default();
     let entry = pg_hba_entry(config);
     if !existing.contains(&entry) {
         let mut updated = existing;
@@ -173,12 +177,12 @@ pub async fn install_pgvector(
     let ext_dst = pg_base.join("share").join("extension");
 
     for dir in [&lib_dst, &ext_dst] {
-        tokio::fs::create_dir_all(dir).await.map_err(|e| {
-            EmbeddedPostgresError::Io {
+        tokio::fs::create_dir_all(dir)
+            .await
+            .map_err(|e| EmbeddedPostgresError::Io {
                 path: dir.display().to_string(),
                 reason: e.to_string(),
-            }
-        })?;
+            })?;
     }
 
     // Check that the pgvector control file is present in the source tree.
@@ -206,12 +210,13 @@ pub async fn install_pgvector(
     }
 
     // Copy SQL script files (vector--*.sql).
-    let mut dir_entries = tokio::fs::read_dir(&ext_src).await.map_err(|e| {
-        EmbeddedPostgresError::Io {
-            path: ext_src.display().to_string(),
-            reason: e.to_string(),
-        }
-    })?;
+    let mut dir_entries =
+        tokio::fs::read_dir(&ext_src)
+            .await
+            .map_err(|e| EmbeddedPostgresError::Io {
+                path: ext_src.display().to_string(),
+                reason: e.to_string(),
+            })?;
     while let Ok(Some(entry)) = dir_entries.next_entry().await {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();

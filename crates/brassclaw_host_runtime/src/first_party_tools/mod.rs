@@ -339,8 +339,9 @@ impl BuiltinFirstPartyTools {
         mut self,
         embedding_provider: Arc<dyn brassclaw_memory::EmbeddingProvider>,
     ) -> Self {
-        self.memory_state = memory::MemoryCapabilityState::with_embedding_provider(embedding_provider)
-            .with_chat_memory_writer_opt(self.memory_state.take_chat_memory_writer());
+        self.memory_state =
+            memory::MemoryCapabilityState::with_embedding_provider(embedding_provider)
+                .with_chat_memory_writer_opt(self.memory_state.take_chat_memory_writer());
         self
     }
 

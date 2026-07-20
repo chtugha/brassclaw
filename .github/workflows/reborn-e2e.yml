@@ -16,7 +16,6 @@ on:
       - "docs/reborn/**"
       - "scripts/reborn-e2e-rust.sh"
       - "tests/e2e/**"
-      - "build.rs"
       - "providers.json"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -29,7 +28,6 @@ on:
       - "docs/reborn/**"
       - "scripts/reborn-e2e-rust.sh"
       - "tests/e2e/**"
-      - "build.rs"
       - "providers.json"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -44,7 +42,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build brassclaw (libsql)
+    name: Build brassclaw
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -63,8 +61,8 @@ jobs:
           key: reborn-e2e-build
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
-      - name: Build brassclaw with libSQL
-        run: cargo build --no-default-features --features libsql
+      - name: Build brassclaw
+        run: cargo build --features libsql
 
       - name: Upload binary
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
