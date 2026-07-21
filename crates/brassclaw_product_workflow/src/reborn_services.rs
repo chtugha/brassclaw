@@ -62,6 +62,7 @@ mod extensions;
 mod lifecycle_setup;
 
 type CacheInvalidatorFn = Arc<dyn Fn(&str, &str) + Send + Sync>;
+mod interceptor_config;
 mod llm_config;
 mod types;
 
@@ -101,6 +102,10 @@ pub trait CapabilityPermissionStore: Send + Sync {
 }
 
 pub use error::{RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind};
+pub use interceptor_config::{
+    InterceptorConfigService, InterceptorConfigServiceError, InterceptorConfigSnapshot,
+    UpdateInterceptorConfigRequest, interceptor_config_unavailable, map_interceptor_config_error,
+};
 pub use llm_config::{
     CodexLoginStart, LlmActiveSelection, LlmConfigService, LlmConfigServiceError,
     LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult, LlmProviderView,
@@ -1163,6 +1168,44 @@ pub trait RebornServicesApi: Send + Sync {
             false,
         ))
     }
+
+    // ── Interceptor configuration (Phase 5.5) ─────────────────
+    //
+    // Defaults return "service unavailable" so facades without an
+    // interceptor config service wired inherit a safe surface.
+
+    /// Get the current interceptor configuration snapshot.
+    async fn get_interceptor_config(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+
+    /// Update editable interceptor configuration fields.
+    async fn update_interceptor_config(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: UpdateInterceptorConfigRequest,
+    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+
+    /// Reassemble the static base prompt (Part A) from validated components.
+    async fn reassemble_interceptor_base_prompt(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
+
+    /// Pre-warm the Sempai KV cache by sending the base prompt.
+    async fn prewarm_interceptor(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
+        Err(interceptor_config::interceptor_config_unavailable())
+    }
 }
 
 /// Default facade implementation composed at the WebUI boundary.
@@ -1212,6 +1255,9 @@ pub struct RebornServices {
     /// `/tool-skills/*` plus the validation queue. When unwired,
     /// the trait defaults above return `501`.
     recipe_store: Option<Arc<dyn crate::recipes::RecipeStore>>,
+    /// Interceptor configuration service backing `/api/interceptor/*`.
+    /// When unwired, the trait defaults above return `503`.
+    interceptor_config: Option<Arc<dyn InterceptorConfigService>>,
 }
 
 impl RebornServices {
@@ -1250,6 +1296,7 @@ impl RebornServices {
             live_total_input_setter: None,
             live_inline_control_setter: None,
             recipe_store: None,
+            interceptor_config: None,
         }
     }
 
@@ -1465,6 +1512,15 @@ impl RebornServices {
     /// stub responses.
     pub fn with_recipe_store(mut self, store: Arc<dyn crate::recipes::RecipeStore>) -> Self {
         self.recipe_store = Some(store);
+        self
+    }
+
+    /// Wire the interceptor configuration service.
+    pub fn with_interceptor_config_service(
+        mut self,
+        service: Arc<dyn InterceptorConfigService>,
+    ) -> Self {
+        self.interceptor_config = Some(service);
         self
     }
 
@@ -3335,6 +3391,55 @@ impl RebornServicesApi for RebornServices {
             .get_component_audit_status(&user_id, project_id, class_code, component_id)
             .await
             .map_err(map_recipe_store_error)
+    }
+
+    async fn get_interceptor_config(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .snapshot(caller)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+
+    async fn update_interceptor_config(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: UpdateInterceptorConfigRequest,
+    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .update(caller, request)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+
+    async fn reassemble_interceptor_base_prompt(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .reassemble_base_prompt(caller)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
+    }
+
+    async fn prewarm_interceptor(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
+        self.interceptor_config
+            .as_ref()
+            .ok_or_else(interceptor_config::interceptor_config_unavailable)?
+            .prewarm(caller)
+            .await
+            .map_err(interceptor_config::map_interceptor_config_error)
     }
 }
 

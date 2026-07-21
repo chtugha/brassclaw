@@ -20,26 +20,27 @@ use axum::extract::{Extension, Path, Query, State};
 use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use brassclaw_product_workflow::{
-    CodexLoginStart, LifecyclePackageKind, LifecyclePackageRef, LlmConfigSnapshot, LlmModelsResult,
-    LlmProbeRequest, LlmProbeResult, NearAiLoginRequest, NearAiLoginStart,
-    NearAiWalletLoginRequest, NearAiWalletLoginResult, OutcomeKind, ProductWorkflowError,
-    ProjectionCursor, RebornCancelRunResponse, RebornConnectableChannelListResponse,
-    RebornCreateThreadResponse, RebornDeleteThreadRequest, RebornDeleteThreadResponse,
-    RebornExtensionActionResponse, RebornExtensionListResponse, RebornExtensionRegistryResponse,
-    RebornInstallSkillRequest, RebornListAutomationsResponse, RebornListCapabilitiesResponse,
-    RebornListSkillsResponse, RebornListThreadsResponse, RebornResolveGateResponse,
-    RebornServicesApi, RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind,
-    RebornSetupExtensionResponse, RebornSkillInstallResult, RebornSkillRemoveResult,
-    RebornStreamEventsRequest, RebornSubmitTurnResponse, RebornTimelineRequest,
-    RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
+    CodexLoginStart, InterceptorConfigSnapshot, LifecyclePackageKind, LifecyclePackageRef,
+    LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult, NearAiLoginRequest,
+    NearAiLoginStart, NearAiWalletLoginRequest, NearAiWalletLoginResult, OutcomeKind,
+    ProductWorkflowError, ProjectionCursor, RebornCancelRunResponse,
+    RebornConnectableChannelListResponse, RebornCreateThreadResponse, RebornDeleteThreadRequest,
+    RebornDeleteThreadResponse, RebornExtensionActionResponse, RebornExtensionListResponse,
+    RebornExtensionRegistryResponse, RebornInstallSkillRequest, RebornListAutomationsResponse,
+    RebornListCapabilitiesResponse, RebornListSkillsResponse, RebornListThreadsResponse,
+    RebornResolveGateResponse, RebornServicesApi, RebornServicesError, RebornServicesErrorCode,
+    RebornServicesErrorKind, RebornSetupExtensionResponse, RebornSkillInstallResult,
+    RebornSkillRemoveResult, RebornStreamEventsRequest, RebornSubmitTurnResponse,
+    RebornTimelineRequest, RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
     RebornUpdateCapabilityPermissionResponse, RecipeDetail, RecipeListResponse,
     ComponentAuditStatus, RecordOutcomeRequest, RecordOutcomeResponse, SetActiveLlmRequest,
-    ToolSkillDetail, ToolSkillListResponse, UpdateValidationStatusRequest,
-    UpdateValidationStatusResponse, UpsertLlmProviderRequest, ValidationQueueCountResponse,
-    ValidationQueueFilter, ValidationQueueListResponse, WebUiAuthenticatedCaller,
-    WebUiCancelRunRequest, WebUiCreateThreadRequest, WebUiInboundValidationCode,
-    WebUiInboundValidationError, WebUiListAutomationsRequest, WebUiListThreadsRequest,
-    WebUiResolveGateRequest, WebUiSendMessageRequest, WebUiSetupExtensionRequest,
+    ToolSkillDetail, ToolSkillListResponse, UpdateInterceptorConfigRequest,
+    UpdateValidationStatusRequest, UpdateValidationStatusResponse, UpsertLlmProviderRequest,
+    ValidationQueueCountResponse, ValidationQueueFilter, ValidationQueueListResponse,
+    WebUiAuthenticatedCaller, WebUiCancelRunRequest, WebUiCreateThreadRequest,
+    WebUiInboundValidationCode, WebUiInboundValidationError, WebUiListAutomationsRequest,
+    WebUiListThreadsRequest, WebUiResolveGateRequest, WebUiSendMessageRequest,
+    WebUiSetupExtensionRequest,
 };
 use futures::SinkExt;
 use futures::stream::Stream;
@@ -1248,10 +1249,12 @@ pub async fn validate_component(
     Query(query): Query<RecipeListQuery>,
     Json(body): Json<UpdateValidationStatusRequest>,
 ) -> Result<Json<UpdateValidationStatusResponse>, WebUiV2HttpError> {
-    // For LLM-auditable classes check audit status before allowing validation.
-    // Only a "flagged" result blocks the action — "pending" means the audit
-    // runner has not yet executed (e.g. Phase 3.4 stub) and must not create a
-    // permanent deadlock for Orchestrator/Scaffold components.
+    // For LLM-auditable classes the Q2 "Validate" button is disabled until the
+    // LLM code-audit returns clean (spec §3.5 / §3.4). Both "pending" (audit not
+    // yet run) and "flagged" (audit found issues) block the transition — only
+    // "clean" allows it to proceed. "not_applicable" and "error" are pass-through:
+    // "not_applicable" means the class doesn't need an audit; "error" means the
+    // audit runner failed transiently and must not create a permanent deadlock.
     if matches!(class_code, 10 | 50) {
         let audit = state
             .services()
@@ -1262,15 +1265,24 @@ pub async fn validate_component(
                 &component_id,
             )
             .await?;
-        if audit.status == "flagged" {
-            // 403: LLM audit flagged issues — manual validation blocked.
-            return Err(WebUiV2HttpError::from(
-                brassclaw_product_workflow::RebornServicesError::from_status(
-                    brassclaw_product_workflow::RebornServicesErrorCode::Forbidden,
-                    403,
-                    false,
-                ),
-            ));
+        match audit.status.as_str() {
+            "clean" | "not_applicable" | "error" => {
+                // clean → audit passed, proceed.
+                // not_applicable → class doesn't require audit (shouldn't happen for 10/50 but safe).
+                // error → audit runner failed transiently; operator can retry, not a permanent block.
+            }
+            _ => {
+                // "pending": audit has not yet run — Q2 blocked until audit completes.
+                // "flagged": audit found issues — Q2 blocked; component must go to Q3.
+                // Any other unknown status is treated conservatively as blocked.
+                return Err(WebUiV2HttpError::from(
+                    brassclaw_product_workflow::RebornServicesError::from_status(
+                        brassclaw_product_workflow::RebornServicesErrorCode::Forbidden,
+                        403,
+                        false,
+                    ),
+                ));
+            }
         }
     }
     let response = state
@@ -1419,6 +1431,63 @@ pub async fn get_component_audit_status(
         .await?;
     Ok(Json(result))
 }
+
+
+/// `GET /api/webchat/v2/interceptor/config`
+///
+/// Returns the current interceptor configuration snapshot (mode, base prompt
+/// assembly info, persona, prewarm timestamp).
+pub async fn get_interceptor_config(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<InterceptorConfigSnapshot>, WebUiV2HttpError> {
+    let response = state.services().get_interceptor_config(caller).await?;
+    Ok(Json(response))
+}
+
+/// `POST /api/webchat/v2/interceptor/config`
+///
+/// Update editable interceptor configuration fields (persona text).
+pub async fn update_interceptor_config(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(body): Json<UpdateInterceptorConfigRequest>,
+) -> Result<Json<InterceptorConfigSnapshot>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .update_interceptor_config(caller, body)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `POST /api/webchat/v2/interceptor/reassemble`
+///
+/// Reassemble the static base prompt (Part A) from validated components
+/// using direct SQL to individual component tables.  Rate-limited to 1/min.
+pub async fn reassemble_interceptor(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<InterceptorConfigSnapshot>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .reassemble_interceptor_base_prompt(caller)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `POST /api/webchat/v2/interceptor/prewarm`
+///
+/// Send the current base prompt to the Sempai provider to warm its KV cache.
+/// Requires the base prompt to have been assembled first.
+/// Rate-limited to 1/min.
+pub async fn prewarm_interceptor(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<InterceptorConfigSnapshot>, WebUiV2HttpError> {
+    let response = state.services().prewarm_interceptor(caller).await?;
+    Ok(Json(response))
+}
+
 
 pub mod reduction_rules;
 pub mod safety;

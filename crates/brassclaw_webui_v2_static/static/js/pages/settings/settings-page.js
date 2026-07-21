@@ -4,6 +4,7 @@ import { useT } from "../../lib/i18n.js";
 import { AgentTab } from "./components/agent-tab.js";
 import { ChannelsTab } from "./components/channels-tab.js";
 import { InferenceTab } from "./components/inference-tab.js";
+import { InterceptorTab } from "./components/interceptor-tab.js";
 import { LanguageTab } from "./components/language-tab.js";
 import { NetworkingTab } from "./components/networking-tab.js";
 import { RestartBanner } from "./components/restart-banner.js";
@@ -70,6 +71,7 @@ export function SettingsPage() {
     skills: html`<${SkillsTab} searchQuery=${searchQuery} />`,
     safety: html`<${SafetyPanel} searchQuery=${searchQuery} />`,
     tokens: html`<${TokensTab} searchQuery=${searchQuery} />`,
+    interceptor: html`<${InterceptorTab} searchQuery=${searchQuery} />`,
     users: html`<${UsersTab} searchQuery=${searchQuery} />`,
     language: html`<${LanguageTab} searchQuery=${searchQuery} />`,
   };

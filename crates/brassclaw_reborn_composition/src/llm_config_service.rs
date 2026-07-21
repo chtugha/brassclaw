@@ -406,6 +406,50 @@ impl RebornLlmConfigService {
         }
     }
 
+    /// Build a live Sempai provider from the stored key + provider definition
+    /// using `build_static_provider_chain`, the same path as Kohai.
+    ///
+    /// Returns `Err(reason_string)` if the provider cannot be resolved or built.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    async fn build_sempai_provider(
+        &self,
+        provider_id: &str,
+        model: Option<&str>,
+    ) -> Result<Arc<dyn brassclaw_llm::LlmProvider>, String> {
+        use crate::llm_catalog::resolve_against_registry;
+        use brassclaw_llm::LlmSlotSelection;
+
+        // Try DB-backed repo first, then built-in registry (same pattern as
+        // `probe_matches_persisted_provider`).
+        let definition = self
+            .load_provider_by_id(provider_id)
+            .await
+            .map_err(|e| format!("provider load: {e}"))?
+            .or_else(|| {
+                brassclaw_llm::ProviderRegistry::try_load_from_path(None)
+                    .ok()
+                    .and_then(|r| r.find(provider_id).cloned())
+            })
+            .ok_or_else(|| format!("provider not found: {provider_id}"))?;
+
+        let registry = brassclaw_llm::registry::ProviderRegistry::new(vec![definition]);
+        let selection = LlmSlotSelection {
+            provider_id: Some(provider_id.to_string()),
+            model: model.map(|s| s.to_string()),
+            api_key_env: None,
+            base_url: None,
+        };
+        let mut config = resolve_against_registry(&selection, &registry)
+            .map_err(|e| format!("resolve: {e}"))?;
+        if let Ok(Some(stored)) = self.keys.read(provider_id).await {
+            crate::llm_catalog::apply_stored_api_key(&mut config, stored);
+        }
+        let session = brassclaw_llm::create_session_manager(config.session.clone()).await;
+        brassclaw_llm::build_static_provider_chain(&config, session)
+            .await
+            .map_err(|e| format!("build: {e}"))
+    }
+
     async fn build_snapshot(&self) -> Result<LlmConfigSnapshot, LlmConfigServiceError> {
         let list = self.admin_list_async().await.map_err(map_admin_error)?;
         let builtin_registry = brassclaw_llm::ProviderRegistry::try_load_from_path(None)
@@ -975,7 +1019,7 @@ impl LlmConfigService for RebornLlmConfigService {
                     use brassclaw_llm::LlmProvider;
                     if let Some(swappable) = &self.sempai_swappable {
                         let new_provider: Arc<dyn LlmProvider> = if id.is_empty() {
-                            Arc::new(crate::runtime::PlaceholderLlmProviderStub)
+                            Arc::new(crate::runtime::PlaceholderLlmProvider)
                         } else {
                             match self.build_sempai_provider(&id, request.model.as_deref()).await {
                                 Ok(p) => p,

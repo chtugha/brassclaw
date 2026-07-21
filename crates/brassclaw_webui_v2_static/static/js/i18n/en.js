@@ -182,6 +182,7 @@ registerPack("en", {
   "settings.tokens": "Tokens",
   "settings.users": "Users",
   "settings.language": "Language",
+  "settings.interceptor": "Interceptor",
 
   // Settings — toolbar
   "settings.back": "Back",
@@ -947,4 +948,37 @@ registerPack("en", {
   "logs.entryCount": "{count} entries",
   "logs.pausedBadge": "● paused",
   "logs.empty": "Waiting for log entries…",
+
+  // Settings — Interceptor tab (Phase 5.5).
+  "interceptor.failedLoad": "Failed to load interceptor configuration: {message}",
+  "interceptor.status": "Interceptor status",
+  "interceptor.modeLabel": "Mode",
+  "interceptor.mode.routing": "routing",
+  "interceptor.mode.rerouting": "rerouting (Sempai active)",
+  "interceptor.connected": "connected",
+  "interceptor.disconnected": "disconnected",
+  "interceptor.basePromptLabel": "Base prompt",
+  "interceptor.neverAssembled": "Never assembled",
+  "interceptor.chars": "chars",
+  "interceptor.prewarmLastAt": "Last pre-warm",
+  "interceptor.componentsBadge": "{count} new",
+  "interceptor.componentsBadgeHint": "components validated since last reassemble",
+  "interceptor.personaTitle": "Sempai persona (Part B)",
+  "interceptor.personaDesc":
+    "The persona text prepended to every Sempai review request.  Edit to tune the review voice and focus.",
+  "interceptor.personaPlaceholder": "You are Sempai, a meticulous senior code reviewer...",
+  "interceptor.personaSaved": "Persona saved",
+  "interceptor.actionsTitle": "Prompt control",
+  "interceptor.actionsDesc":
+    "Reassemble rebuilds the static base prompt from validated components.  Pre-warm sends it to the Sempai provider to warm its KV cache.",
+  "interceptor.reassemble": "Reassemble base prompt",
+  "interceptor.reassembling": "Reassembling…",
+  "interceptor.reassembleDesc": "Re-read all validated components and write Part A of the Sempai prompt.",
+  "interceptor.reassembleOk": "Base prompt reassembled",
+  "interceptor.reassembleError": "Reassemble failed",
+  "interceptor.prewarm": "Pre-warm cache",
+  "interceptor.prewarming": "Pre-warming…",
+  "interceptor.prewarmDesc": "Send the current base prompt to the Sempai provider to warm its KV cache.",
+  "interceptor.prewarmOk": "Cache pre-warmed",
+  "interceptor.prewarmError": "Pre-warm failed",
 });

@@ -217,6 +217,29 @@ pub(crate) fn build_webui_services_with_connectable_channels(
         tracing::debug!("ExtensionRegistry is None - tools endpoints will return empty list");
     }
 
+    // Wire the interceptor configuration service (Phase 5.5, postgres +
+    // root-llm-provider only).  When the pool is available, the service
+    // provides snapshot/update/reassemble/prewarm over brassclaw_config.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    if let Some(pool) = services.pg_pool.clone() {
+        let tenant_id = runtime.webui_tenant_id().to_string();
+        let mut interceptor_svc =
+            crate::interceptor_config_service::RebornInterceptorConfigService::new(
+                pool,
+                tenant_id,
+            );
+        if let Some(mode) = runtime.interceptor_mode() {
+            interceptor_svc = interceptor_svc.with_interceptor_mode(mode);
+        }
+        if let Some(gateway) = runtime.sempai_gateway() {
+            interceptor_svc = interceptor_svc.with_sempai_gateway(gateway);
+        }
+        api = api.with_interceptor_config_service(
+            Arc::new(interceptor_svc)
+                as Arc<dyn brassclaw_product_workflow::InterceptorConfigService>,
+        );
+    }
+
     Ok(RebornWebuiBundle {
         api: Arc::new(api),
         product_auth: services.product_auth.clone(),

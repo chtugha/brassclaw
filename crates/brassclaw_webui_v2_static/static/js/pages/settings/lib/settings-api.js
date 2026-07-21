@@ -161,3 +161,20 @@ export function updateProviderTokenSettings(providerId, payload) {
     { method: "PUT", body: JSON.stringify(payload) }
   );
 }
+
+// Interceptor configuration — v2 native endpoints (Phase 5.5).
+export function fetchInterceptorConfig() {
+  return apiFetch("/api/webchat/v2/interceptor/config");
+}
+export function updateInterceptorConfig(payload) {
+  return apiFetch("/api/webchat/v2/interceptor/config", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+export function reassembleInterceptor() {
+  return apiFetch("/api/webchat/v2/interceptor/reassemble", { method: "POST" });
+}
+export function prewarmInterceptor() {
+  return apiFetch("/api/webchat/v2/interceptor/prewarm", { method: "POST" });
+}

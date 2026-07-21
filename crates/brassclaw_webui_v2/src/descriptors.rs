@@ -74,6 +74,17 @@ pub const WEBUI_V2_ROUTE_RE_REVIEW_COMPONENT: &str = "webui.v2.re_review_compone
 pub const WEBUI_V2_ROUTE_DELETE_COMPONENT: &str = "webui.v2.delete_component";
 pub const WEBUI_V2_ROUTE_GET_COMPONENT_AUDIT_STATUS: &str = "webui.v2.get_component_audit_status";
 
+// Phase 5.5 — Interceptor configuration routes.
+pub const WEBUI_V2_ROUTE_GET_INTERCEPTOR_CONFIG: &str = "webui.v2.get_interceptor_config";
+pub const WEBUI_V2_ROUTE_UPDATE_INTERCEPTOR_CONFIG: &str = "webui.v2.update_interceptor_config";
+pub const WEBUI_V2_ROUTE_REASSEMBLE_INTERCEPTOR: &str = "webui.v2.reassemble_interceptor";
+pub const WEBUI_V2_ROUTE_PREWARM_INTERCEPTOR: &str = "webui.v2.prewarm_interceptor";
+
+pub const WEBUI_V2_PATTERN_GET_INTERCEPTOR_CONFIG: &str = "/api/webchat/v2/interceptor/config";
+pub const WEBUI_V2_PATTERN_REASSEMBLE_INTERCEPTOR: &str =
+    "/api/webchat/v2/interceptor/reassemble";
+pub const WEBUI_V2_PATTERN_PREWARM_INTERCEPTOR: &str = "/api/webchat/v2/interceptor/prewarm";
+
 pub const WEBUI_V2_PATTERN_CREATE_THREAD: &str = "/api/webchat/v2/threads";
 pub const WEBUI_V2_PATTERN_LIST_THREADS: &str = "/api/webchat/v2/threads";
 pub const WEBUI_V2_PATTERN_DELETE_THREAD: &str = "/api/webchat/v2/threads/{thread_id}";
@@ -215,6 +226,11 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         re_review_component_descriptor(),
         delete_component_descriptor(),
         get_component_audit_status_descriptor(),
+        // Phase 5.5 — Interceptor configuration routes.
+        get_interceptor_config_descriptor(),
+        update_interceptor_config_descriptor(),
+        reassemble_interceptor_descriptor(),
+        prewarm_interceptor_descriptor(),
     ]
 }
 
@@ -948,6 +964,64 @@ fn get_component_audit_status_descriptor() -> IngressRouteDescriptor {
             AuditTraceClass::UserAction,
             AllowedEffectPath::ProjectionOnly,
             StreamingMode::None,
+        ),
+    )
+}
+
+fn get_interceptor_config_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_INTERCEPTOR_CONFIG,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_GET_INTERCEPTOR_CONFIG,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn update_interceptor_config_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_UPDATE_INTERCEPTOR_CONFIG,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_GET_INTERCEPTOR_CONFIG,
+        mutation_policy(
+            body_limit_kib(16),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn reassemble_interceptor_descriptor() -> IngressRouteDescriptor {
+    // Reassemble has a 1/min per-caller rate limit (enforced in the service).
+    descriptor(
+        WEBUI_V2_ROUTE_REASSEMBLE_INTERCEPTOR,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_REASSEMBLE_INTERCEPTOR,
+        mutation_policy(
+            BodyLimitPolicy::NoBody,
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn prewarm_interceptor_descriptor() -> IngressRouteDescriptor {
+    // Pre-warm has a 1/min per-caller rate limit (enforced in the service).
+    descriptor(
+        WEBUI_V2_ROUTE_PREWARM_INTERCEPTOR,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_PREWARM_INTERCEPTOR,
+        mutation_policy(
+            BodyLimitPolicy::NoBody,
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
         ),
     )
 }

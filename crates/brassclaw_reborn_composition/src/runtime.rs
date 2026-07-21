@@ -613,6 +613,18 @@ impl RebornRuntime {
             .and_then(|r| r.sempai_swappable.clone())
     }
 
+    /// The Sempai model gateway, when allocated at boot.  The interceptor host
+    /// reads this via the composition's `build_reborn_runtime` path so the
+    /// `on_prompt_assembled` hook can call the Sempai provider directly.
+    #[cfg(feature = "root-llm-provider")]
+    pub(crate) fn sempai_gateway(
+        &self,
+    ) -> Option<Arc<dyn brassclaw_loop_support::HostManagedModelGateway>> {
+        self.llm_reload
+            .as_ref()
+            .and_then(|r| r.sempai_gateway.clone())
+    }
+
     /// The shared interceptor mode flag.  The LLM-config settings service flips
     /// this when the operator activates or deactivates the Sempai provider.
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
@@ -682,6 +694,13 @@ impl RebornRuntime {
             as Arc<
                 dyn brassclaw_reborn_identity::RebornIdentityResolver,
             >))
+    }
+
+    /// The tenant ID used by this runtime. Needed by WebUI services that
+    /// write to `brassclaw_config` (interceptor config, etc.).
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    pub(crate) fn webui_tenant_id(&self) -> &str {
+        self.thread_scope.tenant_id.as_str()
     }
 
     pub(crate) fn webui_thread_service(&self) -> Arc<dyn SessionThreadService> {
@@ -1952,6 +1971,17 @@ pub async fn build_reborn_runtime(
     #[cfg(not(feature = "postgres"))]
     let interceptor_store: Option<Arc<dyn brassclaw_interceptor::InterceptorStore>> = None;
 
+    // Create the SharedInterceptorMode before building DefaultPlannedRuntimeParts.
+    // The same Arc<AtomicBool> is shared between the host factory (per-turn decisions)
+    // and RebornRuntime (settings service flips it).  No DB pool required — the mode
+    // is an atomic bool, but rerouting only ever fires when the host has both a store
+    // (postgres) and a gateway (root-llm-provider).
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    let interceptor_mode: Option<brassclaw_interceptor::SharedInterceptorMode> = services
+        .pg_pool
+        .as_ref()
+        .map(|_| brassclaw_interceptor::SharedInterceptorMode::new());
+
     let composition = build_default_planned_runtime(DefaultPlannedRuntimeParts {
         turn_state: Arc::clone(&turn_state_store),
         thread_service: Arc::clone(&thread_service),
@@ -2013,6 +2043,14 @@ pub async fn build_reborn_runtime(
         hook_dispatcher_builder_factory,
         recipe_lookup,
         interceptor_store,
+        #[cfg(feature = "root-llm-provider")]
+        sempai_gateway: llm_reload.as_ref().and_then(|r| r.sempai_gateway.clone()),
+        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+        interceptor_mode: {
+            // Create the SharedInterceptorMode here (before llm_reload is moved).
+            // It will be cloned into both DefaultPlannedRuntimeParts and RebornRuntime.
+            interceptor_mode.clone()
+        },
     })?;
     let default_resolved_run_profile = composition
         .run_profile_resolver
@@ -2196,13 +2234,6 @@ pub async fn build_reborn_runtime(
     } else {
         (None, None)
     };
-
-    // Extract interceptor_mode before services is moved into the struct literal.
-    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
-    let interceptor_mode = services
-        .pg_pool
-        .as_ref()
-        .map(|_| brassclaw_interceptor::SharedInterceptorMode::new());
 
     Ok(RebornRuntime {
         services,
@@ -2539,6 +2570,11 @@ pub(crate) struct RebornLlmReloadParts {
     /// inner provider when the operator activates a Sempai selection via
     /// `set_active(Sempai, ...)`.
     pub(crate) sempai_swappable: Option<Arc<brassclaw_llm::SwappableLlmProvider>>,
+    /// Sempai model gateway — wraps `sempai_swappable` in a
+    /// `LlmProviderModelGateway` so the interceptor host can call it via the
+    /// `HostManagedModelGateway` trait without knowing the concrete type.
+    pub(crate) sempai_gateway:
+        Option<Arc<dyn brassclaw_loop_support::HostManagedModelGateway>>,
 }
 
 #[cfg(feature = "root-llm-provider")]
@@ -2607,6 +2643,21 @@ fn wrap_swappable_gateway(
     let sempai_inner: Arc<dyn LlmProvider> = Arc::new(PlaceholderLlmProvider);
     let sempai_swappable = Arc::new(SwappableLlmProvider::new(sempai_inner));
 
+    // Build the Sempai gateway using a dedicated "sempai_model" profile.
+    // The gateway is backed by the swappable so a live-swap of the inner
+    // provider is picked up immediately without rebuilding the gateway.
+    let sempai_model_profile_id =
+        ModelProfileId::new("sempai_model").map_err(|reason| {
+            RebornRuntimeError::LlmProvider(format!(
+                "invalid sempai model profile id: {reason}"
+            ))
+        })?;
+    let sempai_policy =
+        LlmModelProfilePolicy::new().allow_model_profile(sempai_model_profile_id, None);
+    let sempai_provider: Arc<dyn LlmProvider> = Arc::clone(&sempai_swappable);
+    let sempai_gateway: Arc<dyn brassclaw_loop_support::HostManagedModelGateway> =
+        Arc::new(LlmProviderModelGateway::new(sempai_provider, sempai_policy));
+
     let model_profile_id = ModelProfileId::new("interactive_model").map_err(|reason| {
         RebornRuntimeError::LlmProvider(format!("invalid interactive model profile id: {reason}"))
     })?;
@@ -2622,6 +2673,7 @@ fn wrap_swappable_gateway(
             session,
             nearai_login_states: Arc::new(crate::llm_config_service::NearAiLoginStateStore::new()),
             sempai_swappable: Some(Arc::clone(&sempai_swappable)),
+            sempai_gateway: Some(sempai_gateway),
         },
     })
 }
@@ -2629,9 +2681,12 @@ fn wrap_swappable_gateway(
 /// Stand-in provider used before any LLM is configured. Every call fails with a
 /// clear, user-safe message; it exists only so the gateway/reload seam is live
 /// from a cold boot and the first configuration can swap it out.
+///
+/// Also used by `RebornLlmConfigService` when the Sempai slot is cleared, to
+/// swap the existing Sempai provider back to a no-op stub.
 #[cfg(feature = "root-llm-provider")]
 #[derive(Debug)]
-struct PlaceholderLlmProvider;
+pub(crate) struct PlaceholderLlmProvider;
 
 #[cfg(feature = "root-llm-provider")]
 #[async_trait::async_trait]

@@ -44,6 +44,7 @@
 #![forbid(unsafe_code)]
 #![warn(unreachable_pub)]
 
+pub mod config_store;
 pub mod error;
 pub mod mode;
 pub mod packet;
@@ -51,6 +52,7 @@ pub mod pg_store;
 pub mod store;
 
 // Convenience re-exports so callers only need to import from `brassclaw_interceptor`.
+pub use config_store::{InterceptorConfig, InterceptorConfigStore};
 pub use error::InterceptorError;
 pub use mode::{InterceptorMode, SharedInterceptorMode};
 pub use packet::{

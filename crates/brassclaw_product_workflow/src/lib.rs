@@ -133,6 +133,10 @@ pub use policy::{
 };
 pub use reborn_services::CapabilityPermissionStore;
 pub use reborn_services::{
+    InterceptorConfigService, InterceptorConfigServiceError, InterceptorConfigSnapshot,
+    UpdateInterceptorConfigRequest, interceptor_config_unavailable, map_interceptor_config_error,
+};
+pub use reborn_services::{
     RebornInstallSkillRequest, SkillsProductFacade, UnsupportedSkillsProductFacade,
 };
 pub use recipes::{

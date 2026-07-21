@@ -647,21 +647,57 @@ impl RecipeStore for StoreBackedRecipeStore {
 
     async fn get_component_audit_status(
         &self,
-        _user_id: &str,
-        _project_id: &str,
+        user_id: &str,
+        project_id: &str,
         class_code: u16,
-        _component_id: &str,
+        component_id: &str,
     ) -> Result<ComponentAuditStatus, RecipeStoreError> {
         // LLM code-audit is only applicable for Orchestrator (10) and Scaffold (50).
-        // Phase 3.4 wires the actual audit runner; for now these classes return "pending"
-        // and all others return "not_applicable".
-        match class_code {
-            10 | 50 => Ok(ComponentAuditStatus {
-                status: "pending".to_string(),
-                findings: vec![],
-            }),
-            _ => Ok(ComponentAuditStatus::not_applicable()),
+        // For all other class codes there is no audit gate.
+        if !matches!(class_code, 10 | 50) {
+            return Ok(ComponentAuditStatus::not_applicable());
         }
+
+        // Locate the component's MemoryDoc. These are stored as ToolSkill-backed
+        // docs (class codes 0-20 and 50). The audit fields (`llm_audit_required`,
+        // `llm_audit_status`, `llm_audit_findings`) live in the raw metadata JSON —
+        // they are NOT part of the typed ToolSkill struct, so we read them directly
+        // from the MemoryDoc metadata without deserializing through ToolSkill.
+        let project_id_typed = parse_project_id(project_id)?;
+        let doc =
+            find_doc(&self.store, project_id_typed, user_id, DocType::ToolSkill, component_id)
+                .await?;
+
+        let Some(doc) = doc else {
+            // Component not found — return "not_applicable" rather than an error
+            // so the caller can distinguish "no component" from "audit pending".
+            return Ok(ComponentAuditStatus::not_applicable());
+        };
+
+        // Read `llm_audit_status` from the raw metadata JSON. The orchestrator's
+        // `__validate_component__` writes this key when it creates the candidate
+        // (see `brassclaw_engine::executor::orchestrator`). If the key is absent
+        // (e.g. a component that predates the audit flag) treat it as "pending".
+        let status = doc
+            .metadata
+            .get("llm_audit_status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("pending")
+            .to_string();
+
+        let findings: Vec<String> = doc
+            .metadata
+            .get("llm_audit_findings")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|item| item.as_str())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Ok(ComponentAuditStatus { status, findings })
     }
 
     async fn record_outcome(
@@ -1983,5 +2019,177 @@ mod tests {
         assert_eq!(items[0].id, "r1", "oldest item must appear first");
         assert_eq!(items[1].id, "r2");
         assert_eq!(items[2].id, "r3", "newest item must appear last");
+    }
+
+    /// Helper: save a raw MemoryDoc (like the orchestrator's `__validate_component__`
+    /// does) with explicit metadata JSON rather than going through ToolSkill serialization.
+    async fn save_raw_doc(
+        typed: &InMemoryEngineStore,
+        project_id: ProjectId,
+        user_id: &str,
+        doc_type: DocType,
+        metadata: serde_json::Value,
+    ) {
+        let id = metadata["id"].as_str().unwrap_or("").to_string();
+        typed
+            .add(MemoryDoc {
+                id: DocId::new(),
+                project_id,
+                user_id: user_id.to_string(),
+                doc_type,
+                title: id.clone(),
+                content: serde_json::to_string(&metadata).unwrap_or_default(),
+                source_thread_id: None,
+                tags: vec!["update_candidate".to_string()],
+                metadata,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            })
+            .await;
+    }
+
+    // ---- get_component_audit_status tests ----
+
+    /// Non-auditable class codes always return "not_applicable" regardless of
+    /// what is stored.
+    #[tokio::test]
+    async fn get_audit_status_non_auditable_class_returns_not_applicable() {
+        let (_typed, erased) = make_pair();
+        let store = StoreBackedRecipeStore::open(erased);
+        for class_code in [0u16, 1, 3, 9, 21] {
+            let result = store
+                .get_component_audit_status("user1", "bootstrap", class_code, "any-id")
+                .await
+                .expect("should not error");
+            assert_eq!(
+                result.status, "not_applicable",
+                "class {class_code} should be not_applicable"
+            );
+            assert!(result.findings.is_empty());
+        }
+    }
+
+    /// Component not found → "not_applicable" (not an error; component may not
+    /// have been created yet).
+    #[tokio::test]
+    async fn get_audit_status_missing_component_returns_not_applicable() {
+        let (_typed, erased) = make_pair();
+        let store = StoreBackedRecipeStore::open(erased);
+        let result = store
+            .get_component_audit_status("user1", "bootstrap", 10, "no-such-id")
+            .await
+            .expect("should not error");
+        assert_eq!(result.status, "not_applicable");
+    }
+
+    /// Component with `llm_audit_status = "pending"` (just created by
+    /// `__validate_component__`, audit not yet run).
+    #[tokio::test]
+    async fn get_audit_status_reads_pending_from_metadata() {
+        let (typed, erased) = make_pair();
+        let project = project_id("bootstrap");
+        save_raw_doc(
+            &typed,
+            project,
+            "user1",
+            DocType::ToolSkill,
+            serde_json::json!({
+                "id": "orch-candidate-1",
+                "validation_status": "pending",
+                "llm_audit_required": true,
+                "llm_audit_status": "pending",
+                "llm_audit_findings": []
+            }),
+        )
+        .await;
+        let store = StoreBackedRecipeStore::open(erased);
+        let result = store
+            .get_component_audit_status("user1", "bootstrap", 10, "orch-candidate-1")
+            .await
+            .expect("should not error");
+        assert_eq!(result.status, "pending");
+        assert!(result.findings.is_empty());
+    }
+
+    /// Component that has passed the LLM audit → "clean".
+    #[tokio::test]
+    async fn get_audit_status_reads_clean_from_metadata() {
+        let (typed, erased) = make_pair();
+        let project = project_id("bootstrap");
+        save_raw_doc(
+            &typed,
+            project,
+            "user1",
+            DocType::ToolSkill,
+            serde_json::json!({
+                "id": "orch-candidate-2",
+                "validation_status": "auto_passed",
+                "llm_audit_required": true,
+                "llm_audit_status": "clean",
+                "llm_audit_findings": []
+            }),
+        )
+        .await;
+        let store = StoreBackedRecipeStore::open(erased);
+        let result = store
+            .get_component_audit_status("user1", "bootstrap", 10, "orch-candidate-2")
+            .await
+            .expect("should not error");
+        assert_eq!(result.status, "clean");
+        assert!(result.findings.is_empty());
+    }
+
+    /// Component where the LLM audit found security issues → "flagged" with
+    /// findings populated.
+    #[tokio::test]
+    async fn get_audit_status_reads_flagged_with_findings_from_metadata() {
+        let (typed, erased) = make_pair();
+        let project = project_id("bootstrap");
+        save_raw_doc(
+            &typed,
+            project,
+            "user1",
+            DocType::ToolSkill,
+            serde_json::json!({
+                "id": "scaffold-candidate-1",
+                "validation_status": "pending",
+                "llm_audit_required": true,
+                "llm_audit_status": "flagged",
+                "llm_audit_findings": [
+                    "FAIL: validator bypass detected",
+                    "FAIL: sandbox escape via subprocess"
+                ]
+            }),
+        )
+        .await;
+        let store = StoreBackedRecipeStore::open(erased);
+        let result = store
+            .get_component_audit_status("user1", "bootstrap", 50, "scaffold-candidate-1")
+            .await
+            .expect("should not error");
+        assert_eq!(result.status, "flagged");
+        assert_eq!(result.findings.len(), 2);
+        assert!(result.findings[0].contains("validator bypass"));
+        assert!(result.findings[1].contains("sandbox escape"));
+    }
+
+    /// A component doc that predates the audit flag system (no `llm_audit_status`
+    /// key in metadata) defaults to "pending" so it is conservatively blocked.
+    #[tokio::test]
+    async fn get_audit_status_missing_key_defaults_to_pending() {
+        let (typed, erased) = make_pair();
+        let project = project_id("bootstrap");
+        // Simulate a pre-audit ToolSkill saved via the normal path (no audit keys).
+        let skill = sample_skill("old-orch-skill", ValidationStatus::AutoPassed);
+        save_skill_doc(&typed, project, &skill).await;
+        let store = StoreBackedRecipeStore::open(erased);
+        let result = store
+            .get_component_audit_status("user1", "bootstrap", 10, "old-orch-skill")
+            .await
+            .expect("should not error");
+        // No llm_audit_status key in ToolSkill metadata → defaults to "pending"
+        // (conservative: block Q2 until explicitly marked clean).
+        assert_eq!(result.status, "pending");
+        assert!(result.findings.is_empty());
     }
 }

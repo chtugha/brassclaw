@@ -964,6 +964,16 @@ where
     /// When `None` (default), a [`NoopInterceptorStore`] is used and no
     /// packets are persisted.
     interceptor_store: Arc<dyn InterceptorStore>,
+    /// Optional Sempai model gateway for rerouting mode (Phase 5.5).
+    /// When `Some` and the mode is `Rerouting`, `on_prompt_assembled` calls
+    /// the Sempai to review and potentially adjust the Kohai prompt.
+    #[cfg(feature = "root-llm-provider")]
+    sempai_gateway: Option<Arc<dyn HostManagedModelGateway>>,
+    /// Shared interceptor mode flag (Phase 5.5).  When `Some` and set to
+    /// `Rerouting`, `on_prompt_assembled` calls the Sempai gateway.
+    /// When `None`, the interceptor is always in routing mode.
+    #[cfg(feature = "root-llm-provider")]
+    interceptor_mode: Option<brassclaw_interceptor::SharedInterceptorMode>,
 }
 
 /// Per-host-build callback that produces a fresh hook-gate factory bound
@@ -1030,6 +1040,10 @@ where
             driver_requirements: HashMap::new(),
             recipe_lookup: None,
             interceptor_store: Arc::new(NoopInterceptorStore),
+            #[cfg(feature = "root-llm-provider")]
+            sempai_gateway: None,
+            #[cfg(feature = "root-llm-provider")]
+            interceptor_mode: None,
         }
     }
 
@@ -1351,6 +1365,31 @@ where
     /// Without this, a [`NoopInterceptorStore`] is used and no packets are saved.
     pub fn with_interceptor_store(mut self, store: Arc<dyn InterceptorStore>) -> Self {
         self.interceptor_store = store;
+        self
+    }
+
+    /// Install the Sempai model gateway for rerouting mode (Phase 5.5).
+    /// When set and the interceptor mode is `Rerouting`, each turn's
+    /// `on_prompt_assembled` calls the Sempai to review and adjust the
+    /// Kohai prompt before it is forwarded.
+    #[cfg(feature = "root-llm-provider")]
+    pub fn with_sempai_gateway(
+        mut self,
+        gateway: Arc<dyn HostManagedModelGateway>,
+    ) -> Self {
+        self.sempai_gateway = Some(gateway);
+        self
+    }
+
+    /// Install the shared interceptor mode flag (Phase 5.5).
+    /// When set to `Rerouting` by the settings service, subsequent turns
+    /// call the Sempai gateway instead of forwarding the prompt unchanged.
+    #[cfg(feature = "root-llm-provider")]
+    pub fn with_interceptor_mode(
+        mut self,
+        mode: brassclaw_interceptor::SharedInterceptorMode,
+    ) -> Self {
+        self.interceptor_mode = Some(mode);
         self
     }
 
@@ -1685,6 +1724,10 @@ where
             cancellation,
             recipe_lookup: self.recipe_lookup.clone(),
             interceptor_store: Arc::clone(&self.interceptor_store),
+            #[cfg(feature = "root-llm-provider")]
+            sempai_gateway: self.sempai_gateway.clone(),
+            #[cfg(feature = "root-llm-provider")]
+            interceptor_mode: self.interceptor_mode.clone(),
             _event_subscription: event_subscription,
         })
     }
@@ -1754,6 +1797,12 @@ pub struct RebornLoopDriverHost {
     cancellation: Arc<dyn LoopCancellationPort>,
     recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>>,
     interceptor_store: Arc<dyn InterceptorStore>,
+    /// Sempai gateway for rerouting mode. `None` in non-root-llm-provider builds.
+    #[cfg(feature = "root-llm-provider")]
+    sempai_gateway: Option<Arc<dyn HostManagedModelGateway>>,
+    /// Shared interceptor mode flag. `None` when not wired.
+    #[cfg(feature = "root-llm-provider")]
+    interceptor_mode: Option<brassclaw_interceptor::SharedInterceptorMode>,
     _event_subscription: Option<EventTriggeredHookSubscriptionHandle>,
 }
 
@@ -1834,7 +1883,7 @@ impl brassclaw_turns::run_profile::LoopInterceptorPort for RebornLoopDriverHost 
             .and_then(|v| v.as_u64())
             .unwrap_or(0) as u32;
         let captured = CapturedPrompt {
-            messages,
+            messages: messages.clone(),
             segments: Vec::new(),
             token_accounting: TokenAccountingSnapshot {
                 context_window_limit: 0,
@@ -1857,6 +1906,29 @@ impl brassclaw_turns::run_profile::LoopInterceptorPort for RebornLoopDriverHost 
                 "interceptor: failed to save forensic packet (non-fatal)"
             );
         }
+
+        // Check for rerouting mode (cfg-gated).
+        #[cfg(feature = "root-llm-provider")]
+        if let (Some(gateway), Some(mode)) =
+            (self.sempai_gateway.as_ref(), self.interceptor_mode.as_ref())
+        {
+            if mode.get() == brassclaw_interceptor::InterceptorMode::Rerouting {
+                if let Some(result) = self
+                    .run_sempai_review(
+                        run_id,
+                        iteration,
+                        &packet_id,
+                        messages,
+                        gateway,
+                    )
+                    .await
+                {
+                    return Some(result);
+                }
+                // Sempai review failed: fall through to routing result below.
+            }
+        }
+
         // Routing mode: packet saved, no Sempai adjustment.
         Some(InterceptorResult {
             packet_id,
@@ -1912,6 +1984,179 @@ impl brassclaw_turns::run_profile::LoopInterceptorPort for RebornLoopDriverHost 
         }
     }
 }
+
+impl RebornLoopDriverHost {
+    /// Call the Sempai gateway to review and optionally adjust the Kohai prompt.
+    ///
+    /// Builds the 3-part Sempai audit prompt:
+    /// - Part A: static base (assembled component catalog — loaded from config,
+    ///   empty when not yet assembled).
+    /// - Part B: Sempai persona instructions (from `sempai_audit.md`).
+    /// - Part C: per-turn volatile tail (thread history, component manifest).
+    ///
+    /// On success updates the `ForensicPacket` to `SempaiReviewed` status and
+    /// returns an `InterceptorResult` with the recomposed messages.
+    /// On any failure (parse error, gateway error, store error) returns `None`
+    /// so the caller falls back to routing mode.
+    #[cfg(feature = "root-llm-provider")]
+    async fn run_sempai_review(
+        &self,
+        run_id: &str,
+        iteration: u32,
+        packet_id: &str,
+        messages: Vec<(String, String)>,
+        gateway: &Arc<dyn HostManagedModelGateway>,
+    ) -> Option<InterceptorResult> {
+        use brassclaw_interceptor::SempaiReviewOutcome;
+        use brassclaw_loop_support::{
+            HostManagedModelMessage, HostManagedModelMessageRole, HostManagedModelRequest,
+        };
+        use brassclaw_turns::LoopMessageRef;
+
+        // Part B: Sempai persona (compiled-in default; editable in WebUI
+        // via interceptor config service).
+        let persona_text = DEFAULT_SEMPAI_PERSONA;
+
+        // Part C: per-turn volatile tail — the actual Kohai messages plus a
+        // JSON manifest of the component refs extracted from the snapshot.
+        // For now the manifest is a JSON-serialized array of the message refs;
+        // the full `matched_component_ids` path is wired in Phase 5 when the
+        // PriorKnowledgeResult carries matched component IDs.
+        let volatile_tail = serde_json::to_string(&messages).unwrap_or_default();
+
+        // Build the Sempai request: system message (Part B persona) +
+        // user message (Part C volatile tail for review).
+        // Part A (static base) is omitted here when no base prompt has been
+        // assembled yet (pre-`POST /api/interceptor/reassemble`).
+        let sentinel_ref = LoopMessageRef::new("interceptor:sempai-audit".to_string())
+            .map_err(|e| {
+                tracing::debug!(error = %e, "interceptor: sempai sentinel ref invalid");
+            })
+            .ok()?;
+
+        let system_msg = HostManagedModelMessage {
+            role: HostManagedModelMessageRole::System,
+            content: persona_text.to_string(),
+            content_ref: sentinel_ref.clone(),
+            tool_result_provider_call: None,
+            tool_result_content: None,
+        };
+        let user_ref = LoopMessageRef::new("interceptor:sempai-volatile".to_string())
+            .map_err(|e| {
+                tracing::debug!(error = %e, "interceptor: sempai volatile ref invalid");
+            })
+            .ok()?;
+        let user_msg = HostManagedModelMessage {
+            role: HostManagedModelMessageRole::User,
+            content: volatile_tail,
+            content_ref: user_ref,
+            tool_result_provider_call: None,
+            tool_result_content: None,
+        };
+
+        let model_profile_id = brassclaw_turns::run_profile::ModelProfileId::new("sempai_model")
+            .map_err(|e| {
+                tracing::debug!(error = %e, "interceptor: sempai model profile id invalid");
+            })
+            .ok()?;
+
+        let request = HostManagedModelRequest {
+            model_profile_id,
+            messages: vec![system_msg, user_msg],
+            surface_version: None,
+            resolved_model_route: None,
+            run_id: self.run_context.run_id,
+            turn_id: self.run_context.turn_id,
+        };
+
+        let response = match gateway.stream_model(request).await {
+            Ok(resp) => resp,
+            Err(error) => {
+                tracing::debug!(
+                    run_id,
+                    iteration,
+                    packet_id,
+                    error = %error,
+                    "interceptor: sempai gateway call failed; falling back to routing"
+                );
+                return None;
+            }
+        };
+
+        // Collect the full response text.
+        let response_text: String = response.safe_text_deltas.join("");
+
+        // Parse the response as a SempaiReviewOutcome JSON object.
+        let outcome: SempaiReviewOutcome = match serde_json::from_str(&response_text) {
+            Ok(o) => o,
+            Err(error) => {
+                tracing::debug!(
+                    run_id,
+                    iteration,
+                    packet_id,
+                    error = %error,
+                    "interceptor: sempai response is not valid JSON SempaiReviewOutcome; \
+                     falling back to routing"
+                );
+                return None;
+            }
+        };
+
+        // Build the recomposed Kohai prompt:
+        // stable-base messages (empty for now, Part A) +
+        // Sempai bridge messages + adjusted volatile messages.
+        let mut recomposed: Vec<(String, String)> = Vec::new();
+        for (role, content) in &outcome.bridge_messages {
+            recomposed.push((role.clone(), content.clone()));
+        }
+        for (role, content) in &outcome.adjusted_volatile_messages {
+            recomposed.push((role.clone(), content.clone()));
+        }
+
+        // Update the ForensicPacket to SempaiReviewed.
+        let id = brassclaw_interceptor::PacketId(packet_id.to_string());
+        let updated_packet = match self.interceptor_store.get(&id).await {
+            Ok(Some(packet)) => packet.with_sempai_review("", None, outcome.clone()),
+            Ok(None) => {
+                tracing::debug!(
+                    packet_id,
+                    "interceptor: packet not found when saving sempai review"
+                );
+                return None;
+            }
+            Err(error) => {
+                tracing::debug!(
+                    packet_id,
+                    error = %error,
+                    "interceptor: failed to load packet for sempai review update"
+                );
+                return None;
+            }
+        };
+        if let Err(error) = self.interceptor_store.save(&updated_packet).await {
+            tracing::debug!(
+                packet_id,
+                error = %error,
+                "interceptor: failed to save sempai-reviewed packet (non-fatal)"
+            );
+            // Non-fatal: continue with adjusted messages even if save failed.
+        }
+
+        Some(InterceptorResult {
+            packet_id: packet_id.to_string(),
+            adjusted_messages: Some(recomposed),
+        })
+    }
+}
+
+/// Default Sempai persona (Part B of the 3-part audit prompt).
+///
+/// This is the compiled-in default, loaded via `include_str!` from
+/// `crates/brassclaw_engine/prompts/sempai_audit.md`.  The operator can
+/// override it via `POST /api/interceptor/config` in the WebUI.
+#[cfg(feature = "root-llm-provider")]
+pub const DEFAULT_SEMPAI_PERSONA: &str =
+    include_str!("../../brassclaw_engine/prompts/sempai_audit.md");
 
 #[async_trait]
 impl LoopContextPort for RebornLoopDriverHost {

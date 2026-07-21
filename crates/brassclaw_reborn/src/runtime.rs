@@ -155,6 +155,19 @@ where
     /// turn persists a [`brassclaw_interceptor::ForensicPacket`] capturing the
     /// assembled prompt and Kohai response. When `None`, a no-op store is used.
     pub interceptor_store: Option<Arc<dyn brassclaw_interceptor::InterceptorStore>>,
+    /// Sempai model gateway (Phase 5.5). When `Some`, the interceptor's
+    /// rerouting branch calls the Sempai provider via this gateway to review
+    /// and optionally adjust the Kohai prompt. Cfg-gated because the gateway
+    /// wraps a `SwappableLlmProvider` that requires the `root-llm-provider`
+    /// feature.
+    #[cfg(feature = "root-llm-provider")]
+    pub sempai_gateway: Option<Arc<dyn brassclaw_loop_support::HostManagedModelGateway>>,
+    /// Shared interceptor mode flag (Phase 5.5). Read on every turn to decide
+    /// routing vs rerouting. When `None`, the interceptor always routes
+    /// (Sempai is effectively disabled). Cfg-gated: rerouting requires both
+    /// postgres (store) and root-llm-provider (Sempai gateway).
+    #[cfg(feature = "root-llm-provider")]
+    pub interceptor_mode: Option<brassclaw_interceptor::SharedInterceptorMode>,
 }
 
 pub trait RuntimeSubagentGoalStore:
@@ -556,6 +569,14 @@ where
     }
     if let Some(store) = parts.interceptor_store {
         host_factory = host_factory.with_interceptor_store(store);
+    }
+    #[cfg(feature = "root-llm-provider")]
+    if let Some(gateway) = parts.sempai_gateway {
+        host_factory = host_factory.with_sempai_gateway(gateway);
+    }
+    #[cfg(feature = "root-llm-provider")]
+    if let Some(mode) = parts.interceptor_mode {
+        host_factory = host_factory.with_interceptor_mode(mode);
     }
     let host_factory = Arc::new(host_factory);
 

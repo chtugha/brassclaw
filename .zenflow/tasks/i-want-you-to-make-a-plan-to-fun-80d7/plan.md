@@ -1279,22 +1279,37 @@ limit**. **Migrate former doctypes into first-class component tables** (classes
   large documents are broken into ≤5000-token rows; intent_examples non-empty
   for every migrated row.
 
-### Step 5.4 — Remove chunk/embedding machinery
-- Delete `crates/brassclaw_memory/src/chunking.rs`,
-  `indexer.rs` chunk paths, `search.rs` hybrid fusion, `embedding.rs`
-  memory-retrieval wiring. Update `lib.rs` exports.
-- **Fully remove `brassclaw_embeddings`** (spec §7 Q3 resolved): delete the
-  crate, its dependencies, and all embedding-based search paths. The intent
-  system (§3.12) replaces all runtime similarity/search needs. Install-time
-  dedup uses content-hash + exact-name uniqueness constraint (no embedding
-  similarity needed).
-- Stop writing chat chunks (`pg_chat_memory_record_store.rs`,
-  `chat_memory.rs`, `MemoryChunkWrite.chat_record_id`); chat records become
-  flat `Note` component rows in `reborn_notes` (class 20, spec §7 Q4 resolved)
-  with no embedding index, retrieved by the intent system or project-scope
-  lookup like any other component.
-- **Verify:** `cargo test -p brassclaw_memory` passes with chunk tests removed
-  or converted to document-level equivalents; clippy clean.
+### Step 5.4 — Repair chunk/embedding machinery (DECISION REVISED 2026-07-22)
+
+> **⚠️ DECISION: DO NOT REMOVE `brassclaw_embeddings`. REPAIR IT INSTEAD.**
+>
+> The original plan called for removing `brassclaw_embeddings` and all
+> chunk/embedding search paths (spec §7 Q3 — intent system replaces runtime
+> similarity/search needs). However, a teammate broke the embedding system and
+> several local-dev test fixtures in a pre-plan commit (`cbc5d437`) without
+> leaving a working replacement in place. The user has explicitly requested
+> that the embedding system be **repaired**, not removed. The
+> `brassclaw_embeddings` crate and all chunk/indexer/search infrastructure in
+> `brassclaw_memory` must be kept and restored to a fully working state.
+>
+> **Revised Step 5.4 scope:**
+> - Identify and fix all breakages introduced in the embedding system.
+> - Ensure tests pass with zero failures.
+> - Do NOT delete `chunking.rs`, `indexer.rs`, `search.rs`, `embedding.rs`,
+>   or the `brassclaw_embeddings` crate.
+> - The chunk-to-Note migration (chat records → `reborn_notes`) is deferred.
+
+- **Restore `skills/portfolio/`** from `archive/skills-v1/portfolio/`: the
+  portfolio skill was archived in `cbc5d437` but the bundled-skills test still
+  expects it. Restore it to `skills/portfolio/`.
+- **Fix local-dev filesystem missing `/tenants` backend**: 9 tests fail with
+  "no backend mount found for virtual path /tenants/…". Add an
+  `InMemoryBackend` mounted at `/tenants` in `build_local_dev_root_filesystem`
+  so per-tenant structured records have a backend in local-dev mode.
+- **Repair `brassclaw_embeddings` and `brassclaw_memory`** chunk/search paths
+  if any further regressions are found.
+- **Verify:** `cargo test -p brassclaw_embeddings -p brassclaw_memory
+  -p brassclaw_reborn_composition` passes with zero failures; clippy clean.
 
 ### Step 5.5 — Retire ALL DocTypes (full DocType retirement)
 - **Remove ALL `DocType` variants** from the `DocType` enum

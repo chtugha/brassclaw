@@ -44,6 +44,8 @@ mod factory;
 mod google_oauth;
 mod gsuite;
 mod hooks;
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+pub mod interceptor_config_service;
 mod input;
 mod lifecycle;
 #[cfg(feature = "root-llm-provider")]
