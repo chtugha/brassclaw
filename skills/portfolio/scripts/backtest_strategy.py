@@ -33,7 +33,10 @@ def load_history():
         raw = tool_invoke("memory_read", {
             "target": f"projects/{PROJECT_ID}/state/history/{f['name']}",
         })
-        snap = json.loads(raw["content"] if isinstance(raw, dict) else raw)
+        try:
+            snap = json.loads(raw["content"] if isinstance(raw, dict) else raw)
+        except (KeyError, TypeError, json.JSONDecodeError):
+            continue
         snaps.append({
             "date": f["name"].replace(".json", ""),
             "positions": snap.get("positions", []),
@@ -44,7 +47,10 @@ def load_config():
     raw = tool_invoke("memory_read", {
         "target": f"projects/{PROJECT_ID}/config.json",
     })
-    return json.loads(raw["content"] if isinstance(raw, dict) else raw)
+    try:
+        return json.loads(raw["content"] if isinstance(raw, dict) else raw)
+    except (KeyError, TypeError, json.JSONDecodeError):
+        return {}
 
 def backtest(strategy_doc):
     snaps = load_history()
@@ -75,5 +81,9 @@ def backtest(strategy_doc):
 strategy = tool_invoke("memory_read", {
     "target": f"projects/{PROJECT_ID}/strategies/stablecoin-yield-floor.md",
 })
-strategy_doc = strategy["content"] if isinstance(strategy, dict) else strategy
+try:
+    strategy_doc = strategy["content"] if isinstance(strategy, dict) else strategy
+except (KeyError, TypeError):
+    strategy_doc = ""
 result = backtest(strategy_doc)
+print(result)

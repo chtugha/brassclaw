@@ -1165,8 +1165,6 @@ where
     Ok(())
 }
 
-
-
 fn mount_local_dev_project_roots(
     root: &mut CompositeRootFilesystem,
     local: Arc<LocalFilesystem>,

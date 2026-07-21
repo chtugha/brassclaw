@@ -29,12 +29,11 @@
 #[cfg(feature = "db-store")]
 mod inner {
     use chrono::{DateTime, Utc};
-    use serde::{Deserialize, Serialize};
     use serde_json::Value as JsonValue;
     use thiserror::Error;
     use uuid::Uuid;
 
-    use brassclaw_pg::{PgError, PgPool};
+    use brassclaw_pg::{PgError, PgPool, PgRow};
 
     use crate::validation::{
         escape_skill_content, normalize_skill_identifier, validate_skill_version,
@@ -426,7 +425,7 @@ mod inner {
 
             let escaped_body = escape_skill_content(&input.body);
 
-            let client = self.pool.get().await?;
+            let client = self.pool.get().await.map_err(PgError::from)?;
             let row = client
                 .query_one(
                     "INSERT INTO reborn_skills (
@@ -488,7 +487,8 @@ mod inner {
                         &input.similarity_parent_id,
                     ],
                 )
-                .await?;
+                .await
+                .map_err(PgError::from)?;
 
             Ok(row.get::<_, Uuid>(0))
         }
@@ -503,7 +503,7 @@ mod inner {
             scope: &SkillScope,
             consumer_tag: &str,
         ) -> Result<Vec<DbSkillRow>, DbSkillStoreError> {
-            let client = self.pool.get().await?;
+            let client = self.pool.get().await.map_err(PgError::from)?;
             let rows = client
                 .query(
                     "SELECT
@@ -538,7 +538,8 @@ mod inner {
                         &consumer_tag,
                     ],
                 )
-                .await?;
+                .await
+                .map_err(PgError::from)?;
 
             rows.iter().map(row_from_pg).collect()
         }
@@ -549,7 +550,7 @@ mod inner {
             scope: &SkillScope,
             id: Uuid,
         ) -> Result<Option<DbSkillRow>, DbSkillStoreError> {
-            let client = self.pool.get().await?;
+            let client = self.pool.get().await.map_err(PgError::from)?;
             let opt = client
                 .query_opt(
                     "SELECT
@@ -581,7 +582,8 @@ mod inner {
                         &scope.project_id,
                     ],
                 )
-                .await?;
+                .await
+                .map_err(PgError::from)?;
 
             opt.map(|r| row_from_pg(&r)).transpose()
         }
@@ -593,7 +595,7 @@ mod inner {
             scope: &SkillScope,
             name: &str,
         ) -> Result<Option<DbSkillRow>, DbSkillStoreError> {
-            let client = self.pool.get().await?;
+            let client = self.pool.get().await.map_err(PgError::from)?;
             let opt = client
                 .query_opt(
                     "SELECT
@@ -626,7 +628,8 @@ mod inner {
                         &scope.project_id,
                     ],
                 )
-                .await?;
+                .await
+                .map_err(PgError::from)?;
 
             opt.map(|r| row_from_pg(&r)).transpose()
         }
@@ -652,7 +655,7 @@ mod inner {
 
             let escaped_body = escape_skill_content(&input.body);
 
-            let client = self.pool.get().await?;
+            let client = self.pool.get().await.map_err(PgError::from)?;
             let affected = client
                 .execute(
                     "UPDATE reborn_skills SET
@@ -712,7 +715,8 @@ mod inner {
                         &input.content_hash,
                     ],
                 )
-                .await?;
+                .await
+                .map_err(PgError::from)?;
 
             if affected == 0 {
                 return Err(DbSkillStoreError::NotFound { id });
@@ -728,7 +732,7 @@ mod inner {
             id: Uuid,
             update: &RewardUpdate,
         ) -> Result<(), DbSkillStoreError> {
-            let client = self.pool.get().await?;
+            let client = self.pool.get().await.map_err(PgError::from)?;
 
             // Only update columns that are explicitly set.
             let affected = client
@@ -759,7 +763,8 @@ mod inner {
                         &update.confidence,
                     ],
                 )
-                .await?;
+                .await
+                .map_err(PgError::from)?;
 
             if affected == 0 {
                 return Err(DbSkillStoreError::NotFound { id });
@@ -775,7 +780,7 @@ mod inner {
             scope: &SkillScope,
             id: Uuid,
         ) -> Result<(), DbSkillStoreError> {
-            let client = self.pool.get().await?;
+            let client = self.pool.get().await.map_err(PgError::from)?;
 
             let affected = client
                 .execute(
@@ -798,7 +803,8 @@ mod inner {
                         &scope.project_id,
                     ],
                 )
-                .await?;
+                .await
+                .map_err(PgError::from)?;
 
             if affected == 0 {
                 return Err(DbSkillStoreError::NotFound { id });
@@ -813,7 +819,7 @@ mod inner {
             scope: &SkillScope,
             id: Uuid,
         ) -> Result<(), DbSkillStoreError> {
-            let client = self.pool.get().await?;
+            let client = self.pool.get().await.map_err(PgError::from)?;
             let affected = client
                 .execute(
                     "UPDATE reborn_skills SET
@@ -834,7 +840,8 @@ mod inner {
                         &scope.project_id,
                     ],
                 )
-                .await?;
+                .await
+                .map_err(PgError::from)?;
 
             if affected == 0 {
                 return Err(DbSkillStoreError::NotFound { id });
@@ -849,7 +856,7 @@ mod inner {
             id: Uuid,
             errors: &[String],
         ) -> Result<(), DbSkillStoreError> {
-            let client = self.pool.get().await?;
+            let client = self.pool.get().await.map_err(PgError::from)?;
             let err_arr: Vec<&str> = errors.iter().map(|s| s.as_str()).collect();
             let affected = client
                 .execute(
@@ -871,7 +878,8 @@ mod inner {
                         &err_arr,
                     ],
                 )
-                .await?;
+                .await
+                .map_err(PgError::from)?;
 
             if affected == 0 {
                 return Err(DbSkillStoreError::NotFound { id });
@@ -885,7 +893,7 @@ mod inner {
             scope: &SkillScope,
             id: Uuid,
         ) -> Result<(), DbSkillStoreError> {
-            let client = self.pool.get().await?;
+            let client = self.pool.get().await.map_err(PgError::from)?;
             let affected = client
                 .execute(
                     "DELETE FROM reborn_skills
@@ -903,7 +911,8 @@ mod inner {
                         &scope.project_id,
                     ],
                 )
-                .await?;
+                .await
+                .map_err(PgError::from)?;
 
             if affected == 0 {
                 return Err(DbSkillStoreError::NotFound { id });
@@ -917,7 +926,7 @@ mod inner {
     // -----------------------------------------------------------------------
 
     fn row_from_pg(
-        row: &tokio_postgres::Row,
+        row: &PgRow,
     ) -> Result<DbSkillRow, DbSkillStoreError> {
         Ok(DbSkillRow {
             id: row.get("id"),

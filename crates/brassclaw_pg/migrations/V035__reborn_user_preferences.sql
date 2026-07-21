@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS reborn_user_preferences (
     -- Preference value (boolean represented as 'true'/'false', or other text).
     preference_value TEXT       NOT NULL DEFAULT 'false',
 
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     CONSTRAINT reborn_user_preferences_pk PRIMARY KEY (id),
