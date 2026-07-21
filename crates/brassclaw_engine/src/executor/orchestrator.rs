@@ -6404,4 +6404,143 @@ evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
              with the correct field, value, and message"
         );
     }
+
+    // ── Sub-step 3.4: __validate_component__ reroute tests ──────────────────
+    //
+    // Verify that handle_validate_component creates an update-candidate in Q1,
+    // that protected components get the 05:validator tag + llm_audit_required,
+    // and that empty payloads / missing stores are no-ops.
+
+    fn make_validate_thread() -> Thread {
+        Thread::new(
+            "test goal",
+            crate::types::thread::ThreadType::Foreground,
+            ProjectId::new(),
+            "test-user",
+            crate::types::thread::ThreadConfig::default(),
+        )
+    }
+
+    #[tokio::test]
+    async fn validate_component_queues_update_candidate_in_q1() {
+        let store: Arc<dyn Store> = Arc::new(crate::tests::InMemoryStore::with_docs(vec![]));
+        let thread = make_validate_thread();
+        let args = vec![
+            MontyObject::String("my-skill".into()),
+            MontyObject::String("skill content here".into()),
+            MontyObject::String("skill".into()),
+        ];
+
+        let result = handle_validate_component(&args, &thread, Some(&store)).await;
+
+        let json = match result {
+            ExtFunctionResult::Return(obj) => monty_to_json(&obj),
+            other => panic!("expected Return, got: {other:?}"),
+        };
+        assert_eq!(json["queued"], serde_json::json!(true));
+        assert_eq!(json["validation_status"], serde_json::json!("pending"));
+        assert_eq!(json["queue_code"], serde_json::json!("q1_auto"));
+
+        let docs = store
+            .list_memory_docs(thread.project_id, &thread.user_id)
+            .await
+            .unwrap();
+        assert_eq!(docs.len(), 1, "exactly one update-candidate must be written");
+    }
+
+    #[tokio::test]
+    async fn validate_component_no_op_on_empty_payload() {
+        let store: Arc<dyn Store> = Arc::new(crate::tests::InMemoryStore::with_docs(vec![]));
+        let thread = make_validate_thread();
+        let args = vec![
+            MontyObject::String("my-skill".into()),
+            MontyObject::String("".into()),
+        ];
+
+        let result = handle_validate_component(&args, &thread, Some(&store)).await;
+        let json = match result {
+            ExtFunctionResult::Return(obj) => monty_to_json(&obj),
+            other => panic!("expected Return, got: {other:?}"),
+        };
+        assert_eq!(json["queued"], serde_json::json!(false));
+
+        let docs = store
+            .list_memory_docs(thread.project_id, &thread.user_id)
+            .await
+            .unwrap();
+        assert!(docs.is_empty(), "no doc must be written for empty payload");
+    }
+
+    #[tokio::test]
+    async fn validate_component_no_op_without_store() {
+        let thread = make_validate_thread();
+        let args = vec![
+            MontyObject::String("my-skill".into()),
+            MontyObject::String("content".into()),
+        ];
+
+        let result = handle_validate_component(&args, &thread, None).await;
+        let json = match result {
+            ExtFunctionResult::Return(obj) => monty_to_json(&obj),
+            other => panic!("expected Return, got: {other:?}"),
+        };
+        assert_eq!(json["queued"], serde_json::json!(false));
+        assert_eq!(json["reason"], serde_json::json!("no_store"));
+    }
+
+    #[tokio::test]
+    async fn validate_component_protected_title_sets_validator_tag_and_audit_flag() {
+        let store: Arc<dyn Store> = Arc::new(crate::tests::InMemoryStore::with_docs(vec![]));
+        let thread = make_validate_thread();
+        // "orchestrator:main" is a protected title (class 10 / Orchestrator)
+        assert!(
+            crate::executor::prompt::is_protected_component_title("orchestrator:main"),
+            "orchestrator:main must be a protected component"
+        );
+        let args = vec![
+            MontyObject::String("orchestrator:main".into()),
+            MontyObject::String("def run_loop(): pass".into()),
+            MontyObject::String("skill".into()),
+        ];
+
+        let result = handle_validate_component(&args, &thread, Some(&store)).await;
+        let json = match result {
+            ExtFunctionResult::Return(obj) => monty_to_json(&obj),
+            other => panic!("expected Return, got: {other:?}"),
+        };
+        assert_eq!(json["queued"], serde_json::json!(true));
+        assert_eq!(json["llm_audit_required"], serde_json::json!(true));
+        assert_eq!(json["llm_audit_status"], serde_json::json!("pending"));
+
+        let docs = store
+            .list_memory_docs(thread.project_id, &thread.user_id)
+            .await
+            .unwrap();
+        assert_eq!(docs.len(), 1);
+        let tags = &docs[0].tags;
+        assert!(
+            tags.iter().any(|t| t == "05:validator"),
+            "protected component candidate must carry 05:validator tag, got: {tags:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_component_non_protected_title_skips_audit_flag() {
+        let store: Arc<dyn Store> = Arc::new(crate::tests::InMemoryStore::with_docs(vec![]));
+        let thread = make_validate_thread();
+        let args = vec![
+            MontyObject::String("my-custom-skill".into()),
+            MontyObject::String("skill content here".into()),
+            MontyObject::String("skill".into()),
+        ];
+
+        let result = handle_validate_component(&args, &thread, Some(&store)).await;
+        let json = match result {
+            ExtFunctionResult::Return(obj) => monty_to_json(&obj),
+            other => panic!("expected Return, got: {other:?}"),
+        };
+        assert_eq!(json["queued"], serde_json::json!(true));
+        assert_eq!(json["llm_audit_required"], serde_json::json!(false));
+        assert_eq!(json["llm_audit_status"], serde_json::json!("not_required"));
+    }
 }
