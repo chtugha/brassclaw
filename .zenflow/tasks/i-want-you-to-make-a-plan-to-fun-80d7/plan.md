@@ -101,9 +101,10 @@ Intent system, Intent input class) and validation criteria (Section 2.6).
   `SharedInterceptorMode` in `mode.rs`, `PgInterceptorStore` in `pg_store.rs`,
   `LoopInterceptorPort` trait in `host.rs:2103`, `InterceptorStage` in
   `interceptor.rs`, `RebornLoopDriverHost` saves packets in
-  `loop_driver_host.rs:1800`, `interceptor_store` wired in `runtime.rs:557`,
+  `loop_driver_host.rs:1800`, `interceptor_store` wired in
+  `brassclaw_reborn/src/runtime.rs:557`,
   `ProviderRole::Sempai` + `set_active` in `llm_config_service.rs:898`,
-  `sempai_swappable` scaffolded in `runtime.rs:2494`, `LlmProviderModelGateway`
+  `sempai_swappable` scaffolded in `brassclaw_reborn_composition/src/runtime.rs:2494`, `LlmProviderModelGateway`
   in `model_gateway.rs:350`, `InstructionBundleBuilder.build()` in
   `instruction_bundle.rs:202`); **v5.5: five wiring gaps confirmed** (Gap 0:
   `brassclaw_forensic_packets` table missing — V026 in interceptor2.md → V044
@@ -900,8 +901,9 @@ Misc extensions only.
 (one source of truth: the DB). Remove chunking/embedding/hybrid-search. Add
 `RamSource` + baked-in fallback so DB-less mode works with identical
 prompt-composition code. **Replace "load all docs" retrieval with intent-driven
-retrieval** (§3.13). **Replace Python formatting with Rust-owned class-specific
-formatters** (§3.13/§3.14). **Replace the 5-doc limit with a token-budget
+retrieval** (§3.13). **Replace Python formatting with `__assemble_prior_knowledge__`**
+(Rust, content-is-king + Solution Override, §3.13/§3.14 — no per-class
+formatters). **Replace the 5-doc limit with a token-budget
 limit**. **Migrate former doctypes into first-class component tables** (classes
 12-20). **Split large documents into component rows**.
 
@@ -1880,8 +1882,9 @@ tab** (Sempai status, Reassemble button, Pre-warm button, persona editor).
   deleted, relocated to two consumers).
 - **Delete the Python formatting functions** (spec §2.3b): `format_docs`
   (`default.py:234`), `format_skills` (`default.py:932`), `append_system_append`
-  (`default.py:270`). All replaced by Rust-owned class-specific formatters
-  (§3.13). `format_output` (`default.py:194`), `_reduce_prompt`
+  (`default.py:270`). All replaced by `__assemble_prior_knowledge__` (Rust,
+  content-is-king + Solution Override, §3.13/§3.14 — no per-class formatters).
+  `format_output` (`default.py:194`), `_reduce_prompt`
   (`default.py:542`), `compact_if_needed` (`default.py:562`) are **kept**.
 - Update `AGENTS.md` / `CLAUDE.md` / `CHANGELOG.md` for the new architecture
   (Products/Loops/Kernel layering unchanged; Skills/Tools/Extensions/Actions
@@ -1890,7 +1893,8 @@ tab** (Sempai status, Reassemble button, Pre-warm button, persona editor).
   **4-queue validation lifecycle §3.5.1**; **Monty VM settings DB-stored
   §3.10**; **unified intent system §3.12 replacing 8 intent-detection
   functions**; **Actions class §3.11 for LLM-free deterministic execution**;
-  **Rust-owned class-specific formatting §3.13/§3.14**; **intent-driven
+  **Rust-owned formatting (`__assemble_prior_knowledge__`, content-is-king +
+  Solution Override) §3.13/§3.14**; **intent-driven
   retrieval §3.13**; **token-budget prior-knowledge limit**; **"try it with
   AI" fallback**; **9 new class codes 12-20 for former doctypes**;
   **orchestrator formatting ban §3.14**; **DB-less fallback-content file

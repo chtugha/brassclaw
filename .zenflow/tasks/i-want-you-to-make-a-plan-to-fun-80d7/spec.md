@@ -1,10 +1,15 @@
 # BrassClaw Design Transition — Technical Spec
 
-Status: Draft v5 (incorporates v4 + Actions class rewrite: default.py executor
-not Rust ActionExecutor, 10 step types, no size limits, token-budget
-exemption, 8-step dispatch flow; Monty VM kernel-owned restart + status
-polling; DB-less fallback file for intent system; "AI before User" flip
-switch).
+Status: Draft v5.5 (incorporates v5 + validator independence §3.5, LLM
+code-audit for Orchestrator/Scaffold, self-improvement mission writes
+rerouted through validation gate §3.6, Q19 formatting resolved — "content
+is king" + Solution Override §3.13/§3.14, interceptor architecture §3.15
+(Sempai–Kohai forensic audit + rerouting), ALL 31 open questions RESOLVED
+Q1-Q31, migration numbering fixed V027-V044, comprehensive review complete).
+Builds on v5: Actions class rewrite (default.py executor not Rust
+ActionExecutor, 13 step types, no size limits, token-budget exemption,
+8-step dispatch flow; Monty VM kernel-owned restart + status polling;
+DB-less fallback file for intent system; "AI before User" flip switch).
 Scope: Fundamental redesign of Skills, Tools, Extensions, and the Memory/chunk
 subsystem.
 
@@ -59,13 +64,13 @@ The codebase has **8 separate intent-detection mechanisms** that the unified int
 | `extract_explicit_skills()` | `default.py:754` | Slash-command matcher (`/skill-name`) — force-activates skills |
 | `RecipeTrigger` matching | `recipe.rs:65-107` | Exact/Pattern/Keyword trigger matching for Recipes |
 
-### 2.3b Formatting functions (all replaced by Rust-owned class-specific formatters)
+### 2.3b Formatting functions (all replaced by `__assemble_prior_knowledge__` — Rust, content-is-king + Solution Override, §3.13/§3.14)
 | Function | Location | What it does | Fate |
 |----------|----------|-------------|------|
 | `format_docs(docs)` | `default.py:234` | Renders docs as `## Prior Knowledge`, 500-char truncation | **Deleted** — replaced by `__assemble_prior_knowledge__` (Rust) |
-| `format_skills(skills)` | `default.py:932` | XML-tagged `<skill>` blocks with trust/version/bundle_path | **Deleted** — replaced by class-specific Rust formatters |
+| `format_skills(skills)` | `default.py:932` | XML-tagged `<skill>` blocks with trust/version/bundle_path | **Deleted** — replaced by `__assemble_prior_knowledge__` (Rust, content-is-king) |
 | `format_output(result)` | `default.py:194` | Formats code execution results (stdout, action results) | **Kept** in Python (tool output, not prior knowledge) |
-| `format_docs_as_context(docs)` | `context.rs:78` | Rust twin of `format_docs` (dead in production) | **Resurrected** as the basis for Rust class-specific formatters |
+| `format_docs_as_context(docs)` | `context.rs:78` | Rust twin of `format_docs` (dead in production) | **Resurrected** as the basis for `__assemble_prior_knowledge__` (content-is-king assembly) |
 | `append_system_append()` | `default.py:270` | Appends to System message (KV-cache-mutating) | **Deleted** — replaced by User-message-at-N-1 (Rust-owned) |
 | `_reduce_prompt()` | `default.py:542` | Truncation/summarize/drop rules for prompt budget | **Kept** in Python (prompt reduction policy) |
 | `compact_if_needed()` | `default.py:562` | LLM-call compaction at 0.85 threshold | **Kept** in Python (compaction policy) |
@@ -328,7 +333,7 @@ Name `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` (1–64, no `--`, no leading/trailing `-`
   1. **Step 0:** the orchestrator sends the goal query to `__resolve_intent__(goal, "02")`.
   2. The intent system responds with the unique id of an Action element (class_code 16).
   3. The RetrievalEngine pulls that Action element by id (same as any other component retrieval).
-  4. **Prior knowledge is created as usual** — the Action's content is formatted by `format_action` (§3.13) and included in the prior-knowledge section. The Action is exempt from token-budget truncation (full content included).
+  4. **Prior knowledge is created as usual** — the Action's content is assembled by `__assemble_prior_knowledge__` via the **Solution Override path** (§3.13/§3.14 — Actions default to `override_prompt_creation: true`, so PKC/content IS the complete prompt text, no headers). The Action is exempt from token-budget truncation (full content included).
   5. Prior knowledge is given to default.py.
   6. default.py recognizes class_code 16 in the retrieved components and **stops further prompt creation** — does not call `__llm_complete__`, does not build an LLM prompt.
   7. default.py **performs the Action directly** by following its instructions: tool calls go through the normal Rust bridge (`EffectExecutor`), result evaluation via `evaluate`/`conditional`, branching, looping, skill invocation, parallel execution, error recovery.
@@ -722,7 +727,7 @@ Each phase shippable behind a feature flag; old path stays until verification pa
 - Never delete LLM output (thread messages/steps/events).
 - DB-less mode (`RamSource`) is not for production; it must not bypass safety, policy, or scope rules — only the persistence backend swaps. Monty VM settings fall back to compiled-in defaults.
 - **Monty host-function extensions (`__llm_complete__` etc.) are kernel-owned and read-only in the WebUI** — operators may not edit the Python↔Rust bridge.
-- **Formatting is Rust-owned (§3.14).** The self-improvement mission cannot patch the class-specific formatters or `__assemble_prior_knowledge__`. This protects the KV-cache invariant: the formatting shape is byte-identical across turns.
+- **Formatting is Rust-owned (§3.14).** The self-improvement mission cannot patch `__assemble_prior_knowledge__` (there are no per-class formatters — Q19 eliminated them). This protects the KV-cache invariant: the formatting shape is byte-identical across turns.
 - **Actions execute via default.py (§3.11).** An Action's `steps` are declarative descriptors that default.py interprets and follows. Tool calls within an Action go through the normal Rust `EffectExecutor` bridge. The `allowed_tools[]` column is a capability subset — default.py enforces this before each tool dispatch: a tool not in `allowed_tools[]` is rejected. Actions are exempt from `prior_knowledge_token_budget` truncation (full content included). The step vocabulary is Python tunable logic — new step types are added by patching default.py through the validation gate, not by Rust changes. Actions must be `Validated` before they can execute.
 - **Intent system learned inputs are scoped.** A `reborn_intent_inputs` row learned in one scope tuple does not leak to another. The `source` field (`learned_user`/`learned_llm`/`learned_fallback`) tracks provenance for audit. Learned inputs are immediate-write (no validation gate) — they are routing hints, not content/code.
 - **"Try it with AI" fallback is per-query.** The RetrievalEngine fallback reactivates only for the single query that triggered it; it does not persist as a mode. The fallback uses the existing `extract_keywords` + the intent system's class-4 path; it does not bypass the validation gate or consumer-tag gating.
