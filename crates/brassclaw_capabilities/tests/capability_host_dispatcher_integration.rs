@@ -447,7 +447,8 @@ fn runtime_dispatcher_stack(
     let events = InMemoryEventSink::new();
     let dispatcher =
         RuntimeDispatcher::from_arcs(Arc::clone(&registry), filesystem, Arc::clone(&governor))
-            .with_runtime_adapter_arc(RuntimeKind::FirstParty, adapter)
+            .with_runtime_adapter_arc(RuntimeKind::FirstParty, Arc::clone(&adapter))
+            .with_runtime_adapter_arc(RuntimeKind::Mcp, adapter)
             .with_event_sink_arc(Arc::new(events.clone()));
     (registry, dispatcher, governor, events)
 }

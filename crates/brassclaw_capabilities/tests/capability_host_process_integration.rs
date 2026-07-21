@@ -66,7 +66,7 @@ async fn capability_host_spawn_runs_background_process_through_process_host() {
     assert_eq!(spawned.process.scope, scope);
     assert_eq!(spawned.process.extension_id, extension_id());
     assert_eq!(spawned.process.capability_id, capability_id());
-    assert_eq!(spawned.process.runtime, RuntimeKind::FirstParty);
+    assert_eq!(spawned.process.runtime, RuntimeKind::Mcp);
     assert_eq!(spawned.process.grants, grants);
     assert_eq!(spawned.process.mounts, mounts);
     assert_eq!(spawned.process.estimated_resources, estimate);
@@ -94,7 +94,7 @@ async fn capability_host_spawn_runs_background_process_through_process_host() {
     assert_eq!(execution.scope, scope);
     assert_eq!(execution.extension_id, extension_id());
     assert_eq!(execution.capability_id, capability_id());
-    assert_eq!(execution.runtime, RuntimeKind::FirstParty);
+    assert_eq!(execution.runtime, RuntimeKind::Mcp);
     assert_eq!(execution.estimate, estimate);
     assert_eq!(execution.input, input);
     assert_eq!(

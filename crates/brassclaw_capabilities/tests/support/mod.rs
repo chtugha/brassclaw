@@ -267,8 +267,9 @@ description = "Echo test extension"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "echo.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "echo"
 
 [[capabilities]]
 id = "echo.say"
@@ -289,8 +290,9 @@ description = "GitHub issue comment test extension"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/github_tool.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "github-tool"
 
 [[capabilities]]
 id = "github.comment_issue"
