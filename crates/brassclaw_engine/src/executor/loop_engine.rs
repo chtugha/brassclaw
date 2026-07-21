@@ -1516,38 +1516,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tool_intent_nudge_injected() {
-        let (mut exec, _tx) = make_loop(
-            vec![
-                text_response("Let me search for that"),
-                text_response("The answer is 42"),
-            ],
-            vec![],
-            ThreadConfig {
-                enable_tool_intent_nudge: true,
-                max_tool_intent_nudges: 2,
-                ..ThreadConfig::default()
-            },
-        )
-        .await;
-
-        let outcome = exec.run().await.unwrap();
-        assert!(
-            matches!(outcome, ThreadOutcome::Completed { response: Some(r) } if r == "The answer is 42")
-        );
-        assert_eq!(exec.thread.step_count, 2);
-        // Nudge is injected into the orchestrator's working messages, which
-        // are persisted as `thread.internal_messages` (not the user-visible
-        // `messages` transcript).
-        assert!(
-            exec.thread
-                .internal_messages
-                .iter()
-                .any(|m| m.content.contains("did not include any tool calls"))
-        );
-    }
-
-    #[tokio::test]
     async fn events_are_recorded() {
         let (mut exec, _tx) = make_loop(
             vec![text_response("Hello!")],

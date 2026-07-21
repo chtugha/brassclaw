@@ -10,8 +10,8 @@ use brassclaw_loop_support::{
     SkillSourceKind, sort_skill_bundle_descriptors,
 };
 use brassclaw_skills::{
-    LoadedSkill, SkillSelectionOptions, SkillSource, SkillTrust, extract_skill_mentions,
-    parse_skill_md, prefilter_skills_with_options, skill_token_cost, validate_skill_name,
+    LoadedSkill, SkillSelectionOptions, SkillSource, extract_skill_mentions, parse_skill_md,
+    prefilter_skills_with_options, skill_token_cost, validate_skill_name,
 };
 use brassclaw_turns::run_profile::{LoopRunContext, SkillVisibility};
 use brassclaw_turns::{AcceptedMessageRef, TurnRunId, TurnScope};
@@ -154,6 +154,8 @@ pub enum SkillActivationSelectionError {
     SourceUnavailable,
     #[error("skill activation parse failed")]
     ParseFailed,
+    // Phase 3: TrustDataMissing kept for exhaustive-match compatibility;
+    // descriptor.trust() is gone — this variant is unreachable in production.
     #[error("skill activation trust data missing")]
     TrustDataMissing,
     #[error("skill activation visibility data missing")]
@@ -172,7 +174,10 @@ impl SkillActivationSelectionError {
                 HostSkillContextBuildError::AmbiguousSkill { name, sources }
             }
             Self::ParseFailed => HostSkillContextBuildError::ParseFailed,
-            Self::TrustDataMissing => HostSkillContextBuildError::TrustDataMissing,
+            // Phase 3: trust layer removed; TrustDataMissing is unreachable but
+            // kept for exhaustive matching. Map to Internal per the same rationale
+            // as skill_context.rs.
+            Self::TrustDataMissing => HostSkillContextBuildError::Internal,
             Self::VisibilityDataMissing => HostSkillContextBuildError::VisibilityDataMissing,
             Self::ContextBudgetExceeded => HostSkillContextBuildError::ContextBudgetExceeded,
             Self::Internal => HostSkillContextBuildError::Internal,
@@ -812,7 +817,6 @@ struct ActivationCandidateCacheKey {
     name: String,
     skill_md_path: String,
     content_hash: String,
-    trust: Option<brassclaw_skills::SkillTrust>,
     visibility: Option<SkillVisibility>,
 }
 
@@ -827,7 +831,6 @@ impl ActivationCandidateCacheKey {
                 .content_hash
                 .clone()
                 .unwrap_or_else(|| content_hash(skill_md)),
-            trust: descriptor.trust().copied(),
             visibility: descriptor.visibility().copied(),
         }
     }
@@ -837,7 +840,6 @@ impl ActivationCandidate {
     fn into_context_candidate(self) -> HostSkillContextCandidate {
         HostSkillContextCandidate::new(
             self.skill_md,
-            self.descriptor.trust().cloned(),
             self.descriptor.visibility().copied(),
         )
         .with_ordering_key(descriptor_context_ordering_key(&self.descriptor))
@@ -892,10 +894,6 @@ fn loaded_skill_from_candidate(
     Ok(LoadedSkill {
         manifest: parsed.manifest,
         prompt_content: parsed.prompt_content,
-        trust: descriptor
-            .trust()
-            .cloned()
-            .ok_or(SkillActivationSelectionError::TrustDataMissing)?,
         source,
         content_hash: descriptor_context_ordering_key(descriptor),
         compiled_patterns,
@@ -991,10 +989,13 @@ fn select_named_skill_activations(
     config: &SkillActivationSelectorConfig,
     satisfied_setup_markers: &HashSet<String>,
 ) -> Result<SkillActivationSelection, SkillActivationSelectionError> {
+    // Phase 3: trust layer removed — all validated skills are trusted. The
+    // Installed-tier filter is replaced by validation_status == 'validated'
+    // at the DB layer (reborn_skills) or ValidationStatus::Validated in
+    // recipe_matcher. No trust filter needed here.
     let active_candidates =
         candidates_with_unsatisfied_setup_markers(candidates, satisfied_setup_markers)
             .into_iter()
-            .filter(|candidate| candidate.loaded.trust == SkillTrust::Trusted)
             .collect::<Vec<_>>();
     let mut activations = Vec::new();
     let mut selected_keys = HashSet::new();
@@ -1205,10 +1206,9 @@ fn normalize_dollar_skill_mentions(message: &str) -> String {
 fn validate_descriptor_policy_metadata(
     descriptors: &[SkillBundleDescriptor],
 ) -> Result<(), SkillActivationSelectionError> {
+    // Phase 3: trust check removed — all validated skills are trusted.
+    // Only visibility is still required as a policy signal.
     for descriptor in descriptors {
-        if descriptor.trust().is_none() {
-            return Err(SkillActivationSelectionError::TrustDataMissing);
-        }
         if descriptor.visibility().is_none() {
             return Err(SkillActivationSelectionError::VisibilityDataMissing);
         }
@@ -1293,7 +1293,6 @@ mod tests {
     use super::*;
     use brassclaw_host_api::{AgentId, ProjectId, TenantId};
     use brassclaw_loop_support::{SkillBundleId, SkillFilePath};
-    use brassclaw_skills::SkillTrust;
     use brassclaw_turns::{
         TurnActor, TurnId, TurnRunId,
         run_profile::{
@@ -1335,7 +1334,6 @@ mod tests {
                 let id = SkillBundleId::new(source, name).unwrap();
                 descriptors.push(SkillBundleDescriptor::new(
                     id.clone(),
-                    Some(SkillTrust::Trusted),
                     Some(SkillVisibility::Visible),
                 ));
                 files.insert((source, name.to_string()), skill_md.as_bytes().to_vec());
@@ -1355,7 +1353,6 @@ mod tests {
             let id = SkillBundleId::new(SkillSourceKind::User, name).unwrap();
             let descriptor = SkillBundleDescriptor::new(
                 id,
-                Some(SkillTrust::Trusted),
                 Some(SkillVisibility::Visible),
             )
             .with_provenance(
@@ -1990,20 +1987,19 @@ mod tests {
         assert!(combined.contains("RELEASE_SENTINEL"));
     }
 
+    // Phase 3: SkillTrust::Installed removed — all validated skills are Trusted.
+    // The old test was asserting that Installed-trust skills were blocked from
+    // activation; that gate no longer exists. The equivalent Phase 3 test is
+    // that a skill with Validated status IS activated when model requests it.
+    // The "installed" fixture is now just a regular skill with Visible visibility.
     #[tokio::test]
-    async fn model_selected_skill_activation_only_allows_trusted_skills() {
-        let name = "installed-helper";
-        let source = Arc::new(StaticSkillBundleSource {
-            descriptors: vec![SkillBundleDescriptor::new(
-                SkillBundleId::new(SkillSourceKind::User, name).unwrap(),
-                Some(SkillTrust::Installed),
-                Some(SkillVisibility::Visible),
-            )],
-            files: HashMap::from([(
-                (SkillSourceKind::User, name.to_string()),
-                skill_md(name, "Installed helper", &[], "INSTALLED_SENTINEL").into_bytes(),
-            )]),
-        });
+    async fn model_selected_skill_activation_activates_visible_validated_skills() {
+        let name = "code-review";
+        let source = Arc::new(StaticSkillBundleSource::new(vec![(
+            SkillSourceKind::User,
+            name,
+            &skill_md(name, "Review code", &["review"], "CODE_REVIEW_SENTINEL"),
+        )]));
         let selectable =
             SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
         let context = run_context().await;
@@ -2011,13 +2007,10 @@ mod tests {
         let plan = selectable
             .activate_skills_for_run(&context, &[name.to_string()])
             .await
-            .expect("installed skill should be reported unavailable, not activated");
+            .expect("validated visible skill should activate");
 
-        assert!(plan.selection.activations.is_empty());
-        assert_eq!(
-            plan.selection.feedback,
-            vec!["installed-helper: requested skill is not available"]
-        );
+        assert_eq!(plan.selection.activations.len(), 1);
+        assert!(plan.selection.feedback.is_empty());
     }
 
     #[tokio::test]
@@ -2668,7 +2661,6 @@ mod tests {
             let name = format!("skill-{index}");
             let descriptor = SkillBundleDescriptor::new(
                 SkillBundleId::new(SkillSourceKind::User, &name).unwrap(),
-                Some(SkillTrust::Trusted),
                 Some(SkillVisibility::Visible),
             );
             selectable
@@ -2724,7 +2716,6 @@ mod tests {
         let source = Arc::new(StaticSkillBundleSource {
             descriptors: vec![SkillBundleDescriptor::new(
                 SkillBundleId::new(SkillSourceKind::User, "bad-helper").unwrap(),
-                Some(SkillTrust::Trusted),
                 Some(SkillVisibility::Visible),
             )],
             files: HashMap::from([(
@@ -2743,33 +2734,13 @@ mod tests {
         assert_eq!(error, SkillActivationSelectionError::ParseFailed);
     }
 
-    #[tokio::test]
-    async fn selector_reports_trust_missing_on_descriptor_without_trust() {
-        let source = Arc::new(StaticSkillBundleSource {
-            descriptors: vec![SkillBundleDescriptor::new(
-                SkillBundleId::new(SkillSourceKind::User, "code-review").unwrap(),
-                None,
-                Some(SkillVisibility::Visible),
-            )],
-            files: HashMap::new(),
-        });
-        let selectable =
-            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
-        let context = run_context().await;
-
-        let error = selectable
-            .selected_candidates(&context, "review", false)
-            .await
-            .expect_err("missing trust should fail closed");
-        assert_eq!(error, SkillActivationSelectionError::TrustDataMissing);
-    }
-
+    // Phase 3: trust check removed from validate_descriptor_policy_metadata.
+    // Visibility is still the sole required policy field.
     #[tokio::test]
     async fn selector_reports_visibility_missing_on_descriptor_without_visibility() {
         let source = Arc::new(StaticSkillBundleSource {
             descriptors: vec![SkillBundleDescriptor::new(
                 SkillBundleId::new(SkillSourceKind::User, "code-review").unwrap(),
-                Some(SkillTrust::Trusted),
                 None,
             )],
             files: HashMap::new(),

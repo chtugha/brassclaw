@@ -3582,7 +3582,6 @@ mod tests {
     use crate::types::step::StepId;
     use crate::types::step::{ActionResult, LlmResponse, Step, TokenUsage};
     use crate::types::thread::{ActiveSkillProvenance, Thread, ThreadId, ThreadState, ThreadType};
-    use brassclaw_skills::SkillTrust;
     use brassclaw_skills::types::ActivationCriteria;
     use brassclaw_skills::v2::{SkillMetrics, SkillRepairType, V2SkillMetadata, V2SkillSource};
 
@@ -3630,7 +3629,6 @@ mod tests {
             description: format!("{name} description"),
             activation: ActivationCriteria::default(),
             source: V2SkillSource::Extracted,
-            trust: SkillTrust::Trusted,
             requires: Default::default(),
             code_snippets: vec![],
             metrics: SkillMetrics::default(),

@@ -165,7 +165,6 @@ mod tests {
         SkillBundleDescriptor, SkillBundleId, SkillBundleSource, SkillBundleSourceError,
         SkillFilePath, SkillSourceKind,
     };
-    use brassclaw_skills::SkillTrust;
     use brassclaw_turns::{
         RunProfileResolutionRequest, RunProfileResolver, TurnId, TurnRunId, TurnScope,
         run_profile::{InMemoryRunProfileResolver, SkillVisibility},
@@ -200,7 +199,6 @@ mod tests {
                 let id = SkillBundleId::new(source, name).unwrap();
                 descriptors.push(SkillBundleDescriptor::new(
                     id,
-                    Some(SkillTrust::Trusted),
                     Some(SkillVisibility::Visible),
                 ));
                 files.insert(
@@ -467,7 +465,6 @@ mod tests {
         let source = Arc::new(StaticSkillBundleSource {
             descriptors: vec![SkillBundleDescriptor::new(
                 bundle_id.clone(),
-                Some(SkillTrust::Trusted),
                 Some(SkillVisibility::Visible),
             )],
             files: HashMap::from([

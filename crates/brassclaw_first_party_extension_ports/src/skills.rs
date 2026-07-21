@@ -307,7 +307,6 @@ mod tests {
         VirtualPath,
     };
     use brassclaw_loop_support::{SkillBundleSource, build_skill_run_snapshot};
-    use brassclaw_skills::SkillTrust;
     use brassclaw_turns::{
         TurnActor, TurnId, TurnRunId, TurnScope,
         run_profile::{
@@ -501,7 +500,7 @@ mod tests {
 
         assert_eq!(descriptors.len(), 1);
         assert_eq!(descriptors[0].id().name(), "user-helper");
-        assert_eq!(descriptors[0].trust(), Some(&SkillTrust::Trusted));
+        // Phase 3: trust() is gone — only visibility is policy-required.
         assert_eq!(descriptors[0].visibility(), Some(&SkillVisibility::Visible));
     }
 }

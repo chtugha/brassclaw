@@ -20,9 +20,13 @@ rustflags = [
 [target.x86_64-unknown-linux-musl]
 linker = "x86_64-linux-musl-gcc"
 
-# ── Build jobs ────────────────────────────────────────────────────────────────
+# ── Build output on internal NVMe (avoids external-drive I/O penalty) ─────────
+# The external SSDE drive has high latency for the thousands of small read/write
+# ops rustc generates. Keeping compiled artefacts on the internal SSD cuts
+# incremental build times significantly.
 [build]
-jobs = 10          # match logical-CPU count (sysctl hw.logicalcpu = 10)
+target-dir = "/Users/ollama/Library/Caches/brassclaw-target"
+jobs = 3           # OOM guard: external → internal NVMe, 10 jobs OOM'd previously
 
 # ── Compiler cache (opt-in) ───────────────────────────────────────────────────
 # sccache is incompatible with incremental compilation — rustc silently drops

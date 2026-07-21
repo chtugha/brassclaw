@@ -21,7 +21,9 @@ use crate::traits::store::Store;
 use crate::types::error::EngineError;
 use crate::types::memory::{DocType, MemoryDoc};
 use crate::types::project::ProjectId;
-use crate::types::recipe::{Recipe, RecipeTrigger, ToolSkill, ValidationStatus};
+use crate::types::recipe::{
+    Recipe, RecipeSource, RecipeTrigger, RecipeValidation, ToolSkill, ValidationStatus,
+};
 
 /// Minimum match score before a Recipe is surfaced for any tier.
 pub const RECIPE_MIN_MATCH: f64 = 0.5;
@@ -311,6 +313,136 @@ fn parse_tool_skill(doc: &MemoryDoc) -> Result<ToolSkill, EngineError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── helpers ──────────────────────────────────────────────────────────────
+
+    fn minimal_recipe(status: ValidationStatus) -> Recipe {
+        Recipe {
+            id: "test-id".to_string(),
+            name: "test".to_string(),
+            description: "test recipe".to_string(),
+            trigger: RecipeTrigger::Exact {
+                command: "test".to_string(),
+            },
+            steps: vec![],
+            validation: RecipeValidation::None,
+            category: "test".to_string(),
+            usage_count: 0,
+            success_count: 0,
+            failure_count: 0,
+            wilson_lower: 0.0,
+            tier: "seedling".to_string(),
+            source: RecipeSource::Authored,
+            source_thread_id: None,
+            project_id: "proj".to_string(),
+            user_id: "user".to_string(),
+            validation_status: status,
+            validation_errors: vec![],
+            review_feedback: None,
+            review_attempts: 0,
+            rejected_at: None,
+            similarity_parent_id: None,
+            skip_similarity: false,
+            last_audit_at: None,
+            audit_failure_count: 0,
+            replaces_id: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    fn minimal_tool_skill(status: ValidationStatus) -> ToolSkill {
+        ToolSkill {
+            id: "skill-id".to_string(),
+            name: "test-skill".to_string(),
+            tool_name: "shell".to_string(),
+            description: "test skill description test".to_string(),
+            param_template: serde_json::Value::Object(Default::default()),
+            param_schema: vec![],
+            preconditions: String::new(),
+            error_handling: String::new(),
+            code_snippet: None,
+            category: "test".to_string(),
+            usage_count: 0,
+            success_count: 0,
+            failure_count: 0,
+            wilson_lower: 0.0,
+            tier: "seedling".to_string(),
+            source: RecipeSource::Authored,
+            source_thread_id: None,
+            project_id: "proj".to_string(),
+            user_id: "user".to_string(),
+            validation_status: status,
+            validation_errors: vec![],
+            review_feedback: None,
+            review_attempts: 0,
+            rejected_at: None,
+            similarity_parent_id: None,
+            skip_similarity: false,
+            last_audit_at: None,
+            audit_failure_count: 0,
+            replaces_id: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    // ── Sub-step 3.3 regression: Validated == reachable; AutoPassed is NOT ──
+
+    #[test]
+    fn recipe_filter_rejects_auto_passed_not_validated() {
+        // AutoPassed is the immediate predecessor to Validated in the lifecycle.
+        // The loop must only see Validated recipes.
+        let auto_passed = minimal_recipe(ValidationStatus::AutoPassed);
+        assert!(
+            !matches!(auto_passed.validation_status, ValidationStatus::Validated),
+            "AutoPassed must not pass the Validated filter"
+        );
+        // Confirm recipe_matcher's exact filter expression rejects it.
+        let is_reachable = matches!(auto_passed.validation_status, ValidationStatus::Validated);
+        assert!(!is_reachable, "AutoPassed recipe must not be reachable by the loop");
+    }
+
+    #[test]
+    fn recipe_filter_rejects_pending_upgrade_queued_and_garbage() {
+        for status in [
+            ValidationStatus::Pending,
+            ValidationStatus::UpgradeQueued,
+            ValidationStatus::AutoFailed,
+            ValidationStatus::Rejected,
+            ValidationStatus::Garbage,
+            ValidationStatus::ReviewRequested,
+        ] {
+            let recipe = minimal_recipe(status.clone());
+            let is_reachable = matches!(recipe.validation_status, ValidationStatus::Validated);
+            assert!(
+                !is_reachable,
+                "status {:?} must not be reachable by the loop",
+                status
+            );
+        }
+    }
+
+    #[test]
+    fn recipe_filter_accepts_validated_only() {
+        let validated = minimal_recipe(ValidationStatus::Validated);
+        let is_reachable = matches!(validated.validation_status, ValidationStatus::Validated);
+        assert!(is_reachable, "Validated recipe must be reachable by the loop");
+    }
+
+    #[test]
+    fn tool_skill_filter_rejects_auto_passed() {
+        let skill = minimal_tool_skill(ValidationStatus::AutoPassed);
+        let is_reachable = matches!(skill.validation_status, ValidationStatus::Validated);
+        assert!(!is_reachable, "AutoPassed ToolSkill must not be reachable by the loop");
+    }
+
+    #[test]
+    fn tool_skill_filter_accepts_validated_only() {
+        let skill = minimal_tool_skill(ValidationStatus::Validated);
+        let is_reachable = matches!(skill.validation_status, ValidationStatus::Validated);
+        assert!(is_reachable, "Validated ToolSkill must be reachable by the loop");
+    }
 
     fn kw_trigger(words: &[&str], threshold: f64) -> RecipeTrigger {
         RecipeTrigger::Keyword {

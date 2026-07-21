@@ -31,7 +31,7 @@ use brassclaw_skills::v2::{
     CodeSnippet, SkillMetrics, SkillRepairRecord, SkillRevision, V2SkillMetadata,
     V2SkillSource,
 };
-use brassclaw_skills::{SkillManifest, SkillTrust};
+use brassclaw_skills::SkillManifest;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -183,7 +183,6 @@ fn build_v2_metadata(entry: &CatalogEntry) -> V2SkillMetadata {
         description: entry.manifest.description.clone(),
         activation: entry.manifest.activation.clone(),
         source: V2SkillSource::Migrated,
-        trust: SkillTrust::Installed,
         requires: entry.manifest.requires.clone(),
         code_snippets: Vec::<CodeSnippet>::new(),
         metrics: SkillMetrics::default(),

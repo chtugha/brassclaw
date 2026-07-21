@@ -219,7 +219,6 @@ impl SkillTracker {
 mod tests {
     use super::*;
     use crate::types::project::ProjectId;
-    use brassclaw_skills::SkillTrust;
     use brassclaw_skills::v2::{SkillMetrics, V2SkillSource};
 
     fn make_skill_doc(project_id: ProjectId) -> MemoryDoc {
@@ -229,7 +228,6 @@ mod tests {
             description: "test".to_string(),
             activation: Default::default(),
             source: V2SkillSource::Extracted,
-            trust: SkillTrust::Trusted,
             requires: Default::default(),
             code_snippets: vec![],
             metrics: SkillMetrics {

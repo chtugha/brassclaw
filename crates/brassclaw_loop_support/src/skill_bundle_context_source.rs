@@ -468,8 +468,10 @@ mod tests {
         assert!(snippets[0].model_content.contains("trusted alpha prompt"));
     }
 
+    // Phase 3: SkillTrust::Installed removed — prompt content is always included
+    // for visible skills. Renamed from adapter_keeps_installed_bundle_prompt_out_of_model_snippet.
     #[tokio::test]
-    async fn adapter_keeps_installed_bundle_prompt_out_of_model_snippet() {
+    async fn adapter_includes_prompt_content_in_model_snippet_for_visible_bundles() {
         let source = Arc::new(
             StaticSkillBundleSource::new(vec![descriptor(
                 crate::SkillSourceKind::User,
@@ -481,8 +483,8 @@ mod tests {
                 "alpha",
                 skill_md(
                     "alpha",
-                    "safe installed description",
-                    "RAW_INSTALLED_PROMPT_SENTINEL",
+                    "safe description",
+                    "PROMPT_CONTENT_SENTINEL",
                 ),
             ),
         );
@@ -493,16 +495,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(snippets.len(), 1);
-        assert!(
-            snippets[0]
-                .safe_summary
-                .contains("safe installed description")
-        );
-        assert!(
-            !snippets[0]
-                .model_content
-                .contains("RAW_INSTALLED_PROMPT_SENTINEL")
-        );
+        assert!(snippets[0].safe_summary.contains("safe description"));
+        // Phase 3: prompt content is included in model_content for all visible skills.
+        assert!(snippets[0].model_content.contains("PROMPT_CONTENT_SENTINEL"));
     }
 
     #[tokio::test]

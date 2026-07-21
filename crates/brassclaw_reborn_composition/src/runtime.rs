@@ -2726,7 +2726,6 @@ mod tests {
         approval_gate_ref,
     };
     use brassclaw_run_state::ApprovalRequestStore;
-    use brassclaw_skills::SkillTrust;
     use brassclaw_threads::{
         AppendToolResultReferenceRequest, EnsureThreadRequest, LoadContextMessagesRequest,
         MessageKind, ThreadHistoryRequest, ThreadScope, ToolResultSafeSummary,
@@ -3986,7 +3985,6 @@ mod tests {
                     "review helper description",
                     "Use review helper prompt content.",
                 ),
-                Some(SkillTrust::Trusted),
                 Some(SkillVisibility::Visible),
             ),
         ]));
@@ -4071,7 +4069,6 @@ mod tests {
                     "configured helper description",
                     "CONFIGURED_HELPER_PROMPT_SENTINEL",
                 ),
-                Some(SkillTrust::Trusted),
                 Some(SkillVisibility::Visible),
             ),
         ]));

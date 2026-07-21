@@ -74,7 +74,6 @@ use brassclaw_reborn::text_loop_driver::TextOnlyModelReplyDriver;
 use brassclaw_reborn::turn_runner::{
     HostFactory, TurnRunnerWakeReceiver, TurnRunnerWorker, TurnRunnerWorkerConfig,
 };
-use brassclaw_skills::SkillTrust;
 use brassclaw_threads::{
     AcceptInboundMessageRequest, EnsureThreadRequest, InMemorySessionThreadService, MessageContent,
     MessageKind, MessageStatus, SessionThreadService, SummaryModelContextPolicy,
@@ -3928,14 +3927,16 @@ async fn text_only_host_stage_checkpoint_payload_rejects_foreign_schema_id() {
 #[tokio::test]
 async fn text_only_host_skill_context_does_not_expand_capability_surface() {
     let fixture = HostFixture::new("thread-host-skill-capability", "hello").await;
+    // Phase 3: SkillTrust removed; all visible validated skills are treated as trusted.
+    // This test verifies that a skill (regardless of old trust level) does not
+    // expand the capability surface for text-only hosts.
     let source = Arc::new(StaticSkillContextSource::new(vec![
         HostSkillContextCandidate::new(
             skill_md(
-                "installed-alpha",
-                "installed skill description",
-                "installed prompt must not imply tool authority",
+                "alpha",
+                "skill description",
+                "skill prompt must not imply tool authority",
             ),
-            Some(SkillTrust::Installed),
             Some(SkillVisibility::Visible),
         ),
     ]));
