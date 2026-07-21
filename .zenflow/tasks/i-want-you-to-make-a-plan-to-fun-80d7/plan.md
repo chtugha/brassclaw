@@ -42,14 +42,16 @@ Intent system, Intent input class) and validation criteria (Section 2.6).
   proposed_recipe_updates + proposed_intent_examples → Q1, Actions bypass
   (structural — Python-only, pipeline never entered), DB-less disables
   interceptor, Part A via direct SQL — Q20)**,
-  **v5.5: `brassclaw_forensic_packets` table §4 (V51 migration)**,
+  **v5.5: `brassclaw_forensic_packets` table §4 (V044 ALTER migration —
+  table already exists as V026, altered to add `component_refs` +
+  `volatile_tail`)**,
   **v5.5: ALL 31 open questions RESOLVED (Q1-Q31) — §7 fully resolved**).
 - [ ] `plan.md` written (v5.5: Phase 1 Step 1.6 rewritten for default.py Action
   execution + 13 step types + token-budget exemption; Phase 5 Step 5.1c Monty
   VM lifecycle manager; Phase 5 Step 5.2 Actions exempt from token-budget
   truncation; Phase 5 Step 5.2a "content is king" + Solution Override (no
-  per-class Rust formatters); Phase 5.5 interceptor activation (6 steps: V51
-  migration, InterceptorResult trait change, PgInterceptorStore wiring,
+  per-class Rust formatters); Phase 5.5 interceptor activation (6 steps: V044
+  ALTER migration (table already exists as V026), InterceptorResult trait change, PgInterceptorStore wiring,
   set_active live-swap, Sempai gateway + 3-part prompt + pre-warm, interceptor
   config service via direct SQL); Phase 6 Step 6.1
   Monty restart + status endpoints; Phase 6 Step 6.2 10-tab editor +
@@ -104,8 +106,9 @@ Intent system, Intent input class) and validation criteria (Section 2.6).
   `sempai_swappable` scaffolded in `runtime.rs:2494`, `LlmProviderModelGateway`
   in `model_gateway.rs:350`, `InstructionBundleBuilder.build()` in
   `instruction_bundle.rs:202`); **v5.5: five wiring gaps confirmed** (Gap 0:
-  `brassclaw_forensic_packets` table missing — V34 in interceptor2.md → V51 in
-  our plan; Gap 1: `interceptor_store: None` in composition `runtime.rs:1974`;
+  `brassclaw_forensic_packets` table missing — V026 in interceptor2.md → V044
+  ALTER in our plan (table already exists as V026, needs ALTER to add
+  `component_refs` + `volatile_tail`); Gap 1: `interceptor_store: None` in composition `runtime.rs:1974`;
   Gap 2: `sempai_swappable` always `None`; Gap 3: `SharedInterceptorMode`
   never created; Gap 4: `on_prompt_assembled` returns `Option<String>` not
   `Option<InterceptorResult>`).
@@ -140,7 +143,7 @@ intent system** (§3.12) replacing all 8 intent-detection functions. **Add the
 Actions class** (§3.11) for LLM-free deterministic execution.
 
 ### Step 1.1 — Schema & migration
-- Add migration `V34__reborn_skills.sql`: `reborn_skills` table per spec §4
+- Add migration `V027__reborn_skills.sql`: `reborn_skills` table per spec §4
   (scope tuple, unique `(scope, name)`). **Explicit columns** for content
   (`name`, `description`, `body`, `compatibility`, `license`, `allowed_tools`,
   `version`, `class_code`, `prompt_uid`), activation (`keywords[]`,
@@ -231,7 +234,7 @@ Actions class** (§3.11) for LLM-free deterministic execution.
   identical system prefix for the same selection set across two turns.
 
 ### Step 1.5 — Intent system: `reborn_intent_inputs` table + `__resolve_intent__` host function
-- Add migration `V35__reborn_intent_inputs.sql`: `reborn_intent_inputs` table
+- Add migration `V028__reborn_intent_inputs.sql`: `reborn_intent_inputs` table
   per spec §3.12/§4 — **normalized schema** (PERF-04, §6.1 — one row per
   `(scope, input_text, input_class, component_id)`, NOT a `uuid[]` array):
   `id` uuid PK, scope tuple, `input_text text`, `input_class smallint`
@@ -324,7 +327,7 @@ Actions class** (§3.11) for LLM-free deterministic execution.
   skill populates `reborn_intent_inputs`.
 
 ### Step 1.6 — Actions class: `reborn_actions` table + default.py execution
-- Add migration `V36__reborn_actions.sql`: `reborn_actions` table per spec
+- Add migration `V029__reborn_actions.sql`: `reborn_actions` table per spec
   §3.11/§4 (scope tuple, unique `(scope, name)`, `description`,
   `preconditions jsonb`, `steps jsonb` (ordered array of step descriptors:
   `tool_call`/`conditional`/`set_var`/`loop`/`return`/`evaluate`/`call_skill`/
@@ -531,7 +534,7 @@ independence confirmed). No stop-after — proceed to Phase 2.
 instructions only; Monty/LLM are instructed via Skills.
 
 ### Step 2.1 — Schema & migration
-- `V37__reborn_tools.sql`: `reborn_tools` table per spec §4 (scope tuple,
+- `V030__reborn_tools.sql`: `reborn_tools` table per spec §4 (scope tuple,
   unique `(scope, name)`, `param_schema jsonb`, `param_template jsonb`,
   `effect_type`, `preconditions`, `error_handling`, `class_code` = `00`,
   `prompt_uid`, **`consumer_tags[]`** (spec §3.9; tools always carry
@@ -754,7 +757,7 @@ greyed-out mechanism** (spec §3.5.1).
   token budget (warnings, not hard errors). Each class's validation thresholds
   are **configurable in the WebUI Settings → Validation tab**.
 - **`reborn_validation_config` table** (new migration
-  `V38__reborn_validation_config.sql`): `(scope, class_code, name_min_len,
+  `V031__reborn_validation_config.sql`): `(scope, class_code, name_min_len,
   name_max_len, name_pattern, description_min_len, description_max_len,
   token_budget, token_budget_hard_error, require_tool_name,
   require_param_schema, require_activation_criteria, updated_at)`. One row per
@@ -813,7 +816,7 @@ columns. The `reborn_extensions_unified` class 09 (Misc) retains non-Recipe
 Misc extensions only.
 
 ### Step 4.1 — Schema & migration
-- `V39__reborn_extensions_unified.sql`: table per spec §4. `class` enum check
+- `V032__reborn_extensions_unified.sql`: table per spec §4. `class` enum check
   constraint. `payload jsonb` carries the manifest / recipe step list / plan
   document body depending on class. `class_code` per spec §3.7
   (04 Rusty, 05 Monty, 06 MCP-Server, 07 MCP-Client, 08 LLM, 09 Misc — **non-
@@ -826,7 +829,7 @@ Misc extensions only.
   assembly; SCH-02 fix), **`override_prompt_creation BOOLEAN NOT NULL DEFAULT
   false`** (§3.13/§3.14 — if true, Solution Override path; SCH-02 fix),
   `review_feedback`, `review_attempts`, `rejected_at`, `queue_code` columns.
-- **`V40__reborn_recipes.sql`** (new — spec §7 Q15 resolved): `reborn_recipes`
+- **`V033__reborn_recipes.sql`** (new — spec §7 Q15 resolved): `reborn_recipes`
   table per spec §4 (class 21 — solution-class). Columns: `name`, `description`,
   `class_code` (21), `prompt_uid`, **`intent_examples jsonb`** (§3.12),
   **`consumer_tags[]`** (§3.9; default `{02:orchestrator,03:llm}`),
@@ -870,7 +873,7 @@ Misc extensions only.
   `trigger jsonb`; `prior_knowledge_content` + `override_prompt_creation`
   columns are seeded from the Recipe's content. **Migrate `DocType::ToolSkill`
   MemoryDocs into `reborn_tool_skills` (class 13)** — they have their own
-  dedicated table (spec §4, Phase 5 migration `V44`). ToolSkills do NOT go into
+  dedicated table (spec §4, Phase 5 migration `V037`). ToolSkills do NOT go into
   `reborn_extensions_unified`. The Phase 5 `component_import.rs` handles this
   migration; Phase 4 does not touch ToolSkills.
 - Retire `recipe_store.rs` REST store and `recipe_library.rs` loop adapter in
@@ -991,7 +994,7 @@ limit**. **Migrate former doctypes into first-class component tables** (classes
   (graceful no-op or hidden in the WebUI when DB-less).
 
 ### Step 5.1a — `reborn_monty_vm_settings` migration + wiring
-- `V41__reborn_monty_vm_settings.sql`: `reborn_monty_vm_settings` table per
+- `V034__reborn_monty_vm_settings.sql`: `reborn_monty_vm_settings` table per
   spec §3.10/§4 (scope tuple, single row per scope via upsert — spec §7 Q8
   resolved, columns
   `max_duration_secs` default 300, `max_allocations` default 5_000_000,
@@ -1024,7 +1027,7 @@ limit**. **Migrate former doctypes into first-class component tables** (classes
   from DB in production and defaults to 2000 in DB-less mode.
 
 ### Step 5.1a2 — `reborn_user_preferences` migration (spec §3.12, §7 Q18 resolved)
-- `V42__reborn_user_preferences.sql`: `reborn_user_preferences` table per
+- `V035__reborn_user_preferences.sql`: `reborn_user_preferences` table per
   spec §4 — `(user_id, preference_key, preference_value, updated_at)`. Simple
   key-value store for per-user UX preferences. Composite unique:
   `(user_id, preference_key)`. Current keys: `ai_before_user` (boolean, default
@@ -1249,14 +1252,14 @@ limit**. **Migrate former doctypes into first-class component tables** (classes
   unique `(scope, name)`, `class_code`, `prompt_uid`, `title`, `content`,
   `intent_examples jsonb`, `consumer_tags[]`, validation/lineage columns as
   per skills — spec §7 Q14 on lighter validation for non-skill doctypes):
-  - `V43__reborn_specs.sql` (class 12, `consumer_tags[]` = `{02:orchestrator,03:llm}`)
-  - `V44__reborn_tool_skills.sql` (class 13, `consumer_tags[]` = `{00:rusty,01:monty,02:orchestrator}`)
-  - `V45__reborn_plans.sql` (class 14, `consumer_tags[]` = `{01:monty,02:orchestrator}`)
-  - `V46__reborn_summaries.sql` (class 15, `consumer_tags[]` = `{02:orchestrator,03:llm}`)
-  - `V47__reborn_docus.sql` (class 17, `consumer_tags[]` = `{02:orchestrator,03:llm}`)
-  - `V48__reborn_lessons.sql` (class 18, `consumer_tags[]` = `{02:orchestrator,03:llm}`)
-  - `V49__reborn_issues.sql` (class 19, `consumer_tags[]` = `{02:orchestrator,03:llm}`)
-  - `V50__reborn_notes.sql` (class 20, `consumer_tags[]` = `{02:orchestrator}`)
+  - `V036__reborn_specs.sql` (class 12, `consumer_tags[]` = `{02:orchestrator,03:llm}`)
+  - `V037__reborn_tool_skills.sql` (class 13, `consumer_tags[]` = `{00:rusty,01:monty,02:orchestrator}`)
+  - `V038__reborn_plans.sql` (class 14, `consumer_tags[]` = `{01:monty,02:orchestrator}`)
+  - `V039__reborn_summaries.sql` (class 15, `consumer_tags[]` = `{02:orchestrator,03:llm}`)
+  - `V040__reborn_docus.sql` (class 17, `consumer_tags[]` = `{02:orchestrator,03:llm}`)
+  - `V041__reborn_lessons.sql` (class 18, `consumer_tags[]` = `{02:orchestrator,03:llm}`)
+  - `V042__reborn_issues.sql` (class 19, `consumer_tags[]` = `{02:orchestrator,03:llm}`)
+  - `V043__reborn_notes.sql` (class 20, `consumer_tags[]` = `{02:orchestrator}`)
   - (Actions class 16 — `reborn_actions` already created in Phase 1.6.)
 - **Document splitting + content conversion (spec §3.13):** one-shot importer
   `crates/brassclaw_reborn_composition/src/component_import.rs`:
@@ -1352,19 +1355,34 @@ stored full `prompt JSONB` in ForensicPacket; our plan stores
 `volatile_tail TEXT` only — prevents double-saving (the prompt content is
 already in the DB as component rows).
 
-### Step 5.5.0 — `brassclaw_forensic_packets` migration (V51)
-- `V51__brassclaw_forensic_packets.sql`: create table per spec §4/§3.15.
-  Schema adapted from interceptor2.md: replace `prompt JSONB` with
-  `component_refs JSONB` (NOT NULL — array of
-  `{class_code, prompt_uid, component_id}` from
-  `PriorKnowledgeResult.matched_component_ids`) + `volatile_tail TEXT` (thread
-  history only). Keep `kohai_response`/token columns, `sempai_review JSONB`,
-  `chat_record_id`, `status` (`awaiting_kohai`/`complete`/`sempai_reviewed`),
-  `captured_at`/`completed_at`/`updated_at`. PK `id`, unique
-  `(tenant_id, run_id, iteration)`. Indexes:
-  `(tenant_id, captured_at DESC)`, `(tenant_id, run_id, iteration)`.
-- Fix stale reference in `pg_store.rs` module doc: `V026` → `V051`.
-- **Verify:** migration applies cleanly after V50; `cargo test -p brassclaw_interceptor`; integration test (embedded Postgres applies V34–V51 in order).
+### Step 5.5.0 — `brassclaw_forensic_packets` ALTER migration (V044)
+- **The table already exists as V026** (`crates/brassclaw_pg/migrations/V026__forensic_packets.sql`)
+  with `prompt JSONB`, `kohai_response`, `sempai_review JSONB`, `chat_record_id`,
+  `status`, token columns, and indexes. The `pg_store.rs` module doc reference to
+  `V026` is **correct** — do NOT change it.
+- `V044__brassclaw_forensic_packets_alter.sql`: **ALTER** the existing table
+  to add the interceptor's new columns:
+  - `ALTER TABLE brassclaw_forensic_packets ADD COLUMN component_refs JSONB` —
+    array of `{class_code, prompt_uid, component_id, schema_version}` from
+    `PriorKnowledgeResult.matched_component_ids` (replaces the role of
+    `prompt JSONB` for the interceptor's forensic record).
+  - `ALTER TABLE brassclaw_forensic_packets ADD COLUMN volatile_tail TEXT` —
+    thread history only (the volatile part of the prompt that was not in Part A).
+  - The existing `prompt JSONB` column is **kept for backward compatibility**
+    (existing rows have it populated; the interceptor stops writing to it but
+    old packets remain readable). New interceptor code writes to
+    `component_refs` + `volatile_tail` instead.
+  - The existing `kohai_response`/token columns, `sempai_review JSONB`,
+    `chat_record_id`, `status`, `captured_at`/`completed_at`/`updated_at`
+    columns and indexes are unchanged.
+- **Do NOT fix `pg_store.rs` module doc** — the `V026` reference is correct
+  (V026 created the table; V044 alters it). The original interceptor2.md plan
+  said to fix `V026` → `V051` because it assumed the table didn't exist yet;
+  our plan corrects this: the table exists, V044 is an ALTER.
+- **Verify:** migration applies cleanly after V043; existing rows in
+  `brassclaw_forensic_packets` are preserved (ALTER is non-destructive);
+  `cargo test -p brassclaw_interceptor`; integration test (embedded Postgres
+  applies V000–V044 in order).
 
 ### Step 5.5.1 — `InterceptorResult` trait change (breaking, additive elsewhere)
 - **`crates/brassclaw_turns/src/run_profile/host.rs`:** add `InterceptorResult`
@@ -1585,7 +1603,7 @@ already in the DB as component rows).
     layer.
   - **Missing-table guard:** before querying each component table, check
     `information_schema.tables` for existence. Tables from earlier phases
-    (reborn_tools V37, reborn_skills V34) will exist; tables from later
+    (reborn_tools V030, reborn_skills V027) will exist; tables from later
     phases may not yet exist if the interceptor ships incrementally. Skip
     non-existent tables (empty result) rather than erroring. This makes
     `reassemble_base_prompt()` resilient to partial phase rollouts.
@@ -1624,8 +1642,8 @@ already in the DB as component rows).
 
 | File | Change |
 |---|---|
-| `migrations/V51__brassclaw_forensic_packets.sql` *(new)* | Create `brassclaw_forensic_packets` table (adapted: `component_refs JSONB` + `volatile_tail TEXT` instead of `prompt JSONB`) |
-| `crates/brassclaw_interceptor/src/pg_store.rs` | Fix module doc: `V026` → `V051` |
+| `migrations/V044__brassclaw_forensic_packets_alter.sql` *(new)* | ALTER existing `brassclaw_forensic_packets` table (V026): add `component_refs JSONB` + `volatile_tail TEXT`; keep `prompt JSONB` for backward compat |
+| `crates/brassclaw_interceptor/src/pg_store.rs` | No doc change needed (`V026` reference is correct — V026 created the table, V044 alters it) |
 | `crates/brassclaw_interceptor/src/packet.rs` | Replace `adjusted_messages` with `adjusted_volatile_messages` + `bridge_messages` + `composition_summary` + `proposed_recipe_updates` + `proposed_intent_examples` (Q30) + `settings_adjustments` in `SempaiReviewOutcome` |
 | `crates/brassclaw_interceptor/src/config_store.rs` *(new)* | `InterceptorConfigStore` trait + Pg impl; 4 config keys in `brassclaw_config` |
 | `crates/brassclaw_turns/src/run_profile/host.rs` | Add `InterceptorResult`; change `on_prompt_assembled` return type from `Option<String>` to `Option<InterceptorResult>` |
@@ -1649,7 +1667,7 @@ already in the DB as component rows).
 ### Phase 5.5 — Execution Order
 
 ```
-Step 5.5.0 (V51 migration — prerequisite, no Rust changes)
+Step 5.5.0 (V044 ALTER migration — prerequisite, no Rust changes)
   │
   ▼
 Step 5.5.1 (InterceptorResult trait change — only breaking change)
@@ -1897,7 +1915,7 @@ tab** (Sempai status, Reassemble button, Pre-warm button, persona editor).
 | 3 | `cargo test -p brassclaw_skills`; `recipe_library` contract; `is_valid_transition` guard (incl. `Rejected → Pending` revision + `Garbage → wipe`); **`is_queue_status` extended for all 4 queues** (Q1: Pending/AutoFailed; Q2: AutoPassed/ReviewRequested/UpgradeQueued; Q3: Rejected+review_attempts<3; Q4: Rejected+review_attempts>=3+rejected_at age < `q4_retention_days`); confidence-factor source-independence test; **fallback routing test** (confidence factor influences retrieval only when fallback is triggered, not in normal intent-driven mode); validator-tag pop on `AutoPassed → Validated`; update-candidate tag inheritance; Q1→Q2→Q3→Q4 lifecycle test; **Q4 wipe test** (preserves thread data, reads `q4_retention_days` from `reborn_monty_vm_settings` instead of hardcoded constant); **generalized route test** (`PUT /components/{class_code}/{id}/validate|reject|send-to-revision|re-review` works for all class codes; `DELETE` wipe route guarded; `GET /components/{class_code}/{id}/audit-status` returns LLM audit findings for class 10/50; old recipe/tool_skill routes kept as aliases); **code-validation gate test** (invalid orchestrator patch rejected; valid patch commits only on pass); **validator independence test** (validator code not in orchestrator's patchable surface); **LLM code-audit gate test** (Orchestrator/Scaffold Q1→Q2 transition: audit runs → button disabled → flagged → routed to Q3); **self-improvement `memory_write` reroute test** (write creates update-candidate with `05:validator` tag, enters Q1, does not write directly); **per-class validation config test (Q14)** (`ComponentValidator::validate_by_class` dispatch: Skills get full agentskills.io, Tools get tool_name+param_schema, Extensions get soft, Actions get no token budget, former doctypes get soft, Recipes get trigger validation, Orchestrator/Scaffold get LLM audit; `reborn_validation_config` override changes validation outcome for next cycle) |
 | 4 | `extension_contract.rs`, `installations_contract.rs`, `manifest_v2_contract.rs`; `test_plan_mode.py`; extension `consumer_tags[]` per class; **Recipe class 21 test (Q15)** (`reborn_recipes` has `override_prompt_creation` + `prior_knowledge_content` columns; `RecipeLookup` reads from `reborn_recipes` class 21; `reborn_extensions_unified` class 09 has NO Recipe rows; Recipe migration from `DocType::Recipe` populates `steps`/`trigger`/`prior_knowledge_content`/`override_prompt_creation`) |
 | 5 | `cargo test -p brassclaw_memory -p brassclaw_engine`; `engine_v2_skill_codeact.rs`; DB-less `RamSource` prompt-parity test; User-at-N-1 injection test; `fetch_for_consumer('03:llm')` excludes `01:monty`-only rows; `reborn_monty_vm_settings` read from DB + DB-less fallback; `active_orchestrator_id` gated to `Validated`; **`fetch_for_turn` returns only intent-matched components**; **SEC-01: by-ID fetch drops in-queue/rejected components** (intent-resolved ID → validation gate filter → empty if not Validated); **PERF-05: `reborn_component_catalog` single-query fetch** (no fan-out to 15+ tables); **token-budget truncation test (Actions exempt)**; **"try it with AI" fallback test**; **"AI before User" flip switch test** (ON: silent, no new rows; OFF: default); **DB-less fallback test** (`{db_less_fallback: true}` → keyword path, no intent system); **DB-less fallback-content file loads into `RamSource`**; **SEC-10: `RamSource` refuses non-local runtime profiles**; **`__assemble_prior_knowledge__` both paths** (Solution Override + Normal Assembly); **PKC NULL fallback test**; **non-solution classes do NOT have PKC/override columns**; **orchestrator has no `format_docs`/`format_skills`/`append_system_append` calls**; **former-doctype tables migration + scope isolation**; **document splitting into ≤5000-token rows**; **`prior_knowledge_token_budget` read from DB + DB-less default 2000**; **all `DocType` variants removed**; **`doc_type_weight`/`keyword_match_score`/`extract_keywords` relocated to `retrieval_dbless.rs`**; **Monty VM restart test (PERF-16: drain + admission control — `admission_paused` flag, in-flight turns complete/timeout, queued turns admitted in order, `force=true` aborts, status `draining`/`restarting`/`running`)**; **Monty VM lifecycle manager is kernel-owned**; **`reborn_user_preferences` migration test (Q18)**; **SEC-04: rollback CAS protection test** (`WHERE id = ? AND failure_count = ?` prevents concurrent race); **SEC-11: Q4 wipe is single transaction test** (component + intent_inputs + reliability + provenance deleted atomically) |
-| 5.5 | `cargo test -p brassclaw_interceptor -p brassclaw_agent_loop -p brassclaw_reborn -p brassclaw_reborn_composition`; **V51 migration applies after V50**; `InterceptorResult` trait change (`on_prompt_assembled` returns `Option<InterceptorResult>` with `adjusted_messages`); **6 test stub files updated** (mechanical return-type); **`PgInterceptorStore` wired** (composition passes store, not `None`); **`sempai_swappable` allocated** (not `None`, `#[allow(dead_code)]` removed); **`SharedInterceptorMode` created + threaded** (composition → factory → host); **`set_active(Sempai)` live-swap** (DB write + provider swap + mode flip; clearing → Routing); **Sempai gateway + rerouting branch** (Routing: save packet + `adjusted_messages: None`; Rerouting: resolve refs → 3-part prompt → Sempai call → parse → recompose → `adjusted_messages: Some`); **3-part prompt** (Part A from **direct SQL to individual component tables** via `reassemble_base_prompt()` (Q20 — NOT `reborn_component_catalog`), Part B persona from config, Part C volatile tail + component manifest from `matched_component_ids`); **ForensicPacket stores `component_refs` + `volatile_tail`** (NOT full `prompt JSONB` — prevents double-saving); **Actions bypass interception** (Action-only turn → no `__llm_complete__` → no ForensicPacket); **`proposed_recipe_updates` + `proposed_intent_examples` → Q1 validation queue** (Sempai cannot directly create components or intent inputs); **KV-cache pre-warm** (`POST /api/interceptor/prewarm` → 200 or 429); **`reassemble_base_prompt()` uses direct SQL** (queries individual component tables, NOT `reborn_component_catalog` — Q20); **DB-less mode disables interceptor** (`interceptor_store: None`, `sempai_swappable: None`, `interceptor_mode: None`, `on_prompt_assembled` is no-op); **interceptor config service** (`InterceptorConfigService` trait, `InterceptorConfigStore` via `brassclaw_config`, 4 HTTP endpoints); integration test: Sempai mock → mode flips → Kohai receives adjusted messages → packet `sempai_reviewed` → `component_refs` present; integration test: Sempai error → Kohai receives originals → packet `complete`; integration test: `set_active(Sempai, "")` → Routing; integration test: `POST /api/interceptor/reassemble` → Part A from direct SQL; integration test: `POST /api/interceptor/prewarm` empty → 400, assembled → 200; **ForensicPacket cleanup task test (Q21)** (old packet deleted, `forensic_packet_retention_days = 0` → no-op); **Part C stripping verification (cross-phase from Phase 1.5)** (after Phase 1.5's User-at-N-1 injection ships, verify Part C stripping correctly identifies stable-tier injections vs volatile tail — the stripping boundary priorities 1–5 = stable, 6–7 = volatile remains, but priority 6 messages change shape) |
+| 5.5 | `cargo test -p brassclaw_interceptor -p brassclaw_agent_loop -p brassclaw_reborn -p brassclaw_reborn_composition`; **V044 ALTER migration applies after V043** (adds `component_refs` + `volatile_tail` to existing V026 table; existing rows preserved); `InterceptorResult` trait change (`on_prompt_assembled` returns `Option<InterceptorResult>` with `adjusted_messages`); **6 test stub files updated** (mechanical return-type); **`PgInterceptorStore` wired** (composition passes store, not `None`); **`sempai_swappable` allocated** (not `None`, `#[allow(dead_code)]` removed); **`SharedInterceptorMode` created + threaded** (composition → factory → host); **`set_active(Sempai)` live-swap** (DB write + provider swap + mode flip; clearing → Routing); **Sempai gateway + rerouting branch** (Routing: save packet + `adjusted_messages: None`; Rerouting: resolve refs → 3-part prompt → Sempai call → parse → recompose → `adjusted_messages: Some`); **3-part prompt** (Part A from **direct SQL to individual component tables** via `reassemble_base_prompt()` (Q20 — NOT `reborn_component_catalog`), Part B persona from config, Part C volatile tail + component manifest from `matched_component_ids`); **ForensicPacket stores `component_refs` + `volatile_tail`** (NOT full `prompt JSONB` — prevents double-saving); **Actions bypass interception** (Action-only turn → no `__llm_complete__` → no ForensicPacket); **`proposed_recipe_updates` + `proposed_intent_examples` → Q1 validation queue** (Sempai cannot directly create components or intent inputs); **KV-cache pre-warm** (`POST /api/interceptor/prewarm` → 200 or 429); **`reassemble_base_prompt()` uses direct SQL** (queries individual component tables, NOT `reborn_component_catalog` — Q20); **DB-less mode disables interceptor** (`interceptor_store: None`, `sempai_swappable: None`, `interceptor_mode: None`, `on_prompt_assembled` is no-op); **interceptor config service** (`InterceptorConfigService` trait, `InterceptorConfigStore` via `brassclaw_config`, 4 HTTP endpoints); integration test: Sempai mock → mode flips → Kohai receives adjusted messages → packet `sempai_reviewed` → `component_refs` present; integration test: Sempai error → Kohai receives originals → packet `complete`; integration test: `set_active(Sempai, "")` → Routing; integration test: `POST /api/interceptor/reassemble` → Part A from direct SQL; integration test: `POST /api/interceptor/prewarm` empty → 400, assembled → 200; **ForensicPacket cleanup task test (Q21)** (old packet deleted, `forensic_packet_retention_days = 0` → no-op); **Part C stripping verification (cross-phase from Phase 1.5)** (after Phase 1.5's User-at-N-1 injection ships, verify Part C stripping correctly identifies stable-tier injections vs volatile tail — the stripping boundary priorities 1–5 = stable, 6–7 = volatile remains, but priority 6 messages change shape) |
 | 6 | route contract tests; Playwright Settings E2E (**10 tabs**); **Validation Queue E2E (4 queue tabs: Q1 Auto/Q2 Manual/Q3 Revision/Q4 Rejection, badge counts, generalized `PUT /components/{class_code}/{id}/validate|reject|send-to-revision|re-review` routes, `DELETE` wipe route, `05:validator` pop, tag-chip greyed-state, LLM-audit guard for class 10/50 — "Validate" button disabled until audit clean, audit findings shown inline)**; **Validation Config sub-panel E2E (Q14)** (per-class thresholds editable in WebUI Validation tab — name/description/token_budget/require_tool_name/require_param_schema/require_activation_criteria per class code; save → next validation cycle uses new thresholds); Monty VM settings save E2E (incl. `prior_knowledge_token_budget` + **`q4_retention_days`** + **`forensic_packet_retention_days`**); **Monty VM restart E2E** (change settings → "Restart Monty" → confirmation → status `restarting` → `running` → new settings applied; `force=true` aborts in-flight turns); Orchestrator version rollback E2E; **Actions step-list editor E2E** (all 13 step types incl. spawn_subprocess/wait/emit_event, add/reorder, save, validate, dry-run test runner); **Recipe editor E2E (Q15)** (class 21 `reborn_recipes` — trigger/steps/prior_knowledge_content/override_prompt_creation editable; `RecipeLookup` reads from `reborn_recipes`); **intent examples editor E2E**; **disambiguation UX E2E** (special `disambiguation` chat message type with clickable buttons, structured `{disambiguation_choice}` payload back to `__resolve_intent__`); **"AI before User" flip switch E2E** (ON: silent fallback; OFF: reformulate + button; DB-less: hidden; toggle persists to `reborn_user_preferences`); **Interceptor Config tab E2E** (Sempai status display, Reassemble button → Part A from direct SQL to component tables, Pre-warm button → 200 or 429 with "wait 60s" message, persona editor save, hidden in DB-less mode); `check-i18n-parity.sh` |
 | 7 | full clippy + `cargo test`; `check_gateway_boundaries.py`; `reborn-e2e-rust.sh`; grep confirms deletion of 8 intent-detection functions + 3 Python formatters + all `DocType::` references |
 
