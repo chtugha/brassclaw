@@ -985,6 +985,272 @@ def complete_result(state, outcome, response=None, error=None, extra=None):
     return result
 
 
+# ── Action execution mode (class_code 16) ────────────────────
+#
+# When the intent system routes a query to an Action (class_code 16),
+# default.py executes it deterministically — no __llm_complete__ call.
+# spec §3.11, §7 Q13: 13 step types.
+#
+# SEC-07: allowed_tools checked here AND in EffectExecutor (defence-in-depth).
+# SEC-08: spawn_subprocess dispatched via host runtime script lane only.
+# SEC-09: call_action depth bounded; total step budget = 1000.
+# PERF-18: content/step/tool hard limits enforced by Rust validator at save time.
+
+ACTION_MAX_DEPTH = 5          # SEC-09 — call_action nesting limit
+ACTION_STEP_BUDGET = 1000     # SEC-09 — total step budget across nesting
+
+
+def _action_eval_condition(condition, scope_vars):
+    """Evaluate a simple condition dict against the current variable scope.
+
+    Supported condition forms:
+      {"var_eq": {"name": "x", "value": "foo"}}
+      {"var_truthy": "x"}
+      {"const": true/false}
+    Returns bool.
+    """
+    if not isinstance(condition, dict):
+        return bool(condition)
+    if "const" in condition:
+        return bool(condition["const"])
+    if "var_eq" in condition:
+        name = condition["var_eq"].get("name", "")
+        value = condition["var_eq"].get("value")
+        return scope_vars.get(name) == value
+    if "var_truthy" in condition:
+        return bool(scope_vars.get(condition["var_truthy"]))
+    return False
+
+
+def _execute_action_steps(action, scope_vars, depth, step_counter):
+    """Recursively execute the ordered step list of an Action.
+
+    Returns a tuple (result, step_counter) where result is the return value
+    of the first `return` step encountered, or None if execution ends without
+    an explicit return.
+
+    depth        — current call_action nesting depth (SEC-09).
+    step_counter — mutable list [int] tracking total steps across all levels.
+    """
+    if depth > ACTION_MAX_DEPTH:
+        return {"error": "call_action depth limit exceeded (SEC-09)"}, step_counter
+
+    steps = action.get("steps", [])
+    if not isinstance(steps, list):
+        return {"error": "action steps must be a list"}, step_counter
+
+    allowed_tools = action.get("allowed_tools", [])
+    if not isinstance(allowed_tools, list):
+        allowed_tools = []
+
+    for step_def in steps:
+        if not isinstance(step_def, dict):
+            continue
+
+        step_counter[0] += 1
+        if step_counter[0] > ACTION_STEP_BUDGET:
+            return {"error": "action step budget exceeded (SEC-09)"}, step_counter
+
+        kind = step_def.get("type", "")
+
+        if kind == "tool_call":
+            # SEC-07: check allowed_tools at default.py level.
+            tool_name = step_def.get("tool", "")
+            if tool_name not in allowed_tools:
+                return {
+                    "error": "tool_call blocked: '{}' not in allowed_tools (SEC-07)".format(tool_name)
+                }, step_counter
+            params = step_def.get("params", {})
+            result = __execute_action__(tool_name, params)
+            scope_vars["_last_result"] = result
+
+        elif kind == "conditional":
+            cond = step_def.get("condition", {"const": False})
+            if _action_eval_condition(cond, scope_vars):
+                branch = step_def.get("then_step")
+            else:
+                branch = step_def.get("else_step")
+            if branch:
+                sub_result, step_counter = _execute_action_steps(
+                    {"steps": [branch], "allowed_tools": allowed_tools},
+                    scope_vars, depth, step_counter
+                )
+                if sub_result is not None and "return" in str(sub_result):
+                    return sub_result, step_counter
+
+        elif kind == "set_var":
+            var_name = step_def.get("name", "")
+            var_value = step_def.get("value")
+            if var_name:
+                scope_vars[var_name] = var_value
+
+        elif kind == "loop":
+            loop_steps = step_def.get("steps", [])
+            exit_cond = step_def.get("exit_condition", {"const": True})
+            max_iters = step_def.get("max_iterations", 100)
+            for _ in range(max_iters):
+                if _action_eval_condition(exit_cond, scope_vars):
+                    break
+                sub_result, step_counter = _execute_action_steps(
+                    {"steps": loop_steps, "allowed_tools": allowed_tools},
+                    scope_vars, depth, step_counter
+                )
+                if sub_result is not None:
+                    return sub_result, step_counter
+
+        elif kind == "return":
+            return_val = step_def.get("value")
+            # Substitute scope variable if value is a variable reference.
+            if isinstance(return_val, str) and return_val.startswith("$"):
+                return_val = scope_vars.get(return_val[1:], return_val)
+            return {"result": return_val}, step_counter
+
+        elif kind == "evaluate":
+            # Python-tunable evaluation step.
+            expr = step_def.get("expression", "")
+            store_as = step_def.get("store_as", "_eval_result")
+            # eval is intentional here: Actions are validated by Rust before save.
+            # Only Actions that pass Rust validation + LLM code audit reach this path.
+            try:
+                local_ctx = dict(scope_vars)
+                local_ctx["__last__"] = scope_vars.get("_last_result")
+                eval_result = eval(expr, {"__builtins__": {}}, local_ctx)  # noqa: S307
+                scope_vars[store_as] = eval_result
+            except Exception as exc:
+                scope_vars[store_as] = None
+                scope_vars["_eval_error"] = str(exc)
+
+        elif kind == "call_skill":
+            # Invoke a skill as a tool call (skills must be in allowed_tools).
+            skill_name = step_def.get("skill", "")
+            params = step_def.get("params", {})
+            if skill_name not in allowed_tools:
+                return {
+                    "error": "call_skill blocked: '{}' not in allowed_tools (SEC-07)".format(skill_name)
+                }, step_counter
+            result = __execute_action__(skill_name, params)
+            scope_vars["_last_result"] = result
+
+        elif kind == "try_catch":
+            try_steps = step_def.get("try", [])
+            catch_steps = step_def.get("catch", [])
+            sub_result, step_counter = _execute_action_steps(
+                {"steps": try_steps, "allowed_tools": allowed_tools},
+                scope_vars, depth, step_counter
+            )
+            if sub_result is not None and "error" in sub_result:
+                scope_vars["_caught_error"] = sub_result["error"]
+                sub_result, step_counter = _execute_action_steps(
+                    {"steps": catch_steps, "allowed_tools": allowed_tools},
+                    scope_vars, depth, step_counter
+                )
+            if sub_result is not None and "result" in sub_result:
+                return sub_result, step_counter
+
+        elif kind == "parallel":
+            # Concurrent tool calls — dispatch all, collect results.
+            parallel_calls = step_def.get("calls", [])
+            calls_to_run = []
+            for call in parallel_calls:
+                tool_name = call.get("tool", "")
+                if tool_name not in allowed_tools:
+                    return {
+                        "error": "parallel tool_call blocked: '{}' not in allowed_tools (SEC-07)".format(tool_name)
+                    }, step_counter
+                calls_to_run.append({"name": tool_name, "params": call.get("params", {})})
+            results = __execute_actions_parallel__(calls_to_run)
+            scope_vars["_parallel_results"] = results
+
+        elif kind == "call_action":
+            # Invoke a nested Action (SEC-09 depth bounded above).
+            nested_name = step_def.get("action", "")
+            nested_params = step_def.get("params", {})
+            # Retrieve the nested action from the prior-knowledge docs.
+            nested_docs = __retrieve_docs__(nested_name, 1)
+            if not nested_docs:
+                return {
+                    "error": "call_action: Action '{}' not found".format(nested_name)
+                }, step_counter
+            nested_action = nested_docs[0]
+            nested_scope = dict(nested_params)
+            sub_result, step_counter = _execute_action_steps(
+                nested_action, nested_scope, depth + 1, step_counter
+            )
+            if sub_result is not None:
+                scope_vars["_last_result"] = sub_result
+                if "result" in sub_result:
+                    scope_vars["_last_result"] = sub_result["result"]
+
+        elif kind == "spawn_subprocess":
+            # SEC-08: dispatch ONLY through host runtime script lane.
+            # Raw subprocess.Popen is NOT used here — the host runtime
+            # enforces capability lease + approval gate + sandbox boundary.
+            if "spawn_subprocess" not in allowed_tools:
+                return {
+                    "error": "spawn_subprocess blocked: 'spawn_subprocess' not in allowed_tools (SEC-08)"
+                }, step_counter
+            params = {
+                "command": step_def.get("command", ""),
+                "args": step_def.get("args", []),
+                "cwd": step_def.get("cwd"),
+                "timeout_secs": step_def.get("timeout_secs", action.get("timeout_secs", 60)),
+            }
+            result = __execute_action__("spawn_subprocess", params)
+            scope_vars["_last_result"] = result
+
+        elif kind == "wait":
+            # Pause for a fixed duration or until a polling condition is met.
+            duration_secs = step_def.get("duration_secs", 0)
+            if duration_secs > 0:
+                result = __execute_action__("wait", {"duration_secs": duration_secs})
+                scope_vars["_last_result"] = result
+            else:
+                poll_cond = step_def.get("condition", {"const": True})
+                max_poll = step_def.get("max_polls", 30)
+                for _ in range(max_poll):
+                    if _action_eval_condition(poll_cond, scope_vars):
+                        break
+                    __execute_action__("wait", {"duration_secs": 1})
+
+        elif kind == "emit_event":
+            # Emit a structured event to the event bus (brassclaw_events).
+            event_kind = step_def.get("kind", "action_event")
+            event_data = step_def.get("data", {})
+            __emit_event__(event_kind, **event_data)
+
+        # Unknown step kinds are silently skipped (forward-compatibility).
+
+    return None, step_counter
+
+
+def execute_action_procedure(action_doc, goal, state):
+    """Execute an Action document (class_code 16) deterministically.
+
+    Called from run_loop when the intent system returns class_code 16.
+    Returns a complete_result dict — run_loop returns this directly without
+    calling __llm_complete__.
+
+    Spec §3.11 dispatch flow (steps 5–8):
+      5. prior_knowledge_content is given to default.py.
+      6. default.py recognises class_code 16 and stops further prompt creation.
+      7. default.py performs the Action directly.
+      8. The Action's return value becomes the turn result.
+    """
+    scope_vars = {}
+    # Make goal available inside the Action's evaluate/conditional steps.
+    scope_vars["goal"] = goal
+
+    step_counter = [0]
+    result, _counter = _execute_action_steps(action_doc, scope_vars, 0, step_counter)
+
+    if result is None:
+        # Action completed without an explicit `return` step.
+        return complete_result(state, "completed", "Action completed.")
+    if "error" in result:
+        return complete_result(state, "error", None, error=result["error"])
+    return complete_result(state, "completed", result.get("result", ""))
+
+
 # ── Main execution loop ─────────────────────────────────────
 
 
@@ -1066,6 +1332,22 @@ def run_loop(context, goal, actions, state, config):
         # 3. Inject prior knowledge and activate skills on first step
         if step == 0:
             docs = __retrieve_docs__(goal, 5)
+
+            # ── Action short-circuit (class_code 16, §3.11) ──────────────
+            # If the retrieved docs include an Action, execute it directly
+            # without calling __llm_complete__ and return immediately.
+            # Actions bypass the LLM turn entirely — no prompt creation.
+            if docs:
+                for doc in docs:
+                    metadata = doc.get("metadata", {}) if isinstance(doc, dict) else {}
+                    if metadata.get("class_code") == 16:
+                        __emit_event__("action_started", action_name=metadata.get("name", ""))
+                        __transition_to__("running", "action execution")
+                        action_result = execute_action_procedure(doc, goal, state)
+                        __transition_to__("completed", "action completed")
+                        return action_result
+            # ─────────────────────────────────────────────────────────────
+
             if docs:
                 knowledge = format_docs(docs)
                 append_system_append(working_messages, knowledge)
