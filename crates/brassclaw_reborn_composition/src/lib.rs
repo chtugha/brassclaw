@@ -30,6 +30,8 @@ mod budget;
 mod budget_events;
 mod bundled_skills;
 pub mod db_config;
+#[cfg(feature = "skills-db")]
+pub mod skill_import;
 mod default_system_prompt;
 mod error;
 mod extension_installation_store;

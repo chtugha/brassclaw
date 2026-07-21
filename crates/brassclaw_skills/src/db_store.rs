@@ -586,6 +586,140 @@ mod inner {
             opt.map(|r| row_from_pg(&r)).transpose()
         }
 
+        /// Fetch a skill row by (scope, name) — returns any validation_status
+        /// so the importer can detect existing rows regardless of queue state.
+        pub async fn fetch_by_name(
+            &self,
+            scope: &SkillScope,
+            name: &str,
+        ) -> Result<Option<DbSkillRow>, DbSkillStoreError> {
+            let client = self.pool.get().await?;
+            let opt = client
+                .query_opt(
+                    "SELECT
+                        id, tenant_id, user_id, agent_id, project_id,
+                        name, description, body, compatibility, license,
+                        allowed_tools, version, class_code, prompt_uid,
+                        keywords, exclude_keywords, patterns, tags,
+                        max_context_tokens, setup_marker,
+                        required_binaries, required_env, required_config,
+                        intent_examples, consumer_tags,
+                        tier, usage_count, success_count, failure_count,
+                        wilson_lower, confidence, source,
+                        validation_status, validation_errors,
+                        review_feedback, review_attempts, rejected_at, queue_code,
+                        similarity_parent_id, replaces_id, parent_version,
+                        content_hash, last_audit_at, audit_failure_count,
+                        parent_mission_id, created_at, updated_at
+                     FROM reborn_skills
+                     WHERE name       = $1
+                       AND tenant_id  = $2
+                       AND user_id    = $3
+                       AND agent_id   = $4
+                       AND project_id = $5
+                     LIMIT 1",
+                    &[
+                        &name,
+                        &scope.tenant_id,
+                        &scope.user_id,
+                        &scope.agent_id,
+                        &scope.project_id,
+                    ],
+                )
+                .await?;
+
+            opt.map(|r| row_from_pg(&r)).transpose()
+        }
+
+        /// Update the content/activation columns of an existing row and reset
+        /// validation to `pending` + re-add `05:validator` tag.
+        ///
+        /// Used by the importer when a SKILL.md body has changed since the last
+        /// import (content_hash mismatch).
+        pub async fn update_content(
+            &self,
+            id: Uuid,
+            scope: &SkillScope,
+            input: &SkillWriteInput,
+        ) -> Result<(), DbSkillStoreError> {
+            // Step-1 local validation before writing.
+            let vr = validate_row(input);
+            if !vr.is_ok() {
+                return Err(DbSkillStoreError::Validation {
+                    errors: vr.errors,
+                });
+            }
+
+            let escaped_body = escape_skill_content(&input.body);
+
+            let client = self.pool.get().await?;
+            let affected = client
+                .execute(
+                    "UPDATE reborn_skills SET
+                        description      = $6,
+                        body             = $7,
+                        compatibility    = $8,
+                        license          = $9,
+                        allowed_tools    = $10,
+                        version          = $11,
+                        keywords         = $12,
+                        exclude_keywords = $13,
+                        patterns         = $14,
+                        tags             = $15,
+                        max_context_tokens = $16,
+                        setup_marker     = $17,
+                        required_binaries = $18,
+                        required_env     = $19,
+                        required_config  = $20,
+                        intent_examples  = $21,
+                        content_hash     = $22,
+                        -- Reset validation cycle.
+                        validation_status = 'pending',
+                        queue_code        = 'q1_auto',
+                        validation_errors = '{}',
+                        -- Re-add the validator tag (greys out other consumer tags).
+                        consumer_tags = array_append(
+                            array_remove(consumer_tags, '05:validator'),
+                            '05:validator'
+                        )
+                     WHERE id = $1
+                       AND tenant_id  = $2
+                       AND user_id    = $3
+                       AND agent_id   = $4
+                       AND project_id = $5",
+                    &[
+                        &id,
+                        &scope.tenant_id,
+                        &scope.user_id,
+                        &scope.agent_id,
+                        &scope.project_id,
+                        &input.description,
+                        &escaped_body,
+                        &input.compatibility,
+                        &input.license,
+                        &input.allowed_tools,
+                        &input.version,
+                        &input.keywords,
+                        &input.exclude_keywords,
+                        &input.patterns,
+                        &input.tags,
+                        &input.max_context_tokens,
+                        &input.setup_marker,
+                        &input.required_binaries,
+                        &input.required_env,
+                        &input.required_config,
+                        &input.intent_examples,
+                        &input.content_hash,
+                    ],
+                )
+                .await?;
+
+            if affected == 0 {
+                return Err(DbSkillStoreError::NotFound { id });
+            }
+            Ok(())
+        }
+
         /// Immediate-write update for reward / telemetry columns.
         /// Does NOT re-trigger Step-1 validation.
         pub async fn update_reward(
