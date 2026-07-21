@@ -12,10 +12,15 @@ repository = "https://github.com/chtugha/brassclaw"
 [package.metadata.dist]
 dist = false
 
+[lints]
+workspace = true
+
 [features]
 default = ["registry", "catalog"]
 registry = ["dep:tempfile"]
 catalog = ["dep:reqwest", "dep:urlencoding", "dep:futures"]
+# DB-backed skill store backed by brassclaw_pg.
+db-store = ["dep:brassclaw_pg", "dep:uuid"]
 
 [dependencies]
 async-trait = "0.1"
@@ -30,6 +35,10 @@ sha2 = "0.10"
 thiserror = "2"
 tokio = { version = "1", features = ["sync", "process", "fs"] }
 tracing = "0.1"
+uuid = { version = "1", features = ["v4", "serde"], optional = true }
+
+# Optional (db-store feature)
+brassclaw_pg = { path = "../brassclaw_pg", version = "0.1.0", optional = true }
 
 # Optional (catalog feature)
 futures = { version = "0.3", optional = true }

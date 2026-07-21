@@ -37,6 +37,8 @@
 //! controls tool access via capability leases.
 
 pub mod component_type;
+#[cfg(feature = "db-store")]
+pub mod db_store;
 pub mod gating;
 pub mod install_metadata;
 pub mod management;
