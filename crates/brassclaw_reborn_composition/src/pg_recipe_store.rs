@@ -29,6 +29,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use brassclaw_agent_loop::plan_scoring::{classify_tier, wilson_lower_bound};
 use brassclaw_pg::PgPool;
 use brassclaw_turns::run_profile::{
     RecipeLookup, RecipeLookupError, RecipeMatchDto, RecipeStepDto, ToolSkillMatchDto,
@@ -146,6 +147,35 @@ pub struct NewPgRecipe {
     pub consumer_tags: Vec<String>,
     pub intent_examples: Option<Value>,
     pub source: String,
+}
+
+// ---------------------------------------------------------------------------
+// Parameter structs (keep argument counts under the clippy threshold)
+// ---------------------------------------------------------------------------
+
+/// Grouped parameters for [`PgRecipeStore::update_validation_status`].
+#[derive(Debug)]
+pub struct RecipeValidationStatusUpdate<'a> {
+    pub validation_status: &'a str,
+    pub validation_errors: Vec<String>,
+    pub review_feedback: Option<String>,
+    pub queue_code: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+use brassclaw_agent_loop::plan_scoring::SkillMaturityTier;
+
+/// Map a [`SkillMaturityTier`] to the DB tier label used by `reborn_recipes`.
+fn tier_label(tier: SkillMaturityTier) -> &'static str {
+    match tier {
+        SkillMaturityTier::Seedling => "seedling",
+        SkillMaturityTier::Growing => "growing",
+        SkillMaturityTier::Mature => "mature",
+        SkillMaturityTier::Candidate => "candidate",
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -347,10 +377,7 @@ impl PgRecipeStore {
         agent_id: &str,
         project_id: &str,
         id: Uuid,
-        validation_status: &str,
-        validation_errors: Vec<String>,
-        review_feedback: Option<String>,
-        queue_code: Option<String>,
+        update: RecipeValidationStatusUpdate<'_>,
     ) -> Result<(), PgRecipeStoreError> {
         let client = self.pool.get().await.map_err(map_pool)?;
         client
@@ -364,10 +391,10 @@ impl PgRecipeStore {
                    AND tenant_id = $6 AND user_id = $7
                    AND agent_id  = $8 AND project_id = $9",
                 &[
-                    &validation_status,
-                    &validation_errors,
-                    &review_feedback,
-                    &queue_code,
+                    &update.validation_status,
+                    &update.validation_errors,
+                    &update.review_feedback,
+                    &update.queue_code,
                     &id,
                     &tenant_id,
                     &user_id,
@@ -405,10 +432,14 @@ impl PgRecipeStore {
         Ok(())
     }
 
-    /// Atomically increment outcome counters and recompute Wilson lower bound.
+    /// Increment outcome counters and recompute Wilson lower bound + tier label.
     ///
-    /// The Wilson formula uses a 95 % confidence interval (z ≈ 1.96).  All
-    /// arithmetic is done in Postgres to avoid a SELECT-then-UPDATE race.
+    /// To avoid a SELECT-then-UPDATE race while keeping all Wilson arithmetic in
+    /// Rust (the Postgres functions do not exist), this method uses a single
+    /// atomic `UPDATE … RETURNING` to increment the counters and read back the
+    /// new values, then immediately applies a second UPDATE to write the
+    /// computed `wilson_lower` and `tier`.  Both statements run in a
+    /// transaction so no concurrent reader sees partially-updated rows.
     pub async fn record_outcome(
         &self,
         tenant_id: &str,
@@ -418,32 +449,62 @@ impl PgRecipeStore {
         id: Uuid,
         success: bool,
     ) -> Result<(), PgRecipeStoreError> {
-        let client = self.pool.get().await.map_err(map_pool)?;
-        // Increment usage + the appropriate outcome counter, then recompute
-        // Wilson lower bound and tier label atomically.
-        let sql = if success {
-            "UPDATE reborn_recipes
-             SET usage_count   = usage_count + 1,
-                 success_count = success_count + 1,
-                 wilson_lower  = wilson_lower_bound(success_count + 1, failure_count, 1.96),
-                 tier          = wilson_tier(wilson_lower_bound(success_count + 1, failure_count, 1.96))
-             WHERE id = $1
-               AND tenant_id = $2 AND user_id = $3
-               AND agent_id  = $4 AND project_id = $5"
+        let mut client = self.pool.get().await.map_err(map_pool)?;
+        let tx = client.transaction().await.map_err(map_pg)?;
+
+        // Step 1: atomically increment counters, read back new values.
+        let (new_success, new_failure): (i32, i32) = if success {
+            let row = tx
+                .query_one(
+                    "UPDATE reborn_recipes
+                     SET usage_count   = usage_count + 1,
+                         success_count = success_count + 1
+                     WHERE id = $1
+                       AND tenant_id = $2 AND user_id = $3
+                       AND agent_id  = $4 AND project_id = $5
+                     RETURNING success_count, failure_count",
+                    &[&id, &tenant_id, &user_id, &agent_id, &project_id],
+                )
+                .await
+                .map_err(map_pg)?;
+            (row.get(0), row.get(1))
         } else {
-            "UPDATE reborn_recipes
-             SET usage_count   = usage_count + 1,
-                 failure_count = failure_count + 1,
-                 wilson_lower  = wilson_lower_bound(success_count, failure_count + 1, 1.96),
-                 tier          = wilson_tier(wilson_lower_bound(success_count, failure_count + 1, 1.96))
-             WHERE id = $1
-               AND tenant_id = $2 AND user_id = $3
-               AND agent_id  = $4 AND project_id = $5"
+            let row = tx
+                .query_one(
+                    "UPDATE reborn_recipes
+                     SET usage_count   = usage_count + 1,
+                         failure_count = failure_count + 1
+                     WHERE id = $1
+                       AND tenant_id = $2 AND user_id = $3
+                       AND agent_id  = $4 AND project_id = $5
+                     RETURNING success_count, failure_count",
+                    &[&id, &tenant_id, &user_id, &agent_id, &project_id],
+                )
+                .await
+                .map_err(map_pg)?;
+            (row.get(0), row.get(1))
         };
-        client
-            .execute(sql, &[&id, &tenant_id, &user_id, &agent_id, &project_id])
-            .await
-            .map_err(map_pg)?;
+
+        // Step 2: compute Wilson lower bound + tier in Rust, write back.
+        let w = wilson_lower_bound(new_success as u64, new_failure as u64, 1.96);
+        let tier = classify_tier(
+            (new_success + new_failure) as u64,
+            w,
+            0.80,
+        );
+        let tier_str = tier_label(tier);
+        tx.execute(
+            "UPDATE reborn_recipes
+             SET wilson_lower = $1, tier = $2
+             WHERE id = $3
+               AND tenant_id = $4 AND user_id = $5
+               AND agent_id  = $6 AND project_id = $7",
+            &[&w, &tier_str, &id, &tenant_id, &user_id, &agent_id, &project_id],
+        )
+        .await
+        .map_err(map_pg)?;
+
+        tx.commit().await.map_err(map_pg)?;
         Ok(())
     }
 

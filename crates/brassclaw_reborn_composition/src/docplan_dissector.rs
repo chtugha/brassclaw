@@ -44,7 +44,6 @@
 
 #![forbid(unsafe_code)]
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use brassclaw_filesystem::RootFilesystem;
@@ -204,9 +203,9 @@ impl<F: RootFilesystem + ?Sized + 'static> DocPlanDissector<F> {
             source: "plan_library".to_string(),
         };
         self.unified_store
-            .insert(new_ext)
+            .upsert(new_ext, &hash)
             .await
-            .map_err(|e| format!("unified_store insert extension: {e}"))?;
+            .map_err(|e| format!("unified_store upsert extension: {e}"))?;
         debug!(
             plan_type,
             slug,

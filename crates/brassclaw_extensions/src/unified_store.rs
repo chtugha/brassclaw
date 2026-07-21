@@ -215,6 +215,18 @@ pub trait UnifiedExtensionStore: Send + Sync {
     /// Insert a new extension row.  Returns the assigned row id.
     async fn insert(&self, row: NewUnifiedExtension) -> Result<Uuid, UnifiedStoreError>;
 
+    /// Upsert a row by `(scope, name)` + content hash (idempotent import).
+    ///
+    /// If a row with the same `(tenant_id, user_id, agent_id, project_id, name)`
+    /// already exists AND its `content_hash` matches `content_hash`, the update is
+    /// skipped and the existing id is returned.  Otherwise the row's payload and
+    /// metadata are replaced and `validation_status` is reset to `'pending'`.
+    async fn upsert(
+        &self,
+        row: NewUnifiedExtension,
+        content_hash: &str,
+    ) -> Result<Uuid, UnifiedStoreError>;
+
     /// Fetch a single row by id + scope.  Returns `None` if not found or
     /// belongs to a different scope.
     async fn get(
@@ -434,6 +446,74 @@ impl UnifiedExtensionStore for PgUnifiedExtensionStore {
                     &row.consumer_tags,
                     &intent_val,
                     &row.source,
+                ],
+            )
+            .await
+            .map_err(map_pg)?;
+        Ok(db_row.get(0))
+    }
+
+    async fn upsert(
+        &self,
+        row: NewUnifiedExtension,
+        content_hash: &str,
+    ) -> Result<Uuid, UnifiedStoreError> {
+        let payload_val = serde_json::to_value(&row.payload).map_err(map_json)?;
+        let intent_val = row
+            .intent_examples
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(map_json)?;
+
+        let class_code = row.class.class_code();
+        let class_str = row.class.as_str();
+
+        let client = self.pool.get().await.map_err(map_pool)?;
+        let db_row = client
+            .query_one(
+                "INSERT INTO reborn_extensions_unified
+                    (tenant_id, user_id, agent_id, project_id,
+                     name, description, class, payload,
+                     prior_knowledge_content, override_prompt_creation,
+                     class_code, consumer_tags, intent_examples, source,
+                     content_hash, validation_status)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7::reborn_extension_class,$8,$9,$10,$11,$12,$13,$14,$15,'pending')
+                 ON CONFLICT ON CONSTRAINT reborn_extensions_unified_scope_name_unique DO UPDATE
+                     SET description             = EXCLUDED.description,
+                         class                   = EXCLUDED.class,
+                         payload                 = EXCLUDED.payload,
+                         prior_knowledge_content = EXCLUDED.prior_knowledge_content,
+                         override_prompt_creation = EXCLUDED.override_prompt_creation,
+                         class_code              = EXCLUDED.class_code,
+                         consumer_tags           = CASE
+                             WHEN reborn_extensions_unified.content_hash = $15 THEN reborn_extensions_unified.consumer_tags
+                             ELSE EXCLUDED.consumer_tags
+                         END,
+                         intent_examples         = EXCLUDED.intent_examples,
+                         source                  = EXCLUDED.source,
+                         content_hash            = EXCLUDED.content_hash,
+                         validation_status       = CASE
+                             WHEN reborn_extensions_unified.content_hash = $15 THEN reborn_extensions_unified.validation_status
+                             ELSE 'pending'
+                         END
+                 RETURNING id",
+                &[
+                    &row.tenant_id,
+                    &row.user_id,
+                    &row.agent_id,
+                    &row.project_id,
+                    &row.name,
+                    &row.description,
+                    &class_str,
+                    &payload_val,
+                    &row.prior_knowledge_content,
+                    &row.override_prompt_creation,
+                    &class_code,
+                    &row.consumer_tags,
+                    &intent_val,
+                    &row.source,
+                    &content_hash,
                 ],
             )
             .await

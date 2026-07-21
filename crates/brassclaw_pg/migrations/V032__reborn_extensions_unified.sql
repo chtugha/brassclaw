@@ -40,14 +40,17 @@
 -- All writes and reads must filter on the full scope tuple
 -- (tenant_id, user_id, agent_id, project_id).
 
-CREATE TYPE IF NOT EXISTS reborn_extension_class AS ENUM (
-    'rusty',
-    'monty',
-    'mcp_server',
-    'mcp_client',
-    'llm',
-    'misc'
-);
+DO $$ BEGIN
+    CREATE TYPE reborn_extension_class AS ENUM (
+        'rusty',
+        'monty',
+        'mcp_server',
+        'mcp_client',
+        'llm',
+        'misc'
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE SEQUENCE IF NOT EXISTS reborn_extensions_unified_prompt_uid_seq;
 
