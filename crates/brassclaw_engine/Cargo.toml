@@ -13,11 +13,20 @@ publish = false
 [package.metadata.dist]
 dist = false
 
+[lints]
+workspace = true
+
+[features]
+# Load skills from reborn_skills DB table instead of MemoryDoc filesystem.
+# Requires a live brassclaw_pg pool to be threaded in.
+skills-db = ["brassclaw_skills/db-store", "dep:brassclaw_pg"]
+
 [dependencies]
 async-trait = "0.1"
 cron = "0.13"
 brassclaw_common = { path = "../brassclaw_common", version = "0.4.2" }
 brassclaw_skills = { path = "../brassclaw_skills", version = "0.3.0", default-features = false }
+brassclaw_pg = { path = "../brassclaw_pg", version = "0.1.0", optional = true }
 chrono = { version = "0.4", features = ["serde"] }
 monty = { git = "https://github.com/pydantic/monty.git", tag = "v0.0.16" }
 regex = "1"

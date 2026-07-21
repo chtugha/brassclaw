@@ -449,6 +449,7 @@ pub async fn execute_orchestrator(
     platform_info: Option<&crate::executor::prompt::PlatformInfo>,
     gate_controller: &Arc<dyn crate::gate::GateController>,
     persisted_state: &serde_json::Value,
+    #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
 ) -> Result<OrchestratorResult, EngineError> {
     let mut total_tokens = TokenUsage::default();
 
@@ -642,7 +643,16 @@ pub async fn execute_orchestrator(
                     "__get_actions__" => handle_get_actions(thread, effects, leases, store).await,
 
                     // __list_skills__(max_candidates, max_tokens)
-                    "__list_skills__" => handle_list_skills(args, thread, store).await,
+                    "__list_skills__" => {
+                        handle_list_skills(
+                            args,
+                            thread,
+                            store,
+                            #[cfg(feature = "skills-db")]
+                            pg_pool,
+                        )
+                        .await
+                    }
 
                     // __record_skill_usage__(doc_id, success)
                     "__record_skill_usage__" => handle_record_skill_usage(args, store).await,
@@ -2762,7 +2772,46 @@ async fn handle_list_skills(
     _args: &[MontyObject],
     thread: &Thread,
     store: Option<&Arc<dyn Store>>,
+    #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
 ) -> ExtFunctionResult {
+    // --- skills-db fast path -----------------------------------------------
+    // When the `skills-db` feature is active and a Postgres pool is available,
+    // load skills from `reborn_skills` (V027) ordered by (class_code, prompt_uid)
+    // for deterministic KV-cache-stable injection.  The MemoryDoc fallback path
+    // below is still used when the pool is absent (e.g. in tests or when the
+    // feature is off).
+    #[cfg(feature = "skills-db")]
+    if let Some(pool) = pg_pool {
+        use crate::executor::db_skill_loader::{fetch_llm_skills_as_json, scope_from_thread_ids};
+        // Build a scope from the thread's identifiers.  `tenant_id` and
+        // `agent_id` are not carried on `Thread` in Phase 1 — use the user_id
+        // as the tenant and a fixed string for agent_id so scope queries return
+        // per-user results.  Phase 2+ will tighten this once the full 4-tuple
+        // is threaded through.
+        let scope = scope_from_thread_ids(
+            &thread.user_id, // tenant_id stub (Phase 1 — Phase 2+ will tighten)
+            &thread.user_id,
+            "default",       // agent_id stub (Phase 1)
+            thread.project_id.0.to_string(),
+        );
+        match fetch_llm_skills_as_json(pool, &scope).await {
+            Ok(skills) => {
+                debug!(
+                    user_id = %thread.user_id,
+                    count = skills.len(),
+                    "__list_skills__: loaded from reborn_skills (skills-db)"
+                );
+                return ExtFunctionResult::Return(json_to_monty(&serde_json::json!(skills)));
+            }
+            Err(e) => {
+                // Log and fall through to the MemoryDoc path so a DB error
+                // does not hard-fail the entire orchestrator step.
+                debug!("__list_skills__: skills-db fetch failed, falling back to MemoryDoc: {e}");
+            }
+        }
+    }
+
+    // --- MemoryDoc fallback path --------------------------------------------
     let Some(store) = store else {
         return ExtFunctionResult::Return(json_to_monty(&serde_json::json!([])));
     };

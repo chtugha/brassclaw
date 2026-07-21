@@ -6,6 +6,8 @@
 //! - [`intent`] — tool intent nudge detection
 
 pub mod context;
+#[cfg(feature = "skills-db")]
+pub mod db_skill_loader;
 pub mod loop_engine;
 pub mod orchestrator;
 pub mod prompt;

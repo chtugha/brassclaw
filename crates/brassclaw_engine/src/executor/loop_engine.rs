@@ -126,6 +126,10 @@ pub struct ExecutionLoop {
     /// gates. Required: callers without an inline-await surface use
     /// [`crate::gate::CancellingGateController::arc()`].
     gate_controller: Arc<dyn crate::gate::GateController>,
+    /// Optional Postgres pool used by the `skills-db` feature to load skills
+    /// from `reborn_skills` instead of MemoryDoc filesystem discovery.
+    #[cfg(feature = "skills-db")]
+    pg_pool: Option<std::sync::Arc<brassclaw_pg::PgPool>>,
 }
 
 impl ExecutionLoop {
@@ -154,6 +158,8 @@ impl ExecutionLoop {
             store: None,
             platform_info: None,
             gate_controller,
+            #[cfg(feature = "skills-db")]
+            pg_pool: None,
         }
     }
 
@@ -184,6 +190,13 @@ impl ExecutionLoop {
     /// Set the Store for runtime prompt overlay loading and skill retrieval.
     pub fn with_store(mut self, store: Arc<dyn crate::traits::store::Store>) -> Self {
         self.store = Some(store);
+        self
+    }
+
+    /// Set a Postgres pool for DB-backed skill loading (`skills-db` feature).
+    #[cfg(feature = "skills-db")]
+    pub fn with_pg_pool(mut self, pool: std::sync::Arc<brassclaw_pg::PgPool>) -> Self {
+        self.pg_pool = Some(pool);
         self
     }
 
@@ -440,6 +453,8 @@ impl ExecutionLoop {
             self.platform_info.as_ref(),
             &self.gate_controller,
             &checkpoint.persisted_state,
+            #[cfg(feature = "skills-db")]
+            self.pg_pool.as_deref(),
         )
         .await;
 
