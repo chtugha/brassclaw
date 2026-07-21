@@ -63,6 +63,8 @@ def backtest(strategy_doc):
             "strategies": [strategy_doc],
             "config": config,
         })
+        if not isinstance(propose, dict):
+            continue
         ready = [p for p in propose.get("proposals", []) if p.get("status") == "ready"]
         results.append({
             "date": snap["date"],

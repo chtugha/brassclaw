@@ -28,6 +28,8 @@
 
 #[cfg(feature = "db-store")]
 mod inner {
+    use std::sync::OnceLock;
+
     use chrono::{DateTime, Utc};
     use serde_json::Value as JsonValue;
     use thiserror::Error;
@@ -288,7 +290,6 @@ mod inner {
             ));
         } else {
             // Actionable-verb heuristic (soft warning).
-            use std::sync::OnceLock;
             static VERB_RE: OnceLock<regex::Regex> = OnceLock::new();
             let re = VERB_RE.get_or_init(|| {
                 regex::Regex::new(
@@ -357,7 +358,6 @@ mod inner {
         }
 
         // 7. Consumer tag format
-        use std::sync::OnceLock;
         static TAG_RE: OnceLock<regex::Regex> = OnceLock::new();
         let tag_re = TAG_RE.get_or_init(|| {
             regex::Regex::new(r"^\d{2}(:[a-z0-9-]+)?$").unwrap() // safety: hardcoded literal

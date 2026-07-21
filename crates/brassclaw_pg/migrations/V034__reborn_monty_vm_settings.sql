@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS reborn_monty_vm_settings (
     forensic_packet_retention_days  INT         NOT NULL DEFAULT 90
         CHECK (forensic_packet_retention_days >= 0),
 
+    created_at                      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at                      TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     CONSTRAINT reborn_monty_vm_settings_pk PRIMARY KEY (id),
