@@ -84,6 +84,20 @@ pub const PROMPT_OVERLAY_TAG: &str = "prompt_overlay";
 /// Maximum size for a prompt overlay document (in chars).
 const MAX_PROMPT_OVERLAY_CHARS: usize = 4000;
 
+/// Returns `true` if `title` identifies a protected component that must pass the
+/// validation gate (Q1 → Q2) before being applied.
+///
+/// Protected components are:
+/// - `orchestrator:main` — the self-modifiable Python loop driver (class 10).
+/// - `prompt:codeact_preamble` — the prompt overlay (Level 1 self-modification).
+///
+/// Any `memory_write` targeting these titles is intercepted by the Rust bridge
+/// and routed through `__validate_component__` instead (spec §3.5 / §3.6).
+pub fn is_protected_component_title(title: &str) -> bool {
+    use crate::executor::orchestrator::ORCHESTRATOR_TITLE;
+    title == ORCHESTRATOR_TITLE || title == PREAMBLE_OVERLAY_TITLE
+}
+
 /// Build the system prompt for CodeAct/RLM execution.
 ///
 /// The prompt instructs the LLM to:

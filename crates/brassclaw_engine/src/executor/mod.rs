@@ -5,6 +5,7 @@
 //! - [`context`] — context building for LLM calls
 //! - [`intent`] — tool intent nudge detection
 
+pub mod code_audit;
 pub mod context;
 #[cfg(feature = "skills-db")]
 pub mod db_skill_loader;

@@ -52,6 +52,7 @@ clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4.5.0"
 dotenvy = "0.15"
 brassclaw_reborn_composition = { path = "../brassclaw_reborn_composition", version = "0.1.0" }
+brassclaw_host_api = { path = "../brassclaw_host_api", version = "0.1.0" }
 brassclaw_reborn_config = { path = "../brassclaw_reborn_config", version = "0.1.0" }
 brassclaw_reborn_traces = { path = "../brassclaw_reborn_traces", version = "0.1.0" }
 brassclaw_reborn_webui_ingress = { path = "../brassclaw_reborn_webui_ingress", version = "0.1.0" }

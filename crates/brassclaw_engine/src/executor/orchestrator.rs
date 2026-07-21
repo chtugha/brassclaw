@@ -667,6 +667,15 @@ pub async fn execute_orchestrator(
                     // __set_active_skills__(skills)
                     "__set_active_skills__" => handle_set_active_skills(args, thread),
 
+                    // __validate_component__(title, content, doc_type, metadata)
+                    // Intercepts self-improvement memory_write calls for protected
+                    // components (orchestrator:main, prompt:codeact_preamble).
+                    // Creates an update-candidate MemoryDoc in Q1 (pending) instead
+                    // of writing directly. Spec §3.5 / §3.6.
+                    "__validate_component__" => {
+                        handle_validate_component(args, thread, store).await
+                    }
+
                     // Unknown — let Monty resolve it (user-defined functions, builtins)
                     other => ExtFunctionResult::NotFound(other.to_string()),
                 };
@@ -2989,6 +2998,140 @@ fn handle_set_active_skills(args: &[MontyObject], thread: &mut Thread) -> ExtFun
     }
 
     ExtFunctionResult::Return(MontyObject::None)
+}
+
+/// Handle `__validate_component__(title, content, doc_type, metadata)`.
+///
+/// Intercepts self-improvement `memory_write` calls for protected components
+/// (orchestrator code at title `orchestrator:main`, prompt overlays at title
+/// `prompt:codeact_preamble`) and creates an update-candidate MemoryDoc that
+/// enters Q1 (validation_status = `pending`, queue_code = `q1_auto`) instead
+/// of writing directly to the store.
+///
+/// Non-protected titles are forwarded to normal storage via the trusted-write
+/// path, mirroring the original `memory_write` behaviour for routine docs.
+///
+/// Spec §3.5 / §3.6: all code/component changes must pass validation before
+/// applying; the validator cannot be patched by the self-improvement mission.
+async fn handle_validate_component(
+    args: &[MontyObject],
+    thread: &Thread,
+    store: Option<&Arc<dyn Store>>,
+) -> ExtFunctionResult {
+    use crate::types::memory::{DocType, MemoryDoc};
+
+    let title = args
+        .first()
+        .map(monty_to_string)
+        .unwrap_or_default();
+    let content = args
+        .get(1)
+        .map(monty_to_string)
+        .unwrap_or_default();
+    let doc_type_str = args
+        .get(2)
+        .map(monty_to_string)
+        .unwrap_or_else(|| "note".into());
+    let extra_meta = args.get(3).map(monty_to_json).unwrap_or_default();
+
+    if title.is_empty() || content.is_empty() {
+        debug!("__validate_component__: empty title or content — no-op");
+        return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({"queued": false, "reason": "empty payload"})));
+    }
+
+    // Map doc_type string to the DocType enum (lenient fallback to Note).
+    let doc_type = match doc_type_str.to_ascii_lowercase().as_str() {
+        "skill" => DocType::Skill,
+        "recipe" => DocType::Recipe,
+        "tool_skill" | "toolskill" => DocType::ToolSkill,
+        "lesson" => DocType::Lesson,
+        "spec" => DocType::Spec,
+        "plan" => DocType::Plan,
+        _ => DocType::Note,
+    };
+
+    // Is this a protected component that must go through validation?
+    let is_protected = crate::executor::prompt::is_protected_component_title(&title);
+
+    // Orchestrator (class 10) and Scaffold (class 50) components require an
+    // LLM code-audit before Q2 manual validation (spec §3.5 / §3.5.1).
+    // We flag the candidate with `llm_audit_required: true` and
+    // `llm_audit_status: "pending"` so the WebUI validate route (Phase 6)
+    // can enforce the gate: the "Validate" button is disabled until the audit
+    // returns clean (Phase 3 / Step 6 §3.4). The actual LLM audit call is
+    // performed by `crate::executor::code_audit::run_code_audit()` which is
+    // wired into the WebUI PUT /components/{class_code}/{id}/validate handler.
+    let needs_llm_audit = is_protected; // orchestrator:main and prompt:codeact_preamble are class 10/prompt
+
+    let Some(store) = store else {
+        debug!("__validate_component__: no store available — skipping write");
+        return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({"queued": false, "reason": "no_store"})));
+    };
+
+    // Build the update-candidate metadata.
+    let mut meta = serde_json::Map::new();
+    meta.insert("validation_status".into(), serde_json::json!("pending"));
+    meta.insert("queue_code".into(), serde_json::json!("q1_auto"));
+    if is_protected {
+        meta.insert("is_update_candidate".into(), serde_json::json!(true));
+        meta.insert("consumer_tags".into(), serde_json::json!(["05:validator"]));
+    }
+    if needs_llm_audit {
+        // Gate flag: WebUI validate handler checks this before allowing Q2.
+        meta.insert("llm_audit_required".into(), serde_json::json!(true));
+        meta.insert("llm_audit_status".into(), serde_json::json!("pending"));
+    }
+    // Merge caller-supplied metadata (non-overriding for our validation fields).
+    if let serde_json::Value::Object(extra_obj) = extra_meta {
+        for (k, v) in extra_obj {
+            meta.entry(k).or_insert(v);
+        }
+    }
+
+    let mut candidate = MemoryDoc::new(
+        thread.project_id,
+        thread.user_id.clone(),
+        doc_type,
+        title.clone(),
+        content,
+    )
+    .with_tags(vec!["update_candidate".into(), "05:validator".into()]);
+    candidate.metadata = serde_json::Value::Object(meta);
+
+    let candidate_id = format!("{}", candidate.id.0);
+    let save_result = crate::runtime::with_trusted_internal_writes(
+        store.save_memory_doc(&candidate)
+    ).await;
+
+    match save_result {
+        Ok(_) => {
+            debug!(
+                title = %title,
+                candidate_id = %candidate_id,
+                is_protected,
+                "validate_component: update-candidate queued in Q1"
+            );
+            ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                "queued": true,
+                "candidate_id": candidate_id,
+                "validation_status": "pending",
+                "queue_code": "q1_auto",
+                "llm_audit_required": needs_llm_audit,
+                "llm_audit_status": if needs_llm_audit { "pending" } else { "not_required" },
+            })))
+        }
+        Err(e) => {
+            debug!(
+                title = %title,
+                error = %e,
+                "validate_component: store write failed"
+            );
+            ExtFunctionResult::Error(monty::MontyException::new(
+                monty::ExcType::RuntimeError,
+                Some(format!("__validate_component__ store write failed: {e}")),
+            ))
+        }
+    }
 }
 
 // ── Helpers ─────────────────────────────────────────────────

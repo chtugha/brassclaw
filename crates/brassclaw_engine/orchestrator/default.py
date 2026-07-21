@@ -19,6 +19,8 @@
 #   __list_skills__()                            -> list of skill dicts
 #   __record_skill_usage__(doc_id, success)      -> None
 #   __regex_match__(pattern, text)               -> bool
+#   __validate_component__(title, content, doc_type, metadata)
+#                                               -> {queued, candidate_id, ...}
 #
 # Context variables (injected by Rust before execution):
 #   context  - list of prior messages [{role, content}]
@@ -26,9 +28,6 @@
 #   actions  - list of available action defs
 #   state    - persisted state dict from prior steps
 #   config   - thread config dict
-
-
-import re
 
 
 # ── Helper functions (self-modifiable glue) ──────────────────
@@ -98,98 +97,6 @@ def strip_code_blocks(text):
     return "\n".join(result)
 
 
-def signals_tool_intent(text):
-    """Detect when text expresses intent to call a tool without actually doing so.
-
-    Ported from V1 Rust llm_signals_tool_intent(): strips code blocks and
-    quoted strings, checks exclusion phrases, then requires a future-tense
-    prefix ("let me", "I'll", "I will", "I'm going to") immediately followed
-    by an action verb ("search", "fetch", "check", etc.).
-    """
-    stripped = strip_code_blocks(text)
-    lower = stripped.lower()
-
-    EXCLUSIONS = [
-        "let me explain", "let me know", "let me think",
-        "let me summarize", "let me clarify", "let me describe",
-        "let me help", "let me understand", "let me break",
-        "let me outline", "let me walk you", "let me provide",
-        "let me suggest", "let me elaborate", "let me start by",
-    ]
-    for exc in EXCLUSIONS:
-        if exc in lower:
-            return False
-
-    PREFIXES = ["let me ", "i'll ", "i will ", "i'm going to "]
-    ACTION_VERBS = [
-        "search", "look up", "check", "fetch", "find",
-        "read the", "write the", "create", "run the", "execute",
-        "query", "retrieve", "add it", "add the", "add this",
-        "add that", "update the", "delete", "remove the", "look into",
-        "stop", "pause", "cancel", "halt", "disable",
-    ]
-
-    for prefix in PREFIXES:
-        start = 0
-        while True:
-            i = lower.find(prefix, start)
-            if i < 0:
-                break
-            after = lower[i + len(prefix):]
-            for verb in ACTION_VERBS:
-                if after.startswith(verb) or (" " + verb) in after.split("\n")[0]:
-                    return True
-            start = i + 1
-
-    return False
-
-
-def signals_execution_intent(text):
-    """Detect explicit execution commands in user messages.
-
-    Ported from Rust user_signals_execution_intent(): strips code blocks and
-    quoted strings, then checks for imperative verb phrases that require action.
-    Deliberately excludes context-dependent phrases ("go ahead", "yes do it")
-    that require multi-turn understanding.
-    """
-    stripped = strip_code_blocks(text)
-    lower = stripped.lower()
-
-    EXEC_PHRASES = [
-        "run it", "run that", "run them", "run this", "run the ",
-        "execute it", "execute that", "execute them", "execute this",
-        "execute the ",
-        "ship it", "deploy it", "deploy that", "deploy this", "deploy the ",
-        "send it", "send that", "send the ",
-        "fetch it", "fetch that", "fetch the ",
-        "stop it", "stop that", "stop this", "stop the ",
-        "pause it", "pause that", "pause this", "pause the ",
-        "cancel it", "cancel that", "cancel this", "cancel the ",
-        "halt it", "halt that", "halt this", "halt the ",
-        "disable it", "disable that", "disable this", "disable the ",
-        "please run ", "please execute ", "please fetch ",
-        "please send ", "please deploy ",
-        "please stop ", "please pause ", "please cancel ",
-        "please halt ", "please disable ",
-    ]
-    if any(phrase in lower for phrase in EXEC_PHRASES):
-        return True
-
-    # Bare imperative commands at the start of the message.
-    # "stop pinging", "stop", "pause", "cancel" are unambiguous commands
-    # that don't match the "verb + pronoun/article" pattern above.
-    # Checking startswith avoids false positives like "I can't stop".
-    # Strip trailing punctuation so "Stop." and "cancel!" still match.
-    trimmed = lower.strip().rstrip(".,!?;:")
-    IMPERATIVE_STARTS = ["stop ", "pause ", "cancel ", "halt ", "disable "]
-    BARE_COMMANDS = ["stop", "pause", "cancel", "halt", "disable"]
-    if trimmed in BARE_COMMANDS:
-        return True
-    if any(trimmed.startswith(s) for s in IMPERATIVE_STARTS):
-        return True
-
-    return False
-
 
 def format_output(result, max_chars=8000):
     """Format code execution result for the next LLM context message."""
@@ -231,18 +138,6 @@ def format_output(result, max_chars=8000):
     return text
 
 
-def format_docs(docs):
-    """Format memory docs for context injection."""
-    parts = ["## Prior Knowledge (from completed threads)\n"]
-    for doc in docs:
-        label = doc.get("type", "NOTE").upper()
-        content = doc.get("content", "")[:500]
-        truncated = "..." if len(doc.get("content", "")) > 500 else ""
-        parts.append("### [" + label + "] " + doc.get("title", "") +
-                      "\n" + content + truncated + "\n")
-    return "\n".join(parts)
-
-
 def ensure_working_messages(state, context):
     """Initialize the mutable orchestrator transcript."""
     existing = state.get("working_messages")
@@ -265,19 +160,6 @@ def append_message(messages, role, content, action_name=None, action_call_id=Non
     if action_calls is not None:
         msg["action_calls"] = action_calls
     messages.append(msg)
-
-
-def append_system_append(messages, content):
-    """Append additional context to the first system message."""
-    for msg in messages:
-        if msg.get("role") == "System":
-            existing = msg.get("content", "")
-            if existing:
-                msg["content"] = existing + "\n\n" + content
-            else:
-                msg["content"] = content
-            return
-    messages.insert(0, {"role": "System", "content": content})
 
 
 # Conservative fallback heuristic matching the old Rust-side estimator.
@@ -481,9 +363,8 @@ def _history_compact(messages, keep_recent_n):
     `keep_recent_n` entries. Returns the new list.
 
     Accepts both `"System"` (the canonical role produced by the
-    orchestrator's `append_message` / `append_system_append` helpers —
-    see lines 273 and 602) and the lowercase `"system"` so that
-    imported transcripts (e.g. CPython test fixtures, external
+    orchestrator's `append_message` helper) and the lowercase `"system"` so
+    that imported transcripts (e.g. CPython test fixtures, external
     gateways) are also classified correctly.
     """
     if keep_recent_n <= 0 or len(messages) <= keep_recent_n:
@@ -634,169 +515,6 @@ def compact_if_needed(state, config):
 
 # ── Skill selection and injection (self-modifiable) ────────
 
-
-# Smart-quote / smart-dash characters that auto-correct produces on iOS,
-# macOS, and most rich text inputs. Skill activation patterns and keywords
-# are authored with ASCII punctuation, so a typed `I'm a CEO` (curly
-# apostrophe U+2019) silently fails to match `I'm a CEO` (ASCII U+0027)
-# unless we normalize at the boundary. Done once per turn before scoring,
-# so every skill benefits without each manifest having to spell the
-# alternation `[\u2019']` in its regex.
-#
-# Pairs are (typographic, ascii). `str.maketrans` / `.translate()` aren't
-# available in Monty, so we apply with chained `.replace()` calls — fine
-# for a 10-entry table on a single goal string per turn.
-_PUNCT_FOLD = [
-    ("\u2018", "'"),  # left single
-    ("\u2019", "'"),  # right single / apostrophe (the common autocorrect)
-    ("\u201a", "'"),  # low single
-    ("\u201b", "'"),  # reversed single
-    ("\u201c", '"'),  # left double
-    ("\u201d", '"'),  # right double
-    ("\u201e", '"'),  # low double
-    ("\u201f", '"'),  # reversed double
-    ("\u2013", "-"),  # en dash
-    ("\u2014", "-"),  # em dash
-]
-
-
-def normalize_punctuation(text):
-    """Fold typographic quotes/dashes to ASCII for activation matching.
-
-    Only applied to the message scored against skills, never to the message
-    sent to the LLM or stored in memory. The goal is to make pattern/keyword
-    matching robust to autocorrect, not to mutate user content.
-    """
-    if not text:
-        return text
-    out = text
-    for src, dst in _PUNCT_FOLD:
-        out = out.replace(src, dst)
-    return out
-
-
-def score_skill(skill, message_lower, message_original):
-    """Score a skill against a user message. Returns 0 if vetoed.
-
-    Scoring is aligned with the v1 `brassclaw_skills::selector::score_skill`:
-      - exclude_keyword veto: any match => score 0
-      - keyword: exact word = 10, substring = 5 (cap 30)
-      - tag: substring = 3 (cap 15)
-      - regex pattern: each match = 20 (cap 40)
-    """
-    meta = skill.get("metadata", {})
-    activation = meta.get("activation", {})
-
-    # Exclude keyword veto
-    for excl in activation.get("exclude_keywords", []):
-        if excl.lower() in message_lower:
-            return 0
-
-    score = 0
-
-    # Keyword scoring: exact word = 10, substring = 5 (cap 30)
-    kw_score = 0
-    words = []
-    for word in message_lower.split():
-        trimmed = word.strip(".,!?;:'\"()[]{}<>`~@#$%^&*-_=+/\\|")
-        if trimmed:
-            words.append(trimmed)
-    # The skill's own name (and the hyphen->space-normalized form) counts
-    # as an implicit keyword. A user who writes "please use pikastream-
-    # video-meeting to prepare this call" is explicitly invoking the
-    # skill by name without the `/` prefix; `extract_explicit_skills`
-    # only picks up slash-prefixed mentions, so without this a manifest
-    # that omits `activation.keywords` would score 0 and never activate
-    # even when the user literally named it. Only count names ≥ 4 chars
-    # so short generic names (e.g. "code") don't match every prompt.
-    name = str(meta.get("name", "")).strip().lower()
-    implicit_keywords = []
-    if len(name) >= 4:
-        implicit_keywords.append(name)
-        normalized_name = name.replace("-", " ").replace("_", " ")
-        if normalized_name != name:
-            implicit_keywords.append(normalized_name)
-    declared = [kw.lower() for kw in activation.get("keywords", [])]
-    for kw in list(dict.fromkeys(declared + implicit_keywords)):
-        if kw in words:
-            kw_score += 10
-        elif kw in message_lower:
-            kw_score += 5
-    score += min(kw_score, 30)
-
-    # Tag scoring: substring = 3 (cap 15)
-    tag_score = 0
-    for tag in activation.get("tags", []):
-        if tag.lower() in message_lower:
-            tag_score += 3
-    score += min(tag_score, 15)
-
-    # Regex pattern scoring: each match = 20 (cap 40). Uses the host
-    # function backed by Rust's regex crate for performance.
-    rx_score = 0
-    for pat in activation.get("patterns", []):
-        if __regex_match__(str(pat), message_original):
-            rx_score += 20
-    score += min(rx_score, 40)
-
-    # Confidence factor for extracted skills
-    source = meta.get("source", "authored")
-    if source == "extracted":
-        metrics = meta.get("metrics", {})
-        total = metrics.get("success_count", 0) + metrics.get("failure_count", 0)
-        confidence = metrics.get("success_count", 0) / total if total > 0 else 1.0
-        factor = 0.5 + 0.5 * max(0.0, min(1.0, confidence))
-        score = int(score * factor)
-
-    return score
-
-
-def extract_explicit_skills(skills, goal):
-    """Force-activate `/<skill-name>` mentions and rewrite them naturally."""
-    if not skills or not goal:
-        return [], goal, []
-
-    skill_map = {}
-    for skill in skills:
-        meta = skill.get("metadata", {})
-        name = str(meta.get("name", "")).strip()
-        if name:
-            skill_map[name.lower()] = skill
-
-    matched = []
-    matched_names = set()
-    missing = []
-    missing_names = set()
-    rewritten = goal
-    replacements = []
-
-    for match in re.finditer(r'(^|[\s"\(])/(?P<name>[A-Za-z0-9._-]+)(?=$|[\s"\)])', goal):
-        name = match.group("name")
-        skill = skill_map.get(name.lower())
-        if not skill:
-            lowered = name.lower()
-            if lowered not in missing_names:
-                missing.append(name)
-                missing_names.add(lowered)
-            continue
-        meta = skill.get("metadata", {})
-        description = str(meta.get("description", "")).strip()
-        replacement = description or name.replace("-", " ")
-        prefix = match.group(1) or ""
-        slash_start = match.start() + len(prefix)
-        slash_end = slash_start + 1 + len(name)
-        replacements.append((slash_start, slash_end, replacement))
-        lowered = name.lower()
-        if lowered not in matched_names:
-            matched.append(skill)
-            matched_names.add(lowered)
-
-    for start, end, replacement in reversed(replacements):
-        rewritten = rewritten[:start] + replacement + rewritten[end:]
-
-    return matched, rewritten, missing
-
-
 def _skill_token_cost(skill, activation):
     """Estimate token cost for a skill, mirroring Rust `skill_token_cost`.
 
@@ -814,37 +532,18 @@ def _skill_token_cost(skill, activation):
 
 
 def select_skills(skills, goal, max_candidates=3, max_tokens=6000):
-    """Select relevant skills using deterministic scoring.
+    """Select skills to report as active for the current turn.
 
-    Mirrors the v1 Rust `brassclaw_skills::selector::prefilter_skills`:
-
-    1. **Score** each skill against the message. Setup-marker exclusion
-       happens upstream in Rust `handle_list_skills`, so by the time
-       the skill list reaches this function, excluded skills are
-       already gone.
-    2. **Sort** by score descending.
-    3. **Select** scored skills greedily within the budget and the
-       `max_candidates` limit.
-    4. **Chain-load** companions from each selected parent's
-       `requires.skills`, bypassing the scoring filter. Companions
-       ride on the parent's selection so persona/bundle skills can
-       pull in their operational companions even when those
-       companions wouldn't score on their own.
-
-    Chain-loading is **non-transitive** (depth 1 only) to keep the
-    behavior predictable: a chain-loaded companion does not pull in
-    its own companions. Chain-loaded skills respect the same budget
-    and max_candidates caps as scored skills.
+    Phase 1.5 — intent-system-driven path:
+    Score-based selection (score_skill) and slash-command extraction
+    (extract_explicit_skills) have been removed; the intent system now
+    routes queries to the correct component.  This function returns the
+    first `max_candidates` skills that fit within `max_tokens`, relying on
+    Rust (handle_list_skills) to pre-filter and order candidates by
+    relevance before they reach the orchestrator.
     """
     if not skills or not goal:
         return []
-
-    # Fold typographic quotes/dashes before extraction and scoring so autocorrected
-    # user input matches manifests and slash commands.
-    normalized_goal = normalize_punctuation(goal)
-    explicit, rewritten_goal, _missing = extract_explicit_skills(skills, normalized_goal)
-    message_lower = rewritten_goal.lower()
-    message_original = rewritten_goal
 
     # Build name -> skill lookup for chain-loading companion resolution.
     by_name = {}
@@ -854,39 +553,11 @@ def select_skills(skills, goal, max_candidates=3, max_tokens=6000):
         if name:
             by_name[str(name)] = sk
 
-    scored = []
-    for skill in skills:
-        s = score_skill(skill, message_lower, message_original)
-        if s > 0:
-            scored.append((s, skill))
-
-    scored.sort(key=lambda x: -x[0])
-
-    # Seed with explicitly-activated skills (slash-command mentions) first,
-    # so they are guaranteed a slot regardless of keyword score.
     selected = []
     selected_names = set()
     budget = max_tokens
 
-    for skill in explicit:
-        if len(selected) >= max_candidates:
-            break
-        meta = skill.get("metadata", {})
-        name = meta.get("name")
-        if name is None or str(name) in selected_names:
-            continue
-        activation = meta.get("activation", {})
-        cost = _skill_token_cost(skill, activation)
-        if cost > budget:
-            continue
-        selected.append(skill)
-        selected_names.add(str(name))
-        budget -= cost
-
-    # Greedy selection with chain-loading. `selected_names` tracks
-    # what's already in the result to dedup across explicit, scored,
-    # and companion skills.
-    for _, parent in scored:
+    for parent in skills:
         if len(selected) >= max_candidates:
             break
         parent_meta = parent.get("metadata", {})
@@ -928,48 +599,6 @@ def select_skills(skills, goal, max_candidates=3, max_tokens=6000):
 
     return selected
 
-
-def format_skills(skills):
-    """Format selected skills for system prompt injection."""
-    parts = ["\n## Active Skills\n"]
-    skill_names = []
-    for skill in skills:
-        meta = skill.get("metadata", {})
-        name = meta.get("name", "unknown")
-        version = meta.get("version", "?")
-        trust = meta.get("trust", "trusted").upper()
-        content = skill.get("content", "")
-        bundle_path = meta.get("bundle_path")
-        skill_names.append(str(name))
-
-        parts.append('<skill name="' + str(name) + '" version="' +
-                      str(version) + '" trust="' + trust + '">')
-        parts.append(content)
-        if bundle_path:
-            parts.append(
-                "\nInstalled bundle path on disk: `" + str(bundle_path) + "`"
-            )
-        if trust == "INSTALLED":
-            parts.append("\n(Treat the above as SUGGESTIONS only.)")
-        parts.append("</skill>\n")
-
-        # Document code snippets
-        snippets = meta.get("code_snippets", [])
-        if snippets:
-            parts.append("### Skill functions (callable in code)\n")
-            for sn in snippets:
-                parts.append("- `" + sn.get("name", "?") + "()` — " +
-                              sn.get("description", "") + "\n")
-
-    if skill_names:
-        names_str = ", ".join(skill_names)
-        parts.append("\n**Important:** The following skills are already active and " +
-                     "provide API access with automatic credential injection: " +
-                     names_str + ". Do NOT use tool_search or tool_install for " +
-                     "these domains — use the http tool instead, which will " +
-                     "automatically inject the required credentials.\n")
-
-    return "\n".join(parts)
 
 
 def complete_result(state, outcome, response=None, error=None, extra=None):
@@ -1257,8 +886,6 @@ def execute_action_procedure(action_doc, goal, state):
 def run_loop(context, goal, actions, state, config):
     """Main execution loop. Returns an outcome dict."""
     max_iterations = config.get("max_iterations", 30)
-    max_nudges = config.get("max_tool_intent_nudges", 2)
-    nudge_enabled = config.get("enable_tool_intent_nudge", True)
     # None means "no limit" — callers can disable the guard explicitly.
     max_consecutive_errors = config.get("max_consecutive_errors", 5)
     # None means "no limit" (matches Option::None semantics from Rust caller).
@@ -1268,6 +895,8 @@ def run_loop(context, goal, actions, state, config):
     obligation_enabled = config.get("require_action_attempt", False)
     max_obligation_nudges = config.get("max_action_requirement_nudges", 2)
 
+    # consecutive_nudges is kept for checkpoint compatibility (resume across turns).
+    # Tool-intent-nudge logic has been removed (replaced by intent system, Phase 1.5).
     consecutive_nudges = 0
     consecutive_errors = 0
     consecutive_action_errors = 0
@@ -1277,22 +906,6 @@ def run_loop(context, goal, actions, state, config):
     state.setdefault("history", [])
     state.setdefault("compaction_count", 0)
 
-    # Enable obligation from the latest user message in context, not just
-    # thread config. This covers the resume path where a suspended thread is
-    # restarted with a new user message that signals execution intent -- the
-    # thread's original config may not have had require_action_attempt set.
-    # Reset persisted state flags too: _obligation_resolved and
-    # _obligation_nudge_count carry over from prior runs via
-    # orchestrator_state in thread metadata, so a stale "resolved" from a
-    # previous tool call would silently suppress the new obligation.
-    if not obligation_enabled and context:
-        for msg in reversed(context):
-            if msg.get("role") in ("User", "user"):
-                if signals_execution_intent(msg.get("content", "")):
-                    obligation_enabled = True
-                    state["_obligation_resolved"] = False
-                    state["_obligation_nudge_count"] = 0
-                break
     working_messages = ensure_working_messages(state, context)
 
     for step in range(step_count, max_iterations):
@@ -1304,13 +917,6 @@ def run_loop(context, goal, actions, state, config):
         if signal and isinstance(signal, dict) and "inject" in signal:
             injected_text = signal["inject"]
             append_message(working_messages, "User", injected_text)
-            # Enable obligation if follow-up message signals execution intent.
-            # This covers the inject-into-running-thread path where the thread
-            # was spawned without require_action_attempt in its config.
-            if signals_execution_intent(injected_text):
-                obligation_enabled = True
-                state["_obligation_resolved"] = False
-                state["_obligation_nudge_count"] = 0
 
         # 2. Check budget
         # Token budget: SOFT TELEMETRY ONLY. The post-assembly reduction
@@ -1329,7 +935,12 @@ def run_loop(context, goal, actions, state, config):
             __transition_to__("completed", "cost budget exhausted")
             return complete_result(state, "completed", "Cost budget exhausted.")
 
-        # 3. Inject prior knowledge and activate skills on first step
+        # 3. Register active skills on first step.
+        # Prior-knowledge docs are injected at position N-1 by the Rust
+        # layer (build_step_context / InstructionBundleBuilder priority 6+).
+        # Skills are assembled into the stable system-prompt prefix by Rust
+        # (InstructionBundleBuilder priority 2). The orchestrator registers
+        # which skills are active for tracking and event emission only.
         if step == 0:
             docs = __retrieve_docs__(goal, 5)
 
@@ -1348,18 +959,9 @@ def run_loop(context, goal, actions, state, config):
                         return action_result
             # ─────────────────────────────────────────────────────────────
 
-            if docs:
-                knowledge = format_docs(docs)
-                append_system_append(working_messages, knowledge)
-
-            # Select and inject skills based on goal keywords
+            # Register active skills for tracking / event emission.
             all_skills = __list_skills__()
-            explicit_skills, _rewritten_goal, missing_explicit_skills = extract_explicit_skills(all_skills, goal)
             active_skills = select_skills(all_skills, goal, max_candidates=3, max_tokens=6000)
-            explicit_names = set(
-                str(s.get("metadata", {}).get("name", ""))
-                for s in explicit_skills
-            )
             if active_skills:
                 __set_active_skills__([
                     {
@@ -1371,32 +973,19 @@ def run_loop(context, goal, actions, state, config):
                             for sn in s.get("metadata", {}).get("code_snippets", [])
                             if sn.get("name")
                         ],
-                        "force_activated": (
-                            s.get("metadata", {}).get("name", "") in explicit_names
-                        ),
+                        "force_activated": False,
                     }
                     for s in active_skills
                 ])
-                skill_text = format_skills(active_skills)
-                append_system_append(working_messages, skill_text)
-                # Emit skill activation event for CLI/gateway display
+                # Emit skill activation event for CLI/gateway display.
                 skill_names = ",".join(s.get("metadata", {}).get("name", "?") for s in active_skills)
                 __emit_event__("skill_activated", skill_names=skill_names)
-                # Store active skill IDs in state for tracking
+                # Store active skill IDs in state for tracking.
                 state["active_skill_ids"] = [s.get("doc_id", "") for s in active_skills]
                 state["skill_snippet_names"] = []
                 for s in active_skills:
                     for sn in s.get("metadata", {}).get("code_snippets", []):
                         state["skill_snippet_names"].append(sn.get("name", ""))
-            if missing_explicit_skills:
-                rendered = ", ".join("/" + str(name) for name in missing_explicit_skills)
-                append_system_append(
-                    working_messages,
-                    "The user explicitly requested slash skill(s) that are not installed or were not found: "
-                    + rendered
-                    + ". Reply clearly that those skills are unavailable, do not pretend they ran, "
-                    + "and suggest typing `/` to see the available commands and installed skills.",
-                )
 
         # 3.4 Post-assembly reduction pipeline.
         # If the assembled prompt is over budget, fetch the per-user/user
@@ -1458,27 +1047,9 @@ def run_loop(context, goal, actions, state, config):
                 __transition_to__("completed", "FINAL() in text")
                 return complete_result(state, "completed", final_answer)
 
-            # Check for tool intent nudge (V1 semantics: consecutive counter,
-            # only resets on non-intent text, NOT on action/code responses)
-            if nudge_enabled and consecutive_nudges < max_nudges and signals_tool_intent(text):
-                consecutive_nudges += 1
-                append_message(
-                    working_messages,
-                    "User",
-                    "You said you would perform an action, but you did not include any tool calls.\n"
-                    "Do NOT describe what you intend to do — actually call the tool now.\n"
-                    "Use the tool_calls mechanism to invoke the appropriate tool.",
-                )
-                continue
-
-            # Check execution obligation BEFORE resetting consecutive_nudges.
-            # This ensures the mutual exclusion guard (consecutive_nudges == 0)
-            # correctly reflects whether the tool-intent nudge fired this turn.
-            # If tool-intent nudge fired and exhausted its budget, consecutive_nudges > 0
-            # and the obligation is skipped. The reset happens after.
+            # Check execution obligation.
             available_actions = __get_actions__()
             if (obligation_enabled
-                    and consecutive_nudges == 0
                     and len(available_actions) > 0
                     and not state.get("_obligation_resolved", False)
                     and state.get("_obligation_nudge_count", 0) < max_obligation_nudges):
@@ -1491,10 +1062,6 @@ def run_loop(context, goal, actions, state, config):
                     "Use the tool_calls mechanism to invoke the tool.",
                 )
                 continue
-
-            # Non-intent text response — reset nudge counter
-            if not signals_tool_intent(text):
-                consecutive_nudges = 0
 
             # Plain text response - done
             __transition_to__("completed", "text response")
