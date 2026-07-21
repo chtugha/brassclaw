@@ -19,12 +19,15 @@
 //! ## Write path
 //!
 //! `update_*_validation_status` rewrites `MemoryDoc.metadata` with the
-//! new `validation_status`, an optional `review_feedback`, a
-//! freshly-bumped `review_attempts`, and (for `rejected`) a
-//! `rejected_at` timestamp. The DocId is unchanged — the engine's
-//! `MemoryDoc` upsert key is the row's UUID, so a metadata rewrite
-//! is sufficient; we don't have to touch the file system or
+//! new `validation_status`, an optional `review_feedback`, and (for
+//! `rejected`) a `rejected_at` timestamp. The DocId is unchanged — the
+//! engine's `MemoryDoc` upsert key is the row's UUID, so a metadata
+//! rewrite is sufficient; we don't have to touch the file system or
 //! orchestrator cache.
+//!
+//! Note: `review_attempts` is incremented exclusively by
+//! `RecipeReviewService` (the automated review pipeline), never by
+//! user-triggered status transitions.
 //!
 //! ## Outcome path
 //!
@@ -287,6 +290,18 @@ impl RecipeStore for StoreBackedRecipeStore {
                 "invalid status transition '{previous_status}' → '{new_status}' for recipe '{recipe_id}'"
             )));
         }
+        // Rejected → Pending is only valid for Q3 items (review_attempts < 3).
+        // Q4 items (review_attempts >= 3) must go through the re-review override
+        // endpoint which the operator explicitly invokes; normal re-submit is blocked.
+        if matches!(target, ValidationStatus::Pending)
+            && matches!(recipe.validation_status, ValidationStatus::Rejected)
+            && recipe.review_attempts >= 3
+        {
+            return Err(RecipeStoreError::Invalid(format!(
+                "recipe '{recipe_id}' has reached the maximum review attempts ({}); use the re-review override",
+                recipe.review_attempts
+            )));
+        }
         if matches!(target, ValidationStatus::Rejected) {
             recipe.rejected_at = Some(Utc::now());
         }
@@ -352,6 +367,16 @@ impl RecipeStore for StoreBackedRecipeStore {
                 "invalid status transition '{previous_status}' → '{new_status}' for skill '{skill_id}'"
             )));
         }
+        // Rejected → Pending is only valid for Q3 items (review_attempts < 3).
+        if matches!(target, ValidationStatus::Pending)
+            && matches!(skill.validation_status, ValidationStatus::Rejected)
+            && skill.review_attempts >= 3
+        {
+            return Err(RecipeStoreError::Invalid(format!(
+                "skill '{skill_id}' has reached the maximum review attempts ({}); use the re-review override",
+                skill.review_attempts
+            )));
+        }
         if matches!(target, ValidationStatus::Rejected) {
             skill.rejected_at = Some(Utc::now());
         }
@@ -399,9 +424,10 @@ impl RecipeStore for StoreBackedRecipeStore {
         new_status: &str,
         feedback: Option<&str>,
     ) -> Result<UpdateValidationStatusResponse, RecipeStoreError> {
-        // For legacy class codes 21 (Recipe) and 01/02/03 (Skills via ToolSkill DocType),
-        // delegate to the existing typed methods. All others are treated as ToolSkill-backed
-        // components for now; future phases will dispatch to DB-backed stores.
+        // Class 21 (Recipe) uses Recipe-typed metadata; class codes 0–20 and 50
+        // use ToolSkill-backed docs for now (future phases will dispatch to
+        // DB-backed stores for non-ToolSkill classes). Unsupported class codes
+        // return a clear Invalid error rather than a misleading NotFound.
         match class_code {
             21 => {
                 self.update_recipe_validation_status(
@@ -413,13 +439,86 @@ impl RecipeStore for StoreBackedRecipeStore {
                 )
                 .await
             }
-            _ => {
+            0..=20 | 50 => {
                 self.update_skill_validation_status(
                     user_id,
                     project_id,
                     component_id,
                     new_status,
                     feedback,
+                )
+                .await
+            }
+            _ => Err(RecipeStoreError::Invalid(format!(
+                "class code {class_code} is not a supported component class"
+            ))),
+        }
+    }
+
+    async fn re_review_component(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        class_code: u16,
+        component_id: &str,
+        feedback: Option<&str>,
+    ) -> Result<UpdateValidationStatusResponse, RecipeStoreError> {
+        // This is the Q4 override path. We must confirm the component is in Q4
+        // (Rejected with review_attempts >= 3) before allowing the transition,
+        // and we bypass the review_attempts < 3 guard used by the normal re-submit.
+        if !matches!(class_code, 0..=21 | 50) {
+            return Err(RecipeStoreError::Invalid(format!(
+                "class code {class_code} is not a supported component class"
+            )));
+        }
+        let project_id_typed = parse_project_id(project_id)?;
+        let doc_type = if class_code == 21 {
+            DocType::Recipe
+        } else {
+            DocType::ToolSkill
+        };
+        let doc = find_own_doc(&self.store, project_id_typed, user_id, doc_type, component_id)
+            .await?
+            .ok_or_else(|| {
+                RecipeStoreError::NotFound(format!(
+                    "component '{component_id}' (class {class_code})"
+                ))
+            })?;
+
+        // Verify we are in Q4: must be Rejected with review_attempts >= 3.
+        let review_attempts = match doc_type {
+            DocType::Recipe => Recipe::from_metadata(&doc.metadata)
+                .map(|r| (r.validation_status, r.review_attempts))
+                .map_err(|e| RecipeStoreError::Invalid(format!("decode: {e}")))?,
+            DocType::ToolSkill => ToolSkill::from_metadata(&doc.metadata)
+                .map(|s| (s.validation_status, s.review_attempts))
+                .map_err(|e| RecipeStoreError::Invalid(format!("decode: {e}")))?,
+            _ => {
+                return Err(RecipeStoreError::Invalid(
+                    "unsupported doc type for re-review".to_string(),
+                ))
+            }
+        };
+        let (current_status, attempts) = review_attempts;
+        if !matches!(current_status, ValidationStatus::Rejected) || attempts < 3 {
+            return Err(RecipeStoreError::Invalid(format!(
+                "component '{component_id}' is not in Q4 (status={}, review_attempts={attempts}); \
+                 re-review override requires Rejected with review_attempts >= 3",
+                status_label(current_status)
+            )));
+        }
+
+        // Perform the transition directly without the review_attempts guard.
+        match class_code {
+            21 => {
+                self.update_recipe_validation_status(
+                    user_id, project_id, component_id, "pending", feedback,
+                )
+                .await
+            }
+            _ => {
+                self.update_skill_validation_status(
+                    user_id, project_id, component_id, "pending", feedback,
                 )
                 .await
             }
@@ -433,6 +532,11 @@ impl RecipeStore for StoreBackedRecipeStore {
         class_code: u16,
         component_id: &str,
     ) -> Result<(), RecipeStoreError> {
+        if !matches!(class_code, 0..=21 | 50) {
+            return Err(RecipeStoreError::Invalid(format!(
+                "class code {class_code} is not a supported component class"
+            )));
+        }
         let project_id_typed = parse_project_id(project_id)?;
         // Determine the DocType to scope the search correctly.
         let doc_type = if class_code == 21 {
@@ -468,11 +572,25 @@ impl RecipeStore for StoreBackedRecipeStore {
                 ))
             }
         };
-        if !matches!(current_status, ValidationStatus::Garbage)
-            && !matches!(current_status, ValidationStatus::Rejected)
-        {
+        // Only Q4 items may be wiped: Garbage (already wiped) or Rejected with
+        // review_attempts >= 3. A Q3 component (Rejected, review_attempts < 3)
+        // is still awaiting revision and must not be irrecoverably wiped.
+        let wipe_allowed = match &current_status {
+            ValidationStatus::Garbage => true,
+            ValidationStatus::Rejected => match doc_type {
+                DocType::Recipe => Recipe::from_metadata(&doc.metadata)
+                    .map(|r| r.review_attempts >= 3)
+                    .unwrap_or(false),
+                DocType::ToolSkill => ToolSkill::from_metadata(&doc.metadata)
+                    .map(|s| s.review_attempts >= 3)
+                    .unwrap_or(false),
+                _ => false,
+            },
+            _ => false,
+        };
+        if !wipe_allowed {
             return Err(RecipeStoreError::Invalid(format!(
-                "component '{component_id}' cannot be deleted from status '{}'",
+                "component '{component_id}' cannot be deleted from status '{}' (review_attempts < 3 or non-Q4 status)",
                 status_label(current_status)
             )));
         }
@@ -800,7 +918,7 @@ fn is_valid_transition(from: &ValidationStatus, to: &ValidationStatus) -> bool {
         | (ValidationStatus::UpgradeQueued, ValidationStatus::Rejected)
         // Q2→Q3: send to revision
         | (ValidationStatus::AutoPassed, ValidationStatus::ReviewRequested)
-        // Q3→Q1: revision re-submit (review_attempts < 3 checked at call site)
+        // Q3→Q1: revision re-submit — review_attempts < 3 enforced in update_*_validation_status
         | (ValidationStatus::Rejected, ValidationStatus::Pending)
         // Q1: re-queue from auto-failed
         | (ValidationStatus::AutoFailed, ValidationStatus::Pending)

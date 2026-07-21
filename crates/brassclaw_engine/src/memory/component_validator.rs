@@ -99,11 +99,11 @@ impl ComponentValidator {
             },
             // Extensions (04-09)
             4..=9 => match &component {
-                ComponentPayload::Generic(g) => validate_soft_budget(g, config, 10_000),
+                ComponentPayload::Generic(g) => validate_soft_budget(g, config, 10_000, false),
                 ComponentPayload::ToolSkill(skill) => {
-                    validate_soft_budget_named(skill.name.as_str(), skill.description.as_str(), skill.code_snippet.as_deref().unwrap_or(""), config, 10_000)
+                    validate_soft_budget_named(skill.name.as_str(), skill.description.as_str(), skill.code_snippet.as_deref().unwrap_or(""), config, 10_000, false)
                 }
-                ComponentPayload::Recipe(_) => validate_soft_budget_named("", "", "", config, 10_000),
+                ComponentPayload::Recipe(_) => validate_soft_budget_named("", "", "", config, 10_000, false),
             },
             // Orchestrator (10): LLM code-audit path — structural check only here
             10 | 50 => {
@@ -116,7 +116,7 @@ impl ComponentValidator {
                     ),
                     ComponentPayload::Recipe(r) => (r.name.as_str(), r.description.as_str(), ""),
                 };
-                validate_soft_budget_named(name, desc, content, config, 50_000)
+                validate_soft_budget_named(name, desc, content, config, 50_000, false)
             }
             // Actions (16): no token budget
             16 => {
@@ -137,7 +137,7 @@ impl ComponentValidator {
                     RecipeValidator::validate_recipe(recipe, existing_skill_names)
                 }
                 ComponentPayload::Generic(g) => {
-                    validate_soft_budget(g, config, 10_000)
+                    validate_soft_budget(g, config, 10_000, false)
                 }
                 ComponentPayload::ToolSkill(_) => {
                     ValidationResult::from_error("Recipe class requires a Recipe payload")
@@ -156,7 +156,7 @@ impl ComponentValidator {
                         (r.name.as_str(), r.description.as_str(), "")
                     }
                 };
-                validate_soft_budget_named(name, desc, content, config, 2_000)
+                validate_soft_budget_named(name, desc, content, config, 2_000, false)
             }
             // Former DocType classes (12-14, 17-20): soft 10000
             12..=14 | 17..=20 => {
@@ -169,7 +169,7 @@ impl ComponentValidator {
                     ),
                     ComponentPayload::Recipe(r) => (r.name.as_str(), r.description.as_str(), ""),
                 };
-                validate_soft_budget_named(name, desc, content, config, 10_000)
+                validate_soft_budget_named(name, desc, content, config, 10_000, false)
             }
             // Unknown class codes: generic lightweight check
             _ => {
@@ -182,7 +182,7 @@ impl ComponentValidator {
                     ),
                     ComponentPayload::Recipe(r) => (r.name.as_str(), r.description.as_str(), ""),
                 };
-                validate_soft_budget_named(name, desc, content, config, 10_000)
+                validate_soft_budget_named(name, desc, content, config, 10_000, false)
             }
         }
     }
@@ -201,6 +201,7 @@ fn validate_soft_budget(
     component: &GenericComponent<'_>,
     config: &ValidationConfig,
     default_budget: u32,
+    default_hard: bool,
 ) -> ValidationResult {
     validate_soft_budget_named(
         component.name,
@@ -208,6 +209,7 @@ fn validate_soft_budget(
         component.content,
         config,
         default_budget,
+        default_hard,
     )
 }
 
@@ -217,6 +219,7 @@ fn validate_soft_budget_named(
     content: &str,
     config: &ValidationConfig,
     default_budget: u32,
+    default_hard: bool,
 ) -> ValidationResult {
     let mut result = ValidationResult::ok();
     validate_name_generic(name, &mut result);
@@ -225,7 +228,7 @@ fn validate_soft_budget_named(
         result.warnings.push("Component content is empty".to_string());
     }
     let budget = config.token_budget.unwrap_or(default_budget);
-    let hard = config.token_budget_hard_error.unwrap_or(false);
+    let hard = config.token_budget_hard_error.unwrap_or(default_hard);
     let tokens = (content.len() / 4) as u32;
     if tokens > budget {
         let msg = format!("Component exceeds {budget} token budget ({tokens} tokens estimated)");
@@ -252,9 +255,17 @@ fn validate_skill_generic(
     component: &GenericComponent<'_>,
     config: &ValidationConfig,
 ) -> ValidationResult {
-    let budget = config.token_budget.unwrap_or(5_000);
-    let hard = config.token_budget_hard_error.unwrap_or(true);
-    validate_soft_budget_named(component.name, component.description, component.content, &ValidationConfig { token_budget: Some(budget), token_budget_hard_error: Some(hard), ..Default::default() }, budget)
+    // Pass config directly so all caller-provided fields (require_tool_name,
+    // require_param_schema, name_min_len, etc.) are honoured. The default
+    // token budget for Generic-payload skills is 5 000 (hard error).
+    validate_soft_budget_named(
+        component.name,
+        component.description,
+        component.content,
+        config,
+        5_000,
+        true, // hard error by default for skill classes
+    )
 }
 
 fn validate_tool_generic(

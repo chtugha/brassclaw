@@ -1101,6 +1101,23 @@ pub trait RebornServicesApi: Send + Sync {
         ))
     }
 
+    /// Operator override to move a Q4 component (Rejected, review_attempts >= 3)
+    /// back to `pending`. Returns 501 on unsupported implementations.
+    async fn re_review_component(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _class_code: u16,
+        _component_id: &str,
+        _feedback: Option<String>,
+    ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
     /// Q4 component wipe — zeroes provenance, marks Garbage.
     async fn delete_component(
         &self,
@@ -3261,6 +3278,25 @@ impl RebornServicesApi for RebornServices {
                 new_status,
                 feedback.as_deref(),
             )
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
+    async fn re_review_component(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+        class_code: u16,
+        component_id: &str,
+        feedback: Option<String>,
+    ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
+        let store = self
+            .recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?;
+        let user_id = caller.user_id.to_string();
+        store
+            .re_review_component(&user_id, project_id, class_code, component_id, feedback.as_deref())
             .await
             .map_err(map_recipe_store_error)
     }

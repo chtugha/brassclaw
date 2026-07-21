@@ -1249,6 +1249,9 @@ pub async fn validate_component(
     Json(body): Json<UpdateValidationStatusRequest>,
 ) -> Result<Json<UpdateValidationStatusResponse>, WebUiV2HttpError> {
     // For LLM-auditable classes check audit status before allowing validation.
+    // Only a "flagged" result blocks the action — "pending" means the audit
+    // runner has not yet executed (e.g. Phase 3.4 stub) and must not create a
+    // permanent deadlock for Orchestrator/Scaffold components.
     if matches!(class_code, 10 | 50) {
         let audit = state
             .services()
@@ -1259,8 +1262,8 @@ pub async fn validate_component(
                 &component_id,
             )
             .await?;
-        if audit.status == "flagged" || audit.status == "pending" {
-            // 403: LLM audit must pass before manual validation is allowed.
+        if audit.status == "flagged" {
+            // 403: LLM audit flagged issues — manual validation blocked.
             return Err(WebUiV2HttpError::from(
                 brassclaw_product_workflow::RebornServicesError::from_status(
                     brassclaw_product_workflow::RebornServicesErrorCode::Forbidden,
@@ -1351,8 +1354,9 @@ pub async fn send_component_to_revision(
 
 /// `PUT /api/webchat/v2/components/{class_code}/{component_id}/re-review`
 ///
-/// Move a Q4 component back to Q3 (operator re-review override).
-/// Re-submits as `pending` so the auto-validator re-runs first.
+/// Operator override to move a **Q4** component (Rejected, review_attempts >= 3)
+/// back to `pending` so the auto-validator re-runs. Only Q4 items are accepted;
+/// Q3 items (review_attempts < 3) must use the normal re-submit path instead.
 pub async fn re_review_component(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
@@ -1365,12 +1369,11 @@ pub async fn re_review_component(
 ) -> Result<Json<UpdateValidationStatusResponse>, WebUiV2HttpError> {
     let response = state
         .services()
-        .update_component_validation_status(
+        .re_review_component(
             caller,
             &query.project_id,
             class_code,
             &component_id,
-            "pending",
             body.feedback,
         )
         .await?;

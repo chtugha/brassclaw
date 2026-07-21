@@ -332,6 +332,18 @@ pub trait RecipeStore: Send + Sync {
         feedback: Option<&str>,
     ) -> Result<UpdateValidationStatusResponse, RecipeStoreError>;
 
+    /// Operator override to move a Q4 component (Rejected, review_attempts >= 3)
+    /// back to `pending` without the Q3 review_attempts guard. Returns
+    /// `RecipeStoreError::Invalid` if the component is not in Q4.
+    async fn re_review_component(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        class_code: u16,
+        component_id: &str,
+        feedback: Option<&str>,
+    ) -> Result<UpdateValidationStatusResponse, RecipeStoreError>;
+
     /// Wipe a component row (Q4 terminal delete). Removes the MemoryDoc
     /// and its creation-process provenance fields but never deletes
     /// thread messages, steps, or events.
