@@ -116,19 +116,33 @@ pub struct CapturedPrompt {
 
 /// Sempai review outcome — returned by the Sempai provider and stored
 /// alongside the original `ForensicPacket`.
+///
+/// The Sempai cannot directly create components or intent inputs; it proposes
+/// changes that enter Q1 of the validation queue instead.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SempaiReviewOutcome {
-    /// The adjusted Kohai prompt (all messages, as adjusted by Sempai).
-    /// This is the prompt that is actually sent to the Kohai model.
-    pub adjusted_messages: Vec<(String, String)>,
+    /// Adjusted volatile messages (thread history + inline nudges) as
+    /// determined by the Sempai.  These replace the volatile tail of the
+    /// Kohai prompt; the stable base (Part A) is kept unchanged.
+    /// `Vec<(role, content_text)>`.
+    pub adjusted_volatile_messages: Vec<(String, String)>,
+    /// Bridge messages injected by the Sempai between Part A (stable base)
+    /// and the adjusted volatile tail.  Typically short instructions or
+    /// context bridging remarks.  `Vec<(role, content_text)>`.
+    pub bridge_messages: Vec<(String, String)>,
     /// Sempai's summary of the prompt composition analysis — what it
     /// observed, what it adjusted, and why.
     pub composition_summary: String,
     /// Recipe/ToolSkill updates proposed by the Sempai, as raw JSON
-    /// payloads forwarded to the validation queue.
+    /// payloads forwarded to the Q1 validation queue.
+    /// The Sempai cannot write to production tables directly.
     pub proposed_recipe_updates: Vec<serde_json::Value>,
+    /// New `intent_examples` entries proposed by the Sempai for existing
+    /// components.  Forwarded to Q1 validation; once validated, seeded into
+    /// `reborn_intent_inputs`.  (Q30 resolution.)
+    pub proposed_intent_examples: Vec<serde_json::Value>,
     /// Optional agent-settings adjustments proposed by the Sempai
-    /// (forwarded to the settings service for application).
+    /// (forwarded to the settings service for operator-confirmed application).
     pub settings_adjustments: Vec<serde_json::Value>,
 }
 
@@ -281,9 +295,14 @@ mod tests {
     #[test]
     fn with_sempai_review_marks_reviewed() {
         let review = SempaiReviewOutcome {
-            adjusted_messages: vec![("system".to_string(), "Adjusted system prompt".to_string())],
+            adjusted_volatile_messages: vec![(
+                "user".to_string(),
+                "Adjusted volatile message.".to_string(),
+            )],
+            bridge_messages: vec![],
             composition_summary: "Improved token ordering for KV cache utilisation.".to_string(),
             proposed_recipe_updates: vec![],
+            proposed_intent_examples: vec![],
             settings_adjustments: vec![],
         };
         let packet =

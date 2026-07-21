@@ -41,6 +41,11 @@ pub(super) struct InterceptorPromptOutput {
     pub(super) messages: Vec<brassclaw_turns::run_profile::LoopModelMessage>,
     /// The packet id minted by the host, if any.
     pub(super) packet_id: InterceptorPacketId,
+    /// Pre-resolved Kohai messages returned by the Sempai in rerouting mode.
+    /// When `Some`, the model stage uses these directly instead of the
+    /// ref-based `messages` (bypasses `resolve_model_messages`).
+    /// Each element is `(role, content_text)`.
+    pub(super) adjusted_messages: Option<Vec<(String, String)>>,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -74,24 +79,30 @@ impl ExecutorStage<InterceptorPromptInput> for InterceptorStage {
             })).collect::<Vec<_>>(),
         });
 
-        let packet_id = ctx
+        let result = ctx
             .host
             .on_prompt_assembled(&run_id, iteration, snapshot)
             .await;
 
-        if let Some(ref id) = packet_id {
-            debug!(
-                run_id = %run_id,
-                iteration,
-                packet_id = %id,
-                "interceptor: prompt captured"
-            );
-        }
+        let (packet_id, adjusted_messages) = match result {
+            None => (None, None),
+            Some(r) => {
+                debug!(
+                    run_id = %run_id,
+                    iteration,
+                    packet_id = %r.packet_id,
+                    rerouting = r.adjusted_messages.is_some(),
+                    "interceptor: prompt captured"
+                );
+                (Some(r.packet_id), r.adjusted_messages)
+            }
+        };
 
         Ok(InterceptorPromptOutput {
             state: input.state,
             messages: input.messages,
             packet_id: InterceptorPacketId(packet_id),
+            adjusted_messages,
         })
     }
 }

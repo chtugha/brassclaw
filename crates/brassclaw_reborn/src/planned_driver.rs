@@ -823,7 +823,7 @@ mod tests {
             run_id: &str,
             iteration: u32,
             prompt_snapshot: serde_json::Value,
-        ) -> Option<String> {
+        ) -> Option<brassclaw_turns::run_profile::InterceptorResult> {
             self.inner
                 .on_prompt_assembled(run_id, iteration, prompt_snapshot)
                 .await

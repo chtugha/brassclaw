@@ -152,6 +152,17 @@ pub(crate) fn build_webui_services_with_connectable_channels(
         if let Some(pool) = services.pg_pool.clone() {
             llm_config = llm_config.with_pg_pool(pool);
         }
+        // Wire the Sempai live-swap wrapper (Step 5.5.3).  When set,
+        // set_active(Sempai, id) atomically swaps the inner provider.
+        if let Some(swappable) = runtime.sempai_swappable() {
+            llm_config = llm_config.with_sempai_swappable(swappable);
+        }
+        // Wire the interceptor mode flag (Step 5.5.3).  When set,
+        // set_active(Sempai, id) flips the mode to Rerouting.
+        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+        if let Some(mode) = runtime.interceptor_mode() {
+            llm_config = llm_config.with_interceptor_mode(mode);
+        }
         api = api.with_llm_config_service(Arc::new(llm_config));
     }
 

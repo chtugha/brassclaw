@@ -591,7 +591,7 @@ impl brassclaw_turns::run_profile::LoopInterceptorPort for ForbiddenResumeHost {
         _run_id: &str,
         _iteration: u32,
         _prompt_snapshot: serde_json::Value,
-    ) -> Option<String> {
+    ) -> Option<brassclaw_turns::run_profile::InterceptorResult> {
         None
     }
 

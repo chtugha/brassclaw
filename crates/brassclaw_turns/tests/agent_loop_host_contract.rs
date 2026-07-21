@@ -30,7 +30,8 @@ use brassclaw_turns::{
         LoopContextPort, LoopContextRequest, LoopContextSnippet, LoopContextSnippetMetadata,
         LoopDriverId, LoopDriverNoteKind, LoopGateKind, LoopHostMilestone,
         LoopHostMilestoneEmitter, LoopHostMilestoneKind, LoopHostMilestoneSink, LoopInputAckToken,
-        LoopInputBatch, LoopInputCursor, LoopInputCursorToken, LoopInputPort, LoopInterceptorPort,
+        InterceptorResult, LoopInputBatch, LoopInputCursor, LoopInputCursorToken, LoopInputPort,
+        LoopInterceptorPort,
         LoopModelBudgetAccountant, LoopModelCapabilityView, LoopModelGateway,
         LoopModelGatewayError, LoopModelGatewayRequest, LoopModelMessage, LoopModelPolicyGuard,
         LoopModelPort, LoopModelRequest, LoopModelResponse, LoopProgressEvent, LoopProgressPort,
@@ -191,6 +192,7 @@ async fn host_managed_model_port_routes_gateway_and_emits_model_milestones() {
             surface_version: Some(CapabilitySurfaceVersion::new("surface-v1").unwrap()),
             model_preference: Some(context.resolved_run_profile.model_profile_id.clone()),
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -242,6 +244,7 @@ async fn host_managed_model_port_returns_response_when_model_started_milestone_f
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -282,6 +285,7 @@ async fn host_managed_model_port_returns_response_when_model_completed_milestone
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -319,6 +323,7 @@ async fn host_managed_model_port_sanitizes_gateway_errors() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap_err();
@@ -2102,6 +2107,7 @@ impl AgentLoopDriver for ReplyDriver {
                         .clone(),
                 ),
                 capability_view: None,
+                resolved_messages: None,
             })
             .await
             .map_err(driver_error)?;
@@ -2717,7 +2723,7 @@ impl LoopInterceptorPort for RecordingAgentLoopHost {
         _run_id: &str,
         _iteration: u32,
         _prompt_snapshot: serde_json::Value,
-    ) -> Option<String> {
+    ) -> Option<InterceptorResult> {
         None
     }
 
@@ -2915,6 +2921,7 @@ fn simple_model_request(context: &LoopRunContext) -> LoopModelRequest {
         surface_version: None,
         model_preference: Some(context.resolved_run_profile.model_profile_id.clone()),
         capability_view: None,
+        resolved_messages: None,
     }
 }
 

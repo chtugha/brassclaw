@@ -120,6 +120,7 @@ mod tests {
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         };
         let _ = governor
             .reserve(

@@ -133,6 +133,15 @@ pub struct RebornLlmConfigService {
     /// Tenant ID for DB operations.
     #[cfg(feature = "postgres")]
     db_tenant_id: String,
+    /// Live hot-swap wrapper for the Sempai provider.  When `Some`,
+    /// `set_active(Sempai, id)` swaps the inner provider so the interceptor
+    /// immediately starts using the new model without a restart.
+    #[cfg(feature = "root-llm-provider")]
+    sempai_swappable: Option<Arc<brassclaw_llm::SwappableLlmProvider>>,
+    /// Shared interceptor mode flag.  When `Some`, `set_active(Sempai, id)`
+    /// flips this to `Rerouting`; clearing the slot flips it back to `Routing`.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    interceptor_mode: Option<brassclaw_interceptor::SharedInterceptorMode>,
 }
 
 impl RebornLlmConfigService {
@@ -152,6 +161,10 @@ impl RebornLlmConfigService {
             pg_provider_repo: None,
             #[cfg(feature = "postgres")]
             db_tenant_id: "default".to_string(),
+            #[cfg(feature = "root-llm-provider")]
+            sempai_swappable: None,
+            #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+            interceptor_mode: None,
         }
     }
 
@@ -197,6 +210,30 @@ impl RebornLlmConfigService {
     /// public callback must share the same store.
     pub(crate) fn with_nearai_login_states(mut self, states: Arc<NearAiLoginStateStore>) -> Self {
         self.nearai_login_states = states;
+        self
+    }
+
+    /// Attach the Sempai live-swap wrapper from the runtime.  When set,
+    /// `set_active(Sempai, id)` atomically swaps the inner provider without
+    /// a restart.
+    #[cfg(feature = "root-llm-provider")]
+    pub fn with_sempai_swappable(
+        mut self,
+        swappable: Arc<brassclaw_llm::SwappableLlmProvider>,
+    ) -> Self {
+        self.sempai_swappable = Some(swappable);
+        self
+    }
+
+    /// Attach the shared interceptor mode flag from the runtime.  When set,
+    /// `set_active(Sempai, id)` flips the mode to `Rerouting`; clearing
+    /// the Sempai slot flips it back to `Routing`.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    pub fn with_interceptor_mode(
+        mut self,
+        mode: brassclaw_interceptor::SharedInterceptorMode,
+    ) -> Self {
+        self.interceptor_mode = Some(mode);
         self
     }
 
@@ -922,7 +959,7 @@ impl LlmConfigService for RebornLlmConfigService {
                 self.refresh_running_provider().await;
             }
             ProviderRole::Sempai => {
-                // Phase 8: file write removed; DB is the sole write target.
+                // Persist to DB (sole write target for the Sempai slot).
                 #[cfg(feature = "postgres")]
                 self.save_role_to_db(
                     "llm.sempai.provider_id",
@@ -931,6 +968,38 @@ impl LlmConfigService for RebornLlmConfigService {
                     request.model.as_deref().unwrap_or(""),
                 )
                 .await;
+
+                // Live-swap the Sempai provider + flip the interceptor mode.
+                #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+                {
+                    use brassclaw_llm::LlmProvider;
+                    if let Some(swappable) = &self.sempai_swappable {
+                        let new_provider: Arc<dyn LlmProvider> = if id.is_empty() {
+                            Arc::new(crate::runtime::PlaceholderLlmProviderStub)
+                        } else {
+                            match self.build_sempai_provider(&id, request.model.as_deref()).await {
+                                Ok(p) => p,
+                                Err(e) => {
+                                    tracing::debug!(
+                                        error = %e,
+                                        "sempai build failed; mode stays Routing"
+                                    );
+                                    // Fall through without swapping — the stored
+                                    // selection persisted; take effect on restart.
+                                    return self.snapshot(caller).await;
+                                }
+                            }
+                        };
+                        swappable.swap(new_provider);
+                        if let Some(mode) = &self.interceptor_mode {
+                            if id.is_empty() {
+                                mode.set_routing();
+                            } else {
+                                mode.set_rerouting();
+                            }
+                        }
+                    }
+                }
             }
             ProviderRole::Embedding => {
                 let embedding_path = self.boot.home().embedding_provider_file_path();

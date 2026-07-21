@@ -2851,6 +2851,7 @@ async fn after_model_fires_exactly_once_at_durable_boundary() {
         surface_version: None,
         model_preference: None,
         capability_view: None,
+                resolved_messages: None,
     })
     .await
     .expect("stream_model returns Ok via the wrapped model port");

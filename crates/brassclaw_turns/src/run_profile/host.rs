@@ -919,13 +919,20 @@ pub struct LoopModelCapabilityView {
     pub visible_capability_ids: Vec<CapabilityId>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct LoopModelRequest {
     pub messages: Vec<LoopModelMessage>,
     pub surface_version: Option<CapabilitySurfaceVersion>,
     pub model_preference: Option<ModelProfileId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capability_view: Option<LoopModelCapabilityView>,
+    /// Pre-resolved messages from the Sempai interceptor (rerouting mode).
+    /// When `Some`, the loop-support layer skips `resolve_model_messages` and
+    /// forwards these directly to the gateway.  Each element is
+    /// `(role, content_text)` — plain strings, not content refs.
+    /// Ignored by non-loop-support `LoopModelPort` implementations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_messages: Option<Vec<(String, String)>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2085,6 +2092,25 @@ impl LoopRecipePort for NoRecipeLookup {
     }
 }
 
+/// Result returned by [`LoopInterceptorPort::on_prompt_assembled`].
+///
+/// The `packet_id` is the stable forensic-packet identifier the executor
+/// carries forward to correlate the Kohai response.  The optional
+/// `adjusted_messages` field is set in rerouting mode (Sempai connected)
+/// and contains the fully-resolved Kohai prompt that should be sent to the
+/// model instead of the original assembled messages.  Each element is
+/// `(role, content_text)` — plain strings, not content refs.
+#[derive(Debug, Clone)]
+pub struct InterceptorResult {
+    /// Stable identifier for the persisted `ForensicPacket`.
+    pub packet_id: String,
+    /// Sempai-adjusted messages to send to the Kohai model in place of the
+    /// original assembled messages.  `None` in routing mode — the original
+    /// messages are forwarded unchanged.  `Some` in rerouting mode after the
+    /// Sempai returns a non-error response.
+    pub adjusted_messages: Option<Vec<(String, String)>>,
+}
+
 /// Prompt interceptor port — opt-in.
 ///
 /// Hosts that wire the Sempai–Kohai interceptor implement this port so
@@ -2102,23 +2128,25 @@ impl LoopRecipePort for NoRecipeLookup {
 #[async_trait::async_trait]
 pub trait LoopInterceptorPort: Send + Sync {
     /// Called after `PromptStage` completes with the final assembled
-    /// prompt.  The host assigns and returns a stable `packet_id` string
-    /// that the executor carries forward to correlate the Kohai response.
+    /// prompt.  The host persists a forensic packet and returns an
+    /// [`InterceptorResult`] carrying the `packet_id` and, in rerouting
+    /// mode, Sempai-adjusted messages.
     ///
     /// `prompt_snapshot` is a JSON representation of the assembled
     /// messages + segment metadata + token accounting.  Returns `None`
-    /// when no interceptor is wired (routing continues unchanged).
+    /// when no interceptor is wired (routing continues unchanged, no packet
+    /// is persisted).
     async fn on_prompt_assembled(
         &self,
         run_id: &str,
         iteration: u32,
         prompt_snapshot: serde_json::Value,
-    ) -> Option<String>;
+    ) -> Option<InterceptorResult>;
 
     /// Called after `ModelStage` completes with the Kohai response text
-    /// and actual token usage.  `packet_id` is the value returned by
-    /// `on_prompt_assembled`.  The host closes the forensic packet in its
-    /// store.
+    /// and actual token usage.  `packet_id` is the value from
+    /// [`InterceptorResult::packet_id`].  The host closes the forensic
+    /// packet in its store.
     ///
     /// `usage_json` shape: `{"input_tokens":N,"output_tokens":N,...}` or
     /// `null` when the provider did not report usage.
@@ -2141,7 +2169,7 @@ impl LoopInterceptorPort for NoInterceptor {
         _run_id: &str,
         _iteration: u32,
         _prompt_snapshot: serde_json::Value,
-    ) -> Option<String> {
+    ) -> Option<InterceptorResult> {
         None
     }
 

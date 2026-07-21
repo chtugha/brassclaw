@@ -129,6 +129,7 @@ impl DefaultExecutorPipeline {
             let interceptor_packet_id = interceptor_out.packet_id;
             state = interceptor_out.state;
             let intercepted_messages = interceptor_out.messages;
+            let interceptor_adjusted_messages = interceptor_out.adjusted_messages;
             pending_input_ack = prompt.pending_input_ack;
 
             state = CheckpointStage
@@ -169,6 +170,7 @@ impl DefaultExecutorPipeline {
                         messages: intercepted_messages,
                         surface_version: prompt.surface.version.clone(),
                         capability_view: prompt.capability_view,
+                        resolved_messages: interceptor_adjusted_messages,
                     },
                 )
                 .await?

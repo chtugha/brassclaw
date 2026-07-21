@@ -959,19 +959,49 @@ where
                 .model_profile_id
                 .clone()
         });
-        let prompt_grant = self.prompt_authority.authorize_latest_model_request(
-            &self.run_context,
-            &request.messages,
-            &request.surface_version,
-        )?;
 
-        // Resolve messages *before* the budget reservation in the outer
-        // `HostManagedLoopModelPort` so a message-resolution failure here
-        // cannot orphan a reservation taken by the outer port. The inner
-        // port itself never holds a reservation — budget accounting lives
-        // exclusively in the outer port (see #3841 follow-up "delete dead
-        // with_budget_accountant").
-        let resolved_messages = self.resolve_model_messages(prompt_grant.messages).await?;
+        // When the Sempai interceptor has already resolved messages (rerouting
+        // mode), skip the normal prompt-grant authorization and
+        // `resolve_model_messages` call.  The interceptor owns the prompt content
+        // at that point and the refs are no longer authoritative.
+        let resolved_messages = if let Some(pre_resolved) = request.resolved_messages {
+            pre_resolved
+                .into_iter()
+                .map(|(role, content)| {
+                    let role_enum = HostManagedModelMessageRole::from_loop_role(&role)?;
+                    // Safety: "interceptor:pre-resolved" is a valid non-empty
+                    // sentinel ref that callers can detect. The loop-support
+                    // layer never writes pre-resolved messages to the thread
+                    // store, so this ref is never persisted or resolved.
+                    let sentinel_ref = LoopMessageRef::new("interceptor:pre-resolved".to_string())
+                        .map_err(|_| AgentLoopHostError::new(
+                            AgentLoopHostErrorKind::Internal,
+                            "pre-resolved interceptor message ref is invalid",
+                        ))?;
+                    Ok(HostManagedModelMessage {
+                        role: role_enum,
+                        content,
+                        content_ref: sentinel_ref,
+                        tool_result_provider_call: None,
+                        tool_result_content: None,
+                    })
+                })
+                .collect::<Result<Vec<_>, AgentLoopHostError>>()?
+        } else {
+            let prompt_grant = self.prompt_authority.authorize_latest_model_request(
+                &self.run_context,
+                &request.messages,
+                &request.surface_version,
+            )?;
+
+            // Resolve messages *before* the budget reservation in the outer
+            // `HostManagedLoopModelPort` so a message-resolution failure here
+            // cannot orphan a reservation taken by the outer port. The inner
+            // port itself never holds a reservation — budget accounting lives
+            // exclusively in the outer port (see #3841 follow-up "delete dead
+            // with_budget_accountant").
+            self.resolve_model_messages(prompt_grant.messages).await?
+        };
 
         self.emit_model_started(requested_model_profile_id).await;
         let host_request = HostManagedModelRequest {

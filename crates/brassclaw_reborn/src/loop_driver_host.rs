@@ -69,16 +69,16 @@ use brassclaw_turns::{
         FinalizeAssistantMessage, HookMilestoneSink, HostManagedLoopModelPort,
         HostManagedLoopPromptPort, InMemoryInstructionMaterializationStore,
         InstructionBundleMaterializedMessage, InstructionMaterializationStore,
-        InstructionSafetyContext, LoadCheckpointPayloadRequest, LoadedCheckpointPayload,
-        LoopCancellationPort, LoopCancellationSignal, LoopCapabilityPort, LoopCheckpointPort,
-        LoopCheckpointRequest, LoopCompactionError, LoopCompactionOutcome, LoopCompactionPort,
-        LoopCompactionRequest, LoopContextBundle, LoopContextPort, LoopContextRequest,
-        LoopHostMilestoneSink, LoopInputAckToken, LoopInputBatch, LoopInputCursor, LoopInputPort,
-        LoopModelBudgetAccountant, LoopModelPolicyGuard, LoopModelPort, LoopModelRequest,
-        LoopModelResponse, LoopProgressEvent, LoopProgressPort, LoopPromptBundle,
-        LoopPromptBundleAuthority, LoopPromptBundleRequest, LoopPromptPort, LoopRecipePort,
-        LoopRunContext, LoopRunInfoPort, LoopTranscriptPort, NoOpBudgetAccountant, NoOpPolicyGuard,
-        ProviderToolCall, ProviderToolDefinition, RunScopedHookMilestoneSink,
+        InstructionSafetyContext, InterceptorResult, LoadCheckpointPayloadRequest,
+        LoadedCheckpointPayload, LoopCancellationPort, LoopCancellationSignal, LoopCapabilityPort,
+        LoopCheckpointPort, LoopCheckpointRequest, LoopCompactionError, LoopCompactionOutcome,
+        LoopCompactionPort, LoopCompactionRequest, LoopContextBundle, LoopContextPort,
+        LoopContextRequest, LoopHostMilestoneSink, LoopInputAckToken, LoopInputBatch,
+        LoopInputCursor, LoopInputPort, LoopModelBudgetAccountant, LoopModelPolicyGuard,
+        LoopModelPort, LoopModelRequest, LoopModelResponse, LoopProgressEvent, LoopProgressPort,
+        LoopPromptBundle, LoopPromptBundleAuthority, LoopPromptBundleRequest, LoopPromptPort,
+        LoopRecipePort, LoopRunContext, LoopRunInfoPort, LoopTranscriptPort, NoOpBudgetAccountant,
+        NoOpPolicyGuard, ProviderToolCall, ProviderToolDefinition, RunScopedHookMilestoneSink,
         StageCheckpointPayloadRequest, SystemInferencePort, UpdateAssistantDraft,
         VisibleCapabilityRequest, VisibleCapabilitySurface,
     },
@@ -1803,7 +1803,7 @@ impl brassclaw_turns::run_profile::LoopInterceptorPort for RebornLoopDriverHost 
         run_id: &str,
         iteration: u32,
         prompt_snapshot: serde_json::Value,
-    ) -> Option<String> {
+    ) -> Option<InterceptorResult> {
         // Build a minimal CapturedPrompt from the snapshot JSON so we can
         // persist a ForensicPacket keyed by a fresh PacketId.
         let messages: Vec<(String, String)> = prompt_snapshot
@@ -1857,7 +1857,11 @@ impl brassclaw_turns::run_profile::LoopInterceptorPort for RebornLoopDriverHost 
                 "interceptor: failed to save forensic packet (non-fatal)"
             );
         }
-        Some(packet_id)
+        // Routing mode: packet saved, no Sempai adjustment.
+        Some(InterceptorResult {
+            packet_id,
+            adjusted_messages: None,
+        })
     }
 
     async fn on_kohai_response(

@@ -28,6 +28,11 @@ pub(super) struct ModelInput {
     pub(super) messages: Vec<brassclaw_turns::run_profile::LoopModelMessage>,
     pub(super) surface_version: brassclaw_turns::run_profile::CapabilitySurfaceVersion,
     pub(super) capability_view: LoopModelCapabilityView,
+    /// Pre-resolved messages from the Sempai (rerouting mode only).
+    /// When `Some`, the model stage uses these resolved messages directly,
+    /// bypassing the normal `resolve_model_messages` call in the loop-support
+    /// layer.  Each element is `(role, content_text)`.
+    pub(super) resolved_messages: Option<Vec<(String, String)>>,
 }
 
 pub(super) enum ModelStep {
@@ -73,6 +78,7 @@ impl ExecutorStage<ModelInput> for ModelStage {
             surface_version: Some(surface_version.clone()),
             model_preference,
             capability_view: Some(capability_view.clone()),
+            resolved_messages: input.resolved_messages,
         };
         let visible_capability_count = capability_view.visible_capability_ids.len();
         debug!(
@@ -184,6 +190,9 @@ impl ExecutorStage<ModelInput> for ModelStage {
                                 CancelCheck::Exit(exit) => return Ok(ModelStep::Exit(exit)),
                             }
                             request.messages = bundle.into_model_messages(&mut state);
+                            // Clear pre-resolved messages — on retry the prompt
+                            // is rebuilt from refs; Sempai is not re-invoked.
+                            request.resolved_messages = None;
                         }
                         RecoveryOutcome::ToolErrorResult { .. } => {
                             return Err(AgentLoopExecutorError::PlannerContract {

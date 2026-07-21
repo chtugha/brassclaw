@@ -155,11 +155,31 @@ pub struct UnifiedExtension {
     pub intent_examples: Option<Value>,
     /// Current validation status.
     pub validation_status: String,
+    /// Accumulated validation errors from the last auto-check pass.
+    pub validation_errors: Vec<String>,
+    /// Latest human reviewer note.
+    pub review_feedback: Option<String>,
+    /// Number of review cycles this row has gone through.
+    pub review_attempts: i16,
+    /// When the row was last rejected (`rejected` status).
+    pub rejected_at: Option<chrono::DateTime<chrono::Utc>>,
     /// Queue code for WebUI grouping.
     pub queue_code: Option<String>,
     /// Provenance source label.
     pub source: String,
     pub content_hash: Option<String>,
+    /// UUID of the extension this was derived from by similarity search.
+    pub similarity_parent_id: Option<Uuid>,
+    /// UUID of the extension this replaces (upgrade lineage).
+    pub replaces_id: Option<Uuid>,
+    /// Parent version label.
+    pub parent_version: Option<String>,
+    /// When the last audit run touched this row.
+    pub last_audit_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Count of consecutive audit failures.
+    pub audit_failure_count: i16,
+    /// UUID of the mission that produced this extension.
+    pub parent_mission_id: Option<Uuid>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
@@ -356,11 +376,21 @@ fn decode_row(row: &tokio_postgres::Row) -> Result<UnifiedExtension, UnifiedStor
     let consumer_tags: Vec<String> = row.get(13);
     let intent_examples: Option<Value> = row.get(14);
     let validation_status: String = row.get(15);
-    let queue_code: Option<String> = row.get(16);
-    let source: String = row.get(17);
-    let content_hash: Option<String> = row.get(18);
-    let created_at: chrono::DateTime<chrono::Utc> = row.get(19);
-    let updated_at: chrono::DateTime<chrono::Utc> = row.get(20);
+    let validation_errors: Vec<String> = row.get(16);
+    let review_feedback: Option<String> = row.get(17);
+    let review_attempts: i16 = row.get(18);
+    let rejected_at: Option<chrono::DateTime<chrono::Utc>> = row.get(19);
+    let queue_code: Option<String> = row.get(20);
+    let source: String = row.get(21);
+    let content_hash: Option<String> = row.get(22);
+    let similarity_parent_id: Option<Uuid> = row.get(23);
+    let replaces_id: Option<Uuid> = row.get(24);
+    let parent_version: Option<String> = row.get(25);
+    let last_audit_at: Option<chrono::DateTime<chrono::Utc>> = row.get(26);
+    let audit_failure_count: i16 = row.get(27);
+    let parent_mission_id: Option<Uuid> = row.get(28);
+    let created_at: chrono::DateTime<chrono::Utc> = row.get(29);
+    let updated_at: chrono::DateTime<chrono::Utc> = row.get(30);
 
     let class = ExtensionClass::try_from_str(&class_str)?;
 
@@ -381,9 +411,19 @@ fn decode_row(row: &tokio_postgres::Row) -> Result<UnifiedExtension, UnifiedStor
         consumer_tags,
         intent_examples,
         validation_status,
+        validation_errors,
+        review_feedback,
+        review_attempts,
+        rejected_at,
         queue_code,
         source,
         content_hash,
+        similarity_parent_id,
+        replaces_id,
+        parent_version,
+        last_audit_at,
+        audit_failure_count,
+        parent_mission_id,
         created_at,
         updated_at,
     })
@@ -395,7 +435,10 @@ const SELECT_COLS: &str = "
     name, description, class::TEXT, payload,
     prior_knowledge_content, override_prompt_creation,
     class_code, prompt_uid, consumer_tags, intent_examples,
-    validation_status, queue_code, source, content_hash,
+    validation_status, validation_errors, review_feedback, review_attempts,
+    rejected_at, queue_code, source, content_hash,
+    similarity_parent_id, replaces_id, parent_version,
+    last_audit_at, audit_failure_count, parent_mission_id,
     created_at, updated_at
 ";
 

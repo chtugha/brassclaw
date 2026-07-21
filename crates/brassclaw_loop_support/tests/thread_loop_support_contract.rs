@@ -990,6 +990,7 @@ async fn prompt_and_model_ports_materialize_trusted_identity_content() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -1031,6 +1032,7 @@ async fn model_port_limits_provider_tool_definitions_to_model_visible_capability
             capability_view: Some(LoopModelCapabilityView {
                 visible_capability_ids: vec![allowed_id],
             }),
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -1070,6 +1072,7 @@ async fn model_port_maps_invalid_model_output_to_recoverable_model_error() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap_err();
@@ -1115,6 +1118,7 @@ async fn model_port_preserves_capability_info_for_filtered_capability_view() {
             capability_view: Some(LoopModelCapabilityView {
                 visible_capability_ids: vec![allowed_id],
             }),
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -1370,6 +1374,7 @@ async fn prompt_and_model_ports_send_selected_skill_context_to_gateway() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -1469,6 +1474,7 @@ async fn prompt_and_model_ports_resolve_skill_refs_after_prompt_sorting() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -1555,6 +1561,7 @@ async fn prompt_and_model_ports_resolve_instruction_memory_and_identity_refs() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -1601,6 +1608,7 @@ async fn model_port_rejects_policy_denied_identity_ref_before_gateway_call() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap_err();
@@ -1796,6 +1804,7 @@ async fn prompt_and_model_ports_keep_duplicate_skill_names_distinct() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -1861,6 +1870,7 @@ async fn model_port_rejects_skill_context_refs_when_source_changes_after_prompt_
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap_err();
@@ -2566,6 +2576,7 @@ async fn model_port_resolves_thread_message_refs_and_delegates_to_gateway() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -2612,6 +2623,7 @@ async fn model_port_threads_resolved_model_route_snapshot_to_gateway() {
         surface_version: None,
         model_preference: None,
         capability_view: None,
+        resolved_messages: None,
     })
     .await
     .unwrap();
@@ -2655,6 +2667,7 @@ async fn model_port_resolves_explicit_refs_that_fall_outside_context_window() {
         surface_version: None,
         model_preference: None,
         capability_view: None,
+        resolved_messages: None,
     })
     .await
     .unwrap();
@@ -2724,6 +2737,7 @@ async fn model_port_preserves_provider_metadata_for_explicit_refs_outside_contex
         surface_version: None,
         model_preference: None,
         capability_view: None,
+        resolved_messages: None,
     })
     .await
     .unwrap();
@@ -2843,6 +2857,7 @@ async fn model_port_round_trips_tool_result_reference_context_as_typed_model_inp
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -2891,6 +2906,7 @@ async fn model_port_rejects_malformed_tool_result_reference_content() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .expect_err("malformed tool result reference content should fail");
@@ -2932,6 +2948,7 @@ async fn model_port_emits_model_milestones_without_prompt_or_output_payloads() {
                     .clone(),
             ),
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -2989,6 +3006,7 @@ async fn model_port_emits_started_and_failed_milestones_when_gateway_fails() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap_err();
@@ -3046,6 +3064,7 @@ async fn model_port_logs_model_started_milestone_failure_without_losing_response
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -3086,6 +3105,7 @@ async fn model_port_logs_model_completed_milestone_failure_without_losing_respon
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -3124,6 +3144,7 @@ async fn model_port_rejects_message_role_that_disagrees_with_thread_record() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap_err();
@@ -3152,6 +3173,7 @@ async fn model_port_surfaces_fail_closed_gateway_policy_errors_without_raw_detai
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap_err();
@@ -3183,6 +3205,7 @@ async fn model_port_replaces_invalid_gateway_safe_summary_with_stable_summary() 
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap_err();
@@ -3225,6 +3248,7 @@ async fn model_port_preserves_gateway_safe_reason_kind() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
+            resolved_messages: None,
         })
         .await
         .unwrap_err();
