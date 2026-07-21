@@ -81,7 +81,7 @@ mod production_runtime_policy;
 mod profile;
 mod projection;
 pub use auth_prompt::{AuthChallengeProvider, AuthChallengeView};
-#[cfg(feature = "postgres")]
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 pub(crate) mod embedding_providers;
 #[cfg(feature = "postgres")]
 pub(crate) mod embedding_role_adapter;

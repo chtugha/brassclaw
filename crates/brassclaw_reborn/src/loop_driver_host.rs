@@ -1958,7 +1958,16 @@ impl brassclaw_turns::run_profile::LoopInterceptorPort for RebornLoopDriverHost 
             })
         });
         let closed = match self.interceptor_store.get(&id).await {
-            Ok(Some(packet)) => packet.with_kohai_response(response_text, usage),
+            Ok(Some(packet)) => {
+                // If Sempai already reviewed this packet (rerouting path),
+                // preserve the SempaiReviewed status — only update the
+                // kohai_response/usage fields that were empty placeholders.
+                if packet.status == brassclaw_interceptor::PacketStatus::SempaiReviewed {
+                    packet.with_kohai_response_sempai_reviewed(response_text, usage)
+                } else {
+                    packet.with_kohai_response(response_text, usage)
+                }
+            }
             Ok(None) => {
                 tracing::debug!(
                     packet_id,

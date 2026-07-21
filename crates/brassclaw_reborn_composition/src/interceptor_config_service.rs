@@ -26,17 +26,15 @@ use crate::db_config::{ConfigWriteContext, list_config_keys, save_config_key};
 /// Minimum interval between `reassemble` or `prewarm` calls per caller.
 const RATE_LIMIT_INTERVAL: Duration = Duration::from_secs(60);
 
+/// Maximum allowed persona text size (64 KiB).  Prevents operators from
+/// accidentally filling the `brassclaw_config` row with a multi-MB string.
+const PERSONA_MAX_BYTES: usize = 64 * 1024;
+
 /// Config keys used in `brassclaw_config`.
 const KEY_BASE_PROMPT: &str = "interceptor.sempai_base_prompt";
 const KEY_BASE_PROMPT_ASSEMBLED_AT: &str = "interceptor.sempai_base_prompt_assembled_at";
 const KEY_PERSONA: &str = "interceptor.sempai_persona";
 const KEY_PREWARM_LAST_AT: &str = "interceptor.sempai_prewarm_last_at";
-
-/// Default tenant ID used when constructing the service.
-///
-/// Multi-tenant deployments wire the tenant explicitly; single-tenant
-/// local-dev always uses `"default"`.
-const DEFAULT_TENANT_ID: &str = "default";
 
 /// Component tables that may hold `Validated` rows for Part A assembly.
 /// Ordered tables that may exist in the schema depending on which phases
@@ -162,6 +160,9 @@ impl RebornInterceptorConfigService {
 
     /// Check and update the rate limit for a caller.  Returns `Err` if the
     /// caller has already made a request within the rate-limit window.
+    ///
+    /// Also prunes stale entries that are older than one window to keep the
+    /// map bounded (one entry per distinct caller who has used the endpoint).
     async fn check_rate_limit(
         &self,
         state: &RateLimitState,
@@ -169,6 +170,9 @@ impl RebornInterceptorConfigService {
     ) -> Result<(), InterceptorConfigServiceError> {
         let mut guard = state.lock().await;
         let now = Instant::now();
+        // Prune entries that are beyond the window — they will no longer
+        // trigger a rate-limit rejection on the next call.
+        guard.retain(|_, last| now.duration_since(*last) < RATE_LIMIT_INTERVAL);
         if let Some(&last) = guard.get(caller_id) {
             let elapsed = now.duration_since(last);
             if elapsed < RATE_LIMIT_INTERVAL {
@@ -298,6 +302,15 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
         request: UpdateInterceptorConfigRequest,
     ) -> Result<InterceptorConfigSnapshot, InterceptorConfigServiceError> {
         if let Some(persona) = request.persona {
+            if persona.len() > PERSONA_MAX_BYTES {
+                return Err(InterceptorConfigServiceError::InvalidRequest {
+                    reason: format!(
+                        "persona text exceeds maximum size ({} > {} bytes)",
+                        persona.len(),
+                        PERSONA_MAX_BYTES
+                    ),
+                });
+            }
             save_config_key(
                 &self.pool,
                 &self.tenant_id,

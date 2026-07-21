@@ -219,6 +219,24 @@ impl ForensicPacket {
         self
     }
 
+    /// Attach the Kohai response to an already-Sempai-reviewed packet,
+    /// preserving the `SempaiReviewed` status.
+    ///
+    /// Called by `on_kohai_response` when the packet was already updated by
+    /// `run_sempai_review`.  Using `with_kohai_response` in that path would
+    /// reset the status to `Complete`, losing the audit trail.
+    pub fn with_kohai_response_sempai_reviewed(
+        mut self,
+        response_text: impl Into<String>,
+        usage: Option<KohaiUsage>,
+    ) -> Self {
+        self.kohai_response = Some(response_text.into());
+        self.kohai_usage = usage;
+        // Status stays `SempaiReviewed` — do NOT overwrite it.
+        self.completed_at = Some(Utc::now());
+        self
+    }
+
     /// Attach both the Kohai response and the Sempai review outcome,
     /// marking the packet as `SempaiReviewed`.
     pub fn with_sempai_review(
@@ -309,6 +327,36 @@ mod tests {
             ForensicPacket::new("run-1", 0, make_prompt()).with_sempai_review("OK", None, review);
         assert_eq!(packet.status, PacketStatus::SempaiReviewed);
         assert!(packet.sempai_review.is_some());
+    }
+
+    #[test]
+    fn with_kohai_response_sempai_reviewed_preserves_status() {
+        let review = SempaiReviewOutcome {
+            adjusted_volatile_messages: vec![("user".to_string(), "Adjusted.".to_string())],
+            bridge_messages: vec![],
+            composition_summary: "Summary.".to_string(),
+            proposed_recipe_updates: vec![],
+            proposed_intent_examples: vec![],
+            settings_adjustments: vec![],
+        };
+        // Simulate the rerouting path: with_sempai_review is called first
+        // (empty kohai_response placeholder), then with_kohai_response_sempai_reviewed
+        // fills in the actual Kohai response.
+        let packet = ForensicPacket::new("run-1", 0, make_prompt())
+            .with_sempai_review("", None, review);
+        assert_eq!(packet.status, PacketStatus::SempaiReviewed);
+
+        // on_kohai_response would call this method:
+        let final_packet =
+            packet.with_kohai_response_sempai_reviewed("Kohai replied here.", None);
+        // Status must remain SempaiReviewed — not regress to Complete.
+        assert_eq!(final_packet.status, PacketStatus::SempaiReviewed);
+        assert_eq!(
+            final_packet.kohai_response.as_deref(),
+            Some("Kohai replied here.")
+        );
+        assert!(final_packet.sempai_review.is_some());
+        assert!(final_packet.completed_at.is_some());
     }
 
     #[test]
