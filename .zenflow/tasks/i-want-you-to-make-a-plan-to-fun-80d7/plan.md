@@ -19,27 +19,42 @@ Intent system, Intent input class) and validation criteria (Section 2.6).
 
 ## Phase 0 — Spec & plan (this document)
 
-- [ ] `spec.md` written (v5: class codes 00-21+50, trust removal, PlanA-memory
+- [ ] `spec.md` written (v5.5: class codes 00-21+50, trust removal, PlanA-memory
   connector, prompt ordering, validation split, **component tag system §3.9**,
   **Monty VM settings §3.10 + kernel-owned restart §3.10**, **4-queue
   validation lifecycle §3.5.1 with validator-tag greyed-out mechanism**,
-  **Actions class §3.11 (default.py executor, 10 step types, no size limits,
+  **Actions class §3.11 (default.py executor, 13 step types, no size limits,
   token-budget exemption, 8-step dispatch flow, step vocabulary is Python
   tunable logic)**, **unified intent system §3.12 replacing 8
   intent-detection functions**, **intent-driven retrieval §3.13**,
-  **Rust-owned class-specific formatting §3.13/§3.14**,
+  **Rust-owned formatting §3.13/§3.14 ("content is king" + Solution Override)**,
   **token-budget prior-knowledge limit**, **"try it with AI" fallback with
   class-4 keyword intent matching**, **9 new class codes 12-20 for former
   doctypes**, **orchestrator formatting ban §3.14**, **DB-less fallback file
   for intent system §3.4**, **"AI before User" flip switch §3.12 rule f-ai**,
   **Phase 1.5 blocking rationale (self-modification bootstrapping paradox —
-  validator-validates-its-own-patches loop)**).
-- [ ] `plan.md` written (v5: Phase 1 Step 1.6 rewritten for default.py Action
-  execution + 10 step types + token-budget exemption; Phase 5 Step 5.1c Monty
+  validator-validates-its-own-patches loop)**, **v5.5: validator independence
+  §3.5**, **v5.5: LLM code-audit for Orchestrator (10) + Scaffold (50) §3.5**,
+  **v5.5: self-improvement mission writes rerouted through validation gate §3.6**,
+  **v5.5: Q19 formatting resolved — "content is king" + Solution Override**,
+  **v5.5: interceptor architecture §3.15 (Sempai–Kohai forensic audit +
+  rerouting, 3-part Sempai prompt, component_refs instead of full prompt,
+  proposed_recipe_updates + proposed_intent_examples → Q1, Actions bypass
+  (structural — Python-only, pipeline never entered), DB-less disables
+  interceptor, Part A via direct SQL — Q20)**,
+  **v5.5: `brassclaw_forensic_packets` table §4 (V51 migration)**,
+  **v5.5: ALL 31 open questions RESOLVED (Q1-Q31) — §7 fully resolved**).
+- [ ] `plan.md` written (v5.5: Phase 1 Step 1.6 rewritten for default.py Action
+  execution + 13 step types + token-budget exemption; Phase 5 Step 5.1c Monty
   VM lifecycle manager; Phase 5 Step 5.2 Actions exempt from token-budget
-  truncation; Phase 5 Step 5.2a `format_action` formatter; Phase 6 Step 6.1
-  Monty restart + status endpoints; Phase 6 Step 6.2 Actions tab + Monty VM
-  restart button; verification matrix + risks updated for v5).
+  truncation; Phase 5 Step 5.2a "content is king" + Solution Override (no
+  per-class Rust formatters); Phase 5.5 interceptor activation (6 steps: V51
+  migration, InterceptorResult trait change, PgInterceptorStore wiring,
+  set_active live-swap, Sempai gateway + 3-part prompt + pre-warm, interceptor
+  config service via direct SQL); Phase 6 Step 6.1
+  Monty restart + status endpoints; Phase 6 Step 6.2 10-tab editor +
+  Interceptor Config tab + Actions tab + Monty VM restart button; verification
+  matrix + risks updated for v5.5 + interceptor risks).
 - **Verify:** glossary terms match user clarifications; validation table matches
   `recipe_validator.rs` + `brassclaw_skills/validation.rs`; trust-removal targets
   (`SkillTrust`, `V2SkillMetadata.trust`, `default_trust`, `registry.rs`
@@ -79,23 +94,42 @@ Intent system, Intent input class) and validation criteria (Section 2.6).
   paradox — validator-validates-its-own-patches loop; the three candidate
   approaches: (a) validator is Rust/Stable, (b) validator is Python/Tunable
   with Rust ground-truth, (c) two-tier Rust constitutional + Python policy).
-- **Stop-after:** await user sign-off on spec Section 7 open questions (now 7
-  remaining items — ALL RESOLVED (Q1-Q19): Q7 Q4 retention window configurable
-  via `q4_retention_days`, Q8 single row per scope tuple, Q9 WebUI validation
-  tab full route extension §3.5.2, Q10 query classifier 4 classes + ? rule, Q11
-  disambiguation special chat message type, Q12 "try it with AI" fallback
-  entirely Rust-side (orchestrator passes `fallback: true` flag, no Python
-  re-entry), Q13 Action step types expanded to 13 (added spawn_subprocess/wait/
-  emit_event), Q14 per-class validation config in `reborn_validation_config`
-  table (only Skills get full agentskills.io validation, others lighter,
-  configurable in WebUI Validation tab), Q15 Recipes get own class code 21
-  (solution-class, dedicated `reborn_recipes` table), Q16 `pg_trgm` installed
-  at brassclaw installation time (standalone/embedded Postgres setup script),
-  Q17 DB-less fallback file created at installation time from compiled-in
-  defaults (not exported from DB — impossible in DB-less), Q18 "AI before User"
-  switch default OFF, per-user in `reborn_user_preferences` table, chat-window
-  only (not in Settings UI), hidden in DB-less mode.
-  **All 19 open questions resolved — Phase 0 ready for sign-off.**)
+  **v5.5: interceptor infrastructure confirmed present** (`ForensicPacket` +
+  `CapturedPrompt` + `SempaiReviewOutcome` in `packet.rs`,
+  `SharedInterceptorMode` in `mode.rs`, `PgInterceptorStore` in `pg_store.rs`,
+  `LoopInterceptorPort` trait in `host.rs:2103`, `InterceptorStage` in
+  `interceptor.rs`, `RebornLoopDriverHost` saves packets in
+  `loop_driver_host.rs:1800`, `interceptor_store` wired in `runtime.rs:557`,
+  `ProviderRole::Sempai` + `set_active` in `llm_config_service.rs:898`,
+  `sempai_swappable` scaffolded in `runtime.rs:2494`, `LlmProviderModelGateway`
+  in `model_gateway.rs:350`, `InstructionBundleBuilder.build()` in
+  `instruction_bundle.rs:202`); **v5.5: five wiring gaps confirmed** (Gap 0:
+  `brassclaw_forensic_packets` table missing — V34 in interceptor2.md → V51 in
+  our plan; Gap 1: `interceptor_store: None` in composition `runtime.rs:1974`;
+  Gap 2: `sempai_swappable` always `None`; Gap 3: `SharedInterceptorMode`
+  never created; Gap 4: `on_prompt_assembled` returns `Option<String>` not
+  `Option<InterceptorResult>`).
+- **Stop-after:** await user sign-off on spec Section 7 open questions —
+  **ALL 31 RESOLVED (Q1-Q31).** Q1-Q19 resolved: Q7 Q4 retention window
+  configurable via `q4_retention_days`, Q8 single row per scope tuple, Q9
+  WebUI validation tab full route extension §3.5.2, Q10 query classifier 4
+  classes + ? rule, Q11 disambiguation special chat message type, Q12 "try it
+  with AI" fallback entirely Rust-side, Q13 Action step types expanded to 13,
+  Q14 per-class validation config, Q15 Recipes get own class code 21, Q16
+  `pg_trgm` installed at installation time, Q17 DB-less fallback file created
+  at installation time, Q18 "AI before User" switch default OFF per-user.
+  Q20-Q31 resolved: Q20 Sempai model free choice (warning if same as Kohai),
+  Q21 `forensic_packet_retention_days` (default 90), Q22 settings_adjustments
+  stored in ForensicPacket.sempai_review + Apply button in WebUI, Q23
+  `components_since_rebuild` badge (passive nudge, manual rebuild only), Q24
+  timeout 120s / 0 retries / fallback to original, Q25 `schema_version: 1` +
+  Actions bypass is structural (Python-only, pipeline never entered), Q26 mode
+  visible in Settings only (not chat), Q27 persona is config text
+  (immediate-write, no validation gate), Q28 per-caller rate limit 1/min, Q29
+  direct SQL (NOT `reborn_component_catalog`) + interceptor after
+  `__assemble_prior_knowledge__` but before final prompt composition, Q30
+  `proposed_intent_examples` → Q1 validation queue, Q31 feature flag
+  `interceptor` (default off). **ALL RESOLVED — Phase 0 ready for sign-off.**)
 
 ## Phase 1 — DB-stored Skills (3-class, explicit columns, no trust) + Intent system + Actions class
 
@@ -479,6 +513,14 @@ update-candidate with `05:validator` tag, enters Q1); LLM code-audit gate test
 (Orchestrator/Scaffold component passes Q1 → LLM audit runs → Q2 button
 disabled until clean → audit flags issue → routed to Q3 with findings); 3-failure
 auto-rollback still works behind the validation gate.
+
+**Follow-up task (cross-phase, for Phase 5.5 interceptor):** after Phase 1.5
+ships (User-at-N-1 injection), verify that the interceptor's Part C stripping
+logic (§3.15) correctly identifies and strips the new stable-tier injections
+and preserves only the per-turn volatile tail. The stripping boundary
+(priorities 1–5 = stable, 6–7 = volatile) remains the same conceptually, but
+the specific messages in priority 6 change shape when Phase 1.5 lands. Add
+this as a verification item in Phase 5.5.
 
 **Stop-after:** Phase 1.5 design is fully unblocked (Q19 resolved, validator
 independence confirmed). No stop-after — proceed to Phase 2.
@@ -960,8 +1002,13 @@ limit**. **Migrate former doctypes into first-class component tables** (classes
   **`q4_retention_days` default 30** (spec §7 Q7 resolved — Q4 rejection queue
   retention window before terminal wipe; editable in the WebUI Monty VM tab;
   the wipe guard reads this value instead of a hardcoded constant),
+  **`forensic_packet_retention_days` default 90** (spec §7 Q21 resolved —
+  `brassclaw_forensic_packets` retention window; scheduled daily cleanup task
+  deletes packets older than this; set to 0 to disable pruning; editable in
+  the WebUI Monty VM tab),
   `updated_at`). CHECK: `max_duration_secs` between 30 and 3600;
-  `prior_knowledge_token_budget` > 0; `q4_retention_days` > 0.
+  `prior_knowledge_token_budget` > 0; `q4_retention_days` > 0;
+  `forensic_packet_retention_days` >= 0.
 - `crates/brassclaw_engine/src/executor/orchestrator.rs`: replace the
   compiled-in `orchestrator_limits()` constants with a `RetrievalSource` lookup
   (falls back to compiled-in defaults via `RamSource`). Keep the
@@ -1280,14 +1327,361 @@ limit**. **Migrate former doctypes into first-class component tables** (classes
   are gone from the DB-mode `retrieval.rs` path (relocated to
   `retrieval_dbless.rs` for the DB-less fallback).
 
-## Phase 6 — Settings UI: 9-tab browser + editor (Skills/Tools/Extensions/Actions/Orchestrator/Scaffold/Monty VM/Validation Queue/Reliability)
+## Phase 5.5 — Interceptor activation (Sempai–Kohai forensic audit + rerouting)
+
+**Goal:** Wire the interceptor so it actually works. The infrastructure
+(`ForensicPacket`, `InterceptorStage`, `LoopInterceptorPort` trait,
+`ProviderRole::Sempai`, `set_active`, `sempai_swappable` scaffold,
+`SharedInterceptorMode`) already exists. Five wiring gaps prevent it from
+functioning. This phase closes all five and adds the Sempai gateway + 3-part
+prompt + KV-cache pre-warm + interceptor config WebUI tab.
+
+**Depends on Phase 5:** the interceptor uses
+`PriorKnowledgeResult.matched_component_ids` for the Part C component manifest.
+Phase 5 creates this. The interceptor's `reassemble_base_prompt()` uses direct
+SQL to individual component tables (Q20 — NOT `reborn_component_catalog`); this
+keeps the interceptor independent of the catalog's refresh timing and schema.
+
+**Adapted from `interceptor2.md`:** the original plan used direct SQL for
+`reassemble_base_prompt()` — our plan retains this approach (Q20). The
+unification with the PlanA-System is at the **storage** layer
+(ForensicPacket stores `component_refs` — IDs only, not full prompt content —
+preventing double-saving), NOT at the **retrieval** layer. The original plan
+stored full `prompt JSONB` in ForensicPacket; our plan stores
+`component_refs JSONB` (array of `{class_code, prompt_uid, component_id}`) +
+`volatile_tail TEXT` only — prevents double-saving (the prompt content is
+already in the DB as component rows).
+
+### Step 5.5.0 — `brassclaw_forensic_packets` migration (V51)
+- `V51__brassclaw_forensic_packets.sql`: create table per spec §4/§3.15.
+  Schema adapted from interceptor2.md: replace `prompt JSONB` with
+  `component_refs JSONB` (NOT NULL — array of
+  `{class_code, prompt_uid, component_id}` from
+  `PriorKnowledgeResult.matched_component_ids`) + `volatile_tail TEXT` (thread
+  history only). Keep `kohai_response`/token columns, `sempai_review JSONB`,
+  `chat_record_id`, `status` (`awaiting_kohai`/`complete`/`sempai_reviewed`),
+  `captured_at`/`completed_at`/`updated_at`. PK `id`, unique
+  `(tenant_id, run_id, iteration)`. Indexes:
+  `(tenant_id, captured_at DESC)`, `(tenant_id, run_id, iteration)`.
+- Fix stale reference in `pg_store.rs` module doc: `V026` → `V051`.
+- **Verify:** migration applies cleanly after V50; `cargo test -p brassclaw_interceptor`; integration test (embedded Postgres applies V34–V51 in order).
+
+### Step 5.5.1 — `InterceptorResult` trait change (breaking, additive elsewhere)
+- **`crates/brassclaw_turns/src/run_profile/host.rs`:** add `InterceptorResult`
+  struct: `{ packet_id: String, adjusted_messages: Option<Vec<(String, String)>> }`.
+  Change `on_prompt_assembled` return from `Option<String>` to
+  `Option<InterceptorResult>`. `NoInterceptor` default returns `None`.
+  `adjusted_messages` is `Vec<(role, content_text)>` — resolved text, not refs.
+  The host resolves refs from the `InstructionMaterializationStore` before
+  calling Sempai; adjusted text comes back as plain strings (no ref-resolution
+  needed again).
+- **`crates/brassclaw_agent_loop/src/executor/interceptor.rs`:** add
+  `adjusted_messages: Option<Vec<(String, String)>>` field to
+  `InterceptorPromptOutput`. When `on_prompt_assembled` returns
+  `Some(result)`: extract `packet_id` + `adjusted_messages`.
+- **`crates/brassclaw_agent_loop/src/executor/canonical.rs`:** when
+  `interceptor_out.adjusted_messages` is `Some(pairs)`, convert
+  `Vec<(String, String)>` → `Vec<HostManagedModelMessage>` and pass to
+  `ModelStage` directly, bypassing `resolve_model_messages`. When `None`,
+  forward `interceptor_out.messages` (refs) unchanged — existing Kohai path.
+  Add `resolved_messages: Option<Vec<HostManagedModelMessage>>` to `ModelInput`;
+  in **`crates/brassclaw_loop_support/src/lib.rs`**
+  (`ThreadBackedLoopModelPort::stream_model`), if `resolved_messages` is
+  `Some`, skip `resolve_model_messages`.
+- **`crates/brassclaw_interceptor/src/packet.rs`:** update `SempaiReviewOutcome`:
+  replace `adjusted_messages` with `adjusted_volatile_messages` +
+  `bridge_messages` + `composition_summary` + `proposed_recipe_updates` +
+  `proposed_intent_examples` (Q30) + `settings_adjustments` (spec §3.15).
+- **Update 6 test stub files** (mechanical return-type update):
+  `brassclaw_agent_loop/src/executor/tests/support.rs`,
+  `brassclaw_agent_loop/src/test_support/mod.rs`,
+  `brassclaw_turns/tests/agent_loop_host_contract.rs`,
+  `brassclaw_reborn/src/planned_driver.rs`,
+  `brassclaw_reborn/tests/planned_driver_e2e.rs`,
+  `brassclaw_reborn/src/turn_runner/tests/mod.rs`.
+- **Verify:** `cargo clippy --all -- -D warnings` clean; existing tests pass.
+
+### Step 5.5.2 — Wire `PgInterceptorStore` + allocate `sempai_swappable` + create `SharedInterceptorMode`
+- **`crates/brassclaw_reborn_composition/src/runtime.rs` (line ~1974):**
+  replace `interceptor_store: None` with:
+  ```rust
+  #[cfg(feature = "postgres")]
+  interceptor_store: services.pg_pool.as_ref().map(|pool| {
+      Arc::new(brassclaw_interceptor::PgInterceptorStore::new(
+          Arc::clone(pool),
+          validated_identity.tenant_id.as_str(),
+      )) as Arc<dyn brassclaw_interceptor::InterceptorStore>
+  }),
+  ```
+- **Allocate `sempai_swappable`** in `wrap_swappable_gateway`:
+  ```rust
+  let sempai_inner: Arc<dyn LlmProvider> = Arc::new(PlaceholderLlmProvider);
+  let sempai_swappable = Arc::new(SwappableLlmProvider::new(sempai_inner));
+  ```
+  Replace `sempai_swappable: None` in `RebornLlmReloadParts` with
+  `sempai_swappable: Some(Arc::clone(&sempai_swappable))`. Remove
+  `#[allow(dead_code)]`.
+- **Create `SharedInterceptorMode`**:
+  ```rust
+  #[cfg(feature = "root-llm-provider")]
+  let interceptor_mode = brassclaw_interceptor::SharedInterceptorMode::new();
+  ```
+  Add `interceptor_mode: Option<SharedInterceptorMode>` to
+  `DefaultPlannedRuntimeParts`. Wire through `build_default_planned_runtime`:
+  `host_factory.with_interceptor_mode(mode)`. Add field + builder to
+  `RebornLoopDriverHostFactory`. Thread into `RebornLoopDriverHost`. Carry on
+  `RebornRuntime` (cfg-gated), exposed via accessor for Step 5.5.3.
+- **Feature gate:** store is `#[cfg(feature = "postgres")]`; mode flag +
+  live-swap are `#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]`.
+  The `postgres`-only path (store wired, mode always `Routing`) is valid
+  forensic-logging-only mode. `root-llm-provider` without `postgres` must not
+  compile the rerouting branch.
+- **DB-less mode:** `interceptor_store: None`, `sempai_swappable: None`,
+  `interceptor_mode: None`. The `on_prompt_assembled` hook is a no-op.
+- **Verify:** `cargo clippy -p brassclaw_reborn -p brassclaw_reborn_composition -- -D warnings` clean.
+
+### Step 5.5.3 — `set_active(Sempai)` live-swap + mode flip
+- **`crates/brassclaw_reborn_composition/src/llm_config_service.rs`:** add
+  `sempai_swappable: Option<Arc<SwappableLlmProvider>>` +
+  `interceptor_mode: Option<SharedInterceptorMode>` fields (cfg-gated) +
+  `with_sempai_swappable`/`with_interceptor_mode` builders. Wire from WebUI
+  facade composition using accessors on `RebornRuntime`.
+- **Extend `ProviderRole::Sempai` arm:** after existing DB write, add live-swap:
+  ```rust
+  #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+  if let Some(swappable) = &self.sempai_swappable {
+      let new_provider = if id.is_empty() {
+          Arc::new(PlaceholderLlmProvider)
+      } else {
+          match self.build_sempai_provider(&id, request.model.as_deref()).await {
+              Ok(p) => p,
+              Err(e) => { tracing::debug!(%e, "sempai build failed; mode stays Routing"); return self.build_snapshot().await; }
+          }
+      };
+      swappable.swap(new_provider);
+      if let Some(mode) = &self.interceptor_mode {
+          if id.is_empty() { mode.set_routing(); } else { mode.set_rerouting(); }
+      }
+  }
+  ```
+- **`build_sempai_provider`:** reuses `brassclaw_llm::build_static_provider_chain`
+  exactly as Kohai. Reads stored API key from `self.keys.read(&provider_id)`.
+  Returns `Result<Arc<dyn LlmProvider>, String>`. No streaming session manager —
+  Sempai audit is a plain `CompletionRequest`.
+- **Verify:** `cargo clippy -p brassclaw_reborn_composition -- -D warnings`; `cargo test -p brassclaw_reborn_composition`.
+
+### Step 5.5.4 — Sempai gateway + rerouting branch + 3-part prompt + KV-cache pre-warm
+- **4a. Sempai gateway:** wrap `sempai_swappable` in its own
+  `LlmProviderModelGateway`. Pass through
+  `DefaultPlannedRuntimeParts.sempai_gateway` → `host_factory.with_sempai_gateway(...)`. Add field + builder to `RebornLoopDriverHostFactory`. Thread into `RebornLoopDriverHost`.
+- **4b. Rerouting branch in `on_prompt_assembled`**
+  (`crates/brassclaw_reborn/src/loop_driver_host.rs` ~line 1801):
+  - **Routing path** (mode == Routing OR sempai_gateway is None): save
+    ForensicPacket (existing code, adapted to store `component_refs` from
+    `matched_component_ids` + `volatile_tail` instead of full `prompt JSONB`),
+    return `Some(InterceptorResult { packet_id, adjusted_messages: None })`.
+  - **Rerouting path** (mode == Rerouting AND sempai_gateway is Some):
+    1. Resolve snapshot's message refs to text using
+       `InstructionMaterializationStore` + thread context. Produces
+       `Vec<(role, content_text)>`.
+    2. Build the Sempai audit prompt (3-part — §4c below).
+    3. Call `sempai_gateway.stream_model(audit_request).await`. On error:
+       `tracing::debug!`, fall back → `adjusted_messages: None`.
+    4. Parse response as `SempaiReviewOutcome` JSON. On parse failure: fall
+       back → `adjusted_messages: None`.
+    5. Update ForensicPacket: `sempai_review = Some(outcome)`,
+       `status = SempaiReviewed`. Save.
+    6. **Route `proposed_recipe_updates` + `proposed_intent_examples` to Q1
+       validation queue** (Phase 3's `ComponentValidator`) — the Sempai cannot
+       directly create components or intent inputs. `proposed_intent_examples`
+       (Q30) are new `intent_examples` entries the Sempai suggests for existing
+       components; once validated, they are added to the component's
+       `intent_examples` and seeded into `reborn_intent_inputs` by the
+       validator.
+    7. Return `Some(InterceptorResult { packet_id, adjusted_messages: Some(recomposed) })`.
+  - **Actions bypass:** Actions are Python-only — when the intent system
+    matches an Action with `override_prompt_creation: true`, the prompt
+    creation process is **disrupted**: the orchestrator does not proceed to
+    `__assemble_prior_knowledge__` → interceptor → `__llm_complete__`.
+    Instead, it dispatches the Action's steps directly (§3.11). The
+    interceptor's hook point (`on_prompt_assembled`) is never reached for
+    Action-only turns — the interceptor **cannot intercept** because there
+    is no prompt to assemble and no LLM call to adjust. No ForensicPacket is
+    created. This is a structural consequence, not a design choice.
+- **4c. 3-part Sempai prompt (spec §3.15):**
+  - **Part A (static base, KV-cache prefix):** from `brassclaw_config` key
+    `interceptor.sempai_base_prompt`. Assembled by
+    `reassemble_base_prompt()` (Step 5.5.5) using **direct SQL to individual
+    component tables** (Q20 — NOT `reborn_component_catalog`) — queries all
+    `Validated` components in `(class_code asc, prompt_uid asc)` order, filter
+    `validation_status = 'Validated' AND '05:validator' != ANY(consumer_tags)`.
+    Includes Orchestrator (class 10) — Sempai needs it for audit (unlike
+    Kohai prompt). Manual rebuild, not per-turn.
+  - **Part B (persona):** from `brassclaw_config` key
+    `interceptor.sempai_persona`. Default from
+    `crates/brassclaw_engine/prompts/sempai_audit.md` via `include_str!()`.
+    Editable in WebUI interceptor tab.
+  - **Part C (per-turn volatile tail + component manifest):** derived from
+    `PriorKnowledgeResult.matched_component_ids` — the component manifest is
+    `{class_code}:{prompt_uid}  {type}  "{name}"` per matched component.
+    Static components are stripped (already in Part A). Volatile tail (thread
+    history + inline nudges) remains. Stored in ForensicPacket
+    `component_refs` + `volatile_tail`.
+  - **Recomposition:** stable-base messages (Part A content) +
+    `outcome.bridge_messages` + `outcome.adjusted_volatile_messages` →
+    complete adjusted Kohai prompt. `ModelStage` forwards to Kohai (KV-cache
+    hit on stable prefix + Sempai-adjusted volatile tail).
+- **4d. KV-cache pre-warm (manual button):**
+  - `POST /api/interceptor/prewarm` endpoint. Handler reads
+    `interceptor.sempai_base_prompt` from config, sends as single system
+    message to Sempai, discards response. Writes
+    `interceptor.sempai_prewarm_last_at = now()`.
+  - Rate-limit: 1 request/minute/caller. `429 Too Many Requests` with
+    `retry_after_seconds: 60` on exceed. WebUI spinner handles `429`
+    explicitly.
+- **4e. Interceptor config service** (Step 5.5.5 below).
+- **4f. `on_kohai_response`:** no change — existing implementation reads
+  packet by id and calls `packet.with_kohai_response(...)` regardless of
+  mode.
+- **Verify:** `cargo clippy --all -- -D warnings`; `cargo test -p brassclaw_agent_loop -p brassclaw_reborn -p brassclaw_interceptor -p brassclaw_reborn_composition`; integration test: configure Sempai mock → mode flips → full turn → Kohai receives Sempai-adjusted messages → packet `status = sempai_reviewed` → `component_refs` present in ForensicPacket; integration test: Sempai error → Kohai receives original messages → packet `status = complete`; integration test: `set_active(Sempai, "")` clears → mode flips to Routing; integration test: Action-only turn → no ForensicPacket (interceptor bypassed); integration test: `proposed_recipe_updates` → Q1 validation queue (component enters Q1, not production tables).
+
+### Step 5.5.5 — Interceptor config service + `reassemble_base_prompt()` via direct SQL
+- **`crates/brassclaw_product_workflow/src/reborn_services/interceptor_config.rs`** (new):
+  `InterceptorConfigService` trait with `snapshot()`, `update()`,
+  `reassemble_base_prompt()`, `prewarm()`. Add
+  `Option<Arc<dyn InterceptorConfigService>>` to `RebornServicesApi`.
+  `InterceptorConfigSnapshot { sempai_connected, mode, base_prompt_assembled_at, base_prompt_size_chars, persona, prewarm_last_at }`.
+- **`crates/brassclaw_interceptor/src/config_store.rs`** (new):
+  `InterceptorConfigStore` trait with `load()`/`save()`. Backed by existing
+  `brassclaw_config` table (no new migration). Keys:
+  `interceptor.sempai_base_prompt`,
+  `interceptor.sempai_base_prompt_assembled_at`,
+  `interceptor.sempai_persona`, `interceptor.sempai_prewarm_last_at`.
+- **`crates/brassclaw_reborn_composition/src/interceptor_config_service.rs`** (new):
+  `RebornInterceptorConfigService` holds `Arc<PgPool>`,
+  `Arc<SharedInterceptorMode>`, `Arc<dyn HostManagedModelGateway>` (sempai_gateway).
+- **`reassemble_base_prompt()` — uses direct SQL to individual component
+  tables (Q20 — NOT `reborn_component_catalog`):**
+  1. Query each component table (reborn_tools, reborn_skills,
+     reborn_extensions_unified, reborn_recipes, reborn_orchestrators,
+     reborn_scaffolds, reborn_actions, reborn_specs, reborn_tool_skills,
+     reborn_plans, reborn_summaries, reborn_docus, reborn_lessons,
+     reborn_issues, reborn_notes) for all rows where
+     `validation_status = 'Validated' AND '05:validator' != ANY(consumer_tags)`.
+  2. Merge results from all tables, sort by `(class_code asc, prompt_uid asc)`.
+  3. Serialize each row into Part A: one block per row with
+     `{class_code}:{prompt_uid}` header + full content text.
+  4. Append `SempaiReviewOutcome` JSON schema as literal `include_str!()` block.
+  5. Write assembled string to `brassclaw_config` key
+     `interceptor.sempai_base_prompt` + timestamp to
+     `interceptor.sempai_base_prompt_assembled_at`.
+  6. Return updated snapshot.
+  - **Direct SQL is acceptable here** because this is a manual rebuild (not
+    per-turn). The fan-out cost (15+ queries) is paid once per Reassemble
+    button click. Using direct SQL keeps the interceptor independent of the
+    `reborn_component_catalog` read model (which is the RetrievalEngine's
+    interface, PERF-05). The unification with the PlanA-System is at the
+    **storage** layer (ForensicPacket `component_refs`), not the retrieval
+    layer.
+  - **Missing-table guard:** before querying each component table, check
+    `information_schema.tables` for existence. Tables from earlier phases
+    (reborn_tools V37, reborn_skills V34) will exist; tables from later
+    phases may not yet exist if the interceptor ships incrementally. Skip
+    non-existent tables (empty result) rather than erroring. This makes
+    `reassemble_base_prompt()` resilient to partial phase rollouts.
+- **`prewarm()`:** delegates to the `POST /api/interceptor/prewarm` handler
+  logic (Step 5.5.4d).
+- **HTTP endpoints** (`crates/brassclaw_webui_v2/src/descriptors.rs` +
+  `crates/brassclaw_webui_v2/src/router.rs`):
+  `GET /api/interceptor/config`, `POST /api/interceptor/config`,
+  `POST /api/interceptor/reassemble`, `POST /api/interceptor/prewarm`.
+  All require `WebUiAuthenticatedCaller` bearer token. `reassemble` and
+  `prewarm` are synchronous with 120s/60s timeout, rate-limited 1/min/caller.
+- **Wire `RebornInterceptorConfigService` into WebUI facade**
+  (`crates/brassclaw_reborn_composition/src/webui.rs`): add
+  `Option<Arc<dyn InterceptorConfigService>>` to `RebornServicesApi` and
+  thread from the composition into the WebUI ingress handlers.
+- **`crates/brassclaw_webui_v2_static/pages/settings/interceptor/`** (new):
+  Settings tab — Sempai status display, Reassemble button (calls
+  `POST /api/interceptor/reassemble`, shows spinner), Pre-warm button (calls
+  `POST /api/interceptor/prewarm`, handles `429` with "wait 60s" message),
+  persona editor textarea (save calls `POST /api/interceptor/config`).
+  `node --check` for syntax validation (no build step).
+- **`crates/brassclaw_engine/prompts/sempai_audit.md`** (new): default persona
+  text (Part B), loaded via `include_str!()`.
+- **ForensicPacket cleanup task (Q21):** a scheduled daily task in
+  `brassclaw_reborn_composition` that reads `forensic_packet_retention_days`
+  from `reborn_monty_vm_settings` and deletes `brassclaw_forensic_packets` rows
+  older than the retention window (`WHERE captured_at < now() - interval '1
+  day' * forensic_packet_retention_days`). When
+  `forensic_packet_retention_days = 0`, the task is a no-op (pruning disabled).
+  The task runs via the existing scheduler infrastructure (same mechanism as
+  the Q3 revision Extension's scheduled runs). Uses the
+  `(tenant_id, captured_at DESC)` index for efficient deletion batches.
+- **Verify:** `cargo clippy -p brassclaw_product_workflow -p brassclaw_webui_v2 -p brassclaw_reborn_composition -p brassclaw_interceptor -- -D warnings`; `cargo test -p brassclaw_product_workflow -p brassclaw_reborn_composition`; integration test: `POST /api/interceptor/reassemble` → Part A written to `brassclaw_config` from direct SQL to individual component tables; integration test: `POST /api/interceptor/prewarm` with empty base prompt → `400`; with assembled prompt → `200` + timestamp updated; **integration test: ForensicPacket cleanup task deletes packets older than `forensic_packet_retention_days`** (insert old packet → run task → packet deleted; set `forensic_packet_retention_days = 0` → run task → no deletion); `tests/webui_v2_descriptors_contract.rs` updated with 4 new descriptors.
+
+### Phase 5.5 — File Change Summary (consolidated from interceptor2.md)
+
+| File | Change |
+|---|---|
+| `migrations/V51__brassclaw_forensic_packets.sql` *(new)* | Create `brassclaw_forensic_packets` table (adapted: `component_refs JSONB` + `volatile_tail TEXT` instead of `prompt JSONB`) |
+| `crates/brassclaw_interceptor/src/pg_store.rs` | Fix module doc: `V026` → `V051` |
+| `crates/brassclaw_interceptor/src/packet.rs` | Replace `adjusted_messages` with `adjusted_volatile_messages` + `bridge_messages` + `composition_summary` + `proposed_recipe_updates` + `proposed_intent_examples` (Q30) + `settings_adjustments` in `SempaiReviewOutcome` |
+| `crates/brassclaw_interceptor/src/config_store.rs` *(new)* | `InterceptorConfigStore` trait + Pg impl; 4 config keys in `brassclaw_config` |
+| `crates/brassclaw_turns/src/run_profile/host.rs` | Add `InterceptorResult`; change `on_prompt_assembled` return type from `Option<String>` to `Option<InterceptorResult>` |
+| `crates/brassclaw_agent_loop/src/executor/interceptor.rs` | Add `adjusted_messages` field to `InterceptorPromptOutput`; extract from `InterceptorResult` |
+| `crates/brassclaw_agent_loop/src/executor/canonical.rs` | Thread `adjusted_messages` → `ModelInput.resolved_messages`; bypass `resolve_model_messages` when pre-resolved |
+| `crates/brassclaw_loop_support/src/lib.rs` | Add `resolved_messages` fast path in `ThreadBackedLoopModelPort::stream_model`; skip `resolve_model_messages` when pre-resolved |
+| 6 test stub files | Mechanical return-type update (`Option<String>` → `Option<InterceptorResult>`) |
+| `crates/brassclaw_reborn/src/runtime.rs` | Add `interceptor_mode` + `sempai_gateway` to `DefaultPlannedRuntimeParts`; wire both |
+| `crates/brassclaw_reborn/src/loop_driver_host.rs` | Add `interceptor_mode` + `sempai_gateway` fields + builders; rerouting branch in `on_prompt_assembled`; strip stable-base messages + build component manifest from `matched_component_ids` |
+| `crates/brassclaw_reborn_composition/src/runtime.rs` | Wire `PgInterceptorStore`; allocate `sempai_swappable`; create `SharedInterceptorMode`; build Sempai gateway |
+| `crates/brassclaw_reborn_composition/src/llm_config_service.rs` | `set_active(Sempai)` live-swap + mode flip; `build_sempai_provider` |
+| `crates/brassclaw_reborn_composition/src/interceptor_config_service.rs` *(new)* | `RebornInterceptorConfigService` impl; `reassemble_base_prompt()` via direct SQL with `information_schema.tables` guard + `prewarm()` |
+| `crates/brassclaw_reborn_composition/src/webui.rs` | Wire `RebornInterceptorConfigService` into WebUI facade (`RebornServicesApi`) |
+| `crates/brassclaw_product_workflow/src/reborn_services/interceptor_config.rs` *(new)* | Port trait + DTOs; 4 methods |
+| `crates/brassclaw_webui_v2/src/descriptors.rs` | Add 4 interceptor descriptors |
+| `crates/brassclaw_webui_v2/src/router.rs` | Mount 4 interceptor routes |
+| `crates/brassclaw_webui_v2/tests/webui_v2_descriptors_contract.rs` | Add 4 new descriptors |
+| `crates/brassclaw_webui_v2_static/pages/settings/interceptor/` *(new)* | Settings tab (Reassemble + Pre-warm buttons + persona editor + Recent Sempai Suggestions list Q22 + `components_since_rebuild` badge Q23) |
+| `crates/brassclaw_engine/prompts/sempai_audit.md` *(new)* | Default persona text (Part B) |
+
+### Phase 5.5 — Execution Order
+
+```
+Step 5.5.0 (V51 migration — prerequisite, no Rust changes)
+  │
+  ▼
+Step 5.5.1 (InterceptorResult trait change — only breaking change)
+  │            Must be fully resolved (clippy clean) before 5.5.2 or 5.5.3.
+  │
+  ├──► Step 5.5.2 (PgStore + swappable + mode flag — pure composition, 3 independent edits)
+  │            Requires: Step 5.5.1 complete.
+  │
+  └──► Step 5.5.3 (set_active live-swap — extends config service)
+               Requires: Step 5.5.1 + Step 5.5.2 (sempai_swappable allocated).
+                    │
+                    ▼
+              Step 5.5.4a–c (Sempai gateway + rerouting branch + 3-part prompt)
+              Requires: Step 5.5.2 (mode flag in host) + Step 5.5.3 (swappable allocated)
+                    │
+              Step 5.5.5 can run in parallel with 5.5.4a–c
+              (interceptor config service + WebUI tab; only blocks 5.5.4d pre-warm)
+                    │
+                    ▼
+              Step 5.5.4d (pre-warm endpoint)
+              Requires: 5.5.4a (gateway wired) + 5.5.5 (config store with base prompt key)
+```
+
+## Phase 6 — Settings UI: 10-tab browser + editor (Skills/Tools/Extensions/Actions/Orchestrator/Scaffold/Monty VM/Validation Queue/Reliability/Interceptor Config)
 
 **Goal:** New Settings section to browse, edit, and class-tag Skills/Tools/
-Extensions/Actions/Orchestrators/Scaffolds stored in the DB. 9-tab editor +
+Extensions/Actions/Orchestrators/Scaffolds stored in the DB. **10-tab** editor +
 validation queue (review + integrate the **existing** validation-queue WebUI
 tab) + Monty VM settings + reward immediate-write + **consumer-tag chip editor
 with greyed-out state** + **intent examples editor** + **prior-knowledge token
-budget field** + **disambiguation UX for intent system**.
+budget field** + **disambiguation UX for intent system** + **Interceptor Config
+tab** (Sempai status, Reassemble button, Pre-warm button, persona editor).
 
 ### Step 6.1 — WebUI v2 backend routes
 - `crates/brassclaw_reborn_webui_ingress` + `brassclaw_webui_v2`: REST routes
@@ -1324,10 +1718,10 @@ budget field** + **disambiguation UX for intent system**.
   `validate` endpoint pops `05:validator`**; `re-submit` and `wipe` guard
   tests; intent-input routes scope-isolated.
 
-### Step 6.2 — React SPA Settings section (9 tabs + tag chips + intent examples)
+### Step 6.2 — React SPA Settings section (10 tabs + tag chips + intent examples + interceptor config)
 - `crates/brassclaw_webui_v2_static`: new "Skills", "Tools", "Extensions",
   **"Actions"**, "Orchestrator", "Scaffold", **"Monty VM"**, "Validation
-  Queue", "Reliability" tabs in Settings.
+  Queue", "Reliability", **"Interceptor Config"** tabs in Settings.
   - List view (name, class, `class_code`, `prompt_uid`, validation status,
     tier, **`consumer_tags[]`**).
   - Editor view (frontmatter + body + class selector writing `compatibility`;
@@ -1406,6 +1800,22 @@ budget field** + **disambiguation UX for intent system**.
     activate/rollback; every save → code validation gate (Phase 3.4).
   - Scaffold: view/edit preamble, postamble, platform section, learned-rules
     overlay; version history; every save → validation gate.
+  - **Interceptor Config tab (spec §3.15, Phase 5.5):** displays on load
+    (`GET /api/interceptor/config`):
+    - **Sempai status:** connected/disconnected, mode (routing/rerouting).
+    - **Base prompt:** last assembled timestamp + char count. Button:
+      **"Reassemble Basic Prompt"** — calls `POST /api/interceptor/reassemble`,
+      shows spinner, refreshes snapshot on completion. Calls
+      `reassemble_base_prompt()` which queries individual component tables via
+      direct SQL (all `Validated` components, no `05:validator`) and writes
+      Part A to `brassclaw_config`.
+    - **KV-cache:** last pre-warm timestamp. Button: **"Pre-warm Sempai
+      KV-cache"** — calls `POST /api/interceptor/prewarm`, shows spinner,
+      refreshes on completion. Handles `429` explicitly ("Please wait 60
+      seconds before re-warming").
+    - **Persona:** editable textarea bound to `snapshot.persona`. Save button
+      calls `POST /api/interceptor/config` with `{ persona: "..." }`.
+    - **Hidden/disabled in DB-less mode** (interceptor requires Postgres).
 - **Verify:** Playwright E2E for browse → edit → save → validation error path;
   Validation Queue → click → status flips to `Validated` + `05:validator`
   popped; tag-chip greyed-state E2E (toggle a chip on an in-queue row → chip
@@ -1414,13 +1824,16 @@ budget field** + **disambiguation UX for intent system**.
   click "Restart Monty" → confirmation dialog → status indicator shows
   `restarting` → `running` → new settings applied; `force=true` aborts
   in-flight turns); Orchestrator version rollback E2E; **Actions step-list
-  editor E2E** (add/reorder steps with all 10 step types, save, validate,
+  editor E2E** (add/reorder steps with all 13 step types, save, validate,
   dry-run test runner); intent examples editor E2E (add/edit/remove examples,
   classify, save); disambiguation UX E2E (intent match → chat message with
   buttons → click → component dispatched); **"AI before User" flip switch E2E**
   (ON: 10 failed LLM sentences → no reformulate message, turn proceeds
   silently via keyword fallback; OFF: reformulate message + "or try it with
-  AI" button appears; DB-less mode: switch hidden/disabled); i18n parity
+  AI" button appears; DB-less mode: switch hidden/disabled); **Interceptor
+  Config tab E2E** (Sempai status display, Reassemble button → Part A written
+  from direct SQL to component tables, Pre-warm button → 200 or 429, persona
+  editor save, hidden in DB-less mode); i18n parity
   (`scripts/check-i18n-parity.sh`).
 
 ## Phase 7 — Cleanup
@@ -1484,7 +1897,8 @@ budget field** + **disambiguation UX for intent system**.
 | 3 | `cargo test -p brassclaw_skills`; `recipe_library` contract; `is_valid_transition` guard (incl. `Rejected → Pending` revision + `Garbage → wipe`); **`is_queue_status` extended for all 4 queues** (Q1: Pending/AutoFailed; Q2: AutoPassed/ReviewRequested/UpgradeQueued; Q3: Rejected+review_attempts<3; Q4: Rejected+review_attempts>=3+rejected_at age < `q4_retention_days`); confidence-factor source-independence test; **fallback routing test** (confidence factor influences retrieval only when fallback is triggered, not in normal intent-driven mode); validator-tag pop on `AutoPassed → Validated`; update-candidate tag inheritance; Q1→Q2→Q3→Q4 lifecycle test; **Q4 wipe test** (preserves thread data, reads `q4_retention_days` from `reborn_monty_vm_settings` instead of hardcoded constant); **generalized route test** (`PUT /components/{class_code}/{id}/validate|reject|send-to-revision|re-review` works for all class codes; `DELETE` wipe route guarded; `GET /components/{class_code}/{id}/audit-status` returns LLM audit findings for class 10/50; old recipe/tool_skill routes kept as aliases); **code-validation gate test** (invalid orchestrator patch rejected; valid patch commits only on pass); **validator independence test** (validator code not in orchestrator's patchable surface); **LLM code-audit gate test** (Orchestrator/Scaffold Q1→Q2 transition: audit runs → button disabled → flagged → routed to Q3); **self-improvement `memory_write` reroute test** (write creates update-candidate with `05:validator` tag, enters Q1, does not write directly); **per-class validation config test (Q14)** (`ComponentValidator::validate_by_class` dispatch: Skills get full agentskills.io, Tools get tool_name+param_schema, Extensions get soft, Actions get no token budget, former doctypes get soft, Recipes get trigger validation, Orchestrator/Scaffold get LLM audit; `reborn_validation_config` override changes validation outcome for next cycle) |
 | 4 | `extension_contract.rs`, `installations_contract.rs`, `manifest_v2_contract.rs`; `test_plan_mode.py`; extension `consumer_tags[]` per class; **Recipe class 21 test (Q15)** (`reborn_recipes` has `override_prompt_creation` + `prior_knowledge_content` columns; `RecipeLookup` reads from `reborn_recipes` class 21; `reborn_extensions_unified` class 09 has NO Recipe rows; Recipe migration from `DocType::Recipe` populates `steps`/`trigger`/`prior_knowledge_content`/`override_prompt_creation`) |
 | 5 | `cargo test -p brassclaw_memory -p brassclaw_engine`; `engine_v2_skill_codeact.rs`; DB-less `RamSource` prompt-parity test; User-at-N-1 injection test; `fetch_for_consumer('03:llm')` excludes `01:monty`-only rows; `reborn_monty_vm_settings` read from DB + DB-less fallback; `active_orchestrator_id` gated to `Validated`; **`fetch_for_turn` returns only intent-matched components**; **SEC-01: by-ID fetch drops in-queue/rejected components** (intent-resolved ID → validation gate filter → empty if not Validated); **PERF-05: `reborn_component_catalog` single-query fetch** (no fan-out to 15+ tables); **token-budget truncation test (Actions exempt)**; **"try it with AI" fallback test**; **"AI before User" flip switch test** (ON: silent, no new rows; OFF: default); **DB-less fallback test** (`{db_less_fallback: true}` → keyword path, no intent system); **DB-less fallback-content file loads into `RamSource`**; **SEC-10: `RamSource` refuses non-local runtime profiles**; **`__assemble_prior_knowledge__` both paths** (Solution Override + Normal Assembly); **PKC NULL fallback test**; **non-solution classes do NOT have PKC/override columns**; **orchestrator has no `format_docs`/`format_skills`/`append_system_append` calls**; **former-doctype tables migration + scope isolation**; **document splitting into ≤5000-token rows**; **`prior_knowledge_token_budget` read from DB + DB-less default 2000**; **all `DocType` variants removed**; **`doc_type_weight`/`keyword_match_score`/`extract_keywords` relocated to `retrieval_dbless.rs`**; **Monty VM restart test (PERF-16: drain + admission control — `admission_paused` flag, in-flight turns complete/timeout, queued turns admitted in order, `force=true` aborts, status `draining`/`restarting`/`running`)**; **Monty VM lifecycle manager is kernel-owned**; **`reborn_user_preferences` migration test (Q18)**; **SEC-04: rollback CAS protection test** (`WHERE id = ? AND failure_count = ?` prevents concurrent race); **SEC-11: Q4 wipe is single transaction test** (component + intent_inputs + reliability + provenance deleted atomically) |
-| 6 | route contract tests; Playwright Settings E2E (9 tabs); **Validation Queue E2E (4 queue tabs: Q1 Auto/Q2 Manual/Q3 Revision/Q4 Rejection, badge counts, generalized `PUT /components/{class_code}/{id}/validate|reject|send-to-revision|re-review` routes, `DELETE` wipe route, `05:validator` pop, tag-chip greyed-state, LLM-audit guard for class 10/50 — "Validate" button disabled until audit clean, audit findings shown inline)**; **Validation Config sub-panel E2E (Q14)** (per-class thresholds editable in WebUI Validation tab — name/description/token_budget/require_tool_name/require_param_schema/require_activation_criteria per class code; save → next validation cycle uses new thresholds); Monty VM settings save E2E (incl. `prior_knowledge_token_budget` + **`q4_retention_days`**); **Monty VM restart E2E** (change settings → "Restart Monty" → confirmation → status `restarting` → `running` → new settings applied; `force=true` aborts in-flight turns); Orchestrator version rollback E2E; **Actions step-list editor E2E** (all 13 step types incl. spawn_subprocess/wait/emit_event, add/reorder, save, validate, dry-run test runner); **Recipe editor E2E (Q15)** (class 21 `reborn_recipes` — trigger/steps/prior_knowledge_content/override_prompt_creation editable; `RecipeLookup` reads from `reborn_recipes`); **intent examples editor E2E**; **disambiguation UX E2E** (special `disambiguation` chat message type with clickable buttons, structured `{disambiguation_choice}` payload back to `__resolve_intent__`); **"AI before User" flip switch E2E** (ON: silent fallback; OFF: reformulate + button; DB-less: hidden; toggle persists to `reborn_user_preferences`); `check-i18n-parity.sh` |
+| 5.5 | `cargo test -p brassclaw_interceptor -p brassclaw_agent_loop -p brassclaw_reborn -p brassclaw_reborn_composition`; **V51 migration applies after V50**; `InterceptorResult` trait change (`on_prompt_assembled` returns `Option<InterceptorResult>` with `adjusted_messages`); **6 test stub files updated** (mechanical return-type); **`PgInterceptorStore` wired** (composition passes store, not `None`); **`sempai_swappable` allocated** (not `None`, `#[allow(dead_code)]` removed); **`SharedInterceptorMode` created + threaded** (composition → factory → host); **`set_active(Sempai)` live-swap** (DB write + provider swap + mode flip; clearing → Routing); **Sempai gateway + rerouting branch** (Routing: save packet + `adjusted_messages: None`; Rerouting: resolve refs → 3-part prompt → Sempai call → parse → recompose → `adjusted_messages: Some`); **3-part prompt** (Part A from **direct SQL to individual component tables** via `reassemble_base_prompt()` (Q20 — NOT `reborn_component_catalog`), Part B persona from config, Part C volatile tail + component manifest from `matched_component_ids`); **ForensicPacket stores `component_refs` + `volatile_tail`** (NOT full `prompt JSONB` — prevents double-saving); **Actions bypass interception** (Action-only turn → no `__llm_complete__` → no ForensicPacket); **`proposed_recipe_updates` + `proposed_intent_examples` → Q1 validation queue** (Sempai cannot directly create components or intent inputs); **KV-cache pre-warm** (`POST /api/interceptor/prewarm` → 200 or 429); **`reassemble_base_prompt()` uses direct SQL** (queries individual component tables, NOT `reborn_component_catalog` — Q20); **DB-less mode disables interceptor** (`interceptor_store: None`, `sempai_swappable: None`, `interceptor_mode: None`, `on_prompt_assembled` is no-op); **interceptor config service** (`InterceptorConfigService` trait, `InterceptorConfigStore` via `brassclaw_config`, 4 HTTP endpoints); integration test: Sempai mock → mode flips → Kohai receives adjusted messages → packet `sempai_reviewed` → `component_refs` present; integration test: Sempai error → Kohai receives originals → packet `complete`; integration test: `set_active(Sempai, "")` → Routing; integration test: `POST /api/interceptor/reassemble` → Part A from direct SQL; integration test: `POST /api/interceptor/prewarm` empty → 400, assembled → 200; **ForensicPacket cleanup task test (Q21)** (old packet deleted, `forensic_packet_retention_days = 0` → no-op); **Part C stripping verification (cross-phase from Phase 1.5)** (after Phase 1.5's User-at-N-1 injection ships, verify Part C stripping correctly identifies stable-tier injections vs volatile tail — the stripping boundary priorities 1–5 = stable, 6–7 = volatile remains, but priority 6 messages change shape) |
+| 6 | route contract tests; Playwright Settings E2E (**10 tabs**); **Validation Queue E2E (4 queue tabs: Q1 Auto/Q2 Manual/Q3 Revision/Q4 Rejection, badge counts, generalized `PUT /components/{class_code}/{id}/validate|reject|send-to-revision|re-review` routes, `DELETE` wipe route, `05:validator` pop, tag-chip greyed-state, LLM-audit guard for class 10/50 — "Validate" button disabled until audit clean, audit findings shown inline)**; **Validation Config sub-panel E2E (Q14)** (per-class thresholds editable in WebUI Validation tab — name/description/token_budget/require_tool_name/require_param_schema/require_activation_criteria per class code; save → next validation cycle uses new thresholds); Monty VM settings save E2E (incl. `prior_knowledge_token_budget` + **`q4_retention_days`** + **`forensic_packet_retention_days`**); **Monty VM restart E2E** (change settings → "Restart Monty" → confirmation → status `restarting` → `running` → new settings applied; `force=true` aborts in-flight turns); Orchestrator version rollback E2E; **Actions step-list editor E2E** (all 13 step types incl. spawn_subprocess/wait/emit_event, add/reorder, save, validate, dry-run test runner); **Recipe editor E2E (Q15)** (class 21 `reborn_recipes` — trigger/steps/prior_knowledge_content/override_prompt_creation editable; `RecipeLookup` reads from `reborn_recipes`); **intent examples editor E2E**; **disambiguation UX E2E** (special `disambiguation` chat message type with clickable buttons, structured `{disambiguation_choice}` payload back to `__resolve_intent__`); **"AI before User" flip switch E2E** (ON: silent fallback; OFF: reformulate + button; DB-less: hidden; toggle persists to `reborn_user_preferences`); **Interceptor Config tab E2E** (Sempai status display, Reassemble button → Part A from direct SQL to component tables, Pre-warm button → 200 or 429 with "wait 60s" message, persona editor save, hidden in DB-less mode); `check-i18n-parity.sh` |
 | 7 | full clippy + `cargo test`; `check_gateway_boundaries.py`; `reborn-e2e-rust.sh`; grep confirms deletion of 8 intent-detection functions + 3 Python formatters + all `DocType::` references |
 
 ## Risks & mitigations
@@ -1652,3 +2066,41 @@ budget field** + **disambiguation UX for intent system**.
   defense in depth, PERF-05 catalog, PERF-16 drain, PERF-18 hard limits,
   PERF-03 atomic increment, PERF-02 single query, PERF-01 B-tree). Remaining
   MAJOR/MEDIUM issues are addressed in the same review pass.
+- **Interceptor Sempai compromise** (§3.15) — if the Sempai provider is
+  compromised, it could inject malicious `adjusted_messages`,
+  `proposed_recipe_updates`, or `proposed_intent_examples`. Mitigated by:
+  (a) `proposed_recipe_updates` + `proposed_intent_examples` are routed
+  through the Q1 validation queue (Phase 3's `ComponentValidator`) — the
+  Sempai cannot directly create components or intent inputs; (b)
+  `adjusted_messages` only affect the volatile tail (thread history), not the
+  stable base (Part A is read-only from `brassclaw_config`); (c) the Sempai is
+  an OpenAI-compatible HTTP provider configured by the operator — if
+  compromised, the operator clears it (`set_active(Sempai, "")`) → mode flips
+  to Routing (forensic logging only, no rerouting); (d)
+  `settings_adjustments` are stored but never auto-applied — they require
+  manual operator action.
+- **Interceptor Part A stale** (§3.15) — Part A is a manual rebuild. If the
+  operator adds/removes components and forgets to click "Reassemble Basic
+  Prompt", the Sempai's Part A is stale (missing new components or including
+  deleted ones). Mitigated by: (a) the WebUI Interceptor Config tab shows the
+  last assembled timestamp + char count — the operator can see when it was
+  last rebuilt; (b) after Phase 5 migrations, the operator should click
+  Reassemble to include new component tables; (c) stale Part A does not break
+  correctness — the Sempai audits with incomplete information, but the Kohai
+  prompt is assembled from the live DB (not from Part A). The worst case is
+  the Sempai misses a new component in its audit — a degradation, not a
+  failure.
+- **Interceptor ForensicPacket storage grows unbounded** (§3.15, Q21) — one
+  ForensicPacket per turn. Mitigated by: (a) the `component_refs` +
+  `volatile_tail` schema is compact (references, not full prompt content —
+  prevents double-saving); (b) `forensic_packet_retention_days` column in
+  `reborn_monty_vm_settings` (default 90) + scheduled daily cleanup task
+  deletes packets older than the retention window (operator can set to 0 to
+  disable pruning — mirrors `q4_retention_days` pattern Q7); (c) the
+  `(tenant_id, captured_at DESC)` index supports efficient pagination for
+  cleanup queries.
+- **Interceptor breaks DB-less mode** (§3.15) — the interceptor requires
+  Postgres (`PgInterceptorStore`). In DB-less mode, the interceptor is
+  disabled (no-op). This is acceptable because DB-less mode is not for
+  production (§3.4, SEC-10). The `on_prompt_assembled` hook is a no-op in
+  DB-less mode.
