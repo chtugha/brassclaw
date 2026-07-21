@@ -1607,7 +1607,9 @@ name = "brassclaw_engine"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "brassclaw_capabilities",
  "brassclaw_common",
+ "brassclaw_pg",
  "brassclaw_skills",
  "chrono",
  "cron",
@@ -2264,6 +2266,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "brassclaw_embedded_postgres",
+ "brassclaw_host_api",
  "brassclaw_pg",
  "brassclaw_reborn_composition",
  "brassclaw_reborn_config",
@@ -2362,6 +2365,7 @@ dependencies = [
  "libsql",
  "lru 0.16.4",
  "rand 0.8.7",
+ "regex",
  "reqwest 0.12.28",
  "rust_decimal",
  "rust_decimal_macros",
@@ -2609,6 +2613,7 @@ dependencies = [
  "async-trait",
  "brassclaw_filesystem",
  "brassclaw_host_api",
+ "brassclaw_pg",
  "chrono",
  "futures",
  "regex",
@@ -2622,6 +2627,7 @@ dependencies = [
  "tokio",
  "tracing",
  "urlencoding",
+ "uuid",
 ]
 
 [[package]]

@@ -69,6 +69,8 @@ pub use capability::lease::LeaseManager;
 pub use capability::planner::{CapabilityGrantPlan, LeasePlanner};
 pub use capability::policy::{PolicyDecision, PolicyEngine};
 pub use capability::registry::CapabilityRegistry;
+#[cfg(feature = "skills-db")]
+pub use capability::db_tool_source::DbToolSource;
 
 // ── Re-exports: gate ─────────────────────────────────────────
 

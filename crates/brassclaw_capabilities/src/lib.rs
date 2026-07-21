@@ -11,6 +11,7 @@ mod helpers;
 mod host;
 mod obligations;
 mod requests;
+pub mod tool_registry;
 
 pub use conformance::{
     CapabilityProfileClaim, CapabilityProfileClaimedOperation, CapabilityProfileConformanceFinding,
@@ -18,6 +19,9 @@ pub use conformance::{
     evaluate_profile_conformance,
 };
 pub use error::{CapabilityInvocationError, ResumeContextMismatchKind};
+pub use tool_registry::{
+    ToolRegistry, ToolRegistryError, ToolRegistryStore, ToolScopeKey,
+};
 pub use host::CapabilityHost;
 pub use obligations::{
     CapabilityObligationAbortRequest, CapabilityObligationCompletionRequest,
