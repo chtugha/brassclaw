@@ -34,6 +34,23 @@ pub enum RecipeKind {
     ToolSkill,
 }
 
+/// 4-queue filter for `GET /api/webchat/v2/validation-queue?q=…`.
+///
+/// Maps to the four lifecycle queues defined in spec §3.5.1.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ValidationQueueFilter {
+    /// Q1 — auto-validation failures (Pending + AutoFailed).
+    Auto,
+    /// Q2 — waiting for manual operator validation (AutoPassed + ReviewRequested + UpgradeQueued).
+    #[default]
+    Manual,
+    /// Q3 — rejected, review_attempts < 3 (awaiting revision mission).
+    Revision,
+    /// Q4 — rejected, review_attempts >= 3 (pending wipe).
+    Rejection,
+}
+
 /// Lifecycle status mirrored from
 /// `brassclaw_engine::types::recipe::ValidationStatus`. We deliberately
 /// re-export strings (not strong enum variants) — the WebUI surfaces
@@ -122,8 +139,11 @@ pub struct ToolSkillDetail {
 
 /// One row in the validation queue — surfaced by
 /// `GET /api/webchat/v2/validation-queue` (the post-extraction review
-/// tab) and the per-kind counters (`/validation-queue/rejected`,
-/// `/validation-queue/garbage`).
+/// tab) and the per-kind counters.
+///
+/// Extended in Phase 3 (Step 3.5) to carry `class_code`, `class_label`,
+/// `queue_code`, `validator_tag_present`, `consumer_tags`,
+/// `llm_audit_status`, and `llm_audit_findings` for the 4-queue UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationQueueItem {
     pub id: String,
@@ -140,6 +160,21 @@ pub struct ValidationQueueItem {
     pub similarity_parent_id: Option<String>,
     pub created_at: String,
     pub source: String,
+    /// Integer class code from spec §4 (e.g. 0 = Tool, 1 = Skill/Rusty, 21 = Recipe).
+    pub class_code: u16,
+    /// Human-readable label derived from `class_code`.
+    pub class_label: String,
+    /// Derived queue bucket: "q1_auto" | "q2_manual" | "q3_revision" | "q4_rejection".
+    pub queue_code: String,
+    /// True when the `05:validator` consumer tag is present — greys out delivery.
+    pub validator_tag_present: bool,
+    /// All consumer tags on this component row (e.g. `["01:monty", "05:validator"]`).
+    pub consumer_tags: Vec<String>,
+    /// LLM code-audit status for Orchestrator (class 10) and Scaffold (class 50).
+    /// `"pending"` | `"clean"` | `"flagged"` | `"not_applicable"`.
+    pub llm_audit_status: String,
+    /// LLM code-audit findings when `llm_audit_status == "flagged"`.
+    pub llm_audit_findings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -240,14 +275,13 @@ pub trait RecipeStore: Send + Sync {
         skill_id: &str,
     ) -> Result<Option<ToolSkillDetail>, RecipeStoreError>;
 
-    /// List rows in the validation queue — items whose
-    /// `validation_status` is currently `pending`, `auto_passed`, or
-    /// `upgrade_queued`. Sorted by `created_at` ascending so the operator
-    /// reviews oldest-first.
+    /// List rows in the validation queue filtered by the given queue bucket.
+    /// Sorted by `created_at` ascending so the operator reviews oldest-first.
     async fn list_validation_queue(
         &self,
         user_id: &str,
         project_id: &str,
+        filter: ValidationQueueFilter,
     ) -> Result<Vec<ValidationQueueItem>, RecipeStoreError>;
 
     /// Count rows by validation status. Used for tab badges.
@@ -281,6 +315,44 @@ pub trait RecipeStore: Send + Sync {
         feedback: Option<&str>,
     ) -> Result<UpdateValidationStatusResponse, RecipeStoreError>;
 
+    /// Generalized component status update for any class code.
+    ///
+    /// `class_code` is used to identify the DocType/component table.
+    /// Routes through `update_recipe_validation_status` or
+    /// `update_skill_validation_status` for known legacy classes; other
+    /// class codes are dispatched to the DB-backed component store once
+    /// available.
+    async fn update_component_validation_status(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        class_code: u16,
+        component_id: &str,
+        new_status: &str,
+        feedback: Option<&str>,
+    ) -> Result<UpdateValidationStatusResponse, RecipeStoreError>;
+
+    /// Wipe a component row (Q4 terminal delete). Removes the MemoryDoc
+    /// and its creation-process provenance fields but never deletes
+    /// thread messages, steps, or events.
+    async fn delete_component(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        class_code: u16,
+        component_id: &str,
+    ) -> Result<(), RecipeStoreError>;
+
+    /// Return the LLM code-audit status for Orchestrator (10) / Scaffold (50)
+    /// components. For other class codes returns `"not_applicable"`.
+    async fn get_component_audit_status(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        class_code: u16,
+        component_id: &str,
+    ) -> Result<ComponentAuditStatus, RecipeStoreError>;
+
     /// Record a success/failure outcome — wires through to the engine's
     /// `MetricRecorder` so Wilson/tier counters update atomically.
     async fn record_outcome(
@@ -289,6 +361,24 @@ pub trait RecipeStore: Send + Sync {
         project_id: &str,
         request: RecordOutcomeRequest,
     ) -> Result<RecordOutcomeResponse, RecipeStoreError>;
+}
+
+/// LLM code-audit status returned by `RecipeStore::get_component_audit_status`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub struct ComponentAuditStatus {
+    /// `"pending"` | `"clean"` | `"flagged"` | `"not_applicable"`.
+    pub status: String,
+    pub findings: Vec<String>,
+}
+
+impl ComponentAuditStatus {
+    pub fn not_applicable() -> Self {
+        Self {
+            status: "not_applicable".to_string(),
+            findings: vec![],
+        }
+    }
 }
 
 /// Storage-side error taxonomy. Mirrors [`crate::reduction_rules::ReductionRuleStoreError`]:

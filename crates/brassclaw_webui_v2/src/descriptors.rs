@@ -66,6 +66,14 @@ pub const WEBUI_V2_ROUTE_REJECT_TOOL_SKILL: &str = "webui.v2.reject_tool_skill";
 pub const WEBUI_V2_ROUTE_REQUEST_TOOL_SKILL_REVIEW: &str = "webui.v2.request_tool_skill_review";
 pub const WEBUI_V2_ROUTE_RECORD_RECIPE_OUTCOME: &str = "webui.v2.record_recipe_outcome";
 
+// Phase 3 (Step 3.5) — Generalized component validation routes for all ~20 class codes.
+pub const WEBUI_V2_ROUTE_VALIDATE_COMPONENT: &str = "webui.v2.validate_component";
+pub const WEBUI_V2_ROUTE_REJECT_COMPONENT: &str = "webui.v2.reject_component";
+pub const WEBUI_V2_ROUTE_SEND_COMPONENT_TO_REVISION: &str = "webui.v2.send_component_to_revision";
+pub const WEBUI_V2_ROUTE_RE_REVIEW_COMPONENT: &str = "webui.v2.re_review_component";
+pub const WEBUI_V2_ROUTE_DELETE_COMPONENT: &str = "webui.v2.delete_component";
+pub const WEBUI_V2_ROUTE_GET_COMPONENT_AUDIT_STATUS: &str = "webui.v2.get_component_audit_status";
+
 pub const WEBUI_V2_PATTERN_CREATE_THREAD: &str = "/api/webchat/v2/threads";
 pub const WEBUI_V2_PATTERN_LIST_THREADS: &str = "/api/webchat/v2/threads";
 pub const WEBUI_V2_PATTERN_DELETE_THREAD: &str = "/api/webchat/v2/threads/{thread_id}";
@@ -132,6 +140,21 @@ pub const WEBUI_V2_PATTERN_RECORD_RECIPE_OUTCOME: &str =
 pub const WEBUI_V2_PATTERN_VALIDATION_QUEUE: &str = "/api/webchat/v2/validation-queue";
 pub const WEBUI_V2_PATTERN_VALIDATION_QUEUE_COUNT: &str = "/api/webchat/v2/validation-queue/count";
 
+// Generalized component routes — `{class_code}` is the integer class code
+// (e.g. 0=Tool, 1=Skill/Rusty, 21=Recipe).
+pub const WEBUI_V2_PATTERN_VALIDATE_COMPONENT: &str =
+    "/api/webchat/v2/components/{class_code}/{component_id}/validate";
+pub const WEBUI_V2_PATTERN_REJECT_COMPONENT: &str =
+    "/api/webchat/v2/components/{class_code}/{component_id}/reject";
+pub const WEBUI_V2_PATTERN_SEND_COMPONENT_TO_REVISION: &str =
+    "/api/webchat/v2/components/{class_code}/{component_id}/send-to-revision";
+pub const WEBUI_V2_PATTERN_RE_REVIEW_COMPONENT: &str =
+    "/api/webchat/v2/components/{class_code}/{component_id}/re-review";
+pub const WEBUI_V2_PATTERN_DELETE_COMPONENT: &str =
+    "/api/webchat/v2/components/{class_code}/{component_id}";
+pub const WEBUI_V2_PATTERN_GET_COMPONENT_AUDIT_STATUS: &str =
+    "/api/webchat/v2/components/{class_code}/{component_id}/audit-status";
+
 /// Return the canonical [`IngressRouteDescriptor`] set for the WebChat v2
 /// beta route surface.
 ///
@@ -185,6 +208,13 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         reject_tool_skill_descriptor(),
         request_tool_skill_review_descriptor(),
         record_recipe_outcome_descriptor(),
+        // Phase 3 (Step 3.5) — generalized component validation routes.
+        validate_component_descriptor(),
+        reject_component_descriptor(),
+        send_component_to_revision_descriptor(),
+        re_review_component_descriptor(),
+        delete_component_descriptor(),
+        get_component_audit_status_descriptor(),
     ]
 }
 
@@ -834,6 +864,90 @@ fn record_recipe_outcome_descriptor() -> IngressRouteDescriptor {
             mutation_rate_limit(),
             AuditTraceClass::UserAction,
             AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn validate_component_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_VALIDATE_COMPONENT,
+        NetworkMethod::Put,
+        WEBUI_V2_PATTERN_VALIDATE_COMPONENT,
+        mutation_policy(
+            body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn reject_component_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_REJECT_COMPONENT,
+        NetworkMethod::Put,
+        WEBUI_V2_PATTERN_REJECT_COMPONENT,
+        mutation_policy(
+            body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn send_component_to_revision_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_SEND_COMPONENT_TO_REVISION,
+        NetworkMethod::Put,
+        WEBUI_V2_PATTERN_SEND_COMPONENT_TO_REVISION,
+        mutation_policy(
+            body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn re_review_component_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_RE_REVIEW_COMPONENT,
+        NetworkMethod::Put,
+        WEBUI_V2_PATTERN_RE_REVIEW_COMPONENT,
+        mutation_policy(
+            body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn delete_component_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_DELETE_COMPONENT,
+        NetworkMethod::Delete,
+        WEBUI_V2_PATTERN_DELETE_COMPONENT,
+        mutation_policy(
+            BodyLimitPolicy::NoBody,
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn get_component_audit_status_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_COMPONENT_AUDIT_STATUS,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_GET_COMPONENT_AUDIT_STATUS,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
         ),
     )
 }

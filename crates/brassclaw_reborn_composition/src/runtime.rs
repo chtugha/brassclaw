@@ -412,7 +412,7 @@ impl LocalDevApprovalTurnRunLocator {
     async fn snapshot(
         &self,
     ) -> Result<TurnPersistenceSnapshot, brassclaw_product_workflow::ProductWorkflowError> {
-        { Ok(self.turn_state.persistence_snapshot()) }
+        Ok(self.turn_state.persistence_snapshot())
     }
 }
 

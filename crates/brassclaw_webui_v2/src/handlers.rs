@@ -33,13 +33,13 @@ use brassclaw_product_workflow::{
     RebornStreamEventsRequest, RebornSubmitTurnResponse, RebornTimelineRequest,
     RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
     RebornUpdateCapabilityPermissionResponse, RecipeDetail, RecipeListResponse,
-    RecordOutcomeRequest, RecordOutcomeResponse, SetActiveLlmRequest, ToolSkillDetail,
-    ToolSkillListResponse, UpdateValidationStatusRequest, UpdateValidationStatusResponse,
-    UpsertLlmProviderRequest, ValidationQueueCountResponse, ValidationQueueListResponse,
-    WebUiAuthenticatedCaller, WebUiCancelRunRequest, WebUiCreateThreadRequest,
-    WebUiInboundValidationCode, WebUiInboundValidationError, WebUiListAutomationsRequest,
-    WebUiListThreadsRequest, WebUiResolveGateRequest, WebUiSendMessageRequest,
-    WebUiSetupExtensionRequest,
+    ComponentAuditStatus, RecordOutcomeRequest, RecordOutcomeResponse, SetActiveLlmRequest,
+    ToolSkillDetail, ToolSkillListResponse, UpdateValidationStatusRequest,
+    UpdateValidationStatusResponse, UpsertLlmProviderRequest, ValidationQueueCountResponse,
+    ValidationQueueFilter, ValidationQueueListResponse, WebUiAuthenticatedCaller,
+    WebUiCancelRunRequest, WebUiCreateThreadRequest, WebUiInboundValidationCode,
+    WebUiInboundValidationError, WebUiListAutomationsRequest, WebUiListThreadsRequest,
+    WebUiResolveGateRequest, WebUiSendMessageRequest, WebUiSetupExtensionRequest,
 };
 use futures::SinkExt;
 use futures::stream::Stream;
@@ -1038,19 +1038,20 @@ pub async fn get_tool_skill(
     Ok(Json(response))
 }
 
-/// `GET /api/webchat/v2/validation-queue`
+/// `GET /api/webchat/v2/validation-queue?project_id=…&q=auto|manual|revision|rejection`
 ///
-/// List post-extraction rows that need an operator review pass.
-/// Filtered server-side to `pending` / `auto_passed` / `upgrade_queued`
-/// / `review_requested`; the WebUI renders the same shape across tabs.
+/// List validation-queue rows for the requested queue bucket.
+/// Defaults to `manual` (Q2) when `?q=` is absent so existing callers
+/// continue seeing the Q2 review tab items.
 pub async fn list_validation_queue(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
-    Query(query): Query<RecipeListQuery>,
+    Query(query): Query<ValidationQueueQuery>,
 ) -> Result<Json<ValidationQueueListResponse>, WebUiV2HttpError> {
+    let filter = query.q.unwrap_or_default();
     let response = state
         .services()
-        .list_validation_queue(caller, &query.project_id)
+        .list_validation_queue(caller, &query.project_id, filter)
         .await?;
     Ok(Json(response))
 }
@@ -1204,6 +1205,14 @@ pub struct RecipeListQuery {
     pub project_id: String,
 }
 
+/// Query parameters for `GET /api/webchat/v2/validation-queue`.
+/// `q` selects the queue bucket; omitting it defaults to `manual` (Q2).
+#[derive(Debug, Deserialize)]
+pub struct ValidationQueueQuery {
+    pub project_id: String,
+    pub q: Option<ValidationQueueFilter>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ValidationCountQuery {
     pub project_id: String,
@@ -1213,6 +1222,199 @@ pub struct ValidationCountQuery {
 #[derive(Debug, Deserialize)]
 pub struct RecordOutcomeRequestBody {
     pub success: bool,
+}
+
+/// Path + query params shared by generalized component routes.
+#[derive(Debug, Deserialize)]
+pub struct ComponentPath {
+    pub class_code: u16,
+    pub component_id: String,
+}
+
+/// `PUT /api/webchat/v2/components/{class_code}/{component_id}/validate`
+///
+/// Generalized validate — moves any component class from `auto_passed` to
+/// `validated`. Pops `05:validator` consumer tag on success. For class
+/// codes 10 (Orchestrator) and 50 (Scaffold) the handler checks the
+/// LLM audit-clean flag first and returns `403` if the audit hasn't run
+/// or flagged issues.
+pub async fn validate_component(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(ComponentPath {
+        class_code,
+        component_id,
+    }): Path<ComponentPath>,
+    Query(query): Query<RecipeListQuery>,
+    Json(body): Json<UpdateValidationStatusRequest>,
+) -> Result<Json<UpdateValidationStatusResponse>, WebUiV2HttpError> {
+    // For LLM-auditable classes check audit status before allowing validation.
+    if matches!(class_code, 10 | 50) {
+        let audit = state
+            .services()
+            .get_component_audit_status(
+                caller.clone(),
+                &query.project_id,
+                class_code,
+                &component_id,
+            )
+            .await?;
+        if audit.status == "flagged" || audit.status == "pending" {
+            // 403: LLM audit must pass before manual validation is allowed.
+            return Err(WebUiV2HttpError::from(
+                brassclaw_product_workflow::RebornServicesError::from_status(
+                    brassclaw_product_workflow::RebornServicesErrorCode::Forbidden,
+                    403,
+                    false,
+                ),
+            ));
+        }
+    }
+    let response = state
+        .services()
+        .update_component_validation_status(
+            caller,
+            &query.project_id,
+            class_code,
+            &component_id,
+            "validated",
+            body.feedback,
+        )
+        .await?;
+    Ok(Json(response))
+}
+
+/// `PUT /api/webchat/v2/components/{class_code}/{component_id}/reject`
+///
+/// Generalized reject — moves a component to `rejected` (Q3 if
+/// `review_attempts < 3`, else Q4).
+pub async fn reject_component(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(ComponentPath {
+        class_code,
+        component_id,
+    }): Path<ComponentPath>,
+    Query(query): Query<RecipeListQuery>,
+    Json(body): Json<UpdateValidationStatusRequest>,
+) -> Result<Json<UpdateValidationStatusResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .update_component_validation_status(
+            caller,
+            &query.project_id,
+            class_code,
+            &component_id,
+            "rejected",
+            body.feedback,
+        )
+        .await?;
+    Ok(Json(response))
+}
+
+/// `PUT /api/webchat/v2/components/{class_code}/{component_id}/send-to-revision`
+///
+/// Send a component from Q2 to Q3 (revision queue). `feedback` body is
+/// required — becomes the revision mission's context prompt.
+pub async fn send_component_to_revision(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(ComponentPath {
+        class_code,
+        component_id,
+    }): Path<ComponentPath>,
+    Query(query): Query<RecipeListQuery>,
+    Json(body): Json<UpdateValidationStatusRequest>,
+) -> Result<Json<UpdateValidationStatusResponse>, WebUiV2HttpError> {
+    if body.feedback.is_none() {
+        return Err(WebUiV2HttpError::from(
+            brassclaw_product_workflow::RebornServicesError::from_status(
+                brassclaw_product_workflow::RebornServicesErrorCode::InvalidRequest,
+                400,
+                false,
+            ),
+        ));
+    }
+    let response = state
+        .services()
+        .update_component_validation_status(
+            caller,
+            &query.project_id,
+            class_code,
+            &component_id,
+            "review_requested",
+            body.feedback,
+        )
+        .await?;
+    Ok(Json(response))
+}
+
+/// `PUT /api/webchat/v2/components/{class_code}/{component_id}/re-review`
+///
+/// Move a Q4 component back to Q3 (operator re-review override).
+/// Re-submits as `pending` so the auto-validator re-runs first.
+pub async fn re_review_component(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(ComponentPath {
+        class_code,
+        component_id,
+    }): Path<ComponentPath>,
+    Query(query): Query<RecipeListQuery>,
+    Json(body): Json<UpdateValidationStatusRequest>,
+) -> Result<Json<UpdateValidationStatusResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .update_component_validation_status(
+            caller,
+            &query.project_id,
+            class_code,
+            &component_id,
+            "pending",
+            body.feedback,
+        )
+        .await?;
+    Ok(Json(response))
+}
+
+/// `DELETE /api/webchat/v2/components/{class_code}/{component_id}`
+///
+/// Q4 wipe — zeroes creation-process provenance fields and marks the
+/// component as `garbage`. Thread messages/steps/events are never wiped.
+pub async fn delete_component(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(ComponentPath {
+        class_code,
+        component_id,
+    }): Path<ComponentPath>,
+    Query(query): Query<RecipeListQuery>,
+) -> Result<axum::http::StatusCode, WebUiV2HttpError> {
+    state
+        .services()
+        .delete_component(caller, &query.project_id, class_code, &component_id)
+        .await?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+/// `GET /api/webchat/v2/components/{class_code}/{component_id}/audit-status`
+///
+/// Returns the LLM code-audit status for Orchestrator (10) / Scaffold (50)
+/// components. All other classes return `"not_applicable"`.
+pub async fn get_component_audit_status(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(ComponentPath {
+        class_code,
+        component_id,
+    }): Path<ComponentPath>,
+    Query(query): Query<RecipeListQuery>,
+) -> Result<Json<ComponentAuditStatus>, WebUiV2HttpError> {
+    let result = state
+        .services()
+        .get_component_audit_status(caller, &query.project_id, class_code, &component_id)
+        .await?;
+    Ok(Json(result))
 }
 
 pub mod reduction_rules;

@@ -21,9 +21,7 @@ use crate::traits::store::Store;
 use crate::types::error::EngineError;
 use crate::types::memory::{DocType, MemoryDoc};
 use crate::types::project::ProjectId;
-use crate::types::recipe::{
-    Recipe, RecipeSource, RecipeTrigger, RecipeValidation, ToolSkill, ValidationStatus,
-};
+use crate::types::recipe::{Recipe, RecipeTrigger, RecipeValidation, ToolSkill, ValidationStatus};
 
 /// Minimum match score before a Recipe is surfaced for any tier.
 pub const RECIPE_MIN_MATCH: f64 = 0.5;
@@ -288,8 +286,7 @@ fn regex_limited(pattern: &str) -> Result<regex::Regex, regex::Error> {
     regex::RegexBuilder::new(pattern).size_limit(10_000).build()
 }
 
-fn validation_kind(v: &crate::types::recipe::RecipeValidation) -> String {
-    use crate::types::recipe::RecipeValidation;
+fn validation_kind(v: &RecipeValidation) -> String {
     match v {
         RecipeValidation::None => "none".to_string(),
         RecipeValidation::ShellCheck { .. } => "shell_check".to_string(),
@@ -313,6 +310,7 @@ fn parse_tool_skill(doc: &MemoryDoc) -> Result<ToolSkill, EngineError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::recipe::RecipeSource;
 
     // ── helpers ──────────────────────────────────────────────────────────────
 

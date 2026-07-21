@@ -136,11 +136,11 @@ pub use reborn_services::{
     RebornInstallSkillRequest, SkillsProductFacade, UnsupportedSkillsProductFacade,
 };
 pub use recipes::{
-    OutcomeKind, RecipeDetail, RecipeKind, RecipeListRequest, RecipeListResponse, RecipeStore,
-    RecipeStoreError, RecipeSummary, RecordOutcomeRequest, RecordOutcomeResponse, ToolSkillDetail,
-    ToolSkillListResponse, ToolSkillSummary, UpdateValidationStatusRequest,
-    UpdateValidationStatusResponse, ValidationQueueCountResponse, ValidationQueueItem,
-    ValidationQueueListResponse, ValidationStatusValue,
+    ComponentAuditStatus, OutcomeKind, RecipeDetail, RecipeKind, RecipeListRequest,
+    RecipeListResponse, RecipeStore, RecipeStoreError, RecipeSummary, RecordOutcomeRequest,
+    RecordOutcomeResponse, ToolSkillDetail, ToolSkillListResponse, ToolSkillSummary,
+    UpdateValidationStatusRequest, UpdateValidationStatusResponse, ValidationQueueCountResponse,
+    ValidationQueueFilter, ValidationQueueItem, ValidationQueueListResponse, ValidationStatusValue,
 };
 pub use reduction_rules::{
     AuthorReductionRuleRequest, AuthorReductionRuleResponse, REDUCTION_RULES_MAX_PER_USER,

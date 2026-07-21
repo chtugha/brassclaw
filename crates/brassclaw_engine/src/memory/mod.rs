@@ -5,9 +5,11 @@
 //! - [`SkillTracker`] — confidence tracking for auto-extracted skills
 //! - [`RecipeMatcher`] — Recipe / ToolSkill match for tiered execution
 //! - [`RecipeValidator`] — Step-1 structural validation
+//! - [`ComponentValidator`] — Phase 3 generalized class-dispatch validator
 //! - [`SimilarityChecker`] — pre-validation deduplication gate
 //! - [`intent_system`] — unified intent resolution (§3.12, V028)
 
+pub mod component_validator;
 pub mod intent_system;
 pub mod metric_outcome;
 pub mod recipe_matcher;
@@ -17,6 +19,7 @@ pub mod similarity_checker;
 pub mod skill_tracker;
 pub mod store;
 
+pub use component_validator::{ComponentPayload, ComponentValidator, GenericComponent, ValidationConfig};
 pub use metric_outcome::MetricRecorder;
 pub use recipe_matcher::{RecipeMatch, RecipeMatcher, RecipeStepMatch, ToolSkillMatch};
 pub use recipe_validator::{RecipeValidator, ValidationResult};

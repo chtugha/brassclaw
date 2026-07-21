@@ -34,9 +34,9 @@ const MAX_REGEX_MATCH_MESSAGE_BYTES: usize = 64 * 1024;
 
 /// Result of prefiltering with score information.
 #[derive(Debug)]
-pub struct ScoredSkill<'a> {
-    pub skill: &'a LoadedSkill,
-    pub score: u32,
+pub(crate) struct ScoredSkill<'a> {
+    pub(crate) skill: &'a LoadedSkill,
+    pub(crate) score: u32,
 }
 
 /// Outcome of a single selection pass with human-readable notes about
@@ -457,7 +457,7 @@ fn is_skill_mention_boundary(previous: char) -> bool {
 /// confidence (1.0) are unchanged; skills with no usage data default to
 /// confidence 1.0 upstream so they also pass through unmodified. Source
 /// (`authored` / `extracted`) is pure provenance and has no effect here.
-pub fn apply_confidence_factor(base_score: u32, confidence: f64) -> u32 {
+pub(crate) fn apply_confidence_factor(base_score: u32, confidence: f64) -> u32 {
     let factor = 0.5 + 0.5 * confidence.clamp(0.0, 1.0);
     (base_score as f64 * factor) as u32
 }

@@ -966,11 +966,12 @@ pub trait RebornServicesApi: Send + Sync {
         ))
     }
 
-    /// List validation-queue rows (post-extraction review).
+    /// List validation-queue rows (post-extraction review), filtered by queue bucket.
     async fn list_validation_queue(
         &self,
         _caller: WebUiAuthenticatedCaller,
         _project_id: &str,
+        _filter: crate::recipes::ValidationQueueFilter,
     ) -> Result<crate::recipes::ValidationQueueListResponse, RebornServicesError> {
         Err(RebornServicesError::from_status(
             RebornServicesErrorCode::InvalidRequest,
@@ -1076,6 +1077,53 @@ pub trait RebornServicesApi: Send + Sync {
         _skill_id: &str,
         _request: crate::recipes::UpdateValidationStatusRequest,
     ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Generalized component validation status update for any class code.
+    async fn update_component_validation_status(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _class_code: u16,
+        _component_id: &str,
+        _new_status: &str,
+        _feedback: Option<String>,
+    ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Q4 component wipe — zeroes provenance, marks Garbage.
+    async fn delete_component(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _class_code: u16,
+        _component_id: &str,
+    ) -> Result<(), RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Get LLM code-audit status for a component.
+    async fn get_component_audit_status(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _class_code: u16,
+        _component_id: &str,
+    ) -> Result<crate::recipes::ComponentAuditStatus, RebornServicesError> {
         Err(RebornServicesError::from_status(
             RebornServicesErrorCode::InvalidRequest,
             501,
@@ -2986,6 +3034,7 @@ impl RebornServicesApi for RebornServices {
         &self,
         caller: WebUiAuthenticatedCaller,
         project_id: &str,
+        filter: crate::recipes::ValidationQueueFilter,
     ) -> Result<crate::recipes::ValidationQueueListResponse, RebornServicesError> {
         let store = self
             .recipe_store
@@ -2993,7 +3042,7 @@ impl RebornServicesApi for RebornServices {
             .ok_or_else(recipe_store_unavailable)?;
         let user_id = caller.user_id.to_string();
         let items = store
-            .list_validation_queue(&user_id, project_id)
+            .list_validation_queue(&user_id, project_id, filter)
             .await
             .map_err(map_recipe_store_error)?;
         Ok(crate::recipes::ValidationQueueListResponse { items })
@@ -3185,6 +3234,69 @@ impl RebornServicesApi for RebornServices {
         let user_id = caller.user_id.to_string();
         store
             .record_outcome(&user_id, project_id, request)
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
+    async fn update_component_validation_status(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+        class_code: u16,
+        component_id: &str,
+        new_status: &str,
+        feedback: Option<String>,
+    ) -> Result<crate::recipes::UpdateValidationStatusResponse, RebornServicesError> {
+        let store = self
+            .recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?;
+        let user_id = caller.user_id.to_string();
+        store
+            .update_component_validation_status(
+                &user_id,
+                project_id,
+                class_code,
+                component_id,
+                new_status,
+                feedback.as_deref(),
+            )
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
+    async fn delete_component(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+        class_code: u16,
+        component_id: &str,
+    ) -> Result<(), RebornServicesError> {
+        let store = self
+            .recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?;
+        let user_id = caller.user_id.to_string();
+        store
+            .delete_component(&user_id, project_id, class_code, component_id)
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
+    async fn get_component_audit_status(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: &str,
+        class_code: u16,
+        component_id: &str,
+    ) -> Result<crate::recipes::ComponentAuditStatus, RebornServicesError> {
+        let store = self
+            .recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?;
+        let user_id = caller.user_id.to_string();
+        store
+            .get_component_audit_status(&user_id, project_id, class_code, component_id)
             .await
             .map_err(map_recipe_store_error)
     }

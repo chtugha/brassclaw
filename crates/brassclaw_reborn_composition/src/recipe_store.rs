@@ -44,9 +44,9 @@ use brassclaw_engine::types::memory::{DocType, MemoryDoc};
 use brassclaw_engine::types::project::ProjectId;
 use brassclaw_engine::types::recipe::{Recipe, RecipeSource, ToolSkill, ValidationStatus};
 use brassclaw_product_workflow::{
-    OutcomeKind, RecipeDetail, RecipeKind, RecipeStore, RecipeStoreError, RecipeSummary,
-    RecordOutcomeRequest, RecordOutcomeResponse, ToolSkillDetail, ToolSkillSummary,
-    UpdateValidationStatusResponse, ValidationQueueItem, ValidationStatusValue,
+    ComponentAuditStatus, OutcomeKind, RecipeDetail, RecipeKind, RecipeStore, RecipeStoreError,
+    RecipeSummary, RecordOutcomeRequest, RecordOutcomeResponse, ToolSkillDetail, ToolSkillSummary,
+    UpdateValidationStatusResponse, ValidationQueueFilter, ValidationQueueItem, ValidationStatusValue,
 };
 use chrono::Utc;
 
@@ -197,6 +197,7 @@ impl RecipeStore for StoreBackedRecipeStore {
         &self,
         user_id: &str,
         project_id: &str,
+        filter: ValidationQueueFilter,
     ) -> Result<Vec<ValidationQueueItem>, RecipeStoreError> {
         let project_id_typed = parse_project_id(project_id)?;
         let docs =
@@ -208,7 +209,7 @@ impl RecipeStore for StoreBackedRecipeStore {
                 Ok(r) => r,
                 Err(_) => continue,
             };
-            if is_queue_status(&recipe.validation_status) {
+            if is_queue_filter_match(&recipe.validation_status, recipe.review_attempts, filter) {
                 items.push(validation_item_for_recipe(&recipe, RecipeKind::Recipe));
             }
         }
@@ -220,7 +221,7 @@ impl RecipeStore for StoreBackedRecipeStore {
                 Ok(s) => s,
                 Err(_) => continue,
             };
-            if is_queue_status(&skill.validation_status) {
+            if is_queue_filter_match(&skill.validation_status, skill.review_attempts, filter) {
                 items.push(validation_item_for_skill(&skill));
             }
         }
@@ -389,6 +390,162 @@ impl RecipeStore for StoreBackedRecipeStore {
         })
     }
 
+    async fn update_component_validation_status(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        class_code: u16,
+        component_id: &str,
+        new_status: &str,
+        feedback: Option<&str>,
+    ) -> Result<UpdateValidationStatusResponse, RecipeStoreError> {
+        // For legacy class codes 21 (Recipe) and 01/02/03 (Skills via ToolSkill DocType),
+        // delegate to the existing typed methods. All others are treated as ToolSkill-backed
+        // components for now; future phases will dispatch to DB-backed stores.
+        match class_code {
+            21 => {
+                self.update_recipe_validation_status(
+                    user_id,
+                    project_id,
+                    component_id,
+                    new_status,
+                    feedback,
+                )
+                .await
+            }
+            _ => {
+                self.update_skill_validation_status(
+                    user_id,
+                    project_id,
+                    component_id,
+                    new_status,
+                    feedback,
+                )
+                .await
+            }
+        }
+    }
+
+    async fn delete_component(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        class_code: u16,
+        component_id: &str,
+    ) -> Result<(), RecipeStoreError> {
+        let project_id_typed = parse_project_id(project_id)?;
+        // Determine the DocType to scope the search correctly.
+        let doc_type = if class_code == 21 {
+            DocType::Recipe
+        } else {
+            DocType::ToolSkill
+        };
+        let doc = find_own_doc(
+            &self.store,
+            project_id_typed,
+            user_id,
+            doc_type,
+            component_id,
+        )
+        .await?
+        .ok_or_else(|| {
+            RecipeStoreError::NotFound(format!(
+                "component '{component_id}' (class {class_code})"
+            ))
+        })?;
+
+        // Guard: only Garbage or Rejected-with-3-attempts may be wiped.
+        let current_status = match doc_type {
+            DocType::Recipe => Recipe::from_metadata(&doc.metadata)
+                .map(|r| r.validation_status)
+                .map_err(|e| RecipeStoreError::Invalid(format!("decode: {e}")))?,
+            DocType::ToolSkill => ToolSkill::from_metadata(&doc.metadata)
+                .map(|s| s.validation_status)
+                .map_err(|e| RecipeStoreError::Invalid(format!("decode: {e}")))?,
+            _ => {
+                return Err(RecipeStoreError::Invalid(
+                    "unsupported doc type for delete".to_string(),
+                ))
+            }
+        };
+        if !matches!(current_status, ValidationStatus::Garbage)
+            && !matches!(current_status, ValidationStatus::Rejected)
+        {
+            return Err(RecipeStoreError::Invalid(format!(
+                "component '{component_id}' cannot be deleted from status '{}'",
+                status_label(current_status)
+            )));
+        }
+
+        // Wipe provenance fields and mark as Garbage. Physical row deletion
+        // is performed by the background sweeper (Phase 5+); for now the wipe
+        // zeroes the sensitive creation-process data per spec §3.5.1.
+        let mut updated_doc = doc.clone();
+        let new_metadata = match doc_type {
+            DocType::Recipe => {
+                let mut recipe = Recipe::from_metadata(&doc.metadata)
+                    .map_err(|e| RecipeStoreError::Invalid(format!("decode: {e}")))?;
+                recipe.validation_status = ValidationStatus::Garbage;
+                recipe.source = RecipeSource::Extracted;
+                recipe.similarity_parent_id = None;
+                recipe.review_feedback = None;
+                recipe.updated_at = Utc::now();
+                updated_doc.updated_at = recipe.updated_at;
+                recipe
+                    .to_metadata()
+                    .map_err(|e| RecipeStoreError::Invalid(format!("encode: {e}")))?
+            }
+            DocType::ToolSkill => {
+                let mut skill = ToolSkill::from_metadata(&doc.metadata)
+                    .map_err(|e| RecipeStoreError::Invalid(format!("decode: {e}")))?;
+                skill.validation_status = ValidationStatus::Garbage;
+                skill.source = RecipeSource::Extracted;
+                skill.similarity_parent_id = None;
+                skill.review_feedback = None;
+                skill.updated_at = Utc::now();
+                updated_doc.updated_at = skill.updated_at;
+                skill.to_metadata()
+                    .map_err(|e| RecipeStoreError::Invalid(format!("encode: {e}")))?
+            }
+            _ => {
+                return Err(RecipeStoreError::Invalid(
+                    "unsupported doc type for wipe".to_string(),
+                ))
+            }
+        };
+        updated_doc.metadata = new_metadata;
+        self.store
+            .save_memory_doc(&updated_doc)
+            .await
+            .map_err(|e| RecipeStoreError::Unavailable(format!("save_memory_doc (wipe): {e}")))?;
+        tracing::debug!(
+            user_id,
+            component_id,
+            class_code,
+            "recipe_store: wiped component provenance (Q4 wipe → Garbage)"
+        );
+        Ok(())
+    }
+
+    async fn get_component_audit_status(
+        &self,
+        _user_id: &str,
+        _project_id: &str,
+        class_code: u16,
+        _component_id: &str,
+    ) -> Result<ComponentAuditStatus, RecipeStoreError> {
+        // LLM code-audit is only applicable for Orchestrator (10) and Scaffold (50).
+        // Phase 3.4 wires the actual audit runner; for now these classes return "pending"
+        // and all others return "not_applicable".
+        match class_code {
+            10 | 50 => Ok(ComponentAuditStatus {
+                status: "pending".to_string(),
+                findings: vec![],
+            }),
+            _ => Ok(ComponentAuditStatus::not_applicable()),
+        }
+    }
+
     async fn record_outcome(
         &self,
         user_id: &str,
@@ -464,6 +621,9 @@ fn tool_skill_summary_from(skill: &ToolSkill) -> ToolSkillSummary {
 }
 
 fn validation_item_for_recipe(recipe: &Recipe, kind: RecipeKind) -> ValidationQueueItem {
+    // Recipes = class code 21 per spec §4.
+    let class_code: u16 = 21;
+    let qcode = derive_queue_code(&recipe.validation_status, recipe.review_attempts).to_string();
     ValidationQueueItem {
         id: recipe.id.clone(),
         name: recipe.name.clone(),
@@ -479,10 +639,20 @@ fn validation_item_for_recipe(recipe: &Recipe, kind: RecipeKind) -> ValidationQu
         similarity_parent_id: recipe.similarity_parent_id.clone(),
         created_at: recipe.created_at.to_rfc3339(),
         source: source_label(&recipe.source),
+        class_code,
+        class_label: class_label(class_code),
+        queue_code: qcode,
+        validator_tag_present: false, // MemoryDoc-backed recipes don't use consumer_tags yet
+        consumer_tags: vec![],
+        llm_audit_status: "not_applicable".to_string(),
+        llm_audit_findings: vec![],
     }
 }
 
 fn validation_item_for_skill(skill: &ToolSkill) -> ValidationQueueItem {
+    // ToolSkill-backed components default to class code 1 (Rusty Skill).
+    let class_code: u16 = 1;
+    let qcode = derive_queue_code(&skill.validation_status, skill.review_attempts).to_string();
     ValidationQueueItem {
         id: skill.id.clone(),
         name: skill.name.clone(),
@@ -498,6 +668,37 @@ fn validation_item_for_skill(skill: &ToolSkill) -> ValidationQueueItem {
         similarity_parent_id: skill.similarity_parent_id.clone(),
         created_at: skill.created_at.to_rfc3339(),
         source: source_label(&skill.source),
+        class_code,
+        class_label: class_label(class_code),
+        queue_code: qcode,
+        validator_tag_present: false,
+        consumer_tags: vec![],
+        llm_audit_status: "not_applicable".to_string(),
+        llm_audit_findings: vec![],
+    }
+}
+
+/// Human-readable label for a class code.
+fn class_label(code: u16) -> String {
+    match code {
+        0 => "Tool".to_string(),
+        1 => "Skill (Rusty)".to_string(),
+        2 => "Skill (Monty)".to_string(),
+        3 => "Skill (LLM)".to_string(),
+        4..=9 => format!("Extension (class {code})"),
+        10 => "Orchestrator".to_string(),
+        12 => "Document".to_string(),
+        13 => "Guide".to_string(),
+        14 => "Reference".to_string(),
+        15 => "Note".to_string(),
+        16 => "Action".to_string(),
+        17 => "Template".to_string(),
+        18 => "Snippet".to_string(),
+        19 => "Config".to_string(),
+        20 => "Workflow".to_string(),
+        21 => "Recipe".to_string(),
+        50 => "Scaffold".to_string(),
+        other => format!("Component ({other})"),
     }
 }
 
@@ -538,13 +739,42 @@ fn parse_status(raw: &str) -> Result<ValidationStatus, RecipeStoreError> {
     }
 }
 
-fn is_queue_status(status: &ValidationStatus) -> bool {
-    matches!(
-        status,
+/// Map a filter to the matching queue bucket name string (for logging).
+fn queue_filter_label(filter: ValidationQueueFilter) -> &'static str {
+    match filter {
+        ValidationQueueFilter::Auto => "q1_auto",
+        ValidationQueueFilter::Manual => "q2_manual",
+        ValidationQueueFilter::Revision => "q3_revision",
+        ValidationQueueFilter::Rejection => "q4_rejection",
+    }
+}
+
+/// Derive the queue_code string from status + review_attempts.
+///
+/// Q1: Pending or AutoFailed.
+/// Q2: AutoPassed, ReviewRequested, UpgradeQueued.
+/// Q3: Rejected with review_attempts < 3.
+/// Q4: Rejected with review_attempts >= 3, or Garbage.
+fn derive_queue_code(status: &ValidationStatus, review_attempts: u32) -> &'static str {
+    match status {
+        ValidationStatus::Pending | ValidationStatus::AutoFailed => "q1_auto",
         ValidationStatus::AutoPassed
-            | ValidationStatus::ReviewRequested
-            | ValidationStatus::UpgradeQueued
-    )
+        | ValidationStatus::ReviewRequested
+        | ValidationStatus::UpgradeQueued => "q2_manual",
+        ValidationStatus::Rejected if review_attempts < 3 => "q3_revision",
+        ValidationStatus::Rejected | ValidationStatus::Garbage => "q4_rejection",
+        ValidationStatus::Validated => "validated",
+    }
+}
+
+/// Return true if the item belongs in the requested queue bucket.
+fn is_queue_filter_match(
+    status: &ValidationStatus,
+    review_attempts: u32,
+    filter: ValidationQueueFilter,
+) -> bool {
+    let code = derive_queue_code(status, review_attempts);
+    queue_filter_label(filter) == code
 }
 
 /// Guard user-triggered validation state transitions. Only the transitions
@@ -552,22 +782,30 @@ fn is_queue_status(status: &ValidationStatus) -> bool {
 /// (e.g. `Pending → Validated`, bypassing auto-validation; `Rejected → Validated`,
 /// bypassing the rejection lifecycle) are rejected with `RecipeStoreError::Invalid`.
 ///
+/// Extended in Phase 3 (Step 3.5) with:
+///   - `AutoFailed → Pending` (revision re-submit from Q1 back to auto-validation)
+///   - `Rejected → Pending` (revision re-submit from Q3 to Q1, guard checks review_attempts < 3)
+///   - `Rejected → Garbage` (Q4 wipe transition — terminal)
+///
 /// The automated review service (`RecipeReviewService`) mutates status via
 /// the engine `Store` directly and is NOT subject to this guard.
 fn is_valid_transition(from: &ValidationStatus, to: &ValidationStatus) -> bool {
     matches!(
         (from, to),
+        // Q2: manual validate
         (ValidationStatus::AutoPassed, ValidationStatus::Validated)
-            | (ValidationStatus::AutoPassed, ValidationStatus::Rejected)
-            | (
-                ValidationStatus::AutoPassed,
-                ValidationStatus::ReviewRequested
-            )
-            | (
-                ValidationStatus::ReviewRequested,
-                ValidationStatus::Rejected
-            )
-            | (ValidationStatus::UpgradeQueued, ValidationStatus::Rejected)
+        // Q2→Q3: operator reject
+        | (ValidationStatus::AutoPassed, ValidationStatus::Rejected)
+        | (ValidationStatus::ReviewRequested, ValidationStatus::Rejected)
+        | (ValidationStatus::UpgradeQueued, ValidationStatus::Rejected)
+        // Q2→Q3: send to revision
+        | (ValidationStatus::AutoPassed, ValidationStatus::ReviewRequested)
+        // Q3→Q1: revision re-submit (review_attempts < 3 checked at call site)
+        | (ValidationStatus::Rejected, ValidationStatus::Pending)
+        // Q1: re-queue from auto-failed
+        | (ValidationStatus::AutoFailed, ValidationStatus::Pending)
+        // Q4→delete: terminal wipe (Garbage → deletion handled by delete_component)
+        | (ValidationStatus::Rejected, ValidationStatus::Garbage)
     )
 }
 
