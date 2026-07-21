@@ -30,6 +30,8 @@ mod budget;
 mod budget_events;
 mod bundled_skills;
 pub mod db_config;
+#[cfg(feature = "postgres")]
+pub(crate) mod docplan_dissector;
 #[cfg(feature = "skills-db")]
 pub mod skill_import;
 mod default_system_prompt;
@@ -101,6 +103,8 @@ mod provider_admin_product_command;
 mod provider_repo;
 mod readiness;
 mod recipe_library;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_recipe_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod recipe_store;
 #[cfg(feature = "postgres")]

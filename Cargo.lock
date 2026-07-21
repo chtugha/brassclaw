@@ -1699,6 +1699,7 @@ dependencies = [
  "tokio-postgres",
  "toml",
  "url",
+ "uuid",
 ]
 
 [[package]]
