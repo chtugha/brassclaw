@@ -6,7 +6,9 @@
 //! - [`RecipeMatcher`] — Recipe / ToolSkill match for tiered execution
 //! - [`RecipeValidator`] — Step-1 structural validation
 //! - [`SimilarityChecker`] — pre-validation deduplication gate
+//! - [`intent_system`] — unified intent resolution (§3.12, V028)
 
+pub mod intent_system;
 pub mod metric_outcome;
 pub mod recipe_matcher;
 pub mod recipe_validator;
