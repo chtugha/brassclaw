@@ -452,14 +452,12 @@ fn is_skill_mention_boundary(previous: char) -> bool {
 
 /// Apply confidence factor to a base score.
 ///
-/// Authored skills always get factor 1.0 (no adjustment).
-/// Extracted skills get `0.5 + 0.5 * confidence`, so a skill with 0% confidence
-/// gets its score halved (not zeroed — it can still be selected when strongly
-/// keyword-matched).
-pub fn apply_confidence_factor(base_score: u32, confidence: f64, is_authored: bool) -> u32 {
-    if is_authored {
-        return base_score;
-    }
+/// Applies a source-independent confidence factor of `0.5 + 0.5 * confidence`
+/// to `base_score`. This is the fallback routing signal: skills with full
+/// confidence (1.0) are unchanged; skills with no usage data default to
+/// confidence 1.0 upstream so they also pass through unmodified. Source
+/// (`authored` / `extracted`) is pure provenance and has no effect here.
+pub fn apply_confidence_factor(base_score: u32, confidence: f64) -> u32 {
     let factor = 0.5 + 0.5 * confidence.clamp(0.0, 1.0);
     (base_score as f64 * factor) as u32
 }
@@ -890,29 +888,36 @@ mod tests {
         );
     }
 
+    // Phase 3: apply_confidence_factor is source-independent — authored and
+    // extracted skills receive the same formula (0.5 + 0.5 * confidence).
     #[test]
-    fn test_apply_confidence_factor_authored() {
-        assert_eq!(apply_confidence_factor(100, 0.0, true), 100);
-        assert_eq!(apply_confidence_factor(100, 0.5, true), 100);
-        assert_eq!(apply_confidence_factor(100, 1.0, true), 100);
+    fn test_apply_confidence_factor_full_confidence() {
+        // confidence=1.0 → factor 1.0 → unchanged (default for no-usage-data skills)
+        assert_eq!(apply_confidence_factor(100, 1.0), 100);
+        assert_eq!(apply_confidence_factor(0, 1.0), 0);
     }
 
     #[test]
-    fn test_apply_confidence_factor_extracted() {
+    fn test_apply_confidence_factor_partial_confidence() {
         // 0% confidence → factor 0.5 → score halved
-        assert_eq!(apply_confidence_factor(100, 0.0, false), 50);
+        assert_eq!(apply_confidence_factor(100, 0.0), 50);
         // 50% confidence → factor 0.75 → score * 0.75
-        assert_eq!(apply_confidence_factor(100, 0.5, false), 75);
-        // 100% confidence → factor 1.0 → unchanged
-        assert_eq!(apply_confidence_factor(100, 1.0, false), 100);
+        assert_eq!(apply_confidence_factor(100, 0.5), 75);
+    }
+
+    #[test]
+    fn test_apply_confidence_factor_source_independent() {
+        // Same score regardless of whether the caller passes authored or extracted metrics
+        // (the is_authored parameter was removed in Phase 3).
+        assert_eq!(apply_confidence_factor(100, 0.8), apply_confidence_factor(100, 0.8));
     }
 
     #[test]
     fn test_apply_confidence_factor_clamps() {
         // Negative confidence clamped to 0
-        assert_eq!(apply_confidence_factor(100, -0.5, false), 50);
+        assert_eq!(apply_confidence_factor(100, -0.5), 50);
         // Over 1.0 clamped to 1.0
-        assert_eq!(apply_confidence_factor(100, 1.5, false), 100);
+        assert_eq!(apply_confidence_factor(100, 1.5), 100);
     }
 
     // ── extract_skill_mentions tests ──────────────────────────
