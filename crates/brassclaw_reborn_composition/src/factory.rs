@@ -1081,6 +1081,13 @@ async fn build_local_dev_root_filesystem(
     );
     let mut composite = CompositeRootFilesystem::new();
     mount_local_dev_memory_root(&mut composite, Arc::new(InMemoryBackend::new()))?;
+    // Mount an in-memory backend at /tenants so that per-tenant structured
+    // records (conversations state, auth accounts, secrets, approvals, etc.)
+    // have a backend when ScopedFilesystem resolves per-user aliases such as
+    // /conversations → /tenants/<t>/users/<u>/conversations.  Without this,
+    // local-dev builds that exercise auth flows or the trigger poller fail
+    // with "no backend mount found for virtual path /tenants/…".
+    mount_local_dev_tenant_root(&mut composite, Arc::new(InMemoryBackend::new()))?;
     mount_local_dev_project_roots(&mut composite, local)?;
     Ok(LocalDevRootFilesystemBundle {
         filesystem: Arc::new(composite),
@@ -1135,6 +1142,30 @@ where
     )?;
     Ok(())
 }
+
+fn mount_local_dev_tenant_root<F>(
+    root: &mut CompositeRootFilesystem,
+    backend: Arc<F>,
+) -> Result<(), RebornBuildError>
+where
+    F: RootFilesystem + 'static,
+{
+    root.mount(
+        local_dev_mount_descriptor(
+            "/tenants",
+            "local-dev-tenants",
+            BackendKind::Custom("in-memory".to_string()),
+            StorageClass::StructuredRecords,
+            ContentKind::StructuredRecord,
+            IndexPolicy::NotIndexed,
+            backend.capabilities(),
+        )?,
+        backend,
+    )?;
+    Ok(())
+}
+
+
 
 fn mount_local_dev_project_roots(
     root: &mut CompositeRootFilesystem,

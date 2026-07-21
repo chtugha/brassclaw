@@ -131,8 +131,10 @@ description = "{id} extension"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/{id}.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "echo"
+args = ["{id}"]
 
 [[host_api]]
 id = "brassclaw.capability_provider/v1"
