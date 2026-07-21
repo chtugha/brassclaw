@@ -29,7 +29,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use brassclaw_agent_loop::plan_scoring::{classify_tier, wilson_lower_bound};
+use brassclaw_agent_loop::plan_scoring::{SkillMaturityTier, classify_tier, wilson_lower_bound};
 use brassclaw_pg::PgPool;
 use brassclaw_turns::run_profile::{
     RecipeLookup, RecipeLookupError, RecipeMatchDto, RecipeStepDto, ToolSkillMatchDto,
@@ -165,8 +165,6 @@ pub struct RecipeValidationStatusUpdate<'a> {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-use brassclaw_agent_loop::plan_scoring::SkillMaturityTier;
 
 /// Map a [`SkillMaturityTier`] to the DB tier label used by `reborn_recipes`.
 fn tier_label(tier: SkillMaturityTier) -> &'static str {
@@ -453,42 +451,46 @@ impl PgRecipeStore {
         let tx = client.transaction().await.map_err(map_pg)?;
 
         // Step 1: atomically increment counters, read back new values.
-        let (new_success, new_failure): (i32, i32) = if success {
-            let row = tx
-                .query_one(
-                    "UPDATE reborn_recipes
-                     SET usage_count   = usage_count + 1,
-                         success_count = success_count + 1
-                     WHERE id = $1
-                       AND tenant_id = $2 AND user_id = $3
-                       AND agent_id  = $4 AND project_id = $5
-                     RETURNING success_count, failure_count",
-                    &[&id, &tenant_id, &user_id, &agent_id, &project_id],
-                )
-                .await
-                .map_err(map_pg)?;
-            (row.get(0), row.get(1))
+        // Uses query_opt so a missing recipe (wrong id or scope) returns
+        // NotFound rather than a confusing RowCount DB error.
+        let sql_increment = if success {
+            "UPDATE reborn_recipes
+             SET usage_count   = usage_count + 1,
+                 success_count = success_count + 1
+             WHERE id = $1
+               AND tenant_id = $2 AND user_id = $3
+               AND agent_id  = $4 AND project_id = $5
+             RETURNING success_count, failure_count"
         } else {
-            let row = tx
-                .query_one(
-                    "UPDATE reborn_recipes
-                     SET usage_count   = usage_count + 1,
-                         failure_count = failure_count + 1
-                     WHERE id = $1
-                       AND tenant_id = $2 AND user_id = $3
-                       AND agent_id  = $4 AND project_id = $5
-                     RETURNING success_count, failure_count",
-                    &[&id, &tenant_id, &user_id, &agent_id, &project_id],
-                )
-                .await
-                .map_err(map_pg)?;
-            (row.get(0), row.get(1))
+            "UPDATE reborn_recipes
+             SET usage_count   = usage_count + 1,
+                 failure_count = failure_count + 1
+             WHERE id = $1
+               AND tenant_id = $2 AND user_id = $3
+               AND agent_id  = $4 AND project_id = $5
+             RETURNING success_count, failure_count"
         };
+        let maybe_row = tx
+            .query_opt(sql_increment, &[&id, &tenant_id, &user_id, &agent_id, &project_id])
+            .await
+            .map_err(map_pg)?;
+        let row = match maybe_row {
+            Some(r) => r,
+            None => {
+                // Row not found under this scope — rollback and surface as NotFound.
+                tx.rollback().await.map_err(map_pg)?;
+                return Err(PgRecipeStoreError::NotFound { id: id.to_string() });
+            }
+        };
+        let new_success: i32 = row.get(0);
+        let new_failure: i32 = row.get(1);
 
         // Step 2: compute Wilson lower bound + tier in Rust, write back.
-        let w = wilson_lower_bound(new_success as u64, new_failure as u64, 1.96);
+        // Use saturating casts: counters are NON-NULL ≥ 0 by schema, but
+        // cast defensively to avoid wrap-around on any hypothetical negative value.
+        let w = wilson_lower_bound(new_success.max(0) as u64, new_failure.max(0) as u64, 1.96);
         let tier = classify_tier(
-            (new_success + new_failure) as u64,
+            (new_success.max(0) as u64).saturating_add(new_failure.max(0) as u64),
             w,
             0.80,
         );

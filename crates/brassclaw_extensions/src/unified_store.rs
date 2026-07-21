@@ -40,8 +40,6 @@ pub enum UnifiedStoreError {
     Pool { reason: String },
     #[error("database query error: {reason}")]
     Db { reason: String },
-    #[error("serialization error: {reason}")]
-    Serialize { reason: String },
     #[error("invalid extension class: {class}")]
     InvalidClass { class: String },
 }
@@ -54,12 +52,6 @@ fn map_pool(e: deadpool_postgres::PoolError) -> UnifiedStoreError {
 
 fn map_pg(e: tokio_postgres::Error) -> UnifiedStoreError {
     UnifiedStoreError::Db {
-        reason: e.to_string(),
-    }
-}
-
-fn map_json(e: serde_json::Error) -> UnifiedStoreError {
-    UnifiedStoreError::Serialize {
         reason: e.to_string(),
     }
 }
@@ -410,14 +402,8 @@ const SELECT_COLS: &str = "
 #[async_trait]
 impl UnifiedExtensionStore for PgUnifiedExtensionStore {
     async fn insert(&self, row: NewUnifiedExtension) -> Result<Uuid, UnifiedStoreError> {
-        let payload_val = serde_json::to_value(&row.payload).map_err(map_json)?;
-        let intent_val = row
-            .intent_examples
-            .as_ref()
-            .map(serde_json::to_value)
-            .transpose()
-            .map_err(map_json)?;
-
+        // row.payload is already a serde_json::Value; pass it directly.
+        // row.intent_examples is Option<Value>; same.
         let class_code = row.class.class_code();
         let class_str = row.class.as_str();
 
@@ -439,12 +425,12 @@ impl UnifiedExtensionStore for PgUnifiedExtensionStore {
                     &row.name,
                     &row.description,
                     &class_str,
-                    &payload_val,
+                    &row.payload,
                     &row.prior_knowledge_content,
                     &row.override_prompt_creation,
                     &class_code,
                     &row.consumer_tags,
-                    &intent_val,
+                    &row.intent_examples,
                     &row.source,
                 ],
             )
@@ -458,14 +444,7 @@ impl UnifiedExtensionStore for PgUnifiedExtensionStore {
         row: NewUnifiedExtension,
         content_hash: &str,
     ) -> Result<Uuid, UnifiedStoreError> {
-        let payload_val = serde_json::to_value(&row.payload).map_err(map_json)?;
-        let intent_val = row
-            .intent_examples
-            .as_ref()
-            .map(serde_json::to_value)
-            .transpose()
-            .map_err(map_json)?;
-
+        // row.payload / row.intent_examples are already serde_json::Value.
         let class_code = row.class.class_code();
         let class_str = row.class.as_str();
 
@@ -506,12 +485,12 @@ impl UnifiedExtensionStore for PgUnifiedExtensionStore {
                     &row.name,
                     &row.description,
                     &class_str,
-                    &payload_val,
+                    &row.payload,
                     &row.prior_knowledge_content,
                     &row.override_prompt_creation,
                     &class_code,
                     &row.consumer_tags,
-                    &intent_val,
+                    &row.intent_examples,
                     &row.source,
                     &content_hash,
                 ],
@@ -666,7 +645,7 @@ impl UnifiedExtensionStore for PgUnifiedExtensionStore {
         id: Uuid,
         update: PayloadUpdate,
     ) -> Result<(), UnifiedStoreError> {
-        let payload_val = serde_json::to_value(&update.payload).map_err(map_json)?;
+        // update.payload is already a serde_json::Value; pass it directly.
         let client = self.pool.get().await.map_err(map_pool)?;
         client
             .execute(
@@ -678,7 +657,7 @@ impl UnifiedExtensionStore for PgUnifiedExtensionStore {
                    AND tenant_id = $5 AND user_id = $6
                    AND agent_id  = $7 AND project_id = $8",
                 &[
-                    &payload_val,
+                    &update.payload,
                     &update.prior_knowledge_content,
                     &update.content_hash,
                     &id,
@@ -792,8 +771,3 @@ pub fn project_as_prompt_template(ext: &UnifiedExtension) -> Option<&str> {
         .and_then(|v| v.as_str())
 }
 
-// ---------------------------------------------------------------------------
-// Re-exports
-// ---------------------------------------------------------------------------
-
-pub use PgUnifiedExtensionStore as PgUnifiedStore;
