@@ -1,7 +1,7 @@
 //! Core skill types.
 //!
 //! Contains the data structures for skill manifests, activation criteria,
-//! trust levels, and loaded skills.
+//! and loaded skills.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -35,30 +35,6 @@ const MIN_KEYWORD_TAG_LENGTH: usize = 3;
 
 /// Maximum file size for SKILL.md (64 KiB).
 pub const MAX_PROMPT_FILE_SIZE: u64 = 64 * 1024;
-
-/// Trust state for a skill, determining its authority ceiling.
-///
-/// SAFETY: Variant ordering matters. `Ord` is derived from discriminant values
-/// and the security model relies on `Installed < Trusted`. Do NOT reorder
-/// variants or change discriminant values without auditing all `min()` /
-/// comparison call-sites in attenuation code.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SkillTrust {
-    /// Registry/external skill. Read-only tools only.
-    Installed = 0,
-    /// User-placed skill (local or workspace). Full trust, all tools available.
-    Trusted = 1,
-}
-
-impl std::fmt::Display for SkillTrust {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Installed => write!(f, "installed"),
-            Self::Trusted => write!(f, "trusted"),
-        }
-    }
-}
 
 /// Where a skill was loaded from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -315,8 +291,6 @@ pub struct LoadedSkill {
     pub manifest: SkillManifest,
     /// Raw prompt content (markdown body after frontmatter).
     pub prompt_content: String,
-    /// Trust state (determined by source location).
-    pub trust: SkillTrust,
     /// Where this skill was loaded from.
     pub source: SkillSource,
     /// SHA-256 hash of the prompt content (computed at load time).
@@ -373,17 +347,6 @@ impl LoadedSkill {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_skill_trust_ordering() {
-        assert!(SkillTrust::Installed < SkillTrust::Trusted);
-    }
-
-    #[test]
-    fn test_skill_trust_display() {
-        assert_eq!(SkillTrust::Installed.to_string(), "installed");
-        assert_eq!(SkillTrust::Trusted.to_string(), "trusted");
-    }
 
     #[test]
     fn test_enforce_keyword_limits() {
@@ -531,7 +494,6 @@ requires:
                 types: ComponentTypeSet::default_types(),
             },
             prompt_content: "test prompt".to_string(),
-            trust: SkillTrust::Trusted,
             source: SkillSource::User(PathBuf::from("/tmp/test")), // safety: dummy path in test, not used for I/O
             content_hash: "sha256:000".to_string(),
             compiled_patterns: vec![],

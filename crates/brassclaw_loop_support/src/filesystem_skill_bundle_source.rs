@@ -3,10 +3,7 @@ use std::{collections::HashSet, sync::Arc};
 use async_trait::async_trait;
 use brassclaw_filesystem::{FileType, FilesystemError, RootFilesystem, ScopedFilesystem};
 use brassclaw_host_api::{ResourceScope, ScopedPath, TenantId};
-use brassclaw_skills::{
-    INSTALL_METADATA_FILE_NAME, InstalledSkillMetadata, MAX_INSTALL_METADATA_BYTES,
-    MAX_PROMPT_FILE_SIZE, SkillTrust, parse_skill_md,
-};
+use brassclaw_skills::{MAX_PROMPT_FILE_SIZE, parse_skill_md};
 use brassclaw_turns::run_profile::{LoopRunContext, SkillVisibility};
 use parking_lot::Mutex;
 use tracing::debug;
@@ -24,7 +21,6 @@ pub struct FilesystemSkillBundleRoot {
     source_kind: SkillSourceKind,
     root: ScopedPath,
     tenant_id: Option<TenantId>,
-    trust: Option<SkillTrust>,
     visibility: Option<SkillVisibility>,
 }
 
@@ -33,46 +29,30 @@ impl FilesystemSkillBundleRoot {
     pub fn new(
         source_kind: SkillSourceKind,
         root: ScopedPath,
-        trust: Option<SkillTrust>,
         visibility: Option<SkillVisibility>,
     ) -> Self {
         Self {
             source_kind,
             root,
             tenant_id: None,
-            trust,
             visibility,
         }
     }
 
     /// Creates a built-in system skill root.
     pub fn system(root: ScopedPath) -> Self {
-        Self::new(
-            SkillSourceKind::System,
-            root,
-            Some(SkillTrust::Trusted),
-            Some(SkillVisibility::Visible),
-        )
+        Self::new(SkillSourceKind::System, root, Some(SkillVisibility::Visible))
     }
 
     /// Creates a user-owned skill root.
     pub fn user(root: ScopedPath) -> Self {
-        Self::new(
-            SkillSourceKind::User,
-            root,
-            Some(SkillTrust::Trusted),
-            Some(SkillVisibility::Visible),
-        )
+        Self::new(SkillSourceKind::User, root, Some(SkillVisibility::Visible))
     }
 
     /// Creates a tenant-shared skill root.
     pub fn tenant_shared(root: ScopedPath, tenant_id: TenantId) -> Self {
-        let mut root = Self::new(
-            SkillSourceKind::TenantShared,
-            root,
-            Some(SkillTrust::Installed),
-            Some(SkillVisibility::Visible),
-        );
+        let mut root =
+            Self::new(SkillSourceKind::TenantShared, root, Some(SkillVisibility::Visible));
         root.tenant_id = Some(tenant_id);
         root
     }
@@ -90,11 +70,6 @@ impl FilesystemSkillBundleRoot {
     /// Returns the tenant that owns this root when the root is tenant-scoped.
     pub fn tenant_id(&self) -> Option<&TenantId> {
         self.tenant_id.as_ref()
-    }
-
-    /// Returns trust metadata applied to bundles discovered under this root.
-    pub fn trust(&self) -> Option<&SkillTrust> {
-        self.trust.as_ref()
     }
 
     /// Returns visibility metadata applied to bundles discovered under this root.
@@ -228,10 +203,8 @@ where
                 Err(error) => return Err(error),
             }
             self.validated_manifests.lock().insert(skill_md_path);
-            let trust = self.bundle_trust(scope, root, &bundle_id).await?;
-
             descriptors.push(
-                SkillBundleDescriptor::new(bundle_id, trust, root.visibility().copied())
+                SkillBundleDescriptor::new(bundle_id, root.visibility().copied())
                     .with_provenance(SkillBundleProvenance::new(root.source_kind())),
             );
         }
@@ -256,38 +229,6 @@ where
             return Err(SkillBundleSourceError::InvalidSkillBundle);
         }
         Ok(())
-    }
-
-    async fn bundle_trust(
-        &self,
-        scope: &ResourceScope,
-        root: &FilesystemSkillBundleRoot,
-        bundle_id: &SkillBundleId,
-    ) -> Result<Option<SkillTrust>, SkillBundleSourceError> {
-        let default_trust = root.trust().cloned();
-        if default_trust != Some(SkillTrust::Trusted) {
-            return Ok(default_trust);
-        }
-        let metadata_path = bundle_scoped_path(
-            root.root(),
-            bundle_id,
-            &SkillFilePath::new(INSTALL_METADATA_FILE_NAME)?,
-        )?;
-        let bytes = match self
-            .filesystem
-            .read_bytes_bounded(scope, &metadata_path, MAX_INSTALL_METADATA_BYTES)
-            .await
-        {
-            Ok(Some(bytes)) => bytes,
-            Ok(None) => return Ok(Some(SkillTrust::Installed)),
-            Err(error) if is_not_found(&error) => return Ok(default_trust),
-            Err(error) => return Err(map_file_read_error(error)),
-        };
-        if InstalledSkillMetadata::sidecar_bytes_mark_installed(&bytes) {
-            Ok(Some(SkillTrust::Installed))
-        } else {
-            Ok(default_trust)
-        }
     }
 
     async fn read_bounded(
@@ -629,13 +570,13 @@ mod tests {
                 "user:local-review"
             ]
         );
-        assert_eq!(descriptors[0].trust(), Some(&SkillTrust::Trusted));
-        assert_eq!(descriptors[1].trust(), Some(&SkillTrust::Trusted));
         assert_eq!(descriptors[0].visibility(), Some(&SkillVisibility::Visible));
     }
 
     #[tokio::test]
-    async fn filesystem_source_downgrades_url_installed_user_bundle_metadata() {
+    async fn filesystem_source_lists_url_installed_user_bundle() {
+        // Install metadata sidecar no longer affects trust (trust layer removed).
+        // Installed skill bundles are still loaded and visible.
         let (root, source) = mounted_source();
         write_root(
             &root,
@@ -657,11 +598,12 @@ mod tests {
 
         assert_eq!(descriptors.len(), 1);
         assert_eq!(descriptors[0].id().name(), "remote-review");
-        assert_eq!(descriptors[0].trust(), Some(&SkillTrust::Installed));
+        assert_eq!(descriptors[0].visibility(), Some(&SkillVisibility::Visible));
     }
 
     #[tokio::test]
-    async fn filesystem_source_fails_closed_on_malformed_install_metadata() {
+    async fn filesystem_source_lists_bundle_with_malformed_install_metadata() {
+        // Malformed install metadata sidecar is ignored now that trust layer is removed.
         let (root, source) = mounted_source();
         write_root(
             &root,
@@ -683,7 +625,7 @@ mod tests {
 
         assert_eq!(descriptors.len(), 1);
         assert_eq!(descriptors[0].id().name(), "remote-review");
-        assert_eq!(descriptors[0].trust(), Some(&SkillTrust::Installed));
+        assert_eq!(descriptors[0].visibility(), Some(&SkillVisibility::Visible));
     }
 
     #[tokio::test]

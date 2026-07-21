@@ -468,7 +468,7 @@ pub fn apply_confidence_factor(base_score: u32, confidence: f64, is_authored: bo
 mod tests {
     use super::*;
     use crate::types::{
-        ActivationCriteria, GatingRequirements, LoadedSkill, SkillManifest, SkillSource, SkillTrust,
+        ActivationCriteria, GatingRequirements, LoadedSkill, SkillManifest, SkillSource,
     };
     use std::collections::HashSet;
     use std::path::PathBuf;
@@ -542,7 +542,6 @@ mod tests {
                 types: crate::component_type::ComponentTypeSet::default_types(),
             },
             prompt_content: "Test prompt".to_string(),
-            trust: SkillTrust::Trusted,
             source: SkillSource::User(PathBuf::from("/tmp/test")), // safety: dummy path in test, not used for I/O
             content_hash: "sha256:000".to_string(),
             compiled_patterns: compiled,

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use brassclaw_skills::{SkillTrust, validate_skill_name};
+use brassclaw_skills::validate_skill_name;
 use brassclaw_turns::run_profile::{LoopRunContext, SkillVisibility};
 use thiserror::Error;
 
@@ -188,7 +188,6 @@ impl SkillBundleProvenance {
 pub struct SkillBundleDescriptor {
     id: SkillBundleId,
     skill_md_path: SkillFilePath,
-    trust: Option<SkillTrust>,
     visibility: Option<SkillVisibility>,
     provenance: SkillBundleProvenance,
 }
@@ -197,14 +196,12 @@ impl SkillBundleDescriptor {
     /// Creates a descriptor with the default `SKILL.md` descriptor path.
     pub fn new(
         id: SkillBundleId,
-        trust: Option<SkillTrust>,
         visibility: Option<SkillVisibility>,
     ) -> Self {
         Self {
             provenance: SkillBundleProvenance::new(id.source_kind()),
             id,
             skill_md_path: SkillFilePath::skill_md(),
-            trust,
             visibility,
         }
     }
@@ -235,11 +232,6 @@ impl SkillBundleDescriptor {
     /// Returns the validated bundle-relative `SKILL.md` path.
     pub fn skill_md_path(&self) -> &SkillFilePath {
         &self.skill_md_path
-    }
-
-    /// Returns the trust metadata declared by the host source, if any.
-    pub fn trust(&self) -> Option<&SkillTrust> {
-        self.trust.as_ref()
     }
 
     /// Returns visibility metadata declared by the host source, if any.
@@ -322,11 +314,7 @@ mod tests {
     }
 
     fn descriptor(source_kind: SkillSourceKind, name: &str) -> SkillBundleDescriptor {
-        SkillBundleDescriptor::new(
-            id(source_kind, name),
-            Some(SkillTrust::Trusted),
-            Some(SkillVisibility::Visible),
-        )
+        SkillBundleDescriptor::new(id(source_kind, name), Some(SkillVisibility::Visible))
     }
 
     #[test]
@@ -386,21 +374,17 @@ mod tests {
 
     #[test]
     fn skill_bundle_descriptor_can_override_provenance_with_content_hash() {
-        let descriptor = SkillBundleDescriptor::new(
-            id(SkillSourceKind::User, "code-review"),
-            Some(SkillTrust::Trusted),
-            Some(SkillVisibility::Visible),
-        )
-        .with_skill_md_path(SkillFilePath::new("nested/SKILL.md").unwrap())
-        .with_provenance(
-            SkillBundleProvenance::new(SkillSourceKind::TenantShared)
-                .with_content_hash("sha256:abc123"),
-        );
+        let descriptor =
+            SkillBundleDescriptor::new(id(SkillSourceKind::User, "code-review"), Some(SkillVisibility::Visible))
+                .with_skill_md_path(SkillFilePath::new("nested/SKILL.md").unwrap())
+                .with_provenance(
+                    SkillBundleProvenance::new(SkillSourceKind::TenantShared)
+                        .with_content_hash("sha256:abc123"),
+                );
 
         assert_eq!(descriptor.id().source_kind(), SkillSourceKind::User);
         assert_eq!(descriptor.id().name(), "code-review");
         assert_eq!(descriptor.skill_md_path().as_str(), "nested/SKILL.md");
-        assert_eq!(descriptor.trust(), Some(&SkillTrust::Trusted));
         assert_eq!(descriptor.visibility(), Some(&SkillVisibility::Visible));
         assert_eq!(descriptor.provenance().source_kind, SkillSourceKind::User);
         assert_eq!(

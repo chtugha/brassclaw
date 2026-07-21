@@ -1,10 +1,10 @@
 //! Skill registry for discovering, loading, and managing available skills.
 //!
 //! Skills are discovered from multiple sources:
-//! 1. Workspace skills directory (`<workspace>/skills/`) -- Trusted
-//! 2. User skills directory (`~/.brassclaw/skills/`) -- Trusted
-//! 3. Installed skills directory (`~/.brassclaw/installed_skills/`) -- Installed
-//! 4. Bundled skills compiled into the binary -- Trusted
+//! 1. Workspace skills directory (`<workspace>/skills/`)
+//! 2. User skills directory (`~/.brassclaw/skills/`)
+//! 3. Installed skills directory (`~/.brassclaw/installed_skills/`)
+//! 4. Bundled skills compiled into the binary
 //!
 //! Both flat (`skills/SKILL.md`) and subdirectory (`skills/<name>/SKILL.md`)
 //! layouts are supported. Subdirectories without `SKILL.md` are treated as
@@ -25,9 +25,7 @@ use crate::parser::{
     SkillParseError, parse_skill_md, parse_skill_md_for_install_recovery,
     split_skill_md_frontmatter,
 };
-use crate::types::{
-    GatingRequirements, LoadedSkill, MAX_PROMPT_FILE_SIZE, SkillSource, SkillTrust,
-};
+use crate::types::{GatingRequirements, LoadedSkill, MAX_PROMPT_FILE_SIZE, SkillSource};
 use crate::validation::{
     SafeRelativePathError, normalize_line_endings, normalize_safe_relative_path,
     normalize_skill_identifier,
@@ -248,11 +246,6 @@ impl SkillRegistry {
     }
 
     /// Set the registry-installed skills directory.
-    ///
-    /// Skills installed via ClawHub or the skill tools are written here and
-    /// loaded with `SkillTrust::Installed` (read-only tool access). This
-    /// directory is separate from the user dir so that trust levels survive
-    /// restarts correctly.
     pub fn with_installed_dir(mut self, dir: PathBuf) -> Self {
         self.installed_dir = Some(dir);
         self
@@ -267,8 +260,7 @@ impl SkillRegistry {
     /// Set bundled skill content compiled into the binary.
     ///
     /// Each entry is `(skill_name, raw_skill_md_content)`. These skills are
-    /// discovered at the lowest priority (after workspace, user, and installed)
-    /// with `SkillTrust::Trusted` since they ship with the application binary.
+    /// discovered at the lowest priority (after workspace, user, and installed).
     pub fn with_bundled_content(mut self, content: &'static [(String, String)]) -> Self {
         self.bundled_content = content;
         self
@@ -283,9 +275,9 @@ impl SkillRegistry {
     /// Discover and load skills from all configured directories.
     ///
     /// Discovery order (earlier wins on name collision):
-    /// 1. Workspace skills directory (if set) -- Trusted
-    /// 2. User skills directory -- Trusted
-    /// 3. Installed skills directory (if set) -- Installed
+    /// 1. Workspace skills directory (if set)
+    /// 2. User skills directory
+    /// 3. Installed skills directory (if set)
     pub async fn discover_all(&mut self) -> Vec<String> {
         let mut loaded_names: Vec<String> = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
@@ -294,13 +286,7 @@ impl SkillRegistry {
         if let Some(ws_dir) = self.workspace_dir.clone() {
             let cap = MAX_DISCOVERED_SKILLS.saturating_sub(loaded_names.len());
             let skills = self
-                .discover_from_dir(
-                    &ws_dir,
-                    SkillTrust::Trusted,
-                    &SkillSource::Workspace,
-                    cap,
-                    0,
-                )
+                .discover_from_dir(&ws_dir, &SkillSource::Workspace, cap, 0)
                 .await;
             self.absorb(skills, &mut seen, &mut loaded_names, "user");
         }
@@ -310,7 +296,7 @@ impl SkillRegistry {
             let cap = MAX_DISCOVERED_SKILLS.saturating_sub(loaded_names.len());
             let user_dir = self.user_dir.clone();
             let skills = self
-                .discover_from_dir(&user_dir, SkillTrust::Trusted, &SkillSource::User, cap, 0)
+                .discover_from_dir(&user_dir, &SkillSource::User, cap, 0)
                 .await;
             self.absorb(skills, &mut seen, &mut loaded_names, "workspace");
         }
@@ -321,13 +307,7 @@ impl SkillRegistry {
         {
             let cap = MAX_DISCOVERED_SKILLS.saturating_sub(loaded_names.len());
             let skills = self
-                .discover_from_dir(
-                    &inst_dir,
-                    SkillTrust::Installed,
-                    &SkillSource::Installed,
-                    cap,
-                    0,
-                )
+                .discover_from_dir(&inst_dir, &SkillSource::Installed, cap, 0)
                 .await;
             self.absorb(skills, &mut seen, &mut loaded_names, "installed");
         }
@@ -406,7 +386,6 @@ impl SkillRegistry {
     async fn discover_from_dir<F>(
         &self,
         dir: &Path,
-        trust: SkillTrust,
         make_source: &F,
         remaining_cap: usize,
         current_depth: usize,
@@ -459,9 +438,9 @@ impl SkillRegistry {
             if meta.is_dir() {
                 let skill_md = path.join("SKILL.md");
                 if tokio::fs::try_exists(&skill_md).await.unwrap_or(false) {
-                    count += 1;
-                    let source = make_source(path.clone());
-                    match self.load_skill_md(&skill_md, trust, source).await {
+                        count += 1;
+                        let source = make_source(path.clone());
+                        match self.load_skill_md(&skill_md, source).await {
                         Ok((name, skill)) => {
                             tracing::debug!("Loaded skill: {}", name);
                             results.push((name, skill));
@@ -482,7 +461,6 @@ impl SkillRegistry {
                     );
                     let nested = Box::pin(self.discover_from_dir(
                         &path,
-                        trust,
                         make_source,
                         remaining_cap.saturating_sub(count),
                         current_depth + 1,
@@ -501,7 +479,7 @@ impl SkillRegistry {
             {
                 count += 1;
                 let source = make_source(dir.to_path_buf());
-                match self.load_skill_md(&path, trust, source).await {
+                match self.load_skill_md(&path, source).await {
                     Ok((name, skill)) => {
                         tracing::debug!("Loaded skill: {}", name);
                         results.push((name, skill));
@@ -520,10 +498,9 @@ impl SkillRegistry {
     async fn load_skill_md(
         &self,
         path: &Path,
-        trust: SkillTrust,
         source: SkillSource,
     ) -> Result<(String, LoadedSkill), SkillRegistryError> {
-        load_and_validate_skill(path, trust, source).await
+        load_and_validate_skill(path, source).await
     }
 
     /// Load bundled skills from in-memory content, skipping names already seen.
@@ -537,12 +514,7 @@ impl SkillRegistry {
                 );
                 continue;
             }
-            match load_from_content(
-                content,
-                SkillTrust::Trusted,
-                SkillSource::Bundled(PathBuf::from(name)),
-            )
-            .await
+            match load_from_content(content, SkillSource::Bundled(PathBuf::from(name))).await
             {
                 Ok((loaded_name, skill)) => {
                     tracing::debug!("Loaded bundled skill: {}", loaded_name);
@@ -674,7 +646,7 @@ impl SkillRegistry {
 
         // Load by re-reading from disk (validates round-trip)
         let source = SkillSource::Installed(skill_dir);
-        load_and_validate_skill(&skill_path, SkillTrust::Installed, source).await
+        load_and_validate_skill(&skill_path, source).await
     }
 
     /// Commit a prepared skill into the in-memory registry.
@@ -825,7 +797,6 @@ impl SkillRegistry {
 /// `build_loaded_skill` for parsing, validation, and construction.
 async fn load_and_validate_skill(
     path: &Path,
-    trust: SkillTrust,
     source: SkillSource,
 ) -> Result<(String, LoadedSkill), SkillRegistryError> {
     // Check for symlink at the file level
@@ -867,7 +838,7 @@ async fn load_and_validate_skill(
     let normalized_content = normalize_line_endings(&raw_content);
     let error_label = path.display().to_string();
 
-    build_loaded_skill(&normalized_content, &error_label, trust, source).await
+    build_loaded_skill(&normalized_content, &error_label, source).await
 }
 
 /// Load and validate a skill from in-memory content (no disk I/O).
@@ -875,7 +846,6 @@ async fn load_and_validate_skill(
 /// Used for bundled skills compiled into the binary.
 async fn load_from_content(
     raw_content: &str,
-    trust: SkillTrust,
     source: SkillSource,
 ) -> Result<(String, LoadedSkill), SkillRegistryError> {
     if raw_content.len() as u64 > MAX_PROMPT_FILE_SIZE {
@@ -888,7 +858,7 @@ async fn load_from_content(
 
     let normalized_content = normalize_line_endings(raw_content);
 
-    build_loaded_skill(&normalized_content, "(bundled)", trust, source).await
+    build_loaded_skill(&normalized_content, "(bundled)", source).await
 }
 
 /// Parse, validate, gate-check, and construct a `LoadedSkill` from normalized content.
@@ -899,7 +869,6 @@ async fn load_from_content(
 async fn build_loaded_skill(
     normalized_content: &str,
     error_label: &str,
-    trust: SkillTrust,
     source: SkillSource,
 ) -> Result<(String, LoadedSkill), SkillRegistryError> {
     let parsed = parse_skill_md(normalized_content).map_err(|e: SkillParseError| match e {
@@ -949,7 +918,6 @@ async fn build_loaded_skill(
     let skill = LoadedSkill {
         manifest,
         prompt_content,
-        trust,
         source,
         content_hash,
         compiled_patterns,
@@ -1013,7 +981,6 @@ mod tests {
         assert_eq!(registry.count(), 1);
 
         let skill = &registry.skills()[0];
-        assert_eq!(skill.trust, SkillTrust::Trusted);
         assert!(skill.prompt_content.contains("helpful test assistant"));
     }
 
@@ -1444,7 +1411,6 @@ mod tests {
         assert_eq!(registry.count(), 1);
 
         let skill = &registry.skills()[0];
-        assert_eq!(skill.trust, SkillTrust::Trusted);
         assert!(skill.prompt_content.contains("flat layout test skill"));
     }
 
@@ -1531,11 +1497,9 @@ mod tests {
         assert_ne!(h1, h2);
     }
 
-    /// Skills in the installed_dir are discovered with SkillTrust::Installed,
-    /// not Trusted. This ensures registry-installed skills do not gain full
-    /// tool access after an agent restart.
+    /// Skills in the installed_dir are discovered as provenance `Installed`.
     #[tokio::test]
-    async fn test_installed_dir_uses_installed_trust() {
+    async fn test_installed_dir_loads_skill() {
         let user_dir = tempfile::tempdir().unwrap();
         let inst_dir = tempfile::tempdir().unwrap();
 
@@ -1554,11 +1518,7 @@ mod tests {
 
         assert_eq!(loaded, vec!["registry-skill"]);
         let skill = registry.find_by_name("registry-skill").unwrap();
-        assert_eq!(
-            skill.trust,
-            SkillTrust::Installed,
-            "installed_dir skills must be Installed"
-        );
+        assert!(matches!(skill.source, SkillSource::Installed(_)));
         assert_eq!(skill.manifest.version, "1.2.3");
     }
 
@@ -1575,9 +1535,9 @@ mod tests {
         assert_eq!(registry_no_inst.install_target_dir(), user_dir.as_path());
     }
 
-    /// User skills (user_dir) remain Trusted even when installed_dir is set.
+    /// User skills (user_dir) have User source even when installed_dir is set.
     #[tokio::test]
-    async fn test_user_dir_stays_trusted_with_installed_dir() {
+    async fn test_user_dir_loads_with_user_source() {
         let user_dir = tempfile::tempdir().unwrap();
         let inst_dir = tempfile::tempdir().unwrap();
 
@@ -1594,7 +1554,7 @@ mod tests {
         registry.discover_all().await;
 
         let skill = registry.find_by_name("my-skill").unwrap();
-        assert_eq!(skill.trust, SkillTrust::Trusted);
+        assert!(matches!(skill.source, SkillSource::User(_)));
     }
 
     #[tokio::test]
@@ -1615,7 +1575,6 @@ mod tests {
         assert_eq!(registry.count(), 1);
 
         let skill = registry.find_by_name("bundled-skill").unwrap();
-        assert_eq!(skill.trust, SkillTrust::Trusted);
         assert!(matches!(skill.source, SkillSource::Bundled(_)));
         assert!(skill.prompt_content.contains("Bundled prompt."));
     }

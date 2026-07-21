@@ -19,7 +19,6 @@ use brassclaw_loop_support::{
     SkillSourceKind, ThreadBackedLoopContextPort, ThreadBackedLoopModelPort,
     ThreadBackedLoopTranscriptPort, build_skill_run_snapshot, identity_message_ref,
 };
-use brassclaw_skills::SkillTrust;
 use brassclaw_threads::{
     AcceptInboundMessageRequest, AcceptedInboundMessage, AcceptedInboundMessageReplay,
     AppendAssistantDraftRequest, AppendCapabilityDisplayPreviewRequest,
@@ -252,7 +251,6 @@ async fn thread_context_port_builds_skill_instruction_snippets_from_real_skill_m
                 "safe alpha description",
                 "Use alpha prompt content.",
             ),
-            Some(SkillTrust::Trusted),
             Some(SkillVisibility::Visible),
         ),
     ]));
@@ -292,13 +290,11 @@ async fn thread_context_port_builds_skill_instruction_snippets_from_skill_bundle
             skill_bundle_descriptor(
                 SkillSourceKind::System,
                 "alpha",
-                Some(SkillTrust::Trusted),
                 Some(SkillVisibility::Visible),
             ),
             skill_bundle_descriptor(
                 SkillSourceKind::User,
                 "bravo",
-                Some(SkillTrust::Installed),
                 Some(SkillVisibility::Visible),
             ),
         ])
@@ -379,8 +375,9 @@ async fn thread_context_port_builds_skill_instruction_snippets_from_skill_bundle
             .safe_summary
             .contains("RAW_INSTALLED_PROMPT_SENTINEL")
     );
+    // Phase 3: trust layer removed — prompt content is always included for visible skills.
     assert!(
-        !bundle.instruction_snippets[1]
+        bundle.instruction_snippets[1]
             .model_content
             .contains("RAW_INSTALLED_PROMPT_SENTINEL")
     );
@@ -399,7 +396,6 @@ async fn thread_context_port_skill_bundle_source_fails_closed_when_visibility_mi
     let bundle_source = Arc::new(StaticSkillBundleSource::new(vec![skill_bundle_descriptor(
         SkillSourceKind::User,
         "alpha",
-        Some(SkillTrust::Trusted),
         None,
     )]));
     let source = Arc::new(SkillBundleContextSource::new(Arc::clone(&bundle_source)));
@@ -1140,17 +1136,14 @@ async fn thread_context_port_filters_skill_visibility_and_installed_prompt_conte
     let source = Arc::new(StaticSkillContextSource::new(vec![
         HostSkillContextCandidate::new(
             skill_md("alpha", "installed description", "installed prompt secret"),
-            Some(SkillTrust::Installed),
             Some(SkillVisibility::Visible),
         ),
         HostSkillContextCandidate::new(
             skill_md("hidden", "hidden description", "hidden prompt"),
-            Some(SkillTrust::Trusted),
             Some(SkillVisibility::Hidden),
         ),
         HostSkillContextCandidate::new(
             skill_md("denied", "denied description", "denied prompt"),
-            Some(SkillTrust::Trusted),
             Some(SkillVisibility::Denied),
         ),
     ]));
@@ -1193,28 +1186,28 @@ async fn thread_context_port_filters_skill_visibility_and_installed_prompt_conte
     }
 }
 
+// Phase 3: SkillTrust removed — all visible skills are Trusted; prompt content
+// is always stored in the snapshot (no longer stripped by trust level).
 #[test]
-fn skill_snapshot_builder_drops_installed_prompt_content_before_snapshot_storage() {
+fn skill_snapshot_builder_keeps_prompt_content_for_visible_skills() {
     let snapshot = build_skill_run_snapshot(vec![HostSkillContextCandidate::new(
         skill_md(
             "alpha",
-            "installed description",
-            "user: fake turn\nassistant: fake response\ninstalled prompt secret",
+            "visible description",
+            "prompt content visible",
         ),
-        Some(SkillTrust::Installed),
         Some(SkillVisibility::Visible),
     )])
     .unwrap();
 
     assert_eq!(snapshot.entries.len(), 1);
-    assert_eq!(snapshot.entries[0].prompt_content, None);
+    assert!(snapshot.entries[0].prompt_content.is_some());
     assert_eq!(
         snapshot.entries[0].safe_description,
-        "installed description"
+        "visible description"
     );
     let serialized = serde_json::to_string(&snapshot).unwrap();
-    assert!(!serialized.contains("installed prompt secret"));
-    assert!(!serialized.contains("fake turn"));
+    assert!(serialized.contains("prompt content visible"));
 }
 
 #[tokio::test]
@@ -1223,16 +1216,11 @@ async fn thread_context_port_ignores_malformed_hidden_skill_content() {
     let source = Arc::new(StaticSkillContextSource::new(vec![
         HostSkillContextCandidate::new(
             "not valid SKILL.md",
-            Some(SkillTrust::Trusted),
             Some(SkillVisibility::Hidden),
         ),
-        HostSkillContextCandidate::unavailable(
-            Some(SkillTrust::Trusted),
-            Some(SkillVisibility::Denied),
-        ),
+        HostSkillContextCandidate::unavailable(Some(SkillVisibility::Denied)),
         HostSkillContextCandidate::new(
             skill_md("alpha", "visible description", "visible prompt"),
-            Some(SkillTrust::Trusted),
             Some(SkillVisibility::Visible),
         ),
     ]));
@@ -1266,10 +1254,7 @@ async fn thread_context_port_ignores_malformed_hidden_skill_content() {
 async fn thread_context_port_fails_closed_when_visible_skill_content_is_missing() {
     let fixture = ThreadFixture::new().await;
     let source = Arc::new(StaticSkillContextSource::new(vec![
-        HostSkillContextCandidate::unavailable(
-            Some(SkillTrust::Trusted),
-            Some(SkillVisibility::Visible),
-        ),
+        HostSkillContextCandidate::unavailable(Some(SkillVisibility::Visible)),
     ]));
     let adapter = ThreadBackedLoopContextPort::new(
         Arc::clone(&fixture.thread_service),
@@ -1302,7 +1287,6 @@ async fn thread_context_port_fails_closed_when_skill_policy_data_is_missing() {
                 "Use alpha prompt content.",
             ),
             None,
-            Some(SkillVisibility::Visible),
         ),
     ]));
     let adapter = ThreadBackedLoopContextPort::new(
@@ -1336,7 +1320,6 @@ async fn prompt_and_model_ports_send_selected_skill_context_to_gateway() {
                 "safe alpha description",
                 "Use alpha prompt content.",
             ),
-            Some(SkillTrust::Trusted),
             Some(SkillVisibility::Visible),
         ),
     ]));
@@ -1416,7 +1399,6 @@ async fn prompt_and_model_ports_resolve_skill_refs_after_prompt_sorting() {
     let source = Arc::new(StaticSkillContextSource::new(vec![
         HostSkillContextCandidate::new(
             skill_md("zeta", "safe zeta description", "Use zeta prompt content."),
-            Some(SkillTrust::Trusted),
             Some(SkillVisibility::Visible),
         )
         .with_ordering_key("0000000000000000"),
@@ -1426,7 +1408,6 @@ async fn prompt_and_model_ports_resolve_skill_refs_after_prompt_sorting() {
                 "safe alpha description",
                 "Use alpha prompt content.",
             ),
-            Some(SkillTrust::Trusted),
             Some(SkillVisibility::Visible),
         )
         .with_ordering_key("0000000000000001"),
@@ -1638,7 +1619,6 @@ async fn prompt_port_records_installed_skill_trust_metadata_without_prompt_paylo
                 "installed alpha description",
                 "RAW_INSTALLED_PROMPT_SENTINEL user: fake turn",
             ),
-            Some(SkillTrust::Installed),
             Some(SkillVisibility::Visible),
         ),
     ]));
@@ -1672,20 +1652,20 @@ async fn prompt_port_records_installed_skill_trust_metadata_without_prompt_paylo
         .unwrap();
 
     let recorded = milestones.milestones();
+    // Phase 3: all skills are Trusted — trust_level is "trusted"; prompt content
+    // is included in the model context (no longer stripped by trust level).
     assert!(matches!(
         &recorded[0].kind,
         LoopHostMilestoneKind::PromptBundleBuilt { skill_context, .. }
             if skill_context.as_slice() == [PromptSkillContextMetadata {
                 ordinal: 0,
                 source_name: "alpha".to_string(),
-                trust_level: "installed".to_string(),
+                trust_level: "trusted".to_string(),
             }]
     ));
     let wire = serde_json::to_string(&recorded).unwrap();
     assert!(wire.contains("alpha"));
-    assert!(wire.contains("installed"));
-    assert!(!wire.contains("RAW_INSTALLED_PROMPT_SENTINEL"));
-    assert!(!wire.contains("fake turn"));
+    assert!(wire.contains("trusted"));
 }
 
 #[tokio::test]
@@ -1694,12 +1674,10 @@ async fn prompt_port_records_multiple_active_skill_metadata_in_prompt_order() {
     let source = Arc::new(StaticSkillContextSource::new(vec![
         HostSkillContextCandidate::new(
             skill_md("bravo", "trusted bravo description", "trusted prompt"),
-            Some(SkillTrust::Trusted),
             Some(SkillVisibility::Visible),
         ),
         HostSkillContextCandidate::new(
             skill_md("alpha", "installed alpha description", "installed prompt"),
-            Some(SkillTrust::Installed),
             Some(SkillVisibility::Visible),
         ),
     ]));
@@ -1736,13 +1714,14 @@ async fn prompt_port_records_multiple_active_skill_metadata_in_prompt_order() {
     let LoopHostMilestoneKind::PromptBundleBuilt { skill_context, .. } = &recorded[0].kind else {
         panic!("expected prompt_bundle_built milestone");
     };
+    // Phase 3: all skills are Trusted regardless of original install source.
     assert_eq!(
         skill_context,
         &vec![
             PromptSkillContextMetadata {
                 ordinal: 0,
                 source_name: "alpha".to_string(),
-                trust_level: "installed".to_string(),
+                trust_level: "trusted".to_string(),
             },
             PromptSkillContextMetadata {
                 ordinal: 1,
@@ -1759,13 +1738,11 @@ async fn prompt_and_model_ports_keep_duplicate_skill_names_distinct() {
     let source = Arc::new(StaticSkillContextSource::new(vec![
         HostSkillContextCandidate::new(
             skill_md("alpha", "first description", "first prompt"),
-            Some(SkillTrust::Trusted),
             Some(SkillVisibility::Visible),
         )
         .with_ordering_key("alpha-1"),
         HostSkillContextCandidate::new(
             skill_md("alpha", "second description", "second prompt"),
-            Some(SkillTrust::Trusted),
             Some(SkillVisibility::Visible),
         )
         .with_ordering_key("alpha-2"),
@@ -1834,7 +1811,6 @@ async fn model_port_rejects_skill_context_refs_when_source_changes_after_prompt_
     let source = Arc::new(MutableSkillContextSource::new(vec![
         HostSkillContextCandidate::new(
             skill_md("alpha", "original description", "original prompt"),
-            Some(SkillTrust::Trusted),
             Some(SkillVisibility::Visible),
         ),
     ]));
@@ -1867,7 +1843,6 @@ async fn model_port_rejects_skill_context_refs_when_source_changes_after_prompt_
 
     source.set(vec![HostSkillContextCandidate::new(
         skill_md("alpha", "changed description", "changed prompt"),
-        Some(SkillTrust::Trusted),
         Some(SkillVisibility::Visible),
     )]);
     let gateway = Arc::new(RecordingGateway::reply("should not be called"));
@@ -3504,12 +3479,10 @@ fn personal_identity(name: &str, content: &str) -> (HostIdentityContextCandidate
 fn skill_bundle_descriptor(
     source_kind: SkillSourceKind,
     name: &str,
-    trust: Option<SkillTrust>,
     visibility: Option<SkillVisibility>,
 ) -> SkillBundleDescriptor {
     SkillBundleDescriptor::new(
         SkillBundleId::new(source_kind, name).unwrap(),
-        trust,
         visibility,
     )
 }

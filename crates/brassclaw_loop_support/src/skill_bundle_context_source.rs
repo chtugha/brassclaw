@@ -94,15 +94,15 @@ where
         index: usize,
         descriptor: SkillBundleDescriptor,
     ) -> Result<HostSkillContextCandidate, HostSkillContextBuildError> {
-        let trust = descriptor.trust().cloned();
         let visibility = descriptor.visibility().copied();
         let ordering_key = descriptor_context_ordering_key(index);
 
         if visibility != Some(SkillVisibility::Visible) {
             // Preserve host policy metadata on unavailable candidates so downstream
             // snapshot construction keeps one fail-closed validation path.
-            return Ok(HostSkillContextCandidate::unavailable(trust, visibility)
-                .with_ordering_key(ordering_key));
+            return Ok(
+                HostSkillContextCandidate::unavailable(visibility).with_ordering_key(ordering_key)
+            );
         }
 
         let skill_md = self
@@ -114,8 +114,7 @@ where
         let skill_md =
             String::from_utf8(skill_md).map_err(|_| HostSkillContextBuildError::ParseFailed)?;
 
-        Ok(HostSkillContextCandidate::new(skill_md, trust, visibility)
-            .with_ordering_key(ordering_key))
+        Ok(HostSkillContextCandidate::new(skill_md, visibility).with_ordering_key(ordering_key))
     }
 }
 
@@ -154,10 +153,10 @@ fn skill_bundle_source_error_to_context_error(
 fn validate_descriptor_policy_metadata(
     descriptors: &[SkillBundleDescriptor],
 ) -> Result<(), HostSkillContextBuildError> {
+    // Phase 3 (trust layer removal): trust check removed. All skills are
+    // effectively trusted once validated (validation_status == 'validated'
+    // is the sole gate). Only visibility is still required from the descriptor.
     for descriptor in descriptors {
-        if descriptor.trust().is_none() {
-            return Err(HostSkillContextBuildError::TrustDataMissing);
-        }
         if descriptor.visibility().is_none() {
             return Err(HostSkillContextBuildError::VisibilityDataMissing);
         }
@@ -200,7 +199,6 @@ mod tests {
     };
 
     use async_trait::async_trait;
-    use brassclaw_skills::SkillTrust;
     use brassclaw_turns::{
         RunProfileResolutionRequest, RunProfileResolver, TurnId, TurnRunId, TurnScope,
         run_profile::InMemoryRunProfileResolver,
@@ -233,12 +231,10 @@ mod tests {
     fn descriptor(
         source_kind: crate::SkillSourceKind,
         name: &str,
-        trust: Option<SkillTrust>,
         visibility: Option<SkillVisibility>,
     ) -> SkillBundleDescriptor {
         SkillBundleDescriptor::new(
             crate::SkillBundleId::new(source_kind, name).unwrap(),
-            trust,
             visibility,
         )
     }
@@ -360,7 +356,6 @@ mod tests {
         let source = Arc::new(StaticSkillBundleSource::new(vec![descriptor(
             crate::SkillSourceKind::User,
             "alpha",
-            Some(SkillTrust::Trusted),
             Some(SkillVisibility::Visible),
         )]));
         let adapter = SkillBundleContextSource::new(source);
@@ -379,7 +374,6 @@ mod tests {
             StaticSkillBundleSource::new(vec![descriptor(
                 crate::SkillSourceKind::User,
                 "alpha",
-                Some(SkillTrust::Trusted),
                 Some(SkillVisibility::Visible),
             )])
             .with_read_error(
@@ -406,7 +400,6 @@ mod tests {
                 descriptor(
                     crate::SkillSourceKind::User,
                     &format!("skill-{index:03}"),
-                    Some(SkillTrust::Trusted),
                     Some(SkillVisibility::Visible),
                 )
             })
@@ -429,7 +422,6 @@ mod tests {
             StaticSkillBundleSource::new(vec![descriptor(
                 crate::SkillSourceKind::User,
                 "alpha",
-                Some(SkillTrust::Trusted),
                 Some(SkillVisibility::Visible),
             )])
             .with_skill_md(
@@ -454,7 +446,6 @@ mod tests {
             StaticSkillBundleSource::new(vec![descriptor(
                 crate::SkillSourceKind::System,
                 "alpha",
-                Some(SkillTrust::Trusted),
                 Some(SkillVisibility::Visible),
             )])
             .with_skill_md(
@@ -483,7 +474,6 @@ mod tests {
             StaticSkillBundleSource::new(vec![descriptor(
                 crate::SkillSourceKind::User,
                 "alpha",
-                Some(SkillTrust::Installed),
                 Some(SkillVisibility::Visible),
             )])
             .with_skill_md(
@@ -521,13 +511,11 @@ mod tests {
             descriptor(
                 crate::SkillSourceKind::System,
                 "hidden",
-                Some(SkillTrust::Trusted),
                 Some(SkillVisibility::Hidden),
             ),
             descriptor(
                 crate::SkillSourceKind::User,
                 "denied",
-                Some(SkillTrust::Installed),
                 Some(SkillVisibility::Denied),
             ),
         ]));
@@ -541,32 +529,16 @@ mod tests {
         assert!(source.reads().is_empty());
     }
 
-    #[tokio::test]
-    async fn adapter_fails_closed_when_policy_metadata_is_missing_without_reads() {
-        let source = Arc::new(StaticSkillBundleSource::new(vec![descriptor(
-            crate::SkillSourceKind::User,
-            "alpha",
-            None,
-            Some(SkillVisibility::Visible),
-        )]));
-        let adapter = SkillBundleContextSource::new(Arc::clone(&source));
-
-        let error = adapter
-            .load_skill_context_candidates(&run_context().await)
-            .await
-            .unwrap_err();
-
-        assert_eq!(error, HostSkillContextBuildError::TrustDataMissing);
-        assert!(source.reads().is_empty());
-    }
+    // adapter_fails_closed_when_policy_metadata_is_missing_without_reads:
+    // Removed in Phase 3 — trust is no longer a required descriptor field;
+    // TrustDataMissing is gone. Visibility is still enforced (see next test).
 
     #[tokio::test]
     async fn adapter_fails_closed_when_visibility_metadata_is_missing_without_reads() {
         let source = Arc::new(StaticSkillBundleSource::new(vec![descriptor(
             crate::SkillSourceKind::User,
             "alpha",
-            Some(SkillTrust::Trusted),
-            None,
+            None, // visibility absent — should fail closed
         )]));
         let adapter = SkillBundleContextSource::new(Arc::clone(&source));
 
@@ -586,14 +558,12 @@ mod tests {
                 descriptor(
                     crate::SkillSourceKind::System,
                     "alpha",
-                    Some(SkillTrust::Trusted),
                     Some(SkillVisibility::Visible),
                 ),
                 descriptor(
                     crate::SkillSourceKind::User,
                     "bravo",
-                    Some(SkillTrust::Trusted),
-                    None,
+                    None, // visibility absent — the one that should trigger the error
                 ),
             ])
             .with_skill_md(
@@ -620,13 +590,11 @@ mod tests {
                 descriptor(
                     crate::SkillSourceKind::User,
                     "bravo",
-                    Some(SkillTrust::Trusted),
                     Some(SkillVisibility::Visible),
                 ),
                 descriptor(
                     crate::SkillSourceKind::System,
                     "alpha",
-                    Some(SkillTrust::Trusted),
                     Some(SkillVisibility::Visible),
                 ),
             ])
@@ -662,7 +630,6 @@ mod tests {
         let nested_descriptor = descriptor(
             crate::SkillSourceKind::User,
             "alpha",
-            Some(SkillTrust::Trusted),
             Some(SkillVisibility::Visible),
         )
         .with_skill_md_path(SkillFilePath::new("nested/SKILL.md").unwrap());
@@ -672,7 +639,6 @@ mod tests {
                 descriptor(
                     crate::SkillSourceKind::User,
                     "alpha",
-                    Some(SkillTrust::Trusted),
                     Some(SkillVisibility::Visible),
                 ),
             ])
@@ -714,13 +680,11 @@ mod tests {
             descriptor(
                 crate::SkillSourceKind::System,
                 "hidden",
-                Some(SkillTrust::Trusted),
                 Some(SkillVisibility::Hidden),
             ),
             descriptor(
                 crate::SkillSourceKind::User,
                 "denied",
-                Some(SkillTrust::Installed),
                 Some(SkillVisibility::Denied),
             ),
         ]));
@@ -737,13 +701,12 @@ mod tests {
                 .iter()
                 .all(|candidate| candidate.skill_md.is_none())
         );
-        assert_eq!(candidates[0].trust, Some(SkillTrust::Trusted));
+        // trust field removed from HostSkillContextCandidate — Phase 3
         assert_eq!(candidates[0].visibility, Some(SkillVisibility::Hidden));
         assert_eq!(
             candidates[0].ordering_key.as_deref(),
             Some("0000000000000000")
         );
-        assert_eq!(candidates[1].trust, Some(SkillTrust::Installed));
         assert_eq!(candidates[1].visibility, Some(SkillVisibility::Denied));
         assert_eq!(
             candidates[1].ordering_key.as_deref(),
@@ -828,7 +791,6 @@ mod tests {
             StaticSkillBundleSource::new(vec![descriptor(
                 crate::SkillSourceKind::User,
                 "alpha",
-                Some(SkillTrust::Trusted),
                 Some(SkillVisibility::Visible),
             )])
             .with_read_error(
@@ -854,7 +816,6 @@ mod tests {
             StaticSkillBundleSource::new(vec![descriptor(
                 crate::SkillSourceKind::User,
                 "alpha",
-                Some(SkillTrust::Trusted),
                 Some(SkillVisibility::Visible),
             )])
             .with_read_error(
@@ -880,7 +841,6 @@ mod tests {
             StaticSkillBundleSource::new(vec![descriptor(
                 crate::SkillSourceKind::User,
                 "alpha",
-                Some(SkillTrust::Trusted),
                 Some(SkillVisibility::Visible),
             )])
             .with_skill_md(crate::SkillSourceKind::User, "alpha", vec![0xff, 0xfe]),

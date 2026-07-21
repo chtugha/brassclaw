@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use brassclaw_skills::{ParsedSkill, SkillTrust, parse_skill_md};
+use brassclaw_skills::{ParsedSkill, parse_skill_md};
 use brassclaw_turns::run_profile::{
     AgentLoopHostError, AgentLoopHostErrorKind, InstalledSkillSnapshot, LoopContextSnippet,
     LoopRunContext, SkillContextError, SkillContextService, SkillContextSource, SkillRunSnapshot,
@@ -35,8 +35,6 @@ pub struct HostSkillContextCandidate {
     /// before parsing so invisible skills cannot fail prompt construction via
     /// malformed prompt files.
     pub skill_md: Option<String>,
-    /// Host-approved trust state. `None` fails the build closed.
-    pub trust: Option<SkillTrust>,
     /// Host-approved model visibility. `None` fails the build closed.
     pub visibility: Option<SkillVisibility>,
     /// Optional deterministic ordering key. Defaults to parsed skill name.
@@ -46,21 +44,18 @@ pub struct HostSkillContextCandidate {
 impl HostSkillContextCandidate {
     pub fn new(
         skill_md: impl Into<String>,
-        trust: Option<SkillTrust>,
         visibility: Option<SkillVisibility>,
     ) -> Self {
         Self {
             skill_md: Some(skill_md.into()),
-            trust,
             visibility,
             ordering_key: None,
         }
     }
 
-    pub fn unavailable(trust: Option<SkillTrust>, visibility: Option<SkillVisibility>) -> Self {
+    pub fn unavailable(visibility: Option<SkillVisibility>) -> Self {
         Self {
             skill_md: None,
-            trust,
             visibility,
             ordering_key: None,
         }
@@ -83,8 +78,6 @@ pub enum HostSkillContextBuildError {
     SourceUnavailable,
     #[error("skill context parse failed")]
     ParseFailed,
-    #[error("skill context trust data missing")]
-    TrustDataMissing,
     #[error("skill context visibility data missing")]
     VisibilityDataMissing,
     #[error("skill context budget exceeded")]
@@ -97,15 +90,21 @@ pub enum HostSkillContextBuildError {
     Internal,
 }
 
+// TrustDataMissing variant removed — Phase 3 trust layer deletion.
+// All skills are now treated as trusted (validation_status == 'validated'
+// is the sole gate). SkillContextError::TrustDataMissing is mapped to
+// Internal below since it can only fire if SkillTrustLevel is unset,
+// which cannot happen now that we always set Trusted.
+
 impl HostSkillContextBuildError {
     pub fn into_host_error(self) -> AgentLoopHostError {
         let kind = match &self {
             Self::AmbiguousSkill { .. } => AgentLoopHostErrorKind::PolicyDenied,
             Self::SourceUnavailable => AgentLoopHostErrorKind::Unavailable,
             Self::ParseFailed => AgentLoopHostErrorKind::InvalidInvocation,
-            Self::TrustDataMissing
-            | Self::VisibilityDataMissing
-            | Self::UnsafeModelVisibleContent => AgentLoopHostErrorKind::PolicyDenied,
+            Self::VisibilityDataMissing | Self::UnsafeModelVisibleContent => {
+                AgentLoopHostErrorKind::PolicyDenied
+            }
             Self::ContextBudgetExceeded => AgentLoopHostErrorKind::BudgetExceeded,
             Self::BudgetMisconfigured | Self::Internal => AgentLoopHostErrorKind::Internal,
         };
@@ -143,9 +142,6 @@ pub fn build_skill_run_snapshot(
 
     let mut entries = Vec::with_capacity(candidates.len());
     for candidate in candidates {
-        let trust = candidate
-            .trust
-            .ok_or(HostSkillContextBuildError::TrustDataMissing)?;
         let visibility = candidate
             .visibility
             .ok_or(HostSkillContextBuildError::VisibilityDataMissing)?;
@@ -157,12 +153,7 @@ pub fn build_skill_run_snapshot(
             .ok_or(HostSkillContextBuildError::SourceUnavailable)?;
         let parsed =
             parse_skill_md(&skill_md).map_err(|_| HostSkillContextBuildError::ParseFailed)?;
-        entries.push(parsed_skill_to_snapshot_entry(
-            parsed,
-            trust,
-            visibility,
-            candidate.ordering_key,
-        ));
+        entries.push(parsed_skill_to_snapshot_entry(parsed, visibility, candidate.ordering_key));
     }
 
     Ok(SkillRunSnapshot::from_entries(entries))
@@ -170,35 +161,22 @@ pub fn build_skill_run_snapshot(
 
 fn parsed_skill_to_snapshot_entry(
     parsed: ParsedSkill,
-    trust: SkillTrust,
     visibility: SkillVisibility,
     ordering_key: Option<String>,
 ) -> InstalledSkillSnapshot {
     let name = parsed.manifest.name;
-    let trust = skill_trust_level(trust);
-    let prompt_content = match trust {
-        SkillTrustLevel::Installed => None,
-        SkillTrustLevel::Trusted => Some(parsed.prompt_content),
-    };
     InstalledSkillSnapshot {
         ordering_key: ordering_key.unwrap_or_else(|| name.clone()),
         name,
-        trust,
+        trust: SkillTrustLevel::Trusted,
         visibility,
-        prompt_content,
+        prompt_content: Some(parsed.prompt_content),
         safe_description: parsed.manifest.description,
     }
 }
 
-fn skill_trust_level(trust: SkillTrust) -> SkillTrustLevel {
-    match trust {
-        SkillTrust::Installed => SkillTrustLevel::Installed,
-        SkillTrust::Trusted => SkillTrustLevel::Trusted,
-    }
-}
-
 fn skill_context_error_to_host_error(error: SkillContextError) -> AgentLoopHostError {
-    tracing::warn!(
+    tracing::debug!(
         component = "skill_context",
         operation = "map_context_error",
         error = %error,
@@ -206,7 +184,11 @@ fn skill_context_error_to_host_error(error: SkillContextError) -> AgentLoopHostE
         "skill context error mapped to safe host error"
     );
     let build_error = match error {
-        SkillContextError::TrustDataMissing => HostSkillContextBuildError::TrustDataMissing,
+        // TrustDataMissing is unreachable now that all skills are Trusted
+        // (Phase 3 trust layer removal), but the variant still exists in
+        // brassclaw_turns for the snapshot validation path. Map to Internal
+        // to keep exhaustive matching.
+        SkillContextError::TrustDataMissing => HostSkillContextBuildError::Internal,
         SkillContextError::VisibilityDataMissing => {
             HostSkillContextBuildError::VisibilityDataMissing
         }

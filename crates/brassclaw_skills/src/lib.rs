@@ -26,16 +26,6 @@
 //! - **`catalog`** (feature-gated) — ClawHub HTTP catalog. In v2, skill
 //!   installation happens through the skill-extraction mission or direct API.
 //!
-//! # Trust Model
-//!
-//! Skills have two trust states that determine their authority:
-//! - **Trusted**: User-placed skills (local/workspace) with full tool access
-//! - **Installed**: Registry/external skills, restricted to read-only tools
-//!
-//! In v1, trust-based tool filtering happens via `src/skills/attenuation.rs`.
-//! In v2, the Python orchestrator handles trust labels and the policy engine
-//! controls tool access via capability leases.
-
 pub mod component_type;
 #[cfg(feature = "db-store")]
 pub mod db_store;
@@ -58,7 +48,7 @@ pub use component_type::{ComponentType, ComponentTypeSet};
 pub use types::{
     ActivationCriteria, GatingRequirements, LoadedSkill, MAX_PROMPT_FILE_SIZE,
     ProviderRefreshStrategy, SkillCredentialLocation, SkillCredentialSpec, SkillManifest,
-    SkillOAuthConfig, SkillSource, SkillTrust,
+    SkillOAuthConfig, SkillSource,
 };
 
 pub use gating::{GatingResult, check_requirements, check_requirements_sync};

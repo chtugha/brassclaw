@@ -7,7 +7,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::types::{ActivationCriteria, GatingRequirements, SkillTrust};
+use crate::types::{ActivationCriteria, GatingRequirements};
 
 /// How a v2 skill was created.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -133,12 +133,7 @@ pub struct SkillRepairRecord {
 /// Serialized to/from the `metadata` JSON field of a `MemoryDoc` with
 /// `DocType::Skill`. All fields use `#[serde(default)]` for forward
 /// compatibility — old skills missing new fields deserialize gracefully.
-///
-/// Note: `Default` is intentionally NOT derived. The `trust` field's
-/// security-relevant default (`SkillTrust::Installed`) is set explicitly
-/// at every construction site so that no caller can accidentally emit a
-/// `V2SkillMetadata` whose trust level escaped review.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct V2SkillMetadata {
     /// Skill name (matches the MemoryDoc title minus the "skill:" prefix).
     #[serde(default)]
@@ -155,9 +150,6 @@ pub struct V2SkillMetadata {
     /// How this skill was created.
     #[serde(default)]
     pub source: V2SkillSource,
-    /// Trust level.
-    #[serde(default = "default_trust")]
-    pub trust: SkillTrust,
     /// Advisory companion skills — declared in the original SKILL.md
     /// `requires.skills` block. Preserved through v1→v2 migration so
     /// the Python orchestrator's `select_skills` chain-loading pass
@@ -198,10 +190,6 @@ pub struct V2SkillMetadata {
 
 fn default_version() -> u32 {
     1
-}
-
-fn default_trust() -> SkillTrust {
-    SkillTrust::Installed
 }
 
 #[cfg(test)]
@@ -255,7 +243,6 @@ mod tests {
                 ..Default::default()
             },
             source: V2SkillSource::Extracted,
-            trust: SkillTrust::Trusted,
             requires: Default::default(),
             code_snippets: vec![CodeSnippet {
                 name: "do_thing".to_string(),
@@ -319,7 +306,6 @@ mod tests {
         assert_eq!(parsed.name, "");
         assert_eq!(parsed.version, 1);
         assert_eq!(parsed.source, V2SkillSource::Authored);
-        assert_eq!(parsed.trust, SkillTrust::Installed);
         assert!(parsed.code_snippets.is_empty());
         assert!((parsed.metrics.confidence() - 1.0).abs() < f64::EPSILON);
         assert!(parsed.revisions.is_empty());
