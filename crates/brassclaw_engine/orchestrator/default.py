@@ -990,7 +990,7 @@ def run_loop(context, goal, actions, state, config):
         # which skills are active for tracking and event emission only.
         if step == 0:
             # ── Prior-knowledge assembly (§3.13/§3.14, Phase 8 Step 8.1) ─
-            token_budget = config.get("prior_knowledge_token_budget", 2000) if isinstance(config, dict) else 2000
+            token_budget = config.get("prior_knowledge_token_budget", 100000) if isinstance(config, dict) else 100000
             pkr = __assemble_prior_knowledge__(goal, token_budget, "02")
             if isinstance(pkr, dict):
                 if pkr.get("override_prompt_creation"):
@@ -1005,10 +1005,13 @@ def run_loop(context, goal, actions, state, config):
                 insert_volatile_context_at_n_minus_1(working_messages)
 
             # ── Action short-circuit (class_code 16, §3.11) ──────────────
-            # If the assembled prior knowledge resolved to an Action, execute
-            # it directly without calling __llm_complete__ and return.
-            # Actions are also detectable via the legacy __retrieve_docs__ path
-            # (pre-Phase 5 fallback). Actions bypass the LLM turn entirely.
+            # Pre-Phase-5 fallback: __assemble_prior_knowledge__ is a stub that
+            # always returns override_prompt_creation=false and does NOT surface
+            # Action components via matched_component_ids.  Until Phase 5 wires
+            # the real intent-driven assembly, we call __retrieve_docs__ here as
+            # a separate pass to detect Actions (class_code 16) and short-circuit
+            # before calling __llm_complete__.  Phase 5 removes this second call:
+            # pkr["matched_component_ids"] will contain Action IDs directly.
             docs = __retrieve_docs__(goal, 5)
             if docs:
                 for doc in docs:

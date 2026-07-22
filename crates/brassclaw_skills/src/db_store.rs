@@ -357,7 +357,16 @@ mod inner {
                 .push("intent_examples must be a JSON array".into());
         }
 
-        // 7. Consumer tag format
+        // 7. Source provenance label
+        const VALID_SOURCES: &[&str] = &["authored", "extracted", "migrated", "imported"];
+        if !VALID_SOURCES.contains(&input.source.as_str()) {
+            result.errors.push(format!(
+                "skill source '{}' is not valid; must be one of: authored, extracted, migrated, imported",
+                input.source
+            ));
+        }
+
+        // 8. Consumer tag format
         static TAG_RE: OnceLock<regex::Regex> = OnceLock::new();
         let tag_re = TAG_RE.get_or_init(|| {
             regex::Regex::new(r"^\d{2}(:[a-z0-9-]+)?$").unwrap() // safety: hardcoded literal

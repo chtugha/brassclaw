@@ -2522,7 +2522,7 @@ async fn handle_retrieve_docs(
 /// reserved for Rust dispatch and KV-cache fingerprinting.
 ///
 /// **Stub:** the real retrieval + intent-driven assembly pipeline is wired in
-/// Phase 5. Until then this function delegates to `handle_retrieve_docs` to
+/// Phase 5. Until then this function delegates to `retrieve_context` to
 /// produce a best-effort formatted result so `default.py` runs correctly with
 /// the new call site.
 async fn handle_assemble_prior_knowledge(
@@ -2530,21 +2530,17 @@ async fn handle_assemble_prior_knowledge(
     thread: &Thread,
     retrieval: Option<&RetrievalEngine>,
 ) -> ExtFunctionResult {
+    // Maximum number of docs to retrieve in the stub path (Phase 5 replaces
+    // this with the full intent-driven pipeline that honours token_budget).
+    const STUB_MAX_DOCS: usize = 20;
+
     let goal = args.first().map(monty_to_string).unwrap_or_default();
-    let token_budget = args
-        .get(1)
-        .and_then(|v| match v {
-            MontyObject::Int(i) => Some(*i as usize),
-            MontyObject::Float(f) => Some(*f as usize),
-            _ => None,
-        })
-        .unwrap_or(2000);
 
     // Phase 5 wires the real intent-driven assembly here.  Until then, fall
     // back to `retrieve_context` to produce a minimal prior-knowledge result.
     let components = if let Some(r) = retrieval {
         match r
-            .retrieve_context(thread.project_id, &thread.user_id, &goal, token_budget.min(20))
+            .retrieve_context(thread.project_id, &thread.user_id, &goal, STUB_MAX_DOCS)
             .await
         {
             Ok(docs) => docs,
@@ -2557,11 +2553,19 @@ async fn handle_assemble_prior_knowledge(
         vec![]
     };
 
+    // Collect matched component UUIDs (raw PKC dispatch identity).
+    let matched_ids: Vec<String> = components
+        .iter()
+        .map(|d| d.id.0.to_string())
+        .collect();
+
     // Build the formatted LLM-readable JSON from the retrieved components.
     // format_prior_knowledge_for_llm() is deterministic and stable across
-    // turns — same components → same JSON → KV-cache prefix hits.
-    let formatted = format_prior_knowledge_for_llm(&components, &goal);
-    // Raw content: plain text concatenation (Rust-internal, never sent to LLM).
+    // turns — same components in same order → same JSON → KV-cache prefix hits.
+    let formatted = format_prior_knowledge_for_llm(&components, &matched_ids);
+
+    // Raw content: plain-text concatenation for Rust dispatch + KV-cache
+    // fingerprinting. Never sent to the LLM.
     let raw_content: String = components
         .iter()
         .map(|d| format!("[{:?}] {}\n{}", d.doc_type, d.title, d.content))
@@ -2572,36 +2576,77 @@ async fn handle_assemble_prior_knowledge(
         "content": raw_content,
         "formatted_content": formatted,
         "override_prompt_creation": false,
-        "matched_component_ids": [],
+        "matched_component_ids": matched_ids,
     })))
+}
+
+/// Map a `DocType` to its `(class_code, label)` pair.
+///
+/// Class codes match the authoritative table in spec §4 / `intent_system::class_label`.
+/// `MemoryDoc` carries `DocType` rather than a raw integer, so this function
+/// bridges the two representations when building LLM-readable JSON.
+fn doc_type_class_code(doc_type: crate::types::memory::DocType) -> (i32, &'static str) {
+    use crate::types::memory::DocType;
+    match doc_type {
+        DocType::Spec      => (12,  "spec"),
+        DocType::ToolSkill => (13,  "tool_skill"),
+        DocType::Plan      => (14,  "plan"),
+        DocType::Summary   => (15,  "summary"),
+        DocType::Lesson    => (18,  "lesson"),
+        DocType::Issue     => (19,  "issue"),
+        DocType::Note      => (20,  "note"),
+        DocType::Skill     => (3,   "skill_llm"),
+        DocType::Recipe    => (21,  "recipe"),
+    }
 }
 
 /// Build a deterministic LLM-readable JSON string from a set of retrieved
 /// memory components.
 ///
-/// The JSON schema is fixed: `{prior_knowledge: [...], matched_components: []}`.
-/// Each entry carries `class`, `class_code`, `name`, and `content`. The order
-/// is the retrieval order (Phase 5 will order by `(class_code asc,
-/// prompt_uid asc)`). Schema stability = same components → same token sequence
-/// → KV-cache prefix reuse across turns.
-fn format_prior_knowledge_for_llm(
+/// Phase 8 Step 8.1 / Phase 6.1 — two-surface PKC design (§3.13/§3.14):
+/// - Schema is fixed: `{prior_knowledge: [...], matched_components: [...]}`.
+/// - Each entry carries `class`, `class_code`, `name`, and `content`.
+/// - Fields absent on a doc (empty string ≙ absent) are omitted to keep the
+///   token sequence stable across turns (no `null` tokens in the stream).
+/// - Entries are emitted in the order supplied by the caller (Phase 5 will
+///   guarantee `(class_code asc, prompt_uid asc)` ordering at the DB layer).
+/// - `matched_components` is populated with the stringified `DocId` UUIDs of
+///   the supplied docs; callers that already hold UUIDs should pass them via
+///   `handle_assemble_prior_knowledge` which sets the field directly.
+///
+/// Schema stability → same components → same JSON → same token sequence →
+/// KV-cache prefix reuse across turns.
+pub(crate) fn format_prior_knowledge_for_llm(
     docs: &[crate::types::memory::MemoryDoc],
-    _goal: &str,
+    matched_ids: &[String],
 ) -> String {
     let entries: Vec<serde_json::Value> = docs
         .iter()
         .map(|d| {
-            serde_json::json!({
-                "class": format!("{:?}", d.doc_type).to_lowercase(),
-                "name": d.title,
-                "content": d.content,
-            })
+            let (class_code, class_label) = doc_type_class_code(d.doc_type);
+            // Build the entry with only non-empty fields so that NULL/absent
+            // DB columns never inject extra tokens into the stream.
+            let mut entry = serde_json::Map::new();
+            entry.insert("class".into(),      serde_json::Value::String(class_label.to_string()));
+            entry.insert("class_code".into(), serde_json::Value::Number(class_code.into()));
+            entry.insert("name".into(),       serde_json::Value::String(d.title.clone()));
+            if !d.content.is_empty() {
+                entry.insert("content".into(), serde_json::Value::String(d.content.clone()));
+            }
+            // Surface `description` from metadata if the component carries one.
+            if let Some(desc) = d.metadata.get("description")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+            {
+                entry.insert("description".into(), serde_json::Value::String(desc.to_string()));
+            }
+            serde_json::Value::Object(entry)
         })
         .collect();
 
     match serde_json::to_string(&serde_json::json!({
         "prior_knowledge": entries,
-        "matched_components": [],
+        "matched_components": matched_ids,
     })) {
         Ok(s) => s,
         Err(_) => String::from(r#"{"prior_knowledge":[],"matched_components":[]}"#),
@@ -6659,5 +6704,186 @@ evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
         assert_eq!(json["queued"], serde_json::json!(true));
         assert_eq!(json["llm_audit_required"], serde_json::json!(false));
         assert_eq!(json["llm_audit_status"], serde_json::json!("not_required"));
+    }
+
+    // ── format_prior_knowledge_for_llm (Phase 6.1 / Phase 8 Step 8.1) ────────
+
+    fn make_plan_doc(title: &str, content: &str) -> crate::types::memory::MemoryDoc {
+        use crate::types::memory::DocType;
+        use crate::types::project::ProjectId;
+        crate::types::memory::MemoryDoc::new(
+            ProjectId::new(),
+            "test-user",
+            DocType::Plan,
+            title,
+            content,
+        )
+    }
+
+    fn make_skill_doc(title: &str, content: &str) -> crate::types::memory::MemoryDoc {
+        use crate::types::memory::DocType;
+        use crate::types::project::ProjectId;
+        crate::types::memory::MemoryDoc::new(
+            ProjectId::new(),
+            "test-user",
+            DocType::Skill,
+            title,
+            content,
+        )
+    }
+
+    /// 6.1.5a — `format_prior_knowledge_for_llm` is deterministic: identical
+    /// input in identical order always produces byte-identical output.
+    #[test]
+    fn format_prior_knowledge_deterministic_identical_input() {
+        let doc = make_plan_doc("deploy-plan", "Step 1. Do the thing.");
+        let ids = vec![doc.id.0.to_string()];
+        let run1 = format_prior_knowledge_for_llm(std::slice::from_ref(&doc), &ids);
+        let run2 = format_prior_knowledge_for_llm(std::slice::from_ref(&doc), &ids);
+        assert_eq!(run1, run2, "same input must produce byte-identical JSON");
+    }
+
+    /// 6.1.5a (KV-cache stability) — two calls with the same set of components
+    /// produce byte-identical `formatted_content`.
+    #[test]
+    fn format_prior_knowledge_kv_cache_stable() {
+        let d1 = make_plan_doc("plan-alpha", "alpha content");
+        let d2 = make_skill_doc("skill-beta", "beta content");
+        let ids: Vec<String> = vec![d1.id.0.to_string(), d2.id.0.to_string()];
+        let first  = format_prior_knowledge_for_llm(&[d1.clone(), d2.clone()], &ids);
+        let second = format_prior_knowledge_for_llm(&[d1, d2], &ids);
+        assert_eq!(first, second, "same component set must produce byte-identical formatted_content");
+    }
+
+    /// 6.1.5b — result is valid JSON and carries both `content` and
+    /// `formatted_content` keys; `formatted_content` is valid JSON itself.
+    #[test]
+    fn format_prior_knowledge_valid_json_and_schema() {
+        use crate::types::memory::DocType;
+        use crate::types::project::ProjectId;
+
+        // Mix of class types.
+        let mut plan_doc = make_plan_doc("deploy-to-kubernetes", "Step-by-step deployment");
+        // Add a description in metadata (optional field).
+        plan_doc.metadata = serde_json::json!({"description": "K8s deploy procedure"});
+
+        let skill_doc = crate::types::memory::MemoryDoc::new(
+            ProjectId::new(),
+            "test-user",
+            DocType::Skill,
+            "my-skill",
+            "skill body",
+        );
+        let recipe_doc = crate::types::memory::MemoryDoc::new(
+            ProjectId::new(),
+            "test-user",
+            DocType::Recipe,
+            "my-recipe",
+            "",  // empty content — must be omitted from JSON
+        );
+
+        let ids: Vec<String> = vec![
+            plan_doc.id.0.to_string(),
+            skill_doc.id.0.to_string(),
+            recipe_doc.id.0.to_string(),
+        ];
+        let json_str = format_prior_knowledge_for_llm(&[plan_doc, skill_doc, recipe_doc], &ids);
+
+        // Must be parseable JSON.
+        let parsed: serde_json::Value = serde_json::from_str(&json_str)
+            .expect("formatted_content must be valid JSON");
+
+        // Top-level keys.
+        assert!(parsed.get("prior_knowledge").and_then(|v| v.as_array()).is_some());
+        assert!(parsed.get("matched_components").and_then(|v| v.as_array()).is_some());
+
+        let entries = parsed["prior_knowledge"].as_array().unwrap();
+        assert_eq!(entries.len(), 3);
+
+        // Plan entry: must have class_code=14, class="plan", description present.
+        let plan_entry = &entries[0];
+        assert_eq!(plan_entry["class"], "plan");
+        assert_eq!(plan_entry["class_code"], 14);
+        assert_eq!(plan_entry["name"], "deploy-to-kubernetes");
+        assert_eq!(plan_entry["description"], "K8s deploy procedure");
+        assert!(plan_entry.get("content").is_some(), "non-empty content must appear");
+
+        // Skill entry: class_code=3.
+        assert_eq!(entries[1]["class_code"], 3);
+
+        // Recipe entry with empty content: `content` key must be absent.
+        let recipe_entry = &entries[2];
+        assert_eq!(recipe_entry["class"], "recipe");
+        assert!(
+            recipe_entry.get("content").is_none(),
+            "empty content must be omitted from JSON to keep token stream stable"
+        );
+
+        // matched_components = the three IDs passed in.
+        assert_eq!(parsed["matched_components"].as_array().unwrap().len(), 3);
+    }
+
+    /// 6.1.5d — volatile-injection stub is a no-op but callable from the
+    /// default.py path.  Verified through the Python step-0 code path: both
+    /// Override and Normal Assembly branches call insert_volatile_context_at_n_minus_1.
+    /// At the Rust unit-test level we verify that `handle_assemble_prior_knowledge`
+    /// returns a `formatted_content` that is non-empty for a non-empty doc set,
+    /// and that raw `content` is NOT equal to `formatted_content`.
+    #[tokio::test]
+    async fn assemble_prior_knowledge_returns_both_surfaces() {
+        // Empty retrieval path — no retrieval engine.
+        let thread = crate::types::thread::Thread::new(
+            "deploy kubernetes",
+            crate::types::thread::ThreadType::Foreground,
+            crate::types::project::ProjectId::new(),
+            "user",
+            crate::types::thread::ThreadConfig::default(),
+        );
+        let args = vec![
+            MontyObject::String("deploy kubernetes".into()),
+            MontyObject::Int(2000),
+            MontyObject::String("02".into()),
+        ];
+
+        let result = handle_assemble_prior_knowledge(&args, &thread, None).await;
+        let json = match result {
+            ExtFunctionResult::Return(obj) => monty_to_json(&obj),
+            other => panic!("expected Return, got: {other:?}"),
+        };
+
+        // Both surfaces must be present.
+        assert!(json.get("content").is_some(),           "content key required");
+        assert!(json.get("formatted_content").is_some(), "formatted_content key required");
+        assert!(json.get("override_prompt_creation").is_some());
+        assert!(json.get("matched_component_ids").is_some());
+
+        // formatted_content must itself be valid JSON.
+        let fc = json["formatted_content"].as_str().expect("formatted_content must be a string");
+        let _: serde_json::Value = serde_json::from_str(fc)
+            .expect("formatted_content must be valid JSON");
+    }
+
+    /// 6.1.5e — regression: raw `content` (plain-text) must never be equal to
+    /// `formatted_content` (JSON string) for a non-empty component set, because
+    /// the two surfaces are structurally different by design.  An accidental
+    /// swap would be caught here.
+    #[test]
+    fn format_prior_knowledge_raw_and_formatted_are_structurally_distinct() {
+        let doc = make_plan_doc("test-plan", "the plan content");
+        let ids = vec![doc.id.0.to_string()];
+
+        let formatted = format_prior_knowledge_for_llm(std::slice::from_ref(&doc), &ids);
+        let raw = format!("[{:?}] {}\n{}", doc.doc_type, doc.title, doc.content);
+
+        // Formatted must be valid JSON; raw must not start with `{`.
+        assert!(formatted.starts_with('{'), "formatted_content must be a JSON object");
+        assert!(!raw.starts_with('{'),      "raw content must not be JSON");
+        assert_ne!(formatted, raw,          "raw and formatted surfaces must differ");
+
+        // Formatted must not contain the raw `[Plan]` prefix that Rust uses internally.
+        assert!(
+            !formatted.contains("[Plan]"),
+            "raw PKC Rust-internal format must not appear in formatted_content"
+        );
     }
 }

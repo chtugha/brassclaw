@@ -53,10 +53,32 @@
 //! DB-path functions require the `skills-db` feature (same pool as skill loading).
 //! The pure-Rust helpers (`classify_query`, `match_order`) are always available.
 
+#[cfg(feature = "skills-db")]
+use std::collections::HashMap;
 use std::fmt;
+#[cfg(feature = "skills-db")]
+use std::sync::Mutex;
+#[cfg(feature = "skills-db")]
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+// ---------------------------------------------------------------------------
+// In-process rate-limit bucket for score increments (SEC-05)
+// ---------------------------------------------------------------------------
+
+/// Per-row increment state tracked in a process-local bucket.
+#[cfg(feature = "skills-db")]
+struct IncrementBucket {
+    /// Number of increments in the current hour window.
+    count: u32,
+    /// Start of the current hour window.
+    window_start: Instant,
+}
+
+#[cfg(feature = "skills-db")]
+static SCORE_RATE_BUCKETS: Mutex<Option<HashMap<Uuid, IncrementBucket>>> = Mutex::new(None);
 
 // ---------------------------------------------------------------------------
 // Public types — always compiled
@@ -110,6 +132,10 @@ pub const MAX_DISAMBIGUATION_CANDIDATES: usize = 3;
 
 /// Score hard cap (SEC-05).
 pub const SCORE_CAP: i32 = 100;
+
+/// Rate limit: at most this many score increments per scope per hour (SEC-05).
+#[cfg(feature = "skills-db")]
+const SCORE_RATE_LIMIT_PER_HOUR: u32 = 50;
 
 /// A single candidate match returned by the resolver.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -211,24 +237,38 @@ pub fn match_order(query_class: InputClass) -> [i16; 3] {
 }
 
 /// Map a component `class_code` to a short human-readable label for disambiguation UX.
+///
+/// Authoritative table (spec §4):
+///   0=tool, 1=skill_rusty, 2=skill_monty, 3=skill_llm, 4-9=extensions,
+///   10=orchestrator, 11=reserved, 12=spec, 13=tool_skill, 14=plan,
+///   15=summary, 16=action, 17=docu, 18=lesson, 19=issue, 20=note,
+///   21=recipe, 50=scaffold.
 pub fn class_label(class_code: i32) -> String {
     match class_code {
-        0 => "tool",
-        1 => "skill_rusty",
-        2 => "skill_monty",
-        3 => "skill_llm",
-        4 => "extension_worker",
-        5 => "extension_cron",
-        6 => "extension_trigger",
-        7 => "extension_webhook",
-        8 => "extension_plan",
-        9 => "extension_revision",
+        0  => "tool",
+        1  => "skill_rusty",
+        2  => "skill_monty",
+        3  => "skill_llm",
+        4  => "extension_worker",
+        5  => "extension_cron",
+        6  => "extension_trigger",
+        7  => "extension_webhook",
+        8  => "extension_plan",
+        9  => "extension_revision",
         10 => "orchestrator",
-        11 => "plan",
+        11 => "reserved",
+        12 => "spec",
+        13 => "tool_skill",
+        14 => "plan",
+        15 => "summary",
         16 => "action",
+        17 => "docu",
+        18 => "lesson",
+        19 => "issue",
+        20 => "note",
         21 => "recipe",
         50 => "scaffold",
-        _ => "component",
+        _  => "component",
     }
     .to_string()
 }
@@ -481,11 +521,55 @@ pub async fn purge_component_inputs(
 // ---------------------------------------------------------------------------
 
 /// Atomically increment a row's score, capped at `SCORE_CAP` (PERF-03, SEC-05).
+///
+/// Rate-limited to `SCORE_RATE_LIMIT_PER_HOUR` increments per `row_id` per
+/// hour (SEC-05 token-bucket, in-process).  Returns the updated score.  If
+/// the rate limit is exhausted for this window the DB update is skipped and
+/// the current score is returned unchanged.
 #[cfg(feature = "skills-db")]
 async fn increment_score(
     client: &brassclaw_pg::PgClient,
     row_id: Uuid,
 ) -> Result<i32, IntentSystemError> {
+    // Rate-limit check (SEC-05). The bucket is keyed per row_id; the hour
+    // window resets when Instant::elapsed() exceeds 3600 seconds.
+    let allow = {
+        let mut guard = SCORE_RATE_BUCKETS
+            .lock()
+            .map_err(|_| IntentSystemError::Db("rate-bucket lock poisoned".into()))?;
+        let map = guard.get_or_insert_with(HashMap::new);
+        let now = Instant::now();
+        let bucket = map.entry(row_id).or_insert(IncrementBucket {
+            count: 0,
+            window_start: now,
+        });
+        if bucket.window_start.elapsed() >= Duration::from_secs(3600) {
+            // New hour window — reset.
+            bucket.count = 0;
+            bucket.window_start = now;
+        }
+        if bucket.count < SCORE_RATE_LIMIT_PER_HOUR {
+            bucket.count += 1;
+            true
+        } else {
+            false
+        }
+    };
+
+    if !allow {
+        // Rate limit exhausted: return the current score without a DB write.
+        use tracing::debug;
+        debug!(row_id = %row_id, "intent: score increment skipped (SEC-05 rate limit)");
+        let row = client
+            .query_one(
+                "SELECT score FROM reborn_intent_inputs WHERE id = $1",
+                &[&row_id],
+            )
+            .await
+            .map_err(|e| IntentSystemError::Db(e.to_string()))?;
+        return Ok(row.get::<_, i32>(0));
+    }
+
     let row = client
         .query_one(
             "UPDATE reborn_intent_inputs
