@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS brassclaw_product_auth_accounts (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (tenant_id, id)
 );
+CREATE INDEX IF NOT EXISTS brassclaw_product_auth_accounts_tenant_user_idx
+    ON brassclaw_product_auth_accounts (tenant_id, user_id);
 
 CREATE TABLE IF NOT EXISTS brassclaw_product_auth_flows (
     id          TEXT NOT NULL,
@@ -77,6 +79,8 @@ CREATE TABLE IF NOT EXISTS brassclaw_product_auth_flows (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (tenant_id, id)
 );
+CREATE INDEX IF NOT EXISTS brassclaw_product_auth_flows_tenant_user_idx
+    ON brassclaw_product_auth_flows (tenant_id, user_id);
 
 CREATE TABLE IF NOT EXISTS brassclaw_product_auth_interactions (
     id          TEXT NOT NULL,
@@ -88,6 +92,8 @@ CREATE TABLE IF NOT EXISTS brassclaw_product_auth_interactions (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (tenant_id, id)
 );
+CREATE INDEX IF NOT EXISTS brassclaw_product_auth_interactions_tenant_user_idx
+    ON brassclaw_product_auth_interactions (tenant_id, user_id);
 "#;
 
 // ---------------------------------------------------------------------------
@@ -142,11 +148,12 @@ impl PgAuthProductServices {
         tenant_id: &str,
         id: &str,
     ) -> Result<Option<(T, i64)>, AuthProductError> {
-        // Defence-in-depth: assert table is a known literal at dev/test time.
-        debug_assert!(
-            Self::ALLOWED_TABLES.contains(&table),
-            "pg_auth_product_services: unknown table '{table}'"
-        );
+        // Defence-in-depth: reject unknown tables in all builds (debug_assert
+        // alone is stripped in --release).
+        if !Self::ALLOWED_TABLES.contains(&table) {
+            tracing::debug!(table, "pg_auth_product_services: get_record called with unknown table");
+            return Err(AuthProductError::BackendUnavailable);
+        }
         let client = self.pool.get().await.map_err(pool_err)?;
         let query = format!("SELECT data, revision FROM {table} WHERE tenant_id = $1 AND id = $2");
         match client
@@ -176,10 +183,10 @@ impl PgAuthProductServices {
         record: &T,
         expected_revision: Option<i64>,
     ) -> Result<(), AuthProductError> {
-        debug_assert!(
-            Self::ALLOWED_TABLES.contains(&table),
-            "pg_auth_product_services: unknown table '{table}'"
-        );
+        if !Self::ALLOWED_TABLES.contains(&table) {
+            tracing::debug!(table, "pg_auth_product_services: put_record called with unknown table");
+            return Err(AuthProductError::BackendUnavailable);
+        }
         let json = serde_json::to_value(record).map_err(|e| {
             tracing::debug!(table, error = %e, "pg_auth_product_services: serialisation failed");
             AuthProductError::BackendUnavailable
@@ -244,10 +251,10 @@ impl PgAuthProductServices {
         tenant_id: &str,
         id: &str,
     ) -> Result<bool, AuthProductError> {
-        debug_assert!(
-            Self::ALLOWED_TABLES.contains(&table),
-            "pg_auth_product_services: unknown table '{table}'"
-        );
+        if !Self::ALLOWED_TABLES.contains(&table) {
+            tracing::debug!(table, "pg_auth_product_services: delete_record called with unknown table");
+            return Err(AuthProductError::BackendUnavailable);
+        }
         let client = self.pool.get().await.map_err(pool_err)?;
         let query = format!("DELETE FROM {table} WHERE tenant_id = $1 AND id = $2");
         let n = client
@@ -264,14 +271,14 @@ impl PgAuthProductServices {
         filter_col: &str,
         filter_val: &str,
     ) -> Result<Vec<T>, AuthProductError> {
-        debug_assert!(
-            Self::ALLOWED_TABLES.contains(&table),
-            "pg_auth_product_services: unknown table '{table}'"
-        );
-        debug_assert!(
-            Self::ALLOWED_FILTER_COLS.contains(&filter_col),
-            "pg_auth_product_services: unknown filter column '{filter_col}'"
-        );
+        if !Self::ALLOWED_TABLES.contains(&table) {
+            tracing::debug!(table, "pg_auth_product_services: list_records called with unknown table");
+            return Err(AuthProductError::BackendUnavailable);
+        }
+        if !Self::ALLOWED_FILTER_COLS.contains(&filter_col) {
+            tracing::debug!(filter_col, "pg_auth_product_services: list_records called with unknown filter column");
+            return Err(AuthProductError::BackendUnavailable);
+        }
         let client = self.pool.get().await.map_err(pool_err)?;
         let query = format!(
             "SELECT data FROM {table} WHERE tenant_id = $1 AND {filter_col} = $2 \

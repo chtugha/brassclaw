@@ -259,6 +259,69 @@ If a record fails to serialise/deserialise (e.g., schema mismatch after a code u
 - [x] **Step 16** — Run `cargo clippy -p brassclaw_pg -p brassclaw_embedded_postgres -p brassclaw_reborn -p brassclaw_reborn_composition --all-targets -- -D warnings` — zero warnings *(verified)*
 - [x] **Step 17** — Run `cargo test -p brassclaw_pg -p brassclaw_embedded_postgres -p brassclaw_reborn -p brassclaw_reborn_composition` — all tests pass *(verified)*
 
+
+## Round 3 Findings
+
+### Issue 15 — MEDIUM: `debug_assert!` insufficient in `pg_auth_product_services.rs` — stripped in release builds
+
+**File:** [`crates/brassclaw_reborn_composition/src/pg_auth_product_services.rs`](crates/brassclaw_reborn_composition/src/pg_auth_product_services.rs) lines 146, 179, 247, 267–271
+
+Round 2 added `debug_assert!` guards that check `table` and `filter_col` against allowlists before SQL interpolation. However, `debug_assert!` is unconditionally stripped in `--release` builds. A future call site that accidentally passes a user-controlled string would bypass the guard silently in production.
+
+**Fix:** Replace `debug_assert!` with a real `if !contains { return Err(...) }` guard so the check runs in all builds. This also provides a proper `AuthProductError` return path rather than a panic.
+
+---
+
+### Issue 16 — MEDIUM: Missing `user_id` index on `brassclaw_product_auth_*` tables
+
+**File:** [`crates/brassclaw_reborn_composition/src/pg_auth_product_services.rs`](crates/brassclaw_reborn_composition/src/pg_auth_product_services.rs) lines 58–91 (inline DDL)
+
+All three auth tables (`brassclaw_product_auth_accounts`, `brassclaw_product_auth_flows`, `brassclaw_product_auth_interactions`) define `user_id TEXT NOT NULL` but have only a `PRIMARY KEY (tenant_id, id)`. The `list_records` helper queries `WHERE tenant_id = $1 AND user_id = $2` — without a composite index on `(tenant_id, user_id)` this is a full-table scan on growing datasets.
+
+**Fix:** Add `CREATE INDEX IF NOT EXISTS` for `(tenant_id, user_id)` on all three tables in the inline DDL.
+
+---
+
+### Issue 17 — LOW: Silent JSON serialisation fallback in `plan_library.rs`
+
+**File:** [`crates/brassclaw_reborn_composition/src/plan_library.rs`](crates/brassclaw_reborn_composition/src/plan_library.rs) lines 196, 206
+
+Two silent fallbacks:
+- Line 196: `serde_json::to_vec(metrics).unwrap_or_else(|_| b"{}".to_vec())` — serialisation failure silently writes `{}`, losing all metrics data.
+- Line 206: `serde_json::from_slice(&bytes).unwrap_or_default()` — deserialisation failure silently resets metrics to zero.
+
+Neither failure is logged, so a serialisation bug or a corrupted metrics file is invisible.
+
+**Fix:** Add `tracing::debug!` logs before the fallbacks so failures are observable.
+
+---
+
+### Issue 18 — LOW: Silent best-effort key delete in `llm_config_service.rs`
+
+**File:** [`crates/brassclaw_reborn_composition/src/llm_config_service.rs`](crates/brassclaw_reborn_composition/src/llm_config_service.rs) line 950
+
+```rust
+let _ = self.keys.delete(&id).await;
+```
+
+The comment says "Best-effort: drop any stored key for the deleted provider" — the intent is correct, but a failure leaves an orphaned secret key in the store with no log. If the secret store is unavailable, the provider is deleted but its key persists silently.
+
+**Fix:** Replace `let _ =` with `if let Err(e) = ... { tracing::debug!(...) }`.
+
+---
+
+## Round 3 Execution Order
+
+- [x] **Step 18** — Replace `debug_assert!` with runtime `Err` guards in `pg_auth_product_services.rs` SQL helpers *(resolved)*
+- [x] **Step 19** — Add `(tenant_id, user_id)` indexes to inline DDL in `pg_auth_product_services.rs` *(resolved)*
+- [x] **Step 20** — Add `debug!` logs to JSON serialisation/deserialisation fallbacks in `plan_library.rs` *(resolved)*
+- [x] **Step 21** — Add `debug!` log to best-effort key delete in `llm_config_service.rs` *(resolved)*
+- [x] **Step 22** — Run `cargo clippy -p brassclaw_reborn_composition -p brassclaw_pg -- -D warnings` — zero warnings *(verified)*
+- [x] **Step 23** — Run `cargo test -p brassclaw_reborn_composition` — 39 passed, 0 failed *(verified)*
+
+---
+
+
 ---
 
 ## Non-Issues (Investigated and Cleared)

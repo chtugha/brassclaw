@@ -193,7 +193,10 @@ where
         let path_str = format!("{}/{}.metrics.json", PLAN_LIBRARY_ROOT, slug);
         let path =
             VirtualPath::new(path_str).map_err(brassclaw_filesystem::FilesystemError::Contract)?;
-        let bytes = serde_json::to_vec(metrics).unwrap_or_else(|_| b"{}".to_vec());
+        let bytes = serde_json::to_vec(metrics).unwrap_or_else(|e| {
+            tracing::debug!(%slug, error = %e, "plan library: failed to serialise metrics; writing empty object");
+            b"{}".to_vec()
+        });
         self.filesystem.write_file(&path, &bytes).await
     }
 
@@ -203,7 +206,10 @@ where
             return PlanLibraryMetrics::default();
         };
         match self.filesystem.read_file(&path).await {
-            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
+            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|e| {
+                tracing::debug!(%slug, error = %e, "plan library: failed to deserialise metrics; resetting to default");
+                PlanLibraryMetrics::default()
+            }),
             _ => PlanLibraryMetrics::default(),
         }
     }

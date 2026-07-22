@@ -947,7 +947,9 @@ impl LlmConfigService for RebornLlmConfigService {
             return Err(LlmConfigServiceError::NotFound);
         }
         // Best-effort: drop any stored key for the deleted provider.
-        let _ = self.keys.delete(&id).await;
+        if let Err(e) = self.keys.delete(&id).await {
+            tracing::debug!(provider_id = %id, error = %e, "llm config: failed to delete stored key for removed provider");
+        }
 
         self.refresh_running_provider().await;
         self.snapshot(caller).await
