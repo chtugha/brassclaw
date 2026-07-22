@@ -1,5 +1,4 @@
 use deadpool_postgres::{Config, Pool, PoolConfig, Runtime};
-use tracing::warn;
 use url::Url;
 
 use crate::error::PgError;
@@ -58,11 +57,13 @@ fn build_tls_connector() -> Result<tokio_postgres_rustls::MakeRustlsConnect, PgE
     let mut root_store = rustls::RootCertStore::empty();
     let native = rustls_native_certs::load_native_certs();
     for error in &native.errors {
-        tracing::warn!("pg pool: error loading system root cert: {error}");
+        // Use debug! — warn! corrupts the terminal UI (AGENTS.md §67).
+        tracing::debug!("pg pool: error loading system root cert: {error}");
     }
     for cert in native.certs {
         if let Err(error) = root_store.add(cert) {
-            tracing::warn!("pg pool: skipping invalid system root cert: {error}");
+            // Use debug! — warn! corrupts the terminal UI (AGENTS.md §67).
+            tracing::debug!("pg pool: skipping invalid system root cert: {error}");
         }
     }
     let config = rustls::ClientConfig::builder()
@@ -85,11 +86,13 @@ fn url_is_loopback(url: &str) -> bool {
 /// Emit a non-suppressible warning when the URL points to a non-loopback host
 /// without `sslmode=`. Connections to a remote Postgres without TLS expose
 /// ciphertext, config, and session state in transit.
+///
+/// Uses `eprintln!` — `tracing::warn!` corrupts the terminal UI (AGENTS.md §67).
 fn check_ssl_warning(url: &str) {
     if !url.contains("sslmode=") {
-        warn!(
-            "BRASSCLAW_PG_URL points to non-loopback host without sslmode — \
-             TLS is strongly recommended"
+        eprintln!(
+            "brassclaw-pg: BRASSCLAW_PG_URL points to non-loopback host without \
+             sslmode — TLS is strongly recommended"
         );
     }
 }

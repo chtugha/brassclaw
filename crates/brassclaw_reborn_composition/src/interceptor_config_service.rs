@@ -124,13 +124,25 @@ impl RebornInterceptorConfigService {
     }
 
     /// Load interceptor config keys from the DB.
+    ///
+    /// Returns an empty map on DB error (resilience: the interceptor should still
+    /// function with default config even if the DB is temporarily unavailable).
+    /// The failure is logged at `debug!` so it remains observable.
     async fn load_config(&self) -> HashMap<String, String> {
-        list_config_keys(&self.pool, &self.tenant_id)
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|(k, _)| k.starts_with("interceptor."))
-            .collect()
+        match list_config_keys(&self.pool, &self.tenant_id).await {
+            Ok(kv) => kv
+                .into_iter()
+                .filter(|(k, _)| k.starts_with("interceptor."))
+                .collect(),
+            Err(e) => {
+                tracing::debug!(
+                    tenant_id = %self.tenant_id,
+                    error = %e,
+                    "interceptor load_config: DB unavailable, using empty config"
+                );
+                HashMap::new()
+            }
+        }
     }
 
     /// Build a snapshot from a loaded KV map.

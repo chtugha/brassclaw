@@ -7,7 +7,7 @@
 //! Production and multi-tenant runtimes must wire a real membership-backed
 //! trigger access checker instead of this local bootstrap store.
 
-use std::collections::BTreeSet;
+use std::collections::HashSet;
 
 use brassclaw_host_api::{AgentId, ProjectId, TenantId, UserId};
 use chrono::Utc;
@@ -157,7 +157,9 @@ impl PgRebornLocalTriggerAccessStore {
         let now = Utc::now();
         let agent_key = optional_scope_key(reconciliation.agent_id.map(AgentId::as_str));
         let project_key = optional_scope_key(reconciliation.project_id.map(ProjectId::as_str));
-        let allowed: BTreeSet<&str> = reconciliation.user_ids.iter().map(UserId::as_str).collect();
+        // HashSet gives O(1) average contains() vs O(log n) for BTreeSet;
+        // ordering is not needed here.
+        let allowed: HashSet<&str> = reconciliation.user_ids.iter().map(UserId::as_str).collect();
         let client = self.connect().await?;
 
         let rows = client

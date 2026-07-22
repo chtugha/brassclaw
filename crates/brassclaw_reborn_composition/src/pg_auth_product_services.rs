@@ -126,12 +126,27 @@ impl PgAuthProductServices {
 
     // ---- generic helpers ----
 
+    /// Tables that may be passed to the generic SQL helpers.
+    const ALLOWED_TABLES: &'static [&'static str] = &[
+        "brassclaw_product_auth_accounts",
+        "brassclaw_product_auth_flows",
+        "brassclaw_product_auth_interactions",
+    ];
+
+    /// Column names that may be used as filter columns in `list_records`.
+    const ALLOWED_FILTER_COLS: &'static [&'static str] = &["user_id"];
+
     async fn get_record<T: DeserializeOwned>(
         &self,
         table: &str,
         tenant_id: &str,
         id: &str,
     ) -> Result<Option<(T, i64)>, AuthProductError> {
+        // Defence-in-depth: assert table is a known literal at dev/test time.
+        debug_assert!(
+            Self::ALLOWED_TABLES.contains(&table),
+            "pg_auth_product_services: unknown table '{table}'"
+        );
         let client = self.pool.get().await.map_err(pool_err)?;
         let query = format!("SELECT data, revision FROM {table} WHERE tenant_id = $1 AND id = $2");
         match client
@@ -143,8 +158,10 @@ impl PgAuthProductServices {
             Some(row) => {
                 let json: serde_json::Value = row.get(0);
                 let revision: i64 = row.get(1);
-                let record: T = serde_json::from_value(json)
-                    .map_err(|_| AuthProductError::BackendUnavailable)?;
+                let record: T = serde_json::from_value(json).map_err(|e| {
+                    tracing::debug!(table, error = %e, "pg_auth_product_services: deserialisation failed");
+                    AuthProductError::BackendUnavailable
+                })?;
                 Ok(Some((record, revision)))
             }
         }
@@ -159,8 +176,14 @@ impl PgAuthProductServices {
         record: &T,
         expected_revision: Option<i64>,
     ) -> Result<(), AuthProductError> {
-        let json =
-            serde_json::to_value(record).map_err(|_| AuthProductError::BackendUnavailable)?;
+        debug_assert!(
+            Self::ALLOWED_TABLES.contains(&table),
+            "pg_auth_product_services: unknown table '{table}'"
+        );
+        let json = serde_json::to_value(record).map_err(|e| {
+            tracing::debug!(table, error = %e, "pg_auth_product_services: serialisation failed");
+            AuthProductError::BackendUnavailable
+        })?;
         let client = self.pool.get().await.map_err(pool_err)?;
 
         let extra_names: Vec<&str> = extra_cols.iter().map(|(n, _)| *n).collect();
@@ -221,6 +244,10 @@ impl PgAuthProductServices {
         tenant_id: &str,
         id: &str,
     ) -> Result<bool, AuthProductError> {
+        debug_assert!(
+            Self::ALLOWED_TABLES.contains(&table),
+            "pg_auth_product_services: unknown table '{table}'"
+        );
         let client = self.pool.get().await.map_err(pool_err)?;
         let query = format!("DELETE FROM {table} WHERE tenant_id = $1 AND id = $2");
         let n = client
@@ -237,6 +264,14 @@ impl PgAuthProductServices {
         filter_col: &str,
         filter_val: &str,
     ) -> Result<Vec<T>, AuthProductError> {
+        debug_assert!(
+            Self::ALLOWED_TABLES.contains(&table),
+            "pg_auth_product_services: unknown table '{table}'"
+        );
+        debug_assert!(
+            Self::ALLOWED_FILTER_COLS.contains(&filter_col),
+            "pg_auth_product_services: unknown filter column '{filter_col}'"
+        );
         let client = self.pool.get().await.map_err(pool_err)?;
         let query = format!(
             "SELECT data FROM {table} WHERE tenant_id = $1 AND {filter_col} = $2 \
@@ -249,7 +284,10 @@ impl PgAuthProductServices {
         rows.iter()
             .map(|row| {
                 let json: serde_json::Value = row.get(0);
-                serde_json::from_value(json).map_err(|_| AuthProductError::BackendUnavailable)
+                serde_json::from_value(json).map_err(|e| {
+                    tracing::debug!(table, filter_col, error = %e, "pg_auth_product_services: deserialisation failed");
+                    AuthProductError::BackendUnavailable
+                })
             })
             .collect()
     }

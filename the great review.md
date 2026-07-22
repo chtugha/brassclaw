@@ -128,15 +128,136 @@ The safety comment is on the same line and references `sso_startup_config_from_e
 
 ## Execution Order
 
-- [ ] **Step 1** — Fix class-code mismatch in `COMPONENT_TABLES` and `class_label()` in `interceptor_config_service.rs`
-- [ ] **Step 2** — Replace silent `unwrap_or` with error-logged skip in `interceptor_config_service.rs`
-- [ ] **Step 3** — Fix logging violations in `serve.rs` (`warn!` → `eprintln!`, `info!` → `debug!`)
-- [ ] **Step 4** — Add `#[deprecated]` attribute to `postgres_with_resolved_secret_master_key` in `input.rs`
-- [ ] **Step 5** — Sanitize branch names in `sweepfix.py` commit message
-- [ ] **Step 6** — Fix "seven" → "eight" in V046 migration comment
-- [ ] **Step 7** — Improve safety comment on `.expect()` in `webui_auth.rs`
-- [ ] **Step 8** — Run `cargo clippy --all --benches --tests --examples --all-features -- -D warnings` and confirm zero new warnings
-- [ ] **Step 9** — Run `cargo test -p brassclaw_reborn_composition -p brassclaw_reborn_cli` to confirm no regressions
+- [x] **Step 1** — Fix class-code mismatch in `COMPONENT_TABLES` and `class_label()` in `interceptor_config_service.rs` *(resolved in commit 64adcadf)*
+- [x] **Step 2** — Replace silent `unwrap_or` with error-logged skip in `interceptor_config_service.rs` *(resolved in commit 64adcadf)*
+- [x] **Step 3** — Fix logging violations in `serve.rs` (`warn!` → `eprintln!`, `info!` → `debug!`) *(resolved in commit 64adcadf)*
+- [x] **Step 4** — Add `#[deprecated]` attribute to `postgres_with_resolved_secret_master_key` in `input.rs` *(resolved in commit 64adcadf)*
+- [x] **Step 5** — Sanitize branch names in `sweepfix.py` commit message *(resolved in commit 64adcadf)*
+- [x] **Step 6** — Fix "seven" → "eight" in V046 migration comment *(resolved in commit 64adcadf)*
+- [x] **Step 7** — Improve safety comment on `.expect()` in `webui_auth.rs` *(resolved in commit 64adcadf)*
+- [x] **Step 8** — Run `cargo clippy --all --benches --tests --examples --all-features -- -D warnings` — zero warnings *(verified)*
+- [x] **Step 9** — Run `cargo test -p brassclaw_reborn_composition -p brassclaw_reborn_cli` — all tests pass *(verified)*
+
+---
+
+## Round 2 Findings
+
+### Issue 8 — MEDIUM: `tracing::warn!` in `pool.rs` and `Drop` impl corrupts terminal UI
+
+**Files:**
+- [`crates/brassclaw_pg/src/pool.rs`](crates/brassclaw_pg/src/pool.rs) lines 61, 65, 90–94
+- [`crates/brassclaw_embedded_postgres/src/lib.rs`](crates/brassclaw_embedded_postgres/src/lib.rs) line 152
+
+**Rule:** AGENTS.md §67 — `warn!` corrupts the terminal UI; use `eprintln!` for startup-time operator notices, `debug!` for internal diagnostics.
+
+**Analysis:**
+- `pool.rs` lines 61 and 65 emit `warn!` for individual TLS cert load failures — these fire during pool construction (startup path). Change to `debug!`.
+- `pool.rs` lines 90–94 emit `warn!` when a remote PG URL lacks `sslmode=` — this is an intentional operator-visible security reminder. The doc-comment calls it "non-suppressible". Change to `eprintln!` (same pattern as `serve.rs`).
+- `lib.rs` line 152: `warn!` in `Drop` — fired when the struct is dropped without calling `shutdown()`. This can occur mid-operation if ManagedPostgres is accidentally dropped. Change to `eprintln!` so it is always visible without polluting tracing.
+
+**Fix:** `pool.rs` cert errors → `debug!`; SSL warning → `eprintln!`; `lib.rs` Drop warning → `eprintln!`.
+
+---
+
+### Issue 9 — MEDIUM: Silent DB error in `load_config()` returns empty config
+
+**File:** [`crates/brassclaw_reborn_composition/src/interceptor_config_service.rs`](crates/brassclaw_reborn_composition/src/interceptor_config_service.rs) line 130
+
+**Code:**
+```rust
+list_config_keys(&self.pool, &self.tenant_id)
+    .await
+    .unwrap_or_default()  // DB error returns empty HashMap silently
+```
+
+**Impact:** If the database is unavailable, the Sempai interceptor silently appears unconfigured (no base prompt, no persona) rather than surfacing an error. The caller (`snapshot()`, `update()`, `do_reassemble()`) never learns the DB was down.
+
+**Fix:** Add a `tracing::debug!` log before returning the empty fallback so operators and tests can diagnose the silent fallback. The `unwrap_or_default` itself is acceptable for resilience (the interceptor should still function without its optional config), but the failure must be observable.
+
+---
+
+### Issue 10 — MEDIUM: Stale PID file removal failure silently ignored
+
+**File:** [`crates/brassclaw_embedded_postgres/src/lib.rs`](crates/brassclaw_embedded_postgres/src/lib.rs) line 87
+
+**Code:**
+```rust
+let _ = tokio::fs::remove_file(&pid_file).await;
+```
+
+**Impact:** If removal fails (permissions, read-only filesystem), startup continues silently but `pg_ctl start` will subsequently fail with a confusing error about a stale PID file rather than a clear "could not remove stale postmaster.pid" message.
+
+**Fix:** Log the error at `debug!` level when removal fails (not `warn!` — avoids UI corruption per convention).
+
+---
+
+### Issue 11 — MEDIUM: `warn!` in `build_tls_connector` fires silently for cert load errors
+
+**File:** [`crates/brassclaw_pg/src/pool.rs`](crates/brassclaw_pg/src/pool.rs) lines 61, 65
+
+**Code:**
+```rust
+tracing::warn!("pg pool: error loading system root cert: {error}");
+tracing::warn!("pg pool: skipping invalid system root cert: {error}");
+```
+
+**Fix:** Change to `tracing::debug!` — cert loading is an internal diagnostic. These fire during pool construction; if TLS setup is broken, the connection itself will fail with a clear error. The `warn!` noise is not actionable and corrupts UI.
+
+---
+
+### Issue 12 — LOW: `BTreeSet` used where `HashSet` is sufficient in `local_trigger_access.rs`
+
+**File:** [`crates/brassclaw_reborn/src/local_trigger_access.rs`](crates/brassclaw_reborn/src/local_trigger_access.rs) line 10, 160
+
+**Code:**
+```rust
+use std::collections::BTreeSet;
+// ...
+let allowed: BTreeSet<&str> = reconciliation.user_ids.iter().map(UserId::as_str).collect();
+```
+
+`BTreeSet` is O(n log n) to build and O(log n) per lookup. Only membership is checked (`contains`); no ordering or sorted iteration is needed. `HashSet` gives O(n) build and O(1) amortized lookup.
+
+**Fix:** Replace `BTreeSet` with `HashSet` for the `allowed` set.
+
+---
+
+### Issue 13 — LOW: Defence-in-depth whitelist missing for dynamic table/column names in SQL
+
+**File:** [`crates/brassclaw_reborn_composition/src/pg_auth_product_services.rs`](crates/brassclaw_reborn_composition/src/pg_auth_product_services.rs) lines 136, 178–183, 225, 241–242
+
+**Analysis:** All call sites pass compile-time string literals for `table` and `filter_col` — no user input reaches these arguments today. However, as a generic helper, there is no guard preventing a future call site from accidentally passing a user-controlled value. The `filter_col` argument in particular is interpolated directly into a WHERE clause.
+
+**Fix:** Add a debug-assertion whitelist check at the top of `get_record`, `put_record`, `delete_record`, and `list_records` to ensure `table` is one of the three known auth tables and `filter_col` is one of the known column names. This costs nothing in release builds but catches mis-use during development.
+
+---
+
+### Issue 14 — LOW: Deserialisation errors mapped to `BackendUnavailable` without logging
+
+**File:** [`crates/brassclaw_reborn_composition/src/pg_auth_product_services.rs`](crates/brassclaw_reborn_composition/src/pg_auth_product_services.rs) lines 147, 252
+
+**Code:**
+```rust
+serde_json::to_value(record).map_err(|_| AuthProductError::BackendUnavailable)?;
+serde_json::from_value(json).map_err(|_| AuthProductError::BackendUnavailable)
+```
+
+If a record fails to serialise/deserialise (e.g., schema mismatch after a code update), it returns `BackendUnavailable` — indistinguishable from "database is down". The underlying error is discarded.
+
+**Fix:** Log the serialisation error at `debug!` level before mapping it to `BackendUnavailable`.
+
+---
+
+## Round 2 Execution Order
+
+- [x] **Step 10** — Fix `warn!` violations in `pool.rs` (cert errors → `debug!`, SSL warning → `eprintln!`) and `lib.rs` Drop (`warn!` → `eprintln!`) *(resolved)*
+- [x] **Step 11** — Add `debug!` log to `load_config()` before silently returning empty config on DB error *(resolved)*
+- [x] **Step 12** — Add `debug!` log to stale PID removal failure in `embedded_postgres/src/lib.rs` *(resolved)*
+- [x] **Step 13** — Replace `BTreeSet` with `HashSet` in `local_trigger_access.rs` *(resolved)*
+- [x] **Step 14** — Add debug-assertion whitelist in `pg_auth_product_services.rs` generic SQL helpers *(resolved)*
+- [x] **Step 15** — Add `debug!` log to deserialisation errors in `pg_auth_product_services.rs` before mapping to `BackendUnavailable` *(resolved)*
+- [x] **Step 16** — Run `cargo clippy -p brassclaw_pg -p brassclaw_embedded_postgres -p brassclaw_reborn -p brassclaw_reborn_composition --all-targets -- -D warnings` — zero warnings *(verified)*
+- [x] **Step 17** — Run `cargo test -p brassclaw_pg -p brassclaw_embedded_postgres -p brassclaw_reborn -p brassclaw_reborn_composition` — all tests pass *(verified)*
 
 ---
 

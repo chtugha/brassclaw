@@ -325,6 +325,9 @@ def _verify_in_sync_no_fetch(branch: str) -> None:
 MARK_CHAR = "[x]"
 DONE_CHAR  = "[ ]"
 
+# Valid git commit SHA: 7–40 lowercase hex chars (short or full SHA).
+_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
+
 
 def _passes_gating(rel_path: Path) -> bool:
     """Return True if this file is 'our code' and should be in the list."""
@@ -466,8 +469,8 @@ def step3_build_codebaselist() -> None:
     text         = CODEBASE_LIST.read_text(encoding="utf-8")
     old_sha, existing = _parse_codebaselist(text)
 
-    if not old_sha:
-        print("  ⚠ Could not parse commit from codebaselist.md — rebuilding from scratch.")
+    if not old_sha or not _SHA_RE.match(old_sha):
+        print(f"  ⚠ codebaselist.md has invalid/missing commit SHA ({old_sha!r}) — rebuilding from scratch.")
         CODEBASE_LIST.unlink()
         _build_codebaselist_fresh(current_sha, rebuild=True)
         return
@@ -556,13 +559,27 @@ _COMMENT_ONLY_LINE_RE = re.compile(r"^\s*(//|/\*|\*/|\*(?!/)|#(?!\[))")
 
 
 def _strip_inline_comment(line: str) -> str:
-    """Strip trailing // and # inline comments, respecting double-quoted strings."""
+    """Strip trailing // and # inline comments, respecting double-quoted strings.
+
+    Correctly handles escaped backslashes before a closing quote (e.g. "a\\\\")
+    by counting the run of backslashes preceding each '"': if the count is even,
+    the backslashes cancel each other and the quote is a real string delimiter;
+    if odd, the quote is escaped and does NOT toggle the string state.
+    """
     in_string = False
     i = 0
     while i < len(line):
         c = line[i]
-        if c == '"' and (i == 0 or line[i - 1] != "\\"):
-            in_string = not in_string
+        if c == '"':
+            # Count consecutive backslashes immediately before this quote.
+            num_bs = 0
+            j = i - 1
+            while j >= 0 and line[j] == "\\":
+                num_bs += 1
+                j -= 1
+            # An even number of backslashes means none of them escape this quote.
+            if num_bs % 2 == 0:
+                in_string = not in_string
         elif not in_string:
             if line[i : i + 2] == "//":
                 return line[:i]
@@ -644,7 +661,9 @@ def _safe_folder_name(file_path: str) -> str:
     path so that 'src/foo/bar.rs' and 'src/foo__bar.rs' never collide.
     """
     flat = file_path.replace("/", "__").replace("\\", "__")
-    suffix = hashlib.sha1(file_path.encode()).hexdigest()[:8]
+    # usedforsecurity=False: this hash is used for collision-avoidance only,
+    # not for any cryptographic purpose. Required to avoid ValueError in FIPS mode.
+    suffix = hashlib.sha1(file_path.encode(), usedforsecurity=False).hexdigest()[:8]
     return f"{flat}__{suffix}"
 
 

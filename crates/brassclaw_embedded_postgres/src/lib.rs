@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, warn};
+use tracing::debug;
 
 pub mod checksums;
 pub mod config;
@@ -84,7 +84,15 @@ impl ManagedPostgres {
                 .is_none()
         {
             debug!("removing stale postmaster.pid");
-            let _ = tokio::fs::remove_file(&pid_file).await;
+            if let Err(e) = tokio::fs::remove_file(&pid_file).await {
+                // Log but do not abort — pg_ctl start will report a clear error
+                // if the stale file truly blocks startup.
+                debug!(
+                    path = %pid_file.display(),
+                    error = %e,
+                    "could not remove stale postmaster.pid; continuing"
+                );
+            }
         }
 
         // Step 4: run initdb if needed.
@@ -149,7 +157,13 @@ impl Drop for ManagedPostgres {
             return;
         }
 
-        warn!("ManagedPostgres dropped without calling shutdown() — attempting immediate stop");
+        // Use eprintln! — warn! in Drop can fire mid-operation and corrupts the
+        // terminal UI (AGENTS.md §67).  eprintln! is always visible regardless of
+        // the tracing subscriber state.
+        eprintln!(
+            "brassclaw-embedded-postgres: ManagedPostgres dropped without calling \
+             shutdown() — attempting immediate stop"
+        );
         let ctl = pgctl::PgCtl::new(&self.pg_bin_dir, &self.config.data_dir, self.config.port);
         ctl.stop_immediate_blocking();
     }
