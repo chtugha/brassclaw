@@ -15,7 +15,7 @@ use crate::types::thread::{ThreadId, ThreadState};
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum OrchestratorFailureKind {
     #[error(
-        "{prefix}: time budget exhausted after {limit_secs}s (set BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS to raise the limit or simplify the task)"
+        "{prefix}: time budget exhausted after {limit_secs}s (simplify the task, or in DB-less mode set BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS to raise the limit)"
     )]
     TimeLimit { prefix: String, limit_secs: u64 },
 

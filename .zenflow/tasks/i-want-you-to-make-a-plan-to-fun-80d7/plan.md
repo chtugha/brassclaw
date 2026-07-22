@@ -1871,6 +1871,85 @@ tab** (Sempai status, Reassemble button, Pre-warm button, persona editor).
   editor save, hidden in DB-less mode); i18n parity
   (`scripts/check-i18n-parity.sh`).
 
+## Phase 6.1 — PKC Formatting Split (raw PKC vs. LLM-formatted PKC)
+
+**Goal:** Separate raw `prior_knowledge_content` (internal Rust artifact for KV-cache fingerprinting) from LLM-formatted PKC (structured JSON for model consumption). Improves small-model parseability without breaking KV-cache stability.
+
+**Depends on Phase 5** (which creates `__assemble_prior_knowledge__` and `PriorKnowledgeResult`). Backport this step after Phase 5 lands.
+
+### Step 8.1 — Two-surface PKC + formatted JSON output + volatile always injected
+
+- **Problem:** the raw `prior_knowledge_content` stored in DB rows is machine-authored for Rust binary dispatch (ULID refs, step arrays, internal format). Small models parse freeform prose poorly; structured JSON is far more reliable. But changing the PKC format would break KV-cache fingerprinting (stable prefix must be bit-identical turn-to-turn). Additionally, the original plan's step-0 pseudocode (Phase 5 Step 5.2a) omits the volatile context injection because Step 5.2b was "blocked until Phase 1.5" — this phase corrects that omission and clarifies the KV-cache contract.
+
+- **Two-surface design:**
+  - `content: String` — raw PKC, used by Rust for dispatch, KV-cache fingerprinting, action execution. **Never sent to the LLM.**
+  - `formatted_content: String` — LLM-readable JSON generated deterministically from the same DB data in the same `(class_code asc, prompt_uid asc)` order. Sent into `working_messages`. Token-identical across turns with the same matched component set = KV prefix still reusable.
+
+- **`PriorKnowledgeResult` shape (Phase 5 type, extended here):**
+  ```rust
+  pub struct PriorKnowledgeResult {
+      pub content: String,           // raw PKC (Rust-internal)
+      pub formatted_content: String, // LLM-readable JSON (sent to working_messages)
+      pub override_prompt_creation: bool,
+      pub matched_component_ids: Vec<uuid::Uuid>,
+  }
+  ```
+
+- **`format_prior_knowledge_for_llm()` helper (Rust):**
+  Takes the assembled components (ordered `(class_code asc, prompt_uid asc)`) and serialises a deterministic JSON structure using `serde_json::json!`:
+  ```json
+  {
+    "prior_knowledge": [
+      {
+        "class": "plan",
+        "class_code": 14,
+        "name": "deploy-to-kubernetes",
+        "description": "Step-by-step deployment procedure",
+        "content": "...full prior_knowledge_content or content text..."
+      }
+    ],
+    "matched_components": ["uuid-1", "uuid-2"]
+  }
+  ```
+  The JSON is structurally fixed: same class_code → same field names → same token sequence → KV-cache prefix identical across turns that match the same components. `class_code_label()` maps codes to string names (`14` → `"plan"`, `16` → `"action"`, etc., same static table as the Normal Assembly headers in Phase 5 Step 5.2a). Fields that are `NULL` in the DB are omitted from the JSON (not included as `null`) to keep the token sequence stable.
+
+- **Python step-0 block (replaces the Phase 5 Step 5.2a pseudocode):**
+  ```python
+  if step == 0:
+      token_budget = config.get("prior_knowledge_token_budget", 2000)
+      result = __assemble_prior_knowledge__(goal, token_budget, "02")
+      if result.override_prompt_creation:
+          # Solution Override — formatted PKC becomes the stable KV-cache base.
+          # Raw result.content is for Rust dispatch only; never sent to the LLM.
+          working_messages = [{"role": "User", "content": result.formatted_content}]
+      elif result.formatted_content:
+          # Normal Assembly — inject formatted prior knowledge at N-1.
+          insert_as_user_message_at_n_minus_1(working_messages, result.formatted_content)
+      # Always inject volatile thread context at N-1, regardless of assembly path.
+      # Under Override this becomes the only non-PKC message the model sees;
+      # under Normal Assembly it follows the injected prior-knowledge message.
+      insert_volatile_context_at_n_minus_1(working_messages)
+  ```
+
+  **Why volatile is always appended (clarification of Phase 5 intent):**
+  The original Phase 5 pseudocode omitted `insert_volatile_context_at_n_minus_1` because Step 5.2b was blocked pending Phase 1.5. The design intent was always that volatile thread context follows the PKC. Under Override the PKC is the stable base; volatile sits after it. Under Normal Assembly the injected prior-knowledge and volatile both sit at N-1, in that order. KV-cache discipline is maintained because the PKC (`formatted_content`) is deterministic — adding volatile after it does not disturb the stable prefix.
+
+- **Actions clarification:**
+  Actions (class 16) can be used in three ways that interact differently with this split:
+  1. **Standalone intent match** (class_code == 16 short-circuit at step 0): `execute_action_procedure` is called directly; `__assemble_prior_knowledge__` is not called; no prompt is built; volatile context is irrelevant.
+  2. **Embedded in a Plan's PKC**: the Plan's PKC text references the Action; both `content` (raw) and `formatted_content` (JSON entry for the plan) are built normally. The Action entry in `formatted_content` includes its name, description, and step types.
+  3. **Normal Assembly override_prompt_creation=true**: the Action's `formatted_content` replaces `working_messages`, then volatile is appended. The LLM sees the JSON-formatted action description + volatile tail.
+  In all three cases `content` (raw) is never sent to the LLM.
+
+- **No changes to DB schema:** `prior_knowledge_content` and `content` columns are unchanged. The `formatted_content` field is generated at assembly time by the Rust host function, not persisted.
+
+- **Verify:**
+  - Unit test: `format_prior_knowledge_for_llm()` produces identical JSON for identical component input (deterministic order + stable schema).
+  - Unit test: `__assemble_prior_knowledge__` returns both `content` (raw) and `formatted_content` (valid JSON) for a mix of component classes.
+  - Integration test: `working_messages` receives `formatted_content`, not `content`, under both Override and Normal Assembly.
+  - KV-cache stability test: two consecutive turns with the same matched component set produce byte-identical `formatted_content`.
+  - Volatile injection test: `insert_volatile_context_at_n_minus_1` is called after the PKC block regardless of Override or Normal path.
+  - Regression test: raw `content` is never present in the messages sent to `__llm_complete__`.
 ## Phase 7 — Cleanup
 
 **Goal:** Delete retired paths once Phases 1–6 are verified.

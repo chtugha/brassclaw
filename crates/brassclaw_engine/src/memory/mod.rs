@@ -15,6 +15,7 @@ pub mod metric_outcome;
 pub mod recipe_matcher;
 pub mod recipe_validator;
 pub mod retrieval;
+pub mod retrieval_dbless;
 pub mod similarity_checker;
 pub mod skill_tracker;
 pub mod store;

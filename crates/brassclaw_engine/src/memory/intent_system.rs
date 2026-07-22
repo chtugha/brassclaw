@@ -1,8 +1,7 @@
 //! Unified intent system — `__resolve_intent__` host function.
 //!
-//! Replaces the 8 intent-detection functions (`signals_tool_intent`,
+//! Replaces the legacy intent-detection functions (`signals_tool_intent`,
 //! `signals_execution_intent`, `score_skill`, `extract_explicit_skills`,
-//! `llm_signals_tool_intent`, `user_signals_execution_intent`,
 //! `format_docs`, `append_system_append`) with a single DB-backed
 //! routing lookup.
 //!

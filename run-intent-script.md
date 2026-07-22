@@ -228,6 +228,46 @@ Run: cargo test -p brassclaw_webui_v2 -p brassclaw_product_workflow
 
 ---
 
+## Step 8.5 — Phase 6.1: PKC Formatting Split (raw PKC vs. LLM-formatted PKC)
+
+**Scope:** Add `formatted_content` surface to `PriorKnowledgeResult`; implement `format_prior_knowledge_for_llm()`; update step-0 block to send `formatted_content` to `working_messages` and always append volatile context.
+
+```
+Implement plan Phase 6.1 (PKC Formatting Split).
+Source files: crates/brassclaw_engine/src/memory/ (prior_knowledge assembler),
+crates/brassclaw_reborn_composition/ (host function wiring).
+Sub-steps:
+  6.1.1 Add `formatted_content: String` field to PriorKnowledgeResult (Phase 5 type).
+  6.1.2 Implement format_prior_knowledge_for_llm() — deterministic JSON using
+        serde_json::json!, ordered (class_code asc, prompt_uid asc), class_code_label()
+        for string names, NULL fields omitted (not serialised as null).
+  6.1.3 Wire format_prior_knowledge_for_llm() into __assemble_prior_knowledge__ so
+        both content (raw) and formatted_content are populated on return.
+  6.1.4 Update step-0 block in default.py (or equivalent prompt script):
+        - Override path: working_messages = [{"role":"User","content":result.formatted_content}]
+        - Normal Assembly path: insert_as_user_message_at_n_minus_1(working_messages, result.formatted_content)
+        - Both paths: always call insert_volatile_context_at_n_minus_1(working_messages) after.
+  6.1.5 Add unit tests:
+        - format_prior_knowledge_for_llm() is deterministic for identical input.
+        - __assemble_prior_knowledge__ returns valid JSON in formatted_content for mixed classes.
+        - KV-cache stability: same component set → byte-identical formatted_content across two calls.
+        - Volatile injection: insert_volatile_context_at_n_minus_1 called on both Override and Normal paths.
+        - Regression: raw content never appears in messages passed to __llm_complete__.
+Commit after each sub-step. Push once all 5 are done.
+Run: cargo test -p brassclaw_engine
+     cargo clippy --all --benches --tests --examples --all-features -- -D warnings
+```
+
+**Addendum (applied with Step 8.5):**
+
+- **Token budget default raised to 100 000:** `prior_knowledge_token_budget` default changed from `2000` → `100000` in `default.py`. Rationale: the 2 000-token default was a conservative stub value that pre-dated the two-surface split. Now that `formatted_content` is the only surface sent to the LLM and raw `content` is never forwarded, the budget should reflect actual model context capacity. Config key `prior_knowledge_token_budget` still overrides the default for deployments with tighter constraints.
+
+- **Consumer tag filtering — implementation status:** The `consumer_tags` column on every component row is an array of class-prefixed tags (e.g. `"02:orchestrator"`, `"03:llm"`, `"05:validator"`). A component is only delivered to a caller whose class tag is present in that array. This **is implemented** in `unified_store.rs` (`AND $5 = ANY(consumer_tags)`) — the `fetch_for_consumer(consumer_tag)` function enforces it at the SQL level. The same pattern applies in `db_tool_source.rs` (Rusty tools, class 0) and `pg_recipe_store.rs` (recipes). The `05:validator` tag is an additional gate that suppresses delivery regardless of caller class.
+
+  **What is not yet wired (Phase 5 stub):** `__assemble_prior_knowledge__` receives `sender_class_code` as its third argument but the current stub ignores it and calls `retrieve_context` without a consumer-tag filter. Phase 5 will convert `sender_class_code` → a `"NN:label"` consumer tag and pass it to the DB fetch so the access-control rule is enforced end-to-end. Until then, the Phase 5.5 interceptor is the defence-in-depth gate.
+
+---
+
 ## Step 9 — Phase 7: Final cleanup
 
 **Scope:** Delete retired paths. Grep-verify all dead code is gone.

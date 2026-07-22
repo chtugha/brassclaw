@@ -103,8 +103,13 @@ const ORCHESTRATOR_MIN_MAX_DURATION_SECS: u64 = 30;
 /// Ceiling for the configurable orchestrator budget, bounding resource waste.
 const ORCHESTRATOR_MAX_MAX_DURATION_SECS: u64 = 3600;
 
-/// Resolve the orchestrator VM wall-clock budget from
-/// `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS`. Cached for the process lifetime.
+/// Resolve the orchestrator VM wall-clock budget.
+///
+/// **DB-less fallback only.** In a full DB-backed deployment the duration is
+/// read from `reborn_monty_vm_settings.max_duration_secs` (Phase 6 wiring via
+/// `MontyVmSettings`). `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` is retained
+/// solely as a last-resort override for the `RamSource` / DB-less code path.
+/// Do not rely on this env var in production deployments.
 fn orchestrator_max_duration() -> std::time::Duration {
     static CACHED: OnceLock<std::time::Duration> = OnceLock::new();
     *CACHED.get_or_init(|| {
@@ -3866,8 +3871,8 @@ mod tests {
             "expected user-safe timeout reason, got: {rendered}"
         );
         assert!(
-            rendered.contains("BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS"),
-            "reason must point operators at the override env var, got: {rendered}"
+            rendered.contains("DB-less mode") && rendered.contains("BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS"),
+            "reason must mention DB-less-mode env var fallback, got: {rendered}"
         );
     }
 

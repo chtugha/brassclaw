@@ -1,32 +1,44 @@
 //! Durable product workflow [`IdempotencyLedger`] storage adapters.
 
+#[cfg(feature = "postgres")]
 use std::sync::Arc;
 
+#[cfg(feature = "postgres")]
 use async_trait::async_trait;
 #[cfg(feature = "postgres")]
 use brassclaw_filesystem::PostgresRootFilesystem;
+#[cfg(feature = "postgres")]
 use brassclaw_filesystem::{
     CasExpectation, Entry, FilesystemError, IndexKey, IndexValue, RecordKind, RecordVersion,
     RootFilesystem,
 };
+#[cfg(feature = "postgres")]
 use brassclaw_host_api::VirtualPath;
+#[cfg(feature = "postgres")]
 use brassclaw_product_workflow::IdempotencyLedger;
+#[cfg(feature = "postgres")]
 use brassclaw_product_workflow::{
     ActionFingerprintKey, ActionPhase, IdempotencyDecision, ProductInboundAction,
     ProductWorkflowError,
 };
+#[cfg(feature = "postgres")]
 use chrono::{DateTime, Duration, Utc};
 
+#[cfg(feature = "postgres")]
 const DEFAULT_IN_FLIGHT_LEASE: Duration = Duration::seconds(60);
+#[cfg(feature = "postgres")]
 const DEFAULT_LEDGER_ROOT: &str = "/engine/product_workflow/idempotency/actions";
+#[cfg(feature = "postgres")]
 const ACTION_RECORD_KIND: &str = "product_workflow_action";
 
+#[cfg(feature = "postgres")]
 struct FilesystemIdempotencyLedger {
     filesystem: Arc<dyn RootFilesystem>,
     root: VirtualPath,
     in_flight_lease: Duration,
 }
 
+#[cfg(feature = "postgres")]
 impl FilesystemIdempotencyLedger {
     fn new(filesystem: Arc<dyn RootFilesystem>) -> Self {
         Self::with_in_flight_lease(filesystem, DEFAULT_IN_FLIGHT_LEASE)
@@ -224,12 +236,14 @@ impl IdempotencyLedger for RebornPostgresIdempotencyLedger {
     }
 }
 
+#[cfg(feature = "postgres")]
 fn transient(reason: impl Into<String>) -> ProductWorkflowError {
     ProductWorkflowError::Transient {
         reason: reason.into(),
     }
 }
 
+#[cfg(feature = "postgres")]
 fn durable_error(operation: &'static str, error: impl std::fmt::Display) -> ProductWorkflowError {
     let error_type = std::any::type_name_of_val(&error);
     tracing::error!(
@@ -240,10 +254,12 @@ fn durable_error(operation: &'static str, error: impl std::fmt::Display) -> Prod
     transient(format!("idempotency ledger failed to {operation}"))
 }
 
+#[cfg(feature = "postgres")]
 fn filesystem_error(operation: &'static str, error: FilesystemError) -> ProductWorkflowError {
     durable_error(operation, error)
 }
 
+#[cfg(feature = "postgres")]
 fn fresh_in_flight(
     action: &ProductInboundAction,
     received_at: DateTime<Utc>,
@@ -252,14 +268,17 @@ fn fresh_in_flight(
     !action.is_terminal() && action.received_at + lease > received_at
 }
 
+#[cfg(feature = "postgres")]
 fn in_flight_error() -> ProductWorkflowError {
     transient("idempotency fingerprint already in flight; retry after recovery lease")
 }
 
+#[cfg(feature = "postgres")]
 fn expired_received_at(received_at: DateTime<Utc>, lease: Duration) -> DateTime<Utc> {
     received_at - lease - Duration::seconds(1)
 }
 
+#[cfg(feature = "postgres")]
 async fn load_action(
     filesystem: &dyn RootFilesystem,
     path: &VirtualPath,
@@ -278,6 +297,7 @@ async fn load_action(
     Ok(Some((action, entry.version)))
 }
 
+#[cfg(feature = "postgres")]
 fn entry_for_action(action: &ProductInboundAction) -> Result<Entry, ProductWorkflowError> {
     let payload =
         serde_json::to_value(action).map_err(|error| durable_error("serialize action", error))?;
@@ -317,14 +337,17 @@ fn entry_for_action(action: &ProductInboundAction) -> Result<Entry, ProductWorkf
     Ok(entry)
 }
 
+#[cfg(feature = "postgres")]
 fn index_key(value: &'static str) -> Result<IndexKey, ProductWorkflowError> {
     IndexKey::new(value).map_err(|error| durable_error("construct action index key", error))
 }
 
+#[cfg(feature = "postgres")]
 fn text(value: &str) -> IndexValue {
     IndexValue::Text(value.to_string())
 }
 
+#[cfg(feature = "postgres")]
 fn phase_label(phase: ActionPhase) -> &'static str {
     match phase {
         ActionPhase::Received => "received",
@@ -334,6 +357,7 @@ fn phase_label(phase: ActionPhase) -> &'static str {
     }
 }
 
+#[cfg(feature = "postgres")]
 fn action_path(
     root: &VirtualPath,
     fingerprint: &ActionFingerprintKey,
@@ -351,10 +375,12 @@ fn action_path(
     VirtualPath::new(path).map_err(|error| durable_error("construct action path", error))
 }
 
+#[cfg(feature = "postgres")]
 fn default_ledger_root() -> VirtualPath {
     VirtualPath::new(DEFAULT_LEDGER_ROOT).expect("DEFAULT_LEDGER_ROOT is valid") // safety: hard-coded /engine virtual path literal.
 }
 
+#[cfg(feature = "postgres")]
 fn hex_component(value: &str) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut encoded = String::with_capacity(value.len() * 2);

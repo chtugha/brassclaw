@@ -5,9 +5,16 @@ export const SETTINGS_TABS = [
   { id: "networking", labelKey: "settings.networking", icon: "pulse" },
   { id: "tools", labelKey: "settings.tools", icon: "wrench" },
   { id: "skills", labelKey: "settings.skills", icon: "file" },
+  // Phase 6 — 10-tab Settings UI editor.
+  { id: "actions", labelKey: "settings.actions", icon: "bolt" },
+  { id: "orchestrator", labelKey: "settings.orchestrator", icon: "bolt" },
+  { id: "scaffold", labelKey: "settings.scaffold", icon: "bolt" },
+  { id: "monty-vm", labelKey: "settings.montyVm", icon: "pulse" },
+  { id: "validation-queue", labelKey: "settings.validationQueue", icon: "shield" },
+  { id: "reliability", labelKey: "settings.reliability", icon: "pulse" },
+  { id: "interceptor", labelKey: "settings.interceptor", icon: "shield" },
   { id: "safety", labelKey: "settings.safety", icon: "shield" },
   { id: "tokens", labelKey: "settings.tokens", icon: "bolt" },
-  { id: "interceptor", labelKey: "settings.interceptor", icon: "shield" },
   { id: "users", labelKey: "settings.users", icon: "lock" },
   { id: "language", labelKey: "settings.language", icon: "globe" },
 ];

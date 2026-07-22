@@ -58,12 +58,6 @@ pub const WEBUI_V2_ROUTE_GET_RECIPE: &str = "webui.v2.get_recipe";
 pub const WEBUI_V2_ROUTE_GET_TOOL_SKILL: &str = "webui.v2.get_tool_skill";
 pub const WEBUI_V2_ROUTE_LIST_VALIDATION_QUEUE: &str = "webui.v2.list_validation_queue";
 pub const WEBUI_V2_ROUTE_COUNT_VALIDATION_QUEUE: &str = "webui.v2.count_validation_queue";
-pub const WEBUI_V2_ROUTE_VALIDATE_RECIPE: &str = "webui.v2.validate_recipe";
-pub const WEBUI_V2_ROUTE_REJECT_RECIPE: &str = "webui.v2.reject_recipe";
-pub const WEBUI_V2_ROUTE_REQUEST_RECIPE_REVIEW: &str = "webui.v2.request_recipe_review";
-pub const WEBUI_V2_ROUTE_VALIDATE_TOOL_SKILL: &str = "webui.v2.validate_tool_skill";
-pub const WEBUI_V2_ROUTE_REJECT_TOOL_SKILL: &str = "webui.v2.reject_tool_skill";
-pub const WEBUI_V2_ROUTE_REQUEST_TOOL_SKILL_REVIEW: &str = "webui.v2.request_tool_skill_review";
 pub const WEBUI_V2_ROUTE_RECORD_RECIPE_OUTCOME: &str = "webui.v2.record_recipe_outcome";
 
 // Phase 3 (Step 3.5) — Generalized component validation routes for all ~20 class codes.
@@ -160,18 +154,6 @@ pub const WEBUI_V2_PATTERN_LIST_TOOL_SKILLS: &str = "/api/webchat/v2/tool-skills
 pub const WEBUI_V2_PATTERN_GET_RECIPE: &str = "/api/webchat/v2/recipes/{project_id}/{recipe_id}";
 pub const WEBUI_V2_PATTERN_GET_TOOL_SKILL: &str =
     "/api/webchat/v2/tool-skills/{project_id}/{skill_id}";
-pub const WEBUI_V2_PATTERN_VALIDATE_RECIPE: &str =
-    "/api/webchat/v2/recipes/{project_id}/{recipe_id}/validate";
-pub const WEBUI_V2_PATTERN_REJECT_RECIPE: &str =
-    "/api/webchat/v2/recipes/{project_id}/{recipe_id}/reject";
-pub const WEBUI_V2_PATTERN_REQUEST_RECIPE_REVIEW: &str =
-    "/api/webchat/v2/recipes/{project_id}/{recipe_id}/review-request";
-pub const WEBUI_V2_PATTERN_VALIDATE_TOOL_SKILL: &str =
-    "/api/webchat/v2/tool-skills/{project_id}/{skill_id}/validate";
-pub const WEBUI_V2_PATTERN_REJECT_TOOL_SKILL: &str =
-    "/api/webchat/v2/tool-skills/{project_id}/{skill_id}/reject";
-pub const WEBUI_V2_PATTERN_REQUEST_TOOL_SKILL_REVIEW: &str =
-    "/api/webchat/v2/tool-skills/{project_id}/{skill_id}/review-request";
 pub const WEBUI_V2_PATTERN_RECORD_RECIPE_OUTCOME: &str =
     "/api/webchat/v2/recipes/{project_id}/{recipe_id}/outcomes";
 pub const WEBUI_V2_PATTERN_VALIDATION_QUEUE: &str = "/api/webchat/v2/validation-queue";
@@ -238,12 +220,6 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         get_tool_skill_descriptor(),
         list_validation_queue_descriptor(),
         count_validation_queue_descriptor(),
-        validate_recipe_descriptor(),
-        reject_recipe_descriptor(),
-        request_recipe_review_descriptor(),
-        validate_tool_skill_descriptor(),
-        reject_tool_skill_descriptor(),
-        request_tool_skill_review_descriptor(),
         record_recipe_outcome_descriptor(),
         // Phase 3 (Step 3.5) — generalized component validation routes.
         validate_component_descriptor(),
@@ -820,90 +796,6 @@ fn count_validation_queue_descriptor() -> IngressRouteDescriptor {
             AuditTraceClass::UserAction,
             AllowedEffectPath::ProjectionOnly,
             StreamingMode::None,
-        ),
-    )
-}
-
-fn validate_recipe_descriptor() -> IngressRouteDescriptor {
-    descriptor(
-        WEBUI_V2_ROUTE_VALIDATE_RECIPE,
-        NetworkMethod::Put,
-        WEBUI_V2_PATTERN_VALIDATE_RECIPE,
-        mutation_policy(
-            body_limit_kib(4),
-            mutation_rate_limit(),
-            AuditTraceClass::UserAction,
-            AllowedEffectPath::ProductWorkflow,
-        ),
-    )
-}
-
-fn reject_recipe_descriptor() -> IngressRouteDescriptor {
-    descriptor(
-        WEBUI_V2_ROUTE_REJECT_RECIPE,
-        NetworkMethod::Put,
-        WEBUI_V2_PATTERN_REJECT_RECIPE,
-        mutation_policy(
-            body_limit_kib(4),
-            mutation_rate_limit(),
-            AuditTraceClass::UserAction,
-            AllowedEffectPath::ProductWorkflow,
-        ),
-    )
-}
-
-fn request_recipe_review_descriptor() -> IngressRouteDescriptor {
-    descriptor(
-        WEBUI_V2_ROUTE_REQUEST_RECIPE_REVIEW,
-        NetworkMethod::Put,
-        WEBUI_V2_PATTERN_REQUEST_RECIPE_REVIEW,
-        mutation_policy(
-            body_limit_kib(4),
-            mutation_rate_limit(),
-            AuditTraceClass::UserAction,
-            AllowedEffectPath::ProductWorkflow,
-        ),
-    )
-}
-
-fn validate_tool_skill_descriptor() -> IngressRouteDescriptor {
-    descriptor(
-        WEBUI_V2_ROUTE_VALIDATE_TOOL_SKILL,
-        NetworkMethod::Put,
-        WEBUI_V2_PATTERN_VALIDATE_TOOL_SKILL,
-        mutation_policy(
-            body_limit_kib(4),
-            mutation_rate_limit(),
-            AuditTraceClass::UserAction,
-            AllowedEffectPath::ProductWorkflow,
-        ),
-    )
-}
-
-fn reject_tool_skill_descriptor() -> IngressRouteDescriptor {
-    descriptor(
-        WEBUI_V2_ROUTE_REJECT_TOOL_SKILL,
-        NetworkMethod::Put,
-        WEBUI_V2_PATTERN_REJECT_TOOL_SKILL,
-        mutation_policy(
-            body_limit_kib(4),
-            mutation_rate_limit(),
-            AuditTraceClass::UserAction,
-            AllowedEffectPath::ProductWorkflow,
-        ),
-    )
-}
-
-fn request_tool_skill_review_descriptor() -> IngressRouteDescriptor {
-    descriptor(
-        WEBUI_V2_ROUTE_REQUEST_TOOL_SKILL_REVIEW,
-        NetworkMethod::Put,
-        WEBUI_V2_PATTERN_REQUEST_TOOL_SKILL_REVIEW,
-        mutation_policy(
-            body_limit_kib(4),
-            mutation_rate_limit(),
-            AuditTraceClass::UserAction,
-            AllowedEffectPath::ProductWorkflow,
         ),
     )
 }
