@@ -79,8 +79,11 @@ export function MontyVmTab({ searchQuery = "" }) {
             setIsPolling(false);
           }
         }
-      } catch (_) {
-        if (!cancelled) setIsPolling(false);
+      } catch (err) {
+        if (!cancelled) {
+          setIsPolling(false);
+          setRestartError(err.message || String(err));
+        }
       }
     };
     const timer = setInterval(poll, STATUS_POLL_MS);
@@ -104,7 +107,7 @@ export function MontyVmTab({ searchQuery = "" }) {
         forensic_packet_retention_days: settings.forensic_packet_retention_days,
         active_orchestrator_id: settings.active_orchestrator_id || null,
       });
-      setSettings(updated.settings);
+      if (updated?.settings) setSettings(updated.settings);
       setSavedOk(true);
       setTimeout(() => setSavedOk(false), 2500);
     } catch (err) {

@@ -356,7 +356,7 @@ pub async fn resolve_intent(
                  ELSE 3
                END,
                score DESC
-             LIMIT 10",
+             LIMIT 30",
             &[
                 &scope.tenant_id as &(dyn ToSql + Sync),
                 &scope.user_id,

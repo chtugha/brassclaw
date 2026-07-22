@@ -409,6 +409,9 @@ impl PgRecipeStore {
 
     /// Remove `05:validator` from `consumer_tags` (Step-2 manual validation,
     /// §3.5.1).
+    ///
+    /// Returns `Err(PgRecipeStoreError::NotFound)` if no row matched the full
+    /// scope tuple — guards against silent no-op on scope mismatch.
     pub(crate) async fn pop_validator_tag(
         &self,
         tenant_id: &str,
@@ -418,7 +421,7 @@ impl PgRecipeStore {
         id: Uuid,
     ) -> Result<(), PgRecipeStoreError> {
         let client = self.pool.get().await.map_err(map_pool)?;
-        client
+        let affected = client
             .execute(
                 "UPDATE reborn_recipes
                  SET consumer_tags = array_remove(consumer_tags, '05:validator')
@@ -429,6 +432,9 @@ impl PgRecipeStore {
             )
             .await
             .map_err(map_pg)?;
+        if affected == 0 {
+            return Err(PgRecipeStoreError::NotFound { id: id.to_string() });
+        }
         Ok(())
     }
 

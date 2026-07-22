@@ -22,7 +22,7 @@ export function OrchestratorTab({ searchQuery = "" }) {
     return html`
       <${Card} padding="md">
         <p className="text-sm text-[var(--v2-danger-text)]">
-          ${t("orchestrator.failedLoad", { message: query.error?.message })}
+          ${t("orchestrator.failedLoad", { message: query.error?.message ?? String(query.error) })}
         </p>
       <//>
     `;

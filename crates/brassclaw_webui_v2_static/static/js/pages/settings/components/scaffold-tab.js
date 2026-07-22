@@ -30,7 +30,7 @@ export function ScaffoldTab({ searchQuery = "" }) {
     return html`
       <${Card} padding="md">
         <p className="text-sm text-[var(--v2-danger-text)]">
-          ${t("scaffold.failedLoad", { message: query.error?.message })}
+          ${t("scaffold.failedLoad", { message: query.error?.message ?? String(query.error) })}
         </p>
       <//>
     `;
