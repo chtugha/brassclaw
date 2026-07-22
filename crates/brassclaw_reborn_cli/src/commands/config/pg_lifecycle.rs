@@ -76,7 +76,11 @@ async fn connect_url(url: &str) -> anyhow::Result<deadpool_postgres::Pool> {
         .max_size(4)
         .build()
         .map_err(|e| anyhow::anyhow!("failed to build PG pool: {e}"))?;
-    pool.get()
+    // Probe connectivity before returning the pool. The acquired connection is
+    // immediately dropped; the only goal is to surface a clear error if the DB
+    // URL is unreachable at startup.
+    let _conn = pool
+        .get()
         .await
         .map_err(|e| anyhow::anyhow!("cannot connect to PostgreSQL: {e}"))?;
     Ok(pool)

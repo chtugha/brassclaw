@@ -484,6 +484,7 @@ fn compose_product_auth_services(
 }
 
 #[cfg(feature = "postgres")]
+#[allow(dead_code)] // Phase-5 factory wiring
 fn production_config(
     required_runtime_backends: Vec<brassclaw_host_api::RuntimeKind>,
     require_runtime_http_egress: bool,
@@ -936,6 +937,7 @@ impl TriggerCreateHook for LocalRuntimeTriggerCreatorPairingHook {
 }
 
 #[cfg(feature = "postgres")]
+#[allow(dead_code)] // Phase-5 factory wiring
 struct ScopedFilesystemTriggerCreatorPairingHook<F>
 where
     F: RootFilesystem + 'static,
@@ -1624,6 +1626,7 @@ fn nearai_allowed_effects() -> Vec<EffectKind> {
 }
 
 #[cfg(feature = "postgres")]
+#[allow(dead_code)] // Phase-5 factory wiring
 async fn build_production_shaped(
     input: RebornBuildInput,
 ) -> Result<RebornServices, RebornBuildError> {
@@ -1681,6 +1684,7 @@ async fn build_production_shaped(
 }
 
 #[cfg(feature = "postgres")]
+#[allow(dead_code)] // Phase-5 factory wiring
 async fn resolve_secret_master_key(
     explicit: Option<brassclaw_secrets::SecretMaterial>,
     pool: &deadpool_postgres::Pool,
@@ -1711,6 +1715,7 @@ async fn resolve_secret_master_key(
 }
 
 #[cfg(feature = "postgres")]
+#[allow(dead_code)] // Phase-5 factory wiring
 struct RebornProductionWiring {
     trust_policy: Arc<HostTrustPolicy>,
     runtime_policy: EffectiveRuntimePolicy,
@@ -1719,6 +1724,7 @@ struct RebornProductionWiring {
 }
 
 #[cfg(feature = "postgres")]
+#[allow(dead_code)] // Phase-5 factory wiring
 struct RebornProductionBuildContext {
     profile: RebornCompositionProfile,
     wiring_config: brassclaw_host_runtime::ProductionWiringConfig,
@@ -1729,6 +1735,7 @@ struct RebornProductionBuildContext {
 }
 
 #[cfg(feature = "postgres")]
+#[allow(dead_code)] // Phase-5 factory wiring
 fn production_wiring(
     trust_policy: Option<Arc<HostTrustPolicy>>,
     runtime_policy: Option<EffectiveRuntimePolicy>,
@@ -1752,6 +1759,7 @@ fn production_wiring(
 }
 
 #[cfg(feature = "postgres")]
+#[allow(dead_code)] // Phase-5 factory wiring
 fn validate_production_process_binding(
     runtime_policy: &EffectiveRuntimePolicy,
     binding: &RebornRuntimeProcessBinding,
@@ -1764,6 +1772,7 @@ fn validate_production_process_binding(
 }
 
 #[cfg(feature = "postgres")]
+#[allow(dead_code)] // Phase-5 factory wiring
 fn planned_run_profile_resolver() -> Result<Arc<InMemoryRunProfileResolver>, RebornBuildError> {
     Ok(Arc::new(
         brassclaw_reborn::planned_driver_factory::default_planned_run_profile_resolver().map_err(
@@ -1925,6 +1934,7 @@ where
 /// [`PgSecretStore`] and [`PgCredentialBroker`] write encrypted rows directly
 /// to `brassclaw_secrets`, replacing the legacy VFS blob columns.
 #[cfg(feature = "postgres")]
+#[allow(dead_code)] // Phase-5 factory wiring
 struct ProductionCredentialBundle {
     secret_store: Arc<PgSecretStore>,
     credential_broker: Arc<PgCredentialBroker>,
@@ -1960,6 +1970,7 @@ async fn resolve_explicit_or_keychain_master_key(
 }
 
 #[cfg(feature = "postgres")]
+#[allow(dead_code)] // Phase-5 factory wiring
 struct ProductionStoreBundle<F>
 where
     F: RootFilesystem + 'static,
@@ -2019,6 +2030,7 @@ where
 }
 
 #[cfg(feature = "postgres")]
+#[allow(dead_code)] // Phase-5 factory wiring
 async fn build_backend_production_with_tools<F>(
     context: RebornProductionBuildContext,
     stores: ProductionStoreBundle<F>,
@@ -2219,6 +2231,7 @@ where
 }
 
 #[cfg(feature = "postgres")]
+#[allow(dead_code)] // Phase-5 factory wiring
 async fn build_postgres_production(
     context: RebornProductionBuildContext,
     pool: deadpool_postgres::Pool,
@@ -2277,6 +2290,7 @@ async fn build_postgres_production(
 /// Runs best-effort: errors in config load or embedding resolution degrade
 /// silently rather than aborting boot (the stores / embedding are optional).
 #[cfg(feature = "postgres")]
+#[allow(dead_code)] // Phase-5 factory wiring
 async fn build_postgres_memory_tools(pool: deadpool_postgres::Pool) -> BuiltinFirstPartyTools {
     use std::sync::Arc;
 

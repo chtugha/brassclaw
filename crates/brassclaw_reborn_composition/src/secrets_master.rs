@@ -15,6 +15,7 @@
 use std::path::Path;
 
 use base64::Engine as _;
+use brassclaw_common::env_helpers::env_or_override;
 use brassclaw_pg::PgPool;
 use secrecy::SecretString;
 use thiserror::Error;
@@ -186,8 +187,7 @@ fn read_passphrase() -> Result<String, MasterKeyResolveError> {
 /// Returns the path from `BRASSCLAW_SECRETS_PASSPHRASE_FILE` if present and
 /// non-empty, otherwise `None`.
 fn passphrase_file_path() -> Option<std::path::PathBuf> {
-    std::env::var(SECRETS_PASSPHRASE_FILE_ENV)
-        .ok()
+    env_or_override(SECRETS_PASSPHRASE_FILE_ENV)
         .filter(|v| !v.trim().is_empty())
         .map(std::path::PathBuf::from)
 }
@@ -403,28 +403,21 @@ mod tests {
     }
     impl EnvGuard {
         fn set(key: &'static str, value: &str) -> Self {
-            let prev = std::env::var(key).ok();
-            // SAFETY: single-threaded test context (`cargo test` runs each
-            // `#[test]` fn sequentially within the same thread group); no other
-            // thread reads this env var concurrently.
-            unsafe { std::env::set_var(key, value) };
+            let prev = brassclaw_common::env_helpers::env_or_override(key);
+            brassclaw_common::env_helpers::set_runtime_env(key, value);
             Self { key, prev }
         }
         fn unset(key: &'static str) -> Self {
-            let prev = std::env::var(key).ok();
-            // SAFETY: same single-threaded test context as `set`.
-            unsafe { std::env::remove_var(key) };
+            let prev = brassclaw_common::env_helpers::env_or_override(key);
+            brassclaw_common::env_helpers::remove_runtime_env(key);
             Self { key, prev }
         }
     }
     impl Drop for EnvGuard {
         fn drop(&mut self) {
-            // SAFETY: restoring the env var on drop; same single-threaded test context.
-            unsafe {
-                match &self.prev {
-                    Some(v) => std::env::set_var(self.key, v),
-                    None => std::env::remove_var(self.key),
-                }
+            match &self.prev {
+                Some(v) => brassclaw_common::env_helpers::set_runtime_env(self.key, v),
+                None => brassclaw_common::env_helpers::remove_runtime_env(self.key),
             }
         }
     }

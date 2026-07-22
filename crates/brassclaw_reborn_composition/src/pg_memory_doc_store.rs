@@ -10,6 +10,8 @@
 //! Tags are stored as a Postgres `TEXT[]` array column (not JSON-encoded TEXT),
 //! which is a schema improvement over the libSQL variant.
 
+// Phase-5 postgres wiring — items unused until factory wiring lands.
+#![allow(dead_code)]
 #![forbid(unsafe_code)]
 
 use std::sync::Arc;

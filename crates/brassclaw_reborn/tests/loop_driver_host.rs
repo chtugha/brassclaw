@@ -2068,6 +2068,10 @@ async fn default_planned_runtime_composes_no_profile_coordinator_and_profiled_ho
         turn_event_sink: Some(event_sink.clone()),
         recipe_lookup: None,
         interceptor_store: None,
+        #[cfg(feature = "root-llm-provider")]
+        sempai_gateway: None,
+        #[cfg(feature = "root-llm-provider")]
+        interceptor_mode: None,
     })
     .unwrap();
 
@@ -2239,6 +2243,10 @@ async fn build_runtime_host_with_optional_hooks(
         hook_dispatcher_builder_factory: hook_factory,
         recipe_lookup: None,
         interceptor_store: None,
+        #[cfg(feature = "root-llm-provider")]
+        sempai_gateway: None,
+        #[cfg(feature = "root-llm-provider")]
+        interceptor_mode: None,
     })
     .unwrap();
 
@@ -2571,6 +2579,10 @@ async fn product_live_runtime_builds_when_all_required_adapters_are_present() {
         turn_event_sink: None,
         recipe_lookup: None,
         interceptor_store: None,
+        #[cfg(feature = "root-llm-provider")]
+        sempai_gateway: None,
+        #[cfg(feature = "root-llm-provider")]
+        interceptor_mode: None,
     })
     .expect("all product-live adapters should satisfy readiness");
 
@@ -2686,6 +2698,10 @@ async fn product_live_parts_for_gate_test(
         turn_event_sink: None,
         recipe_lookup: None,
         interceptor_store: None,
+        #[cfg(feature = "root-llm-provider")]
+        sempai_gateway: None,
+        #[cfg(feature = "root-llm-provider")]
+        interceptor_mode: None,
     }
 }
 

@@ -49,7 +49,7 @@ mod inner {
     use brassclaw_skills::db_store::{
         DbSkillStore, DbSkillStoreError, SkillScope, SkillWriteInput,
     };
-    use brassclaw_skills::{parse_skill_md, SkillParseError};
+    use brassclaw_skills::parse_skill_md;
 
     // -----------------------------------------------------------------------
     // Public entry-point
@@ -341,7 +341,7 @@ mod inner {
         // Find the tool short-name (part after the dot, e.g. "api" from "github.api").
         let short = tool_name
             .split('.')
-            .last()
+            .next_back()
             .unwrap_or(tool_name);
 
         let lines: Vec<&str> = body.lines().collect();
@@ -450,8 +450,6 @@ mod inner {
 
     #[cfg(test)]
     mod tests {
-        use serde_json::json;
-
         use super::*;
         use brassclaw_skills::SkillManifest;
 

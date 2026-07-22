@@ -148,6 +148,20 @@ pub struct SkillManifest {
     pub types: Vec<ComponentType>,
 }
 
+impl Default for SkillManifest {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            version: default_version(),
+            description: String::new(),
+            activation: ActivationCriteria::default(),
+            credentials: Vec::new(),
+            requires: GatingRequirements::default(),
+            types: ComponentTypeSet::default_types(),
+        }
+    }
+}
+
 fn default_version() -> String {
     "0.0.0".to_string()
 }

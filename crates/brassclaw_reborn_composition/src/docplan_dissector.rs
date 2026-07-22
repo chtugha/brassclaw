@@ -42,6 +42,8 @@
 //! `(local, default, default, default)` which matches the scope used by the
 //! existing plan library and RecipeLibrary adapters.
 
+// Phase-5 postgres wiring — not yet called from factory; items unused until wiring lands.
+#![allow(dead_code)]
 #![forbid(unsafe_code)]
 
 use std::sync::Arc;

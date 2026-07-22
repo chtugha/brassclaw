@@ -78,6 +78,12 @@ registerPack("ko", {
   "settings.networking": "네트워크",
   "settings.tools": "도구",
   "settings.skills": "스킬",
+  "settings.actions": "액션",
+  "settings.orchestrator": "오케스트레이터",
+  "settings.scaffold": "스캐폴드",
+  "settings.montyVm": "Monty VM",
+  "settings.validationQueue": "검증 대기열",
+  "settings.reliability": "신뢰성",
   "settings.users": "사용자",
   "settings.language": "언어",
 

@@ -274,7 +274,7 @@ brassclaw_resources = { path = "crates/brassclaw_resources", version = "0.1.0" }
 brassclaw_secrets = { path = "crates/brassclaw_secrets", version = "0.1.0" }
 brassclaw_product_adapters = { path = "crates/brassclaw_product_adapters", version = "0.1.0", features = ["test-support"] }
 brassclaw_product_workflow = { path = "crates/brassclaw_product_workflow", version = "0.1.0", features = ["test-support"] }
-brassclaw_reborn = { path = "crates/brassclaw_reborn", version = "0.1.0" }
+brassclaw_reborn = { path = "crates/brassclaw_reborn", version = "0.1.0", features = ["root-llm-provider"] }
 brassclaw_reborn_composition = { path = "crates/brassclaw_reborn_composition", version = "0.1.0" }
 brassclaw_threads = { path = "crates/brassclaw_threads", version = "0.1.0" }
 brassclaw_triggers = { path = "crates/brassclaw_triggers", version = "0.1.0" }
@@ -337,6 +337,10 @@ pr3180-ready = []
 # legacy host-workspace path which doesn't consult the substrate.
 # PR 7 must enable this feature in its merge commit.
 pr7-ready = []
+# Re-expose the Sempai/interceptor gateway feature so integration tests can use
+# `#[cfg(feature = "root-llm-provider")]` to gate fields in DefaultPlannedRuntimeParts
+# when `--all-features` is passed.
+root-llm-provider = ["brassclaw_reborn/root-llm-provider"]
 
 [profile.release]
 strip = true          # Remove debug symbols from release binaries

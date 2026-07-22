@@ -1911,23 +1911,21 @@ impl brassclaw_turns::run_profile::LoopInterceptorPort for RebornLoopDriverHost 
         #[cfg(feature = "root-llm-provider")]
         if let (Some(gateway), Some(mode)) =
             (self.sempai_gateway.as_ref(), self.interceptor_mode.as_ref())
+            && mode.get() == brassclaw_interceptor::InterceptorMode::Rerouting
+            && let Some(result) = self
+                .run_sempai_review(
+                    run_id,
+                    iteration,
+                    &packet_id,
+                    messages,
+                    gateway,
+                )
+                .await
         {
-            if mode.get() == brassclaw_interceptor::InterceptorMode::Rerouting {
-                if let Some(result) = self
-                    .run_sempai_review(
-                        run_id,
-                        iteration,
-                        &packet_id,
-                        messages,
-                        gateway,
-                    )
-                    .await
-                {
-                    return Some(result);
-                }
-                // Sempai review failed: fall through to routing result below.
-            }
+            return Some(result);
         }
+        // Sempai review failed, not in rerouting mode, or gateway/mode not wired:
+        // fall through to the routing result below.
 
         // Routing mode: packet saved, no Sempai adjustment.
         Some(InterceptorResult {

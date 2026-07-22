@@ -1,19 +1,25 @@
 import { Navigate, useNavigate, useOutletContext, useParams } from "react-router";
 import { React, html } from "../../lib/html.js";
 import { useT } from "../../lib/i18n.js";
+import { ActionsTab } from "./components/actions-tab.js";
 import { AgentTab } from "./components/agent-tab.js";
 import { ChannelsTab } from "./components/channels-tab.js";
 import { InferenceTab } from "./components/inference-tab.js";
 import { InterceptorTab } from "./components/interceptor-tab.js";
 import { LanguageTab } from "./components/language-tab.js";
+import { MontyVmTab } from "./components/monty-vm-tab.js";
 import { NetworkingTab } from "./components/networking-tab.js";
+import { OrchestratorTab } from "./components/orchestrator-tab.js";
+import { ReliabilityTab } from "./components/reliability-tab.js";
 import { RestartBanner } from "./components/restart-banner.js";
 import { SafetyPanel } from "./components/safety-panel.js";
+import { ScaffoldTab } from "./components/scaffold-tab.js";
 import { SkillsTab } from "./components/skills-tab.js";
 import { TokensTab } from "./components/tokens-tab.js";
 import { ToolsTab } from "./components/tools-tab.js";
 import { SettingsToolbar } from "./components/settings-toolbar.js";
 import { UsersTab } from "./components/users-tab.js";
+import { ValidationQueueTab } from "./components/validation-queue-tab.js";
 import { useSettings } from "./hooks/useSettings.js";
 
 export function SettingsPage() {
@@ -69,9 +75,16 @@ export function SettingsPage() {
     />`,
     tools: html`<${ToolsTab} searchQuery=${searchQuery} />`,
     skills: html`<${SkillsTab} searchQuery=${searchQuery} />`,
+    // Phase 6 — 10-tab Settings UI editor.
+    actions: html`<${ActionsTab} searchQuery=${searchQuery} />`,
+    orchestrator: html`<${OrchestratorTab} searchQuery=${searchQuery} />`,
+    scaffold: html`<${ScaffoldTab} searchQuery=${searchQuery} />`,
+    "monty-vm": html`<${MontyVmTab} searchQuery=${searchQuery} />`,
+    "validation-queue": html`<${ValidationQueueTab} searchQuery=${searchQuery} />`,
+    reliability: html`<${ReliabilityTab} />`,
+    interceptor: html`<${InterceptorTab} searchQuery=${searchQuery} />`,
     safety: html`<${SafetyPanel} searchQuery=${searchQuery} />`,
     tokens: html`<${TokensTab} searchQuery=${searchQuery} />`,
-    interceptor: html`<${InterceptorTab} searchQuery=${searchQuery} />`,
     users: html`<${UsersTab} searchQuery=${searchQuery} />`,
     language: html`<${LanguageTab} searchQuery=${searchQuery} />`,
   };

@@ -24,7 +24,7 @@ async fn extension_lifecycle_projects_metadata_only_from_durable_audit_log() {
     let audit_log = Arc::new(InMemoryDurableAuditLog::new());
     let audit_log = Arc::clone(&audit_log);
     let lifecycle_sink = Arc::new(DurableExtensionLifecycleAuditSink::new(Arc::new(
-        DurableAuditSink::new(Arc::clone(&audit_log)),
+        DurableAuditSink::new(Arc::clone(&audit_log) as Arc<dyn brassclaw_events::DurableAuditLog>),
     )));
     let package = ExtensionPackage::from_manifest(
         ExtensionManifest::parse(
@@ -59,7 +59,7 @@ async fn extension_lifecycle_projects_metadata_only_from_durable_audit_log() {
     service.remove(&extension_id).await.unwrap();
 
     assert!(service.registry().get_extension(&extension_id).is_none());
-    let projection = ReplayAuditProjectionService::from_audit_log(Arc::clone(&audit_log));
+    let projection = ReplayAuditProjectionService::from_audit_log(Arc::clone(&audit_log) as Arc<dyn brassclaw_events::DurableAuditLog>);
     let snapshot = projection
         .snapshot(AuditProjectionRequest {
             scope: ProjectionScope::from_resource_scope(&extension_resource_scope()),

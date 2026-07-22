@@ -183,6 +183,13 @@ registerPack("en", {
   "settings.users": "Users",
   "settings.language": "Language",
   "settings.interceptor": "Interceptor",
+  // Phase 6 — 10-tab Settings UI editor.
+  "settings.actions": "Actions",
+  "settings.orchestrator": "Orchestrator",
+  "settings.scaffold": "Scaffold",
+  "settings.montyVm": "Monty VM",
+  "settings.validationQueue": "Validation Queue",
+  "settings.reliability": "Reliability",
 
   // Settings — toolbar
   "settings.back": "Back",
@@ -948,6 +955,73 @@ registerPack("en", {
   "logs.entryCount": "{count} entries",
   "logs.pausedBadge": "● paused",
   "logs.empty": "Waiting for log entries…",
+
+  // Settings — Actions tab (Phase 6).
+  "actions.failedLoad": "Failed to load actions: {message}",
+  "actions.none": "No actions registered",
+  "actions.noneDesc": "Actions will appear here once agent action library components are validated.",
+  "actions.library": "Action library",
+
+  // Settings — Orchestrator tab (Phase 6).
+  "orchestrator.failedLoad": "Failed to load orchestrators: {message}",
+  "orchestrator.none": "No orchestrators registered",
+  "orchestrator.noneDesc": "Orchestrator components will appear here once they are validated.",
+  "orchestrator.library": "Orchestrator library",
+
+  // Settings — Scaffold tab (Phase 6).
+  "scaffold.failedLoad": "Failed to load scaffolds: {message}",
+  "scaffold.none": "No scaffolds registered",
+  "scaffold.noneDesc": "Scaffold components will appear here once they are validated.",
+  "scaffold.library": "Scaffold library",
+
+  // Settings — Monty VM tab (Phase 6).
+  "montyVm.failedLoad": "Failed to load Monty VM settings: {message}",
+  "montyVm.status": "Runtime status",
+  "montyVm.state": "State",
+  "montyVm.polling": "polling…",
+  "montyVm.orchVersion": "Orchestrator version",
+  "montyVm.settingsHash": "Settings hash",
+  "montyVm.settingsTitle": "Resource limits",
+  "montyVm.maxDuration": "Max duration (s)",
+  "montyVm.maxDurationDesc": "Maximum turn execution time in seconds.",
+  "montyVm.rollbackThreshold": "Failure rollback threshold",
+  "montyVm.rollbackThresholdDesc": "Consecutive failures before automatic rollback.",
+  "montyVm.tokenBudget": "Prior knowledge token budget",
+  "montyVm.tokenBudgetDesc": "Token budget allocated to injected prior knowledge context.",
+  "montyVm.q4RetentionDays": "Q4 retention (days)",
+  "montyVm.q4RetentionDaysDesc": "How long Q4 forensic snapshots are retained.",
+  "montyVm.forensicRetentionDays": "Forensic packet retention (days)",
+  "montyVm.forensicRetentionDaysDesc": "How long full forensic packets are retained.",
+  "montyVm.saved": "Saved",
+  "montyVm.lifecycle": "Lifecycle",
+  "montyVm.lifecycleDesc": "Restart the Monty VM runtime to apply new settings or recover from an error state.",
+  "montyVm.restart": "Restart Monty VM",
+  "montyVm.restarting": "Restarting…",
+  "montyVm.confirmTitle": "Restart Monty VM?",
+  "montyVm.confirmDesc": "Active work may be interrupted. The runtime will return to the running state once the restart completes.",
+  "montyVm.confirmOk": "Confirm restart",
+
+  // Settings — Validation Queue tab (Phase 6).
+  "validationQueue.failedLoad": "Failed to load validation queue: {message}",
+  "validationQueue.title": "Pending validation",
+  "validationQueue.empty": "Validation queue is empty",
+  "validationQueue.emptyDesc": "Components awaiting operator review will appear here once the extraction pipeline produces new items.",
+  "validationQueue.pendingCount": "{count} pending",
+
+  // Settings — Reliability tab (Phase 6).
+  "reliability.title": "Reliability overview",
+  "reliability.desc": "These settings are controlled via the Monty VM tab. Navigate to Monty VM to change resource limits, retention windows, or rollback thresholds.",
+  "reliability.retentionTitle": "Data retention",
+  "reliability.q4RetentionDays": "Q4 retention",
+  "reliability.q4RetentionDaysDesc": "Days Q4 forensic snapshots are kept.",
+  "reliability.forensicRetentionDays": "Forensic packet retention",
+  "reliability.forensicRetentionDaysDesc": "Days full forensic packets are kept.",
+  "reliability.rollbackTitle": "Failure control",
+  "reliability.failureRollbackThreshold": "Rollback threshold",
+  "reliability.failureRollbackThresholdDesc": "Consecutive failures before automatic rollback triggers.",
+  "reliability.priorKnowledgeTokenBudget": "Prior knowledge budget",
+  "reliability.priorKnowledgeTokenBudgetDesc": "Token budget for prior knowledge context injection.",
+  "reliability.editHint": "Edit these values in the Monty VM tab.",
 
   // Settings — Interceptor tab (Phase 5.5).
   "interceptor.failedLoad": "Failed to load interceptor configuration: {message}",

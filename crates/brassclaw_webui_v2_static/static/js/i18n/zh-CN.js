@@ -78,6 +78,12 @@ registerPack("zh-CN", {
   "settings.networking": "网络",
   "settings.tools": "工具",
   "settings.skills": "技能",
+  "settings.actions": "动作",
+  "settings.orchestrator": "编排器",
+  "settings.scaffold": "脚手架",
+  "settings.montyVm": "Monty VM",
+  "settings.validationQueue": "验证队列",
+  "settings.reliability": "可靠性",
   "settings.users": "用户",
   "settings.language": "语言",
 

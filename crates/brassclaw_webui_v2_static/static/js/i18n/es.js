@@ -82,6 +82,12 @@ registerPack("es", {
   "settings.networking": "Red",
   "settings.tools": "Herramientas",
   "settings.skills": "Skills",
+  "settings.actions": "Acciones",
+  "settings.orchestrator": "Orquestador",
+  "settings.scaffold": "Scaffold",
+  "settings.montyVm": "Monty VM",
+  "settings.validationQueue": "Cola de validación",
+  "settings.reliability": "Fiabilidad",
   "settings.users": "Usuarios",
   "settings.language": "Idioma",
   "settings.restartRequired":

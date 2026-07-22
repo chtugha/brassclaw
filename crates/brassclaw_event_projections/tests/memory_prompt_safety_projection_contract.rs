@@ -19,7 +19,7 @@ use brassclaw_memory::{
 async fn memory_prompt_safety_rejection_projects_metadata_only_from_durable_audit_log() {
     let audit_log = Arc::new(InMemoryDurableAuditLog::new());
     let audit_log = Arc::clone(&audit_log);
-    let audit_sink: Arc<dyn AuditSink> = Arc::new(DurableAuditSink::new(Arc::clone(&audit_log)));
+    let audit_sink: Arc<dyn AuditSink> = Arc::new(DurableAuditSink::new(Arc::clone(&audit_log) as Arc<dyn brassclaw_events::DurableAuditLog>));
     let prompt_safety_sink = Arc::new(DurableMemoryAuditSink::new(audit_sink));
     let repository = Arc::new(InMemoryMemoryDocumentRepository::new());
     let backend = RepositoryMemoryBackend::new(Arc::clone(&repository))
@@ -51,7 +51,7 @@ async fn memory_prompt_safety_rejection_projects_metadata_only_from_durable_audi
     assert!(err.to_string().contains("high_risk_prompt_injection"));
     assert!(repository.read_document(&path).await.unwrap().is_none());
 
-    let projection = ReplayAuditProjectionService::from_audit_log(Arc::clone(&audit_log));
+    let projection = ReplayAuditProjectionService::from_audit_log(Arc::clone(&audit_log) as Arc<dyn brassclaw_events::DurableAuditLog>);
     let snapshot = projection
         .snapshot(AuditProjectionRequest {
             scope: ProjectionScope::from_resource_scope(&memory_resource_scope(context.scope())),
@@ -105,7 +105,7 @@ async fn memory_prompt_safety_rejection_projects_metadata_only_from_durable_audi
 async fn prompt_rejection_projects_under_thread_scoped_audit_context() {
     let audit_log = Arc::new(InMemoryDurableAuditLog::new());
     let audit_log = Arc::clone(&audit_log);
-    let audit_sink: Arc<dyn AuditSink> = Arc::new(DurableAuditSink::new(Arc::clone(&audit_log)));
+    let audit_sink: Arc<dyn AuditSink> = Arc::new(DurableAuditSink::new(Arc::clone(&audit_log) as Arc<dyn brassclaw_events::DurableAuditLog>));
     let prompt_safety_sink = Arc::new(DurableMemoryAuditSink::new(audit_sink));
     let repository = Arc::new(InMemoryMemoryDocumentRepository::new());
     let backend = RepositoryMemoryBackend::new(Arc::clone(&repository))
@@ -141,7 +141,7 @@ async fn prompt_rejection_projects_under_thread_scoped_audit_context() {
         .unwrap_err();
     assert!(err.to_string().contains("high_risk_prompt_injection"));
 
-    let projection = ReplayAuditProjectionService::from_audit_log(Arc::clone(&audit_log));
+    let projection = ReplayAuditProjectionService::from_audit_log(Arc::clone(&audit_log) as Arc<dyn brassclaw_events::DurableAuditLog>);
     let snapshot = projection
         .snapshot(AuditProjectionRequest {
             scope: ProjectionScope::from_resource_scope(&resource_scope),

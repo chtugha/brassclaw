@@ -78,6 +78,12 @@ registerPack("uk", {
   "settings.networking": "Мережа",
   "settings.tools": "Інструменти",
   "settings.skills": "Скіли",
+  "settings.actions": "Дії",
+  "settings.orchestrator": "Оркестратор",
+  "settings.scaffold": "Scaffold",
+  "settings.montyVm": "Monty VM",
+  "settings.validationQueue": "Черга валідації",
+  "settings.reliability": "Надійність",
   "settings.users": "Користувачі",
   "settings.language": "Мова",
 

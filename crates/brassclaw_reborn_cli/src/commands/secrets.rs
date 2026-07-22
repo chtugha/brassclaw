@@ -209,22 +209,21 @@ async fn resolve_tenant_id(
 
     // 2. identity.tenant from $REBORN_HOME/config.toml
     let config_path = reborn_home.join("config.toml");
-    if let Ok(Some(cfg)) = brassclaw_reborn_config::RebornConfigFile::load(&config_path) {
-        if let Some(tenant) = cfg.identity.and_then(|i| i.tenant) {
-            if !tenant.trim().is_empty() {
-                return Ok(tenant);
-            }
-        }
+    if let Ok(Some(cfg)) = brassclaw_reborn_config::RebornConfigFile::load(&config_path)
+        && let Some(tenant) = cfg.identity.and_then(|i| i.tenant)
+        && !tenant.trim().is_empty()
+    {
+        return Ok(tenant);
     }
 
     // 3. brassclaw_config DB key identity.tenant
     let snapshot = brassclaw_reborn_composition::db_config::load_config_snapshot(pool, "default")
         .await
         .unwrap_or_default();
-    if let Some(tenant) = snapshot.identity.and_then(|i| i.tenant) {
-        if !tenant.trim().is_empty() {
-            return Ok(tenant);
-        }
+    if let Some(tenant) = snapshot.identity.and_then(|i| i.tenant)
+        && !tenant.trim().is_empty()
+    {
+        return Ok(tenant);
     }
 
     // 4. Fallback

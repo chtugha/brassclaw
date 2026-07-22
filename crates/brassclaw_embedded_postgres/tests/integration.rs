@@ -1,28 +1,28 @@
-/// S16 — Phase 10 integration tests for the embedded Postgres lifecycle.
-///
-/// These tests require actually downloading and starting a real PostgreSQL 16
-/// binary.  They are gated behind `--features integration` to keep the default
-/// `cargo test` pass fast.
-///
-/// Run with:
-///   cargo test -p brassclaw_embedded_postgres --features integration
-///
-/// All tests use isolated `tempdir` data directories so they can run in
-/// parallel without port conflicts.  Each test picks a free port from the OS
-/// so it doesn't hard-code 5434.
-///
-/// # Gate status (Phase 10 checklist)
-///
-/// - [x] full boot cycle from scratch (embedded PG starts, query served, graceful shutdown)
-/// - [x] restart resumes state from Postgres
-/// - [x] `BRASSCLAW_PG_URL` override (no embedded PG spawned)
-/// - [x] SIGKILL → restart → orphaned-server detection and reuse
-/// - [x] `brassclaw config get` against running `serve` does not stop embedded PG
-///       (conditional-shutdown rule, §6.4 step 4) — modelled as: second `ManagedPostgres::start`
-///       on the same running server detects the live postmaster and returns `owns_server=false`;
-///       calling `shutdown()` on that handle is a no-op, leaving the first server running.
-/// - [x] Hardened-unit: embedded PG starts and serves a query under MDWE-equivalent
-///       (`jit=off` in `postgresql.conf`); validates the JIT setting is written correctly.
+//! S16 — Phase 10 integration tests for the embedded Postgres lifecycle.
+//!
+//! These tests require actually downloading and starting a real PostgreSQL 16
+//! binary.  They are gated behind `--features integration` to keep the default
+//! `cargo test` pass fast.
+//!
+//! Run with:
+//!   cargo test -p brassclaw_embedded_postgres --features integration
+//!
+//! All tests use isolated `tempdir` data directories so they can run in
+//! parallel without port conflicts.  Each test picks a free port from the OS
+//! so it doesn't hard-code 5434.
+//!
+//! # Gate status (Phase 10 checklist)
+//!
+//! - [x] full boot cycle from scratch (embedded PG starts, query served, graceful shutdown)
+//! - [x] restart resumes state from Postgres
+//! - [x] `BRASSCLAW_PG_URL` override (no embedded PG spawned)
+//! - [x] SIGKILL → restart → orphaned-server detection and reuse
+//! - [x] `brassclaw config get` against running `serve` does not stop embedded PG
+//!   (conditional-shutdown rule, §6.4 step 4) — modelled as: second `ManagedPostgres::start`
+//!   on the same running server detects the live postmaster and returns `owns_server=false`;
+//!   calling `shutdown()` on that handle is a no-op, leaving the first server running.
+//! - [x] Hardened-unit: embedded PG starts and serves a query under MDWE-equivalent
+//!   (`jit=off` in `postgresql.conf`); validates the JIT setting is written correctly.
 
 #[cfg(feature = "integration")]
 mod integration {
@@ -104,7 +104,7 @@ mod integration {
         let port = managed
             .connection_url()
             .split(':')
-            .last()
+            .next_back()
             .and_then(|s| s.split('/').next())
             .and_then(|s| s.parse::<u16>().ok())
             .expect("parse port from connection url");

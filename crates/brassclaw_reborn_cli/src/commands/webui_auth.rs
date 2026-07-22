@@ -125,47 +125,16 @@ pub(crate) async fn build_webui_auth_surface(
 mod tests {
     use super::*;
 
-    use async_trait::async_trait;
     use brassclaw_reborn_composition::host_api::UserId;
-    use brassclaw_reborn_webui_ingress::{
-        OAuthError, OAuthProvider, OAuthProviderName, OAuthUserProfile,
-    };
 
     /// Bearer verifier that accepts nothing — stands in for the env-bearer
     /// authenticator without pulling in its construction requirements.
     struct RejectingAuth;
 
-    #[async_trait]
+    #[async_trait::async_trait]
     impl WebuiAuthenticator for RejectingAuth {
         async fn authenticate(&self, _token: &str) -> Option<UserId> {
             None
-        }
-    }
-
-    struct StubProvider(OAuthProviderName);
-
-    #[async_trait]
-    impl OAuthProvider for StubProvider {
-        fn name(&self) -> &OAuthProviderName {
-            &self.0
-        }
-
-        fn authorization_url(
-            &self,
-            _callback_url: &str,
-            _state: &str,
-            _code_challenge: &str,
-        ) -> String {
-            "https://provider.example/authorize".to_string()
-        }
-
-        async fn exchange_code(
-            &self,
-            _code: &str,
-            _callback_url: &str,
-            _code_verifier: &str,
-        ) -> Result<OAuthUserProfile, OAuthError> {
-            unreachable!("provider exchange is not exercised by auth-surface wiring tests")
         }
     }
 

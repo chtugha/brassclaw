@@ -21,6 +21,12 @@
 #   __regex_match__(pattern, text)               -> bool
 #   __validate_component__(title, content, doc_type, metadata)
 #                                               -> {queued, candidate_id, ...}
+#   __assemble_prior_knowledge__(goal, token_budget, sender_class_code)
+#     -> {content, formatted_content, override_prompt_creation, matched_component_ids}
+#     content              - raw PKC text (Rust-internal; action dispatch + KV fingerprint)
+#     formatted_content    - LLM-readable JSON (sent to working_messages)
+#     override_prompt_creation - bool; if true, use formatted_content as the complete prompt
+#     matched_component_ids   - list of UUID strings for matched components
 #
 # Context variables (injected by Rust before execution):
 #   context  - list of prior messages [{role, content}]
@@ -160,6 +166,43 @@ def append_message(messages, role, content, action_name=None, action_call_id=Non
     if action_calls is not None:
         msg["action_calls"] = action_calls
     messages.append(msg)
+
+
+def insert_as_user_message_at_n_minus_1(messages, content):
+    """Inject a User message at position N-1 (second-to-last slot).
+
+    The message is inserted immediately before the last message in the list so
+    that it appears directly before the model's response slot. If the list is
+    empty or has only one message the content is appended instead.
+
+    Used by the Normal Assembly path of __assemble_prior_knowledge__ (Phase 8
+    Step 8.1): formatted prior-knowledge JSON is placed at N-1 so that the
+    KV-cache stable prefix (identities/skills/memory, priorities 1-5) is never
+    disturbed. The volatile thread context is injected after this call by
+    insert_volatile_context_at_n_minus_1.
+    """
+    if len(messages) <= 1:
+        messages.append({"role": "User", "content": content})
+    else:
+        messages.insert(len(messages) - 1, {"role": "User", "content": content})
+
+
+def insert_volatile_context_at_n_minus_1(messages):
+    """Inject the current volatile thread context as a User message at N-1.
+
+    Volatile context = the per-turn thread history that changes every step
+    (signals, injected messages, inline nudges). It is always the last
+    User-visible message before the model response slot so that the stable
+    KV-cache prefix (everything before it) can be reused across turns.
+
+    This is a stub for Phase 8 Step 8.1 / Phase 5.2b. The actual volatile
+    context retrieval and formatting is wired in Phase 5.2b once the
+    InstructionBundleBuilder's priority-6 volatile tail is accessible here.
+    For now the function is a no-op so the call site is correct and the
+    volatile injection point is documented and reserved.
+    """
+    # Phase 5.2b wires the actual volatile tail here. No-op until then.
+    pass
 
 
 # Conservative fallback heuristic matching the old Rust-side estimator.
@@ -935,19 +978,38 @@ def run_loop(context, goal, actions, state, config):
             __transition_to__("completed", "cost budget exhausted")
             return complete_result(state, "completed", "Cost budget exhausted.")
 
-        # 3. Register active skills on first step.
-        # Prior-knowledge docs are injected at position N-1 by the Rust
-        # layer (build_step_context / InstructionBundleBuilder priority 6+).
+        # 3. Prior-knowledge assembly + skill registration on first step.
+        # __assemble_prior_knowledge__ (Phase 8 Step 8.1, §3.13/§3.14):
+        #   - Returns both raw `content` (Rust-internal only) and
+        #     `formatted_content` (LLM-readable JSON sent to working_messages).
+        #   - KV-cache discipline: `formatted_content` is deterministic
+        #     (same components → same JSON → same tokens → cache hits on the
+        #     stable prefix). Raw `content` is never sent to the LLM.
         # Skills are assembled into the stable system-prompt prefix by Rust
         # (InstructionBundleBuilder priority 2). The orchestrator registers
         # which skills are active for tracking and event emission only.
         if step == 0:
-            docs = __retrieve_docs__(goal, 5)
+            # ── Prior-knowledge assembly (§3.13/§3.14, Phase 8 Step 8.1) ─
+            token_budget = config.get("prior_knowledge_token_budget", 2000) if isinstance(config, dict) else 2000
+            pkr = __assemble_prior_knowledge__(goal, token_budget, "02")
+            if isinstance(pkr, dict):
+                if pkr.get("override_prompt_creation"):
+                    # Solution Override — formatted PKC becomes the stable KV-cache
+                    # base. Raw pkr["content"] is for Rust dispatch only.
+                    working_messages = [{"role": "User", "content": pkr.get("formatted_content", "")}]
+                elif pkr.get("formatted_content"):
+                    # Normal Assembly — inject formatted prior knowledge at N-1.
+                    insert_as_user_message_at_n_minus_1(working_messages, pkr["formatted_content"])
+                # Always inject volatile thread context at N-1, regardless of path.
+                # Under Override this is the only non-PKC message the model sees.
+                insert_volatile_context_at_n_minus_1(working_messages)
 
             # ── Action short-circuit (class_code 16, §3.11) ──────────────
-            # If the retrieved docs include an Action, execute it directly
-            # without calling __llm_complete__ and return immediately.
-            # Actions bypass the LLM turn entirely — no prompt creation.
+            # If the assembled prior knowledge resolved to an Action, execute
+            # it directly without calling __llm_complete__ and return.
+            # Actions are also detectable via the legacy __retrieve_docs__ path
+            # (pre-Phase 5 fallback). Actions bypass the LLM turn entirely.
+            docs = __retrieve_docs__(goal, 5)
             if docs:
                 for doc in docs:
                     metadata = doc.get("metadata", {}) if isinstance(doc, dict) else {}

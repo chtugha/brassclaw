@@ -201,8 +201,6 @@ mod inner {
 
     #[cfg(test)]
     mod tests {
-        use serde_json::Value;
-
         use super::*;
         use brassclaw_skills::db_store::{DbSkillRow, SkillScope};
 
@@ -344,7 +342,7 @@ mod inner {
             r2.class_code = 2;
             r2.prompt_uid = 5;
 
-            let mut rows = vec![r1, r2];
+            let mut rows = [r1, r2];
             rows.sort_by_key(|r| (r.class_code, r.prompt_uid));
 
             assert_eq!(rows[0].prompt_uid, 5);

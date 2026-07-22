@@ -24,6 +24,8 @@
 //!
 //! Both types require the `postgres` feature.
 
+// Phase-5 postgres wiring — items unused until factory wiring lands.
+#![allow(dead_code)]
 #![forbid(unsafe_code)]
 
 use std::sync::Arc;
@@ -45,7 +47,7 @@ use uuid::Uuid;
 
 /// Errors raised by `reborn_recipes` store operations.
 #[derive(Debug, Error)]
-pub enum PgRecipeStoreError {
+pub(crate) enum PgRecipeStoreError {
     #[error("pool error: {reason}")]
     Pool { reason: String },
     #[error("database error: {reason}")]
@@ -76,77 +78,77 @@ fn map_pg(e: tokio_postgres::Error) -> PgRecipeStoreError {
 
 /// A fully-decoded `reborn_recipes` row.
 #[derive(Debug, Clone)]
-pub struct PgRecipe {
-    pub id: Uuid,
-    pub tenant_id: String,
-    pub user_id: String,
-    pub agent_id: String,
-    pub project_id: String,
-    pub name: String,
-    pub description: String,
+pub(crate) struct PgRecipe {
+    pub(crate) id: Uuid,
+    pub(crate) tenant_id: String,
+    pub(crate) user_id: String,
+    pub(crate) agent_id: String,
+    pub(crate) project_id: String,
+    pub(crate) name: String,
+    pub(crate) description: String,
     /// Trigger JSON — `{type: "exact"|"pattern"|"keyword", payload: ...}`.
-    pub trigger: Option<Value>,
+    pub(crate) trigger: Option<Value>,
     /// Ordered step array — `[{skill: name, params: {...}}]`.
-    pub steps: Value,
-    pub status: String,
-    pub prior_knowledge_content: Option<String>,
-    pub override_prompt_creation: bool,
-    pub class_code: i16,
-    pub prompt_uid: i64,
-    pub consumer_tags: Vec<String>,
-    pub intent_examples: Option<Value>,
-    pub tier: String,
-    pub usage_count: i32,
-    pub success_count: i32,
-    pub failure_count: i32,
-    pub wilson_lower: f64,
-    pub validation_status: String,
-    pub validation_errors: Vec<String>,
-    pub review_feedback: Option<String>,
-    pub review_attempts: i16,
-    pub rejected_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub queue_code: Option<String>,
-    pub source: String,
-    pub content_hash: Option<String>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
+    pub(crate) steps: Value,
+    pub(crate) status: String,
+    pub(crate) prior_knowledge_content: Option<String>,
+    pub(crate) override_prompt_creation: bool,
+    pub(crate) class_code: i16,
+    pub(crate) prompt_uid: i64,
+    pub(crate) consumer_tags: Vec<String>,
+    pub(crate) intent_examples: Option<Value>,
+    pub(crate) tier: String,
+    pub(crate) usage_count: i32,
+    pub(crate) success_count: i32,
+    pub(crate) failure_count: i32,
+    pub(crate) wilson_lower: f64,
+    pub(crate) validation_status: String,
+    pub(crate) validation_errors: Vec<String>,
+    pub(crate) review_feedback: Option<String>,
+    pub(crate) review_attempts: i16,
+    pub(crate) rejected_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub(crate) queue_code: Option<String>,
+    pub(crate) source: String,
+    pub(crate) content_hash: Option<String>,
+    pub(crate) created_at: chrono::DateTime<chrono::Utc>,
+    pub(crate) updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 impl PgRecipe {
     /// Returns true iff the row carries the `05:validator` consumer tag.
-    pub fn has_validator_tag(&self) -> bool {
+    pub(crate) fn has_validator_tag(&self) -> bool {
         self.consumer_tags.iter().any(|t| t == "05:validator")
     }
 
     /// Returns true iff this recipe is deliverable to consumers (validated + no
     /// validator tag, per §3.9 SEC-01).
-    pub fn is_deliverable(&self) -> bool {
+    pub(crate) fn is_deliverable(&self) -> bool {
         self.validation_status == "validated" && !self.has_validator_tag()
     }
 
     /// Returns true iff this recipe is eligible for Tier-0 direct execution.
-    pub fn is_tier0_eligible(&self) -> bool {
+    pub(crate) fn is_tier0_eligible(&self) -> bool {
         self.is_deliverable() && matches!(self.tier.as_str(), "mature" | "candidate")
     }
 }
 
 /// Minimal data required to insert a new recipe row.
 #[derive(Debug, Clone)]
-pub struct NewPgRecipe {
-    pub tenant_id: String,
-    pub user_id: String,
-    pub agent_id: String,
-    pub project_id: String,
-    pub name: String,
-    pub description: String,
-    pub trigger: Option<Value>,
-    pub steps: Value,
-    pub prior_knowledge_content: Option<String>,
-    pub override_prompt_creation: bool,
+pub(crate) struct NewPgRecipe {
+    pub(crate) tenant_id: String,
+    pub(crate) user_id: String,
+    pub(crate) agent_id: String,
+    pub(crate) project_id: String,
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) trigger: Option<Value>,
+    pub(crate) steps: Value,
+    pub(crate) prior_knowledge_content: Option<String>,
+    pub(crate) override_prompt_creation: bool,
     /// Consumer tags — caller must include `05:validator` for new rows.
-    pub consumer_tags: Vec<String>,
-    pub intent_examples: Option<Value>,
-    pub source: String,
+    pub(crate) consumer_tags: Vec<String>,
+    pub(crate) intent_examples: Option<Value>,
+    pub(crate) source: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -155,11 +157,11 @@ pub struct NewPgRecipe {
 
 /// Grouped parameters for [`PgRecipeStore::update_validation_status`].
 #[derive(Debug)]
-pub struct RecipeValidationStatusUpdate<'a> {
-    pub validation_status: &'a str,
-    pub validation_errors: Vec<String>,
-    pub review_feedback: Option<String>,
-    pub queue_code: Option<String>,
+pub(crate) struct RecipeValidationStatusUpdate<'a> {
+    pub(crate) validation_status: &'a str,
+    pub(crate) validation_errors: Vec<String>,
+    pub(crate) review_feedback: Option<String>,
+    pub(crate) queue_code: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -182,12 +184,12 @@ fn tier_label(tier: SkillMaturityTier) -> &'static str {
 
 /// Postgres-backed store for `reborn_recipes` (class 21).
 #[derive(Clone)]
-pub struct PgRecipeStore {
+pub(crate) struct PgRecipeStore {
     pool: Arc<PgPool>,
 }
 
 impl PgRecipeStore {
-    pub fn new(pool: Arc<PgPool>) -> Self {
+    pub(crate) fn new(pool: Arc<PgPool>) -> Self {
         Self { pool }
     }
 }
@@ -242,7 +244,7 @@ fn decode_recipe_row(row: &tokio_postgres::Row) -> Result<PgRecipe, PgRecipeStor
 
 impl PgRecipeStore {
     /// Insert a new recipe.  Returns the assigned UUID.
-    pub async fn insert(&self, row: NewPgRecipe) -> Result<Uuid, PgRecipeStoreError> {
+    pub(crate) async fn insert(&self, row: NewPgRecipe) -> Result<Uuid, PgRecipeStoreError> {
         let client = self.pool.get().await.map_err(map_pool)?;
         let db_row = client
             .query_one(
@@ -275,7 +277,7 @@ impl PgRecipeStore {
     }
 
     /// Fetch a single recipe by id + scope.
-    pub async fn get(
+    pub(crate) async fn get(
         &self,
         tenant_id: &str,
         user_id: &str,
@@ -298,7 +300,7 @@ impl PgRecipeStore {
     }
 
     /// Fetch a single recipe by name + scope.
-    pub async fn get_by_name(
+    pub(crate) async fn get_by_name(
         &self,
         tenant_id: &str,
         user_id: &str,
@@ -322,7 +324,7 @@ impl PgRecipeStore {
     }
 
     /// List all recipes for the scope (admin / validation-queue path).
-    pub async fn list_all(
+    pub(crate) async fn list_all(
         &self,
         tenant_id: &str,
         user_id: &str,
@@ -344,7 +346,7 @@ impl PgRecipeStore {
     }
 
     /// List deliverable recipes for a consumer (§3.9 SEC-01 delivery filter).
-    pub async fn fetch_validated(
+    pub(crate) async fn fetch_validated(
         &self,
         tenant_id: &str,
         user_id: &str,
@@ -368,7 +370,7 @@ impl PgRecipeStore {
     }
 
     /// Update validation status + queue code.
-    pub async fn update_validation_status(
+    pub(crate) async fn update_validation_status(
         &self,
         tenant_id: &str,
         user_id: &str,
@@ -407,7 +409,7 @@ impl PgRecipeStore {
 
     /// Remove `05:validator` from `consumer_tags` (Step-2 manual validation,
     /// §3.5.1).
-    pub async fn pop_validator_tag(
+    pub(crate) async fn pop_validator_tag(
         &self,
         tenant_id: &str,
         user_id: &str,
@@ -438,7 +440,7 @@ impl PgRecipeStore {
     /// new values, then immediately applies a second UPDATE to write the
     /// computed `wilson_lower` and `tier`.  Both statements run in a
     /// transaction so no concurrent reader sees partially-updated rows.
-    pub async fn record_outcome(
+    pub(crate) async fn record_outcome(
         &self,
         tenant_id: &str,
         user_id: &str,
@@ -516,7 +518,7 @@ impl PgRecipeStore {
     /// `content_hash` matches, the update is skipped.  Otherwise the row's
     /// trigger, steps, and metadata are replaced and the validation status is
     /// reset to `pending` (re-enters Q1 for re-validation).
-    pub async fn upsert(
+    pub(crate) async fn upsert(
         &self,
         row: NewPgRecipe,
         content_hash: &str,
@@ -579,7 +581,7 @@ impl PgRecipeStore {
 /// Postgres-backed [`RecipeLookup`] adapter reading from `reborn_recipes`
 /// (class 21).  Replaces the MemoryDoc-backed `RecipeLibrary` for Phase 4+.
 #[derive(Clone)]
-pub struct PgRecipeLibrary {
+pub(crate) struct PgRecipeLibrary {
     store: PgRecipeStore,
     tenant_id: String,
     user_id: String,
@@ -598,7 +600,7 @@ impl std::fmt::Debug for PgRecipeLibrary {
 
 impl PgRecipeLibrary {
     /// Construct with explicit scope.
-    pub fn new(
+    pub(crate) fn new(
         pool: Arc<PgPool>,
         tenant_id: impl Into<String>,
         user_id: impl Into<String>,
@@ -616,7 +618,7 @@ impl PgRecipeLibrary {
 
     /// Construct with the default local-dev scope used by the existing
     /// `RecipeLibrary` adapter.
-    pub fn local_dev(pool: Arc<PgPool>) -> Self {
+    pub(crate) fn local_dev(pool: Arc<PgPool>) -> Self {
         Self::new(pool, "local", "default", "default", "default")
     }
 }
@@ -742,10 +744,10 @@ impl RecipeLookup for PgRecipeLibrary {
         let mut best: Option<(f64, &PgRecipe)> = None;
         for recipe in &recipes {
             let score = score_recipe(recipe, user_input);
-            if score >= PG_RECIPE_MIN_MATCH {
-                if best.as_ref().map_or(true, |(best_score, _)| score > *best_score) {
-                    best = Some((score, recipe));
-                }
+            if score >= PG_RECIPE_MIN_MATCH
+                && best.as_ref().is_none_or(|(best_score, _)| score > *best_score)
+            {
+                best = Some((score, recipe));
             }
         }
 

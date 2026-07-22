@@ -10,6 +10,9 @@
 //!
 //! See §4.29, §7.4 (revision 17).
 
+// Phase-5 postgres wiring — not yet called from the factory; items unused until wiring lands.
+#![allow(dead_code)]
+
 use std::sync::Arc;
 
 use async_trait::async_trait;

@@ -4,6 +4,9 @@
 //! keyed by `(tenant_id, user_id, provider_id)`. The `settings` JSONB column
 //! holds a `TokenSettingsResponse` snapshot.
 
+// Phase-5 postgres wiring — items unused until factory wiring lands.
+#![allow(dead_code)]
+
 use std::sync::Arc;
 
 use async_trait::async_trait;

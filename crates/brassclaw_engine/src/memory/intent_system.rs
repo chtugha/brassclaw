@@ -271,6 +271,7 @@ pub async fn resolve_intent(
     scope: &IntentScope,
     query: &str,
 ) -> Result<IntentResolution, IntentSystemError> {
+    use tokio_postgres::types::ToSql;
     use tracing::debug;
 
     let query_class = classify_query(query);
@@ -303,7 +304,7 @@ pub async fn resolve_intent(
                score DESC
              LIMIT 10",
             &[
-                &scope.tenant_id as &(dyn tokio_postgres::types::ToSql + Sync),
+                &scope.tenant_id as &(dyn ToSql + Sync),
                 &scope.user_id,
                 &scope.agent_id,
                 &scope.project_id,

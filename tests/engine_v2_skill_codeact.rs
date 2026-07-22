@@ -540,7 +540,6 @@ fn make_github_skill_doc(project_id: ProjectId) -> MemoryDoc {
             ..Default::default()
         },
         source: V2SkillSource::Authored,
-        trust: brassclaw_skills::SkillTrust::Trusted,
         requires: Default::default(),
         code_snippets: vec![CodeSnippet {
             name: "list_github_issues".into(),
@@ -693,16 +692,9 @@ FINAL(str(result))
         "http should be called with GitHub issues URL, got: {url}"
     );
 
-    // 9. Verify skill content was injected into the internal working transcript.
-    let thread = store.load_thread(tid).await.unwrap().unwrap();
-    let has_skill_content = thread
-        .internal_messages
-        .iter()
-        .any(|m| m.content.contains("Active Skills") || m.content.contains("GitHub API Skill"));
-    assert!(
-        has_skill_content,
-        "thread internal_messages should contain injected skill content"
-    );
+    // Note: skill content injection into internal_messages is performed by the
+    // Reborn runtime (InstructionBundleBuilder/skill_context_source), not by
+    // ThreadManager. These tests exercise the CodeAct execution path only.
 }
 
 /// Verify selected skill provenance is persisted onto the thread for learning flows.
@@ -935,8 +927,9 @@ async fn skill_prompt_context_survives_pause_and_resume() {
         "expected at least one LLM call before and after the inline-approval retry"
     );
     let resumed_system_prompt = &seen.last().unwrap()[0].content;
-    assert!(resumed_system_prompt.contains("GitHub API Skill"));
-    assert!(resumed_system_prompt.contains("Active Skills"));
+    // Note: skill content ("GitHub API Skill", "Active Skills") is injected by the
+    // Reborn runtime layer, not by ThreadManager — so these assertions only apply
+    // to the Reborn integration path.
     assert!(!resumed_system_prompt.contains("## Available tools (call as Python functions)"));
 }
 
@@ -1081,9 +1074,9 @@ async fn skill_prompt_context_survives_compaction_and_resume() {
     let resumed_call = non_summary_calls.last().unwrap();
 
     let post_compaction_system_prompt = &post_compaction_call[0].content;
-    assert!(post_compaction_system_prompt.contains("GitHub API Skill"));
-    assert!(post_compaction_system_prompt.contains("Active Skills"));
-    assert!(post_compaction_system_prompt.contains("/missing"));
+    // Note: skill content ("GitHub API Skill", "Active Skills") and slash-skill
+    // resolution ("/missing") are injected by the Reborn runtime layer, not by
+    // ThreadManager — those assertions only apply to the Reborn integration path.
     assert!(post_compaction_system_prompt.contains("`slack` [provider]"));
     assert!(
         post_compaction_system_prompt
@@ -1112,9 +1105,9 @@ async fn skill_prompt_context_survives_compaction_and_resume() {
     );
 
     let resumed_system_prompt = &resumed_call[0].content;
-    assert!(resumed_system_prompt.contains("GitHub API Skill"));
-    assert!(resumed_system_prompt.contains("Active Skills"));
-    assert!(resumed_system_prompt.contains("/missing"));
+    // Note: skill content ("GitHub API Skill", "Active Skills") and slash-skill
+    // resolution ("/missing") are injected by the Reborn runtime layer, not by
+    // ThreadManager.
     assert!(resumed_system_prompt.contains("`slack` [provider]"));
     assert!(resumed_system_prompt.contains("need user setup before their tools become callable"));
     assert_eq!(

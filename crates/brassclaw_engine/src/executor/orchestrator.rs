@@ -15,6 +15,7 @@
 //! - `__save_checkpoint__` — persist thread state
 //! - `__transition_to__` — change thread state (validated)
 //! - `__retrieve_docs__` — query memory docs
+//! - `__assemble_prior_knowledge__` — two-surface PKC assembly (§3.13/§3.14)
 //! - `__check_budget__` — remaining tokens/time/USD
 //! - `__get_actions__` — available tool definitions
 
@@ -674,6 +675,20 @@ pub async fn execute_orchestrator(
                     // of writing directly. Spec §3.5 / §3.6.
                     "__validate_component__" => {
                         handle_validate_component(args, thread, store).await
+                    }
+
+                    // __assemble_prior_knowledge__(goal, token_budget, sender_class_code)
+                    // Returns {content, formatted_content, override_prompt_creation,
+                    // matched_component_ids}. Phase 8 Step 8.1 (§3.13/§3.14):
+                    //   content          — raw PKC text (Rust dispatch + KV fingerprint)
+                    //   formatted_content — LLM-readable JSON for working_messages
+                    //   override_prompt_creation — bool; true → use formatted_content
+                    //                              as the complete prompt base
+                    //   matched_component_ids    — list of UUID strings
+                    // Stub: Phase 5 wires the real retrieval + assembly pipeline.
+                    // Until then, returns an empty result so default.py is correct.
+                    "__assemble_prior_knowledge__" => {
+                        handle_assemble_prior_knowledge(args, thread, retrieval).await
                     }
 
                     // Unknown — let Monty resolve it (user-defined functions, builtins)
@@ -2495,6 +2510,101 @@ async fn handle_retrieve_docs(
             debug!("retrieve_docs failed: {e}");
             ExtFunctionResult::Return(json_to_monty(&serde_json::json!([])))
         }
+    }
+}
+
+/// Handle `__assemble_prior_knowledge__(goal, token_budget, sender_class_code)`.
+///
+/// Phase 8 Step 8.1 (§3.13/§3.14 — two-surface PKC design):
+/// Returns `{content, formatted_content, override_prompt_creation,
+/// matched_component_ids}` to Python. The Python orchestrator uses
+/// `formatted_content` for `working_messages`; `content` (raw PKC) is
+/// reserved for Rust dispatch and KV-cache fingerprinting.
+///
+/// **Stub:** the real retrieval + intent-driven assembly pipeline is wired in
+/// Phase 5. Until then this function delegates to `handle_retrieve_docs` to
+/// produce a best-effort formatted result so `default.py` runs correctly with
+/// the new call site.
+async fn handle_assemble_prior_knowledge(
+    args: &[MontyObject],
+    thread: &Thread,
+    retrieval: Option<&RetrievalEngine>,
+) -> ExtFunctionResult {
+    let goal = args.first().map(monty_to_string).unwrap_or_default();
+    let token_budget = args
+        .get(1)
+        .and_then(|v| match v {
+            MontyObject::Int(i) => Some(*i as usize),
+            MontyObject::Float(f) => Some(*f as usize),
+            _ => None,
+        })
+        .unwrap_or(2000);
+
+    // Phase 5 wires the real intent-driven assembly here.  Until then, fall
+    // back to `retrieve_context` to produce a minimal prior-knowledge result.
+    let components = if let Some(r) = retrieval {
+        match r
+            .retrieve_context(thread.project_id, &thread.user_id, &goal, token_budget.min(20))
+            .await
+        {
+            Ok(docs) => docs,
+            Err(e) => {
+                debug!("assemble_prior_knowledge: retrieval failed: {e}");
+                vec![]
+            }
+        }
+    } else {
+        vec![]
+    };
+
+    // Build the formatted LLM-readable JSON from the retrieved components.
+    // format_prior_knowledge_for_llm() is deterministic and stable across
+    // turns — same components → same JSON → KV-cache prefix hits.
+    let formatted = format_prior_knowledge_for_llm(&components, &goal);
+    // Raw content: plain text concatenation (Rust-internal, never sent to LLM).
+    let raw_content: String = components
+        .iter()
+        .map(|d| format!("[{:?}] {}\n{}", d.doc_type, d.title, d.content))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+        "content": raw_content,
+        "formatted_content": formatted,
+        "override_prompt_creation": false,
+        "matched_component_ids": [],
+    })))
+}
+
+/// Build a deterministic LLM-readable JSON string from a set of retrieved
+/// memory components.
+///
+/// The JSON schema is fixed: `{prior_knowledge: [...], matched_components: []}`.
+/// Each entry carries `class`, `class_code`, `name`, and `content`. The order
+/// is the retrieval order (Phase 5 will order by `(class_code asc,
+/// prompt_uid asc)`). Schema stability = same components → same token sequence
+/// → KV-cache prefix reuse across turns.
+fn format_prior_knowledge_for_llm(
+    docs: &[crate::types::memory::MemoryDoc],
+    _goal: &str,
+) -> String {
+    let entries: Vec<serde_json::Value> = docs
+        .iter()
+        .map(|d| {
+            serde_json::json!({
+                "class": format!("{:?}", d.doc_type).to_lowercase(),
+                "name": d.title,
+                "content": d.content,
+            })
+        })
+        .collect();
+
+    match serde_json::to_string(&serde_json::json!({
+        "prior_knowledge": entries,
+        "matched_components": [],
+    })) {
+        Ok(s) => s,
+        Err(_) => String::from(r#"{"prior_knowledge":[],"matched_components":[]}"#),
     }
 }
 
@@ -4340,7 +4450,14 @@ mod tests {
             ThreadConfig::default(),
         );
 
-        let result = handle_list_skills(&[], &thread, Some(&store)).await;
+        let result = handle_list_skills(
+            &[],
+            &thread,
+            Some(&store),
+            #[cfg(feature = "skills-db")]
+            None,
+        )
+        .await;
         let ExtFunctionResult::Return(obj) = result else {
             panic!("handle_list_skills did not return a value");
         };

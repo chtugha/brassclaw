@@ -42,7 +42,7 @@ use brassclaw_product_workflow::{
     RebornSetupExtensionResponse, RebornStreamEventsRequest, RebornStreamEventsResponse,
     RebornSubmitTurnResponse, RebornTimelineRequest, RebornTimelineResponse,
     ReductionRuleConfigView, ReductionRulesRequest, ReductionRulesResponse, RuleType,
-    SetActiveLlmRequest, SettingsComponentSummary, SettingsListResponse, TokenSettingsResponse,
+    SetActiveLlmRequest, SettingsListResponse, TokenSettingsResponse,
     UpdateChatPreferenceRequest, UpdateChatPreferenceResponse, UpdateMontyVmSettingsRequest,
     UpdateTokenSettingsRequest, UpsertLlmProviderRequest, WebUiAuthenticatedCaller,
     WebUiCancelRunRequest, WebUiCreateThreadRequest, WebUiListAutomationsRequest,

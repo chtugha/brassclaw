@@ -1268,6 +1268,10 @@ async fn adapter_bundle_satisfies_product_live_runtime_readiness_gate() {
         turn_event_sink: None,
         recipe_lookup: None,
         interceptor_store: None,
+        #[cfg(feature = "root-llm-provider")]
+        sempai_gateway: None,
+        #[cfg(feature = "root-llm-provider")]
+        interceptor_mode: None,
     })
     .expect("adapter bundle should satisfy the product-live readiness gate");
 

@@ -308,13 +308,15 @@ async fn production_postgres_services_migrate_trigger_repository_before_runtime_
     };
     let (notifier, handle) = live_wake_notifier();
 
+    let reborn_home = tempfile::tempdir().expect("tempdir").keep();
     let services = build_reborn_services(
         RebornBuildInput::postgres(
-            RebornCompositionProfile::Production,
+            RebornCompositionProfile::LocalDev,
             "test-owner",
             pool.clone(),
             SecretMaterial::from(database_url),
             test_master_key(),
+            reborn_home,
         )
         .with_production_trust_policy(production_trust_policy())
         .with_runtime_policy(production_runtime_policy())
@@ -353,13 +355,15 @@ async fn production_postgres_services_require_process_port_for_first_party_runti
     };
     let (notifier, handle) = live_wake_notifier();
 
+    let reborn_home = tempfile::tempdir().expect("tempdir").keep();
     let result = build_reborn_services(
         RebornBuildInput::postgres(
-            RebornCompositionProfile::Production,
+            RebornCompositionProfile::LocalDev,
             "test-owner",
             pool,
             SecretMaterial::from(database_url),
             test_master_key(),
+            reborn_home,
         )
         .with_production_trust_policy(production_trust_policy())
         .with_runtime_policy(production_runtime_policy())
@@ -398,6 +402,7 @@ async fn migration_dry_run_requires_postgres_process_port_for_first_party_runtim
     };
     let (notifier, handle) = live_wake_notifier();
 
+    let reborn_home = tempfile::tempdir().expect("tempdir").keep();
     let result = build_reborn_services(
         RebornBuildInput::postgres(
             RebornCompositionProfile::LocalDev,
@@ -405,6 +410,7 @@ async fn migration_dry_run_requires_postgres_process_port_for_first_party_runtim
             pool,
             SecretMaterial::from(database_url),
             test_master_key(),
+            reborn_home,
         )
         .with_production_trust_policy(production_trust_policy())
         .with_runtime_policy(production_runtime_policy())

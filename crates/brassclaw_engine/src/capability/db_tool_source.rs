@@ -14,15 +14,15 @@
 
 use async_trait::async_trait;
 use brassclaw_capabilities::tool_registry::{ToolRegistryError, ToolRegistryStore, ToolScopeKey};
-use brassclaw_pg::Pool;
+use brassclaw_pg::PgPool;
 
 /// [`ToolRegistryStore`] implementation backed by the `reborn_tools` PG table.
 pub struct DbToolSource {
-    pool: Pool,
+    pool: PgPool,
 }
 
 impl DbToolSource {
-    pub fn new(pool: Pool) -> Self {
+    pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 }

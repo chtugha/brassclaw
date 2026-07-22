@@ -22,7 +22,7 @@ use brassclaw_memory::{
 async fn memory_write_index_and_search_project_metadata_only_from_durable_audit_log() {
     let audit_log = Arc::new(InMemoryDurableAuditLog::new());
     let audit_log = Arc::clone(&audit_log);
-    let audit_sink: Arc<dyn AuditSink> = Arc::new(DurableAuditSink::new(Arc::clone(&audit_log)));
+    let audit_sink: Arc<dyn AuditSink> = Arc::new(DurableAuditSink::new(Arc::clone(&audit_log) as Arc<dyn brassclaw_events::DurableAuditLog>));
     let memory_events = Arc::new(DurableMemoryAuditSink::new(audit_sink));
 
     let memory_filesystem = Arc::new(InMemoryBackend::new());
@@ -77,7 +77,7 @@ async fn memory_write_index_and_search_project_metadata_only_from_durable_audit_
     let search_results = backend.search(&context, search_request).await.unwrap();
     assert!(search_results.is_empty());
 
-    let projection = ReplayAuditProjectionService::from_audit_log(Arc::clone(&audit_log));
+    let projection = ReplayAuditProjectionService::from_audit_log(Arc::clone(&audit_log) as Arc<dyn brassclaw_events::DurableAuditLog>);
     let snapshot = projection
         .snapshot(AuditProjectionRequest {
             scope: ProjectionScope::from_resource_scope(&memory_resource_scope(context.scope())),
@@ -167,7 +167,7 @@ async fn memory_write_index_and_search_project_metadata_only_from_durable_audit_
 async fn memory_write_projects_under_thread_scoped_audit_context() {
     let audit_log = Arc::new(InMemoryDurableAuditLog::new());
     let audit_log = Arc::clone(&audit_log);
-    let audit_sink: Arc<dyn AuditSink> = Arc::new(DurableAuditSink::new(Arc::clone(&audit_log)));
+    let audit_sink: Arc<dyn AuditSink> = Arc::new(DurableAuditSink::new(Arc::clone(&audit_log) as Arc<dyn brassclaw_events::DurableAuditLog>));
     let memory_events = Arc::new(DurableMemoryAuditSink::new(audit_sink));
     let repository = Arc::new(InMemoryMemoryDocumentRepository::new());
     let backend = RepositoryMemoryBackend::new(Arc::clone(&repository))
@@ -199,7 +199,7 @@ async fn memory_write_projects_under_thread_scoped_audit_context() {
         .await
         .unwrap();
 
-    let projection = ReplayAuditProjectionService::from_audit_log(Arc::clone(&audit_log));
+    let projection = ReplayAuditProjectionService::from_audit_log(Arc::clone(&audit_log) as Arc<dyn brassclaw_events::DurableAuditLog>);
     let snapshot = projection
         .snapshot(AuditProjectionRequest {
             scope: ProjectionScope::from_resource_scope(&resource_scope),

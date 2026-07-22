@@ -226,3 +226,12 @@ export function updateChatPreference(key, value) {
     body: JSON.stringify({ value }),
   });
 }
+
+// Phase 6 — Validation queue (operator review surface).
+// Reuses the existing v2 recipe/tool-skill validation-queue endpoints.
+export function fetchValidationQueue() {
+  return apiFetch("/api/webchat/v2/validation-queue");
+}
+export function fetchValidationQueueCount() {
+  return apiFetch("/api/webchat/v2/validation-queue/count");
+}

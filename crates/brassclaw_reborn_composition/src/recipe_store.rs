@@ -1460,7 +1460,7 @@ mod tests {
         save_skill_doc(&typed, project, &skill_validated).await;
         let store = StoreBackedRecipeStore::open(erased);
         let items = store
-            .list_validation_queue("user1", "bootstrap")
+            .list_validation_queue("user1", "bootstrap", ValidationQueueFilter::Manual)
             .await
             .expect("list");
         // AutoPassed + UpgradeQueued recipes appear; AutoPassed skill appears.
@@ -2012,7 +2012,7 @@ mod tests {
         save_recipe_doc(&typed, project, &r3).await;
         let store = StoreBackedRecipeStore::open(erased);
         let items = store
-            .list_validation_queue("user1", "bootstrap")
+            .list_validation_queue("user1", "bootstrap", ValidationQueueFilter::Manual)
             .await
             .expect("list");
         assert_eq!(items.len(), 3);

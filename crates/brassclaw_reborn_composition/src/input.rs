@@ -165,9 +165,11 @@ pub(crate) enum RebornStorageInput {
         pool: deadpool_postgres::Pool,
         url: brassclaw_secrets::SecretMaterial,
         /// Pre-resolved master key (takes priority over per-boot table lookup).
+        #[allow(dead_code)] // Phase-5 factory wiring
         secret_master_key: Option<brassclaw_secrets::SecretMaterial>,
         /// `$BRASSCLAW_REBORN_HOME` path, used by per-boot master-key resolution
         /// to locate the raw-key file when `secret_master_key` is `None`.
+        #[allow(dead_code)] // Phase-5 factory wiring
         reborn_home: PathBuf,
     },
 }

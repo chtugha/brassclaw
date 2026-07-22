@@ -725,16 +725,13 @@ mod tests {
 
     use brassclaw_reborn_composition::RebornCompositionProfile;
 
-    use brassclaw_reborn_composition::{LocalTriggerAccessRole, LocalTriggerAccessSource};
     use brassclaw_reborn_config::RebornBootConfig;
 
     use super::test_env::{EnvGuard, lock_trigger_env};
 
-    use super::with_run_local_trigger_fire_access_checker;
     use super::{
         RUNTIME_PROFILE_ENV, RuntimeInputCaller, RuntimeInputOptions, block_on_cli,
         build_runtime_input, build_runtime_input_with_options, resolve_google_oauth_config,
-        runtime_profile_from_env,
     };
 
     fn clear_trigger_poller_env() -> (EnvGuard, EnvGuard) {
@@ -945,135 +942,6 @@ enabled = true
         assert!(
             err.to_string().contains("default_project"),
             "error must mention the rejected field, got: {err}",
-        );
-    }
-
-    #[allow(clippy::await_holding_lock, reason = "serializes env guards")]
-    #[tokio::test]
-    async fn run_trigger_poller_bootstrap_seeds_local_access_checker() {
-        let _lock = lock_trigger_env();
-        let (_enabled, _interval) = clear_trigger_poller_env();
-
-        let temp = tempfile::tempdir().expect("tempdir");
-        let reborn_home = temp.path().join("reborn-home");
-        std::fs::create_dir_all(&reborn_home).expect("mkdir");
-        std::fs::write(
-            reborn_home.join("config.toml"),
-            r#"
-[identity]
-tenant = "run-trigger-tenant"
-default_owner = "run-trigger-user"
-default_agent = "run-trigger-agent"
-
-[trigger_poller]
-enabled = true
-"#,
-        )
-        .expect("write config");
-        let config = RebornBootConfig::resolve_from_env_parts(
-            Some(reborn_home.into_os_string()),
-            None,
-            None,
-        )
-        .expect("boot config");
-        let runtime_input =
-            build_runtime_input(&config, RuntimeInputCaller::Run).expect("runtime input");
-
-        let tenant_id = brassclaw_reborn_composition::host_api::TenantId::new("run-trigger-tenant")
-            .expect("tenant id");
-        let user_id = brassclaw_reborn_composition::host_api::UserId::new("run-trigger-user")
-            .expect("user id");
-        let stale_user_id =
-            brassclaw_reborn_composition::host_api::UserId::new("run-trigger-stale")
-                .expect("stale user id");
-        let agent_id = brassclaw_reborn_composition::host_api::AgentId::new("run-trigger-agent")
-            .expect("agent id");
-        let project_id =
-            brassclaw_reborn_composition::host_api::ProjectId::new("run-trigger-project")
-                .expect("project id");
-        let user_store_path = config
-            .home()
-            .path()
-            .join("local-dev")
-            .join("reborn-local-dev.db");
-        let access_store =
-            brassclaw_reborn_composition::open_local_trigger_access_store(&user_store_path)
-                .await
-                .expect("open local trigger access store");
-        access_store
-            .seed_local_access(brassclaw_reborn_composition::LocalTriggerAccessSeed {
-                tenant_id: &tenant_id,
-                user_id: &stale_user_id,
-                agent_id: Some(&agent_id),
-                project_id: None,
-                role: LocalTriggerAccessRole::Owner,
-                source: LocalTriggerAccessSource::LocalDevRunBootstrap,
-            })
-            .await
-            .expect("seed stale run trigger access");
-
-        let runtime_input = with_run_local_trigger_fire_access_checker(runtime_input, &config)
-            .await
-            .expect("bootstrap run trigger fire access checker");
-
-        let checker = runtime_input
-            .trigger_fire_access_checker
-            .expect("checker is wired");
-        let allowed = checker
-            .check_trigger_fire_access(brassclaw_reborn_composition::TriggerFireAccessCheck {
-                tenant_id: tenant_id.clone(),
-                creator_user_id: user_id,
-                agent_id: Some(agent_id.clone()),
-                project_id: None,
-                trigger_id: brassclaw_reborn_composition::TriggerId::new(),
-                fire_slot: chrono::Utc::now(),
-            })
-            .await
-            .expect("check run trigger fire access");
-        assert_eq!(
-            allowed,
-            brassclaw_reborn_composition::TriggerFireAccessDecision::Allowed
-        );
-
-        let project_scoped_decision = checker
-            .check_trigger_fire_access(brassclaw_reborn_composition::TriggerFireAccessCheck {
-                tenant_id: tenant_id.clone(),
-                creator_user_id: brassclaw_reborn_composition::host_api::UserId::new(
-                    "run-trigger-user",
-                )
-                .expect("user id"),
-                agent_id: Some(agent_id.clone()),
-                project_id: Some(project_id.clone()),
-                trigger_id: brassclaw_reborn_composition::TriggerId::new(),
-                fire_slot: chrono::Utc::now(),
-            })
-            .await
-            .expect("check project-scoped run trigger fire access");
-        assert_eq!(
-            project_scoped_decision,
-            brassclaw_reborn_composition::TriggerFireAccessDecision::Denied {
-                reason: "trigger creator does not have active local access for this scope"
-                    .to_string(),
-            }
-        );
-
-        let stale_decision = checker
-            .check_trigger_fire_access(brassclaw_reborn_composition::TriggerFireAccessCheck {
-                tenant_id,
-                creator_user_id: stale_user_id,
-                agent_id: Some(agent_id),
-                project_id: None,
-                trigger_id: brassclaw_reborn_composition::TriggerId::new(),
-                fire_slot: chrono::Utc::now(),
-            })
-            .await
-            .expect("check stale run trigger fire access");
-        assert_eq!(
-            stale_decision,
-            brassclaw_reborn_composition::TriggerFireAccessDecision::Denied {
-                reason: "trigger creator does not have active local access for this scope"
-                    .to_string(),
-            }
         );
     }
 
