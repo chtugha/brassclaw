@@ -1,8 +1,19 @@
-use deadpool_postgres::{Config, Pool, Runtime};
+use deadpool_postgres::{Config, Pool, PoolConfig, Runtime};
 use tracing::warn;
 use url::Url;
 
 use crate::error::PgError;
+
+/// Maximum pool size for any single `deadpool_postgres` pool.
+///
+/// Embedded Postgres is tuned to `max_connections = 20`.  The composition
+/// layer creates one pool per startup; keeping this at 16 leaves four
+/// connections for `psql` sessions, migrations, and pg_ctl monitoring
+/// without risking `FATAL: sorry, too many clients already`.
+///
+/// External Postgres installations typically allow many more connections;
+/// 16 is conservative and safe for both cases.
+pub const MAX_POOL_SIZE: usize = 16;
 
 /// Build a `deadpool_postgres` connection pool from a PostgreSQL URL.
 ///
@@ -12,6 +23,10 @@ use crate::error::PgError;
 /// For non-loopback URLs the pool is built with TLS enabled via `rustls` +
 /// the system's native certificate store. If the URL lacks `sslmode=`, a
 /// non-suppressible `warn!` is also emitted as a security reminder.
+///
+/// The pool max size is capped at [`MAX_POOL_SIZE`] regardless of the
+/// `deadpool` default so this pool cannot exhaust embedded Postgres's
+/// `max_connections = 20` limit on its own.
 pub fn build_pool(url: &str) -> Result<Pool, PgError> {
     let is_loopback = url_is_loopback(url);
     if !is_loopback {
@@ -20,6 +35,10 @@ pub fn build_pool(url: &str) -> Result<Pool, PgError> {
 
     let mut cfg = Config::new();
     cfg.url = Some(url.to_string());
+    cfg.pool = Some(PoolConfig {
+        max_size: MAX_POOL_SIZE,
+        ..PoolConfig::default()
+    });
 
     let pool = if is_loopback {
         cfg.create_pool(Some(Runtime::Tokio1), tokio_postgres::NoTls)

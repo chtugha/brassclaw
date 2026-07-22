@@ -16,20 +16,15 @@ pub struct ChecksumMismatch {
     pub actual: String,
 }
 
-/// Determine the platform key for this build target.
+/// Return the Rust target triple for the current build target.
+///
+/// This matches the filename component used by theseus-rs:
+/// `postgresql-{version}-{target}.tar.gz`
 fn platform_key() -> &'static str {
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    return "linux-x86_64";
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    return "darwin-aarch64";
-    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    return "darwin-x86_64";
-    #[cfg(not(any(
-        all(target_os = "linux", target_arch = "x86_64"),
-        all(target_os = "macos", target_arch = "aarch64"),
-        all(target_os = "macos", target_arch = "x86_64"),
-    )))]
-    return "unknown";
+    // Use the same `TARGET` constant that `postgresql_archive` uses to select
+    // the archive, so our platform key always agrees with the downloaded filename.
+    // E.g. "aarch64-apple-darwin", "x86_64-unknown-linux-gnu", etc.
+    ::target_triple::TARGET
 }
 
 /// Verify the SHA-256 checksum of a downloaded archive against the compiled-in

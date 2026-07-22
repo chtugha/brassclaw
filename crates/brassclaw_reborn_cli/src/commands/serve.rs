@@ -7,9 +7,11 @@ use anyhow::{Context, anyhow};
 use brassclaw_reborn_composition::build_webui_services;
 use brassclaw_reborn_composition::host_api::{AgentId, ProjectId, TenantId, UserId};
 use brassclaw_reborn_composition::{
-    GoogleOAuthRouteConfig, RebornBuildInput, RebornCompositionProfile, RebornReadiness,
-    RebornRuntimeIdentity, RebornRuntimeInput, WebuiAuthenticator, WebuiServeConfig,
-    build_reborn_runtime, webui_v2_app_with_lifecycle,
+    GoogleOAuthRouteConfig, LocalTriggerAccessRole, LocalTriggerAccessSeed,
+    LocalTriggerAccessSource, RebornBuildInput, RebornCompositionProfile, RebornReadiness,
+    RebornRuntimeIdentity, RebornRuntimeInput, TriggerFireAccessChecker, WebuiAuthenticator,
+    WebuiServeConfig, build_reborn_runtime, open_local_trigger_access_store,
+    webui_v2_app_with_lifecycle,
 };
 use brassclaw_reborn_config::IdentitySection;
 use brassclaw_reborn_webui_ingress::{
@@ -230,10 +232,11 @@ impl ServeCommand {
                     .context("failed to configure Notion DCR OAuth for WebChat v2")?,
             );
         } else {
-            tracing::warn!(
-                target = "brassclaw::reborn::cli::serve",
-                %listen_addr,
-                "Notion DCR OAuth is not configured because the WebChat v2 listener origin is not a stable loopback HTTP origin"
+            // Use eprintln! — tracing::warn! corrupts the terminal UI (AGENTS.md §67).
+            eprintln!(
+                "brassclaw-reborn: Notion DCR OAuth is not configured because the \
+                 WebChat v2 listener origin ({listen_addr}) is not a stable loopback \
+                 HTTP origin"
             );
         }
 
@@ -305,13 +308,11 @@ impl ServeCommand {
                  deployments; review your auth config before exposing this to a network."
             );
         }
-        // Also emit a structured log so operators with log aggregation
-        // see the same signal.
+        // Also emit a startup notice for operators.
+        // Use eprintln! — tracing::warn! corrupts the terminal UI (AGENTS.md §67).
         if !host.is_loopback() {
-            tracing::warn!(
-                target = "brassclaw::reborn::cli::serve",
-                %host,
-                "binding WebChat v2 listener on a non-loopback interface",
+            eprintln!(
+                "brassclaw-reborn: binding WebChat v2 listener on a non-loopback interface ({host})"
             );
         }
         let rt = tokio::runtime::Builder::new_multi_thread()
@@ -336,7 +337,8 @@ impl ServeCommand {
                 &user_id,
                 &default_agent_id,
                 default_project_id.as_ref(),
-            )?;
+            )
+            .await?;
 
             let runtime = build_reborn_runtime(runtime_input)
                 .await
@@ -382,6 +384,22 @@ impl ServeCommand {
             // runtime-owned identity resolver, and the local trigger-access
             // bootstrap that seeds an admitted SSO user's trigger access on
             // login.
+            // Build the optional SSO trigger-access bootstrap config.  When a
+            // PG pool is present (embedded or external PG), wire the local
+            // trigger-access store so SSO-admitted users get an owner row
+            // seeded on login.  Without a pool (local-dev no-PG path) the
+            // bootstrap is skipped.
+            // Use runtime.services().pg_pool() (same pool, borrowed after build).
+            let sso_trigger_access = runtime
+                .services()
+                .pg_pool()
+                .map(|p| crate::commands::webui_auth::LocalTriggerAccessBootstrapConfig {
+                    pool: (**p).clone(),
+                    tenant_id: tenant_id.clone(),
+                    agent_id: default_agent_id.clone(),
+                    project_id: default_project_id.clone(),
+                });
+
             let crate::commands::webui_auth::WebuiAuthSurface {
                 authenticator,
                 public_mount,
@@ -391,14 +409,7 @@ impl ServeCommand {
                 tenant_id.clone(),
                 session_signing_secret,
                 env_authenticator,
-                Some(
-                    crate::commands::webui_auth::LocalTriggerAccessBootstrapConfig {
-                        access_store_path: user_store_path.clone(),
-                        tenant_id: tenant_id.clone(),
-                        agent_id: default_agent_id.clone(),
-                        project_id: default_project_id.clone(),
-                    },
-                ),
+                sso_trigger_access,
             )
             .await?;
 
@@ -457,7 +468,8 @@ impl ServeCommand {
             let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
             tokio::spawn(async move {
                 if tokio::signal::ctrl_c().await.is_ok() {
-                    tracing::info!(
+                    // Use debug! — info! in a background task corrupts the terminal UI (AGENTS.md §67).
+                    tracing::debug!(
                         target = "brassclaw::reborn::cli::serve",
                         "ctrl-c received; signalling WebChat v2 graceful shutdown",
                     );
@@ -674,22 +686,59 @@ async fn start_postgres_and_upgrade_input(
     Ok((upgraded, managed_pg))
 }
 
-/// Wires the local trigger-fire access checker into `runtime_input`.
+/// Wire the local trigger-fire access checker into `runtime_input`.
 ///
-/// This is a no-op when the trigger poller is disabled or when no Postgres
-/// pool is available (local-dev without embedded PG). Full PG-based access
-/// store wiring is tracked as a follow-up once embedded PG is plumbed into
-/// the local-dev serve path.
-fn with_local_trigger_fire_access_checker(
-    runtime_input: RebornRuntimeInput,
+/// When the build input carries a PG pool (i.e. the postgres feature is active
+/// and `start_postgres_and_upgrade_input` has already run), this opens a
+/// `PgRebornLocalTriggerAccessStore`, seeds an owner row for the default local
+/// user, and attaches the store as the `trigger_fire_access_checker` on the
+/// runtime input.
+///
+/// When no PG pool is present (local-dev without embedded PG, or the postgres
+/// feature is off) the function is a no-op and returns the input unchanged —
+/// the trigger poller is then solely responsible for its own no-op path.
+async fn with_local_trigger_fire_access_checker(
+    mut runtime_input: RebornRuntimeInput,
     _user_store_path: &std::path::Path,
-    _tenant_id: &TenantId,
-    _user_id: &UserId,
-    _default_agent_id: &AgentId,
-    _default_project_id: Option<&ProjectId>,
+    tenant_id: &TenantId,
+    user_id: &UserId,
+    default_agent_id: &AgentId,
+    default_project_id: Option<&ProjectId>,
 ) -> anyhow::Result<RebornRuntimeInput> {
-    // TODO: wire PG pool from embedded-PG startup into the access store once
-    // the local-dev serve path starts embedded PG before building the runtime.
+    // Extract the PG pool from the services, if one was wired by
+    // start_postgres_and_upgrade_input. No pool = local-dev path, skip.
+    // The pg_pool() accessor is only available when the postgres feature is on.
+    #[cfg(feature = "postgres")]
+    let pool_opt = runtime_input
+        .services
+        .as_ref()
+        .and_then(|s| s.pg_pool())
+        .cloned();
+    #[cfg(not(feature = "postgres"))]
+    let pool_opt: Option<deadpool_postgres::Pool> = None;
+
+    let Some(pool) = pool_opt else {
+        return Ok(runtime_input);
+    };
+
+    let store = open_local_trigger_access_store(pool);
+
+    // Seed the default local-dev user's owner row. Idempotent (ON CONFLICT DO NOTHING).
+    store
+        .seed_local_access(LocalTriggerAccessSeed {
+            tenant_id,
+            user_id,
+            agent_id: Some(default_agent_id),
+            project_id: default_project_id,
+            role: LocalTriggerAccessRole::Owner,
+            source: LocalTriggerAccessSource::LocalDevEnvBootstrap,
+        })
+        .await
+        .map_err(|e| anyhow!("failed to seed local trigger-access row: {e}"))?;
+
+    runtime_input =
+        runtime_input.with_trigger_fire_access_checker(store as Arc<dyn TriggerFireAccessChecker>);
+
     Ok(runtime_input)
 }
 
@@ -830,8 +879,8 @@ mod tests {
         assert!(message.contains("local-user"), "message: {message}");
     }
 
-    #[test]
-    fn trigger_poller_disabled_does_not_wire_local_access_checker() {
+    #[tokio::test]
+    async fn no_pg_pool_does_not_wire_local_access_checker() {
         let dir = tempfile::tempdir().expect("tempdir");
         let tenant_id = TenantId::new("serve-trigger-disabled-tenant").expect("tenant id");
         let user_id = UserId::new("serve-trigger-disabled-user").expect("user id");
@@ -850,11 +899,12 @@ mod tests {
             &agent_id,
             None,
         )
-        .expect("trigger access checker returns ok");
+        .await
+        .expect("trigger access checker returns ok without a PG pool");
 
         assert!(
             runtime_input.trigger_fire_access_checker.is_none(),
-            "trigger access checker is not yet wired in local-dev without embedded PG"
+            "no PG pool in local-dev build input must leave trigger_fire_access_checker unwired"
         );
     }
 

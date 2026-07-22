@@ -5,8 +5,8 @@
 -- ToolSkills describe ONE tool usage pattern (tight, token-cheap).
 -- consumer_tags default: {00:rusty, 01:monty, 02:orchestrator} + 05:validator.
 --
--- Spec references: §3.3, §3.7 (class 13), §3.9, §3.12, Phase 4 Step 4.1,
--- Phase 5 Step 5.3.
+-- Spec references: §3.3, §3.7 (class 13), §3.9, §3.12, §3.13/§3.14 (SCH-02),
+-- Phase 4 Step 4.1, Phase 5 Step 5.3.
 
 CREATE SEQUENCE IF NOT EXISTS reborn_tool_skills_prompt_uid_seq;
 
@@ -23,6 +23,14 @@ CREATE TABLE IF NOT EXISTS reborn_tool_skills (
     description             TEXT        NOT NULL
         CHECK (length(description) BETWEEN 1 AND 1024),
     content                 TEXT        NOT NULL DEFAULT '',
+
+    -- Prior-knowledge content (§3.13/§3.14 — SCH-02 fix).
+    -- When non-NULL, used as the component's prior-knowledge text instead of
+    -- assembling from `content`.
+    prior_knowledge_content TEXT,
+    -- If true, the Solution Override path is taken: this component's
+    -- prior_knowledge_content replaces the standard assembly.  Default false.
+    override_prompt_creation BOOLEAN    NOT NULL DEFAULT false,
 
     -- Tool name this ToolSkill describes.
     tool_name               TEXT,
@@ -90,6 +98,12 @@ CREATE INDEX IF NOT EXISTS reborn_tool_skills_scope_uid_idx
     ON reborn_tool_skills (tenant_id, user_id, agent_id, project_id, prompt_uid);
 CREATE INDEX IF NOT EXISTS reborn_tool_skills_consumer_tags_gin_idx
     ON reborn_tool_skills USING GIN (consumer_tags);
+CREATE INDEX IF NOT EXISTS reborn_tool_skills_similarity_parent_idx
+    ON reborn_tool_skills (similarity_parent_id)
+    WHERE similarity_parent_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS reborn_tool_skills_replaces_idx
+    ON reborn_tool_skills (replaces_id)
+    WHERE replaces_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS reborn_tool_skills_scope_validated_idx
     ON reborn_tool_skills (tenant_id, user_id, agent_id, project_id, tier)
     WHERE validation_status = 'validated';

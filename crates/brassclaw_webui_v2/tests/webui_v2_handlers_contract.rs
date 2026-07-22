@@ -982,7 +982,10 @@ impl RebornServicesApi for StubServices {
     ) -> Result<UpdateValidationStatusResponse, RebornServicesError> {
         Ok(UpdateValidationStatusResponse {
             id: "stub-id".to_string(),
-            validation_status: "validated".to_string(),
+            item_type: brassclaw_product_workflow::RecipeKind::Recipe,
+            previous_status: "pending".to_string(),
+            new_status: "validated".to_string(),
+            review_attempts: 0,
         })
     }
 
@@ -995,7 +998,10 @@ impl RebornServicesApi for StubServices {
     ) -> Result<UpdateValidationStatusResponse, RebornServicesError> {
         Ok(UpdateValidationStatusResponse {
             id: "stub-id".to_string(),
-            validation_status: "rejected".to_string(),
+            item_type: brassclaw_product_workflow::RecipeKind::Recipe,
+            previous_status: "pending".to_string(),
+            new_status: "rejected".to_string(),
+            review_attempts: 1,
         })
     }
 
@@ -1006,9 +1012,9 @@ impl RebornServicesApi for StubServices {
         _request: RecordOutcomeRequest,
     ) -> Result<RecordOutcomeResponse, RebornServicesError> {
         Ok(RecordOutcomeResponse {
+            id: "stub-id".to_string(),
+            kind: brassclaw_product_workflow::OutcomeKind::Recipe,
             recorded: true,
-            tier: None,
-            wilson_lower: None,
         })
     }
 

@@ -1583,6 +1583,7 @@ dependencies = [
  "libc",
  "postgresql_embedded",
  "sha2 0.10.9",
+ "target-triple",
  "tempfile",
  "thiserror 2.0.19",
  "tokio",

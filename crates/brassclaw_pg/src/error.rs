@@ -13,9 +13,6 @@ pub enum PgError {
 
     #[error("query error: {0}")]
     Query(String),
-
-    #[error("invalid connection URL: {0}")]
-    InvalidUrl(String),
 }
 
 impl From<tokio_postgres::Error> for PgError {

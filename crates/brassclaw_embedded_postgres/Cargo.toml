@@ -19,6 +19,7 @@ integration = []
 
 [dependencies]
 postgresql_embedded = { version = "0.21", features = ["tokio"] }
+target-triple = "1"
 sha2 = "0.10"
 hex = "0.4"
 thiserror = "2"

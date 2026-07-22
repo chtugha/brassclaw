@@ -5,7 +5,8 @@
 -- Specs describe missing capabilities or API contracts.
 -- consumer_tags default: {02:orchestrator, 03:llm} + 05:validator until validated.
 --
--- Spec references: §3.3, §3.7 (class 12), §3.9, §3.12, §3.13, Phase 5 Step 5.3.
+-- Spec references: §3.3, §3.7 (class 12), §3.9, §3.12, §3.13/§3.14 (SCH-02),
+-- Phase 5 Step 5.3.
 
 CREATE SEQUENCE IF NOT EXISTS reborn_specs_prompt_uid_seq;
 
@@ -22,6 +23,14 @@ CREATE TABLE IF NOT EXISTS reborn_specs (
     description             TEXT        NOT NULL DEFAULT ''
         CHECK (length(description) <= 1024),
     content                 TEXT        NOT NULL DEFAULT '',
+
+    -- Prior-knowledge content (§3.13/§3.14 — SCH-02 fix).
+    -- When non-NULL, used as the component's prior-knowledge text instead of
+    -- assembling from `content`.
+    prior_knowledge_content TEXT,
+    -- If true, the Solution Override path is taken: this component's
+    -- prior_knowledge_content replaces the standard assembly.  Default false.
+    override_prompt_creation BOOLEAN    NOT NULL DEFAULT false,
 
     -- class_code = 12 (Spec)
     class_code              SMALLINT    NOT NULL DEFAULT 12
@@ -74,6 +83,12 @@ CREATE INDEX IF NOT EXISTS reborn_specs_scope_uid_idx
     ON reborn_specs (tenant_id, user_id, agent_id, project_id, prompt_uid);
 CREATE INDEX IF NOT EXISTS reborn_specs_consumer_tags_gin_idx
     ON reborn_specs USING GIN (consumer_tags);
+CREATE INDEX IF NOT EXISTS reborn_specs_similarity_parent_idx
+    ON reborn_specs (similarity_parent_id)
+    WHERE similarity_parent_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS reborn_specs_replaces_idx
+    ON reborn_specs (replaces_id)
+    WHERE replaces_id IS NOT NULL;
 
 CREATE TRIGGER reborn_specs_updated_at
     BEFORE UPDATE ON reborn_specs

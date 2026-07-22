@@ -1,7 +1,7 @@
 //! Local-dev trigger-fire access store.
 //!
 //! `PgRebornLocalTriggerAccessStore` is the PostgreSQL-backed implementation;
-//! it targets the `brassclaw_local_access` table created by V021.
+//! it targets the `brassclaw_local_access` table created by V021 + V045.
 //!
 //! This table is not the production agent/project membership source of truth.
 //! Production and multi-tenant runtimes must wire a real membership-backed
@@ -10,7 +10,7 @@
 use std::collections::BTreeSet;
 
 use brassclaw_host_api::{AgentId, ProjectId, TenantId, UserId};
-use chrono::{SecondsFormat, Utc};
+use chrono::Utc;
 use thiserror::Error;
 
 /// Fixed local-dev access role persisted on trigger-fire access rows.
@@ -124,7 +124,7 @@ impl PgRebornLocalTriggerAccessStore {
         &self,
         seed: LocalTriggerAccessSeed<'_>,
     ) -> Result<(), RebornLocalTriggerAccessStoreError> {
-        let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+        let now = Utc::now();
         let agent_key = optional_scope_key(seed.agent_id.map(AgentId::as_str));
         let project_key = optional_scope_key(seed.project_id.map(ProjectId::as_str));
         let client = self.connect().await?;
@@ -142,7 +142,7 @@ impl PgRebornLocalTriggerAccessStore {
                     &seed.role.as_str(),
                     &LocalTriggerAccessStatus::Active.as_str(),
                     &seed.source.as_str(),
-                    &now.as_str(),
+                    &now,
                 ],
             )
             .await
@@ -154,7 +154,7 @@ impl PgRebornLocalTriggerAccessStore {
         &self,
         reconciliation: LocalTriggerAccessReconciliation<'_>,
     ) -> Result<(), RebornLocalTriggerAccessStoreError> {
-        let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+        let now = Utc::now();
         let agent_key = optional_scope_key(reconciliation.agent_id.map(AgentId::as_str));
         let project_key = optional_scope_key(reconciliation.project_id.map(ProjectId::as_str));
         let allowed: BTreeSet<&str> = reconciliation.user_ids.iter().map(UserId::as_str).collect();
@@ -195,7 +195,7 @@ impl PgRebornLocalTriggerAccessStore {
                        AND project_id = $6 AND source = $7 AND status = $8",
                     &[
                         &LocalTriggerAccessStatus::Inactive.as_str(),
-                        &now.as_str(),
+                        &now,
                         &reconciliation.tenant_id.as_str(),
                         &user_id.as_str(),
                         &agent_key,
@@ -223,7 +223,7 @@ impl PgRebornLocalTriggerAccessStore {
                         &reconciliation.role.as_str(),
                         &LocalTriggerAccessStatus::Active.as_str(),
                         &reconciliation.source.as_str(),
-                        &now.as_str(),
+                        &now,
                     ],
                 )
                 .await

@@ -252,6 +252,20 @@ impl RebornBuildInput {
         self
     }
 
+    /// Return the Postgres pool from this build input, if one is present.
+    ///
+    /// Returns `Some` only when the input was created via one of the
+    /// `postgres*` constructors. Returns `None` for `local_dev` and `disabled`
+    /// inputs. Used by the serve path to extract the pool for access-store
+    /// wiring without requiring callers to match on the internal storage enum.
+    #[cfg(feature = "postgres")]
+    pub fn pg_pool(&self) -> Option<&deadpool_postgres::Pool> {
+        match &self.storage {
+            RebornStorageInput::Postgres { pool, .. } => Some(pool),
+            _ => None,
+        }
+    }
+
     pub fn requires_local_dev_confirmed_host_home_root(&self) -> bool {
         self.runtime_policy.as_ref().is_some_and(|policy| {
             policy.filesystem_backend == FilesystemBackendKind::HostWorkspaceAndHome
@@ -312,8 +326,9 @@ impl RebornBuildInput {
         )
     }
 
-    /// Deprecated: prefer `postgres_with_reborn_home`. Kept for call sites that
-    /// pass an explicit pre-resolved key.
+    /// Deprecated: prefer [`Self::postgres_with_reborn_home`]. Kept for call
+    /// sites that pass an explicit pre-resolved key.
+    #[deprecated(note = "prefer `postgres_with_reborn_home`")]
     #[cfg(feature = "postgres")]
     pub fn postgres_with_resolved_secret_master_key(
         profile: RebornCompositionProfile,

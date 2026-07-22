@@ -38,22 +38,27 @@ const KEY_PREWARM_LAST_AT: &str = "interceptor.sempai_prewarm_last_at";
 
 /// Component tables that may hold `Validated` rows for Part A assembly.
 /// Ordered tables that may exist in the schema depending on which phases
-/// have been deployed.  Each entry is `(table_name, class_code_column)`.
+/// have been deployed.  Each entry is `(table_name, class_code)`.
+///
+/// Class codes must match the CHECK constraints in the corresponding
+/// DDL migrations; the service uses the code from this table as the
+/// section header in the assembled Sempai base prompt and does NOT
+/// re-read `class_code` from the DB rows.
 const COMPONENT_TABLES: &[(&str, u16)] = &[
-    ("reborn_skills", 1),
-    ("reborn_tools", 0),
-    ("reborn_actions", 16),
-    ("reborn_specs", 11),
-    ("reborn_summaries", 12),
-    ("reborn_lessons", 13),
-    ("reborn_issues", 14),
-    ("reborn_notes", 15),
-    ("reborn_recipes", 21),
-    ("reborn_tool_skills", 22),
-    ("reborn_plans", 8),
-    ("reborn_extensions_unified", 9),
-    ("reborn_orchestrators", 10),
-    ("reborn_scaffolds", 50),
+    ("reborn_skills",             1),   // V027  CHECK (class_code IN (1, 2, 3)) — primary label = Skill
+    ("reborn_tools",              0),   // V030  CHECK (class_code = 0)
+    ("reborn_actions",           16),   // V029  CHECK (class_code = 16)
+    ("reborn_specs",             12),   // V036  CHECK (class_code = 12)
+    ("reborn_summaries",         15),   // V039  CHECK (class_code = 15)
+    ("reborn_lessons",           18),   // V041  CHECK (class_code = 18)
+    ("reborn_issues",            19),   // V042  CHECK (class_code = 19)
+    ("reborn_notes",             20),   // V043  CHECK (class_code = 20)
+    ("reborn_recipes",           21),   // V033  CHECK (class_code = 21)
+    ("reborn_tool_skills",       13),   // V037  CHECK (class_code = 13)
+    ("reborn_plans",             14),   // V038  CHECK (class_code = 14)
+    ("reborn_extensions_unified", 9),   // V032  CHECK (class_code IN (4–9)); 9 = Misc/Extension used as section label
+    ("reborn_orchestrators",     10),   // future migration; gracefully skipped when absent
+    ("reborn_scaffolds",         50),   // future migration; gracefully skipped when absent
 ];
 
 /// Class code → human-readable type label for Part A headers.
@@ -61,17 +66,17 @@ fn class_label(class_code: u16) -> &'static str {
     match class_code {
         0 => "Tool",
         1 => "Skill",
-        8 => "Plan",
         9 => "Extension",
         10 => "Orchestrator",
-        11 => "Spec",
-        12 => "Summary",
-        13 => "Lesson",
-        14 => "Issue",
-        15 => "Note",
+        12 => "Spec",
+        13 => "ToolSkill",
+        14 => "Plan",
+        15 => "Summary",
         16 => "Action",
+        18 => "Lesson",
+        19 => "Issue",
+        20 => "Note",
         21 => "Recipe",
-        22 => "ToolSkill",
         50 => "Scaffold",
         _ => "Component",
     }
@@ -232,7 +237,7 @@ impl RebornInterceptorConfigService {
                     &format!(
                         "SELECT prompt_uid, name, COALESCE(content, '') AS content \
                          FROM {table} \
-                         WHERE validation_status = 'Validated' \
+                         WHERE validation_status = 'validated' \
                            AND NOT ('05:validator' = ANY(COALESCE(consumer_tags, ARRAY[]::text[]))) \
                          ORDER BY prompt_uid ASC \
                          LIMIT 1000"
@@ -248,9 +253,27 @@ impl RebornInterceptorConfigService {
                 }
             };
             for row in rows {
-                let prompt_uid: i64 = row.try_get("prompt_uid").unwrap_or(0);
-                let name: String = row.try_get("name").unwrap_or_default();
-                let content: String = row.try_get("content").unwrap_or_default();
+                let prompt_uid: i64 = match row.try_get("prompt_uid") {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::debug!(table, error = %e, "interceptor reassemble: skip row (prompt_uid)");
+                        continue;
+                    }
+                };
+                let name: String = match row.try_get("name") {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::debug!(table, error = %e, "interceptor reassemble: skip row (name)");
+                        continue;
+                    }
+                };
+                let content: String = match row.try_get("content") {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::debug!(table, error = %e, "interceptor reassemble: skip row (content)");
+                        continue;
+                    }
+                };
                 parts.push((class_code, prompt_uid as u32, name, content));
             }
         }

@@ -10,7 +10,8 @@
 -- Note: Issues/Notes/Summaries are excluded from the DB-less fallback file
 -- (volatile / low-value for fallback — spec §3.4, compiled-in priority list).
 --
--- Spec references: §3.3, §3.7 (class 20), §3.9, §3.12, §7 Q4, Phase 5 Step 5.3/5.4.
+-- Spec references: §3.3, §3.7 (class 20), §3.9, §3.12, §3.13/§3.14 (SCH-02),
+-- §7 Q4, Phase 5 Step 5.3/5.4.
 
 CREATE SEQUENCE IF NOT EXISTS reborn_notes_prompt_uid_seq;
 
@@ -30,6 +31,14 @@ CREATE TABLE IF NOT EXISTS reborn_notes (
 
     -- For chat-record notes: source_thread_id links back to the originating thread.
     source_thread_id        UUID,
+
+    -- Prior-knowledge content (§3.13/§3.14 — SCH-02 fix).
+    -- When non-NULL, used as the component's prior-knowledge text instead of
+    -- assembling from `content`.
+    prior_knowledge_content TEXT,
+    -- If true, the Solution Override path is taken: this component's
+    -- prior_knowledge_content replaces the standard assembly.  Default false.
+    override_prompt_creation BOOLEAN    NOT NULL DEFAULT false,
 
     -- class_code = 20 (Note)
     class_code              SMALLINT    NOT NULL DEFAULT 20
@@ -86,6 +95,12 @@ CREATE INDEX IF NOT EXISTS reborn_notes_consumer_tags_gin_idx
 CREATE INDEX IF NOT EXISTS reborn_notes_thread_idx
     ON reborn_notes (source_thread_id)
     WHERE source_thread_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS reborn_notes_similarity_parent_idx
+    ON reborn_notes (similarity_parent_id)
+    WHERE similarity_parent_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS reborn_notes_replaces_idx
+    ON reborn_notes (replaces_id)
+    WHERE replaces_id IS NOT NULL;
 
 CREATE TRIGGER reborn_notes_updated_at
     BEFORE UPDATE ON reborn_notes

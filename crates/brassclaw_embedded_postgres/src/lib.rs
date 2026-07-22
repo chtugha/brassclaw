@@ -203,11 +203,19 @@ async fn resolve_pg_install_dir(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
+
+    // Serialise all tests that mutate `BRASSCLAW_EMBEDDED_PG_PORT` so they
+    // cannot race with each other when run with the default parallel harness.
+    // SAFETY: this is the only lock guarding this env var in this test binary.
+    static ENV_PORT_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn config_from_reborn_home() {
-        // SAFETY: test-only env manipulation; clear any residue from parallel tests.
+        let _guard = ENV_PORT_LOCK.lock().expect("env lock poisoned");
+        // SAFETY: under ENV_PORT_LOCK; no other thread touches this var.
         unsafe { std::env::remove_var("BRASSCLAW_EMBEDDED_PG_PORT") };
         let home = std::path::Path::new("/tmp/test-reborn-home");
         let config = EmbeddedPostgresConfig::from_reborn_home(home);
@@ -223,7 +231,8 @@ mod tests {
 
     #[test]
     fn config_port_from_env() {
-        // SAFETY: test-only env manipulation in a single-threaded context.
+        let _guard = ENV_PORT_LOCK.lock().expect("env lock poisoned");
+        // SAFETY: under ENV_PORT_LOCK; no other thread touches this var.
         unsafe { std::env::set_var("BRASSCLAW_EMBEDDED_PG_PORT", "5999") };
         let home = std::path::Path::new("/tmp/test-reborn-home");
         let config = EmbeddedPostgresConfig::from_reborn_home(home);

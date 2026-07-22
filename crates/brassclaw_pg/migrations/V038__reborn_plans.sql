@@ -5,7 +5,8 @@
 -- Plans are structured execution blueprints with steps and progress tracking.
 -- consumer_tags default: {01:monty, 02:orchestrator} + 05:validator until validated.
 --
--- Spec references: §3.3, §3.7 (class 14), §3.9, §3.12, Phase 5 Step 5.3.
+-- Spec references: §3.3, §3.7 (class 14), §3.9, §3.12, §3.13/§3.14 (SCH-02),
+-- Phase 5 Step 5.3.
 
 CREATE SEQUENCE IF NOT EXISTS reborn_plans_prompt_uid_seq;
 
@@ -25,6 +26,14 @@ CREATE TABLE IF NOT EXISTS reborn_plans (
 
     -- Ordered step list (JSONB array of step descriptors).
     steps                   JSONB       NOT NULL DEFAULT '[]',
+
+    -- Prior-knowledge content (§3.13/§3.14 — SCH-02 fix).
+    -- When non-NULL, used as the component's prior-knowledge text instead of
+    -- assembling from `content`.
+    prior_knowledge_content TEXT,
+    -- If true, the Solution Override path is taken: this component's
+    -- prior_knowledge_content replaces the standard assembly.  Default false.
+    override_prompt_creation BOOLEAN    NOT NULL DEFAULT false,
 
     -- class_code = 14 (Plan)
     class_code              SMALLINT    NOT NULL DEFAULT 14
@@ -77,6 +86,12 @@ CREATE INDEX IF NOT EXISTS reborn_plans_scope_uid_idx
     ON reborn_plans (tenant_id, user_id, agent_id, project_id, prompt_uid);
 CREATE INDEX IF NOT EXISTS reborn_plans_consumer_tags_gin_idx
     ON reborn_plans USING GIN (consumer_tags);
+CREATE INDEX IF NOT EXISTS reborn_plans_similarity_parent_idx
+    ON reborn_plans (similarity_parent_id)
+    WHERE similarity_parent_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS reborn_plans_replaces_idx
+    ON reborn_plans (replaces_id)
+    WHERE replaces_id IS NOT NULL;
 
 CREATE TRIGGER reborn_plans_updated_at
     BEFORE UPDATE ON reborn_plans

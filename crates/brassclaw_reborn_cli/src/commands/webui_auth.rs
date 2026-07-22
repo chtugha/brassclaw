@@ -10,17 +10,18 @@
 //! ([`crate::commands::user_directory`]) and the startup config
 //! ([`crate::commands::serve_sso`]).
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::anyhow;
 use brassclaw_reborn_composition::host_api::{AgentId, ProjectId, TenantId};
-use brassclaw_reborn_composition::{PublicRouteMount, RebornIdentityResolver, WebuiAuthenticator};
+use brassclaw_reborn_composition::{
+    PublicRouteMount, RebornIdentityResolver, WebuiAuthenticator, open_local_trigger_access_store,
+};
 use brassclaw_reborn_webui_ingress::{SignedSessionLoginConfig, build_signed_session_login};
 use secrecy::SecretString;
 
 use crate::commands::serve_sso::SsoStartupConfig;
-use crate::commands::user_directory::WebuiUserDirectory;
+use crate::commands::user_directory::{LocalTriggerAccessBootstrap, WebuiUserDirectory};
 
 /// The composed WebChat v2 auth surface: the authenticator the protected
 /// routes verify bearers with, plus the optional public login-route mount
@@ -32,15 +33,11 @@ pub(crate) struct WebuiAuthSurface {
 
 /// How to seed local-dev trigger-fire access for SSO users on login.
 ///
-/// Carries the substrate path of the local trigger-access store plus the
-/// scope an admitted user's access row is seeded under. The store is opened
-/// here (next to the rest of the auth wiring), not by `serve.rs`.
-///
-/// Fields not yet read — PG pool wiring is deferred until embedded-PG
-/// startup runs before runtime construction (TODO above `let _ = local_trigger_access`).
-#[allow(dead_code)]
+/// Carries the PG pool for the trigger-access store plus the scope an admitted
+/// user's access row is seeded under. The store is opened here (next to the
+/// rest of the auth wiring), not by `serve.rs`.
 pub(crate) struct LocalTriggerAccessBootstrapConfig {
-    pub(crate) access_store_path: PathBuf,
+    pub(crate) pool: deadpool_postgres::Pool,
     pub(crate) tenant_id: TenantId,
     pub(crate) agent_id: AgentId,
     pub(crate) project_id: Option<ProjectId>,
@@ -92,15 +89,30 @@ pub(crate) async fn build_webui_auth_surface(
         )
     })?;
 
-    let user_directory = WebuiUserDirectory::new(
+    // Build the user directory, optionally wired with the PG-backed local
+    // trigger-access bootstrap that seeds an owner row on each SSO login.
+    let mut user_directory = WebuiUserDirectory::new(
         identity_resolver,
         tenant_id.clone(),
         sso.allowed_email_domains,
     );
-    // TODO: wire PG pool from embedded-PG startup into the access store once
-    // the local-dev serve path starts embedded PG before building the runtime.
-    let _ = local_trigger_access;
+    if let Some(cfg) = local_trigger_access {
+        let store = open_local_trigger_access_store(cfg.pool);
+        user_directory = user_directory.with_local_trigger_access(
+            LocalTriggerAccessBootstrap::new(
+                store,
+                cfg.tenant_id,
+                cfg.agent_id,
+                cfg.project_id,
+            ),
+        );
+    }
 
+    // SAFETY: `build_signed_session_login` returns `None` only when the
+    // `providers` list is empty.  We only reach this arm because
+    // `sso_startup_config_from_env` returned `Some(sso)`, and that function
+    // returns `None` when `providers` is empty — so `sso.providers` is
+    // guaranteed non-empty here.
     let wiring = build_signed_session_login(SignedSessionLoginConfig {
         tenant_id,
         user_directory: Arc::new(user_directory),
@@ -109,7 +121,7 @@ pub(crate) async fn build_webui_auth_surface(
         providers: sso.providers,
         env_authenticator,
     })
-    .expect("non-empty providers always produce login wiring"); // safety: sso_startup_config_from_env returns None when providers is empty, so this Some(sso) arm always has a non-empty provider list
+    .expect("non-empty providers always produce login wiring");
 
     eprintln!(
         "brassclaw-reborn: WebChat v2 SSO login mounted — \
