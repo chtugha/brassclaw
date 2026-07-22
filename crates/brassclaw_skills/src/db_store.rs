@@ -1114,6 +1114,32 @@ mod inner {
         }
 
         #[test]
+        fn invalid_source_fails() {
+            let mut input = base_input();
+            input.source = "unknown_source".into();
+            let vr = validate_row(&input);
+            assert!(
+                vr.errors.iter().any(|e| e.contains("not valid") && e.contains("source")),
+                "expected source validation error, got: {:?}",
+                vr.errors
+            );
+        }
+
+        #[test]
+        fn valid_source_passes() {
+            for src in &["authored", "extracted", "migrated", "imported"] {
+                let mut input = base_input();
+                input.source = (*src).into();
+                let vr = validate_row(&input);
+                assert!(
+                    vr.is_ok(),
+                    "expected ok for source={src}, got errors: {:?}",
+                    vr.errors
+                );
+            }
+        }
+
+        #[test]
         fn valid_consumer_tag_passes() {
             let mut input = base_input();
             input.extra_consumer_tags = vec!["04:scaffold".into()];

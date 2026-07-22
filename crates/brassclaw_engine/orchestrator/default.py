@@ -1028,20 +1028,23 @@ def run_loop(context, goal, actions, state, config):
             all_skills = __list_skills__()
             active_skills = select_skills(all_skills, goal, max_candidates=3, max_tokens=6000)
             if active_skills:
-                __set_active_skills__([
-                    {
+                # Build the payload without list-comprehensions-with-if (Monty-safe §conventions).
+                active_skill_payload = []
+                for s in active_skills:
+                    s_meta = s.get("metadata", {})
+                    snippet_names = []
+                    for sn in s_meta.get("code_snippets", []):
+                        sn_name = sn.get("name", "")
+                        if sn_name:
+                            snippet_names.append(sn_name)
+                    active_skill_payload.append({
                         "doc_id": s.get("doc_id", ""),
-                        "name": s.get("metadata", {}).get("name", "?"),
-                        "version": s.get("metadata", {}).get("version", 1),
-                        "snippet_names": [
-                            sn.get("name", "")
-                            for sn in s.get("metadata", {}).get("code_snippets", [])
-                            if sn.get("name")
-                        ],
+                        "name": s_meta.get("name", "?"),
+                        "version": s_meta.get("version", 1),
+                        "snippet_names": snippet_names,
                         "force_activated": False,
-                    }
-                    for s in active_skills
-                ])
+                    })
+                __set_active_skills__(active_skill_payload)
                 # Emit skill activation event for CLI/gateway display.
                 skill_names = ",".join(s.get("metadata", {}).get("name", "?") for s in active_skills)
                 __emit_event__("skill_activated", skill_names=skill_names)

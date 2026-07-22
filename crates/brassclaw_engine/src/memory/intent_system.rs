@@ -68,7 +68,11 @@ use uuid::Uuid;
 // In-process rate-limit bucket for score increments (SEC-05)
 // ---------------------------------------------------------------------------
 
-/// Per-row increment state tracked in a process-local bucket.
+/// Per-scope increment state tracked in a process-local token bucket.
+///
+/// Bucket key is the 4-part scope string (`tenant/user/agent/project`) so
+/// the limit applies to the whole scope, not just a single row (spec §6.1
+/// SEC-05: "50 increments per scope per hour").
 #[cfg(feature = "skills-db")]
 struct IncrementBucket {
     /// Number of increments in the current hour window.
@@ -77,8 +81,19 @@ struct IncrementBucket {
     window_start: Instant,
 }
 
+/// Build the string key for a scope. Cheap: one heap alloc per call.
 #[cfg(feature = "skills-db")]
-static SCORE_RATE_BUCKETS: Mutex<Option<HashMap<Uuid, IncrementBucket>>> = Mutex::new(None);
+fn scope_bucket_key(scope: &IntentScope) -> String {
+    format!("{}/{}/{}/{}", scope.tenant_id, scope.user_id, scope.agent_id, scope.project_id)
+}
+
+/// Global in-process token-bucket map (scope_key → bucket).
+///
+/// `Option` wrapper means `None` = uninitialised; `HashMap::new()` is created
+/// on first use via `get_or_insert_with`.  Entries whose window has expired
+/// are evicted on the next access for that scope to prevent unbounded growth.
+#[cfg(feature = "skills-db")]
+static SCORE_RATE_BUCKETS: Mutex<Option<HashMap<String, IncrementBucket>>> = Mutex::new(None);
 
 // ---------------------------------------------------------------------------
 // Public types — always compiled
@@ -390,7 +405,7 @@ pub async fn resolve_intent(
     if candidates.len() == 1 {
         let c = &candidates[0];
         // Atomic score increment (PERF-03); capped at SCORE_CAP (SEC-05).
-        increment_score(&client, c.row_id).await?;
+        increment_score(&client, scope, c.row_id).await?;
         debug!(
             component_id = %c.component_id,
             score = c.score,
@@ -421,13 +436,14 @@ pub async fn resolve_intent(
 #[cfg(feature = "skills-db")]
 pub async fn record_disambiguation_choice(
     pool: &brassclaw_pg::PgPool,
+    scope: &IntentScope,
     row_id: Uuid,
     component_id: Uuid,
     component_class_code: i32,
 ) -> Result<IntentResolution, IntentSystemError> {
     use tracing::debug;
     let client = pool.get().await.map_err(|e| IntentSystemError::Db(e.to_string()))?;
-    increment_score(&client, row_id).await?;
+    increment_score(&client, scope, row_id).await?;
     debug!(
         row_id = %row_id,
         component_id = %component_id,
@@ -522,32 +538,41 @@ pub async fn purge_component_inputs(
 
 /// Atomically increment a row's score, capped at `SCORE_CAP` (PERF-03, SEC-05).
 ///
-/// Rate-limited to `SCORE_RATE_LIMIT_PER_HOUR` increments per `row_id` per
-/// hour (SEC-05 token-bucket, in-process).  Returns the updated score.  If
-/// the rate limit is exhausted for this window the DB update is skipped and
-/// the current score is returned unchanged.
+/// Rate-limited to `SCORE_RATE_LIMIT_PER_HOUR` increments **per scope** per
+/// hour (spec §6.1 SEC-05 token-bucket, in-process).  The bucket key is the
+/// 4-part scope string so that the limit applies across all rows within a
+/// tenant/user/agent/project tuple, not just a single row.
+///
+/// Returns the updated score.  If the rate limit is exhausted for this
+/// window, the DB update is skipped and the current score is returned.
 #[cfg(feature = "skills-db")]
 async fn increment_score(
     client: &brassclaw_pg::PgClient,
+    scope: &IntentScope,
     row_id: Uuid,
 ) -> Result<i32, IntentSystemError> {
-    // Rate-limit check (SEC-05). The bucket is keyed per row_id; the hour
-    // window resets when Instant::elapsed() exceeds 3600 seconds.
+    // Rate-limit check (SEC-05). Bucket key = scope (not row_id) so the
+    // limit caps total increments for the entire scope per hour.
+    // Expired entries are evicted on next access to prevent unbounded growth.
+    let key = scope_bucket_key(scope);
     let allow = {
         let mut guard = SCORE_RATE_BUCKETS
             .lock()
             .map_err(|_| IntentSystemError::Db("rate-bucket lock poisoned".into()))?;
         let map = guard.get_or_insert_with(HashMap::new);
         let now = Instant::now();
-        let bucket = map.entry(row_id).or_insert(IncrementBucket {
+        // Check if the current entry exists and whether its window has expired.
+        let expired = map.get(&key)
+            .map(|b| b.window_start.elapsed() >= Duration::from_secs(3600))
+            .unwrap_or(false);
+        if expired {
+            // Evict the stale entry; the `entry()` call below will insert fresh.
+            map.remove(&key);
+        }
+        let bucket = map.entry(key).or_insert(IncrementBucket {
             count: 0,
             window_start: now,
         });
-        if bucket.window_start.elapsed() >= Duration::from_secs(3600) {
-            // New hour window — reset.
-            bucket.count = 0;
-            bucket.window_start = now;
-        }
         if bucket.count < SCORE_RATE_LIMIT_PER_HOUR {
             bucket.count += 1;
             true
@@ -715,9 +740,31 @@ mod tests {
 
     #[test]
     fn class_label_known_codes() {
-        assert_eq!(class_label(0), "tool");
-        assert_eq!(class_label(1), "skill_rusty");
+        // Core classes 0-3
+        assert_eq!(class_label(0),  "tool");
+        assert_eq!(class_label(1),  "skill_rusty");
+        assert_eq!(class_label(2),  "skill_monty");
+        assert_eq!(class_label(3),  "skill_llm");
+        // Extensions 4-9
+        assert_eq!(class_label(4),  "extension_worker");
+        assert_eq!(class_label(5),  "extension_cron");
+        assert_eq!(class_label(6),  "extension_trigger");
+        assert_eq!(class_label(7),  "extension_webhook");
+        assert_eq!(class_label(8),  "extension_plan");
+        assert_eq!(class_label(9),  "extension_revision");
+        // System classes
+        assert_eq!(class_label(10), "orchestrator");
+        assert_eq!(class_label(11), "reserved");
+        // Former-doctype classes 12-20 (spec §4)
+        assert_eq!(class_label(12), "spec");
+        assert_eq!(class_label(13), "tool_skill");
+        assert_eq!(class_label(14), "plan");
+        assert_eq!(class_label(15), "summary");
         assert_eq!(class_label(16), "action");
+        assert_eq!(class_label(17), "docu");
+        assert_eq!(class_label(18), "lesson");
+        assert_eq!(class_label(19), "issue");
+        assert_eq!(class_label(20), "note");
         assert_eq!(class_label(21), "recipe");
         assert_eq!(class_label(50), "scaffold");
         assert_eq!(class_label(99), "component"); // unknown → generic
