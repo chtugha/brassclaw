@@ -309,7 +309,9 @@ impl ProductLiveAgentLoopHarness {
             turn_event_sink: None,
             recipe_lookup: None,
             interceptor_store: None,
+            #[cfg(feature = "root-llm-provider")]
             sempai_gateway: None,
+            #[cfg(feature = "root-llm-provider")]
             interceptor_mode: None,
         })
         .expect("product-live planned AgentLoop harness should build");

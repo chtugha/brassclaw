@@ -32,14 +32,14 @@ const DEFAULT_LEDGER_ROOT: &str = "/engine/product_workflow/idempotency/actions"
 const ACTION_RECORD_KIND: &str = "product_workflow_action";
 
 #[cfg(feature = "postgres")]
-struct FilesystemIdempotencyLedger {
+struct PostgresIdempotencyLedger {
     filesystem: Arc<dyn RootFilesystem>,
     root: VirtualPath,
     in_flight_lease: Duration,
 }
 
 #[cfg(feature = "postgres")]
-impl FilesystemIdempotencyLedger {
+impl PostgresIdempotencyLedger {
     fn new(filesystem: Arc<dyn RootFilesystem>) -> Self {
         Self::with_in_flight_lease(filesystem, DEFAULT_IN_FLIGHT_LEASE)
     }
@@ -185,14 +185,14 @@ impl FilesystemIdempotencyLedger {
 /// SQL filesystem backend for persistence.
 #[cfg(feature = "postgres")]
 pub struct RebornPostgresIdempotencyLedger {
-    inner: FilesystemIdempotencyLedger,
+    inner: PostgresIdempotencyLedger,
 }
 
 #[cfg(feature = "postgres")]
 impl RebornPostgresIdempotencyLedger {
     pub fn new(filesystem: Arc<PostgresRootFilesystem>) -> Self {
         Self {
-            inner: FilesystemIdempotencyLedger::new(filesystem),
+            inner: PostgresIdempotencyLedger::new(filesystem),
         }
     }
 
@@ -201,7 +201,7 @@ impl RebornPostgresIdempotencyLedger {
         in_flight_lease: Duration,
     ) -> Self {
         Self {
-            inner: FilesystemIdempotencyLedger::with_in_flight_lease(filesystem, in_flight_lease),
+            inner: PostgresIdempotencyLedger::with_in_flight_lease(filesystem, in_flight_lease),
         }
     }
 
@@ -211,7 +211,7 @@ impl RebornPostgresIdempotencyLedger {
         in_flight_lease: Duration,
     ) -> Self {
         Self {
-            inner: FilesystemIdempotencyLedger::with_root(filesystem, root, in_flight_lease),
+            inner: PostgresIdempotencyLedger::with_root(filesystem, root, in_flight_lease),
         }
     }
 }

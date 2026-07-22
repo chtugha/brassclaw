@@ -41,6 +41,11 @@ use thiserror::Error;
 use tracing::debug;
 use uuid::Uuid;
 
+/// Hard cap on how many recipes `list_all` / `fetch_validated` may return in a
+/// single call.  Guards against accidental full-table scans on large tenants.
+const MAX_RECIPE_LIST_ROWS: i64 = 1_000;
+
+
 // ---------------------------------------------------------------------------
 // Error
 // ---------------------------------------------------------------------------
@@ -336,7 +341,8 @@ impl PgRecipeStore {
             "SELECT {RECIPE_SELECT} FROM reborn_recipes
              WHERE tenant_id = $1 AND user_id = $2
                AND agent_id  = $3 AND project_id = $4
-             ORDER BY prompt_uid ASC"
+             ORDER BY prompt_uid ASC
+             LIMIT {MAX_RECIPE_LIST_ROWS}"
         );
         let rows = client
             .query(&q, &[&tenant_id, &user_id, &agent_id, &project_id])
@@ -360,7 +366,8 @@ impl PgRecipeStore {
                AND agent_id  = $3 AND project_id = $4
                AND validation_status = 'validated'
                AND NOT ('05:validator' = ANY(consumer_tags))
-             ORDER BY prompt_uid ASC"
+             ORDER BY prompt_uid ASC
+             LIMIT {MAX_RECIPE_LIST_ROWS}"
         );
         let rows = client
             .query(&q, &[&tenant_id, &user_id, &agent_id, &project_id])

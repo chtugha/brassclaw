@@ -26,28 +26,31 @@ use brassclaw_product_adapters::{
     ProgressKind, ProgressUpdateView, ProjectionCursor,
 };
 use brassclaw_product_workflow::{
-    AuthorReductionRuleRequest, AuthorReductionRuleResponse, LifecyclePackageRef, LifecyclePhase,
-    LlmActiveSelection, LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult,
-    LlmProviderView, MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettings,
-    MontyVmSettingsResponse, MontyVmState, MontyVmStatusResponse, RebornAutomationInfo,
-    RebornAutomationSource, RebornAutomationState, RebornCancelRunResponse,
-    RebornChannelConnectAction, RebornChannelConnectStrategy, RebornConnectableChannelInfo,
-    RebornConnectableChannelListResponse, RebornCreateThreadResponse, RebornDeleteThreadRequest,
-    RebornDeleteThreadResponse, RebornExtensionActionResponse, RebornExtensionListResponse,
-    RebornExtensionRegistryResponse, RebornGetRunStateRequest, RebornGetRunStateResponse,
-    RebornListAutomationsResponse, RebornListThreadsResponse,
-    RebornOutboundDeliveryTargetListResponse, RebornOutboundPreferencesResponse,
-    RebornResolveGateResponse, RebornResumeGateResponse, RebornServicesApi, RebornServicesError,
-    RebornServicesErrorCode, RebornServicesErrorKind, RebornSetOutboundPreferencesRequest,
-    RebornSetupExtensionResponse, RebornStreamEventsRequest, RebornStreamEventsResponse,
-    RebornSubmitTurnResponse, RebornTimelineRequest, RebornTimelineResponse,
-    ReductionRuleConfigView, ReductionRulesRequest, ReductionRulesResponse, RuleType,
-    SetActiveLlmRequest, SettingsListResponse, TokenSettingsResponse,
-    UpdateChatPreferenceRequest, UpdateChatPreferenceResponse, UpdateMontyVmSettingsRequest,
-    UpdateTokenSettingsRequest, UpsertLlmProviderRequest, WebUiAuthenticatedCaller,
-    WebUiCancelRunRequest, WebUiCreateThreadRequest, WebUiListAutomationsRequest,
-    WebUiListThreadsRequest, WebUiResolveGateRequest, WebUiSendMessageRequest,
-    WebUiSetupExtensionRequest,
+    AuthorReductionRuleRequest, AuthorReductionRuleResponse, InterceptorConfigSnapshot,
+    LifecyclePackageRef, LifecyclePhase, LlmActiveSelection, LlmConfigSnapshot, LlmModelsResult,
+    LlmProbeRequest, LlmProbeResult, LlmProviderView, MontyVmRestartRequest,
+    MontyVmRestartResponse, MontyVmSettings, MontyVmSettingsResponse, MontyVmState,
+    MontyVmStatusResponse, RebornAutomationInfo, RebornAutomationSource, RebornAutomationState,
+    RebornCancelRunResponse, RebornChannelConnectAction, RebornChannelConnectStrategy,
+    RebornConnectableChannelInfo, RebornConnectableChannelListResponse,
+    RebornCreateThreadResponse, RebornDeleteThreadRequest, RebornDeleteThreadResponse,
+    RebornExtensionActionResponse, RebornExtensionListResponse, RebornExtensionRegistryResponse,
+    RebornGetRunStateRequest, RebornGetRunStateResponse, RebornListAutomationsResponse,
+    RebornListThreadsResponse, RebornOutboundDeliveryTargetListResponse,
+    RebornOutboundPreferencesResponse, RebornResolveGateResponse, RebornResumeGateResponse,
+    RebornServicesApi, RebornServicesError, RebornServicesErrorCode, RebornServicesErrorKind,
+    RebornSetOutboundPreferencesRequest, RebornSetupExtensionResponse,
+    RebornStreamEventsRequest, RebornStreamEventsResponse, RebornSubmitTurnResponse,
+    RebornTimelineRequest, RebornTimelineResponse, ReductionRuleConfigView,
+    ReductionRulesRequest, ReductionRulesResponse, RecordOutcomeRequest, RecordOutcomeResponse,
+    RuleType, SetActiveLlmRequest, SettingsListResponse, TokenSettingsResponse,
+    ToolSkillDetail, UpdateChatPreferenceRequest, UpdateChatPreferenceResponse,
+    UpdateInterceptorConfigRequest, UpdateMontyVmSettingsRequest, UpdateTokenSettingsRequest,
+    UpdateValidationStatusRequest, UpdateValidationStatusResponse, UpsertLlmProviderRequest,
+    ValidationQueueCountResponse, ValidationQueueFilter, ValidationQueueItem,
+    ValidationQueueListResponse, WebUiAuthenticatedCaller, WebUiCancelRunRequest,
+    WebUiCreateThreadRequest, WebUiListAutomationsRequest, WebUiListThreadsRequest,
+    WebUiResolveGateRequest, WebUiSendMessageRequest, WebUiSetupExtensionRequest,
 };
 use brassclaw_threads::SessionThreadRecord;
 use brassclaw_turns::{
@@ -933,6 +936,140 @@ impl RebornServicesApi for StubServices {
         Ok(UpdateChatPreferenceResponse {
             key,
             value: request.value,
+        })
+    }
+
+    // ── Phase 5 / 5.5: validation queue + interceptor config stubs ────────────
+
+    async fn get_tool_skill(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _skill_id: &str,
+    ) -> Result<ToolSkillDetail, RebornServicesError> {
+        Err(service_unavailable_error(false))
+    }
+
+    async fn list_validation_queue(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _filter: ValidationQueueFilter,
+    ) -> Result<ValidationQueueListResponse, RebornServicesError> {
+        Ok(ValidationQueueListResponse {
+            items: Vec::<ValidationQueueItem>::new(),
+        })
+    }
+
+    async fn count_validation_queue(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _status: &str,
+    ) -> Result<ValidationQueueCountResponse, RebornServicesError> {
+        Ok(ValidationQueueCountResponse {
+            count: 0,
+            status: "pending".to_string(),
+        })
+    }
+
+    async fn validate_recipe(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _recipe_id: &str,
+        _request: UpdateValidationStatusRequest,
+    ) -> Result<UpdateValidationStatusResponse, RebornServicesError> {
+        Ok(UpdateValidationStatusResponse {
+            id: "stub-id".to_string(),
+            validation_status: "validated".to_string(),
+        })
+    }
+
+    async fn reject_recipe(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _recipe_id: &str,
+        _request: UpdateValidationStatusRequest,
+    ) -> Result<UpdateValidationStatusResponse, RebornServicesError> {
+        Ok(UpdateValidationStatusResponse {
+            id: "stub-id".to_string(),
+            validation_status: "rejected".to_string(),
+        })
+    }
+
+    async fn record_recipe_outcome(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: &str,
+        _request: RecordOutcomeRequest,
+    ) -> Result<RecordOutcomeResponse, RebornServicesError> {
+        Ok(RecordOutcomeResponse {
+            recorded: true,
+            tier: None,
+            wilson_lower: None,
+        })
+    }
+
+    async fn get_interceptor_config(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
+        Ok(InterceptorConfigSnapshot {
+            sempai_connected: false,
+            mode: "routing".to_string(),
+            base_prompt_assembled_at: None,
+            base_prompt_size_chars: None,
+            persona: String::new(),
+            prewarm_last_at: None,
+            components_since_rebuild: None,
+        })
+    }
+
+    async fn update_interceptor_config(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: UpdateInterceptorConfigRequest,
+    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
+        Ok(InterceptorConfigSnapshot {
+            sempai_connected: false,
+            mode: "routing".to_string(),
+            base_prompt_assembled_at: None,
+            base_prompt_size_chars: None,
+            persona: String::new(),
+            prewarm_last_at: None,
+            components_since_rebuild: None,
+        })
+    }
+
+    async fn reassemble_interceptor_base_prompt(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
+        Ok(InterceptorConfigSnapshot {
+            sempai_connected: false,
+            mode: "routing".to_string(),
+            base_prompt_assembled_at: Some("2024-01-01T00:00:00Z".to_string()),
+            base_prompt_size_chars: Some(0),
+            persona: String::new(),
+            prewarm_last_at: None,
+            components_since_rebuild: Some(0),
+        })
+    }
+
+    async fn prewarm_interceptor(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
+        Ok(InterceptorConfigSnapshot {
+            sempai_connected: false,
+            mode: "routing".to_string(),
+            base_prompt_assembled_at: None,
+            base_prompt_size_chars: None,
+            persona: String::new(),
+            prewarm_last_at: Some("2024-01-01T00:00:00Z".to_string()),
+            components_since_rebuild: None,
         })
     }
 }

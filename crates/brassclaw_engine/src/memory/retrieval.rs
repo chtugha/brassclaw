@@ -58,7 +58,7 @@ impl RetrievalEngine {
                 .into_iter()
                 .map(|doc| (doc_type_weight(doc.doc_type), doc))
                 .collect();
-            scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+            scored.sort_by(|a, b| b.0.total_cmp(&a.0));
             scored.truncate(max_docs);
             return Ok(scored.into_iter().map(|(_, doc)| doc).collect());
         }
@@ -75,7 +75,7 @@ impl RetrievalEngine {
             .filter(|(score, _)| *score > 0.0)
             .collect();
 
-        scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        scored.sort_by(|a, b| b.0.total_cmp(&a.0));
         scored.truncate(max_docs);
         Ok(scored.into_iter().map(|(_, doc)| doc).collect())
     }
