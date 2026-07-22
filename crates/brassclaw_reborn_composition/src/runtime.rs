@@ -2654,7 +2654,8 @@ fn wrap_swappable_gateway(
         })?;
     let sempai_policy =
         LlmModelProfilePolicy::new().allow_model_profile(sempai_model_profile_id, None);
-    let sempai_provider: Arc<dyn LlmProvider> = Arc::clone(&sempai_swappable);
+    let sempai_provider: Arc<dyn LlmProvider> =
+        Arc::clone(&sempai_swappable) as Arc<dyn LlmProvider>;
     let sempai_gateway: Arc<dyn brassclaw_loop_support::HostManagedModelGateway> =
         Arc::new(LlmProviderModelGateway::new(sempai_provider, sempai_policy));
 

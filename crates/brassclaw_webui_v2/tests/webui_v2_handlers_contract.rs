@@ -28,22 +28,26 @@ use brassclaw_product_adapters::{
 use brassclaw_product_workflow::{
     AuthorReductionRuleRequest, AuthorReductionRuleResponse, LifecyclePackageRef, LifecyclePhase,
     LlmActiveSelection, LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult,
-    LlmProviderView, RebornAutomationInfo, RebornAutomationSource, RebornAutomationState,
-    RebornCancelRunResponse, RebornChannelConnectAction, RebornChannelConnectStrategy,
-    RebornConnectableChannelInfo, RebornConnectableChannelListResponse, RebornCreateThreadResponse,
-    RebornDeleteThreadRequest, RebornDeleteThreadResponse, RebornExtensionActionResponse,
-    RebornExtensionListResponse, RebornExtensionRegistryResponse, RebornGetRunStateRequest,
-    RebornGetRunStateResponse, RebornListAutomationsResponse, RebornListThreadsResponse,
+    LlmProviderView, MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettings,
+    MontyVmSettingsResponse, MontyVmState, MontyVmStatusResponse, RebornAutomationInfo,
+    RebornAutomationSource, RebornAutomationState, RebornCancelRunResponse,
+    RebornChannelConnectAction, RebornChannelConnectStrategy, RebornConnectableChannelInfo,
+    RebornConnectableChannelListResponse, RebornCreateThreadResponse, RebornDeleteThreadRequest,
+    RebornDeleteThreadResponse, RebornExtensionActionResponse, RebornExtensionListResponse,
+    RebornExtensionRegistryResponse, RebornGetRunStateRequest, RebornGetRunStateResponse,
+    RebornListAutomationsResponse, RebornListThreadsResponse,
     RebornOutboundDeliveryTargetListResponse, RebornOutboundPreferencesResponse,
     RebornResolveGateResponse, RebornResumeGateResponse, RebornServicesApi, RebornServicesError,
     RebornServicesErrorCode, RebornServicesErrorKind, RebornSetOutboundPreferencesRequest,
     RebornSetupExtensionResponse, RebornStreamEventsRequest, RebornStreamEventsResponse,
     RebornSubmitTurnResponse, RebornTimelineRequest, RebornTimelineResponse,
     ReductionRuleConfigView, ReductionRulesRequest, ReductionRulesResponse, RuleType,
-    SetActiveLlmRequest, TokenSettingsResponse, UpdateTokenSettingsRequest,
-    UpsertLlmProviderRequest, WebUiAuthenticatedCaller, WebUiCancelRunRequest,
-    WebUiCreateThreadRequest, WebUiListAutomationsRequest, WebUiListThreadsRequest,
-    WebUiResolveGateRequest, WebUiSendMessageRequest, WebUiSetupExtensionRequest,
+    SetActiveLlmRequest, SettingsComponentSummary, SettingsListResponse, TokenSettingsResponse,
+    UpdateChatPreferenceRequest, UpdateChatPreferenceResponse, UpdateMontyVmSettingsRequest,
+    UpdateTokenSettingsRequest, UpsertLlmProviderRequest, WebUiAuthenticatedCaller,
+    WebUiCancelRunRequest, WebUiCreateThreadRequest, WebUiListAutomationsRequest,
+    WebUiListThreadsRequest, WebUiResolveGateRequest, WebUiSendMessageRequest,
+    WebUiSetupExtensionRequest,
 };
 use brassclaw_threads::SessionThreadRecord;
 use brassclaw_turns::{
@@ -815,6 +819,120 @@ impl RebornServicesApi for StubServices {
             total_input: request.total_input,
             max_output: request.max_output,
             cache_retention: request.cache_retention,
+        })
+    }
+
+    // ── Phase 6: Settings UI stubs ────────────────────────────────────────
+
+    async fn list_settings_skills(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<SettingsListResponse, RebornServicesError> {
+        Ok(SettingsListResponse { items: Vec::new() })
+    }
+
+    async fn list_settings_tools(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<SettingsListResponse, RebornServicesError> {
+        Ok(SettingsListResponse { items: Vec::new() })
+    }
+
+    async fn list_settings_extensions(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<SettingsListResponse, RebornServicesError> {
+        Ok(SettingsListResponse { items: Vec::new() })
+    }
+
+    async fn list_settings_actions(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<SettingsListResponse, RebornServicesError> {
+        Ok(SettingsListResponse { items: Vec::new() })
+    }
+
+    async fn list_settings_orchestrators(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<SettingsListResponse, RebornServicesError> {
+        Ok(SettingsListResponse { items: Vec::new() })
+    }
+
+    async fn list_settings_scaffolds(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<SettingsListResponse, RebornServicesError> {
+        Ok(SettingsListResponse { items: Vec::new() })
+    }
+
+    async fn get_monty_vm_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<MontyVmSettingsResponse, RebornServicesError> {
+        Ok(MontyVmSettingsResponse {
+            settings: MontyVmSettings {
+                max_duration_secs: 300,
+                max_allocations: None,
+                max_memory_bytes: None,
+                failure_rollback_threshold: 3,
+                prior_knowledge_token_budget: 2000,
+                q4_retention_days: 30,
+                forensic_packet_retention_days: 90,
+                active_orchestrator_id: None,
+            },
+        })
+    }
+
+    async fn update_monty_vm_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: UpdateMontyVmSettingsRequest,
+    ) -> Result<MontyVmSettingsResponse, RebornServicesError> {
+        Ok(MontyVmSettingsResponse {
+            settings: MontyVmSettings {
+                max_duration_secs: 300,
+                max_allocations: None,
+                max_memory_bytes: None,
+                failure_rollback_threshold: 3,
+                prior_knowledge_token_budget: 2000,
+                q4_retention_days: 30,
+                forensic_packet_retention_days: 90,
+                active_orchestrator_id: None,
+            },
+        })
+    }
+
+    async fn restart_monty_vm(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: MontyVmRestartRequest,
+    ) -> Result<MontyVmRestartResponse, RebornServicesError> {
+        Ok(MontyVmRestartResponse {
+            state: MontyVmState::Restarting,
+        })
+    }
+
+    async fn get_monty_vm_status(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<MontyVmStatusResponse, RebornServicesError> {
+        Ok(MontyVmStatusResponse {
+            state: MontyVmState::Running,
+            orchestrator_version: None,
+            settings_hash: None,
+        })
+    }
+
+    async fn update_chat_preference(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        key: String,
+        request: UpdateChatPreferenceRequest,
+    ) -> Result<UpdateChatPreferenceResponse, RebornServicesError> {
+        Ok(UpdateChatPreferenceResponse {
+            key,
+            value: request.value,
         })
     }
 }
@@ -3348,4 +3466,232 @@ async fn update_provider_token_settings_propagates_facade_error() {
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     let body = read_json(response).await;
     assert_eq!(body["retryable"], true);
+}
+
+// ── Phase 6: Settings UI handler tests ────────────────────────────────────────
+
+#[tokio::test]
+async fn get_settings_skills_returns_ok() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/settings/skills")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    assert!(body["items"].is_array(), "items array present");
+}
+
+#[tokio::test]
+async fn get_settings_tools_returns_ok() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/settings/tools")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    assert!(body["items"].is_array(), "items array present");
+}
+
+#[tokio::test]
+async fn get_settings_extensions_returns_ok() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/settings/extensions")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn get_settings_actions_returns_ok() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/settings/actions")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn get_settings_orchestrators_returns_ok() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/settings/orchestrators")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn get_settings_scaffolds_returns_ok() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/settings/scaffolds")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn get_settings_monty_vm_returns_ok() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/settings/monty-vm")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    assert!(body["settings"].is_object(), "settings object present");
+    assert_eq!(body["settings"]["max_duration_secs"], 300);
+}
+
+#[tokio::test]
+async fn put_settings_monty_vm_updates_settings() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/api/settings/monty-vm")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"max_duration_secs":600}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn post_settings_monty_vm_restart_returns_restarting() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/settings/monty-vm/restart")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"force":false}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    assert_eq!(body["state"], "restarting");
+}
+
+#[tokio::test]
+async fn get_settings_monty_vm_status_returns_running() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/settings/monty-vm/status")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    assert_eq!(body["state"], "running");
+}
+
+#[tokio::test]
+async fn put_chat_preference_persists_and_echoes_key_value() {
+    let services = Arc::new(StubServices::default());
+    let router = router_with(services.clone());
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::PUT)
+                .uri("/api/chat/preferences/ai_before_user")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"value":true}"#))
+                .expect("request"),
+        )
+        .await
+        .expect("oneshot");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    assert_eq!(body["key"], "ai_before_user");
+    assert_eq!(body["value"], true);
 }

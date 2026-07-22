@@ -85,6 +85,32 @@ pub const WEBUI_V2_PATTERN_REASSEMBLE_INTERCEPTOR: &str =
     "/api/webchat/v2/interceptor/reassemble";
 pub const WEBUI_V2_PATTERN_PREWARM_INTERCEPTOR: &str = "/api/webchat/v2/interceptor/prewarm";
 
+// Phase 6 — Settings UI routes (10-tab editor).
+pub const WEBUI_V2_ROUTE_GET_SETTINGS_SKILLS: &str = "webui.v2.get_settings_skills";
+pub const WEBUI_V2_ROUTE_GET_SETTINGS_TOOLS: &str = "webui.v2.get_settings_tools";
+pub const WEBUI_V2_ROUTE_GET_SETTINGS_EXTENSIONS: &str = "webui.v2.get_settings_extensions";
+pub const WEBUI_V2_ROUTE_GET_SETTINGS_ACTIONS: &str = "webui.v2.get_settings_actions";
+pub const WEBUI_V2_ROUTE_GET_SETTINGS_ORCHESTRATORS: &str = "webui.v2.get_settings_orchestrators";
+pub const WEBUI_V2_ROUTE_GET_SETTINGS_SCAFFOLDS: &str = "webui.v2.get_settings_scaffolds";
+pub const WEBUI_V2_ROUTE_GET_SETTINGS_MONTY_VM: &str = "webui.v2.get_settings_monty_vm";
+pub const WEBUI_V2_ROUTE_PUT_SETTINGS_MONTY_VM: &str = "webui.v2.put_settings_monty_vm";
+pub const WEBUI_V2_ROUTE_POST_SETTINGS_MONTY_VM_RESTART: &str =
+    "webui.v2.post_settings_monty_vm_restart";
+pub const WEBUI_V2_ROUTE_GET_SETTINGS_MONTY_VM_STATUS: &str =
+    "webui.v2.get_settings_monty_vm_status";
+pub const WEBUI_V2_ROUTE_PUT_CHAT_PREFERENCE: &str = "webui.v2.put_chat_preference";
+
+pub const WEBUI_V2_PATTERN_SETTINGS_SKILLS: &str = "/api/settings/skills";
+pub const WEBUI_V2_PATTERN_SETTINGS_TOOLS: &str = "/api/settings/tools";
+pub const WEBUI_V2_PATTERN_SETTINGS_EXTENSIONS: &str = "/api/settings/extensions";
+pub const WEBUI_V2_PATTERN_SETTINGS_ACTIONS: &str = "/api/settings/actions";
+pub const WEBUI_V2_PATTERN_SETTINGS_ORCHESTRATORS: &str = "/api/settings/orchestrators";
+pub const WEBUI_V2_PATTERN_SETTINGS_SCAFFOLDS: &str = "/api/settings/scaffolds";
+pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM: &str = "/api/settings/monty-vm";
+pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_RESTART: &str = "/api/settings/monty-vm/restart";
+pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_STATUS: &str = "/api/settings/monty-vm/status";
+pub const WEBUI_V2_PATTERN_CHAT_PREFERENCE: &str = "/api/chat/preferences/{key}";
+
 pub const WEBUI_V2_PATTERN_CREATE_THREAD: &str = "/api/webchat/v2/threads";
 pub const WEBUI_V2_PATTERN_LIST_THREADS: &str = "/api/webchat/v2/threads";
 pub const WEBUI_V2_PATTERN_DELETE_THREAD: &str = "/api/webchat/v2/threads/{thread_id}";
@@ -231,6 +257,18 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         update_interceptor_config_descriptor(),
         reassemble_interceptor_descriptor(),
         prewarm_interceptor_descriptor(),
+        // Phase 6 — Settings UI routes (10-tab editor).
+        get_settings_skills_descriptor(),
+        get_settings_tools_descriptor(),
+        get_settings_extensions_descriptor(),
+        get_settings_actions_descriptor(),
+        get_settings_orchestrators_descriptor(),
+        get_settings_scaffolds_descriptor(),
+        get_settings_monty_vm_descriptor(),
+        put_settings_monty_vm_descriptor(),
+        post_settings_monty_vm_restart_descriptor(),
+        get_settings_monty_vm_status_descriptor(),
+        put_chat_preference_descriptor(),
     ]
 }
 
@@ -1019,6 +1057,162 @@ fn prewarm_interceptor_descriptor() -> IngressRouteDescriptor {
         WEBUI_V2_PATTERN_PREWARM_INTERCEPTOR,
         mutation_policy(
             BodyLimitPolicy::NoBody,
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+// Phase 6 — Settings UI descriptor builder functions.
+
+fn get_settings_skills_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_SETTINGS_SKILLS,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_SETTINGS_SKILLS,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn get_settings_tools_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_SETTINGS_TOOLS,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_SETTINGS_TOOLS,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn get_settings_extensions_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_SETTINGS_EXTENSIONS,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_SETTINGS_EXTENSIONS,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn get_settings_actions_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_SETTINGS_ACTIONS,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_SETTINGS_ACTIONS,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn get_settings_orchestrators_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_SETTINGS_ORCHESTRATORS,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_SETTINGS_ORCHESTRATORS,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn get_settings_scaffolds_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_SETTINGS_SCAFFOLDS,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_SETTINGS_SCAFFOLDS,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn get_settings_monty_vm_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_SETTINGS_MONTY_VM,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_SETTINGS_MONTY_VM,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn put_settings_monty_vm_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_PUT_SETTINGS_MONTY_VM,
+        NetworkMethod::Put,
+        WEBUI_V2_PATTERN_SETTINGS_MONTY_VM,
+        mutation_policy(
+            body_limit_kib(16),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn post_settings_monty_vm_restart_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_POST_SETTINGS_MONTY_VM_RESTART,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_RESTART,
+        mutation_policy(
+            body_limit_kib(4),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn get_settings_monty_vm_status_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_SETTINGS_MONTY_VM_STATUS,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_STATUS,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn put_chat_preference_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_PUT_CHAT_PREFERENCE,
+        NetworkMethod::Put,
+        WEBUI_V2_PATTERN_CHAT_PREFERENCE,
+        mutation_policy(
+            body_limit_kib(4),
             mutation_rate_limit(),
             AuditTraceClass::UserAction,
             AllowedEffectPath::ProductWorkflow,

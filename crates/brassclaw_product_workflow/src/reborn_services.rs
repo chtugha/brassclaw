@@ -1206,6 +1206,150 @@ pub trait RebornServicesApi: Send + Sync {
     ) -> Result<InterceptorConfigSnapshot, RebornServicesError> {
         Err(interceptor_config::interceptor_config_unavailable())
     }
+
+    // ── Phase 6: Settings UI ───────────────────────────────────────────────
+    //
+    // All settings routes default to 501 so facades that don't wire the
+    // settings service inherit a safe surface.
+
+    /// List skills for the Settings UI.
+    async fn list_settings_skills(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// List tools for the Settings UI.
+    async fn list_settings_tools(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// List extensions for the Settings UI.
+    async fn list_settings_extensions(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// List actions for the Settings UI.
+    async fn list_settings_actions(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// List orchestrators for the Settings UI.
+    async fn list_settings_orchestrators(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// List scaffolds for the Settings UI.
+    async fn list_settings_scaffolds(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::SettingsListResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Get the current Monty VM settings.
+    async fn get_monty_vm_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::MontyVmSettingsResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Update Monty VM settings (immediate-write for most knobs;
+    /// `active_orchestrator_id` is gated to `Validated` orchestrators only).
+    async fn update_monty_vm_settings(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: crate::settings::UpdateMontyVmSettingsRequest,
+    ) -> Result<crate::settings::MontyVmSettingsResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Restart the Monty VM. Dispatches through the kernel-owned lifecycle
+    /// manager. `force=true` aborts in-flight turns before restart.
+    async fn restart_monty_vm(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: crate::settings::MontyVmRestartRequest,
+    ) -> Result<crate::settings::MontyVmRestartResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Get the current live Monty VM status (state, orchestrator version,
+    /// settings hash).
+    async fn get_monty_vm_status(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::MontyVmStatusResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Persist a per-user chat preference (e.g. `ai_before_user`).
+    async fn update_chat_preference(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _key: String,
+        _request: crate::settings::UpdateChatPreferenceRequest,
+    ) -> Result<crate::settings::UpdateChatPreferenceResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
 }
 
 /// Default facade implementation composed at the WebUI boundary.

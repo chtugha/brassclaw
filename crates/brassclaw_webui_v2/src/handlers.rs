@@ -21,7 +21,9 @@ use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use brassclaw_product_workflow::{
     CodexLoginStart, InterceptorConfigSnapshot, LifecyclePackageKind, LifecyclePackageRef,
-    LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult, NearAiLoginRequest,
+    LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult,
+    MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettingsResponse,
+    MontyVmStatusResponse, NearAiLoginRequest,
     NearAiLoginStart, NearAiWalletLoginRequest, NearAiWalletLoginResult, OutcomeKind,
     ProductWorkflowError, ProjectionCursor, RebornCancelRunResponse,
     RebornConnectableChannelListResponse, RebornCreateThreadResponse, RebornDeleteThreadRequest,
@@ -34,7 +36,8 @@ use brassclaw_product_workflow::{
     RebornTimelineRequest, RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
     RebornUpdateCapabilityPermissionResponse, RecipeDetail, RecipeListResponse,
     ComponentAuditStatus, RecordOutcomeRequest, RecordOutcomeResponse, SetActiveLlmRequest,
-    ToolSkillDetail, ToolSkillListResponse, UpdateInterceptorConfigRequest,
+    SettingsListResponse, ToolSkillDetail, ToolSkillListResponse, UpdateChatPreferenceRequest,
+    UpdateChatPreferenceResponse, UpdateInterceptorConfigRequest, UpdateMontyVmSettingsRequest,
     UpdateValidationStatusRequest, UpdateValidationStatusResponse, UpsertLlmProviderRequest,
     ValidationQueueCountResponse, ValidationQueueFilter, ValidationQueueListResponse,
     WebUiAuthenticatedCaller, WebUiCancelRunRequest, WebUiCreateThreadRequest,
@@ -1491,3 +1494,147 @@ pub async fn prewarm_interceptor(
 pub mod reduction_rules;
 pub mod safety;
 pub mod tokens;
+
+// ── Phase 6 — Settings UI handlers ───────────────────────────────────────────
+
+/// `GET /api/settings/skills`
+///
+/// List skills for the Settings UI 10-tab editor.
+pub async fn get_settings_skills(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
+    let response = state.services().list_settings_skills(caller).await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/settings/tools`
+///
+/// List tools for the Settings UI.
+pub async fn get_settings_tools(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
+    let response = state.services().list_settings_tools(caller).await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/settings/extensions`
+///
+/// List extensions for the Settings UI.
+pub async fn get_settings_extensions(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
+    let response = state.services().list_settings_extensions(caller).await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/settings/actions`
+///
+/// List actions for the Settings UI.
+pub async fn get_settings_actions(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
+    let response = state.services().list_settings_actions(caller).await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/settings/orchestrators`
+///
+/// List orchestrators for the Settings UI.
+pub async fn get_settings_orchestrators(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
+    let response = state.services().list_settings_orchestrators(caller).await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/settings/scaffolds`
+///
+/// List scaffolds for the Settings UI.
+pub async fn get_settings_scaffolds(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
+    let response = state.services().list_settings_scaffolds(caller).await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/settings/monty-vm`
+///
+/// Get the current Monty VM settings.
+pub async fn get_settings_monty_vm(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<MontyVmSettingsResponse>, WebUiV2HttpError> {
+    let response = state.services().get_monty_vm_settings(caller).await?;
+    Ok(Json(response))
+}
+
+/// `PUT /api/settings/monty-vm`
+///
+/// Update Monty VM settings. Most fields are immediate-write;
+/// `active_orchestrator_id` is gated to `Validated` orchestrators only.
+pub async fn put_settings_monty_vm(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(body): Json<UpdateMontyVmSettingsRequest>,
+) -> Result<Json<MontyVmSettingsResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .update_monty_vm_settings(caller, body)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `POST /api/settings/monty-vm/restart`
+///
+/// Restart the Monty VM via the kernel-owned lifecycle manager.
+/// Optional `force=true` body aborts in-flight turns before restarting.
+pub async fn post_settings_monty_vm_restart(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    body: Option<Json<MontyVmRestartRequest>>,
+) -> Result<Json<MontyVmRestartResponse>, WebUiV2HttpError> {
+    let request = body.map(|b| b.0).unwrap_or_default();
+    let response = state.services().restart_monty_vm(caller, request).await?;
+    Ok(Json(response))
+}
+
+/// `GET /api/settings/monty-vm/status`
+///
+/// Get the live Monty VM state: running/draining/restarting/stopped/error,
+/// the current orchestrator version, and the settings hash.
+pub async fn get_settings_monty_vm_status(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<MontyVmStatusResponse>, WebUiV2HttpError> {
+    let response = state.services().get_monty_vm_status(caller).await?;
+    Ok(Json(response))
+}
+
+/// Path params for `PUT /api/chat/preferences/{key}`.
+#[derive(Debug, Deserialize)]
+pub struct ChatPreferencePath {
+    pub key: String,
+}
+
+/// `PUT /api/chat/preferences/{key}`
+///
+/// Persist a per-user chat preference. The only key defined in Phase 6
+/// is `ai_before_user` (boolean). Stored in `reborn_user_preferences`.
+pub async fn put_chat_preference(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(ChatPreferencePath { key }): Path<ChatPreferencePath>,
+    Json(body): Json<UpdateChatPreferenceRequest>,
+) -> Result<Json<UpdateChatPreferenceResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .update_chat_preference(caller, key, body)
+        .await?;
+    Ok(Json(response))
+}

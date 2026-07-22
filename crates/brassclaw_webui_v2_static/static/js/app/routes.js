@@ -39,7 +39,15 @@ export const SETTINGS_SUB_ROUTES = [
   // { id: "channels", labelKey: "settings.channels", icon: "send" },
   // { id: "networking", labelKey: "settings.networking", icon: "pulse" },
   { id: "tools", labelKey: "settings.tools", icon: "tool" },
-  // { id: "skills", labelKey: "settings.skills", icon: "file" },
+  { id: "skills", labelKey: "settings.skills", icon: "file" },
+  // Phase 6 — 10-tab Settings UI editor tabs.
+  { id: "actions", labelKey: "settings.actions", icon: "bolt" },
+  { id: "orchestrator", labelKey: "settings.orchestrator", icon: "pulse" },
+  { id: "scaffold", labelKey: "settings.scaffold", icon: "file" },
+  { id: "monty-vm", labelKey: "settings.montyVm", icon: "spark" },
+  { id: "validation-queue", labelKey: "settings.validationQueue", icon: "shield" },
+  { id: "reliability", labelKey: "settings.reliability", icon: "pulse" },
+  { id: "interceptor", labelKey: "settings.interceptor", icon: "spark" },
   { id: "safety", labelKey: "settings.safety", icon: "shield" },
   // { id: "tokens", labelKey: "settings.tokens", icon: "bolt" },
   // Removed: global token settings are superseded by per-provider token

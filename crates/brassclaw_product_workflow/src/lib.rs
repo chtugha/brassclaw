@@ -49,6 +49,7 @@ mod recipes;
 mod reduction_rules;
 mod safety_config;
 mod safety_config_store;
+mod settings;
 mod token_settings;
 mod token_settings_store;
 mod webui_inbound;
@@ -154,6 +155,11 @@ pub use reduction_rules::{
 };
 pub use safety_config::{SafetyConfigResponse, SafetyEntry, UpdateSafetyConfigRequest};
 pub use safety_config_store::{SafetyCategory, SafetyConfigStore};
+pub use settings::{
+    MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettings, MontyVmSettingsResponse,
+    MontyVmState, MontyVmStatusResponse, SettingsComponentSummary, SettingsListResponse,
+    UpdateChatPreferenceRequest, UpdateChatPreferenceResponse, UpdateMontyVmSettingsRequest,
+};
 pub use token_settings::{TokenSettingsResponse, UpdateTokenSettingsRequest};
 pub use token_settings_store::TokenSettingsStore;
 // Projection/event types that route handlers need to thread through SSE

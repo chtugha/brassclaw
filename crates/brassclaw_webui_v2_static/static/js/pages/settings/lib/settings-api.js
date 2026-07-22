@@ -178,3 +178,51 @@ export function reassembleInterceptor() {
 export function prewarmInterceptor() {
   return apiFetch("/api/webchat/v2/interceptor/prewarm", { method: "POST" });
 }
+
+// Phase 6 — Settings UI: component library endpoints (10-tab editor).
+export function fetchSettingsSkills() {
+  return apiFetch("/api/settings/skills");
+}
+export function fetchSettingsTools() {
+  return apiFetch("/api/settings/tools");
+}
+export function fetchSettingsExtensions() {
+  return apiFetch("/api/settings/extensions");
+}
+export function fetchSettingsActions() {
+  return apiFetch("/api/settings/actions");
+}
+export function fetchSettingsOrchestrators() {
+  return apiFetch("/api/settings/orchestrators");
+}
+export function fetchSettingsScaffolds() {
+  return apiFetch("/api/settings/scaffolds");
+}
+
+// Phase 6 — Monty VM settings + lifecycle.
+export function fetchMontyVmSettings() {
+  return apiFetch("/api/settings/monty-vm");
+}
+export function updateMontyVmSettings(payload) {
+  return apiFetch("/api/settings/monty-vm", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+export function restartMontyVm(payload = {}) {
+  return apiFetch("/api/settings/monty-vm/restart", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+export function fetchMontyVmStatus() {
+  return apiFetch("/api/settings/monty-vm/status");
+}
+
+// Phase 6 — Chat preferences (ai_before_user etc.).
+export function updateChatPreference(key, value) {
+  return apiFetch(`/api/chat/preferences/${encodeURIComponent(key)}`, {
+    method: "PUT",
+    body: JSON.stringify({ value }),
+  });
+}

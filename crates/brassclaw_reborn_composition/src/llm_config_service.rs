@@ -417,7 +417,8 @@ impl RebornLlmConfigService {
         model: Option<&str>,
     ) -> Result<Arc<dyn brassclaw_llm::LlmProvider>, String> {
         use crate::llm_catalog::resolve_against_registry;
-        use brassclaw_llm::LlmSlotSelection;
+        // LlmSlotSelection is in brassclaw_reborn_config, not brassclaw_llm — the
+        // top-level import at line 35 covers this; suppress the inner re-import.
 
         // Try DB-backed repo first, then built-in registry (same pattern as
         // `probe_matches_persisted_provider`).
