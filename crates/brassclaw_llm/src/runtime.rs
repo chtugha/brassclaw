@@ -75,7 +75,7 @@ fn intern_into(
     max_len: usize,
 ) -> &'static str {
     if name.len() > max_len {
-        tracing::warn!(
+        tracing::debug!(
             len = name.len(),
             max = max_len,
             "model name exceeds interner length limit; using overflow sentinel",
@@ -86,7 +86,7 @@ fn intern_into(
         return existing;
     }
     if map.len() >= max_entries {
-        tracing::warn!(
+        tracing::debug!(
             entries = map.len(),
             max = max_entries,
             "model name interner is full; using overflow sentinel",
@@ -328,7 +328,7 @@ impl LlmReloadHandle {
             // newly-configured cheap model cannot be activated via hot-reload.
             // Surfacing this through tracing so ops don't think the swap
             // silently took effect.
-            tracing::warn!(
+            tracing::debug!(
                 "llm hot-reload: cheap provider is now configured but was not at startup; \
                  it will only take effect after a full restart",
             );

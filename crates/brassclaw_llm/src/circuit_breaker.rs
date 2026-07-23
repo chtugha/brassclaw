@@ -117,7 +117,7 @@ impl CircuitBreakerProvider {
                     if opened_at.elapsed() >= self.config.recovery_timeout {
                         state.state = CircuitState::HalfOpen;
                         state.half_open_successes = 0;
-                        tracing::info!(
+                        tracing::debug!(
                             provider = self.inner.model_name(),
                             "Circuit breaker: Open -> HalfOpen, allowing probe"
                         );
@@ -199,7 +199,7 @@ impl CircuitBreakerProvider {
                 if state.consecutive_failures >= self.config.failure_threshold {
                     state.state = CircuitState::Open;
                     state.opened_at = Some(Instant::now());
-                    tracing::warn!(
+                    tracing::debug!(
                         provider = self.inner.model_name(),
                         failures = state.consecutive_failures,
                         "Circuit breaker: Closed -> Open"
@@ -210,7 +210,7 @@ impl CircuitBreakerProvider {
                 state.state = CircuitState::Open;
                 state.opened_at = Some(Instant::now());
                 state.half_open_successes = 0;
-                tracing::warn!(
+                tracing::debug!(
                     provider = self.inner.model_name(),
                     "Circuit breaker: HalfOpen -> Open (probe failed)"
                 );

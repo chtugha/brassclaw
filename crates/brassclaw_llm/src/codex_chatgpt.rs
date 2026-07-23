@@ -140,7 +140,7 @@ impl CodexChatGptProvider {
         auth_path: Option<PathBuf>,
         request_timeout_secs: u64,
     ) -> Self {
-        tracing::warn!(
+        tracing::debug!(
             "Codex ChatGPT provider uses a private, undocumented API \
              (chatgpt.com/backend-api/codex). This may violate OpenAI's \
              Terms of Service and could break without notice."
@@ -173,16 +173,16 @@ impl CodexChatGptProvider {
                 if !configured.is_empty() && configured != "default" {
                     // User explicitly configured a model — validate it
                     if available.is_empty() {
-                        tracing::warn!(
+                        tracing::debug!(
                             "Could not fetch model list; using configured model '{configured}'"
                         );
                         return configured.clone();
                     }
                     if available.iter().any(|m| m == configured) {
-                        tracing::info!(model = %configured, "Codex ChatGPT: using configured model");
+                        tracing::debug!(model = %configured, "Codex ChatGPT: using configured model");
                         return configured.clone();
                     }
-                    tracing::warn!(
+                    tracing::debug!(
                         configured = %configured,
                         available = ?available,
                         "Configured model not found in supported list, falling back to top model"
@@ -194,10 +194,10 @@ impl CodexChatGptProvider {
                 } else {
                     // No user preference — auto-detect
                     if let Some(top) = available.into_iter().next() {
-                        tracing::info!(model = %top, "Codex ChatGPT: auto-detected model");
+                        tracing::debug!(model = %top, "Codex ChatGPT: auto-detected model");
                         top
                     } else {
-                        tracing::warn!(
+                        tracing::debug!(
                             "Could not auto-detect model, using fallback '{configured}'"
                         );
                         configured.clone()
@@ -224,12 +224,12 @@ impl CodexChatGptProvider {
         {
             Ok(r) => r,
             Err(e) => {
-                tracing::warn!("Failed to fetch Codex models: {e}");
+                tracing::debug!("Failed to fetch Codex models: {e}");
                 return Vec::new();
             }
         };
         if !resp.status().is_success() {
-            tracing::warn!(status = %resp.status(), "Failed to fetch Codex models");
+            tracing::debug!(status = %resp.status(), "Failed to fetch Codex models");
             return Vec::new();
         }
         let body: Value = match resp.json().await {
@@ -418,7 +418,7 @@ impl CodexChatGptProvider {
                 let current_token = self.api_key.read().await.clone();
 
                 if current_token.expose_secret() != api_key.expose_secret() {
-                    tracing::info!("Received 401, but another request already refreshed the token");
+                    tracing::debug!("Received 401, but another request already refreshed the token");
                     let retry_resp = Self::send_http_request(
                         &self.client,
                         &url,
@@ -444,14 +444,14 @@ impl CodexChatGptProvider {
                     return Self::parse_sse_response_stream(retry_resp, self.request_timeout).await;
                 }
 
-                tracing::info!("Received 401, attempting token refresh");
+                tracing::debug!("Received 401, attempting token refresh");
                 if let Some(new_token) =
                     codex_auth::refresh_access_token(&self.client, rt, self.auth_path.as_deref())
                         .await
                 {
                     // Update stored api_key
                     *self.api_key.write().await = new_token.clone();
-                    tracing::info!("Token refreshed, retrying request");
+                    tracing::debug!("Token refreshed, retrying request");
 
                     // Retry the request with the new token
                     let retry_resp = Self::send_http_request(
@@ -480,7 +480,7 @@ impl CodexChatGptProvider {
 
                     return Self::parse_sse_response_stream(retry_resp, self.request_timeout).await;
                 } else {
-                    tracing::warn!(
+                    tracing::debug!(
                         "Token refresh failed. Please re-authenticate with: codex --login"
                     );
                 }

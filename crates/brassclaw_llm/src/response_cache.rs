@@ -123,7 +123,7 @@ impl CachedProvider {
     fn maybe_log_stats(guard: &HashMap<String, CacheEntry>, req_no: u64, total_hits: u64) {
         if req_no.is_multiple_of(STATS_LOG_EVERY_N) {
             let hit_rate = total_hits as f64 / req_no as f64 * 100.0;
-            tracing::info!(
+            tracing::debug!(
                 total_requests = req_no,
                 total_hits,
                 hit_rate_pct = format!("{hit_rate:.1}"),

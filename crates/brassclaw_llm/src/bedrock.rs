@@ -74,7 +74,7 @@ impl BedrockProvider {
         match self.active_model.read() {
             Ok(guard) => guard.clone(),
             Err(poisoned) => {
-                tracing::warn!("active_model lock poisoned while reading; continuing");
+                tracing::debug!("active_model lock poisoned while reading; continuing");
                 poisoned.into_inner().clone()
             }
         }
@@ -236,7 +236,7 @@ impl LlmProvider for BedrockProvider {
                 *guard = new_id;
             }
             Err(poisoned) => {
-                tracing::warn!("active_model lock poisoned while writing; continuing");
+                tracing::debug!("active_model lock poisoned while writing; continuing");
                 *poisoned.into_inner() = new_id;
             }
         }

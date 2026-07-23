@@ -428,7 +428,7 @@ fn convert_message(msg: &ChatMessage, index: usize) -> Vec<serde_json::Value> {
                 .filter(|p| matches!(p, ContentPart::ImageUrl { .. }))
                 .count();
             if image_count > 0 {
-                tracing::warn!(
+                tracing::debug!(
                     "OpenAI Codex: {} image attachment(s) dropped — Responses API image support not yet implemented",
                     image_count
                 );

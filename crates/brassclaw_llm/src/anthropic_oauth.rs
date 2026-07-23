@@ -226,7 +226,7 @@ impl AnthropicOAuthProvider {
                         // Persist the refreshed token so subsequent requests
                         // don't hit 401 again (fixes #1136).
                         self.update_token(fresh_token);
-                        tracing::info!("Anthropic OAuth token refreshed from credential store");
+                        tracing::debug!("Anthropic OAuth token refreshed from credential store");
 
                         let text = retry.text().await.map_err(|e| LlmError::RequestFailed {
                             provider: "anthropic_oauth".to_string(),
@@ -240,7 +240,7 @@ impl AnthropicOAuthProvider {
                             }
                         });
                     }
-                    tracing::warn!(
+                    tracing::debug!(
                         "Anthropic OAuth 401 retry with refreshed token also failed ({})",
                         retry.status()
                     );
@@ -606,7 +606,7 @@ fn convert_messages(messages: Vec<ChatMessage>) -> (Option<String>, Vec<Anthropi
             }
             Role::Tool => {
                 let Some(tool_call_id) = msg.tool_call_id else {
-                    tracing::warn!("Skipping Tool message without tool_call_id");
+                    tracing::debug!("Skipping Tool message without tool_call_id");
                     continue;
                 };
                 // Tool results go into a user message with tool_result blocks

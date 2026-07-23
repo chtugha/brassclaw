@@ -269,7 +269,7 @@ fn build_domain_regex(keywords: &[&str]) -> Regex {
             match Regex::new(&probe) {
                 Ok(_) => true,
                 Err(e) => {
-                    tracing::warn!(
+                    tracing::debug!(
                         keyword = k,
                         error = %e,
                         "Domain keyword is not a valid regex fragment, dropping it"
@@ -281,7 +281,7 @@ fn build_domain_regex(keywords: &[&str]) -> Regex {
         .collect();
 
     if valid.is_empty() {
-        tracing::warn!(
+        tracing::debug!(
             "All custom domain keywords were invalid; falling back to default keyword list"
         );
         return RE_DOMAIN_DEFAULT.clone();
@@ -289,7 +289,7 @@ fn build_domain_regex(keywords: &[&str]) -> Regex {
 
     let pattern = format!(r"(?i)\b({})\b", valid.join("|"));
     Regex::new(&pattern).unwrap_or_else(|e| {
-        tracing::warn!(
+        tracing::debug!(
             error = %e,
             "Combined domain keyword pattern failed to compile despite per-keyword validation; \
              falling back to default keyword list"
@@ -945,7 +945,7 @@ impl LlmProvider for SmartRoutingProvider {
                     let response = self.cheap.complete(request.clone()).await?;
 
                     if Self::response_is_uncertain(&response) {
-                        tracing::info!(
+                        tracing::debug!(
                             cheap_model = %self.cheap.model_name(),
                             primary_model = %self.primary.model_name(),
                             "Smart routing: Escalating to primary (cheap model response uncertain)"

@@ -91,7 +91,7 @@ struct RefreshResponse {
 /// Default path used by Codex CLI: `~/.codex/auth.json`.
 pub(crate) fn default_codex_auth_path() -> PathBuf {
     let home_dir = dirs::home_dir().unwrap_or_else(|| {
-        tracing::warn!(
+        tracing::debug!(
             "Could not determine home directory; falling back to current working directory for Codex auth.json path"
         );
         PathBuf::from(".")
@@ -116,7 +116,7 @@ pub(crate) fn load_codex_credentials(path: &Path) -> Option<CodexCredentials> {
     let auth: CodexAuthJson = match serde_json::from_str(&content) {
         Ok(a) => a,
         Err(e) => {
-            tracing::warn!("Failed to parse Codex auth file {}: {}", path.display(), e);
+            tracing::debug!("Failed to parse Codex auth file {}: {}", path.display(), e);
             return None;
         }
     };
@@ -130,7 +130,7 @@ pub(crate) fn load_codex_credentials(path: &Path) -> Option<CodexCredentials> {
     // API key mode: use OPENAI_API_KEY field.
     if !is_chatgpt {
         if let Some(key) = auth.openai_api_key.filter(|k| !k.is_empty()) {
-            tracing::info!("Loaded API key from Codex auth.json (API key mode)");
+            tracing::debug!("Loaded API key from Codex auth.json (API key mode)");
             return Some(CodexCredentials {
                 token: SecretString::from(key),
                 is_chatgpt_mode: false,
@@ -148,7 +148,7 @@ pub(crate) fn load_codex_credentials(path: &Path) -> Option<CodexCredentials> {
     if let Some(tokens) = auth.tokens
         && !tokens.access_token.expose_secret().is_empty()
     {
-        tracing::info!(
+        tracing::debug!(
             "Loaded access token from Codex auth.json (ChatGPT mode, base_url={})",
             CHATGPT_BACKEND_URL
         );
@@ -186,7 +186,7 @@ pub(crate) async fn refresh_access_token(
         refresh_token: refresh_token.expose_secret(),
     };
 
-    tracing::info!("Attempting to refresh Codex OAuth access token");
+    tracing::debug!("Attempting to refresh Codex OAuth access token");
 
     let resp = match client
         .post(REFRESH_TOKEN_URL)
@@ -198,7 +198,7 @@ pub(crate) async fn refresh_access_token(
     {
         Ok(r) => r,
         Err(e) => {
-            tracing::warn!("Token refresh request failed: {e}");
+            tracing::debug!("Token refresh request failed: {e}");
             return None;
         }
     };
@@ -206,9 +206,9 @@ pub(crate) async fn refresh_access_token(
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        tracing::warn!("Token refresh failed: HTTP {status}: {body}");
+        tracing::debug!("Token refresh failed: HTTP {status}: {body}");
         if status.as_u16() == 401 {
-            tracing::warn!(
+            tracing::debug!(
                 "Refresh token may be expired or revoked. \
                  Please re-authenticate with: codex --login"
             );
@@ -219,7 +219,7 @@ pub(crate) async fn refresh_access_token(
     let refresh_resp: RefreshResponse = match resp.json().await {
         Ok(r) => r,
         Err(e) => {
-            tracing::warn!("Failed to parse token refresh response: {e}");
+            tracing::debug!("Failed to parse token refresh response: {e}");
             return None;
         }
     };
@@ -236,12 +236,12 @@ pub(crate) async fn refresh_access_token(
                 .as_ref()
                 .map(ExposeSecret::expose_secret),
         ) {
-            tracing::warn!(
+            tracing::debug!(
                 "Failed to persist refreshed tokens to {}: {e}",
                 path.display()
             );
         } else {
-            tracing::info!("Refreshed tokens persisted to {}", path.display());
+            tracing::debug!("Refreshed tokens persisted to {}", path.display());
         }
     }
 

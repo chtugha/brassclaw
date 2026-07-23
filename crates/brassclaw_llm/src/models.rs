@@ -298,7 +298,7 @@ pub(crate) async fn fetch_ollama_models(base_url: &str) -> Vec<(String, String)>
         Ok(r) if r.status().is_success() => r,
         Ok(_) => return static_defaults,
         Err(_) => {
-            tracing::warn!(
+            tracing::debug!(
                 "Could not connect to Ollama at {base_url}. Is it running? Using static defaults."
             );
             return static_defaults;

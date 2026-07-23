@@ -51,13 +51,13 @@ impl TokenRefreshingProvider {
             match self.session.refresh_tokens().await {
                 Ok(()) => {
                     if let Err(e) = self.update_inner_token().await {
-                        tracing::warn!(
+                        tracing::debug!(
                             "Pre-emptive token update failed: {e}, will retry on auth failure"
                         );
                     }
                 }
                 Err(e) => {
-                    tracing::warn!(
+                    tracing::debug!(
                         "Pre-emptive token refresh failed: {e}, will retry on auth failure"
                     );
                 }
@@ -81,7 +81,7 @@ impl LlmProvider for TokenRefreshingProvider {
 
         match self.inner.complete(request.clone()).await {
             Err(LlmError::AuthFailed { .. } | LlmError::SessionExpired { .. }) => {
-                tracing::info!("Auth failure during complete(), refreshing and retrying once");
+                tracing::debug!("Auth failure during complete(), refreshing and retrying once");
                 self.session.handle_auth_failure().await?;
                 self.update_inner_token().await?;
                 self.inner.complete(request).await
@@ -98,7 +98,7 @@ impl LlmProvider for TokenRefreshingProvider {
 
         match self.inner.complete_with_tools(request.clone()).await {
             Err(LlmError::AuthFailed { .. } | LlmError::SessionExpired { .. }) => {
-                tracing::info!(
+                tracing::debug!(
                     "Auth failure during complete_with_tools(), refreshing and retrying once"
                 );
                 self.session.handle_auth_failure().await?;

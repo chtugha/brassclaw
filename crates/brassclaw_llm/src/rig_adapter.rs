@@ -87,7 +87,7 @@ impl<M: CompletionModel> RigAdapter<M> {
     /// a warning is logged once at construction and caching is disabled.
     pub fn with_cache_retention(mut self, retention: CacheRetention) -> Self {
         if retention != CacheRetention::None && !supports_prompt_cache(&self.model_name) {
-            tracing::warn!(
+            tracing::debug!(
                 model = %self.model_name,
                 "Prompt caching requested but model does not support it; disabling"
             );

@@ -489,7 +489,7 @@ impl ProviderRegistry {
         match Self::try_load_from_path(user_path) {
             Ok(registry) => registry,
             Err(error) => {
-                tracing::warn!(
+                tracing::debug!(
                     path = %error.overlay_path(),
                     error = %error,
                     "Failed to load user providers.json, skipping"
@@ -527,7 +527,7 @@ impl ProviderRegistry {
                         path: user_path.display().to_string(),
                         source,
                     })?;
-                tracing::info!(
+                tracing::debug!(
                     count = user_defs.len(),
                     path = %user_path.display(),
                     "Loaded user provider definitions"

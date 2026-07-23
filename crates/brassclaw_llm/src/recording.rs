@@ -486,7 +486,7 @@ impl HttpInterceptor for ReplayingHttpInterceptor {
             if exchange.request.url != redacted_incoming_url
                 || exchange.request.method != request.method
             {
-                tracing::warn!(
+                tracing::debug!(
                     expected_url = %exchange.request.url,
                     actual_url = %redacted_incoming_url,
                     expected_method = %exchange.request.method,
@@ -879,7 +879,7 @@ impl RecordingLlm {
             .filter(|v| !v.is_empty())
             .unwrap_or_else(|| format!("recorded-{}", inner.model_name()));
 
-        tracing::info!(
+        tracing::debug!(
             output = %output_path.display(),
             model = %model_name,
             "LLM trace recording enabled"
@@ -908,7 +908,7 @@ impl RecordingLlm {
         let mut snapshot = self.memory_snapshot.lock().await;
         let added = entries.len();
         snapshot.extend(entries);
-        tracing::info!(
+        tracing::debug!(
             documents = snapshot.len(),
             added = added,
             "Captured memory snapshot for trace recording"
@@ -929,7 +929,7 @@ impl RecordingLlm {
         };
         let json = serde_json::to_string_pretty(&trace).map_err(std::io::Error::other)?;
         tokio::fs::write(&self.output_path, json).await?;
-        tracing::info!(
+        tracing::debug!(
             steps = steps.len(),
             memory_docs = memory_snapshot.len(),
             path = %self.output_path.display(),

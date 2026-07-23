@@ -204,7 +204,7 @@ impl OpenAiCodexSessionManager {
             && let Ok(mut guard) = mgr.session.try_write()
         {
             *guard = Some(session);
-            tracing::info!(
+            tracing::debug!(
                 "Loaded OpenAI Codex session from {}",
                 mgr.config.session_path.display()
             );
@@ -279,7 +279,7 @@ impl OpenAiCodexSessionManager {
             match self.refresh_tokens().await {
                 Ok(()) => Ok(()),
                 Err(e) => {
-                    tracing::info!("Token refresh failed ({}), re-authenticating...", e);
+                    tracing::debug!("Token refresh failed ({}), re-authenticating...", e);
                     self.device_code_login().await
                 }
             }
@@ -473,7 +473,7 @@ impl OpenAiCodexSessionManager {
                 + chrono::Duration::seconds(if token_resp.expires_in > 0 {
                     token_resp.expires_in
                 } else {
-                    tracing::warn!("Token response has expires_in=0, defaulting to 3600s");
+                    tracing::debug!("Token response has expires_in=0, defaulting to 3600s");
                     3600
                 } as i64),
             created_at: Utc::now(),
@@ -580,7 +580,7 @@ impl OpenAiCodexSessionManager {
                 + chrono::Duration::seconds(if token_resp.expires_in > 0 {
                     token_resp.expires_in
                 } else {
-                    tracing::warn!("Token response has expires_in=0, defaulting to 3600s");
+                    tracing::debug!("Token response has expires_in=0, defaulting to 3600s");
                     3600
                 } as i64),
             created_at: Utc::now(),
@@ -655,7 +655,7 @@ impl OpenAiCodexSessionManager {
 
         let mut guard = self.session.write().await;
         *guard = Some(session);
-        tracing::info!(
+        tracing::debug!(
             "Loaded OpenAI Codex session from {}",
             self.config.session_path.display()
         );

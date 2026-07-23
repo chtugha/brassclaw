@@ -285,7 +285,7 @@ fn create_codex_chatgpt_from_registry(
             provider: "codex_chatgpt".to_string(),
         })?;
 
-    tracing::info!(
+    tracing::debug!(
         configured_model = %config.model,
         base_url = %config.base_url,
         "Using Codex ChatGPT provider (Responses API) — model detection deferred to first call"
@@ -332,7 +332,7 @@ fn create_openai_compat_from_registry(
         let name = match reqwest::header::HeaderName::from_bytes(key.as_bytes()) {
             Ok(n) => n,
             Err(e) => {
-                tracing::warn!(
+                tracing::debug!(
                     provider = %config.provider_id,
                     header = %key,
                     error = %e,
@@ -344,7 +344,7 @@ fn create_openai_compat_from_registry(
         let val = match reqwest::header::HeaderValue::from_str(value) {
             Ok(v) => v,
             Err(e) => {
-                tracing::warn!(
+                tracing::debug!(
                     provider = %config.provider_id,
                     header = %key,
                     error = %e,
@@ -361,7 +361,7 @@ fn create_openai_compat_from_registry(
         .as_ref()
         .map(|k| k.expose_secret().to_string())
         .unwrap_or_else(|| {
-            tracing::warn!(
+            tracing::debug!(
                 provider = %config.provider_id,
                 "No API key configured for {}. Requests will likely fail with 401. \
                  Check your .env or secrets store.",
@@ -587,7 +587,7 @@ fn create_openrouter_from_registry(
         let name = match reqwest::header::HeaderName::from_bytes(key.as_bytes()) {
             Ok(n) => n,
             Err(e) => {
-                tracing::warn!(
+                tracing::debug!(
                     provider = %config.provider_id,
                     header = %key,
                     error = %e,
@@ -599,7 +599,7 @@ fn create_openrouter_from_registry(
         let val = match reqwest::header::HeaderValue::from_str(value) {
             Ok(v) => v,
             Err(e) => {
-                tracing::warn!(
+                tracing::debug!(
                     provider = %config.provider_id,
                     header = %key,
                     error = %e,
@@ -711,7 +711,7 @@ fn sanitize_gemini_base_url(base_url: &str) -> String {
     }
     let lower = trimmed.to_ascii_lowercase();
     if lower.ends_with("/v1beta/openai") || lower.ends_with("/v1/openai") {
-        tracing::warn!(
+        tracing::debug!(
             stale_base_url = %base_url,
             "Ignoring legacy OpenAI-shim base URL for native Gemini provider; \
              using rig-core default. Clear `llm_builtin_overrides[gemini].base_url` \
@@ -751,7 +751,7 @@ async fn create_openai_codex_provider(
         config.request_timeout_secs,
     )?);
 
-    tracing::info!(
+    tracing::debug!(
         "Using OpenAI Codex (Responses API, model: {}, base: {})",
         codex.model,
         codex.api_base_url,
@@ -931,7 +931,7 @@ async fn build_provider_chain_components_with_options(
     // 3. Failover
     let llm: Arc<dyn LlmProvider> = if let Some(ref fallback_model) = config.nearai.fallback_model {
         if fallback_model == &config.nearai.model {
-            tracing::warn!(
+            tracing::debug!(
                 "fallback_model is the same as primary model, failover may not be effective"
             );
         }

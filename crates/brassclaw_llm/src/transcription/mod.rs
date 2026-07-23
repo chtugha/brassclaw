@@ -127,7 +127,7 @@ impl TranscriptionMiddleware {
             let format = match AudioFormat::from_mime_type(&attachment.mime_type) {
                 Some(f) => f,
                 None => {
-                    tracing::warn!(
+                    tracing::debug!(
                         attachment_id = %attachment.id,
                         mime = %attachment.mime_type,
                         "Skipping audio attachment with unsupported format"

@@ -489,7 +489,7 @@ impl Reasoning {
         // Return empty so the caller can fall through to respond_with_tools() which
         // has a larger output token budget.
         if response.finish_reason == FinishReason::Length {
-            tracing::warn!(
+            tracing::debug!(
                 "select_tools response truncated (finish_reason=Length), \
                  discarding potentially incomplete tool selections"
             );
@@ -742,7 +742,7 @@ Respond in JSON format:
             let pre_truncated = truncate_at_tool_tags(&content);
             let cleaned = clean_response(&pre_truncated);
             let metadata = if cleaned.trim().is_empty() {
-                tracing::warn!(
+                tracing::debug!(
                     "LLM response was empty after cleaning (original len={}), using fallback",
                     content.len()
                 );
@@ -777,7 +777,7 @@ Respond in JSON format:
             let pre_truncated = truncate_at_tool_tags(&response.content);
             let cleaned = clean_response(&pre_truncated);
             let metadata = if cleaned.trim().is_empty() {
-                tracing::warn!(
+                tracing::debug!(
                     "LLM response was empty after cleaning (original len={}), using fallback",
                     response.content.len()
                 );

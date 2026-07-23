@@ -117,7 +117,7 @@ pub(crate) async fn request_device_code(
         .send()
         .await
         .map_err(|e| {
-            tracing::warn!(
+            tracing::debug!(
                 error = %e,
                 is_timeout = e.is_timeout(),
                 is_connect = e.is_connect(),
@@ -130,7 +130,7 @@ pub(crate) async fn request_device_code(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        tracing::warn!(
+        tracing::debug!(
             status = %status,
             body = %truncate_for_error(&body),
             "Copilot: device code endpoint returned error"
@@ -165,7 +165,7 @@ pub(crate) async fn poll_for_access_token(
         .send()
         .await
         .map_err(|e| {
-            tracing::warn!(
+            tracing::debug!(
                 error = %e,
                 is_timeout = e.is_timeout(),
                 is_connect = e.is_connect(),
@@ -178,7 +178,7 @@ pub(crate) async fn poll_for_access_token(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        tracing::warn!(
+        tracing::debug!(
             status = %status,
             body = %truncate_for_error(&body),
             "Copilot: poll endpoint returned error"
@@ -205,11 +205,11 @@ pub(crate) async fn poll_for_access_token(
             Ok(DevicePollingStatus::SlowDown)
         }
         Some("access_denied") => {
-            tracing::warn!("Copilot: device login was denied by user");
+            tracing::debug!("Copilot: device login was denied by user");
             Err(GithubCopilotAuthError::AccessDenied)
         }
         Some("expired_token") => {
-            tracing::warn!("Copilot: device code expired before authorization");
+            tracing::debug!("Copilot: device code expired before authorization");
             Err(GithubCopilotAuthError::Expired)
         }
         Some(other) => {
@@ -217,7 +217,7 @@ pub(crate) async fn poll_for_access_token(
                 .error_description
                 .filter(|description| !description.is_empty())
                 .unwrap_or_else(|| other.to_string());
-            tracing::warn!(error = %other, description = %desc, "Copilot: unexpected poll error");
+            tracing::debug!(error = %other, description = %desc, "Copilot: unexpected poll error");
             Err(GithubCopilotAuthError::TokenPolling(desc))
         }
     }
@@ -238,7 +238,7 @@ pub(crate) async fn wait_for_device_login(
 
     loop {
         if std::time::Instant::now() >= expires_at {
-            tracing::warn!("Copilot: device login expired");
+            tracing::debug!("Copilot: device login expired");
             return Err(GithubCopilotAuthError::Expired);
         }
 
@@ -265,7 +265,7 @@ pub(crate) async fn wait_for_device_login(
             // Transient failures — retry with backoff
             Err(e) => {
                 consecutive_failures += 1;
-                tracing::warn!(
+                tracing::debug!(
                     error = %e,
                     attempt = consecutive_failures,
                     max = MAX_POLL_FAILURES,
@@ -309,7 +309,7 @@ pub(crate) async fn validate_token(
     }
 
     let response = request.send().await.map_err(|e| {
-        tracing::warn!(
+        tracing::debug!(
             error = %e,
             is_timeout = e.is_timeout(),
             is_connect = e.is_connect(),
@@ -324,7 +324,7 @@ pub(crate) async fn validate_token(
 
     let status = response.status();
     let body = response.text().await.unwrap_or_default();
-    tracing::warn!(
+    tracing::debug!(
         status = %status,
         body = %truncate_for_error(&body),
         "Copilot: models endpoint returned error during validation"
@@ -372,7 +372,7 @@ pub(crate) async fn exchange_copilot_token(
     }
 
     let response = request.send().await.map_err(|e| {
-        tracing::warn!(
+        tracing::debug!(
             error = %e,
             is_timeout = e.is_timeout(),
             is_connect = e.is_connect(),
@@ -384,7 +384,7 @@ pub(crate) async fn exchange_copilot_token(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        tracing::warn!(
+        tracing::debug!(
             status = %status,
             body = %truncate_for_error(&body),
             "Copilot: token exchange endpoint returned error"
@@ -396,7 +396,7 @@ pub(crate) async fn exchange_copilot_token(
     }
 
     let token_response = response.json::<CopilotTokenResponse>().await.map_err(|e| {
-        tracing::warn!(error = %e, "Copilot: failed to parse token exchange response");
+        tracing::debug!(error = %e, "Copilot: failed to parse token exchange response");
         GithubCopilotAuthError::Validation(e.to_string())
     })?;
 

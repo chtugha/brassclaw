@@ -142,7 +142,7 @@ impl SessionManager {
             && let Ok(mut guard) = manager.token.try_write()
         {
             *guard = Some(SecretString::from(session.session_token));
-            tracing::info!(
+            tracing::debug!(
                 "Loaded session token from {}",
                 manager.config.session_path.display()
             );
@@ -308,7 +308,7 @@ impl SessionManager {
                 Ok(())
             }
             Err(e) => {
-                tracing::info!("Session expired or invalid: {}", e);
+                tracing::debug!("Session expired or invalid: {}", e);
                 self.run_renewer().await
             }
         }
@@ -363,7 +363,7 @@ impl SessionManager {
     pub async fn handle_auth_failure(&self) -> Result<(), LlmError> {
         let _guard = self.renewal_lock.lock().await;
 
-        tracing::info!("Session expired or invalid, re-authenticating...");
+        tracing::debug!("Session expired or invalid, re-authenticating...");
         self.run_renewer().await
     }
 
@@ -439,7 +439,7 @@ impl SessionManager {
                 )
                 .await
             {
-                tracing::warn!("Failed to save session to encrypted secrets: {}", e);
+                tracing::debug!("Failed to save session to encrypted secrets: {}", e);
             } else {
                 tracing::debug!("Session saved to encrypted secrets store");
             }
@@ -452,7 +452,7 @@ impl SessionManager {
                 .set_setting(&user_id, "nearai.session_token", &session_json)
                 .await
             {
-                tracing::warn!("Failed to save session to DB: {}", e);
+                tracing::debug!("Failed to save session to DB: {}", e);
             } else {
                 tracing::debug!("Session also saved to DB settings");
             }
@@ -493,7 +493,7 @@ impl SessionManager {
                 })?;
             match legacy {
                 Some(value) => {
-                    tracing::warn!(
+                    tracing::debug!(
                         "nearai.session_token missing; falling back to legacy nearai.session for backwards compatibility"
                     );
                     value
@@ -515,7 +515,7 @@ impl SessionManager {
 
         let mut guard = self.token.write().await;
         *guard = Some(SecretString::from(session.session_token));
-        tracing::info!("Loaded session from DB settings");
+        tracing::debug!("Loaded session from DB settings");
 
         Ok(())
     }
@@ -554,7 +554,7 @@ impl SessionManager {
 
         let mut guard = self.token.write().await;
         *guard = Some(SecretString::from(session.session_token));
-        tracing::info!("Loaded session from encrypted secrets store");
+        tracing::debug!("Loaded session from encrypted secrets store");
 
         Ok(())
     }
@@ -585,7 +585,7 @@ impl SessionManager {
             *guard = Some(SecretString::from(session.session_token));
         }
 
-        tracing::info!(
+        tracing::debug!(
             "Loaded session from {} (created: {})",
             self.config.session_path.display(),
             session.created_at
@@ -612,7 +612,7 @@ pub async fn create_session_manager(config: SessionConfig) -> Arc<SessionManager
     // tokens. Hosting providers set this env var and expect it to be used
     // directly — no file persistence needed.
     if let Some(token) = brassclaw_common::env_helpers::env_or_override("NEARAI_SESSION_TOKEN") {
-        tracing::info!("Using session token from NEARAI_SESSION_TOKEN env var");
+        tracing::debug!("Using session token from NEARAI_SESSION_TOKEN env var");
         manager.set_token(SecretString::from(token)).await;
     }
 
