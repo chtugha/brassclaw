@@ -109,8 +109,9 @@ async fn run_trigger_poller(
                     "trigger poller tick completed"
                 );
             }
+            // Use debug! — warn! in background task loops corrupts the terminal UI (AGENTS.md §67).
             Err(error) => {
-                tracing::warn!(?error, "trigger poller tick failed");
+                tracing::debug!(?error, "trigger poller tick failed");
             }
         }
         let delay = settings.worker.poll_interval + jitter_delay(settings.tick_jitter_max);

@@ -73,11 +73,15 @@ where
             // without the handles.  Best-effort: the account no longer references
             // these handles so any leftover material becomes unreachable even if
             // the delete call fails (e.g. transient backend outage).
-            if let Some(h) = &purge_access {
-                let _ = self.secret_store.delete(&request.scope.resource, h).await;
+            if let Some(h) = &purge_access
+                && let Err(e) = self.secret_store.delete(&request.scope.resource, h).await
+            {
+                tracing::debug!(error = %e, "product_auth cleanup: best-effort access-secret purge failed; orphan is unreachable");
             }
-            if let Some(h) = &purge_refresh {
-                let _ = self.secret_store.delete(&request.scope.resource, h).await;
+            if let Some(h) = &purge_refresh
+                && let Err(e) = self.secret_store.delete(&request.scope.resource, h).await
+            {
+                tracing::debug!(error = %e, "product_auth cleanup: best-effort refresh-secret purge failed; orphan is unreachable");
             }
         }
         Ok(report)

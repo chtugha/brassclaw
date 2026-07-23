@@ -321,6 +321,69 @@ The comment says "Best-effort: drop any stored key for the deleted provider" —
 
 ---
 
+## Round 4 Findings
+
+### Issue 19 — MEDIUM: `tracing::warn!` in live background task loop (`trigger_poller.rs`)
+
+**File:** [`crates/brassclaw_reborn_composition/src/trigger_poller.rs`](crates/brassclaw_reborn_composition/src/trigger_poller.rs) line 113
+
+The `run_trigger_poller` function runs continuously as a `tokio::spawn`-ed background task. When `tick_once` fails it emits `tracing::warn!` — this is in the live loop body, not the shutdown path. Per AGENTS.md §67 background task errors should use `debug!` to avoid corrupting the terminal UI.
+
+The shutdown path (`join_with_timeout`, lines 41–52) also uses `warn!` but fires only after the server has already begun tearing down, so those are borderline acceptable. The live-loop `warn!` at line 113 is the clear violation.
+
+**Fix:** Change line 113 from `tracing::warn!` → `tracing::debug!`.
+
+---
+
+### Issue 20 — MEDIUM: Silent failure to zero secret key file in `migration.rs`
+
+**File:** [`crates/brassclaw_reborn_composition/src/migration.rs`](crates/brassclaw_reborn_composition/src/migration.rs) line 1147
+
+```rust
+let _ = std::fs::write(path, zeros);   // zero-fill is best-effort
+```
+
+The comment says the zero-fill is defence-in-depth. If it fails, key material may remain on disk. There is no log of the failure — a permissions error here would be completely invisible to the operator.
+
+**Fix:** Replace `let _ = std::fs::write(...)` with `if let Err(e) = ... { tracing::debug!(...) }`.
+
+---
+
+### Issue 21 — LOW: Best-effort secret deletes never log on failure (11 call sites)
+
+**Files:**
+- [`crates/brassclaw_reborn_composition/src/pg_auth_product_services.rs`](crates/brassclaw_reborn_composition/src/pg_auth_product_services.rs) line 467
+- [`crates/brassclaw_reborn_composition/src/pg_auth_product_services.rs`](crates/brassclaw_reborn_composition/src/pg_auth_product_services.rs) lines 771, 775, 1401, 1404, 1485
+- [`crates/brassclaw_reborn_composition/src/product_auth_durable/cleanup.rs`](crates/brassclaw_reborn_composition/src/product_auth_durable/cleanup.rs) lines 77, 80
+- [`crates/brassclaw_reborn_composition/src/product_auth_durable/flows.rs`](crates/brassclaw_reborn_composition/src/product_auth_durable/flows.rs) lines 478, 483, 528, 533
+- [`crates/brassclaw_reborn_composition/src/product_auth_durable/interactions.rs`](crates/brassclaw_reborn_composition/src/product_auth_durable/interactions.rs) line 284
+
+All have adjacent comments explaining the best-effort intent — the account record no longer references the handle so orphaned material is unreachable. The intent is sound but a failure leaves orphaned secret-store entries with zero observability. Operators cannot detect a secret store that is accepting writes but rejecting deletes.
+
+**Fix:** Replace each `let _ = self.secret_store.delete(...)` with `if let Err(e) = ... { tracing::debug!(...) }`.
+
+---
+
+### Issue 22 — LOW: Best-effort compensating deletes never log on failure
+
+**Files:**
+- [`crates/brassclaw_reborn_composition/src/extension_lifecycle.rs`](crates/brassclaw_reborn_composition/src/extension_lifecycle.rs) line 853
+- [`crates/brassclaw_reborn_composition/src/available_extensions.rs`](crates/brassclaw_reborn_composition/src/available_extensions.rs) lines 934, 951
+
+On error paths, rollback/compensating file deletes are attempted but silently swallowed. A failure leaves orphaned extension manifests or temp files.
+
+**Fix:** Add `debug!` logs to compensating delete failures in these two files.
+
+---
+
+## Round 4 Execution Order
+
+- [x] **Step 24** — Change `tracing::warn!` → `tracing::debug!` in `run_trigger_poller` live loop (line 113) *(resolved)*
+- [x] **Step 25** — Log failure in `zero_and_delete` key-file zeroing in `migration.rs` *(resolved)*
+- [x] **Step 26** — Add `debug!` logs to all best-effort `secret_store.delete` calls (11 sites, 3 files) *(resolved)*
+- [x] **Step 27** — Add `debug!` logs to compensating deletes in `extension_lifecycle.rs` and `available_extensions.rs` *(resolved)*
+- [x] **Step 28** — Run `cargo clippy -p brassclaw_reborn_composition --all-targets -- -D warnings` — zero warnings *(verified)*
+- [x] **Step 29** — Run `cargo test -p brassclaw_reborn_composition` — 490 passed, 0 failed *(verified)*
 
 ---
 

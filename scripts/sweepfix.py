@@ -156,9 +156,9 @@ def step1_create_sweepfix() -> None:
     marker = ".sweepfix/"
 
     if gitignore_path.exists():
-        content = gitignore_path.read_text()
+        content = gitignore_path.read_text(encoding="utf-8")
         if marker not in content:
-            with gitignore_path.open("a") as fh:
+            with gitignore_path.open("a", encoding="utf-8") as fh:
                 if not content.endswith("\n"):
                     fh.write("\n")
                 fh.write("\n# sweepfix scratch folder\n")
@@ -167,7 +167,7 @@ def step1_create_sweepfix() -> None:
         else:
             print("  .sweepfix/ already in .gitignore — skipping.")
     else:
-        gitignore_path.write_text(f"# sweepfix scratch folder\n{marker}\n")
+        gitignore_path.write_text(f"# sweepfix scratch folder\n{marker}\n", encoding="utf-8")
         print("  Created .gitignore with .sweepfix/ entry.")
 
 
@@ -360,41 +360,59 @@ def _passes_gating(rel_path: Path) -> bool:
 
 
 def _all_tracked_files() -> list[Path]:
-    """Return all files tracked by git (relative to repo root)."""
-    raw = git("ls-files")
-    return [Path(p) for p in raw.splitlines() if p.strip()]
+    """Return all files tracked by git (relative to repo root).
+
+    Uses -z (NUL-separated output) to correctly handle filenames that contain
+    spaces, non-ASCII characters, or other special characters that git would
+    otherwise quote/escape in plain newline output.
+    """
+    raw = git("ls-files", "-z")
+    return [Path(p) for p in raw.split("\x00") if p]
 
 
 def _changed_files_between(old_commit: str, new_commit: str) -> tuple[list[str], list[str], list[str]]:
     """Return (added, modified, deleted) relative paths.
 
-    git diff --name-status output format:
-      A  <path>              — added
-      M  <path>              — modified
-      D  <path>              — deleted
-      R<score>  <old>  <new> — renamed (3 tab-separated fields)
-      C<score>  <old>  <new> — copied  (3 tab-separated fields)
+    Uses -z (NUL-separated output) so that filenames with spaces or non-ASCII
+    characters are not quoted/escaped by git.
+
+    git diff --name-status -z output format (NUL-separated tokens):
+      A  -> "A" NUL "path" NUL
+      M  -> "M" NUL "path" NUL
+      D  -> "D" NUL "path" NUL
+      R<score> -> "R<score>" NUL "old" NUL "new" NUL
+      C<score> -> "C<score>" NUL "old" NUL "new" NUL
     """
-    raw = git("diff", "--name-status", old_commit, new_commit)
+    raw = git("diff", "--name-status", "-z", old_commit, new_commit)
+    tokens = [t for t in raw.split("\x00") if t]
     added, modified, deleted = [], [], []
-    for line in raw.splitlines():
-        parts = line.split("\t")
-        if len(parts) < 2:
+    i = 0
+    while i < len(tokens):
+        status = tokens[i].strip()
+        if not status:
+            i += 1
             continue
-        status = parts[0].strip()
-        if status.startswith("A"):
-            added.append(parts[1].strip())
-        elif status.startswith("M"):
-            modified.append(parts[1].strip())
-        elif status.startswith("D"):
-            deleted.append(parts[1].strip())
-        elif status.startswith("R") or status.startswith("C"):
-            # parts[1] = old path, parts[2] = new path
-            if len(parts) >= 3:
-                deleted.append(parts[1].strip())   # old name is gone
-                added.append(parts[2].strip())     # new name is new
+        if status.startswith(("R", "C")):
+            if i + 2 < len(tokens):
+                deleted.append(tokens[i + 1])  # old name is gone
+                added.append(tokens[i + 2])    # new name is new
+                i += 3
             else:
-                modified.append(parts[1].strip())  # malformed, treat as modified
+                i += 1  # malformed, skip
+        elif status.startswith("A"):
+            if i + 1 < len(tokens):
+                added.append(tokens[i + 1])
+            i += 2
+        elif status.startswith("M"):
+            if i + 1 < len(tokens):
+                modified.append(tokens[i + 1])
+            i += 2
+        elif status.startswith("D"):
+            if i + 1 < len(tokens):
+                deleted.append(tokens[i + 1])
+            i += 2
+        else:
+            i += 2  # unknown status, skip
     return added, modified, deleted
 
 
@@ -676,10 +694,11 @@ def _write_report(folder: Path, filename: str, header: str, items: list[tuple[in
             lines.append(f"- **Line {lineno}** `{label}`")
             lines.append("")
             lines.append("  ```")
-            # Use the raw line without extra indent prefix so rendered indentation
-            # matches the source exactly. The 2-space list-item indent on the fence
-            # itself (above) is sufficient for CommonMark block nesting.
-            lines.append(code.rstrip())
+            # CommonMark §5.3: content inside a fenced block that is itself inside
+            # a list item must be indented at least to the list-item continuation
+            # indent (2 spaces here). A 0-indent content line is treated as outside
+            # the fence by strict parsers. Prepend 2 spaces to satisfy this.
+            lines.append(f"  {code.rstrip()}")
             lines.append("  ```")
             lines.append("")
     lines.append("")
@@ -709,6 +728,13 @@ def step4_scan_marked_files() -> None:
 
     for rel_path in marked_files:
         abs_path = REPO_ROOT / rel_path
+        # Guard against path traversal: a tampered codebaselist.md could contain
+        # relative paths like "../../etc/passwd". Resolve symlinks and verify the
+        # result is inside REPO_ROOT before reading anything.
+        if not abs_path.resolve().is_relative_to(REPO_ROOT.resolve()):
+            print(f"  ⚠ Path escapes repository root: {rel_path!r} — skipping for safety.")
+            entry_map[rel_path] = False
+            continue
         if not abs_path.exists():
             print(f"  ⚠ File gone from disk: {rel_path} — removing mark.")
             entry_map[rel_path] = False

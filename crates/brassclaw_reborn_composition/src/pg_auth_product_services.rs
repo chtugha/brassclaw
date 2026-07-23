@@ -464,7 +464,9 @@ impl PgAuthProductServices {
         handle: &Option<SecretHandle>,
     ) {
         if let Some(h) = handle {
-            let _ = self.secret_store.delete(scope, h).await;
+            if let Err(e) = self.secret_store.delete(scope, h).await {
+                tracing::debug!(error = %e, "pg_auth_product_services: best-effort secret delete failed; orphaned handle is unreachable via account record");
+            }
         }
     }
 }
@@ -768,11 +770,15 @@ impl AuthFlowManager for PgAuthProductServices {
             };
             flow.status = AuthFlowStatus::Canceled;
             flow.updated_at = Utc::now();
-            let _ = self.write_flow(&flow, Some(rev)).await;
+            if let Err(e) = self.write_flow(&flow, Some(rev)).await {
+                tracing::debug!(error = %e, "pg_auth_product_services: best-effort canceled-flow write failed");
+            }
             return Ok(Some(flow));
         }
         // Also clean up the interaction record.
-        let _ = self.delete_interaction(scope, interaction_id).await;
+        if let Err(e) = self.delete_interaction(scope, interaction_id).await {
+            tracing::debug!(error = %e, "pg_auth_product_services: best-effort interaction delete failed");
+        }
         Ok(None)
     }
 
@@ -1398,10 +1404,14 @@ impl SecretCleanupService for PgAuthProductServices {
             current.updated_at = Utc::now();
             self.write_account(&current, Some(rev)).await?;
             if let Some(h) = &purge_access {
-                let _ = self.secret_store.delete(&request.scope.resource, h).await;
+                if let Err(e) = self.secret_store.delete(&request.scope.resource, h).await {
+                    tracing::debug!(error = %e, "pg_auth_product_services: best-effort access-secret purge failed");
+                }
             }
             if let Some(h) = &purge_refresh {
-                let _ = self.secret_store.delete(&request.scope.resource, h).await;
+                if let Err(e) = self.secret_store.delete(&request.scope.resource, h).await {
+                    tracing::debug!(error = %e, "pg_auth_product_services: best-effort refresh-secret purge failed");
+                }
             }
         }
         Ok(report)
@@ -1482,10 +1492,15 @@ impl RebornManualTokenFlowService for PgAuthProductServices {
         {
             Ok(completed) => completed,
             Err(error) => {
-                let _ = self.cancel_manual_token(scope, interaction_id).await;
-                let _ = self
+                if let Err(e) = self.cancel_manual_token(scope, interaction_id).await {
+                    tracing::debug!(error = %e, "pg_auth_product_services: best-effort cancel_manual_token failed on error path");
+                }
+                if let Err(e) = self
                     .update_status(scope, result.account_id, CredentialAccountStatus::Revoked)
-                    .await;
+                    .await
+                {
+                    tracing::debug!(error = %e, "pg_auth_product_services: best-effort revoke-status update failed on error path");
+                }
                 return Err(error);
             }
         };

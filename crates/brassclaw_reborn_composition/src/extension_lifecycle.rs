@@ -850,7 +850,14 @@ impl RebornLocalExtensionManagementPort {
             .upsert_installation(plan.installation)
             .await
         {
-            let _ = self.installation_store.delete_manifest(&extension_id).await;
+            // Best-effort compensating rollback: delete the manifest written earlier.
+            if let Err(e) = self.installation_store.delete_manifest(&extension_id).await {
+                tracing::debug!(
+                    extension_id = %extension_id,
+                    error = %e,
+                    "extension_lifecycle: compensating manifest delete failed; orphaned manifest may remain"
+                );
+            }
             return Err(map_extension_installation_error(error));
         }
         Ok(())

@@ -1144,7 +1144,12 @@ fn rename_migrated(path: &Path) -> Result<(), MigrationError> {
 fn zero_and_delete(path: &Path) -> Result<(), MigrationError> {
     if let Ok(metadata) = std::fs::metadata(path) {
         let zeros = vec![0u8; metadata.len() as usize];
-        let _ = std::fs::write(path, zeros);
+        if let Err(e) = std::fs::write(path, &zeros) {
+            // Zero-fill is best-effort defence-in-depth; the delete below is
+            // what matters for correctness.  Log so operators can investigate
+            // permission issues that prevent key-material erasure.
+            tracing::debug!(path = %path.display(), error = %e, "zero_and_delete: could not overwrite key file with zeros");
+        }
     }
     std::fs::remove_file(path).map_err(|e| MigrationError::Io {
         reason: format!("delete {}: {e}", path.display()),
