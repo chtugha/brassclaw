@@ -186,7 +186,7 @@ impl RetryProvider {
                         _ => retry_backoff_delay(attempt),
                     };
 
-                    tracing::warn!(
+                    tracing::debug!(
                         provider = %self.inner.model_name(),
                         attempt = attempt + 1,
                         max_retries = self.config.max_retries,

@@ -305,6 +305,9 @@ impl RunProfileId {
     }
 
     pub(crate) fn from_trusted_static(value: &'static str) -> Self {
+        // safety: all call sites pass a `&'static str` literal; the
+        // debug_assert fires in development builds if a new literal is
+        // introduced that fails validate_ref, catching it before release.
         debug_assert!(validate_ref("run_profile_id", value).is_ok());
         Self(value.to_string())
     }

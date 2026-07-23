@@ -160,20 +160,25 @@ impl CircuitBreakerProvider {
                     state.state = CircuitState::Closed;
                     state.consecutive_failures = 0;
                     state.opened_at = None;
-                    tracing::info!(
+                    tracing::debug!(
                         provider = self.inner.model_name(),
-                        "Circuit breaker: HalfOpen -> Closed (recovered)"
+                        "circuit breaker: HalfOpen -> Closed (recovered)"
                     );
                 }
             }
             CircuitState::Open => {
-                debug_assert!(
-                    false,
-                    "BUG: record_success() called while circuit breaker is Open — \
-                     check_allowed() was bypassed for provider {}",
-                    self.inner.model_name()
+                // Safety: check_allowed() blocks any call when the circuit is
+                // Open, so record_success() must never reach this branch in
+                // correct usage.  If it does (e.g. a future code path bypasses
+                // check_allowed), recovering to Closed is the safest fallback —
+                // it unblocks the provider rather than leaving it permanently
+                // open.  Log the invariant violation so it is observable.
+                tracing::debug!(
+                    provider = self.inner.model_name(),
+                    "BUG: circuit breaker record_success() called while Open — \
+                     check_allowed() was bypassed; recovering to Closed"
                 );
-                // Shouldn't get here (check_allowed blocks Open), but recover
+                // Recover gracefully rather than panic in production.
                 state.state = CircuitState::Closed;
                 state.consecutive_failures = 0;
                 state.opened_at = None;

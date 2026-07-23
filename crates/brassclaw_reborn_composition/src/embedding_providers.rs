@@ -229,14 +229,14 @@ const OPENAI_API_BASE_URL: &str = "https://api.openai.com";
 
 struct OpenAiEmbeddings {
     client: reqwest::Client,
-    api_key: String,
+    api_key: SecretString,
     model: String,
     dimension: usize,
     base_url: String,
 }
 
 impl OpenAiEmbeddings {
-    fn with_model(api_key: impl Into<String>, model: impl Into<String>, dimension: usize) -> Self {
+    fn with_model(api_key: impl Into<SecretString>, model: impl Into<String>, dimension: usize) -> Self {
         Self {
             client: reqwest::Client::new(),
             api_key: api_key.into(),
@@ -315,7 +315,7 @@ impl EmbeddingProvider for OpenAiEmbeddings {
         let response = self
             .client
             .post(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Authorization", format!("Bearer {}", self.api_key.expose_secret()))
             .json(&request)
             .send()
             .await

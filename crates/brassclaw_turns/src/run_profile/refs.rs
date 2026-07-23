@@ -14,12 +14,19 @@ macro_rules! profile_ref {
 
             #[allow(dead_code)]
             pub(crate) fn from_trusted_static(value: &'static str) -> Self {
+                // safety: all call sites pass a `&'static str` literal; the
+                // debug_assert fires in development builds if a new literal
+                // violates validate_profile_ref, catching it before release.
                 debug_assert!(validate_profile_ref($kind, value).is_ok());
                 Self(value.to_string())
             }
 
             #[allow(dead_code)]
             pub(crate) fn from_trusted_string(value: String) -> Self {
+                // safety: all call sites compute the value via deterministic
+                // formatting (e.g. `format!("fp:{hash:016x}")`); the result is
+                // always a valid profile ref.  The debug_assert catches any
+                // future call site that passes an unexpected shape.
                 debug_assert!(validate_profile_ref($kind, &value).is_ok());
                 Self(value)
             }

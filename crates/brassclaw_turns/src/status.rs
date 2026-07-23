@@ -175,6 +175,9 @@ impl SanitizedFailure {
     }
 
     pub(crate) fn from_trusted_static(category: &'static str) -> Self {
+        // safety: all call sites pass a `&'static str` literal; the
+        // debug_assert fires in development builds if a new literal is
+        // introduced that fails validation, catching it before release.
         debug_assert!(validate_sanitized_category("failure_category", category).is_ok());
         Self {
             category: category.to_string(),

@@ -583,9 +583,9 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
 
     // Create extension_registry BEFORE store_graph so it can be passed in
     let extension_registry = Arc::new(local_dev_builtin_extension_registry()?);
-    tracing::info!(
-        "✅ Created extension_registry with {} capabilities",
-        extension_registry.capabilities().count()
+    tracing::debug!(
+        count = extension_registry.capabilities().count(),
+        "local-dev: built extension_registry"
     );
 
     let mut store_graph = build_local_dev_store_graph(RebornLocalDevStoreGraphInput {
@@ -1078,8 +1078,8 @@ async fn build_local_dev_root_filesystem(
         workspace_root,
         host_home_root,
     )?);
-    tracing::warn!(
-        "local-dev: /memory is backed by InMemoryBackend; memory documents are ephemeral and will be lost on restart"
+    eprintln!(
+        "brassclaw: local-dev: /memory is backed by InMemoryBackend; memory documents are ephemeral and will be lost on restart"
     );
     let mut composite = CompositeRootFilesystem::new();
     mount_local_dev_memory_root(&mut composite, Arc::new(InMemoryBackend::new()))?;
@@ -1296,7 +1296,9 @@ fn write_local_dev_secret_master_key(path: &Path, key: &str) -> Result<(), Rebor
                 ),
             })?;
         if !status.success() {
-            let _ = std::fs::remove_file(path);
+            if let Err(rm_err) = std::fs::remove_file(path) {
+                tracing::debug!(error = %rm_err, "local-dev: cleanup of partial key file failed after icacls error");
+            }
             return Err(RebornBuildError::InvalidConfig {
                 reason: format!(
                     "local-dev secrets master key permissions could not be set: icacls exited with {status}"

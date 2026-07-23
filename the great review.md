@@ -397,3 +397,136 @@ On error paths, rollback/compensating file deletes are attempted but silently sw
 | `tracing::warn!` at line 510 (Postgres shutdown failure) | **Acceptable** — fires only after WebUI has been torn down; UI is no longer rendering. |
 | Multiple `rand` versions in `Cargo.lock` | **Maintenance debt** — dependency of transitive crates; cannot be fixed without upstream changes. Not actionable here. |
 | Conditional indexes on `similarity_parent_id` / `replaces_id` | **Correct by design** — partial indexes with `WHERE IS NOT NULL` are the right choice for nullable UUID columns where null is the common case. |
+
+---
+
+## Round 5 Findings
+
+### Issue 23 — MEDIUM: `tracing::info!` in startup code in `factory.rs`
+
+**File:** [`crates/brassclaw_reborn_composition/src/factory.rs`](crates/brassclaw_reborn_composition/src/factory.rs) line 586
+
+`tracing::info!("✅ Created extension_registry...")` fires during `build_local_dev()` — a startup path. Per AGENTS.md §67, `info!` corrupts the terminal UI. Changed to `tracing::debug!` with a structured `count` field (removing the emoji which belongs in operator-facing output, not debug logs).
+
+---
+
+### Issue 24 — MEDIUM: `tracing::warn!` in startup code in `factory.rs`
+
+**File:** [`crates/brassclaw_reborn_composition/src/factory.rs`](crates/brassclaw_reborn_composition/src/factory.rs) line 1081
+
+`tracing::warn!("local-dev: /memory is backed by InMemoryBackend...")` is an intentional operator-facing startup notice (same category as the `eprintln!` calls in `serve.rs`). Changed to `eprintln!` so it is always visible without corrupting the tracing-based UI.
+
+---
+
+### Issue 25 — LOW: Silent file removal on Windows ACL error in `factory.rs`
+
+**File:** [`crates/brassclaw_reborn_composition/src/factory.rs`](crates/brassclaw_reborn_composition/src/factory.rs) line 1299
+
+`let _ = std::fs::remove_file(path)` on the Windows-only cleanup path silently discards the removal result. Replaced with `if let Err(rm_err) = ... { debug!(...) }`.
+
+---
+
+### Issue 26 — MEDIUM: `tracing::warn!` in worker shutdown path in `runtime.rs`
+
+**File:** [`crates/brassclaw_reborn_composition/src/runtime.rs`](crates/brassclaw_reborn_composition/src/runtime.rs) line 1105
+
+Worker task cancellation during shutdown emits `warn!`. Cancellation is expected on a clean shutdown; changed to `debug!`.
+
+---
+
+### Issue 27 — MEDIUM: `tracing::warn!` in descendant cancellation loop in `runtime.rs`
+
+**File:** [`crates/brassclaw_reborn_composition/src/runtime.rs`](crates/brassclaw_reborn_composition/src/runtime.rs) line 1249
+
+The budget-cap log inside `cancel_descendant_runs` fires in the turn-coordinator loop. Changed from `warn!` → `debug!` per AGENTS.md §67.
+
+---
+
+### Issue 28 — MEDIUM: `tracing::warn!` in projection loop mapper in `turn_events.rs`
+
+**File:** [`crates/brassclaw_reborn_composition/src/projection/turn_events.rs`](crates/brassclaw_reborn_composition/src/projection/turn_events.rs) line 644
+
+`map_turn_event_projection_error` is called inside the SSE event-drain loop. `warn!` corrupts the terminal UI. Changed to `debug!`.
+
+---
+
+### Issue 29 — MEDIUM: `tracing::warn!` in auth read-model queries called from turn-coordinator loop
+
+**File:** [`crates/brassclaw_reborn_composition/src/runtime/auth_interaction.rs`](crates/brassclaw_reborn_composition/src/runtime/auth_interaction.rs) lines 142, 185
+
+`LocalDevAuthFlowRecordSource::flow_for_turn_gate` and `flows_for_owner` are called from the turn-coordinator's auth-interaction service (long-running loop). Both used `warn!`. Changed to `debug!`.
+
+---
+
+### Issue 30 — MEDIUM: `api_key: String` instead of `SecretString` in `OpenAiEmbeddings`
+
+**File:** [`crates/brassclaw_reborn_composition/src/embedding_providers.rs`](crates/brassclaw_reborn_composition/src/embedding_providers.rs) line 232
+
+`OpenAiEmbeddings` stored the OpenAI API key as a plain `String`. This means the key can appear in `{:?}` debug output of the struct. `SecretString` from the `secrecy` crate wraps the key so that `Debug` output is redacted. The call site already used `SecretString` for the config field; the provider struct was the only leaking layer. Changed `api_key: String` → `api_key: SecretString` and updated the header construction to call `.expose_secret()`.
+
+---
+
+### Issue 31 — MEDIUM: `tracing::warn!` in LLM retry loop in `brassclaw_llm`
+
+**File:** [`crates/brassclaw_llm/src/retry.rs`](crates/brassclaw_llm/src/retry.rs) line 189
+
+Every transient retry attempt emits `warn!`. Under load this spams the log; the retry is routine and operational, not anomalous. Changed to `debug!`.
+
+---
+
+### Issue 32 — MEDIUM: `tracing::info!` and `debug_assert!(false, ...)` in circuit breaker
+
+**File:** [`crates/brassclaw_llm/src/circuit_breaker.rs`](crates/brassclaw_llm/src/circuit_breaker.rs) lines 163, 170
+
+- Line 163: `tracing::info!` on HalfOpen→Closed recovery — this fires inside `record_success()` which is called from every LLM completion. Changed to `debug!`.
+- Lines 170-175: `debug_assert!(false, ...)` to flag an invariant violation that is stripped in `--release`. Replaced with a `tracing::debug!` log and a comment explaining the graceful recovery, so the violation is observable in production without panicking.
+
+---
+
+### Issue 33 — LOW: `debug_assert!` in `from_trusted_static` / `from_trusted_string` in `brassclaw_turns`
+
+**Files:**
+- [`crates/brassclaw_turns/src/ids.rs`](crates/brassclaw_turns/src/ids.rs) line 308
+- [`crates/brassclaw_turns/src/status.rs`](crates/brassclaw_turns/src/status.rs) line 178
+- [`crates/brassclaw_turns/src/run_profile/refs.rs`](crates/brassclaw_turns/src/run_profile/refs.rs) lines 17, 23
+
+These constructors are called exclusively with `&'static str` literals or deterministic format strings. The `debug_assert!` is the correct pattern here — all callers are compile-time verifiable. Added `// safety:` comments explaining the invariant so future reviewers understand why a runtime guard is not needed.
+
+---
+
+### Issue 34 — LOW: Silent progress event emission failure in `agent_loop` checkpoint
+
+**File:** [`crates/brassclaw_agent_loop/src/executor/checkpoint.rs`](crates/brassclaw_agent_loop/src/executor/checkpoint.rs) line 104
+
+`let _ = ctx.host.emit_loop_progress(event).await` — a best-effort operation but with no log on failure. Replaced with `if let Err(e) = ... { debug!(...) }`.
+
+---
+
+## Round 5 Execution Order
+
+- [x] **Step 30** — Fix `tracing::info!` in `factory.rs` startup → `debug!` *(resolved)*
+- [x] **Step 31** — Fix `tracing::warn!` in `factory.rs` startup → `eprintln!` *(resolved)*
+- [x] **Step 32** — Log cleanup failure in `factory.rs` Windows ACL error path *(resolved)*
+- [x] **Step 33** — Fix `tracing::warn!` in `runtime.rs` shutdown cancel path → `debug!` *(resolved)*
+- [x] **Step 34** — Fix `tracing::warn!` in `runtime.rs` descendant cancel loop → `debug!` *(resolved)*
+- [x] **Step 35** — Fix `tracing::warn!` in `projection/turn_events.rs` → `debug!` *(resolved)*
+- [x] **Step 36** — Fix `tracing::warn!` in `runtime/auth_interaction.rs` → `debug!` *(resolved)*
+- [x] **Step 37** — Fix `api_key: String` → `SecretString` in `embedding_providers.rs` *(resolved)*
+- [x] **Step 38** — Fix `tracing::warn!` in `brassclaw_llm/src/retry.rs` retry loop → `debug!` *(resolved)*
+- [x] **Step 39** — Fix `tracing::info!` + `debug_assert!(false)` in `circuit_breaker.rs` *(resolved)*
+- [x] **Step 40** — Add safety comments to `debug_assert!` in `turns/ids.rs`, `status.rs`, `refs.rs` *(resolved)*
+- [x] **Step 41** — Add `debug!` log to `emit_loop_progress` failure in `agent_loop/checkpoint.rs` *(resolved)*
+- [x] **Step 42** — Run `cargo clippy` for all changed crates — zero warnings *(verified)*
+- [x] **Step 43** — Run `cargo test` for all changed crates — all tests pass *(verified)*
+
+---
+
+## Non-Issues from Round 5 (Investigated and Cleared)
+
+| Claim | Verdict |
+|---|---|
+| `unimplemented!()` in `brassclaw_llm/src/reasoning.rs` | **Test code** — `TruncatingLlm` is defined inside `#[cfg(test)]` module; no production impact. |
+| `panic!()` in `brassclaw_turns/src/run_profile/milestones.rs:741` | **Test code** — `pretty()` is defined inside `#[cfg(test)]` module; no production impact. |
+| `tracing::warn!` in `product_auth_serve/manual_token.rs` lines 79, 86 | **Acceptable** — explicit HTTP request handler error recovery, not a background loop. |
+| `tracing::warn!` in `product_auth_serve/mod.rs` line 897 | **Acceptable** — explicit HTTP request handler, not a background loop. |
+

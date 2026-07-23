@@ -139,7 +139,7 @@ impl LocalDevAuthInteractionReadModel {
             .flow_for_turn_gate(turn_gate_query(scope, run_id, gate_ref)?)
             .await
             .map_err(|error| {
-                tracing::warn!(
+                tracing::debug!(
                     %error,
                     %run_id,
                     gate_ref = %gate_ref.as_str(),
@@ -182,7 +182,7 @@ async fn flows_for_owner(
         .flows_for_owner(owner_scope_for_interaction(scope))
         .await
         .map_err(|error| {
-            tracing::warn!(
+            tracing::debug!(
                 %error,
                 tenant_id = %scope.tenant_id.as_str(),
                 user_id = %scope.user_id.as_str(),

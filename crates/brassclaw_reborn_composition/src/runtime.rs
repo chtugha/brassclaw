@@ -1102,7 +1102,7 @@ impl RebornRuntime {
             if error.is_panic() {
                 tracing::error!(%error, "reborn worker task panicked during shutdown");
             } else {
-                tracing::warn!(%error, "reborn worker task was cancelled during shutdown");
+                tracing::debug!(%error, "reborn worker task was cancelled during shutdown");
             }
         }
         Ok(())
@@ -1246,7 +1246,7 @@ impl RebornRuntime {
             }
             visited_count += 1;
             if visited_count > MAX_DESCENDANT_CANCEL_NODES {
-                tracing::warn!(
+                tracing::debug!(
                     scope = ?scope,
                     run_id = %run_id,
                     max_nodes = MAX_DESCENDANT_CANCEL_NODES,

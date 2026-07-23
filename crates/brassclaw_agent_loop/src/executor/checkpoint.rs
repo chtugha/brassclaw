@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use tracing;
 use brassclaw_turns::{
     LoopGateRef,
     run_profile::{LoopCheckpointRequest, LoopProgressEvent, StageCheckpointPayloadRequest},
@@ -101,7 +102,9 @@ impl CheckpointStage {
     }
 
     pub(super) async fn emit_progress(&self, ctx: StageContext<'_>, event: LoopProgressEvent) {
-        let _ = ctx.host.emit_loop_progress(event).await;
+        if let Err(e) = ctx.host.emit_loop_progress(event).await {
+            tracing::debug!(error = %e, "agent loop: best-effort progress event emission failed");
+        }
     }
 
     // Cancellation is checked cooperatively at N boundary points between external calls.

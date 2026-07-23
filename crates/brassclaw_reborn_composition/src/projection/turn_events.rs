@@ -641,7 +641,7 @@ fn turn_status_wire(status: TurnStatus) -> &'static str {
 }
 
 fn map_turn_event_projection_error(error: TurnEventProjectionError) -> ProductAdapterError {
-    tracing::warn!(
+    tracing::debug!(
         component = "turn_event_projection",
         operation = "map_turn_event_projection_error",
         error = %error,
