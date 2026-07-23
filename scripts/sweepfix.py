@@ -5,8 +5,8 @@ sweepfix.py — Codebase magic-number & stub sweeper.
 Steps:
   1. Create .sweepfix/ and gitignore it (skip if already exists).
   2. Commit & push everything; sync with remote; verify in-sync.
-  3. Scan codebase, build codebaselist.md (or diff-update existing one).
-  4. For each marked file: find magic numbers + stubs; write reports; unmark.
+  3. Scan codebase, build codebase.toml (or diff-update existing one).
+  4. For each marked file: find magic numbers + stubs; store findings; unmark.
 
 Known limitation: numbers inside /* ... */ block comments whose body lines do
 not start with a leading '*' are not filtered from magic-number detection.
@@ -15,11 +15,20 @@ Single-pass line scanning cannot track block-comment state.
 
 from __future__ import annotations
 
-import hashlib
 import re
 import sys
 import subprocess
 from pathlib import Path
+
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib  # type: ignore[no-reuse-local]
+    except ImportError:
+        sys.exit(
+            "tomllib not found. Requires Python 3.11+ or `pip install tomli`."
+        )
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -29,7 +38,7 @@ from pathlib import Path
 # immediately crash with a CalledProcessError at import time.
 REPO_ROOT: Path
 SWEEPFIX_DIR: Path
-CODEBASE_LIST: Path
+CODEBASE_TOML: Path
 
 # ── Extensions treated as binary / non-code ────────────────────────────────
 BINARY_EXTENSIONS = {
@@ -322,9 +331,6 @@ def _verify_in_sync_no_fetch(branch: str) -> None:
 # Step 3 — build / update codebaselist.md
 # ---------------------------------------------------------------------------
 
-MARK_CHAR = "[x]"
-DONE_CHAR  = "[ ]"
-
 # Valid git commit SHA: 7–40 lowercase hex chars (short or full SHA).
 _SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 
@@ -416,80 +422,133 @@ def _changed_files_between(old_commit: str, new_commit: str) -> tuple[list[str],
     return added, modified, deleted
 
 
-def _parse_codebaselist(text: str) -> tuple[str, list[tuple[str, bool]]]:
+def _toml_escape(s: str) -> str:
+    """Escape a string value for embedding between double quotes in TOML.
+
+    Processes backslash first to avoid double-escaping.
     """
-    Parse codebaselist.md.
-    Returns (commit_sha, [(rel_path, is_marked), ...])
+    s = s.replace("\\", "\\\\")   # must be first
+    s = s.replace('"',  '\\"')
+    s = s.replace("\n", "\\n")
+    s = s.replace("\r", "\\r")
+    s = s.replace("\t", "\\t")
+    return s
+
+
+def _parse_codebase_toml(text: str) -> tuple[str, list[tuple[str, bool, list[dict]]]]:
     """
-    commit_sha = ""
-    entries: list[tuple[str, bool]] = []
+    Parse codebase.toml.
+    Returns (commit_sha, [(rel_path, marked, findings), ...])
+
+    Each finding dict has keys:
+      line: int, kind: str ("magic_number" | "stub"),
+      value: str  (magic_number only),
+      label: str  (stub only),
+      context: str
+    """
+    try:
+        data = tomllib.loads(text)
+    except Exception as exc:
+        print(f"  ⚠ codebase.toml parse error: {exc} — treating as empty.")
+        return "", []
+
+    commit_sha = data.get("commit", "")
+    if not isinstance(commit_sha, str):
+        commit_sha = ""
+
+    entries: list[tuple[str, bool, list[dict]]] = []
     seen: set[str] = set()
 
-    for line in text.splitlines():
-        line = line.rstrip()
-        if line.startswith("commit:"):
-            commit_sha = line.split(":", 1)[1].strip()
+    for file_entry in data.get("file", []):
+        if not isinstance(file_entry, dict):
             continue
-        m = re.match(r"^(\[[ x]\])\s+(.+)$", line)
-        if m:
-            marked = m.group(1) == "[x]"
-            path   = m.group(2).strip()
-            if path in seen:
-                print(f"  ⚠ Duplicate path in codebaselist.md: {path!r} — keeping first occurrence.")
-                continue
-            seen.add(path)
-            entries.append((path, marked))
+        path = file_entry.get("path", "")
+        if not isinstance(path, str) or not path:
+            continue
+        if path in seen:
+            print(f"  ⚠ Duplicate path in codebase.toml: {path!r} — keeping first occurrence.")
+            continue
+        seen.add(path)
+
+        marked = bool(file_entry.get("marked", False))
+
+        raw_findings = file_entry.get("finding", [])
+        findings: list[dict] = []
+        if isinstance(raw_findings, list):
+            for f in raw_findings:
+                if isinstance(f, dict):
+                    findings.append(f)
+
+        entries.append((path, marked, findings))
 
     return commit_sha, entries
 
 
-def _write_codebaselist(commit_sha: str, entries: list[tuple[str, bool]]) -> None:
-    lines = [
-        "# Codebase File List",
-        "",
-        f"commit: {commit_sha}",
-        "",
-        "## Files",
-        "",
-    ]
-    for path, marked in sorted(entries, key=lambda x: x[0]):
-        marker = MARK_CHAR if marked else DONE_CHAR
-        lines.append(f"{marker} {path}")
+def _write_codebase_toml(
+    commit_sha: str,
+    entries: list[tuple[str, bool, list[dict]]],
+) -> None:
+    """Serialise entries to .sweepfix/codebase.toml.
+
+    Hand-written for the fixed schema — no third-party TOML writer needed.
+    entries is [(path, marked, findings), ...], sorted by path on write.
+    """
+    lines: list[str] = []
+    lines.append(f'commit = "{_toml_escape(commit_sha)}"')
     lines.append("")
-    CODEBASE_LIST.write_text("\n".join(lines), encoding="utf-8")
+
+    for path, marked, findings in sorted(entries, key=lambda x: x[0]):
+        lines.append("[[file]]")
+        lines.append(f'path = "{_toml_escape(path)}"')
+        lines.append(f"marked = {'true' if marked else 'false'}")
+
+        for finding in findings:
+            lines.append("")
+            lines.append("  [[file.finding]]")
+            lines.append(f"  line = {int(finding['line'])}")
+            lines.append(f'  kind = "{_toml_escape(str(finding["kind"]))}"')
+            if finding.get("value") is not None:
+                lines.append(f'  value = "{_toml_escape(str(finding["value"]))}"')
+            if finding.get("label") is not None:
+                lines.append(f'  label = "{_toml_escape(str(finding["label"]))}"')
+            lines.append(f'  context = "{_toml_escape(str(finding["context"]))}"')
+
+        lines.append("")
+
+    CODEBASE_TOML.write_text("\n".join(lines), encoding="utf-8")
 
 
 def _build_codebaselist_fresh(current_sha: str, *, rebuild: bool = False) -> None:
-    """Scan all tracked files and write a fresh codebaselist.md."""
+    """Scan all tracked files and write a fresh codebase.toml."""
     all_files = _all_tracked_files()
-    entries: list[tuple[str, bool]] = []
+    entries: list[tuple[str, bool, list[dict]]] = []
     skipped = 0
     for f in all_files:
         if _passes_gating(f):
-            entries.append((str(f), True))
+            entries.append((str(f), True, []))
         else:
             skipped += 1
-    _write_codebaselist(current_sha, entries)
+    _write_codebase_toml(current_sha, entries)
     label = "Rebuilding" if rebuild else "First run"
     print(f"  {label} — {len(entries)} files added to list ({skipped} skipped).")
 
 
 def step3_build_codebaselist() -> None:
-    print("\n── Step 3: codebaselist.md ──────────────────────────────────────")
+    print("\n── Step 3: codebase.toml ────────────────────────────────────────")
 
     current_sha = current_commit()
 
-    if not CODEBASE_LIST.exists():
+    if not CODEBASE_TOML.exists():
         _build_codebaselist_fresh(current_sha)
         return
 
     # Existing list — compare commits
-    text         = CODEBASE_LIST.read_text(encoding="utf-8")
-    old_sha, existing = _parse_codebaselist(text)
+    text = CODEBASE_TOML.read_text(encoding="utf-8")
+    old_sha, existing = _parse_codebase_toml(text)
 
     if not old_sha or not _SHA_RE.match(old_sha):
-        print(f"  ⚠ codebaselist.md has invalid/missing commit SHA ({old_sha!r}) — rebuilding from scratch.")
-        CODEBASE_LIST.unlink()
+        print(f"  ⚠ codebase.toml has invalid/missing commit SHA ({old_sha!r}) — rebuilding from scratch.")
+        CODEBASE_TOML.unlink()
         _build_codebaselist_fresh(current_sha, rebuild=True)
         return
 
@@ -503,7 +562,9 @@ def step3_build_codebaselist() -> None:
 
     added_paths, modified_paths, deleted_paths = _changed_files_between(old_sha, current_sha)
 
-    entry_map: dict[str, bool] = dict(existing)
+    entry_map: dict[str, tuple[bool, list[dict]]] = {
+        path: (marked, findings) for path, marked, findings in existing
+    }
 
     # Deleted — remove from list
     removed = 0
@@ -512,11 +573,11 @@ def step3_build_codebaselist() -> None:
             del entry_map[p]
             removed += 1
 
-    # Modified — mark as needing re-scan
+    # Modified — mark as needing re-scan; clear stale findings
     remarked = 0
     for p in modified_paths:
         if p in entry_map:
-            entry_map[p] = True
+            entry_map[p] = (True, [])
             remarked += 1
 
     # Added — add if they pass gating, mark them
@@ -524,10 +585,13 @@ def step3_build_codebaselist() -> None:
     for p in added_paths:
         rel = Path(p)
         if _passes_gating(rel):
-            entry_map[p] = True
+            entry_map[p] = (True, [])
             new_added += 1
 
-    _write_codebaselist(current_sha, list(entry_map.items()))
+    _write_codebase_toml(
+        current_sha,
+        [(path, marked, findings) for path, (marked, findings) in entry_map.items()],
+    )
     print(
         f"  Updated list: +{new_added} new, {remarked} re-marked, "
         f"{removed} removed → {len(entry_map)} total files."
@@ -672,50 +736,19 @@ def _find_stubs(source: str) -> list[tuple[int, str, str]]:
     return results
 
 
-def _safe_folder_name(file_path: str) -> str:
-    """Convert a relative file path to a collision-free directory name.
-
-    Replaces path separators with '__' and appends a short SHA-1 of the original
-    path so that 'src/foo/bar.rs' and 'src/foo__bar.rs' never collide.
-    """
-    flat = file_path.replace("/", "__").replace("\\", "__")
-    # usedforsecurity=False: this hash is used for collision-avoidance only,
-    # not for any cryptographic purpose. Required to avoid ValueError in FIPS mode.
-    suffix = hashlib.sha1(file_path.encode(), usedforsecurity=False).hexdigest()[:8]
-    return f"{flat}__{suffix}"
-
-
-def _write_report(folder: Path, filename: str, header: str, items: list[tuple[int, str, str]]) -> None:
-    lines = [f"# {header}", ""]
-    if not items:
-        lines.append("_None found._")
-    else:
-        for lineno, label, code in items:
-            lines.append(f"- **Line {lineno}** `{label}`")
-            lines.append("")
-            lines.append("  ```")
-            # CommonMark §5.3: content inside a fenced block that is itself inside
-            # a list item must be indented at least to the list-item continuation
-            # indent (2 spaces here). A 0-indent content line is treated as outside
-            # the fence by strict parsers. Prepend 2 spaces to satisfy this.
-            lines.append(f"  {code.rstrip()}")
-            lines.append("  ```")
-            lines.append("")
-    lines.append("")
-    (folder / filename).write_text("\n".join(lines), encoding="utf-8")
-
-
 def step4_scan_marked_files() -> None:
     print("\n── Step 4: scanning marked files ────────────────────────────────")
 
-    if not CODEBASE_LIST.exists():
-        die("codebaselist.md not found. Run step 3 first.")
+    if not CODEBASE_TOML.exists():
+        die("codebase.toml not found. Run step 3 first.")
 
-    text     = CODEBASE_LIST.read_text(encoding="utf-8")
-    old_sha, entries = _parse_codebaselist(text)
-    entry_map: dict[str, bool] = dict(entries)
+    text = CODEBASE_TOML.read_text(encoding="utf-8")
+    _, entries = _parse_codebase_toml(text)
+    entry_map: dict[str, tuple[bool, list[dict]]] = {
+        path: (marked, findings) for path, marked, findings in entries
+    }
 
-    marked_files = [p for p, marked in entry_map.items() if marked]
+    marked_files = [p for p, (marked, _findings) in entry_map.items() if marked]
 
     if not marked_files:
         print("  No marked files — nothing to scan.")
@@ -728,39 +761,48 @@ def step4_scan_marked_files() -> None:
 
     for rel_path in marked_files:
         abs_path = REPO_ROOT / rel_path
-        # Guard against path traversal: a tampered codebaselist.md could contain
+        # Guard against path traversal: a tampered codebase.toml could contain
         # relative paths like "../../etc/passwd". Resolve symlinks and verify the
         # result is inside REPO_ROOT before reading anything.
         if not abs_path.resolve().is_relative_to(REPO_ROOT.resolve()):
             print(f"  ⚠ Path escapes repository root: {rel_path!r} — skipping for safety.")
-            entry_map[rel_path] = False
+            entry_map[rel_path] = (False, [])
             continue
         if not abs_path.exists():
             print(f"  ⚠ File gone from disk: {rel_path} — removing mark.")
-            entry_map[rel_path] = False
+            entry_map[rel_path] = (False, [])
             continue
 
         try:
             source = abs_path.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
             print(f"  ⚠ Cannot read {rel_path}: {exc} — unmarking to prevent infinite retry.")
-            entry_map[rel_path] = False
+            entry_map[rel_path] = (False, [])
             continue
-
-        folder_name = _safe_folder_name(rel_path)
-        out_dir = SWEEPFIX_DIR / folder_name
-        out_dir.mkdir(parents=True, exist_ok=True)
 
         magic = _find_magic_numbers(source)
         stubs = _find_stubs(source)
 
-        _write_report(out_dir, "magicnumbers.md", f"Magic Numbers — {rel_path}", magic)
-        _write_report(out_dir, "stubs.md",        f"Stubs — {rel_path}",         stubs)
+        findings: list[dict] = []
+        for lineno, value, context in magic:
+            findings.append({
+                "line":    lineno,
+                "kind":    "magic_number",
+                "value":   value,
+                "context": context,
+            })
+        for lineno, label, context in stubs:
+            findings.append({
+                "line":    lineno,
+                "kind":    "stub",
+                "label":   label,
+                "context": context,
+            })
 
         total_magic += len(magic)
         total_stubs += len(stubs)
 
-        entry_map[rel_path] = False  # unmark
+        entry_map[rel_path] = (False, findings)  # unmark, store findings
         processed += 1
 
         status = f"  ✓ {rel_path}"
@@ -773,16 +815,18 @@ def step4_scan_marked_files() -> None:
             status += f"  ({', '.join(extras)})"
         print(status)
 
-    # Persist updated list (marks cleared).
-    # Re-read the current SHA from the file rather than relying on the variable
-    # name "old_sha" which is misleading after step3 has already updated it.
+    # Persist updated list (marks cleared, findings embedded).
+    # Re-read the current SHA: step3 has already updated it, "old_sha" is stale.
     current_sha = current_commit()
-    _write_codebaselist(current_sha, list(entry_map.items()))
+    _write_codebase_toml(
+        current_sha,
+        [(path, marked, findings) for path, (marked, findings) in entry_map.items()],
+    )
     print(
         f"\n  Done. Total: {total_magic} magic numbers, "
         f"{total_stubs} stubs across {processed} file(s)."
     )
-    print(f"  Reports written to: {SWEEPFIX_DIR}/")
+    print(f"  Results written to: {CODEBASE_TOML}")
 
 
 # ---------------------------------------------------------------------------
@@ -792,7 +836,7 @@ def step4_scan_marked_files() -> None:
 def main() -> None:
     # Resolve REPO_ROOT here so importing this module outside a git repo does not
     # crash at import time with a bare CalledProcessError.
-    global REPO_ROOT, SWEEPFIX_DIR, CODEBASE_LIST
+    global REPO_ROOT, SWEEPFIX_DIR, CODEBASE_TOML
     try:
         REPO_ROOT = Path(
             subprocess.check_output(
@@ -803,7 +847,7 @@ def main() -> None:
         print("❌  Not inside a git repository. Aborting.", file=sys.stderr)
         sys.exit(1)
     SWEEPFIX_DIR = REPO_ROOT / ".sweepfix"
-    CODEBASE_LIST = SWEEPFIX_DIR / "codebaselist.md"
+    CODEBASE_TOML = SWEEPFIX_DIR / "codebase.toml"
 
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print("  sweepfix — magic-number & stub sweeper")

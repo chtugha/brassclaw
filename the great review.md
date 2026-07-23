@@ -530,3 +530,83 @@ These constructors are called exclusively with `&'static str` literals or determ
 | `tracing::warn!` in `product_auth_serve/manual_token.rs` lines 79, 86 | **Acceptable** — explicit HTTP request handler error recovery, not a background loop. |
 | `tracing::warn!` in `product_auth_serve/mod.rs` line 897 | **Acceptable** — explicit HTTP request handler, not a background loop. |
 
+
+---
+
+## Round 6 Findings
+
+### Issue 35 — MEDIUM: `tracing::warn!` in NearAI lock poisoning handlers
+
+**File:** [`crates/brassclaw_llm/src/nearai_chat.rs`](crates/brassclaw_llm/src/nearai_chat.rs) lines 712, 724
+
+`active_model_name()` and `set_model()` emit `warn!` on `RwLock` poisoning. These methods are called from `model_name()` trait method which is called during LLM completion (agent loop context). Changed to `debug!`.
+
+---
+
+### Issue 36 — MEDIUM: `tracing::info!`/`warn!` in LLM failover loop
+
+**File:** [`crates/brassclaw_llm/src/failover.rs`](crates/brassclaw_llm/src/failover.rs) lines 214, 233, 260, 270, 350
+
+`info!` on cooldown-skip and `warn!` on provider failures fire inside `try_providers()` which is the inner dispatch loop of the failover provider. Called from every LLM completion. Changed all to `debug!`.
+
+---
+
+### Issue 37 — MEDIUM: Excessive `info!`/`warn!`/`error!` in Gemini OAuth flow
+
+**File:** [`crates/brassclaw_llm/src/gemini_oauth.rs`](crates/brassclaw_llm/src/gemini_oauth.rs) — 23 call sites across `get_valid_credential()`, `force_refresh()`, `refresh_token()`, streaming response handlers, and project discovery.
+
+All these fire during LLM completions (agent loop context) and would corrupt the terminal UI. Changed the import from `use tracing::{debug, error, info, warn}` to `use tracing::debug` and replaced all 23 call sites with `debug!`.
+
+---
+
+### Issue 38 — MEDIUM: `tracing::warn!` in GitHub Copilot request handler
+
+**File:** [`crates/brassclaw_llm/src/github_copilot.rs`](crates/brassclaw_llm/src/github_copilot.rs) lines 112, 139, 159, 169, 177, 197
+
+`warn!` on token exchange failure, HTTP request failure, 401/429 responses, and JSON parse failures — all inside `send_request()` which is called from every LLM completion. Changed to `debug!`.
+
+---
+
+### Issue 39 — MEDIUM: `CopilotTokenManager::new()` takes `String` instead of `SecretString`
+
+**File:** [`crates/brassclaw_llm/src/github_copilot_auth.rs`](crates/brassclaw_llm/src/github_copilot_auth.rs) line 435; [`crates/brassclaw_llm/src/github_copilot.rs`](crates/brassclaw_llm/src/github_copilot.rs) line 48
+
+The constructor accepted `String` and immediately converted to `SecretString`, requiring the call site to do `.expose_secret().to_string()` which creates a transient `String` containing the secret. Changed the parameter type to `SecretString` and updated the call site to pass the `SecretString` directly via `.clone()`.
+
+---
+
+### Issue 40 — MEDIUM: `tracing::warn!` in `brassclaw_skills` loading paths
+
+**Files:**
+- [`crates/brassclaw_skills/src/registry.rs`](crates/brassclaw_skills/src/registry.rs) — 7 call sites (skill loading, cap reached, symlink skip, companion check)
+- [`crates/brassclaw_skills/src/selector.rs`](crates/brassclaw_skills/src/selector.rs) line 93
+- [`crates/brassclaw_skills/src/catalog.rs`](crates/brassclaw_skills/src/catalog.rs) — 3 call sites
+- [`crates/brassclaw_skills/src/types.rs`](crates/brassclaw_skills/src/types.rs) line 352
+- [`crates/brassclaw_skills/src/parser.rs`](crates/brassclaw_skills/src/parser.rs) line 220
+- [`crates/brassclaw_skills/src/management/install_bundle.rs`](crates/brassclaw_skills/src/management/install_bundle.rs) line 266
+
+All these fire during skill loading (called per agent turn during context preparation). Changed to `debug!`.
+
+---
+
+## Round 6 Non-Issues (Investigated and Cleared)
+
+| Claim | Verdict |
+|---|---|
+| `OAuthCredential.access_token: String` in `gemini_oauth.rs` | **Intentional** — struct must JSON-round-trip in exact Google format. Manual `Debug` impl redacts the field. Not changeable to `SecretString` without breaking JSON compatibility. |
+| `tracing::warn!` in `brassclaw_host_runtime` production paths | **Acceptable** — these warn! calls are in capability invocation error handlers (approval lookup failure, resource governor failure, run state transition failure). They are genuine operational anomalies that operators need visibility into. Not routine background polling. |
+| `CopilotTokenResponse.token: String` | **Acceptable** — short-lived response struct never logged; immediately converted to `SecretString` on line 476. |
+
+---
+
+## Round 6 Execution Order
+
+- [x] **Step 44** — Fix `warn!` in `nearai_chat.rs` lock poisoning handlers → `debug!` *(resolved)*
+- [x] **Step 45** — Fix `info!`/`warn!` in `failover.rs` provider loop → `debug!` *(resolved)*
+- [x] **Step 46** — Fix all `info!`/`warn!`/`error!` in `gemini_oauth.rs` → `debug!` *(resolved)*
+- [x] **Step 47** — Fix `warn!` in `github_copilot.rs` request handler → `debug!` *(resolved)*
+- [x] **Step 48** — Fix `CopilotTokenManager::new()` String → SecretString *(resolved)*
+- [x] **Step 49** — Fix `warn!` across `brassclaw_skills` loading paths → `debug!` *(resolved)*
+- [x] **Step 50** — Run `cargo clippy` for all changed crates — zero warnings *(verified)*
+- [x] **Step 51** — Run `cargo test` for all changed crates — all tests pass *(verified)*
+

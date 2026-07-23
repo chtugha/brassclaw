@@ -8,7 +8,7 @@ use chrono::Utc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, warn};
+use tracing::debug;
 use url::Url;
 
 use crate::config::GeminiOauthConfig;
@@ -370,7 +370,7 @@ impl CredentialManager {
         let credential = match self.load_credential().await {
             Ok(c) => c,
             Err(_) => {
-                info!("No OAuth credentials found. Starting interactive OAuth login flow.");
+                debug!("No OAuth credentials found. Starting interactive OAuth login flow.");
                 let new_cred = self.perform_oauth_login().await?;
                 self.save_credential(&new_cred).await?;
                 return Ok(new_cred);
@@ -382,10 +382,10 @@ impl CredentialManager {
             if credential.project_id.is_none() {
                 let mut updated = credential;
                 if let Some(pid) = self.discover_project_id(&updated.access_token).await {
-                    info!(project_id = %pid, "Discovered Cloud Code project");
+                    debug!(project_id = %pid, "Discovered Cloud Code project");
                     updated.project_id = Some(pid);
                     if let Err(e) = self.save_credential(&updated).await {
-                        warn!(error = %e, "Failed to persist discovered project_id to credentials file");
+                        debug!(error = %e, "Failed to persist discovered project_id to credentials file");
                     }
                 }
                 return Ok(updated);
@@ -393,11 +393,11 @@ impl CredentialManager {
             return Ok(credential);
         }
 
-        info!("Gemini OAuth access token is expired. Attempting to refresh...");
+        debug!("Gemini OAuth access token is expired. Attempting to refresh...");
 
         let Some(refresh_token) = credential.refresh_token.as_ref() else {
-            error!("Token expired and no refresh token available.");
-            info!("Falling back to interactive OAuth login flow.");
+            debug!("Token expired and no refresh token available.");
+            debug!("Falling back to interactive OAuth login flow.");
             let new_cred = self.perform_oauth_login().await?;
             self.save_credential(&new_cred).await?;
             return Ok(new_cred);
@@ -415,7 +415,7 @@ impl CredentialManager {
                 Ok(new_cred)
             }
             Err(e) => {
-                warn!(
+                debug!(
                     "Failed to refresh OAuth token: {}. Falling back to login flow.",
                     e
                 );
@@ -451,7 +451,7 @@ impl CredentialManager {
             ));
         };
 
-        info!("Force-refreshing Gemini OAuth token...");
+        debug!("Force-refreshing Gemini OAuth token...");
 
         match self.refresh_token(refresh_token, credential.clone()).await {
             Ok(new_cred) => {
@@ -459,7 +459,7 @@ impl CredentialManager {
                 Ok(new_cred)
             }
             Err(e) => {
-                warn!(
+                debug!(
                     "Failed to force-refresh OAuth token: {}. Falling back to login flow.",
                     e
                 );
@@ -492,7 +492,7 @@ impl CredentialManager {
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_else(|e| {
-                warn!(error = %e, "Failed to read token refresh error body");
+                debug!(error = %e, "Failed to read token refresh error body");
                 String::new()
             });
             return Err(anyhow!("Token refresh failed with {}: {}", status, text));
@@ -544,14 +544,14 @@ impl CredentialManager {
                 }
             }
             Ok(r) => {
-                warn!(
+                debug!(
                     status = %r.status(),
                     "loadCodeAssist failed during project discovery"
                 );
                 None
             }
             Err(e) => {
-                warn!(error = %e, "Failed to call loadCodeAssist for project discovery");
+                debug!(error = %e, "Failed to call loadCodeAssist for project discovery");
                 None
             }
         }
@@ -675,7 +675,7 @@ impl CredentialManager {
         if !response.status().is_success() {
             let status = response.status();
             let text = response.text().await.unwrap_or_else(|e| {
-                warn!(error = %e, "Failed to read token exchange error body");
+                debug!(error = %e, "Failed to read token exchange error body");
                 String::new()
             });
             return Err(anyhow!("Token exchange failed with {}: {}", status, text));
@@ -710,7 +710,7 @@ impl CredentialManager {
             let load_data: serde_json::Value = match load_resp.json().await {
                 Ok(v) => v,
                 Err(e) => {
-                    warn!(error = %e, "Failed to parse loadCodeAssist response");
+                    debug!(error = %e, "Failed to parse loadCodeAssist response");
                     serde_json::Value::default()
                 }
             };
@@ -743,7 +743,7 @@ impl CredentialManager {
                 let mut lro_data: serde_json::Value = match onboard_resp.json().await {
                     Ok(v) => v,
                     Err(e) => {
-                        warn!(error = %e, "Failed to parse onboardUser response");
+                        debug!(error = %e, "Failed to parse onboardUser response");
                         serde_json::Value::default()
                     }
                 };
@@ -779,7 +779,7 @@ impl CredentialManager {
                             lro_data = match resp.json().await {
                                 Ok(v) => v,
                                 Err(e) => {
-                                    warn!(error = %e, "Failed to parse LRO poll response");
+                                    debug!(error = %e, "Failed to parse LRO poll response");
                                     serde_json::Value::default()
                                 }
                             };
@@ -801,7 +801,7 @@ impl CredentialManager {
                 }
             } else {
                 let err_text = onboard_resp.text().await.unwrap_or_else(|e| {
-                    warn!(error = %e, "Failed to read onboard error body");
+                    debug!(error = %e, "Failed to read onboard error body");
                     String::new()
                 });
                 println!(
@@ -1172,7 +1172,7 @@ impl GeminiOauthProvider {
             let major: u32 = match version_str.parse() {
                 Ok(v) => v,
                 Err(_) => {
-                    warn!(
+                    debug!(
                         model = model,
                         "could not parse major version from Gemini model name, defaulting to legacy API"
                     );
@@ -1336,7 +1336,7 @@ impl GeminiOauthProvider {
                 ) {
                     headers.insert(hname, hval);
                 } else {
-                    warn!(header = %name, "Skipping invalid custom header");
+                    debug!(header = %name, "Skipping invalid custom header");
                 }
             }
 
@@ -1512,7 +1512,7 @@ impl GeminiOauthProvider {
                 if let Some(ref pf) = prompt_feedback
                     && let Some(reason) = pf.get("blockReason").and_then(|r| r.as_str())
                 {
-                    warn!(
+                    debug!(
                         block_reason = reason,
                         "Gemini API blocked the request via promptFeedback"
                     );
@@ -1554,11 +1554,11 @@ impl GeminiOauthProvider {
                     .unwrap_or(&body_str);
 
                 if status.as_u16() == 401 && allow_retry {
-                    warn!(
+                    debug!(
                         "Gemini OAuth request failed with 401. Force-refreshing token and retrying..."
                     );
                     if let Err(e) = self.cred_manager.force_refresh().await {
-                        error!("Failed to force-refresh token: {}", e);
+                        debug!("Failed to force-refresh token: {}", e);
                         return Err(LlmError::RequestFailed {
                             provider: "gemini_oauth".to_string(),
                             reason: format!("Auth error 401 and refresh failed: {}", e),
@@ -1955,7 +1955,7 @@ impl GeminiOauthProvider {
         // Log warnings for known problematic finish reasons.
         match finish_reason {
             "MALFORMED_FUNCTION_CALL" => {
-                warn!(
+                debug!(
                     finish_reason = finish_reason,
                     "Gemini returned MALFORMED_FUNCTION_CALL — {} (type: {})",
                     "model stream ended with malformed function call",
@@ -1963,7 +1963,7 @@ impl GeminiOauthProvider {
                 );
             }
             "UNEXPECTED_TOOL_CALL" => {
-                warn!(
+                debug!(
                     finish_reason = finish_reason,
                     "Gemini returned UNEXPECTED_TOOL_CALL — {} (type: {})",
                     "model stream ended with unexpected tool call",
@@ -2030,7 +2030,7 @@ impl GeminiOauthProvider {
         if let Some(ref pf) = _prompt_feedback
             && let Some(reason) = pf.get("blockReason").and_then(|r| r.as_str())
         {
-            warn!(
+            debug!(
                 block_reason = reason,
                 "Gemini API blocked the request via promptFeedback"
             );

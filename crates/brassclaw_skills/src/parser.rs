@@ -217,7 +217,7 @@ pub(crate) fn has_legacy_metadata_openclaw_requires(yaml_str: &str) -> bool {
 
 fn warn_on_legacy_requires(yaml_str: &str, skill_name: &str) {
     if has_legacy_metadata_openclaw_requires(yaml_str) {
-        tracing::warn!(
+        tracing::debug!(
             "Skill '{}' uses the legacy `metadata.openclaw.requires` frontmatter shape, which is ignored. \
              Move the requirements to a top-level `requires:` block (with `bins`, `env`, `config`, `skills`) \
              so gating and dependency declarations take effect.",

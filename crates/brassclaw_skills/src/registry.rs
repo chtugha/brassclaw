@@ -323,7 +323,7 @@ impl SkillRegistry {
         }
 
         if loaded_names.len() >= MAX_DISCOVERED_SKILLS {
-            tracing::warn!(
+            tracing::debug!(
                 "Global skill discovery cap reached ({} skills)",
                 MAX_DISCOVERED_SKILLS
             );
@@ -340,7 +340,7 @@ impl SkillRegistry {
         for skill in &self.skills {
             for companion in &skill.manifest.requires.skills {
                 if !loaded_set.contains(companion.as_str()) {
-                    tracing::warn!(
+                    tracing::debug!(
                         "Skill '{}' declares companion '{}' in `requires.skills`, but it is not loaded. \
                          Install it via `skill_install` or place a SKILL.md for it in ~/.brassclaw/skills/ \
                          to avoid a degraded experience.",
@@ -401,7 +401,7 @@ impl SkillRegistry {
                 if e.kind() == std::io::ErrorKind::NotFound {
                     tracing::debug!("Skills directory does not exist: {:?}", dir);
                 } else {
-                    tracing::warn!("Failed to read skills directory {:?}: {}", dir, e);
+                    tracing::debug!("Failed to read skills directory {:?}: {}", dir, e);
                 }
                 return results;
             }
@@ -410,7 +410,7 @@ impl SkillRegistry {
         let mut count = 0usize;
         while let Ok(Some(entry)) = entries.next_entry().await {
             if count >= remaining_cap {
-                tracing::warn!(
+                tracing::debug!(
                     "Skill discovery cap reached ({} skills in this scan), skipping remaining",
                     count
                 );
@@ -427,7 +427,7 @@ impl SkillRegistry {
             };
 
             if meta.is_symlink() {
-                tracing::warn!(
+                tracing::debug!(
                     "Skipping symlink in skills directory: {:?}",
                     path.file_name().unwrap_or_default()
                 );
@@ -446,7 +446,7 @@ impl SkillRegistry {
                             results.push((name, skill));
                         }
                         Err(e) => {
-                            tracing::warn!(
+                            tracing::debug!(
                                 "Failed to load skill from {:?}: {}",
                                 path.file_name().unwrap_or_default(),
                                 e
@@ -485,7 +485,7 @@ impl SkillRegistry {
                         results.push((name, skill));
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to load skill from {:?}: {}", fname, e);
+                        tracing::debug!("Failed to load skill from {:?}: {}", fname, e);
                     }
                 }
             }

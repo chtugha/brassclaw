@@ -211,7 +211,7 @@ impl FailoverProvider {
 
         // Log skipped providers.
         for &i in &cooled_down {
-            tracing::info!(
+            tracing::debug!(
                 provider = %self.providers[i].model_name(),
                 "Skipping provider (in cooldown)"
             );
@@ -230,7 +230,7 @@ impl FailoverProvider {
                     provider: "failover".to_string(),
                     reason: "FailoverProvider requires at least one provider".to_string(),
                 })?;
-            tracing::info!(
+            tracing::debug!(
                 provider = %self.providers[oldest].model_name(),
                 "All providers in cooldown, trying oldest-cooled provider"
             );
@@ -257,7 +257,7 @@ impl FailoverProvider {
                     if self.cooldowns[i].record_failure(self.cooldown_config.failure_threshold) {
                         let nanos = self.now_nanos();
                         self.cooldowns[i].activate_cooldown(nanos);
-                        tracing::warn!(
+                        tracing::debug!(
                             provider = %provider.model_name(),
                             threshold = self.cooldown_config.failure_threshold,
                             cooldown_secs = self.cooldown_config.cooldown_duration.as_secs(),
@@ -267,7 +267,7 @@ impl FailoverProvider {
 
                     if pos + 1 < available.len() {
                         let next_i = available[pos + 1];
-                        tracing::warn!(
+                        tracing::debug!(
                             provider = %provider.model_name(),
                             error = %err,
                             next_provider = %self.providers[next_i].model_name(),
@@ -347,7 +347,7 @@ impl LlmProvider for FailoverProvider {
             match provider.list_models().await {
                 Ok(models) => all_models.extend(models),
                 Err(err) => {
-                    tracing::warn!(
+                    tracing::debug!(
                         provider = %provider.model_name(),
                         error = %err,
                         "Failed to list models from provider, skipping"

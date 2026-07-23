@@ -255,7 +255,7 @@ impl SkillCatalog {
             .user_agent(concat!("brassclaw/", env!("CARGO_PKG_VERSION")))
             .build()
             .unwrap_or_else(|e| {
-                tracing::warn!("Failed to build HTTP client: {e}");
+                tracing::debug!("Failed to build HTTP client: {e}");
                 reqwest::Client::default()
             });
 
@@ -278,7 +278,7 @@ impl SkillCatalog {
             .user_agent(concat!("brassclaw/", env!("CARGO_PKG_VERSION")))
             .build()
             .unwrap_or_else(|e| {
-                tracing::warn!("Failed to build HTTP client: {e}");
+                tracing::debug!("Failed to build HTTP client: {e}");
                 reqwest::Client::default()
             });
 
@@ -337,7 +337,7 @@ impl SkillCatalog {
         let response = match self.client.get(&url).query(&[("q", query)]).send().await {
             Ok(resp) => resp,
             Err(e) => {
-                tracing::warn!("Catalog search failed (network): {}", e);
+                tracing::debug!("Catalog search failed (network): {}", e);
                 return CatalogSearchOutcome {
                     results: Vec::new(),
                     error: Some("Registry unreachable".to_string()),

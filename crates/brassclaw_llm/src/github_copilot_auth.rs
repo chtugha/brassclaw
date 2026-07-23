@@ -432,10 +432,10 @@ fn unix_now() -> u64 {
 
 impl CopilotTokenManager {
     /// Create a new token manager with the given GitHub OAuth token.
-    pub(crate) fn new(client: reqwest::Client, oauth_token: String) -> Self {
+    pub(crate) fn new(client: reqwest::Client, oauth_token: SecretString) -> Self {
         Self {
             client,
-            oauth_token: SecretString::from(oauth_token),
+            oauth_token,
             cached: RwLock::new(None),
         }
     }
@@ -650,7 +650,7 @@ mod tests {
     async fn token_manager_caches_token_and_returns_same_value() {
         // Pre-populate the cache with a token that expires far in the future.
         let client = reqwest::Client::new();
-        let manager = CopilotTokenManager::new(client, "unused_oauth".to_string());
+        let manager = CopilotTokenManager::new(client, "unused_oauth".to_string().into());
 
         let far_future = unix_now() + 3600;
         {
@@ -672,7 +672,7 @@ mod tests {
     #[tokio::test]
     async fn token_manager_invalidation_clears_cache() {
         let client = reqwest::Client::new();
-        let manager = CopilotTokenManager::new(client, "unused_oauth".to_string());
+        let manager = CopilotTokenManager::new(client, "unused_oauth".to_string().into());
 
         let far_future = unix_now() + 3600;
         {
@@ -692,7 +692,7 @@ mod tests {
     #[tokio::test]
     async fn token_manager_expired_token_triggers_refresh_path() {
         let client = reqwest::Client::new();
-        let manager = CopilotTokenManager::new(client, "unused_oauth".to_string());
+        let manager = CopilotTokenManager::new(client, "unused_oauth".to_string().into());
 
         // Set a token that is already expired (expires_at in the past).
         {
@@ -716,7 +716,7 @@ mod tests {
     #[tokio::test]
     async fn token_manager_within_buffer_triggers_refresh() {
         let client = reqwest::Client::new();
-        let manager = CopilotTokenManager::new(client, "unused_oauth".to_string());
+        let manager = CopilotTokenManager::new(client, "unused_oauth".to_string().into());
 
         // Set a token that expires within the refresh buffer window.
         let expires_soon = unix_now() + TOKEN_REFRESH_BUFFER_SECS - 10;

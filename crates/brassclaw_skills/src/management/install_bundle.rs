@@ -263,7 +263,7 @@ pub(super) async fn read_install_metadata_bytes(
     {
         Ok(Some(bytes)) => Ok(Some(bytes)),
         Ok(None) => {
-            tracing::warn!(
+            tracing::debug!(
                 scoped_path = %metadata_path,
                 max_bytes = MAX_INSTALL_METADATA_BYTES,
                 "skill install metadata sidecar exceeded bounded read limit; treating as installed"

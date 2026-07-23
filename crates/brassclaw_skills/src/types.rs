@@ -349,7 +349,7 @@ impl LoadedSkill {
                 {
                     Ok(re) => Some(re),
                     Err(e) => {
-                        tracing::warn!("Invalid activation regex pattern '{}': {}", p, e);
+                        tracing::debug!("Invalid activation regex pattern '{}': {}", p, e);
                         None
                     }
                 }

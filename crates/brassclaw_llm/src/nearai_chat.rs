@@ -709,7 +709,7 @@ impl LlmProvider for NearAiChatProvider {
         match self.active_model.read() {
             Ok(guard) => guard.clone(),
             Err(poisoned) => {
-                tracing::warn!("active_model lock poisoned while reading; continuing");
+                tracing::debug!("active_model lock poisoned while reading; continuing");
                 poisoned.into_inner().clone()
             }
         }
@@ -721,7 +721,7 @@ impl LlmProvider for NearAiChatProvider {
                 *guard = model.to_string();
             }
             Err(poisoned) => {
-                tracing::warn!("active_model lock poisoned while writing; continuing");
+                tracing::debug!("active_model lock poisoned while writing; continuing");
                 *poisoned.into_inner() = model.to_string();
             }
         }

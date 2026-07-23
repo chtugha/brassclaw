@@ -47,10 +47,9 @@ impl GithubCopilotProvider {
     ) -> Result<Self, LlmError> {
         let oauth_token = config
             .api_key
-            .as_ref()
-            .map(|k| k.expose_secret().to_string())
+            .clone()
             .ok_or_else(|| {
-                tracing::error!("No API key configured for github_copilot — check GITHUB_COPILOT_TOKEN env var or secrets store");
+                tracing::debug!("No API key configured for github_copilot — check GITHUB_COPILOT_TOKEN env var or secrets store");
                 LlmError::AuthFailed {
                     provider: "github_copilot".to_string(),
                 }
@@ -110,7 +109,7 @@ impl GithubCopilotProvider {
         // Distinguish permanent auth errors (non-retryable) from transient
         // network failures (retryable) so RetryProvider handles them correctly.
         let token = self.token_manager.get_token().await.map_err(|e| {
-            tracing::warn!(error = %e, "Copilot: token exchange failed");
+            tracing::debug!(error = %e, "Copilot: token exchange failed");
             match &e {
                 crate::github_copilot_auth::GithubCopilotAuthError::AccessDenied
                 | crate::github_copilot_auth::GithubCopilotAuthError::Expired => {
@@ -137,7 +136,7 @@ impl GithubCopilotProvider {
         }
 
         let response = request.json(body).send().await.map_err(|e| {
-            tracing::warn!(error = %e, "Copilot: HTTP request failed");
+            tracing::debug!(error = %e, "Copilot: HTTP request failed");
             LlmError::RequestFailed {
                 provider: "github_copilot".to_string(),
                 reason: e.to_string(),
@@ -157,7 +156,7 @@ impl GithubCopilotProvider {
                 .await
                 .unwrap_or_else(|e| format!("(failed to read error body: {e})"));
 
-            tracing::warn!(
+            tracing::debug!(
                 status = %status,
                 body = %brassclaw_common::truncate_for_preview(&response_text, 256),
                 "Copilot: API error response"
@@ -167,7 +166,7 @@ impl GithubCopilotProvider {
                 // Invalidate the cached session token so the next attempt
                 // (driven by RetryProvider) gets a fresh one. We don't retry
                 // inline to avoid nested retries with the outer RetryProvider.
-                tracing::warn!("Copilot: 401 Unauthorized — invalidating session token for retry");
+                tracing::debug!("Copilot: 401 Unauthorized — invalidating session token for retry");
                 self.token_manager.invalidate().await;
                 return Err(LlmError::RequestFailed {
                     provider: "github_copilot".to_string(),
@@ -175,7 +174,7 @@ impl GithubCopilotProvider {
                 });
             }
             if status.as_u16() == 429 {
-                tracing::warn!(retry_after = ?retry_after, "Copilot: rate limited");
+                tracing::debug!(retry_after = ?retry_after, "Copilot: rate limited");
                 return Err(LlmError::RateLimited {
                     provider: "github_copilot".to_string(),
                     retry_after,
@@ -195,7 +194,7 @@ impl GithubCopilotProvider {
 
         serde_json::from_str(&response_text).map_err(|e| {
             let truncated = brassclaw_common::truncate_for_preview(&response_text, 512);
-            tracing::warn!(
+            tracing::debug!(
                 error = %e,
                 body = %truncated,
                 "Copilot: failed to parse response JSON"
