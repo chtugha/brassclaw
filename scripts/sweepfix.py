@@ -304,7 +304,12 @@ def _push_branch(branch: str) -> None:
 def _verify_in_sync_no_fetch(branch: str) -> None:
     """Verify local == remote for `branch`. Caller must have already run `git fetch`."""
     local_sha = git("rev-parse", f"refs/heads/{branch}")
-    remote_sha = git("rev-parse", f"refs/remotes/origin/{branch}", check=False)
+    # --verify exits non-zero and produces empty stdout when the ref does not
+    # exist. Plain `git rev-parse <ref>` echoes the ref name to stdout on
+    # failure (exit 128), which would cause `if not remote_sha` to be False
+    # and fall through to a confusing "not in sync" error instead of the
+    # correct "remote not found" message.
+    remote_sha = git("rev-parse", "--verify", f"refs/remotes/origin/{branch}", check=False)
 
     if not remote_sha:
         die(
@@ -328,7 +333,7 @@ def _verify_in_sync_no_fetch(branch: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Step 3 — build / update codebaselist.md
+# Step 3 — build / update codebase.toml
 # ---------------------------------------------------------------------------
 
 # Valid git commit SHA: 7–40 lowercase hex chars (short or full SHA).
@@ -422,16 +427,34 @@ def _changed_files_between(old_commit: str, new_commit: str) -> tuple[list[str],
     return added, modified, deleted
 
 
+# Compiled once at module level so _toml_escape does not re-create it on every call.
+# Matches TOML-illegal control characters that are not covered by named escapes
+# (\n, \r, \t): U+0000–U+0008, U+000B–U+000C, U+000E–U+001F, U+007F, U+0080–U+009F.
+_CTRL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\x80-\x9f]")
+
+
+def _escape_ctrl(m: re.Match) -> str:  # type: ignore[type-arg]
+    """Replacement callback for _CTRL_CHAR_RE — emits a TOML \\uXXXX escape."""
+    return f"\\u{ord(m.group()):04X}"
+
+
 def _toml_escape(s: str) -> str:
     """Escape a string value for embedding between double quotes in TOML.
 
-    Processes backslash first to avoid double-escaping.
+    TOML basic strings (§2.4) forbid all C0 and C1 control characters except
+    the three that have named escapes (\\t, \\n, \\r).  Characters like NUL,
+    BS, VT, FF, ESC, DEL, and the C1 block are also illegal unescaped.
+    We use the universal TOML \\uXXXX escape for the full illegal range.
+
+    Processing order: backslash first to avoid double-escaping.
     """
-    s = s.replace("\\", "\\\\")   # must be first
+    # Named escapes (order matters: backslash must be first)
+    s = s.replace("\\", "\\\\")
     s = s.replace('"',  '\\"')
     s = s.replace("\n", "\\n")
     s = s.replace("\r", "\\r")
     s = s.replace("\t", "\\t")
+    s = _CTRL_CHAR_RE.sub(_escape_ctrl, s)
     return s
 
 
@@ -505,13 +528,15 @@ def _write_codebase_toml(
         for finding in findings:
             lines.append("")
             lines.append("  [[file.finding]]")
-            lines.append(f"  line = {int(finding['line'])}")
-            lines.append(f'  kind = "{_toml_escape(str(finding["kind"]))}"')
+            # Guard all key accesses: a finding dict parsed from a hand-edited or
+            # externally-produced codebase.toml may be missing 'line' or 'context'.
+            lines.append(f"  line = {int(finding.get('line', 0))}")
+            lines.append(f'  kind = "{_toml_escape(str(finding.get("kind", "unknown")))}"')
             if finding.get("value") is not None:
                 lines.append(f'  value = "{_toml_escape(str(finding["value"]))}"')
             if finding.get("label") is not None:
                 lines.append(f'  label = "{_toml_escape(str(finding["label"]))}"')
-            lines.append(f'  context = "{_toml_escape(str(finding["context"]))}"')
+            lines.append(f'  context = "{_toml_escape(str(finding.get("context", "")))}"')
 
         lines.append("")
 
@@ -560,7 +585,17 @@ def step3_build_codebaselist() -> None:
     print(f"  Repo commit : {current_sha[:12]}")
     print("  Diffing...")
 
-    added_paths, modified_paths, deleted_paths = _changed_files_between(old_sha, current_sha)
+    try:
+        added_paths, modified_paths, deleted_paths = _changed_files_between(old_sha, current_sha)
+    except subprocess.CalledProcessError as exc:
+        if exc.returncode == 128:
+            # SHA is syntactically valid but does not exist in this repo
+            # (e.g. codebase.toml was copied from another machine).
+            print(f"  ⚠ Commit {old_sha[:12]} not found in this repo — rebuilding from scratch.")
+            CODEBASE_TOML.unlink()
+            _build_codebaselist_fresh(current_sha, rebuild=True)
+            return
+        raise
 
     entry_map: dict[str, tuple[bool, list[dict]]] = {
         path: (marked, findings) for path, marked, findings in existing
@@ -639,36 +674,97 @@ _TRIVIAL_NUMBERS = {
 # are not filtered — see the module docstring for this known limitation.
 _COMMENT_ONLY_LINE_RE = re.compile(r"^\s*(//|/\*|\*/|\*(?!/)|#(?!\[))")
 
+# Compiled once for the Rust-lifetime heuristic used inside _scan_string_state.
+# prev_ns char set: word char, '<', '&', '+', ',' — all positions where 'ident appears.
+# next char: must be a word char (the first letter of the lifetime name).
+_LIFETIME_PREV_RE = re.compile(r"[\w<&+,]")
+_LIFETIME_NEXT_RE = re.compile(r"\w")
 
-def _strip_inline_comment(line: str) -> str:
-    """Strip trailing // and # inline comments, respecting double-quoted strings.
 
-    Correctly handles escaped backslashes before a closing quote (e.g. "a\\\\")
-    by counting the run of backslashes preceding each '"': if the count is even,
-    the backslashes cancel each other and the quote is a real string delimiter;
-    if odd, the quote is escaped and does NOT toggle the string state.
+def _scan_string_state(line: str, stop: int) -> tuple[bool, bool]:
+    """Walk *line* from 0 up to (not including) *stop*, tracking string state.
+
+    Returns ``(in_double, in_single)`` — the string-delimiter state at position
+    *stop*.  This is the single source of truth for quote-tracking logic shared
+    by :func:`_strip_inline_comment` and :func:`_is_in_string`.
+
+    **Quote rules (same for both callers):**
+
+    * ``"`` — toggles ``in_double`` when the number of immediately-preceding
+      backslashes is even (an odd run means the quote itself is escaped).
+      Only processed when ``not in_single``.
+    * ``'`` — opens ``in_single`` when ``not in_double`` AND the token does not
+      look like a Rust lifetime.  A ``'`` closes ``in_single`` when already
+      inside one (no heuristic applied to the closing quote).
+
+    **Rust lifetime heuristic:** a ``'`` is treated as a lifetime opener — and
+    therefore does NOT open a string — when the previous *non-space* character
+    matches ``[\\w<&+,]`` AND the next character is a word character.  This
+    covers all Rust lifetime syntactic positions: ``<'a>``, ``&'a``, ``+'a``,
+    ``,'b``, and ``T + 'a`` (with a space before the apostrophe).
     """
-    in_string = False
+    in_double = False
+    in_single = False
     i = 0
-    while i < len(line):
+    while i < stop:
         c = line[i]
-        if c == '"':
-            # Count consecutive backslashes immediately before this quote.
+
+        if c == '"' and not in_single:
             num_bs = 0
             j = i - 1
             while j >= 0 and line[j] == "\\":
                 num_bs += 1
                 j -= 1
-            # An even number of backslashes means none of them escape this quote.
             if num_bs % 2 == 0:
-                in_string = not in_string
-        elif not in_string:
+                in_double = not in_double
+
+        elif c == "'" and not in_double:
+            num_bs = 0
+            j = i - 1
+            while j >= 0 and line[j] == "\\":
+                num_bs += 1
+                j -= 1
+            if num_bs % 2 == 0:
+                if in_single:
+                    in_single = False
+                else:
+                    # Rust lifetime heuristic: look at the previous non-space char.
+                    k = i - 1
+                    while k >= 0 and line[k] == " ":
+                        k -= 1
+                    prev_ns = line[k] if k >= 0 else ""
+                    next_c  = line[i + 1] if i + 1 < len(line) else ""
+                    if not (_LIFETIME_PREV_RE.match(prev_ns) and _LIFETIME_NEXT_RE.match(next_c)):
+                        in_single = True
+        i += 1
+    return in_double, in_single
+
+
+def _strip_inline_comment(line: str) -> str:
+    """Strip trailing ``//`` and ``#`` inline comments, respecting string literals.
+
+    Scans the line for comment markers (``//``, ``#``) by checking the string
+    state *before* each character using :func:`_scan_string_state`.  Lines are
+    typically ≤200 characters so the per-character helper call is negligible.
+    """
+    for i, c in enumerate(line):
+        in_double, in_single = _scan_string_state(line, i)
+        if not in_double and not in_single:
             if line[i : i + 2] == "//":
                 return line[:i]
             if c == "#":
                 return line[:i]
-        i += 1
     return line
+
+
+def _is_in_string(line: str, pos: int) -> bool:
+    """Return ``True`` if character at *pos* in *line* is inside a string literal.
+
+    Delegates entirely to :func:`_scan_string_state`.  The two functions share
+    the exact same quote-tracking logic so they can never diverge.
+    """
+    in_double, in_single = _scan_string_state(line, pos)
+    return in_double or in_single
 
 
 def _find_magic_numbers(source: str) -> list[tuple[int, str, str]]:
@@ -683,15 +779,12 @@ def _find_magic_numbers(source: str) -> list[tuple[int, str, str]]:
         scan_line = _strip_inline_comment(raw_line)
         for m in _MAGIC_NUMBER_RE.finditer(scan_line):
             lit = m.group("lit")
-            # Check the literal itself (not stripped) so negative magic numbers are preserved
             if lit in _TRIVIAL_NUMBERS:
                 continue
-            # Skip if inside a double-quoted string literal (heuristic: odd count of " before match).
-            # Single quotes are intentionally NOT used here: Rust lifetime annotations ('a, 'static)
-            # and character literals produce odd single-quote counts that cause false negatives
-            # (e.g. `&'a [u8]` before a number would wrongly suppress the report).
-            before = scan_line[: m.start()]
-            if before.count('"') % 2 == 1:
+            # Skip if the literal is inside a string (either ' or ").
+            # Uses _is_in_string which shares the exact same state-machine as
+            # _strip_inline_comment — handles escaped quotes and Rust lifetimes.
+            if _is_in_string(scan_line, m.start()):
                 continue
             results.append((lineno, lit, raw_line.rstrip()))
     return results

@@ -66,6 +66,40 @@ class TestTomlEscape(unittest.TestCase):
         self.assertEqual(result, "\\\\")
         self.assertEqual(len(result), 2)
 
+    def test_nul_byte_escaped(self):
+        # NUL is forbidden in TOML basic strings; must be \uXXXX
+        result = sweepfix._toml_escape("a\x00b")
+        self.assertNotIn("\x00", result)
+        # _toml_escape emits \uXXXX with uppercase hex digits — compare case-insensitively
+        self.assertIn("\\u0000", result.lower())
+
+    def test_control_chars_escaped_and_valid_toml(self):
+        # BS, VT, FF, ESC are all forbidden unescaped in TOML.
+        # After escaping, the result must parse as valid TOML.
+        import tomllib
+        for ch, name in [("\x08", "BS"), ("\x0b", "VT"), ("\x0c", "FF"), ("\x1b", "ESC")]:
+            with self.subTest(char=name):
+                result = sweepfix._toml_escape(ch)
+                self.assertNotIn(ch, result)
+                toml = f'v = "{result}"\n'
+                parsed = tomllib.loads(toml)
+                self.assertEqual(parsed["v"], ch)
+
+    def test_control_chars_survive_toml_roundtrip(self):
+        # A context string containing an ESC char must survive write→parse roundtrip.
+        tmp = Path(tempfile.mkdtemp())
+        orig_toml = sweepfix.CODEBASE_TOML
+        sweepfix.CODEBASE_TOML = tmp / "codebase.toml"
+        try:
+            context = "let x = \x1b[0m3000;"  # ANSI escape in source
+            finding = {"line": 1, "kind": "magic_number", "value": "3000", "context": context}
+            sweepfix._write_codebase_toml("abc", [("f.rs", False, [finding])])
+            text = sweepfix.CODEBASE_TOML.read_text(encoding="utf-8")
+            _, entries = sweepfix._parse_codebase_toml(text)
+            self.assertEqual(entries[0][2][0]["context"], context)
+        finally:
+            sweepfix.CODEBASE_TOML = orig_toml
+
 
 # ---------------------------------------------------------------------------
 # _write_codebase_toml + _parse_codebase_toml  (round-trip)
@@ -182,7 +216,6 @@ class TestTomlRoundTrip(unittest.TestCase):
         self.assertEqual(entries_out[0][0], path)
 
     def test_sha_with_special_chars_escaped(self):
-        # SHA should be a hex string in practice, but escaping must not break it
         sha = "abc1234"
         sha_out, _ = self._roundtrip(sha, [])
         self.assertEqual(sha_out, sha)
@@ -215,7 +248,104 @@ class TestTomlRoundTrip(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _find_magic_numbers  (detection, unchanged function — regression)
+# _strip_inline_comment  (handles both ' and " strings)
+# ---------------------------------------------------------------------------
+
+class TestStripInlineComment(unittest.TestCase):
+
+    def test_no_comment(self):
+        self.assertEqual(sweepfix._strip_inline_comment("let x = 9000;"), "let x = 9000;")
+
+    def test_double_slash_stripped(self):
+        self.assertEqual(sweepfix._strip_inline_comment("let x = 1; // was 42"), "let x = 1; ")
+
+    def test_hash_stripped(self):
+        self.assertEqual(sweepfix._strip_inline_comment("x = 1  # magic"), "x = 1  ")
+
+    def test_double_quoted_protects_slash(self):
+        self.assertEqual(sweepfix._strip_inline_comment('let s = "a // b";'), 'let s = "a // b";')
+
+    def test_escaped_quote_then_comment_stripped(self):
+        self.assertEqual(sweepfix._strip_inline_comment(r'let s = "a\""; // c'), r'let s = "a\""; ')
+
+    def test_double_backslash_closes_string(self):
+        self.assertEqual(sweepfix._strip_inline_comment(r'let s = "a\\"; // c'), r'let s = "a\\"; ')
+
+    def test_triple_backslash_keeps_string_open(self):
+        # 3 backslashes before " → odd → quote is escaped → string stays open → // NOT stripped
+        self.assertEqual(sweepfix._strip_inline_comment(r'let s = "a\\\"; // c'), r'let s = "a\\\"; // c')
+
+    def test_single_quoted_simple_then_comment(self):
+        self.assertEqual(sweepfix._strip_inline_comment("const s = 'hello'; // c"), "const s = 'hello'; ")
+
+    def test_single_quoted_slash_inside_protected(self):
+        self.assertEqual(
+            sweepfix._strip_inline_comment("const s = 'it // works'; let x = 3000; // end"),
+            "const s = 'it // works'; let x = 3000; "
+        )
+
+    def test_python_hash_after_single_quote(self):
+        self.assertEqual(sweepfix._strip_inline_comment("x = 'hello' # py"), "x = 'hello' ")
+
+    def test_python_hash_inside_single_quoted(self):
+        self.assertEqual(sweepfix._strip_inline_comment("x = 'it # works' # real"), "x = 'it # works' ")
+
+    def test_rust_lifetime_not_string(self):
+        self.assertEqual(
+            sweepfix._strip_inline_comment("fn f<'a>(x: &'a str) { let n = 3000; // c"),
+            "fn f<'a>(x: &'a str) { let n = 3000; "
+        )
+
+    def test_rust_char_literal(self):
+        self.assertEqual(
+            sweepfix._strip_inline_comment("let c = 'x'; let n = 3000; // c"),
+            "let c = 'x'; let n = 3000; "
+        )
+
+    def test_rust_static_lifetime(self):
+        self.assertEqual(
+            sweepfix._strip_inline_comment("fn f(s: &'static str) { let n = 3000; // c"),
+            "fn f(s: &'static str) { let n = 3000; "
+        )
+
+    def test_trait_bound_lifetime_with_space(self):
+        self.assertEqual(
+            sweepfix._strip_inline_comment("fn f<T: Trait + 'a>() { let n = 3000; // c"),
+            "fn f<T: Trait + 'a>() { let n = 3000; "
+        )
+
+
+# ---------------------------------------------------------------------------
+# _is_in_string
+# ---------------------------------------------------------------------------
+
+class TestIsInString(unittest.TestCase):
+
+    def test_outside_string(self):
+        self.assertFalse(sweepfix._is_in_string("let x = 3000;", 8))
+
+    def test_inside_double_quoted(self):
+        self.assertTrue(sweepfix._is_in_string('let x = "3000";', 9))
+
+    def test_after_double_quoted(self):
+        self.assertFalse(sweepfix._is_in_string('let s = "hi"; let x = 3000;', 22))
+
+    def test_inside_single_quoted(self):
+        self.assertTrue(sweepfix._is_in_string("let x = '3000';", 9))
+
+    def test_after_single_quoted(self):
+        self.assertFalse(sweepfix._is_in_string("let s = 'hi'; let x = 3000;", 22))
+
+    def test_escaped_quote_false_negative_fixed(self):
+        # "a\"b" — the \" is escaped; string closes at the unescaped ".
+        # Position of '3' in '3000' must be OUTSIDE the string.
+        line = r'let s = "a\"b"; let x = 3000;'
+        pos = line.index("3000")
+        self.assertFalse(sweepfix._is_in_string(line, pos))
+
+
+# ---------------------------------------------------------------------------
+# _find_magic_numbers  (detection)
 # ---------------------------------------------------------------------------
 
 class TestFindMagicNumbers(unittest.TestCase):
@@ -250,9 +380,25 @@ class TestFindMagicNumbers(unittest.TestCase):
         hits = sweepfix._find_magic_numbers("let mask = 0xFF00;\n")
         self.assertEqual(hits[0][1], "0xFF00")
 
-    def test_number_inside_string_not_reported(self):
+    def test_number_inside_double_string_not_reported(self):
         hits = sweepfix._find_magic_numbers('let s = "timeout 60000ms";\n')
         self.assertEqual(hits, [])
+
+    def test_number_inside_single_string_not_reported(self):
+        hits = sweepfix._find_magic_numbers("let s = 'timeout 60000ms';\n")
+        self.assertEqual(hits, [])
+
+    def test_escaped_quote_false_negative_fixed(self):
+        # Before fix: 'let s = "a\"b"; let x = 3000;' had 3 '"' chars before
+        # 3000 → odd count → falsely suppressed. After fix: correctly found.
+        hits = sweepfix._find_magic_numbers(r'let s = "a\"b"; let x = 3000;' + "\n")
+        lits = [h[1] for h in hits]
+        self.assertIn("3000", lits)
+
+    def test_number_after_single_quoted_string_found(self):
+        hits = sweepfix._find_magic_numbers("const s = 'hello'; let x = 3000;\n")
+        lits = [h[1] for h in hits]
+        self.assertIn("3000", lits)
 
     def test_context_line_returned(self):
         src = "let port = 8080;\n"
@@ -261,7 +407,7 @@ class TestFindMagicNumbers(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _find_stubs  (detection, unchanged function — regression)
+# _find_stubs  (detection)
 # ---------------------------------------------------------------------------
 
 class TestFindStubs(unittest.TestCase):
@@ -307,6 +453,91 @@ class TestFindStubs(unittest.TestCase):
     def test_context_line_returned(self):
         hits = sweepfix._find_stubs("    todo!()\n")
         self.assertIn("todo!()", hits[0][2])
+
+
+# ---------------------------------------------------------------------------
+# _write_codebase_toml — robustness against missing finding keys
+# ---------------------------------------------------------------------------
+
+class TestWriteTomlMissingFindingKeys(unittest.TestCase):
+
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        tmp = Path(self._tmpdir.name)
+        self._orig_toml = sweepfix.CODEBASE_TOML
+        sweepfix.SWEEPFIX_DIR  = tmp
+        sweepfix.CODEBASE_TOML = tmp / "codebase.toml"
+
+    def tearDown(self):
+        sweepfix.CODEBASE_TOML = self._orig_toml
+        self._tmpdir.cleanup()
+
+    def test_missing_context_does_not_crash(self):
+        # A finding without 'context' must not raise KeyError
+        finding = {"line": 42, "kind": "magic_number", "value": "3000"}
+        sweepfix._write_codebase_toml("abc", [("f.rs", False, [finding])])
+        text = sweepfix.CODEBASE_TOML.read_text(encoding="utf-8")
+        _, entries = sweepfix._parse_codebase_toml(text)
+        # context falls back to ""
+        self.assertEqual(entries[0][2][0]["context"], "")
+
+    def test_missing_line_does_not_crash(self):
+        # A finding without 'line' must not raise KeyError; falls back to 0
+        finding = {"kind": "stub", "label": "todo!()", "context": "todo!()"}
+        sweepfix._write_codebase_toml("abc", [("f.rs", False, [finding])])
+        text = sweepfix.CODEBASE_TOML.read_text(encoding="utf-8")
+        _, entries = sweepfix._parse_codebase_toml(text)
+        self.assertEqual(entries[0][2][0]["line"], 0)
+
+    def test_missing_kind_does_not_crash(self):
+        # A finding without 'kind' must not raise KeyError; falls back to "unknown"
+        finding = {"line": 5, "context": "x = 3000"}
+        sweepfix._write_codebase_toml("abc", [("f.rs", False, [finding])])
+        text = sweepfix.CODEBASE_TOML.read_text(encoding="utf-8")
+        _, entries = sweepfix._parse_codebase_toml(text)
+        self.assertEqual(entries[0][2][0]["kind"], "unknown")
+
+
+# ---------------------------------------------------------------------------
+# _scan_string_state — the shared state-machine helper
+# ---------------------------------------------------------------------------
+
+class TestScanStringState(unittest.TestCase):
+
+    def test_empty_line(self):
+        self.assertEqual(sweepfix._scan_string_state("", 0), (False, False))
+
+    def test_before_any_quote(self):
+        self.assertEqual(sweepfix._scan_string_state('let x = "hello"', 0), (False, False))
+
+    def test_inside_double_quoted(self):
+        in_d, in_s = sweepfix._scan_string_state('let x = "3000"', 9)
+        self.assertTrue(in_d)
+        self.assertFalse(in_s)
+
+    def test_after_double_quoted(self):
+        in_d, in_s = sweepfix._scan_string_state('let x = "hi"; let y = 0', 14)
+        self.assertFalse(in_d)
+        self.assertFalse(in_s)
+
+    def test_inside_single_quoted(self):
+        in_d, in_s = sweepfix._scan_string_state("let x = '3000'", 9)
+        self.assertFalse(in_d)
+        self.assertTrue(in_s)
+
+    def test_rust_lifetime_does_not_open_string(self):
+        # &'a str — the ' after & must not open in_single
+        line = "&'a str"
+        in_d, in_s = sweepfix._scan_string_state(line, len(line))
+        self.assertFalse(in_d)
+        self.assertFalse(in_s)
+
+    def test_consistency_with_is_in_string(self):
+        # _is_in_string must always agree with _scan_string_state
+        line = r'let s = "a\"b"; let x = 3000;'
+        pos = line.index("3000")
+        in_d, in_s = sweepfix._scan_string_state(line, pos)
+        self.assertEqual(sweepfix._is_in_string(line, pos), in_d or in_s)
 
 
 # ---------------------------------------------------------------------------
