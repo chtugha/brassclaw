@@ -41,3 +41,5 @@ tokio = { version = "1", features = ["rt", "sync", "time"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "sync"] }
+# Enable test-support feature for integration tests so fakes module is compiled.
+brassclaw_product_adapters = { path = ".", features = ["test-support"] }

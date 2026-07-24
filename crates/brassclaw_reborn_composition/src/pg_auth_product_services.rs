@@ -463,10 +463,10 @@ impl PgAuthProductServices {
         scope: &brassclaw_host_api::ResourceScope,
         handle: &Option<SecretHandle>,
     ) {
-        if let Some(h) = handle {
-            if let Err(e) = self.secret_store.delete(scope, h).await {
-                tracing::debug!(error = %e, "pg_auth_product_services: best-effort secret delete failed; orphaned handle is unreachable via account record");
-            }
+        if let Some(h) = handle
+            && let Err(e) = self.secret_store.delete(scope, h).await
+        {
+            tracing::debug!(error = %e, "pg_auth_product_services: best-effort secret delete failed; orphaned handle is unreachable via account record");
         }
     }
 }
@@ -1403,15 +1403,15 @@ impl SecretCleanupService for PgAuthProductServices {
             };
             current.updated_at = Utc::now();
             self.write_account(&current, Some(rev)).await?;
-            if let Some(h) = &purge_access {
-                if let Err(e) = self.secret_store.delete(&request.scope.resource, h).await {
-                    tracing::debug!(error = %e, "pg_auth_product_services: best-effort access-secret purge failed");
-                }
+            if let Some(h) = &purge_access
+                && let Err(e) = self.secret_store.delete(&request.scope.resource, h).await
+            {
+                tracing::debug!(error = %e, "pg_auth_product_services: best-effort access-secret purge failed");
             }
-            if let Some(h) = &purge_refresh {
-                if let Err(e) = self.secret_store.delete(&request.scope.resource, h).await {
-                    tracing::debug!(error = %e, "pg_auth_product_services: best-effort refresh-secret purge failed");
-                }
+            if let Some(h) = &purge_refresh
+                && let Err(e) = self.secret_store.delete(&request.scope.resource, h).await
+            {
+                tracing::debug!(error = %e, "pg_auth_product_services: best-effort refresh-secret purge failed");
             }
         }
         Ok(report)

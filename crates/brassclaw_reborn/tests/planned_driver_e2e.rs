@@ -12,7 +12,7 @@ use brassclaw_agent_loop::{
 };
 // Profile version that will never match any registered driver — triggers
 // InvalidRequest rejection for version-mismatch tests.
-const UNREGISTERED_PROFILE_VERSION: u32 = 99;
+const UNREGISTERED_PROFILE_VERSION: u64 = 99;
 
 use brassclaw_reborn::app_loop_family::build_loop_family_registry;
 use brassclaw_reborn::planned_driver::PlannedDriver;

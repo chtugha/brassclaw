@@ -140,7 +140,7 @@ fn test_safety_context() -> InstructionSafetyContext {
 const SYNTHETIC_CAPABILITY_INFO_ID: &str = "brassclaw.loop.capability_info";
 /// A profile version that does not match any configured profile — used to
 /// trigger profile-mismatch rejection tests.
-const MISMATCHED_PROFILE_VERSION: u32 = 999;
+const MISMATCHED_PROFILE_VERSION: u64 = 999;
 /// Number of capability invocations used in batch-replay tests.
 const BATCH_INVOCATION_COUNT: usize = 130;
 

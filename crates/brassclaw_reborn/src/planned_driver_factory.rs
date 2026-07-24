@@ -290,7 +290,7 @@ mod tests {
 
     // Profile version that will never match any registered driver — used to verify
     // is_subagent_planned_profile returns false for unrecognised versions.
-    const UNREGISTERED_PROFILE_VERSION: u32 = 99;
+    const UNREGISTERED_PROFILE_VERSION: u64 = 99;
 
     #[test]
     fn descriptor_carries_checkpoint_schema() {
