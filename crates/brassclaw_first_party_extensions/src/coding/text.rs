@@ -1,3 +1,8 @@
+/// Number of bytes sampled from the start of a file to probe for binary content.
+const BINARY_PROBE_LEN: usize = 8192;
+/// UTF-16 little-endian byte-order mark (BOM): 0xFF 0xFE.
+const UTF16_LE_BOM: [u8; 2] = [0xFF, 0xFE];
+
 use super::CodingCapabilityError;
 
 use super::{
@@ -9,7 +14,7 @@ pub(super) fn reject_binary_probe(bytes: &[u8]) -> Result<(), CodingCapabilityEr
     if detect_encoding(bytes) == FileEncoding::Utf16Le {
         return Ok(());
     }
-    let probe_len = bytes.len().min(8192);
+    let probe_len = bytes.len().min(BINARY_PROBE_LEN);
     if bytes[..probe_len].contains(&0) {
         return Err(operation_error());
     }
@@ -52,7 +57,7 @@ pub(super) fn encode_text(
     match encoding {
         FileEncoding::Utf8 => output.into_bytes(),
         FileEncoding::Utf16Le => {
-            let mut bytes = vec![0xFF, 0xFE];
+            let mut bytes = Vec::from(UTF16_LE_BOM);
             for unit in output.encode_utf16() {
                 bytes.extend_from_slice(&unit.to_le_bytes());
             }
@@ -62,7 +67,7 @@ pub(super) fn encode_text(
 }
 
 fn detect_encoding(bytes: &[u8]) -> FileEncoding {
-    if bytes.len() >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE {
+    if bytes.len() >= 2 && bytes[0] == UTF16_LE_BOM[0] && bytes[1] == UTF16_LE_BOM[1] {
         FileEncoding::Utf16Le
     } else {
         FileEncoding::Utf8
