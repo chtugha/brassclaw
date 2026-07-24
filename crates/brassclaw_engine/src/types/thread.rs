@@ -387,8 +387,9 @@ impl Thread {
 
     /// Add a message to this thread's conversation.
     pub fn add_message(&mut self, message: ThreadMessage) {
-        let preview = if message.content.chars().count() > 80 {
-            let p: String = message.content.chars().take(80).collect();
+        const THREAD_MSG_PREVIEW_CHARS: usize = 80;
+        let preview = if message.content.chars().count() > THREAD_MSG_PREVIEW_CHARS {
+            let p: String = message.content.chars().take(THREAD_MSG_PREVIEW_CHARS).collect();
             format!("{p}...")
         } else {
             message.content.clone()
