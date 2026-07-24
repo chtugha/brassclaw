@@ -187,6 +187,8 @@ fn apply_outcome(
 /// layer for outcome recording.
 fn recompute_wilson(successes: u64, failures: u64) -> f64 {
     const Z: f64 = 1.96;
+    /// Constant divisor inside the Wilson score square-root term (always 4).
+    const WILSON_INNER_DIV: f64 = 4.0;
     let n = successes + failures;
     if n == 0 {
         return 0.0;
@@ -195,7 +197,7 @@ fn recompute_wilson(successes: u64, failures: u64) -> f64 {
     let p_hat = successes as f64 / n_f;
     let z2 = Z * Z;
     let numerator =
-        p_hat + z2 / (2.0 * n_f) - Z * ((p_hat * (1.0 - p_hat) + z2 / (4.0 * n_f)) / n_f).sqrt();
+        p_hat + z2 / (2.0 * n_f) - Z * ((p_hat * (1.0 - p_hat) + z2 / (WILSON_INNER_DIV * n_f)) / n_f).sqrt();
     let denominator = 1.0 + z2 / n_f;
     (numerator / denominator).clamp(0.0, 1.0)
 }
@@ -278,8 +280,8 @@ mod tests {
         // Start with a borderline "growing" record: 5 successes, 0 failures.
         // Wilson lower bound ≈ 0.566, just above the 0.50 threshold for "growing".
         // One failure drops Wilson to ≈ 0.437, moving the tier to "seedling".
-        let mut usage = 5u64;
-        let mut success = 5u64;
+        let mut usage: u64 = 5;
+        let mut success: u64 = 5;
         let mut failure = 0u64;
         let mut w = recompute_wilson(5, 0);
         let initial_tier = classify_tier(usage, w);
