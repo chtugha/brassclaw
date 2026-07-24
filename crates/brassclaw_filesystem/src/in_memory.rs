@@ -739,13 +739,19 @@ mod tests {
 
     #[tokio::test]
     async fn vector_nearest_returns_top_k_by_cosine() {
+        // Unit and near-unit vectors for cosine similarity fixture.
+        const UNIT: f32 = 1.0;
+        const NEAR: f32 = 0.9;
+        const SMALL: f32 = 0.1;
+        const ZERO: f32 = 0.0;
+
         let fs = InMemoryBackend::new();
         let kind = RecordKind::new("chunk").unwrap();
         let blob = |v: &[f32]| -> Vec<u8> { v.iter().flat_map(|f| f.to_le_bytes()).collect() };
         for (path, vec) in [
-            ("/memory/A", vec![1.0_f32, 0.0, 0.0]),
-            ("/memory/B", vec![0.9_f32, 0.1, 0.0]),
-            ("/memory/C", vec![0.0_f32, 0.0, 1.0]),
+            ("/memory/A", vec![UNIT, ZERO, ZERO]),
+            ("/memory/B", vec![NEAR, SMALL, ZERO]),
+            ("/memory/C", vec![ZERO, ZERO, UNIT]),
         ] {
             let entry = Entry::record(kind.clone(), &serde_json::json!({}))
                 .unwrap()
@@ -759,7 +765,7 @@ mod tests {
                 &vpath("/memory"),
                 &Filter::VectorNearest {
                     key: key("embedding"),
-                    embedding: vec![1.0_f32, 0.0, 0.0],
+                    embedding: vec![UNIT, ZERO, ZERO],
                     limit: 2,
                 },
                 Page::default(),
