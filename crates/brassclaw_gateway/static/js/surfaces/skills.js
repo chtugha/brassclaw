@@ -1,3 +1,11 @@
+/** Per-card stagger delay (seconds) for skill catalog card entrance animations. */
+var CARD_STAGGER_DELAY_S = 0.06;
+/** Number threshold above which counts are formatted with an M suffix. */
+var FORMAT_M_THRESHOLD = 1000000;
+/** Number threshold above which counts are formatted with a K suffix. */
+var FORMAT_K_THRESHOLD = 1000;
+
+
 function installWasmExtension() {
   var name = document.getElementById('wasm-install-name').value.trim();
   if (!name) {
@@ -195,7 +203,7 @@ function searchClawHub() {
 
       for (var i = 0; i < data.catalog.length; i++) {
         var card = renderCatalogSkillCard(data.catalog[i], installedNames);
-        card.style.animationDelay = (i * 0.06) + 's';
+        card.style.animationDelay = (i * CARD_STAGGER_DELAY_S) + 's';
         resultsDiv.appendChild(card);
       }
     }
@@ -331,8 +339,8 @@ function renderCatalogSkillCard(entry, installedNames) {
 }
 
 function formatCompactNumber(n) {
-  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-  if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+  if (n >= FORMAT_M_THRESHOLD) return (n / FORMAT_M_THRESHOLD).toFixed(1) + 'M';
+  if (n >= FORMAT_K_THRESHOLD) return (n / FORMAT_K_THRESHOLD).toFixed(1) + 'K';
   return '' + n;
 }
 

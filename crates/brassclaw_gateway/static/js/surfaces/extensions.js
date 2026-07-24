@@ -1,3 +1,7 @@
+/** Poll delay (ms) when the extension login state is 'refreshed' (active polling). */
+var LOGIN_POLL_ACTIVE_DELAY_MS = 2000;
+
+
 function loadExtensions() {
   const extList = document.getElementById('extensions-list');
   const wasmList = document.getElementById('available-wasm-list');
@@ -994,7 +998,7 @@ function setInteractiveLoginBusy(overlay, busy, label) {
 function interactiveLoginPollDelayMs(status) {
   switch (status) {
     case 'refreshed':
-      return 2000;
+      return LOGIN_POLL_ACTIVE_DELAY_MS;
     case 'pending':
     case 'scanned':
       return 3000;

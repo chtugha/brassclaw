@@ -1,3 +1,7 @@
+/** Maximum stream buffer length (chars) before forcing a UI flush to prevent memory buildup. */
+var STREAM_BUFFER_FORCE_FLUSH_CHARS = 10000;
+
+
 function rememberSseEventId(event) {
   if (!event || !event.lastEventId) return;
   _lastSseEventId = event.lastEventId;
@@ -327,7 +331,7 @@ function connectSSE(lastEventIdOverride) {
     // Accumulate chunks and debounce rendering at 50ms intervals
     _streamBuffer += data.content;
     // Force flush when buffer exceeds 10K chars to prevent memory buildup
-    if (_streamBuffer.length > 10000) {
+    if (_streamBuffer.length > STREAM_BUFFER_FORCE_FLUSH_CHARS) {
       appendToLastAssistant(_streamBuffer);
       _streamBuffer = '';
     }

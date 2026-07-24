@@ -1,3 +1,7 @@
+/** Fallback sort position for tab buttons not found in the configured order. */
+var TAB_ORDER_UNKNOWN = 999;
+
+
 function _addWidgetTab(def) {
   var tabBar = document.querySelector('.tab-bar');
   // Tab panels live as siblings of `.tab-bar` inside `#app`. Earlier
@@ -116,8 +120,8 @@ if (window.__BRASSCLAW_LAYOUT__) {
         buttons.sort(function(a, b) {
           var ai = orderIndex[a.getAttribute('data-tab')];
           var bi = orderIndex[b.getAttribute('data-tab')];
-          if (ai === undefined) ai = 999;
-          if (bi === undefined) bi = 999;
+          if (ai === undefined) ai = TAB_ORDER_UNKNOWN;
+          if (bi === undefined) bi = TAB_ORDER_UNKNOWN;
           return ai - bi;
         });
         buttons.forEach(function(btn) { tabBar.appendChild(btn); });

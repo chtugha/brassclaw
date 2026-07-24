@@ -1,3 +1,7 @@
+/** Height (px) of the share popup window opened for Twitter/X share action. */
+var SHARE_POPUP_HEIGHT_PX = 420;
+
+
 /** Sentinel value meaning "key is unchanged, don't touch it". Must match backend. */
 const API_KEY_UNCHANGED = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
 
@@ -966,7 +970,7 @@ BrassClaw.api = {
       window.open(
         'https://twitter.com/intent/tweet?text=' + encodedText +
         '&hashtags=' + encodeURIComponent(hashtags),
-        '_blank', popupFeatures + '420'
+        '_blank', popupFeatures + SHARE_POPUP_HEIGHT_PX
       );
     };
     var liBtn = overlay.querySelector('.share-linkedin');

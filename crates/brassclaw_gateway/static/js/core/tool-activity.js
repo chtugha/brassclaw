@@ -1,9 +1,13 @@
 const MAX_TOOL_ACTIVITY_RESULT_CHARS = 1000;
+/** Milliseconds threshold below which duration is shown as ms rather than seconds. */
+const FORMAT_DURATION_MS_THRESHOLD = 1000;
+/** Milliseconds cap after which running-tool timers are cleared (5 minutes). */
+const TOOL_TIMER_MAX_MS = 300000;
 
 function formatToolActivityDurationMs(durationMs) {
   if (typeof durationMs !== 'number' || !isFinite(durationMs) || durationMs < 0) return '';
   if (durationMs === 0) return '<1ms';
-  if (durationMs < 1000) return Math.round(durationMs) + 'ms';
+  if (durationMs < FORMAT_DURATION_MS_THRESHOLD) return Math.round(durationMs) + 'ms';
   const elapsedSecs = durationMs / 1000;
   return elapsedSecs < 10 ? elapsedSecs.toFixed(1) + 's' : Math.floor(elapsedSecs) + 's';
 }
@@ -355,7 +359,7 @@ function createToolActivityController(options) {
 
     rendered.timer = setInterval(() => {
       const elapsedMs = Date.now() - rendered.entry.started_at_ms;
-      if (elapsedMs > 300000) {
+      if (elapsedMs > TOOL_TIMER_MAX_MS) {
         clearTimer(rendered);
         return;
       }

@@ -1,3 +1,9 @@
+/** Maximum character length of a detected mission heading line. */
+var MISSION_HEADING_MAX_LEN = 48;
+/** One minute expressed in milliseconds, used in relative-time formatting. */
+var ONE_MINUTE_MS = 60000;
+
+
 let currentMissionId = null;
 let crOverview = null; // cached overview response
 let crCurrentProjectId = null; // currently drilled-into project
@@ -900,7 +906,7 @@ function renderMissionRichBlock(text, extraClass) {
 
 function isLikelyMissionHeading(lines, index) {
   var line = (lines[index] || '').trim();
-  if (!line || line.length > 48) return false;
+  if (!line || line.length > MISSION_HEADING_MAX_LEN) return false;
   if (/^[-*+]\s/.test(line) || /^\d+[.)]\s/.test(line) || /[:.]$/.test(line)) return false;
 
   var known = [
@@ -1123,7 +1129,7 @@ function parseApproachHistoryRecord(text) {
     var trimmed = line.trim();
     if (/^run\s+\d+$/i.test(trimmed)) return;
 
-    var match = trimmed.match(/^(?:[-*+]\s+)?([A-Za-z][A-Za-z ]{1,40}):\s*(.*)$/);
+    var match = trimmed.match(/^(?:[-*+]\s+)?([A-Za-z][A-Za-z ]{1,40}):\s*(.*)$/); // 40 = field name label max chars
     var normalized = match ? normalizeApproachField(match[1]) : '';
     if (normalized) {
       currentField = normalized;
@@ -1405,7 +1411,7 @@ function formatRelativeTime(isoString) {
   const absDiff = Math.abs(diffMs);
   const future = diffMs < 0;
 
-  if (absDiff < 60000)
+  if (absDiff < ONE_MINUTE_MS)
     return future ? I18n.t('time.lessThan1MinuteFromNow') : I18n.t('time.lessThan1MinuteAgo');
   if (absDiff < 3600000) {
     const m = Math.floor(absDiff / 60000);

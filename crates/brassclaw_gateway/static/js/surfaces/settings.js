@@ -1,3 +1,7 @@
+/** Viewport width breakpoint (px) below which the settings panel uses mobile layout. */
+var MOBILE_BREAKPOINT_PX = 768;
+
+
 function switchSettingsSubtab(subtab) {
   currentSettingsSubtab = subtab;
   document.querySelectorAll('.settings-subtab').forEach(function(b) {
@@ -13,7 +17,7 @@ function switchSettingsSubtab(subtab) {
     searchInput.dispatchEvent(new Event('input'));
   }
   // On mobile, drill into detail view
-  if (window.innerWidth <= 768) {
+  if (window.innerWidth <= MOBILE_BREAKPOINT_PX) {
     document.querySelector('.settings-layout').classList.add('settings-detail-active');
   }
   loadSettingsSubtab(subtab);
