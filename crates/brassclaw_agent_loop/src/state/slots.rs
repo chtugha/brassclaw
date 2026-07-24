@@ -50,7 +50,7 @@ impl CompactionPromptSnapshot {
     }
 
     pub fn retain_after_sequence(&mut self, sequence: u64) {
-        let mut removed_tokens = 0_u64;
+        let mut removed_tokens: u64 = 0;
         self.message_index.retain(|entry| {
             let keep = entry.sequence > sequence;
             if !keep {
@@ -62,7 +62,9 @@ impl CompactionPromptSnapshot {
     }
 
     pub fn fingerprint(&self) -> u64 {
-        let mut fingerprint = 0xcbf2_9ce4_8422_2325_u64;
+        // FNV-1a 64-bit offset basis (https://datatracker.ietf.org/doc/html/draft-eastlake-fnv).
+        const FNV1A_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+        let mut fingerprint = FNV1A_OFFSET_BASIS;
         fingerprint = mix_fingerprint(fingerprint, self.observed_prompt_tokens);
         fingerprint = mix_fingerprint(fingerprint, self.message_index.len() as u64);
         for entry in &self.message_index {
