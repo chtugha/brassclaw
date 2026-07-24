@@ -135,7 +135,12 @@ fn pcm_s16le_to_wav(pcm: &[u8], sample_rate_hz: u32) -> Result<Vec<u8>, String> 
 
     let data_len = u32::try_from(pcm.len())
         .map_err(|_| "PCM buffer exceeds WAV container size limits".to_string())?;
-    let total_len = 44u32
+    // WAV file header is always exactly 44 bytes for PCM format:
+    // RIFF(4) + size(4) + WAVE(4) + fmt (4) + chunk_size(4) + audio_format(2) +
+    // num_channels(2) + sample_rate(4) + byte_rate(4) + block_align(2) +
+    // bits_per_sample(2) + data(4) + data_size(4) = 44 bytes.
+    const WAV_HEADER_BYTES: u32 = 44;
+    let total_len = WAV_HEADER_BYTES
         .checked_add(data_len)
         .ok_or_else(|| "WAV container size overflowed".to_string())?;
     let byte_rate = sample_rate_hz

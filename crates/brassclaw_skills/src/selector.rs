@@ -32,6 +32,10 @@ const MAX_REGEX_SCORE: u32 = 40;
 /// on a hot path (the regex crate is linear but the constant matters at scale).
 const MAX_REGEX_MATCH_MESSAGE_BYTES: usize = 64 * 1024;
 
+/// Approximate tokens-per-byte ratio for English prose (~4 bytes per token).
+/// Used to estimate token cost from byte length without a full tokenizer.
+pub(crate) const TOKENS_PER_BYTE: f64 = 0.25;
+
 /// Result of prefiltering with score information.
 #[derive(Debug)]
 pub(crate) struct ScoredSkill<'a> {
@@ -87,8 +91,8 @@ enum TrySelectOutcome {
 /// bypass budgeting.
 pub fn skill_token_cost(skill: &LoadedSkill) -> usize {
     let declared_tokens = skill.manifest.activation.max_context_tokens;
-    // Rough token estimate: ~0.25 tokens per byte (~4 bytes per token for English prose)
-    let approx_tokens = (skill.prompt_content.len() as f64 * 0.25) as usize;
+    // Rough token estimate: TOKENS_PER_BYTE tokens per byte (~4 bytes per token for English prose)
+    let approx_tokens = (skill.prompt_content.len() as f64 * TOKENS_PER_BYTE) as usize;
     let raw_cost = if approx_tokens > declared_tokens * 2 {
         tracing::debug!(
             "Skill '{}' declares max_context_tokens={} but prompt is ~{} tokens; using actual estimate",
@@ -471,6 +475,10 @@ mod tests {
     use std::collections::HashSet;
     use std::path::PathBuf;
 
+    // Token budget assigned to skills in context-budget fixture tests; large
+    // enough that two such skills together exceed a 4000-token budget.
+    const TEST_SKILL_TOKEN_BUDGET: usize = 3000;
+
     /// Test wrapper around `prefilter_skills` that defaults the
     /// satisfied-marker set to empty (legacy behavior — no setup-marker
     /// filtering). Most existing tests don't care about marker
@@ -703,9 +711,9 @@ mod tests {
     #[test]
     fn test_context_budget_limit() {
         let mut skill = make_skill("big", &["test"], &[], &[]);
-        skill.manifest.activation.max_context_tokens = 3000;
+        skill.manifest.activation.max_context_tokens = TEST_SKILL_TOKEN_BUDGET;
         let mut skill2 = make_skill("also_big", &["test"], &[], &[]);
-        skill2.manifest.activation.max_context_tokens = 3000;
+        skill2.manifest.activation.max_context_tokens = TEST_SKILL_TOKEN_BUDGET;
 
         let skills = vec![skill, skill2];
         let result = prefilter_no_markers("test", &skills, 5, 4000);
@@ -1223,9 +1231,9 @@ mod tests {
         // Parent (3000 tok) plus companion (3000 tok) exceeds a 4000
         // budget. Parent selected; companion skipped.
         let mut parent = make_skill_with_requires("big-setup", &["setup"], &["heavy-companion"]);
-        parent.manifest.activation.max_context_tokens = 3000;
+        parent.manifest.activation.max_context_tokens = TEST_SKILL_TOKEN_BUDGET;
         let mut companion = make_skill("heavy-companion", &["x"], &[], &[]);
-        companion.manifest.activation.max_context_tokens = 3000;
+        companion.manifest.activation.max_context_tokens = TEST_SKILL_TOKEN_BUDGET;
 
         let skills = vec![parent, companion];
         let outcome = prefilter_skills("setup", &skills, 10, 4000, &HashSet::new());

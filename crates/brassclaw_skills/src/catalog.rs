@@ -24,6 +24,10 @@ const DEFAULT_REGISTRY_URL: &str = "https://wry-manatee-359.convex.site";
 /// How long cached search results remain valid (5 minutes).
 const CACHE_TTL: Duration = Duration::from_secs(300);
 
+/// Maximum number of search results to hold in the in-memory cache before
+/// evicting the oldest entry. Limits memory usage while keeping recent queries hot.
+const SEARCH_CACHE_MAX_ENTRIES: usize = 50;
+
 /// Maximum number of results to return from a search.
 const MAX_RESULTS: usize = 25;
 
@@ -317,7 +321,7 @@ impl SkillCatalog {
             // Remove stale entry for this query
             cache.retain(|c| c.query != query_lower);
             // Limit cache size to prevent unbounded growth
-            if cache.len() >= 50 {
+            if cache.len() >= SEARCH_CACHE_MAX_ENTRIES {
                 cache.remove(0);
             }
             cache.push(CachedSearch {

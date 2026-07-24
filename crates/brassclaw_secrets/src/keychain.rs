@@ -385,6 +385,14 @@ mod tests {
 
     static SECRETS_MASTER_KEY_ENV_LOCK: Mutex<()> = Mutex::const_new(());
 
+    // Fill bytes for synthetic 32-byte test key material. Distinct values are
+    // used in different tests so correct source selection can be verified.
+    const TEST_KEY_FILL_BYTE_BB: u8 = 0xBB;
+    const TEST_KEY_FILL_BYTE_AB: u8 = 0xAB;
+    /// Required master key length in bytes; used to construct exactly-short
+    /// payloads that trigger the `InvalidMasterKey` error.
+    const MASTER_KEY_REQUIRED_LEN: usize = 32;
+
     struct EnvVarGuard {
         key: &'static str,
         previous: Option<std::ffi::OsString>,
@@ -450,7 +458,7 @@ mod tests {
     #[test]
     fn resolve_master_key_prefers_env_key() {
         let env = Some("aa".repeat(32));
-        let keychain = Ok(Some(vec![0xbb; 32]));
+        let keychain = Ok(Some(vec![TEST_KEY_FILL_BYTE_BB; MASTER_KEY_REQUIRED_LEN]));
 
         let resolved = resolve_master_key_from_sources(env, keychain)
             .unwrap()
@@ -461,7 +469,7 @@ mod tests {
 
     #[test]
     fn resolve_master_key_uses_keychain_when_env_is_absent() {
-        let resolved = resolve_master_key_from_sources(None, Ok(Some(vec![0xbb; 32])))
+        let resolved = resolve_master_key_from_sources(None, Ok(Some(vec![TEST_KEY_FILL_BYTE_BB; MASTER_KEY_REQUIRED_LEN])))
             .unwrap()
             .unwrap();
 
@@ -487,7 +495,7 @@ mod tests {
     #[test]
     fn resolve_master_key_ignores_blank_env_key() {
         let resolved =
-            resolve_master_key_from_sources(Some(" \t ".to_string()), Ok(Some(vec![0xab; 32])))
+            resolve_master_key_from_sources(Some(" \t ".to_string()), Ok(Some(vec![TEST_KEY_FILL_BYTE_AB; MASTER_KEY_REQUIRED_LEN])))
                 .expect("keychain resolver should succeed")
                 .expect("keychain key should be used");
 
@@ -555,7 +563,7 @@ mod tests {
     #[test]
     fn resolve_master_key_rejects_short_keychain_key() {
         assert!(matches!(
-            resolve_master_key_from_sources(None, Ok(Some(vec![0xab; 31]))),
+            resolve_master_key_from_sources(None, Ok(Some(vec![TEST_KEY_FILL_BYTE_AB; MASTER_KEY_REQUIRED_LEN - 1]))),
             Err(SecretError::InvalidMasterKey)
         ));
     }

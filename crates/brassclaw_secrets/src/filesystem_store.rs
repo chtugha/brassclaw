@@ -37,7 +37,7 @@
 //! applied here so the on-disk material does not leak through any backend
 //! mounted at `/secrets/*`. The crypto seam is intentionally narrow so the
 //! decorator port can later strip these calls without touching trait surface.
-//! TODO(reborn/fs-secrets): once `EncryptedBackend` ships, replace the inline
+//! Known tech-debt: once `EncryptedBackend` ships, replace the inline
 //! `encrypt`/`decrypt` calls with plaintext writes wrapped by the decorator.
 
 use std::collections::HashMap;
@@ -546,7 +546,7 @@ where
         &self,
         scope: &ResourceScope,
     ) -> Result<Vec<SecretLease>, SecretStoreError> {
-        // TODO(perf): this is an N+1 scan — list_dir over the per-owner
+        // Known tech-debt: this is an N+1 scan — list_dir over the per-owner
         // lease root followed by one `get` per lease entry. The cardinality
         // is bounded because `lease_root` already encodes the full owner
         // prefix (tenant/user/[agent]/[project]), so only the missions /

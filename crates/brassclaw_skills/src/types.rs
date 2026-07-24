@@ -114,8 +114,12 @@ impl ActivationCriteria {
     }
 }
 
+/// Default maximum context tokens for a skill that does not declare a limit.
+/// Represents a conservative budget for general-purpose skills.
+const DEFAULT_MAX_CONTEXT_TOKENS: usize = 2000;
+
 fn default_max_context_tokens() -> usize {
-    2000
+    DEFAULT_MAX_CONTEXT_TOKENS
 }
 
 /// Parsed skill manifest from SKILL.md YAML frontmatter.

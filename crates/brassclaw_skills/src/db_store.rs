@@ -42,6 +42,20 @@ mod inner {
     };
 
     // -----------------------------------------------------------------------
+    // Constants
+    // -----------------------------------------------------------------------
+
+    /// Validator consumer tag — added at insert time and removed after Step-2
+    /// validation passes. While present it filters the skill from consumer reads.
+    const VALIDATOR_CONSUMER_TAG: &str = "05:validator";
+
+    /// Approximate bytes-per-token ratio for English prose (4 bytes ≈ 1 token).
+    const BYTES_PER_TOKEN: f64 = 4.0;
+
+    /// Maximum approximate token count allowed for a skill body at save time.
+    const SKILL_BODY_MAX_TOKENS: usize = 5000;
+
+    // -----------------------------------------------------------------------
     // Error type
     // -----------------------------------------------------------------------
 
@@ -306,11 +320,11 @@ mod inner {
             }
         }
 
-        // 3. Token budget ≤ 5000 (rough: 4 bytes ≈ 1 token)
-        let approx_tokens = (input.body.len() as f64 / 4.0) as usize;
-        if approx_tokens > 5000 {
+        // 3. Token budget ≤ SKILL_BODY_MAX_TOKENS (rough: BYTES_PER_TOKEN bytes ≈ 1 token)
+        let approx_tokens = (input.body.len() as f64 / BYTES_PER_TOKEN) as usize;
+        if approx_tokens > SKILL_BODY_MAX_TOKENS {
             result.errors.push(format!(
-                "skill body exceeds 5000 token budget (~{approx_tokens} tokens). \
+                "skill body exceeds {SKILL_BODY_MAX_TOKENS} token budget (~{approx_tokens} tokens). \
                  Split into smaller skills or move detail to reference files."
             ));
         }
@@ -428,8 +442,8 @@ mod inner {
                     consumer_tags.push(t.clone());
                 }
             }
-            if !consumer_tags.contains(&"05:validator".to_string()) {
-                consumer_tags.push("05:validator".into());
+            if !consumer_tags.contains(&VALIDATOR_CONSUMER_TAG.to_string()) {
+                consumer_tags.push(VALIDATOR_CONSUMER_TAG.into());
             }
 
             let escaped_body = escape_skill_content(&input.body);
@@ -515,6 +529,7 @@ mod inner {
             let client = self.pool.get().await.map_err(PgError::from)?;
             let rows = client
                 .query(
+                    &format!(
                     "SELECT
                         id, tenant_id, user_id, agent_id, project_id,
                         name, description, body, compatibility, license,
@@ -531,14 +546,14 @@ mod inner {
                         content_hash, last_audit_at, audit_failure_count,
                         parent_mission_id, created_at, updated_at
                      FROM reborn_skills
-                     WHERE tenant_id = $1
-                       AND user_id   = $2
-                       AND agent_id  = $3
-                       AND project_id = $4
-                       AND validation_status = 'validated'
-                       AND $5 = ANY(consumer_tags)
-                       AND NOT ('05:validator' = ANY(consumer_tags))
-                     ORDER BY class_code ASC, prompt_uid ASC",
+                    WHERE tenant_id = $1
+                      AND user_id   = $2
+                      AND agent_id  = $3
+                      AND project_id = $4
+                      AND validation_status = 'validated'
+                      AND $5 = ANY(consumer_tags)
+                      AND NOT ('{}' = ANY(consumer_tags))
+                    ORDER BY class_code ASC, prompt_uid ASC", VALIDATOR_CONSUMER_TAG),
                     &[
                         &scope.tenant_id,
                         &scope.user_id,
@@ -667,7 +682,7 @@ mod inner {
             let client = self.pool.get().await.map_err(PgError::from)?;
             let affected = client
                 .execute(
-                    "UPDATE reborn_skills SET
+                    &format!("UPDATE reborn_skills SET
                         description      = $6,
                         body             = $7,
                         compatibility    = $8,
@@ -688,17 +703,17 @@ mod inner {
                         -- Reset validation cycle.
                         validation_status = 'pending',
                         queue_code        = 'q1_auto',
-                        validation_errors = '{}',
+                        validation_errors = '{{}}',
                         -- Re-add the validator tag (greys out other consumer tags).
                         consumer_tags = array_append(
-                            array_remove(consumer_tags, '05:validator'),
-                            '05:validator'
+                            array_remove(consumer_tags, '{}'),
+                            '{0}'
                         )
                      WHERE id = $1
                        AND tenant_id  = $2
                        AND user_id    = $3
                        AND agent_id   = $4
-                       AND project_id = $5",
+                       AND project_id = $5", VALIDATOR_CONSUMER_TAG),
                     &[
                         &id,
                         &scope.tenant_id,
@@ -793,17 +808,17 @@ mod inner {
 
             let affected = client
                 .execute(
-                    "UPDATE reborn_skills SET
+                    &format!("UPDATE reborn_skills SET
                         validation_status = 'validated',
                         queue_code        = NULL,
-                        -- Remove 05:validator tag to activate consumer tags.
-                        consumer_tags = array_remove(consumer_tags, '05:validator')
+                        -- Remove {0} tag to activate consumer tags.
+                        consumer_tags = array_remove(consumer_tags, '{0}')
                      WHERE id = $1
                        AND tenant_id  = $2
                        AND user_id    = $3
                        AND agent_id   = $4
                        AND project_id = $5
-                       AND validation_status = 'auto_passed'",
+                       AND validation_status = 'auto_passed'", VALIDATOR_CONSUMER_TAG),
                     &[
                         &id,
                         &scope.tenant_id,

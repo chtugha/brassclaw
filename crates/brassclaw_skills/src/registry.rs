@@ -21,6 +21,7 @@ use sha2::{Digest, Sha256};
 use crate::gating;
 use crate::install_metadata::INSTALL_METADATA_FILE_NAME;
 pub use crate::install_metadata::InstalledSkillMetadata;
+use crate::selector::TOKENS_PER_BYTE;
 use crate::parser::{
     SkillParseError, parse_skill_md, parse_skill_md_for_install_recovery,
     split_skill_md_frontmatter,
@@ -896,9 +897,9 @@ async fn build_loaded_skill(
         }
     }
 
-    // Check token budget (reject if prompt is > 2x declared budget)
-    // ~4 bytes per token for English prose = ~0.25 tokens per byte
-    let approx_tokens = (prompt_content.len() as f64 * 0.25) as usize;
+    // Check token budget (reject if prompt is > 2x declared budget).
+    // Uses TOKENS_PER_BYTE ratio (~4 bytes per token for English prose).
+    let approx_tokens = (prompt_content.len() as f64 * TOKENS_PER_BYTE) as usize;
     let declared = manifest.activation.max_context_tokens;
     if declared > 0 && approx_tokens > declared * 2 {
         return Err(SkillRegistryError::TokenBudgetExceeded {
