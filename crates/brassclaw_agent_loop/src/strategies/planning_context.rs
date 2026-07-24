@@ -28,11 +28,14 @@ use brassclaw_turns::run_profile::{
 use crate::state::LoopExecutionState;
 use crate::strategies::context::{ContextPlan, ContextStrategy, loop_control_inline_messages};
 
+/// `LoopSafeSummary` has a 512-character hard limit; we stay 2 chars under it.
+const SAFE_SUMMARY_MAX_CHARS: usize = 510;
+
 /// Strip characters that `LoopSafeSummary` rejects and truncate to its 512-char limit.
 fn sanitize_for_safe_summary(text: &str) -> String {
     text.chars()
         .filter(|c| !matches!(c, '{' | '}' | '[' | ']' | '`' | '<' | '>' | '/' | '\\'))
-        .take(510)
+        .take(SAFE_SUMMARY_MAX_CHARS)
         .collect()
 }
 
