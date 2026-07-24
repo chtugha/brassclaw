@@ -30,6 +30,14 @@ use thiserror::Error;
 use uuid::Uuid;
 
 // ---------------------------------------------------------------------------
+// Protocol constants
+// ---------------------------------------------------------------------------
+
+/// Consumer tag that marks a component as being in the validation queue.
+/// Rows carrying this tag must not be delivered to consumers (SEC-01 §3.5.1).
+const VALIDATOR_CONSUMER_TAG: &str = "05:validator";
+
+// ---------------------------------------------------------------------------
 // Error type
 // ---------------------------------------------------------------------------
 
@@ -188,7 +196,7 @@ impl UnifiedExtension {
     /// Returns true iff the `05:validator` tag is present (component is in a
     /// validation queue and must not be delivered to consumers — §3.5.1).
     pub fn has_validator_tag(&self) -> bool {
-        self.consumer_tags.iter().any(|t| t == "05:validator")
+        self.consumer_tags.iter().any(|t| t == VALIDATOR_CONSUMER_TAG)
     }
 
     /// Returns true iff the row is deliverable: validated + no validator tag.
@@ -605,7 +613,7 @@ impl UnifiedExtensionStore for PgUnifiedExtensionStore {
                AND agent_id  = $3 AND project_id = $4
                AND validation_status = 'validated'
                AND $5 = ANY(consumer_tags)
-               AND NOT ('05:validator' = ANY(consumer_tags))
+               AND NOT ('{VALIDATOR_CONSUMER_TAG}' = ANY(consumer_tags))
              ORDER BY class_code ASC, prompt_uid ASC"
         );
         let rows = client
@@ -667,11 +675,13 @@ impl UnifiedExtensionStore for PgUnifiedExtensionStore {
         // Remove '05:validator' from consumer_tags atomically (§3.5.1).
         client
             .execute(
-                "UPDATE reborn_extensions_unified
-                 SET consumer_tags = array_remove(consumer_tags, '05:validator')
-                 WHERE id = $1
-                   AND tenant_id = $2 AND user_id = $3
-                   AND agent_id  = $4 AND project_id = $5",
+                &format!(
+                    "UPDATE reborn_extensions_unified
+                     SET consumer_tags = array_remove(consumer_tags, '{VALIDATOR_CONSUMER_TAG}')
+                     WHERE id = $1
+                       AND tenant_id = $2 AND user_id = $3
+                       AND agent_id  = $4 AND project_id = $5"
+                ),
                 &[&id, &tenant_id, &user_id, &agent_id, &project_id],
             )
             .await
