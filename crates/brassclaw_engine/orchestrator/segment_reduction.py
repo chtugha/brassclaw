@@ -22,7 +22,7 @@ MESSAGE_OVERHEAD_CHARS = 4
 
 
 class ConfigError(ValueError):
-    pass
+    """Raised when a segment reduction config dict contains invalid values."""
 
 
 @dataclass(frozen=True)
