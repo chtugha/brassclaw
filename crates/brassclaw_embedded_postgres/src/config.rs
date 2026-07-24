@@ -26,13 +26,16 @@ pub struct EmbeddedPostgresConfig {
     pub superuser: String,
 }
 
+/// Default port for the embedded Postgres instance when `BRASSCLAW_EMBEDDED_PG_PORT` is unset.
+pub const DEFAULT_EMBEDDED_PG_PORT: u16 = 5434;
+
 impl EmbeddedPostgresConfig {
     /// Construct a config from a `$REBORN_HOME` base directory.
     pub fn from_reborn_home(home: &Path) -> Self {
         let port = std::env::var("BRASSCLAW_EMBEDDED_PG_PORT")
             .ok()
             .and_then(|s| s.parse::<u16>().ok())
-            .unwrap_or(5434);
+            .unwrap_or(DEFAULT_EMBEDDED_PG_PORT);
 
         Self {
             port,
