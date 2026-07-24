@@ -29,6 +29,15 @@ pub const RECIPE_MIN_MATCH: f64 = 0.5;
 /// How many ToolSkill entries to return per lookup (Tier 1 budget).
 const SKILL_TIER1_LIMIT: usize = 5;
 
+/// Minimum Jaccard overlap to consider keyword matches significant.
+const JACCARD_MIN_THRESHOLD: f64 = 0.30;
+/// Score returned when an exact/near-exact regex match is found (near-perfect confidence).
+const EXACT_MATCH_SCORE: f64 = 0.95;
+/// Regex size limit (bytes) applied to each compiled pattern to prevent ReDoS.
+const REGEX_SIZE_LIMIT_BYTES: usize = 10_000;
+/// Minimum keyword trigger weight for loose/low-confidence matches in tests.
+const KW_TRIGGER_LOOSE_WEIGHT: f64 = 0.20;
+
 /// Lightweight DTO surfaced to the agent loop's `RecipeStage`.
 ///
 /// Carries the minimum needed for Tier 0/1 branching — NOT the full
@@ -165,7 +174,7 @@ impl RecipeMatcher {
             }
             let skill_desc_tokens = tokenize(&skill.description);
             let jac = jaccard(&tokens, &skill_desc_tokens);
-            if jac < 0.30 {
+            if jac < JACCARD_MIN_THRESHOLD {
                 continue;
             }
             scored.push((
@@ -269,7 +278,7 @@ fn score_trigger(trigger: &RecipeTrigger, user_input: &str) -> f64 {
                 if let Ok(re) = regex_limited(pattern)
                     && re.is_match(user_input)
                 {
-                    return 0.95;
+                    return EXACT_MATCH_SCORE;
                 }
             }
             0.0
@@ -283,7 +292,7 @@ fn score_trigger(trigger: &RecipeTrigger, user_input: &str) -> f64 {
 // exponential backtracking on adversarial inputs. 10 000 bytes rejects
 // genuinely pathological regexes while still allowing typical trigger patterns.
 fn regex_limited(pattern: &str) -> Result<regex::Regex, regex::Error> {
-    regex::RegexBuilder::new(pattern).size_limit(10_000).build()
+    regex::RegexBuilder::new(pattern).size_limit(REGEX_SIZE_LIMIT_BYTES).build()
 }
 
 fn validation_kind(v: &RecipeValidation) -> String {
@@ -475,7 +484,7 @@ mod tests {
         // intersection = {github}. union = 4. jaccard = 0.25 < 0.5.
         assert_eq!(score_trigger(&trig, "list github issues"), 0.0);
         // Lower the threshold and same query passes.
-        let loose = kw_trigger(&["github", "issue"], 0.20);
+        let loose = kw_trigger(&["github", "issue"], KW_TRIGGER_LOOSE_WEIGHT);
         assert!(score_trigger(&loose, "list github issues") > 0.0);
     }
 
