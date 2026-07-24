@@ -6,10 +6,15 @@ use tracing::debug;
 use crate::config::EmbeddedPostgresConfig;
 use crate::error::EmbeddedPostgresError;
 
+/// Log queries that take longer than this many milliseconds (1 second).
+pub(crate) const LOG_MIN_DURATION_STATEMENT_MS: u32 = 1000;
+
 /// The tuned `postgresql.conf` appended after `initdb` generates the default.
 ///
 /// `jit = off` is required when `MemoryDenyWriteExecute=yes` is set in the
 /// systemd unit. The two settings must be changed in tandem.
+///
+/// `log_min_duration_statement` is set to `LOG_MIN_DURATION_STATEMENT_MS` (1 s).
 const POSTGRESQL_CONF_TUNING: &str = r#"max_connections = 20
 shared_buffers = 32MB
 work_mem = 4MB
