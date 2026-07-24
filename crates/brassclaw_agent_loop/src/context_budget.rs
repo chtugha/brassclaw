@@ -71,6 +71,9 @@ pub struct TurnContextBudget {
 }
 
 impl TurnContextBudget {
+    /// Minimum tokens always held back for the model's reply, regardless of percentage.
+    pub const MIN_OUTPUT_RESERVED: u32 = 4_096;
+
     /// Build from a resolved model context window using default allocation fractions.
     ///
     /// Default fractions (see [`BudgetAllocation::default`]):
@@ -92,8 +95,8 @@ impl TurnContextBudget {
     ) -> Self {
         let output_reserved =
             ((context_window_tokens as u64 * allocation.output_reserved_pct as u64) / 100) as u32;
-        // Floor at 4 096 tokens so small-window models still have room for a reply.
-        let output_reserved = output_reserved.max(4_096).min(context_window_tokens);
+        // Floor at MIN_OUTPUT_RESERVED tokens so small-window models still have room for a reply.
+        let output_reserved = output_reserved.max(Self::MIN_OUTPUT_RESERVED).min(context_window_tokens);
         let remaining = context_window_tokens.saturating_sub(output_reserved);
         let skill_snippet_tokens =
             (remaining as u64 * allocation.skill_snippet_pct as u64 / 100) as u32;
@@ -160,6 +163,10 @@ pub struct ObservedMessageAverage {
 impl ObservedMessageAverage {
     /// Starting estimate — replaced quickly once real usage data flows in.
     pub const DEFAULT_AVG_TOKENS_PER_MESSAGE: u32 = 300;
+    /// EMA old-value weight (out of 100). Retains 75% of the previous estimate.
+    const EMA_OLD_WEIGHT: u64 = 75;
+    /// EMA new-value weight (out of 100). Incorporates 25% of the new observation (α = 0.25).
+    const EMA_NEW_WEIGHT: u64 = 25;
 
     pub fn new() -> Self {
         Self {
@@ -183,7 +190,8 @@ impl ObservedMessageAverage {
             return;
         }
         let prev = self.value.load(Ordering::Relaxed) as u64;
-        let next = (prev * 75 + (observed_tokens_per_message as u64 * 100) * 25) / 100;
+        // EMA fixed-point: weight 75% old, 25% new (α = 0.25), scaled by 100.
+        let next = (prev * Self::EMA_OLD_WEIGHT + (observed_tokens_per_message as u64 * 100) * Self::EMA_NEW_WEIGHT) / 100;
         self.value.store(next as usize, Ordering::Relaxed);
     }
 }
@@ -202,6 +210,14 @@ impl Default for ObservedMessageAverage {
 mod tests {
     use super::*;
 
+    // Representative model context-window sizes used across tests.
+    const CTX_8K: u32 = 8_000;
+    const CTX_16K: u32 = 16_000;
+    const CTX_32K: u32 = 32_000;
+    const CTX_128K: u32 = 128_000;
+    const CTX_200K: u32 = 200_000;
+    const CTX_1M: u32 = 1_000_000;
+
     fn slices_sum_to_window(budget: &TurnContextBudget) {
         assert_eq!(
             budget.output_reserved
@@ -216,50 +232,50 @@ mod tests {
 
     #[test]
     fn budget_slices_sum_to_window_8k() {
-        let b = TurnContextBudget::from_context_window(8_000);
+        let b = TurnContextBudget::from_context_window(CTX_8K);
         slices_sum_to_window(&b);
         assert!(b.history_tokens > 0);
-        assert!(b.output_reserved >= 4_096);
+        assert!(b.output_reserved >= TurnContextBudget::MIN_OUTPUT_RESERVED);
     }
 
     #[test]
     fn budget_slices_sum_to_window_16k() {
-        let b = TurnContextBudget::from_context_window(16_000);
+        let b = TurnContextBudget::from_context_window(CTX_16K);
         slices_sum_to_window(&b);
         assert!(b.history_tokens > 0);
-        assert!(b.output_reserved >= 4_096);
+        assert!(b.output_reserved >= TurnContextBudget::MIN_OUTPUT_RESERVED);
     }
 
     #[test]
     fn budget_slices_sum_to_window_32k() {
-        let b = TurnContextBudget::from_context_window(32_000);
+        let b = TurnContextBudget::from_context_window(CTX_32K);
         slices_sum_to_window(&b);
         assert!(b.history_tokens > 0);
-        assert!(b.output_reserved >= 4_096);
+        assert!(b.output_reserved >= TurnContextBudget::MIN_OUTPUT_RESERVED);
     }
 
     #[test]
     fn budget_slices_sum_to_window_128k() {
-        let b = TurnContextBudget::from_context_window(128_000);
+        let b = TurnContextBudget::from_context_window(CTX_128K);
         slices_sum_to_window(&b);
         assert!(b.history_tokens > 0);
-        assert!(b.output_reserved >= 4_096);
+        assert!(b.output_reserved >= TurnContextBudget::MIN_OUTPUT_RESERVED);
     }
 
     #[test]
     fn budget_slices_sum_to_window_200k() {
-        let b = TurnContextBudget::from_context_window(200_000);
+        let b = TurnContextBudget::from_context_window(CTX_200K);
         slices_sum_to_window(&b);
         assert!(b.history_tokens > 0);
-        assert!(b.output_reserved >= 4_096);
+        assert!(b.output_reserved >= TurnContextBudget::MIN_OUTPUT_RESERVED);
     }
 
     #[test]
     fn budget_slices_sum_to_window_1m() {
-        let b = TurnContextBudget::from_context_window(1_000_000);
+        let b = TurnContextBudget::from_context_window(CTX_1M);
         slices_sum_to_window(&b);
         assert!(b.history_tokens > 0);
-        assert!(b.output_reserved >= 4_096);
+        assert!(b.output_reserved >= TurnContextBudget::MIN_OUTPUT_RESERVED);
     }
 
     #[test]
@@ -300,7 +316,7 @@ mod tests {
             skill_snippet_pct: 30,
             tool_output_pct: 10,
         };
-        let b = TurnContextBudget::from_context_window_with_allocation(128_000, &alloc);
+        let b = TurnContextBudget::from_context_window_with_allocation(CTX_128K, &alloc);
         slices_sum_to_window(&b);
     }
 }
