@@ -5,10 +5,13 @@
 /// Unlike `truncate_preview` (which works in bytes and preserves newlines for
 /// XML payloads), this normalises whitespace and works in chars — suitable for
 /// log lines that should fit on a single screen row.
+/// Extra characters read ahead of `max_chars` so whitespace collapsing doesn't under-truncate.
+const TRUNCATE_LOOKAHEAD: usize = 50;
+
 pub fn truncate_for_preview(output: &str, max_chars: usize) -> String {
     let collapsed: String = output
         .chars()
-        .take(max_chars + 50)
+        .take(max_chars + TRUNCATE_LOOKAHEAD)
         .map(|c| if c == '\n' { ' ' } else { c })
         .collect::<String>()
         .split_whitespace()
