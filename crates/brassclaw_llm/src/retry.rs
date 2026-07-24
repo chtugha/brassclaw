@@ -444,7 +444,7 @@ mod tests {
 
     #[tokio::test]
     async fn retries_transient_errors_then_succeeds() {
-        // StubLlm starts failing, then we flip it to succeed.
+        // TestLlm starts failing, then we flip it to succeed.
         // With max_retries=2, it will try 3 times total.
         let stub = Arc::new(StubLlm::failing("test"));
         let retry = RetryProvider::new(stub.clone(), fast_config(2));

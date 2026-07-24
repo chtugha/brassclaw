@@ -195,8 +195,10 @@ pub(crate) fn serialize_json_capped(value: &JsonValue, max_bytes: usize) -> Resu
         }
     }
 
+    /// Initial capacity cap for the capped JSON writer buffer.
+    const INITIAL_CAPACITY_CAP: usize = 8192;
     let writer = CappedWriter {
-        buf: Vec::with_capacity(max_bytes.min(8192)),
+        buf: Vec::with_capacity(max_bytes.min(INITIAL_CAPACITY_CAP)),
         max: max_bytes,
         was_truncated: false,
     };

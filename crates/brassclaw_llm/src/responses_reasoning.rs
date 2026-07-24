@@ -60,6 +60,8 @@ pub(crate) fn finish_summary(reasoning: String) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    /// Invalid-type integer value for delta event test fixtures.
+    const INVALID_DELTA_INT: i32 = 123;
     use super::*;
 
     #[test]
@@ -159,7 +161,7 @@ mod tests {
     fn delta_event_ignores_non_string_delta() {
         let mut reasoning = String::new();
         let data = json!({
-            "delta": 123  // Invalid type
+            "delta": INVALID_DELTA_INT  // Invalid type
         });
 
         assert!(apply_summary_event(

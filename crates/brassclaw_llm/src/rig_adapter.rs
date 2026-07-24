@@ -830,6 +830,8 @@ fn normalize_tool_name(name: &str, known_tools: &HashSet<String>) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// Max bytes limit used in the capped serializer large-string-values test.
+    const TEST_SERIALIZE_CAP_BYTES: usize = 1500;
     use super::*;
     use rig::completion::CompletionError;
     use rig::streaming::StreamingCompletionResponse;
@@ -1300,9 +1302,9 @@ mod tests {
         let big = serde_json::json!({
             "description": "x".repeat(100_000)
         });
-        let result = serialize_json_capped(&big, 1500).expect("should serialize");
+        let result = serialize_json_capped(&big, TEST_SERIALIZE_CAP_BYTES).expect("should serialize");
         assert!(
-            result.text.len() <= 1500,
+            result.text.len() <= TEST_SERIALIZE_CAP_BYTES,
             "capped serializer must bound output to max_bytes; got {} bytes",
             result.text.len()
         );

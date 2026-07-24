@@ -124,7 +124,7 @@ impl SessionManager {
             token: RwLock::new(None),
             renewal_lock: Mutex::new(()),
             store: RwLock::new(None),
-            // Placeholder; overwritten by attach_store() with the real owner_id at startup.
+            // Initial value; overwritten by attach_store() with the real owner_id at startup.
             user_id: RwLock::new("<unset>".to_string()),
             secrets: RwLock::new(None),
             renewer: RwLock::new(Arc::new(NoopSessionRenewer) as SharedSessionRenewer),
@@ -626,6 +626,9 @@ mod tests {
     use secrecy::ExposeSecret;
     use tempfile::tempdir;
 
+    // Arbitrary non-zero byte used to fill the 32-byte NEAR nonce in serialisation tests.
+    const TEST_NONCE_BYTE: u8 = 7;
+
     #[test]
     fn near_auth_request_body_uses_camelcase_nested_fields_and_byte_array_nonce() {
         let signed = NearWalletSignedMessage {
@@ -634,7 +637,7 @@ mod tests {
             signature: "c2ln".to_string(),
             message: "Sign in to NEAR AI Cloud".to_string(),
             recipient: "cloud.near.ai".to_string(),
-            nonce: vec![7u8; 32],
+            nonce: vec![TEST_NONCE_BYTE; 32],
             callback_url: None,
         };
         let body = near_auth_request_body(&signed);

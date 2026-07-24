@@ -666,7 +666,7 @@ mod tests {
     /// When `set_model()` fails the error is propagated and the cache is unaffected.
     #[tokio::test]
     async fn set_model_error_leaves_cache_intact() {
-        // StubLlm does not override set_model() — returns an error by default.
+        // TestLlm does not override set_model() — returns an error by default.
         let stub = Arc::new(StubLlm::default());
         let cached = CachedProvider::new(stub, ResponseCacheConfig::default());
 

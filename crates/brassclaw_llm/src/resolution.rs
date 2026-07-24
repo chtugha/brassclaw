@@ -7,6 +7,9 @@
 
 use std::path::{Path, PathBuf};
 
+/// Default failover cooldown in seconds when not set via environment variable.
+const DEFAULT_FAILOVER_COOLDOWN_SECS: u64 = 300;
+
 use secrecy::SecretString;
 
 use crate::auth::{self, CredentialSource};
@@ -451,7 +454,7 @@ fn nearai_config_from_dedicated(
             api_key,
             base_url,
             failover_cooldown_secs: parse_optional_u64("LLM_FAILOVER_COOLDOWN_SECS", "nearai")?
-                .unwrap_or(300),
+                .unwrap_or(DEFAULT_FAILOVER_COOLDOWN_SECS),
             failover_cooldown_threshold: parse_optional_u32("LLM_FAILOVER_THRESHOLD", "nearai")?
                 .unwrap_or(3),
         },

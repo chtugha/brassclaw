@@ -615,6 +615,11 @@ fn user_providers_path() -> Option<std::path::PathBuf> {
 mod tests {
     use super::*;
 
+    /// Conversation-history token budget used in round-trip serialisation tests.
+    const TEST_CONVERSATION_BUDGET: usize = 50_000;
+    /// Total-input token budget used in round-trip serialisation tests.
+    const TEST_TOTAL_INPUT_BUDGET: usize = 1_000_000;
+
     #[test]
     fn provider_registry_load_error_exposes_overlay_path() {
         let error = ProviderRegistryLoadError::Read {
@@ -1491,25 +1496,27 @@ mod tests {
 
     #[test]
     fn provider_definition_round_trips_with_token_budget() {
-        let json = r#"{
+        let json = format!(
+            r#"{{
             "id": "test-budgeted",
             "protocol": "open_ai_completions",
             "model_env": "TEST_MODEL",
             "default_model": "test-model",
             "description": "Provider with budget",
-            "token_budget": {
-                "conversation_history": 50000,
-                "total_input": 1000000
-            }
-        }"#;
+            "token_budget": {{
+                "conversation_history": {TEST_CONVERSATION_BUDGET},
+                "total_input": {TEST_TOTAL_INPUT_BUDGET}
+            }}
+        }}"#
+        );
         let def: ProviderDefinition =
-            serde_json::from_str(json).expect("should deserialize with token_budget");
+            serde_json::from_str(&json).expect("should deserialize with token_budget");
         let budget = def
             .token_budget
             .as_ref()
             .expect("token_budget should be Some");
-        assert_eq!(budget.conversation_history, Some(50000));
-        assert_eq!(budget.total_input, Some(1_000_000));
+        assert_eq!(budget.conversation_history, Some(TEST_CONVERSATION_BUDGET));
+        assert_eq!(budget.total_input, Some(TEST_TOTAL_INPUT_BUDGET));
         // Serialized form must include token_budget when Some
         let serialized = serde_json::to_string(&def).expect("should serialize");
         assert!(

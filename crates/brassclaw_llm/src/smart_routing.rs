@@ -16,6 +16,12 @@
 //! - **Pro** (41-65): Multi-step analysis, code review → cheap with cascade, or primary
 //! - **Frontier** (66+): Security audits, critical decisions → primary model
 
+/// Tier representative scores used when complexity score is unavailable.
+const TIER_SCORE_FLASH: u32 = 8;
+const TIER_SCORE_STANDARD: u32 = 28;
+const TIER_SCORE_PRO: u32 = 52;
+const TIER_SCORE_FRONTIER: u32 = 80;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -61,10 +67,10 @@ impl Tier {
     /// Get a representative score for this tier (used when score is not computed).
     pub fn to_score(self) -> u32 {
         match self {
-            Tier::Flash => 8,
-            Tier::Standard => 28,
-            Tier::Pro => 52,
-            Tier::Frontier => 80,
+            Tier::Flash => TIER_SCORE_FLASH,
+            Tier::Standard => TIER_SCORE_STANDARD,
+            Tier::Pro => TIER_SCORE_PRO,
+            Tier::Frontier => TIER_SCORE_FRONTIER,
         }
     }
 
