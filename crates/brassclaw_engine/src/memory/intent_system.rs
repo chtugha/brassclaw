@@ -700,7 +700,7 @@ mod tests {
     #[test]
     fn input_class_from_i16_roundtrip() {
         for (v, expected) in [
-            (1i16, InputClass::Word),
+            (1i16, InputClass::Word), // discriminant values match the protobuf/DB encoding
             (2, InputClass::Partial),
             (3, InputClass::Sentence),
             (4, InputClass::KeywordFallback),

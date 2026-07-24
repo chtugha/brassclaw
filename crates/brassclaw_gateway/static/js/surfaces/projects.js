@@ -1413,15 +1413,17 @@ function formatRelativeTime(isoString) {
 
   if (absDiff < ONE_MINUTE_MS)
     return future ? I18n.t('time.lessThan1MinuteFromNow') : I18n.t('time.lessThan1MinuteAgo');
-  if (absDiff < 3600000) {
-    const m = Math.floor(absDiff / 60000);
+  const ONE_HOUR_MS = 3600000;
+  const ONE_DAY_MS = 86400000;
+  if (absDiff < ONE_HOUR_MS) {
+    const m = Math.floor(absDiff / ONE_MINUTE_MS);
     return future ? I18n.t('time.minutesFromNow', { n: m }) : I18n.t('time.minutesAgo', { n: m });
   }
-  if (absDiff < 86400000) {
-    const h = Math.floor(absDiff / 3600000);
+  if (absDiff < ONE_DAY_MS) {
+    const h = Math.floor(absDiff / ONE_HOUR_MS);
     return future ? I18n.t('time.hoursFromNow', { n: h }) : I18n.t('time.hoursAgo', { n: h });
   }
-  const days = Math.floor(absDiff / 86400000);
+  const days = Math.floor(absDiff / ONE_DAY_MS);
   return future ? I18n.t('time.daysFromNow', { n: days }) : I18n.t('time.daysAgo', { n: days });
 }
 

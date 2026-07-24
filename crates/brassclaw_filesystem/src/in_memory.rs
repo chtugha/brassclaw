@@ -888,6 +888,7 @@ mod tests {
                 &Filter::Range {
                     key,
                     lo: IndexValue::I64(0),
+                    // 0xff: upper-bound sentinel for open-ended range scans (all keys with this prefix).
                     hi: IndexValue::Bytes(vec![0xff]),
                 },
                 Page::default(),

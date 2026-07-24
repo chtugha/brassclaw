@@ -122,7 +122,7 @@ impl CachedProvider {
     /// `entry_count` is consistent with the snapshot.
     fn maybe_log_stats(guard: &HashMap<String, CacheEntry>, req_no: u64, total_hits: u64) {
         if req_no.is_multiple_of(STATS_LOG_EVERY_N) {
-            let hit_rate = total_hits as f64 / req_no as f64 * 100.0;
+            let hit_rate = total_hits as f64 / req_no as f64 * 100.0; // express as percentage
             tracing::debug!(
                 total_requests = req_no,
                 total_hits,

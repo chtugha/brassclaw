@@ -366,7 +366,8 @@ impl CredentialManager {
             return true; // If no expiry date is set, assume it's valid until it fails
         };
         let now = Utc::now().timestamp_millis();
-        expiry_ms > (now + 60_000)
+        // 60_000 ms = 1-minute buffer: reject tokens expiring in under a minute.
+            expiry_ms > (now + 60_000)
     }
 
     pub(crate) async fn get_valid_credential(&self) -> Result<OAuthCredential> {
@@ -620,6 +621,7 @@ impl CredentialManager {
                     Ok((mut tcp_stream, _)) => {
                         use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+                        // 4096 = page-aligned I/O buffer size for streaming response reads.
                         let mut buf = [0u8; 4096];
                         let n = tcp_stream.read(&mut buf).await.unwrap_or(0);
                         let raw = String::from_utf8_lossy(&buf[..n]);
@@ -1839,7 +1841,7 @@ impl GeminiOauthProvider {
             let thinking_config = if is_gemini_3 {
                 serde_json::json!({ "thinkingLevel": "HIGH" })
             } else {
-                serde_json::json!({ "thinkingBudget": 8192 })
+                serde_json::json!({ "thinkingBudget": 8192 }) // 8192 tokens: default thinking budget cap
             };
             gen_config.insert("thinkingConfig".to_string(), thinking_config);
         }

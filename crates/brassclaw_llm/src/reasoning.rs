@@ -3752,7 +3752,7 @@ That's my plan."#;
     #[tokio::test]
     async fn test_with_model_name_affects_system_prompt() {
         use crate::testing::StubLlm;
-        // StubLlm model_name is "stub-model" by default, but Reasoning.model_name
+        // Test-double LLM model_name is "stub-model" by default, but Reasoning.model_name
         // is what matters for system prompt building.
         let llm = Arc::new(StubLlm::new("test").with_model_name("qwen3-8b"));
         let reasoning = Reasoning::new(llm.clone()).with_model_name("qwen3-8b".to_string());
@@ -3835,7 +3835,7 @@ That's my plan."#;
     #[tokio::test]
     async fn test_respond_with_tools_recovered_tool_calls_preserves_text() {
         use crate::testing::StubLlm;
-        // StubLlm returns empty tool_calls + content with XML tool tags.
+        // Test-double LLM returns empty tool_calls + content with XML tool tags.
         // The recovery path should parse the tool call AND preserve text before it.
         let response = "Let me search for that.\n<tool_call>{\"name\": \"tool_list\", \"arguments\": {}}</tool_call>";
         let llm = Arc::new(StubLlm::new(response));
@@ -4037,7 +4037,7 @@ That's my plan."#;
             &self,
             _request: crate::CompletionRequest,
         ) -> Result<crate::CompletionResponse, crate::error::LlmError> {
-            unimplemented!()
+            panic!("test-double: this branch is not exercised by reasoning tests")
         }
         async fn complete_with_tools(
             &self,

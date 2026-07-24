@@ -1035,7 +1035,7 @@ impl ProjectionStream for SpyProjectionStream {
     }
 }
 
-/// Stub thread service whose `list_thread_history` always returns
+/// Test-double thread service whose `list_thread_history` always returns
 /// `ThreadScopeMismatch`. Used to lock in the contract that ownership probes
 /// remap that variant to NotFound, since the current backends happen to return
 /// `UnknownThread` for the same condition. All other methods panic — none of

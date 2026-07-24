@@ -1004,6 +1004,7 @@ mod tests {
     #[test]
     fn test_extract_token_usage_present() {
         let usage = aws_sdk_bedrockruntime::types::TokenUsage::builder()
+            // Fixture token counts: 150 input + 42 output = 192 total.
             .input_tokens(150)
             .output_tokens(42)
             .total_tokens(192)

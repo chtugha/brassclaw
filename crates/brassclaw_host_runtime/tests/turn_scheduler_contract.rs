@@ -439,18 +439,18 @@ impl TurnStateStore for DurableTurnStoreStub {
         &self,
         _request: ResumeTurnRequest,
     ) -> Result<ResumeTurnResponse, TurnError> {
-        panic!("store stub should not resume turns")
+        panic!("test-double: store should not resume turns")
     }
 
     async fn request_cancel(
         &self,
         _request: CancelRunRequest,
     ) -> Result<CancelRunResponse, TurnError> {
-        panic!("store stub should not cancel turns")
+        panic!("test-double: store should not cancel turns")
     }
 
     async fn get_run_state(&self, _request: GetRunStateRequest) -> Result<TurnRunState, TurnError> {
-        panic!("store stub should not read turns")
+        panic!("test-double: store should not read turns")
     }
 }
 
@@ -460,61 +460,61 @@ impl TurnRunTransitionPort for DurableTurnStoreStub {
         &self,
         _request: ClaimRunRequest,
     ) -> Result<Option<ClaimedTurnRun>, TurnError> {
-        panic!("transition stub should not claim turns")
+        panic!("test-double: transition should not claim turns")
     }
 
     async fn heartbeat(
         &self,
         _request: HeartbeatRequest,
     ) -> Result<brassclaw_turns::EventCursor, TurnError> {
-        panic!("transition stub should not heartbeat")
+        panic!("test-double: transition should not heartbeat")
     }
 
     async fn recover_expired_leases(
         &self,
         _request: RecoverExpiredLeasesRequest,
     ) -> Result<RecoverExpiredLeasesResponse, TurnError> {
-        panic!("transition stub should not recover leases")
+        panic!("test-double: transition should not recover leases")
     }
 
     async fn record_model_route_snapshot(
         &self,
         _request: RecordModelRouteSnapshotRequest,
     ) -> Result<TurnRunState, TurnError> {
-        panic!("transition stub should not record model route snapshots")
+        panic!("test-double: transition should not record model route snapshots")
     }
 
     async fn block_run(&self, _request: BlockRunRequest) -> Result<TurnRunState, TurnError> {
-        panic!("transition stub should not block runs")
+        panic!("test-double: transition should not block runs")
     }
 
     async fn complete_run(&self, _request: CompleteRunRequest) -> Result<TurnRunState, TurnError> {
-        panic!("transition stub should not complete runs")
+        panic!("test-double: transition should not complete runs")
     }
 
     async fn cancel_run(
         &self,
         _request: CancelRunCompletionRequest,
     ) -> Result<TurnRunState, TurnError> {
-        panic!("transition stub should not cancel runs")
+        panic!("test-double: transition should not cancel runs")
     }
 
     async fn fail_run(&self, _request: FailRunRequest) -> Result<TurnRunState, TurnError> {
-        panic!("transition stub should not fail runs")
+        panic!("test-double: transition should not fail runs")
     }
 
     async fn record_runner_failure(
         &self,
         _request: RecordRunnerFailureRequest,
     ) -> Result<TurnRunState, TurnError> {
-        panic!("transition stub should not record terminal failure")
+        panic!("test-double: transition should not record terminal failure")
     }
 
     async fn apply_validated_loop_exit(
         &self,
         _request: ApplyValidatedLoopExitRequest,
     ) -> Result<TurnRunState, TurnError> {
-        panic!("transition stub should not apply loop exits")
+        panic!("test-double: transition should not apply loop exits")
     }
 }
 

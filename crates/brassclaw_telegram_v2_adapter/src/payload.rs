@@ -821,6 +821,9 @@ fn _suppress_unused_field_warnings(update: &TelegramUpdate) {
 
 #[cfg(test)]
 mod tests {
+    // Telegram fixture IDs used across payload tests.
+    // 777 = fake user ID for "Alice"; -42 = fake supergroup chat ID.
+    // These values are arbitrary and stable across all test cases in this module.
     use super::*;
     use brassclaw_product_adapters::ProductAdapterId;
     use brassclaw_product_adapters::auth::mark_shared_secret_header_verified;

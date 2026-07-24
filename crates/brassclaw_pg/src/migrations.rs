@@ -6,6 +6,16 @@ const REFINERY_VARCHAR_LEN: usize = 255;
 /// Migration version assigned to the pre-refinery hooks DDL batch. Must match
 /// the version recorded in the pre-existing `refinery_schema_history` table.
 const HOOKS_PRE_REFINERY_VERSION: i32 = 17;
+/// Migration version for the token_settings (settings) table — created outside refinery by libSQL DbTokenSettingsStore.
+const TOKEN_SETTINGS_PRE_REFINERY_VERSION: i32 = 14;
+/// Migration version for the safety_config table — created outside refinery.
+const SAFETY_PRE_REFINERY_VERSION: i32 = 15;
+/// Migration version for the memory_docs table — created outside refinery.
+const MEMORY_DOCS_PRE_REFINERY_VERSION: i32 = 16;
+/// Migration version for the VFS (root filesystem) table bundle — created outside refinery by PostgresRootFilesystem.
+const ROOT_FILESYSTEM_PRE_REFINERY_VERSION: i32 = 18;
+/// Migration version for the triggers table — created outside refinery (renamed brassclaw_triggers in V021).
+const TRIGGERS_PRE_REFINERY_VERSION: i32 = 21;
 
 use deadpool_postgres::Pool;
 use tracing::debug;
@@ -175,17 +185,17 @@ async fn detect_pre_existing_tables(
     let triggers_exist = table_exists(client, "trigger_records").await?
         || table_exists(client, "brassclaw_triggers").await?;
     if triggers_exist {
-        pre_existing.push((21_i32, "triggers"));
+        pre_existing.push((TRIGGERS_PRE_REFINERY_VERSION, "triggers"));
     }
 
     // settings table (libSQL DbTokenSettingsStore)
     if table_exists(client, "settings").await? {
-        pre_existing.push((14_i32, "token_settings"));
+        pre_existing.push((TOKEN_SETTINGS_PRE_REFINERY_VERSION, "token_settings"));
     }
 
     // safety_config table
     if table_exists(client, "safety_config").await? {
-        pre_existing.push((15_i32, "safety"));
+        pre_existing.push((SAFETY_PRE_REFINERY_VERSION, "safety"));
     }
 
     // VFS backing tables — all three are created together by
@@ -195,12 +205,12 @@ async fn detect_pre_existing_tables(
         || table_exists(client, "root_filesystem_index_specs").await?
         || table_exists(client, "root_filesystem_events").await?;
     if vfs_exist {
-        pre_existing.push((18_i32, "root_filesystem"));
+        pre_existing.push((ROOT_FILESYSTEM_PRE_REFINERY_VERSION, "root_filesystem"));
     }
 
     // memory_docs table
     if table_exists(client, "memory_docs").await? {
-        pre_existing.push((16_i32, "memory_docs"));
+        pre_existing.push((MEMORY_DOCS_PRE_REFINERY_VERSION, "memory_docs"));
     }
 
     Ok(pre_existing)

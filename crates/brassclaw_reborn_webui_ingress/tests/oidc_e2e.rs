@@ -158,6 +158,9 @@ fn build_authenticator(jwks_url: String) -> OidcAuthenticator {
     OidcAuthenticator::new(config, OidcAuthenticator::sub_claim_mapper()).expect("authenticator")
 }
 
+/// JWT expiry (seconds) used in OIDC test tokens — 10-minute window.
+const OIDC_TEST_TOKEN_TTL_SECS: u64 = 600;
+
 #[tokio::test]
 async fn oidc_authenticator_accepts_valid_jwks_signed_token_and_rejects_bad_claims() {
     let key = generate_test_key();
@@ -246,7 +249,7 @@ async fn oidc_authenticator_refetches_jwks_on_kid_miss_during_rotation() {
         ROTATED_KID,
         TEST_ISSUER,
         TEST_AUDIENCE,
-        600,
+        OIDC_TEST_TOKEN_TTL_SECS,
     );
     let user = auth
         .authenticate(&token_two)
@@ -279,7 +282,7 @@ async fn oidc_jwks_refresh_is_single_flight_under_concurrent_authenticate() {
         TEST_KID,
         TEST_ISSUER,
         TEST_AUDIENCE,
-        600,
+        OIDC_TEST_TOKEN_TTL_SECS,
     ));
     let mut handles = Vec::new();
     for _ in 0..10 {

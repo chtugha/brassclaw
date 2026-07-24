@@ -448,7 +448,7 @@ async fn snippet_truncation_respects_max_snippets() {
                 "t",
                 "u",
                 &format!("note-{i:02}.md"),
-                1.0 - i as f32 * 0.01,
+                1.0 - i as f32 * 0.01, // decrement similarity by 0.01 per item to produce distinct scores
                 &format!("snippet {i}"),
             )
         })

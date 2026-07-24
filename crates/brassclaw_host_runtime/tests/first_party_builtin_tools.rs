@@ -4,6 +4,16 @@ const INVALID_TYPE_INT: i64 = 123;
 const STRINGIFY_OVERFLOW_ITEM_COUNT: usize = 80_000;
 /// Integer value used as an invalid non-string target in memory write rejection test.
 const INVALID_MEMORY_TARGET_INT: i64 = 42;
+/// HTTP response body size limit used in HTTP tool tests (4 KiB, page-aligned).
+const HTTP_RESPONSE_BODY_LIMIT_TEST: u32 = 4096;
+/// HTTP request timeout for standard tool tests (2.5 s — fast but CI-safe).
+const HTTP_TIMEOUT_MS_TEST: u32 = 2500;
+/// HTTP request timeout for long-running tests (2 min).
+const HTTP_TIMEOUT_MS_LONG: u32 = 120_000;
+/// Shell command timeout just above the enforced maximum (120 s) — triggers validation rejection.
+const SHELL_TIMEOUT_OVER_MAX_SECS: u32 = 121;
+/// Expected byte count for the fixture that writes exactly 17 bytes.
+const FIXTURE_BYTES_WRITTEN: u64 = 17;
 
 
 use std::{
@@ -1742,7 +1752,7 @@ async fn builtin_shell_rejects_invalid_inputs_before_spawn() {
 
 #[tokio::test]
 async fn builtin_shell_rejects_timeout_above_manifest_ceiling() {
-    let err = invoke_shell(json!({"command": "echo hi", "timeout": 121}))
+    let err = invoke_shell(json!({"command": "echo hi", "timeout": SHELL_TIMEOUT_OVER_MAX_SECS}))
         .await
         .unwrap_err();
 
@@ -2040,8 +2050,8 @@ async fn builtin_http_invokes_through_host_runtime_egress() {
                 "x-request-id": "first-party-http"
             },
             "body": {"ok": true},
-            "response_body_limit": 4096,
-            "timeout_ms": 2500
+            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST,
+            "timeout_ms": HTTP_TIMEOUT_MS_TEST
         }),
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )
@@ -2102,7 +2112,7 @@ async fn builtin_http_preserves_exact_body_cap_for_text_responses() {
         HTTP_CAPABILITY_ID,
         json!({
             "url": "https://api.example.test/v1/items",
-            "response_body_limit": 4096
+            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
         }),
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )
@@ -2126,7 +2136,7 @@ async fn builtin_http_truncates_one_byte_over_text_responses_with_a_hint() {
         HTTP_CAPABILITY_ID,
         json!({
             "url": "https://api.example.test/v1/items",
-            "response_body_limit": 4096
+            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
         }),
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )
@@ -2200,7 +2210,7 @@ async fn builtin_http_truncates_escaped_text_to_serialized_body_budget() {
         HTTP_CAPABILITY_ID,
         json!({
             "url": "https://api.example.test/escaped",
-            "response_body_limit": 4096
+            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
         }),
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )
@@ -2256,7 +2266,7 @@ async fn builtin_http_save_passes_save_to_and_returns_saved_body_metadata() {
         output["saved_body"],
         json!({
             "path": "/workspace/response.json",
-            "bytes_written": 17
+            "bytes_written": FIXTURE_BYTES_WRITTEN
         })
     );
     assert!(output.get("body_text").is_none());
@@ -2337,7 +2347,7 @@ async fn builtin_http_save_returns_saved_body_for_large_responses_without_inline
         json!({
             "url": "https://api.example.test/v1/items",
             "save_to": "/workspace/large-response.json",
-            "response_body_limit": 4096
+            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
         }),
         execution_context_with_mounts_and_network(
             [HTTP_SAVE_CAPABILITY_ID],
@@ -2384,7 +2394,7 @@ async fn builtin_http_save_succeeds_with_strict_host_egress_only() {
         json!({
             "url": "https://api.example.test/v1/items",
             "save_to": "/workspace/strict-only-save.json",
-            "response_body_limit": 4096
+            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
         }),
         execution_context_with_mounts_and_network(
             [HTTP_SAVE_CAPABILITY_ID],
@@ -2441,7 +2451,7 @@ async fn builtin_http_save_uses_strict_host_egress_when_tool_call_port_exists() 
         json!({
             "url": "https://api.example.test/v1/items",
             "save_to": "/workspace/strict-save.json",
-            "response_body_limit": 4096
+            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
         }),
         execution_context_with_mounts_and_network(
             [HTTP_SAVE_CAPABILITY_ID],
@@ -2474,7 +2484,7 @@ async fn builtin_http_does_not_inline_huge_binary_payloads() {
         HTTP_CAPABILITY_ID,
         json!({
             "url": "https://api.example.test/v1/items",
-            "response_body_limit": 4096
+            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
         }),
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )
@@ -2538,7 +2548,7 @@ async fn builtin_http_final_budget_trim_preserves_base64_alignment() {
         HTTP_CAPABILITY_ID,
         json!({
             "url": "https://api.example.test/v1/items",
-            "response_body_limit": 4096
+            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
         }),
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )
@@ -2636,7 +2646,7 @@ async fn builtin_http_truncates_overlong_response_headers_to_model_visible_budge
         HTTP_CAPABILITY_ID,
         json!({
             "url": "https://api.example.test/v1/items",
-            "response_body_limit": 4096
+            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
         }),
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )
@@ -2725,7 +2735,7 @@ async fn builtin_http_keeps_sensitive_material_out_of_sanitized_output() {
             "body": {
                 "token": "RAW_SECRET"
             },
-            "response_body_limit": 4096
+            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
         }),
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )
@@ -2756,7 +2766,7 @@ async fn builtin_http_does_not_report_redaction_as_truncation() {
         HTTP_CAPABILITY_ID,
         json!({
             "url": "https://api.example.test/v1/items",
-            "response_body_limit": 4096
+            "response_body_limit": HTTP_RESPONSE_BODY_LIMIT_TEST
         }),
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )
@@ -4176,7 +4186,7 @@ async fn builtin_http_clamps_oversized_timeout_to_runtime_ceiling() {
         HTTP_CAPABILITY_ID,
         json!({
             "url": "https://api.example.test/v1/items",
-            "timeout_ms": 120_000
+            "timeout_ms": HTTP_TIMEOUT_MS_LONG
         }),
         execution_context_with_network([HTTP_CAPABILITY_ID], http_test_policy()),
     )

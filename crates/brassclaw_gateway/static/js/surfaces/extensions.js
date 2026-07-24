@@ -1001,9 +1001,9 @@ function interactiveLoginPollDelayMs(status) {
       return LOGIN_POLL_ACTIVE_DELAY_MS;
     case 'pending':
     case 'scanned':
-      return 3000;
+      return LOGIN_POLL_IDLE_DELAY_MS;
     default:
-      return 3000;
+      return LOGIN_POLL_IDLE_DELAY_MS;
   }
 }
 

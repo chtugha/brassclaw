@@ -137,6 +137,7 @@ impl<M: CompletionModel> RigAdapter<M> {
 /// reject these values with a 400 error. Rounding to 6 decimal places removes
 /// the artifact while preserving all meaningful precision for temperature.
 fn round_f32_to_f64(val: f32) -> f64 {
+    // Round to 6 decimal places (1e6 precision) for stable JSON serialisation.
     ((val as f64) * 1_000_000.0).round() / 1_000_000.0
 }
 

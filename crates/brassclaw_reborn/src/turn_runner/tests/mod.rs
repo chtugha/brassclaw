@@ -454,7 +454,7 @@ impl AgentLoopDriver for PanickingDriver {
     }
 }
 
-// ─── Stub host (mock driver never calls host methods) ───────────────────────
+// ─── Test-double host (mock driver never calls host methods) ─────────────────
 
 struct StubHost {
     context: brassclaw_turns::run_profile::LoopRunContext,
@@ -523,7 +523,7 @@ impl brassclaw_turns::run_profile::LoopCompactionPort for StubHost {
         brassclaw_turns::run_profile::LoopCompactionOutcome,
         brassclaw_turns::run_profile::LoopCompactionError,
     > {
-        unimplemented!("stub host: never called by mock driver")
+        unimplemented!("test-double host: never called by mock driver")
     }
 }
 
@@ -533,21 +533,21 @@ impl brassclaw_turns::run_profile::LoopCapabilityPort for StubHost {
         &self,
         _request: brassclaw_turns::run_profile::VisibleCapabilityRequest,
     ) -> Result<brassclaw_turns::run_profile::VisibleCapabilitySurface, AgentLoopHostError> {
-        unimplemented!("stub host: never called by mock driver")
+        unimplemented!("test-double host: never called by mock driver")
     }
 
     async fn invoke_capability(
         &self,
         _request: brassclaw_turns::run_profile::CapabilityInvocation,
     ) -> Result<brassclaw_turns::run_profile::CapabilityOutcome, AgentLoopHostError> {
-        unimplemented!("stub host: never called by mock driver")
+        unimplemented!("test-double host: never called by mock driver")
     }
 
     async fn invoke_capability_batch(
         &self,
         _request: brassclaw_turns::run_profile::CapabilityBatchInvocation,
     ) -> Result<brassclaw_turns::run_profile::CapabilityBatchOutcome, AgentLoopHostError> {
-        unimplemented!("stub host: never called by mock driver")
+        unimplemented!("test-double host: never called by mock driver")
     }
 }
 
@@ -557,7 +557,7 @@ impl brassclaw_turns::run_profile::LoopTranscriptPort for StubHost {
         &self,
         _request: brassclaw_turns::run_profile::FinalizeAssistantMessage,
     ) -> Result<LoopMessageRef, AgentLoopHostError> {
-        unimplemented!("stub host: never called by mock driver")
+        unimplemented!("test-double host: never called by mock driver")
     }
 }
 
@@ -567,7 +567,7 @@ impl brassclaw_turns::run_profile::LoopCheckpointPort for StubHost {
         &self,
         _request: brassclaw_turns::run_profile::LoopCheckpointRequest,
     ) -> Result<TurnCheckpointId, AgentLoopHostError> {
-        unimplemented!("stub host: never called by mock driver")
+        unimplemented!("test-double host: never called by mock driver")
     }
 }
 
@@ -577,7 +577,7 @@ impl brassclaw_turns::run_profile::LoopProgressPort for StubHost {
         &self,
         _event: brassclaw_turns::run_profile::LoopProgressEvent,
     ) -> Result<(), AgentLoopHostError> {
-        unimplemented!("stub host: never called by mock driver")
+        unimplemented!("test-double host: never called by mock driver")
     }
 }
 

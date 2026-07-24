@@ -348,7 +348,8 @@ function formatTimeAgo(epochMs) {
   var now = Date.now();
   var diff = now - epochMs;
   if (diff < 0) return null;
-  var minutes = Math.floor(diff / 60000);
+  var ONE_MINUTE_MS = 60000;
+  var minutes = Math.floor(diff / ONE_MINUTE_MS);
   if (minutes < 60) return minutes <= 1 ? 'just now' : minutes + 'm ago';
   var hours = Math.floor(minutes / 60);
   if (hours < 24) return hours + 'h ago';

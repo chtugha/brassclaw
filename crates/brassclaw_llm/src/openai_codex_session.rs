@@ -586,7 +586,7 @@ impl OpenAiCodexSessionManager {
                     token_resp.expires_in
                 } else {
                     tracing::debug!("Token response has expires_in=0, defaulting to 3600s");
-                    3600
+                    3600 // 1-hour session token TTL
                 } as i64),
             created_at: Utc::now(),
         };

@@ -1,5 +1,7 @@
 /** Height (px) of the share popup window opened for Twitter/X share action. */
 var SHARE_POPUP_HEIGHT_PX = 420;
+/** Height (px) of the LinkedIn share popup — slightly taller than the generic share popup. */
+var SHARE_LINKEDIN_POPUP_HEIGHT_PX = 520;
 
 
 /** Sentinel value meaning "key is unchanged, don't touch it". Must match backend. */
@@ -977,14 +979,14 @@ BrassClaw.api = {
     liBtn.onclick = function() {
       window.open(
         'https://www.linkedin.com/sharing/share-offsite/?mini=true&title=' + encodedText,
-        '_blank', popupFeatures + '520'
+        '_blank', popupFeatures + SHARE_LINKEDIN_POPUP_HEIGHT_PX
       );
     };
     var fbBtn = overlay.querySelector('.share-facebook');
     fbBtn.onclick = function() {
       window.open(
         'https://www.facebook.com/sharer/sharer.php?quote=' + encodedText,
-        '_blank', popupFeatures + '420'
+        '_blank', popupFeatures + SHARE_POPUP_HEIGHT_PX
       );
     };
     var copyBtn = overlay.querySelector('.share-copy');

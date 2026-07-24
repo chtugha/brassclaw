@@ -1454,8 +1454,9 @@
     return String(n);
   }
 
+  var ONE_SECOND_MS = 1000;
   function formatDuration(ms) {
-    if (ms < 1000) return ms + 'ms';
+    if (ms < ONE_SECOND_MS) return ms + 'ms';
     return (ms / 1000).toFixed(1) + 's';
   }
 

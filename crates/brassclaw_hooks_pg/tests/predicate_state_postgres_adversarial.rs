@@ -300,7 +300,9 @@ async fn per_scope_lru_eviction_bounds_distinct_keys() {
     // Drive distinct keys past the per-tenant quota from two hosts at
     // once. Each key gets one row; strictly increasing ts so LRU victim
     // selection is deterministic.
-    let total = MAX_KEYS_PER_TENANT + 50;
+    // 50 extra keys beyond the per-tenant quota to exercise LRU eviction under overflow.
+    let overflow_extra = 50usize;
+    let total = MAX_KEYS_PER_TENANT + overflow_extra;
     let mut handles = Vec::new();
     for i in 0..total {
         let backend = Arc::clone(&hs[i % 2]);
@@ -531,6 +533,7 @@ async fn eviction_try_lock_does_not_block_on_in_flight_victim() {
     }
 
     // A distinct victim-key lock pair unlikely to collide with other tests.
+    // Distinct advisory lock key pair chosen to be unlikely to collide with other tests.
     let (lk_a, lk_b): (i32, i32) = (0x7EED_1234u32 as i32, 0x0BAD_5678u32 as i32);
 
     // Txn V: take key B's per-key advisory lock (the recorder's first act).

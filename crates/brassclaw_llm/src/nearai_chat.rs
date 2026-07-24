@@ -1844,7 +1844,9 @@ mod tests {
                 let Ok((mut socket, _)) = listener.accept().await else {
                     break;
                 };
-                let mut request = vec![0_u8; 4096];
+                // 4096-byte read buffer — large enough for any test fixture HTTP request.
+                const REQUEST_BUFFER_BYTES: usize = 4096;
+                let mut request = vec![0_u8; REQUEST_BUFFER_BYTES];
                 let Ok(n) = socket.read(&mut request).await else {
                     continue;
                 };
