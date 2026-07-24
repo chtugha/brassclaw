@@ -104,7 +104,10 @@ def strip_code_blocks(text):
 
 
 
-def format_output(result, max_chars=8000):
+FORMAT_OUTPUT_DEFAULT_MAX_CHARS = 8000  # Default truncation limit for code-execution output.
+
+
+def format_output(result, max_chars=FORMAT_OUTPUT_DEFAULT_MAX_CHARS):
     """Format code execution result for the next LLM context message."""
     parts = []
 
@@ -195,14 +198,11 @@ def insert_volatile_context_at_n_minus_1(messages):
     User-visible message before the model response slot so that the stable
     KV-cache prefix (everything before it) can be reused across turns.
 
-    This is a stub for Phase 8 Step 8.1 / Phase 5.2b. The actual volatile
-    context retrieval and formatting is wired in Phase 5.2b once the
-    InstructionBundleBuilder's priority-6 volatile tail is accessible here.
-    For now the function is a no-op so the call site is correct and the
-    volatile injection point is documented and reserved.
+    Phase 5.2b wires the actual volatile tail here. No-op until then.
+    The call site is correct and the volatile injection point is documented.
     """
-    # Phase 5.2b wires the actual volatile tail here. No-op until then.
-    pass
+    # Intentional no-op placeholder: wired in Phase 5.2b.
+    return
 
 
 # Conservative fallback heuristic matching the old Rust-side estimator.
@@ -211,6 +211,9 @@ def insert_volatile_context_at_n_minus_1(messages):
 # entry point is a latent NameError every time `compact_if_needed` runs.
 CHARS_PER_TOKEN = 4
 MESSAGE_OVERHEAD_CHARS = 4
+COMPACTION_THRESHOLD_DEFAULT = 0.85   # Fraction of context limit that triggers compaction.
+SKILL_CONTENT_TOKEN_APPROX_RATIO = 0.25  # Approximate chars-per-token ratio for skill content.
+SELECT_SKILLS_DEFAULT_MAX_TOKENS = 6000  # Default token budget for select_skills().
 
 
 def estimate_context_tokens(messages):
@@ -494,7 +497,7 @@ def compact_if_needed(state, config):
         return False
 
     context_limit = config.get("model_context_limit", 128000)
-    threshold_pct = config.get("compaction_threshold", 0.85)
+    threshold_pct = config.get("compaction_threshold", COMPACTION_THRESHOLD_DEFAULT)
     threshold = int(context_limit * threshold_pct)
     working_messages = state.get("working_messages")
     if not isinstance(working_messages, list) or not working_messages:
@@ -568,13 +571,13 @@ def _skill_token_cost(skill, activation):
     """
     declared = max(activation.get("max_context_tokens", 2000), 1)
     content = skill.get("content", "")
-    approx = int(len(content) * 0.25) if content else 0
+    approx = int(len(content) * SKILL_CONTENT_TOKEN_APPROX_RATIO) if content else 0
     if approx > declared * 2:
         return max(approx, 1)
     return declared
 
 
-def select_skills(skills, goal, max_candidates=3, max_tokens=6000):
+def select_skills(skills, goal, max_candidates=3, max_tokens=SELECT_SKILLS_DEFAULT_MAX_TOKENS):
     """Select skills to report as active for the current turn.
 
     Phase 1.5 — intent-system-driven path:
@@ -1026,7 +1029,7 @@ def run_loop(context, goal, actions, state, config):
 
             # Register active skills for tracking / event emission.
             all_skills = __list_skills__()
-            active_skills = select_skills(all_skills, goal, max_candidates=3, max_tokens=6000)
+            active_skills = select_skills(all_skills, goal, max_candidates=3, max_tokens=SELECT_SKILLS_DEFAULT_MAX_TOKENS)
             if active_skills:
                 # Build the payload without list-comprehensions-with-if (Monty-safe §conventions).
                 active_skill_payload = []
