@@ -165,10 +165,13 @@ fn build_date_today() -> MontyObject {
 /// ones are a documented limitation. A proper "active CPU vs paused"
 /// timer split is on the follow-up list (see
 /// `docs/plans/2026-05-01-codeact-inline-gate-await.md`).
+/// Maximum allocation steps for the scripting VM (1 M ops).
+const SCRIPTING_MAX_ALLOCATIONS: usize = 1_000_000;
+
 fn default_limits() -> ResourceLimits {
     ResourceLimits::new()
         .max_duration(Duration::from_secs(30))
-        .max_allocations(1_000_000)
+        .max_allocations(SCRIPTING_MAX_ALLOCATIONS)
         .max_memory(64 * 1024 * 1024) // 64 MB
 }
 
@@ -2766,6 +2769,15 @@ mod tests {
     use crate::types::thread::{Thread, ThreadConfig, ThreadType};
     use std::sync::Mutex;
 
+    /// Size of each allocation in the infinite-loop resource test (bytes per iteration).
+    const INFINITE_LOOP_ALLOC_SIZE: i64 = 10_000;
+    /// Prefix length in filesystem-escape tests (chars from read content to expose).
+    const FS_ESCAPE_PREVIEW_LEN: i64 = 50;
+    /// Sentinel int passed as `model` kwarg to verify that non-string values are rejected.
+    const INVALID_MODEL_INT: i64 = 42;
+
+
+
     /// Truncate a string to at most `max_bytes`, snapping to a UTF-8 char
     /// boundary so assertion messages never panic on multibyte output.
     fn truncate_for_assert(s: &str, max_bytes: usize) -> &str {
@@ -2917,8 +2929,8 @@ mod tests {
         );
     }
 
-    /// Stub LLM that always returns text "stub". Only used so execute_code
-    /// doesn't need a real LLM — our tests exercise tool dispatch, not LLM calls.
+    /// Test-double LLM that always returns the fixed text "stub".
+    /// Used so `execute_code` tests can exercise tool dispatch without a real LLM.
     struct StubLlm;
 
     #[async_trait::async_trait]
@@ -3473,12 +3485,16 @@ except Exception as e:
         let effects: Arc<dyn EffectExecutor> = Arc::new(MockEffects::new(vec![], vec![]));
         let thread = make_test_thread();
 
-        // Infinite allocation loop — should hit allocation or memory limit
-        let code = r#"
+        // Infinite allocation loop — each iteration appends INFINITE_LOOP_ALLOC_SIZE bytes.
+        let code = format!(
+            r#"
 data = []
 while True:
-    data.append("x" * 10000)
-"#;
+    data.append("x" * {size})
+"#,
+            size = INFINITE_LOOP_ALLOC_SIZE,
+        );
+        let code = code.as_str();
         let result = run_code(code, effects, &thread).await;
         // Either returns an error or the stdout contains an error message —
         // the key assertion is that it DOES NOT run forever.
@@ -3521,15 +3537,19 @@ except Exception as e:
         let effects: Arc<dyn EffectExecutor> = Arc::new(MockEffects::new(vec![], vec![]));
         let thread = make_test_thread();
 
-        let code = r#"
+        let code = format!(
+            r#"
 try:
     f = open("/etc/passwd", "r")
     content = f.read()
     f.close()
-    FINAL("ESCAPED: " + content[:50])
+    FINAL("ESCAPED: " + content[:{preview}])
 except Exception as e:
     FINAL("blocked: " + type(e).__name__)
-"#;
+"#,
+            preview = FS_ESCAPE_PREVIEW_LEN,
+        );
+        let code = code.as_str();
         let result = run_code(code, effects, &thread).await.unwrap();
         let answer = result.final_answer.as_deref().unwrap_or("");
         assert!(
@@ -4097,7 +4117,7 @@ except Exception as e:
                     MontyObject::String("prompt".into()),
                     MontyObject::String("hi".into()),
                 ),
-                (MontyObject::String("model".into()), MontyObject::Int(42)),
+                (MontyObject::String("model".into()), MontyObject::Int(INVALID_MODEL_INT)),
             ],
             &(Arc::clone(&llm) as Arc<dyn crate::traits::llm::LlmBackend>),
             &mut tokens,
