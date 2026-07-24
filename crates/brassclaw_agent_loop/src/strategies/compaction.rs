@@ -92,7 +92,7 @@ impl CompactionStrategy for DefaultCompactionStrategy {
                 .unwrap_or(CompactionDecision::Skip);
         }
 
-        let mut tail_tokens = 0_u64;
+        let mut tail_tokens: u64 = 0;
         for entry in state.compaction_prompt.message_index.iter().rev() {
             if is_eligible_user_boundary(entry, state, prompt_fingerprint)
                 && tail_tokens >= self.preserve_tail_tokens
