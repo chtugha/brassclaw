@@ -103,9 +103,9 @@ mod inner {
     /// returns.  This mirrors the MemoryDoc-based shape so the Python
     /// orchestrator can consume both paths without branching.
     ///
-    /// **Trust stub (PH-02):** The `trust` field is always `"trusted"` for
-    /// DB-loaded skills — see module-level note.  This is a Phase-1 no-op
-    /// stub; Phase 3 deletes both this field and the attenuation phase.
+    /// **Trust placeholder (PH-02):** The `trust` field is always `"trusted"` for
+    /// DB-loaded skills — see module-level note.  Phase 3 will remove this field
+    /// and the attenuation phase entirely.
     fn row_to_json(row: &DbSkillRow) -> serde_json::Value {
         // Apply content escaping as defence-in-depth.
         let escaped_body = escape_skill_content(&row.body);
