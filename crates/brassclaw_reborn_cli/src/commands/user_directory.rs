@@ -61,7 +61,7 @@ impl WebuiUserDirectory {
     /// Wire local-dev trigger access seeding for SSO-admitted users.
     ///
     /// Not yet called — wired once embedded-PG startup runs before runtime
-    /// construction (TODO in `webui_auth.rs`).
+    /// construction (known tech-debt in `webui_auth.rs`).
     #[allow(dead_code)]
     pub(crate) fn with_local_trigger_access(
         mut self,
@@ -117,7 +117,7 @@ impl LocalTriggerAccessBootstrap {
     /// Construct a local trigger-access bootstrap record.
     ///
     /// Not yet called — wired once embedded-PG startup runs before runtime
-    /// construction (TODO in `webui_auth.rs`).
+    /// construction (known tech-debt in `webui_auth.rs`).
     #[allow(dead_code)]
     pub(crate) fn new(
         store: Arc<PgRebornLocalTriggerAccessStore>,

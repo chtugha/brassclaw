@@ -1044,6 +1044,15 @@ fn _assert_terminal_statuses_are_covered(status: TurnStatus) -> bool {
 mod tests {
     use std::sync::Mutex;
 
+    // Arbitrary EventCursor sequence numbers for fake-coordinator terminal events.
+    // Each constant names which child-turn event it represents in the test.
+    const CHILD_A_FIRST_CURSOR: u64 = 21;
+    const CHILD_B_FIRST_CURSOR: u64 = 22;
+    const CHILD_A_SECOND_CURSOR: u64 = 31;
+    const CHILD_B_SECOND_CURSOR: u64 = 32;
+    const CHILD_B_RETRY_CURSOR: u64 = 33;
+    const FAILED_CHILD_CURSOR: u64 = 42;
+
     use async_trait::async_trait;
     use brassclaw_host_api::{AgentId, CapabilityId, TenantId, ThreadId, UserId};
     use brassclaw_loop_support::{
@@ -3241,7 +3250,7 @@ mod tests {
         let event = AwaitedChildTerminalEvent {
             status: TurnStatus::Failed,
             kind: TurnEventKind::Failed,
-            cursor: EventCursor(42),
+            cursor: EventCursor(FAILED_CHILD_CURSOR),
             sanitized_reason: Some("secret {json}".to_string()),
             owner_user_id: Some(owner),
         };
@@ -3581,7 +3590,7 @@ mod tests {
 
         observer
             .handle_terminal(&TurnLifecycleEvent {
-                cursor: EventCursor(21),
+                cursor: EventCursor(CHILD_A_FIRST_CURSOR),
                 scope: child_a_scope,
                 occurred_at: None,
                 owner_user_id: Some(owner.clone()),
@@ -3598,7 +3607,7 @@ mod tests {
 
         observer
             .handle_terminal(&TurnLifecycleEvent {
-                cursor: EventCursor(22),
+                cursor: EventCursor(CHILD_B_FIRST_CURSOR),
                 scope: child_b_scope,
                 occurred_at: None,
                 owner_user_id: Some(owner),
@@ -4000,7 +4009,7 @@ mod tests {
 
         observer
             .handle_terminal(&TurnLifecycleEvent {
-                cursor: EventCursor(31),
+                cursor: EventCursor(CHILD_A_SECOND_CURSOR),
                 scope: child_a_scope,
                 occurred_at: None,
                 owner_user_id: Some(owner.clone()),
@@ -4016,7 +4025,7 @@ mod tests {
 
         let error = observer
             .handle_terminal(&TurnLifecycleEvent {
-                cursor: EventCursor(32),
+                cursor: EventCursor(CHILD_B_SECOND_CURSOR),
                 scope: child_b_scope.clone(),
                 occurred_at: None,
                 owner_user_id: Some(owner.clone()),
@@ -4045,7 +4054,7 @@ mod tests {
 
         observer
             .handle_terminal(&TurnLifecycleEvent {
-                cursor: EventCursor(33),
+                cursor: EventCursor(CHILD_B_RETRY_CURSOR),
                 scope: child_b_scope,
                 occurred_at: None,
                 owner_user_id: Some(owner),

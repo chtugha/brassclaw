@@ -106,7 +106,7 @@ pub(crate) fn execute(
 
 /// Wires the local trigger-fire access checker into `runtime_input` for the
 /// `run` command. Currently a no-op until embedded PG is plumbed into the
-/// local-dev run path (TODO: wire pool after embedded-PG startup).
+/// local-dev run path (known tech-debt: wire pool after embedded-PG startup).
 async fn with_run_local_trigger_fire_access_checker(
     runtime_input: RebornRuntimeInput,
     _config: &RebornBootConfig,
@@ -723,6 +723,11 @@ fn runner_settings(
 mod tests {
     use std::collections::HashMap;
 
+    // Arbitrary integer returned by block_on_cli in the runtime-nesting test.
+    const BLOCK_ON_CLI_TEST_VALUE: i32 = 42;
+    // Trigger-poller interval written in test configs to exercise config parsing.
+    const TEST_TRIGGER_POLL_INTERVAL_SECS: u64 = 42;
+
     use brassclaw_reborn_composition::RebornCompositionProfile;
 
     use brassclaw_reborn_config::RebornBootConfig;
@@ -743,9 +748,10 @@ mod tests {
 
     #[tokio::test]
     async fn block_on_cli_can_run_inside_existing_tokio_runtime() {
-        let value = block_on_cli(async { Ok::<_, anyhow::Error>(42) }).expect("block future");
+        let value = block_on_cli(async { Ok::<_, anyhow::Error>(BLOCK_ON_CLI_TEST_VALUE) })
+            .expect("block future");
 
-        assert_eq!(value, 42);
+        assert_eq!(value, BLOCK_ON_CLI_TEST_VALUE);
     }
 
     #[test]
@@ -982,11 +988,9 @@ default_project = "project-alpha"
         std::fs::create_dir_all(&reborn_home).expect("mkdir");
         std::fs::write(
             reborn_home.join("config.toml"),
-            r#"
-[trigger_poller]
-enabled = true
-poll_interval_secs = 42
-"#,
+            format!(
+                "[trigger_poller]\nenabled = true\npoll_interval_secs = {TEST_TRIGGER_POLL_INTERVAL_SECS}\n"
+            ),
         )
         .expect("write config");
         let config = RebornBootConfig::resolve_from_env_parts(
@@ -1004,7 +1008,7 @@ poll_interval_secs = 42
         );
         assert_eq!(
             input.trigger_poller.worker.poll_interval,
-            std::time::Duration::from_secs(42),
+            std::time::Duration::from_secs(TEST_TRIGGER_POLL_INTERVAL_SECS),
             "config poll_interval_secs must reach worker.poll_interval"
         );
     }

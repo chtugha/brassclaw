@@ -472,7 +472,7 @@ impl brassclaw_turns::run_profile::LoopContextPort for StubHost {
         &self,
         _request: brassclaw_turns::run_profile::LoopContextRequest,
     ) -> Result<brassclaw_turns::run_profile::LoopContextBundle, AgentLoopHostError> {
-        unimplemented!("stub host: never called by mock driver")
+        panic!("test double: load_loop_context is never called by the mock driver")
     }
 }
 
@@ -482,7 +482,7 @@ impl brassclaw_turns::run_profile::LoopPromptPort for StubHost {
         &self,
         _request: brassclaw_turns::run_profile::LoopPromptBundleRequest,
     ) -> Result<brassclaw_turns::run_profile::LoopPromptBundle, AgentLoopHostError> {
-        unimplemented!("stub host: never called by mock driver")
+        panic!("test double: build_prompt_bundle is never called by the mock driver")
     }
 }
 
@@ -493,14 +493,14 @@ impl brassclaw_turns::run_profile::LoopInputPort for StubHost {
         _after: brassclaw_turns::run_profile::LoopInputCursor,
         _limit: usize,
     ) -> Result<brassclaw_turns::run_profile::LoopInputBatch, AgentLoopHostError> {
-        unimplemented!("stub host: never called by mock driver")
+        panic!("test double: poll_inputs is never called by the mock driver")
     }
 
     async fn ack_inputs(
         &self,
         _tokens: Vec<brassclaw_turns::run_profile::LoopInputAckToken>,
     ) -> Result<(), AgentLoopHostError> {
-        unimplemented!("stub host: never called by mock driver")
+        panic!("test double: ack_inputs is never called by the mock driver")
     }
 }
 
@@ -510,7 +510,7 @@ impl brassclaw_turns::run_profile::LoopModelPort for StubHost {
         &self,
         _request: brassclaw_turns::run_profile::LoopModelRequest,
     ) -> Result<brassclaw_turns::run_profile::LoopModelResponse, AgentLoopHostError> {
-        unimplemented!("stub host: never called by mock driver")
+        panic!("test double: stream_model is never called by the mock driver")
     }
 }
 

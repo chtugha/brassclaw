@@ -21,7 +21,7 @@
 //!    the inner port — proving the hook plumbing is opt-in.
 //!
 //! Deferred coverage: predicate-pass "no opinion" currently denies with
-//! `hook_predicate_pass` (see `installed_hook.rs` TODO). Once the dispatcher
+//! `hook_predicate_pass` (see `installed_hook.rs` known tech-debt item). Once the dispatcher
 //! grows an explicit `pass()` for restricted sinks, an additional test using
 //! a `PredicateBackedBeforeCapabilityHook` against `cap.allowed` should be
 //! added to prove non-matching predicate invocations also reach the inner
@@ -1295,7 +1295,7 @@ async fn event_subscription_event_during_continuous_drain_is_live() {
 
     let all = wait_for_seen_events(&seen, 4).await;
     assert_eq!(all.len(), 4, "all four events must be observed");
-    for cursor in 1..=3u64 {
+    for cursor in 1..=3_u64 {
         let e = all
             .iter()
             .find(|e| e.cursor == RuntimeEventCursor::new(cursor))
@@ -2012,7 +2012,7 @@ async fn factory_hook_security_audit_sink_records_deny_through_build() {
     );
 }
 
-// FIXME(hooks-wasm): Installed-tier `before_prompt` WASM hooks cannot be
+// Known tech-debt (hooks-wasm): Installed-tier `before_prompt` WASM hooks cannot be
 // installed via the public manifest path today: the registry C3 fix
 // (finding #2 on PR #3573) rejects `OwnCapabilities` at `BeforePrompt`
 // (no per-capability invocation context), while the manifest validator
@@ -3033,7 +3033,7 @@ async fn observer_panic_does_not_fail_model_call() {
 
 // ─── NumericSum predicate against real inputs ──────────────────────────────
 
-/// Stub `LoopCapabilityInputResolver` that always returns the same JSON body
+/// Test-double `LoopCapabilityInputResolver` that always returns the same JSON body
 /// for every input ref. The NumericSum predicate test wires this resolver
 /// through `RebornLoopDriverHostFactory::with_capability_input_resolver` so
 /// the hook framework sees real numeric input and the predicate can

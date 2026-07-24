@@ -10,6 +10,10 @@ use brassclaw_agent_loop::{
         test_run_context,
     },
 };
+// Profile version that will never match any registered driver — triggers
+// InvalidRequest rejection for version-mismatch tests.
+const UNREGISTERED_PROFILE_VERSION: u32 = 99;
+
 use brassclaw_reborn::app_loop_family::build_loop_family_registry;
 use brassclaw_reborn::planned_driver::PlannedDriver;
 use brassclaw_reborn::planned_driver_factory::{
@@ -206,7 +210,8 @@ async fn planned_driver_rejects_mismatched_profile_assignment() {
         .script(ScenarioScript::reply_only("hi"))
         .build();
     let mut request = run_request(&driver, &host);
-    request.resolved_run_profile.loop_driver.version = brassclaw_turns::RunProfileVersion::new(99);
+    request.resolved_run_profile.loop_driver.version =
+        brassclaw_turns::RunProfileVersion::new(UNREGISTERED_PROFILE_VERSION);
 
     let error = driver
         .run(request, &host)

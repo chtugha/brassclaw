@@ -138,6 +138,11 @@ fn test_safety_context() -> InstructionSafetyContext {
 }
 
 const SYNTHETIC_CAPABILITY_INFO_ID: &str = "brassclaw.loop.capability_info";
+/// A profile version that does not match any configured profile — used to
+/// trigger profile-mismatch rejection tests.
+const MISMATCHED_PROFILE_VERSION: u32 = 999;
+/// Number of capability invocations used in batch-replay tests.
+const BATCH_INVOCATION_COUNT: usize = 130;
 
 fn only_runtime_surface_descriptor<'a>(
     surface: &'a VisibleCapabilitySurface,
@@ -3533,7 +3538,7 @@ async fn text_only_host_factory_rejects_agentless_turn_scope() {
 async fn text_only_host_factory_rejects_persisted_profile_identity_mismatch() {
     let fixture = HostFixture::new("thread-host-profile-mismatch", "hello").await;
     let mut claimed = fixture.claimed.clone();
-    claimed.state.resolved_run_profile_version = RunProfileVersion::new(999);
+    claimed.state.resolved_run_profile_version = RunProfileVersion::new(MISMATCHED_PROFILE_VERSION);
 
     let error = fixture
         .factory()
@@ -5036,7 +5041,7 @@ async fn text_only_host_bounds_completed_dispatch_records() {
         capability_descriptor(capability_id.as_str()),
     ])));
     let io = Arc::new(InMemoryCapabilityIo::default());
-    let invocation_count = 130;
+    let invocation_count = BATCH_INVOCATION_COUNT;
     let mut input_refs = Vec::new();
     for index in 0..invocation_count {
         runtime.push_outcome(RuntimeCapabilityOutcome::Completed(Box::new(

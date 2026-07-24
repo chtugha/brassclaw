@@ -288,6 +288,10 @@ mod tests {
     use super::*;
     use crate::app_loop_family::build_loop_family_registry;
 
+    // Profile version that will never match any registered driver — used to verify
+    // is_subagent_planned_profile returns false for unrecognised versions.
+    const UNREGISTERED_PROFILE_VERSION: u32 = 99;
+
     #[test]
     fn descriptor_carries_checkpoint_schema() {
         let descriptor = planned_driver_descriptor().expect("static descriptor should validate");
@@ -453,7 +457,8 @@ mod tests {
         assert!(!is_subagent_planned_profile(&mismatched_driver));
 
         let mut mismatched_version = snapshot;
-        mismatched_version.loop_driver.version = RunProfileVersion::new(99);
+        mismatched_version.loop_driver.version =
+            RunProfileVersion::new(UNREGISTERED_PROFILE_VERSION);
 
         assert!(!is_subagent_planned_profile(&mismatched_version));
     }
