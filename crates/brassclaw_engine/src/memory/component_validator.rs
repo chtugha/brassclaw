@@ -28,6 +28,16 @@
 
 #![forbid(unsafe_code)]
 
+// ── Token budget defaults per class code ─────────────────────────────────────
+/// Soft token budget for Extension classes (04–09) and other standard components.
+const BUDGET_STANDARD: u32 = 10_000;
+/// Soft token budget for Orchestrator / orchestrator-extension classes (10, 50).
+const BUDGET_ORCHESTRATOR: u32 = 50_000;
+/// Soft token budget for Note class (15).
+const BUDGET_NOTES: u32 = 2_000;
+/// Default token budget for Skill tool validation (hard-error if no config override).
+const BUDGET_SKILL_DEFAULT: u32 = 5_000;
+
 use crate::memory::recipe_validator::{RecipeValidator, ValidationResult};
 use crate::types::recipe::{Recipe, ToolSkill};
 
@@ -112,14 +122,14 @@ impl ComponentValidator {
             },
             // Extensions (04-09)
             4..=9 => match &component {
-                ComponentPayload::Generic(g) => validate_soft_budget(g, config, 10_000, false),
+                ComponentPayload::Generic(g) => validate_soft_budget(g, config, BUDGET_STANDARD, false),
                 ComponentPayload::ToolSkill(skill) => {
                     validate_soft_budget_named(
                         skill.name.as_str(),
                         skill.description.as_str(),
                         skill.code_snippet.as_deref().unwrap_or(""),
                         config,
-                        10_000,
+                        BUDGET_STANDARD,
                         false,
                     )
                 }
@@ -138,7 +148,7 @@ impl ComponentValidator {
                     ),
                     ComponentPayload::Recipe(r) => (r.name.as_str(), r.description.as_str(), ""),
                 };
-                validate_soft_budget_named(name, desc, content, config, 50_000, false)
+                validate_soft_budget_named(name, desc, content, config, BUDGET_ORCHESTRATOR, false)
             }
             // Actions (16): no token budget
             16 => {
@@ -159,7 +169,7 @@ impl ComponentValidator {
                     RecipeValidator::validate_recipe(recipe, existing_skill_names)
                 }
                 ComponentPayload::Generic(g) => {
-                    validate_soft_budget(g, config, 10_000, false)
+                    validate_soft_budget(g, config, BUDGET_STANDARD, false)
                 }
                 ComponentPayload::ToolSkill(_) => {
                     ValidationResult::from_error("Recipe class requires a Recipe payload")
@@ -178,7 +188,7 @@ impl ComponentValidator {
                         (r.name.as_str(), r.description.as_str(), "")
                     }
                 };
-                validate_soft_budget_named(name, desc, content, config, 2_000, false)
+                validate_soft_budget_named(name, desc, content, config, BUDGET_NOTES, false)
             }
             // Former DocType classes (12-14, 17-20): soft 10000
             12..=14 | 17..=20 => {
@@ -191,7 +201,7 @@ impl ComponentValidator {
                     ),
                     ComponentPayload::Recipe(r) => (r.name.as_str(), r.description.as_str(), ""),
                 };
-                validate_soft_budget_named(name, desc, content, config, 10_000, false)
+                validate_soft_budget_named(name, desc, content, config, BUDGET_STANDARD, false)
             }
             // Unknown class codes: generic lightweight check
             _ => {
@@ -204,7 +214,7 @@ impl ComponentValidator {
                     ),
                     ComponentPayload::Recipe(r) => (r.name.as_str(), r.description.as_str(), ""),
                 };
-                validate_soft_budget_named(name, desc, content, config, 10_000, false)
+                validate_soft_budget_named(name, desc, content, config, BUDGET_STANDARD, false)
             }
         }
     }
@@ -293,7 +303,7 @@ fn validate_skill_generic(
     validate_description_hard(component.description, "Skill", &mut result);
 
     // Token budget: 5000 hard by default.
-    let budget = config.token_budget.unwrap_or(5_000);
+    let budget = config.token_budget.unwrap_or(BUDGET_SKILL_DEFAULT);
     let hard = config.token_budget_hard_error.unwrap_or(true);
     let tokens = (component.content.len() / 4) as u32;
     if tokens > budget {
