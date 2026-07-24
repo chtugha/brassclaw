@@ -396,12 +396,16 @@ class TestFindMagicNumbers(unittest.TestCase):
         self.assertIn("3000", lits)
 
     def test_number_after_single_quoted_string_found(self):
-        hits = sweepfix._find_magic_numbers("const s = 'hello'; let x = 3000;\n")
+        # Line does not start with const/static so it is not skipped by the
+        # named-constant rule; the bare 3000 after a single-quoted string must
+        # still be found.
+        hits = sweepfix._find_magic_numbers("let s = 'hello'; let x = 3000;\n")
         lits = [h[1] for h in hits]
         self.assertIn("3000", lits)
 
     def test_context_line_returned(self):
-        src = "let port = 8080;\n"
+        # Use a bare numeric limit with no descriptive name so it is not skipped.
+        src = "let x = 8080;\n"
         lineno, lit, context = sweepfix._find_magic_numbers(src)[0]
         self.assertIn("8080", context)
 

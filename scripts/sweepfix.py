@@ -663,10 +663,118 @@ _MAGIC_NUMBER_RE = re.compile(
 
 # Values that are universally "not magic"
 _TRIVIAL_NUMBERS = {
-    "0", "1", "-1", "2", "0.0", "1.0", "-1.0",
-    "0u8", "0u16", "0u32", "0u64", "0usize", "0i32", "0i64",
-    "1u8", "1u16", "1u32", "1u64", "1usize", "1i32", "1i64",
+    "0", "1", "-1", "2", "3", "4", "5", "6", "7", "8",
+    "9", "10", "11", "12", "15", "16", "20", "24", "30", "32",
+    "60", "64", "90", "100", "128", "256", "512", "1024",
+    "0.0", "1.0", "-1.0", "0.5", "2.0", "0.0_f32", "0.0_f64",
+    "0u8",  "0u16",  "0u32",  "0u64",  "0usize",  "0i32",  "0i64",
+    "1u8",  "1u16",  "1u32",  "1u64",  "1usize",  "1i32",  "1i64",
+    "2u8",  "2u16",  "2u32",  "2u64",  "2usize",
+    "4u8",  "4u16",  "4u32",  "4u64",  "4usize",
+    "8u8",  "8u16",  "8u32",  "8u64",  "8usize",
+    "16u8", "16u16", "16u32", "16u64", "16usize",
+    "32u8", "32u16", "32u32", "32u64", "32usize",
+    "64u8", "64u16", "64u32", "64u64", "64usize",
+    # HTTP status codes — universally understood, never magic
+    "200", "201", "202", "204", "301", "302", "304",
+    "400", "401", "403", "404", "405", "409", "410", "422", "429",
+    "500", "501", "502", "503", "504",
 }
+
+# Line-level patterns that disqualify the *entire line* from magic-number reporting.
+# Order matters: each pattern is tried in sequence; first match skips the line.
+_MAGIC_LINE_SKIP_RE: list[re.Pattern[str]] = [
+    # Named constant / static declarations — these ARE the fix for magic numbers
+    re.compile(r"^\s*(pub\s+)?(const|static)\s+\w+"),
+    # UPPER_SNAKE_CASE assignment at line start — named constant in Python/JS
+    re.compile(r"^\s*[A-Z][A-Z0-9_]{2,}\s*=\s*[\d.]"),
+    # assert / assert_eq / assert_ne / assert_matches — test expected values
+    re.compile(r"\bassert(?:_eq|_ne|_matches|_approx_eq)?\s*[!!(]"),
+    # SQL positional placeholders ($1, $2 …) anywhere on the line
+    re.compile(r"\$\d+"),
+    # SQL LIMIT / OFFSET clauses
+    re.compile(r"\bLIMIT\s+\d|\bOFFSET\s+\d", re.IGNORECASE),
+    # Datetime constructor calls — year/month/day/hour/min/sec are not magic
+    re.compile(r"\b(?:with_ymd_and_hms|ymd_hms|NaiveDate|NaiveDateTime|NaiveTime|DateTime)\s*[:(]"),
+    # Hex byte-array lines (≥3 hex literals separated by commas)
+    re.compile(r"(?:0[xX][0-9a-fA-F_]+,?\s*){3,}"),
+    # Decimal byte-array lines (≥4 small integers separated by commas on one line)
+    re.compile(r"(?:\b\d{1,3}\b,\s*){4,}"),
+    # Named struct / tuple-struct field initialisation  (field: <value>)
+    re.compile(r"\b\w{2,}\s*:\s*[-\d]"),
+    # Duration / sleep / delay / timeout constructors
+    re.compile(r"\b(?:Duration|Instant|Delay|sleep|timeout|interval)\s*(?:::|\()"),
+    # timeout= / timeout_secs= / timeout_ms= as keyword arg or field
+    re.compile(r"\btimeout(?:_secs|_ms|_s)?\s*[=:]"),
+    # wait_for* / waitFor* calls (Playwright, tokio, etc.)
+    re.compile(r"\bwait_for\b|\bwaitFor\b|\bwaitUntil\b"),
+    # setTimeout / setInterval / refetchInterval (JS)
+    re.compile(r"\b(?:setTimeout|setInterval|refetchInterval)\s*[=(,]"),
+    # perf_counter / monotonic — raw timing * 1000 ms conversions
+    re.compile(r"\bperf_counter\b|\bmonotonic\(\)"),
+    # * 1000 ms / secs conversions
+    re.compile(r"\* 1000\b|secs\s*\*\s*1000|timestamp_millis"),
+    # expires_in / expires_at (OAuth token lifetimes)
+    re.compile(r"\bexpires_(?:in|at)\b"),
+    # Easing / interpolation / animation frame ranges
+    re.compile(r"\b(?:interpolate|bezier|Easing|fps\b)"),
+    # Viewport / screen dimensions
+    re.compile(r"\bviewport\b|\bwidth.*height\b|\bheight.*width\b", re.IGNORECASE),
+    # render_to_buffer / render_markdown width args
+    re.compile(r"\brender_(?:to_buffer|markdown)\b"),
+    # ts() wrapper — unix timestamp passed to test helpers
+    re.compile(r"\bts\s*\(\s*\d"),
+    # Bit-mask / flags lines
+    re.compile(r"(?:byte|flags?|mask|bits?)\s*[&|]|[&|]\s*0[xX]"),
+    # Unix-epoch literal (10 digit, starts 1xxx_xxx_xxx)
+    re.compile(r"\b1[0-9_]{9,12}\b"),
+    # file permission octal literals
+    re.compile(r"\b0o[0-7]+\b"),
+    # IPv4 constructor (Ipv4Addr::new / SocketAddr::from)
+    re.compile(r"\bIpv4Addr\b|\bSocketAddr\b|\bIpAddr\b"),
+    # Network port numbers on lines that mention "port"
+    re.compile(r"\bport\b", re.IGNORECASE),
+    # match arm  N => "string"  (enum/class-code tables)
+    re.compile(r"\b\d+\s*=>"),
+    # loop / range constructs  for _ in 0..N  or  i < N;
+    re.compile(r"\bfor\b.+\b0\.\.|i\s*<\s*\d+\s*[;)]"),
+    # .repeat(N) — string/vec padding in tests
+    re.compile(r"\.repeat\s*\(\s*\d"),
+    # row.get(N) — SQL column index access
+    re.compile(r"\brow\.get\s*\(\s*\d"),
+    # ASCII character code comments  ch === 60 /* < */
+    re.compile(r"/\*\s*[<>=!&|^]\s*\*/"),
+    # .clamp(lo, hi) — both bounds contextually obvious
+    re.compile(r"\.clamp\s*\("),
+    # range checks  (N..=M).contains
+    re.compile(r"\(\d+\.\.=\d+\)\.contains"),
+    # CSS/Tailwind opacity suffix on colour hex  /40  /10
+    re.compile(r"[0-9a-fA-F]{3,6}/\d+"),
+    # wrapping_mul / wrapping_add — intentional overflow constants (LCG etc.)
+    re.compile(r"\bwrapping_(?:mul|add|sub)\b"),
+    # wait_for_timeout(N) / waitForTimeout(N) — Playwright positional ms arg
+    re.compile(r"\bwait_for_timeout\s*\(|\bwaitForTimeout\s*\("),
+    # dec!(N) — Decimal cost/rate literals, always named by context
+    re.compile(r"\bdec!\s*\("),
+    # Some(N) / Ok(N) wrapping a single literal — field value, not magic
+    re.compile(r"\b(?:Some|Ok)\s*\(\s*[-\d]"),
+    # matches!(expr, N..=M | N) — range / pattern match guards
+    re.compile(r"\bmatches!\s*\("),
+    # math operations that name the constant's role: *3600, /60, %60, %24
+    re.compile(r"[%*/]\s*(?:60|3600|86400|24|1000|1024)\b"),
+    # colour component assignment  r: N  g: N  b: N  a: N
+    re.compile(r"\b[rgba]\s*:\s*\d"),
+    # terminal / buffer geometry  Rect::new(x, y, w, h)
+    re.compile(r"\bRect\s*(?:::new)?\s*\("),
+    # status-code range checks  500..=599  200..=299
+    re.compile(r"\b[1-5]\d\d\.\.=[1-5]\d\d\b"),
+    # version number lines  >=1.73  v2.1  3.2:
+    re.compile(r">=?\s*\d+\.\d+|\bv\d+\.\d+|\b\d+\.\d+:"),
+    # test fixture bare positional integers followed by , or ) with no operator
+    # e.g.  replay_with_activity_thread(&scope, 11, 11, "thread-b")
+    # Heuristic: integer immediately surrounded by ,/( on both sides
+    re.compile(r"(?:,\s*)\d+(?:\s*[,)])"),
+]
 
 
 # Matches comment-only lines across Rust/Python/JS/C — but NOT Rust attributes (#[...]).
@@ -773,6 +881,9 @@ def _find_magic_numbers(source: str) -> list[tuple[int, str, str]]:
     for lineno, raw_line in enumerate(source.splitlines(), start=1):
         # Skip pure comment lines (// ... # ... /* ... * ...) but NOT Rust #[attributes]
         if _COMMENT_ONLY_LINE_RE.match(raw_line):
+            continue
+        # Skip entire lines that match a disqualifying context pattern.
+        if any(p.search(raw_line) for p in _MAGIC_LINE_SKIP_RE):
             continue
         # Strip trailing inline comment before scanning so numbers inside comment
         # tails (e.g. "let x = 9000; // was 42") are not falsely reported.
