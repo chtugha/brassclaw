@@ -7,6 +7,9 @@
 //! this slice) and does *not* cover Reborn middleware composition (next
 //! slice). It exists to prove the cross-module shapes fit together.
 
+/// 32-byte test invocation hash filled with 0x42.
+const TEST_INVOCATION_HASH: [u8; 32] = [0x42u8; 32];
+
 use async_trait::async_trait;
 use brassclaw_hooks::{
     dispatch::HookDispatcherBuilder,
@@ -95,7 +98,7 @@ async fn manifest_to_dispatch_pipeline() {
     let ctx = BeforeCapabilityHookContext::new_unresolved(
         tenant(),
         "polymarket.place_order".to_string(),
-        [42u8; 32],
+        TEST_INVOCATION_HASH,
     );
     let outcome = dispatcher.dispatch_before_capability(&ctx).await;
     assert!(!outcome.decision.permits());

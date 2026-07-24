@@ -28,6 +28,9 @@
 //!    a system author (not a third-party extension) would take when the
 //!    predicate language isn't expressive enough.
 
+/// Sentinel byte value used to fill 32-byte test invocation context arrays.
+const TEST_INVOCATION_SENTINEL: u8 = 99;
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -117,7 +120,7 @@ async fn polymarket_daily_cap_denies_after_ten_invocations() {
     // `installed_hook.rs::evaluate` and the friction-findings doc — and is
     // pinned here so a future change that surfaces manifest-supplied
     // strings to the model has to update this assertion deliberately.
-    let denied = dispatcher.dispatch_before_capability(&ctx([99; 32])).await;
+    let denied = dispatcher.dispatch_before_capability(&ctx([TEST_INVOCATION_SENTINEL; 32])).await;
     match denied.decision.view() {
         GateDecisionView::Deny { reason } => {
             assert_eq!(

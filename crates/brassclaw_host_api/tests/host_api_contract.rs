@@ -1,5 +1,8 @@
 use std::path::PathBuf;
 
+/// Body limit (bytes) used in ingress-policy JSON fixtures = 16 KiB.
+const TEST_BODY_LIMIT_BYTES: u64 = 16384;
+
 use brassclaw_host_api::*;
 use rust_decimal_macros::dec;
 use serde_json::json;
@@ -1369,7 +1372,7 @@ fn host_api_contract_types_reject_unknown_fields_on_deserialize() {
         "scope_source": "authenticated_caller",
         "body_limit": {
             "type": "limited",
-            "max_bytes": 16384,
+            "max_bytes": TEST_BODY_LIMIT_BYTES,
         },
         "rate_limit": {
             "type": "limited",

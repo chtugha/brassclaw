@@ -73,7 +73,7 @@ fn response_headers(headers: Vec<(String, String)>) -> (Value, bool) {
     let mut headers_truncated = headers.len() > MAX_MODEL_VISIBLE_RESPONSE_HEADERS;
     let mut value_truncated = false;
     let mut visible_headers = Vec::new();
-    let mut serialized_content_len = 0_usize;
+    let mut serialized_content_len = 0usize;
     for (index, (name, value)) in headers.into_iter().enumerate() {
         if index >= MAX_MODEL_VISIBLE_RESPONSE_HEADERS {
             break;

@@ -72,10 +72,12 @@ pub const GLOB_CAPABILITY_ID: &str = "builtin.glob";
 pub const GREP_CAPABILITY_ID: &str = "builtin.grep";
 pub const APPLY_PATCH_CAPABILITY_ID: &str = "builtin.apply_patch";
 
+/// Maximum input size (bytes) for first-party tool calls (1 MiB).
 const MAX_FIRST_PARTY_INPUT_BYTES: usize = 1_048_576;
 const MAX_WRITE_FILE_INPUT_BYTES: usize = 6 * 1024 * 1024;
 const MAX_APPLY_PATCH_INPUT_BYTES: usize = 21 * 1024 * 1024;
 const FIRST_PARTY_DEFAULT_OUTPUT_BYTES: u64 = 16 * 1024;
+/// Maximum output size (bytes) for first-party tool calls (1 MiB).
 pub(super) const FIRST_PARTY_MAX_OUTPUT_BYTES: u64 = 1_048_576;
 const FIRST_PARTY_DEFAULT_WALL_CLOCK_MS: u64 = 100;
 const FIRST_PARTY_MAX_WALL_CLOCK_MS: u64 = 5_000;

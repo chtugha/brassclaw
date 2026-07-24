@@ -10,6 +10,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Maximum length of a network host pattern in bytes (RFC 1035 domain name limit).
+const MAX_NETWORK_HOST_PATTERN_LEN: usize = 253;
+
 use crate::{
     ApprovalRequest, CapabilityId, EffectKind, ExtensionId, ResourceEstimate, ScopedPath,
     SecretHandle,
@@ -86,7 +89,7 @@ impl NetworkTargetPattern {
 }
 
 fn validate_network_host_pattern(pattern: &str) -> Result<(), crate::HostApiError> {
-    if pattern.is_empty() || pattern.len() > 253 {
+    if pattern.is_empty() || pattern.len() > MAX_NETWORK_HOST_PATTERN_LEN {
         return Err(crate::HostApiError::invalid_network_target(
             pattern,
             "host pattern must be non-empty and at most 253 bytes",
