@@ -36,6 +36,7 @@ const EXACT_MATCH_SCORE: f64 = 0.95;
 /// Regex size limit (bytes) applied to each compiled pattern to prevent ReDoS.
 const REGEX_SIZE_LIMIT_BYTES: usize = 10_000;
 /// Minimum keyword trigger weight for loose/low-confidence matches in tests.
+#[cfg(test)]
 const KW_TRIGGER_LOOSE_WEIGHT: f64 = 0.20;
 
 /// Lightweight DTO surfaced to the agent loop's `RecipeStage`.
