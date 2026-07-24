@@ -9,6 +9,9 @@ use serde_json::json;
 mod support;
 use support::*;
 
+/// GitHub issue number used throughout this test contract.
+const TEST_ISSUE_NUMBER: u64 = 3806;
+
 #[tokio::test]
 async fn capability_host_blocks_github_comment_issue_before_dispatch() {
     let fixture = blocked_github_comment_fixture().await;
