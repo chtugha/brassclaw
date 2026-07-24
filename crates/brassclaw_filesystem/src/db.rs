@@ -1,5 +1,11 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+/// Maximum length of a Postgres identifier (63 chars); we cap at one less
+/// so that libsql and Postgres share one naming convention without risk of
+/// truncation silently colliding two different index names.
+#[cfg(feature = "postgres")]
+const PG_MAX_IDENTIFIER_LEN: usize = 62;
+
 use brassclaw_host_api::{HostApiError, VirtualPath};
 
 use crate::{DirEntry, FileType, FilesystemError, FilesystemOperation};
@@ -123,10 +129,10 @@ pub(crate) fn system_time_from_unix_seconds(seconds: i64) -> Option<SystemTime> 
 /// Build a [`FilesystemError::BackendInfrastructure`] for a failure that
 /// happens outside any caller-supplied path scope (pool acquisition,
 /// `run_migrations`, pragma setup, schema bootstrapping). The previous
-/// `valid_engine_path()` helper returned a `/engine` placeholder so the
+/// `valid_engine_path()` helper returned a `/engine` path so the
 /// path-bearing [`FilesystemError::Backend`] variant could be used; that
-/// placeholder masked which subsystem actually failed, so a real failure
-/// reported a fictional path. Backends now use this helper instead, and
+/// masked which subsystem actually failed, causing a real failure to
+/// report a fictional path. Backends now use this helper instead, and
 /// the variant explicitly omits `path`.
 #[cfg(feature = "postgres")]
 pub(crate) fn infrastructure_error(
@@ -160,7 +166,7 @@ pub(crate) fn sql_index_name(prefix: &str, name: &str) -> String {
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect();
     let raw = format!("idx_rfs_{prefix_clean}_{name}");
-    if raw.len() <= 62 {
+    if raw.len() <= PG_MAX_IDENTIFIER_LEN {
         return raw;
     }
     // PR #3679 review fix: distinct long inputs must map to distinct
@@ -169,7 +175,7 @@ pub(crate) fn sql_index_name(prefix: &str, name: &str) -> String {
     let hash = blake3::hash(raw.as_bytes());
     let hash_hex = hash.to_hex();
     let suffix = format!("_{}", &hash_hex.as_str()[..8]);
-    let keep = 62usize.saturating_sub(suffix.len());
+    let keep = PG_MAX_IDENTIFIER_LEN.saturating_sub(suffix.len());
     let cutoff = raw
         .char_indices()
         .nth(keep)
