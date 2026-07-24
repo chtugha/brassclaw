@@ -31,6 +31,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+# Maximum characters of an HTTP response body captured in failure details.
+_RESPONSE_BODY_MAX_CHARS = 1_000
+
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -140,7 +143,7 @@ async def seeded_response_probe(
             mode="responses_api",
             success=False,
             latency_ms=latency_ms,
-            details={"status_code": response.status_code, "body": response.text[:1000]},
+            details={"status_code": response.status_code, "body": response.text[:_RESPONSE_BODY_MAX_CHARS]},
         )
 
     body = response.json()

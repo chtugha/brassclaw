@@ -398,11 +398,13 @@ impl ReplayStep {
 }
 
 fn request_message_summary(request: &HostManagedModelRequest) -> String {
+    // 80-char snippet per message gives enough context in assertion output without flooding logs.
+    const MESSAGE_SNIPPET_CHARS: usize = 80;
     request
         .messages
         .iter()
         .map(|message| {
-            let snippet = message.content.chars().take(80).collect::<String>();
+            let snippet = message.content.chars().take(MESSAGE_SNIPPET_CHARS).collect::<String>();
             format!("{:?}:{snippet}", message.role)
         })
         .collect::<Vec<_>>()

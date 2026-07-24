@@ -836,11 +836,13 @@ async def test_telegram_long_message_chunking(active_telegram):
     # Wait for at least 2 chunks
     messages = await wait_for_sent_messages(fake_tg_url, min_count=2, timeout=30)
 
+    # 4096 = Telegram Bot API hard limit for a single message body (characters).
+    TELEGRAM_MESSAGE_MAX_CHARS = 4096
     # Verify each chunk is within Telegram's 4096 char limit
     for i, msg in enumerate(messages):
         text = msg.get("text", "")
-        assert len(text) <= 4096, (
-            f"Chunk {i} exceeds 4096 chars: {len(text)} chars"
+        assert len(text) <= TELEGRAM_MESSAGE_MAX_CHARS, (
+            f"Chunk {i} exceeds {TELEGRAM_MESSAGE_MAX_CHARS} chars: {len(text)} chars"
         )
 
     # Verify all chunks target the correct chat_id
@@ -849,8 +851,8 @@ async def test_telegram_long_message_chunking(active_telegram):
 
     # Verify total text across all chunks exceeds the single-message limit
     total_text = "".join(m.get("text", "") for m in messages)
-    assert len(total_text) > 4096, (
-        f"Total text ({len(total_text)} chars) should exceed 4096"
+    assert len(total_text) > TELEGRAM_MESSAGE_MAX_CHARS, (
+        f"Total text ({len(total_text)} chars) should exceed {TELEGRAM_MESSAGE_MAX_CHARS}"
     )
 
 

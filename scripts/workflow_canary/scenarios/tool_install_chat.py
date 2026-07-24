@@ -299,7 +299,7 @@ def _last_assistant_text(history: dict[str, Any]) -> str:
     _walk(history)
     if not candidates:
         return ""
-    return candidates[-1][:300]
+    return candidates[-1][:300]  # 300 chars is enough context for a chat snippet
 
 
 def _history_text(history: dict[str, Any]) -> str:

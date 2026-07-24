@@ -9,6 +9,13 @@ import {
 import { COLORS, FONTS } from "../theme";
 import { CodeBlock } from "../components/Code";
 
+// Font size for code blocks in this scene.
+const CODE_BLOCK_FONT_SIZE = 14;
+// Spring entrance animation scale starting point.
+const SPRING_SCALE_START = 0.85;
+// Dimmed opacity multiplier for separators between pipeline stages.
+const SEPARATOR_OPACITY_FACTOR = 0.7;
+
 const PYTHON_CODE = `# Monty VM (NOT CPython) - injected context:
 #   context, goal, step_number, user_timezone
 
@@ -118,7 +125,7 @@ export const CodeActScene: React.FC = () => {
         >
           ① LLM output
         </div>
-        <CodeBlock code={PYTHON_CODE} fontSize={14} />
+        <CodeBlock code={PYTHON_CODE} fontSize={CODE_BLOCK_FONT_SIZE} />
       </div>
 
       {/* Arrow */}
@@ -288,7 +295,7 @@ const SuspendFlow: React.FC = () => {
           const scale = interpolate(
             frame,
             [delay * fps, (delay + 0.3) * fps],
-            [0.85, 1],
+            [SPRING_SCALE_START, 1],
             {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",
@@ -324,7 +331,7 @@ const SuspendFlow: React.FC = () => {
               {i < boxes.length - 1 && (
                 <div
                   style={{
-                    opacity: opacity * 0.7,
+                    opacity: opacity * SEPARATOR_OPACITY_FACTOR,
                     fontSize: 20,
                     color: COLORS.textMuted,
                   }}

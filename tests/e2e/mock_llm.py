@@ -260,6 +260,7 @@ TOOL_CALL_PATTERNS = [
                         "https://api.telegram.org/bot111222333:CANARY/sendMessage"
                     ),
                     "body": {
+                        # 8800800800: stable fake Telegram user ID used across workflow-canary fixtures.
                         "chat_id": 8800800800,
                         "text": (
                             "[canary-workflow:calendar_prep] prep for "

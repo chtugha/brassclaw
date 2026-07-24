@@ -28,6 +28,19 @@ MODEL = "claude-haiku-4-5-20251001"
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 MAX_LOG_BYTES = 20_000
+# Maximum characters stored per JUnit failure message.
+JUNIT_FAILURE_MSG_MAX_CHARS = 240
+# Maximum characters stored for each Haiku-enriched diagnostic field.
+DIAG_ERROR_MAX_CHARS = 300
+DIAG_FIX_MAX_CHARS = 300
+DIAG_ROOT_CAUSE_MAX_CHARS = 400
+DIAG_REASON_MAX_CHARS = 200
+DIAG_NOTABLE_MAX_CHARS = 200
+DIAG_TEST_NAME_MAX_CHARS = 200
+# Maximum characters of summary markdown fed to the notifier.
+SUMMARY_MD_MAX_CHARS = 4_000
+# Max tokens for the Haiku classification request.
+HAIKU_MAX_TOKENS = 800
 
 HAIKU_SYSTEM = (
     "You analyze CI canary test logs. Given a lane's summary, JUnit digest, "
@@ -120,7 +133,7 @@ def parse_junit(path: Path, report: LaneReport) -> None:
         node = failure if failure is not None else error
         if node is not None:
             msg = (node.get("message") or "").strip()
-            report.junit_failures.append((name, msg[:240]))
+            report.junit_failures.append((name, msg[:JUNIT_FAILURE_MSG_MAX_CHARS]))
 
 
 def parse_results_json(path: Path, report: LaneReport) -> None:
@@ -175,7 +188,7 @@ def parse_results_json(path: Path, report: LaneReport) -> None:
                         if len(fragments) >= 3:
                             break
                     msg = ", ".join(fragments)
-            report.junit_failures.append((name, msg[:240]))
+            report.junit_failures.append((name, msg[:JUNIT_FAILURE_MSG_MAX_CHARS]))
         latency = entry.get("latency_ms")
         if isinstance(latency, (int, float)):
             report.duration_s += latency / 1000.0
@@ -348,14 +361,14 @@ def run_haiku(api_key: str, report: LaneReport) -> None:
     tu = data.get("tools_used", [])
     if isinstance(tu, list):
         report.tools_used = [str(x) for x in tu][:10]
-    report.notable = str(data.get("notable", ""))[:200]
+    report.notable = str(data.get("notable", ""))[:DIAG_NOTABLE_MAX_CHARS]
     # Per-failure diagnostic fields. Haiku returns empty strings for
     # passing/skipped lanes, so accept and store as-is — slack_payload
     # only renders the rich block when the field is non-empty.
-    report.test_name = str(data.get("test_name", ""))[:200]
-    report.error = str(data.get("error", ""))[:300]
-    report.root_cause = str(data.get("root_cause", ""))[:400]
-    report.fix = str(data.get("fix", ""))[:300]
+    report.test_name = str(data.get("test_name", ""))[:DIAG_TEST_NAME_MAX_CHARS]
+    report.error = str(data.get("error", ""))[:DIAG_ERROR_MAX_CHARS]
+    report.root_cause = str(data.get("root_cause", ""))[:DIAG_ROOT_CAUSE_MAX_CHARS]
+    report.fix = str(data.get("fix", ""))[:DIAG_FIX_MAX_CHARS]
 
 
 def slack_payload(
@@ -452,7 +465,7 @@ def categorize_failures(api_key: str, reports: list[LaneReport]) -> str:
     )
     payload = {
         "model": MODEL,
-        "max_tokens": 800,
+        "max_tokens": HAIKU_MAX_TOKENS,
         "system": CATEGORIZE_SYSTEM,
         "messages": [{"role": "user", "content": user_msg}],
     }

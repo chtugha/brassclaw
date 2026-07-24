@@ -14,14 +14,30 @@ type State = {
   color: string;
 };
 
+// State-machine node layout positions (px, origin top-left of canvas).
+const STATE_X_CREATED   = 50;
+const STATE_X_RUNNING   = 270;
+const STATE_X_BRANCHING = 510;
+const STATE_X_TERMINAL  = 780;
+const STATE_X_DONE      = 1000;
+
+const STATE_Y_MAIN     = 230;
+const STATE_Y_UPPER    = 110;
+const STATE_Y_LOWER    = 350;
+const STATE_Y_TERM_TOP = 150;
+const STATE_Y_TERM_BOT = 330;
+
+// Spring entrance animation scale starting point.
+const SPRING_SCALE_START = 0.85;
+
 const STATES: State[] = [
-  { label: "Created", x: 50, y: 230, color: COLORS.textMuted },
-  { label: "Running", x: 270, y: 230, color: COLORS.primary },
-  { label: "Waiting", x: 510, y: 110, color: COLORS.accent },
-  { label: "Suspended", x: 510, y: 350, color: COLORS.pink },
-  { label: "Completed", x: 780, y: 150, color: COLORS.success },
-  { label: "Failed", x: 780, y: 330, color: COLORS.danger },
-  { label: "Done", x: 1000, y: 230, color: COLORS.cyan },
+  { label: "Created",   x: STATE_X_CREATED,   y: STATE_Y_MAIN,     color: COLORS.textMuted },
+  { label: "Running",   x: STATE_X_RUNNING,   y: STATE_Y_MAIN,     color: COLORS.primary },
+  { label: "Waiting",   x: STATE_X_BRANCHING, y: STATE_Y_UPPER,    color: COLORS.accent },
+  { label: "Suspended", x: STATE_X_BRANCHING, y: STATE_Y_LOWER,    color: COLORS.pink },
+  { label: "Completed", x: STATE_X_TERMINAL,  y: STATE_Y_TERM_TOP, color: COLORS.success },
+  { label: "Failed",    x: STATE_X_TERMINAL,  y: STATE_Y_TERM_BOT, color: COLORS.danger },
+  { label: "Done",      x: STATE_X_DONE,      y: STATE_Y_MAIN,     color: COLORS.cyan },
 ];
 
 type Edge = { from: number; to: number; label?: string };
@@ -162,7 +178,7 @@ export const ThreadStateScene: React.FC = () => {
         const scale = interpolate(
           frame,
           [delay * fps, (delay + 0.3) * fps],
-          [0.85, 1],
+          [SPRING_SCALE_START, 1],
           {
             extrapolateLeft: "clamp",
             extrapolateRight: "clamp",

@@ -64,6 +64,7 @@ export const OutroScene: React.FC = () => {
           width: 500,
           height: 500,
           borderRadius: "50%",
+          // 15 = hex alpha 0x15 ≈ 8% opacity; 70% = gradient falloff radius.
           background: `radial-gradient(circle, ${COLORS.accent}15 0%, transparent 70%)`,
           top: "50%",
           left: "50%",

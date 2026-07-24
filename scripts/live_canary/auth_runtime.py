@@ -6,6 +6,9 @@ from urllib.parse import parse_qs, urlparse
 
 from scripts.live_canary.common import CanaryError, ProbeResult, api_request
 
+# Maximum characters of an HTTP response body captured in failure details.
+_RESPONSE_BODY_MAX_CHARS = 1_000
+
 
 async def put_secret(
     base_url: str,
@@ -261,7 +264,7 @@ async def create_responses_probe(
             mode="responses_api",
             success=False,
             latency_ms=latency_ms,
-            details={"status_code": response.status_code, "body": response.text[:1000]},
+            details={"status_code": response.status_code, "body": response.text[:_RESPONSE_BODY_MAX_CHARS]},
         )
 
     body = response.json()

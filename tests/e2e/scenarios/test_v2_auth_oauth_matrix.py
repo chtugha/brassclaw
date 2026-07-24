@@ -827,12 +827,12 @@ async def _read_repl_until(
             [repl["master_fd"]],
             [],
             [],
-            max(0.1, min(0.5, remaining)),
+            max(0.1, min(0.5, remaining)),  # clamp poll interval to 0.1–0.5 s
         )
         if not ready:
             continue
         try:
-            data = os.read(repl["master_fd"], 4096)
+            data = os.read(repl["master_fd"], 4096)  # page-aligned read chunk
         except OSError:
             break
         if not data:
@@ -2140,7 +2140,7 @@ async def test_repl_http_auth_prompt_accepts_token_and_retries(auth_matrix_repl)
     await _drain_repl_output(repl)
 
     await _send_repl_line(repl, "mock-token-repl")
-    for _ in range(40):
+    for _ in range(40):  # 40 × 0.25 s = 10 s max wait
         if _secret_exists(
             repl["db_path"],
             repl["gateway_user_id"],
@@ -2222,7 +2222,7 @@ async def test_repl_approval_paths(auth_matrix_repl, reply, expected):
             break
         output += await _drain_repl_output(repl)
         await _send_repl_line(repl, reply)
-    assert re.search(expected, output, re.IGNORECASE), output[-2000:]
+    assert re.search(expected, output, re.IGNORECASE), output[-2000:]  # show last 2000 chars on failure
 
 
 @pytest.mark.parametrize(

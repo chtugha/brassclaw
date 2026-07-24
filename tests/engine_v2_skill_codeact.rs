@@ -580,6 +580,7 @@ Use the `http` tool to call the GitHub REST API. Credentials are injected automa
 }
 
 fn canned_github_issues() -> serde_json::Value {
+    // Issue numbers are arbitrary fixture data for test assertions.
     serde_json::json!([
         {"number": 42, "title": "Fix login bug", "state": "open", "user": {"login": "alice"}},
         {"number": 37, "title": "Add dark mode", "state": "open", "user": {"login": "bob"}},

@@ -197,8 +197,12 @@
     });
   }
 
+  // Portfolio card SVG dimensions (px).
+  var CARD_SVG_WIDTH = 600;
+  var CARD_SVG_HEIGHT = 340;
+
   function buildCardSvg(headline, apy, delta, moves) {
-    var w = 600, h = 340;
+    var w = CARD_SVG_WIDTH, h = CARD_SVG_HEIGHT;
     return (
       '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">' +
       '<defs>' +

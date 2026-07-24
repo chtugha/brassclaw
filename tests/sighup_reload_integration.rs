@@ -27,8 +27,8 @@ async fn test_sighup_config_reload_address_change() {
     // - Verify old port 19000 stops responding
     // - Verify new port 19001 responds with "new-secret"
 
-    let initial_port = 19000u16;
-    let _new_port = 19001u16;
+    let initial_port: u16 = 19_000;
+    let _new_port: u16 = 19_001;
     let initial_secret = "initial-secret";
     let _new_secret = "new-secret";
 
@@ -138,7 +138,7 @@ async fn test_sighup_rollback_on_address_bind_failure() {
     // 4. Verify old listener on port 19003 is still responding
     // 5. Verify state was restored (config still shows port 19003)
 
-    let original_port = 19003u16;
+    let original_port: u16 = 19_003;
     let secret = "test-secret";
 
     let client = reqwest::Client::builder()

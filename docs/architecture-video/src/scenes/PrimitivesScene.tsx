@@ -100,10 +100,12 @@ export const PrimitivesScene: React.FC = () => {
             [0, 1],
             { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
           );
+          // Slide-in entrance: start 40 px left of final position.
+          const SLIDE_IN_OFFSET_PX = -40;
           const x = interpolate(
             frame,
             [delay * fps, (delay + 0.4) * fps],
-            [-40, 0],
+            [SLIDE_IN_OFFSET_PX, 0],
             {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",

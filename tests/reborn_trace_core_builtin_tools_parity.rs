@@ -64,6 +64,7 @@ async fn reborn_trace_core_builtin_tools_parity() {
                     serde_json::json!({
                         "url": live_http.url("/v1/items"),
                         "headers": {"x-request-id": "reborn-core-builtins"},
+                        // 2500 ms — generous for CI but short enough to fail fast.
                         "timeout_ms": 2500,
                     }),
                 ),

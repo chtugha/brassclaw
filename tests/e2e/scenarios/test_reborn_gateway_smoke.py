@@ -29,7 +29,7 @@ def _find_free_port() -> int:
         return sock.getsockname()[1]
 
 
-def _read_log(path: Path, limit: int = 8192) -> str:
+def _read_log(path: Path, limit: int = 8192) -> str:  # 8192 = 2 × 4 KiB pages
     try:
         return path.read_text(encoding="utf-8", errors="replace")[-limit:]
     except OSError:

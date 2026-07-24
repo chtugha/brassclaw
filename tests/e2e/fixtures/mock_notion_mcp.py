@@ -111,6 +111,7 @@ async def start_mock_notion_mcp(
             # Check Bearer auth
             auth = request.headers.get("Authorization", "")
             if not auth.startswith("Bearer "):
+                # -32001: custom server error code for authentication failures.
                 return web.json_response(
                     _json_rpc_error(req_id, -32001, "Unauthorized: missing Bearer token"),
                     status=401,
@@ -132,6 +133,7 @@ async def start_mock_notion_mcp(
                 ]
             }))
 
+        # -32601: JSON-RPC standard "Method not found" error code.
         return web.json_response(
             _json_rpc_error(req_id, -32601, f"Method not found: {method}"),
             status=404,

@@ -1,6 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { BrassClawTestHelper } from './helpers';
 
+// Minimum expected capability count: 23 base + 4 extension lifecycle = 27.
+const MIN_EXPECTED_CAPABILITIES = 25;
+
 test.describe('Built-in Tools - Simple API Test', () => {
   test('should return built-in tools from API', async ({ page, request }) => {
     const helper = new BrassClawTestHelper(page);
@@ -29,7 +32,7 @@ test.describe('Built-in Tools - Simple API Test', () => {
     // Should have at least 25 capabilities (27 expected: 23 base + 4 extension lifecycle)
     const capCount = data.capabilities.length;
     console.log(`Total capabilities returned: ${capCount}`);
-    expect(capCount).toBeGreaterThanOrEqual(25);
+    expect(capCount).toBeGreaterThanOrEqual(MIN_EXPECTED_CAPABILITIES);
     
     // First capability should have required fields
     if (capCount > 0) {

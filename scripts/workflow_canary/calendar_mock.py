@@ -96,6 +96,7 @@ async def events_list(request: web.Request) -> web.Response:
     try:
         max_results = int(request.query.get("maxResults") or "250")
     except ValueError:
+        # 250: max page size Google Calendar API v3 accepts per page.
         max_results = 250
     items = items[:max_results]
 

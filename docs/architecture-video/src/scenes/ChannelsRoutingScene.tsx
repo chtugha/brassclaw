@@ -8,6 +8,9 @@ import {
 import { COLORS, FONTS } from "../theme";
 import { CodeBlock } from "../components/Code";
 
+// Font size used for code blocks in this scene.
+const CODE_BLOCK_FONT_SIZE = 13;
+
 const TRAIT_CODE = `// Simplified — see src/channels/channel.rs
 pub trait Channel: Send + Sync {
   fn name(&self) -> &str;
@@ -122,7 +125,7 @@ export const ChannelsRoutingScene: React.FC = () => {
         >
           Channel trait (8 methods)
         </div>
-        <CodeBlock code={TRAIT_CODE} fontSize={13} />
+        <CodeBlock code={TRAIT_CODE} fontSize={CODE_BLOCK_FONT_SIZE} />
       </div>
 
       <div
@@ -147,7 +150,7 @@ export const ChannelsRoutingScene: React.FC = () => {
         >
           stream::select_all merges N→1
         </div>
-        <CodeBlock code={MERGE_CODE} fontSize={13} />
+        <CodeBlock code={MERGE_CODE} fontSize={CODE_BLOCK_FONT_SIZE} />
 
         <div
           style={{

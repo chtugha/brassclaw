@@ -587,7 +587,7 @@ async def restartable_v2_server(brassclaw_binary, mock_llm_server):
         if stream is None:
             return
         while True:
-            chunk = await stream.read(4096)
+            chunk = await stream.read(4096)  # 4096 = page-aligned read chunk
             if not chunk:
                 return
             if mirror is not None:

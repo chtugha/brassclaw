@@ -352,11 +352,13 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # 130 = standard SIGINT/Ctrl-C exit code (128 + SIGINT signal number 2).
+    _SIGINT_EXIT_CODE = 130
     try:
         raise SystemExit(main())
     except KeyboardInterrupt:
         print("\nInterrupted.", file=sys.stderr)
-        raise SystemExit(130)
+        raise SystemExit(_SIGINT_EXIT_CODE)
     except SmokeError as exc:
         print(f"Configuration error: {exc}", file=sys.stderr)
         raise SystemExit(2)

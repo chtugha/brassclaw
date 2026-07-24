@@ -405,6 +405,7 @@ async fn handle_mcp(
             Json(serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": req.id,
+                // -32000: JSON-RPC server error range (reserved for implementation-defined errors).
                 "error": {"code": -32000, "message": "Unauthorized"}
             })),
         )

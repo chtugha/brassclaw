@@ -321,11 +321,13 @@ async def async_main() -> int:
 
 
 def main() -> int:
+    # 130 = standard SIGINT/Ctrl-C exit code (128 + SIGINT signal number 2).
+    _SIGINT_EXIT_CODE = 130
     try:
         return asyncio.run(async_main())
     except KeyboardInterrupt:
         print("\nInterrupted.", file=sys.stderr)
-        return 130
+        return _SIGINT_EXIT_CODE
     except SmokeError as exc:
         print(f"Configuration error: {exc}", file=sys.stderr)
         return 2

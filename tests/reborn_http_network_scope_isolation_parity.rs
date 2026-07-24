@@ -119,6 +119,7 @@ fn http_gateway(
                 serde_json::json!({
                     "url": "https://api.example.test/v1/items",
                     "headers": {"x-request-id": call_id},
+                    // 2500 ms — generous for CI but short enough to fail fast.
                     "timeout_ms": 2500,
                 }),
             )],

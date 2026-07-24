@@ -278,7 +278,7 @@ def _summarize_request(body: dict[str, Any]) -> dict[str, Any]:
     return {
         "model": body.get("model"),
         "n_messages": len(body.get("messages") or []),
-        "last_user_content": last_user[:120],
+        "last_user_content": last_user[:120],  # 120 chars: enough for debug output without flooding
         "tool_count": len(body.get("tools") or []),
     }
 

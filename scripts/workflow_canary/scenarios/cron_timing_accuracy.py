@@ -109,7 +109,9 @@ async def run(
         delta_secs: float | None = None
         if actual_at is not None:
             delta_secs = abs((actual_at - expected_at).total_seconds())
-        within_tolerance = delta_secs is not None and delta_secs <= 10.0
+        # 10.0 s: scheduling tolerance allowed for cron trigger accuracy tests.
+        _CRON_TIMING_TOLERANCE_SECS = 10.0
+        within_tolerance = delta_secs is not None and delta_secs <= _CRON_TIMING_TOLERANCE_SECS
 
         latency_ms = int((time.perf_counter() - started) * 1000)
         success = run_terminal and within_tolerance
@@ -129,7 +131,7 @@ async def run(
                         actual_at.isoformat() if actual_at else None
                     ),
                     "delta_secs": delta_secs,
-                    "tolerance_secs": 10.0,
+                    "tolerance_secs": _CRON_TIMING_TOLERANCE_SECS,
                 },
             )
         ]

@@ -1,6 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { BrassClawTestHelper } from './helpers';
 
+// Bounds on expected built-in tool count — allows some flexibility around new additions.
+const MIN_BUILTIN_TOOLS = 40;
+const MAX_BUILTIN_TOOLS = 50;
+// Minimum capability count via API.
+const MIN_API_CAPABILITIES = 40;
+
 test.describe('Built-in Tools Display and Functionality', () => {
   let helper: BrassClawTestHelper;
 
@@ -38,8 +44,8 @@ test.describe('Built-in Tools Display and Functionality', () => {
     console.log(`Found ${count} built-in tools`);
     
     // Should have 47 built-in tools
-    expect(count).toBeGreaterThanOrEqual(40); // Allow some flexibility
-    expect(count).toBeLessThanOrEqual(50);
+    expect(count).toBeGreaterThanOrEqual(MIN_BUILTIN_TOOLS); // Allow some flexibility
+    expect(count).toBeLessThanOrEqual(MAX_BUILTIN_TOOLS);
     
     // Take screenshot
     await page.screenshot({ path: 'test-results/all-builtin-tools.png', fullPage: true });
@@ -225,7 +231,7 @@ test.describe('Built-in Tools Display and Functionality', () => {
     expect(Array.isArray(data.capabilities)).toBe(true);
     
     // Should have at least 40 capabilities
-    expect(data.capabilities.length).toBeGreaterThanOrEqual(40);
+    expect(data.capabilities.length).toBeGreaterThanOrEqual(MIN_API_CAPABILITIES);
     
     // First capability should have required fields
     const firstCap = data.capabilities[0];

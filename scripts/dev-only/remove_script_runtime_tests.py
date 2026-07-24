@@ -303,7 +303,9 @@ def main() -> int:
                 name = head
                 if fn_kw != -1:
                     tail = body[fn_kw:fn_kw + 200].split("{")[0].strip()
-                    name = tail[:120]
+                    # Trim to a readable length for display; full span is logged elsewhere.
+                    _FN_NAME_DISPLAY_MAX = 120
+                    name = tail[:_FN_NAME_DISPLAY_MAX]
                 print(f"  - {name}")
         else:
             path.write_text(new_src)

@@ -161,6 +161,7 @@ async def test_webhook_wrong_content_type_rejected(http_channel_server):
         content_type="text/plain",
     )
 
+    # 415 Unsupported Media Type — expected when content-type is not application/json.
     assert response.status_code == 415
     assert "application/json" in response.json().get("response", "")
 

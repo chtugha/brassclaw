@@ -120,10 +120,12 @@ export const ToolDispatchScene: React.FC = () => {
             [0, 1],
             { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
           );
+          // Spring entrance animation — starts slightly scaled-down.
+          const SPRING_SCALE_START = 0.9;
           const scale = interpolate(
             frame,
             [delay * fps, (delay + 0.35) * fps],
-            [0.9, 1],
+            [SPRING_SCALE_START, 1],
             {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",
@@ -214,6 +216,7 @@ export const ToolDispatchScene: React.FC = () => {
               color: COLORS.textMuted,
               fontFamily: FONTS.mono,
               backgroundColor: `${COLORS.accent}10`,
+              // 40 = hex alpha 0x40 ≈ 25% opacity border.
               border: `1px solid ${COLORS.accent}40`,
               borderRadius: 8,
               padding: "10px 16px",

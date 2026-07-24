@@ -7,6 +7,9 @@ Control endpoints (/__mock/*) let tests queue updates, inspect sent
 messages, and reset state between scenarios.
 """
 
+# Fake bot user ID used in all getMe/sendMessage responses.
+_FAKE_BOT_USER_ID = 9876543210
+
 import argparse
 import asyncio
 import json
@@ -80,7 +83,7 @@ async def get_me(request: web.Request) -> web.Response:
         {
             "ok": True,
             "result": {
-                "id": 9876543210,
+                "id": _FAKE_BOT_USER_ID,
                 "is_bot": True,
                 "first_name": "E2E Test Bot",
                 "username": "e2e_test_bot",
@@ -158,14 +161,16 @@ async def send_message(request: web.Request) -> web.Response:
             status=400,
         )
     state.sent_messages.append(body)
-    msg_id = len(state.sent_messages) + 1000
+    # Start message IDs at 1001 to avoid collision with any real IDs in tests.
+    _MSG_ID_BASE = 1000
+    msg_id = len(state.sent_messages) + _MSG_ID_BASE
     return web.json_response(
         {
             "ok": True,
             "result": {
                 "message_id": msg_id,
                 "from": {
-                    "id": 9876543210,
+                    "id": _FAKE_BOT_USER_ID,
                     "is_bot": True,
                     "first_name": "E2E Test Bot",
                     "username": "e2e_test_bot",

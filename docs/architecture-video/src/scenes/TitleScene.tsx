@@ -74,6 +74,7 @@ export const TitleScene: React.FC = () => {
           width: 600,
           height: 600,
           borderRadius: "50%",
+          // 20 = hex alpha 0x20 ≈ 12.5% opacity; 70% = gradient falloff radius.
           background: `radial-gradient(circle, ${COLORS.primary}20 0%, transparent 70%)`,
           top: "50%",
           left: "50%",

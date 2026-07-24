@@ -500,11 +500,12 @@ async def test_gateway_attachment_flow_renders_thread_and_reaches_llm(page, bras
         timeout=45.0,
     )
     serialized = json.dumps(payload)
-    assert "hello.pdf" in serialized, serialized[:1200]
-    assert "Quarterly roadmap notes" in serialized, serialized[:1200]
-    assert "Gateway attachment roadmap slide" in serialized, serialized[:1200]
-    assert "Ship the gateway attachment flow." in serialized, serialized[:1200]
-    assert "data:image/png;base64," in serialized, serialized[:1200]
+    _CTX = 1200  # chars to display on assertion failure
+    assert "hello.pdf" in serialized, serialized[:_CTX]
+    assert "Quarterly roadmap notes" in serialized, serialized[:_CTX]
+    assert "Gateway attachment roadmap slide" in serialized, serialized[:_CTX]
+    assert "Ship the gateway attachment flow." in serialized, serialized[:_CTX]
+    assert "data:image/png;base64," in serialized, serialized[:_CTX]
 
 
 async def test_gateway_files_only_attachments_reload_from_history(page, brassclaw_server, mock_llm_server):
@@ -548,9 +549,10 @@ async def test_gateway_files_only_attachments_reload_from_history(page, brasscla
         timeout=45.0,
     )
     serialized = json.dumps(payload)
-    assert "files-only.pdf" in serialized, serialized[:1200]
-    assert "files-only-notes.txt" in serialized, serialized[:1200]
-    assert "Hello World" in serialized, serialized[:1200]
+    _CTX = 1200  # chars to display on assertion failure
+    assert "files-only.pdf" in serialized, serialized[:_CTX]
+    assert "files-only-notes.txt" in serialized, serialized[:_CTX]
+    assert "Hello World" in serialized, serialized[:_CTX]
 
     await page.reload(wait_until="domcontentloaded")
     await page.locator(SEL["auth_screen"]).wait_for(state="hidden", timeout=15000)

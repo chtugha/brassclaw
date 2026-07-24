@@ -71,10 +71,12 @@ export const ExecutionLoopScene: React.FC = () => {
             [0, 1],
             { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
           );
+          // Spring entrance animation — starts slightly scaled-down.
+          const SPRING_SCALE_START = 0.92;
           const scale = interpolate(
             frame,
             [delay * fps, (delay + 0.35) * fps],
-            [0.92, 1],
+            [SPRING_SCALE_START, 1],
             {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",

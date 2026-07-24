@@ -203,6 +203,7 @@ export const SkillsPipelineScene: React.FC = () => {
                     position: "absolute",
                     right: -14,
                     top: "50%",
+                    // translateY(-50%) centres the arrow on its parent's midline.
                     transform: `translateY(-50%) scaleX(${arrowProgress})`,
                     transformOrigin: "left",
                     fontSize: 28,

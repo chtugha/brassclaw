@@ -83,7 +83,7 @@ async def run(
             hits.append(
                 {
                     "label": label,
-                    "line": text[start:end][:300],
+                    "line": text[start:end][:300],  # 300 chars is enough context per hit
                 }
             )
 

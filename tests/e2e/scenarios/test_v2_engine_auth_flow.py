@@ -1107,7 +1107,7 @@ class TestV2EngineAttachments:
         assert detail.get("step_count", 0) >= 1, detail
 
         serialized = json.dumps(detail)
-        assert "Hello World" in serialized, serialized[:1200]
+        assert "Hello World" in serialized, serialized[:1200]  # show 1200 chars of context on failure
 
         saved_notes_path.unlink(missing_ok=True)
 
@@ -1792,7 +1792,7 @@ class TestV2EngineAuthMainFlow:
 
         # Step 4: Wait for the retry — the token submission triggers a retry
         # and clears the pending_gate once the credential is stored.
-        for _ in range(120):
+        for _ in range(120):  # 120 × 0.5 s = 60 s max wait
             await asyncio.sleep(0.5)
             async with httpx.AsyncClient() as client:
                 tokens_r = await client.get(f"{mock_api_url}/__mock/received-tokens")
