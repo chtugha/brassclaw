@@ -10,11 +10,18 @@
 
 use std::time::Duration;
 
+// Test ports for SIGHUP reload integration tests.  These are in the ephemeral-ish range
+// (19000–19003) unlikely to conflict with regular services; tests are #[ignore] so they
+// only run explicitly against a live brassclaw instance.
+const TEST_PORT_INITIAL: u16 = 19_000;
+const TEST_PORT_NEW: u16 = 19_001;
+const TEST_PORT_ROLLBACK: u16 = 19_003;
+
 #[tokio::test]
 #[ignore] // Requires full brassclaw binary and database setup
 async fn test_sighup_config_reload_address_change() {
-    // This is a placeholder integration test structure.
-    // It demonstrates the test approach and can be run against a live brassclaw instance.
+    // Known tech-debt: scaffold integration test structure. Demonstrates the test approach
+    // and can be run against a live brassclaw instance.
     //
     // To run this test manually:
     // 1. Start brassclaw with HTTP_PORT=19000 HTTP_WEBHOOK_SECRET=initial-secret
@@ -27,8 +34,8 @@ async fn test_sighup_config_reload_address_change() {
     // - Verify old port 19000 stops responding
     // - Verify new port 19001 responds with "new-secret"
 
-    let initial_port: u16 = 19_000;
-    let _new_port: u16 = 19_001;
+    let initial_port: u16 = TEST_PORT_INITIAL;
+    let _new_port: u16 = TEST_PORT_NEW;
     let initial_secret = "initial-secret";
     let _new_secret = "new-secret";
 
@@ -138,7 +145,7 @@ async fn test_sighup_rollback_on_address_bind_failure() {
     // 4. Verify old listener on port 19003 is still responding
     // 5. Verify state was restored (config still shows port 19003)
 
-    let original_port: u16 = 19_003;
+    let original_port: u16 = TEST_PORT_ROLLBACK;
     let secret = "test-secret";
 
     let client = reqwest::Client::builder()

@@ -2535,7 +2535,7 @@ fn build_production_model_gateway() -> Result<
     ),
     RebornRuntimeError,
 > {
-    Ok((build_stub_gateway(), None))
+    Ok((build_no_llm_gateway(), None))
 }
 
 #[cfg(feature = "root-llm-provider")]
@@ -2723,11 +2723,11 @@ fn placeholder_unconfigured_error() -> brassclaw_llm::LlmError {
     }
 }
 
-// Only the substrate-only build (no `root-llm-provider`) still wires a dead
-// stub gateway. With the LLM provider compiled in, a cold boot uses a
-// placeholder-backed swappable gateway instead (see `build_placeholder_llm_gateway`).
+// Substrate-only build (without the `root-llm-provider` feature) wires a no-op gateway
+// that returns Unavailable on every call. With the LLM provider compiled in, a cold boot
+// uses a placeholder-backed swappable gateway instead (see `build_placeholder_llm_gateway`).
 #[cfg(not(feature = "root-llm-provider"))]
-fn build_stub_gateway() -> Arc<dyn brassclaw_loop_support::HostManagedModelGateway> {
+fn build_no_llm_gateway() -> Arc<dyn brassclaw_loop_support::HostManagedModelGateway> {
     use async_trait::async_trait;
     use brassclaw_loop_support::{
         HostManagedModelError, HostManagedModelErrorKind, HostManagedModelGateway,
@@ -2735,10 +2735,10 @@ fn build_stub_gateway() -> Arc<dyn brassclaw_loop_support::HostManagedModelGatew
     };
 
     #[derive(Debug, Default)]
-    struct StubGateway;
+    struct NoLlmGateway;
 
     #[async_trait]
-    impl HostManagedModelGateway for StubGateway {
+    impl HostManagedModelGateway for NoLlmGateway {
         async fn stream_model(
             &self,
             _request: HostManagedModelRequest,
@@ -2750,7 +2750,7 @@ fn build_stub_gateway() -> Arc<dyn brassclaw_loop_support::HostManagedModelGatew
         }
     }
 
-    Arc::new(StubGateway)
+    Arc::new(NoLlmGateway)
 }
 
 #[cfg(test)]
