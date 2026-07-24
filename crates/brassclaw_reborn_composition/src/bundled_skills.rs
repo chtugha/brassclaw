@@ -418,13 +418,16 @@ fn bundled_skill_hash(skill: &EmbeddedRebornSkillBundle) -> String {
     format!("{:016x}", hasher.finish())
 }
 
+/// FNV-1a 64-bit offset basis (the value returned by a zero-byte hash).
+const FNV64_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+
 #[derive(Default)]
 struct StableFnv64(u64);
 
 impl Hasher for StableFnv64 {
     fn finish(&self) -> u64 {
         if self.0 == 0 {
-            0xcbf29ce484222325
+            FNV64_OFFSET_BASIS
         } else {
             self.0
         }

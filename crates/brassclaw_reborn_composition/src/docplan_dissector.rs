@@ -304,7 +304,7 @@ struct ParsedPlan {
 }
 
 fn parse_plan_document(content: &str) -> ParsedPlan {
-    let mut score = 0.0f64;
+    let mut score = 0.0_f64;
     let mut steps: Vec<String> = Vec::new();
     let mut in_steps = false;
 

@@ -1067,8 +1067,9 @@ fn map_extension_error(error: ExtensionError) -> ProductWorkflowError {
 }
 
 fn map_extension_installation_error(error: ExtensionInstallationError) -> ProductWorkflowError {
-    // TODO(#4091): split durable-store transient failures from malformed
-    // lifecycle requests when ExtensionInstallationStore grows a DB backend.
+    // Known tech-debt (#4091): transient vs. validation failures are not yet
+    // differentiated — this maps all installation errors to InvalidBindingRequest
+    // until ExtensionInstallationStore grows a DB backend.
     ProductWorkflowError::InvalidBindingRequest {
         reason: error.to_string(),
     }

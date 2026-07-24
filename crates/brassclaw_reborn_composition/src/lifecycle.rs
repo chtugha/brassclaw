@@ -24,6 +24,10 @@ use brassclaw_skills::{
 use crate::extension_lifecycle::RebornLocalExtensionManagementPort;
 
 const SKILL_SEARCH_RESULT_LIMIT: usize = 50;
+const HTTP_BAD_REQUEST: u16 = 400;
+const HTTP_NOT_FOUND: u16 = 404;
+const HTTP_FORBIDDEN: u16 = 403;
+const HTTP_INTERNAL_SERVER_ERROR: u16 = 500;
 
 #[derive(Clone)]
 pub(crate) struct RebornLocalSkillManagementPort {
@@ -183,28 +187,28 @@ fn map_skill_management_error(error: RebornLocalSkillManagementError) -> RebornS
         RebornLocalSkillManagementError::InvalidContext { .. } => (
             RebornServicesErrorCode::InvalidRequest,
             RebornServicesErrorKind::Validation,
-            400u16,
+            HTTP_BAD_REQUEST,
         ),
         RebornLocalSkillManagementError::Skill(e) => match e.kind() {
             SkillManagementErrorKind::NotFound => (
                 RebornServicesErrorCode::NotFound,
                 RebornServicesErrorKind::NotFound,
-                404u16,
+                HTTP_NOT_FOUND,
             ),
             SkillManagementErrorKind::InvalidInput | SkillManagementErrorKind::InvalidSkill => (
                 RebornServicesErrorCode::InvalidRequest,
                 RebornServicesErrorKind::Validation,
-                400u16,
+                HTTP_BAD_REQUEST,
             ),
             SkillManagementErrorKind::FilesystemDenied => (
                 RebornServicesErrorCode::Forbidden,
                 RebornServicesErrorKind::ParticipantDenied,
-                403u16,
+                HTTP_FORBIDDEN,
             ),
             _ => (
                 RebornServicesErrorCode::Internal,
                 RebornServicesErrorKind::Internal,
-                500u16,
+                HTTP_INTERNAL_SERVER_ERROR,
             ),
         },
     };

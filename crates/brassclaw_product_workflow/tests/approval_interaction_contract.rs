@@ -1,3 +1,9 @@
+// Arbitrary EventCursor sequence numbers used in fake-coordinator responses.
+// Each value is distinct so tests can assert the right response path was taken.
+const FAKE_RESUME_CURSOR: u64 = 11;
+const FAKE_CANCEL_CURSOR: u64 = 13;
+const FAKE_STATE_CURSOR: u64 = 17;
+
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -351,7 +357,7 @@ impl TurnCoordinator for FakeTurnCoordinator {
         Ok(ResumeTurnResponse {
             run_id,
             status: TurnStatus::Queued,
-            event_cursor: EventCursor(11),
+            event_cursor: EventCursor(FAKE_RESUME_CURSOR),
         })
     }
 
@@ -361,7 +367,7 @@ impl TurnCoordinator for FakeTurnCoordinator {
         Ok(CancelRunResponse {
             run_id,
             status: TurnStatus::Cancelled,
-            event_cursor: EventCursor(13),
+            event_cursor: EventCursor(FAKE_CANCEL_CURSOR),
             already_terminal: false,
             actor: None,
         })
@@ -385,7 +391,7 @@ impl TurnCoordinator for FakeTurnCoordinator {
             gate_ref: self.gate_ref.lock().expect("lock").clone(),
             credential_requirements: Vec::new(),
             failure: None,
-            event_cursor: EventCursor(17),
+            event_cursor: EventCursor(FAKE_STATE_CURSOR),
         })
     }
 }

@@ -976,6 +976,11 @@ impl ProductOutboundEnvelope {
 mod tests {
     use super::*;
 
+    // Last index of a range used to generate a preview at exactly 241 lines (the per-line limit).
+    const TEST_PREVIEW_LINE_LAST_IDX: usize = 240;
+    // Expected line count when test range generates 0..=240 inclusive.
+    const TEST_PREVIEW_LINE_COUNT: usize = 241;
+
     #[test]
     fn auth_prompt_challenge_kind_all_variants_roundtrip() {
         for (variant, expected) in [
@@ -1351,7 +1356,7 @@ mod tests {
             "subtitle": "src/main.rs",
             "input_summary": "path: src/main.rs",
             "output_summary": "read file",
-            "output_preview": (0..=240).map(|_| "line").collect::<Vec<_>>().join("\n"),
+            "output_preview": (0..=TEST_PREVIEW_LINE_LAST_IDX).map(|_| "line").collect::<Vec<_>>().join("\n"),
             "output_kind": "text",
             "output_bytes": 12,
             "result_ref": "result:tool-output",
@@ -1364,7 +1369,7 @@ mod tests {
         assert!(
             view.output_preview
                 .as_deref()
-                .is_some_and(|preview| { preview.lines().count() == 241 })
+                .is_some_and(|preview| { preview.lines().count() == TEST_PREVIEW_LINE_COUNT })
         );
     }
 

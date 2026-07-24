@@ -1650,10 +1650,10 @@ impl RebornServices {
 
     /// Wire the Recipe-Skill-Tool persistence port. Composition
     /// builds this from the libSQL `MemoryDoc` store; the trait
-    /// methods (list/validate/reject/record-outcome) all default to
-    /// `501` when this setter has not been called, so misconfigured
-    /// deployments fail loud rather than silently serving the empty
-    /// stub responses.
+    /// methods (list/validate/reject/record-outcome) all return
+    /// `HTTP 501 Not Implemented` when this setter has not been called,
+    /// so misconfigured deployments fail loud rather than silently
+    /// serving empty responses.
     pub fn with_recipe_store(mut self, store: Arc<dyn crate::recipes::RecipeStore>) -> Self {
         self.recipe_store = Some(store);
         self

@@ -1,5 +1,18 @@
 //! Contract tests for WebUI-facing RebornServices facade.
 
+// Arbitrary EventCursor sequence numbers used in fake-coordinator responses.
+// Each value is distinct so tests can assert the right response path was taken.
+const FAKE_ACCEPT_CURSOR: u64 = 7;
+const FAKE_RESUME_CURSOR: u64 = 11;
+const FAKE_SUBMIT_CURSOR: u64 = 23;
+const FAKE_CANCEL_CURSOR: u64 = 13;
+const FAKE_STATE_CURSOR: u64 = 17;
+const FAKE_BLOCK_STATE_CURSOR: u64 = 29;
+const FAKE_APPROVAL_CURSOR: u64 = 19;
+const FAKE_APPROVAL_DENY_CURSOR: u64 = 23;
+const FAKE_AUTH_BLOCK_CURSOR: u64 = 31;
+const FAKE_AUTH_DENY_CURSOR: u64 = 29;
+
 use std::{
     sync::{
         Arc, Mutex,
@@ -325,7 +338,7 @@ impl TurnCoordinator for FakeTurnCoordinator {
             status: TurnStatus::Queued,
             resolved_run_profile_id: RunProfileId::default_profile(),
             resolved_run_profile_version: RunProfileVersion::new(1),
-            event_cursor: EventCursor(7),
+            event_cursor: EventCursor(FAKE_ACCEPT_CURSOR),
             accepted_message_ref: request.accepted_message_ref,
             reply_target_binding_ref: request.reply_target_binding_ref,
         })
@@ -339,7 +352,7 @@ impl TurnCoordinator for FakeTurnCoordinator {
         Ok(ResumeTurnResponse {
             run_id: TurnRunId::new(),
             status: TurnStatus::Queued,
-            event_cursor: EventCursor(11),
+            event_cursor: EventCursor(FAKE_RESUME_CURSOR),
         })
     }
 
@@ -349,7 +362,7 @@ impl TurnCoordinator for FakeTurnCoordinator {
         Ok(CancelRunResponse {
             run_id,
             status: TurnStatus::Cancelled,
-            event_cursor: EventCursor(13),
+            event_cursor: EventCursor(FAKE_CANCEL_CURSOR),
             already_terminal: false,
             actor: None,
         })
@@ -395,7 +408,7 @@ impl TurnCoordinator for FakeTurnCoordinator {
             gate_ref,
             credential_requirements: Vec::new(),
             failure: None,
-            event_cursor: EventCursor(17),
+            event_cursor: EventCursor(FAKE_STATE_CURSOR),
         })
     }
 }
@@ -452,7 +465,7 @@ impl TurnCoordinator for BlockingSubmitCoordinator {
             status: TurnStatus::Queued,
             resolved_run_profile_id: RunProfileId::default_profile(),
             resolved_run_profile_version: RunProfileVersion::new(1),
-            event_cursor: EventCursor(23),
+            event_cursor: EventCursor(FAKE_SUBMIT_CURSOR),
             accepted_message_ref: request.accepted_message_ref,
             reply_target_binding_ref: request.reply_target_binding_ref,
         })
@@ -489,7 +502,7 @@ impl TurnCoordinator for BlockingSubmitCoordinator {
             gate_ref: None,
             credential_requirements: Vec::new(),
             failure: None,
-            event_cursor: EventCursor(29),
+            event_cursor: EventCursor(FAKE_BLOCK_STATE_CURSOR),
         })
     }
 }
@@ -532,14 +545,14 @@ impl ApprovalInteractionService for RecordingApprovalInteractionService {
                 ResolveApprovalInteractionResponse::Approved(ResumeTurnResponse {
                     run_id,
                     status: TurnStatus::Queued,
-                    event_cursor: EventCursor(19),
+                    event_cursor: EventCursor(FAKE_APPROVAL_CURSOR),
                 })
             }
             ApprovalInteractionDecision::Deny => {
                 ResolveApprovalInteractionResponse::Denied(CancelRunResponse {
                     run_id,
                     status: TurnStatus::Cancelled,
-                    event_cursor: EventCursor(23),
+                    event_cursor: EventCursor(FAKE_APPROVAL_DENY_CURSOR),
                     already_terminal: false,
                     actor: None,
                 })
@@ -589,14 +602,14 @@ impl AuthInteractionService for RecordingAuthInteractionService {
                 ResolveAuthInteractionResponse::Resumed(ResumeTurnResponse {
                     run_id,
                     status: TurnStatus::Queued,
-                    event_cursor: EventCursor(29),
+                    event_cursor: EventCursor(FAKE_AUTH_DENY_CURSOR),
                 })
             }
             AuthInteractionDecision::Deny => {
                 ResolveAuthInteractionResponse::Canceled(CancelRunResponse {
                     run_id,
                     status: TurnStatus::Cancelled,
-                    event_cursor: EventCursor(31),
+                    event_cursor: EventCursor(FAKE_AUTH_BLOCK_CURSOR),
                     already_terminal: false,
                     actor: None,
                 })

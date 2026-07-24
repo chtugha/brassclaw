@@ -1,5 +1,12 @@
 //! Contract tests for the product workflow facade.
 
+// Arbitrary EventCursor sequence numbers used in fake interaction service responses.
+// Each value is distinct so tests can assert the correct response path was taken.
+const FAKE_APPROVE_CURSOR: u64 = 21;
+const FAKE_DENY_CURSOR: u64 = 22;
+const FAKE_AUTH_RESUME_CURSOR: u64 = 31;
+const FAKE_AUTH_CANCEL_CURSOR: u64 = 32;
+
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -249,14 +256,14 @@ impl ApprovalInteractionService for RecordingApprovalInteractionService {
                     ResolveApprovalInteractionResponse::Approved(ResumeTurnResponse {
                         run_id,
                         status: TurnStatus::Queued,
-                        event_cursor: EventCursor(21),
+                        event_cursor: EventCursor(FAKE_APPROVE_CURSOR),
                     })
                 }
                 ApprovalInteractionDecision::Deny => {
                     ResolveApprovalInteractionResponse::Denied(CancelRunResponse {
                         run_id,
                         status: TurnStatus::Cancelled,
-                        event_cursor: EventCursor(22),
+                        event_cursor: EventCursor(FAKE_DENY_CURSOR),
                         already_terminal: false,
                         actor: None,
                     })
@@ -321,14 +328,14 @@ impl AuthInteractionService for RecordingAuthInteractionService {
                 ResolveAuthInteractionResponse::Resumed(ResumeTurnResponse {
                     run_id,
                     status: TurnStatus::Queued,
-                    event_cursor: EventCursor(31),
+                    event_cursor: EventCursor(FAKE_AUTH_RESUME_CURSOR),
                 })
             }
             AuthInteractionDecision::Deny => {
                 ResolveAuthInteractionResponse::Canceled(CancelRunResponse {
                     run_id,
                     status: TurnStatus::Cancelled,
-                    event_cursor: EventCursor(32),
+                    event_cursor: EventCursor(FAKE_AUTH_CANCEL_CURSOR),
                     already_terminal: false,
                     actor: None,
                 })

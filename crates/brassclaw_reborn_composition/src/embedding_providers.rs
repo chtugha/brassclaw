@@ -226,6 +226,9 @@ use brassclaw_embeddings::{EmbeddingError, EmbeddingProvider};
 use serde::{Deserialize, Serialize};
 
 const OPENAI_API_BASE_URL: &str = "https://api.openai.com";
+/// Maximum input text length for embedding providers that accept free-form text.
+/// This matches the practical token limit for most embedding models used here.
+const EMBEDDING_MAX_INPUT_CHARS: usize = 32_000;
 
 struct OpenAiEmbeddings {
     client: reqwest::Client,
@@ -286,7 +289,7 @@ impl EmbeddingProvider for OpenAiEmbeddings {
         &self.model
     }
     fn max_input_length(&self) -> usize {
-        32_000
+        EMBEDDING_MAX_INPUT_CHARS
     }
 
     async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
@@ -403,7 +406,7 @@ impl EmbeddingProvider for NearAiEmbeddings {
         &self.model
     }
     fn max_input_length(&self) -> usize {
-        32_000
+        EMBEDDING_MAX_INPUT_CHARS
     }
 
     async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
@@ -513,7 +516,7 @@ impl EmbeddingProvider for OllamaEmbeddings {
         &self.model
     }
     fn max_input_length(&self) -> usize {
-        32_000
+        EMBEDDING_MAX_INPUT_CHARS
     }
 
     async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
@@ -659,7 +662,7 @@ impl EmbeddingProvider for BedrockEmbeddings {
     }
 
     fn max_input_length(&self) -> usize {
-        32_000
+        EMBEDDING_MAX_INPUT_CHARS
     }
 
     async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
