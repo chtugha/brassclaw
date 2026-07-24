@@ -410,13 +410,18 @@ fn model_error_to_failure_kind(class: ModelErrorClass) -> LoopFailureKind {
 }
 
 /// Exponential backoff for retry attempts: `250ms x 2^attempt`, capped at 5s.
+/// Initial backoff delay in milliseconds (attempt 0).
+const BACKOFF_BASE_MS: u64 = 250;
+/// Maximum backoff delay cap in milliseconds before `MAX_DELAY_MS` takes effect.
+const BACKOFF_CAP_MS: u64 = 5_000;
+
 ///
 /// Strictly monotonic in `attempt` until the 5s cap kicks in. The executor
 /// honors this as a sleep before re-issuing the call.
 fn backoff_for(attempt: u32) -> BackoffDelayMs {
     let shift = attempt.min(5);
-    let ms = 250u64.saturating_mul(1u64 << shift);
-    BackoffDelayMs(ms.min(5_000))
+    let ms = BACKOFF_BASE_MS.saturating_mul(1u64 << shift);
+    BackoffDelayMs(ms.min(BACKOFF_CAP_MS))
 }
 
 /// Strategy hint about WHAT to alter on retry. Prompt-shape alteration is
@@ -606,10 +611,10 @@ mod tests {
 
     #[test]
     fn backoff_delay_ms_accepts_bounded_values_and_serializes_as_number() {
-        let delay = BackoffDelayMs::new(250).expect("valid");
-        assert_eq!(delay.as_u64(), 250);
+        let delay = BackoffDelayMs::new(BACKOFF_BASE_MS).expect("valid");
+        assert_eq!(delay.as_u64(), BACKOFF_BASE_MS);
         let value = serde_json::to_value(delay).expect("serialize");
-        assert_eq!(value, serde_json::json!(250));
+        assert_eq!(value, serde_json::json!(BACKOFF_BASE_MS));
         let restored: BackoffDelayMs = serde_json::from_value(value).expect("deserialize");
         assert_eq!(restored, delay);
     }
@@ -633,15 +638,15 @@ mod tests {
     #[test]
     fn retry_alteration_backoff_round_trips() {
         let alteration = RetryAlteration::Backoff {
-            delay_ms: BackoffDelayMs::new(250).expect("valid"),
+            delay_ms: BackoffDelayMs::new(BACKOFF_BASE_MS).expect("valid"),
         };
         let value = serde_json::to_value(&alteration).expect("serialize");
-        assert_eq!(value["delay_ms"], serde_json::json!(250));
+        assert_eq!(value["delay_ms"], serde_json::json!(BACKOFF_BASE_MS));
         let restored: RetryAlteration = serde_json::from_value(value).expect("deserialize");
         assert_eq!(restored, alteration);
         match restored {
             RetryAlteration::Backoff { delay_ms } => {
-                assert_eq!(delay_ms.as_u64(), 250)
+                assert_eq!(delay_ms.as_u64(), BACKOFF_BASE_MS)
             }
             other => panic!("unexpected variant: {other:?}"),
         }
