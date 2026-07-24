@@ -1,14 +1,17 @@
 use glob::MatchOptions;
 
 pub(super) const MAX_READ_SIZE: u64 = 10 * 1024 * 1024;
+/// Default maximum lines returned by a read/view operation before truncation.
 pub(super) const DEFAULT_LINE_LIMIT: usize = 2_000;
 pub(super) const MAX_WRITE_SIZE: usize = 5 * 1024 * 1024;
 pub(super) const MAX_PATCH_SIZE: u64 = 10 * 1024 * 1024;
 pub(super) const MAX_DIR_ENTRIES: usize = 500;
 pub(super) const DEFAULT_MAX_RESULTS: usize = 200;
 pub(super) const MAX_OUTPUT_SIZE: usize = 64 * 1024;
+/// Default number of lines shown when reading the head of a file.
 pub(super) const DEFAULT_HEAD_LIMIT: usize = 250;
 pub(super) const GREP_MAX_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
+/// Maximum number of filesystem entries visited in a single recursive walk.
 pub(super) const MAX_VISITED_ENTRIES: usize = 50_000;
 pub(super) const DEFAULT_SCOPED_ROOT: &str = "/workspace";
 
