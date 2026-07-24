@@ -53,7 +53,7 @@ mod tests {
     fn decode_rejects_misaligned_and_empty_blobs() {
         assert_eq!(decode_embedding_blob(&[]), None);
         assert_eq!(decode_embedding_blob(&[0u8, 1, 2]), None);
-        let expected = vec![1.0_f32, -1.0];
+        let expected: Vec<f32> = vec![1.0, -1.0];
         let bytes: Vec<u8> = expected.iter().flat_map(|f| f.to_le_bytes()).collect();
         assert_eq!(decode_embedding_blob(&bytes), Some(expected));
     }
