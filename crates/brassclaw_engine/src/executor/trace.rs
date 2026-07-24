@@ -67,17 +67,20 @@ pub enum IssueSeverity {
     Info,
 }
 
+/// Maximum number of characters to include in a [`MessageRecord`] preview.
+const MESSAGE_PREVIEW_CHARS: usize = 300;
+
 /// Build a trace from a completed thread.
 pub fn build_trace(thread: &Thread) -> ExecutionTrace {
     let messages: Vec<MessageRecord> = thread
         .messages
         .iter()
         .map(|m| {
-            let preview: String = m.content.chars().take(300).collect();
+            let preview: String = m.content.chars().take(MESSAGE_PREVIEW_CHARS).collect();
             MessageRecord {
                 role: format!("{:?}", m.role),
                 content_length: m.content.chars().count(),
-                content_preview: if m.content.chars().count() > 300 {
+                content_preview: if m.content.chars().count() > MESSAGE_PREVIEW_CHARS {
                     format!("{preview}...")
                 } else {
                     preview
