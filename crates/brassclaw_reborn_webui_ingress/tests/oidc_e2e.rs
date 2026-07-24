@@ -32,6 +32,11 @@ const TEST_AUDIENCE: &str = "test-audience";
 const TEST_KID: &str = "test-key-1";
 const ROTATED_KID: &str = "test-key-2";
 
+// JWT expiry offset used in valid-token fixtures (seconds into the future).
+const TEST_JWT_LIFETIME_SECS: i64 = 600;
+// Negative offset that places a JWT's exp in the past to force expiry rejection.
+const TEST_EXPIRED_JWT_SECS: i64 = 60;
+
 struct TestKey {
     private_pem: String,
     public: RsaPublicKey,
@@ -174,7 +179,7 @@ async fn oidc_authenticator_accepts_valid_jwks_signed_token_and_rejects_bad_clai
         TEST_KID,
         "https://attacker.test",
         TEST_AUDIENCE,
-        600,
+        TEST_JWT_LIFETIME_SECS,
     );
     assert!(
         auth.authenticate(&wrong_iss).await.is_none(),
@@ -187,7 +192,7 @@ async fn oidc_authenticator_accepts_valid_jwks_signed_token_and_rejects_bad_clai
         TEST_KID,
         TEST_ISSUER,
         "wrong-audience",
-        600,
+        TEST_JWT_LIFETIME_SECS,
     );
     assert!(
         auth.authenticate(&wrong_aud).await.is_none(),
@@ -195,7 +200,7 @@ async fn oidc_authenticator_accepts_valid_jwks_signed_token_and_rejects_bad_clai
     );
 
     // (4) Expired → rejected.
-    let expired = sign_token(&key.private_pem, TEST_KID, TEST_ISSUER, TEST_AUDIENCE, -60);
+    let expired = sign_token(&key.private_pem, TEST_KID, TEST_ISSUER, TEST_AUDIENCE, -TEST_EXPIRED_JWT_SECS);
     assert!(
         auth.authenticate(&expired).await.is_none(),
         "expired JWT must be rejected",
@@ -224,7 +229,7 @@ async fn oidc_authenticator_refetches_jwks_on_kid_miss_during_rotation() {
         TEST_KID,
         TEST_ISSUER,
         TEST_AUDIENCE,
-        600,
+        TEST_JWT_LIFETIME_SECS,
     );
     auth.authenticate(&token_one)
         .await

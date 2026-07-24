@@ -31,7 +31,7 @@ use parking_lot::Mutex;
 use serde::Deserialize;
 use tower::ServiceExt;
 
-/// Stub provider that captures the args the router hands it and
+/// Test-double provider that captures the args the router hands it and
 /// returns whichever canned profile the test installed. Lets us
 /// test the route handlers without owning a mock Google token
 /// endpoint.

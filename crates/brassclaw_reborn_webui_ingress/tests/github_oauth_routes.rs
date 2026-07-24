@@ -46,6 +46,9 @@ use support::{AbortOnDrop, MockEmail, spawn_router};
 
 // ── mock GitHub HTTP server ───────────────────────────────────────────
 
+// Synthetic GitHub user ID used in this test module's happy-path fixtures.
+const STUB_GITHUB_USER_ID: u64 = 90210;
+
 /// Fixed happy-path GitHub mock (token always succeeds, `/user` +
 /// `/user/emails` return canned bodies). Named `Stub*` to distinguish
 /// it from the richer failure-injecting `MockGitHub` in the `github.rs`
@@ -60,7 +63,7 @@ impl StubGitHub {
     fn octocat() -> Self {
         Self {
             user_body: serde_json::json!({
-                "id": 90210,
+                "id": STUB_GITHUB_USER_ID,
                 "login": "octocat",
                 "name": "The Octocat",
                 "email": null,
@@ -367,7 +370,7 @@ async fn callback_with_unverified_emails_mints_session_for_provider_sub() {
     // invisible to the provider-level unit test — fails here.
     let mut stub = StubGitHub::octocat();
     stub.user_body = serde_json::json!({
-        "id": 90210,
+        "id": STUB_GITHUB_USER_ID,
         "login": "octocat",
         "name": "The Octocat",
         "email": "octocat@example.com",

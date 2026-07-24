@@ -498,6 +498,9 @@ mod tests {
     use axum::extract::Form;
     use axum::http::StatusCode;
     use axum::routing::{get, post};
+
+    // Synthetic GitHub user ID used in happy-path test fixtures.
+    const TEST_GITHUB_USER_ID: u64 = 4242;
     use serde::Serialize;
     use std::collections::HashMap;
     use std::net::SocketAddr;
@@ -563,7 +566,7 @@ mod tests {
                 token_status: StatusCode::OK,
                 user_status: StatusCode::OK,
                 user_body: serde_json::json!({
-                    "id": 4242,
+                    "id": TEST_GITHUB_USER_ID,
                     "login": "octocat",
                     "name": "The Octocat",
                     "email": null,

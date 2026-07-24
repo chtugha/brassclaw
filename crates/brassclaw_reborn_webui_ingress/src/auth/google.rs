@@ -281,6 +281,10 @@ mod tests {
     use serde::Serialize;
     use std::net::SocketAddr;
 
+    // Lifetime in seconds for JWTs minted in test fixtures. Must be positive
+    // so the token is not expired when the provider validates it.
+    const TEST_JWT_LIFETIME_SECS: i64 = 600;
+
     fn cfg(hd: Option<&str>) -> GoogleOAuthConfig {
         GoogleOAuthConfig {
             client_id: "client-id-123".to_string(),
@@ -396,7 +400,7 @@ mod tests {
     #[tokio::test]
     async fn exchange_code_decodes_id_token_into_profile() {
         let client_id: &'static str = "client-id-123";
-        let id_token = make_id_token(client_id, None, chrono::Utc::now().timestamp() + 600);
+        let id_token = make_id_token(client_id, None, chrono::Utc::now().timestamp() + TEST_JWT_LIFETIME_SECS);
         let addr = spawn_mock_token_endpoint(id_token).await;
         let endpoint = format!("http://{addr}/token");
 
@@ -424,7 +428,7 @@ mod tests {
         let id_token = make_id_token(
             client_id,
             Some("attacker.example"),
-            chrono::Utc::now().timestamp() + 600,
+            chrono::Utc::now().timestamp() + TEST_JWT_LIFETIME_SECS,
         );
         let addr = spawn_mock_token_endpoint(id_token).await;
         let endpoint = format!("http://{addr}/token");

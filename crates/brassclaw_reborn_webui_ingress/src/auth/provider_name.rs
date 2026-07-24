@@ -35,13 +35,16 @@ pub enum OAuthProviderNameError {
     InvalidChar(char),
 }
 
+/// Maximum number of characters allowed in an OAuth provider name.
+pub const OAUTH_PROVIDER_NAME_MAX_LEN: usize = 32;
+
 impl OAuthProviderName {
     fn validate(raw: &str) -> Result<(), OAuthProviderNameError> {
         if raw.is_empty() {
             return Err(OAuthProviderNameError::Empty);
         }
         let chars = raw.chars().count();
-        if chars > 32 {
+        if chars > OAUTH_PROVIDER_NAME_MAX_LEN {
             return Err(OAuthProviderNameError::TooLong(chars));
         }
         for ch in raw.chars() {
@@ -115,10 +118,11 @@ mod tests {
             OAuthProviderName::new(""),
             Err(OAuthProviderNameError::Empty)
         );
-        let too_long = "g".repeat(33);
+        let too_long_len = OAUTH_PROVIDER_NAME_MAX_LEN + 1;
+        let too_long = "g".repeat(too_long_len);
         assert_eq!(
             OAuthProviderName::new(&too_long),
-            Err(OAuthProviderNameError::TooLong(33)),
+            Err(OAuthProviderNameError::TooLong(too_long_len)),
         );
     }
 

@@ -357,6 +357,10 @@ mod tests {
     use crate::auth::{OAuthError, OAuthProviderName, OAuthUserProfile, UserDirectoryError};
     use secrecy::ExposeSecret;
 
+    // TTL in seconds used for test session tokens — long enough to stay valid
+    // for the duration of any test assertion.
+    const TEST_SESSION_TTL_SECS: i64 = 3600;
+
     fn tenant() -> TenantId {
         TenantId::new("tenant-a").expect("tenant")
     }
@@ -537,7 +541,7 @@ mod tests {
                 tenant: String::new(),
                 user: "operator".to_string(),
                 iat: now,
-                exp: now + 3600,
+                exp: now + TEST_SESSION_TTL_SECS,
             },
         );
         let err = store
@@ -562,7 +566,7 @@ mod tests {
                 tenant: tenant().as_str().to_string(),
                 user: String::new(),
                 iat: now,
-                exp: now + 3600,
+                exp: now + TEST_SESSION_TTL_SECS,
             },
         );
         let err = store
@@ -572,7 +576,7 @@ mod tests {
         assert!(matches!(err, SessionStoreError::Backend(_)));
     }
 
-    /// Stub authenticator that recognizes exactly one token.
+    /// Test-double authenticator that recognizes exactly one token.
     struct OneToken {
         token: &'static str,
         user: &'static str,
