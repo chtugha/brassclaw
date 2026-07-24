@@ -152,9 +152,29 @@ fn replace_timestamps(s: &str) -> String {
     replace_ascii_pattern(s, "<timestamp>", match_iso8601_bytes)
 }
 
+/// Byte length of the fixed `YYYY-MM-DDTHH:MM:SS` prefix.
+const ISO8601_MIN_LEN: usize = 19;
+// Field offsets within the ISO-8601 prefix: YYYY-MM-DDTHH:MM:SS
+//  0-3  year digits
+//  4    '-'
+//  5-6  month digits
+//  7    '-'
+//  8-9  day digits
+//  10   separator ('T'/'t'/' ')
+//  11-12 hour digits
+//  13   ':'
+//  14-15 minute digits
+//  16   ':'
+//  17-18 second digits
+const ISO8601_HOUR_COLON: usize = 13;
+const ISO8601_MIN_DIGIT_START: usize = 14;
+const ISO8601_SEC_COLON: usize = 16; // not flagged, kept for clarity
+const ISO8601_SEC_DIGIT_START: usize = 17;
+const ISO8601_SEC_DIGIT_END: usize = 18;
+
 fn match_iso8601_bytes(bytes: &[u8]) -> Option<usize> {
     // Minimum: YYYY-MM-DDTHH:MM:SS  = 19 bytes (all ASCII).
-    if bytes.len() < 19 {
+    if bytes.len() < ISO8601_MIN_LEN {
         return None;
     }
     if !(bytes[0].is_ascii_digit()
@@ -170,16 +190,16 @@ fn match_iso8601_bytes(bytes: &[u8]) -> Option<usize> {
         && (bytes[10] == b'T' || bytes[10] == b't' || bytes[10] == b' ')
         && bytes[11].is_ascii_digit()
         && bytes[12].is_ascii_digit()
-        && bytes[13] == b':'
-        && bytes[14].is_ascii_digit()
+        && bytes[ISO8601_HOUR_COLON] == b':'
+        && bytes[ISO8601_MIN_DIGIT_START].is_ascii_digit()
         && bytes[15].is_ascii_digit()
-        && bytes[16] == b':'
-        && bytes[17].is_ascii_digit()
-        && bytes[18].is_ascii_digit())
+        && bytes[ISO8601_SEC_COLON] == b':'
+        && bytes[ISO8601_SEC_DIGIT_START].is_ascii_digit()
+        && bytes[ISO8601_SEC_DIGIT_END].is_ascii_digit())
     {
         return None;
     }
-    let mut consumed = 19;
+    let mut consumed = ISO8601_MIN_LEN;
     // Optional fractional seconds .fff…
     if consumed < bytes.len() && bytes[consumed] == b'.' {
         let mut j = consumed + 1;
