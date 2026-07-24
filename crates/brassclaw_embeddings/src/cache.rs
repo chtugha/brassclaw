@@ -43,13 +43,16 @@ pub struct CachedEmbeddingProvider {
     cache: Mutex<LruCache<[u8; 32], Vec<f32>>>,
 }
 
+/// Warn if the embedding cache is configured above this many entries.
+const CACHE_LARGE_WARN_THRESHOLD: usize = 100_000;
+
 impl CachedEmbeddingProvider {
     /// Wrap a provider with LRU caching.
     ///
     /// `config.max_entries` is clamped to at least 1.
     pub fn new(inner: Arc<dyn EmbeddingProvider>, config: EmbeddingCacheConfig) -> Self {
         let max_entries = config.max_entries.max(1);
-        if max_entries > 100_000 {
+        if max_entries > CACHE_LARGE_WARN_THRESHOLD {
             tracing::warn!(
                 max_entries,
                 "Embedding cache size exceeds 100,000 entries; memory usage may be significant"
@@ -231,6 +234,11 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
 
+    /// Max text length accepted by test mock providers.
+    const MOCK_MAX_INPUT_LENGTH: usize = 10_000;
+    /// Divisor used by test mocks to turn text byte-length into a float embedding value.
+    const MOCK_EMBEDDING_NORM_DIVISOR: f32 = 100.0;
+
     /// Mock embedding provider that counts calls.
     struct CountingMock {
         dimension: usize,
@@ -267,12 +275,12 @@ mod tests {
             &self.model
         }
         fn max_input_length(&self) -> usize {
-            10_000
+            MOCK_MAX_INPUT_LENGTH
         }
         async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
             self.embed_calls.fetch_add(1, Ordering::SeqCst);
-            // Simple deterministic embedding: val = text.len() / 100.0
-            let val = text.len() as f32 / 100.0;
+            // Simple deterministic embedding: val = text.len() / MOCK_EMBEDDING_NORM_DIVISOR
+            let val = text.len() as f32 / MOCK_EMBEDDING_NORM_DIVISOR;
             Ok(vec![val; self.dimension])
         }
         async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
@@ -280,7 +288,7 @@ mod tests {
             texts
                 .iter()
                 .map(|t| {
-                    let val = t.len() as f32 / 100.0;
+                    let val = t.len() as f32 / MOCK_EMBEDDING_NORM_DIVISOR;
                     Ok(vec![val; self.dimension])
                 })
                 .collect()
@@ -393,9 +401,9 @@ mod tests {
         let results = cached.embed_batch(&texts).await.unwrap();
 
         assert_eq!(results.len(), 3);
-        let expected_a = vec![1.0_f32 / 100.0; 4];
-        let expected_bb = vec![2.0_f32 / 100.0; 4];
-        let expected_ccc = vec![3.0_f32 / 100.0; 4];
+        let expected_a = vec![1.0_f32 / MOCK_EMBEDDING_NORM_DIVISOR; 4];
+        let expected_bb = vec![2.0_f32 / MOCK_EMBEDDING_NORM_DIVISOR; 4];
+        let expected_ccc = vec![3.0_f32 / MOCK_EMBEDDING_NORM_DIVISOR; 4];
         assert_eq!(results[0], expected_a);
         assert_eq!(results[1], expected_bb);
         assert_eq!(results[2], expected_ccc);
@@ -442,7 +450,7 @@ mod tests {
             &self.model
         }
         fn max_input_length(&self) -> usize {
-            10_000
+            MOCK_MAX_INPUT_LENGTH
         }
         async fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
             let prev =
@@ -453,7 +461,7 @@ mod tests {
             if prev.is_ok() {
                 return Err(EmbeddingError::HttpError("simulated failure".to_string()));
             }
-            let val = text.len() as f32 / 100.0;
+            let val = text.len() as f32 / MOCK_EMBEDDING_NORM_DIVISOR;
             Ok(vec![val; self.dimension])
         }
         async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
@@ -468,7 +476,7 @@ mod tests {
             texts
                 .iter()
                 .map(|t| {
-                    let val = t.len() as f32 / 100.0;
+                    let val = t.len() as f32 / MOCK_EMBEDDING_NORM_DIVISOR;
                     Ok(vec![val; self.dimension])
                 })
                 .collect()
