@@ -34,18 +34,32 @@ pub use provider::{EmbeddingError, EmbeddingProvider};
 /// Default maximum number of cached embeddings.
 pub const DEFAULT_EMBEDDING_CACHE_SIZE: usize = 10_000;
 
+// Embedding dimension constants for known models.
+/// OpenAI text-embedding-3-small and text-embedding-ada-002 output dimension.
+pub const DIM_OPENAI_SMALL: usize = 1536;
+/// OpenAI text-embedding-3-large output dimension.
+pub const DIM_OPENAI_LARGE: usize = 3072;
+/// Amazon Titan text-embedding-v2 and mxbai-embed-large output dimension.
+pub const DIM_1024: usize = 1024;
+/// Nomic embed-text output dimension.
+pub const DIM_NOMIC: usize = 768;
+/// all-MiniLM sentence-transformers output dimension.
+pub const DIM_MINILM: usize = 384;
+/// Fallback dimension for unrecognised models (matches `DIM_OPENAI_SMALL`).
+pub const DIM_DEFAULT_FALLBACK: usize = DIM_OPENAI_SMALL;
+
 /// Infer the embedding dimension from a well-known model name.
 ///
-/// Falls back to 1536 (OpenAI text-embedding-3-small default) for unknown models.
+/// Falls back to [`DIM_DEFAULT_FALLBACK`] (1536) for unknown models.
 pub fn default_dimension_for_model(model: &str) -> usize {
     match model {
-        "text-embedding-3-small" => 1536,
-        "text-embedding-3-large" => 3072,
-        "text-embedding-ada-002" => 1536,
-        "amazon.titan-embed-text-v2:0" => 1024,
-        "nomic-embed-text" => 768,
-        "mxbai-embed-large" => 1024,
-        "all-minilm" => 384,
-        _ => 1536,
+        "text-embedding-3-small" => DIM_OPENAI_SMALL,
+        "text-embedding-3-large" => DIM_OPENAI_LARGE,
+        "text-embedding-ada-002" => DIM_OPENAI_SMALL,
+        "amazon.titan-embed-text-v2:0" => DIM_1024,
+        "nomic-embed-text" => DIM_NOMIC,
+        "mxbai-embed-large" => DIM_1024,
+        "all-minilm" => DIM_MINILM,
+        _ => DIM_DEFAULT_FALLBACK,
     }
 }
