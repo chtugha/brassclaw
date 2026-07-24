@@ -455,6 +455,17 @@ pub fn next_cron_fire_required(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// UTC hour for 09:00 New York in EDT (UTC-4).
+    const NY_9AM_EDT_UTC: u32 = 13;
+    /// UTC hour for 09:00 New York in EST (UTC-5).
+    const NY_9AM_EST_UTC: u32 = 14;
+    /// Year of the US spring-forward DST transition used in cron skip tests.
+    const DST_TEST_YEAR: i32 = 2027;
+    /// Month (March) of the DST spring-forward transition.
+    const DST_TEST_MONTH: u32 = 3;
+    /// Day in March when the 2027 US spring-forward transition occurs.
+    const DST_SPRING_FORWARD_DAY: u32 = 14;
     use chrono::{Datelike, Timelike};
 
     #[test]
@@ -489,7 +500,7 @@ mod tests {
         // NY 09:00 in UTC is either 13:00 (EDT) or 14:00 (EST). UTC 09:00 is 09:00.
         let ny_utc_hour = in_ny.hour();
         assert!(
-            ny_utc_hour == 13 || ny_utc_hour == 14,
+            ny_utc_hour == NY_9AM_EDT_UTC || ny_utc_hour == NY_9AM_EST_UTC,
             "NY 09:00 should map to UTC 13 or 14, got {ny_utc_hour}"
         );
         assert_eq!(in_utc.hour(), 9, "UTC schedule should fire at hour 9");
@@ -647,7 +658,7 @@ mod tests {
         // Whichever the cron crate picks, it must NOT land in the missing
         // local interval [02:00, 03:00) on 2027-03-14.
         let fire_local = fire.with_timezone(&tz.tz());
-        if fire_local.year() == 2027 && fire_local.month() == 3 && fire_local.day() == 14 {
+        if fire_local.year() == DST_TEST_YEAR && fire_local.month() == DST_TEST_MONTH && fire_local.day() == DST_SPRING_FORWARD_DAY {
             // If it lands on DST day, the wall-clock hour must be >= 3 (EDT).
             assert!(
                 fire_local.hour() >= 3,
@@ -715,7 +726,7 @@ mod tests {
         let utc_hours: std::collections::BTreeSet<u32> =
             fires.iter().map(|f| f.with_timezone(&Utc).hour()).collect();
         assert!(
-            utc_hours.contains(&13) && utc_hours.contains(&14),
+            utc_hours.contains(&NY_9AM_EDT_UTC) && utc_hours.contains(&NY_9AM_EST_UTC),
             "30-day window straddling spring-forward should contain both 13:00 and 14:00 UTC fires; got {utc_hours:?}"
         );
     }
