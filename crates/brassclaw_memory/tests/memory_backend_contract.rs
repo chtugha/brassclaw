@@ -1,3 +1,7 @@
+// Binary payload bytes used to verify that binary file writes are stored and read back verbatim.
+const BINARY_FILL_BYTE: u8 = 0xFF;
+const BINARY_NULL_BYTE: u8 = 0x00;
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -762,13 +766,13 @@ async fn memory_backend_filesystem_leaves_non_protected_binary_writes_unaffected
     .unwrap();
 
     filesystem
-        .write_file(&path, &[0xff, 0x00, b'o', b'k'])
+        .write_file(&path, &[BINARY_FILL_BYTE, BINARY_NULL_BYTE, b'o', b'k'])
         .await
         .unwrap();
 
     assert_eq!(
         filesystem.read_file(&path).await.unwrap(),
-        vec![0xff, 0x00, b'o', b'k']
+        vec![BINARY_FILL_BYTE, BINARY_NULL_BYTE, b'o', b'k']
     );
 }
 

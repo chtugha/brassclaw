@@ -1079,6 +1079,11 @@ fn encode_embedding_blob(embedding: &[f32]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
+    // Embedding components used to verify chunk write/read round-trip.
+    const TEST_EMBED_A: f32 = 0.1;
+    const TEST_EMBED_B: f32 = 0.2;
+    const TEST_EMBED_C: f32 = 0.3;
+
     use super::*;
     use brassclaw_filesystem::InMemoryBackend;
     use std::sync::Arc;
@@ -1320,7 +1325,7 @@ mod tests {
             MemoryChunkWrite {
                 chat_record_id: None,
                 content: "alpha beta".to_string(),
-                embedding: Some(vec![0.1, 0.2, 0.3]),
+                embedding: Some(vec![TEST_EMBED_A, TEST_EMBED_B, TEST_EMBED_C]),
             },
             MemoryChunkWrite {
                 chat_record_id: None,

@@ -338,7 +338,10 @@ fn stable_identity_hash(name: &str, content: &str) -> u64 {
         hash ^= u64::from(byte);
         hash = hash.wrapping_mul(FNV_IDENTITY_PRIME);
     }
-    hash ^= 0xFF;
+    // FNV separator byte — mixes a fixed byte between the name and content
+    // inputs so identical names with empty content cannot collide with
+    // content-only inputs.
+    hash ^= 0xFF_u64;
     hash = hash.wrapping_mul(FNV_IDENTITY_PRIME);
     for &byte in content.as_bytes() {
         hash ^= u64::from(byte);

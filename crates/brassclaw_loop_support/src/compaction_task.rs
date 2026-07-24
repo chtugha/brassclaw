@@ -1,3 +1,6 @@
+/// Parts-per-million scale factor for compression ratio calculations.
+const PARTS_PER_MILLION: u128 = 1_000_000;
+
 use std::sync::Arc;
 
 use brassclaw_host_api::ThreadId;
@@ -639,7 +642,7 @@ fn compression_ratio_ppm(input_bytes: usize, output_bytes: usize) -> u32 {
         return 0;
     }
     ((output_bytes as u128)
-        .saturating_mul(1_000_000)
+        .saturating_mul(PARTS_PER_MILLION)
         .saturating_div(input_bytes as u128)
         .min(u128::from(u32::MAX))) as u32
 }

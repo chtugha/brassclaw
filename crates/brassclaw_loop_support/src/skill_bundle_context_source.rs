@@ -198,6 +198,10 @@ mod tests {
         sync::{Arc, Mutex},
     };
 
+    // UTF-16 LE BOM bytes — deliberately invalid UTF-8 to trigger parse failure.
+    const UTF16_LE_BOM_BYTE_0: u8 = 0xFF;
+    const UTF16_LE_BOM_BYTE_1: u8 = 0xFE;
+
     use async_trait::async_trait;
     use brassclaw_turns::{
         RunProfileResolutionRequest, RunProfileResolver, TurnId, TurnRunId, TurnScope,
@@ -838,7 +842,11 @@ mod tests {
                 "alpha",
                 Some(SkillVisibility::Visible),
             )])
-            .with_skill_md(crate::SkillSourceKind::User, "alpha", vec![0xff, 0xfe]),
+            .with_skill_md(
+                crate::SkillSourceKind::User,
+                "alpha",
+                vec![UTF16_LE_BOM_BYTE_0, UTF16_LE_BOM_BYTE_1],
+            ),
         );
         let adapter = SkillBundleContextSource::new(source);
 

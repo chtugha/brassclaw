@@ -1013,7 +1013,7 @@ impl LoopCapabilityPort for SubagentSpawnCapabilityPort {
         // from gate coalescing; otherwise the gate would be created and never
         // registered, wasting a TurnRunId.
         let mut spawn_args: HashMap<usize, SpawnSubagentArgs> = HashMap::new();
-        let mut blocking_count = 0_usize;
+        let mut blocking_count = 0usize;
         for (idx, invocation) in request.invocations.iter().enumerate() {
             if !self.is_spawn(&invocation.capability_id) {
                 continue;
@@ -1034,7 +1034,7 @@ impl LoopCapabilityPort for SubagentSpawnCapabilityPort {
         } else {
             None
         };
-        let mut index = 0_usize;
+        let mut index = 0usize;
         while index < request.invocations.len() {
             let invocation = &request.invocations[index];
             if self.is_spawn(&invocation.capability_id) {

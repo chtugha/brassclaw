@@ -1545,6 +1545,11 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    // One node above the schema node limit — triggers wide_schema rejection.
+    const SCHEMA_NODES_OVER_LIMIT: usize = 513;
+    // One byte above the schema string limit — triggers long-string rejection.
+    const SCHEMA_STRING_OVER_LIMIT: usize = 1025;
+
     #[test]
     fn parse_tools_list_result_rejects_oversized_tool_list() {
         let tools = (0..129)
@@ -1594,10 +1599,10 @@ mod tests {
             ),
             valid_tool(
                 "long-string",
-                json!({"type": "object", "description": "a".repeat(1025)}),
+                json!({"type": "object", "description": "a".repeat(SCHEMA_STRING_OVER_LIMIT)}),
             ),
             valid_tool("too-deep", nested_schema(9)),
-            valid_tool("too-many-nodes", wide_schema(513)),
+            valid_tool("too-many-nodes", wide_schema(SCHEMA_NODES_OVER_LIMIT)),
         ];
 
         for tool in cases {

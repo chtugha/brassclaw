@@ -172,6 +172,12 @@ mod tests {
         },
     };
 
+    // Sequence number that has never been issued by the queue; used to forge invalid
+    // cursor and ack tokens in rejection tests.
+    const UNISSUED_SEQUENCE: usize = 99;
+    // Amount added over MAX_HOST_INPUT_POLL_LIMIT to verify the host cap is enforced.
+    const OVER_LIMIT_DELTA: usize = 1000;
+
     use async_trait::async_trait;
     use brassclaw_host_api::{AgentId, ProjectId, TenantId, ThreadId};
     use brassclaw_turns::{
@@ -379,7 +385,7 @@ mod tests {
             message_ref: message_ref("msg:user"),
         }]));
         let port = HostQueueLoopInputPort::new(queue.clone(), run_context.clone());
-        let future = LoopInputCursor::from_host_token(&run_context, cursor_token(99));
+        let future = LoopInputCursor::from_host_token(&run_context, cursor_token(UNISSUED_SEQUENCE));
 
         let error = port
             .poll_inputs(future, 8)
@@ -399,7 +405,7 @@ mod tests {
         let port = HostQueueLoopInputPort::new(queue.clone(), run_context);
 
         let error = port
-            .ack_inputs(vec![ack_token(99)])
+            .ack_inputs(vec![ack_token(UNISSUED_SEQUENCE)])
             .await
             .expect_err("forged ack token should be rejected before queue access");
 
@@ -446,7 +452,7 @@ mod tests {
 
         port.poll_inputs(
             LoopInputCursor::origin_for_run(&run_context),
-            MAX_HOST_INPUT_POLL_LIMIT + 1000,
+            MAX_HOST_INPUT_POLL_LIMIT + OVER_LIMIT_DELTA,
         )
         .await
         .expect("poll should succeed");

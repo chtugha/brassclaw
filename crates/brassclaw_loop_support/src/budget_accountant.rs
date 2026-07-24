@@ -11,6 +11,18 @@
 //! [`LoopModelGatewayError`] of kind [`AgentLoopHostErrorKind::BudgetApprovalRequired`]
 //! and a separate gate store (Phase 3) routes user resolution.
 
+/// Default cost-overestimate factor applied to reservation quotes to absorb
+/// per-model pricing volatility and variable completion lengths.
+const DEFAULT_OVERESTIMATE_FACTOR: f64 = 1.20;
+
+/// Default input-token cost (USD/token) used when no model cost entry is found.
+/// Matches GPT-4o pricing — ensures unknown models are treated as paid calls.
+const DEFAULT_INPUT_COST_PER_TOKEN: f64 = 0.000_002_5;
+
+/// Default output-token cost (USD/token) used when no model cost entry is found.
+/// Matches GPT-4o pricing — ensures unknown models are treated as paid calls.
+const DEFAULT_OUTPUT_COST_PER_TOKEN: f64 = 0.000_01;
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -110,7 +122,8 @@ impl GovernorBackedAccountant {
         Self {
             governor,
             cost_table,
-            overestimate_factor: Decimal::from_f64(1.20).unwrap_or(Decimal::ONE),
+            overestimate_factor: Decimal::from_f64(DEFAULT_OVERESTIMATE_FACTOR)
+                .unwrap_or(Decimal::ONE),
             in_flight: Arc::new(DashMap::new()),
             seeding_policy: None,
             seeded: Arc::new(DashSet::new()),
@@ -121,8 +134,10 @@ impl GovernorBackedAccountant {
                 // `brassclaw_llm::costs::default_cost` so a model profile
                 // missing from the table is treated as a paid call, not
                 // a free one.
-                input_per_token: Decimal::from_f64(0.0000025).unwrap_or(Decimal::ZERO),
-                output_per_token: Decimal::from_f64(0.00001).unwrap_or(Decimal::ZERO),
+                input_per_token: Decimal::from_f64(DEFAULT_INPUT_COST_PER_TOKEN)
+                    .unwrap_or(Decimal::ZERO),
+                output_per_token: Decimal::from_f64(DEFAULT_OUTPUT_COST_PER_TOKEN)
+                    .unwrap_or(Decimal::ZERO),
                 max_output_tokens: 0,
                 cache_write_multiplier_milli: 0,
                 cache_read_multiplier_milli: 0,

@@ -52,6 +52,9 @@ use self::surface_snapshot::{
 const PROVIDER_TOOL_NAME_DIGEST_BYTES: usize = 32;
 const PROVIDER_TOOL_CALL_INPUT_REF_PREFIX: &str = "input:provider-tool-";
 const MAX_IN_MEMORY_PROVIDER_TOOL_CALL_EFFECTIVE_CAPABILITY_IDS: usize = 128;
+/// Maximum character length for a synthesised loop-driver `ExtensionId` before the
+/// trailing `-<hex16>` suffix is appended.
+const LOOP_DRIVER_EXTENSION_ID_MAX_LEN: usize = 128;
 
 #[async_trait]
 pub trait LoopCapabilityInputResolver: Send + Sync {
@@ -1547,7 +1550,7 @@ pub fn loop_driver_execution_extension_id(
     let digest = sha256_digest_token(raw.as_bytes());
     let digest_hex = digest.strip_prefix("sha256:").unwrap_or(&digest);
     let slug = extension_id_slug(raw);
-    let prefix_budget = 128usize
+    let prefix_budget = LOOP_DRIVER_EXTENSION_ID_MAX_LEN
         .saturating_sub("loop-driver-".len())
         .saturating_sub("-".len())
         .saturating_sub(16);
@@ -2025,6 +2028,11 @@ mod tests {
     use super::*;
     mod runtime_lifecycle_tests;
 
+    // Arbitrary floating-point threshold value used in argument normalisation tests.
+    const TEST_FLOAT_THRESHOLD: f64 = 1.5;
+    // Arbitrary PR number used in additional-properties rejection tests.
+    const TEST_PR_NUMBER: u32 = 4286;
+
     use std::{
         collections::VecDeque,
         sync::{
@@ -2462,7 +2470,7 @@ mod tests {
             serde_json::json!({
                 "limit": 10,
                 "enabled": true,
-                "threshold": 1.5,
+                "threshold": TEST_FLOAT_THRESHOLD,
                 "message": "10"
             })
         );
@@ -3012,8 +3020,8 @@ mod tests {
             &serde_json::json!({
                 "owner": "nearai",
                 "repo": "brassclaw",
-                "pr_number": 4286,
-                "number": 4286
+                "pr_number": TEST_PR_NUMBER,
+                "number": TEST_PR_NUMBER
             }),
             &schema,
             "provider arguments",

@@ -1,3 +1,6 @@
+// Integer used where a string is expected — deliberately wrong type for invalid-shape rejection tests.
+const WRONG_TYPE_INT: u32 = 42;
+
 use brassclaw_host_api::{AgentId, TenantId, UserId};
 use brassclaw_threads::{
     AcceptedInboundMessage, AcceptedInboundMessageReplay, AppendAssistantDraftRequest,
@@ -1405,7 +1408,7 @@ async fn spawn_provider_tool_call_validation_rejects_missing_or_malformed_flavor
             "task": "investigate"
         }),
         json!({
-            "flavor_id": 42,
+            "flavor_id": WRONG_TYPE_INT,
             "task": "investigate"
         }),
     ] {
@@ -2402,7 +2405,7 @@ async fn json_spawn_input_codec_rejects_invalid_shape() {
     let context = test_run_context("spawn-codec-invalid").await;
     for value in [
         json!({"task": "missing flavor"}),
-        json!({"flavor_id": "general", "task": 42}),
+        json!({"flavor_id": "general", "task": WRONG_TYPE_INT}),
         json!({"flavor_id": "general", "task": "task", "mode": "later"}),
     ] {
         let codec =

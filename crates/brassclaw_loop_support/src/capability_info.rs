@@ -1,3 +1,6 @@
+/// Maximum byte length of a capability name.
+const CAPABILITY_NAME_MAX_LEN: usize = 160;
+
 use std::collections::BTreeSet;
 
 use brassclaw_host_api::{CapabilityId, EffectKind, RuntimeKind};
@@ -169,7 +172,7 @@ pub(super) fn requested_name(input: &serde_json::Value) -> Result<&str, AgentLoo
 }
 
 fn validate_name(value: &str) -> Result<(), AgentLoopHostError> {
-    if value.is_empty() || value.len() > 160 {
+    if value.is_empty() || value.len() > CAPABILITY_NAME_MAX_LEN {
         return Err(invalid_name());
     }
     if !value

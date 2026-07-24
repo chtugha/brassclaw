@@ -1,3 +1,6 @@
+// Seconds after now used to simulate lease expiry in recovery tests.
+const LEASE_EXPIRY_OFFSET_SECS: i64 = 120;
+
 use std::sync::Arc;
 
 use brassclaw_host_api::{AgentId, ProjectId, TenantId, ThreadId, UserId};
@@ -149,7 +152,7 @@ async fn event_publishing_transition_port_publishes_expired_lease_terminal_event
 
     let empty = transition_port
         .recover_expired_leases(RecoverExpiredLeasesRequest {
-            now: Utc::now() + ChronoDuration::seconds(120),
+            now: Utc::now() + ChronoDuration::seconds(LEASE_EXPIRY_OFFSET_SECS),
             scope_filter: None,
         })
         .await
@@ -192,7 +195,7 @@ async fn event_publishing_transition_port_publishes_expired_lease_terminal_event
 
     let recovered = transition_port
         .recover_expired_leases(RecoverExpiredLeasesRequest {
-            now: Utc::now() + ChronoDuration::seconds(120),
+            now: Utc::now() + ChronoDuration::seconds(LEASE_EXPIRY_OFFSET_SECS),
             scope_filter: None,
         })
         .await

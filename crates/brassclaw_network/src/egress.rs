@@ -116,7 +116,7 @@ fn estimate_http_request_bytes(
     headers: &[(String, String)],
     body: &[u8],
 ) -> u64 {
-    let mut total = 0_u64;
+    let mut total = 0u64;
     add_len(&mut total, method_label(method).len());
     add_len(&mut total, " ".len());
     add_len(&mut total, url.len());
