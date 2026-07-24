@@ -1045,21 +1045,27 @@ fn persistent_governor_rejects_partial_snapshot_fields() {
     ));
 }
 
+// A schema version value beyond the supported range, used to verify that the
+// persistent governor rejects unknown snapshot formats at load time.
+const UNSUPPORTED_SCHEMA_VERSION: u32 = 999;
+
 #[test]
 fn persistent_governor_rejects_unsupported_snapshot_schema_version() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("resource-governor.json");
     fs::write(
         &path,
-        r#"{
-            "schema_version": 999,
-            "state": {
+        format!(
+            r#"{{
+            "schema_version": {UNSUPPORTED_SCHEMA_VERSION},
+            "state": {{
                 "limits": [],
                 "reserved_by_account": [],
                 "usage_by_account": [],
                 "reservations": []
-            }
-        }"#,
+            }}
+        }}"#
+        ),
     )
     .unwrap();
 
@@ -1071,10 +1077,13 @@ fn persistent_governor_rejects_unsupported_snapshot_schema_version() {
         )
         .unwrap_err();
 
+    let expected_msg = format!(
+        "unsupported resource governor snapshot schema version {UNSUPPORTED_SCHEMA_VERSION}"
+    );
     assert!(matches!(
         error,
         ResourceError::Storage { reason }
-            if reason.contains("unsupported resource governor snapshot schema version 999")
+            if reason.contains(&expected_msg)
     ));
 }
 

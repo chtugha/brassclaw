@@ -251,9 +251,14 @@ impl Default for Validator {
     }
 }
 
+/// Minimum string byte length below which repetition analysis is skipped —
+/// short strings naturally have high repetition ratios for single-character
+/// content.
+const REPETITION_CHECK_MIN_LEN: usize = 50;
+
 /// Check if string has excessive repetition of characters.
 fn has_excessive_repetition(s: &str) -> bool {
-    if s.len() < 50 {
+    if s.len() < REPETITION_CHECK_MIN_LEN {
         return false;
     }
 
@@ -277,6 +282,16 @@ fn has_excessive_repetition(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Upper inclusive code point of the Unicode Combining Diacritical Marks
+    // block (U+0300..=U+036F). The test fixture uses U+0300..=U+0331 because
+    // that range produces at least 50 distinct combining marks, which is enough
+    // to exceed the `REPETITION_CHECK_MIN_LEN` threshold.
+    const COMBINING_MARKS_RANGE_END: u32 = 0x0331;
+
+    // Upper bound (inclusive) of the ASCII C0 control-character range, excluding
+    // NUL. Range 0x01..=0x1F covers SOH through US (unit separator).
+    const C0_CONTROL_RANGE_END: u8 = 0x1F;
 
     #[test]
     fn test_valid_input() {
@@ -621,7 +636,7 @@ mod tests {
             // This matches issue #1025: "combining marks are distinct chars,
             // so this should NOT trigger."
             let combining_marks: Vec<char> =
-                (0x0300u32..=0x0331).filter_map(char::from_u32).collect();
+                (0x0300u32..=COMBINING_MARKS_RANGE_END).filter_map(char::from_u32).collect();
             assert!(combining_marks.len() >= 50);
             let marks: String = combining_marks[..50].iter().collect();
             let input = format!("prefix a{marks}suffix padding to reach minimum length for check");
@@ -744,7 +759,7 @@ mod tests {
         #[test]
         fn control_chars_in_input_no_panic() {
             let validator = Validator::new();
-            for byte in 0x01u8..=0x1f {
+            for byte in 0x01u8..=C0_CONTROL_RANGE_END {
                 let input = format!(
                     "prefix {} suffix content padding to be long enough",
                     char::from(byte)

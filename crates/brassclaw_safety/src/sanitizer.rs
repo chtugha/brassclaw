@@ -294,6 +294,10 @@ impl Default for Sanitizer {
 mod tests {
     use super::*;
 
+    // Upper bound (inclusive) of the ASCII C0 control-character range, excluding NUL.
+    // Range 0x01..=0x1F covers SOH through US (unit separator).
+    const C0_CONTROL_RANGE_END: u8 = 0x1F;
+
     #[test]
     fn test_detect_ignore_previous() {
         let sanitizer = Sanitizer::new();
@@ -678,7 +682,7 @@ mod tests {
         #[test]
         fn non_null_control_chars_not_critical() {
             let sanitizer = Sanitizer::new();
-            for byte in 0x01u8..=0x1f {
+            for byte in 0x01u8..=C0_CONTROL_RANGE_END {
                 if byte == b'\n' || byte == b'\r' || byte == b'\t' {
                     continue; // whitespace control chars are fine
                 }

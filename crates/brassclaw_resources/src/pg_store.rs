@@ -90,7 +90,7 @@ impl PgResourceGovernorStore {
                     .await
                     .map_err(map_pg_r)?;
                 match row {
-                    None => Ok((ResourceGovernorSnapshot::default(), 0_i64)),
+                    None => Ok((ResourceGovernorSnapshot::default(), 0i64)),
                     Some(r) => {
                         let payload: Value = r.get(0);
                         let version: i64 = r.get(1);

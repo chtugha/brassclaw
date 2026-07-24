@@ -248,6 +248,11 @@ fn reject_provider_secret_leaks(value: &str, label: &str) -> Result<(), Provider
 mod tests {
     use super::*;
 
+    // Maximum text length used in provider metadata validation tests; chosen
+    // to be well above the length of any test string while being an obviously
+    // generous bound.
+    const TEST_PROVIDER_METADATA_MAX_BYTES: usize = 4096;
+
     #[test]
     fn provider_arguments_allow_multiline_text() {
         validate_provider_arguments(&serde_json::json!({
@@ -271,7 +276,7 @@ mod tests {
         let error = validate_optional_provider_metadata_text(
             Some("provider error included traceback"),
             "provider reasoning",
-            4096,
+            TEST_PROVIDER_METADATA_MAX_BYTES,
         )
         .expect_err("sensitive marker should fail");
 
@@ -289,7 +294,7 @@ mod tests {
             "line one\rline two",
             "line one\tline two",
         ] {
-            validate_optional_provider_metadata_text(Some(value), "provider reasoning", 4096)
+            validate_optional_provider_metadata_text(Some(value), "provider reasoning", TEST_PROVIDER_METADATA_MAX_BYTES)
                 .expect("metadata text whitespace control should pass");
         }
     }
@@ -299,7 +304,7 @@ mod tests {
         let error = validate_optional_provider_metadata_text(
             Some("line one\u{0001}line two"),
             "provider reasoning",
-            4096,
+            TEST_PROVIDER_METADATA_MAX_BYTES,
         )
         .expect_err("non-whitespace control character should fail");
 

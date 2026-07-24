@@ -566,6 +566,10 @@ fn default_patterns() -> Vec<LeakPattern> {
 mod tests {
     use crate::leak_detector::{LeakDetector, LeakSeverity};
 
+    // A byte value that is not valid UTF-8 as a leading byte; used to test
+    // that the scanner handles binary/mixed-encoding bodies via lossy conversion.
+    const INVALID_UTF8_LEADING_BYTE: u8 = 0xFF;
+
     #[test]
     fn test_detect_openai_key() {
         let detector = LeakDetector::new();
@@ -803,7 +807,7 @@ mod tests {
 
         // Attacker prepends a non-UTF8 byte to bypass strict from_utf8 check.
         // The lossy conversion should still detect the secret.
-        let mut body = vec![0xFF]; // invalid UTF-8 leading byte
+        let mut body = vec![INVALID_UTF8_LEADING_BYTE]; // invalid UTF-8 leading byte
         body.extend_from_slice(b"sk-proj-test1234567890abcdefghij");
 
         let result = detector.scan_http_request("https://api.example.com/exfil", &[], Some(&body));

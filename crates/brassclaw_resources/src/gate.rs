@@ -247,6 +247,9 @@ mod tests {
     use brassclaw_host_api::TenantId;
     use rust_decimal::Decimal;
 
+    // Resource limit amount used in the approve-resolves-gate test fixture.
+    const TEST_RESOURCE_LIMIT_AMOUNT: i64 = 50;
+
     fn sample_needed() -> ResourceApprovalNeeded {
         ResourceApprovalNeeded {
             account: ResourceAccount::tenant(TenantId::new("t").unwrap()),
@@ -291,7 +294,7 @@ mod tests {
         store.open(&scope, gate).unwrap();
         let user = UserId::new("alice").unwrap();
         let new_limits = ResourceLimits {
-            max_usd: Some(Decimal::from(50)),
+            max_usd: Some(Decimal::from(TEST_RESOURCE_LIMIT_AMOUNT)),
             ..ResourceLimits::default()
         };
         let resolved = store
