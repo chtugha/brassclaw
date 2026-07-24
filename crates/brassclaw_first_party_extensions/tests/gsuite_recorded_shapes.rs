@@ -2,6 +2,11 @@ mod support;
 
 use std::sync::Arc;
 
+/// max_results for calendar events list in recorded-shape tests.
+const TEST_CALENDAR_MAX_RESULTS: u32 = 50;
+/// max_results for Gmail messages list in recorded-shape tests.
+const TEST_GMAIL_MAX_RESULTS: u32 = 25;
+
 use brassclaw_auth::{
     GOOGLE_CALENDAR_EVENTS_SCOPE, GOOGLE_CALENDAR_READONLY_SCOPE, GOOGLE_GMAIL_MODIFY_SCOPE,
     GOOGLE_GMAIL_READONLY_SCOPE, GOOGLE_GMAIL_SEND_SCOPE,
@@ -88,7 +93,7 @@ async fn calendar_read_handlers_use_recorded_google_api_shapes() {
             "calendar_id": "primary",
             "time_min": "2026-05-21T00:00:00Z",
             "time_max": "2026-05-22T00:00:00Z",
-            "max_results": 50
+            "max_results": TEST_CALENDAR_MAX_RESULTS
         }),
         &[GOOGLE_CALENDAR_READONLY_SCOPE],
         vec![json_response("calendar", "events_list.json")],
@@ -270,7 +275,7 @@ async fn calendar_handler_preserves_insufficient_scope_response() {
 async fn gmail_handlers_use_recorded_google_api_shapes() {
     let (messages, requests) = GsuiteShapeCase::new(
         GMAIL_LIST_MESSAGES_CAPABILITY_ID,
-        json!({ "query": "is:unread from:ada", "max_results": 25 }),
+        json!({ "query": "is:unread from:ada", "max_results": TEST_GMAIL_MAX_RESULTS }),
         &[GOOGLE_GMAIL_READONLY_SCOPE],
         vec![json_response("gmail", "messages_list.json")],
     )
