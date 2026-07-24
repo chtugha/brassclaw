@@ -20,6 +20,13 @@ use brassclaw_host_api::{
 };
 use chrono::Utc;
 
+/// Stale event cursor position used in cursor-rebase / staleness tests.
+const STALE_CURSOR: u64 = 99;
+/// Token count used in dispatch_succeeded event payloads in tests.
+const TEST_TOKEN_COUNT: u64 = 42;
+/// Number of prefix entries seeded in paging-fold path tests.
+const TEST_PREFIX_LEN: usize = 600;
+
 #[tokio::test]
 async fn replay_audit_projection_preserves_valid_capability_targets() {
     let log = Arc::new(InMemoryDurableAuditLog::new());
@@ -188,7 +195,7 @@ async fn event_stream_manager_routes_runtime_projection_without_generic_event_pa
             capability.clone(),
             provider,
             RuntimeKind::Mcp,
-            42,
+            TEST_TOKEN_COUNT,
         ))
         .await
         .unwrap();
@@ -293,7 +300,7 @@ async fn event_stream_manager_surfaces_domain_rebase_for_stale_resume_cursors() 
             scope: projection_scope.clone(),
             after: Some(ProjectionCursor::for_scope(
                 projection_scope.clone(),
-                EventCursor::new(99),
+                EventCursor::new(STALE_CURSOR),
             )),
             limit: 16,
         })
@@ -309,7 +316,7 @@ async fn event_stream_manager_surfaces_domain_rebase_for_stale_resume_cursors() 
             scope: projection_scope.clone(),
             after: Some(AuditProjectionCursor::for_scope(
                 projection_scope,
-                EventCursor::new(99),
+                EventCursor::new(STALE_CURSOR),
             )),
             limit: 16,
         })
@@ -447,7 +454,7 @@ async fn event_stream_manager_runtime_resume_rebases_stale_cursor_to_snapshot() 
     let manager = event_stream_manager(Arc::clone(&runtime_log), audit_log);
     let scope = scope_for_thread(ThreadId::new("thread-a").unwrap());
     let projection_scope = ProjectionScope::from_resource_scope(&scope);
-    let stale_cursor = ProjectionCursor::for_scope(projection_scope.clone(), EventCursor::new(99));
+    let stale_cursor = ProjectionCursor::for_scope(projection_scope.clone(), EventCursor::new(STALE_CURSOR));
 
     runtime_log
         .append(RuntimeEvent::dispatch_requested(
@@ -575,7 +582,7 @@ async fn event_stream_manager_audit_resume_rebases_stale_cursor_to_snapshot() {
     let ctx = execution_context_for_scope(scope_for_thread(ThreadId::new("thread-a").unwrap()));
     let projection_scope = ProjectionScope::from_resource_scope(&ctx.resource_scope);
     let stale_cursor =
-        AuditProjectionCursor::for_scope(projection_scope.clone(), EventCursor::new(99));
+        AuditProjectionCursor::for_scope(projection_scope.clone(), EventCursor::new(STALE_CURSOR));
     let action = Action::Dispatch {
         capability: capability_id(),
         estimated_resources: Default::default(),
@@ -666,7 +673,7 @@ async fn event_stream_manager_resume_snapshot_serialization_remains_metadata_onl
             scope: ProjectionScope::from_resource_scope(&ctx.resource_scope),
             after: Some(AuditProjectionCursor::for_scope(
                 ProjectionScope::from_resource_scope(&ctx.resource_scope),
-                EventCursor::new(99),
+                EventCursor::new(STALE_CURSOR),
             )),
             limit: 16,
         })
@@ -808,7 +815,7 @@ async fn replay_projection_service_projects_timeline_and_run_status_by_scope() {
         capability.clone(),
         provider.clone(),
         RuntimeKind::Mcp,
-        42,
+        TEST_TOKEN_COUNT,
     ))
     .await
     .unwrap();
@@ -864,7 +871,7 @@ async fn replay_projection_updates_return_rebase_signal_for_foreign_or_stale_cur
             scope: ProjectionScope::from_resource_scope(&scope),
             after: Some(ProjectionCursor::for_scope(
                 ProjectionScope::from_resource_scope(&scope),
-                EventCursor::new(99),
+                EventCursor::new(STALE_CURSOR),
             )),
             limit: 16,
         })
@@ -873,7 +880,7 @@ async fn replay_projection_updates_return_rebase_signal_for_foreign_or_stale_cur
 
     match error {
         ProjectionError::RebaseRequired { requested, .. } => {
-            assert_eq!(requested.runtime, EventCursor::new(99));
+            assert_eq!(requested.runtime, EventCursor::new(STALE_CURSOR));
         }
         other => panic!("expected rebase-required projection error, got {other:?}"),
     }
@@ -978,7 +985,7 @@ async fn replay_projection_folds_dispatch_lifecycle_into_capability_activity() {
         capability.clone(),
         provider.clone(),
         RuntimeKind::Mcp,
-        42,
+        TEST_TOKEN_COUNT,
     ))
     .await
     .unwrap();
@@ -999,7 +1006,7 @@ async fn replay_projection_folds_dispatch_lifecycle_into_capability_activity() {
     assert_eq!(activity.status, CapabilityActivityStatus::Completed);
     assert_eq!(activity.provider.as_ref(), Some(&provider));
     assert_eq!(activity.runtime, Some(RuntimeKind::Mcp));
-    assert_eq!(activity.output_bytes, Some(42));
+    assert_eq!(activity.output_bytes, Some(TEST_TOKEN_COUNT));
     assert_eq!(activity.error_kind, None);
 }
 
@@ -2110,7 +2117,7 @@ async fn replay_projection_updates_with_small_limit_handles_long_prefix() {
 
     // Seed many prefix entries (smaller than the rebase cap, larger than the
     // internal page limit so we exercise the paging fold path).
-    let prefix_len: usize = 600;
+    let prefix_len: usize = TEST_PREFIX_LEN;
     for _ in 0..prefix_len {
         log.append(RuntimeEvent::dispatch_requested(
             scope.clone(),
@@ -2673,7 +2680,7 @@ async fn non_hook_runtime_events_project_with_no_hook_metadata() {
         provider: Some(provider_id()),
         runtime: Some(RuntimeKind::Mcp),
         process_id: Some(ProcessId::new()),
-        output_bytes: Some(42),
+        output_bytes: Some(TEST_TOKEN_COUNT),
         error_kind: None,
         hook_id: None,
         hook_point: None,
