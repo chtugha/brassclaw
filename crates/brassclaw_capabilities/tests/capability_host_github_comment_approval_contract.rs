@@ -111,7 +111,7 @@ async fn capability_host_rejects_mutated_github_comment_issue_replay_before_disp
             input: json!({
                 "owner": "nearai",
                 "repo": "brassclaw",
-                "issue_number": 3806,
+                "issue_number": TEST_ISSUE_NUMBER,
                 "body": "mutated approved comment"
             }),
             trust_decision: github_comment_trust_decision(),
@@ -167,7 +167,7 @@ async fn blocked_github_comment_fixture() -> GitHubCommentApprovalFixture {
     let input = json!({
         "owner": "nearai",
         "repo": "brassclaw",
-        "issue_number": 3806,
+        "issue_number": TEST_ISSUE_NUMBER,
         "body": "approved comment"
     });
 
