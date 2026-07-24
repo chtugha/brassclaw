@@ -319,6 +319,9 @@ fn input_issue_repair(issue: &CapabilityInputIssue) -> CapabilityInputRepair {
     }
 }
 
+/// Maximum byte length for a synthetic provider-error result-ref suffix.
+const MAX_PROVIDER_ERROR_SUFFIX_BYTES: usize = 240;
+
 pub(super) fn synthetic_provider_error_result_ref(
     call: &CapabilityCallCandidate,
 ) -> Result<LoopResultRef, AgentLoopExecutorError> {
@@ -333,7 +336,7 @@ pub(super) fn synthetic_provider_error_result_ref(
         sanitize_result_ref_suffix(&provider_replay.provider_turn_id),
         sanitize_result_ref_suffix(&provider_replay.provider_call_id)
     );
-    suffix.truncate(240);
+    suffix.truncate(MAX_PROVIDER_ERROR_SUFFIX_BYTES);
     LoopResultRef::new(format!("result:{suffix}")).map_err(|_| {
         AgentLoopExecutorError::PlannerContract {
             detail: "provider error result ref was invalid",
