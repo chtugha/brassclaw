@@ -755,11 +755,16 @@ mod tests {
 
     #[test]
     fn test_json_to_document_round_trip() {
+        // These test values exercise each JSON number kind in the document
+        // round-trip: positive integer, negative integer, and decimal.
+        const TEST_COUNT: i64 = 42;
+        const TEST_NEGATIVE: i64 = -7;
+        const TEST_RATIO: f64 = 3.125;
         let json = serde_json::json!({
             "name": "test",
-            "count": 42,
-            "negative": -7,
-            "ratio": 3.125,
+            "count": TEST_COUNT,
+            "negative": TEST_NEGATIVE,
+            "ratio": TEST_RATIO,
             "active": true,
             "nothing": null,
             "tags": ["a", "b"],

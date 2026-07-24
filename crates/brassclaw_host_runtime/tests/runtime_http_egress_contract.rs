@@ -1,3 +1,7 @@
+/// JSON-RPC error code for "method not found" (per JSON-RPC 2.0 spec).
+const JSONRPC_METHOD_NOT_FOUND: i32 = -32601;
+
+
 use brassclaw_capabilities::{
     CapabilityObligationHandler, CapabilityObligationPhase, CapabilityObligationRequest,
 };
@@ -2132,7 +2136,7 @@ impl NetworkHttpEgress for JsonRpcMcpNetwork {
             _ => (
                 500,
                 Vec::new(),
-                json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"method not found"}}),
+                json!({"jsonrpc":"2.0","id":id,"error":{"code":JSONRPC_METHOD_NOT_FOUND,"message":"method not found"}}),
             ),
         };
         let body = if status == 202 {

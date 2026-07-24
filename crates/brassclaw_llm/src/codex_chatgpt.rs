@@ -1470,7 +1470,10 @@ data: {"type":"response.completed","response":{"usage":{"input_tokens":3,"output
             tokio::spawn(async move {
                 for _ in 0..2 {
                     let (mut socket, _) = listener.accept().await.expect("accept request");
-                    let mut request = [0u8; 4096];
+                    // 4096-byte buffer for reading the raw HTTP/1.1 request
+                    // from the test socket — sufficient for all fixture requests.
+                    const REQUEST_READ_BUFFER_BYTES: usize = 4096;
+                    let mut request = [0u8; REQUEST_READ_BUFFER_BYTES];
                     let bytes_read = socket.read(&mut request).await.expect("read request");
                     let request = String::from_utf8_lossy(&request[..bytes_read]);
                     if request.starts_with("GET /models") {

@@ -1,3 +1,7 @@
+/// Integer value used as an invalid-type header value in schema rejection tests.
+const INVALID_HEADER_INT: i64 = 123;
+
+
 mod support;
 
 use support::legacy_capability_fixture_to_v2_with_schema_suffix as legacy_capability_fixture_to_v2;
@@ -568,7 +572,7 @@ async fn visible_surface_resolves_builtin_first_party_input_schema_refs() {
     for input in [
         json!({
             "url": "https://api.example.test/v1/items",
-            "headers": {"x-request-id": 123}
+            "headers": {"x-request-id": INVALID_HEADER_INT}
         }),
         json!({
             "url": "https://api.example.test/v1/items",

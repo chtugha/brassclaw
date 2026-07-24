@@ -1,3 +1,11 @@
+/// Integer value used as an invalid-type for string fields in rejection tests.
+const INVALID_TYPE_INT: i64 = 123;
+/// Large item count used to trigger output-too-large failure in JSON stringify test.
+const STRINGIFY_OVERFLOW_ITEM_COUNT: usize = 80_000;
+/// Integer value used as an invalid non-string target in memory write rejection test.
+const INVALID_MEMORY_TARGET_INT: i64 = 42;
+
+
 use std::{
     collections::BTreeMap,
     io::Write,
@@ -998,7 +1006,7 @@ async fn builtin_trigger_remove_rejects_malformed_input() {
     let runtime = runtime_with_trigger_repository(repository);
     let context = execution_context([TRIGGER_REMOVE_CAPABILITY_ID]);
 
-    for input in [json!({}), json!({ "trigger_id": 123 })] {
+    for input in [json!({}), json!({ "trigger_id": INVALID_TYPE_INT })] {
         let error = invoke_with_context(
             &runtime,
             TRIGGER_REMOVE_CAPABILITY_ID,
@@ -1082,7 +1090,7 @@ async fn builtin_rejects_oversized_outputs_before_return() {
             execution_context([JSON_CAPABILITY_ID]),
             capability_id(JSON_CAPABILITY_ID),
             ResourceEstimate::default(),
-            json!({"operation": "stringify", "data": {"items": vec!["xxxxxxxx"; 80_000]}}),
+            json!({"operation": "stringify", "data": {"items": vec!["xxxxxxxx"; STRINGIFY_OVERFLOW_ITEM_COUNT]}}),
             trust_decision(),
         ))
         .await
@@ -1416,7 +1424,7 @@ async fn memory_write_rejects_traversal_paths() {
 #[tokio::test]
 async fn memory_write_rejects_non_string_target() {
     let runtime = runtime_with_filesystem(InMemoryBackend::new());
-    for target in [json!(null), json!(42), json!(true)] {
+    for target in [json!(null), json!(INVALID_MEMORY_TARGET_INT), json!(true)] {
         let failure = invoke_with_context(
             &runtime,
             MEMORY_WRITE_CAPABILITY_ID,

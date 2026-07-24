@@ -1,3 +1,7 @@
+/// Runner lease TTL (ms) used in scheduler heartbeat tests — short enough to
+/// expire quickly in unit tests without causing timing flakes.
+const RUNNER_LEASE_TTL_MS: i64 = 40;
+
 use std::{
     sync::{
         Arc, Mutex,
@@ -428,7 +432,7 @@ impl TurnStateStore for DurableTurnStoreStub {
         _admission_policy: &dyn brassclaw_turns::TurnAdmissionPolicy,
         _run_profile_resolver: &dyn brassclaw_turns::RunProfileResolver,
     ) -> Result<SubmitTurnResponse, TurnError> {
-        panic!("store stub should not submit turns")
+        panic!("test double: submit_turn should not be called on this fake store")
     }
 
     async fn resume_turn(
@@ -1219,7 +1223,7 @@ async fn executor_panic_fails_run() {
 async fn scheduler_heartbeats_long_running_executor_until_completion() {
     let store = Arc::new(InMemoryTurnStateStore::with_limits(
         InMemoryTurnStateStoreLimits {
-            runner_lease_ttl: ChronoDuration::milliseconds(40),
+            runner_lease_ttl: ChronoDuration::milliseconds(RUNNER_LEASE_TTL_MS),
             ..InMemoryTurnStateStoreLimits::default()
         },
     ));
@@ -1253,7 +1257,7 @@ async fn scheduler_heartbeats_long_running_executor_until_completion() {
 async fn canceled_hanging_executor_lease_expires_to_cancelled() {
     let store = Arc::new(InMemoryTurnStateStore::with_limits(
         InMemoryTurnStateStoreLimits {
-            runner_lease_ttl: ChronoDuration::milliseconds(40),
+            runner_lease_ttl: ChronoDuration::milliseconds(RUNNER_LEASE_TTL_MS),
             ..InMemoryTurnStateStoreLimits::default()
         },
     ));

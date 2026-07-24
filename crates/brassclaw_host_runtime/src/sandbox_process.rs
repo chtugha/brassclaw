@@ -705,9 +705,12 @@ mod tests {
 
     #[test]
     fn network_broker_port_uses_docker_host_gateway_proxy_url() {
-        let config = RebornSandboxConfig::new("/tmp/reborn-sandbox").with_network_broker_port(8181);
+        // 8181 is the test broker port — distinct from the production default to
+        // catch any hard-coded port assumptions in the config helper.
+        const TEST_BROKER_PORT: u16 = 8181;
+        let config = RebornSandboxConfig::new("/tmp/reborn-sandbox").with_network_broker_port(TEST_BROKER_PORT);
         let env = config.command_env(HashMap::new()).unwrap();
-        let proxy_url = format!("http://{}:8181", broker::docker_host_gateway());
+        let proxy_url = format!("http://{}:{TEST_BROKER_PORT}", broker::docker_host_gateway());
 
         assert!(env.contains(&format!("BRASSCLAW_REBORN_HTTP_PROXY={proxy_url}")));
         assert!(env.contains(&format!("http_proxy={proxy_url}")));

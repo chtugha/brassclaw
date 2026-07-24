@@ -1,3 +1,7 @@
+/// Integer value used as an invalid-type URL in rejection tests.
+const INVALID_TYPE_INT: i64 = 123;
+
+
 use std::{
     panic::AssertUnwindSafe,
     sync::{Arc, Mutex},
@@ -304,7 +308,7 @@ async fn first_party_handler_maps_egress_error_codes_to_dispatch_errors() {
 
 #[tokio::test]
 async fn first_party_handler_rejects_non_string_url_input() {
-    for input in [json!({"url": 123}), json!({"url": true})] {
+    for input in [json!({"url": INVALID_TYPE_INT}), json!({"url": true})] {
         let handle = SecretHandle::new("api-token").unwrap();
         let secret_store = Arc::new(InMemorySecretStore::new());
         let runtime = http_first_party_services(&handle)

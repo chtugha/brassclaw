@@ -5,6 +5,12 @@
 
 use std::sync::{Arc, Mutex};
 
+/// Similarity scores used in cross-scope filtering tests.
+const SCORE_ALLOWED: f32 = 1.0;
+const SCORE_WRONG_TENANT: f32 = 0.9;
+const SCORE_WRONG_USER: f32 = 0.8;
+const SCORE_WRONG_AGENT: f32 = 0.7;
+
 use async_trait::async_trait;
 use brassclaw_filesystem::{FilesystemError, FilesystemOperation};
 use brassclaw_host_api::{AgentId, ProjectId, TenantId, ThreadId, UserId, VirtualPath};
@@ -284,16 +290,16 @@ async fn cross_user_isolation_scope_passed_to_backend() {
 #[tokio::test]
 async fn cross_scope_backend_results_are_filtered() {
     let results = vec![
-        make_result("tenant-a", "user-x", "allowed.md", 1.0, "allowed snippet"),
-        make_result("tenant-b", "user-x", "wrong-tenant.md", 0.9, "tenant leak"),
-        make_result("tenant-a", "user-y", "wrong-user.md", 0.8, "user leak"),
+        make_result("tenant-a", "user-x", "allowed.md", SCORE_ALLOWED, "allowed snippet"),
+        make_result("tenant-b", "user-x", "wrong-tenant.md", SCORE_WRONG_TENANT, "tenant leak"),
+        make_result("tenant-a", "user-y", "wrong-user.md", SCORE_WRONG_USER, "user leak"),
         make_result_with_agent(
             "tenant-a",
             "user-x",
             Some("agent-other"),
             None,
             "wrong-agent.md",
-            0.7,
+            SCORE_WRONG_AGENT,
             "agent leak",
         ),
     ];

@@ -712,7 +712,10 @@ mod tests {
 
     #[test]
     fn capture_command_output_preserves_binary_saved_output() {
-        let mut raw = vec![0xff; COMMAND_MAX_OUTPUT_SIZE + 1];
+        // 0xFF = all-bits-set fill: verifies binary data is not corrupted by
+        // UTF-8 or text-mode truncation paths.
+        const BINARY_FILL_BYTE: u8 = 0xFF;
+        let mut raw = vec![BINARY_FILL_BYTE; COMMAND_MAX_OUTPUT_SIZE + 1];
         raw.extend_from_slice(b" clean tail");
         let stdout = saved_stream_capture(&raw);
 
