@@ -191,7 +191,7 @@ mod tests {
     #[test]
     fn test_budget_tracker_would_exceed() {
         let mut tracker = TokenBudgetTracker::new(100);
-        tracker.consume(80);
+        tracker.consume(TEST_CONSUME_LARGE);
 
         assert!(!tracker.would_exceed(20));
         assert!(tracker.would_exceed(21));
@@ -204,10 +204,10 @@ mod tests {
 
         assert_eq!(tracker.utilization(), 0.0);
 
-        tracker.consume(50);
+        tracker.consume(TEST_CONSUME_HALF);
         assert_eq!(tracker.utilization(), 0.5);
 
-        tracker.consume(50);
+        tracker.consume(TEST_CONSUME_HALF);
         assert_eq!(tracker.utilization(), 1.0);
 
         tracker.consume(10);
