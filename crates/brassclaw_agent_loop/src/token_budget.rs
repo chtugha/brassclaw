@@ -131,6 +131,10 @@ impl TokenBudgetTracker {
 mod tests {
     use super::*;
 
+    // Token amounts used across budget tracker tests (100-token budget).
+    const TEST_CONSUME_LARGE: usize = 80; // Leaves 20 remaining from a 100-token budget.
+    const TEST_CONSUME_HALF: usize = 50;  // Half of a 100-token budget.
+
     #[test]
     fn test_estimate_tokens_empty() {
         assert_eq!(estimate_tokens(""), 0);
