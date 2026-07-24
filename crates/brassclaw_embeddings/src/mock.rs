@@ -4,6 +4,9 @@ use async_trait::async_trait;
 
 use crate::provider::{EmbeddingError, EmbeddingProvider};
 
+/// Maximum text input length the mock provider accepts.
+const MOCK_MAX_INPUT_LENGTH: usize = 10_000;
+
 /// A mock embedding provider for testing.
 ///
 /// Generates deterministic embeddings based on text hash.
