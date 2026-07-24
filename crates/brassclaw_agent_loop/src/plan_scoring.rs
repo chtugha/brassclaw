@@ -21,6 +21,32 @@
 use crate::content_cache::ContentCacheState;
 use crate::plan_state::AgentPlanState;
 
+// ── OutcomeVector weights ─────────────────────────────────────────────────────
+/// Weight applied to plan-completion component in the overall score.
+const WEIGHT_PLAN_COMPLETION: f64 = 0.40;
+/// Weight applied to tool-success-rate component in the overall score.
+const WEIGHT_TOOL_SUCCESS: f64 = 0.30;
+/// Weight applied to iteration-efficiency component in the overall score.
+const WEIGHT_ITERATION_EFFICIENCY: f64 = 0.20;
+/// Weight applied to cache-utility component in the overall score.
+const WEIGHT_CACHE_UTILITY: f64 = 0.10;
+
+// ── classify_tier thresholds ─────────────────────────────────────────────────
+/// Minimum usage count for promotion to Candidate tier.
+const TIER_CANDIDATE_MIN_USAGE: u64 = 50;
+/// Minimum usage count for Mature tier.
+const TIER_MATURE_MIN_USAGE: u64 = 20;
+/// Minimum Wilson lower bound for Mature tier.
+const TIER_MATURE_MIN_WILSON: f64 = 0.70;
+/// Minimum usage count for Growing tier.
+const TIER_GROWING_MIN_USAGE: u64 = 5;
+/// Minimum Wilson lower bound for Growing tier.
+const TIER_GROWING_MIN_WILSON: f64 = 0.50;
+
+// ── Wilson score formula constant ────────────────────────────────────────────
+/// Divisor inside the square-root term of the Wilson score interval (always 4).
+const WILSON_SCORE_INNER_DIVISOR: f64 = 4.0;
+
 // ── SkillMaturityTier ─────────────────────────────────────────────────────────
 
 /// Maturity level of a plan/skill entry in the library.
@@ -98,10 +124,10 @@ impl OutcomeVector {
     /// plan_completion (0.40) + tool_success_rate (0.30)
     /// + iteration_efficiency (0.20) + cache_utility (0.10).
     pub fn overall_score(&self) -> f64 {
-        0.40 * self.plan_completion
-            + 0.30 * self.tool_success_rate
-            + 0.20 * self.iteration_efficiency
-            + 0.10 * self.cache_utility
+        WEIGHT_PLAN_COMPLETION * self.plan_completion
+            + WEIGHT_TOOL_SUCCESS * self.tool_success_rate
+            + WEIGHT_ITERATION_EFFICIENCY * self.iteration_efficiency
+            + WEIGHT_CACHE_UTILITY * self.cache_utility
     }
 }
 
@@ -181,7 +207,7 @@ pub fn wilson_lower_bound(successes: u64, failures: u64, z: f64) -> f64 {
     let p_hat = successes as f64 / n_f;
     let z2 = z * z;
     let numerator =
-        p_hat + z2 / (2.0 * n_f) - z * ((p_hat * (1.0 - p_hat) + z2 / (4.0 * n_f)) / n_f).sqrt();
+        p_hat + z2 / (2.0 * n_f) - z * ((p_hat * (1.0 - p_hat) + z2 / (WILSON_SCORE_INNER_DIVISOR * n_f)) / n_f).sqrt();
     let denominator = 1.0 + z2 / n_f;
     numerator / denominator
 }
@@ -206,13 +232,13 @@ pub fn classify_tier(
     w_lower: f64,
     promotion_threshold: f64,
 ) -> SkillMaturityTier {
-    if usage_count >= 50 && w_lower >= promotion_threshold {
+    if usage_count >= TIER_CANDIDATE_MIN_USAGE && w_lower >= promotion_threshold {
         return SkillMaturityTier::Candidate;
     }
-    if usage_count >= 20 && w_lower >= 0.70 {
+    if usage_count >= TIER_MATURE_MIN_USAGE && w_lower >= TIER_MATURE_MIN_WILSON {
         return SkillMaturityTier::Mature;
     }
-    if usage_count >= 5 && w_lower >= 0.50 {
+    if usage_count >= TIER_GROWING_MIN_USAGE && w_lower >= TIER_GROWING_MIN_WILSON {
         return SkillMaturityTier::Growing;
     }
     SkillMaturityTier::Seedling
