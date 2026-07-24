@@ -18,7 +18,7 @@ use brassclaw_common::paths::brassclaw_base_dir;
 ///
 /// When we only have an OAuth token the provider factory in `llm/mod.rs`
 /// checks for this value and routes to `AnthropicOAuthProvider`, so this
-/// placeholder is never sent over the wire.
+/// sentinel value is never sent over the wire.
 pub const OAUTH_PLACEHOLDER: &str = "oauth-placeholder";
 
 /// Prompt cache retention policy for Anthropic.

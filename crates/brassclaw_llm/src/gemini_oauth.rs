@@ -129,6 +129,11 @@ fn parse_custom_headers() -> std::collections::HashMap<String, String> {
     headers
 }
 
+/// Context window size (tokens) for Gemini Pro models (2M).
+const GEMINI_PRO_CONTEXT_TOKENS: u32 = 2_000_000;
+/// Context window size (tokens) for Gemini Flash models (1M).
+const GEMINI_FLASH_CONTEXT_TOKENS: u32 = 1_000_000;
+
 /// Return the context window length for a known Gemini model.
 /// Uses explicit match on known model IDs, with a fallback heuristic
 /// for unrecognized models.
@@ -138,18 +143,18 @@ fn gemini_context_length(model: &str) -> u32 {
         "gemini-2.5-pro"
         | "gemini-3-pro-preview"
         | "gemini-3.1-pro-preview"
-        | "gemini-3.1-pro-preview-customtools" => 2_000_000,
+        | "gemini-3.1-pro-preview-customtools" => GEMINI_PRO_CONTEXT_TOKENS,
         // Flash / Flash-Lite — 1M context
         "gemini-2.5-flash"
         | "gemini-2.5-flash-lite"
         | "gemini-3-flash-preview"
-        | "gemini-3.1-flash-lite-preview" => 1_000_000,
+        | "gemini-3.1-flash-lite-preview" => GEMINI_FLASH_CONTEXT_TOKENS,
         // Legacy
-        "gemini-1.5-pro" => 2_000_000,
-        "gemini-1.5-flash" => 1_000_000,
-        "gemini-2.0-flash" => 1_000_000,
+        "gemini-1.5-pro" => GEMINI_PRO_CONTEXT_TOKENS,
+        "gemini-1.5-flash" => GEMINI_FLASH_CONTEXT_TOKENS,
+        "gemini-2.0-flash" => GEMINI_FLASH_CONTEXT_TOKENS,
         // Fallback for unknown models
-        _ => 1_000_000,
+        _ => GEMINI_FLASH_CONTEXT_TOKENS,
     }
 }
 

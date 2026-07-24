@@ -1127,12 +1127,14 @@ data: {"type":"response.output_text.delta","delta":" ignored"}
 
     #[tokio::test]
     async fn test_provider_new() {
+        // 300 = 5-minute keepalive timeout in seconds for the Codex provider.
+        const CODEX_KEEPALIVE_SECS: u64 = 300;
         let jwt = make_test_jwt("acct_test");
         let provider = OpenAiCodexProvider::new(
             "gpt-5.3-codex",
             "https://chatgpt.com/backend-api/codex",
             &jwt,
-            300,
+            CODEX_KEEPALIVE_SECS,
         );
         assert!(provider.is_ok());
         let provider = provider.unwrap();
@@ -1144,11 +1146,12 @@ data: {"type":"response.output_text.delta","delta":" ignored"}
     #[tokio::test]
     async fn test_update_token() {
         let jwt1 = make_test_jwt("acct_old");
+        const CODEX_KEEPALIVE_SECS: u64 = 300;
         let provider = OpenAiCodexProvider::new(
             "gpt-5.3-codex",
             "https://chatgpt.com/backend-api/codex",
             &jwt1,
-            300,
+            CODEX_KEEPALIVE_SECS,
         )
         .unwrap();
 
@@ -1164,11 +1167,12 @@ data: {"type":"response.output_text.delta","delta":" ignored"}
     #[test]
     fn test_build_request_body_structure() {
         let jwt = make_test_jwt("acct_test");
+        const CODEX_KEEPALIVE_SECS: u64 = 300;
         let provider = OpenAiCodexProvider::new(
             "gpt-5.3-codex",
             "https://chatgpt.com/backend-api/codex",
             &jwt,
-            300,
+            CODEX_KEEPALIVE_SECS,
         )
         .unwrap();
 

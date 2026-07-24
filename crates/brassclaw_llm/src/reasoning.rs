@@ -14,6 +14,13 @@ use crate::{
     ToolCompletionRequest, ToolDefinition,
 };
 
+/// Maximum tokens for the normal reasoning LLM request.
+const REASONING_MAX_TOKENS: u32 = 2048;
+/// Temperature for normal reasoning completions (balanced accuracy vs. diversity).
+const REASONING_TEMPERATURE_NORMAL: f32 = 0.3;
+/// Temperature for careful/structured reasoning completions (more deterministic).
+const REASONING_TEMPERATURE_CAREFUL: f32 = 0.1;
+
 /// Token the agent returns when it has nothing to say (e.g. in group chats).
 /// The dispatcher should check for this and suppress the message.
 pub const SILENT_REPLY_TOKEN: &str = "NO_REPLY";
@@ -443,8 +450,8 @@ impl Reasoning {
         }
 
         let request = CompletionRequest::new(messages)
-            .with_max_tokens(2048)
-            .with_temperature(0.3);
+            .with_max_tokens(REASONING_MAX_TOKENS)
+            .with_temperature(REASONING_TEMPERATURE_NORMAL);
 
         let response = self.llm.complete(request).await?;
 
@@ -571,7 +578,7 @@ Respond in JSON format:
 
         let request = CompletionRequest::new(messages)
             .with_max_tokens(1024)
-            .with_temperature(0.1);
+            .with_temperature(REASONING_TEMPERATURE_CAREFUL);
 
         let response = self.llm.complete(request).await?;
 

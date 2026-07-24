@@ -7,6 +7,11 @@
 //! Tokens are persisted to `~/.brassclaw/openai_codex_session.json` and
 //! auto-refreshed before expiry.
 
+/// Default session TTL (seconds) when the server returns expires_in=0 — 1 hour.
+const SECS_PER_HOUR: u64 = 3600;
+/// Default session keepalive TTL for the token manager — 15 minutes.
+const SECS_15_MINUTES: u64 = 900;
+
 use chrono::{DateTime, Utc};
 use reqwest::Client;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
@@ -112,7 +117,7 @@ impl UserCodeResponse {
             let remaining = dt.signed_duration_since(Utc::now()).num_seconds();
             return remaining.max(0) as u64;
         }
-        900 // default 15 minutes
+        SECS_15_MINUTES // default 15 minutes
     }
 }
 
@@ -474,7 +479,7 @@ impl OpenAiCodexSessionManager {
                     token_resp.expires_in
                 } else {
                     tracing::debug!("Token response has expires_in=0, defaulting to 3600s");
-                    3600
+                    SECS_PER_HOUR
                 } as i64),
             created_at: Utc::now(),
         };

@@ -77,13 +77,18 @@ pub enum LlmError {
     Io(#[from] std::io::Error),
 }
 
+/// HTTP 413 — Payload Too Large (used to detect context overflow).
+const HTTP_PAYLOAD_TOO_LARGE: u16 = 413;
+/// HTTP 400 — Bad Request (may also indicate context overflow in some providers).
+const HTTP_BAD_REQUEST: u16 = 400;
+
 pub(crate) fn context_length_error(status_code: u16, response_text: &str) -> Option<LlmError> {
-    if status_code != 413 && status_code != 400 {
+    if status_code != HTTP_PAYLOAD_TOO_LARGE && status_code != HTTP_BAD_REQUEST {
         return None;
     }
 
     let lower = response_text.to_ascii_lowercase();
-    let is_context_overflow = status_code == 413 || is_context_length_error_message(&lower);
+    let is_context_overflow = status_code == HTTP_PAYLOAD_TOO_LARGE || is_context_length_error_message(&lower);
     if !is_context_overflow {
         return None;
     }

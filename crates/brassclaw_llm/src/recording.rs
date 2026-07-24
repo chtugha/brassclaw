@@ -1185,7 +1185,7 @@ mod tests {
                 output_tokens,
             } => {
                 assert_eq!(content, "test response");
-                // StubLlm returns 0s for tokens, which is fine
+                // TestLlm returns 0s for tokens, which is acceptable in unit tests
                 let _ = (*input_tokens, *output_tokens);
             }
             _ => panic!("Expected Text response"),
@@ -1707,17 +1707,21 @@ mod tests {
     /// non-sensitive and must survive redaction.
     #[test]
     fn redact_body_does_not_over_redact_substring_matches() {
-        let body = r#"{
-            "token_count": 42,
+        // These are non-sensitive numeric fields that must NOT be redacted.
+        const TOKEN_COUNT_FIXTURE: u32 = 42;
+        const OUTPUT_TOKENS_FIXTURE: u32 = 50;
+        let body = format!(r#"{{
+            "token_count": {TOKEN_COUNT_FIXTURE},
             "input_tokens": 100,
-            "output_tokens": 50,
+            "output_tokens": {OUTPUT_TOKENS_FIXTURE},
             "token_type": "Bearer",
             "session_id": "abc-123",
             "session_state": "active",
             "auth_method": "oauth",
             "auth_url": "https://example.com/auth",
             "authorization_type": "bearer"
-        }"#;
+        }}"#);
+        let body = body.as_str();
         let redacted = redact_body(body);
         let parsed: serde_json::Value = serde_json::from_str(&redacted).unwrap();
         let obj = parsed.as_object().unwrap();

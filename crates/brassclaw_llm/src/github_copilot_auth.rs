@@ -652,7 +652,8 @@ mod tests {
         let client = reqwest::Client::new();
         let manager = CopilotTokenManager::new(client, "unused_oauth".to_string().into());
 
-        let far_future = unix_now() + 3600;
+        const SECS_PER_HOUR: u64 = 3600;
+        let far_future = unix_now() + SECS_PER_HOUR;
         {
             let mut guard = manager.cached.write().await;
             *guard = Some(CachedCopilotToken {
@@ -674,7 +675,8 @@ mod tests {
         let client = reqwest::Client::new();
         let manager = CopilotTokenManager::new(client, "unused_oauth".to_string().into());
 
-        let far_future = unix_now() + 3600;
+        const SECS_PER_HOUR: u64 = 3600;
+        let far_future = unix_now() + SECS_PER_HOUR;
         {
             let mut guard = manager.cached.write().await;
             *guard = Some(CachedCopilotToken {

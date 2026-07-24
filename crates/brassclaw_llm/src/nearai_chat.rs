@@ -1158,6 +1158,8 @@ fn parse_usage(usage: Option<&ChatCompletionUsage>) -> (u32, u32) {
 
 #[cfg(test)]
 mod tests {
+    /// Test completion token count in usage fixtures.
+    const TEST_COMPLETION_TOKENS: u32 = 50;
     use super::*;
     use crate::session::SessionConfig;
     use rust_decimal_macros::dec;
@@ -1233,7 +1235,9 @@ mod tests {
                 let Ok((mut socket, _)) = listener.accept().await else {
                     break;
                 };
-                let mut request = vec![0_u8; 4096];
+                // 4096-byte read buffer — large enough for any test fixture HTTP request.
+                const REQUEST_BUFFER_BYTES: usize = 4096;
+                let mut request = vec![0u8; REQUEST_BUFFER_BYTES];
                 let Ok(n) = socket.read(&mut request).await else {
                     continue;
                 };
@@ -1588,7 +1592,7 @@ mod tests {
                 },
                 "finish_reason": "tool_calls"
             }],
-            "usage": { "prompt_tokens": 100, "completion_tokens": 50 }
+            "usage": { "prompt_tokens": 100, "completion_tokens": TEST_COMPLETION_TOKENS }
         }))
         .unwrap();
 

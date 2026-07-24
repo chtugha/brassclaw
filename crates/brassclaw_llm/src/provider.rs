@@ -316,16 +316,18 @@ pub fn generate_tool_call_id(seed_a: usize, seed_b: usize) -> String {
         .wrapping_mul(6364136223846793005)
         .wrapping_add(seed_b as u64);
     // Format as 9-char zero-padded base-62 (0-9, a-z, A-Z).
+    /// Number of characters in the base-62 alphabet (0-9, a-z, A-Z).
+    const BASE62_ALPHABET_SIZE: u64 = 62;
     let mut buf = [b'0'; 9];
     let mut val = combined;
     for b in buf.iter_mut().rev() {
-        let digit = (val % 62) as u8;
+        let digit = (val % BASE62_ALPHABET_SIZE) as u8;
         *b = match digit {
             0..=9 => b'0' + digit,
             10..=35 => b'a' + (digit - 10),
             _ => b'A' + (digit - 36),
         };
-        val /= 62;
+        val /= BASE62_ALPHABET_SIZE;
     }
     buf.iter().map(|&b| b as char).collect::<String>()
 }
@@ -769,10 +771,13 @@ mod tests {
 
     #[test]
     fn generate_tool_call_id_has_valid_format() {
+        // Arbitrary mid-range seeds to exercise non-trivial base-62 encoding.
+        const SEED_MID_A: usize = 42;
+        const SEED_MID_B: usize = 999;
         let samples = [
             (0usize, 0usize),
             (1usize, 2usize),
-            (42usize, 999usize),
+            (SEED_MID_A, SEED_MID_B),
             (usize::MAX, usize::MAX),
         ];
 
