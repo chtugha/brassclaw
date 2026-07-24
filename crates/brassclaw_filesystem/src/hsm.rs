@@ -38,7 +38,7 @@ use crate::{
     FilesystemOperation, RecordVersion, RootFilesystem, TxnCapability, VersionedEntry,
 };
 
-/// Placeholder HSM-style backend. See the module-level docs.
+/// HSM-style backend demonstrating the universal dispatch seam. See the module-level docs.
 pub struct HsmBackend {
     inner: InMemoryBackend,
 }
