@@ -2139,6 +2139,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "brassclaw_host_api",
+ "brassclaw_product_adapters",
  "brassclaw_turns",
  "chrono",
  "hex",
