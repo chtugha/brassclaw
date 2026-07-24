@@ -1,4 +1,7 @@
 import { React, html } from "../../../lib/html.js";
+
+// Stroke width for the overflow ("more") action icon on extension cards.
+const OVERFLOW_ICON_STROKE_WIDTH = 2.4;
 import { Badge } from "../../../design-system/badge.js";
 import { Button } from "../../../design-system/button.js";
 import { Icon } from "../../../design-system/icons.js";
@@ -51,7 +54,7 @@ function OverflowMenu({ actions, isBusy }) {
         onClick=${() => setOpen((v) => !v)}
         className="grid h-7 w-7 place-items-center rounded-md border border-transparent text-[var(--v2-text-faint)] hover:bg-[var(--v2-surface-muted)] hover:text-[var(--v2-text-strong)] disabled:cursor-not-allowed disabled:opacity-50"
       >
-        <${Icon} name="more" className="h-4 w-4" strokeWidth=${2.4} />
+        <${Icon} name="more" className="h-4 w-4" strokeWidth=${OVERFLOW_ICON_STROKE_WIDTH} />
       </button>
       ${open &&
       html`

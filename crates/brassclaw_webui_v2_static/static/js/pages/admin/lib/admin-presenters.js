@@ -1,7 +1,11 @@
+// Scale thresholds for token count display.
+const MILLION = 1_000_000;
+const THOUSAND = 1_000;
+
 export function formatTokenCount(n) {
   if (n == null || n === 0) return "0";
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+  if (n >= MILLION) return (n / MILLION).toFixed(1) + "M";
+  if (n >= THOUSAND) return (n / THOUSAND).toFixed(1) + "K";
   return String(n);
 }
 

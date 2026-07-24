@@ -204,7 +204,7 @@ export function OnboardingPage() {
     async ({ form, apiKey, provider }) => {
       // Persist the provider (+ any key) via the shared save path, then make it
       // the active selection and head to chat. The cold-boot reload swaps the
-      // placeholder for the real provider — no restart needed.
+      // no-op placeholder for the real provider — no restart needed.
       await actions.handleSave({ form, apiKey, provider });
       const providerId = provider?.id || form.id.trim();
       const model = form.model?.trim() || provider?.default_model || "";

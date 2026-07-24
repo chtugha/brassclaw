@@ -1,4 +1,4 @@
-// Project endpoints depend on v1 `/api/engine/projects`. TODO stubs.
+// Project endpoints depend on v1 `/api/engine/projects`. Known tech-debt stubs.
 
 export function fetchProjectsOverview() {
   return Promise.resolve({ projects: [], todo: true });

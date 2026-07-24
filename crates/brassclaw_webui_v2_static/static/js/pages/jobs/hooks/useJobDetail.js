@@ -1,4 +1,8 @@
 import { React } from "../../../lib/html.js";
+
+// Polling intervals for job queries (ms).
+const JOB_DETAIL_REFETCH_INTERVAL_MS = 4_000;
+const JOB_EVENTS_REFETCH_INTERVAL_MS = 2_500;
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchJobDetail, fetchJobEvents, sendJobPrompt } from "../lib/jobs-api.js";
 
@@ -10,14 +14,14 @@ export function useJobDetail(jobId) {
     queryKey: ["job-detail", jobId],
     queryFn: () => fetchJobDetail(jobId),
     enabled: Boolean(jobId),
-    refetchInterval: jobId ? 4000 : false,
+    refetchInterval: jobId ? JOB_DETAIL_REFETCH_INTERVAL_MS : false,
   });
 
   const eventsQuery = useQuery({
     queryKey: ["job-events", jobId],
     queryFn: () => fetchJobEvents(jobId),
     enabled: Boolean(jobId),
-    refetchInterval: jobId ? 2500 : false,
+    refetchInterval: jobId ? JOB_EVENTS_REFETCH_INTERVAL_MS : false,
   });
 
   const promptMutation = useMutation({

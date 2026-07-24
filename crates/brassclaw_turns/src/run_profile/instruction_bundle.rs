@@ -844,15 +844,18 @@ fn validate_context_ref(value: String, label: &'static str) -> Result<String, Ag
     Ok(value)
 }
 
+/// Maximum length of the sanitized suffix appended to a model-visible ref string.
+const REF_SUFFIX_MAX_LEN: usize = 96;
+
 fn sanitize_ref_suffix(value: &str) -> String {
-    let mut suffix = String::with_capacity(value.len().min(96));
+    let mut suffix = String::with_capacity(value.len().min(REF_SUFFIX_MAX_LEN));
     for character in value.chars() {
         if character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.') {
             suffix.push(character);
         } else {
             suffix.push('.');
         }
-        if suffix.len() >= 96 {
+        if suffix.len() >= REF_SUFFIX_MAX_LEN {
             break;
         }
     }
@@ -867,14 +870,17 @@ fn sanitize_ref_suffix(value: &str) -> String {
 fn stable_ref_hash(section: &str, source_ref: &str, safe_summary: &str, ordinal: usize) -> u64 {
     const FNV_OFFSET: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x00000100000001B3;
+    // 0xFF is the FNV domain-separator byte between fields; chosen to be
+    // outside the printable ASCII range to prevent cross-field collisions.
+    const FNV_FIELD_SEP: u8 = 0xFF;
     let mut hash = FNV_OFFSET;
     for bytes in [
         section.as_bytes(),
-        &[0xFF],
+        &[FNV_FIELD_SEP],
         source_ref.as_bytes(),
-        &[0xFF],
+        &[FNV_FIELD_SEP],
         safe_summary.as_bytes(),
-        &[0xFF],
+        &[FNV_FIELD_SEP],
         ordinal.to_string().as_bytes(),
     ] {
         for &byte in bytes {

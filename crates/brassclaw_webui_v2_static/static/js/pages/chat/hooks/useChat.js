@@ -1,3 +1,6 @@
+// Fallback retry delay when the server does not supply a Retry-After header.
+const RETRY_FALLBACK_DELAY_MS = 2_000;
+
 import {
   cancelRun as cancelRunRequest,
   createThread as createThreadRequest,
@@ -576,5 +579,5 @@ function retryAfterMs(err) {
   const raw = err.headers?.get?.("Retry-After");
   const seconds = Number(raw);
   if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
-  return 2000;
+  return RETRY_FALLBACK_DELAY_MS;
 }

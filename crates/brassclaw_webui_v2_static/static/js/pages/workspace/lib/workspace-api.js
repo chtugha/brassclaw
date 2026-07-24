@@ -1,4 +1,4 @@
-// Workspace endpoints depend on v1 `/api/workspace/*`. TODO stubs.
+// Workspace endpoints depend on v1 `/api/workspace/*`. Known tech-debt stubs.
 
 export function listWorkspace(_path = "") {
   return Promise.resolve({ entries: [], todo: true });

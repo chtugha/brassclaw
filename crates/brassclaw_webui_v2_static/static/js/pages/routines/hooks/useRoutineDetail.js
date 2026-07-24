@@ -1,4 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+// Polling interval for routine detail (ms).
+const ROUTINE_DETAIL_REFETCH_INTERVAL_MS = 5_000;
 import { React } from "../../../lib/html.js";
 import {
   fetchRoutineDetail,
@@ -14,7 +17,7 @@ export function useRoutineDetail(routineId) {
     queryKey: ["routine-detail", routineId],
     queryFn: () => fetchRoutineDetail(routineId),
     enabled: Boolean(routineId),
-    refetchInterval: routineId ? 5000 : false,
+    refetchInterval: routineId ? ROUTINE_DETAIL_REFETCH_INTERVAL_MS : false,
   });
 
   const invalidate = React.useCallback(() => {

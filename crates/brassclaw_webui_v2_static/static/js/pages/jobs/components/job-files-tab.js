@@ -1,4 +1,9 @@
 import { html } from "../../../lib/html.js";
+
+// Tree indent per depth level (px).
+const TREE_INDENT_PX = 18;
+// Left-edge base padding before the first indent level (px).
+const TREE_BASE_PADDING_PX = 12;
 import { EmptyPanel, Panel } from "../../../design-system/primitives.js";
 
 function TreeNodes({ nodes, depth = 0, selectedPath, expandingPath, onToggleDirectory, onSelectPath }) {
@@ -11,7 +16,7 @@ function TreeNodes({ nodes, depth = 0, selectedPath, expandingPath, onToggleDire
             "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm",
             selectedPath === node.path ? "bg-signal/10 text-white" : "text-iron-200 hover:bg-white/[0.05]",
           ].join(" ")}
-          style=${{ paddingLeft: `${depth * 18 + 12}px` }}
+          style=${{ paddingLeft: `${depth * TREE_INDENT_PX + TREE_BASE_PADDING_PX}px` }}
         >
           <span className="w-4 text-center text-iron-300">
             ${node.isDir ? (expandingPath === node.path ? "..." : node.expanded ? "v" : ">") : "·"}

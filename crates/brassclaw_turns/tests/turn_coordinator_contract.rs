@@ -1,3 +1,16 @@
+// Lease recovery lookahead in seconds: advances "now" past the lease TTL
+// to trigger recovery of expired runs.
+const LEASE_RECOVERY_LOOKAHEAD_SECS: i64 = 120;
+// A cursor sequence value beyond any real event in a fixture stream;
+// used to verify that a fabricated beyond-head cursor triggers a rebase error.
+const BEYOND_HEAD_CURSOR_SEQ: u64 = 999;
+// Very short runner lease TTL (milliseconds) for tests that need leases to
+// expire quickly without sleeping long.
+const SHORT_RUNNER_LEASE_TTL_MS: i64 = 40;
+// Number of events to publish when stress-testing the bounded-tail invariant
+// of InMemoryTurnEventSink (1 over the expected cap to confirm eviction).
+const EVENT_SINK_OVERFLOW_COUNT: u64 = 10_001;
+
 use std::{
     sync::{
         Arc, Mutex,
@@ -1052,7 +1065,7 @@ async fn event_publishing_transition_port_publishes_expired_lease_terminal_event
 
     let empty = transition_port
         .recover_expired_leases(RecoverExpiredLeasesRequest {
-            now: Utc::now() + ChronoDuration::seconds(120),
+            now: Utc::now() + ChronoDuration::seconds(LEASE_RECOVERY_LOOKAHEAD_SECS),
             scope_filter: None,
         })
         .await
@@ -1095,7 +1108,7 @@ async fn event_publishing_transition_port_publishes_expired_lease_terminal_event
 
     let recovered = transition_port
         .recover_expired_leases(RecoverExpiredLeasesRequest {
-            now: Utc::now() + ChronoDuration::seconds(120),
+            now: Utc::now() + ChronoDuration::seconds(LEASE_RECOVERY_LOOKAHEAD_SECS),
             scope_filter: None,
         })
         .await
@@ -2176,7 +2189,7 @@ async fn turn_lifecycle_projection_requires_rebase_for_pruned_or_fabricated_curs
             owner_user_id: None,
             after: Some(TurnEventProjectionCursor::for_scope(
                 request.scope.clone(),
-                EventCursor(999),
+                EventCursor(BEYOND_HEAD_CURSOR_SEQ),
             )),
             limit: 10,
         })
@@ -4797,7 +4810,7 @@ async fn runner_claims_queued_run_with_lease_and_heartbeat_requires_matching_lea
 #[tokio::test]
 async fn cancel_requested_runner_heartbeat_does_not_extend_lease() {
     let limits = InMemoryTurnStateStoreLimits {
-        runner_lease_ttl: ChronoDuration::milliseconds(40),
+        runner_lease_ttl: ChronoDuration::milliseconds(SHORT_RUNNER_LEASE_TTL_MS),
         ..InMemoryTurnStateStoreLimits::default()
     };
     let store = Arc::new(InMemoryTurnStateStore::with_limits(limits));
@@ -5828,7 +5841,7 @@ fn sanitized_failure_validates_during_deserialization() {
 #[tokio::test]
 async fn in_memory_event_sink_retains_a_bounded_tail() {
     let sink = InMemoryTurnEventSink::default();
-    for cursor in 1..=10_001 {
+    for cursor in 1..=EVENT_SINK_OVERFLOW_COUNT {
         sink.publish(TurnLifecycleEvent {
             cursor: EventCursor(cursor),
             scope: scope("thread-a"),

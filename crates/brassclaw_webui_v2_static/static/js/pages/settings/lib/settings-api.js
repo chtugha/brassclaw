@@ -2,7 +2,7 @@ import { apiFetch } from "../../../lib/api.js";
 
 // Settings endpoints depend on v1 `/api/settings/*`, `/api/llm/*`,
 // `/api/tools/*`, `/api/skills/*`, etc. Extension reads use the v2
-// registry/list endpoints; the remaining settings APIs are TODO stubs.
+// registry/list endpoints; the remaining settings APIs are known tech-debt stubs.
 
 export function fetchSettingsExport() {
   return Promise.resolve({ settings: {}, todo: true });

@@ -1,4 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+// Polling intervals for project inspector queries (ms).
+const MISSION_REFETCH_INTERVAL_MS = 5_000;
+const THREAD_REFETCH_INTERVAL_MS = 4_000;
 import { React } from "../../../lib/html.js";
 import {
   fetchMissionDetail,
@@ -16,14 +20,14 @@ export function useProjectInspector({ projectId, missionId, threadId }) {
     queryKey: ["project-mission-detail", missionId],
     queryFn: () => fetchMissionDetail(missionId),
     enabled: Boolean(missionId),
-    refetchInterval: missionId ? 5000 : false,
+    refetchInterval: missionId ? MISSION_REFETCH_INTERVAL_MS : false,
   });
 
   const threadQuery = useQuery({
     queryKey: ["project-thread-detail", threadId],
     queryFn: () => fetchThreadDetail(threadId),
     enabled: Boolean(threadId),
-    refetchInterval: threadId ? 4000 : false,
+    refetchInterval: threadId ? THREAD_REFETCH_INTERVAL_MS : false,
   });
 
   const invalidateProject = React.useCallback(() => {

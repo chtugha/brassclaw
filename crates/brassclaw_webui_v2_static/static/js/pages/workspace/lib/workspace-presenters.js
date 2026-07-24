@@ -1,5 +1,8 @@
 export const DEFAULT_WORKSPACE_PATH = "README.md";
 
+// Maximum snippet length for search result previews (characters).
+const SNIPPET_MAX_LENGTH = 140;
+
 export function pathSegments(path) {
   if (!path) return [];
   return path.split("/").filter(Boolean);
@@ -30,7 +33,7 @@ export function formatWorkspaceDate(iso) {
   });
 }
 
-export function snippetFor(text, query, length = 140) {
+export function snippetFor(text, query, length = SNIPPET_MAX_LENGTH) {
   const content = String(text || "");
   const needle = String(query || "").trim().toLowerCase();
   if (!needle) return content.slice(0, length);

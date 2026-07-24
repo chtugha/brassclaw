@@ -1,5 +1,8 @@
 import { html } from "../lib/html.js";
 
+// Default stroke width for all icons — matches the design-system baseline.
+const ICON_DEFAULT_STROKE_WIDTH = 1.7;
+
 const paths = {
   attach: html`<path
     d="m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"
@@ -115,7 +118,7 @@ const paths = {
   retry: html`<path d="M3.5 12a8.5 8.5 0 1 1 2.6 6.1" /><path d="M3.2 18.5v-5h5" />`,
 };
 
-export function Icon({ name, className = "", strokeWidth = 1.7 }) {
+export function Icon({ name, className = "", strokeWidth = ICON_DEFAULT_STROKE_WIDTH }) {
   return html`
     <svg
       aria-hidden="true"

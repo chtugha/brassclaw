@@ -89,11 +89,16 @@ mod tests {
         );
     }
 
+    // Known stable hash value for the ["skill:alpha", "summary", "0"] input.
+    // This is a regression pin — if the hash changes, existing model-visible
+    // refs become invalid across restarts.
+    const STABLE_HASH_SKILL_ALPHA_SUMMARY_0: u64 = 0x6e54cb74d742607c;
+
     #[test]
     fn skill_display_hash_preserves_existing_model_visible_refs() {
         assert_eq!(
             stable_skill_snippet_display_hash(["skill:alpha", "summary", "0"]),
-            0x6e54cb74d742607c
+            STABLE_HASH_SKILL_ALPHA_SUMMARY_0
         );
     }
 

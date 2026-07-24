@@ -1,3 +1,7 @@
+// Ordinal suffix: English "teens" (11–13) always use "th" regardless of last digit.
+const ORDINAL_TEENS_MIN = 11;
+const ORDINAL_TEENS_MAX = 13;
+
 const WEEKDAYS = [
   "Sundays",
   "Mondays",
@@ -240,7 +244,7 @@ function normalizeDayOfWeek(value) {
 
 function ordinal(value) {
   const mod100 = value % 100;
-  if (mod100 >= 11 && mod100 <= 13) return `${value}th`;
+  if (mod100 >= ORDINAL_TEENS_MIN && mod100 <= ORDINAL_TEENS_MAX) return `${value}th`;
   if (value % 10 === 1) return `${value}st`;
   if (value % 10 === 2) return `${value}nd`;
   if (value % 10 === 3) return `${value}rd`;

@@ -462,15 +462,22 @@ mod snippet_ref_tests {
     }
 }
 
+/// Maximum length of the sanitized suffix appended to a model-visible ref string.
+const REF_SUFFIX_MAX_LEN: usize = 96;
+
+/// Domain-separator byte placed between digest fields; outside printable ASCII
+/// to prevent cross-field hash collisions.
+const DIGEST_FIELD_SEP: u8 = 0xFE;
+
 fn sanitize_ref_suffix(value: &str) -> String {
-    let mut suffix = String::with_capacity(value.len().min(96));
+    let mut suffix = String::with_capacity(value.len().min(REF_SUFFIX_MAX_LEN));
     for character in value.chars() {
         if character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.') {
             suffix.push(character);
         } else {
             suffix.push('.');
         }
-        if suffix.len() >= 96 {
+        if suffix.len() >= REF_SUFFIX_MAX_LEN {
             break;
         }
     }
@@ -667,7 +674,7 @@ fn compute_snapshot_version(sorted_entries: &[InstalledSkillSnapshot]) -> String
         }
         feed_digest_field(&mut digest, entry.safe_description.as_bytes());
         feed_digest_field(&mut digest, entry.ordering_key.as_bytes());
-        digest.update([0xFE]);
+        digest.update([DIGEST_FIELD_SEP]);
     }
 
     format!("sha256:{}", hex::encode(digest.finalize()))

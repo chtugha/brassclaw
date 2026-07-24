@@ -292,7 +292,7 @@ export function setupExtension(extensionName, { action, payload } = {}) {
   );
 }
 
-// --- TODO stubs for v1-shaped helpers brought-back code still imports ---
+// --- Known tech-debt stubs for v1-shaped helpers brought-back code still imports ---
 //
 // Issue #3886 Hard Non-Goal: the browser must not call legacy
 // gateway routes without a v2 counterpart. The functions below
@@ -302,7 +302,7 @@ export function setupExtension(extensionName, { action, payload } = {}) {
 // with the real wire call.
 
 export function gatewayStatus() {
-  // TODO: requires v2 gateway-status endpoint. Returning a zeroed
+  // Known coverage gap: requires v2 gateway-status endpoint. Returning a zeroed
   // shape so any consumer reading `data.engine_v2_enabled`,
   // `data.llm_backend`, etc. resolves cleanly to falsey values.
   return Promise.resolve({

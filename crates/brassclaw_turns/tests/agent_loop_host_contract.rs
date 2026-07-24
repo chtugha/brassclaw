@@ -1,3 +1,7 @@
+// Compression ratio in parts-per-million for the test compaction fixture:
+// 250_000 ppm = 25% compression ratio.
+const TEST_COMPRESSION_RATIO_PPM: u32 = 250_000;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -60,7 +64,7 @@ fn loop_compaction_outcome_serializes_and_deserializes_wire_shape() {
         serde_json::json!({
             "compacted": {
                 "summary_artifact_id": "summary:contract",
-                "compression_ratio_ppm": 250000
+                "compression_ratio_ppm": TEST_COMPRESSION_RATIO_PPM
             }
         })
     );

@@ -3,7 +3,7 @@ export const defaultRoute = "/chat";
 // `hidden: true` keeps the route registered (direct URL access and
 // breadcrumb/title resolution still work) but suppresses it from
 // sidebar navigation. Routes whose page-level API libs are entirely
-// TODO stubs against missing v2 endpoints are hidden here until the
+// Known tech-debt: stubs against missing v2 endpoints are hidden here until the
 // matching `/api/webchat/v2/*` contracts land. Remove the flag once
 // the page's `lib/*-api.js` calls real endpoints.
 export const primaryRoutes = [

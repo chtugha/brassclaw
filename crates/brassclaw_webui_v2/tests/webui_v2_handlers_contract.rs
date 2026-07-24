@@ -7,6 +7,18 @@
 //! the facade method bodies that are already covered in
 //! `brassclaw_product_workflow`.
 
+// HTTP 101 Switching Protocols — the expected status for a successful
+// WebSocket upgrade handshake.
+const HTTP_SWITCHING_PROTOCOLS: u16 = 101;
+
+// Reduction-rule max_chars values used in truncation rule test fixtures.
+const REDUCTION_RULE_NOISE_MAX_CHARS: u32 = 80;
+const REDUCTION_RULE_CONTENT_MAX_CHARS: u32 = 150;
+
+// Token budget fixture values for the provider token settings round-trip test.
+const TOKEN_SETTINGS_CONVERSATION_HISTORY: u64 = 6000;
+const TOKEN_SETTINGS_MAX_OUTPUT: u64 = 2048;
+
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -2160,7 +2172,7 @@ async fn stream_events_ws_shares_capacity_with_sse_streams() {
     let (mut ws, response) = recovered.expect("recovered ws");
     assert_eq!(
         response.status().as_u16(),
-        101,
+        HTTP_SWITCHING_PROTOCOLS,
         "WS must complete the upgrade once the SSE slot has been released",
     );
     let _ = ws.close(None).await;
@@ -3168,7 +3180,7 @@ async fn stream_events_ws_releases_slot_on_peer_close() {
     );
     assert_eq!(
         recovered.1.status().as_u16(),
-        101,
+        HTTP_SWITCHING_PROTOCOLS,
         "second WS upgrade must complete once the slot has been released",
     );
     let mut ws_two = recovered.0;
@@ -3336,7 +3348,7 @@ async fn replace_reduction_rules_dispatches_through_facade() {
             {
                 "id": "rt-truncate-noise",
                 "rule_type": "truncate",
-                "params": {"field": "noise", "max_chars": 80},
+                "params": {"field": "noise", "max_chars": REDUCTION_RULE_NOISE_MAX_CHARS},
                 "priority": 200,
             },
         ],
@@ -3374,7 +3386,7 @@ async fn author_reduction_rule_dispatches_through_facade() {
         rule: ReductionRuleConfigView {
             id: "rt-truncate-content-150".to_string(),
             rule_type: RuleType::Truncate,
-            params: serde_json::json!({"field": "content", "max_chars": 150}),
+            params: serde_json::json!({"field": "content", "max_chars": REDUCTION_RULE_CONTENT_MAX_CHARS}),
             priority: 100,
         },
         description: Some("shrink long content blocks".to_string()),
@@ -3387,7 +3399,7 @@ async fn author_reduction_rule_dispatches_through_facade() {
 
     let request_body = serde_json::json!({
         "rule_type": "truncate",
-        "params": {"field": "content", "max_chars": 150},
+        "params": {"field": "content", "max_chars": REDUCTION_RULE_CONTENT_MAX_CHARS},
         "description": "shrink long content blocks",
     });
 
@@ -3549,8 +3561,8 @@ async fn update_provider_token_settings_round_trips_body_and_provider_id() {
     let router = router_with(services.clone());
 
     let request_body = serde_json::json!({
-        "conversation_history": 6000,
-        "max_output": 2048,
+        "conversation_history": TOKEN_SETTINGS_CONVERSATION_HISTORY,
+        "max_output": TOKEN_SETTINGS_MAX_OUTPUT,
         "cache_retention": "short",
     });
 

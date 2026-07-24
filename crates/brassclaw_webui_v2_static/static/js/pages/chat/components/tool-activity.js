@@ -1,4 +1,7 @@
 import { Icon } from "../../../design-system/icons.js";
+
+// Maximum JSON string length considered safe to parse inline in the tool result renderer.
+const JSON_PARSE_SIZE_LIMIT = 200_000;
 import { React, html } from "../../../lib/html.js";
 import { useT } from "../../../lib/i18n.js";
 
@@ -286,7 +289,7 @@ function ToolResult({ text }) {
   }
 
   let parsed;
-  if ((value.startsWith("{") || value.startsWith("[")) && value.length < 200000) {
+  if ((value.startsWith("{") || value.startsWith("[")) && value.length < JSON_PARSE_SIZE_LIMIT) {
     try {
       parsed = JSON.parse(value);
     } catch {

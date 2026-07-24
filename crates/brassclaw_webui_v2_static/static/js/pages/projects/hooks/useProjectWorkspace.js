@@ -1,4 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+
+// Polling intervals for workspace queries (ms).
+const PROJECT_DETAIL_REFETCH_INTERVAL_MS = 7_000;
+const PROJECT_MISSIONS_REFETCH_INTERVAL_MS = 5_000;
+const PROJECT_THREADS_REFETCH_INTERVAL_MS = 4_000;
+const PROJECT_WIDGETS_REFETCH_INTERVAL_MS = 15_000;
 import { React } from "../../../lib/html.js";
 import {
   fetchProjectDetail,
@@ -15,28 +21,28 @@ export function useProjectWorkspace(projectId) {
     queryKey: ["project-detail", projectId],
     queryFn: () => fetchProjectDetail(projectId),
     enabled,
-    refetchInterval: enabled ? 7000 : false,
+    refetchInterval: enabled ? PROJECT_DETAIL_REFETCH_INTERVAL_MS : false,
   });
 
   const missionsQuery = useQuery({
     queryKey: ["project-missions", projectId],
     queryFn: () => fetchProjectMissions(projectId),
     enabled,
-    refetchInterval: enabled ? 5000 : false,
+    refetchInterval: enabled ? PROJECT_MISSIONS_REFETCH_INTERVAL_MS : false,
   });
 
   const threadsQuery = useQuery({
     queryKey: ["project-threads", projectId],
     queryFn: () => fetchProjectThreads(projectId),
     enabled,
-    refetchInterval: enabled ? 4000 : false,
+    refetchInterval: enabled ? PROJECT_THREADS_REFETCH_INTERVAL_MS : false,
   });
 
   const widgetsQuery = useQuery({
     queryKey: ["project-widgets", projectId],
     queryFn: () => fetchProjectWidgets(projectId),
     enabled,
-    refetchInterval: enabled ? 15000 : false,
+    refetchInterval: enabled ? PROJECT_WIDGETS_REFETCH_INTERVAL_MS : false,
   });
 
   const invalidate = React.useCallback(() => {

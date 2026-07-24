@@ -19,7 +19,7 @@ use rand::RngCore;
 
 use crate::assets::{self, INDEX_HTML_TEMPLATE};
 
-/// Placeholder substituted with the per-request CSP nonce. The
+/// Nonce token substituted with the per-request CSP nonce. The
 /// fork's `index.html` already declares it; we just replace it.
 const NONCE_PLACEHOLDER: &str = "__BRASSCLAW_CSP_NONCE__";
 

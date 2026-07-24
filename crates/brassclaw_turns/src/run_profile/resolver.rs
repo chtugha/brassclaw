@@ -451,6 +451,7 @@ fn fingerprint_for(
     personal_context_policy: PersonalContextPolicy,
     provenance: &RedactedRunProfileProvenance,
 ) -> RunProfileFingerprint {
+    // FNV-1a 64-bit offset basis.
     let mut hash = 0xcbf29ce484222325_u64;
     let mut update = |value: &str| {
         for byte in value.as_bytes() {

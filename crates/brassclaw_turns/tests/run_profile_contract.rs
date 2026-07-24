@@ -1,3 +1,7 @@
+// Known valid max_checkpoint_bytes value — 64 KiB. Used as a test fixture for
+// checkpoint policy deserialization.
+const TEST_MAX_CHECKPOINT_BYTES: u64 = 65536;
+
 use brassclaw_turns::{
     AgentLoopDriverDescriptor, CapabilitySurfaceProfileId, CheckpointPolicy,
     InMemoryRunProfileResolver, ModelProfileId, PrivilegedRunProfileDimension, RunProfileId,
@@ -188,7 +192,7 @@ fn checkpoint_policy_missing_final_checkpoint_gate_defaults_to_required() {
         "require_before_model": true,
         "require_before_side_effect": true,
         "require_before_block": true,
-        "max_checkpoint_bytes": 65536
+        "max_checkpoint_bytes": TEST_MAX_CHECKPOINT_BYTES
     }))
     .unwrap();
 

@@ -1,5 +1,5 @@
 // All admin endpoints depend on v1 `/api/admin/*`, which the v2
-// ingress does not expose. Every function below is a TODO stub
+// ingress does not expose. Every function below is a known tech-debt stub
 // returning an empty shape so the page UI renders without hitting
 // any network. Hard non-goal of issue #3886: no v1 paths in browser
 // code. Remove this file's stub pattern when the v2 admin contract

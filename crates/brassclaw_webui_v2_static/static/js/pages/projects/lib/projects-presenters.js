@@ -1,3 +1,8 @@
+// Time-boundary constants (ms) used by the relative-time formatter.
+const ONE_MINUTE_MS = 60_000;
+const ONE_HOUR_MS = 3_600_000;
+const ONE_DAY_MS = 86_400_000;
+
 export function formatProjectDate(iso, options = {}) {
   if (!iso) return "Not available";
   return new Date(iso).toLocaleString([], {
@@ -17,17 +22,17 @@ export function formatProjectRelativeTime(iso) {
   const absDiff = Math.abs(diff);
   const future = diff < 0;
 
-  if (absDiff < 60_000) return future ? "in under a minute" : "just now";
-  if (absDiff < 3_600_000) {
-    const minutes = Math.floor(absDiff / 60_000);
+  if (absDiff < ONE_MINUTE_MS) return future ? "in under a minute" : "just now";
+  if (absDiff < ONE_HOUR_MS) {
+    const minutes = Math.floor(absDiff / ONE_MINUTE_MS);
     return future ? `in ${minutes}m` : `${minutes}m ago`;
   }
-  if (absDiff < 86_400_000) {
-    const hours = Math.floor(absDiff / 3_600_000);
+  if (absDiff < ONE_DAY_MS) {
+    const hours = Math.floor(absDiff / ONE_HOUR_MS);
     return future ? `in ${hours}h` : `${hours}h ago`;
   }
 
-  const days = Math.floor(absDiff / 86_400_000);
+  const days = Math.floor(absDiff / ONE_DAY_MS);
   return future ? `in ${days}d` : `${days}d ago`;
 }
 

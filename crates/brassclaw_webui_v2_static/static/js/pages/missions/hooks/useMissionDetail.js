@@ -1,4 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
+
+// Polling interval for mission detail (ms).
+const MISSION_DETAIL_REFETCH_INTERVAL_MS = 5_000;
 import { fetchMissionDetail } from "../lib/missions-api.js";
 
 export function useMissionDetail(missionId) {
@@ -6,7 +9,7 @@ export function useMissionDetail(missionId) {
     queryKey: ["mission-detail", missionId],
     queryFn: () => fetchMissionDetail(missionId),
     enabled: Boolean(missionId),
-    refetchInterval: missionId ? 5000 : false,
+    refetchInterval: missionId ? MISSION_DETAIL_REFETCH_INTERVAL_MS : false,
   });
 
   return {

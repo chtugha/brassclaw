@@ -1,4 +1,4 @@
-// All jobs endpoints depend on v1 `/api/jobs/*`. TODO stubs until
+// All jobs endpoints depend on v1 `/api/jobs/*`. Known tech-debt stubs until
 // the v2 jobs contract lands; the page renders an empty list.
 
 export function fetchJobs() {

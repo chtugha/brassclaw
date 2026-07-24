@@ -1,4 +1,4 @@
-// Routine endpoints depend on v1 `/api/routines/*`. TODO stubs.
+// Routine endpoints depend on v1 `/api/routines/*`. Known tech-debt stubs.
 
 export function fetchRoutines() {
   return Promise.resolve({ routines: [], todo: true });

@@ -1,4 +1,7 @@
 import { React, html } from "../lib/html.js";
+
+// Chevron stroke width for collapsed/expanded section toggles.
+const SECTION_CHEVRON_STROKE_WIDTH = 2.2;
 import { Icon } from "../design-system/icons.js";
 import { THREAD_STATE, useThreadStates } from "../lib/thread-state.js";
 import {
@@ -194,7 +197,7 @@ export function SidebarThreads({ threads, activeThreadId, onSelect, onDelete }) 
             "h-3.5 w-3.5 text-[var(--v2-text-faint)]",
             collapsed ? "-rotate-90" : ""
           )}
-          strokeWidth=${2.2}
+          strokeWidth=${SECTION_CHEVRON_STROKE_WIDTH}
         />
       </button>
 

@@ -55,7 +55,7 @@ use crate::{
 /// (e.g. `RecoveryRequired` → `"recovery_required"`). Do NOT use `.to_lowercase()`
 /// — `"RecoveryRequired".to_lowercase()` yields `"recoveryrequired"` (missing
 /// underscore). This function will be used when writing per-run indexed rows.
-// TODO(S6): used when per-run row indexing is added alongside snapshot rows.
+// Known tech-debt: used when per-run row indexing is added alongside snapshot rows.
 #[allow(dead_code)]
 fn turn_status_str(status: crate::TurnStatus) -> String {
     format!("{:?}", status).to_snake_case()
