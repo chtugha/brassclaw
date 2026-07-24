@@ -1093,6 +1093,13 @@ mod tests {
 
     use super::*;
 
+    // Distinct request_bytes sentinels per egress error variant in map_egress_error_tests.
+    const REQ_BYTES_DENIED: u64 = 11;
+    const REQ_BYTES_POLICY: u64 = 12;
+    const REQ_BYTES_NETWORK: u64 = 13;
+    const REQ_BYTES_RESPONSE: u64 = 14;
+    const REQ_BYTES_BODY_LIMIT: u64 = 15;
+
     #[test]
     fn map_credential_error_tests() {
         assert_eq!(
@@ -1276,48 +1283,48 @@ mod tests {
             (
                 RuntimeHttpEgressError::Request {
                     reason: "denied".to_string(),
-                    request_bytes: 11,
+                    request_bytes: REQ_BYTES_DENIED,
                     response_bytes: 0,
                 },
                 RuntimeDispatchErrorKind::InputEncode,
-                11,
+                REQ_BYTES_DENIED,
             ),
             (
                 RuntimeHttpEgressError::Network {
                     reason: "policy_denied".to_string(),
-                    request_bytes: 12,
+                    request_bytes: REQ_BYTES_POLICY,
                     response_bytes: 0,
                 },
                 RuntimeDispatchErrorKind::PolicyDenied,
-                12,
+                REQ_BYTES_POLICY,
             ),
             (
                 RuntimeHttpEgressError::Network {
                     reason: "offline".to_string(),
-                    request_bytes: 13,
+                    request_bytes: REQ_BYTES_NETWORK,
                     response_bytes: 0,
                 },
                 RuntimeDispatchErrorKind::NetworkDenied,
-                13,
+                REQ_BYTES_NETWORK,
             ),
             (
                 RuntimeHttpEgressError::Response {
                     reason: "bad response".to_string(),
-                    request_bytes: 14,
+                    request_bytes: REQ_BYTES_RESPONSE,
                     response_bytes: 1,
                 },
                 RuntimeDispatchErrorKind::OutputDecode,
-                14,
+                REQ_BYTES_RESPONSE,
             ),
             (
                 RuntimeHttpEgressError::Network {
                     reason: brassclaw_host_api::RUNTIME_HTTP_REASON_RESPONSE_BODY_LIMIT_EXCEEDED
                         .to_string(),
-                    request_bytes: 15,
+                    request_bytes: REQ_BYTES_BODY_LIMIT,
                     response_bytes: 1024,
                 },
                 RuntimeDispatchErrorKind::OutputTooLarge,
-                15,
+                REQ_BYTES_BODY_LIMIT,
             ),
         ];
 
