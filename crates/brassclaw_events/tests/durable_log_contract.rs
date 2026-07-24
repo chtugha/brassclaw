@@ -5,6 +5,11 @@
 //! semantics, stream-key partitioning, redaction guarantees on event
 //! constructors, and best-effort sink delivery.
 
+/// Token count used in dispatch_succeeded event payloads in tests.
+const TEST_TOKEN_COUNT: u64 = 42;
+/// Stale event cursor position used in cursor-rebase / staleness tests.
+const STALE_CURSOR: u64 = 99;
+
 use brassclaw_events::{
     AuditSink, DurableAuditLog, DurableAuditSink, DurableEventLog, DurableEventSink, EventCursor,
     EventError, EventSink, EventStreamKey, InMemoryAuditSink, InMemoryDurableAuditLog,
@@ -57,7 +62,7 @@ async fn durable_event_log_appends_and_replays_in_order() {
         capability_id(),
         extension_id(),
         RuntimeKind::FirstParty,
-        42,
+        TEST_TOKEN_COUNT,
     );
 
     let entry1 = log.append(e1).await.expect("append 1");
@@ -371,11 +376,11 @@ async fn truncate_beyond_head_is_rejected() {
         .expect("append");
     }
 
-    let result = log.truncate_before_or_at(&stream, EventCursor::new(99));
+    let result = log.truncate_before_or_at(&stream, EventCursor::new(STALE_CURSOR));
     match result {
         Err(EventError::InvalidReplayRequest { reason }) => {
             assert!(
-                reason.contains("99") && reason.contains("3"),
+                reason.contains(&STALE_CURSOR.to_string()) && reason.contains("3"),
                 "reason should report cursor and head, got: {reason}"
             );
         }
@@ -1153,7 +1158,7 @@ async fn head_cursor_rejects_cursor_beyond_head_as_replay_gap() {
     // Probing from a cursor past the head must surface a ReplayGap rather than
     // silently echoing a head the stream never issued.
     let err = log
-        .head_cursor(&stream, EventCursor::new(99))
+        .head_cursor(&stream, EventCursor::new(STALE_CURSOR))
         .await
         .expect_err("future cursor must be rejected");
     assert!(
