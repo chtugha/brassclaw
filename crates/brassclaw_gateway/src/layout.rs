@@ -1,9 +1,4 @@
 //! Layout configuration types for frontend customization.
-
-/// Maximum raw (pre-trim) byte length of a validated string value.
-/// Acts as a guard against exfil-shaped payloads — counts what the caller
-/// actually wrote, not the resolved URL length after whitespace collapse.
-const VALIDATED_STRING_MAX_BYTES: usize = 2048;
 //!
 //! A [`LayoutConfig`] is stored as `.system/gateway/layout.json` in the
 //! workspace. It controls branding, tab visibility/order, chat features, and
@@ -11,12 +6,12 @@ const VALIDATED_STRING_MAX_BYTES: usize = 2048;
 
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
+
 /// Maximum raw (pre-trim) byte length of a validated string value.
 /// Acts as a guard against exfil-shaped payloads — counts what the caller
 /// actually wrote, not the resolved URL length after whitespace collapse.
 const VALIDATED_STRING_MAX_BYTES: usize = 2048;
-
-use serde::{Deserialize, Serialize};
 
 /// Top-level layout configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

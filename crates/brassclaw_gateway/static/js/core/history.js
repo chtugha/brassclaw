@@ -1,3 +1,8 @@
+/** Viewport width breakpoint (px) below which the sidebar uses mobile layout. */
+var MOBILE_BREAKPOINT_PX = 768;
+/** keyCode for VK_PROCESS (229) used to detect IME composition on Safari. */
+var IME_VKPROCESS_KEYCODE = 229;
+
 function isSameInProgressTurn(lastTurn, inProgress) {
   if (!lastTurn || !inProgress) return false;
 
@@ -561,7 +566,7 @@ function switchThread(threadId) {
   loadHistory();
   loadThreads();
   updateHash();
-  if (window.innerWidth <= 768) {
+  if (window.innerWidth <= MOBILE_BREAKPOINT_PX) {
     const sidebar = document.getElementById('thread-sidebar');
     sidebar.classList.remove('expanded-mobile');
     document.getElementById('thread-toggle-btn').innerHTML = '&raquo;';
@@ -642,7 +647,7 @@ chatInput.addEventListener('keydown', (e) => {
   // Safari fires compositionend before keydown, so e.isComposing is already false
   // when Enter confirms IME input. keyCode 229 (VK_PROCESS) catches this case.
   // See https://bugs.webkit.org/show_bug.cgi?id=165004
-  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== IME_VKPROCESS_KEYCODE) {
     e.preventDefault();
     hideSlashAutocomplete();
     sendMessage();

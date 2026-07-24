@@ -1,3 +1,6 @@
+/** Debounce window (ms) for suppressing duplicate pairing-approval toasts. */
+const RECENT_PAIRING_DEBOUNCE_MS = 5000;
+
 // Issue #2991: extract the most-load-bearing parameter as a one-line summary
 // so the user can decide without opening the parameter blob. Returns null
 // when no useful summary can be derived. Output is bounded to one line and
@@ -345,7 +348,7 @@ function handleOnboardingState(data) {
     const recentPairingApprovalAt = _recentLocalPairingApprovals.get(data.extension_name);
     const skipToast = !!recentPairingApprovalAt
       && data.state === 'ready'
-      && Date.now() - recentPairingApprovalAt <= 5000;
+      && Date.now() - recentPairingApprovalAt <= RECENT_PAIRING_DEBOUNCE_MS;
     if (data.message && !skipToast) {
       showToast(data.message, data.state === 'ready' ? 'success' : 'error');
     }

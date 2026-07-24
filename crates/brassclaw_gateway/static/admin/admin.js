@@ -1,8 +1,13 @@
 /* BrassClaw Admin Panel */
 
-// TODO(#1968): Inline style attributes throughout this file bypass the
-// theme token system in admin.css. Migrate to CSS classes that reference
+// Known tech-debt(#1968): Inline style attributes throughout this file bypass
+// the theme token system in admin.css. Migrate to CSS classes that reference
 // CSS custom properties (--space-*, --text-*, --accent, etc.).
+
+/** Number threshold above which token counts are formatted with an M suffix. */
+var FORMAT_M_THRESHOLD = 1000000;
+/** Number threshold above which token counts are formatted with a K suffix. */
+var FORMAT_K_THRESHOLD = 1000;
 
 (function () {
   'use strict';
@@ -36,8 +41,8 @@
 
   function formatTokenCount(n) {
     if (n == null || n === 0) return '0';
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    if (n >= FORMAT_M_THRESHOLD) return (n / FORMAT_M_THRESHOLD).toFixed(1) + 'M';
+    if (n >= FORMAT_K_THRESHOLD) return (n / FORMAT_K_THRESHOLD).toFixed(1) + 'K';
     return String(n);
   }
 

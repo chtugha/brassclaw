@@ -5,6 +5,13 @@
 
   // ── Constants ──
 
+  /** Default context token limit when not provided by server data. */
+  const DEFAULT_CONTEXT_LIMIT = 100000;
+  /** Number threshold above which token counts are formatted with an M suffix. */
+  const FORMAT_M_THRESHOLD = 1000000;
+  /** Number threshold above which token counts are formatted with a K suffix. */
+  const FORMAT_K_THRESHOLD = 1000;
+
   const MAX_ACTIVITY = 1000;
   const STATS_POLL_INTERVAL = 30000;
   const SESSION_TAB_KEY = 'brassclaw_debug_tab';
@@ -1013,7 +1020,7 @@
     var progress = document.createElement('progress');
     progress.className = 'debug-prompt-progress';
     progress.id = 'debug-prompt-progress';
-    progress.max = 100000;
+    progress.max = DEFAULT_CONTEXT_LIMIT;
     progress.value = 0;
 
     pane.appendChild(header);
@@ -1248,7 +1255,7 @@
       }
 
       var tokensUsed = data.total_estimated_tokens || 0;
-      var contextLimit = data.context_limit || 100000;
+      var contextLimit = data.context_limit || DEFAULT_CONTEXT_LIMIT;
       var strong = document.createElement('strong');
       strong.textContent = formatNumber(tokensUsed) + ' / ' + formatNumber(contextLimit) + ' tokens';
       totalEl.appendChild(strong);
@@ -1258,7 +1265,7 @@
     var progressEl = document.getElementById('debug-prompt-progress');
     if (progressEl) {
       var used = data.total_estimated_tokens || 0;
-      var limit = data.context_limit || 100000;
+      var limit = data.context_limit || DEFAULT_CONTEXT_LIMIT;
       var pct = Math.min(100, Math.round((used / limit) * 100));
       progressEl.value = used;
       progressEl.max = limit;
@@ -1442,8 +1449,8 @@
   }
 
   function formatNumber(n) {
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    if (n >= FORMAT_M_THRESHOLD) return (n / FORMAT_M_THRESHOLD).toFixed(1) + 'M';
+    if (n >= FORMAT_K_THRESHOLD) return (n / FORMAT_K_THRESHOLD).toFixed(1) + 'K';
     return String(n);
   }
 

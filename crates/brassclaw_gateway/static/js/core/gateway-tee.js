@@ -16,17 +16,26 @@ function refreshLegacyRoutinesPresence() {
   }).catch(function() {});
 }
 
+/** Number threshold above which token counts are formatted with an M suffix. */
+var FORMAT_M_THRESHOLD = 1000000;
+/** Number threshold above which token counts are formatted with a K suffix. */
+var FORMAT_K_THRESHOLD = 1000;
+/** Costs below this threshold are displayed with 4 decimal places instead of 2. */
+var FORMAT_COST_SMALL_THRESHOLD = 0.01;
+/** Regex to strip dated model name suffixes like -20250101. */
+var MODEL_DATE_SUFFIX_RE = /-20\d{6}$/;
+
 function formatTokenCount(n) {
   if (n == null || n === 0) return '0';
-  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+  if (n >= FORMAT_M_THRESHOLD) return (n / FORMAT_M_THRESHOLD).toFixed(1) + 'M';
+  if (n >= FORMAT_K_THRESHOLD) return (n / FORMAT_K_THRESHOLD).toFixed(1) + 'k';
   return '' + n;
 }
 
 function formatCost(costStr) {
   if (!costStr) return '$0.00';
   var n = parseFloat(costStr);
-  if (n < 0.01) return '$' + n.toFixed(4);
+  if (n < FORMAT_COST_SMALL_THRESHOLD) return '$' + n.toFixed(4);
   return '$' + n.toFixed(2);
 }
 
@@ -34,7 +43,7 @@ function shortModelName(model) {
   // Strip provider prefix and shorten common model names
   var m = model.indexOf('/') >= 0 ? model.split('/').pop() : model;
   // Shorten dated suffixes
-  m = m.replace(/-20\d{6}$/, '');
+  m = m.replace(MODEL_DATE_SUFFIX_RE, '');
   return m;
 }
 

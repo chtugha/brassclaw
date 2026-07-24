@@ -1,3 +1,10 @@
+/** Maximum paragraph innerHTML length for inline JSON upgrade scanning. */
+var MAX_INLINE_JSON_PARA_LEN = 20000;
+/** Maximum chars scanned per `{` candidate in inline JSON detection. */
+var MAX_INLINE_JSON_SCAN = 5000;
+/** Char code of `{` used in the inline JSON scanner hot path. */
+var CHAR_CODE_OPEN_BRACE = 123;
+
 function renderMarkdown(text) {
   if (typeof marked !== 'undefined') {
     // Escape raw HTML error pages instead of rendering them as markup.
@@ -101,7 +108,7 @@ function upgradeStructuredData(contentEl) {
  *   - MAX_CANDIDATES per paragraph
  */
 function upgradeInlineJson(contentEl) {
-  var MAX_PARA_LEN = 20000;
+  var MAX_PARA_LEN = MAX_INLINE_JSON_PARA_LEN;
   var paragraphs = contentEl.querySelectorAll('p');
   if (paragraphs.length === 0) {
     // No <p> tags — markdown might have produced bare text
@@ -140,7 +147,7 @@ function upgradeInlineJson(contentEl) {
  * @private
  */
 function _findJsonCandidates(html) {
-  var MAX_SCAN = 5000;
+  var MAX_SCAN = MAX_INLINE_JSON_SCAN;
   var MAX_CANDIDATES = 32;
   var results = [];
   var n = html.length;
@@ -165,7 +172,7 @@ function _findJsonCandidates(html) {
       }
     }
 
-    if (ch !== 123 /* { */) {
+    if (ch !== CHAR_CODE_OPEN_BRACE /* { */) {
       i++;
       continue;
     }
