@@ -7,6 +7,8 @@ use crate::config::EmbeddedPostgresConfig;
 use crate::error::EmbeddedPostgresError;
 
 /// Log queries that take longer than this many milliseconds (1 second).
+/// Matches the `log_min_duration_statement` value in [`POSTGRESQL_CONF_TUNING`].
+#[allow(dead_code)]
 pub(crate) const LOG_MIN_DURATION_STATEMENT_MS: u32 = 1000;
 
 /// The tuned `postgresql.conf` appended after `initdb` generates the default.
