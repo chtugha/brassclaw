@@ -228,7 +228,8 @@ impl ProcessManager for BackgroundProcessManager {
     /// is orphaned and the record will remain stuck at `Running`. Callers
     /// that need crash-safety should perform startup reconciliation by
     /// listing `Running` records on launch and deciding policy (mark
-    /// failed, retry, etc.). TODO: provide a built-in reconciler.
+    /// failed, retry, etc.). Known tech-debt: a built-in reconciler is not
+    /// yet provided; callers must implement their own startup sweep.
     async fn spawn(&self, start: ProcessStart) -> Result<ProcessRecord, ProcessError> {
         let input = start.input.clone();
         let record = self.store.start(start).await?;

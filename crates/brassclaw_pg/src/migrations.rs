@@ -1,3 +1,12 @@
+/// Column width used for `refinery_schema_history` text columns. Matches the
+/// refinery-created schema so pre-inserted sentinel rows pass the runner's
+/// own schema check.
+const REFINERY_VARCHAR_LEN: usize = 255;
+
+/// Migration version assigned to the pre-refinery hooks DDL batch. Must match
+/// the version recorded in the pre-existing `refinery_schema_history` table.
+const HOOKS_PRE_REFINERY_VERSION: i32 = 17;
+
 use deadpool_postgres::Pool;
 use tracing::debug;
 
@@ -85,12 +94,14 @@ async fn reconcile_history(client: &deadpool_postgres::Client) -> Result<(), PgE
     // We must create it here so we can insert rows before the runner sees it.
     client
         .batch_execute(
-            "CREATE TABLE IF NOT EXISTS refinery_schema_history (
+            &format!(
+                "CREATE TABLE IF NOT EXISTS refinery_schema_history (
                 version     INT4        PRIMARY KEY,
-                name        VARCHAR(255) NOT NULL,
-                applied_on  VARCHAR(255) NOT NULL,
-                checksum    VARCHAR(255) NOT NULL
-            )",
+                name        VARCHAR({REFINERY_VARCHAR_LEN}) NOT NULL,
+                applied_on  VARCHAR({REFINERY_VARCHAR_LEN}) NOT NULL,
+                checksum    VARCHAR({REFINERY_VARCHAR_LEN}) NOT NULL
+            )"
+            ),
         )
         .await
         .map_err(|e| PgError::Migration(e.to_string()))?;
@@ -155,7 +166,7 @@ async fn detect_pre_existing_tables(
 
     // hooks tables — created by brassclaw_hooks_pg inline DDL
     if table_exists(client, "hooks_predicate_invocations").await? {
-        pre_existing.push((17_i32, "hooks"));
+        pre_existing.push((HOOKS_PRE_REFINERY_VERSION, "hooks"));
     }
 
     // trigger_records — the pre-V021 table name created outside refinery.

@@ -71,10 +71,15 @@ fn network_target_for_url_inner(raw: &str) -> Result<NetworkTarget, NetworkTarge
     })
 }
 
+/// Default port for HTTP (RFC 7230).
+const HTTP_DEFAULT_PORT: u16 = 80;
+/// Default port for HTTPS (RFC 7230 / RFC 8446).
+const HTTPS_DEFAULT_PORT: u16 = 443;
+
 pub(crate) fn default_port(scheme: NetworkScheme) -> u16 {
     match scheme {
-        NetworkScheme::Http => 80,
-        NetworkScheme::Https => 443,
+        NetworkScheme::Http => HTTP_DEFAULT_PORT,
+        NetworkScheme::Https => HTTPS_DEFAULT_PORT,
     }
 }
 

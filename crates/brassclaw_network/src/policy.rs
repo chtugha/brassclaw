@@ -216,7 +216,12 @@ fn is_carrier_grade_nat_v4(ip: std::net::Ipv4Addr) -> bool {
     first == 100 && (64..=127).contains(&second)
 }
 
+/// First segment of the IPv6 documentation prefix (RFC 3849, 2001:db8::/32).
+const IPV6_DOCUMENTATION_SEG0: u16 = 0x2001;
+/// Second segment of the IPv6 documentation prefix (RFC 3849, 2001:db8::/32).
+const IPV6_DOCUMENTATION_SEG1: u16 = 0x0db8;
+
 fn is_documentation_v6(ip: std::net::Ipv6Addr) -> bool {
     let segments = ip.segments();
-    segments[0] == 0x2001 && segments[1] == 0x0db8
+    segments[0] == IPV6_DOCUMENTATION_SEG0 && segments[1] == IPV6_DOCUMENTATION_SEG1
 }

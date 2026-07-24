@@ -18,6 +18,11 @@ use tokio::sync::Mutex;
 
 const TEST_OUTBOUND_ROOT: &str = "/engine/tenants/test/users/test/outbound";
 
+// Cursor sequence numbers used across subscription advance/isolation tests.
+const TEST_CURSOR_SEQ_A: u64 = 42;
+const TEST_CURSOR_SEQ_STALE: u64 = 99;
+const TEST_CURSOR_SEQ_RACED: u64 = 101;
+
 /// Build a `ScopedFilesystem<F>` with full read/write/list/delete permissions
 /// on the `/outbound` alias, mapped to a distinct tenant-scoped
 /// [`VirtualPath`] subtree. Tests can pass in a different `target_root` to
@@ -420,7 +425,7 @@ async fn durable_policy_subscription_delivery_flow(store: &impl OutboundStateSto
     );
 
     seed_subscription(store).await;
-    let cursor = ProjectionCursor::for_scope(projection_scope(), EventCursor::new(42));
+    let cursor = ProjectionCursor::for_scope(projection_scope(), EventCursor::new(TEST_CURSOR_SEQ_A));
     store
         .advance_subscription_cursor(AdvanceSubscriptionCursorRequest {
             subscription_id: subscription_id(),
@@ -578,7 +583,7 @@ async fn subscription_cursor_rejects_mismatched_scope(store: &impl OutboundState
             thread_id: thread_id(),
             cursor: Some(ProjectionCursor::for_scope(
                 projection_scope(),
-                EventCursor::new(99),
+                EventCursor::new(TEST_CURSOR_SEQ_STALE),
             )),
         })
         .await;
@@ -669,7 +674,7 @@ async fn subscription_cursor_rejects_backward_advancement(store: &impl OutboundS
             thread_id: thread_id(),
             cursor: Some(ProjectionCursor::for_scope(
                 projection_scope(),
-                EventCursor::new(42),
+                EventCursor::new(TEST_CURSOR_SEQ_A),
             )),
         })
         .await
@@ -715,7 +720,7 @@ async fn subscription_cursor_rejects_backward_advancement(store: &impl OutboundS
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(loaded.runtime, EventCursor::new(42));
+    assert_eq!(loaded.runtime, EventCursor::new(TEST_CURSOR_SEQ_A));
 }
 
 async fn delivery_status_rejects_inconsistent_failure_kind(store: &impl OutboundStateStore) {
@@ -1105,7 +1110,7 @@ async fn advance_subscription_cursor_retries_through_cas_conflict() {
         .arm("/engine/tenants/test/users/test/outbound/subscriptions/", 1)
         .await;
 
-    let cursor = ProjectionCursor::for_scope(projection_scope(), EventCursor::new(101));
+    let cursor = ProjectionCursor::for_scope(projection_scope(), EventCursor::new(TEST_CURSOR_SEQ_RACED));
     store
         .advance_subscription_cursor(AdvanceSubscriptionCursorRequest {
             subscription_id: subscription_id(),

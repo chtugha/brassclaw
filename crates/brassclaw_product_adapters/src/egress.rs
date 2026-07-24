@@ -1,5 +1,8 @@
 //! Constrained protocol HTTP egress and outbound delivery sink.
 
+/// Maximum byte length of a DNS hostname (RFC 1035 §2.3.4 / RFC 1123).
+const MAX_EGRESS_HOST_BYTES: usize = 253;
+
 use async_trait::async_trait;
 use brassclaw_turns::{ReplyTargetBindingRef, TurnRunId};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -22,10 +25,10 @@ impl DeclaredEgressHost {
                 reason: "must not be empty".into(),
             });
         }
-        if value.len() > 253 {
+        if value.len() > MAX_EGRESS_HOST_BYTES {
             return Err(ProductAdapterError::InvalidIdentifier {
                 kind: "declared_egress_host",
-                reason: "must be at most 253 bytes".into(),
+                reason: format!("must be at most {MAX_EGRESS_HOST_BYTES} bytes"),
             });
         }
         if value

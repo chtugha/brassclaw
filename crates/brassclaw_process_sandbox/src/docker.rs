@@ -33,6 +33,11 @@ static CONTAINER_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 const DOCKER_MEMORY_LIMIT: &str = "512m";
 const DOCKER_PIDS_LIMIT: &str = "256";
 const DOCKER_CPU_LIMIT: &str = "2";
+/// Read buffer size for streaming docker output in bounded async reads.
+const DOCKER_READ_BUFFER_BYTES: usize = 8192;
+/// Initial capacity for the `docker run` argument list (covers flags before
+/// user command args are appended).
+const DOCKER_ARGS_BASE_CAPACITY: usize = 48;
 
 /// Trusted Docker backend configuration for the process sandbox.
 ///
@@ -236,7 +241,7 @@ where
 {
     let limit = usize::try_from(limit).unwrap_or(usize::MAX);
     let mut output = Vec::new();
-    let mut buffer = [0_u8; 8192];
+    let mut buffer = [0u8; DOCKER_READ_BUFFER_BYTES];
     let mut truncated = false;
     loop {
         let read = reader.read(&mut buffer).await?;
@@ -362,7 +367,8 @@ pub(crate) fn docker_invocation_for_phase(
 ) -> Result<DockerInvocation, ProcessSandboxPlanError> {
     let spec = DockerPhaseSpec::new(config, plan, phase, command)?;
     let container_name = next_container_name(phase);
-    let mut args = Vec::with_capacity(48 + command.args.len() + command.env.len());
+    let mut args =
+        Vec::with_capacity(DOCKER_ARGS_BASE_CAPACITY + command.args.len() + command.env.len());
     args.extend([
         "run".to_string(),
         "--name".to_string(),

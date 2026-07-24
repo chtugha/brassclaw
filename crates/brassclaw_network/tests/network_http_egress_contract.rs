@@ -1,3 +1,7 @@
+// Byte buffer sizes for the single-shot local test servers that echo one request.
+const CAPTURING_SERVER_READ_BUF: usize = 2048;
+const SIMPLE_SERVER_READ_BUF: usize = 1024;
+
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, TcpListener};
 use std::sync::{Arc, Mutex};
@@ -639,7 +643,7 @@ fn captured_request_server(
     let captured = request_bytes.clone();
     let handle = std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
-        let mut request = [0_u8; 2048];
+        let mut request = [0u8; CAPTURING_SERVER_READ_BUF];
         let bytes_read = stream.read(&mut request).unwrap();
         captured
             .lock()
@@ -662,7 +666,7 @@ fn single_response_server_for_host(
     let port = listener.local_addr().unwrap().port();
     let handle = std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
-        let mut request = [0_u8; 1024];
+        let mut request = [0u8; SIMPLE_SERVER_READ_BUF];
         let _ = stream.read(&mut request).unwrap();
         stream.write_all(response.as_bytes()).unwrap();
     });
@@ -674,7 +678,7 @@ fn sized_response_server(body_len: u64) -> (String, std::thread::JoinHandle<()>)
     let port = listener.local_addr().unwrap().port();
     let handle = std::thread::spawn(move || {
         let (mut stream, _) = listener.accept().unwrap();
-        let mut request = [0_u8; 1024];
+        let mut request = [0u8; SIMPLE_SERVER_READ_BUF];
         let _ = stream.read(&mut request).unwrap();
         let header = format!("HTTP/1.1 200 OK\r\nContent-Length: {body_len}\r\n\r\n");
         stream.write_all(header.as_bytes()).unwrap();

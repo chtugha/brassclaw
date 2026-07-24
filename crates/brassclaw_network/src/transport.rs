@@ -332,6 +332,9 @@ mod tests {
     use super::*;
     use reqwest::Method;
 
+    // HTTPS port used in client-cache key tests (standard TLS port, RFC 8446).
+    const TEST_HTTPS_PORT: u16 = 443;
+
     #[test]
     fn take_request_url_scrubs_only_source_carrier_copy() {
         let mut request = NetworkTransportRequest {
@@ -447,10 +450,10 @@ mod tests {
         let transport = ReqwestNetworkTransport::new(Duration::from_secs(1));
         let key = ReqwestClientKey {
             host: "api.example.test".to_string(),
-            port: 443,
+            port: TEST_HTTPS_PORT,
             resolved_addrs: vec![SocketAddr::new(
                 IpAddr::V4(std::net::Ipv4Addr::new(93, 184, 216, 34)),
-                443,
+                TEST_HTTPS_PORT,
             )],
             timeout: Duration::from_secs(1),
         };

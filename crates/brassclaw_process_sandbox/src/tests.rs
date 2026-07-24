@@ -1,3 +1,6 @@
+// Nonzero exit code returned by the fake Docker backend to simulate an install failure.
+const INSTALL_FAILURE_EXIT_CODE: u8 = 42;
+
 use std::{
     collections::HashMap,
     path::Path,
@@ -786,7 +789,7 @@ impl DockerRunner for InstallFailsRunner {
         let call = self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(DockerRunOutput {
             exit_code: if invocation.phase == SandboxProcessPhase::Install && call == 0 {
-                42
+                INSTALL_FAILURE_EXIT_CODE
             } else {
                 0
             },
@@ -841,7 +844,7 @@ async fn docker_backend_stops_after_failed_install_phase() {
     assert_eq!(runner.calls.load(Ordering::SeqCst), 1);
     assert_eq!(result.output.phases.len(), 1);
     assert_eq!(result.output.phases[0].phase, SandboxProcessPhase::Install);
-    assert_eq!(result.output.phases[0].exit_code, 42);
+    assert_eq!(result.output.phases[0].exit_code, INSTALL_FAILURE_EXIT_CODE);
 }
 
 #[derive(Clone)]
