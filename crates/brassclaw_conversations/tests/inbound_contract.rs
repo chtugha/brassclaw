@@ -2890,21 +2890,24 @@ impl ConversationBindingService for DriftBindingService {
         &self,
         _request: brassclaw_conversations::ResolveConversationRequest,
     ) -> Result<ConversationBindingResolution, InboundTurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 
     async fn link_conversation_to_thread(
         &self,
         _request: LinkConversationRequest,
     ) -> Result<LinkedConversationBinding, InboundTurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 
     async fn validate_reply_target(
         &self,
         _request: ValidateReplyTargetRequest,
     ) -> Result<ReplyTargetBinding, InboundTurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 }
 
@@ -3058,15 +3061,18 @@ impl TurnCoordinator for PermanentFailureTurnCoordinator {
         &self,
         _request: ResumeTurnRequest,
     ) -> Result<ResumeTurnResponse, TurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 
     async fn cancel_run(&self, _request: CancelRunRequest) -> Result<CancelRunResponse, TurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 
     async fn get_run_state(&self, _request: GetRunStateRequest) -> Result<TurnRunState, TurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 }
 
@@ -3091,15 +3097,18 @@ impl TurnCoordinator for CapacityFailureTurnCoordinator {
         &self,
         _request: ResumeTurnRequest,
     ) -> Result<ResumeTurnResponse, TurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 
     async fn cancel_run(&self, _request: CancelRunRequest) -> Result<CancelRunResponse, TurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 
     async fn get_run_state(&self, _request: GetRunStateRequest) -> Result<TurnRunState, TurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 }
 
@@ -3129,15 +3138,18 @@ impl TurnCoordinator for BusyFirstUniqueKeyCoordinator {
         &self,
         _request: ResumeTurnRequest,
     ) -> Result<ResumeTurnResponse, TurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 
     async fn cancel_run(&self, _request: CancelRunRequest) -> Result<CancelRunResponse, TurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 
     async fn get_run_state(&self, _request: GetRunStateRequest) -> Result<TurnRunState, TurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 }
 
@@ -3165,15 +3177,18 @@ impl TurnCoordinator for FailFirstTurnCoordinator {
         &self,
         _request: ResumeTurnRequest,
     ) -> Result<ResumeTurnResponse, TurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 
     async fn cancel_run(&self, _request: CancelRunRequest) -> Result<CancelRunResponse, TurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 
     async fn get_run_state(&self, _request: GetRunStateRequest) -> Result<TurnRunState, TurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 }
 
@@ -3195,15 +3210,18 @@ impl TurnCoordinator for RecordingTurnCoordinator {
         &self,
         _request: ResumeTurnRequest,
     ) -> Result<ResumeTurnResponse, TurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 
     async fn cancel_run(&self, _request: CancelRunRequest) -> Result<CancelRunResponse, TurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 
     async fn get_run_state(&self, _request: GetRunStateRequest) -> Result<TurnRunState, TurnError> {
-        unimplemented!("not used by inbound facade tests")
+        // Test fake: this path is never exercised by the inbound facade tests.
+        panic!("not exercised by inbound facade tests")
     }
 }
 
