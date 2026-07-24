@@ -2,6 +2,13 @@ mod support;
 
 use std::sync::{Arc, Mutex};
 
+/// max_results value for Google Calendar API list-events queries in tests.
+const TEST_CALENDAR_MAX_RESULTS: u64 = 2500;
+/// Simulated request bytes for RecordingEgress GET responses in add-attendees tests.
+const TEST_GET_REQUEST_BYTES: u64 = 101;
+/// Simulated request bytes for a smaller RecordingEgress GET response.
+const TEST_SMALL_REQUEST_BYTES: u64 = 50;
+
 use async_trait::async_trait;
 use brassclaw_auth::{
     AuthProductError, AuthProductScope, AuthProviderId, CredentialAccount,
@@ -133,7 +140,7 @@ async fn calendar_create_event_does_not_forward_list_query_fields() {
             "time_min": "2026-05-21T00:00:00Z",
             "time_max": "2026-05-22T00:00:00Z",
             "page_token": "next",
-            "max_results": 2500,
+            "max_results": TEST_CALENDAR_MAX_RESULTS,
             "event": { "summary": "Review" }
         }),
         egress.clone(),
@@ -1383,7 +1390,7 @@ async fn add_attendees_refreshes_expired_get_and_retries_patch() {
                 "attendees":[{"email":"existing@example.com"}],
                 "etag":"retry-get-etag"
             }),
-            101,
+            TEST_GET_REQUEST_BYTES,
         ),
         RecordingEgress::json_with_request_bytes(json!({"id":"evt-1","updated":true}), 211),
     ]));
@@ -1447,7 +1454,7 @@ async fn add_attendees_reports_both_google_api_requests() {
     let egress = Arc::new(RecordingEgress::with_responses(vec![
         RecordingEgress::json_with_request_bytes(
             json!({"attendees":[{"email":"existing@example.com"}]}),
-            101,
+            TEST_GET_REQUEST_BYTES,
         ),
         RecordingEgress::json_with_request_bytes(json!({"id":"evt-1"}), 211),
     ]));
@@ -1530,7 +1537,7 @@ async fn add_attendees_restages_credential_before_patch() {
                 "attendees": [{"email": "existing@example.com"}],
                 "etag": "test-etag"
             }),
-            50,
+            TEST_SMALL_REQUEST_BYTES,
         ),
         // PATCH response — would succeed, but stager fails before we get here
         RecordingEgress::json_with_request_bytes(json!({"id": "evt-1", "updated": true}), 80),
