@@ -1,4 +1,9 @@
 //! Layout configuration types for frontend customization.
+
+/// Maximum raw (pre-trim) byte length of a validated string value.
+/// Acts as a guard against exfil-shaped payloads — counts what the caller
+/// actually wrote, not the resolved URL length after whitespace collapse.
+const VALIDATED_STRING_MAX_BYTES: usize = 2048;
 //!
 //! A [`LayoutConfig`] is stored as `.system/gateway/layout.json` in the
 //! workspace. It controls branding, tab visibility/order, chat features, and
@@ -293,7 +298,7 @@ pub(crate) fn is_safe_url(value: &str) -> bool {
     // is intentionally a guard against exfil-shaped payloads, not a guard
     // against the resolved URL itself, so the right thing to count is what
     // the caller actually wrote.
-    if value.len() > 2048 {
+    if value.len() > VALIDATED_STRING_MAX_BYTES {
         return false;
     }
     let v = value.trim();
