@@ -55,9 +55,9 @@ impl RecipeValidator {
         check_description_actionable(&skill.description, "ToolSkill", &mut result);
 
         let tokens = skill.estimated_tokens();
-        if tokens > 5000 {
+        if tokens > SKILL_MAX_TOKENS {
             result.errors.push(format!(
-                "ToolSkill exceeds 5000 token budget ({tokens} tokens). Split into smaller skills or move detail to reference files."
+                "ToolSkill exceeds {SKILL_MAX_TOKENS} token budget ({tokens} tokens). Split into smaller skills or move detail to reference files."
             ));
         }
 
@@ -241,7 +241,7 @@ fn check_trigger(trigger: &RecipeTrigger, source: &RecipeSource, result: &mut Va
             for (i, p) in patterns.iter().enumerate() {
                 if p.is_empty() {
                     result.errors.push(format!("Pattern[#{i}] is empty"));
-                } else if let Err(error) = regex::RegexBuilder::new(p).size_limit(10_000).build() {
+                } else if let Err(error) = regex::RegexBuilder::new(p).size_limit(RECIPE_REGEX_SIZE_LIMIT).build() {
                     result
                         .errors
                         .push(format!("Pattern[#{i}] regex invalid: {error}"));
