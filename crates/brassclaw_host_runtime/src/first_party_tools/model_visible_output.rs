@@ -22,7 +22,7 @@ pub(super) fn truncate_str_for_json_content_budget(
     value: &str,
     max_serialized_content_bytes: usize,
 ) -> (&str, bool) {
-    let mut used = 0_usize;
+    let mut used = 0usize;
     for (index, character) in value.char_indices() {
         let next = used.saturating_add(json_escaped_character_len(character));
         if next > max_serialized_content_bytes {

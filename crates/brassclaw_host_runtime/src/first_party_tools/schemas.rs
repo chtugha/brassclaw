@@ -1,5 +1,10 @@
 use serde_json::{Value, json};
 
+/// Maximum HTTP request timeout in milliseconds (30 seconds).
+const HTTP_TIMEOUT_MAX_MS: u32 = 30000;
+/// Default HTTP request timeout in milliseconds (10 seconds).
+const HTTP_TIMEOUT_DEFAULT_MS: u32 = 10000;
+
 pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value> {
     Some(match reference {
         "schemas/builtin/echo.input.v1.json" => json!({
@@ -376,8 +381,8 @@ fn http_schema(require_save_to: bool) -> Value {
         "timeout_ms": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 30000,
-            "default": 10000,
+            "maximum": HTTP_TIMEOUT_MAX_MS,
+            "default": HTTP_TIMEOUT_DEFAULT_MS,
             "description": "Request timeout in milliseconds. Defaults to 10s and is capped at 30s."
         }
     });

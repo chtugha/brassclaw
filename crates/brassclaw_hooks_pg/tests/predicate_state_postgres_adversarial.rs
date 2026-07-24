@@ -10,6 +10,9 @@
 //! the contract suite. Serialized behind a process-global lock because
 //! they share fixed keys against one table.
 
+/// Test Decimal value used in value-deduplication adversarial scenarios.
+const TEST_VALUE: i64 = 50;
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -217,18 +220,18 @@ async fn cross_host_value_replay_sums_once() {
     let id = ev("shared-value-X");
 
     let s_a = hs[0]
-        .record_value(&key, &id, now, Decimal::from(50), window)
+        .record_value(&key, &id, now, Decimal::from(TEST_VALUE), window)
         .await
         .expect("host A");
     let s_b = hs[1]
-        .record_value(&key, &id, now, Decimal::from(50), window)
+        .record_value(&key, &id, now, Decimal::from(TEST_VALUE), window)
         .await
         .expect("host B");
 
-    assert_eq!(s_a, Decimal::from(50));
+    assert_eq!(s_a, Decimal::from(TEST_VALUE));
     assert_eq!(
         s_b,
-        Decimal::from(50),
+        Decimal::from(TEST_VALUE),
         "duplicate id from a second host must not double the sum"
     );
 }

@@ -5,6 +5,13 @@
 
 use std::time::Duration;
 
+/// First test Decimal value in numeric-sum scripted scenarios.
+const TEST_VALUE_FIRST: i64 = 50;
+/// Second test Decimal value in numeric-sum scripted scenarios.
+const TEST_VALUE_SECOND: i64 = 75;
+/// Large timestamp (seconds) used as a far-future sentinel in window tests.
+const FAR_FUTURE_SECS: i64 = 10_000;
+
 use brassclaw_hooks::predicate_state::{
     MAX_KEYS_PER_TENANT, MAX_SAMPLES_PER_KEY, PredicateStateBackend,
 };
@@ -85,7 +92,7 @@ pub(crate) async fn run_core_script(backend: &dyn PredicateStateBackend) -> Obse
         "count/far-future",
         &k,
         &ev("e-far"),
-        at_secs(10_000),
+        at_secs(FAR_FUTURE_SECS),
         win,
     )
     .await;
@@ -156,7 +163,7 @@ pub(crate) async fn run_core_script(backend: &dyn PredicateStateBackend) -> Obse
         &vk,
         &ev("v1"),
         at_secs(0),
-        Decimal::from(50),
+        Decimal::from(TEST_VALUE_FIRST),
         win,
     )
     .await;
@@ -167,7 +174,7 @@ pub(crate) async fn run_core_script(backend: &dyn PredicateStateBackend) -> Obse
         &vk,
         &ev("v2"),
         at_secs(1),
-        Decimal::from(75),
+        Decimal::from(TEST_VALUE_SECOND),
         win,
     )
     .await;

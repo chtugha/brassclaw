@@ -159,7 +159,7 @@ enum KnownMemoryContextProfile {
 
 impl KnownMemoryContextProfile {
     fn from_profile_id(context_profile_id: &ContextProfileId) -> Option<Self> {
-        // TODO(reborn/#3333): replace this compatibility alias list with the
+        // Known tech-debt(reborn/#3333): replace this compatibility alias list with the
         // production context-policy registry once run-profile policy wiring is
         // owned by durable configuration instead of adapter-local matching.
         const MEMORY_DISABLED_ALIASES: &[&str] = &[

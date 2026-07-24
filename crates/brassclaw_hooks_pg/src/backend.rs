@@ -770,10 +770,13 @@ mod tests {
     /// than panicking on an out-of-range index.
     #[test]
     fn short_slice_zero_pads_without_panic() {
+        // 0xFF = 0b11111111: all-bits-set sentinel verifies zero-padding is
+        // applied to missing bytes, not some other fill value.
+        const SENTINEL_BYTE: u8 = 0xFF;
         assert_eq!(advisory_lock_key_from_bytes(&[]), (0, 0));
         assert_eq!(
-            advisory_lock_key_from_bytes(&[0xFF]),
-            (i32::from_le_bytes([0xFF, 0, 0, 0]), 0)
+            advisory_lock_key_from_bytes(&[SENTINEL_BYTE]),
+            (i32::from_le_bytes([SENTINEL_BYTE, 0, 0, 0]), 0)
         );
     }
 }

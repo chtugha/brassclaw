@@ -490,6 +490,9 @@ fn truncate_for_error(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// Integer value used as an invalid-type input for command/workdir fields
+    /// in the shell request parser rejection tests.
+    const INVALID_TYPE_INT: i32 = 123;
     use super::*;
     use serde_json::json;
 
@@ -538,8 +541,8 @@ mod tests {
 
         for input in [
             json!({}),
-            json!({"command": 123}),
-            json!({"command": "echo hi", "workdir": 123}),
+            json!({"command": INVALID_TYPE_INT}),
+            json!({"command": "echo hi", "workdir": INVALID_TYPE_INT}),
             json!({"command": "echo hi", "timeout": 0}),
             json!({"command": "echo hi", "timeout": "1"}),
         ] {

@@ -21,6 +21,9 @@
 
 #![cfg(feature = "integration")]
 
+/// Test Decimal value used in value-deduplication adversarial scenarios.
+const TEST_VALUE: i64 = 50;
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -319,25 +322,25 @@ async fn scenario_cross_host_replay_exactly_once(
             &vkey,
             &ev("v-shared"),
             at_secs(0),
-            Decimal::from(50),
+            Decimal::from(TEST_VALUE),
             window,
         )
         .await
         .expect("ok");
-    assert_eq!(s1, Decimal::from(50));
+    assert_eq!(s1, Decimal::from(TEST_VALUE));
     let s2 = host_b
         .record_value(
             &vkey,
             &ev("v-shared"),
             at_secs(1),
-            Decimal::from(50),
+            Decimal::from(TEST_VALUE),
             window,
         )
         .await
         .expect("ok");
     assert_eq!(
         s2,
-        Decimal::from(50),
+        Decimal::from(TEST_VALUE),
         "cross-host value replay must not double-count"
     );
 }
