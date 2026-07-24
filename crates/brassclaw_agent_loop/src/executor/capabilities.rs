@@ -736,7 +736,7 @@ fn shared_await_dependent_gate(
 ) -> Option<(brassclaw_turns::LoopGateRef, CapabilityCallCandidate)> {
     let mut shared_gate: Option<brassclaw_turns::LoopGateRef> = None;
     let mut first_call: Option<CapabilityCallCandidate> = None;
-    let mut count = 0_usize;
+    let mut count: usize = 0;
     for (call, outcome) in calls.iter().zip(outcomes.iter()) {
         match outcome {
             CapabilityOutcome::AwaitDependentRun { gate_ref, .. } => {
