@@ -82,7 +82,7 @@ impl DurableEventLog for PgDurableEventLog {
         after: Option<EventCursor>,
         limit: usize,
     ) -> Result<EventReplay<RuntimeEvent>, EventError> {
-        let after_seq = after.map(|c| c.as_u64() as i64).unwrap_or(0_i64);
+        let after_seq = after.map(|c| c.as_u64() as i64).unwrap_or(0i64);
         let user_id = stream.user_id.to_string();
         let client = self.pool.get().await.map_err(map_pool)?;
         let rows = client
@@ -202,7 +202,7 @@ impl DurableAuditLog for PgDurableAuditLog {
         after: Option<EventCursor>,
         limit: usize,
     ) -> Result<EventReplay<AuditEnvelope>, EventError> {
-        let after_seq = after.map(|c| c.as_u64() as i64).unwrap_or(0_i64);
+        let after_seq = after.map(|c| c.as_u64() as i64).unwrap_or(0i64);
         let client = self.pool.get().await.map_err(map_pool)?;
         let rows = client
             .query(

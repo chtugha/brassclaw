@@ -22,6 +22,10 @@ use brassclaw_host_api::{
 };
 use brassclaw_reborn_event_store::{FilesystemDurableAuditLog, FilesystemDurableEventLog};
 
+// A cursor sequence value beyond any event in a small fixture stream; used to
+// verify that a foreign/future cursor is rejected with ReplayGap.
+const FUTURE_CURSOR_SEQ: u64 = 99;
+
 fn capability_id() -> CapabilityId {
     CapabilityId::new("demo.echo").expect("capability id")
 }
@@ -165,7 +169,7 @@ async fn filesystem_event_log_head_cursor_reports_latest_and_rejects_future() {
     );
     // A cursor beyond head is a foreign/future cursor → ReplayGap.
     let err = log
-        .head_cursor(&stream, EventCursor::new(99))
+        .head_cursor(&stream, EventCursor::new(FUTURE_CURSOR_SEQ))
         .await
         .expect_err("future cursor must be rejected");
     assert!(

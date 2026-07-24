@@ -46,6 +46,53 @@ pub const TRACE_UPLOAD_CLAIM_MAX_RESPONSE_BYTES: usize = 64 * 1024;
 const TRACE_UPLOAD_CLAIM_REFRESH_SKEW_SECONDS: i64 = 60;
 const TRACE_CREDIT_NOTICE_OUTBOX_MAX_ATTEMPTS_STORED: usize = 10;
 
+// Scoring weights for `compute_value_scorecard`. Must sum to 1.0 on the
+// positive side (quality + replayability + novelty + coverage_bonus +
+// difficulty + user_correction_value) before the penalty deductions.
+const SCORE_WEIGHT_QUALITY: f32 = 0.25;
+const SCORE_WEIGHT_REPLAYABILITY: f32 = 0.20;
+const SCORE_WEIGHT_NOVELTY: f32 = 0.20;
+const SCORE_WEIGHT_COVERAGE_BONUS: f32 = 0.15;
+const SCORE_WEIGHT_DIFFICULTY: f32 = 0.10;
+const SCORE_WEIGHT_USER_CORRECTION: f32 = 0.10;
+const SCORE_PENALTY_DUPLICATE: f32 = 0.40;
+const SCORE_PENALTY_PRIVACY_RISK: f32 = 0.60;
+
+/// Difficulty factor applied when the task outcome is a failure or partial result.
+const DIFFICULTY_FAILED_OR_PARTIAL: f32 = 0.65;
+/// Difficulty factor applied when the task outcome is a success.
+const DIFFICULTY_SUCCESS: f32 = 0.35;
+/// Novelty scores are clamped to this ceiling before weighting to avoid a
+/// single signal dominating the total.
+const NOVELTY_MAX_CAP: f32 = 0.85;
+
+/// Credit scale: raw score is multiplied by this then rounded to two decimal
+/// places to produce a human-readable credit point estimate.
+const CREDIT_POINT_SCALE: f32 = 10.0;
+/// Divisor used to round credit estimates to two decimal places (10^2).
+const CREDIT_POINT_ROUND_DIVISOR: f32 = 100.0;
+
+/// Maximum safe upload-claim issuer timeout, in milliseconds.
+const TRACE_UPLOAD_CLAIM_ISSUER_MAX_TIMEOUT_MS: u64 = 30_000;
+
+/// Characters to retain when truncating redacted strings for logging/display.
+const REDACTED_STRING_MAX_CHARS: usize = 240;
+
+/// Maximum retry backoff in seconds (24 hours) for the trace queue.
+const TRACE_QUEUE_MAX_RETRY_BACKOFF_SECS: u64 = 86_400;
+/// Base backoff interval in seconds for trace queue retry.
+const TRACE_QUEUE_BASE_RETRY_INTERVAL_SECS: u64 = 300;
+
+// IPv4 address range constants for disallowed trace-upload issuer IPs.
+// Ranges follow IANA Special-Purpose Address Registries.
+const IPV4_LOOPBACK_OCTET: u8 = 127;
+const IPV4_LINK_LOCAL_FIRST: u8 = 169;
+const IPV4_LINK_LOCAL_SECOND: u8 = 254;
+const IPV4_CLASS_C_PRIVATE_FIRST: u8 = 192;
+const IPV4_CLASS_C_PRIVATE_SECOND: u8 = 168;
+/// First octet at which IPv4 multicast/reserved ranges begin.
+const IPV4_MULTICAST_RESERVED_FIRST_OCTET: u8 = 224;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TraceContributionEnvelope {
     pub schema_version: String,
@@ -866,7 +913,7 @@ pub fn compute_value_scorecard(envelope: &TraceContributionEnvelope) -> TraceVal
         .as_ref()
         .and_then(|analysis| analysis.novelty_score)
         .unwrap_or_else(|| (event_count / 12.0).clamp(0.15, 0.6))
-        .min(0.85);
+        .min(NOVELTY_MAX_CAP);
     let duplicate_penalty = envelope
         .embedding_analysis
         .as_ref()
@@ -878,7 +925,7 @@ pub fn compute_value_scorecard(envelope: &TraceContributionEnvelope) -> TraceVal
         envelope.outcome.task_success,
         TaskSuccess::Failure | TaskSuccess::Partial
     );
-    let difficulty = if failed_or_partial { 0.65 } else { 0.35 };
+    let difficulty = if failed_or_partial { DIFFICULTY_FAILED_OR_PARTIAL } else { DIFFICULTY_SUCCESS };
     let dependability = if envelope.events.is_empty() {
         0.0
     } else if envelope.privacy.redaction_hash.starts_with("sha256:") {
@@ -901,20 +948,21 @@ pub fn compute_value_scorecard(envelope: &TraceContributionEnvelope) -> TraceVal
 
     let raw = gate
         * schema_validity
-        * (0.25 * quality
-            + 0.20 * replayability
-            + 0.20 * novelty
-            + 0.15 * coverage_bonus
-            + 0.10 * difficulty
-            + 0.10 * user_correction_value)
-        - 0.40 * duplicate_penalty
-        - 0.60 * privacy_risk;
+        * (SCORE_WEIGHT_QUALITY * quality
+            + SCORE_WEIGHT_REPLAYABILITY * replayability
+            + SCORE_WEIGHT_NOVELTY * novelty
+            + SCORE_WEIGHT_COVERAGE_BONUS * coverage_bonus
+            + SCORE_WEIGHT_DIFFICULTY * difficulty
+            + SCORE_WEIGHT_USER_CORRECTION * user_correction_value)
+        - SCORE_PENALTY_DUPLICATE * duplicate_penalty
+        - SCORE_PENALTY_PRIVACY_RISK * privacy_risk;
     let online_score = raw.clamp(0.0, 1.0);
     let credit_points_estimate =
         if matches!(envelope.privacy.residual_pii_risk, ResidualPiiRisk::High) {
             0.0
         } else {
-            (10.0 * online_score * 100.0).round() / 100.0
+            (CREDIT_POINT_SCALE * online_score * CREDIT_POINT_ROUND_DIVISOR).round()
+                / CREDIT_POINT_ROUND_DIVISOR
         };
 
     let mut explanation = Vec::new();
@@ -5087,13 +5135,13 @@ fn is_disallowed_trace_upload_claim_issuer_ip(ip: IpAddr) -> bool {
             let octets = v4.octets();
             octets[0] == 0
                 || octets[0] == 10
-                || octets[0] == 127
+                || octets[0] == IPV4_LOOPBACK_OCTET
                 || (octets[0] == 100 && (64..=127).contains(&octets[1]))
-                || (octets[0] == 169 && octets[1] == 254)
+                || (octets[0] == IPV4_LINK_LOCAL_FIRST && octets[1] == IPV4_LINK_LOCAL_SECOND)
                 || (octets[0] == 172 && (16..=31).contains(&octets[1]))
-                || (octets[0] == 192 && octets[1] == 168)
+                || (octets[0] == IPV4_CLASS_C_PRIVATE_FIRST && octets[1] == IPV4_CLASS_C_PRIVATE_SECOND)
                 || (octets[0] == 198 && (18..=19).contains(&octets[1]))
-                || octets[0] >= 224
+                || octets[0] >= IPV4_MULTICAST_RESERVED_FIRST_OCTET
         }
         IpAddr::V6(v6) => {
             let segments = v6.segments();
@@ -5121,7 +5169,7 @@ fn trace_upload_claim_issuer_timeout(
 ) -> anyhow::Result<Duration> {
     let timeout_ms = policy.upload_token_issuer_timeout_ms;
     anyhow::ensure!(
-        (1..=30_000).contains(&timeout_ms),
+        (1..=TRACE_UPLOAD_CLAIM_ISSUER_MAX_TIMEOUT_MS).contains(&timeout_ms),
         "Trace Commons upload token issuer timeout must be between 1 and 30000 milliseconds"
     );
     Ok(Duration::from_millis(timeout_ms))
@@ -5849,7 +5897,7 @@ fn safe_remote_credit_explanation_line(line: &str) -> String {
         .join(" ")
         .trim()
         .chars()
-        .take(240)
+        .take(REDACTED_STRING_MAX_CHARS)
         .collect()
 }
 
@@ -7440,7 +7488,9 @@ fn retry_hold_after_submission_failure(
 fn trace_queue_next_retry_at(now: DateTime<Utc>, attempts: u32) -> DateTime<Utc> {
     let exponent = attempts.saturating_sub(1).min(8);
     let multiplier = 1u64 << exponent;
-    let seconds = 300u64.saturating_mul(multiplier).min(86_400);
+    let seconds = TRACE_QUEUE_BASE_RETRY_INTERVAL_SECS
+        .saturating_mul(multiplier)
+        .min(TRACE_QUEUE_MAX_RETRY_BACKOFF_SECS);
     now + chrono::Duration::seconds(seconds as i64)
 }
 
@@ -7538,7 +7588,7 @@ fn safe_trace_queue_hold_reason(reason: &str) -> String {
     if redacted.is_empty() {
         return "held".to_string();
     }
-    redacted.chars().take(240).collect()
+    redacted.chars().take(REDACTED_STRING_MAX_CHARS).collect()
 }
 
 fn trace_policy_path(scope: Option<&str>) -> PathBuf {
