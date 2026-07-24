@@ -513,9 +513,9 @@ mod tests {
     #[tokio::test]
     async fn prompt_overlay_size_is_capped() {
         let project_id = ProjectId(uuid::Uuid::new_v4());
-        // Create an overlay that exceeds MAX_PROMPT_OVERLAY_CHARS using a char
-        // not found in the compiled preamble/postamble
-        let huge_content = "\u{2603}".repeat(MAX_PROMPT_OVERLAY_CHARS + 1000); // snowman
+        // Exceed the limit by OVERLAY_OVERFLOW_MARGIN chars to guarantee truncation is triggered.
+        const OVERLAY_OVERFLOW_MARGIN: usize = 1000;
+        let huge_content = "\u{2603}".repeat(MAX_PROMPT_OVERLAY_CHARS + OVERLAY_OVERFLOW_MARGIN); // snowman
         let overlay = MemoryDoc {
             id: DocId::new(),
             project_id,
