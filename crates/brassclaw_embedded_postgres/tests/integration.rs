@@ -261,7 +261,9 @@ mod integration {
         // PID 1 is always init/launchd, but kill -0 returns 0 for it;
         // use a very large PID value that is almost certainly dead on the test host.
         let pid_file = config.data_dir.join("postmaster.pid");
-        let dead_pid: u32 = 9_999_999; // extremely unlikely to be a live process
+        // A PID this high is extremely unlikely to be a live process on any platform.
+        const DEAD_PID_SENTINEL: u32 = 9_999_999;
+        let dead_pid: u32 = DEAD_PID_SENTINEL;
         tokio::fs::write(&pid_file, format!("{dead_pid}\n/tmp\n"))
             .await
             .expect("write stale pid file");
