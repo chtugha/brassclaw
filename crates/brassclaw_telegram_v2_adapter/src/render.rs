@@ -214,18 +214,21 @@ mod tests {
     use brassclaw_turns::TurnRunId;
     use chrono::Utc;
 
+    // Synthetic Telegram chat ID used in render test fixtures.
+    const TEST_TELEGRAM_CHAT_ID: i64 = -100;
+
     fn handle() -> EgressCredentialHandle {
         EgressCredentialHandle::new("telegram_bot_token").expect("valid")
     }
 
     #[test]
     fn parse_reply_target_round_trips() {
-        let target = build_reply_target_binding(-100, Some(7), Some(42));
+        let target = build_reply_target_binding(TEST_TELEGRAM_CHAT_ID, Some(7), Some(42));
         let parsed = parse_reply_target(&target).expect("parse");
         assert_eq!(
             parsed,
             TelegramReplyTarget {
-                chat_id: -100,
+                chat_id: TEST_TELEGRAM_CHAT_ID,
                 topic_id: Some(7),
                 reply_message_id: Some(42),
             }
@@ -260,7 +263,7 @@ mod tests {
 
     #[test]
     fn progress_typing_renders_send_chat_action() {
-        let target = build_reply_target_binding(-100, None, None);
+        let target = build_reply_target_binding(TEST_TELEGRAM_CHAT_ID, None, None);
         let view = ProgressUpdateView {
             turn_run_id: TurnRunId::new(),
             kind: ProgressKind::Typing,

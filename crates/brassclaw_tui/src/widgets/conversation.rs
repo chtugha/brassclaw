@@ -1,5 +1,12 @@
 //! Conversation widget: renders chat messages with basic markdown.
 
+// Fallback minimum width for the left-column (banner) when no BANNER lines are defined.
+const BANNER_COL_FALLBACK_WIDTH: usize = 40;
+// Maximum display length for a comma-separated items list before truncation.
+const ITEMS_LIST_DISPLAY_MAX: usize = 60;
+// Truncation point — leaves room for the "..." suffix.
+const ITEMS_LIST_DISPLAY_TRUNC: usize = 57;
+
 use std::sync::RwLock;
 
 use ratatui::buffer::Buffer;
@@ -616,7 +623,7 @@ impl ConversationWidget {
             .iter()
             .map(|l| UnicodeWidthStr::width(*l))
             .max()
-            .unwrap_or(40)
+            .unwrap_or(BANNER_COL_FALLBACK_WIDTH)
             + 4;
         // Max text width inside the left column (minus the 2-char indent)
         let left_text_max = left_col_width.saturating_sub(2);
@@ -866,8 +873,8 @@ impl ConversationWidget {
 
         let mut items_str = items.join(", ");
         // Truncate if too long
-        if items_str.len() > 60 {
-            items_str.truncate(57);
+        if items_str.len() > ITEMS_LIST_DISPLAY_MAX {
+            items_str.truncate(ITEMS_LIST_DISPLAY_TRUNC);
             items_str.push_str("...");
         }
 

@@ -1216,6 +1216,10 @@ fn t14f_mutate_with_publishes_when_same_trust_loses_allowed_effects() {
     );
 }
 
+// Token ceiling limit used in the t14h fixture to verify that lowering a
+// resource ceiling (from 1_000 to 100 tokens) triggers an invalidation.
+const T14H_INITIAL_TOKEN_CEILING: u64 = 1_000;
+
 #[test]
 fn t14h_mutate_with_publishes_when_same_trust_lowers_resource_ceiling() {
     let admin = AdminConfig::with_entries([AdminEntry::for_bundled(
@@ -1223,7 +1227,7 @@ fn t14h_mutate_with_publishes_when_same_trust_lowers_resource_ceiling() {
         None,
         HostTrustAssignment::first_party(),
         vec![EffectKind::ReadFilesystem],
-        Some(output_token_ceiling(1_000)),
+        Some(output_token_ceiling(T14H_INITIAL_TOKEN_CEILING)),
     )]);
     let policy = policy(vec![Box::new(admin)]);
     let bus = InvalidationBus::new();

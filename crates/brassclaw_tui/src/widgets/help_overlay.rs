@@ -83,7 +83,9 @@ impl TuiWidget for HelpOverlayWidget {
             return;
         }
 
-        let key_width = 18usize;
+        // Column width reserved for the key name in the help overlay table.
+        const HELP_KEY_COLUMN_WIDTH: usize = 18;
+        let key_width = HELP_KEY_COLUMN_WIDTH;
         let mut lines: Vec<Line<'_>> = Vec::with_capacity(KEYBINDINGS.len() + 2);
 
         // Blank line for spacing

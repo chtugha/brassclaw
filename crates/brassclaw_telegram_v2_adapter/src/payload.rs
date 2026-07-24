@@ -825,6 +825,23 @@ mod tests {
     use brassclaw_product_adapters::ProductAdapterId;
     use brassclaw_product_adapters::auth::mark_shared_secret_header_verified;
 
+    // Synthetic Telegram IDs used repeatedly in payload test fixtures.
+    // Alice is the test user; -42 is the test supergroup; 9000 is the bot.
+    // Most tests embed these in br#"..."# byte literals (which cannot reference
+    // Rust constants); the constants serve as canonical documentation for what
+    // each numeric ID represents.
+    #[allow(dead_code)]
+    const ALICE_USER_ID: i64 = 777;
+    #[allow(dead_code)]
+    const TEST_GROUP_CHAT_ID: i64 = -42;
+    #[allow(dead_code)]
+    const TEST_BOT_ID: u64 = 9000;
+    #[allow(dead_code)]
+    const TEST_CHANNEL_CHAT_ID: i64 = -1001;
+    // File size for a synthetic photo fixture.
+    #[allow(dead_code)]
+    const TEST_PHOTO_FILE_SIZE: u64 = 8192;
+
     fn evidence() -> ProtocolAuthEvidence {
         mark_shared_secret_header_verified(
             "X-Telegram-Bot-Api-Secret-Token",
@@ -1030,8 +1047,8 @@ mod tests {
                 "message": {{
                     "message_id": 17,
                     "date": 1700000000,
-                    "from": {{"id": 777, "is_bot": false, "first_name": "Alice"}},
-                    "chat": {{"id": 777, "type": "private"}},
+                    "from": {{"id": {ALICE_USER_ID}, "is_bot": false, "first_name": "Alice"}},
+                    "chat": {{"id": {ALICE_USER_ID}, "type": "private"}},
                     "text": "/help {oversized}",
                     "entities": [{{"type": "bot_command", "offset": 0, "length": 5}}]
                 }}

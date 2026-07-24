@@ -1,5 +1,16 @@
 //! Rendering utilities for converting text to styled Ratatui spans.
 
+// Time and scale conversion constants used in format_duration,
+// format_tool_duration, and format_tokens.
+const SECS_PER_HOUR: u64 = 3600;
+const MILLIS_PER_SEC: u64 = 1_000;
+const MILLIS_PER_MIN: u64 = 60_000;
+const MILLIS_PER_SEC_F64: f64 = 1_000.0;
+const TOKENS_PER_K: u64 = 1_000;
+const TOKENS_PER_M: u64 = 1_000_000;
+const TOKENS_PER_K_F64: f64 = 1_000.0;
+const TOKENS_PER_M_F64: f64 = 1_000_000.0;
+
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -639,11 +650,11 @@ pub(crate) fn collapse_preview(s: &str, max: usize) -> String {
 pub(crate) fn format_duration(secs: u64) -> String {
     if secs < 60 {
         format!("{secs}s")
-    } else if secs < 3600 {
+    } else if secs < SECS_PER_HOUR {
         format!("{}m", secs / 60)
     } else {
-        let h = secs / 3600;
-        let m = (secs % 3600) / 60;
+        let h = secs / SECS_PER_HOUR;
+        let m = (secs % SECS_PER_HOUR) / 60;
         if m > 0 {
             format!("{h}h {m}m")
         } else {
@@ -654,12 +665,12 @@ pub(crate) fn format_duration(secs: u64) -> String {
 
 /// Format a tool duration in milliseconds (e.g., "37ms", "1.3s", "2m 5s").
 pub(crate) fn format_tool_duration(ms: u64) -> String {
-    if ms < 1_000 {
+    if ms < MILLIS_PER_SEC {
         format!("{ms}ms")
-    } else if ms < 60_000 {
-        format!("{:.1}s", ms as f64 / 1_000.0)
+    } else if ms < MILLIS_PER_MIN {
+        format!("{:.1}s", ms as f64 / MILLIS_PER_SEC_F64)
     } else {
-        let secs = ms / 1_000;
+        let secs = ms / MILLIS_PER_SEC;
         let m = secs / 60;
         let s = secs % 60;
         if s > 0 {
@@ -672,12 +683,12 @@ pub(crate) fn format_tool_duration(ms: u64) -> String {
 
 /// Format a token count with K/M suffix.
 pub(crate) fn format_tokens(tokens: u64) -> String {
-    if tokens < 1_000 {
+    if tokens < TOKENS_PER_K {
         tokens.to_string()
-    } else if tokens < 1_000_000 {
-        format!("{:.1}K", tokens as f64 / 1_000.0)
+    } else if tokens < TOKENS_PER_M {
+        format!("{:.1}K", tokens as f64 / TOKENS_PER_K_F64)
     } else {
-        format!("{:.1}M", tokens as f64 / 1_000_000.0)
+        format!("{:.1}M", tokens as f64 / TOKENS_PER_M_F64)
     }
 }
 

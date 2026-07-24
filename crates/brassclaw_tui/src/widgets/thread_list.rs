@@ -56,15 +56,18 @@ fn thread_icon(status: ThreadStatus) -> &'static str {
     }
 }
 
+// Seconds in one hour — used for duration formatting thresholds.
+const SECS_PER_HOUR: u64 = 3_600;
+
 /// Format a duration in seconds into a compact human-readable string.
 fn format_uptime(secs: u64) -> String {
     if secs < 60 {
         format!("{secs}s")
-    } else if secs < 3600 {
+    } else if secs < SECS_PER_HOUR {
         format!("{}m", secs / 60)
     } else {
-        let h = secs / 3600;
-        let m = (secs % 3600) / 60;
+        let h = secs / SECS_PER_HOUR;
+        let m = (secs % SECS_PER_HOUR) / 60;
         if m > 0 {
             format!("{h}h {m}m")
         } else {

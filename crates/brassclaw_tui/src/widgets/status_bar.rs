@@ -1,5 +1,9 @@
 //! Status bar widget: model, tokens, context bar, cost, session duration, keybind hints.
 
+// Percentage thresholds for context-usage severity indicators.
+const CONTEXT_WARN_PCT: u64 = 70;
+const CONTEXT_ERROR_PCT: u64 = 90;
+
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::text::{Line, Span};
@@ -98,9 +102,9 @@ impl TuiWidget for StatusBarWidget {
         let bar_str = context_bar(ratio, bar_width);
 
         // Color the bar based on usage
-        let bar_style = if pct >= 90 {
+        let bar_style = if pct >= CONTEXT_ERROR_PCT {
             self.theme.error_style()
-        } else if pct >= 70 {
+        } else if pct >= CONTEXT_WARN_PCT {
             self.theme.warning_style()
         } else {
             self.theme.accent_style()
@@ -155,16 +159,16 @@ impl TuiWidget for StatusBarWidget {
             if let Some(ref warning) = cp.warning {
                 left_spans.push(Span::styled(
                     format!(" {warning}"),
-                    if cp.percentage >= 90 {
+                    if cp.percentage >= CONTEXT_ERROR_PCT as u8 {
                         self.theme.error_style()
                     } else {
                         self.theme.warning_style()
                     },
                 ));
             }
-        } else if pct >= 90 {
+        } else if pct >= CONTEXT_ERROR_PCT {
             left_spans.push(Span::styled(" CRITICAL", self.theme.error_style()));
-        } else if pct >= 70 {
+        } else if pct >= CONTEXT_WARN_PCT {
             left_spans.push(Span::styled(" HIGH", self.theme.warning_style()));
         }
 

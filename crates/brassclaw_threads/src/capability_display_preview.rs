@@ -190,6 +190,10 @@ mod tests {
         CapabilityDisplayPreviewStatus,
     };
 
+    // Upper bound of the preview line range tested in the "many lines" fixture.
+    // Deliberately high to exercise that the envelope does not cap line count.
+    const TEST_PREVIEW_LINE_COUNT: u32 = 240;
+
     #[test]
     fn preview_envelope_rejects_raw_control_characters() {
         let mut input = preview_input();
@@ -210,7 +214,7 @@ mod tests {
     fn preview_envelope_accepts_many_preview_lines() {
         let mut input = preview_input();
         input.output_preview = Some(
-            (0..=240)
+            (0..=TEST_PREVIEW_LINE_COUNT)
                 .map(|index| format!("line {index}"))
                 .collect::<Vec<_>>()
                 .join("\n"),

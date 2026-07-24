@@ -209,6 +209,7 @@ fn main() {
                 tokio::time::sleep(Duration::from_millis(300)).await;
 
                 // Simulate tool call
+                // 40 chars is enough for a readable preview in the dev simulator.
                 let truncated: String = msg.chars().take(40).collect();
                 let _ = sim_tx
                     .send(TuiEvent::ToolStarted {

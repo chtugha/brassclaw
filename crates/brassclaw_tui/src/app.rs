@@ -9,6 +9,21 @@
 //! The app owns the terminal, manages alternate screen / raw mode, and
 //! renders frames at ~30fps using a tick timer.
 
+
+// Minimum terminal width (columns) at which the sidebar is shown; narrower
+// terminals use a full-width layout.
+const SIDEBAR_MIN_WIDTH: u16 = 40;
+
+// Percentage split for two equal halves (approval / split-view layouts).
+const HALF_PERCENT: u16 = 50;
+
+// Maximum number of toast notifications to display simultaneously.
+const MAX_TOAST_COUNT: usize = 3;
+
+// Number of log lines scrolled per page-up/page-down keypress.
+const LOGS_PAGE_SCROLL_LINES: i16 = -5;
+
+
 use std::io::{self, Write};
 use std::time::Duration;
 
@@ -490,7 +505,7 @@ async fn handle_event(
                         widgets.conversation.scroll(state, -page);
                     }
                     ActiveTab::Logs => {
-                        LogsWidget::scroll(state, -5);
+                        LogsWidget::scroll(state, LOGS_PAGE_SCROLL_LINES);
                     }
                 },
                 InputAction::ScrollDown => match state.active_tab {
@@ -1903,7 +1918,7 @@ fn selectable_area_at(
     let selectable = match state.active_tab {
         ActiveTab::Logs => main_area,
         ActiveTab::Conversation => {
-            if state.sidebar_visible && main_area.width > 40 {
+            if state.sidebar_visible && main_area.width > SIDEBAR_MIN_WIDTH {
                 let sidebar_width =
                     (main_area.width as u32 * layout.sidebar.effective_width() as u32 / 100) as u16;
                 let conversation_width = main_area.width.saturating_sub(sidebar_width + 1);
@@ -1931,7 +1946,7 @@ fn thread_list_sidebar_area(size: Rect, layout: &TuiLayout, state: &AppState) ->
     }
 
     let main_area = frame_sections(size, layout, state)[2];
-    if main_area.width <= 40 {
+    if main_area.width <= SIDEBAR_MIN_WIDTH {
         return None;
     }
 
@@ -1949,7 +1964,7 @@ fn thread_list_sidebar_area(size: Rect, layout: &TuiLayout, state: &AppState) ->
     let sidebar_area = horizontal[2];
     let sidebar_split = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .constraints([Constraint::Percentage(HALF_PERCENT), Constraint::Percentage(HALF_PERCENT)])
         .split(sidebar_area);
     Some(sidebar_split[1])
 }
@@ -2012,7 +2027,7 @@ fn thread_picker_index_at(
 
 fn tool_detail_modal_area(size: Rect) -> Rect {
     let width = (size.width * 3 / 4)
-        .max(40)
+        .max(SIDEBAR_MIN_WIDTH)
         .min(size.width.saturating_sub(4));
     let height = (size.height * 3 / 4)
         .max(10)
@@ -2129,7 +2144,7 @@ fn render_frame(
             widgets.logs.render(main_area, frame.buffer_mut(), state);
         }
         ActiveTab::Conversation => {
-            if state.sidebar_visible && main_area.width > 40 {
+            if state.sidebar_visible && main_area.width > SIDEBAR_MIN_WIDTH {
                 let sidebar_width =
                     (main_area.width as u32 * layout.sidebar.effective_width() as u32 / 100) as u16;
                 let conversation_width = main_area.width.saturating_sub(sidebar_width + 1);
@@ -2157,7 +2172,7 @@ fn render_frame(
                 // Split sidebar into tool panel and thread list
                 let sidebar_split = Layout::default()
                     .direction(Direction::Vertical)
-                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .constraints([Constraint::Percentage(HALF_PERCENT), Constraint::Percentage(HALF_PERCENT)])
                     .split(sidebar_area);
 
                 widgets
@@ -2339,7 +2354,7 @@ fn render_tool_detail_modal(
     let theme = layout.resolve_theme();
 
     let width = (size.width * 3 / 4)
-        .max(40)
+        .max(SIDEBAR_MIN_WIDTH)
         .min(size.width.saturating_sub(4));
     let height = (size.height * 3 / 4)
         .max(10)
@@ -2389,7 +2404,7 @@ fn render_toasts(
     }
 
     let theme = layout.resolve_theme();
-    let max_toasts = 3usize;
+    let max_toasts = MAX_TOAST_COUNT;
     let icon_pad = 4u16; // " ICON "
     let border_pad = 2u16; // left + right border
 

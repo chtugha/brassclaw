@@ -95,8 +95,11 @@ fn default_true() -> bool {
     true
 }
 
+/// Default sidebar width as a percentage of the terminal width.
+const DEFAULT_SIDEBAR_WIDTH_PERCENT: u16 = 25;
+
 fn default_sidebar_width() -> u16 {
-    25
+    DEFAULT_SIDEBAR_WIDTH_PERCENT
 }
 
 impl Default for SidebarConfig {
@@ -225,6 +228,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(sb.effective_width(), 10);
+        // 80 is the max clamped value returned by effective_width().
         sb.width_percent = 80;
         assert_eq!(sb.effective_width(), 50);
     }

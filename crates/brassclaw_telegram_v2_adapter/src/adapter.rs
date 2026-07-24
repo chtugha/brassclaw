@@ -480,13 +480,17 @@ mod tests {
     use super::*;
     use brassclaw_product_adapters::FakeProtocolHttpEgress;
 
+    // Synthetic Telegram IDs used in adapter test fixtures.
+    const TEST_ADAPTER_CHAT_ID: i64 = -100;
+    const TEST_BOT_USER_ID: i64 = 9000;
+
     fn config(progress: bool) -> TelegramV2AdapterConfig {
         TelegramV2AdapterConfig {
             adapter_id: ProductAdapterId::new("telegram_v2").expect("valid"),
             installation_id: AdapterInstallationId::new("install_alpha").expect("valid"),
             group_trigger_policy: GroupTriggerPolicy {
                 bot_username: "brassclaw_bot".into(),
-                bot_user_id: 9000,
+                bot_user_id: TEST_BOT_USER_ID,
                 recognized_commands: vec!["start".into()],
             },
             egress_credential_handle: EgressCredentialHandle::new("telegram_bot_token")
@@ -499,10 +503,10 @@ mod tests {
     }
 
     fn test_outbound_target() -> brassclaw_product_adapters::ProductOutboundTarget {
-        let reply = crate::render::build_reply_target_binding(-100, Some(7), Some(42));
+        let reply = crate::render::build_reply_target_binding(TEST_ADAPTER_CHAT_ID, Some(7), Some(42));
         let conv = brassclaw_product_adapters::ExternalConversationRef::new(
             None,
-            "-100",
+            TEST_ADAPTER_CHAT_ID.to_string(),
             None::<&str>,
             None::<&str>,
         )
@@ -512,10 +516,10 @@ mod tests {
 
     fn test_outbound_target_no_topic_no_reply() -> brassclaw_product_adapters::ProductOutboundTarget
     {
-        let reply = crate::render::build_reply_target_binding(-100, None, None);
+        let reply = crate::render::build_reply_target_binding(TEST_ADAPTER_CHAT_ID, None, None);
         let conv = brassclaw_product_adapters::ExternalConversationRef::new(
             None,
-            "-100",
+            TEST_ADAPTER_CHAT_ID.to_string(),
             None::<&str>,
             None::<&str>,
         )

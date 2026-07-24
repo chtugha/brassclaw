@@ -24,8 +24,10 @@ impl ThreadPickerWidget {
 
     /// Compute a centered modal area sized to fit the thread list.
     pub(crate) fn modal_area(terminal: Rect, item_count: usize) -> Rect {
+        // Minimum modal width to keep thread names readable on small terminals.
+        const MODAL_MIN_WIDTH: u16 = 50;
         let width = (terminal.width * 3 / 4)
-            .max(50)
+            .max(MODAL_MIN_WIDTH)
             .min(terminal.width.saturating_sub(4));
         // 2 border rows + 1 footer + items (capped at 15)
         let content_rows = item_count.min(15) as u16;

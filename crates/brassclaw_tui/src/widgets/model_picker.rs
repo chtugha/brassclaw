@@ -133,8 +133,10 @@ impl ModelPickerWidget {
 
     /// Compute a centered modal area sized for the current model list.
     pub(crate) fn modal_area(terminal: Rect, item_count: usize) -> Rect {
+        // Minimum modal width to keep the model name readable on small terminals.
+        const MODAL_MIN_WIDTH: u16 = 50;
         let width = (terminal.width * 3 / 4)
-            .max(50)
+            .max(MODAL_MIN_WIDTH)
             .min(terminal.width.saturating_sub(4));
         let content_rows = item_count.min(12) as u16;
         let height = (content_rows + 5)

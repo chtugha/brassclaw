@@ -1,5 +1,10 @@
 //! Modal overlay for tool approval dialog.
 
+// Maximum display length for parameter values in the approval view before
+// truncation with "...".
+const APPROVAL_PARAM_DISPLAY_MAX: usize = 40;
+const APPROVAL_PARAM_DISPLAY_TRUNC: usize = APPROVAL_PARAM_DISPLAY_MAX - 3;
+
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::Modifier;
@@ -117,16 +122,16 @@ impl TuiWidget for ApprovalWidget {
             for (key, value) in obj.iter().take(4) {
                 let val_str = match value {
                     serde_json::Value::String(s) => {
-                        if s.len() > 40 {
-                            format!("\"{}...\"", &s[..37])
+                        if s.len() > APPROVAL_PARAM_DISPLAY_MAX {
+                            format!("\"{}...\"", &s[..APPROVAL_PARAM_DISPLAY_TRUNC])
                         } else {
                             format!("\"{s}\"")
                         }
                     }
                     other => {
                         let rendered = other.to_string();
-                        if rendered.len() > 40 {
-                            format!("{}...", &rendered[..37])
+                        if rendered.len() > APPROVAL_PARAM_DISPLAY_MAX {
+                            format!("{}...", &rendered[..APPROVAL_PARAM_DISPLAY_TRUNC])
                         } else {
                             rendered
                         }
