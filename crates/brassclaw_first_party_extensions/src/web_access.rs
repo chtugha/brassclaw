@@ -775,6 +775,9 @@ mod tests {
     use brassclaw_host_api::{InvocationId, RuntimeHttpEgressResponse, UserId};
     use std::sync::Mutex as StdMutex;
 
+    /// url_index value that is always out of bounds in test fixtures.
+    const OUT_OF_BOUNDS_URL_INDEX: u64 = 99;
+
     fn scope() -> ResourceScope {
         ResourceScope::local_default(UserId::new("test-user").unwrap(), InvocationId::new())
             .unwrap()
@@ -1061,7 +1064,7 @@ data: {"result":{"content":[{"type":"text","text":"Title: Example\nURL: https://
         let (executor, response_id) = seed_executor();
         let capability = capability_id(WEB_GET_CONTENT_CAPABILITY_ID);
         let scope = scope();
-        let input = json!({"response_id": response_id, "url_index": 99});
+        let input = json!({"response_id": response_id, "url_index": OUT_OF_BOUNDS_URL_INDEX});
 
         let error = executor
             .get_content(request(&capability, &scope, &input, None))
