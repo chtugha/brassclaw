@@ -34,6 +34,7 @@ log_filename = 'postgresql-%Y-%m-%d.log'
 log_rotation_age = 1d
 log_rotation_size = 50MB
 log_truncate_on_rotation = on
+# LOG_MIN_DURATION_STATEMENT_MS: log queries taking longer than 1000 ms (1 second).
 log_min_duration_statement = 1000
 "#;
 

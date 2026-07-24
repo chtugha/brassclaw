@@ -445,18 +445,22 @@ fn update_bool(value: bool, update: &mut impl FnMut(&str)) {
     update(if value { "true" } else { "false" });
 }
 
+// FNV-1a 64-bit constants for run-profile fingerprinting.
+// See https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
+const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+const FNV_PRIME: u64 = 0x00000100000001b3;
+
 fn fingerprint_for(
     definition: &RunProfileDefinition,
     resource_budget_policy: &ResourceBudgetPolicy,
     personal_context_policy: PersonalContextPolicy,
     provenance: &RedactedRunProfileProvenance,
 ) -> RunProfileFingerprint {
-    // FNV-1a 64-bit offset basis.
-    let mut hash = 0xcbf29ce484222325_u64;
+    let mut hash = FNV_OFFSET_BASIS;
     let mut update = |value: &str| {
         for byte in value.as_bytes() {
             hash ^= u64::from(*byte);
-            hash = hash.wrapping_mul(0x100000001b3);
+            hash = hash.wrapping_mul(FNV_PRIME);
         }
     };
     update(definition.profile_id.as_str());

@@ -328,6 +328,9 @@ fn identity_ref_slug(path: &str) -> String {
 
 const FNV_IDENTITY_OFFSET: u64 = 0xcbf29ce484222325;
 const FNV_IDENTITY_PRIME: u64 = 0x00000100000001B3;
+// Arbitrary separator byte mixed between name and content so identical names with empty
+// content cannot collide with content-only inputs.  Value 0xFF has no special FNV meaning.
+const FNV_SEPARATOR_BYTE: u64 = 0xFF;
 
 fn stable_identity_hash(name: &str, content: &str) -> u64 {
     // FNV-1a: non-cryptographic, collision-safe for content addressing within a run.
@@ -341,7 +344,7 @@ fn stable_identity_hash(name: &str, content: &str) -> u64 {
     // FNV separator byte — mixes a fixed byte between the name and content
     // inputs so identical names with empty content cannot collide with
     // content-only inputs.
-    hash ^= 0xFF_u64;
+    hash ^= FNV_SEPARATOR_BYTE;
     hash = hash.wrapping_mul(FNV_IDENTITY_PRIME);
     for &byte in content.as_bytes() {
         hash ^= u64::from(byte);

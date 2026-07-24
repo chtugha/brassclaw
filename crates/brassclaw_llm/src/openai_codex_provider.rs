@@ -1197,12 +1197,14 @@ data: {"type":"response.output_text.delta","delta":" ignored"}
 
     #[test]
     fn test_build_request_body_with_tools() {
+        // 300 = 5-minute keepalive timeout in seconds for the Codex provider.
+        const CODEX_KEEPALIVE_SECS: u64 = 300;
         let jwt = make_test_jwt("acct_test");
         let provider = OpenAiCodexProvider::new(
             "gpt-5.3-codex",
             "https://chatgpt.com/backend-api/codex",
             &jwt,
-            300,
+            CODEX_KEEPALIVE_SECS,
         )
         .unwrap();
 
@@ -1375,12 +1377,14 @@ data: {"type":"response.completed","response":{"status":"completed","usage":{"in
 
         // Verify the rewritten message converts to a user input item (not
         // a function_call_output that would cause HTTP 400).
+        // 300 = 5-minute keepalive timeout in seconds for the Codex provider.
+        const CODEX_KEEPALIVE_SECS: u64 = 300;
         let jwt = make_test_jwt("acct_test");
         let provider = OpenAiCodexProvider::new(
             "gpt-5.3-codex",
             "https://chatgpt.com/backend-api/codex",
             &jwt,
-            300,
+            CODEX_KEEPALIVE_SECS,
         )
         .unwrap();
 
