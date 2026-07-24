@@ -11,7 +11,7 @@
 //! - Coherent units: each Skill covers ONE tool usage pattern
 
 /// Maximum token budget for a ToolSkill (hard error above this).
-const SKILL_MAX_TOKENS: u32 = 5000;
+const SKILL_MAX_TOKENS: usize = 5000;
 /// Regex compiled-size limit in bytes, preventing ReDoS from LLM-authored patterns.
 const RECIPE_REGEX_SIZE_LIMIT: usize = 10_000;
 
