@@ -2440,7 +2440,9 @@ fn build_meta_prompt(
     // Trigger payload
     if let Some(payload) = trigger_payload {
         let payload_str = serde_json::to_string_pretty(payload).unwrap_or_default();
-        let preview: String = payload_str.chars().take(1000).collect();
+        // Show up to TRIGGER_PAYLOAD_PREVIEW_CHARS chars to keep the goal prompt readable.
+        const TRIGGER_PAYLOAD_PREVIEW_CHARS: usize = 1000;
+        let preview: String = payload_str.chars().take(TRIGGER_PAYLOAD_PREVIEW_CHARS).collect();
         parts.push(format!("\n## Trigger Payload\n```json\n{preview}\n```"));
     }
 
@@ -3563,6 +3565,13 @@ const SEED_FIX_PATTERNS: &str = "\
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Sentinel GitHub issue/PR number used in tests.
+    const TEST_PR_NUMBER: u64 = 42;
+    /// UTC hour when 9am New York (Eastern Daylight Time, UTC-4) maps to.
+    const NY_9AM_EDT_UTC_HOUR: u32 = 13;
+    /// UTC hour when 9am New York (Eastern Standard Time, UTC-5) maps to.
+    const NY_9AM_EST_UTC_HOUR: u32 = 14;
 
     use std::collections::HashMap;
     use std::sync::Mutex;
@@ -5058,7 +5067,7 @@ mod tests {
             "action": "opened",
             "issue": {
                 "title": "Bug: login fails",
-                "number": 42
+                "number": TEST_PR_NUMBER
             }
         });
 
@@ -5920,7 +5929,7 @@ mod tests {
                 "github",
                 "review requested on PR #42",
                 "alice",
-                Some(serde_json::json!({"pr": 42})),
+                Some(serde_json::json!({"pr": TEST_PR_NUMBER})),
             )
             .await
             .unwrap();
@@ -6992,7 +7001,7 @@ mod tests {
         );
         let tz_hour = next_tz.hour();
         assert!(
-            tz_hour == 13 || tz_hour == 14,
+            tz_hour == NY_9AM_EDT_UTC_HOUR || tz_hour == NY_9AM_EST_UTC_HOUR,
             "9am NY should land on UTC 13 or 14, got {tz_hour}"
         );
         assert_eq!(next_utc.hour(), 9, "9am UTC should land on UTC 9");
