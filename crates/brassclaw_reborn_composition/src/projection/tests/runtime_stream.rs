@@ -1,3 +1,8 @@
+// Arbitrary max_bytes value for capability input in runtime-stream tests.
+const TEST_MAX_BYTES: u32 = 4096;
+// Arbitrary numeric value used in capability output payload tests.
+const TEST_CAPABILITY_OUTPUT_VALUE: u64 = 42;
+
 use super::*;
 use brassclaw_first_party_extension_ports::{
     SkillActivationMode, SkillActivationObservedEvent, SkillActivationRequest,
@@ -133,7 +138,7 @@ async fn webui_event_stream_enriches_activity_with_display_preview_from_store() 
         &serde_json::json!({
             "path": "src/main.rs",
             "token": "sk-secret",
-            "max_bytes": 4096
+            "max_bytes": TEST_MAX_BYTES
         }),
     );
     display_previews.record_result(CapabilityDisplayPreviewResult {
@@ -317,7 +322,7 @@ async fn webui_event_stream_replays_capability_started_before_folded_completion(
             capability.clone(),
             provider,
             RuntimeKind::Mcp,
-            42,
+            TEST_CAPABILITY_OUTPUT_VALUE,
         ))
         .await
         .unwrap();

@@ -51,9 +51,10 @@ pub(crate) use provider::UnavailableAuthProviderClient;
 /// provider tokens and manual token values are stored only through
 /// [`SecretStore`] and represented here by opaque secret handles.
 //
-// TODO(#4175 follow-up): project completed product-auth accounts into
+// Known tech-debt (#4175): project completed product-auth accounts into
 // `brassclaw_secrets::CredentialAccountStore` so the runtime credential
 // broker shares one source of truth with the product-auth UX layer.
+// Implementation plan: .sweepfix/plan_stub_line_54_product_auth_durable.md
 //
 // Today two `CredentialAccount` records coexist:
 //   * `brassclaw_auth::CredentialAccount` — product-auth UX record stored

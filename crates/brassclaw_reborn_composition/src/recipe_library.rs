@@ -186,7 +186,7 @@ fn skill_to_dto(skill: ToolSkillMatch) -> ToolSkillMatchDto {
     }
 }
 
-/// Placeholder for compositions that do not (yet) wire the persistent
+/// No-op implementation for compositions that do not wire the persistent
 /// library. Always returns "no match" / empty skills. Recording outcomes
 /// is a no-op so test hosts can wire this in without wiring the store.
 #[derive(Debug, Clone, Copy)]

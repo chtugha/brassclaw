@@ -44,6 +44,12 @@ use uuid::Uuid;
 /// Hard cap on how many recipes `list_all` / `fetch_validated` may return in a
 /// single call.  Guards against accidental full-table scans on large tenants.
 const MAX_RECIPE_LIST_ROWS: i64 = 1_000;
+/// Consumer tag that marks a recipe as being evaluated by the validator;
+/// delivery filter excludes rows carrying this tag (SEC-01, §3.9).
+const VALIDATOR_CONSUMER_TAG: &str = "05:validator";
+/// Maximum regex size in bytes accepted by the pattern-match scorer.
+/// Guards against ReDoS via pathological patterns.
+const PATTERN_SCORER_REGEX_SIZE_LIMIT: usize = 10_000;
 
 
 // ---------------------------------------------------------------------------
@@ -428,15 +434,15 @@ impl PgRecipeStore {
         id: Uuid,
     ) -> Result<(), PgRecipeStoreError> {
         let client = self.pool.get().await.map_err(map_pool)?;
+        let sql = format!(
+            "UPDATE reborn_recipes
+             SET consumer_tags = array_remove(consumer_tags, '{VALIDATOR_CONSUMER_TAG}')
+             WHERE id = $1
+               AND tenant_id = $2 AND user_id = $3
+               AND agent_id  = $4 AND project_id = $5"
+        );
         let affected = client
-            .execute(
-                "UPDATE reborn_recipes
-                 SET consumer_tags = array_remove(consumer_tags, '05:validator')
-                 WHERE id = $1
-                   AND tenant_id = $2 AND user_id = $3
-                   AND agent_id  = $4 AND project_id = $5",
-                &[&id, &tenant_id, &user_id, &agent_id, &project_id],
-            )
+            .execute(sql.as_str(), &[&id, &tenant_id, &user_id, &agent_id, &project_id])
             .await
             .map_err(map_pg)?;
         if affected == 0 {
@@ -503,11 +509,15 @@ impl PgRecipeStore {
         // Step 2: compute Wilson lower bound + tier in Rust, write back.
         // Use saturating casts: counters are NON-NULL ≥ 0 by schema, but
         // cast defensively to avoid wrap-around on any hypothetical negative value.
-        let w = wilson_lower_bound(new_success.max(0) as u64, new_failure.max(0) as u64, 1.96);
+        let w = wilson_lower_bound(
+            new_success.max(0) as u64,
+            new_failure.max(0) as u64,
+            crate::plan_library::DEFAULT_WILSON_Z,
+        );
         let tier = classify_tier(
             (new_success.max(0) as u64).saturating_add(new_failure.max(0) as u64),
             w,
-            0.80,
+            crate::plan_library::DEFAULT_PROMOTION_THRESHOLD,
         );
         let tier_str = tier_label(tier);
         tx.execute(
@@ -698,7 +708,7 @@ fn score_recipe(recipe: &PgRecipe, user_input: &str) -> f64 {
                 .unwrap_or("");
             // Safety: limit regex size to prevent ReDoS.
             match regex::RegexBuilder::new(pattern)
-                .size_limit(10_000)
+                .size_limit(PATTERN_SCORER_REGEX_SIZE_LIMIT)
                 .build()
             {
                 Ok(re) if re.is_match(user_input) => 1.0,

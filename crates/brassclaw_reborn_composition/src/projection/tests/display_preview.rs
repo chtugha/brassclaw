@@ -1,3 +1,6 @@
+// Arbitrary max_bytes value for capability input in display-preview tests.
+const TEST_MAX_BYTES: u32 = 4096;
+
 use super::*;
 use async_trait::async_trait;
 use brassclaw_host_api::CapabilityDisplayOutputPreview;
@@ -42,7 +45,7 @@ async fn webui_event_stream_enriches_activity_with_display_preview_from_store() 
         &serde_json::json!({
             "path": "src/main.rs",
             "token": "sk-secret",
-            "max_bytes": 4096
+            "max_bytes": TEST_MAX_BYTES
         }),
     );
     display_previews.record_result(CapabilityDisplayPreviewResult {
