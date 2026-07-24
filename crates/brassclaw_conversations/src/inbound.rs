@@ -1057,21 +1057,24 @@ mod tests {
             &self,
             _request: crate::ResolveConversationRequest,
         ) -> Result<ConversationBindingResolution, InboundTurnError> {
-            unimplemented!("not used by inbound facade tests")
+            // Test fake: this path is never exercised by the inbound facade tests.
+            panic!("lookup_binding not exercised by inbound facade tests")
         }
 
         async fn link_conversation_to_thread(
             &self,
             _request: LinkConversationRequest,
         ) -> Result<LinkedConversationBinding, InboundTurnError> {
-            unimplemented!("not used by inbound facade tests")
+            // Test fake: this path is never exercised by the inbound facade tests.
+            panic!("link_conversation_to_thread not exercised by inbound facade tests")
         }
 
         async fn validate_reply_target(
             &self,
             _request: ValidateReplyTargetRequest,
         ) -> Result<ReplyTargetBinding, InboundTurnError> {
-            unimplemented!("not used by inbound facade tests")
+            // Test fake: this path is never exercised by the inbound facade tests.
+            panic!("validate_reply_target not exercised by inbound facade tests")
         }
     }
 
@@ -1113,21 +1116,24 @@ mod tests {
             &self,
             _request: ResumeTurnRequest,
         ) -> Result<ResumeTurnResponse, TurnError> {
-            unimplemented!("not used by inbound facade tests")
+            // Test fake: this path is never exercised by the inbound facade tests.
+            panic!("resume_turn not exercised by inbound facade tests")
         }
 
         async fn cancel_run(
             &self,
             _request: CancelRunRequest,
         ) -> Result<CancelRunResponse, TurnError> {
-            unimplemented!("not used by inbound facade tests")
+            // Test fake: this path is never exercised by the inbound facade tests.
+            panic!("cancel_run not exercised by inbound facade tests")
         }
 
         async fn get_run_state(
             &self,
             _request: GetRunStateRequest,
         ) -> Result<TurnRunState, TurnError> {
-            unimplemented!("not used by inbound facade tests")
+            // Test fake: this path is never exercised by the inbound facade tests.
+            panic!("get_run_state not exercised by inbound facade tests")
         }
     }
 }
