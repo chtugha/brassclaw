@@ -253,7 +253,7 @@ impl EventProjectionService for FakeProjectionService {
     ) -> Result<ProjectionReplay, ProjectionError> {
         self.calls.lock().unwrap().push("updates");
         let cursor = request.after.expect("test supplies cursor");
-        if cursor.runtime == EventCursor::new(99) {
+        if cursor.runtime == EventCursor::new(STALE_CURSOR) {
             return Err(ProjectionError::RebaseRequired {
                 requested: Box::new(cursor),
                 earliest: Box::new(ProjectionCursor::origin_for_scope(self.scope.clone())),

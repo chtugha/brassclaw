@@ -18,7 +18,7 @@ async fn access_policy_runs_before_projection_or_live_subscription() {
     let error = manager
         .subscribe(subscribe_request(
             scope.clone(),
-            Some(ProjectionCursor::for_scope(scope, EventCursor::new(99))),
+            Some(ProjectionCursor::for_scope(scope, EventCursor::new(super::STALE_CURSOR))),
         ))
         .await
         .expect_err("access denial");
@@ -71,7 +71,7 @@ async fn debug_admin_view_is_denied_without_widening_product_thread_streams() {
 #[tokio::test]
 async fn stale_cursor_after_valid_access_rebases_to_fresh_snapshot() {
     let scope = projection_scope("thread-a");
-    let stale = ProjectionCursor::for_scope(scope.clone(), EventCursor::new(99));
+    let stale = ProjectionCursor::for_scope(scope.clone(), EventCursor::new(super::STALE_CURSOR));
     let manager = manager(scope);
 
     let mut subscription = manager
