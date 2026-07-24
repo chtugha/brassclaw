@@ -347,6 +347,8 @@ fn value_to_decimal(value: &serde_json::Value) -> Option<Decimal> {
 
 #[cfg(test)]
 mod tests {
+    /// Test numeric amount used in extract_numeric fixture tests.
+    const TEST_NUMERIC_AMOUNT: i64 = 42;
     use super::*;
 
     #[test]
@@ -358,9 +360,9 @@ mod tests {
 
     #[test]
     fn extract_numeric_from_top_level() {
-        let args = SanitizedArguments::from_json(serde_json::json!({"amount": 42}));
+        let args = SanitizedArguments::from_json(serde_json::json!({"amount": TEST_NUMERIC_AMOUNT}));
         assert!(args.is_resolved());
-        assert_eq!(args.extract_numeric("amount"), Some(Decimal::from(42)));
+        assert_eq!(args.extract_numeric("amount"), Some(Decimal::from(TEST_NUMERIC_AMOUNT)));
     }
 
     #[test]
@@ -410,7 +412,7 @@ mod tests {
     /// unresolved/malformed input.
     #[test]
     fn malformed_indexer_returns_none_not_parent_value() {
-        let args = SanitizedArguments::from_json(serde_json::json!({"amount": 42}));
+        let args = SanitizedArguments::from_json(serde_json::json!({"amount": TEST_NUMERIC_AMOUNT}));
         // Non-numeric index — must NOT resolve to the parent `amount`.
         assert_eq!(args.extract_numeric("amount[foo]"), None);
         // Unterminated bracket.

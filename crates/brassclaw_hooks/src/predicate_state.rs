@@ -922,6 +922,11 @@ pub mod contract {
 
     use crate::identity::{ExtensionId, HookLocalId, HookVersion};
 
+    /// First test Decimal value in value_sums_within_window contract tests.
+    const TEST_VALUE_FIRST: i64 = 50;
+    /// Second test Decimal value in value_sums_within_window contract tests.
+    const TEST_VALUE_SECOND: i64 = 75;
+
     /// Factory closure shape every contract takes. Must return a fresh,
     /// empty backend — contracts assume nothing leaks between calls.
     fn hook_id() -> HookId {
@@ -1019,7 +1024,7 @@ pub mod contract {
                 &key,
                 &ev("e1"),
                 at(0),
-                Decimal::from(50),
+                Decimal::from(TEST_VALUE_FIRST),
                 Duration::from_secs(60),
             )
             .await
@@ -1029,13 +1034,13 @@ pub mod contract {
                 &key,
                 &ev("e2"),
                 at(1),
-                Decimal::from(75),
+                Decimal::from(TEST_VALUE_SECOND),
                 Duration::from_secs(60),
             )
             .await
             .expect("ok");
-        assert_eq!(s1, Decimal::from(50));
-        assert_eq!(s2, Decimal::from(125));
+        assert_eq!(s1, Decimal::from(TEST_VALUE_FIRST));
+        assert_eq!(s2, Decimal::from(TEST_VALUE_FIRST + TEST_VALUE_SECOND));
     }
 
     /// Contract: one tenant's counter never inherits another's increments.
@@ -1113,7 +1118,7 @@ pub mod contract {
                 &key,
                 &ev("event-A"),
                 at(1),
-                Decimal::from(50),
+                Decimal::from(TEST_VALUE_FIRST),
                 Duration::from_secs(60),
             )
             .await

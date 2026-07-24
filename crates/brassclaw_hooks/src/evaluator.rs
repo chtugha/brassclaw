@@ -35,6 +35,11 @@ use crate::predicate_state::{
     InMemoryPredicateStateBackend, InvocationKey, PredicateEventId, PredicateStateBackend, ValueKey,
 };
 
+/// Seconds per hour — used in duration-string parsing for the `h` unit.
+const SECS_PER_HOUR: u64 = 3600;
+/// Seconds per day — used in duration-string parsing for the `d` unit.
+const SECS_PER_DAY: u64 = 86_400;
+
 /// Re-export the backend's `MAX_HISTORY_KEYS` for back-compat with
 /// callers that constructed it via the old evaluator path.
 pub use crate::predicate_state::MAX_HISTORY_KEYS;
@@ -396,8 +401,8 @@ fn parse_window(input: &str) -> Option<Duration> {
     let secs = match unit_char {
         's' => num,
         'm' => num.checked_mul(60)?,
-        'h' => num.checked_mul(3600)?,
-        'd' => num.checked_mul(86_400)?,
+        'h' => num.checked_mul(SECS_PER_HOUR)?,
+        'd' => num.checked_mul(SECS_PER_DAY)?,
         _ => return None,
     };
     Some(Duration::from_secs(secs))

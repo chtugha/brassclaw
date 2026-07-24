@@ -499,9 +499,12 @@ mod tests {
         }
 
         let mut recording = RecordingMutatorSink::new(HookTrustClass::Installed);
+        // Token budget passed to BeforePromptHookContext in this test.
+        const TEST_TOKEN_BUDGET: u32 = 4096;
+
         let ctx = BeforePromptHookContext::new(
             brassclaw_host_api::TenantId::new("t".to_string()).expect("valid tenant"),
-            4096,
+            TEST_TOKEN_BUDGET,
         );
         EnvelopeOnly
             .evaluate(&ctx, &mut recording as &mut dyn RestrictedMutatorSink)
