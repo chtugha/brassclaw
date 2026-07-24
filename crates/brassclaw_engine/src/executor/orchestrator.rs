@@ -125,11 +125,14 @@ fn orchestrator_max_duration() -> std::time::Duration {
     })
 }
 
+/// Maximum allocation steps allowed per orchestrator VM execution.
+const ORCHESTRATOR_MAX_ALLOCATIONS: usize = 5_000_000;
+
 /// Resource limits for the orchestrator VM.
 fn orchestrator_limits() -> ResourceLimits {
     ResourceLimits::new()
         .max_duration(orchestrator_max_duration())
-        .max_allocations(5_000_000)
+        .max_allocations(ORCHESTRATOR_MAX_ALLOCATIONS)
         .max_memory(128 * 1024 * 1024) // 128 MB
 }
 
@@ -690,8 +693,8 @@ pub async fn execute_orchestrator(
                     //   override_prompt_creation — bool; true → use formatted_content
                     //                              as the complete prompt base
                     //   matched_component_ids    — list of UUID strings
-                    // Stub: Phase 5 wires the real retrieval + assembly pipeline.
-                    // Until then, returns an empty result so default.py is correct.
+                    // Phase 5 wires the full retrieval + assembly pipeline here.
+                    // Returns an empty result until then so default.py is always correct.
                     "__assemble_prior_knowledge__" => {
                         handle_assemble_prior_knowledge(args, thread, retrieval).await
                     }
@@ -2587,21 +2590,31 @@ async fn handle_assemble_prior_knowledge(
 
 /// Map a `DocType` to its `(class_code, label)` pair.
 ///
-/// Class codes match the authoritative table in spec §4 / `intent_system::class_label`.
+// Class codes for DocType — authoritative table in spec §4 / `intent_system::class_label`.
+const CLASS_CODE_SKILL: i32 = 3;
+const CLASS_CODE_SPEC: i32 = 12;
+const CLASS_CODE_TOOL_SKILL: i32 = 13;
+const CLASS_CODE_PLAN: i32 = 14;
+const CLASS_CODE_SUMMARY: i32 = 15;
+const CLASS_CODE_LESSON: i32 = 18;
+const CLASS_CODE_ISSUE: i32 = 19;
+const CLASS_CODE_NOTE: i32 = 20;
+const CLASS_CODE_RECIPE: i32 = 21;
+
 /// `MemoryDoc` carries `DocType` rather than a raw integer, so this function
 /// bridges the two representations when building LLM-readable JSON.
 fn doc_type_class_code(doc_type: crate::types::memory::DocType) -> (i32, &'static str) {
     use crate::types::memory::DocType;
     match doc_type {
-        DocType::Spec      => (12,  "spec"),
-        DocType::ToolSkill => (13,  "tool_skill"),
-        DocType::Plan      => (14,  "plan"),
-        DocType::Summary   => (15,  "summary"),
-        DocType::Lesson    => (18,  "lesson"),
-        DocType::Issue     => (19,  "issue"),
-        DocType::Note      => (20,  "note"),
-        DocType::Skill     => (3,   "skill_llm"),
-        DocType::Recipe    => (21,  "recipe"),
+        DocType::Spec      => (CLASS_CODE_SPEC,      "spec"),
+        DocType::ToolSkill => (CLASS_CODE_TOOL_SKILL, "tool_skill"),
+        DocType::Plan      => (CLASS_CODE_PLAN,      "plan"),
+        DocType::Summary   => (CLASS_CODE_SUMMARY,   "summary"),
+        DocType::Lesson    => (CLASS_CODE_LESSON,    "lesson"),
+        DocType::Issue     => (CLASS_CODE_ISSUE,     "issue"),
+        DocType::Note      => (CLASS_CODE_NOTE,      "note"),
+        DocType::Skill     => (CLASS_CODE_SKILL,     "skill_llm"),
+        DocType::Recipe    => (CLASS_CODE_RECIPE,    "recipe"),
     }
 }
 
@@ -3793,6 +3806,36 @@ mod tests {
     use crate::types::memory::{DocType, MemoryDoc};
     use crate::types::project::ProjectId;
 
+    // ── Test constants ──────────────────────────────────────────────────────
+    /// Max VM allocations for test helper runs (lower than production).
+    const TEST_MAX_ALLOCATIONS: usize = 500_000;
+    /// Sentinel numeric value used in test JSON payloads (count field).
+    const TEST_JSON_COUNT: i64 = 42;
+    /// Byte limit used in bounded-return-value overflow tests.
+    const TEST_BOUNDED_LIMIT_8K: usize = 8_000;
+    /// Max consecutive errors used in None-guard regression test.
+    const TEST_CONSECUTIVE_ERRORS: i64 = 99;
+    /// Large content size (1 MB) used in truncation tests.
+    const TEST_LARGE_CONTENT_SIZE: i64 = 1_000_000;
+    /// Expected max output length after 200-char truncate rule (rule + ellipsis).
+    const TEST_TRUNCATE_MAX_OUTPUT: i64 = 210;
+    /// Content size triggering drop-rule tests (8 KiB).
+    const TEST_CONTENT_8K: i64 = 8_000;
+    /// Noise/secondary content size in drop-rule tests (4 KiB).
+    const TEST_CONTENT_4K: i64 = 4_000;
+    /// Estimated-token value used in budget event tests.
+    const TEST_ESTIMATED_TOKENS: i64 = 123;
+    /// Negative token budget value used in event map tests.
+    const TEST_NEG_TOKENS_50: i64 = -50;
+    /// Budget token value in PromptOverBudget event shape tests.
+    const TEST_BUDGET_TOKENS_6K: i64 = 6_000;
+    /// Estimated token value in PromptOverBudget event shape tests.
+    const TEST_ESTIMATED_TOKENS_8K: i64 = 8_000;
+    /// Negative token value used in low-budget warning tests.
+    const TEST_NEG_TOKENS_42: i64 = -42;
+    /// Token allocation value used in emit-event tests.
+    const TEST_TOKEN_ALLOC_2K: i64 = 2_000;
+
     // ── CodeExecuted payload bounding ────────────────────────────
 
     #[test]
@@ -3836,7 +3879,7 @@ mod tests {
 
     #[test]
     fn bounded_return_value_retains_small_structured() {
-        let v = serde_json::json!({"ok": true, "count": 42});
+        let v = serde_json::json!({"ok": true, "count": TEST_JSON_COUNT});
         assert_eq!(bounded_return_value(&v, 1_000), Some(v));
     }
 
@@ -3846,7 +3889,7 @@ mod tests {
         let items: Vec<_> = (0..10_000).collect();
         let v = serde_json::json!(items);
         assert_eq!(
-            bounded_return_value(&v, 8_000),
+            bounded_return_value(&v, TEST_BOUNDED_LIMIT_8K),
             None,
             "oversized structured return_value should be dropped, not truncated"
         );
@@ -4050,7 +4093,7 @@ mod tests {
         let runner =
             MontyRun::new(code, "test.py", vec![]).expect("Failed to parse orchestrator helpers");
         let mut stdout = String::new();
-        let tracker = LimitedTracker::new(ResourceLimits::new().max_allocations(500_000));
+        let tracker = LimitedTracker::new(ResourceLimits::new().max_allocations(TEST_MAX_ALLOCATIONS));
 
         let mut progress = runner
             .start(vec![], tracker, PrintWriter::CollectString(&mut stdout))
@@ -5543,10 +5586,12 @@ else:
     #[test]
     fn code_errors_none_limit_skips_failure_check() {
         // Regression: same None-guard for the code-error branch at line 660.
+        // consecutive_errors = TEST_CONSECUTIVE_ERRORS; None limit must not trigger.
         let result = eval_python_int(
-            r#"
+            &format!(
+                r#"
 max_consecutive_errors = None
-consecutive_errors = 99
+consecutive_errors = {ce}
 failed = False
 if max_consecutive_errors is not None and consecutive_errors >= max_consecutive_errors:
     failed = True
@@ -5555,6 +5600,8 @@ if failed:
 else:
     FINAL(0)
 "#,
+                ce = TEST_CONSECUTIVE_ERRORS,
+            ),
         );
         assert_eq!(
             result, 0,
@@ -5846,61 +5893,81 @@ FINAL(batch_error_count)
 
     #[test]
     fn truncate_rule_reduces_oversized_content() {
-        // Build a single user message with 1MB of content, apply a
+        // Build a single user message with TEST_LARGE_CONTENT_SIZE bytes of content, apply a
         // 200-char truncate rule with a 100-token budget, and verify
-        // the resulting content is small enough.
-        let driver = r#"
-msgs = [{"role": "user", "content": "x" * 1000000}]
+        // the resulting content is <= TEST_TRUNCATE_MAX_OUTPUT chars.
+        let driver = format!(
+            r#"
+msgs = [{{"role": "user", "content": "x" * {large}}}]
 _reduce_prompt(msgs, [make_truncate_rule("content", 200)], 100)
-len(msgs[-1]["content"]) <= 210
-"#;
-        run_python_final_with_driver(driver);
+len(msgs[-1]["content"]) <= {max_out}
+"#,
+            large = TEST_LARGE_CONTENT_SIZE,
+            max_out = TEST_TRUNCATE_MAX_OUTPUT,
+        );
+        run_python_final_with_driver(&driver);
     }
 
     #[test]
     fn drop_rule_removes_target_field() {
-        let driver = r#"
-msgs = [{"role": "user", "content": "x" * 8000, "noise": "y" * 4000}]
+        // TEST_CONTENT_8K chars of content, TEST_CONTENT_4K chars of noise.
+        let driver = format!(
+            r#"
+msgs = [{{"role": "user", "content": "x" * {c8k}, "noise": "y" * {c4k}}}]
 _reduce_prompt(msgs, [make_drop_rule("noise")], 100)
 "noise" not in msgs[-1]
-"#;
-        run_python_final_with_driver(driver);
+"#,
+            c8k = TEST_CONTENT_8K,
+            c4k = TEST_CONTENT_4K,
+        );
+        run_python_final_with_driver(&driver);
     }
 
     #[test]
     fn priority_rule_drops_low_priority_fields_first() {
         // 'content' is highest priority, 'meta' middle, 'noise' lowest.
         // The rule must drop 'noise' first, then 'meta' if still needed.
-        let driver = r#"
-msgs = [{"role": "user", "content": "a" * 500, "meta": "b" * 4000, "noise": "c" * 8000}]
+        // Content sizes: 500, TEST_CONTENT_4K, TEST_CONTENT_8K.
+        let driver = format!(
+            r#"
+msgs = [{{"role": "user", "content": "a" * 500, "meta": "b" * {c4k}, "noise": "c" * {c8k}}}]
 _reduce_prompt(msgs, [make_priority_rule(["content", "meta", "noise"])], 100)
 estimate_context_tokens(msgs) <= 100
-"#;
-        run_python_final_with_driver(driver);
+"#,
+            c4k = TEST_CONTENT_4K,
+            c8k = TEST_CONTENT_8K,
+        );
+        run_python_final_with_driver(&driver);
     }
 
     #[test]
     fn history_compact_keeps_system_prefix() {
-        // Direct check of _history_compact (would-be-tested via
-        // _reduce_prompt after the early-return short-circuits).
-        let driver = r#"
-msgs = [{"role": "system", "content": "stable"}] + [
-    {"role": "user", "content": "x" * 4000} for _ in range(10)
+        // Direct check of _history_compact: 10 user messages of TEST_CONTENT_4K chars each.
+        let driver = format!(
+            r#"
+msgs = [{{"role": "system", "content": "stable"}}] + [
+    {{"role": "user", "content": "x" * {c4k}}} for _ in range(10)
 ]
 out = _history_compact(list(msgs), 3)
 len(out) <= 4
-"#;
-        run_python_final_with_driver(driver);
+"#,
+            c4k = TEST_CONTENT_4K,
+        );
+        run_python_final_with_driver(&driver);
     }
 
     #[test]
     fn summarize_rule_records_flag() {
-        let driver = r#"
-msgs = [{"role": "user", "content": "x" * 8000}]
+        // TEST_CONTENT_8K chars of content.
+        let driver = format!(
+            r#"
+msgs = [{{"role": "user", "content": "x" * {c8k}}}]
 _reduce_prompt(msgs, [make_summarize_rule("content")], 100)
-msgs[-1].get("_reduction_flags", {}).get("content") == "summarize"
-"#;
-        run_python_final_with_driver(driver);
+msgs[-1].get("_reduction_flags", {{}}).get("content") == "summarize"
+"#,
+            c8k = TEST_CONTENT_8K,
+        );
+        run_python_final_with_driver(&driver);
     }
 
     // Regression for review finding #3: `_summarize_field_in_message`
@@ -5928,14 +5995,17 @@ msgs[0]["_reduction_flags"].get("content") == "summarize" and msgs[1]["_reductio
     // cache-stable system prefix.
     #[test]
     fn history_compact_preserves_capitalized_system_prefix() {
-        let driver = r#"
-msgs = [{"role": "System", "content": "stable"}] + [
-    {"role": "User", "content": "x" * 4000} for _ in range(10)
+        let driver = format!(
+            r#"
+msgs = [{{"role": "System", "content": "stable"}}] + [
+    {{"role": "User", "content": "x" * {c4k}}} for _ in range(10)
 ]
 out = _history_compact(list(msgs), 3)
 out[0].get("role") == "System" and len(out) == 4
-"#;
-        run_python_final_with_driver(driver);
+"#,
+            c4k = TEST_CONTENT_4K,
+        );
+        run_python_final_with_driver(&driver);
     }
 
     #[test]
@@ -5951,13 +6021,16 @@ out is msgs
     #[test]
     fn reduction_rules_over_budget_event_kwarg_shape() {
         // Verify the new event-kwarg shape used by the post-assembly
-        // enforcement step: estimated_tokens and budget_tokens. The
-        // shape must round-trip through Monty as a dict.
-        let driver = r#"
-evt = {"estimated_tokens": 123, "budget_tokens": 100}
-evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
-"#;
-        run_python_final_with_driver(driver);
+        // enforcement step: estimated_tokens and budget_tokens.
+        // Uses TEST_ESTIMATED_TOKENS for the estimated value.
+        let driver = format!(
+            r#"
+evt = {{"estimated_tokens": {et}, "budget_tokens": 100}}
+evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
+"#,
+            et = TEST_ESTIMATED_TOKENS,
+        );
+        run_python_final_with_driver(&driver);
     }
 
     #[test]
@@ -5976,7 +6049,7 @@ evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
                 MontyObject::String("field".into()),
                 MontyObject::String("tokens".into()),
             ),
-            (MontyObject::String("value".into()), MontyObject::Int(-50)),
+            (MontyObject::String("value".into()), MontyObject::Int(TEST_NEG_TOKENS_50)),
             (
                 MontyObject::String("message".into()),
                 MontyObject::String("token budget low".into()),
@@ -5987,7 +6060,7 @@ evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
             matches!(
                 &e.kind,
                 EventKind::BudgetWarning { field, value, .. }
-                    if field == "tokens" && *value == -50
+                    if field == "tokens" && *value == TEST_NEG_TOKENS_50
             )
         });
         assert!(warned, "expected BudgetWarning event on thread");
@@ -6007,11 +6080,11 @@ evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
         let kwargs = vec![
             (
                 MontyObject::String("estimated_tokens".into()),
-                MontyObject::Int(8000),
+                MontyObject::Int(TEST_ESTIMATED_TOKENS_8K),
             ),
             (
                 MontyObject::String("budget_tokens".into()),
-                MontyObject::Int(6000),
+                MontyObject::Int(TEST_BUDGET_TOKENS_6K),
             ),
         ];
         handle_emit_event(&args, &kwargs, &mut thread, None);
@@ -6021,7 +6094,7 @@ evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
                 EventKind::PromptOverBudget {
                     estimated_tokens,
                     budget_tokens,
-                } if *estimated_tokens == 8000 && *budget_tokens == 6000
+                } if *estimated_tokens == TEST_ESTIMATED_TOKENS_8K as u64 && *budget_tokens == TEST_BUDGET_TOKENS_6K as u64
             )
         });
         assert!(over, "expected PromptOverBudget event on thread");
@@ -6552,7 +6625,7 @@ evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
 
         let args = vec![
             MontyObject::String("tokens".into()),
-            MontyObject::Int(-42),
+            MontyObject::Int(TEST_NEG_TOKENS_42),
             MontyObject::String("token budget low".into()),
         ];
         let kwargs: Vec<(MontyObject, MontyObject)> = vec![];
@@ -6562,7 +6635,7 @@ evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
             matches!(
                 &e.kind,
                 EventKind::BudgetWarning { field, value, message }
-                    if field == "tokens" && *value == -42 && message == "token budget low"
+                    if field == "tokens" && *value == TEST_NEG_TOKENS_42 && message == "token budget low"
             )
         });
         assert!(
@@ -6846,7 +6919,7 @@ evt["estimated_tokens"] == 123 and evt["budget_tokens"] == 100
         );
         let args = vec![
             MontyObject::String("deploy kubernetes".into()),
-            MontyObject::Int(2000),
+            MontyObject::Int(TEST_TOKEN_ALLOC_2K),
             MontyObject::String("02".into()),
         ];
 
