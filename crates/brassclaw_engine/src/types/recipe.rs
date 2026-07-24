@@ -376,6 +376,15 @@ pub enum RecipeError {
 mod tests {
     use super::*;
 
+    /// Default "limit" param in GitHub issue action test fixtures.
+    const TEST_ISSUE_LIMIT: u64 = 50;
+    /// High Wilson lower bound (tier-candidate level) used in tier tests.
+    const WILSON_HIGH: f64 = 0.95;
+    /// Mid Wilson lower bound (tier-growing level) used in tier tests.
+    const WILSON_MID: f64 = 0.50;
+    /// Near-mature Wilson lower bound used in ordering tests.
+    const WILSON_NEAR_MATURE: f64 = 0.78;
+
     fn make_recipe() -> Recipe {
         Recipe {
             id: "r1".into(),
@@ -389,7 +398,7 @@ mod tests {
             steps: vec![RecipeStep {
                 skill: "github-list-issues".into(),
                 tool: "github.api".into(),
-                params: serde_json::json!({"state": "open", "limit": 50}),
+                params: serde_json::json!({"state": "open", "limit": TEST_ISSUE_LIMIT}),
                 description: "List open issues".into(),
             }],
             validation: RecipeValidation::ShellCheck {
@@ -439,7 +448,7 @@ mod tests {
     fn tier0_eligibility_requires_tier_wilson_and_validation() {
         let mut r = make_recipe();
         r.tier = "seedling".into();
-        r.wilson_lower = 0.95;
+        r.wilson_lower = WILSON_HIGH;
         r.validation = RecipeValidation::ShellCheck {
             command: "true".into(),
         };
@@ -448,10 +457,10 @@ mod tests {
         r.tier = "mature".into();
         assert!(r.is_tier0_eligible());
 
-        r.wilson_lower = 0.50;
+        r.wilson_lower = WILSON_MID;
         assert!(!r.is_tier0_eligible(), "wilson<0.70 must block");
 
-        r.wilson_lower = 0.78;
+        r.wilson_lower = WILSON_NEAR_MATURE;
         r.validation = RecipeValidation::None;
         assert!(
             !r.is_tier0_eligible(),
