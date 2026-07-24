@@ -11,6 +11,11 @@ const VALIDATED_STRING_MAX_BYTES: usize = 2048;
 
 use std::collections::HashMap;
 
+/// Maximum raw (pre-trim) byte length of a validated string value.
+/// Acts as a guard against exfil-shaped payloads — counts what the caller
+/// actually wrote, not the resolved URL length after whitespace collapse.
+const VALIDATED_STRING_MAX_BYTES: usize = 2048;
+
 use serde::{Deserialize, Serialize};
 
 /// Top-level layout configuration.
