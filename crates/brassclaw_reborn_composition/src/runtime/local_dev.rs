@@ -193,6 +193,9 @@ impl LoopCapabilityPortFactory for LocalDevLoopCapabilityPortFactory {
 }
 
 const LOCAL_DEV_CAPABILITY_IO_MAX_STAGED_REFS: usize = 1024;
+/// Initial capacity for tool result content string buffers; keeps allocations
+/// small for short outputs while still pre-allocating for typical responses.
+const LOCAL_DEV_TOOL_RESULT_INITIAL_CAPACITY: usize = 4096;
 const LOCAL_DEV_CAPABILITY_IO_MAX_STAGED_BYTES: usize = 4 * 1024 * 1024;
 // Replay payload cap for provider calls. This is a model-window guard, not a
 // safe-summary formatter; the staged result remains available for follow-up.
@@ -646,7 +649,7 @@ fn model_visible_tool_result_content(
     output: &serde_json::Value,
 ) -> Result<String, HostManagedModelError> {
     let mut content =
-        String::with_capacity(LOCAL_DEV_MODEL_VISIBLE_TOOL_RESULT_MAX_BYTES.min(4096));
+        String::with_capacity(LOCAL_DEV_MODEL_VISIBLE_TOOL_RESULT_MAX_BYTES.min(LOCAL_DEV_TOOL_RESULT_INITIAL_CAPACITY));
     let truncated = append_model_visible_value(output, &mut content);
     if content.is_empty() {
         return Err(HostManagedModelError::safe(

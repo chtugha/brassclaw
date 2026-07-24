@@ -1007,7 +1007,7 @@ mod tests {
             &self,
             _request: ReplayAcceptedInboundMessageRequest,
         ) -> Result<Option<CanonicalAcceptedInboundMessageReplay>, SessionThreadError> {
-            unimplemented!("trigger prompt recorder tests do not replay canonical inbound messages")
+            panic!("test double: replay_accepted_inbound_message not implemented in trigger prompt recorder tests")
         }
 
         async fn mark_message_submitted(
@@ -1018,7 +1018,7 @@ mod tests {
             _turn_id: String,
             _turn_run_id: String,
         ) -> Result<ThreadMessageRecord, SessionThreadError> {
-            unimplemented!("trigger prompt recorder tests do not mark messages submitted")
+            panic!("test double: mark_message_submitted not implemented in trigger prompt recorder tests")
         }
 
         async fn mark_message_deferred_busy(
@@ -1027,21 +1027,21 @@ mod tests {
             _thread_id: &ThreadId,
             _message_id: ThreadMessageId,
         ) -> Result<ThreadMessageRecord, SessionThreadError> {
-            unimplemented!("trigger prompt recorder tests do not defer messages")
+            panic!("test double: mark_message_deferred_busy not implemented in trigger prompt recorder tests")
         }
 
         async fn append_assistant_draft(
             &self,
             _request: AppendAssistantDraftRequest,
         ) -> Result<ThreadMessageRecord, SessionThreadError> {
-            unimplemented!("trigger prompt recorder tests do not append assistant drafts")
+            panic!("test double: append_assistant_draft not implemented in trigger prompt recorder tests")
         }
 
         async fn append_tool_result_reference(
             &self,
             _request: AppendToolResultReferenceRequest,
         ) -> Result<ThreadMessageRecord, SessionThreadError> {
-            unimplemented!("trigger prompt recorder tests do not append tool results")
+            panic!("test double: append_tool_result_reference not implemented in trigger prompt recorder tests")
         }
 
         async fn append_capability_display_preview(

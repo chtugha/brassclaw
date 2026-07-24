@@ -38,6 +38,9 @@
 
 #![forbid(unsafe_code)]
 
+/// Class code assigned to Recipes per spec §4.
+const RECIPE_CLASS_CODE: u16 = 21;
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -472,7 +475,7 @@ impl RecipeStore for StoreBackedRecipeStore {
             )));
         }
         let project_id_typed = parse_project_id(project_id)?;
-        let doc_type = if class_code == 21 {
+        let doc_type = if class_code == RECIPE_CLASS_CODE {
             DocType::Recipe
         } else {
             DocType::ToolSkill
@@ -539,7 +542,7 @@ impl RecipeStore for StoreBackedRecipeStore {
         }
         let project_id_typed = parse_project_id(project_id)?;
         // Determine the DocType to scope the search correctly.
-        let doc_type = if class_code == 21 {
+        let doc_type = if class_code == RECIPE_CLASS_CODE {
             DocType::Recipe
         } else {
             DocType::ToolSkill
@@ -776,7 +779,7 @@ fn tool_skill_summary_from(skill: &ToolSkill) -> ToolSkillSummary {
 
 fn validation_item_for_recipe(recipe: &Recipe, kind: RecipeKind) -> ValidationQueueItem {
     // Recipes = class code 21 per spec §4.
-    let class_code: u16 = 21;
+    let class_code: u16 = RECIPE_CLASS_CODE;
     let qcode = derive_queue_code(&recipe.validation_status, recipe.review_attempts).to_string();
     ValidationQueueItem {
         id: recipe.id.clone(),
@@ -1109,17 +1112,17 @@ mod tests {
     #[async_trait::async_trait]
     impl Store for InMemoryEngineStore {
         async fn save_thread(&self, _thread: &Thread) -> Result<(), EngineError> {
-            unimplemented!("InMemoryEngineStore is recipe-test-only scope")
+            panic!("test double: InMemoryEngineStore does not implement save_thread (recipe-test-only scope)")
         }
         async fn load_thread(&self, _id: ThreadId) -> Result<Option<Thread>, EngineError> {
-            unimplemented!("InMemoryEngineStore is recipe-test-only scope")
+            panic!("test double: InMemoryEngineStore does not implement load_thread (recipe-test-only scope)")
         }
         async fn list_threads(
             &self,
             _project_id: ProjectId,
             _user_id: &str,
         ) -> Result<Vec<Thread>, EngineError> {
-            unimplemented!("InMemoryEngineStore is recipe-test-only scope")
+            panic!("test double: InMemoryEngineStore does not implement list_threads (recipe-test-only scope)")
         }
         async fn update_thread_state(
             &self,

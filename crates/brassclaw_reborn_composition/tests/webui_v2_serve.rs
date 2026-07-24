@@ -9,6 +9,11 @@
 //! facade is mocked so the regression target stays the gateway-layer
 //! composition.
 
+/// HTTP 101 Switching Protocols status code — expected response for successful WebSocket upgrades.
+const HTTP_SWITCHING_PROTOCOLS: u16 = 101;
+/// Rate-limit cap for the test public route (requests per window).
+const TEST_RATE_LIMIT_MAX_REQUESTS: u32 = 120;
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -974,7 +979,7 @@ async fn ws_upgrade_with_matching_origin_succeeds_with_101() {
     .expect("ws upgrade must succeed for matching Origin");
     assert_eq!(
         response.status().as_u16(),
-        101,
+        HTTP_SWITCHING_PROTOCOLS,
         "valid bearer + same-origin must yield 101 Switching Protocols",
     );
     drop(ws_stream);
@@ -1035,7 +1040,7 @@ async fn ws_upgrade_uses_canonical_host_over_client_host_when_configured() {
     .expect("ws upgrade must succeed for canonical_host Origin");
     assert_eq!(
         response.status().as_u16(),
-        101,
+        HTTP_SWITCHING_PROTOCOLS,
         "Origin matching canonical_host must yield 101 even when Host disagrees",
     );
     drop(ws_stream);
@@ -1879,7 +1884,7 @@ async fn public_route_mount_is_merged_without_bearer_auth_and_keeps_descriptor_p
             body_limit: BodyLimitPolicy::NoBody,
             rate_limit: RateLimitPolicy::Limited {
                 scope: RateLimitScope::PerIp,
-                max_requests: NonZeroU32::new(120).expect("120 != 0"),
+                max_requests: NonZeroU32::new(TEST_RATE_LIMIT_MAX_REQUESTS).expect("non-zero"),
                 window_seconds: NonZeroU32::new(60).expect("60 != 0"),
             },
             cors: CorsPolicy::SameOriginOnly,

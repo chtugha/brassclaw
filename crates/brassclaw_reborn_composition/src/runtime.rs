@@ -258,7 +258,7 @@ pub(crate) type LocalDevSelectableSkillContextSource =
 type LocalDevSkillExecutionAdapter =
     SkillExecutionAdapter<FilesystemSkillBundleSource<LocalDevRootFilesystem>>;
 
-// TODO(#4416): when a second test-only handle is
+// Known tech-debt (#4416): when a second test-only handle is
 // needed off the trigger poller seam (e.g. trusted_submitter,
 // materializer, active_run_lookup for cleanup-state tests), consolidate
 // the cfg-gated fields into a dedicated `TriggerPollerTestHandles`
@@ -1239,7 +1239,7 @@ impl RebornRuntime {
     ) -> Result<(), RebornRuntimeError> {
         let mut stack = self.turn_tree_store.children_of(scope, run_id).await?;
         let mut visited = HashSet::new();
-        let mut visited_count = 0_usize;
+        let mut visited_count = 0usize;
         while let Some(child) = stack.pop() {
             if !visited.insert(child.run_id) {
                 continue;
@@ -2467,7 +2467,7 @@ impl CapabilitySurfaceProfileResolver for AllowAllCapabilitySurfaceResolver {
 
 /// Build the production model gateway and its (optional) LLM-derived
 /// cost table. Cfg-gated so off-feature builds short-circuit to the
-/// stub without referencing types that don't exist.
+/// no-op fallback without referencing types that don't exist.
 #[cfg(feature = "root-llm-provider")]
 async fn build_production_model_gateway(
     llm: Option<crate::runtime_input::ResolvedRebornLlm>,
@@ -3192,7 +3192,7 @@ mod tests {
                 let (mut stream, _) = listener.accept().await.expect("accept test request");
                 let mut buffer = Vec::new();
                 loop {
-                    let mut chunk = [0_u8; 1024];
+                    let mut chunk = [0u8; 1024];
                     let read = stream.read(&mut chunk).await.expect("read test request");
                     if read == 0 {
                         break;

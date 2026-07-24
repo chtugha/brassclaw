@@ -235,6 +235,9 @@ fn read_f64_env(name: &'static str) -> Result<Option<f64>, BudgetDefaultsError> 
 mod tests {
     use super::*;
 
+    // warn_at threshold used in pause-below-warn rejection test.
+    const TEST_WARN_THRESHOLD: f64 = 0.9;
+
     #[test]
     fn compiled_defaults_validate() {
         BudgetDefaults::compiled_defaults().validate().unwrap();
@@ -265,7 +268,7 @@ mod tests {
     #[test]
     fn pause_below_warn_rejected() {
         let mut d = BudgetDefaults::compiled_defaults();
-        d.warn_at = 0.9;
+        d.warn_at = TEST_WARN_THRESHOLD;
         d.pause_at = 0.5;
         let err = d.validate().unwrap_err();
         assert!(matches!(
