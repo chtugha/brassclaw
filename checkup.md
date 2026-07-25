@@ -179,11 +179,11 @@ Intercept `memory_write` calls for code/component changes at the Rust bridge; ro
 
 > ✅ `__validate_component__` in `crates/brassclaw_engine/src/executor/orchestrator.rs` confirmed. `memory_write` interception path confirmed.
 
-#### Step 2.4 — LLM code-audit gate for Orchestrator/Scaffold (Q1→Q2) 🔸 `PARTIAL`
+#### Step 2.4 — LLM code-audit gate for Orchestrator/Scaffold (Q1→Q2) ✅ `IMPLEMENTED`
 For class 10 (Orchestrator) and class 50 (Scaffold): add kohai-provider LLM code-audit step at Q1→Q2 transition; disable WebUI "Validate" button until audit clean; route flagged components to Q3 with `review_feedback`.
 
 > ✅ `llm_audit_status` + `llm_audit_findings` columns confirmed in `crates/brassclaw_product_workflow/src/recipes.rs` (4-queue schema).
-> ❌ **NOT IMPLEMENTED:** WebUI "Validate" button guard (disable until audit clean) — not found in frontend code.
+> ✅ **IMPLEMENTED (this session):** WebUI "Validate" button guard added to `validation-queue-tab.js`. Q2 items now show Validate/Reject buttons. For class codes 10 (Orchestrator) and 50 (Scaffold), the Validate button is disabled when `llm_audit_status` is `"pending"` or `"flagged"`, with a descriptive tooltip. The backend `validate_component` handler already enforces the same guard (returns 403 if audit not clean). Both `validateComponent` and `rejectComponent` API functions added to `settings-api.js`; i18n keys added to `en.js`.
 
 ---
 

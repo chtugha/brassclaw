@@ -2,8 +2,13 @@ import { React, html } from "../../../lib/html.js";
 import { Card } from "../../../design-system/card.js";
 import { Badge } from "../../../design-system/badge.js";
 import { useT } from "../../../lib/i18n.js";
-import { useQuery } from "@tanstack/react-query";
-import { fetchValidationQueue, fetchValidationQueueCount } from "../lib/settings-api.js";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  fetchValidationQueue,
+  fetchValidationQueueCount,
+  validateComponent,
+  rejectComponent,
+} from "../lib/settings-api.js";
 import { matchesSearch } from "../lib/settings-search.js";
 import { SettingsSearchEmpty } from "./settings-search-empty.js";
 
@@ -77,13 +82,60 @@ export function ValidationQueueTab({ searchQuery = "" }) {
   `;
 }
 
+// LLM-auditable class codes. For these classes the Validate button is
+// disabled until the backend audit returns "clean" (spec §3.5 / §3.4).
+const LLM_AUDIT_CLASS_CODES = new Set([10, 50]);
+
 function QueueRow({ item }) {
+  const t = useT();
+  const queryClient = useQueryClient();
+  const [actionError, setActionError] = React.useState("");
+
+  const validateMutation = useMutation({
+    mutationFn: () => validateComponent(item.class_code, item.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings", "validation-queue"] });
+      queryClient.invalidateQueries({ queryKey: ["settings", "validation-queue", "count"] });
+    },
+    onError: (err) => {
+      setActionError(t("validationQueue.validateError", { message: err.message }));
+    },
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: () => rejectComponent(item.class_code, item.id, null),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["settings", "validation-queue"] });
+      queryClient.invalidateQueries({ queryKey: ["settings", "validation-queue", "count"] });
+    },
+    onError: (err) => {
+      setActionError(t("validationQueue.rejectError", { message: err.message }));
+    },
+  });
+
   const statusTone =
     item.validation_status === "validated"
       ? "positive"
       : item.validation_status === "rejected"
       ? "negative"
       : "neutral";
+
+  // The Validate button is only shown for Q2 (manual review) items.
+  // For class 10 (Orchestrator) and 50 (Scaffold) it is additionally
+  // disabled when the LLM audit is pending or has flagged issues — the
+  // backend enforces the same rule and returns 403 if bypassed.
+  const isQ2 = item.queue_code === "q2_manual";
+  const auditBlocked =
+    LLM_AUDIT_CLASS_CODES.has(item.class_code) &&
+    item.llm_audit_status !== "clean" &&
+    item.llm_audit_status !== "not_applicable" &&
+    item.llm_audit_status !== "error";
+  const validateTooltip = auditBlocked
+    ? item.llm_audit_status === "pending"
+      ? t("validationQueue.auditPending")
+      : t("validationQueue.auditFlagged")
+    : null;
+  const isBusy = validateMutation.isPending || rejectMutation.isPending;
 
   return html`
     <div
@@ -101,12 +153,33 @@ function QueueRow({ item }) {
           html`<p className="mt-0.5 text-xs text-[var(--v2-text-muted)] truncate">
             ${item.description}
           </p>`}
+        ${actionError &&
+          html`<p className="mt-1 text-xs text-[var(--v2-danger-text)]">${actionError}</p>`}
       </div>
-      <${Badge}
-        tone=${statusTone}
-        label=${item.validation_status ?? "unknown"}
-        size="sm"
-      />
+      <div className="flex items-center gap-2 shrink-0">
+        <${Badge}
+          tone=${statusTone}
+          label=${item.validation_status ?? "unknown"}
+          size="sm"
+        />
+        ${isQ2 && html`
+          <button
+            onClick=${() => { setActionError(""); rejectMutation.mutate(); }}
+            disabled=${isBusy}
+            className="rounded px-2 py-1 text-xs font-medium text-[var(--v2-danger-text)] hover:bg-[var(--v2-danger-bg)] disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            ${t("validationQueue.reject")}
+          </button>
+          <button
+            onClick=${() => { setActionError(""); validateMutation.mutate(); }}
+            disabled=${isBusy || auditBlocked}
+            title=${validateTooltip ?? ""}
+            className="rounded px-2 py-1 text-xs font-medium text-[var(--v2-accent-text)] hover:bg-[var(--v2-accent-bg)] disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            ${t("validationQueue.validate")}
+          </button>
+        `}
+      </div>
     </div>
   `;
 }

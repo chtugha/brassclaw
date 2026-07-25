@@ -235,3 +235,19 @@ export function fetchValidationQueue() {
 export function fetchValidationQueueCount() {
   return apiFetch("/api/webchat/v2/validation-queue/count");
 }
+// Move a component from auto_passed → validated (Q2 manual approve).
+// For class_code 10 (Orchestrator) and 50 (Scaffold) the backend enforces
+// an LLM audit-clean guard; the frontend mirrors that with a disabled state.
+export function validateComponent(classCode, componentId) {
+  return apiFetch(
+    `/api/webchat/v2/components/${encodeURIComponent(classCode)}/${encodeURIComponent(componentId)}/validate`,
+    { method: "PUT", body: JSON.stringify({}) }
+  );
+}
+// Move a component to rejected (Q3 / Q4 depending on review_attempts).
+export function rejectComponent(classCode, componentId, feedback) {
+  return apiFetch(
+    `/api/webchat/v2/components/${encodeURIComponent(classCode)}/${encodeURIComponent(componentId)}/reject`,
+    { method: "PUT", body: JSON.stringify({ feedback: feedback ?? null }) }
+  );
+}

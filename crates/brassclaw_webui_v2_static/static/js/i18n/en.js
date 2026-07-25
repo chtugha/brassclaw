@@ -1007,6 +1007,13 @@ registerPack("en", {
   "validationQueue.empty": "Validation queue is empty",
   "validationQueue.emptyDesc": "Components awaiting operator review will appear here once the extraction pipeline produces new items.",
   "validationQueue.pendingCount": "{count} pending",
+  // Q2 action buttons (Step 2.4 — LLM audit guard).
+  "validationQueue.validate": "Validate",
+  "validationQueue.reject": "Reject",
+  "validationQueue.auditPending": "LLM audit pending — validate blocked until audit is clean",
+  "validationQueue.auditFlagged": "LLM audit flagged issues — resolve before validating",
+  "validationQueue.validateError": "Validate failed: {message}",
+  "validationQueue.rejectError": "Reject failed: {message}",
 
   // Settings — Reliability tab (Phase 6).
   "reliability.title": "Reliability overview",
