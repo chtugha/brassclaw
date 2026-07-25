@@ -2237,7 +2237,11 @@ where
 async fn build_postgres_production(
     context: RebornProductionBuildContext,
     pool: deadpool_postgres::Pool,
-    url: brassclaw_secrets::SecretMaterial,
+    // `_url` was previously forwarded to `RebornEventStoreConfig::Postgres { url }` which
+    // opened a second independent pool.  PG-4 plan requirement: event stores must reuse the
+    // shared pool.  The URL is no longer needed here; kept as a parameter to avoid breaking
+    // the call site at line ~1683 until the caller is updated in PG-8.
+    _url: brassclaw_secrets::SecretMaterial,
     secret_master_key: brassclaw_secrets::SecretMaterial,
     _reborn_home: std::path::PathBuf,
 ) -> Result<RebornServices, RebornBuildError> {
@@ -2253,11 +2257,16 @@ async fn build_postgres_production(
     // Build stores with PgSecretStore + PgCredentialBroker so that all secret
     // and OAuth credential writes go to the `brassclaw_secrets` table rather
     // than the legacy VFS blob columns (§4.4 Issue 3).
+    // PG-4: use SharedPool so event stores reuse the existing pool rather than
+    // opening a second independent connection pool.
     let stores = ProductionStoreBundle::new_postgres(
         filesystem,
         pool.clone(),
         secret_master_key,
-        brassclaw_reborn_event_store::RebornEventStoreConfig::Postgres { url },
+        brassclaw_reborn_event_store::RebornEventStoreConfig::SharedPool {
+            pool: Arc::new(pool.clone()),
+            tenant_id: "default".to_string(),
+        },
     )?;
 
     // Clone pool before consuming it in build_postgres_memory_tools so it can

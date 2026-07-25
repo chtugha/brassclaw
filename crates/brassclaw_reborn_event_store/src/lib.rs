@@ -40,17 +40,26 @@ pub use pg_store::{PgDurableAuditLog, PgDurableEventLog};
 
 /// Backend configuration for Reborn durable event/audit stores.
 ///
-/// The `Postgres` variant opens a
-/// [`PostgresRootFilesystem`](brassclaw_filesystem::PostgresRootFilesystem)
-/// and routes the durable log through [`FilesystemDurableEventLog`] /
-/// [`FilesystemDurableAuditLog`].
+/// Prefer `SharedPool` when a Postgres pool is already open so the event store
+/// reuses it instead of opening a second connection pool.  The `Postgres { url }`
+/// variant is retained for contexts where no shared pool exists.
 #[derive(Debug)]
 pub enum RebornEventStoreConfig {
     /// PostgreSQL backend configuration. The store opens a
     /// [`PostgresRootFilesystem`](brassclaw_filesystem::PostgresRootFilesystem)
     /// over the provided URL and runs durable-log ops through the unified
     /// filesystem dispatch fabric.
+    ///
+    /// Prefer `SharedPool` when a shared `PgPool` is already open; this
+    /// variant creates a second independent connection pool.
     Postgres { url: SecretString },
+    /// Reuse an already-open shared Postgres pool.  Uses `PgDurableEventLog`
+    /// and `PgDurableAuditLog` directly — no second pool is opened.
+    #[cfg(feature = "postgres")]
+    SharedPool {
+        pool: std::sync::Arc<brassclaw_pg::PgPool>,
+        tenant_id: String,
+    },
 }
 
 /// Reborn composition profile controlling which fallbacks are legal.
@@ -109,6 +118,14 @@ pub async fn build_reborn_event_stores(
                     backend: "postgres",
                 })
             }
+        }
+        #[cfg(feature = "postgres")]
+        RebornEventStoreConfig::SharedPool { pool, tenant_id } => {
+            // Reuse the existing pool — no second connection pool opened.
+            Ok(RebornEventStores {
+                events: std::sync::Arc::new(PgDurableEventLog::new(pool.clone(), tenant_id.clone())),
+                audit: std::sync::Arc::new(PgDurableAuditLog::new(pool, tenant_id)),
+            })
         }
     }
 }

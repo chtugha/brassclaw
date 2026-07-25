@@ -839,3 +839,690 @@ impl RecipeLookup for PgRecipeLibrary {
         Ok(())
     }
 }
+
+// ---------------------------------------------------------------------------
+// PgRecipeStoreFacade — implements brassclaw_product_workflow::RecipeStore
+// ---------------------------------------------------------------------------
+//
+// The trait methods use `(user_id, project_id)` as scope.  Production wiring
+// pins `tenant_id = "default"` and `agent_id = "default"` to match the
+// existing local-dev scope used by RecipeLibrary / PgRecipeLibrary.  Custom
+// scopes construct PgRecipeStore directly.
+
+/// Scoped facade over [`PgRecipeStore`] that implements the
+/// `brassclaw_product_workflow::RecipeStore` trait.
+///
+/// All trait methods use `(user_id, project_id)` from the call site;
+/// `tenant_id` and `agent_id` are fixed at construction time.
+#[cfg(feature = "postgres")]
+pub(crate) struct PgRecipeStoreFacade {
+    inner: PgRecipeStore,
+    tenant_id: String,
+    agent_id: String,
+}
+
+#[cfg(feature = "postgres")]
+impl PgRecipeStoreFacade {
+    /// Create a facade with explicit tenant + agent.
+    pub(crate) fn new(
+        pool: Arc<PgPool>,
+        tenant_id: impl Into<String>,
+        agent_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            inner: PgRecipeStore::new(pool),
+            tenant_id: tenant_id.into(),
+            agent_id: agent_id.into(),
+        }
+    }
+
+    /// Convenience constructor matching the local-dev defaults used by
+    /// `PgRecipeLibrary::local_dev`.
+    pub(crate) fn local_dev(pool: Arc<PgPool>) -> Self {
+        Self::new(pool, "local", "default")
+    }
+}
+
+#[cfg(feature = "postgres")]
+fn map_pg_recipe_error(e: PgRecipeStoreError) -> brassclaw_product_workflow::RecipeStoreError {
+    match e {
+        PgRecipeStoreError::NotFound { id } => {
+            brassclaw_product_workflow::RecipeStoreError::NotFound(id)
+        }
+        PgRecipeStoreError::Invalid { reason } => {
+            brassclaw_product_workflow::RecipeStoreError::Invalid(reason)
+        }
+        PgRecipeStoreError::Pool { reason } | PgRecipeStoreError::Db { reason } => {
+            brassclaw_product_workflow::RecipeStoreError::Unavailable(reason)
+        }
+        PgRecipeStoreError::Serialize { reason } => {
+            brassclaw_product_workflow::RecipeStoreError::Internal(reason)
+        }
+    }
+}
+
+#[cfg(feature = "postgres")]
+fn recipe_to_summary(r: &PgRecipe) -> brassclaw_product_workflow::RecipeSummary {
+    let step_count = r
+        .steps
+        .as_array()
+        .map(|a| a.len() as u32)
+        .unwrap_or(0);
+    brassclaw_product_workflow::RecipeSummary {
+        id: r.id.to_string(),
+        name: r.name.clone(),
+        description: r.description.clone(),
+        category: "recipe".to_string(),
+        trigger: r.trigger.clone().unwrap_or(serde_json::Value::Null),
+        step_count,
+        usage_count: r.usage_count.max(0) as u64,
+        success_count: r.success_count.max(0) as u64,
+        failure_count: r.failure_count.max(0) as u64,
+        wilson_lower: r.wilson_lower,
+        tier: r.tier.clone(),
+        tier0_eligible: r.is_tier0_eligible(),
+        validation_status: r.validation_status.clone(),
+        validation_errors: r.validation_errors.clone(),
+        review_attempts: r.review_attempts.max(0) as u32,
+        source: r.source.clone(),
+        created_at: r.created_at.to_rfc3339(),
+        updated_at: r.updated_at.to_rfc3339(),
+    }
+}
+
+#[cfg(feature = "postgres")]
+fn recipe_to_detail(r: &PgRecipe) -> brassclaw_product_workflow::RecipeDetail {
+    let recipe_json = serde_json::json!({
+        "id": r.id.to_string(),
+        "name": r.name,
+        "description": r.description,
+        "trigger": r.trigger,
+        "steps": r.steps,
+        "status": r.status,
+        "prior_knowledge_content": r.prior_knowledge_content,
+        "override_prompt_creation": r.override_prompt_creation,
+        "class_code": r.class_code,
+        "prompt_uid": r.prompt_uid,
+        "consumer_tags": r.consumer_tags,
+        "intent_examples": r.intent_examples,
+        "tier": r.tier,
+        "usage_count": r.usage_count,
+        "success_count": r.success_count,
+        "failure_count": r.failure_count,
+        "wilson_lower": r.wilson_lower,
+        "validation_status": r.validation_status,
+        "validation_errors": r.validation_errors,
+        "review_feedback": r.review_feedback,
+        "review_attempts": r.review_attempts,
+        "rejected_at": r.rejected_at.map(|t| t.to_rfc3339()),
+        "queue_code": r.queue_code,
+        "source": r.source,
+        "content_hash": r.content_hash,
+        "created_at": r.created_at.to_rfc3339(),
+        "updated_at": r.updated_at.to_rfc3339(),
+    });
+    brassclaw_product_workflow::RecipeDetail {
+        id: r.id.to_string(),
+        recipe: recipe_json,
+    }
+}
+
+#[cfg(feature = "postgres")]
+fn recipe_to_queue_item(r: &PgRecipe) -> brassclaw_product_workflow::ValidationQueueItem {
+    let queue_code = r.queue_code.clone().unwrap_or_else(|| {
+        // Derive queue code from validation_status when not stored.
+        match r.validation_status.as_str() {
+            "pending" | "auto_failed" => "q1_auto".to_string(),
+            "auto_passed" | "review_requested" | "upgrade_queued" => "q2_manual".to_string(),
+            "rejected" if r.review_attempts < 3 => "q3_revision".to_string(),
+            "rejected" => "q4_rejection".to_string(),
+            "garbage" => "garbage".to_string(),
+            _ => "q2_manual".to_string(),
+        }
+    });
+    let trigger_summary = r
+        .trigger
+        .as_ref()
+        .and_then(|t| t.get("payload"))
+        .and_then(|p| {
+            if let Some(s) = p.as_str() {
+                Some(s.to_string())
+            } else {
+                serde_json::to_string(p).ok()
+            }
+        })
+        .unwrap_or_default();
+    brassclaw_product_workflow::ValidationQueueItem {
+        id: r.id.to_string(),
+        name: r.name.clone(),
+        item_type: brassclaw_product_workflow::RecipeKind::Recipe,
+        category: "recipe".to_string(),
+        description: r.description.clone(),
+        trigger_summary,
+        estimated_tokens: None,
+        validation_status: r.validation_status.clone(),
+        validation_errors: r.validation_errors.clone(),
+        review_feedback: r.review_feedback.clone(),
+        review_attempts: r.review_attempts.max(0) as u32,
+        similarity_parent_id: None,
+        created_at: r.created_at.to_rfc3339(),
+        source: r.source.clone(),
+        class_code: 21,
+        class_label: "RECIPE".to_string(),
+        queue_code,
+        validator_tag_present: r.has_validator_tag(),
+        consumer_tags: r.consumer_tags.clone(),
+        // reborn_recipes has no llm_audit_status column — always not_applicable.
+        llm_audit_status: "not_applicable".to_string(),
+        llm_audit_findings: vec![],
+    }
+}
+
+/// Map ValidationQueueFilter → the set of validation_status values to query.
+#[cfg(feature = "postgres")]
+fn queue_filter_statuses(
+    filter: brassclaw_product_workflow::ValidationQueueFilter,
+) -> &'static [&'static str] {
+    match filter {
+        brassclaw_product_workflow::ValidationQueueFilter::Auto => {
+            &["pending", "auto_failed"]
+        }
+        brassclaw_product_workflow::ValidationQueueFilter::Manual => {
+            &["auto_passed", "review_requested", "upgrade_queued"]
+        }
+        brassclaw_product_workflow::ValidationQueueFilter::Revision => &["rejected"],
+        brassclaw_product_workflow::ValidationQueueFilter::Rejection => &["rejected"],
+    }
+}
+
+#[cfg(feature = "postgres")]
+#[async_trait]
+impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
+    async fn list_recipes(
+        &self,
+        user_id: &str,
+        project_id: &str,
+    ) -> Result<Vec<brassclaw_product_workflow::RecipeSummary>, brassclaw_product_workflow::RecipeStoreError>
+    {
+        let rows = self
+            .inner
+            .list_all(&self.tenant_id, user_id, &self.agent_id, project_id)
+            .await
+            .map_err(map_pg_recipe_error)?;
+        Ok(rows.iter().map(recipe_to_summary).collect())
+    }
+
+    async fn list_tool_skills(
+        &self,
+        _user_id: &str,
+        _project_id: &str,
+    ) -> Result<Vec<brassclaw_product_workflow::ToolSkillSummary>, brassclaw_product_workflow::RecipeStoreError>
+    {
+        // ToolSkills have their own table (V037, Phase 5).  Until that migration
+        // lands, return empty so the WebUI shows no tool skills rather than erroring.
+        tracing::debug!("PgRecipeStoreFacade::list_tool_skills: V037 not yet applied — returning empty");
+        Ok(vec![])
+    }
+
+    async fn get_recipe(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        recipe_id: &str,
+    ) -> Result<Option<brassclaw_product_workflow::RecipeDetail>, brassclaw_product_workflow::RecipeStoreError>
+    {
+        let uuid: uuid::Uuid = recipe_id.parse().map_err(|e| {
+            brassclaw_product_workflow::RecipeStoreError::Invalid(format!(
+                "invalid recipe_id UUID: {e}"
+            ))
+        })?;
+        let row = self
+            .inner
+            .get(&self.tenant_id, user_id, &self.agent_id, project_id, uuid)
+            .await
+            .map_err(map_pg_recipe_error)?;
+        Ok(row.as_ref().map(recipe_to_detail))
+    }
+
+    async fn get_tool_skill(
+        &self,
+        _user_id: &str,
+        _project_id: &str,
+        _skill_id: &str,
+    ) -> Result<Option<brassclaw_product_workflow::ToolSkillDetail>, brassclaw_product_workflow::RecipeStoreError>
+    {
+        // V037 not yet applied.
+        tracing::debug!("PgRecipeStoreFacade::get_tool_skill: V037 not yet applied — returning None");
+        Ok(None)
+    }
+
+    async fn list_validation_queue(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        filter: brassclaw_product_workflow::ValidationQueueFilter,
+    ) -> Result<Vec<brassclaw_product_workflow::ValidationQueueItem>, brassclaw_product_workflow::RecipeStoreError>
+    {
+        let statuses = queue_filter_statuses(filter);
+        let client = self
+            .inner
+            .pool
+            .get()
+            .await
+            .map_err(|e| brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string()))?;
+
+        // Build a query with a dynamic IN clause.
+        let placeholders: String = statuses
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("${}", i + 5))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let q = format!(
+            "SELECT {RECIPE_SELECT} FROM reborn_recipes
+             WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+               AND validation_status IN ({placeholders})
+             ORDER BY created_at ASC
+             LIMIT {MAX_RECIPE_LIST_ROWS}"
+        );
+
+        // Build params: 4 scope values + dynamic status values.
+        let tenant_id = self.tenant_id.as_str();
+        let agent_id = self.agent_id.as_str();
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![
+            &tenant_id,
+            &user_id,
+            &agent_id,
+            &project_id,
+        ];
+        for s in statuses.iter() {
+            params.push(s);
+        }
+
+        let rows = client
+            .query(q.as_str(), &params)
+            .await
+            .map_err(|e| brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string()))?;
+
+        let mut items: Vec<brassclaw_product_workflow::ValidationQueueItem> =
+            Vec::with_capacity(rows.len());
+        for row in &rows {
+            let recipe = decode_recipe_row(row)
+                .map_err(|e| brassclaw_product_workflow::RecipeStoreError::Internal(e.to_string()))?;
+            // For Rejection filter: only include rows with review_attempts >= 3.
+            // For Revision filter: only include rows with review_attempts < 3.
+            let include = match filter {
+                brassclaw_product_workflow::ValidationQueueFilter::Rejection => {
+                    recipe.review_attempts >= 3
+                }
+                brassclaw_product_workflow::ValidationQueueFilter::Revision => {
+                    recipe.review_attempts < 3
+                }
+                _ => true,
+            };
+            if include {
+                items.push(recipe_to_queue_item(&recipe));
+            }
+        }
+        Ok(items)
+    }
+
+    async fn count_by_status(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        status: &str,
+    ) -> Result<u32, brassclaw_product_workflow::RecipeStoreError> {
+        let client = self
+            .inner
+            .pool
+            .get()
+            .await
+            .map_err(|e| brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string()))?;
+        let row = client
+            .query_one(
+                "SELECT COUNT(*) FROM reborn_recipes
+                 WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+                   AND validation_status = $5",
+                &[
+                    &self.tenant_id.as_str(),
+                    &user_id,
+                    &self.agent_id.as_str(),
+                    &project_id,
+                    &status,
+                ],
+            )
+            .await
+            .map_err(|e| brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string()))?;
+        let count: i64 = row.get(0);
+        Ok(count.max(0) as u32)
+    }
+
+    async fn update_recipe_validation_status(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        recipe_id: &str,
+        new_status: &str,
+        feedback: Option<&str>,
+    ) -> Result<brassclaw_product_workflow::UpdateValidationStatusResponse, brassclaw_product_workflow::RecipeStoreError>
+    {
+        let uuid: uuid::Uuid = recipe_id.parse().map_err(|e| {
+            brassclaw_product_workflow::RecipeStoreError::Invalid(format!(
+                "invalid recipe_id UUID: {e}"
+            ))
+        })?;
+        // Fetch current status for the response.
+        let current = self
+            .inner
+            .get(&self.tenant_id, user_id, &self.agent_id, project_id, uuid)
+            .await
+            .map_err(map_pg_recipe_error)?
+            .ok_or_else(|| {
+                brassclaw_product_workflow::RecipeStoreError::NotFound(recipe_id.to_string())
+            })?;
+        let previous_status = current.validation_status.clone();
+        let new_review_attempts = if new_status == "rejected" {
+            current.review_attempts + 1
+        } else {
+            current.review_attempts
+        };
+        let queue_code = derive_queue_code(new_status, new_review_attempts);
+        self.inner
+            .update_validation_status(
+                &self.tenant_id,
+                user_id,
+                &self.agent_id,
+                project_id,
+                uuid,
+                RecipeValidationStatusUpdate {
+                    validation_status: new_status,
+                    validation_errors: vec![],
+                    review_feedback: feedback.map(|s| s.to_string()),
+                    queue_code: Some(queue_code),
+                },
+            )
+            .await
+            .map_err(map_pg_recipe_error)?;
+        // Pop validator tag when moving to validated.
+        if new_status == "validated" {
+            let _ = self
+                .inner
+                .pop_validator_tag(&self.tenant_id, user_id, &self.agent_id, project_id, uuid)
+                .await;
+        }
+        Ok(brassclaw_product_workflow::UpdateValidationStatusResponse {
+            id: recipe_id.to_string(),
+            item_type: brassclaw_product_workflow::RecipeKind::Recipe,
+            previous_status,
+            new_status: new_status.to_string(),
+            review_attempts: new_review_attempts.max(0) as u32,
+        })
+    }
+
+    async fn update_skill_validation_status(
+        &self,
+        _user_id: &str,
+        _project_id: &str,
+        skill_id: &str,
+        _new_status: &str,
+        _feedback: Option<&str>,
+    ) -> Result<brassclaw_product_workflow::UpdateValidationStatusResponse, brassclaw_product_workflow::RecipeStoreError>
+    {
+        // V037 not yet applied — no-op.
+        tracing::debug!("PgRecipeStoreFacade::update_skill_validation_status: V037 not yet applied");
+        Ok(brassclaw_product_workflow::UpdateValidationStatusResponse {
+            id: skill_id.to_string(),
+            item_type: brassclaw_product_workflow::RecipeKind::ToolSkill,
+            previous_status: "unknown".to_string(),
+            new_status: "unknown".to_string(),
+            review_attempts: 0,
+        })
+    }
+
+    async fn update_component_validation_status(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        class_code: u16,
+        component_id: &str,
+        new_status: &str,
+        feedback: Option<&str>,
+    ) -> Result<brassclaw_product_workflow::UpdateValidationStatusResponse, brassclaw_product_workflow::RecipeStoreError>
+    {
+        match class_code {
+            21 => {
+                self.update_recipe_validation_status(
+                    user_id,
+                    project_id,
+                    component_id,
+                    new_status,
+                    feedback,
+                )
+                .await
+            }
+            13 => {
+                self.update_skill_validation_status(
+                    user_id,
+                    project_id,
+                    component_id,
+                    new_status,
+                    feedback,
+                )
+                .await
+            }
+            _ => {
+                tracing::debug!(
+                    class_code,
+                    component_id,
+                    "update_component_validation_status: unsupported class_code"
+                );
+                Err(brassclaw_product_workflow::RecipeStoreError::Invalid(
+                    format!("class_code {class_code} is not handled by PgRecipeStoreFacade"),
+                ))
+            }
+        }
+    }
+
+    async fn re_review_component(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        class_code: u16,
+        component_id: &str,
+        feedback: Option<&str>,
+    ) -> Result<brassclaw_product_workflow::UpdateValidationStatusResponse, brassclaw_product_workflow::RecipeStoreError>
+    {
+        if class_code != 21 {
+            return Err(brassclaw_product_workflow::RecipeStoreError::Invalid(
+                format!("re_review_component: class_code {class_code} not handled"),
+            ));
+        }
+        let uuid: uuid::Uuid = component_id.parse().map_err(|e| {
+            brassclaw_product_workflow::RecipeStoreError::Invalid(format!(
+                "invalid component_id UUID: {e}"
+            ))
+        })?;
+        let current = self
+            .inner
+            .get(&self.tenant_id, user_id, &self.agent_id, project_id, uuid)
+            .await
+            .map_err(map_pg_recipe_error)?
+            .ok_or_else(|| {
+                brassclaw_product_workflow::RecipeStoreError::NotFound(component_id.to_string())
+            })?;
+        // Only allow re-review from Q4 (rejected, review_attempts >= 3).
+        if current.validation_status != "rejected" || current.review_attempts < 3 {
+            return Err(brassclaw_product_workflow::RecipeStoreError::Invalid(
+                "re_review_component requires the component to be in Q4 (rejected, review_attempts >= 3)".to_string(),
+            ));
+        }
+        let previous_status = current.validation_status.clone();
+        self.inner
+            .update_validation_status(
+                &self.tenant_id,
+                user_id,
+                &self.agent_id,
+                project_id,
+                uuid,
+                RecipeValidationStatusUpdate {
+                    validation_status: "pending",
+                    validation_errors: vec![],
+                    review_feedback: feedback.map(|s| s.to_string()),
+                    queue_code: Some("q1_auto".to_string()),
+                },
+            )
+            .await
+            .map_err(map_pg_recipe_error)?;
+        // Re-add validator tag so it re-enters Q1 auto-validation.
+        let client = self
+            .inner
+            .pool
+            .get()
+            .await
+            .map_err(|e| brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string()))?;
+        client
+            .execute(
+                "UPDATE reborn_recipes
+                 SET consumer_tags = array_append(
+                     array_remove(consumer_tags, '05:validator'), '05:validator'
+                 )
+                 WHERE id = $1 AND tenant_id = $2 AND user_id = $3
+                   AND agent_id = $4 AND project_id = $5",
+                &[
+                    &uuid,
+                    &self.tenant_id.as_str(),
+                    &user_id,
+                    &self.agent_id.as_str(),
+                    &project_id,
+                ],
+            )
+            .await
+            .map_err(|e| brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string()))?;
+        Ok(brassclaw_product_workflow::UpdateValidationStatusResponse {
+            id: component_id.to_string(),
+            item_type: brassclaw_product_workflow::RecipeKind::Recipe,
+            previous_status,
+            new_status: "pending".to_string(),
+            review_attempts: current.review_attempts.max(0) as u32,
+        })
+    }
+
+    async fn delete_component(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        class_code: u16,
+        component_id: &str,
+    ) -> Result<(), brassclaw_product_workflow::RecipeStoreError> {
+        if class_code != 21 {
+            return Err(brassclaw_product_workflow::RecipeStoreError::Invalid(
+                format!("delete_component: class_code {class_code} not handled"),
+            ));
+        }
+        let uuid: uuid::Uuid = component_id.parse().map_err(|e| {
+            brassclaw_product_workflow::RecipeStoreError::Invalid(format!(
+                "invalid component_id UUID: {e}"
+            ))
+        })?;
+        let client = self
+            .inner
+            .pool
+            .get()
+            .await
+            .map_err(|e| brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string()))?;
+        // Mark as garbage — terminal state; sweep task handles physical removal.
+        let affected = client
+            .execute(
+                "UPDATE reborn_recipes
+                 SET validation_status = 'garbage', queue_code = 'garbage'
+                 WHERE id = $1 AND tenant_id = $2 AND user_id = $3
+                   AND agent_id = $4 AND project_id = $5",
+                &[
+                    &uuid,
+                    &self.tenant_id.as_str(),
+                    &user_id,
+                    &self.agent_id.as_str(),
+                    &project_id,
+                ],
+            )
+            .await
+            .map_err(|e| brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string()))?;
+        if affected == 0 {
+            return Err(brassclaw_product_workflow::RecipeStoreError::NotFound(
+                component_id.to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn get_component_audit_status(
+        &self,
+        _user_id: &str,
+        _project_id: &str,
+        _class_code: u16,
+        _component_id: &str,
+    ) -> Result<brassclaw_product_workflow::ComponentAuditStatus, brassclaw_product_workflow::RecipeStoreError>
+    {
+        // reborn_recipes has no llm_audit_status column — always not_applicable.
+        Ok(brassclaw_product_workflow::ComponentAuditStatus::not_applicable())
+    }
+
+    async fn record_outcome(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        request: brassclaw_product_workflow::RecordOutcomeRequest,
+    ) -> Result<brassclaw_product_workflow::RecordOutcomeResponse, brassclaw_product_workflow::RecipeStoreError>
+    {
+        match request.kind {
+            brassclaw_product_workflow::OutcomeKind::Recipe => {
+                let uuid: uuid::Uuid = request.id.parse().map_err(|e| {
+                    brassclaw_product_workflow::RecipeStoreError::Invalid(format!(
+                        "invalid recipe_id UUID: {e}"
+                    ))
+                })?;
+                self.inner
+                    .record_outcome(
+                        &self.tenant_id,
+                        user_id,
+                        &self.agent_id,
+                        project_id,
+                        uuid,
+                        request.success,
+                    )
+                    .await
+                    .map_err(map_pg_recipe_error)?;
+                Ok(brassclaw_product_workflow::RecordOutcomeResponse {
+                    id: request.id,
+                    kind: request.kind,
+                    recorded: true,
+                })
+            }
+            brassclaw_product_workflow::OutcomeKind::ToolSkill => {
+                // V037 not yet applied.
+                tracing::debug!("PgRecipeStoreFacade::record_outcome(ToolSkill): V037 not yet applied");
+                Ok(brassclaw_product_workflow::RecordOutcomeResponse {
+                    id: request.id,
+                    kind: request.kind,
+                    recorded: false,
+                })
+            }
+        }
+    }
+}
+
+/// Derive a queue_code string from new_status + review_attempts.
+#[cfg(feature = "postgres")]
+fn derive_queue_code(new_status: &str, review_attempts: i16) -> String {
+    match new_status {
+        "pending" | "auto_failed" => "q1_auto".to_string(),
+        "auto_passed" | "review_requested" | "upgrade_queued" | "validated" => {
+            "q2_manual".to_string()
+        }
+        "rejected" if review_attempts < 3 => "q3_revision".to_string(),
+        "rejected" => "q4_rejection".to_string(),
+        "garbage" => "garbage".to_string(),
+        _ => "q2_manual".to_string(),
+    }
+}

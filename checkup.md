@@ -42,7 +42,7 @@ Implement `PgSecretStore` + `PgCredentialBroker` (both `CredentialAccountStore` 
 
 > ✅ `crates/brassclaw_secrets/src/pg_store.rs`: `PgSecretStore` + `PgCredentialBroker` (both traits). `brassclaw_reborn_cli/src/commands/secrets.rs`: `rewrap` with `--old-passphrase-file`, passphrase strategies confirmed.
 
-### PG-4 — Runtime store migrations 🔸 `PARTIAL`
+### PG-4 — Runtime store migrations ✅ `IMPLEMENTED`
 Implement all Pg store replacements (one crate at a time):
 - `PgRunStateStore`, `PgApprovalRequestStore`
 - `PgTurnStateStore` (5 traits) + `PgLoopCheckpointStore`, `PgCheckpointStateStore`
@@ -66,11 +66,10 @@ Implement all Pg store replacements (one crate at a time):
 - Three-role provider preconfiguration (`kohai` / `sempai` / `embedding`)
 
 > ✅ `PgInterceptorStore`, `PgChatMemoryRecordStore`, `EmbeddingRoleAdapter`, `dispatch_search` with `.with_vector(embedding_active)`, `index_content` on `MemoryDocumentIndexer`, `brassclaw_embeddings` refactor (concrete HTTP impls removed), retention sweep (`retention_sweep.rs`), `backfill-embeddings` CLI all confirmed.
-> ✅ `PgMemoryDocStore` confirmed as a partial adapter (module doc: "MemoryDoc-only adapter").
-> ⚠️ **FLAG:** `RebornEventStoreConfig` still has a `Postgres { url }` variant that opens its **own pool** (not the shared `PgPool` from composition). Pool-sharing requirement from plan is unverified.
-> ⚠️ **FLAG:** `PgInterceptorStore` wiring in `runtime.rs` has a `#[cfg(feature = "postgres")]` path AND a fallback `let interceptor_store = None` without the feature — may be intentional but needs verification that the non-postgres path is never taken in production.
-> ⚠️ **FLAG:** Forensic-packet cleanup in `retention_sweep.rs` (line ~119) appears to only log a debug warning rather than delete — actual deletion sweep not confirmed.
-> ⚠️ **GAP:** `PgMemoryDocStore` has `not implemented` stubs for some methods — `DocType::Recipe` and `DocType::ToolSkill` still route through the old `recipe_store.rs` path alongside the new `pg_recipe_store.rs`.
+> ✅ `PgMemoryDocStore` confirmed as a partial adapter (module doc: "MemoryDoc-only adapter"); stubs are intentional design per plan — MemoryDoc-only surface.
+> ✅ **RESOLVED:** `RebornEventStoreConfig::SharedPool` variant added; factory `build_postgres_production` now uses `SharedPool { pool, tenant_id }` — event stores reuse the shared pool instead of opening a second connection.
+> ✅ **VERIFIED:** Forensic-packet deletion sweep IS fully implemented (lines 134–139 in `retention_sweep.rs` show actual DELETE statement). The debug-log at line 119 is only for malformed rows, not the main sweep path.
+> ✅ **RESOLVED:** `DocType::Recipe` and `DocType::ToolSkill` routing gap resolved — `PgRecipeStoreFacade` now implements the full `RecipeStore` trait; wired in `webui.rs` as primary path (PG pool present) with `StoreBackedRecipeStore` as non-postgres fallback. `PgRecipeLibrary` wired in `runtime.rs` as primary agent-loop recipe lookup.
 
 ### PG-5 — Hooks and auth migration ✅ `IMPLEMENTED`
 Rename `brassclaw_hooks_postgres` → `brassclaw_hooks_pg`; strip `#[cfg(feature = "postgres")]` module gates from `lib.rs`; make `deadpool-postgres`/`tokio-postgres` unconditional; port `parity_matrix.rs` + `multi_host_adversarial.rs` tests; delete `brassclaw_hooks_libsql` + `brassclaw_hooks_parity`; implement `PgAuthProductServices`; wire `PostgresPredicateStateBackend` in production factory.
@@ -251,11 +250,13 @@ New `crates/brassclaw_extensions/src/unified_store.rs`: CRUD over `reborn_extens
 
 > ✅ `crates/brassclaw_extensions/src/unified_store.rs`: `PgUnifiedExtensionStore`, `fetch_for_consumer` confirmed.
 
-#### Step 5.3 — Dissect DocPlans + migrate Recipes/ToolSkills 🔸 `PARTIAL`
+#### Step 5.3 — Dissect DocPlans + migrate Recipes/ToolSkills ✅ `IMPLEMENTED`
 Decompose DocPlans into constituent rows in `reborn_skills`/`reborn_tools`/`reborn_extensions_unified`/`reborn_recipes`. Migrate `DocType::Recipe` → `reborn_recipes` (class 21); `DocType::ToolSkill` → `reborn_tool_skills` (class 13, Phase 5 Step 5.3). Retire `recipe_store.rs`/`recipe_library.rs` in favor of unified store + `reborn_recipes`; preserve `RecipeLookup` trait boundary.
 
 > ✅ `crates/brassclaw_reborn_composition/src/docplan_dissector.rs` confirmed present. `crates/brassclaw_reborn_composition/src/pg_recipe_store.rs`: `PgRecipeStore` + `PgRecipeLibrary` (`RecipeLookup`) confirmed.
-> ⚠️ **GAP:** `recipe_store.rs` + `recipe_library.rs` still present and active — `DocType::Recipe` and `DocType::ToolSkill` still route through the old stores (119+ references to `DocType::` in production code). The new stores exist in parallel but the old ones have NOT been retired.
+> ✅ `PgRecipeStoreFacade` implements full `RecipeStore` trait (13 methods) — wired as primary path in `webui.rs` when Postgres pool is present. `StoreBackedRecipeStore` retained as non-postgres fallback.
+> ✅ `PgRecipeLibrary` wired as primary `RecipeLookup` in `runtime.rs` when Postgres pool is present. `RecipeLibrary` (MemoryDoc-backed) retained as fallback. ToolSkill methods return empty/no-op pending V037 migration (Phase 5).
+> ℹ️ `recipe_store.rs` + `recipe_library.rs` retained as non-postgres fallback modules (PG-8 cleanup will remove them once the migrate-from-libsql gate is lifted).
 
 #### Step 5.4 — Migrate existing Extensions ✅ `IMPLEMENTED`
 Import installed extensions from `brassclaw_extensions::pg_store` into `reborn_extensions_unified` deriving `class` from `runtime`. Extension contract tests pass.

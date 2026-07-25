@@ -1955,14 +1955,22 @@ pub async fn build_reborn_runtime(
         })?
     };
 
-    // Use PgMemoryDocStore when the pool is wired; otherwise no recipe lookup.
+    // Step 5.3: Use PgRecipeLibrary (reads from reborn_recipes) when a Postgres
+    // pool is wired.  Falls back to the MemoryDoc-backed RecipeLibrary when no
+    // pool is available (non-postgres / local-dev without embedded PG).
     #[cfg(feature = "postgres")]
     let recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>> =
-        services.pg_memory_doc_store.as_ref().map(|store| {
-            let dyn_store: Arc<dyn brassclaw_engine::traits::store::Store> =
-                Arc::clone(store) as Arc<dyn brassclaw_engine::traits::store::Store>;
-            Arc::new(crate::recipe_library::RecipeLibrary::new(dyn_store))
+        services.pg_pool.as_ref().map(|pool| {
+            Arc::new(crate::pg_recipe_store::PgRecipeLibrary::local_dev(Arc::clone(pool)))
                 as Arc<dyn brassclaw_turns::run_profile::RecipeLookup>
+        }).or_else(|| {
+            // Fallback: MemoryDoc-backed store (retained until PG-8 cleanup).
+            services.pg_memory_doc_store.as_ref().map(|store| {
+                let dyn_store: Arc<dyn brassclaw_engine::traits::store::Store> =
+                    Arc::clone(store) as Arc<dyn brassclaw_engine::traits::store::Store>;
+                Arc::new(crate::recipe_library::RecipeLibrary::new(dyn_store))
+                    as Arc<dyn brassclaw_turns::run_profile::RecipeLookup>
+            })
         });
     #[cfg(not(feature = "postgres"))]
     let recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>> = None;

@@ -190,9 +190,9 @@ pub(crate) fn build_webui_services_with_connectable_channels(
             as Arc<dyn brassclaw_product_workflow::TokenSettingsStore>);
     }
 
-    // Wire the engine `Store` through `StoreBackedReductionRuleStore` and
-    // `StoreBackedRecipeStore` — postgres (production) or libsql (local-dev).
-    // This is what backs `/tokens/reduction-rules/*` and the Recipe Manager WebUI.
+    // Wire the engine `Store` through `StoreBackedReductionRuleStore` (postgres).
+    // Step 5.3: RecipeStore is now wired through PgRecipeStoreFacade (reborn_recipes table)
+    // instead of the old StoreBackedRecipeStore (MemoryDoc-backed).
     #[cfg(feature = "postgres")]
     if let Some(memory_doc_store) = services.pg_memory_doc_store.clone() {
         let dyn_store: Arc<dyn brassclaw_engine::traits::store::Store> =
@@ -208,12 +208,32 @@ pub(crate) fn build_webui_services_with_connectable_channels(
                 brassclaw_engine::executor::orchestrator::invalidate_reduction_rules_cache();
             },
         ));
+        tracing::debug!("ReductionRuleStore wired through PgMemoryDocStore");
+    }
+    // Wire PgRecipeStoreFacade as the RecipeStore (Step 5.3 — reborn_recipes table).
+    // Falls back to the MemoryDoc-backed store when no PG pool is available.
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = services.pg_pool.as_ref() {
+        let tenant_id = runtime.webui_tenant_id();
+        let facade = crate::pg_recipe_store::PgRecipeStoreFacade::new(
+            Arc::clone(pool),
+            tenant_id,
+            "default",
+        );
+        api = api.with_recipe_store(
+            Arc::new(facade) as Arc<dyn brassclaw_product_workflow::RecipeStore>
+        );
+        tracing::debug!("RecipeStore wired through PgRecipeStoreFacade (reborn_recipes)");
+    } else if let Some(memory_doc_store) = services.pg_memory_doc_store.clone() {
+        // Non-postgres fallback: keep old MemoryDoc-backed store until PG-8 cleanup.
+        let dyn_store: Arc<dyn brassclaw_engine::traits::store::Store> =
+            Arc::clone(&memory_doc_store) as Arc<dyn brassclaw_engine::traits::store::Store>;
         let recipe_store =
             crate::recipe_store::StoreBackedRecipeStore::open(Arc::clone(&dyn_store));
         api = api.with_recipe_store(
             Arc::new(recipe_store) as Arc<dyn brassclaw_product_workflow::RecipeStore>
         );
-        tracing::debug!("ReductionRuleStore + RecipeStore wired through PgMemoryDocStore");
+        tracing::debug!("RecipeStore wired through StoreBackedRecipeStore (fallback, MemoryDoc)");
     }
 
     // Wire the extension registry for Tools API
