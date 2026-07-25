@@ -150,7 +150,15 @@ pub(crate) fn build_webui_services_with_connectable_channels(
         // production factory picks up the selection on restart.
         #[cfg(feature = "postgres")]
         if let Some(pool) = services.pg_pool.clone() {
-            llm_config = llm_config.with_pg_pool(pool);
+            llm_config = llm_config.with_pg_pool(pool.clone());
+            // PG-2: also wire the DB-backed provider repo so upsert/delete
+            // writes to `brassclaw_llm_providers` rather than providers.json.
+            let tenant_id = runtime.webui_tenant_id().to_string();
+            let pg_repo = Arc::new(crate::pg_provider_repo::PgProviderRepo::new(
+                pool.as_ref().clone(),
+                tenant_id.clone(),
+            ));
+            llm_config = llm_config.with_pg_provider_repo(pg_repo, tenant_id);
         }
         // Wire the Sempai live-swap wrapper (Step 5.5.3).  When set,
         // set_active(Sempai, id) atomically swaps the inner provider.

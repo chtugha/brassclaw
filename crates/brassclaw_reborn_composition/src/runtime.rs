@@ -585,12 +585,22 @@ impl RebornRuntime {
     ) -> Option<crate::llm_reload::RebornLlmReloadAdapter> {
         let boot = self.boot.as_ref()?;
         let parts = self.llm_reload.as_ref()?;
-        Some(crate::llm_reload::RebornLlmReloadAdapter::new(
+        let adapter = crate::llm_reload::RebornLlmReloadAdapter::new(
             boot.clone(),
             Arc::clone(&parts.reload_handle),
             Arc::clone(&parts.session),
             crate::LlmKeyStore::new(self.services.secret_store()),
-        ))
+        );
+        // PG-2: wire the Postgres pool so live-reload reads config from DB
+        // instead of config.toml.
+        #[cfg(feature = "postgres")]
+        let adapter = if let Some(pool) = self.services.pg_pool.as_ref() {
+            let tenant_id = self.thread_scope.tenant_id.as_str().to_string();
+            adapter.with_pg_pool(Arc::clone(pool), tenant_id)
+        } else {
+            adapter
+        };
+        Some(adapter)
     }
 
     /// Convenience wrapper that returns the adapter already `Arc`-wrapped.
