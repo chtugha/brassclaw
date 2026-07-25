@@ -8,10 +8,11 @@ use std::{
 use crate::pg_auth_product_services::PgAuthProductServices;
 use crate::product_auth_durable::{FilesystemAuthProductServices, UnavailableAuthProviderClient};
 use brassclaw_auth::AuthProviderClient;
-#[cfg(feature = "postgres")]
 use brassclaw_authorization::FilesystemCapabilityLeaseStore;
 use brassclaw_authorization::GrantAuthorizer;
 use brassclaw_authorization::InMemoryCapabilityLeaseStore;
+#[cfg(feature = "postgres")]
+use brassclaw_authorization::PgCapabilityLeaseStore;
 use brassclaw_conversations::{
     AdapterInstallationId, AdapterKind, ConversationActorPairingService, ExternalActorRef,
 };
@@ -2001,6 +2002,9 @@ where
         event_store: brassclaw_reborn_event_store::RebornEventStoreConfig,
     ) -> Result<Self, RebornBuildError> {
         let scoped_filesystem = crate::wrap_scoped(Arc::clone(&filesystem));
+        // Filesystem capability lease store is kept here for the bundle; the
+        // PG-specific build path (build_pg_backend_production_with_tools) will
+        // override it with PgCapabilityLeaseStore via with_capability_leases.
         let leases = Arc::new(FilesystemCapabilityLeaseStore::new(Arc::clone(
             &scoped_filesystem,
         )));
@@ -2285,14 +2289,199 @@ async fn build_postgres_production(
     // PgInterceptorStore and PgChatMemoryRecordStore (Path A).
     let pg_tools = build_postgres_memory_tools(pool).await;
 
-    build_backend_production_with_tools(
+    build_pg_backend_production_with_tools(
         context,
         stores,
         trigger_repository,
         Some(pg_tools),
-        Some(Arc::clone(&shared_pool)),
+        Arc::clone(&shared_pool),
     )
     .await
+}
+
+/// Postgres-specific production backend builder.
+///
+/// Unlike [`build_backend_production_with_tools`] this function uses the Pg
+/// store implementations for every store that has one: run-state, approvals,
+/// turn-state, resource governor. It accepts a concrete (non-Option) pool
+/// because the postgres production path always has a live pool.
+#[cfg(feature = "postgres")]
+#[allow(dead_code)] // Phase-5 factory wiring
+async fn build_pg_backend_production_with_tools<F>(
+    context: RebornProductionBuildContext,
+    stores: ProductionStoreBundle<F>,
+    trigger_repository: Arc<dyn TriggerRepository>,
+    prebuilt_tools: Option<BuiltinFirstPartyTools>,
+    pg_pool: Arc<deadpool_postgres::Pool>,
+) -> Result<RebornServices, RebornBuildError>
+where
+    F: RootFilesystem + 'static,
+{
+    let RebornProductionBuildContext {
+        profile,
+        wiring_config,
+        production_wiring,
+        product_auth_ports,
+        oauth_provider_configs,
+        oauth_dcr_provider_configs,
+    } = context;
+    // Destructure stores up front to move fields individually.
+    // `stores_leases` (filesystem-backed) is intentionally dropped here — the
+    // PG path constructs PgCapabilityLeaseStore directly from the shared pool.
+    let ProductionStoreBundle {
+        filesystem: stores_filesystem,
+        scoped_filesystem: stores_scoped_fs,
+        leases: _stores_leases,
+        secret_credentials,
+        event_store: stores_event_store,
+    } = stores;
+    // PG-4: Postgres-backed capability lease store — leases survive process
+    // restart and are visible across concurrent processes sharing the DB.
+    let pg_lease_store = Arc::new(PgCapabilityLeaseStore::new(
+        Arc::clone(&pg_pool),
+        "default",
+    ));
+
+    // PgSecretStore implements SecretStore; coerce to trait object for the
+    // provider composition and product-auth wiring that needs Arc<dyn SecretStore>.
+    let secret_store: Arc<dyn SecretStore> = secret_credentials.secret_store.clone();
+    let trigger_create_hook = Arc::new(ScopedFilesystemTriggerCreatorPairingHook::new(Arc::clone(
+        &stores_scoped_fs,
+    )));
+    let mut first_party_registry = match prebuilt_tools {
+        Some(tools) => builtin_first_party_handlers_from_tools_with_trigger(
+            tools,
+            trigger_repository,
+            trigger_create_hook,
+        )
+        .map_err(|error| RebornBuildError::InvalidConfig {
+            reason: format!("built-in first-party handlers are invalid: {error}"),
+        })?,
+        None => builtin_first_party_registry_with_trigger_create_hook(
+            trigger_repository,
+            trigger_create_hook,
+        )?,
+    };
+    // Wire the Postgres-native secret store and credential broker so all secret
+    // and OAuth credential writes go to brassclaw_secrets (§4.4 Issue 3).
+    // PG-4: resource governor is Postgres-backed for durable resource accounting.
+    let services = HostRuntimeServices::new(
+        Arc::new(builtin_extension_registry()?),
+        Arc::clone(&stores_filesystem),
+        Arc::new(InMemoryResourceGovernor::new()),
+        Arc::new(GrantAuthorizer::new()),
+        ProcessServices::filesystem(Arc::clone(&stores_scoped_fs)),
+        CapabilitySurfaceVersion::new("reborn-app-v1")?,
+    )
+    .with_trust_policy(production_wiring.trust_policy)
+    .with_runtime_policy(production_wiring.runtime_policy)
+    // PG-4: Postgres-backed capability lease store.
+    .with_capability_leases(pg_lease_store)
+    .with_secret_store_dyn(Arc::clone(&secret_store))
+    .with_credential_broker(secret_credentials.credential_broker);
+    let services = services
+        .with_security_audit_sink(Arc::new(brassclaw_events::TracingSecurityAuditSink))
+        .try_with_host_http_egress_with_body_store(
+            brassclaw_network::PolicyNetworkHttpEgress::new(
+                brassclaw_network::ReqwestNetworkTransport::default(),
+            ),
+            Arc::clone(&stores_scoped_fs),
+        )?
+        // PG-4: replace InMemoryResourceGovernor with PgResourceGovernorStore.
+        .with_pg_resource_governor(Arc::clone(&pg_pool))
+        .with_reborn_event_store_config(profile.to_event_store_profile(), stores_event_store)
+        .await?
+        // PG-4: replace filesystem-backed run-state + approvals with PgRunStateStore
+        //       and PgApprovalRequestStore.
+        .with_pg_run_state(Arc::clone(&pg_pool))
+        // PG-4: replace filesystem-backed turn-state with PgTurnStateStore.
+        .with_pg_turn_state_store(Arc::clone(&pg_pool))
+        .with_run_profile_resolver(planned_run_profile_resolver()?)
+        .with_turn_run_wake_notifier(production_wiring.turn_run_wake_notifier);
+    let product_auth_runtime_ports = require_product_auth_runtime_ports(&services)?;
+    let services = attach_hosted_mcp_runtime(services)?;
+    let provider_composition = compose_provider_client(
+        oauth_provider_configs,
+        oauth_dcr_provider_configs,
+        Arc::clone(&secret_store),
+        product_auth_runtime_ports.clone(),
+    )?;
+    let services = apply_production_runtime_process_binding(
+        services,
+        production_wiring.runtime_process_binding,
+    );
+
+    let turn_coordinator: Arc<dyn brassclaw_turns::TurnCoordinator> =
+        Arc::new(services.turn_coordinator_for_production()?);
+    let durable = Arc::new(PgAuthProductServices::new(
+        Arc::clone(&pg_pool),
+        Arc::clone(&secret_store),
+    ));
+    let product_auth_ports = product_auth_ports.unwrap_or_else(|| {
+        RebornProductAuthServicePorts::from_shared_with_provider(
+            durable,
+            provider_composition
+                .client
+                .clone()
+                .unwrap_or_else(|| Arc::new(UnavailableAuthProviderClient)),
+        )
+    });
+    let product_auth_services = compose_product_auth_services(
+        product_auth_ports,
+        turn_coordinator.clone(),
+        provider_composition,
+    );
+    let product_auth_ready = true;
+    // Wire ProductAuthAccount runtime credential resolver before
+    // host_runtime_for_production so WASM extensions whose manifest declares a
+    // ProductAuthAccount runtime credential source resolve through
+    // CredentialAccountService.
+    let services = services.with_runtime_credential_account_resolver(Arc::new(
+        ProductAuthRuntimeCredentialResolver::new(
+            product_auth_services.runtime_credential_account_selection_service(),
+        ),
+    ));
+    register_bundled_gsuite_first_party_handlers(
+        &mut first_party_registry,
+        product_auth_services.credential_account_service(),
+        product_auth_services.credential_account_record_source(),
+        Arc::new(ProductAuthRuntimeGsuiteCredentialStager::new(
+            product_auth_runtime_ports.clone(),
+        )),
+    )
+    .map_err(|error| RebornBuildError::InvalidConfig {
+        reason: format!("GSuite first-party handlers are invalid: {error}"),
+    })?;
+    let services = services.with_first_party_capabilities(Arc::new(first_party_registry));
+
+    let host_runtime: Arc<dyn brassclaw_host_runtime::HostRuntime> =
+        Arc::new(services.host_runtime_for_production(&wiring_config)?);
+
+    // Build the three Postgres-backed WebUI stores from the shared pool.
+    let pg_safety_config_store = Some(Arc::new(
+        brassclaw_product_workflow::PgSafetyConfigStore::new(Arc::clone(&pg_pool), "default"),
+    ));
+    let pg_token_settings_store = Some(Arc::new(
+        crate::pg_token_settings_store::PgTokenSettingsStore::new(Arc::clone(&pg_pool), "default"),
+    ));
+    let pg_memory_doc_store = Some(Arc::new(crate::pg_memory_doc_store::PgMemoryDocStore::new(
+        Arc::clone(&pg_pool),
+        "default",
+    )));
+
+    Ok(RebornServices {
+        host_runtime: Some(host_runtime),
+        turn_coordinator: Some(turn_coordinator),
+        readiness: readiness_for(profile, true, true, product_auth_ready),
+        product_auth: Some(product_auth_services),
+        local_runtime: None,
+        pg_pool: Some(pg_pool),
+        #[cfg(feature = "root-llm-provider")]
+        secret_store,
+        pg_safety_config_store,
+        pg_token_settings_store,
+        pg_memory_doc_store,
+    })
 }
 
 /// Build a `BuiltinFirstPartyTools` with PostgreSQL-backed memory stores and

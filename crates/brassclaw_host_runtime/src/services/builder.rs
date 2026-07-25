@@ -20,6 +20,14 @@ use super::{
     TurnRunWakeNotifier, TurnStateStore, build_reborn_event_stores, production_wiring_report,
     set_runtime_http_egress, set_tool_call_http_egress,
 };
+#[cfg(feature = "postgres")]
+use brassclaw_approvals::pg_store::PgApprovalRequestStore;
+#[cfg(feature = "postgres")]
+use brassclaw_resources::PgResourceGovernorStore;
+#[cfg(feature = "postgres")]
+use brassclaw_run_state::pg_store::PgRunStateStore;
+#[cfg(feature = "postgres")]
+use brassclaw_turns::PgTurnStateStore;
 use crate::LocalHostProcessPort;
 use crate::RuntimeHttpBodyStore;
 use crate::http_body::UnsupportedRuntimeHttpBodyStore;
@@ -454,6 +462,55 @@ where
     {
         let store = Arc::new(FilesystemTurnStateStore::new(scoped_filesystem));
         self.with_turn_state_and_transition_port(store)
+    }
+
+    /// Builds and attaches Postgres-backed run-state and approval-request stores.
+    ///
+    /// Takes an already-`Arc`-wrapped pool so callers can share the same pool
+    /// across all store constructions without re-wrapping. Tenant is fixed to
+    /// `"default"` for the single-tenant embedded-postgres production path.
+    ///
+    /// Replaces [`with_filesystem_run_state`] in the Postgres production path.
+    #[cfg(feature = "postgres")]
+    pub fn with_pg_run_state(self, pool: Arc<deadpool_postgres::Pool>) -> Self {
+        let tenant_id = "default";
+        let run_state = Arc::new(PgRunStateStore::new(Arc::clone(&pool), tenant_id));
+        let approval_requests = Arc::new(PgApprovalRequestStore::new(pool, tenant_id));
+        self.with_run_state(run_state)
+            .with_approval_requests(approval_requests)
+    }
+
+    /// Builds and attaches a Postgres-backed turn-state store.
+    ///
+    /// [`PgTurnStateStore`] implements both [`TurnStateStore`] and
+    /// [`TurnRunTransitionPort`], so this wiring covers production readiness
+    /// for both axes. Tenant is fixed to `"default"`.
+    ///
+    /// Replaces [`with_filesystem_turn_state_store`] in the Postgres production path.
+    #[cfg(feature = "postgres")]
+    pub fn with_pg_turn_state_store(self, pool: Arc<deadpool_postgres::Pool>) -> Self {
+        let store = Arc::new(PgTurnStateStore::new(pool, "default"));
+        self.with_turn_state_and_transition_port(store)
+    }
+
+    /// Replace the in-memory governor with a Postgres-backed
+    /// [`PersistentResourceGovernor`] using [`PgResourceGovernorStore`].
+    ///
+    /// Tenant is fixed to `"default"`.
+    ///
+    /// Replaces [`with_filesystem_resource_governor`] in the Postgres production path.
+    #[cfg(feature = "postgres")]
+    pub fn with_pg_resource_governor(
+        self,
+        pool: Arc<deadpool_postgres::Pool>,
+    ) -> HostRuntimeServices<
+        F,
+        PersistentResourceGovernor<PgResourceGovernorStore>,
+        S,
+        R,
+    > {
+        let store = PgResourceGovernorStore::new(pool, "default");
+        self.with_resource_governor(Arc::new(PersistentResourceGovernor::new(store)))
     }
 
     pub fn with_turn_run_wake_notifier<T>(mut self, notifier: Arc<T>) -> Self
