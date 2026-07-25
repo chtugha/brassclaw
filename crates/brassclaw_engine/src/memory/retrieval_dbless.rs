@@ -79,6 +79,35 @@ pub(crate) fn doc_type_weight(doc_type: DocType) -> f64 {
     }
 }
 
+/// Priority weight by class code for fallback-content file keyword search.
+///
+/// Mirrors `doc_type_weight` but uses class codes for the new component tables.
+/// Used by `RamSource::search_fallback_entries`.
+/// Class codes per spec §3.7:
+///   0=tool, 1-3=skills, 4-9=extensions, 10=orchestrator, 12=spec,
+///   13=tool_skill, 14=plan, 15=summary, 16=action, 17=docu, 18=lesson,
+///   19=issue, 20=note, 21=recipe, 50=scaffold.
+pub(crate) fn doc_type_weight_by_class(class_code: i32) -> f64 {
+    match class_code {
+        50 => 0.55, // Scaffold — highest priority, shapes prompt structure
+        10 => 0.52, // Orchestrator — core execution logic
+        0  => 0.50, // Tool — Rusty, minimal content
+        1..=3 => 0.45, // Skills (Rusty / Monty / LLM)
+        4..=9 => 0.42, // Extensions
+        21 => 0.38, // Recipe — chained solutions
+        13 => 0.40, // ToolSkill
+        12 => 0.50, // Spec — missing capability docs
+        14 => 0.30, // Plan
+        18 => 0.40, // Lesson — prevent repeating mistakes
+        19 => 0.20, // Issue
+        15 => 0.10, // Summary
+        17 => 0.25, // Docu
+        20 => 0.05, // Note
+        16 => 0.35, // Action
+        _  => 0.10,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

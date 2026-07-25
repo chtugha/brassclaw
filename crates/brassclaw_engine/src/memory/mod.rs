@@ -26,7 +26,10 @@ pub use metric_outcome::MetricRecorder;
 pub use recipe_matcher::{RecipeMatch, RecipeMatcher, RecipeStepMatch, ToolSkillMatch};
 pub use recipe_validator::{RecipeValidator, ValidationResult};
 pub use retrieval::RetrievalEngine;
-pub use retrieval_source::{ComponentItem, ComponentScope, RamSource, RetrievalSource, RetrievalSourceError};
+pub use retrieval_source::{
+    ComponentItem, ComponentScope, FallbackEntry, RamSource, RetrievalSource,
+    RetrievalSourceError, load_fallback_file, FALLBACK_CONTENT_FILE_ENV,
+};
 #[cfg(feature = "skills-db")]
 pub use retrieval_source::PostgresSource;
 pub use similarity_checker::{SimilarityChecker, SimilarityMatch};

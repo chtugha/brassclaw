@@ -105,21 +105,173 @@ pub trait RetrievalSource: Send + Sync {
 // RamSource — DB-less keyword-retrieval path
 // ---------------------------------------------------------------------------
 
+/// Environment variable for the path to the fallback-content file.
+///
+/// When set, `RamSource` loads the file at construction time and uses it
+/// for keyword retrieval when the live store returns no results.
+/// Format: JSONL — one `FallbackEntry` JSON object per line.
+pub const FALLBACK_CONTENT_FILE_ENV: &str = "BRASSCLAW_FALLBACK_CONTENT_FILE";
+
+/// A single entry from the fallback-content file (JSONL format).
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct FallbackEntry {
+    pub class_code: i32,
+    pub prompt_uid: i64,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub content: String,
+    #[serde(default)]
+    pub override_prompt_creation: bool,
+}
+
 /// DB-less retrieval source.
 ///
 /// Wraps the legacy `Store`-based `RetrievalEngine` and maps `MemoryDoc` rows
 /// to `ComponentItem` using the `doc_type_class_code` table from `orchestrator.rs`.
-/// Used when no Postgres pool is available.
+/// Also supports a static fallback-content file (`BRASSCLAW_FALLBACK_CONTENT_FILE`)
+/// for fully offline / DB-less deployments.
+///
+/// Priority:
+/// 1. Live `Store` keyword results (when the store has docs for the scope).
+/// 2. Fallback-content file keyword search (when store returns nothing).
 pub struct RamSource {
     engine: super::RetrievalEngine,
+    /// Pre-loaded fallback entries from the static fallback-content file.
+    /// Empty when no file is configured or the file could not be read.
+    fallback_entries: Vec<FallbackEntry>,
 }
 
 impl RamSource {
+    /// Create a `RamSource` backed by `store`.
+    ///
+    /// Automatically tries to load the fallback-content file from the path
+    /// specified by `BRASSCLAW_FALLBACK_CONTENT_FILE` (if set).
     pub fn new(store: Arc<dyn Store>) -> Self {
+        let fallback_entries = load_fallback_file_from_env();
         Self {
             engine: super::RetrievalEngine::new(store),
+            fallback_entries,
         }
     }
+
+    /// Create a `RamSource` with explicit fallback entries (for testing).
+    pub fn new_with_fallback(store: Arc<dyn Store>, entries: Vec<FallbackEntry>) -> Self {
+        Self {
+            engine: super::RetrievalEngine::new(store),
+            fallback_entries: entries,
+        }
+    }
+}
+
+/// Load fallback entries from the file path in `BRASSCLAW_FALLBACK_CONTENT_FILE`.
+/// Returns an empty vec (silent) if the env var is not set or the file cannot be read.
+fn load_fallback_file_from_env() -> Vec<FallbackEntry> {
+    let path = match std::env::var(FALLBACK_CONTENT_FILE_ENV) {
+        Ok(p) if !p.is_empty() => p,
+        _ => return vec![],
+    };
+    load_fallback_file(&path)
+}
+
+/// Parse a JSONL fallback-content file into `FallbackEntry` rows.
+///
+/// Each non-empty line must be a valid JSON object matching `FallbackEntry`.
+/// Malformed lines are silently skipped (logged at debug level).
+pub fn load_fallback_file(path: &str) -> Vec<FallbackEntry> {
+    use std::io::BufRead;
+    let file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(e) => {
+            tracing::debug!(path, error = %e, "fallback-content file not found; DB-less path will have no static content");
+            return vec![];
+        }
+    };
+    let reader = std::io::BufReader::new(file);
+    let mut entries = Vec::new();
+    for (lineno, line) in reader.lines().enumerate() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => continue,
+        };
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            continue;
+        }
+        match serde_json::from_str::<FallbackEntry>(trimmed) {
+            Ok(entry) => entries.push(entry),
+            Err(e) => {
+                tracing::debug!(path, lineno, error = %e, "skipping malformed fallback-content entry");
+            }
+        }
+    }
+    // Sort by (class_code, prompt_uid) for deterministic assembly.
+    entries.sort_by_key(|e| (e.class_code, e.prompt_uid));
+    entries
+}
+
+/// Keyword-search the fallback entries and return matching `ComponentItem`s
+/// within the token budget.
+fn search_fallback_entries(
+    entries: &[FallbackEntry],
+    query: &str,
+    token_budget: usize,
+) -> Vec<ComponentItem> {
+    use super::retrieval_dbless::extract_keywords;
+
+    let keywords = extract_keywords(query);
+    let mut scored: Vec<(f64, &FallbackEntry)> = entries
+        .iter()
+        .filter_map(|entry| {
+            let score = if keywords.is_empty() {
+                // No keywords: return everything, scored by class priority.
+                super::retrieval_dbless::doc_type_weight_by_class(entry.class_code)
+            } else {
+                let name_lower = entry.name.to_lowercase();
+                let content_lower = entry.content.to_lowercase();
+                let mut matched = 0usize;
+                for kw in &keywords {
+                    if name_lower.contains(kw.as_str()) {
+                        matched += 2; // title match worth more
+                    } else if content_lower.contains(kw.as_str()) {
+                        matched += 1;
+                    }
+                }
+                if matched == 0 {
+                    return None;
+                }
+                matched as f64 / (keywords.len() * 2) as f64
+                    + super::retrieval_dbless::doc_type_weight_by_class(entry.class_code)
+            };
+            Some((score, entry))
+        })
+        .collect();
+
+    scored.sort_by(|a, b| b.0.total_cmp(&a.0));
+
+    let mut items = Vec::new();
+    let mut tokens_used = 0usize;
+    for (_, entry) in scored {
+        let cost = estimate_tokens(entry.content.len());
+        if tokens_used + cost > token_budget && !items.is_empty() {
+            break;
+        }
+        tokens_used += cost;
+        items.push(ComponentItem {
+            id: uuid::Uuid::nil(),
+            class_code: entry.class_code,
+            prompt_uid: entry.prompt_uid,
+            name: entry.name.clone(),
+            description: entry.description.clone(),
+            effective_content: entry.content.clone(),
+            override_prompt_creation: entry.override_prompt_creation,
+        });
+    }
+
+    // Re-sort by (class_code, prompt_uid) for deterministic assembly.
+    items.sort_by_key(|item| (item.class_code, item.prompt_uid));
+    items
 }
 
 #[async_trait]
@@ -146,32 +298,46 @@ impl RetrievalSource for RamSource {
             .await
             .map_err(RetrievalSourceError::from)?;
 
-        let mut items = Vec::new();
-        let mut tokens_used = 0usize;
+        // If the live store returned results, use them.
+        if !docs.is_empty() {
+            let mut items = Vec::new();
+            let mut tokens_used = 0usize;
 
-        for doc in docs {
-            let (class_code, _label) = doc_type_to_class_code(doc.doc_type);
-            let cost = estimate_tokens(doc.content.len());
-            if tokens_used + cost > token_budget && !items.is_empty() {
-                break;
+            for doc in docs {
+                let (class_code, _label) = doc_type_to_class_code(doc.doc_type);
+                let cost = estimate_tokens(doc.content.len());
+                if tokens_used + cost > token_budget && !items.is_empty() {
+                    break;
+                }
+                tokens_used += cost;
+                items.push(ComponentItem {
+                    id: doc.id.0,
+                    class_code,
+                    // MemoryDoc has no prompt_uid — use a monotonically increasing
+                    // counter so ordering is stable within a retrieval batch.
+                    prompt_uid: items.len() as i64,
+                    name: doc.title.clone(),
+                    description: String::new(),
+                    effective_content: doc.content.clone(),
+                    override_prompt_creation: false,
+                });
             }
-            tokens_used += cost;
-            items.push(ComponentItem {
-                id: doc.id.0,
-                class_code,
-                // MemoryDoc has no prompt_uid — use a monotonically increasing
-                // counter so ordering is stable within a retrieval batch.
-                prompt_uid: items.len() as i64,
-                name: doc.title.clone(),
-                description: String::new(),
-                effective_content: doc.content.clone(),
-                override_prompt_creation: false,
-            });
+
+            // Sort by (class_code, prompt_uid) for deterministic assembly order.
+            items.sort_by_key(|item| (item.class_code, item.prompt_uid));
+            return Ok(items);
         }
 
-        // Sort by (class_code, prompt_uid) for deterministic assembly order.
-        items.sort_by_key(|item| (item.class_code, item.prompt_uid));
-        Ok(items)
+        // Store returned nothing — fall back to the static fallback-content file.
+        if !self.fallback_entries.is_empty() {
+            return Ok(search_fallback_entries(
+                &self.fallback_entries,
+                query,
+                token_budget,
+            ));
+        }
+
+        Ok(vec![])
     }
 }
 
@@ -568,5 +734,119 @@ mod tests {
         assert_eq!(doc_type_to_class_code(DocType::Issue).0, 19);
         assert_eq!(doc_type_to_class_code(DocType::Note).0, 20);
         assert_eq!(doc_type_to_class_code(DocType::Recipe).0, 21);
+    }
+
+    // ── fallback-content file tests ─────────────────────────────────────────
+
+    fn fallback_entries() -> Vec<FallbackEntry> {
+        vec![
+            FallbackEntry {
+                class_code: 18,
+                prompt_uid: 1,
+                name: "lesson-about-errors".to_string(),
+                description: String::new(),
+                content: "Always check error codes before retrying".to_string(),
+                override_prompt_creation: false,
+            },
+            FallbackEntry {
+                class_code: 12,
+                prompt_uid: 2,
+                name: "spec-for-api".to_string(),
+                description: String::new(),
+                content: "The API returns JSON with a data field".to_string(),
+                override_prompt_creation: false,
+            },
+            FallbackEntry {
+                class_code: 3,
+                prompt_uid: 3,
+                name: "skill-review".to_string(),
+                description: String::new(),
+                content: "Review code for style and correctness".to_string(),
+                override_prompt_creation: false,
+            },
+        ]
+    }
+
+    #[tokio::test]
+    async fn ram_source_falls_back_to_file_when_store_empty() {
+        let project = ProjectId::new();
+        let store = make_store(vec![]);
+        let source = RamSource::new_with_fallback(store, fallback_entries());
+        let scope = test_scope(&project.to_string());
+
+        let result = source
+            .fetch_for_consumer(&scope, "error", 100_000, "02")
+            .await
+            .unwrap();
+
+        // Should find the lesson about errors
+        assert!(!result.is_empty(), "fallback file should be searched when store is empty");
+        assert!(
+            result.iter().any(|item| item.name == "lesson-about-errors"),
+            "lesson matching 'error' query should be returned"
+        );
+    }
+
+    #[tokio::test]
+    async fn ram_source_prefers_live_store_over_fallback() {
+        let project = ProjectId::new();
+        let store = make_store(vec![MemoryDoc::new(
+            project,
+            "test-user",
+            DocType::Spec,
+            "Live spec",
+            "live content about errors",
+        )]);
+        let source = RamSource::new_with_fallback(store, fallback_entries());
+        let scope = test_scope(&project.to_string());
+
+        let result = source
+            .fetch_for_consumer(&scope, "error", 100_000, "02")
+            .await
+            .unwrap();
+
+        // Live store result should be used, not the fallback
+        assert!(
+            result.iter().any(|item| item.name == "Live spec"),
+            "live store result should be preferred over fallback file"
+        );
+        // Fallback-only entries should NOT be present
+        assert!(
+            !result.iter().any(|item| item.name == "lesson-about-errors"),
+            "fallback entries should not appear when live store has results"
+        );
+    }
+
+    #[test]
+    fn load_fallback_file_parses_jsonl() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fallback.jsonl");
+        let mut f = std::fs::File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"class_code":12,"prompt_uid":1,"name":"spec-a","content":"spec content"}}"#
+        )
+        .unwrap();
+        writeln!(
+            f,
+            r#"{{"class_code":18,"prompt_uid":2,"name":"lesson-b","content":"lesson content"}}"#
+        )
+        .unwrap();
+        writeln!(f, "// this is a comment, skip it").unwrap();
+        writeln!(f).unwrap(); // blank line
+        writeln!(f, "not-valid-json").unwrap(); // malformed — skipped
+
+        let entries = load_fallback_file(path.to_str().unwrap());
+        assert_eq!(entries.len(), 2);
+        // Sorted by (class_code, prompt_uid): spec(12) < lesson(18)
+        assert_eq!(entries[0].class_code, 12);
+        assert_eq!(entries[1].class_code, 18);
+    }
+
+    #[test]
+    fn load_fallback_file_returns_empty_for_missing_path() {
+        let entries = load_fallback_file("/nonexistent/path/fallback.jsonl");
+        assert!(entries.is_empty());
     }
 }
