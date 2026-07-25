@@ -354,6 +354,23 @@ impl ServeCommand {
                 brassclaw_reborn_composition::retention_sweep::spawn_retention_sweep(
                     std::sync::Arc::clone(pg_pool),
                 );
+
+                // Spawn the Q1 auto-validation sweep — runs every 30 s, moves
+                // `pending` recipe/component rows to `auto_passed` or `auto_failed`
+                // by running `ComponentValidator::validate_by_class` with the
+                // capability surface fetched from `reborn_tools`.
+                // Gate: both `postgres` and `skills-db` must be active.
+                #[cfg(all(feature = "postgres", feature = "skills-db"))]
+                brassclaw_reborn_composition::retention_sweep::spawn_q1_validation_sweep(
+                    std::sync::Arc::clone(pg_pool),
+                    tenant_id.as_str().to_string(),
+                    default_agent_id.as_str().to_string(),
+                    user_id_raw.clone(),
+                    default_project_id
+                        .as_ref()
+                        .map(|p| p.as_str().to_string())
+                        .unwrap_or_else(|| "bootstrap".to_string()),
+                );
             }
             // Open the canonical Reborn identity resolver on the runtime's
             // existing substrate handle (the same `reborn-local-dev.db` the

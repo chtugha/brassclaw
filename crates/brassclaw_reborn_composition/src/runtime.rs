@@ -707,8 +707,8 @@ impl RebornRuntime {
     }
 
     /// The tenant ID used by this runtime. Needed by WebUI services that
-    /// write to `brassclaw_config` (interceptor config, etc.).
-    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    /// write to `brassclaw_config` (interceptor config, recipe store, etc.).
+    #[cfg(feature = "postgres")]
     pub(crate) fn webui_tenant_id(&self) -> &str {
         self.thread_scope.tenant_id.as_str()
     }

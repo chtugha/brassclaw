@@ -194,10 +194,20 @@ For class 10 (Orchestrator) and class 50 (Scaffold): add kohai-provider LLM code
 
 > ✅ `V030__reborn_tools.sql` confirmed present in `crates/brassclaw_pg/migrations/`.
 
-#### Step 3.2 — DB-backed tool store + capability surface ❌ `NOT IMPLEMENTED`
+#### Step 3.2 — DB-backed tool store + capability surface ✅ `IMPLEMENTED`
 Implement tool store in `crates/brassclaw_capabilities` reading from `reborn_tools` into `ToolRegistry`. Strip Monty/LLM prompt text from tool rows. Capability surface `RecipeValidator` checks `tool_name` against DB-backed surface.
 
-> ❌ No `DbToolStore` or `PgToolStore` found in `crates/brassclaw_capabilities/`. V030 migration exists but the Rust store backed by it was not located. Needs confirmation via deeper search.
+> ✅ **IMPLEMENTED (this session):**
+> - `DbToolSource` (in `crates/brassclaw_engine/src/capability/db_tool_source.rs`) reads `reborn_tools`, returning validated Rusty tool names behind the `skills-db` feature. Confirmed present.
+> - `ToolRegistry` + `ToolRegistryStore` trait confirmed at `crates/brassclaw_capabilities/src/tool_registry.rs`.
+> - `auto_validate_pending` method added to the `RecipeStore` trait (`brassclaw_product_workflow::recipes`) — sweeps all `pending` rows in `q1_auto`, fetches `available_tools` from `reborn_tools` via `DbToolSource`, runs `ComponentValidator::validate_by_class`, and writes `auto_passed` or `auto_failed` back.
+> - `PgRecipeStoreFacade::auto_validate_pending` implemented in `pg_recipe_store.rs` (behind `skills-db` feature gate).
+> - `spawn_q1_validation_sweep` added to `retention_sweep.rs` — spawns a 30-second periodic task calling `auto_validate_pending`.
+> - Sweep wired in `brassclaw_reborn_cli/src/commands/serve.rs` when both `postgres` and `skills-db` features are active.
+> - `skills-db` feature propagated from `brassclaw_reborn_composition` → `brassclaw_engine/skills-db`.
+> - `skills-db` feature added to `brassclaw_reborn_cli/Cargo.toml`.
+> - Pre-existing bug fixed: `webui_tenant_id()` on `RebornRuntime` was gated `all(postgres, root-llm-provider)` but called from `webui.rs` inside a `postgres`-only gate; widened to `#[cfg(feature = "postgres")]`.
+> - Note: `reborn_tools` has no prompt text columns (tools are Rusty-only, class 00) — §3.3 prompt-text stripping is N/A for the DB schema; only legacy in-memory tool descriptions need cleaning (Step 3.3).
 
 #### Step 3.3 — Monty/LLM instruction via Skills only ❌ `NOT IMPLEMENTED`
 Remove tool-definition prompt text from Monty/LLM prompt paths; confirm Monty callables and LLM guidance come only from class 01/02/03 Skill rows.

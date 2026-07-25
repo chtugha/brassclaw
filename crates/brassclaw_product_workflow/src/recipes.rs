@@ -373,6 +373,28 @@ pub trait RecipeStore: Send + Sync {
         project_id: &str,
         request: RecordOutcomeRequest,
     ) -> Result<RecordOutcomeResponse, RecipeStoreError>;
+
+    /// Q1 auto-validation sweep: run `ComponentValidator::validate_by_class`
+    /// against all `pending` components in `q1_auto` for `(user_id, project_id)`.
+    ///
+    /// For each row the validator fetches the current capability surface
+    /// (available Rusty tool names from `reborn_tools`) and runs the class-
+    /// appropriate validation pass. Results:
+    /// - Pass → `auto_passed` (advances to Q2 for operator review).
+    /// - Fail → `auto_failed` with `validation_errors` set.
+    ///
+    /// Returns the number of rows processed.
+    ///
+    /// The default implementation is a no-op (returns `Ok(0)`). Concrete
+    /// implementations that back a `reborn_recipes` table (or other component
+    /// tables) should override this.
+    async fn auto_validate_pending(
+        &self,
+        _user_id: &str,
+        _project_id: &str,
+    ) -> Result<u32, RecipeStoreError> {
+        Ok(0)
+    }
 }
 
 /// LLM code-audit status returned by `RecipeStore::get_component_audit_status`.

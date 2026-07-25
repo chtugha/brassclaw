@@ -15,8 +15,8 @@ default = []
 # Upgrade-release gate: compiles the libSQL→Postgres data migration module.
 # Default-on for the upgrade release. Removed in the release after.
 migrate-from-libsql = ["dep:libsql"]
-# DB-backed skill store + SKILL.md importer.
-skills-db = ["brassclaw_skills/db-store"]
+# DB-backed skill store + SKILL.md importer + Q1 auto-validation capability surface.
+skills-db = ["brassclaw_skills/db-store", "brassclaw_engine/skills-db"]
 # Wire a host-managed LLM model gateway into the assembled runtime.
 root-llm-provider = [
     "dep:brassclaw_llm",

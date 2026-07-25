@@ -21,6 +21,10 @@ default = ["root-llm-provider", "migrate-from-libsql", "postgres"]
 postgres = [
     "brassclaw_reborn_composition/postgres",
 ]
+# DB-backed skill store + Q1 auto-validation capability surface.
+skills-db = [
+    "brassclaw_reborn_composition/skills-db",
+]
 # Wire a real LLM provider into the assembled runtime. Mirrors the same
 # `root-llm-provider` feature on `brassclaw_reborn_composition` /
 # `brassclaw_reborn`, so building without it produces a CLI binary that

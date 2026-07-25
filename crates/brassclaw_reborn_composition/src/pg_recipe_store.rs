@@ -1510,6 +1510,162 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
             }
         }
     }
+
+    /// Q1 auto-validation sweep for `reborn_recipes` rows.
+    ///
+    /// Fetches all rows with `validation_status = 'pending'` and
+    /// `queue_code = 'q1_auto'` for the given `(user_id, project_id)` scope,
+    /// runs [`brassclaw_engine::memory::ComponentValidator::validate_by_class`]
+    /// against each, then writes either `auto_passed` or `auto_failed` back.
+    ///
+    /// Available Rusty tools are fetched once per call via the
+    /// `reborn_tools` table (same scope tuple).  An empty tool registry is a
+    /// valid transient state — ToolSkill validation still runs; the
+    /// `tool_name` cross-reference check is skipped when the registry is
+    /// empty (same contract as passing `&[]` to `validate_by_class`).
+    ///
+    /// **Feature gate:** only compiled when both `postgres` and `skills-db`
+    /// features are active — the `DbToolSource` type lives behind `skills-db`.
+    #[cfg(feature = "skills-db")]
+    async fn auto_validate_pending(
+        &self,
+        user_id: &str,
+        project_id: &str,
+    ) -> Result<u32, brassclaw_product_workflow::RecipeStoreError> {
+        use brassclaw_capabilities::tool_registry::{ToolScopeKey, ToolRegistryStore};
+        use brassclaw_engine::capability::DbToolSource;
+        use brassclaw_engine::memory::{ComponentPayload, ComponentValidator, GenericComponent, ValidationConfig};
+
+        // ── 1. Fetch available tool names for this scope ──────────────────
+        let tool_scope = ToolScopeKey {
+            tenant_id: self.tenant_id.clone(),
+            user_id: user_id.to_string(),
+            agent_id: self.agent_id.clone(),
+            project_id: project_id.to_string(),
+        };
+        let tool_source = DbToolSource::new((*self.inner.pool).clone());
+        let available_tools = tool_source
+            .fetch_tool_names(&tool_scope)
+            .await
+            .map_err(|e| brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string()))?;
+
+        // ── 2. Fetch all pending rows in q1_auto ──────────────────────────
+        let client = self
+            .inner
+            .pool
+            .get()
+            .await
+            .map_err(|e| brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string()))?;
+
+        let rows = client
+            .query(
+                "SELECT id, name, description, class_code, steps
+                 FROM reborn_recipes
+                 WHERE tenant_id  = $1
+                   AND user_id    = $2
+                   AND agent_id   = $3
+                   AND project_id = $4
+                   AND validation_status = 'pending'
+                   AND (queue_code = 'q1_auto' OR queue_code IS NULL)
+                 ORDER BY created_at ASC
+                 LIMIT 500",
+                &[
+                    &self.tenant_id.as_str(),
+                    &user_id,
+                    &self.agent_id.as_str(),
+                    &project_id,
+                ],
+            )
+            .await
+            .map_err(|e| brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string()))?;
+
+        let mut processed: u32 = 0;
+
+        for row in &rows {
+            let id: uuid::Uuid = row.get(0);
+            let name: String = row.get(1);
+            let description: String = row.get(2);
+            let class_code_raw: i16 = row.get(3);
+            let steps_json: serde_json::Value = row.get(4);
+            let class_code = class_code_raw.max(0) as u16;
+
+            // Build a generic payload from name + description + steps content.
+            let steps_str = serde_json::to_string(&steps_json).unwrap_or_default();
+            let content_combined = format!("{description}\n{steps_str}");
+            let component = ComponentPayload::Generic(GenericComponent {
+                name: &name,
+                description: &description,
+                content: &content_combined,
+            });
+
+            let result = ComponentValidator::validate_by_class(
+                class_code,
+                component,
+                &ValidationConfig::default(),
+                &available_tools,
+                &[],
+            );
+
+            let (new_status, new_queue_code, errors) = if result.errors.is_empty() {
+                ("auto_passed", "q2_manual", vec![])
+            } else {
+                ("auto_failed", "q1_auto", result.errors)
+            };
+
+            // ── 3. Write result back ──────────────────────────────────────
+            let update_result = client
+                .execute(
+                    "UPDATE reborn_recipes
+                     SET validation_status = $1,
+                         queue_code        = $2,
+                         validation_errors = $3,
+                         updated_at        = NOW()
+                     WHERE id         = $4
+                       AND tenant_id  = $5
+                       AND user_id    = $6
+                       AND agent_id   = $7
+                       AND project_id = $8
+                       AND validation_status = 'pending'",
+                    &[
+                        &new_status,
+                        &new_queue_code,
+                        &errors,
+                        &id,
+                        &self.tenant_id.as_str(),
+                        &user_id,
+                        &self.agent_id.as_str(),
+                        &project_id,
+                    ],
+                )
+                .await;
+
+            match update_result {
+                Ok(n) if n > 0 => {
+                    processed += 1;
+                    debug!(
+                        recipe_id = %id,
+                        class_code,
+                        new_status,
+                        "q1_auto_validate: processed component"
+                    );
+                }
+                Ok(_) => {
+                    // Row was updated concurrently — skip silently.
+                    debug!(recipe_id = %id, "q1_auto_validate: row already updated, skipping");
+                }
+                Err(e) => {
+                    debug!(
+                        recipe_id = %id,
+                        error = %e,
+                        "q1_auto_validate: DB update failed, skipping row"
+                    );
+                }
+            }
+        }
+
+        debug!(processed, user_id, project_id, "q1_auto_validate: sweep complete");
+        Ok(processed)
+    }
 }
 
 /// Derive a queue_code string from new_status + review_attempts.
