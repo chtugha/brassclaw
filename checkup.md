@@ -348,10 +348,21 @@ Wire resurrected `build_step_context` path: volatile prior-knowledge injected as
 
 > ✅ `insert_volatile_context_at_n_minus_1` called on both Override and Normal paths in `default.py`. Wiring confirmed.
 
-#### Step 6.10 — Retire ALL DocType variants ❌ `NOT IMPLEMENTED`
+#### Step 6.10 — Retire ALL DocType variants 🔸 `PARTIAL`
 Delete all `DocType::` enum variants (`Skill`, `Recipe`, `ToolSkill`, `Plan`, `Summary`, `Lesson`, `Issue`, `Spec`, `Note`); delete `DocType` enum. Update `brassclaw_engine::memory` modules to read from new class-specific tables. Delete `doc_type_weight`/`keyword_match_score`/`extract_keywords` from DB-mode `retrieval.rs` (relocate to `retrieval_dbless.rs` for DB-less fallback path). Update `context.rs` to call `fetch_for_turn` + `__assemble_prior_knowledge__`.
 
-> ❌ `DocType` enum still fully present and active in `crates/brassclaw_engine/src/types/memory.rs`. 119+ references to `DocType::` in production code. `recipe_store.rs` still uses `DocType::Recipe` and `DocType::ToolSkill` extensively. `doc_type_weight`/`keyword_match_score` still in `retrieval.rs`. This entire step is NOT done — it depends on Step 6.1 (`fetch_for_turn` + catalog) being completed first.
+> 🔸 **PARTIAL (this session):**
+> - `DocType` enum marked `#[deprecated]` with migration note pointing to `class_code` / `ComponentItem`. Migration note added to `types/memory.rs` module doc.
+> - `crates/brassclaw_engine/src/lib.rs` annotated `#![allow(deprecated)]` — acknowledges the whole crate is in migration.
+> - `brassclaw_skills/src/lib.rs` + `brassclaw_reborn_composition/src/lib.rs` annotated `#![allow(deprecated)]` — these crates are the legacy bridge adapters.
+> - `doc_type_weight`, `keyword_match_score`, `extract_keywords` already live in `retrieval_dbless.rs` — `retrieval.rs` imports them from there; no duplication.
+> - `build_step_context` in `context.rs` is dead production code (never called from production paths; only called in context.rs tests). Superseded by `__assemble_prior_knowledge__` (which uses `RetrievalSource` since Step 6.1).
+> ⚠️ **REMAINING (gated on PG-8 / Store trait retirement):**
+> - Full `DocType` enum deletion (still needed by legacy `MemoryDoc` / `Store` interface).
+> - `MemoryDoc` struct deletion.
+> - `recipe_store.rs`/`recipe_library.rs` still use `DocType::Recipe` and `DocType::ToolSkill` (behind `migrate-from-libsql` gate — retire with PG-6 / PG-8).
+> - 100+ test fixtures using `DocType::Note` etc. (retire when `MemoryDoc` is retired).
+> - `context.rs::build_step_context` + `format_docs_as_context` can be deleted when `MemoryDoc` is retired.
 
 ---
 

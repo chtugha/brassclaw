@@ -1,3 +1,8 @@
+// Allow deprecated DocType usage throughout this crate during the migration
+// from MemoryDoc/DocType to the class-code component tables (V027–V043).
+// DocType is fully deprecated but retained as a bridge for the legacy Store
+// and DB-less paths until PG-8 (Store trait retirement) is complete.
+#![allow(deprecated)]
 //! BrassClaw Engine — unified thread-capability-CodeAct execution model.
 //!
 //! This crate provides the core execution engine for BrassClaw, unifying

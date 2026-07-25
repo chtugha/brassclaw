@@ -1,4 +1,7 @@
 #![forbid(unsafe_code)]
+// Allow deprecated DocType/MemoryDoc during the migration to class-code component
+// tables (V027–V043). These types are bridge adapters retained until PG-8 is complete.
+#![allow(deprecated)]
 
 //! Reborn composition root.
 //!

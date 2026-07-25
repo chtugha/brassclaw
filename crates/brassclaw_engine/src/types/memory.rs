@@ -3,6 +3,16 @@
 //! Memory docs are structured knowledge produced by reflection on completed
 //! threads. They are project-scoped and used for context building (retrieval,
 //! not replay of raw history).
+//!
+//! # Migration note
+//!
+//! [`DocType`] and [`MemoryDoc`] are **legacy types** being retired in favour
+//! of the class-based component tables (V027–V043, `reborn_skills`, `reborn_specs`,
+//! etc.). New code should use [`crate::memory::ComponentItem`] and
+//! [`crate::memory::RetrievalSource`] instead.
+//!
+//! [`DocType`] is kept for the DB-less / legacy `Store`-backed path
+//! until the `Store` trait is retired (PG-8 / Phase 6 cleanup).
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -30,6 +40,18 @@ impl Default for DocId {
 }
 
 /// The kind of knowledge a memory document captures.
+///
+/// # Deprecated
+///
+/// `DocType` is being retired in favour of the integer `class_code` field on
+/// the new component tables (V027–V043). Use [`crate::memory::ComponentItem::class_code`]
+/// and [`crate::memory::intent_system::class_label`] for new code.
+/// This type is retained for the DB-less `MemoryDoc` / `Store` legacy path.
+#[allow(deprecated)]
+#[deprecated(
+    since = "0.1.0",
+    note = "Use class_code (i32) from ComponentItem / component tables instead."
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DocType {
     /// What a thread accomplished.

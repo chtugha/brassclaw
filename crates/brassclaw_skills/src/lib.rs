@@ -1,3 +1,6 @@
+// Allow deprecated DocType during the migration to class-code component tables.
+// v2.rs uses DocType as a bridge type; retained until the v2 module is retired.
+#![allow(deprecated)]
 //! Skill types, parsing, selection, and management for BrassClaw.
 //!
 //! Skills are SKILL.md files (YAML frontmatter + markdown prompt) that extend the
