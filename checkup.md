@@ -529,10 +529,10 @@ Demote to DB-less fallback only (production reads from `reborn_monty_vm_settings
 > - `orchestrator_limits()` helper removed (no longer needed — logic inlined in `execute_orchestrator`). `orchestrator_max_duration()` and `ORCHESTRATOR_MAX_ALLOCATIONS` retained for the DB-less fallback path.
 > - 614 engine tests pass. Zero clippy warnings.
 
-#### Step 9.4 — Remove stale route aliases ❌ `NOT IMPLEMENTED`
+#### Step 9.4 — Remove stale route aliases ✅ `IMPLEMENTED`
 Remove old recipe/tool_skill-specific validation route aliases (kept during migration, now retired).
 
-> ❌ Old route aliases confirmed still present per plan ("Old recipe/tool_skill routes kept as aliases" at Step 4.5). Cannot retire until new routes are fully proven.
+> ✅ **RESOLVED (this session):** Grep confirms zero `PUT /api/webchat/v2/recipes/{id}/validate`, `PUT /api/webchat/v2/tool-skills/{id}/validate` or equivalent per-class legacy alias routes in `router.rs`, `handlers.rs`, or `descriptors.rs`. The old route aliases were already removed in a previous session. Only the generic `PUT /api/webchat/v2/components/{class_code}/{component_id}/validate` and `reject` routes exist. The `GET /api/webchat/v2/recipes` and `GET /api/webchat/v2/tool-skills` listing routes are NOT aliases — they are the canonical library-browsing endpoints and are retained.
 
 #### Step 9.5 — Update AGENTS.md + CLAUDE.md + CHANGELOG.md ❌ `NOT IMPLEMENTED`
 Document new architecture: DB-stored components, class codes, consumer-tag gating (§3.9), 4-queue validation lifecycle (§3.5.1), Monty VM settings DB-stored (§3.10), unified intent system (§3.12), Actions class (§3.11), Rust-owned formatting (§3.13/§3.14), intent-driven retrieval, token-budget prior-knowledge limit, "try it with AI" fallback, 9 new class codes 12–20, orchestrator formatting ban, DB-less fallback-content file, "AI before User" flip switch, interceptor architecture (§3.15). Remove dual-backend mandate (replaced by PG-9).
