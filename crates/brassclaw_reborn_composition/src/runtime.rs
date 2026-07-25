@@ -1583,6 +1583,22 @@ pub async fn build_reborn_runtime(
     let turn_state_store = Arc::clone(&local_runtime.turn_state);
     let checkpoint_state_store = Arc::clone(&local_runtime.checkpoint_state_store);
     let loop_checkpoint_store = Arc::clone(&local_runtime.loop_checkpoint_store);
+    // When a Postgres pool is available, upgrade the thread service to
+    // PgSessionThreadService so thread history (messages, conversations)
+    // survives process restarts.  The local-dev turn state remains in-memory
+    // until a full turn-state store abstraction is added (tracked in the
+    // runtime PG path plan).
+    #[cfg(feature = "postgres")]
+    let thread_service: Arc<dyn brassclaw_threads::SessionThreadService> =
+        if let Some(pool) = services.pg_pool.as_ref() {
+            Arc::new(brassclaw_threads::PgSessionThreadService::new(
+                Arc::clone(pool),
+                "default",
+            ))
+        } else {
+            Arc::clone(&local_runtime.thread_service)
+        };
+    #[cfg(not(feature = "postgres"))]
     let thread_service = Arc::clone(&local_runtime.thread_service);
 
     let resolved_max_output_tokens: Option<u32> = None;
@@ -1846,7 +1862,21 @@ pub async fn build_reborn_runtime(
     let durable_milestone_sink: Arc<dyn LoopHostMilestoneSink> = Arc::new(
         DurableLoopHostMilestoneSink::new(Arc::clone(&event_log), milestone_scope),
     );
-    let subagent_goal_store = Arc::new(InMemoryBoundedSubagentGoalStore::new());
+    // Use PgSubagentGoalStore when a Postgres pool is available so subagent
+    // goals survive process restarts.  Falls back to the bounded in-memory
+    // store for local-dev builds without an embedded PG instance.
+    #[cfg(feature = "postgres")]
+    let subagent_goal_store: Arc<dyn brassclaw_reborn::runtime::RuntimeSubagentGoalStore> =
+        if let Some(pool) = services.pg_pool.as_ref() {
+            Arc::new(brassclaw_reborn::subagent::goal_store::PgSubagentGoalStore::new(
+                (**pool).clone(),
+            ))
+        } else {
+            Arc::new(InMemoryBoundedSubagentGoalStore::new())
+        };
+    #[cfg(not(feature = "postgres"))]
+    let subagent_goal_store: Arc<dyn brassclaw_reborn::runtime::RuntimeSubagentGoalStore> =
+        Arc::new(InMemoryBoundedSubagentGoalStore::new());
     if trusted_laptop_access {
         append_trusted_laptop_access_audit(&audit_log, &thread_scope, &actor_user_id).await?;
     }

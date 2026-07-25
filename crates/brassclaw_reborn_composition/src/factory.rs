@@ -458,11 +458,11 @@ pub async fn build_reborn_services(
             // Phase-5 hybrid path: when a Postgres pool is supplied alongside a
             // local-dev profile (the production `brassclaw serve` path), build
             // the local-dev filesystem substrate *and* expose the PG pool.
-            // The local-dev filesystem provides the same thread service, turn
-            // state, and workspace filesystems that `build_reborn_runtime` expects;
-            // PG-backed stores (run-state, turn-state, resource governor, etc.)
-            // are wired in `build_reborn_runtime` via `.with_pg_*` builder methods
-            // on the host runtime services when `services.pg_pool` is Some.
+            // The local-dev filesystem provides the workspace, skills, hooks and
+            // extension infrastructure; `build_reborn_runtime` picks up the pool
+            // from `services.pg_pool` to upgrade thread service and subagent goal
+            // store to PG-backed implementations.  Full turn-state / run-state /
+            // approval / lease wiring to PG is tracked in subplan_pg4_runtime_pg_path.md.
             #[cfg(feature = "postgres")]
             if let RebornStorageInput::Postgres {
                 pool,
@@ -484,6 +484,11 @@ pub async fn build_reborn_services(
                 let mut services = build_local_dev(local_input).await?;
                 // Inject the PG pool so build_reborn_runtime can use PG-backed stores.
                 services.pg_pool = Some(pg_pool_arc);
+                // NOTE: `local_runtime.trigger_repository` is still `InMemoryTriggerRepository`
+                // because Arc::get_mut would fail (the Arc is aliased by the trigger-create hook
+                // stored inside host_runtime).  Fixing this properly requires threading a
+                // `trigger_repository_override` through `build_local_dev` — tracked in
+                // subplan_pg4_runtime_pg_path.md.
                 return Ok(services);
             }
             build_local_dev(input).await
