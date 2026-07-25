@@ -78,6 +78,19 @@ impl From<EngineError> for RetrievalSourceError {
     }
 }
 
+/// Result of an intent-driven `fetch_for_turn` call.
+///
+/// Either a list of assembled components (the common case) or a disambiguation
+/// request (when multiple near-equal candidates exist in `reborn_intent_inputs`).
+#[derive(Debug)]
+pub enum FetchForTurnResult {
+    /// One or more components retrieved and ready to assemble.
+    Components(Vec<ComponentItem>),
+    /// Multiple near-equal intent candidates — the orchestrator should surface
+    /// a disambiguation message to the user (spec §3.12 Q11).
+    Disambiguation(Vec<crate::memory::intent_system::IntentCandidate>),
+}
+
 /// Trait for prior-knowledge component retrieval.
 ///
 /// Both backends return components in `(class_code ASC, prompt_uid ASC)` order,
@@ -99,6 +112,28 @@ pub trait RetrievalSource: Send + Sync {
         token_budget: usize,
         consumer_tag: &str,
     ) -> Result<Vec<ComponentItem>, RetrievalSourceError>;
+
+    /// Intent-driven retrieval for a live turn (Step 6.7).
+    ///
+    /// 1. Attempt intent resolution via `reborn_intent_inputs`.
+    /// 2. On a unique match: fetch the specific component by ID + increment score.
+    /// 3. On disambiguation: return the candidates for UX surfacing.
+    /// 4. On no-match / DB-less: fall back to `fetch_for_consumer` (keyword path).
+    ///
+    /// The default implementation delegates to `fetch_for_consumer` (used by
+    /// `RamSource` which has no intent store). DB-backed sources override this.
+    async fn fetch_for_turn(
+        &self,
+        scope: &ComponentScope,
+        query: &str,
+        token_budget: usize,
+        sender_class_code: &str,
+    ) -> Result<FetchForTurnResult, RetrievalSourceError> {
+        let items = self
+            .fetch_for_consumer(scope, query, token_budget, sender_class_code)
+            .await?;
+        Ok(FetchForTurnResult::Components(items))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -601,6 +636,59 @@ impl RetrievalSource for PostgresSource {
 
         Ok(items)
     }
+
+    /// Override: use the intent system (`resolve_intent`) before falling back
+    /// to the full UNION ALL scan (Step 6.7).
+    ///
+    /// `resolve_intent` already atomically increments the matched row's score
+    /// (PERF-03, SEC-05) before returning `Match` — no separate increment call
+    /// is needed here.
+    async fn fetch_for_turn(
+        &self,
+        scope: &ComponentScope,
+        query: &str,
+        token_budget: usize,
+        sender_class_code: &str,
+    ) -> Result<FetchForTurnResult, RetrievalSourceError> {
+        use crate::memory::intent_system::{IntentResolution, IntentScope, resolve_intent};
+
+        let intent_scope = IntentScope {
+            tenant_id: scope.tenant_id.clone(),
+            user_id: scope.user_id.clone(),
+            agent_id: scope.agent_id.clone(),
+            project_id: scope.project_id.clone(),
+        };
+
+        match resolve_intent(&self.pool, &intent_scope, query).await {
+            Ok(IntentResolution::Match {
+                component_id,
+                component_class_code,
+            }) => {
+                // Score already incremented inside resolve_intent (PERF-03).
+                // Fetch the specific component from its class table (SEC-01 gate).
+                let items = fetch_component_by_id(
+                    &self.pool,
+                    scope,
+                    component_id,
+                    component_class_code,
+                )
+                .await?;
+                Ok(FetchForTurnResult::Components(items))
+            }
+            Ok(IntentResolution::Disambiguation { candidates }) => {
+                // Multiple near-equal matches — the orchestrator must surface
+                // a disambiguation message before proceeding.
+                Ok(FetchForTurnResult::Disambiguation(candidates))
+            }
+            Ok(IntentResolution::NoMatch) | Ok(IntentResolution::DbLessFallback) | Err(_) => {
+                // No intent match (or DB error): fall back to the full UNION ALL.
+                let items = self
+                    .fetch_for_consumer(scope, query, token_budget, sender_class_code)
+                    .await?;
+                Ok(FetchForTurnResult::Components(items))
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -610,6 +698,104 @@ impl RetrievalSource for PostgresSource {
 /// Estimate token cost from byte length.
 fn estimate_tokens(byte_len: usize) -> usize {
     ((byte_len as f64 * TOKENS_PER_BYTE) as usize).max(1)
+}
+
+/// Fetch a single component from its class-specific table by ID (Step 6.7).
+///
+/// Enforces the SEC-01 validation gate:
+///   `validation_status = 'validated' AND '05:validator' != ALL(consumer_tags)`
+///
+/// Returns an empty vec if the component is not found or fails the gate (e.g.
+/// it was demoted to pending/rejected between the intent lookup and this fetch).
+#[cfg(feature = "skills-db")]
+async fn fetch_component_by_id(
+    pool: &brassclaw_pg::PgPool,
+    scope: &ComponentScope,
+    component_id: uuid::Uuid,
+    component_class_code: i32,
+) -> Result<Vec<ComponentItem>, RetrievalSourceError> {
+    use tokio_postgres::types::ToSql;
+
+    // Map class_code → (table_name, content_expr).
+    // Tables with a `body` column (reborn_skills) use COALESCE(prior_knowledge_content, body).
+    // Tables with a `content` column use COALESCE(NULLIF(prior_knowledge_content,''), content).
+    // Tables with only description (extensions, actions) use COALESCE(prior_knowledge_content, description).
+    // reborn_tools (class 0) has no prompt text and is excluded.
+    let table_and_content: Option<(&'static str, &'static str)> = match component_class_code {
+        1..=3 => Some(("reborn_skills", "COALESCE(NULLIF(prior_knowledge_content,''), body)")),
+        4..=9 => Some(("reborn_extensions_unified", "COALESCE(prior_knowledge_content, description)")),
+        10 | 50 => Some(("reborn_skills", "COALESCE(NULLIF(prior_knowledge_content,''), body)")),
+        12 => Some(("reborn_specs", "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+        13 => Some(("reborn_tool_skills", "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+        14 => Some(("reborn_plans", "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+        15 => Some(("reborn_summaries", "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+        16 => Some(("reborn_actions", "COALESCE(prior_knowledge_content, description)")),
+        17 => Some(("reborn_docus", "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+        18 => Some(("reborn_lessons", "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+        19 => Some(("reborn_issues", "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+        20 => Some(("reborn_notes", "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+        21 => Some(("reborn_recipes", "COALESCE(NULLIF(prior_knowledge_content,''), '')")),
+        _ => None,
+    };
+
+    let Some((table, content_expr)) = table_and_content else {
+        // Class 0 (tools) or unknown — no prompt text to retrieve.
+        return Ok(vec![]);
+    };
+
+    let client = pool
+        .get()
+        .await
+        .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
+
+    let query_sql = format!(
+        "SELECT id::text, class_code::int, prompt_uid::bigint,
+                name, COALESCE(description,'') AS description,
+                {content_expr} AS effective_content,
+                override_prompt_creation
+         FROM {table}
+         WHERE id = $1
+           AND tenant_id  = $2
+           AND user_id    = $3
+           AND agent_id   = $4
+           AND project_id = $5
+           AND validation_status = 'validated'
+           AND '05:validator' != ALL(consumer_tags)"
+    );
+
+    let params: &[&(dyn ToSql + Sync)] = &[
+        &component_id,
+        &scope.tenant_id,
+        &scope.user_id,
+        &scope.agent_id,
+        &scope.project_id,
+    ];
+
+    let rows = client
+        .query(&query_sql, params)
+        .await
+        .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
+
+    let items: Vec<ComponentItem> = rows
+        .iter()
+        .map(|row| {
+            let id_str: &str = row.get(0);
+            let id = id_str
+                .parse::<uuid::Uuid>()
+                .unwrap_or_else(|_| uuid::Uuid::nil());
+            ComponentItem {
+                id,
+                class_code: row.get(1),
+                prompt_uid: row.get(2),
+                name: row.get::<_, &str>(3).to_string(),
+                description: row.get::<_, &str>(4).to_string(),
+                effective_content: row.get::<_, &str>(5).to_string(),
+                override_prompt_creation: row.get(6),
+            }
+        })
+        .collect();
+
+    Ok(items)
 }
 
 /// Map a `DocType` to its class code (mirrors `doc_type_class_code` in orchestrator.rs).

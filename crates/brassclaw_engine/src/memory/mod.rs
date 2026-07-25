@@ -27,7 +27,7 @@ pub use recipe_matcher::{RecipeMatch, RecipeMatcher, RecipeStepMatch, ToolSkillM
 pub use recipe_validator::{RecipeValidator, ValidationResult};
 pub use retrieval::RetrievalEngine;
 pub use retrieval_source::{
-    ComponentItem, ComponentScope, FallbackEntry, RamSource, RetrievalSource,
+    ComponentItem, ComponentScope, FallbackEntry, FetchForTurnResult, RamSource, RetrievalSource,
     RetrievalSourceError, load_fallback_file, FALLBACK_CONTENT_FILE_ENV,
 };
 #[cfg(feature = "skills-db")]

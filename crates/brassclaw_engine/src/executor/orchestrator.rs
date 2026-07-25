@@ -2543,15 +2543,25 @@ async fn handle_retrieve_docs(
 /// reserved for Rust dispatch and KV-cache fingerprinting.
 ///
 /// Priority:
-/// 1. `retrieval_source` (Phase 5 path) — `PostgresSource` or `RamSource`.
+/// 1. `retrieval_source` (Phase 5/6.7 path) — `PostgresSource` (intent-driven)
+///    or `RamSource` (keyword fallback).
 /// 2. Legacy `retrieval` (`RetrievalEngine::retrieve_context`) — MemoryDoc path.
 /// 3. Empty result — no retrieval available.
+///
+/// Intent-driven path (Step 6.7):
+/// - `PostgresSource::fetch_for_turn` tries `resolve_intent` first.
+/// - On unique match: returns specific component(s) from the matched table.
+/// - On disambiguation: returns a structured `{disambiguation, candidates}`
+///   result so the Python orchestrator can surface the UX message (§3.12 Q11).
+/// - On no-match: falls back to the full UNION ALL keyword scan.
 async fn handle_assemble_prior_knowledge(
     args: &[MontyObject],
     thread: &Thread,
     retrieval: Option<&RetrievalEngine>,
     retrieval_source: Option<&Arc<dyn RetrievalSource>>,
 ) -> ExtFunctionResult {
+    use crate::memory::retrieval_source::FetchForTurnResult;
+
     let goal = args.first().map(monty_to_string).unwrap_or_default();
     let token_budget = args
         .get(1)
@@ -2565,7 +2575,7 @@ async fn handle_assemble_prior_knowledge(
         .map(monty_to_string)
         .unwrap_or_else(|| "02".to_string());
 
-    // Phase 5 path: use the RetrievalSource backend.
+    // Phase 5/6.7 path: use the RetrievalSource backend (intent-driven).
     if let Some(source) = retrieval_source {
         let scope = ComponentScope {
             tenant_id: "default".to_string(),
@@ -2575,11 +2585,35 @@ async fn handle_assemble_prior_knowledge(
         };
 
         match source
-            .fetch_for_consumer(&scope, &goal, token_budget, &sender_class_code)
+            .fetch_for_turn(&scope, &goal, token_budget, &sender_class_code)
             .await
         {
-            Ok(items) => {
+            Ok(FetchForTurnResult::Components(items)) => {
                 return assemble_from_component_items(&items);
+            }
+            Ok(FetchForTurnResult::Disambiguation(candidates)) => {
+                // Surface disambiguation result to Python (§3.12 Q11).
+                // Python orchestrator checks `result.disambiguation` and emits
+                // a chat message with clickable buttons for the user.
+                let candidates_json: Vec<serde_json::Value> = candidates
+                    .iter()
+                    .map(|c| {
+                        serde_json::json!({
+                            "component_id": c.component_id.to_string(),
+                            "component_class_code": c.component_class_code,
+                            "class_label": c.class_label,
+                            "score": c.score,
+                        })
+                    })
+                    .collect();
+                return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                    "content": "",
+                    "formatted_content": "",
+                    "override_prompt_creation": false,
+                    "matched_component_ids": [],
+                    "disambiguation": true,
+                    "candidates": candidates_json,
+                })));
             }
             Err(e) => {
                 debug!("assemble_prior_knowledge: RetrievalSource failed: {e}");

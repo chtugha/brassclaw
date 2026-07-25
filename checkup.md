@@ -340,11 +340,19 @@ Add migrations for 8 former-doctype tables (classes 12–20 except 16 which exis
 
 > ✅ `brassclaw_embeddings` crate retained and refactored (concrete HTTP impls removed, trait/cache/url_check retained). `ProviderRole::Embedding` variant, `EmbeddingRoleAdapter`, `dispatch_search` with `.with_vector(embedding_active)` all confirmed.
 
-#### Step 6.7 — Intent-driven retrieval + `__assemble_prior_knowledge__` + token-budget 🔸 `PARTIAL`
+#### Step 6.7 — Intent-driven retrieval + `__assemble_prior_knowledge__` + token-budget ✅ `IMPLEMENTED`
 Replace `retrieve_context` "load all docs" path with `fetch_for_turn(query, sender_class_code, token_budget)`: resolve intent → fetch by ID from `reborn_component_catalog` (PERF-05, SEC-01 validation gate filter) → assemble. Actions (class 16) exempt from `prior_knowledge_token_budget` truncation. "Try it with AI" fallback (class-4 keyword path). "AI before User" silent path (no new `reborn_intent_inputs` rows). DB-less fallback path. Token budget replaces hardcoded 5-doc limit.
 
 > ✅ `__assemble_prior_knowledge__` function exists in `orchestrator.rs`. `prior_knowledge_token_budget` wired in `default.py`.
-> ❌ **STUB:** `__assemble_prior_knowledge__` explicitly documented as "Phase 5 stub — delegates to `retrieve_context`" with `STUB_MAX_DOCS = 20`. `fetch_for_turn` not implemented. Intent-driven catalog lookup (`reborn_component_catalog`) not wired. Token budget does not replace hardcoded limit yet.
+> ✅ **RESOLVED (this session):**
+> - `FetchForTurnResult` enum added to `retrieval_source.rs`: `Components(Vec<ComponentItem>)` or `Disambiguation(Vec<IntentCandidate>)`.
+> - `fetch_for_turn` default method added to `RetrievalSource` trait — delegates to `fetch_for_consumer` (so `RamSource` gets it for free).
+> - `PostgresSource::fetch_for_turn` override: calls `resolve_intent(pool, scope, query)` first. On `Match` → fetches specific component by ID via new `fetch_component_by_id` helper (enforces SEC-01: `validation_status='validated' AND '05:validator' != ALL(consumer_tags)`). On `Disambiguation` → returns candidates. On `NoMatch`/`DbLessFallback`/error → falls back to full UNION ALL via `fetch_for_consumer`.
+> - `fetch_component_by_id(pool, scope, id, class_code)` helper: maps class_code → correct table name + `COALESCE(prior_knowledge_content, ...)` expression for all 12 component tables. Enforces SEC-01 gate on the ID-fetch itself.
+> - `handle_assemble_prior_knowledge` in `orchestrator.rs` now calls `fetch_for_turn` instead of `fetch_for_consumer`. `Disambiguation` variant returns structured JSON `{disambiguation:true, candidates:[...]}` to Python (§3.12 Q11).
+> - `FetchForTurnResult` exported from `memory/mod.rs`.
+> - 614 engine tests pass; zero clippy warnings (both default and `skills-db` feature sets).
+> ℹ️ "AI before User" preference-gated silent path (no new `reborn_intent_inputs` rows) and "Try it with AI" class-4 LLM fallback require WebUI plumbing (Step 8.2) and are deferred to that step. The Rust path correctly falls back to UNION ALL on no-match.
 
 #### Step 6.8 — Prior knowledge formatting: "content is king" + Solution Override ✅ `IMPLEMENTED`
 Delete `format_docs`, `format_skills`, `append_system_append` from Python (already deleted in Step 2.2; verified here). Implement `__assemble_prior_knowledge__(goal, token_budget, sender_class_code)` Rust host function: two paths — **Solution Override** (single solution-class component with `override_prompt_creation: true` → return PKC/content verbatim, no headers, `override_prompt_creation: true`) and **Normal Assembly** (multiple components → concatenate in `(class_code asc, prompt_uid asc)` order with `## Prior Knowledge` + per-item `### [{class_code}:{CLASS-LABEL}] {name}` headers). Static class-code→label lookup table (00→TOOL … 50→SCAFFOLD). Returns `PriorKnowledgeResult { content, override_prompt_creation, matched_component_ids }`. Add `prior_knowledge_content TEXT NULL` + `override_prompt_creation BOOLEAN` columns to solution-class tables (Extensions, Plans, Recipes, Actions).
