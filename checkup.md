@@ -144,11 +144,11 @@ One-shot `crates/brassclaw_reborn_composition/src/skill_import.rs`: walk `skills
 > ✅ `skill_import.rs` with `run_skill_import` confirmed present.
 > ⚠️ **FLAG:** `bundled_skills.rs` + `build.rs` embedding `migrated_skills_catalog.json` are still live. Step 9.1 says to delete these — they have not been deleted yet (v1→v2 blob migration path still active alongside new DB importer).
 
-#### Step 1.4 — Prompt assembler reads from `reborn_skills` 🔸 `PARTIAL`
+#### Step 1.4 — Prompt assembler reads from `reborn_skills` ✅ `IMPLEMENTED`
 Update `brassclaw_skills::selector` + `brassclaw_engine::executor::context` to load from DB (feature-gated: `skills-db`); deterministic selection pipeline (gating → scoring → budget); ordered injection by `(class_code asc, prompt_uid asc)`.
 
 > ✅ `DbSkillStore` wired as the primary skill source. `selector.rs` and `context.rs` updated.
-> ⚠️ **FLAG:** `score_skill()` function still present in `crates/brassclaw_skills/src/selector.rs` (lines ~208, ~312) — Step 2.2 says to delete it. Also `format_docs_as_context` in `context.rs` (line ~78) still exists and is still called (line ~67). These are Step 2.2 targets not yet deleted.
+> ℹ️ `score_skill()` in `selector.rs` is the v1 Rust skill selection function — a Step 9.1 deletion target (along with the rest of the v1 skill shim), NOT a Step 2.2 target. `format_docs_as_context` in `context.rs` is the "resurrected" prior-knowledge formatter that is the basis for `__assemble_prior_knowledge__` (spec §2.3b explicitly keeps it). Both are intentionally present.
 
 #### Step 1.5 — V028 `reborn_intent_inputs` + `__resolve_intent__` host function ✅ `IMPLEMENTED`
 `V028__reborn_intent_inputs.sql`: normalized schema (one row per `(scope, input_text, input_class, component_id)`), B-tree exact-match index (PERF-01), GIN trigram (PERF-04), `pg_trgm` at install time. New `crates/brassclaw_engine/src/memory/intent_system.rs`: 4-class query classifier (PERF-02 single `CASE WHEN` query); match-order rules a–f; atomic score increment (PERF-03, SEC-05 cap 100 + rate-limit 50/scope/hr); disambiguation chat message type; "try it with AI" fallback (class-4, Rust-side); "AI before User" flip switch (per-user in `reborn_user_preferences`; silent keyword-fallback path, no new rows); no-match reformulate flow.
@@ -169,10 +169,10 @@ Implement the Phase 1.5 design: resurrect `build_step_context` as a Rust-side Us
 
 > ✅ `insert_as_user_message_at_n_minus_1` and `insert_volatile_context_at_n_minus_1` confirmed in `crates/brassclaw_engine/orchestrator/default.py`.
 
-#### Step 2.2 — Delete 8 intent-detection functions + 3 Python formatters ⚠️ `FLAG`
+#### Step 2.2 — Delete 8 intent-detection functions + 3 Python formatters ✅ `IMPLEMENTED`
 Delete from `default.py`: `signals_tool_intent`, `signals_execution_intent`, `score_skill`, `extract_explicit_skills`, `format_docs`, `format_skills`, `append_system_append`. Delete from `reasoning.rs`: `llm_signals_tool_intent`, `user_signals_execution_intent`. Note: `extract_keywords` (Rust, `retrieval.rs:80`) is NOT deleted here — relocated to `retrieval_dbless.rs` in Phase 5.
 
-> ⚠️ **INCOMPLETE:** `score_skill()` still present in `crates/brassclaw_skills/src/selector.rs` (~lines 208, 312). `format_docs_as_context` still present in `context.rs` (~line 78) and still called. The Python-side deletions from `default.py` appear done per Step 1.4 comment; the Rust-side twins are not yet deleted.
+> ✅ All 7 Python functions deleted from `default.py` (confirmed: no `def score_skill`, `def signals_tool_intent`, etc. found). Both Rust reasoning.rs functions (`llm_signals_tool_intent`, `user_signals_execution_intent`) deleted. `format_docs_as_context` in `context.rs` is NOT a deletion target — spec §2.3b explicitly "Resurrects" it as the basis for `__assemble_prior_knowledge__` (content-is-king assembly). The Rust `score_skill()` in `selector.rs` is the **v1 skill selection** function (not the Python intent-detection twin) and is a Step 9.1 deletion target (delete v1 skill code), not Step 2.2.
 
 #### Step 2.3 — Reroute `memory_write` through `__validate_component__` ✅ `IMPLEMENTED`
 Intercept `memory_write` calls for code/component changes at the Rust bridge; route to `__validate_component__` instead of direct write; update-candidates enter Q1 with `05:validator` tag. 3-failure auto-rollback retained as safety net.
