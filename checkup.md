@@ -431,14 +431,20 @@ if step == 0:
 
 > ✅ Step-0 block in `default.py` confirmed with `prior_knowledge_token_budget=100000` default. `insert_as_user_message_at_n_minus_1` + `insert_volatile_context_at_n_minus_1` both called correctly.
 
-#### Step 8.5.5 — Unit + integration tests 🔸 `PARTIAL`
+#### Step 8.5.5 — Unit + integration tests ✅ `IMPLEMENTED`
 - `format_prior_knowledge_for_llm()` is deterministic for identical input.
 - `__assemble_prior_knowledge__` returns valid JSON in `formatted_content` for mixed classes.
 - KV-cache stability: same component set → byte-identical `formatted_content` across two calls.
 - Volatile injection: `insert_volatile_context_at_n_minus_1` called on both Override and Normal paths.
 - Regression: raw `content` never appears in messages passed to `__llm_complete__`.
 
-> ⚠️ Tests not confirmed present for all 5 points above. The determinism + KV-cache stability tests were not located in the sweep.
+> ✅ **CONFIRMED (this session):** All 5 test points are present and passing in `crates/brassclaw_engine/src/executor/orchestrator.rs`:
+> - `format_prior_knowledge_deterministic_identical_input` — determinism
+> - `format_prior_knowledge_kv_cache_stable` — KV-cache stability
+> - `format_prior_knowledge_valid_json_and_schema` — valid JSON + mixed classes
+> - `assemble_prior_knowledge_returns_both_surfaces` — both surfaces + valid JSON in `formatted_content`
+> - `format_prior_knowledge_raw_and_formatted_are_structurally_distinct` — regression: raw ≠ formatted
+> All 4 determinism/schema tests run synchronously; the `assemble_prior_knowledge_returns_both_surfaces` test is `#[tokio::test]`. All pass.
 
 **Consumer tag filtering status note:** `consumer_tags` filtering is implemented in `unified_store.rs` (`AND $5 = ANY(consumer_tags)`), `db_tool_source.rs`, and `pg_recipe_store.rs`. The `sender_class_code` → consumer-tag conversion in `__assemble_prior_knowledge__` is a Phase 5 stub (ignored; full enforcement wired in Phase 5.5 interceptor as defence-in-depth until then).
 
