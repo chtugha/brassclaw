@@ -1,6 +1,23 @@
 # Sub-plan: PG-4 Phase-5 Factory Wiring
 ## Wire build_reborn_runtime for Postgres production path
 
+## Status (as of this checkup session)
+
+### ✅ Completed
+- Sub-step 1: `ProcessServices::postgres()` — already exists in `crates/brassclaw_processes/src/services.rs`
+- Sub-step 2: `build_pg_backend_production_with_tools` uses `ProcessServices::postgres()` — confirmed
+- Sub-step 5 (partial): `PgSubagentGoalStore` wired in `build_reborn_runtime` when `pg_pool` available
+- `PgSessionThreadService` wired in `build_reborn_runtime` when `pg_pool` available (not in original plan but implemented)
+
+### ⚠️ Remaining (blocked by Rust type system)
+- Sub-step 3: `LocalRuntimeSurface` enum / trait object for turn state
+- Sub-step 4: Full `build_reborn_runtime` postgres path (turn_state, loop_checkpoint, checkpoint_state)
+- Sub-step 6: Remove `#[allow(dead_code)]` (blocked until sub-steps 3/4 done)
+
+See `subplan_pg4_runtime_pg_path.md` for the detailed remaining work.
+
+---
+
 ## Problem
 
 `build_reborn_runtime` (called by `brassclaw serve`) enforces `LocalDev | LocalDevYolo` only

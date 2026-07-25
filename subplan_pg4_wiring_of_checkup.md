@@ -1,5 +1,19 @@
 # Subplan: PG-4 Wiring Gaps — Factory Postgres Store Wiring
 
+## Status (as of this checkup session)
+
+### ✅ Steps 1–5 — CONFIRMED DONE (in dead-code path)
+`PgCapabilityLeaseStore`, `PgRunStateStore`, `PgApprovalRequestStore`, `PgTurnStateStore`,
+`PgResourceGovernorStore` are all wired in `build_pg_backend_production_with_tools`.
+The `#[allow(dead_code)]` functions exist and are correct. However, they are not yet reached
+by the live `brassclaw serve` path (hybrid local-dev+PG). See `subplan_pg4_runtime_pg_path.md`.
+
+### ✅ Step 6 — Clippy and tests PASS (zero warnings, 490+ tests)
+
+### ✅ Step 7 — checkup.md updated, committed and pushed
+
+---
+
 ## Problem
 
 `build_backend_production_with_tools` (factory.rs) is the production build path called by
