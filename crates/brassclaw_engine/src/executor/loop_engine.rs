@@ -133,6 +133,10 @@ pub struct ExecutionLoop {
     /// Phase 5 retrieval source (PostgresSource or RamSource) for
     /// `__assemble_prior_knowledge__`. Falls back to legacy `retrieval` when None.
     retrieval_source: Option<Arc<dyn crate::memory::RetrievalSource>>,
+    /// DB-backed max wall-clock budget override for the Monty orchestrator VM.
+    /// `Some` overrides `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` (Step 9.3).
+    /// `None` falls back to the env-var / compiled-in DB-less default.
+    max_duration_secs: Option<u64>,
 }
 
 impl ExecutionLoop {
@@ -164,6 +168,7 @@ impl ExecutionLoop {
             #[cfg(feature = "skills-db")]
             pg_pool: None,
             retrieval_source: None,
+            max_duration_secs: None,
         }
     }
 
@@ -216,6 +221,14 @@ impl ExecutionLoop {
         source: Arc<dyn crate::memory::RetrievalSource>,
     ) -> Self {
         self.retrieval_source = Some(source);
+        self
+    }
+
+    /// Override the Monty orchestrator VM wall-clock budget with a value
+    /// loaded from `reborn_monty_vm_settings.max_duration_secs` (Step 9.3).
+    /// When set, takes priority over `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS`.
+    pub fn with_max_duration_secs(mut self, secs: u64) -> Self {
+        self.max_duration_secs = Some(secs);
         self
     }
 
@@ -451,7 +464,12 @@ impl ExecutionLoop {
             );
         }
 
-        // Execute the Python orchestrator with host function dispatch
+        // Execute the Python orchestrator with host function dispatch.
+        // max_duration_override resolves the DB-backed budget (Step 9.3):
+        // Some(dur) → uses DB value; None → falls back to env-var / compiled-in default.
+        let max_duration_override = self
+            .max_duration_secs
+            .map(std::time::Duration::from_secs);
         let result = crate::executor::orchestrator::execute_orchestrator(
             &orchestrator_code,
             &mut self.thread,
@@ -469,6 +487,7 @@ impl ExecutionLoop {
             #[cfg(feature = "skills-db")]
             self.pg_pool.as_deref(),
             self.retrieval_source.as_ref(),
+            max_duration_override,
         )
         .await;
 

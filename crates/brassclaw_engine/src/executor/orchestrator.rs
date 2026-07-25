@@ -128,14 +128,6 @@ fn orchestrator_max_duration() -> std::time::Duration {
 /// Maximum allocation steps allowed per orchestrator VM execution.
 const ORCHESTRATOR_MAX_ALLOCATIONS: usize = 5_000_000;
 
-/// Resource limits for the orchestrator VM.
-fn orchestrator_limits() -> ResourceLimits {
-    ResourceLimits::new()
-        .max_duration(orchestrator_max_duration())
-        .max_allocations(ORCHESTRATOR_MAX_ALLOCATIONS)
-        .max_memory(128 * 1024 * 1024) // 128 MB
-}
-
 /// Classify a Monty orchestrator failure into a typed
 /// [`OrchestratorFailure`] that carries a user-safe classification plus
 /// the preserved low-level detail for gateway debug mode.
@@ -443,6 +435,11 @@ fn load_failure_count(docs: &[crate::types::memory::MemoryDoc]) -> u64 {
 /// The orchestrator Python calls host functions via Monty's suspension mechanism,
 /// and this function handles each suspension by delegating to the appropriate
 /// Rust implementation.
+///
+/// `max_duration_override` — when `Some`, overrides the DB-less-fallback
+/// `orchestrator_max_duration()` with the value read from
+/// `reborn_monty_vm_settings.max_duration_secs` by the caller.
+/// Pass `None` in DB-less / test contexts to use the env-var / compiled-in default.
 #[allow(clippy::too_many_arguments)]
 pub async fn execute_orchestrator(
     code: &str,
@@ -460,6 +457,7 @@ pub async fn execute_orchestrator(
     persisted_state: &serde_json::Value,
     #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
     retrieval_source: Option<&Arc<dyn RetrievalSource>>,
+    max_duration_override: Option<std::time::Duration>,
 ) -> Result<OrchestratorResult, EngineError> {
     let mut total_tokens = TokenUsage::default();
 
@@ -488,9 +486,17 @@ pub async fn execute_orchestrator(
         }
     };
 
+    // Resolve wall-clock budget: DB-backed value takes priority over the
+    // env-var / compiled-in DB-less fallback (Step 9.3 demotion).
+    let effective_duration = max_duration_override.unwrap_or_else(orchestrator_max_duration);
+    let effective_limits = ResourceLimits::new()
+        .max_duration(effective_duration)
+        .max_allocations(ORCHESTRATOR_MAX_ALLOCATIONS)
+        .max_memory(128 * 1024 * 1024); // 128 MB
+
     // Start execution
     let mut stdout = String::new();
-    let tracker = LimitedTracker::new(orchestrator_limits());
+    let tracker = LimitedTracker::new(effective_limits);
 
     let run_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         runner.start(

@@ -53,6 +53,11 @@ pub struct ThreadManager {
     /// gate cancels with a typed denial. Hosts that want real inline
     /// await call [`Self::set_gate_controller`] during bootstrap.
     gate_controller: tokio::sync::RwLock<Arc<dyn crate::gate::GateController>>,
+    /// DB-backed max wall-clock budget for the Monty orchestrator VM.
+    /// Loaded from `reborn_monty_vm_settings.max_duration_secs` at startup.
+    /// `Some` overrides `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` (Step 9.3).
+    /// `None` falls back to the env-var / compiled-in DB-less default.
+    max_duration_secs: Option<u64>,
 }
 
 impl ThreadManager {
@@ -78,7 +83,18 @@ impl ThreadManager {
             completed: Arc::new(RwLock::new(HashMap::new())),
             event_tx,
             gate_controller: tokio::sync::RwLock::new(crate::gate::CancellingGateController::arc()),
+            max_duration_secs: None,
         }
+    }
+
+    /// Set the DB-backed max wall-clock budget for the Monty orchestrator VM.
+    ///
+    /// Call this after loading `MontyVmSettings` from `reborn_monty_vm_settings`
+    /// so subsequent thread spawns use the DB-persisted value instead of the
+    /// env-var / compiled-in DB-less fallback.
+    pub fn with_max_duration_secs(mut self, secs: u64) -> Self {
+        self.max_duration_secs = Some(secs);
+        self
     }
 
     /// Install (or replace) the host-supplied gate controller.
@@ -365,7 +381,7 @@ impl ThreadManager {
             Arc::new(crate::memory::RamSource::new(store_for_retrieval));
 
         let gate_controller = self.gate_controller.read().await.clone();
-        let exec_loop = ExecutionLoop::new(
+        let mut exec_loop = ExecutionLoop::new(
             thread,
             llm,
             effects,
@@ -380,6 +396,10 @@ impl ThreadManager {
         .with_retrieval(retrieval)
         .with_store(Arc::clone(&self.store))
         .with_retrieval_source(retrieval_source);
+        // Thread DB-backed max duration into the execution loop (Step 9.3).
+        if let Some(secs) = self.max_duration_secs {
+            exec_loop = exec_loop.with_max_duration_secs(secs);
+        }
 
         // Spawn background task
         let store_for_task = Arc::clone(&self.store);

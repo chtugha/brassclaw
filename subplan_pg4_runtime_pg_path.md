@@ -1,6 +1,6 @@
 # Subplan: PG-4 / factory-wiring — Extend `build_reborn_runtime` to the Postgres path
 
-## Status: STEP 1-3 IMPLEMENTED (this session)
+## Status: STEP 1-3 IMPLEMENTED (previous session); STEP 9.3 IMPLEMENTED (this session)
 
 ### Resolved (previous sessions)
 - `PgSessionThreadService` wired in `build_reborn_runtime` when `services.pg_pool` is available

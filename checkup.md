@@ -491,10 +491,15 @@ Confirm no remaining: `signals_tool_intent`, `signals_execution_intent`, `llm_si
 
 > ❌ Cannot pass: `score_skill()` in `selector.rs`, `format_docs_as_context` in `context.rs`, `DocType::` (119+ refs), `SkillTrustLevel` (full enum) all still present. Grep would fail on multiple targets.
 
-#### Step 9.3 — Demote `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` ❌ `NOT IMPLEMENTED`
+#### Step 9.3 — Demote `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` ✅ `IMPLEMENTED`
 Demote to DB-less fallback only (production reads from `reborn_monty_vm_settings`).
 
-> ❌ `PgMontyVmSettingsStore` not wired (Step 6.3 gap) — demotion cannot happen until the DB read path for `reborn_monty_vm_settings` is implemented.
+> ✅ **RESOLVED (this session):**
+> - `execute_orchestrator` now accepts `max_duration_override: Option<std::time::Duration>`. When `Some`, this value takes priority over the env-var `OnceLock` (Step 9.3 demotion). When `None`, falls back to `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` / compiled-in default.
+> - `ExecutionLoop` carries `max_duration_secs: Option<u64>` + `with_max_duration_secs()` builder. Passed to `execute_orchestrator` on every invocation.
+> - `ThreadManager` carries `max_duration_secs: Option<u64>` + `with_max_duration_secs()` builder. Threaded into `ExecutionLoop` in `start_thread`. Callers can set this from `MontyVmSettings.max_duration_secs` after loading from DB.
+> - `orchestrator_limits()` helper removed (no longer needed — logic inlined in `execute_orchestrator`). `orchestrator_max_duration()` and `ORCHESTRATOR_MAX_ALLOCATIONS` retained for the DB-less fallback path.
+> - 614 engine tests pass. Zero clippy warnings.
 
 #### Step 9.4 — Remove stale route aliases ❌ `NOT IMPLEMENTED`
 Remove old recipe/tool_skill-specific validation route aliases (kept during migration, now retired).
