@@ -1350,6 +1350,48 @@ pub trait RebornServicesApi: Send + Sync {
             false,
         ))
     }
+
+    /// List intent inputs for a scope (optional component filter).
+    async fn list_intent_inputs(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: String,
+        _component_id: Option<String>,
+    ) -> Result<crate::settings::IntentInputListResponse, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Upsert an intent input row.
+    async fn upsert_intent_input(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: crate::settings::UpsertIntentInputRequest,
+    ) -> Result<crate::settings::IntentInputRow, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
+
+    /// Delete all intent inputs for a component (Q4 wipe helper).
+    async fn delete_intent_inputs_for_component(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _project_id: String,
+        _class_code: u16,
+        _component_id: String,
+    ) -> Result<u64, RebornServicesError> {
+        Err(RebornServicesError::from_status(
+            RebornServicesErrorCode::InvalidRequest,
+            501,
+            false,
+        ))
+    }
 }
 
 /// Default facade implementation composed at the WebUI boundary.
@@ -1409,6 +1451,9 @@ pub struct RebornServices {
     /// Chat preference store backing `PUT /api/chat/preferences/{key}`.
     /// When unwired the trait default returns 501.
     chat_preference_store: Option<Arc<dyn crate::settings::ChatPreferenceStore>>,
+    /// Intent inputs store backing `GET/PUT/DELETE /api/settings/intent-inputs`.
+    /// When unwired the trait default returns 501.
+    intent_inputs_store: Option<Arc<dyn crate::settings::IntentInputsStore>>,
 }
 
 impl RebornServices {
@@ -1450,6 +1495,7 @@ impl RebornServices {
             interceptor_config: None,
             monty_vm_settings: None,
             chat_preference_store: None,
+            intent_inputs_store: None,
         }
     }
 
@@ -1692,6 +1738,15 @@ impl RebornServices {
         store: Arc<dyn crate::settings::ChatPreferenceStore>,
     ) -> Self {
         self.chat_preference_store = Some(store);
+        self
+    }
+
+    /// Wire the intent inputs store backing `GET/PUT/DELETE /api/settings/intent-inputs`.
+    pub fn with_intent_inputs_store(
+        mut self,
+        store: Arc<dyn crate::settings::IntentInputsStore>,
+    ) -> Self {
+        self.intent_inputs_store = Some(store);
         self
     }
 
@@ -3730,6 +3785,74 @@ impl RebornServicesApi for RebornServices {
             key,
             value: stored,
         })
+    }
+
+    async fn list_intent_inputs(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: String,
+        component_id: Option<String>,
+    ) -> Result<crate::settings::IntentInputListResponse, RebornServicesError> {
+        let store = self.intent_inputs_store.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 501, false)
+        })?;
+        let user_id = caller.user_id.as_str().to_string();
+        let agent_id = caller.agent_id.as_ref().map(|a| a.as_str()).unwrap_or("").to_string();
+        let items = store
+            .list(&user_id, &agent_id, &project_id, component_id.as_deref())
+            .await
+            .map_err(|e| {
+                tracing::debug!("intent_inputs list error: {e}");
+                RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 500, false)
+            })?;
+        Ok(crate::settings::IntentInputListResponse { items })
+    }
+
+    async fn upsert_intent_input(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: crate::settings::UpsertIntentInputRequest,
+    ) -> Result<crate::settings::IntentInputRow, RebornServicesError> {
+        let store = self.intent_inputs_store.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 501, false)
+        })?;
+        let user_id = caller.user_id.as_str().to_string();
+        let agent_id = caller.agent_id.as_ref().map(|a| a.as_str()).unwrap_or("").to_string();
+        let row = store
+            .upsert(&user_id, &agent_id, &request.project_id, &request)
+            .await
+            .map_err(|e| {
+                let msg = e.to_string();
+                if msg.contains("unknown input_class") || msg.contains("text too long") {
+                    RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 400, false)
+                } else {
+                    tracing::debug!("intent_inputs upsert error: {e}");
+                    RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 500, false)
+                }
+            })?;
+        Ok(row)
+    }
+
+    async fn delete_intent_inputs_for_component(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        project_id: String,
+        _class_code: u16,
+        component_id: String,
+    ) -> Result<u64, RebornServicesError> {
+        let store = self.intent_inputs_store.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 501, false)
+        })?;
+        let user_id = caller.user_id.as_str().to_string();
+        let agent_id = caller.agent_id.as_ref().map(|a| a.as_str()).unwrap_or("").to_string();
+        let count = store
+            .purge_for_component(&user_id, &agent_id, &project_id, &component_id)
+            .await
+            .map_err(|e| {
+                tracing::debug!("intent_inputs purge error: {e}");
+                RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 500, false)
+            })?;
+        Ok(count)
     }
 }
 

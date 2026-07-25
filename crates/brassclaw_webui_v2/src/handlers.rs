@@ -1535,3 +1535,84 @@ pub async fn put_chat_preference(
         .await?;
     Ok(Json(response))
 }
+
+// ── Intent inputs routes ──────────────────────────────────────────────────────
+
+/// Query params for `GET /api/settings/intent-inputs`.
+#[derive(Debug, Deserialize)]
+pub struct IntentInputsQuery {
+    pub project_id: String,
+    /// Optional filter: only return inputs for this component UUID.
+    pub component_id: Option<String>,
+}
+
+/// Path params for `DELETE /api/settings/intent-inputs/{class_code}/{component_id}`.
+#[derive(Debug, Deserialize)]
+pub struct IntentInputsDeletePath {
+    pub class_code: u16,
+    pub component_id: String,
+}
+
+/// Query params for DELETE (project_id required).
+#[derive(Debug, Deserialize)]
+pub struct IntentInputsDeleteQuery {
+    pub project_id: String,
+}
+
+/// `GET /api/settings/intent-inputs`
+///
+/// List intent examples stored in `reborn_intent_inputs` for the caller's scope.
+/// Optionally filter by `component_id` (UUID string).
+pub async fn list_intent_inputs(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Query(query): Query<IntentInputsQuery>,
+) -> Result<Json<brassclaw_product_workflow::IntentInputListResponse>, WebUiV2HttpError> {
+    let response = state
+        .services()
+        .list_intent_inputs(caller, query.project_id, query.component_id)
+        .await?;
+    Ok(Json(response))
+}
+
+/// `PUT /api/settings/intent-inputs`
+///
+/// Upsert a single intent input row. Idempotent: re-seeding the same
+/// (input_text, input_class, component_id) tuple updates `source` and resets
+/// `needs_review`; score is not reset.
+pub async fn upsert_intent_input(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Json(body): Json<brassclaw_product_workflow::UpsertIntentInputRequest>,
+) -> Result<Json<brassclaw_product_workflow::IntentInputRow>, WebUiV2HttpError> {
+    let row = state
+        .services()
+        .upsert_intent_input(caller, body)
+        .await?;
+    Ok(Json(row))
+}
+
+/// `DELETE /api/settings/intent-inputs/{class_code}/{component_id}`
+///
+/// Purge all intent inputs for a component (called on Q4 wipe).
+/// Returns the count of deleted rows.
+pub async fn delete_intent_inputs(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(IntentInputsDeletePath {
+        class_code,
+        component_id,
+    }): Path<IntentInputsDeletePath>,
+    Query(query): Query<IntentInputsDeleteQuery>,
+) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
+    let count = state
+        .services()
+        .delete_intent_inputs_for_component(
+            caller,
+            query.project_id,
+            class_code,
+            component_id,
+        )
+        .await?;
+    Ok(Json(serde_json::json!({ "deleted": count })))
+}

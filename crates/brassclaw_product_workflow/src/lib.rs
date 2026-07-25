@@ -156,11 +156,12 @@ pub use reduction_rules::{
 pub use safety_config::{SafetyConfigResponse, SafetyEntry, UpdateSafetyConfigRequest};
 pub use safety_config_store::{SafetyCategory, SafetyConfigStore};
 pub use settings::{
-    ChatPreferenceStore, MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettings,
+    ChatPreferenceStore, IntentInputListResponse, IntentInputRow, IntentInputsStore,
+    MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettings,
     MontyVmSettingsError, MontyVmSettingsResponse, MontyVmSettingsStore, MontyVmState,
     MontyVmStatusResponse, SettingsComponentSummary, SettingsListResponse,
     UpdateChatPreferenceRequest, UpdateChatPreferenceResponse, UpdateMontyVmSettingsRequest,
-    default_monty_vm_settings,
+    UpsertIntentInputRequest, default_monty_vm_settings,
 };
 pub use token_settings::{TokenSettingsResponse, UpdateTokenSettingsRequest};
 pub use token_settings_store::TokenSettingsStore;

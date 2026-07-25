@@ -93,6 +93,9 @@ pub const WEBUI_V2_ROUTE_POST_SETTINGS_MONTY_VM_RESTART: &str =
 pub const WEBUI_V2_ROUTE_GET_SETTINGS_MONTY_VM_STATUS: &str =
     "webui.v2.get_settings_monty_vm_status";
 pub const WEBUI_V2_ROUTE_PUT_CHAT_PREFERENCE: &str = "webui.v2.put_chat_preference";
+pub const WEBUI_V2_ROUTE_LIST_INTENT_INPUTS: &str = "webui.v2.list_intent_inputs";
+pub const WEBUI_V2_ROUTE_UPSERT_INTENT_INPUT: &str = "webui.v2.upsert_intent_input";
+pub const WEBUI_V2_ROUTE_DELETE_INTENT_INPUTS: &str = "webui.v2.delete_intent_inputs";
 
 pub const WEBUI_V2_PATTERN_SETTINGS_SKILLS: &str = "/api/settings/skills";
 pub const WEBUI_V2_PATTERN_SETTINGS_TOOLS: &str = "/api/settings/tools";
@@ -104,6 +107,9 @@ pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM: &str = "/api/settings/monty-vm";
 pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_RESTART: &str = "/api/settings/monty-vm/restart";
 pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_STATUS: &str = "/api/settings/monty-vm/status";
 pub const WEBUI_V2_PATTERN_CHAT_PREFERENCE: &str = "/api/chat/preferences/{key}";
+pub const WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS: &str = "/api/settings/intent-inputs";
+pub const WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS_DELETE: &str =
+    "/api/settings/intent-inputs/{class_code}/{component_id}";
 
 pub const WEBUI_V2_PATTERN_CREATE_THREAD: &str = "/api/webchat/v2/threads";
 pub const WEBUI_V2_PATTERN_LIST_THREADS: &str = "/api/webchat/v2/threads";
@@ -245,6 +251,10 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         post_settings_monty_vm_restart_descriptor(),
         get_settings_monty_vm_status_descriptor(),
         put_chat_preference_descriptor(),
+        // Phase 6 — intent inputs CRUD (GET/PUT/DELETE /api/settings/intent-inputs).
+        list_intent_inputs_descriptor(),
+        upsert_intent_input_descriptor(),
+        delete_intent_inputs_descriptor(),
     ]
 }
 
@@ -1238,4 +1248,46 @@ fn rate_limit_per_caller(max: u32, window_secs: u32) -> RateLimitPolicy {
         max_requests: NonZeroU32::new(max).expect("max_requests must be non-zero"), // safety: all call sites pass crate-local positive constants (12, 60, 120)
         window_seconds: NonZeroU32::new(window_secs).expect("window_seconds must be non-zero"), // safety: all call sites pass crate-local positive constants (60)
     }
+}
+
+fn list_intent_inputs_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_LIST_INTENT_INPUTS,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn upsert_intent_input_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_UPSERT_INTENT_INPUT,
+        NetworkMethod::Put,
+        WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS,
+        mutation_policy(
+            body_limit_kib(16),
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+
+fn delete_intent_inputs_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_DELETE_INTENT_INPUTS,
+        NetworkMethod::Delete,
+        WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS_DELETE,
+        mutation_policy(
+            BodyLimitPolicy::NoBody,
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
 }

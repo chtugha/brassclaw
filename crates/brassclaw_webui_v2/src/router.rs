@@ -15,6 +15,7 @@ use brassclaw_product_workflow::RebornServicesApi;
 use crate::descriptors::{
     WEBUI_V2_PATTERN_ACTIVATE_EXTENSION, WEBUI_V2_PATTERN_CANCEL_RUN,
     WEBUI_V2_PATTERN_CHAT_PREFERENCE, WEBUI_V2_PATTERN_COMPLETE_NEARAI_WALLET_LOGIN,
+    WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS, WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS_DELETE,
     WEBUI_V2_PATTERN_CREATE_THREAD, WEBUI_V2_PATTERN_DELETE_COMPONENT,
     WEBUI_V2_PATTERN_DELETE_LLM_PROVIDER, WEBUI_V2_PATTERN_DELETE_THREAD,
     WEBUI_V2_PATTERN_GET_COMPONENT_AUDIT_STATUS, WEBUI_V2_PATTERN_GET_INTERCEPTOR_CONFIG,
@@ -331,6 +332,15 @@ pub fn webui_v2_router_with_options(state: WebUiV2State, options: WebUiV2RouteOp
         .route(
             WEBUI_V2_PATTERN_CHAT_PREFERENCE,
             put(handlers::put_chat_preference),
+        )
+        // Phase 6 — intent inputs CRUD.
+        .route(
+            WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS,
+            get(handlers::list_intent_inputs).put(handlers::upsert_intent_input),
+        )
+        .route(
+            WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS_DELETE,
+            delete(handlers::delete_intent_inputs),
         );
     if options.mount_llm_config_routes {
         router = router

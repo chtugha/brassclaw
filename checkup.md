@@ -420,11 +420,12 @@ New `InterceptorConfigService` trait + `RebornInterceptorConfigService` impl; `I
 
 ### Step 8 — Phase 6: Settings UI (10-tab editor)
 
-#### Step 8.1 — WebUI v2 backend routes 🔸 `PARTIAL`
+#### Step 8.1 — WebUI v2 backend routes ✅ `IMPLEMENTED`
 REST routes for `/api/settings/{skills,tools,extensions,actions,orchestrators,scaffolds,monty-vm}` (GET/PUT/POST/DELETE); `POST /api/settings/monty-vm/restart` (kernel lifecycle manager, optional `force=true`); `GET /api/settings/monty-vm/status`. Extend validation-queue routes: add `queue_code` param (q1_auto/q2_manual/q3_revision/q4_rejection); extend `PUT .../validate` to pop `05:validator`; add `PUT .../re-submit`, `DELETE .../wipe`; LLM code-audit guard for class 10/50 (403 if audit pending). Intent-inputs routes: `GET/PUT/DELETE /api/settings/intent-inputs`. `PUT /api/chat/preferences/{key}` (`ai_before_user` persistence). All existing recipe/tool_skill route aliases retained.
 
 > ✅ `ai_before_user` endpoint handler documented in `crates/brassclaw_webui_v2/src/handlers.rs:1525`. Validation-queue routes with `queue_code` param confirmed. `POST /api/settings/monty-vm/restart` route exists in router.
 > ✅ **RESOLVED (this session):** `PgMontyVmSettingsStore` implemented in `brassclaw_reborn_composition/src/pg_monty_vm_settings.rs` — reads/writes `reborn_monty_vm_settings` (V034); returns compiled-in defaults when no row exists. `MontyVmSettingsStore` trait + `MontyVmSettingsError` + `default_monty_vm_settings()` added to `brassclaw_product_workflow/src/settings.rs`. `RebornServices` wired with `monty_vm_settings` field + `with_monty_vm_settings_store()` setter. `get_monty_vm_settings`, `update_monty_vm_settings`, `restart_monty_vm`, `get_monty_vm_status` overrides added to `impl RebornServicesApi for RebornServices` (no longer return 501). `PgMontyVmSettingsStore` wired in `webui.rs` when `pg_pool` is available. `RebornRuntime::webui_agent_id()` accessor added. Note: `max_duration_secs` from DB persists but the orchestrator still reads from `OnceLock` env var at runtime (live plumbing deferred to Step 9.3 per subplan).
+> ✅ **RESOLVED (this session):** Intent-inputs routes fully implemented: `GET /api/settings/intent-inputs`, `PUT /api/settings/intent-inputs`, `DELETE /api/settings/intent-inputs/{class_code}/{component_id}`. `IntentInputRow`, `IntentInputListResponse`, `UpsertIntentInputRequest`, `IntentInputsStore` trait added to `brassclaw_product_workflow/src/settings.rs`; exported at crate root. `PgIntentInputsStore` implemented in `brassclaw_reborn_composition/src/pg_intent_inputs_store.rs` (feature-gated `postgres` + `skills-db`); wraps `seed_intent_input` + `purge_component_inputs` + `list_intent_inputs` from `brassclaw_engine::memory::intent_system`. Three handlers added to `brassclaw_webui_v2/src/handlers.rs`; three descriptors + route constants in `descriptors.rs` (using `BodyLimitPolicy::NoBody` for DELETE); two `.route()` entries in `router.rs`; constants exported from `lib.rs`. Contract test (`webui_v2_descriptors_contract.rs`) updated with 3 new `Expected` entries (60 → 63 routes). All tests pass, clippy clean.
 
 #### Step 8.2 — React SPA Settings section (10 tabs) ✅ `IMPLEMENTED`
 10 tabs: Skills / Tools / Extensions / Actions / Orchestrator / Scaffold / Monty VM / Validation Queue / Reliability / Interceptor Config.
@@ -559,7 +560,7 @@ Document new architecture: DB-stored components, class codes, consumer-tag gatin
 
 | Status | Count | Steps |
 |--------|-------|-------|
-| ✅ Implemented | ~35 | PG-0, PG-1, PG-3, PG-5, PG-7, PG-11, Step 0, 1.1, 1.2, 1.5, 1.6, 2.1, 2.3, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.4, 6.5, 6.6, 6.7, 6.8, 6.9, 7.0, 7.1, 7.2, 7.3, 7.5, 8.2, 8.5.1–8.5.5, 9.1–9.6 |
-| 🔸 Partial | ~11 | PG-2, PG-4, PG-6, PG-9, PG-10, Step 1.3, 1.4, 2.4, 5.3, 6.3, 6.4, 7.4, 8.1 |
+| ✅ Implemented | ~36 | PG-0, PG-1, PG-3, PG-5, PG-7, PG-11, Step 0, 1.1, 1.2, 1.5, 1.6, 2.1, 2.3, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.4, 6.5, 6.6, 6.7, 6.8, 6.9, 7.0, 7.1, 7.2, 7.3, 7.5, **8.1**, 8.2, 8.5.1–8.5.5, 9.1–9.6 |
+| 🔸 Partial | ~10 | PG-2, PG-4, PG-6, PG-9, PG-10, Step 1.3, 1.4, 2.4, 5.3, 6.3, 6.4, 7.4 |
 | ❌ Not Implemented | ~11 | PG-8, Step 3.2, 3.3, 4.1, 4.2, 6.1, 6.2, 6.10, 7.4(Q1 routing) |
 | ⚠️ Flag/Deferred | ~3 | PG-2(live-reload), PG-4(event store pool), Step 2.2(Rust twins), 7.5(sweep) |

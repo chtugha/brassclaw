@@ -196,3 +196,70 @@ pub fn default_monty_vm_settings() -> MontyVmSettings {
         active_orchestrator_id: None,
     }
 }
+
+// ── IntentInputsStore ─────────────────────────────────────────────────────────
+
+/// A single row from `reborn_intent_inputs`, returned by the Settings UI API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntentInputRow {
+    pub id: String,
+    pub input_text: String,
+    /// Class code: 1=Word, 2=Partial, 3=Sentence, 4=KeywordFallback.
+    pub input_class: i16,
+    pub component_id: String,
+    pub component_class_code: i16,
+    pub score: i32,
+    pub source: String,
+    pub needs_review: bool,
+}
+
+/// Response body for `GET /api/settings/intent-inputs`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntentInputListResponse {
+    pub items: Vec<IntentInputRow>,
+}
+
+/// Request body for `PUT /api/settings/intent-inputs`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpsertIntentInputRequest {
+    pub project_id: String,
+    pub component_id: String,
+    pub component_class_code: u16,
+    pub input_text: String,
+    /// Class code: 1=Word, 2=Partial, 3=Sentence.
+    pub input_class: i16,
+}
+
+/// Storage port for `reborn_intent_inputs`.
+///
+/// Backed by `PgIntentInputsStore` when Postgres + skills-db are active.
+/// Default trait methods return 501 so DB-less builds fail safe.
+#[async_trait]
+pub trait IntentInputsStore: Send + Sync {
+    /// List intent inputs for a scope, optionally filtered by component.
+    async fn list(
+        &self,
+        user_id: &str,
+        agent_id: &str,
+        project_id: &str,
+        component_id: Option<&str>,
+    ) -> Result<Vec<IntentInputRow>, Box<dyn std::error::Error + Send + Sync>>;
+
+    /// Upsert an intent input (idempotent by unique index).
+    async fn upsert(
+        &self,
+        user_id: &str,
+        agent_id: &str,
+        project_id: &str,
+        req: &UpsertIntentInputRequest,
+    ) -> Result<IntentInputRow, Box<dyn std::error::Error + Send + Sync>>;
+
+    /// Delete all intent inputs for a specific component.
+    async fn purge_for_component(
+        &self,
+        user_id: &str,
+        agent_id: &str,
+        project_id: &str,
+        component_id: &str,
+    ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>>;
+}

@@ -298,6 +298,23 @@ pub(crate) fn build_webui_services_with_connectable_channels(
         tracing::debug!("ChatPreferenceStore wired through PgUserPreferenceStore");
     }
 
+    // Wire the intent inputs store (postgres + skills-db path).
+    // When the pool is available, GET/PUT/DELETE /api/settings/intent-inputs persists to DB.
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    if let Some(pool) = services.pg_pool.as_ref() {
+        let tenant_id = runtime.webui_tenant_id().to_string();
+        let agent_id = runtime.webui_agent_id().to_string();
+        let intent_store = crate::pg_intent_inputs_store::PgIntentInputsStore::new(
+            Arc::clone(pool),
+            tenant_id,
+            agent_id,
+        );
+        api = api.with_intent_inputs_store(
+            Arc::new(intent_store) as Arc<dyn brassclaw_product_workflow::IntentInputsStore>,
+        );
+        tracing::debug!("IntentInputsStore wired through PgIntentInputsStore");
+    }
+
     Ok(RebornWebuiBundle {
         api: Arc::new(api),
         product_auth: services.product_auth.clone(),

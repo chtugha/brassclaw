@@ -111,7 +111,8 @@ mod provider_admin_product_command;
 mod provider_repo;
 mod readiness;
 mod recipe_library;
-#[cfg(feature = "postgres")]
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) mod pg_intent_inputs_store;
 pub(crate) mod pg_monty_vm_settings;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_user_preference_store;
