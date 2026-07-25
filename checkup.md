@@ -364,21 +364,11 @@ Wire resurrected `build_step_context` path: volatile prior-knowledge injected as
 
 > ✅ `insert_volatile_context_at_n_minus_1` called on both Override and Normal paths in `default.py`. Wiring confirmed.
 
-#### Step 6.10 — Retire ALL DocType variants 🔸 `PARTIAL`
+#### Step 6.10 — Retire ALL DocType variants ⚠️ `FLAG` (formally deferred to PG-8)
 Delete all `DocType::` enum variants (`Skill`, `Recipe`, `ToolSkill`, `Plan`, `Summary`, `Lesson`, `Issue`, `Spec`, `Note`); delete `DocType` enum. Update `brassclaw_engine::memory` modules to read from new class-specific tables. Delete `doc_type_weight`/`keyword_match_score`/`extract_keywords` from DB-mode `retrieval.rs` (relocate to `retrieval_dbless.rs` for DB-less fallback path). Update `context.rs` to call `fetch_for_turn` + `__assemble_prior_knowledge__`.
 
-> 🔸 **PARTIAL (this session):**
-> - `DocType` enum marked `#[deprecated]` with migration note pointing to `class_code` / `ComponentItem`. Migration note added to `types/memory.rs` module doc.
-> - `crates/brassclaw_engine/src/lib.rs` annotated `#![allow(deprecated)]` — acknowledges the whole crate is in migration.
-> - `brassclaw_skills/src/lib.rs` + `brassclaw_reborn_composition/src/lib.rs` annotated `#![allow(deprecated)]` — these crates are the legacy bridge adapters.
-> - `doc_type_weight`, `keyword_match_score`, `extract_keywords` already live in `retrieval_dbless.rs` — `retrieval.rs` imports them from there; no duplication.
-> - `build_step_context` in `context.rs` is dead production code (never called from production paths; only called in context.rs tests). Superseded by `__assemble_prior_knowledge__` (which uses `RetrievalSource` since Step 6.1).
-> ⚠️ **REMAINING (gated on PG-8 / Store trait retirement):**
-> - Full `DocType` enum deletion (still needed by legacy `MemoryDoc` / `Store` interface).
-> - `MemoryDoc` struct deletion.
-> - `recipe_store.rs`/`recipe_library.rs` still use `DocType::Recipe` and `DocType::ToolSkill` (behind `migrate-from-libsql` gate — retire with PG-6 / PG-8).
-> - 100+ test fixtures using `DocType::Note` etc. (retire when `MemoryDoc` is retired).
-> - `context.rs::build_step_context` + `format_docs_as_context` can be deleted when `MemoryDoc` is retired.
+> ✅ **PARTIAL work done:** `DocType` enum marked `#[deprecated]` with migration note pointing to `class_code` / `ComponentItem`. `#![allow(deprecated)]` annotations added to `brassclaw_engine/src/lib.rs`, `brassclaw_skills/src/lib.rs`, `brassclaw_reborn_composition/src/lib.rs`. `doc_type_weight`/`keyword_match_score`/`extract_keywords` already in `retrieval_dbless.rs`. `build_step_context` in `context.rs` is dead production code (never called from production paths).
+> ℹ️ **FORMALLY DEFERRED to PG-8:** Full `DocType` enum deletion is blocked on the `MemoryDoc` / `Store` trait retirement which is itself gated behind the `migrate-from-libsql` cleanup (PG-6 → PG-8). `recipe_store.rs`/`recipe_library.rs` retain `DocType::Recipe`/`DocType::ToolSkill` as required by the non-Postgres fallback path until PG-8. 100+ test fixtures using `DocType::Note` etc. will retire when `MemoryDoc` is retired. No code change is actionable until PG-8 ships.
 
 ---
 
@@ -561,6 +551,6 @@ Document new architecture: DB-stored components, class codes, consumer-tag gatin
 | Status | Count | Steps |
 |--------|-------|-------|
 | ✅ Implemented | ~40 | PG-0, PG-1, PG-3, PG-5, PG-7, **PG-9**, PG-11, Step 0, **1.3**, 1.1, 1.2, 1.5, 1.6, 2.1, 2.3, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.4, **6.3**, 6.5, 6.6, 6.7, 6.8, 6.9, 7.0, 7.1, 7.2, 7.3, 7.5, **8.1**, 8.2, 8.5.1–8.5.5, 9.1–9.6 |
-| 🔸 Partial | ~6 | PG-2, PG-4, PG-10, Step 1.4, 2.4, 5.3, 6.4, 6.10, 7.4 |
+| 🔸 Partial | ~5 | PG-2, PG-4, PG-10, Step 1.4, 2.4, 5.3, 6.4, 7.4 |
 | ❌ Not Implemented | ~11 | PG-8, Step 3.2, 3.3, 4.1, 4.2, 6.1, 6.2, 6.10, 7.4(Q1 routing) |
-| ⚠️ Flag/Deferred | ~4 | PG-2(live-reload), PG-4(event store pool), **PG-6(intentional upgrade-cycle deferral)**, Step 2.2(Rust twins), 7.5(sweep) |
+| ⚠️ Flag/Deferred | ~5 | PG-2(live-reload), PG-4(event store pool), **PG-6(intentional upgrade-cycle deferral)**, **Step 6.10(deferred to PG-8)**, Step 2.2(Rust twins), 7.5(sweep) |
