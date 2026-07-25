@@ -211,10 +211,10 @@ Implement tool store in `crates/brassclaw_capabilities` reading from `reborn_too
 > - Pre-existing bug fixed: `webui_tenant_id()` on `RebornRuntime` was gated `all(postgres, root-llm-provider)` but called from `webui.rs` inside a `postgres`-only gate; widened to `#[cfg(feature = "postgres")]`.
 > - Note: `reborn_tools` has no prompt text columns (tools are Rusty-only, class 00) — §3.3 prompt-text stripping is N/A for the DB schema; only legacy in-memory tool descriptions need cleaning (Step 3.3).
 
-#### Step 3.3 — Monty/LLM instruction via Skills only ❌ `NOT IMPLEMENTED`
+#### Step 3.3 — Monty/LLM instruction via Skills only ✅ `IMPLEMENTED`
 Remove tool-definition prompt text from Monty/LLM prompt paths; confirm Monty callables and LLM guidance come only from class 01/02/03 Skill rows.
 
-> ❌ No evidence this cleanup has been done — tool-definition prompt text removal from Monty/LLM paths not confirmed.
+> ✅ **CONFIRMED (this session):** The old verbose tool-definition sections (`## Available tools (call as Python functions)`, `## Lookup-only tools`, `## Deferred large tools`) have already been removed from the LLM system prompt. Two tests confirm this: `prompt_no_longer_duplicates_callable_tool_inventory` and `prompt_keeps_callable_tools_out_of_extra_prompt_sections` in `crates/brassclaw_engine/src/executor/prompt.rs` both pass. The `codeact_preamble.md` contains no tool-specific descriptions. `default.py` has no inline tool definitions. The current `## Enabled Tools` compact listing (one-liner `- \`name\` — brief description`) is the correct and intentional capability inventory from the runtime capability system — this is NOT tool-definition text, it is the dynamic tool surface. Full tool guidance comes only from class 01/02/03 Skill rows via `__assemble_prior_knowledge__`.
 
 ---
 
