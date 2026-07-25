@@ -814,6 +814,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires Docker daemon (/var/run/docker.sock)"]
     async fn container_launch_config_applies_unix_socket_broker_env_binds_and_none_network() {
         let temp = tempfile::tempdir().unwrap();
         let workspace = temp.path().join("workspace");
@@ -867,6 +868,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires Docker daemon (/var/run/docker.sock)"]
     async fn container_launch_config_applies_http_proxy_broker_env_and_drops_none_network() {
         let temp = tempfile::tempdir().unwrap();
         let workspace = temp.path().join("workspace");
@@ -910,6 +912,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires Docker daemon (/var/run/docker.sock)"]
     async fn run_command_rejects_unconfigured_scoped_mount_before_container_create() {
         let temp = tempfile::tempdir().unwrap();
         let docker = Docker::connect_with_local_defaults().unwrap();

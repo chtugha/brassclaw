@@ -1513,9 +1513,12 @@ async fn host_runtime_services_resume_runtime_policy_denial_fails_matching_block
         .unwrap();
     assert_eq!(failed_run.status, RunStatus::Failed);
     assert_eq!(failed_run.approval_request_id, None);
+    // SCRIPT_NETWORK_MANIFEST uses kind="mcp" and effects=["dispatch_capability","network"].
+    // With network_denied_runtime_policy the planner rejects before dispatch → "network_denied".
+    // (Previously kind="script" failed with "process_backend_none" after the network check.)
     assert_eq!(
         failed_run.error_kind.as_deref(),
-        Some("process_backend_none")
+        Some("network_denied")
     );
     assert_eq!(
         fixture
@@ -2958,6 +2961,11 @@ fn approval_resume_fixture_with_manifest(
     .with_run_state(Arc::clone(&run_state))
     .with_approval_requests(Arc::clone(&approval_requests))
     .with_capability_leases(Arc::clone(&capability_leases))
+    // SCRIPT_MANIFEST now uses kind="mcp". MCP capabilities always require network
+    // (HTTP transport), so the invocation services resolver needs an egress adapter.
+    // The EchoMcpExecutor short-circuits before any real HTTP call is made.
+    .with_runtime_http_egress(Arc::new(RecordingRuntimeHttpEgress::new()))
+    .with_mcp_runtime(Arc::new(EchoMcpExecutor))
     .with_event_sink(Arc::new(events.clone()));
 
     ApprovalResumeFixture {
@@ -3921,6 +3929,36 @@ impl McpExecutor for ClientErrorMcpExecutor {
     ) -> Result<McpExecutionResult, McpError> {
         Err(McpError::Client {
             reason: "simulated MCP client failure".to_string(),
+        })
+    }
+}
+
+/// Echo MCP executor for tests: returns the request input as output.
+struct EchoMcpExecutor;
+
+#[async_trait]
+impl McpExecutor for EchoMcpExecutor {
+    async fn execute_extension_json(
+        &self,
+        _governor: &dyn ResourceGovernor,
+        request: McpExecutionRequest<'_>,
+    ) -> Result<McpExecutionResult, McpError> {
+        let output = request.invocation.input.clone();
+        let reservation_id = ResourceReservationId::new();
+        Ok(McpExecutionResult {
+            result: brassclaw_mcp::McpCapabilityResult {
+                output,
+                reservation_id,
+                usage: ResourceUsage::default(),
+                output_bytes: 0,
+            },
+            receipt: ResourceReceipt {
+                id: reservation_id,
+                scope: request.scope,
+                status: ReservationStatus::Reconciled,
+                estimate: request.estimate,
+                actual: Some(ResourceUsage::default()),
+            },
         })
     }
 }

@@ -1,5 +1,5 @@
 // Nonzero exit code returned by the fake Docker backend to simulate an install failure.
-const INSTALL_FAILURE_EXIT_CODE: u8 = 42;
+const INSTALL_FAILURE_EXIT_CODE: i32 = 42;
 
 use std::{
     collections::HashMap,

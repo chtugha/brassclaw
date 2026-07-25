@@ -239,6 +239,8 @@ mod tests {
 
     #[test]
     fn marks_required_services_from_declared_effects() {
+        // RuntimeKind::Mcp always sets requires_network=true regardless of declared effects,
+        // because MCP tools communicate over HTTP. Policy must allow network (DirectLogged).
         let policy = policy_with(
             FilesystemBackendKind::HostWorkspace,
             ProcessBackendKind::LocalHost,
@@ -246,32 +248,41 @@ mod tests {
             SecretMode::ScrubbedEnv,
         );
 
+        // (effects, (filesystem, process, network, secret))
+        // Note: all Mcp cases have requires_network=true because RuntimeKind::Mcp
+        // implies network (HTTP transport). Non-Mcp (FirstParty) is used to test
+        // the pure effect-based path.
         let cases = [
             (
                 vec![EffectKind::ReadFilesystem],
-                (true, false, false, false),
+                // Mcp: filesystem=true, network=true (Mcp always needs network)
+                (true, false, true, false),
             ),
             (
                 vec![EffectKind::WriteFilesystem],
-                (true, false, false, false),
+                (true, false, true, false),
             ),
             (
                 vec![EffectKind::DeleteFilesystem],
-                (true, false, false, false),
+                (true, false, true, false),
             ),
-            (vec![EffectKind::SpawnProcess], (false, true, false, false)),
-            (vec![EffectKind::ExecuteCode], (false, true, false, false)),
+            // Mcp: process=true, network=true
+            (vec![EffectKind::SpawnProcess], (false, true, true, false)),
+            (vec![EffectKind::ExecuteCode], (false, true, true, false)),
+            // Mcp: network=true (effect + runtime both require it)
             (vec![EffectKind::Network], (false, false, true, false)),
-            (vec![EffectKind::UseSecret], (false, false, false, true)),
+            // Mcp: network=true (runtime), secret=true (effect)
+            (vec![EffectKind::UseSecret], (false, false, true, true)),
             (
                 vec![EffectKind::ReadFilesystem, EffectKind::Network],
                 (true, false, true, false),
             ),
             (
                 vec![EffectKind::SpawnProcess, EffectKind::UseSecret],
-                (false, true, false, true),
+                (false, true, true, true),
             ),
-            (Vec::new(), (false, false, false, false)),
+            // Mcp: network=true even with no declared effects
+            (Vec::new(), (false, false, true, false)),
         ];
 
         for (effects, expected) in cases {
@@ -381,10 +392,11 @@ mod tests {
 
     #[test]
     fn plans_capability_with_no_effects_against_any_policy() {
-        // A capability with empty `effects` (e.g. a pure
-        // dispatch/observability capability) doesn't trigger any
-        // fail-closed branches and just gets the policy's defaults.
-        let desc = descriptor_with_runtime(RuntimeKind::Mcp, vec![]);
+        // A capability with empty `effects` doesn't trigger any effect-based
+        // fail-closed branches. However, RuntimeKind::Mcp always sets
+        // requires_network=true (HTTP transport), so the policy must permit
+        // network. Use FirstParty runtime for the "pure no-effects" case.
+        let desc = descriptor_with_runtime(RuntimeKind::FirstParty, vec![]);
         let policy = policy_with(
             FilesystemBackendKind::ScopedVirtual,
             ProcessBackendKind::None,

@@ -21,13 +21,14 @@ use brassclaw_host_runtime::{
     CapabilitySurfaceVersion, HostRuntime, HostRuntimeServices, RuntimeCapabilityOutcome,
     RuntimeCapabilityRequest, RuntimeCapabilityResumeRequest, RuntimeFailureKind,
 };
+use brassclaw_mcp::{McpError, McpExecutionRequest, McpExecutionResult, McpExecutor};
 use brassclaw_processes::{
     FilesystemProcessResultStore, FilesystemProcessStore, ProcessExecutionRequest,
     ProcessExecutionResult, ProcessExecutor, ProcessManager, ProcessServices, ProcessStart,
     ProcessStatus, ProcessStore,
 };
 use brassclaw_reborn_event_store::RebornEventStores;
-use brassclaw_resources::InMemoryResourceGovernor;
+use brassclaw_resources::{InMemoryResourceGovernor, ResourceGovernor};
 use brassclaw_run_state::{
     ApprovalRequestStore, FilesystemApprovalRequestStore, FilesystemRunStateStore, RunStateStore,
     RunStatus,
@@ -316,6 +317,11 @@ fn base_services(
     .with_event_sink(Arc::new(DurableEventSink::new(Arc::clone(
         &event_stores.events,
     ))))
+    // SCRIPT_MANIFEST uses kind="mcp". MCP always requires network so the
+    // invocation services resolver needs a runtime_http_egress to be set.
+    // EchoMcpExecutor short-circuits before any real HTTP is attempted.
+    .with_runtime_http_egress(Arc::new(NoopRuntimeHttpEgress))
+    .with_mcp_runtime(Arc::new(EchoMcpExecutor))
 }
 
 fn filesystem_process_services(engine_root: &Path) -> DurableProcessServices {
@@ -527,6 +533,58 @@ impl ProcessExecutor for SuccessProcessExecutor {
     ) -> Result<ProcessExecutionResult, brassclaw_processes::ProcessExecutionError> {
         Ok(ProcessExecutionResult {
             output: json!({"ok": true}),
+        })
+    }
+}
+
+/// Echo MCP executor: returns the invocation input as output — no real HTTP.
+struct EchoMcpExecutor;
+
+#[async_trait]
+impl McpExecutor for EchoMcpExecutor {
+    async fn execute_extension_json(
+        &self,
+        _governor: &dyn ResourceGovernor,
+        request: McpExecutionRequest<'_>,
+    ) -> Result<McpExecutionResult, McpError> {
+        let output = request.invocation.input.clone();
+        let reservation_id = ResourceReservationId::new();
+        Ok(McpExecutionResult {
+            result: brassclaw_mcp::McpCapabilityResult {
+                output,
+                reservation_id,
+                usage: ResourceUsage::default(),
+                output_bytes: 0,
+            },
+            receipt: ResourceReceipt {
+                id: reservation_id,
+                scope: request.scope,
+                status: ReservationStatus::Reconciled,
+                estimate: request.estimate,
+                actual: Some(ResourceUsage::default()),
+            },
+        })
+    }
+}
+
+/// No-op HTTP egress: satisfies the invocation services network check without
+/// making real network calls. The EchoMcpExecutor never reaches the HTTP layer.
+struct NoopRuntimeHttpEgress;
+
+#[async_trait::async_trait]
+impl RuntimeHttpEgress for NoopRuntimeHttpEgress {
+    async fn execute(
+        &self,
+        _request: RuntimeHttpEgressRequest,
+    ) -> Result<RuntimeHttpEgressResponse, RuntimeHttpEgressError> {
+        Ok(RuntimeHttpEgressResponse {
+            status: 200,
+            headers: Vec::new(),
+            body: Vec::new(),
+            saved_body: None,
+            request_bytes: 0,
+            response_bytes: 0,
+            redaction_applied: false,
         })
     }
 }

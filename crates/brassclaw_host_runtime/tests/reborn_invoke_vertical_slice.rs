@@ -307,9 +307,11 @@ fn runtime_dispatcher_stack(
     let filesystem = Arc::new(LocalFilesystem::new());
     let governor = Arc::new(InMemoryResourceGovernor::new());
     let events = InMemoryEventSink::new();
+    // ECHO_MANIFEST uses kind="mcp" (wasm/script runtimes were removed);
+    // register the recording adapter under Mcp so the dispatcher resolves it.
     let dispatcher =
         RuntimeDispatcher::from_arcs(Arc::clone(&registry), filesystem, Arc::clone(&governor))
-            .with_runtime_adapter_arc(RuntimeKind::FirstParty, adapter)
+            .with_runtime_adapter_arc(RuntimeKind::Mcp, adapter)
             .with_event_sink_arc(Arc::new(events.clone()));
     (registry, dispatcher, governor, events)
 }
@@ -413,8 +415,9 @@ description = "Echo test extension"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "echo.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "echo"
 
 [[capabilities]]
 id = "echo.say"

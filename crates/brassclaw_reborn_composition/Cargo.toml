@@ -22,6 +22,9 @@ root-llm-provider = [
     "dep:brassclaw_llm",
     "brassclaw_llm/registry-provider-factory",
     "brassclaw_reborn/root-llm-provider",
+    # Propagate to brassclaw_product_workflow so its cfg-gated struct fields
+    # stay in sync when feature unification activates brassclaw_reborn/root-llm-provider.
+    "brassclaw_product_workflow/root-llm-provider",
 ]
 # Enable AWS Bedrock embedding provider (Titan Text Embeddings V2).
 bedrock = ["dep:aws-config", "dep:aws-sdk-bedrockruntime", "dep:aws-smithy-types"]

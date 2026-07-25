@@ -410,8 +410,9 @@ description = "GitHub test"
 trust = "first_party_requested"
 
 [runtime]
-kind = "wasm"
-module = "wasm/github.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "echo"
 
 [[capabilities]]
 id = "github.search_issues"
@@ -787,8 +788,11 @@ async fn visible_surface_policy_filters_runtime_and_effects_before_authorization
         (capability_id("scripts.run"), vec![EffectKind::ExecuteCode]),
         (capability_id("net.fetch"), vec![EffectKind::Network]),
     ]));
+    // All manifests now use kind="mcp" (wasm/script runtimes removed).
+    // Filter to Mcp + DispatchCapability: only echo.say matches (scripts.run has
+    // execute_code effects, net.fetch has network effects).
     request.policy = CapabilitySurfacePolicy {
-        allowed_runtimes: vec![RuntimeKind::FirstParty],
+        allowed_runtimes: vec![RuntimeKind::Mcp],
         allowed_effects: vec![EffectKind::DispatchCapability],
         include_requires_approval: true,
         max_capabilities: None,
@@ -1619,7 +1623,9 @@ fn secret_denied_runtime_policy() -> EffectiveRuntimePolicy {
         resolved_profile: RuntimeProfile::SecureDefault,
         filesystem_backend: FilesystemBackendKind::ScopedVirtual,
         process_backend: ProcessBackendKind::None,
-        network_mode: NetworkMode::Deny,
+        // MCP capabilities always require network. Keep network allowed so that the
+        // policy correctly surfaces a secret-mode denial rather than a network denial.
+        network_mode: NetworkMode::Brokered,
         secret_mode: SecretMode::Deny,
         approval_policy: ApprovalPolicy::AskAlways,
         audit_mode: AuditMode::LocalMinimal,
@@ -2011,8 +2017,9 @@ description = "Echo test extension"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "echo.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "echo"
 
 [[capabilities]]
 id = "echo.say"
@@ -2033,8 +2040,9 @@ description = "Echo test extension"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "echo.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "echo"
 
 [[capabilities]]
 id = "echo.say"
@@ -2052,8 +2060,9 @@ description = "Echo test extension"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "echo.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "echo"
 
 [[capabilities]]
 id = "echo.say"
@@ -2091,8 +2100,9 @@ description = "Echo test extension"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "echo.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "echo"
 
 [[capabilities]]
 id = "echo.say"
@@ -2110,8 +2120,9 @@ description = "Echo test extension"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "echo.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "echo"
 
 [[capabilities]]
 id = "echo.say"
@@ -2129,8 +2140,9 @@ description = "File reader"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "files.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "echo"
 
 [[capabilities]]
 id = "files.read"
@@ -2148,8 +2160,9 @@ description = "Network fetcher"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "net.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "echo"
 
 [[capabilities]]
 id = "net.fetch"
@@ -2167,8 +2180,9 @@ description = "Uses one secret"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "secret.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "echo"
 
 [[capabilities]]
 id = "secret-tool.read"

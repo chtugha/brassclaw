@@ -734,11 +734,11 @@ async fn service_guard_rejects_resolution_before_wasm_dispatch() {
         })
         .await;
 
+    // RuntimeKind::Mcp dispatch errors surface as DispatchError::Mcp (not FirstParty).
     assert!(matches!(
         result,
-        Err(DispatchError::FirstParty {
+        Err(DispatchError::Mcp {
             kind: RuntimeDispatchErrorKind::NetworkDenied,
-            safe_summary: None,
         })
     ));
     assert_eq!(inner.call_count(), 0);
@@ -797,11 +797,11 @@ async fn service_guard_releases_reservation_on_invocation_service_resolution_den
         })
         .await;
 
+    // RuntimeKind::Mcp dispatch errors surface as DispatchError::Mcp (not FirstParty).
     assert!(matches!(
         result,
-        Err(DispatchError::FirstParty {
+        Err(DispatchError::Mcp {
             kind: RuntimeDispatchErrorKind::NetworkDenied,
-            safe_summary: None,
         })
     ));
     assert_eq!(inner.call_count(), 0);
@@ -852,11 +852,12 @@ async fn service_guard_rejects_required_secret_without_secret_store_before_dispa
         })
         .await;
 
+    // RuntimeKind::Mcp + NetworkMode::Deny → planner rejects at network check first
+    // (Mcp always requires network), surfaced as DispatchError::Mcp { NetworkDenied }.
     assert!(matches!(
         result,
-        Err(DispatchError::FirstParty {
-            kind: RuntimeDispatchErrorKind::SecretDenied,
-            safe_summary: None,
+        Err(DispatchError::Mcp {
+            kind: RuntimeDispatchErrorKind::NetworkDenied,
         })
     ));
     assert_eq!(inner.call_count(), 0);
@@ -1360,31 +1361,30 @@ fn stage_secret_error_maps_auth_and_backend_variants() {
 async fn registered_runtime_health_empty_available_reports_all_required_as_missing() {
     use crate::services::{RegisteredRuntimeHealth, RuntimeBackendHealth};
     let health = RegisteredRuntimeHealth::new(vec![]);
+    // Only Mcp exists in RuntimeKind after Script was removed (commit 1d7381ba).
+    // Passing a single unique kind: dedup produces len=1.
     let missing = health
-        .missing_runtime_backends(&[RuntimeKind::Mcp, RuntimeKind::Mcp])
+        .missing_runtime_backends(&[RuntimeKind::Mcp])
         .await
         .expect("health check must succeed");
-    // Both kinds are missing; order is normalized by runtime_sort_key.
-    assert!(
-        missing.contains(&RuntimeKind::Mcp),
-        "Script must be missing; got {missing:?}"
-    );
     assert!(
         missing.contains(&RuntimeKind::Mcp),
         "Mcp must be missing; got {missing:?}"
     );
-    assert_eq!(missing.len(), 2);
+    assert_eq!(missing.len(), 1);
 }
 
 #[tokio::test]
 async fn registered_runtime_health_deduplicates_duplicate_required_kinds() {
     use crate::services::{RegisteredRuntimeHealth, RuntimeBackendHealth};
+    // Mcp is registered as available; passing it 3 times as required, dedup collapses
+    // to 1 unique required. Since it is available, missing should be empty.
     let health = RegisteredRuntimeHealth::new(vec![RuntimeKind::Mcp]);
     let missing = health
         .missing_runtime_backends(&[RuntimeKind::Mcp, RuntimeKind::Mcp, RuntimeKind::Mcp])
         .await
         .expect("health check must succeed");
-    assert_eq!(missing, vec![RuntimeKind::Mcp], "got {missing:?}");
+    assert!(missing.is_empty(), "Mcp is available; got {missing:?}");
 }
 
 #[tokio::test]

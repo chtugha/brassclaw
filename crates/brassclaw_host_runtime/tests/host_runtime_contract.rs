@@ -721,7 +721,8 @@ async fn default_runtime_status_reports_running_invocations_only() {
         RuntimeWorkId::Invocation(context.invocation_id)
     );
     assert_eq!(status.active_work[0].capability_id, Some(capability_id()));
-    assert_eq!(status.active_work[0].runtime, Some(RuntimeKind::FirstParty));
+    // ECHO_MANIFEST now uses RuntimeKind::Mcp (wasm runtime was removed).
+    assert_eq!(status.active_work[0].runtime, Some(RuntimeKind::Mcp));
 }
 
 #[tokio::test]
@@ -873,7 +874,8 @@ async fn default_runtime_status_includes_running_processes_from_process_store() 
         RuntimeWorkId::Process(process_id)
     );
     assert_eq!(status.active_work[0].capability_id, Some(capability_id()));
-    assert_eq!(status.active_work[0].runtime, Some(RuntimeKind::FirstParty));
+    // ECHO_MANIFEST now uses RuntimeKind::Mcp (wasm runtime was removed).
+    assert_eq!(status.active_work[0].runtime, Some(RuntimeKind::Mcp));
 }
 
 #[tokio::test]
@@ -1006,9 +1008,10 @@ async fn default_runtime_health_without_probe_reports_required_runtimes_missing(
     let health = runtime.health().await.unwrap();
 
     assert!(!health.ready);
+    // ECHO_MANIFEST now uses RuntimeKind::Mcp (wasm runtime was removed).
     assert_eq!(
         health.missing_runtime_backends,
-        vec![RuntimeKind::FirstParty]
+        vec![RuntimeKind::Mcp]
     );
 }
 
@@ -1052,7 +1055,7 @@ fn process_start(context: &ExecutionContext, process_id: ProcessId) -> ProcessSt
         scope: context.resource_scope.clone(),
         extension_id: extension_id(),
         capability_id: capability_id(),
-        runtime: RuntimeKind::FirstParty,
+        runtime: RuntimeKind::Mcp,
         grants: context.grants.clone(),
         mounts: context.mounts.clone(),
         estimated_resources: ResourceEstimate::default(),
@@ -1638,8 +1641,9 @@ description = "Echo test extension"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "echo.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "echo"
 
 [[capabilities]]
 id = "echo.say"

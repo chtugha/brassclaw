@@ -147,7 +147,11 @@ fn local_dev_builtin_shell_manifest_plans_against_local_host_direct_network() {
 }
 
 #[test]
-fn script_runtime_requires_process_backend_even_when_manifest_underdeclares_effects() {
+fn mcp_runtime_succeeds_without_process_backend_when_no_process_effects() {
+    // MCP capabilities communicate over HTTP (network) but do not require a
+    // process backend unless they declare `SpawnProcess` or `ExecuteCode` effects.
+    // This is distinct from the historical Script runtime (removed) which
+    // implicitly required a process backend.
     let policy = resolve(ResolveRequest::new(
         DeploymentMode::LocalSingleUser,
         RuntimeProfile::SecureDefault,
@@ -155,13 +159,14 @@ fn script_runtime_requires_process_backend_even_when_manifest_underdeclares_effe
     .unwrap();
     assert_eq!(policy.process_backend, ProcessBackendKind::None);
 
-    let cap = descriptor("script.echo", vec![EffectKind::DispatchCapability]);
-    let err = plan_capability(&cap, &policy).unwrap_err();
+    let cap = descriptor("mcp.tool", vec![EffectKind::DispatchCapability]);
+    let plan = plan_capability(&cap, &policy).unwrap();
 
-    assert!(
-        err.to_string().contains("ProcessBackendKind::None"),
-        "script runtime must not execute when the policy disables process backends: {err}"
-    );
+    // Expect success: MCP doesn't need a process backend for dispatch-only
+    // capabilities. Network is required (set to Brokered by SecureDefault).
+    assert_eq!(plan.process_backend, ProcessBackendKind::None);
+    assert!(!plan.requires_process);
+    assert!(plan.requires_network);
 }
 
 #[test]

@@ -1551,8 +1551,9 @@ description = "Echo test extension"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "echo.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "echo"
 
 [[capabilities]]
 id = "echo.say"

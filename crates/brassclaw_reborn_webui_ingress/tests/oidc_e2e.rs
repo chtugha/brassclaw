@@ -159,7 +159,7 @@ fn build_authenticator(jwks_url: String) -> OidcAuthenticator {
 }
 
 /// JWT expiry (seconds) used in OIDC test tokens — 10-minute window.
-const OIDC_TEST_TOKEN_TTL_SECS: u64 = 600;
+const OIDC_TEST_TOKEN_TTL_SECS: i64 = 600;
 
 #[tokio::test]
 async fn oidc_authenticator_accepts_valid_jwks_signed_token_and_rejects_bad_claims() {

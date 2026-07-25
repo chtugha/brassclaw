@@ -8,6 +8,7 @@ use std::{
 use crate::pg_auth_product_services::PgAuthProductServices;
 use crate::product_auth_durable::{FilesystemAuthProductServices, UnavailableAuthProviderClient};
 use brassclaw_auth::AuthProviderClient;
+#[cfg(feature = "postgres")]
 use brassclaw_authorization::FilesystemCapabilityLeaseStore;
 use brassclaw_authorization::GrantAuthorizer;
 use brassclaw_authorization::InMemoryCapabilityLeaseStore;
