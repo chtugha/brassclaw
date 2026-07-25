@@ -130,6 +130,22 @@ pub struct UpdateChatPreferenceResponse {
     pub value: serde_json::Value,
 }
 
+// ── ChatPreferenceStore ──────────────────────────────────────────────────────
+
+/// Persistence port for per-user chat preferences (`reborn_user_preferences`).
+#[async_trait]
+pub trait ChatPreferenceStore: Send + Sync {
+    /// Persist a chat preference for `user_id`.
+    /// Returns `(key, stored_value)` on success, or an error if the key is
+    /// not allowed or the store is unavailable.
+    async fn upsert(
+        &self,
+        user_id: &str,
+        key: &str,
+        value: &serde_json::Value,
+    ) -> Result<serde_json::Value, Box<dyn std::error::Error + Send + Sync>>;
+}
+
 // ── MontyVmSettingsStore ─────────────────────────────────────────────────────
 
 /// Storage error for Monty VM settings operations.

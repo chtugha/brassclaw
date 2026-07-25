@@ -286,6 +286,18 @@ pub(crate) fn build_webui_services_with_connectable_channels(
         tracing::debug!("MontyVmSettingsStore wired through PgMontyVmSettingsStore");
     }
 
+    // Wire the chat preference store (postgres path).
+    // When the pool is available, PUT /api/chat/preferences/{key} persists to DB.
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = services.pg_pool.as_ref() {
+        let pref_store =
+            crate::pg_user_preference_store::PgUserPreferenceStore::new(Arc::clone(pool));
+        api = api.with_chat_preference_store(
+            Arc::new(pref_store) as Arc<dyn brassclaw_product_workflow::ChatPreferenceStore>,
+        );
+        tracing::debug!("ChatPreferenceStore wired through PgUserPreferenceStore");
+    }
+
     Ok(RebornWebuiBundle {
         api: Arc::new(api),
         product_auth: services.product_auth.clone(),

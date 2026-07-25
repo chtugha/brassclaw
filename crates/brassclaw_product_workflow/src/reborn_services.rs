@@ -1406,6 +1406,9 @@ pub struct RebornServices {
     /// When unwired, compiled-in defaults are served for GET and PUT/POST
     /// return 501.
     monty_vm_settings: Option<Arc<dyn crate::settings::MontyVmSettingsStore>>,
+    /// Chat preference store backing `PUT /api/chat/preferences/{key}`.
+    /// When unwired the trait default returns 501.
+    chat_preference_store: Option<Arc<dyn crate::settings::ChatPreferenceStore>>,
 }
 
 impl RebornServices {
@@ -1446,6 +1449,7 @@ impl RebornServices {
             recipe_store: None,
             interceptor_config: None,
             monty_vm_settings: None,
+            chat_preference_store: None,
         }
     }
 
@@ -1679,6 +1683,15 @@ impl RebornServices {
         store: Arc<dyn crate::settings::MontyVmSettingsStore>,
     ) -> Self {
         self.monty_vm_settings = Some(store);
+        self
+    }
+
+    /// Wire the chat preference store backing `PUT /api/chat/preferences/{key}`.
+    pub fn with_chat_preference_store(
+        mut self,
+        store: Arc<dyn crate::settings::ChatPreferenceStore>,
+    ) -> Self {
+        self.chat_preference_store = Some(store);
         self
     }
 
@@ -3681,6 +3694,41 @@ impl RebornServicesApi for RebornServices {
             state: crate::settings::MontyVmState::Running,
             orchestrator_version: settings.active_orchestrator_id.clone(),
             settings_hash: Some(hash),
+        })
+    }
+
+    async fn update_chat_preference(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        key: String,
+        request: crate::settings::UpdateChatPreferenceRequest,
+    ) -> Result<crate::settings::UpdateChatPreferenceResponse, RebornServicesError> {
+        let store = self.chat_preference_store.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 503, false)
+        })?;
+        let user_id = caller.user_id.as_str().to_string();
+        let stored = store
+            .upsert(&user_id, &key, &request.value)
+            .await
+            .map_err(|e| {
+                let msg = e.to_string();
+                if msg.contains("unknown preference key") {
+                    RebornServicesError::from_status(
+                        RebornServicesErrorCode::InvalidRequest,
+                        400,
+                        false,
+                    )
+                } else {
+                    RebornServicesError::from_status(
+                        RebornServicesErrorCode::InvalidRequest,
+                        500,
+                        false,
+                    )
+                }
+            })?;
+        Ok(crate::settings::UpdateChatPreferenceResponse {
+            key,
+            value: stored,
         })
     }
 }

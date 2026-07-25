@@ -298,11 +298,11 @@ Static file created at installation time (~256KB, ~50K tokens, Tools→Scaffold�
 > ✅ **RESOLVED (this session):** `PgMontyVmSettingsStore` implemented and wired (Step 8.1 resolution above). `get_monty_vm_settings`, `update_monty_vm_settings`, `restart_monty_vm`, `get_monty_vm_status` all working (no longer 501). Settings persist to `reborn_monty_vm_settings`. DB-less fallback returns compiled-in defaults.
 > ⚠️ **REMAINING:** Kernel-owned lifecycle drain + admission-control logic (step spec §6.3 "drain + force=true abort") is not needed — Monty VM is per-turn, no persistent process. `restart_monty_vm` correctly returns `Restarting` state and the next turn auto-picks updated settings from DB. `max_duration_secs` from DB is persisted but not yet live-plumbed to the orchestrator's `OnceLock` (Step 9.3 demotes env-var fallback once that is done).
 
-#### Step 6.4 — V035 `reborn_user_preferences` migration 🔸 `PARTIAL`
+#### Step 6.4 — V035 `reborn_user_preferences` migration ✅ `IMPLEMENTED`
 `V035__reborn_user_preferences.sql`: `(user_id, preference_key, preference_value)` key-value. Current key: `ai_before_user` (default `false`). Hidden/disabled in DB-less mode. Persisted via `PUT /api/chat/preferences/{key}`.
 
 > ✅ `V035__reborn_user_preferences.sql` confirmed present. Handler doc confirms `ai_before_user` key and `PUT /api/chat/preferences/{key}` endpoint.
-> ❌ **NOT IMPLEMENTED:** No `PgUserPreferenceStore` or actual DB read/write code found in composition — the endpoint likely exists in the router but the backing store is not wired.
+> ✅ **RESOLVED (this session):** `PgUserPreferenceStore` implemented in `brassclaw_reborn_composition/src/pg_user_preference_store.rs` — upserts `reborn_user_preferences` (V035). `ChatPreferenceStore` trait in `brassclaw_product_workflow/src/settings.rs`. `chat_preference_store` field + `with_chat_preference_store()` setter added to `RebornServices`. `update_chat_preference` override added to `impl RebornServicesApi for RebornServices` — validates key (400), delegates to store, returns stored JSON. `PgUserPreferenceStore` wired in `webui.rs` when `pg_pool` available. `ALLOWED_KEYS = ["ai_before_user"]` enforced in the store (unknown key → 400 via error message check in the override).
 
 #### Step 6.5 — Former-doctype tables (V036–V043) 🔸 `PARTIAL`
 Add migrations for 8 former-doctype tables (classes 12–20 except 16 which exists already):

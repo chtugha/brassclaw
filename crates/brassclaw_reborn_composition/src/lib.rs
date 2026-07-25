@@ -108,6 +108,8 @@ mod recipe_library;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_monty_vm_settings;
 #[cfg(feature = "postgres")]
+pub(crate) mod pg_user_preference_store;
+#[cfg(feature = "postgres")]
 pub(crate) mod pg_recipe_store;
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 pub(crate) mod sempai_proposal_sink;
