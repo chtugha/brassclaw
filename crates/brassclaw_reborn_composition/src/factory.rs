@@ -620,6 +620,9 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
             reason: error.to_string(),
         }
     })?;
+    // When the skills-db feature is active the DB importer (skill_import.rs) is
+    // the authoritative source for system skills — no VFS extraction needed.
+    #[cfg(not(feature = "skills-db"))]
     crate::bundled_skills::ensure_bundled_reborn_skills_installed(&root).await?;
     let filesystem_bundle =
         build_local_dev_root_filesystem(&root, &workspace_root, host_home_root.as_ref()).await?;

@@ -31,6 +31,19 @@ fn main() -> BuildResult<()> {
         .parent()
         .and_then(Path::parent)
         .ok_or_else(|| build_error("brassclaw_reborn_composition lives under crates/"))?;
+
+    // When the `skills-db` feature is active, `bundled_skills.rs` is cfg-gated out
+    // and does not include the compiled-in skill bundles.  Emit empty JSON files so
+    // the build succeeds without the expensive filesystem walk.
+    let skills_db = env::var("CARGO_FEATURE_SKILLS_DB").is_ok();
+    if skills_db {
+        let out_dir = PathBuf::from(env::var("OUT_DIR")?);
+        fs::write(out_dir.join("embedded_reborn_skill_summaries.json"), "[]")?;
+        fs::write(out_dir.join("embedded_reborn_skill_bundles.json"), "[]")?;
+        fs::write(out_dir.join(MIGRATED_SKILLS_CATALOG_PATH), "[]")?;
+        return Ok(());
+    }
+
     embed_reborn_skills(repo_root)?;
     embed_migrated_skills_catalog(repo_root)?;
     Ok(())

@@ -1,10 +1,12 @@
+#[cfg(not(feature = "skills-db"))]
 use std::collections::HashSet;
 
-use brassclaw_skills::{ManagedSkillSource, SkillManagementError, SkillManagementErrorKind};
+use brassclaw_skills::{SkillManagementError, SkillManagementErrorKind};
+#[cfg(not(feature = "skills-db"))]
+use brassclaw_skills::ManagedSkillSource;
 
 use crate::{
     RebornBuildError,
-    bundled_skills::bundled_reborn_skill_summaries,
     lifecycle::{RebornLocalSkillManagementError, build_existing_local_dev_skill_management_port},
 };
 
@@ -20,24 +22,33 @@ pub async fn list_reborn_local_skills(
                 .map_err(map_local_skill_management_error)?,
             None => Vec::new(),
         };
-    let bundled_skills = bundled_reborn_skill_summaries()?;
-    let bundled_names = bundled_skills
-        .iter()
-        .map(|skill| skill.name.clone())
-        .collect::<HashSet<_>>();
-    skills.retain(|skill| {
-        !(skill.source == ManagedSkillSource::System && bundled_names.contains(&skill.name))
-    });
 
-    let existing_keys = skills
-        .iter()
-        .map(|skill| (skill.name.clone(), skill.source.as_str()))
-        .collect::<HashSet<_>>();
-    skills.extend(
-        bundled_skills
-            .into_iter()
-            .filter(|skill| !existing_keys.contains(&(skill.name.clone(), skill.source.as_str()))),
-    );
+    // When the skills-db feature is active the DB is the authoritative source for
+    // system skills; the bundled embedded catalog is not consulted.
+    // When skills-db is inactive, merge compile-time embedded summaries so that
+    // system skills appear even before they are extracted to the VFS.
+    #[cfg(not(feature = "skills-db"))]
+    {
+        use crate::bundled_skills::bundled_reborn_skill_summaries;
+        let bundled_skills = bundled_reborn_skill_summaries()?;
+        let bundled_names = bundled_skills
+            .iter()
+            .map(|skill| skill.name.clone())
+            .collect::<HashSet<_>>();
+        skills.retain(|skill| {
+            !(skill.source == ManagedSkillSource::System && bundled_names.contains(&skill.name))
+        });
+        let existing_keys = skills
+            .iter()
+            .map(|skill| (skill.name.clone(), skill.source.as_str()))
+            .collect::<HashSet<_>>();
+        skills.extend(
+            bundled_skills
+                .into_iter()
+                .filter(|skill| !existing_keys.contains(&(skill.name.clone(), skill.source.as_str()))),
+        );
+    }
+
     skills.sort_by(|left, right| {
         left.name
             .cmp(&right.name)
@@ -90,8 +101,10 @@ fn map_skill_management_error(error: SkillManagementError) -> RebornSkillListErr
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(feature = "skills-db"))]
     use brassclaw_skills::ManagedSkillSource;
 
+    #[cfg(not(feature = "skills-db"))]
     #[tokio::test]
     async fn local_skill_list_lists_all_skills_from_reborn_storage() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -119,6 +132,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(feature = "skills-db"))]
     #[tokio::test]
     async fn local_skill_list_missing_storage_reports_bundled_without_creating_state() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -185,6 +199,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(feature = "skills-db"))]
     #[tokio::test]
     async fn local_skill_list_prefers_user_skill_over_bundled_duplicate_name() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -222,8 +237,10 @@ mod tests {
         }
     }
 
+    #[cfg(not(feature = "skills-db"))]
     #[tokio::test]
     async fn local_skill_list_prefers_embedded_bundled_summary_over_storage_system_skill() {
+        use crate::bundled_skills::bundled_reborn_skill_summaries;
         let dir = tempfile::tempdir().expect("tempdir");
         let storage_root = dir.path().join("local-dev");
         write_system_skill(&storage_root, "code-review", "old system description");
@@ -251,6 +268,7 @@ mod tests {
         assert_ne!(system_code_reviews[0].description, "old system description");
     }
 
+    #[cfg(not(feature = "skills-db"))]
     fn write_skill(storage_root: &std::path::Path, name: &str) {
         let skill_dir = storage_root.join("skills").join(name);
         std::fs::create_dir_all(&skill_dir).expect("skill dir");
@@ -261,6 +279,7 @@ mod tests {
         .expect("skill file");
     }
 
+    #[cfg(not(feature = "skills-db"))]
     fn write_system_skill(storage_root: &std::path::Path, name: &str, description: &str) {
         let skill_dir = storage_root.join("system/skills").join(name);
         std::fs::create_dir_all(&skill_dir).expect("skill dir");

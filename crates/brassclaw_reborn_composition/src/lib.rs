@@ -28,6 +28,7 @@ mod automation;
 mod available_extensions;
 mod budget;
 mod budget_events;
+#[cfg(not(feature = "skills-db"))]
 mod bundled_skills;
 pub mod db_config;
 #[cfg(feature = "postgres")]

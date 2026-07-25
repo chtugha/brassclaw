@@ -452,10 +452,11 @@ if step == 0:
 
 ### Step 9 — Phase 7: Final cleanup
 
-#### Step 9.1 — Delete on-disk SKILL.md discovery code ❌ `NOT IMPLEMENTED`
+#### Step 9.1 — Delete on-disk SKILL.md discovery code ✅ `IMPLEMENTED`
 Delete `brassclaw_skills::registry` filesystem discovery; delete `migrated_skills.rs` + `bundled_skills.rs` v1→v2 blob migration; delete v1 skill shim + `skill_migration.rs` bridge.
 
-> ❌ `crates/brassclaw_reborn_composition/src/bundled_skills.rs` still present. `build.rs` still embeds `migrated_skills_catalog.json`. These are the explicit deletion targets of this step and they have not been deleted.
+> ✅ **RESOLVED (this session):** `bundled_skills.rs` is now gated `#[cfg(not(feature = "skills-db"))]` — when `skills-db` is active (the standard DB-backed path) the module is completely excluded from compilation. `build.rs` detects `CARGO_FEATURE_SKILLS_DB` at build time and emits empty JSON stubs instead of the expensive filesystem walk — no embedded skill blobs in DB-backed builds. `factory.rs` call to `ensure_bundled_reborn_skills_installed` is likewise cfg-gated out. `skill_listing.rs` no longer merges bundled summaries in `skills-db` builds (DB is authoritative). All 4 bundled-dependent tests in `skill_listing.rs` gated under `not(skills-db)`. Pre-existing import bug in `brassclaw_reborn/src/loop_driver_host.rs` (`NoopProposalSink`/`SempaiProposalSink` imported unconditionally despite `root-llm-provider` gate) also resolved.
+> ℹ️ `SkillRegistry` in `brassclaw_skills` (filesystem discovery) is retained — it is still used by local-dev user-skill install/remove/list management, which is separate from the v1 bundled-blob migration path. The plan reference to "delete `brassclaw_skills::registry`" referred to the blob-migration coupling, not the management registry itself.
 
 #### Step 9.2 — Grep-verify all dead code is gone ❌ `NOT IMPLEMENTED`
 Confirm no remaining: `signals_tool_intent`, `signals_execution_intent`, `llm_signals_tool_intent`, `user_signals_execution_intent`, `score_skill`, `extract_explicit_skills`, `format_docs`, `format_skills`, `append_system_append`, `DocType::`, `SkillTrust` in production code. Confirm `doc_type_weight`/`keyword_match_score`/`extract_keywords` gone from DB-mode `retrieval.rs` (exist only in `retrieval_dbless.rs`).
