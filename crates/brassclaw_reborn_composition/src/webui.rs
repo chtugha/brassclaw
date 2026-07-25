@@ -268,6 +268,24 @@ pub(crate) fn build_webui_services_with_connectable_channels(
         );
     }
 
+    // Wire the Monty VM settings store (postgres path).
+    // When the pool is available, GET/PUT /api/settings/monty-vm persists to DB.
+    #[cfg(feature = "postgres")]
+    if let Some(pool) = services.pg_pool.as_ref() {
+        let tenant_id = runtime.webui_tenant_id();
+        let agent_id = runtime.webui_agent_id();
+        let monty_vm_store = crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
+            Arc::clone(pool),
+            tenant_id,
+            agent_id,
+        );
+        api = api.with_monty_vm_settings_store(
+            Arc::new(monty_vm_store)
+                as Arc<dyn brassclaw_product_workflow::MontyVmSettingsStore>,
+        );
+        tracing::debug!("MontyVmSettingsStore wired through PgMontyVmSettingsStore");
+    }
+
     Ok(RebornWebuiBundle {
         api: Arc::new(api),
         product_auth: services.product_auth.clone(),

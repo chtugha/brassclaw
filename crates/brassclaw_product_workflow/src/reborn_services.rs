@@ -1402,6 +1402,10 @@ pub struct RebornServices {
     /// Interceptor configuration service backing `/api/interceptor/*`.
     /// When unwired, the trait defaults above return `503`.
     interceptor_config: Option<Arc<dyn InterceptorConfigService>>,
+    /// Monty VM settings store backing `/api/settings/monty-vm`.
+    /// When unwired, compiled-in defaults are served for GET and PUT/POST
+    /// return 501.
+    monty_vm_settings: Option<Arc<dyn crate::settings::MontyVmSettingsStore>>,
 }
 
 impl RebornServices {
@@ -1441,6 +1445,7 @@ impl RebornServices {
             live_inline_control_setter: None,
             recipe_store: None,
             interceptor_config: None,
+            monty_vm_settings: None,
         }
     }
 
@@ -1665,6 +1670,15 @@ impl RebornServices {
         service: Arc<dyn InterceptorConfigService>,
     ) -> Self {
         self.interceptor_config = Some(service);
+        self
+    }
+
+    /// Wire the Monty VM settings store backing `/api/settings/monty-vm`.
+    pub fn with_monty_vm_settings_store(
+        mut self,
+        store: Arc<dyn crate::settings::MontyVmSettingsStore>,
+    ) -> Self {
+        self.monty_vm_settings = Some(store);
         self
     }
 
@@ -3585,6 +3599,90 @@ impl RebornServicesApi for RebornServices {
             .await
             .map_err(interceptor_config::map_interceptor_config_error)
     }
+
+    async fn get_monty_vm_settings(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::MontyVmSettingsResponse, RebornServicesError> {
+        let user_id = caller.user_id.as_str().to_string();
+        let project_id = caller
+            .project_id
+            .as_ref()
+            .map(|p| p.as_str().to_string())
+            .unwrap_or_else(|| "default".to_string());
+        let settings = if let Some(store) = &self.monty_vm_settings {
+            store
+                .get(&user_id, &project_id)
+                .await
+                .map_err(map_monty_vm_error)?
+        } else {
+            crate::settings::default_monty_vm_settings()
+        };
+        Ok(crate::settings::MontyVmSettingsResponse { settings })
+    }
+
+    async fn update_monty_vm_settings(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        request: crate::settings::UpdateMontyVmSettingsRequest,
+    ) -> Result<crate::settings::MontyVmSettingsResponse, RebornServicesError> {
+        let store = self.monty_vm_settings.as_ref().ok_or_else(|| {
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 503, false)
+        })?;
+        let user_id = caller.user_id.as_str().to_string();
+        let project_id = caller
+            .project_id
+            .as_ref()
+            .map(|p| p.as_str().to_string())
+            .unwrap_or_else(|| "default".to_string());
+        let settings = store
+            .upsert(&user_id, &project_id, &request)
+            .await
+            .map_err(map_monty_vm_error)?;
+        Ok(crate::settings::MontyVmSettingsResponse { settings })
+    }
+
+    async fn restart_monty_vm(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+        _request: crate::settings::MontyVmRestartRequest,
+    ) -> Result<crate::settings::MontyVmRestartResponse, RebornServicesError> {
+        // The Monty VM runs per-turn (no persistent process to drain).
+        // Acknowledge the restart request — the next turn will pick up any
+        // updated settings from the DB automatically.
+        let _ = caller; // scope preserved for future auth checks
+        Ok(crate::settings::MontyVmRestartResponse {
+            state: crate::settings::MontyVmState::Restarting,
+        })
+    }
+
+    async fn get_monty_vm_status(
+        &self,
+        caller: WebUiAuthenticatedCaller,
+    ) -> Result<crate::settings::MontyVmStatusResponse, RebornServicesError> {
+        use sha2::{Digest, Sha256};
+        let user_id = caller.user_id.as_str().to_string();
+        let project_id = caller
+            .project_id
+            .as_ref()
+            .map(|p| p.as_str().to_string())
+            .unwrap_or_else(|| "default".to_string());
+        let settings = if let Some(store) = &self.monty_vm_settings {
+            store
+                .get(&user_id, &project_id)
+                .await
+                .map_err(map_monty_vm_error)?
+        } else {
+            crate::settings::default_monty_vm_settings()
+        };
+        let settings_json = serde_json::to_string(&settings).unwrap_or_default();
+        let hash = format!("{:x}", Sha256::digest(settings_json.as_bytes()));
+        Ok(crate::settings::MontyVmStatusResponse {
+            state: crate::settings::MontyVmState::Running,
+            orchestrator_version: settings.active_orchestrator_id.clone(),
+            settings_hash: Some(hash),
+        })
+    }
 }
 
 /// Default error mapping for [`crate::recipes::RecipeStoreError`] →
@@ -4773,6 +4871,33 @@ fn generated_thread_id(
             debug_assert!(false, "generated UUID thread id should be valid: {error}");
             // Fallback remains valid under ThreadId validation rules.
             ThreadId::new("generated-thread-fallback").unwrap_or_else(|_| unreachable!())
+        }
+    }
+}
+
+fn map_monty_vm_error(error: crate::settings::MontyVmSettingsError) -> RebornServicesError {
+    match error {
+        crate::settings::MontyVmSettingsError::Invalid(reason) => {
+            tracing::debug!("monty_vm_settings: invalid request: {reason}");
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 400, false)
+        }
+        crate::settings::MontyVmSettingsError::Unavailable(reason) => {
+            tracing::debug!("monty_vm_settings: store unavailable: {reason}");
+            RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Unavailable,
+                RebornServicesErrorKind::ServiceUnavailable,
+                503,
+                false,
+            )
+        }
+        crate::settings::MontyVmSettingsError::Internal(reason) => {
+            tracing::error!("❌ monty_vm_settings: internal error: {reason}");
+            RebornServicesError::from_status_kind(
+                RebornServicesErrorCode::Internal,
+                RebornServicesErrorKind::Internal,
+                500,
+                false,
+            )
         }
     }
 }

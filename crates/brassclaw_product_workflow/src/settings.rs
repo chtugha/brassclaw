@@ -3,6 +3,7 @@
 //! These types cover the REST surface for `/api/settings/*` routes and
 //! `PUT /api/chat/preferences/{key}` (ai_before_user persistence).
 
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 // ── Shared component list item ────────────────────────────────────────────────
@@ -127,4 +128,55 @@ pub struct UpdateChatPreferenceRequest {
 pub struct UpdateChatPreferenceResponse {
     pub key: String,
     pub value: serde_json::Value,
+}
+
+// ── MontyVmSettingsStore ─────────────────────────────────────────────────────
+
+/// Storage error for Monty VM settings operations.
+#[derive(Debug, thiserror::Error)]
+pub enum MontyVmSettingsError {
+    #[error("store unavailable: {0}")]
+    Unavailable(String),
+    #[error("invalid request: {0}")]
+    Invalid(String),
+    #[error("internal error: {0}")]
+    Internal(String),
+}
+
+/// Persistence port for `reborn_monty_vm_settings`.
+///
+/// Backed by `PgMontyVmSettingsStore` in Postgres builds. In DB-less mode
+/// the `default_monty_vm_settings()` function provides compiled-in defaults.
+#[async_trait]
+pub trait MontyVmSettingsStore: Send + Sync {
+    /// Load settings for `(user_id, project_id)`.
+    /// Returns compiled-in defaults when no DB row exists (first-run).
+    async fn get(
+        &self,
+        user_id: &str,
+        project_id: &str,
+    ) -> Result<MontyVmSettings, MontyVmSettingsError>;
+
+    /// Upsert settings for `(user_id, project_id)`.
+    /// Returns the full updated settings row.
+    async fn upsert(
+        &self,
+        user_id: &str,
+        project_id: &str,
+        update: &UpdateMontyVmSettingsRequest,
+    ) -> Result<MontyVmSettings, MontyVmSettingsError>;
+}
+
+/// Compiled-in defaults, used when no DB row exists or in DB-less mode.
+pub fn default_monty_vm_settings() -> MontyVmSettings {
+    MontyVmSettings {
+        max_duration_secs: 300,
+        max_allocations: Some(5_000_000),
+        max_memory_bytes: Some(128 * 1024 * 1024),
+        failure_rollback_threshold: 3,
+        prior_knowledge_token_budget: 100_000,
+        q4_retention_days: 30,
+        forensic_packet_retention_days: 90,
+        active_orchestrator_id: None,
+    }
 }

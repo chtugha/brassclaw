@@ -713,6 +713,13 @@ impl RebornRuntime {
         self.thread_scope.tenant_id.as_str()
     }
 
+    /// Agent-id string for the runtime's thread scope.  Used when wiring
+    /// per-scope Postgres stores (e.g. `PgMontyVmSettingsStore`).
+    #[cfg(feature = "postgres")]
+    pub(crate) fn webui_agent_id(&self) -> &str {
+        self.thread_scope.agent_id.as_str()
+    }
+
     pub(crate) fn webui_thread_service(&self) -> Arc<dyn SessionThreadService> {
         self.thread_service.clone()
     }
