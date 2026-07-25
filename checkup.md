@@ -534,10 +534,14 @@ Remove old recipe/tool_skill-specific validation route aliases (kept during migr
 
 > ✅ **RESOLVED (this session):** Grep confirms zero `PUT /api/webchat/v2/recipes/{id}/validate`, `PUT /api/webchat/v2/tool-skills/{id}/validate` or equivalent per-class legacy alias routes in `router.rs`, `handlers.rs`, or `descriptors.rs`. The old route aliases were already removed in a previous session. Only the generic `PUT /api/webchat/v2/components/{class_code}/{component_id}/validate` and `reject` routes exist. The `GET /api/webchat/v2/recipes` and `GET /api/webchat/v2/tool-skills` listing routes are NOT aliases — they are the canonical library-browsing endpoints and are retained.
 
-#### Step 9.5 — Update AGENTS.md + CLAUDE.md + CHANGELOG.md ❌ `NOT IMPLEMENTED`
+#### Step 9.5 — Update AGENTS.md + CLAUDE.md + CHANGELOG.md ✅ `IMPLEMENTED`
 Document new architecture: DB-stored components, class codes, consumer-tag gating (§3.9), 4-queue validation lifecycle (§3.5.1), Monty VM settings DB-stored (§3.10), unified intent system (§3.12), Actions class (§3.11), Rust-owned formatting (§3.13/§3.14), intent-driven retrieval, token-budget prior-knowledge limit, "try it with AI" fallback, 9 new class codes 12–20, orchestrator formatting ban, DB-less fallback-content file, "AI before User" flip switch, interceptor architecture (§3.15). Remove dual-backend mandate (replaced by PG-9).
 
-> ❌ `AGENTS.md` + `CLAUDE.md` do not yet document the new class-code architecture, consumer-tag gating, 4-queue lifecycle, Actions class, or interceptor architecture. These are post-implementation docs that cannot be finalized until the preceding steps are complete.
+> ✅ **RESOLVED (this session):**
+> - `AGENTS.md` "Where to Work" table: added entries for component catalog (class codes 12–20), intent system, Monty VM settings, user chat preferences, component import, and interceptor configuration.
+> - `CLAUDE.md` Architecture section: added subsections for Component Catalog/Class Codes, Consumer-Tag Gating (§3.9), 4-Queue Validation Lifecycle (§3.5.1), Intent System (§3.12), Intent-Driven Retrieval (`fetch_for_turn`), Monty VM Settings (§3.10), PKC Formatting Split (§3.13/§3.14), Interceptor Architecture (§3.15), AI Before User Preference (§7 Q18).
+> - `CHANGELOG.md` `[Unreleased]` section: added entries for component import, intent-driven retrieval, disambiguation card, "AI before User" toggle, `max_duration_override`, and docs updates.
+> - Dual-backend mandate already retired in a previous session; confirmed PG-only in both docs.
 
 #### Step 9.6 — Final validation ❌ `NOT IMPLEMENTED`
 `cargo clippy --all --benches --tests --examples --all-features -- -D warnings`; `cargo test`; `scripts/check_gateway_boundaries.py`; `scripts/reborn-e2e-rust.sh`; grep confirms deletion of all 8 intent-detection functions + 3 Python formatters + all `DocType::` references.

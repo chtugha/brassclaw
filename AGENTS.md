@@ -43,6 +43,12 @@ New Reborn work belongs in `crates/`.
 | Host runtime shell access | `crates/brassclaw_host_runtime/` (hosts the in-kernel script lane via `services/script_runtime`) |
 | Embeddings | `crates/brassclaw_embeddings/` |
 | Recipe-Skill-Tool library | `crates/brassclaw_engine/src/memory/` (types, matcher, validator, similarity), `crates/brassclaw_reborn_composition/src/recipe_store.rs` + `recipe_library.rs` (REST store + loop adapter), `crates/brassclaw_turns/src/run_profile/recipe_lookup.rs` (trait) |
+| Component catalog (class codes 12–20) | `crates/brassclaw_engine/src/memory/retrieval_source.rs` (`PostgresSource`, `fetch_for_turn`, `FetchForTurnResult`), unified tables `reborn_specs/tool_skills/plans/summaries/lessons/issues/notes` (class codes 12–20) |
+| Intent system | `crates/brassclaw_engine/src/memory/intent_system.rs` (`resolve_intent`, 4-class classifier, `record_disambiguation_choice`), `reborn_intent_inputs` table (V028 migration) |
+| Monty VM settings | `crates/brassclaw_reborn_composition/src/pg_monty_vm_settings.rs` (`PgMontyVmSettingsStore`, reads/writes `reborn_monty_vm_settings` V034 migration) |
+| User chat preferences | `crates/brassclaw_reborn_composition/src/pg_user_preference_store.rs` (`PgUserPreferenceStore`, `reborn_user_preferences` V035 migration) |
+| Component import (MemoryDoc migration) | `crates/brassclaw_reborn_composition/src/component_import.rs` (`run_component_import` — migrates legacy `brassclaw_memory_docs` rows into class-specific tables at boot) |
+| Interceptor configuration | `crates/brassclaw_interceptor/` (Sempai/Kohai review loop, persona, base-prompt assembly); wired in composition via `InterceptorConfigService` |
 
 When a task touches only `crates/` there is no longer a v1 `src/` tree — all v1 code was removed in Phase 6.
 

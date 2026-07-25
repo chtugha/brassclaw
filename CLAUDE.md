@@ -192,6 +192,78 @@ BrassClaw Reborn uses a four-layer model:
 
 New work belongs in `crates/`. The v1 `src/` tree was removed in Phase 6.
 
+### Component Catalog and Class Codes
+
+BrassClaw Reborn stores all reusable knowledge artifacts (specs, plans, lessons, etc.) in unified Postgres tables indexed by integer **class codes**. Each class has a dedicated table:
+
+| Class code | Type | Table |
+|------------|------|-------|
+| 10 | Orchestrator | `reborn_component_catalog` (class 10) |
+| 11 | Actions | `reborn_actions` |
+| 12 | Spec | `reborn_specs` |
+| 13 | ToolSkill | `reborn_tool_skills` |
+| 14 | Plan | `reborn_plans` |
+| 15 | Summary | `reborn_summaries` |
+| 18 | Lesson | `reborn_lessons` |
+| 19 | Issue | `reborn_issues` |
+| 20 | Note | `reborn_notes` |
+| 21 | Recipe | `reborn_recipes` |
+| 50 | Scaffold | `reborn_component_catalog` (class 50) |
+
+Legacy `brassclaw_memory_docs` rows are migrated into the appropriate class table at boot by `run_component_import` (`crates/brassclaw_reborn_composition/src/component_import.rs`).
+
+### Consumer-Tag Gating (§3.9)
+
+Components carry `consumer_tags[]` that control which agent roles may access them. The `sender_class_code` on a turn maps to a consumer tag; `PostgresSource` enforces a `SEC-01` validation gate — only `Validated` components are returned. Actions (class 11) are exempt from the prior-knowledge token budget.
+
+### 4-Queue Validation Lifecycle (§3.5.1)
+
+| Queue | Code | Meaning |
+|-------|------|---------|
+| Q1 | `auto` | Auto-extracted; awaiting LLM audit |
+| Q2 | `manual` | Operator review required (`05:validator` tag present) |
+| Q3 | `revision` | Automated revision by class-09 extension |
+| Q4 | `rejection` | Rejected; retained for `q4_retention_days` then wiped |
+
+State transitions enforced by `is_valid_transition` in `brassclaw_product_workflow::recipes`. For Orchestrator (10) and Scaffold (50) classes, `Q1→Q2` requires a clean LLM audit pass.
+
+### Intent System (§3.12)
+
+`resolve_intent` in `crates/brassclaw_engine/src/memory/intent_system.rs` provides 4-class query classification using a single `CASE WHEN` Postgres query against `reborn_intent_inputs`:
+
+- **Class 1** (exact match): returns the matched component ID directly
+- **Class 2** (high-confidence): returns the top match
+- **Class 3** (disambiguation): returns `Disambiguation` with up to 5 candidates; the orchestrator sends a `role: "disambiguation"` message to the chat UI; the user's selection sends `{disambiguation_choice: component_id}`; `record_disambiguation_choice` stores the selection and increments the score
+- **Class 4** (no match / "try it with AI"): falls back to keyword UNION ALL path
+
+### Intent-Driven Retrieval (`fetch_for_turn`)
+
+`PostgresSource::fetch_for_turn` in `retrieval_source.rs` replaces the old "load all docs" path:
+1. Calls `resolve_intent` with the user query
+2. On `Match`: fetches the exact component by ID from the appropriate class table
+3. On `Disambiguation`: returns `FetchForTurnResult::Disambiguation(candidates)` to the orchestrator
+4. On `NoMatch` / error: falls back to UNION ALL keyword retrieval (DB-less helpers in `retrieval_dbless.rs`)
+
+### Monty VM Settings (§3.10)
+
+`PgMontyVmSettingsStore` reads/writes `reborn_monty_vm_settings` (V034 migration). `max_duration_secs` is threaded from DB through `ThreadManager` → `ExecutionLoop` → `execute_orchestrator` as `max_duration_override: Option<Duration>`. The legacy `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` env var is a DB-less fallback only.
+
+### PKC Formatting Split (§3.13/§3.14)
+
+`format_prior_knowledge_for_llm()` in `orchestrator.rs` produces deterministic JSON from `PriorKnowledgeResult` items: ordered by `(class_code asc, prompt_uid asc)`, `class_code_label()` for string names, NULL fields omitted. The `formatted_content` surface is the only surface sent to the LLM; raw `content` is never sent.
+
+### Interceptor Architecture (§3.15)
+
+The Sempai/Kohai review loop intercepts each agent turn:
+- `RebornLoopDriverHost` saves a `ForensicPacket` on `on_prompt_assembled` (status `AwaitingKohai`)
+- `on_kohai_response` closes it (status `Complete`)
+- The interceptor tab (WebUI v2 Settings) exposes: Sempai status/mode, "Reassemble base prompt" button, "Pre-warm Sempai KV-cache" button, persona editor, `components_since_rebuild` badge
+- Hidden in DB-less mode
+
+### AI Before User Preference (§7 Q18)
+
+`PUT /api/chat/preferences/ai_before_user` persists to `reborn_user_preferences` (V035 migration) via `PgUserPreferenceStore`. The WebUI chat input shows a pill-style toggle (hidden when the preference store is unavailable / DB-less). When enabled, the assistant sends a preliminary response before disambiguation or gate prompts.
+
 ### Key Traits
 
 | Trait | Location | Purpose |
