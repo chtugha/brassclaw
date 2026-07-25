@@ -7,6 +7,10 @@
 //! 4. Mock returns canned GitHub JSON response
 //! 5. `FINAL(result)` terminates the code step
 //! 6. Thread completes with the canned data in the response
+//!
+//! Uses the legacy v1 `DocType` enum (still present for the in-memory Store
+//! path used by these tests). Suppressed with `#[allow(deprecated)]` below.
+#![allow(deprecated)]
 
 use std::collections::HashMap;
 use std::sync::Arc;

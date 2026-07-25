@@ -895,11 +895,12 @@ impl RebornBinaryE2EHarness {
             turn_event_sink: None,
             recipe_lookup: None,
             interceptor_store: None,
-            #[cfg(feature = "root-llm-provider")]
+            // The brassclaw_reborn dep always enables root-llm-provider, so these
+            // fields are unconditionally present in the struct.  The harness always
+            // provides them rather than relying on a cfg gate that would only match
+            // when the root-crate feature is also explicitly enabled.
             sempai_gateway: None,
-            #[cfg(feature = "root-llm-provider")]
             interceptor_mode: None,
-            #[cfg(feature = "root-llm-provider")]
             proposal_sink: None,
         })?;
         let binding_service: Arc<dyn ConversationBindingService> =
