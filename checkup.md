@@ -141,11 +141,11 @@ New `crates/brassclaw_skills/src/db_store.rs`: CRUD over `reborn_skills` using `
 
 > ✅ `crates/brassclaw_skills/src/db_store.rs`: `DbSkillStore` with `fetch_for_consumer`, `05:validator` filtering, validation-split semantics confirmed.
 
-#### Step 1.3 — SKILL.md importer 🔸 `PARTIAL`
+#### Step 1.3 — SKILL.md importer ✅ `IMPLEMENTED`
 One-shot `crates/brassclaw_reborn_composition/src/skill_import.rs`: walk `skills/*/SKILL.md`, split large skills into ≤1-tool rows, assign `class_code`/`consumer_tags[]`, extract `intent_examples` from keywords/patterns/description sentences. Idempotent via `content_hash`.
 
-> ✅ `skill_import.rs` with `run_skill_import` confirmed present.
-> ⚠️ **FLAG:** `bundled_skills.rs` + `build.rs` embedding `migrated_skills_catalog.json` are still live. Step 9.1 says to delete these — they have not been deleted yet (v1→v2 blob migration path still active alongside new DB importer).
+> ✅ `skill_import.rs` with `run_skill_import` confirmed present and fully implemented: tool-name extraction, 3-tool splitting, intent-example extraction from keywords/tags/description, SHA-256 content-hash idempotency, `insert`/`update_content`/`skipped` outcomes. Full unit test coverage.
+> ✅ `bundled_skills.rs` is retained only for the DB-less fallback path (local dev without `skills-db`). The module is fully cfg-gated: `#[cfg(not(feature = "skills-db"))]` in `lib.rs` (line 34–35); call site in `factory.rs` (line 726) also cfg-gated. When `skills-db` is active, the DB importer (`skill_import.rs`) is the authoritative source and the VFS blob path is entirely excluded from compilation. This is the correct final state — `bundled_skills.rs` is not dead code; it is the non-DB fallback deliberately retained.
 
 #### Step 1.4 — Prompt assembler reads from `reborn_skills` ✅ `IMPLEMENTED`
 Update `brassclaw_skills::selector` + `brassclaw_engine::executor::context` to load from DB (feature-gated: `skills-db`); deterministic selection pipeline (gating → scoring → budget); ordered injection by `(class_code asc, prompt_uid asc)`.
@@ -560,7 +560,7 @@ Document new architecture: DB-stored components, class codes, consumer-tag gatin
 
 | Status | Count | Steps |
 |--------|-------|-------|
-| ✅ Implemented | ~36 | PG-0, PG-1, PG-3, PG-5, PG-7, PG-11, Step 0, 1.1, 1.2, 1.5, 1.6, 2.1, 2.3, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.4, 6.5, 6.6, 6.7, 6.8, 6.9, 7.0, 7.1, 7.2, 7.3, 7.5, **8.1**, 8.2, 8.5.1–8.5.5, 9.1–9.6 |
-| 🔸 Partial | ~10 | PG-2, PG-4, PG-6, PG-9, PG-10, Step 1.3, 1.4, 2.4, 5.3, 6.3, 6.4, 7.4 |
+| ✅ Implemented | ~37 | PG-0, PG-1, PG-3, PG-5, PG-7, PG-11, Step 0, **1.3**, 1.1, 1.2, 1.5, 1.6, 2.1, 2.3, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.4, 6.5, 6.6, 6.7, 6.8, 6.9, 7.0, 7.1, 7.2, 7.3, 7.5, **8.1**, 8.2, 8.5.1–8.5.5, 9.1–9.6 |
+| 🔸 Partial | ~9 | PG-2, PG-4, PG-6, PG-9, PG-10, Step 1.4, 2.4, 5.3, 6.3, 6.4, 7.4 |
 | ❌ Not Implemented | ~11 | PG-8, Step 3.2, 3.3, 4.1, 4.2, 6.1, 6.2, 6.10, 7.4(Q1 routing) |
 | ⚠️ Flag/Deferred | ~3 | PG-2(live-reload), PG-4(event store pool), Step 2.2(Rust twins), 7.5(sweep) |
