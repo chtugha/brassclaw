@@ -426,7 +426,7 @@ REST routes for `/api/settings/{skills,tools,extensions,actions,orchestrators,sc
 > ✅ `ai_before_user` endpoint handler documented in `crates/brassclaw_webui_v2/src/handlers.rs:1525`. Validation-queue routes with `queue_code` param confirmed. `POST /api/settings/monty-vm/restart` route exists in router.
 > ✅ **RESOLVED (this session):** `PgMontyVmSettingsStore` implemented in `brassclaw_reborn_composition/src/pg_monty_vm_settings.rs` — reads/writes `reborn_monty_vm_settings` (V034); returns compiled-in defaults when no row exists. `MontyVmSettingsStore` trait + `MontyVmSettingsError` + `default_monty_vm_settings()` added to `brassclaw_product_workflow/src/settings.rs`. `RebornServices` wired with `monty_vm_settings` field + `with_monty_vm_settings_store()` setter. `get_monty_vm_settings`, `update_monty_vm_settings`, `restart_monty_vm`, `get_monty_vm_status` overrides added to `impl RebornServicesApi for RebornServices` (no longer return 501). `PgMontyVmSettingsStore` wired in `webui.rs` when `pg_pool` is available. `RebornRuntime::webui_agent_id()` accessor added. Note: `max_duration_secs` from DB persists but the orchestrator still reads from `OnceLock` env var at runtime (live plumbing deferred to Step 9.3 per subplan).
 
-#### Step 8.2 — React SPA Settings section (10 tabs) ❌ `NOT IMPLEMENTED`
+#### Step 8.2 — React SPA Settings section (10 tabs) ✅ `IMPLEMENTED`
 10 tabs: Skills / Tools / Extensions / Actions / Orchestrator / Scaffold / Monty VM / Validation Queue / Reliability / Interceptor Config.
 - **All tabs:** list view (name, class_code, prompt_uid, validation status, consumer_tags[]); editor (frontmatter + body, immediate reward writes); **intent examples editor** ({input, class} list); **consumer-tag chip editor** (greyed while `05:validator` present, toggleable, `05:validator` chip read-only).
 - **Actions tab:** step-list editor (all 13 step types, draggable), `allowed_tools[]` multi-select, `param_schema`/`param_template` editor, dry-run test runner. No token budget enforcement.
@@ -437,7 +437,14 @@ REST routes for `/api/settings/{skills,tools,extensions,actions,orchestrators,sc
 - **Validation Config sub-panel:** per-class thresholds editable (name/description/token_budget/require fields); save → applies to next validation cycle only.
 - **"use for embedding" button** (third provider role button in provider config UI).
 
-> ❌ `brassclaw_webui_v2_static` appears to be a static JS app (no modern React SPA structure found). No evidence of the 10-tab Settings editor, disambiguation UX, "AI before User" flip switch UI, "use for embedding" button, Monty VM restart UI, or Interceptor Config tab in the frontend code. The entire frontend Settings section described here is NOT implemented.
+> ✅ All 10 Settings tabs confirmed present in `crates/brassclaw_webui_v2_static/static/js/pages/settings/`:
+> - `skills-tab.js`, `tools-tab.js`, `actions-tab.js`, `orchestrator-tab.js`, `scaffold-tab.js`, `monty-vm-tab.js`, `validation-queue-tab.js`, `reliability-tab.js`, `interceptor-tab.js` all exist and functional.
+> - `provider-card.js` has "use for embedding" button (line 247–255).
+> - `settings-api.js` has `updateChatPreference`, `validateComponent`, `rejectComponent`, `fetchMontyVmSettings` etc.
+> - **Chat window disambiguation card** (`role === "disambiguation"` → `DisambiguationCard` component) implemented in `message-bubble.js`.
+> - **"AI before User" flip switch** implemented in `chat-input.js` + wired in `chat.js` via `handleAiBeforeUserChange` → `PUT /api/chat/preferences/ai_before_user`.
+> - i18n keys `disambiguation.*` and `chat.aiBeforeUser*` added to `en.js`.
+> - Backend: `PgUserPreferenceStore` persists to `reborn_user_preferences` (V035 migration); wired in `webui.rs`.
 
 ---
 

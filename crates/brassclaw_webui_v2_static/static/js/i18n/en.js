@@ -1062,4 +1062,12 @@ registerPack("en", {
   "interceptor.prewarmDesc": "Send the current base prompt to the Sempai provider to warm its KV cache.",
   "interceptor.prewarmOk": "Cache pre-warmed",
   "interceptor.prewarmError": "Pre-warm failed",
+
+  // Chat — disambiguation (§3.12 Q11 intent disambiguation card).
+  "disambiguation.question": "Multiple matches found. Which one do you mean?",
+  "disambiguation.selected": "Selection recorded — continuing…",
+
+  // Chat — AI before User toggle (§7 Q18).
+  "chat.aiBeforeUser": "AI responds first",
+  "chat.aiBeforeUserDesc": "When on, the assistant sends a preliminary response before showing disambiguation prompts or waiting for input.",
 });

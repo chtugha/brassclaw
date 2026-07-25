@@ -13,6 +13,8 @@ export function ChatInput({
   variant = "dock",
   context = {},
   statusText = "",
+  aiBeforeUser = false,
+  onAiBeforeUserChange = null,
 }) {
   const t = useT();
   const isHero = variant === "hero";
@@ -191,6 +193,22 @@ export function ChatInput({
               <span className="h-2 w-2 rounded-full bg-[var(--v2-accent)]" />
               ${statusText || t("chat.statusWorking")}
             </span>
+          `}
+          ${!disabled && onAiBeforeUserChange !== null && html`
+            <button
+              type="button"
+              title=${t("chat.aiBeforeUserDesc")}
+              onClick=${() => onAiBeforeUserChange(!aiBeforeUser)}
+              className=${[
+                "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+                aiBeforeUser
+                  ? "border-[var(--v2-accent)]/40 bg-[var(--v2-accent)]/10 text-[var(--v2-accent)]"
+                  : "border-[var(--v2-panel-border)] bg-transparent text-[var(--v2-text-muted)] hover:border-[var(--v2-accent)]/30 hover:text-[var(--v2-text-strong)]",
+              ].join(" ")}
+            >
+              <${Icon} name="spark" className="h-3 w-3" />
+              ${t("chat.aiBeforeUser")}
+            </button>
           `}
           <div className="ml-auto flex items-center gap-1.5">
             <label

@@ -4,6 +4,7 @@ import {
   clearThreadState,
   setThreadState,
 } from "../../lib/thread-state.js";
+import { updateChatPreference } from "../settings/lib/settings-api.js";
 import { ApprovalCard } from "./components/approval-card.js";
 import { AuthGenericCard } from "./components/auth-generic-card.js";
 import { AuthOauthCard } from "./components/auth-oauth-card.js";
@@ -137,6 +138,21 @@ export function Chat({
     }
   }, [activeThreadId, pendingGate, isProcessing]);
 
+  const [aiBeforeUser, setAiBeforeUser] = React.useState(false);
+
+  const handleAiBeforeUserChange = React.useCallback(
+    async (newValue) => {
+      setAiBeforeUser(newValue);
+      try {
+        await updateChatPreference("ai_before_user", newValue);
+      } catch {
+        // Revert optimistic update on persist failure.
+        setAiBeforeUser(!newValue);
+      }
+    },
+    []
+  );
+
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
   React.useEffect(() => {
     const onKeyDown = (event) => {
@@ -251,6 +267,8 @@ export function Chat({
             statusText=${composerStatusText}
             canCancel=${canCancelRun}
             onCancel=${handleCancelRun}
+            aiBeforeUser=${aiBeforeUser}
+            onAiBeforeUserChange=${handleAiBeforeUserChange}
           />
         `}
       </div>

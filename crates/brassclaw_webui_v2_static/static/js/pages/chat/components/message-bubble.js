@@ -3,6 +3,7 @@ import { MarkdownRenderer } from "./markdown-renderer.js";
 import { ToolActivity } from "./tool-activity.js";
 import { Icon } from "../../../design-system/icons.js";
 import { toast } from "../../../lib/toast.js";
+import { useT } from "../../../lib/i18n.js";
 
 /* User keeps a tinted bubble; assistant is borderless (document-like);
    system / error stay as centered tinted notices. Reasoning ("thinking")
@@ -52,6 +53,71 @@ function ThinkingDisclosure({ content }) {
   `;
 }
 
+/**
+ * DisambiguationCard — displayed when the intent system finds multiple
+ * near-equal matches (spec §3.12 Q11).  Each candidate is a clickable
+ * button.  Clicking one sends `{disambiguation_choice: component_id}` as
+ * the user's next message so the orchestrator can resume with that component.
+ *
+ * The `onChoose` callback is wired via the `onRetry` prop — in disambiguation
+ * context onRetry carries `{ type: "disambiguation_choice", componentId }`.
+ */
+function DisambiguationCard({ message }) {
+  const t = useT();
+  const candidates = message.candidates || [];
+  const questionText = message.content || t("disambiguation.question");
+  const [chosen, setChosen] = React.useState(null);
+
+  const handleChoose = React.useCallback(
+    (componentId, classLabel) => {
+      setChosen(componentId);
+      // Dispatch a synthetic user message carrying the structured choice
+      // payload so the gateway can route it to the orchestrator.
+      const choicePayload = JSON.stringify({ disambiguation_choice: componentId });
+      // Fire-and-forget: use the chat send API directly.
+      // The parent chat component will handle the message via the normal WebSocket path.
+      if (typeof message.onChoose === "function") {
+        message.onChoose(choicePayload);
+      }
+    },
+    [message]
+  );
+
+  return html`
+    <div className="mx-auto max-w-[85%] mr-auto">
+      <div className="rounded-[18px] border border-[var(--v2-border)] bg-[var(--v2-surface-2)] px-4 py-3 text-sm text-[var(--v2-text-strong)]">
+        <p className="mb-3 font-medium">${questionText}</p>
+        <div className="flex flex-col gap-2">
+          ${candidates.map((c) =>
+            html`
+              <button
+                key=${c.component_id}
+                type="button"
+                disabled=${chosen !== null}
+                onClick=${() => handleChoose(c.component_id, c.class_label)}
+                className=${[
+                  "rounded-lg border px-3 py-2 text-left text-xs transition-colors",
+                  chosen === c.component_id
+                    ? "border-[var(--v2-accent)] bg-[var(--v2-accent)]/10 text-[var(--v2-accent)]"
+                    : "border-[var(--v2-border)] bg-transparent text-[var(--v2-text-muted)] hover:border-[var(--v2-accent)]/50 hover:text-[var(--v2-text-strong)]",
+                ].join(" ")}
+              >
+                <span className="font-medium">${c.class_label || "component"}</span>
+                ${c.name && html`<span className="ml-2 opacity-70">${c.name}</span>`}
+              </button>
+            `
+          )}
+        </div>
+        ${chosen && html`
+          <p className="mt-2 text-xs text-[var(--v2-text-muted)]">
+            ${t("disambiguation.selected")}
+          </p>
+        `}
+      </div>
+    </div>
+  `;
+}
+
 export function MessageBubble({ message, onRetry }) {
   const { role, content, images, attachments, generatedImages, isOptimistic, status, error, toolCalls, timestamp } = message;
   const isUser = role === "user";
@@ -72,6 +138,13 @@ export function MessageBubble({ message, onRetry }) {
       // clipboard unavailable — no-op
     }
   }, [content]);
+
+  // Disambiguation message (§3.12 Q11) — rendered as a card with clickable
+  // choice buttons.  The user's selection sends `{disambiguation_choice: id}`
+  // as the next message so the orchestrator can resume with the matched component.
+  if (role === "disambiguation") {
+    return html`<${DisambiguationCard} message=${message} onRetry=${onRetry} />`;
+  }
 
   if (role === "tool_activity" || (toolCalls && toolCalls.length > 0)) {
     const activity = (toolCalls && toolCalls.length > 0)
