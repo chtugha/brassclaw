@@ -68,15 +68,11 @@ in the unit file because they contain no secret material.
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `BRASSCLAW_REBORN_HOME` | `~/.brassclaw/reborn` | State root (data dir, embedded PG) |
-| `BRASSCLAW_REBORN_PROFILE` | `local-dev` | Boot profile: `local-dev`, `local-dev-yolo`, `production` |
+| `BRASSCLAW_RUNTIME_PROFILE` | `local_dev` | Fine-grained runtime profile — see `brassclaw runtime-profile list`. (`BRASSCLAW_REBORN_PROFILE` still accepted with a deprecation warning.) |
 | `BRASSCLAW_REBORN_LOG` | — | Log filter (e.g., `brassclaw=info`) |
 | `BRASSCLAW_PG_URL` | — | External Postgres URL; omit to use embedded Postgres |
 | `BRASSCLAW_EMBEDDED_PG_PORT` | `5434` | Override embedded Postgres port if 5434 is taken |
 | `BRASSCLAW_SECRETS_PASSPHRASE_FILE` | — | Path to master-key file; set **only** when using passphrase-wrapped ceremony |
-
-> **Phase 11 note:** `BRASSCLAW_REBORN_PROFILE` will be renamed to
-> `BRASSCLAW_RUNTIME_PROFILE` when Phase 11 ships. Until then use the current
-> name. Valid pre-Phase-11 values: `local-dev`, `local-dev-yolo`, `production`.
 
 ### Operator-trusted tier (`EnvironmentFile=/etc/brassclaw/secrets.env`)
 

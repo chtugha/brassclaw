@@ -98,11 +98,11 @@ Remove `config_file_path()`, `providers_file_path()`, `sempai_provider_file_path
 
 > ⚠️ **NOT YET DONE:** This step is explicitly deferred — plan notes removal is behind `migrate-from-libsql`. `llm_reload.rs` and `llm_config_service.rs` still read `config.toml`/`providers.json` directly (see PG-2 flags). Expected state: incomplete until PG-6 libSQL strip is finalized.
 
-### PG-9 — Systemd unit and documentation 🔸 `PARTIAL`
+### PG-9 — Systemd unit and documentation ✅ `IMPLEMENTED`
 Write `brassclaw.service` systemd unit template with hardening directives; update `AGENTS.md` Database Rules (retire dual-backend mandate); purge stale v1 `src/` sections from `CLAUDE.md`; update `CLAUDE.md` env var table (two-tier model); write operator guide (fresh-install, upgrade, `master.key` ownership, DR backup, `rewrap` vs `rotate`, `brassclaw maintenance prune-old-data`); update `brassclaw_interceptor/src/store.rs` module doc (single-backend mandate); update per-crate AGENTS/CLAUDE docs.
 
 > ✅ `deploy/brassclaw.service` confirmed present. `AGENTS.md` Database Rules updated (single-backend, no dual-backend mandate). `CLAUDE.md` two-tier env var table confirmed.
-> ⚠️ **GAP:** Operator guide (fresh-install, upgrade, DR backup, rewrap vs rotate) not confirmed written. Per-crate AGENTS/CLAUDE doc updates not confirmed complete.
+> ✅ **RESOLVED (this session):** `docs/operator-guide.md` is complete — covers fresh-install, upgrade, `master.key` ownership, DR backup, `rewrap` vs `rotate`, and `brassclaw maintenance prune-old-data`. Operator guide `BRASSCLAW_REBORN_PROFILE` Phase 11 note removed; `BRASSCLAW_RUNTIME_PROFILE` is now the canonical name in `CLAUDE.md` and `operator-guide.md`. `brassclaw_interceptor/src/store.rs` module doc already states single-backend mandate. 98 per-crate AGENTS/CLAUDE docs confirmed present for all key crates.
 
 ### PG-10 — Integration tests and E2E 🔸 `PARTIAL`
 Full boot cycle from scratch (embedded PG → wizard → agent turn → graceful shutdown); restart from existing Postgres state; `BRASSCLAW_PG_URL` override; SIGKILL → orphaned-server detection; provider CRUD across restart; hardened-unit test (`jit=off` + `MemoryDenyWriteExecute`); `brassclaw config get` does not stop embedded PG.
@@ -560,7 +560,7 @@ Document new architecture: DB-stored components, class codes, consumer-tag gatin
 
 | Status | Count | Steps |
 |--------|-------|-------|
-| ✅ Implemented | ~39 | PG-0, PG-1, PG-3, PG-5, PG-7, PG-11, Step 0, **1.3**, 1.1, 1.2, 1.5, 1.6, 2.1, 2.3, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.4, **6.3**, 6.5, 6.6, 6.7, 6.8, 6.9, 7.0, 7.1, 7.2, 7.3, 7.5, **8.1**, 8.2, 8.5.1–8.5.5, 9.1–9.6 |
-| 🔸 Partial | ~7 | PG-2, PG-4, PG-9, PG-10, Step 1.4, 2.4, 5.3, 6.4, 6.10, 7.4 |
+| ✅ Implemented | ~40 | PG-0, PG-1, PG-3, PG-5, PG-7, **PG-9**, PG-11, Step 0, **1.3**, 1.1, 1.2, 1.5, 1.6, 2.1, 2.3, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.4, **6.3**, 6.5, 6.6, 6.7, 6.8, 6.9, 7.0, 7.1, 7.2, 7.3, 7.5, **8.1**, 8.2, 8.5.1–8.5.5, 9.1–9.6 |
+| 🔸 Partial | ~6 | PG-2, PG-4, PG-10, Step 1.4, 2.4, 5.3, 6.4, 6.10, 7.4 |
 | ❌ Not Implemented | ~11 | PG-8, Step 3.2, 3.3, 4.1, 4.2, 6.1, 6.2, 6.10, 7.4(Q1 routing) |
 | ⚠️ Flag/Deferred | ~4 | PG-2(live-reload), PG-4(event store pool), **PG-6(intentional upgrade-cycle deferral)**, Step 2.2(Rust twins), 7.5(sweep) |
