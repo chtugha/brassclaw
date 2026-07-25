@@ -1611,6 +1611,37 @@ pub async fn build_reborn_runtime(
     #[cfg(not(feature = "postgres"))]
     let thread_service = Arc::clone(&local_runtime.thread_service);
 
+    // Load max_duration_secs from reborn_monty_vm_settings (Step 6.3 live wiring).
+    // Uses the system-scope row ("default" / "default") which holds the global
+    // wall-clock budget for all turns. Non-fatal: falls back to None (unconstrained)
+    // when no pool, no DB row, or query unavailable — the compiled-in env-var
+    // fallback in orchestrator.rs still applies at the orchestrator level.
+    let resolved_max_turn_duration: Option<std::time::Duration> = {
+        #[cfg(feature = "postgres")]
+        {
+            use brassclaw_product_workflow::MontyVmSettingsStore as _;
+            if let Some(pool) = services.pg_pool.as_ref() {
+                let store = crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
+                    Arc::clone(pool),
+                    "default",
+                    "default",
+                );
+                match store.get("default", "default").await {
+                    Ok(settings) => Some(std::time::Duration::from_secs(
+                        settings.max_duration_secs,
+                    )),
+                    Err(_) => None,
+                }
+            } else {
+                None
+            }
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            None
+        }
+    };
+
     let resolved_max_output_tokens: Option<u32> = None;
     let resolved_inline_control_tokens: Option<usize> = None;
     let resolved_total_input_tokens: Option<usize> = None;
@@ -2119,7 +2150,9 @@ pub async fn build_reborn_runtime(
                 heartbeat_interval: runner.heartbeat_interval,
                 poll_interval: runner.poll_interval,
                 scope_filter: None,
+                max_turn_duration: resolved_max_turn_duration,
             },
+            max_turn_duration: resolved_max_turn_duration,
             context_token_budget: live_context_budget.clone(),
             identity_token_ceiling,
             capability_surface_tokens,

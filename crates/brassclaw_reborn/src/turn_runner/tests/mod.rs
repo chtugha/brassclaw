@@ -769,6 +769,7 @@ async fn worker_recovers_expired_leases_before_claiming() {
         heartbeat_interval: Duration::from_secs(60),
         poll_interval: Duration::from_secs(60),
         scope_filter: None,
+        max_turn_duration: None,
     };
 
     let worker = TurnRunnerWorker::new(
@@ -817,6 +818,7 @@ async fn worker_reuses_claim_runner_and_lease_for_heartbeat_and_exit() {
         heartbeat_interval: Duration::from_millis(25),
         poll_interval: Duration::from_secs(60),
         scope_filter: None,
+        max_turn_duration: None,
     };
 
     let worker = TurnRunnerWorker::new(
@@ -881,6 +883,7 @@ async fn worker_resumes_claimed_run_with_checkpoint() {
             heartbeat_interval: Duration::from_secs(60),
             poll_interval: Duration::from_secs(60),
             scope_filter: None,
+            max_turn_duration: None,
         },
         port.clone(),
         make_applier(port),
@@ -926,6 +929,7 @@ async fn worker_resumes_requeued_claimed_run_with_checkpoint() {
             heartbeat_interval: Duration::from_secs(60),
             poll_interval: Duration::from_secs(60),
             scope_filter: None,
+            max_turn_duration: None,
         },
         port.clone(),
         make_applier(port),
@@ -973,6 +977,7 @@ async fn worker_persists_host_model_route_snapshot_before_driver_exit() {
             heartbeat_interval: Duration::from_secs(60),
             poll_interval: Duration::from_secs(60),
             scope_filter: None,
+            max_turn_duration: None,
         },
         port.clone(),
         make_applier(port.clone()),
@@ -1019,6 +1024,7 @@ async fn worker_rejects_unvalidated_host_route_snapshot_before_persist() {
             heartbeat_interval: Duration::from_secs(60),
             poll_interval: Duration::from_secs(60),
             scope_filter: None,
+            max_turn_duration: None,
         },
         port.clone(),
         make_applier(port.clone()),
@@ -1094,6 +1100,7 @@ async fn worker_claims_and_completes_run() {
         heartbeat_interval: Duration::from_secs(60),
         poll_interval: Duration::from_millis(50),
         scope_filter: None,
+        max_turn_duration: None,
     };
 
     let worker = TurnRunnerWorker::new(
@@ -1140,6 +1147,7 @@ async fn worker_records_terminal_failure_when_heartbeat_fails() {
         heartbeat_interval: Duration::from_millis(10),
         poll_interval: Duration::from_millis(50),
         scope_filter: None,
+        max_turn_duration: None,
     };
 
     let worker = TurnRunnerWorker::new(
@@ -1181,6 +1189,7 @@ async fn worker_cancellation_relinquishes_run() {
         heartbeat_interval: Duration::from_secs(60),
         poll_interval: Duration::from_millis(50),
         scope_filter: None,
+        max_turn_duration: None,
     };
 
     let worker = TurnRunnerWorker::new(
@@ -1241,6 +1250,7 @@ async fn worker_records_terminal_failure_on_driver_error() {
         heartbeat_interval: Duration::from_secs(60),
         poll_interval: Duration::from_millis(50),
         scope_filter: None,
+        max_turn_duration: None,
     };
 
     let worker = TurnRunnerWorker::new(
@@ -1284,6 +1294,7 @@ async fn worker_preserves_model_credit_exhaustion_failure_category() {
             heartbeat_interval: Duration::from_secs(60),
             poll_interval: Duration::from_millis(50),
             scope_filter: None,
+            max_turn_duration: None,
         },
         port.clone(),
         make_applier(port.clone()),
@@ -1321,6 +1332,7 @@ async fn worker_records_terminal_failure_on_driver_panic() {
         heartbeat_interval: Duration::from_secs(60),
         poll_interval: Duration::from_millis(50),
         scope_filter: None,
+        max_turn_duration: None,
     };
 
     let worker = TurnRunnerWorker::new(
@@ -1357,6 +1369,7 @@ async fn worker_records_terminal_failure_on_host_factory_error() {
         heartbeat_interval: Duration::from_secs(60),
         poll_interval: Duration::from_millis(50),
         scope_filter: None,
+        max_turn_duration: None,
     };
 
     let host_factory = Arc::new(FailingHostFactory {
@@ -1401,6 +1414,7 @@ async fn worker_records_terminal_failure_when_driver_not_found() {
         heartbeat_interval: Duration::from_secs(60),
         poll_interval: Duration::from_millis(50),
         scope_filter: None,
+        max_turn_duration: None,
     };
 
     let worker = TurnRunnerWorker::new(
@@ -1436,6 +1450,7 @@ async fn worker_continues_when_no_runs_available() {
         heartbeat_interval: Duration::from_secs(60),
         poll_interval: Duration::from_millis(50),
         scope_filter: None,
+        max_turn_duration: None,
     };
 
     let worker = TurnRunnerWorker::new(
@@ -1484,6 +1499,7 @@ async fn wake_signal_drains_available_runs_until_queue_empty() {
         heartbeat_interval: Duration::from_secs(60),
         poll_interval: Duration::from_secs(60),
         scope_filter: None,
+        max_turn_duration: None,
     };
 
     let worker = TurnRunnerWorker::new(
@@ -1535,6 +1551,7 @@ async fn wake_signal_triggers_claim_attempt() {
         heartbeat_interval: Duration::from_secs(60),
         poll_interval: Duration::from_secs(60), // very long so wake is the trigger
         scope_filter: None,
+        max_turn_duration: None,
     };
 
     let worker = TurnRunnerWorker::new(
@@ -1573,6 +1590,7 @@ async fn heartbeat_runs_during_driver_execution() {
         heartbeat_interval: Duration::from_millis(50), // fast heartbeats
         poll_interval: Duration::from_millis(50),
         scope_filter: None,
+        max_turn_duration: None,
     };
 
     let worker = TurnRunnerWorker::new(

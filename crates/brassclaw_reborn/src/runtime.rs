@@ -101,6 +101,12 @@ pub struct DefaultPlannedRuntimeConfig {
     /// When `true`, `PlanningContextStrategy` is wired instead of
     /// `DefaultContextStrategy` for the default loop family.
     pub planning_mode_enabled: bool,
+    /// Optional wall-clock ceiling per turn, loaded from
+    /// `reborn_monty_vm_settings.max_duration_secs` at startup.
+    ///
+    /// Forwarded to `TurnRunnerWorkerConfig.max_turn_duration`. When `None`,
+    /// the turn runner imposes no per-turn wall-clock limit at the loop level.
+    pub max_turn_duration: Option<std::time::Duration>,
 }
 
 pub struct DefaultPlannedRuntimeParts<T, G>

@@ -89,6 +89,16 @@ pub struct TurnRunnerWorkerConfig {
 
     /// Optional scope filter to restrict which runs this worker claims.
     pub scope_filter: Option<TurnScope>,
+
+    /// Optional wall-clock ceiling per turn. When `Some`, the worker wraps
+    /// the driver invocation in a `tokio::time::timeout`; turns that exceed
+    /// the budget are recorded as `turn_timeout` terminal failures and
+    /// do not block the worker (the next run is claimed immediately).
+    ///
+    /// Populated at startup from `MontyVmSettings.max_duration_secs` (loaded
+    /// from `reborn_monty_vm_settings`). Falls back to `None` (unconstrained)
+    /// when no DB row exists or when Postgres is not available.
+    pub max_turn_duration: Option<Duration>,
 }
 
 impl Default for TurnRunnerWorkerConfig {
@@ -97,6 +107,7 @@ impl Default for TurnRunnerWorkerConfig {
             heartbeat_interval: Duration::from_secs(10),
             poll_interval: Duration::from_secs(5),
             scope_filter: None,
+            max_turn_duration: None,
         }
     }
 }
@@ -385,6 +396,14 @@ impl TurnRunnerWorker {
                     Err(err) => Err(DriverInvocationError::HeartbeatFailed(err)),
                 },
                 () = cancel.cancelled() => Err(DriverInvocationError::WorkerCancelled),
+                // Wall-clock turn budget from MontyVmSettings.max_duration_secs.
+                // When None, `pending()` never resolves so the branch is inert.
+                () = async {
+                    match self.config.max_turn_duration {
+                        Some(d) => tokio::time::sleep(d).await,
+                        None => std::future::pending::<()>().await,
+                    }
+                } => Err(DriverInvocationError::TurnTimeout),
             };
 
             heartbeat_cancel.cancel();
@@ -625,6 +644,7 @@ impl TurnRunnerWorker {
                     }
                     DriverInvocationError::DriverPanic => "driver_panic",
                     DriverInvocationError::HeartbeatFailed(_) => "heartbeat_failed",
+                    DriverInvocationError::TurnTimeout => "turn_timeout",
                     // WorkerCancelled and HeartbeatStopped handled by relinquish branch above.
                     DriverInvocationError::WorkerCancelled
                     | DriverInvocationError::HeartbeatStopped => {
@@ -777,6 +797,8 @@ enum DriverInvocationError {
     HeartbeatFailed(TurnError),
     HeartbeatStopped,
     WorkerCancelled,
+    /// Turn exceeded the configured `max_turn_duration` wall-clock budget.
+    TurnTimeout,
 }
 
 impl std::fmt::Display for DriverInvocationError {
@@ -792,6 +814,7 @@ impl std::fmt::Display for DriverInvocationError {
             Self::HeartbeatFailed(err) => write!(f, "heartbeat failed: {err}"),
             Self::HeartbeatStopped => write!(f, "heartbeat stopped before driver completed"),
             Self::WorkerCancelled => write!(f, "worker cancelled before driver completed"),
+            Self::TurnTimeout => write!(f, "turn exceeded the configured wall-clock budget"),
         }
     }
 }
