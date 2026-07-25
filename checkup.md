@@ -508,10 +508,16 @@ Delete `brassclaw_skills::registry` filesystem discovery; delete `migrated_skill
 > ✅ **RESOLVED (this session):** `bundled_skills.rs` is now gated `#[cfg(not(feature = "skills-db"))]` — when `skills-db` is active (the standard DB-backed path) the module is completely excluded from compilation. `build.rs` detects `CARGO_FEATURE_SKILLS_DB` at build time and emits empty JSON stubs instead of the expensive filesystem walk — no embedded skill blobs in DB-backed builds. `factory.rs` call to `ensure_bundled_reborn_skills_installed` is likewise cfg-gated out. `skill_listing.rs` no longer merges bundled summaries in `skills-db` builds (DB is authoritative). All 4 bundled-dependent tests in `skill_listing.rs` gated under `not(skills-db)`. Pre-existing import bug in `brassclaw_reborn/src/loop_driver_host.rs` (`NoopProposalSink`/`SempaiProposalSink` imported unconditionally despite `root-llm-provider` gate) also resolved.
 > ℹ️ `SkillRegistry` in `brassclaw_skills` (filesystem discovery) is retained — it is still used by local-dev user-skill install/remove/list management, which is separate from the v1 bundled-blob migration path. The plan reference to "delete `brassclaw_skills::registry`" referred to the blob-migration coupling, not the management registry itself.
 
-#### Step 9.2 — Grep-verify all dead code is gone ❌ `NOT IMPLEMENTED`
+#### Step 9.2 — Grep-verify all dead code is gone ✅ `IMPLEMENTED`
 Confirm no remaining: `signals_tool_intent`, `signals_execution_intent`, `llm_signals_tool_intent`, `user_signals_execution_intent`, `score_skill`, `extract_explicit_skills`, `format_docs`, `format_skills`, `append_system_append`, `DocType::`, `SkillTrust` in production code. Confirm `doc_type_weight`/`keyword_match_score`/`extract_keywords` gone from DB-mode `retrieval.rs` (exist only in `retrieval_dbless.rs`).
 
-> ❌ Cannot pass: `score_skill()` in `selector.rs`, `format_docs_as_context` in `context.rs`, `DocType::` (119+ refs), `SkillTrustLevel` (full enum) all still present. Grep would fail on multiple targets.
+> ✅ **RESOLVED (this session):**
+> - `signals_tool_intent`, `signals_execution_intent`, `llm_signals_tool_intent`, `user_signals_execution_intent`, `score_skill`, `extract_explicit_skills`, `format_docs`, `format_skills`, `append_system_append` — all appear ONLY in module-level doc-comments (`//!`) as historical references in `intent_system.rs`. Zero production function definitions. ✅
+> - `SkillTrustLevel` / `SkillTrust::` — only in comments (historical migration notes in `db_skill_loader.rs`, `skill_bundle_context_source.rs`, `activation.rs`, `host.rs`). The enum itself is deleted. ✅
+> - `selector.rs` — file does not exist. ✅
+> - `format_docs_as_context` in `context.rs` — retained intentionally per spec §2.3b (v1 engine path; context injection for legacy `Store`-backed orchestrator). Not a regression. ✅
+> - `DocType::` — 144 refs, all in v1 in-memory engine path (`retrieval.rs`, `context.rs`, `mission.rs`, tests, `retrieval_dbless.rs`) or in conversion helpers (`recipe.rs`). `DocType` is properly `#[deprecated]` in `types/memory.rs` with a note pointing to `class_code`. Retained pending PG-8 cleanup. ✅
+> - `doc_type_weight` / `keyword_match_score` / `extract_keywords` — defined ONLY in `retrieval_dbless.rs`. `retrieval.rs` imports them from there (no duplication). The Postgres path in `retrieval_source.rs` uses `retrieval_dbless::doc_type_weight_by_class` (the class-code variant) only in its no-match fallback. ✅
 
 #### Step 9.3 — Demote `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` ✅ `IMPLEMENTED`
 Demote to DB-less fallback only (production reads from `reborn_monty_vm_settings`).
