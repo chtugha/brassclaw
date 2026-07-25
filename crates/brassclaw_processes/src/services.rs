@@ -159,6 +159,20 @@ where
     }
 }
 
+impl ProcessServices<crate::pg_store::PgProcessStore, crate::pg_store::PgProcessResultStore> {
+    /// Create a `ProcessServices` backed by Postgres.
+    ///
+    /// Both the process store and result store share the same pool + tenant
+    /// scope, matching the production Postgres path wiring (Phase-5).
+    pub fn postgres(pool: Arc<brassclaw_pg::PgPool>, tenant_id: impl Into<String>) -> Self {
+        let t = tenant_id.into();
+        Self::new(
+            Arc::new(crate::pg_store::PgProcessStore::new(Arc::clone(&pool), &t)),
+            Arc::new(crate::pg_store::PgProcessResultStore::new(Arc::clone(&pool), &t)),
+        )
+    }
+}
+
 pub struct BackgroundProcessManager {
     store: Arc<dyn ProcessStore>,
     executor: Arc<dyn ProcessExecutor + 'static>,

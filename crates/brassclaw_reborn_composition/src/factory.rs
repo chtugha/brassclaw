@@ -455,9 +455,60 @@ pub async fn build_reborn_services(
     match input.profile {
         RebornCompositionProfile::Disabled => Ok(RebornServices::disabled()),
         RebornCompositionProfile::LocalDev | RebornCompositionProfile::LocalDevYolo => {
+            // Phase-5 hybrid path: when a Postgres pool is supplied alongside a
+            // local-dev profile (the production `brassclaw serve` path), build
+            // the local-dev filesystem substrate *and* expose the PG pool.
+            // The local-dev filesystem provides the same thread service, turn
+            // state, and workspace filesystems that `build_reborn_runtime` expects;
+            // PG-backed stores (run-state, turn-state, resource governor, etc.)
+            // are wired in `build_reborn_runtime` via `.with_pg_*` builder methods
+            // on the host runtime services when `services.pg_pool` is Some.
+            #[cfg(feature = "postgres")]
+            if let RebornStorageInput::Postgres {
+                pool,
+                reborn_home,
+                ..
+            } = &input.storage
+            {
+                // Convert the Postgres input into a local-dev input using the
+                // reborn_home as the local filesystem root, then add the PG pool.
+                let local_root = reborn_home.join("db");
+                let local_input = RebornBuildInput::local_dev_with_profile(
+                    input.profile,
+                    input.owner_id.clone(),
+                    local_root,
+                );
+                // Copy over any extra fields that may have been set on the input.
+                let local_input = transfer_build_input_extras(local_input, &input);
+                let pg_pool_arc = Arc::new(pool.clone());
+                let mut services = build_local_dev(local_input).await?;
+                // Inject the PG pool so build_reborn_runtime can use PG-backed stores.
+                services.pg_pool = Some(pg_pool_arc);
+                return Ok(services);
+            }
             build_local_dev(input).await
         }
     }
+}
+
+/// Copy runtime-policy and other extra fields that cannot be set via
+/// `RebornBuildInput::new` from `src` into `dst`.
+///
+/// Used by the Phase-5 hybrid path in [`build_reborn_services`] to preserve
+/// the caller-supplied runtime policy, process binding, and OAuth configs
+/// when converting a Postgres storage input to a local-dev storage input.
+#[cfg(feature = "postgres")]
+fn transfer_build_input_extras(mut dst: RebornBuildInput, src: &RebornBuildInput) -> RebornBuildInput {
+    dst.runtime_policy = src.runtime_policy.clone();
+    dst.runtime_process_binding = src.runtime_process_binding.clone();
+    dst.product_auth_ports = src.product_auth_ports.clone();
+    dst.oauth_provider_configs = src.oauth_provider_configs.clone();
+    dst.oauth_dcr_provider_configs = src.oauth_dcr_provider_configs.clone();
+    dst.required_runtime_backends = src.required_runtime_backends.clone();
+    dst.require_runtime_http_egress = src.require_runtime_http_egress;
+    dst.production_trust_policy = src.production_trust_policy.clone();
+    dst.turn_run_wake_notifier = src.turn_run_wake_notifier.clone();
+    dst
 }
 
 fn auth_continuation_dispatcher(
@@ -2366,12 +2417,14 @@ where
     // Wire the Postgres-native secret store and credential broker so all secret
     // and OAuth credential writes go to brassclaw_secrets (§4.4 Issue 3).
     // PG-4: resource governor is Postgres-backed for durable resource accounting.
+    // PG-4: use Postgres-backed process store so process records survive restart.
+    // Tenant "default" matches the scope used throughout the postgres production path.
     let services = HostRuntimeServices::new(
         Arc::new(builtin_extension_registry()?),
         Arc::clone(&stores_filesystem),
         Arc::new(InMemoryResourceGovernor::new()),
         Arc::new(GrantAuthorizer::new()),
-        ProcessServices::filesystem(Arc::clone(&stores_scoped_fs)),
+        ProcessServices::postgres(Arc::clone(&pg_pool), "default"),
         CapabilitySurfaceVersion::new("reborn-app-v1")?,
     )
     .with_trust_policy(production_wiring.trust_policy)

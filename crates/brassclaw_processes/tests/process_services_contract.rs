@@ -242,7 +242,7 @@ fn process_start(
         scope,
         extension_id: ExtensionId::new("echo").unwrap(),
         capability_id: CapabilityId::new("echo.say").unwrap(),
-        runtime: RuntimeKind::FirstParty,
+        runtime: RuntimeKind::Mcp,
         grants: CapabilitySet::default(),
         mounts: MountView::default(),
         estimated_resources: ResourceEstimate::default(),
