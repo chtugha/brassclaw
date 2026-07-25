@@ -321,12 +321,19 @@ Static file created at installation time (~256KB, ~50K tokens, Tools→Scaffold�
 > ✅ `V035__reborn_user_preferences.sql` confirmed present. Handler doc confirms `ai_before_user` key and `PUT /api/chat/preferences/{key}` endpoint.
 > ✅ **RESOLVED (this session):** `PgUserPreferenceStore` implemented in `brassclaw_reborn_composition/src/pg_user_preference_store.rs` — upserts `reborn_user_preferences` (V035). `ChatPreferenceStore` trait in `brassclaw_product_workflow/src/settings.rs`. `chat_preference_store` field + `with_chat_preference_store()` setter added to `RebornServices`. `update_chat_preference` override added to `impl RebornServicesApi for RebornServices` — validates key (400), delegates to store, returns stored JSON. `PgUserPreferenceStore` wired in `webui.rs` when `pg_pool` available. `ALLOWED_KEYS = ["ai_before_user"]` enforced in the store (unknown key → 400 via error message check in the override).
 
-#### Step 6.5 — Former-doctype tables (V036–V043) 🔸 `PARTIAL`
+#### Step 6.5 — Former-doctype tables (V036–V043) ✅ `IMPLEMENTED`
 Add migrations for 8 former-doctype tables (classes 12–20 except 16 which exists already):
 `V036__reborn_specs.sql` (12), `V037__reborn_tool_skills.sql` (13), `V038__reborn_plans.sql` (14), `V039__reborn_summaries.sql` (15), `V040__reborn_docus.sql` (17), `V041__reborn_lessons.sql` (18), `V042__reborn_issues.sql` (19), `V043__reborn_notes.sql` (20). Each: scope tuple, `class_code`, `prompt_uid`, `title`, `content`, `intent_examples JSONB`, `consumer_tags[]`, validation/lineage. Document splitting importer (`component_import.rs`): migrate all `MemoryDoc` retired `DocType` rows; split large docs into ≤5000-token rows; extract intent_examples.
 
 > ✅ `V036__reborn_specs.sql` through `V043__reborn_notes.sql` all confirmed present in migrations.
-> ❌ **NOT IMPLEMENTED:** `component_import.rs` document-splitting importer — no file found to migrate existing `MemoryDoc` rows into the new class-specific tables.
+> ✅ **RESOLVED (this session):**
+> - `crates/brassclaw_reborn_composition/src/component_import.rs` (new) — one-shot, idempotent importer. `run_component_import(pool, agent_id, tenant_id)` reads all eligible legacy `brassclaw_memory_docs` rows (`doc_type NOT IN ('Skill', 'Recipe')`) and upserts each into the matching class-specific table: Spec→`reborn_specs` (12), ToolSkill→`reborn_tool_skills` (13), Plan→`reborn_plans` (14), Summary→`reborn_summaries` (15), Lesson→`reborn_lessons` (18), Issue→`reborn_issues` (19), Note→`reborn_notes` (20). `DocType::Docu` (class 17, `reborn_docus`) has no legacy variant and is NOT migrated from V016.
+> - Content > 20 000 chars (≈5000 tokens) is split at paragraph boundaries into ≤20 chunks; chunk rows are named `{base_name}-part-{N}`.
+> - Idempotent via `content_hash` (SHA-256 of title + "\n\n" + content): same hash → skip; different hash → update + reset `validation_status = 'pending'`.
+> - Intent examples extracted from title (class 2) and first 3 content sentences (class 3).
+> - `consumer_tags` default: `{01:rusty, 02:orchestrator, 05:validator}` for `reborn_tool_skills`; `{02:orchestrator, 05:validator}` for all other tables.
+> - Wired in `build_reborn_runtime` (non-fatal at boot) when both `postgres` + `skills-db` features active and PG pool available. Zero clippy warnings, 39 composition tests pass.
+> ℹ️ `DocType::Docu` (`reborn_docus`, class 17) has no legacy `DocType` variant — `reborn_docus` rows are created fresh by new code and are not migrated from V016.
 
 #### Step 6.6 — Repair chunk/embedding machinery (revised: keep + fix) ✅ `IMPLEMENTED`
 **Decision: DO NOT remove `brassclaw_embeddings`. Repair it.** Fix regressions from `cbc5d437`: restore `skills/portfolio/` from archive; add `InMemoryBackend` at `/tenants` in `build_local_dev_root_filesystem`; repair any further `brassclaw_embeddings`/`brassclaw_memory` path regressions. All tests pass with zero failures.

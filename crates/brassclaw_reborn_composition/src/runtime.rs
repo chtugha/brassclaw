@@ -1708,6 +1708,44 @@ pub async fn build_reborn_runtime(
         UserId::new(owner_id.clone()).map_err(|reason| RebornRuntimeError::InvalidArgument {
             reason: format!("user id: {reason}"),
         })?;
+
+    // Step 6.5: Migrate legacy brassclaw_memory_docs rows into the class-specific
+    // component tables (V036–V043) at boot.  This is idempotent — rows with an
+    // unchanged content_hash are skipped.  Runs only when both `postgres` and
+    // `skills-db` features are active and a PG pool is available.
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    if let Some(pool) = services.pg_pool.as_ref() {
+        match crate::component_import::run_component_import(
+            pool,
+            validated_identity.agent_id.as_str(),
+            validated_identity.tenant_id.as_str(),
+        )
+        .await
+        {
+            Ok(summary) => {
+                if summary.inserted > 0 || summary.updated > 0 {
+                    tracing::debug!(
+                        inserted = summary.inserted,
+                        updated  = summary.updated,
+                        skipped  = summary.skipped,
+                        failed   = summary.failed.len(),
+                        "component_import: legacy MemoryDoc rows migrated to component tables"
+                    );
+                }
+                for (key, reason) in &summary.failed {
+                    tracing::debug!(key, reason, "component_import: row migration failed");
+                }
+            }
+            Err(e) => {
+                // Non-fatal: log and continue.  Import will be retried on next boot.
+                tracing::debug!(
+                    error = %e,
+                    "component_import: boot-time migration encountered an error (non-fatal)"
+                );
+            }
+        }
+    }
+
     let thread_scope = ThreadScope {
         tenant_id,
         agent_id,

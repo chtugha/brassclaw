@@ -34,6 +34,8 @@ mod budget_events;
 #[cfg(not(feature = "skills-db"))]
 mod bundled_skills;
 pub mod db_config;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub mod component_import;
 #[cfg(feature = "postgres")]
 pub(crate) mod docplan_dissector;
 #[cfg(feature = "skills-db")]
