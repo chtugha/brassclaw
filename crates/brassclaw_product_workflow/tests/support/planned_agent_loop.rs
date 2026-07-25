@@ -313,6 +313,8 @@ impl ProductLiveAgentLoopHarness {
             sempai_gateway: None,
             #[cfg(feature = "root-llm-provider")]
             interceptor_mode: None,
+            #[cfg(feature = "root-llm-provider")]
+            proposal_sink: None,
         })
         .expect("product-live planned AgentLoop harness should build");
 

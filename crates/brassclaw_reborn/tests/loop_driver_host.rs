@@ -2077,6 +2077,8 @@ async fn default_planned_runtime_composes_no_profile_coordinator_and_profiled_ho
         sempai_gateway: None,
         #[cfg(feature = "root-llm-provider")]
         interceptor_mode: None,
+        #[cfg(feature = "root-llm-provider")]
+        proposal_sink: None,
     })
     .unwrap();
 
@@ -2252,6 +2254,8 @@ async fn build_runtime_host_with_optional_hooks(
         sempai_gateway: None,
         #[cfg(feature = "root-llm-provider")]
         interceptor_mode: None,
+        #[cfg(feature = "root-llm-provider")]
+        proposal_sink: None,
     })
     .unwrap();
 
@@ -2588,6 +2592,8 @@ async fn product_live_runtime_builds_when_all_required_adapters_are_present() {
         sempai_gateway: None,
         #[cfg(feature = "root-llm-provider")]
         interceptor_mode: None,
+        #[cfg(feature = "root-llm-provider")]
+        proposal_sink: None,
     })
     .expect("all product-live adapters should satisfy readiness");
 
@@ -2707,6 +2713,8 @@ async fn product_live_parts_for_gate_test(
         sempai_gateway: None,
         #[cfg(feature = "root-llm-provider")]
         interceptor_mode: None,
+        #[cfg(feature = "root-llm-provider")]
+        proposal_sink: None,
     }
 }
 

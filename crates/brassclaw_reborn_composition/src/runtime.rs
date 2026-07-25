@@ -2030,6 +2030,21 @@ pub async fn build_reborn_runtime(
         .as_ref()
         .map(|_| brassclaw_interceptor::SharedInterceptorMode::new());
 
+    // Wire PgSempaiProposalSink when Postgres pool is available.
+    // Routes Sempai-proposed component updates and intent examples to Q1
+    // validation queue so operators can review before they take effect.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    let proposal_sink: Option<Arc<dyn brassclaw_interceptor::SempaiProposalSink>> = services
+        .pg_pool
+        .as_ref()
+        .map(|pool| {
+            Arc::new(crate::sempai_proposal_sink::PgSempaiProposalSink::new(
+                Arc::clone(pool),
+                validated_identity.tenant_id.as_str(),
+                validated_identity.agent_id.as_str(),
+            )) as Arc<dyn brassclaw_interceptor::SempaiProposalSink>
+        });
+
     let composition = build_default_planned_runtime(DefaultPlannedRuntimeParts {
         turn_state: Arc::clone(&turn_state_store),
         thread_service: Arc::clone(&thread_service),
@@ -2099,6 +2114,8 @@ pub async fn build_reborn_runtime(
             // It will be cloned into both DefaultPlannedRuntimeParts and RebornRuntime.
             interceptor_mode.clone()
         },
+        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+        proposal_sink,
     })?;
     let default_resolved_run_profile = composition
         .run_profile_resolver

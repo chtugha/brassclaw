@@ -18,8 +18,8 @@ use brassclaw_hooks::middleware::{
 };
 use brassclaw_host_api::ExtensionId;
 use brassclaw_interceptor::{
-    CapturedPrompt, ForensicPacket, InterceptorStore, KohaiUsage, NoopInterceptorStore, PacketId,
-    TokenAccountingSnapshot,
+    CapturedPrompt, ForensicPacket, InterceptorStore, KohaiUsage, NoopInterceptorStore,
+    NoopProposalSink, PacketId, SempaiProposalSink, TokenAccountingSnapshot,
 };
 use brassclaw_loop_support::{
     CapabilityResolveError, CapabilitySurfaceProfileFilter, CapabilitySurfaceProfileResolver,
@@ -964,6 +964,12 @@ where
     /// When `None` (default), a [`NoopInterceptorStore`] is used and no
     /// packets are persisted.
     interceptor_store: Arc<dyn InterceptorStore>,
+    /// Sink for Sempai-proposed component updates and intent examples.
+    /// Receives `proposed_recipe_updates` / `proposed_intent_examples` from
+    /// [`SempaiReviewOutcome`] and queues them in Q1.  Defaults to
+    /// [`NoopProposalSink`] (discards silently) when not wired.
+    #[cfg(feature = "root-llm-provider")]
+    proposal_sink: Arc<dyn SempaiProposalSink>,
     /// Optional Sempai model gateway for rerouting mode (Phase 5.5).
     /// When `Some` and the mode is `Rerouting`, `on_prompt_assembled` calls
     /// the Sempai to review and potentially adjust the Kohai prompt.
@@ -1040,6 +1046,8 @@ where
             driver_requirements: HashMap::new(),
             recipe_lookup: None,
             interceptor_store: Arc::new(NoopInterceptorStore),
+            #[cfg(feature = "root-llm-provider")]
+            proposal_sink: Arc::new(NoopProposalSink),
             #[cfg(feature = "root-llm-provider")]
             sempai_gateway: None,
             #[cfg(feature = "root-llm-provider")]
@@ -1365,6 +1373,16 @@ where
     /// Without this, a [`NoopInterceptorStore`] is used and no packets are saved.
     pub fn with_interceptor_store(mut self, store: Arc<dyn InterceptorStore>) -> Self {
         self.interceptor_store = store;
+        self
+    }
+
+    /// Install the Sempai proposal sink (Phase 5.5 — Q1 routing).
+    /// When set, `proposed_recipe_updates` and `proposed_intent_examples`
+    /// from each [`brassclaw_interceptor::SempaiReviewOutcome`] are forwarded
+    /// to Q1 for operator review rather than being silently discarded.
+    #[cfg(feature = "root-llm-provider")]
+    pub fn with_proposal_sink(mut self, sink: Arc<dyn SempaiProposalSink>) -> Self {
+        self.proposal_sink = sink;
         self
     }
 
@@ -1725,6 +1743,8 @@ where
             recipe_lookup: self.recipe_lookup.clone(),
             interceptor_store: Arc::clone(&self.interceptor_store),
             #[cfg(feature = "root-llm-provider")]
+            proposal_sink: Arc::clone(&self.proposal_sink),
+            #[cfg(feature = "root-llm-provider")]
             sempai_gateway: self.sempai_gateway.clone(),
             #[cfg(feature = "root-llm-provider")]
             interceptor_mode: self.interceptor_mode.clone(),
@@ -1797,6 +1817,10 @@ pub struct RebornLoopDriverHost {
     cancellation: Arc<dyn LoopCancellationPort>,
     recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>>,
     interceptor_store: Arc<dyn InterceptorStore>,
+    /// Proposal sink for Sempai-proposed component updates and intent examples.
+    /// Routes `proposed_recipe_updates` / `proposed_intent_examples` to Q1.
+    #[cfg(feature = "root-llm-provider")]
+    proposal_sink: Arc<dyn SempaiProposalSink>,
     /// Sempai gateway for rerouting mode. `None` in non-root-llm-provider builds.
     #[cfg(feature = "root-llm-provider")]
     sempai_gateway: Option<Arc<dyn HostManagedModelGateway>>,
@@ -2108,6 +2132,53 @@ impl RebornLoopDriverHost {
                 return None;
             }
         };
+
+        // Route proposed_recipe_updates and proposed_intent_examples to Q1
+        // validation queue (non-fatal: failures are logged but do not abort
+        // the rerouting pipeline).
+        if !outcome.proposed_recipe_updates.is_empty()
+            || !outcome.proposed_intent_examples.is_empty()
+        {
+            let user_id = self
+                .run_context
+                .actor
+                .as_ref()
+                .map(|a| a.user_id.as_str())
+                .unwrap_or_default();
+            let project_id = self
+                .run_context
+                .scope
+                .project_id
+                .as_ref()
+                .map(|p| p.as_str())
+                .unwrap_or_default();
+            match self
+                .proposal_sink
+                .submit_proposals(
+                    user_id,
+                    project_id,
+                    &outcome.proposed_recipe_updates,
+                    &outcome.proposed_intent_examples,
+                )
+                .await
+            {
+                Ok(result) => {
+                    tracing::debug!(
+                        packet_id,
+                        recipe_updates = result.recipe_updates_queued,
+                        intent_examples = result.intent_examples_queued,
+                        "interceptor: sempai proposals queued in Q1"
+                    );
+                }
+                Err(error) => {
+                    tracing::debug!(
+                        packet_id,
+                        error = %error,
+                        "interceptor: sempai proposal submission failed (non-fatal)"
+                    );
+                }
+            }
+        }
 
         // Build the recomposed Kohai prompt:
         // stable-base messages (empty for now, Part A) +

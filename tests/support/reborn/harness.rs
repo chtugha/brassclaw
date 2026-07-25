@@ -895,8 +895,12 @@ impl RebornBinaryE2EHarness {
             turn_event_sink: None,
             recipe_lookup: None,
             interceptor_store: None,
+            #[cfg(feature = "root-llm-provider")]
             sempai_gateway: None,
+            #[cfg(feature = "root-llm-provider")]
             interceptor_mode: None,
+            #[cfg(feature = "root-llm-provider")]
+            proposal_sink: None,
         })?;
         let binding_service: Arc<dyn ConversationBindingService> =
             Arc::new(product_harness.binding_service()?);

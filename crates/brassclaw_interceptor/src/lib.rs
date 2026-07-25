@@ -49,6 +49,7 @@ pub mod error;
 pub mod mode;
 pub mod packet;
 pub mod pg_store;
+pub mod proposal_sink;
 pub mod store;
 
 // Convenience re-exports so callers only need to import from `brassclaw_interceptor`.
@@ -60,4 +61,5 @@ pub use packet::{
     SempaiReviewOutcome, TokenAccountingSnapshot,
 };
 pub use pg_store::PgInterceptorStore;
+pub use proposal_sink::{NoopProposalSink, ProposalSubmitResult, SempaiProposalSink};
 pub use store::{InterceptorStore, NoopInterceptorStore};

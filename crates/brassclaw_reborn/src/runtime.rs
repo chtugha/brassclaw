@@ -168,6 +168,11 @@ where
     /// postgres (store) and root-llm-provider (Sempai gateway).
     #[cfg(feature = "root-llm-provider")]
     pub interceptor_mode: Option<brassclaw_interceptor::SharedInterceptorMode>,
+    /// Proposal sink for Sempai-proposed component updates and intent
+    /// examples (Phase 5.5 — Q1 routing).  When `None`, proposals are
+    /// silently discarded.  Cfg-gated: only relevant when a Sempai is wired.
+    #[cfg(feature = "root-llm-provider")]
+    pub proposal_sink: Option<Arc<dyn brassclaw_interceptor::SempaiProposalSink>>,
 }
 
 pub trait RuntimeSubagentGoalStore:
@@ -577,6 +582,10 @@ where
     #[cfg(feature = "root-llm-provider")]
     if let Some(mode) = parts.interceptor_mode {
         host_factory = host_factory.with_interceptor_mode(mode);
+    }
+    #[cfg(feature = "root-llm-provider")]
+    if let Some(sink) = parts.proposal_sink {
+        host_factory = host_factory.with_proposal_sink(sink);
     }
     let host_factory = Arc::new(host_factory);
 

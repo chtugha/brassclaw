@@ -107,6 +107,8 @@ mod readiness;
 mod recipe_library;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_recipe_store;
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+pub(crate) mod sempai_proposal_sink;
 #[cfg(feature = "postgres")]
 pub(crate) mod recipe_store;
 #[cfg(feature = "postgres")]
