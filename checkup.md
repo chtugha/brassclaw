@@ -81,7 +81,7 @@ Remove all `#[cfg(feature = "libsql")]` blocks; remove `libsql` from workspace `
 
 > ✅ Workspace `Cargo.toml` default array no longer includes `libsql`. `RebornLibSqlIdempotencyLedger` deleted. `RebornEventStoreConfig::Libsql/InMemory/Jsonl` variants removed.
 > ⚠️ **GAP:** `brassclaw_reborn_composition/Cargo.toml` still has `libsql` as an **optional dep** (line ~97) and `migrate-from-libsql` feature is **default-ON** in `brassclaw_reborn_cli/Cargo.toml` — libSQL still compiled in by default (intentional for upgrade release but not yet stripped).
-> ❌ **NOT IMPLEMENTED:** WebUI v2 **"use for embedding"** third provider role button — not found in frontend code.
+> ✅ **VERIFIED:** WebUI v2 **"use for embedding"** button IS fully implemented — `provider-card.js` lines 247–257 show the button, `useProviderManagementActions.js` wires `handleUseEmbedding`, `useLlmProviders.js` calls `setActiveLlm` with `role: "embedding"`, i18n strings present. The checkup flag was incorrect.
 
 ### PG-7 — libSQL → Postgres data migration at boot ✅ `IMPLEMENTED`
 Implement `brassclaw_reborn_composition::migration` module; implement §8.1 steps 3–7 (profile-aware secrets, config.toml import, encrypted root-fs migration, `rewrap --tenant`, wizard/boot.initialized gate); `migrate-from-libsql` default-on for upgrade release; integration tests: seed libSQL → migrate → verify PG; upgrade-flow decryption test; non-default tenant upgrade test.
