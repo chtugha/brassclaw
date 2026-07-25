@@ -245,6 +245,24 @@ impl TriggerTurnSnapshotSource
     }
 }
 
+/// Postgres path: query all snapshot rows and merge their run arrays into a
+/// single synthetic snapshot.  The trigger poller uses this to check which
+/// run IDs are still non-terminal without iterating per-thread.
+#[cfg(feature = "postgres")]
+#[async_trait]
+impl TriggerTurnSnapshotSource
+    for LocalTriggerTurnSnapshotSource<brassclaw_turns::PgTurnStateStore>
+{
+    async fn snapshot(&self) -> Result<TurnPersistenceSnapshot, TriggerError> {
+        self.store
+            .all_active_runs_snapshot()
+            .await
+            .map_err(|error| TriggerError::Backend {
+                reason: error.to_string(),
+            })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

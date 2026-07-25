@@ -386,6 +386,107 @@ impl RebornLocalRuntimeServices {
     }
 }
 
+/// All PG-backed stores needed by [`build_reborn_runtime`] on the production
+/// postgres path (no local-dev filesystem substrate).
+///
+/// Constructed by [`build_pg_runtime_stores`]; consumed by the postgres branch
+/// in `build_reborn_runtime` instead of `RebornLocalRuntimeServices`.
+#[cfg(feature = "postgres")]
+#[allow(dead_code)] // Pure-PG path wiring: subplan_pg4_runtime_pg_path.md Steps 3–9
+pub(crate) struct PgRuntimeStores {
+    pub(crate) pool: Arc<deadpool_postgres::Pool>,
+    pub(crate) turn_state: Arc<brassclaw_turns::PgTurnStateStore>,
+    pub(crate) checkpoint_state_store: Arc<dyn brassclaw_turns::CheckpointStateStore>,
+    pub(crate) loop_checkpoint_store: Arc<dyn brassclaw_turns::LoopCheckpointStore>,
+    pub(crate) approval_requests: Arc<brassclaw_approvals::pg_store::PgApprovalRequestStore>,
+    pub(crate) capability_leases: Arc<brassclaw_authorization::PgCapabilityLeaseStore>,
+    pub(crate) resource_governor: Arc<dyn brassclaw_resources::ResourceGovernor>,
+    pub(crate) budget_gate_store: Arc<dyn brassclaw_resources::BudgetGateStore>,
+    pub(crate) broadcast_budget_event_sink:
+        Arc<brassclaw_resources::BroadcastBudgetEventSink>,
+    pub(crate) event_log: Arc<dyn brassclaw_events::DurableEventLog>,
+    pub(crate) audit_log: Arc<dyn brassclaw_events::DurableAuditLog>,
+    pub(crate) local_dev_storage_root: PathBuf,
+    pub(crate) default_system_prompt_path: PathBuf,
+    pub(crate) trigger_repository: Arc<brassclaw_triggers::PostgresTriggerRepository>,
+}
+
+/// Construct all PG-backed runtime stores for the production postgres path.
+///
+/// `reborn_home` is the resolved Reborn state root (same value the caller
+/// passed to `build_postgres_production`).  The prompt path is derived from it
+/// exactly as the local-dev path does.
+#[cfg(feature = "postgres")]
+#[allow(dead_code)] // Pure-PG path wiring: subplan_pg4_runtime_pg_path.md Steps 3–9
+pub(crate) async fn build_pg_runtime_stores(
+    pool: Arc<deadpool_postgres::Pool>,
+    reborn_home: &std::path::Path,
+) -> Result<PgRuntimeStores, RebornBuildError> {
+    let turn_state = Arc::new(brassclaw_turns::PgTurnStateStore::new(
+        Arc::clone(&pool),
+        "default",
+    ));
+    let checkpoint_state_store: Arc<dyn brassclaw_turns::CheckpointStateStore> = Arc::new(
+        brassclaw_loop_support::PgCheckpointStateStore::new(Arc::clone(&pool), "default"),
+    );
+    // PgTurnStateStore implements LoopCheckpointStore — reuse the same instance.
+    let loop_checkpoint_store: Arc<dyn brassclaw_turns::LoopCheckpointStore> =
+        Arc::clone(&turn_state) as Arc<dyn brassclaw_turns::LoopCheckpointStore>;
+    let approval_requests = Arc::new(brassclaw_approvals::pg_store::PgApprovalRequestStore::new(
+        Arc::clone(&pool),
+        "default",
+    ));
+    let capability_leases = Arc::new(PgCapabilityLeaseStore::new(Arc::clone(&pool), "default"));
+    let pg_governor_store = brassclaw_resources::PgResourceGovernorStore::new(
+        Arc::clone(&pool),
+        "default",
+    );
+    let resource_governor: Arc<dyn brassclaw_resources::ResourceGovernor> = Arc::new(
+        brassclaw_resources::PersistentResourceGovernor::new(pg_governor_store),
+    );
+    // No persistent budget gate store yet — in-memory is acceptable since gates
+    // are advisory pauses, not durable state.
+    let budget_gate_store: Arc<dyn brassclaw_resources::BudgetGateStore> =
+        Arc::new(brassclaw_resources::InMemoryBudgetGateStore::new());
+    let broadcast_budget_event_sink =
+        Arc::new(brassclaw_resources::BroadcastBudgetEventSink::default());
+    let event_log: Arc<dyn brassclaw_events::DurableEventLog> = Arc::new(
+        brassclaw_reborn_event_store::PgDurableEventLog::new(Arc::clone(&pool), "default"),
+    );
+    let audit_log: Arc<dyn brassclaw_events::DurableAuditLog> = Arc::new(
+        brassclaw_reborn_event_store::PgDurableAuditLog::new(Arc::clone(&pool), "default"),
+    );
+    // Derive storage root and default prompt path the same way as local-dev.
+    let local_dev_storage_root = reborn_home.join("db");
+    let default_system_prompt_path =
+        local_dev_default_system_prompt_path(&local_dev_storage_root);
+    // Ensure the default system prompt exists (idempotent — already seeded on
+    // first run but may not be present in a fresh PG-only deployment).
+    seed_default_system_prompt(&local_dev_storage_root, &default_system_prompt_path)
+        .map_err(|error| RebornBuildError::InvalidConfig {
+            reason: format!("failed to seed default system prompt: {error}"),
+        })?;
+    let trigger_repository = Arc::new(brassclaw_triggers::PostgresTriggerRepository::new(
+        (*pool).clone(),
+    ));
+    Ok(PgRuntimeStores {
+        pool,
+        turn_state,
+        checkpoint_state_store,
+        loop_checkpoint_store,
+        approval_requests,
+        capability_leases,
+        resource_governor,
+        budget_gate_store,
+        broadcast_budget_event_sink,
+        event_log,
+        audit_log,
+        local_dev_storage_root,
+        default_system_prompt_path,
+        trigger_repository,
+    })
+}
+
 struct RebornLocalDevStoreGraph {
     run_state: Arc<LocalDevRunStateStore>,
     approval_requests: Arc<LocalDevApprovalRequestStore>,

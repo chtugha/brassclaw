@@ -1558,17 +1558,6 @@ pub async fn build_reborn_runtime(
     })?;
 
     let profile = services_input.profile();
-    if !matches!(
-        profile,
-        RebornCompositionProfile::LocalDev | RebornCompositionProfile::LocalDevYolo
-    ) {
-        return Err(RebornRuntimeError::InvalidArgument {
-            reason: format!(
-                "profile={profile} is not yet wired end-to-end by build_reborn_runtime; \
-                 only local-dev and local-dev-yolo are supported in this slice"
-            ),
-        });
-    }
     if services_input.runtime_policy().is_none() {
         return Err(RebornRuntimeError::InvalidArgument {
             reason: "RebornRuntimeInput.services must include a resolved runtime policy"
@@ -1580,6 +1569,23 @@ pub async fn build_reborn_runtime(
     let owner_id = services_input.owner_id().to_string();
     let mut services = build_reborn_services(services_input).await?;
 
+    // Fail early with a clear message if this is the pure-postgres path (no
+    // local-dev substrate).  The full PG path wiring is tracked in
+    // subplan_pg4_runtime_pg_path.md Steps 3–9 and is not yet implemented.
+    // The live production `brassclaw serve` path always uses the hybrid
+    // local-dev+PG path where local_runtime is Some.
+    if services.local_runtime.is_none() {
+        return Err(RebornRuntimeError::InvalidArgument {
+            reason: format!(
+                "profile={profile}: a local-dev runtime substrate is required; \
+                 the pure-postgres path (no local-dev substrate) is not yet fully wired — \
+                 use a LocalDev or LocalDevYolo profile with RebornStorageInput::Postgres \
+                 for the standard production serve path \
+                 (tracked in subplan_pg4_runtime_pg_path.md Steps 3–9)"
+            ),
+        });
+    }
+
     let local_runtime =
         services
             .local_runtime
@@ -1590,11 +1596,8 @@ pub async fn build_reborn_runtime(
     let turn_state_store = Arc::clone(&local_runtime.turn_state);
     let checkpoint_state_store = Arc::clone(&local_runtime.checkpoint_state_store);
     let loop_checkpoint_store = Arc::clone(&local_runtime.loop_checkpoint_store);
-    // When a Postgres pool is available, upgrade the thread service to
-    // PgSessionThreadService so thread history (messages, conversations)
-    // survives process restarts.  The local-dev turn state remains in-memory
-    // until a full turn-state store abstraction is added (tracked in the
-    // runtime PG path plan).
+    // Thread service: use PgSessionThreadService whenever a PG pool is available.
+    // This upgrades thread-history durability on the hybrid (local-dev + PG) path.
     #[cfg(feature = "postgres")]
     let thread_service: Arc<dyn brassclaw_threads::SessionThreadService> =
         if let Some(pool) = services.pg_pool.as_ref() {

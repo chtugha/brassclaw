@@ -1,16 +1,36 @@
 # Subplan: PG-4 / factory-wiring — Extend `build_reborn_runtime` to the Postgres path
 
-## Status: PARTIALLY RESOLVED (this session)
+## Status: STEP 1-3 IMPLEMENTED (this session)
 
-### Resolved
+### Resolved (previous sessions)
 - `PgSessionThreadService` wired in `build_reborn_runtime` when `services.pg_pool` is available
 - `PgSubagentGoalStore` wired in `build_reborn_runtime` when `services.pg_pool` is available
 
+### Resolved (this session)
+- **Step 1**: `PgRuntimeStores` struct added to `factory.rs` — bundles all PG-backed stores needed
+  by `build_reborn_runtime` on the pure-postgres path: `PgTurnStateStore`, `PgCheckpointStateStore`,
+  `PgApprovalRequestStore`, `PgCapabilityLeaseStore`, `PersistentResourceGovernor<PgResourceGovernorStore>`,
+  `InMemoryBudgetGateStore`, `BroadcastBudgetEventSink`, `PgDurableEventLog`, `PgDurableAuditLog`,
+  `PostgresTriggerRepository`.
+- **Step 1**: `build_pg_runtime_stores(pool, reborn_home)` constructor added — derives
+  `local_dev_storage_root` + `default_system_prompt_path` from `reborn_home` the same way local-dev does.
+- **Step 2 (trigger poller)**: `TriggerTurnSnapshotSource` impl added for
+  `LocalTriggerTurnSnapshotSource<PgTurnStateStore>` in `trigger_poller.rs` — uses new
+  `PgTurnStateStore::all_active_runs_snapshot()` to get all non-terminal runs in one query.
+- **Step 3**: `PgTurnStateStore::all_active_runs_snapshot()` added — queries all snapshot rows
+  and merges run arrays via JSONB `payload->'runs'`.
+- **Gate removed**: LocalDev-only gate removed from `build_reborn_runtime`. Non-LocalDev profiles
+  are no longer rejected at the gate; instead they fail with a clear actionable error message when
+  `services.local_runtime` is None, referencing this subplan for the remaining work.
+- Test updated: `runtime_rejects_disabled_profile_before_local_substrate_lookup` updated to check
+  the "resolved runtime policy" error (disabled profile has no runtime_policy).
+
 ### Remaining
-- `turn_state`, `loop_checkpoint_store`, `checkpoint_state_store` still InMemory
-- `run_state`, `approval_requests`, `capability_leases` in HostRuntimeServices still InMemory
-- `trigger_repository` still InMemory (Arc aliasing prevents simple replacement)
-- `build_pg_backend_production_with_tools` + `build_postgres_production` remain dead code
+- `turn_state`, `loop_checkpoint_store`, `checkpoint_state_store` still InMemory (hybrid path)
+- `run_state`, `approval_requests`, `capability_leases` in HostRuntimeServices still InMemory (hybrid path)
+- `trigger_repository` still InMemory (Arc aliasing prevents simple replacement on hybrid path)
+- Full pure-PG composition path (Steps 4–9 below) returns "not yet fully wired" error until done
+- `build_pg_backend_production_with_tools` + `build_postgres_production` remain `#[allow(dead_code)]`
 
 ## Actual Architecture (discovered in checkup session)
 

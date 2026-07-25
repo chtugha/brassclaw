@@ -302,6 +302,40 @@ impl PgTurnStateStore {
             None => Err(TurnError::ScopeNotFound),
         }
     }
+
+    /// Return a synthetic [`TurnPersistenceSnapshot`] containing ALL run
+    /// records across every thread for this tenant.
+    ///
+    /// Used by the trigger poller's active-run lookup to determine which
+    /// run IDs are currently non-terminal without iterating per thread.
+    /// The query uses the existing JSONB `payload->'runs'` column and
+    /// concatenates all run-record arrays in one pass.
+    pub async fn all_active_runs_snapshot(&self) -> Result<TurnPersistenceSnapshot, TurnError> {
+        let client = self.pool.get().await.map_err(map_pg_pool)?;
+        let rows = client
+            .query(
+                "SELECT payload->'runs' FROM brassclaw_turns \
+                 WHERE tenant_id = $1 AND status = 'snapshot' \
+                   AND payload->'runs' IS NOT NULL",
+                &[&self.tenant_id],
+            )
+            .await
+            .map_err(map_pg)?;
+
+        let mut runs: Vec<TurnRunRecord> = Vec::new();
+        for row in rows {
+            let runs_value: Value = row.get(0);
+            // Deserialise the per-thread run array; skip rows that fail
+            // (e.g. legacy rows with an unexpected schema).
+            if let Ok(thread_runs) = serde_json::from_value::<Vec<TurnRunRecord>>(runs_value) {
+                runs.extend(thread_runs);
+            }
+        }
+        Ok(TurnPersistenceSnapshot {
+            runs,
+            ..TurnPersistenceSnapshot::default()
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------

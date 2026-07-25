@@ -27,7 +27,12 @@ async fn runtime_rejects_disabled_profile_before_local_substrate_lookup() {
     let RebornRuntimeError::InvalidArgument { reason } = error else {
         panic!("expected invalid argument, got {error:?}");
     };
-    assert!(reason.contains("profile=disabled is not yet wired end-to-end"));
+    // The disabled profile has no runtime_policy — the runtime rejects it with
+    // the "resolved runtime policy" error (checked before the substrate lookup).
+    assert!(
+        reason.contains("resolved runtime policy"),
+        "expected 'resolved runtime policy' in error, got: {reason}"
+    );
 }
 
 #[tokio::test]
