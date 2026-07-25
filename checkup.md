@@ -225,10 +225,10 @@ Delete `SkillTrust` enum, `V2SkillMetadata.trust`, `default_trust()`, trust-by-s
 
 > ✅ **RESOLVED (this session):** `SkillTrustLevel` enum deleted from `crates/brassclaw_turns/src/run_profile/skill_context.rs` (along with `trust_rank()`, `trust` fields on `InstalledSkillSnapshot`/`SkillContextSnippet`, and `SkillContextError::TrustDataMissing`). `trust` field removed from `parsed_skill_to_snapshot_entry` in `brassclaw_loop_support/src/skill_context.rs`. Trust filter removed from `crates/brassclaw_first_party_extension_ports/src/skills.rs`. `snippet_model_content_surface` in `instruction_bundle.rs` now always returns `TrustedSkillInstruction` for `"skill"` section. All skill context tests rewritten: trust-level references removed, `installed_skill_excludes_prompt_content` deleted (behavior removed), `missing_trust_data_fails_closed` renamed to `empty_snapshot_version_fails_closed`. `instruction_bundle_rejects_untrusted_skill_security_vocabulary` renamed to `instruction_bundle_allows_installed_skill_security_vocabulary_phrase` — asserts the phrase is now allowed (Phase 3: all skills Trusted). `into_loop_snippet()` emits `trust_level: "trusted"` unconditionally (cosmetic provenance only).
 
-#### Step 4.2 — `source` as pure provenance; confidence factor universal ❌ `NOT IMPLEMENTED`
+#### Step 4.2 — `source` as pure provenance; confidence factor universal ✅ `IMPLEMENTED`
 Remove `if source == "extracted"` gate from `score_skill`/`selector.rs`; confidence factor is source-independent and used as fallback-routing signal only; skills with no usage data default to 1.0.
 
-> ❌ Gated path not confirmed removed — dependent on Step 2.2 deletions + Step 4.1 trust removal, neither of which is done.
+> ✅ **CONFIRMED (this session):** `score_skill()` in `selector.rs` contains no `if source == "extracted"` gate — it never existed in the current codebase. `apply_confidence_factor(base_score, confidence)` uses the source-independent formula `0.5 + 0.5 * confidence` with no `is_authored`/source parameter. Three dedicated tests confirm Phase 3 source-independent behavior: `test_apply_confidence_factor_full_confidence`, `test_apply_confidence_factor_source_independent`, `test_apply_confidence_factor_clamps`. Step 4.2 was already implemented.
 
 #### Step 4.3 — `Validated == trusted` + validator-tag invariant ✅ `IMPLEMENTED`
 Audit all loop-facing fetch paths; replace trust filters with `validation_status = 'Validated' AND '05:validator' != ANY(consumer_tags)`. `fetch_for_consumer` excludes `05:validator`-tagged rows.
