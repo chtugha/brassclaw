@@ -35,6 +35,9 @@ BrassClaw is built on a simple principle: **your AI assistant should work for yo
 - **Fits consumer hardware** — tuned to work within an 8,192-token context window; 7B models work well with 4 GB VRAM
 - **Defense in depth** — WASM sandbox, capability leases, prompt injection defense, and endpoint allowlisting
 - **Open source** — fully auditable, no telemetry or data harvesting
+- **Self learning mechanism** — the design aims to leave more and more tasks to the agent, and to reduce the involvement of an llm
+
+- **The beast at home** - brassclaw is momentarily tailored for kv-caching - and will in the future concentrate to have a certain set of basic-prompts via lmcache that will be tailored together with the users query and some context to enables a small ornith 9b model, running on a budget 16bg vram RTX, to process a prompt with 200k tokens very fast (bc it actually just processes the few tokens you add as information, all the rest was already precalculated and can be accessed - like this you and can make a tiny system very powerful. And even more if you mainly use that power to get rid of as many llm calls as possible and empower the agent to perform tasks on its own.
 
 ---
 
@@ -45,7 +48,6 @@ BrassClaw is built on a simple principle: **your AI assistant should work for yo
 - **Token-aware engine** — hard budget of 8,192 total prompt tokens; automatically trims skill context, memory docs, and history to fit any local model
 - **Knowledge-driven tools** — Skills (markdown files) teach the LLM how to use APIs via the `http` tool; no WASM compilation needed for new integrations
 - **Skill budgets** — each skill declares its token cost; the selector fits within the 2,048-token skill budget
-- **35+ bundled skills** — CalDAV calendar, plain-text notes, workspace file search, Playwright browser automation, GitHub, and more
 
 ### Security First
 
