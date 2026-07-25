@@ -14,7 +14,7 @@ use crate::LoopMessageRef;
 use super::{
     AgentLoopHostError, AgentLoopHostErrorKind, CapabilityDescriptorView, LoopContextBundle,
     LoopContextMessage, LoopContextSnippet, LoopInlineMessage, LoopInlineMessageRole,
-    LoopModelMessage, LoopRunContext, PromptSkillContextMetadata, SkillTrustLevel,
+    LoopModelMessage, LoopRunContext, PromptSkillContextMetadata,
     VisibleCapabilitySurface,
     prompt_text::{PromptTextSurface, validate_model_safe_text, validate_prompt_text},
     skill_snippet_model_message_ref,
@@ -512,12 +512,11 @@ fn push_snippet_message(
 
 fn snippet_model_content_surface(
     section: &'static str,
-    snippet: &LoopContextSnippet,
+    _snippet: &LoopContextSnippet,
 ) -> PromptTextSurface {
-    match (section, snippet.metadata.as_ref()) {
-        ("skill", Some(metadata)) if metadata.trust_level == SkillTrustLevel::Trusted.as_str() => {
-            PromptTextSurface::TrustedSkillInstruction
-        }
+    // Phase 3: trust layer removed — all skill snippets are Trusted (allow security vocabulary).
+    match section {
+        "skill" => PromptTextSurface::TrustedSkillInstruction,
         _ => PromptTextSurface::GenericModelContent,
     }
 }

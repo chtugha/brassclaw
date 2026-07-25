@@ -2010,7 +2010,16 @@ mod tests {
             .expect("validated visible skill should activate");
 
         assert_eq!(plan.selection.activations.len(), 1);
-        assert!(plan.selection.feedback.is_empty());
+        // Successful activation always produces a confirmation feedback entry
+        // ("activated after model selection") — not an error. Assert no error feedback.
+        assert!(
+            plan.selection
+                .feedback
+                .iter()
+                .all(|msg| !msg.contains("not available")),
+            "unexpected error in feedback: {:?}",
+            plan.selection.feedback
+        );
     }
 
     #[tokio::test]

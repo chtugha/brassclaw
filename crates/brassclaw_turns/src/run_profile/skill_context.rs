@@ -3,13 +3,11 @@
 //! This module provides [`SkillContextService`] and the [`SkillContextSource`] trait,
 //! which select model-visible skill context from a host-approved run snapshot.
 //!
-//! # Trust and Visibility Model
+//! # Visibility Model
 //!
-//! Every installed skill in a run has two dimensions that gate what the model sees:
-//!
-//! - **Trust level** ([`SkillTrustLevel`]): determines how much content the model receives.
-//!   `Trusted` skills include their full prompt content; `Installed` skills expose only
-//!   a safe description.
+//! Phase 3 (trust layer removed): All visible validated skills receive their full prompt
+//! content. The trust-level distinction (`Installed` vs `Trusted`) has been removed —
+//! `Validated == Trusted`.
 //!
 //! - **Visibility** ([`SkillVisibility`]): determines whether the model sees the skill at all.
 //!   `Visible` skills appear in the context; `Hidden` and `Denied` skills are omitted entirely
@@ -17,7 +15,7 @@
 //!
 //! # Fail-closed semantics
 //!
-//! If trust or visibility data is missing, the snapshot version does not match entries,
+//! If visibility data is missing, the snapshot version does not match entries,
 //! model-visible fields contain unsafe internal markers, or prompt content exceeds configured
 //! context budgets, the service returns an error rather than silently degrading. This ensures
 //! that an unconfigured or corrupt snapshot never leaks capabilities to the model.
@@ -53,10 +51,6 @@ use super::{
 /// All variants are sanitized — no raw internals, file paths, or secret handles are leaked.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum SkillContextError {
-    /// Trust data is missing or the snapshot is in an inconsistent state.
-    #[error("skill context: trust data missing")]
-    TrustDataMissing,
-
     /// Visibility data is missing for one or more skills.
     #[error("skill context: visibility data missing")]
     VisibilityDataMissing,
@@ -98,31 +92,6 @@ pub enum SkillVisibility {
     Hidden,
     /// The skill is explicitly denied — no mention in output.
     Denied,
-}
-
-/// Trust level for an installed skill, owned by this crate.
-///
-/// Mirrors the upstream `SkillTrust` enum without creating a production dependency
-/// on `brassclaw_skills`.
-///
-/// - `Installed`: read-only context; the model sees only the safe description.
-/// - `Trusted`: full context; the model sees description and prompt content.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SkillTrustLevel {
-    /// Registry/external skill — description only, no prompt content.
-    Installed,
-    /// User-placed/trusted skill — description and prompt content.
-    Trusted,
-}
-
-impl SkillTrustLevel {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Installed => "installed",
-            Self::Trusted => "trusted",
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -176,8 +145,6 @@ impl Default for SkillContextBudget {
 pub struct InstalledSkillSnapshot {
     /// Human-readable name of the skill.
     pub name: String,
-    /// Trust level — determines how much content the model receives.
-    pub trust: SkillTrustLevel,
     /// Visibility — determines whether the model sees this skill at all.
     pub visibility: SkillVisibility,
     /// Full prompt content. Only included in model context when
@@ -245,8 +212,6 @@ pub struct SkillContextSnippet {
     pub safe_summary: String,
     /// Model-visible skill name used for telemetry, never for authority decisions.
     pub skill_name: String,
-    /// Host-approved trust tier used for telemetry and downstream attenuation checks.
-    pub trust: SkillTrustLevel,
 }
 
 impl SkillContextSnippet {
@@ -258,7 +223,8 @@ impl SkillContextSnippet {
             safe_summary: self.safe_summary,
             metadata: Some(LoopContextSnippetMetadata {
                 source_name: self.skill_name,
-                trust_level: self.trust.as_str().to_string(),
+                // Phase 3: trust layer removed — all visible validated skills are Trusted.
+                trust_level: "trusted".to_string(),
             }),
         }
     }
@@ -343,25 +309,22 @@ impl SkillContextSource for SkillContextService {
         let mut description_only_count = 0usize;
 
         'entries: for entry in visible {
-            // Build the candidate model content.
-            // For trusted skills whose full prompt exceeds the per-snippet cap,
+            // Phase 3: trust layer removed — all visible validated skills include full content.
+            // For skills whose full prompt exceeds the per-snippet cap,
             // fall back to safe_description only rather than hard-failing.
-            let model_content = match entry.trust {
-                SkillTrustLevel::Trusted => {
-                    let full = if let Some(ref content) = entry.prompt_content {
-                        format!("{}\n\n{}", entry.safe_description, content)
-                    } else {
-                        entry.safe_description.clone()
-                    };
-                    if full.len() > self.budget.max_snippet_bytes {
-                        // Per-snippet cap exceeded: fall back to description only.
-                        description_only_count += 1;
-                        entry.safe_description.clone()
-                    } else {
-                        full
-                    }
+            let model_content = {
+                let full = if let Some(ref content) = entry.prompt_content {
+                    format!("{}\n\n{}", entry.safe_description, content)
+                } else {
+                    entry.safe_description.clone()
+                };
+                if full.len() > self.budget.max_snippet_bytes {
+                    // Per-snippet cap exceeded: fall back to description only.
+                    description_only_count += 1;
+                    entry.safe_description.clone()
+                } else {
+                    full
                 }
-                SkillTrustLevel::Installed => entry.safe_description.clone(),
             };
             let safe_summary = entry.safe_description.clone();
 
@@ -391,7 +354,6 @@ impl SkillContextSource for SkillContextService {
                 model_content,
                 safe_summary,
                 skill_name: entry.name.clone(),
-                trust: entry.trust,
             });
         }
 
@@ -491,7 +453,8 @@ fn sanitize_ref_suffix(value: &str) -> String {
 
 fn validate_snapshot(snapshot: &SkillRunSnapshot) -> Result<(), SkillContextError> {
     if snapshot.snapshot_version.is_empty() {
-        return Err(SkillContextError::TrustDataMissing);
+        // Phase 3: empty version is an invalid/corrupt snapshot, not a trust failure.
+        return Err(SkillContextError::InvalidSnapshotVersion);
     }
 
     if snapshot.entries.is_empty() {
@@ -540,17 +503,9 @@ fn compare_skill_entries(a: &InstalledSkillSnapshot, b: &InstalledSkillSnapshot)
     a.ordering_key
         .cmp(&b.ordering_key)
         .then_with(|| a.name.cmp(&b.name))
-        .then_with(|| trust_rank(a.trust).cmp(&trust_rank(b.trust)))
         .then_with(|| visibility_rank(a.visibility).cmp(&visibility_rank(b.visibility)))
         .then_with(|| a.safe_description.cmp(&b.safe_description))
         .then_with(|| a.prompt_content.cmp(&b.prompt_content))
-}
-
-const fn trust_rank(trust: SkillTrustLevel) -> u8 {
-    match trust {
-        SkillTrustLevel::Installed => 0,
-        SkillTrustLevel::Trusted => 1,
-    }
 }
 
 const fn visibility_rank(visibility: SkillVisibility) -> u8 {
@@ -652,13 +607,6 @@ fn compute_snapshot_version(sorted_entries: &[InstalledSkillSnapshot]) -> String
         feed_digest_field(&mut digest, entry.name.as_bytes());
         feed_digest_field(
             &mut digest,
-            match entry.trust {
-                SkillTrustLevel::Installed => b"installed",
-                SkillTrustLevel::Trusted => b"trusted",
-            },
-        );
-        feed_digest_field(
-            &mut digest,
             match entry.visibility {
                 SkillVisibility::Visible => b"visible",
                 SkillVisibility::Hidden => b"hidden",
@@ -693,7 +641,6 @@ mod tests {
     fn entries_are_sorted_detects_sorted_and_unsorted_snapshots() {
         let alpha = InstalledSkillSnapshot {
             name: "alpha".to_string(),
-            trust: SkillTrustLevel::Trusted,
             visibility: SkillVisibility::Visible,
             prompt_content: Some("prompt".to_string()),
             safe_description: "description".to_string(),

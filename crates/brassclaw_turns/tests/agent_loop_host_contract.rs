@@ -860,18 +860,19 @@ async fn instruction_bundle_rejects_trusted_skill_security_vocabulary_in_summary
     assert_eq!(error.kind, AgentLoopHostErrorKind::PolicyDenied);
 }
 
+// Phase 3: trust layer removed — all skill snippets are Trusted.
+// "installed" skills now pass the same security-vocabulary check as "trusted" skills.
+// Plain mention of "Authorization: Bearer header" (no secret value) is now allowed.
 #[tokio::test]
-async fn instruction_bundle_rejects_untrusted_skill_security_vocabulary() {
+async fn instruction_bundle_allows_installed_skill_security_vocabulary_phrase() {
     let context = claimed_run_context().await;
-    let error = InstructionBundleBuilder::new(context)
+    InstructionBundleBuilder::new(context)
         .build(skill_instruction_request(
             "Use the GitHub API with an Authorization: Bearer header.",
             "GitHub skill",
             "installed",
         ))
-        .unwrap_err();
-
-    assert_eq!(error.kind, AgentLoopHostErrorKind::PolicyDenied);
+        .expect("Phase 3: security-vocabulary phrase allowed in installed skill");
 }
 
 #[tokio::test]

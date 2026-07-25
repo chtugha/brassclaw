@@ -3,7 +3,7 @@ use brassclaw_skills::{ParsedSkill, parse_skill_md};
 use brassclaw_turns::run_profile::{
     AgentLoopHostError, AgentLoopHostErrorKind, InstalledSkillSnapshot, LoopContextSnippet,
     LoopRunContext, SkillContextError, SkillContextService, SkillContextSource, SkillRunSnapshot,
-    SkillTrustLevel, SkillVisibility,
+    SkillVisibility,
 };
 pub(crate) use brassclaw_turns::run_profile::{
     is_skill_snippet_model_message_ref as is_snippet_model_message_ref,
@@ -90,12 +90,6 @@ pub enum HostSkillContextBuildError {
     Internal,
 }
 
-// TrustDataMissing variant removed — Phase 3 trust layer deletion.
-// All skills are now treated as trusted (validation_status == 'validated'
-// is the sole gate). SkillContextError::TrustDataMissing is mapped to
-// Internal below since it can only fire if SkillTrustLevel is unset,
-// which cannot happen now that we always set Trusted.
-
 impl HostSkillContextBuildError {
     pub fn into_host_error(self) -> AgentLoopHostError {
         let kind = match &self {
@@ -168,7 +162,6 @@ fn parsed_skill_to_snapshot_entry(
     InstalledSkillSnapshot {
         ordering_key: ordering_key.unwrap_or_else(|| name.clone()),
         name,
-        trust: SkillTrustLevel::Trusted,
         visibility,
         prompt_content: Some(parsed.prompt_content),
         safe_description: parsed.manifest.description,
@@ -184,11 +177,6 @@ fn skill_context_error_to_host_error(error: SkillContextError) -> AgentLoopHostE
         "skill context error mapped to safe host error"
     );
     let build_error = match error {
-        // TrustDataMissing is unreachable now that all skills are Trusted
-        // (Phase 3 trust layer removal), but the variant still exists in
-        // brassclaw_turns for the snapshot validation path. Map to Internal
-        // to keep exhaustive matching.
-        SkillContextError::TrustDataMissing => HostSkillContextBuildError::Internal,
         SkillContextError::VisibilityDataMissing => {
             HostSkillContextBuildError::VisibilityDataMissing
         }

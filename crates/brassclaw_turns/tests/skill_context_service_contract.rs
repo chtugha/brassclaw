@@ -1,21 +1,23 @@
 //! Contract tests for `SkillContextService` and related types.
 //!
-//! Covers: no skills, skill unavailable, missing/denied trust, hidden capability,
-//! deterministic ordering/rebuild, and redaction of non-model-safe metadata.
+//! Covers: no skills, hidden/denied visibility, deterministic ordering/rebuild,
+//! and redaction of non-model-safe metadata.
+//!
+//! Phase 3 (trust layer removed): all visible validated skills receive full
+//! prompt content. The `Installed` vs `Trusted` distinction no longer exists.
 
 use brassclaw_turns::run_profile::{
     InstalledSkillSnapshot, NoopSkillContextSource, SkillContextBudget, SkillContextError,
-    SkillContextService, SkillContextSource, SkillRunSnapshot, SkillTrustLevel, SkillVisibility,
+    SkillContextService, SkillContextSource, SkillRunSnapshot, SkillVisibility,
 };
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn visible_trusted(name: &str, description: &str, prompt: &str) -> InstalledSkillSnapshot {
+fn visible_skill(name: &str, description: &str, prompt: &str) -> InstalledSkillSnapshot {
     InstalledSkillSnapshot {
         name: name.to_string(),
-        trust: SkillTrustLevel::Trusted,
         visibility: SkillVisibility::Visible,
         prompt_content: Some(prompt.to_string()),
         safe_description: description.to_string(),
@@ -23,23 +25,11 @@ fn visible_trusted(name: &str, description: &str, prompt: &str) -> InstalledSkil
     }
 }
 
-fn visible_trusted_without_prompt(name: &str, description: &str) -> InstalledSkillSnapshot {
+fn visible_skill_without_prompt(name: &str, description: &str) -> InstalledSkillSnapshot {
     InstalledSkillSnapshot {
         name: name.to_string(),
-        trust: SkillTrustLevel::Trusted,
         visibility: SkillVisibility::Visible,
         prompt_content: None,
-        safe_description: description.to_string(),
-        ordering_key: name.to_string(),
-    }
-}
-
-fn visible_installed(name: &str, description: &str) -> InstalledSkillSnapshot {
-    InstalledSkillSnapshot {
-        name: name.to_string(),
-        trust: SkillTrustLevel::Installed,
-        visibility: SkillVisibility::Visible,
-        prompt_content: Some("secret prompt".to_string()),
         safe_description: description.to_string(),
         ordering_key: name.to_string(),
     }
@@ -48,7 +38,6 @@ fn visible_installed(name: &str, description: &str) -> InstalledSkillSnapshot {
 fn hidden_skill(name: &str) -> InstalledSkillSnapshot {
     InstalledSkillSnapshot {
         name: name.to_string(),
-        trust: SkillTrustLevel::Trusted,
         visibility: SkillVisibility::Hidden,
         prompt_content: Some("hidden prompt".to_string()),
         safe_description: "hidden description".to_string(),
@@ -59,7 +48,6 @@ fn hidden_skill(name: &str) -> InstalledSkillSnapshot {
 fn denied_skill(name: &str) -> InstalledSkillSnapshot {
     InstalledSkillSnapshot {
         name: name.to_string(),
-        trust: SkillTrustLevel::Trusted,
         visibility: SkillVisibility::Denied,
         prompt_content: Some("denied prompt".to_string()),
         safe_description: "denied description".to_string(),
@@ -92,20 +80,22 @@ async fn all_hidden_or_denied_produces_empty_ok() {
 }
 
 #[tokio::test]
-async fn missing_trust_data_fails_closed() {
+async fn empty_snapshot_version_fails_closed() {
+    // An empty snapshot_version string indicates a missing/corrupt snapshot —
+    // the service must fail closed rather than silently returning results.
     let snapshot = SkillRunSnapshot {
-        entries: vec![visible_trusted("alpha", "desc", "prompt")],
-        snapshot_version: String::new(), // empty = missing
+        entries: vec![visible_skill("alpha", "desc", "prompt")],
+        snapshot_version: String::new(), // empty = corrupt
     };
     let service = SkillContextService::new(snapshot.clone());
     let err = service.skill_snippets(&snapshot).await.unwrap_err();
-    assert_eq!(err, SkillContextError::TrustDataMissing);
+    assert_eq!(err, SkillContextError::InvalidSnapshotVersion);
 }
 
 #[tokio::test]
 async fn denied_visibility_never_in_output() {
     let snapshot = SkillRunSnapshot::from_entries(vec![
-        visible_trusted("alpha", "visible skill", "prompt"),
+        visible_skill("alpha", "visible skill", "prompt"),
         denied_skill("beta"),
     ]);
     let service = SkillContextService::new(snapshot.clone());
@@ -118,7 +108,7 @@ async fn denied_visibility_never_in_output() {
 #[tokio::test]
 async fn hidden_visibility_never_in_output() {
     let snapshot = SkillRunSnapshot::from_entries(vec![
-        visible_trusted("alpha", "visible skill", "prompt"),
+        visible_skill("alpha", "visible skill", "prompt"),
         hidden_skill("beta"),
     ]);
     let service = SkillContextService::new(snapshot.clone());
@@ -129,8 +119,8 @@ async fn hidden_visibility_never_in_output() {
 }
 
 #[tokio::test]
-async fn trusted_skill_includes_prompt_content() {
-    let snapshot = SkillRunSnapshot::from_entries(vec![visible_trusted(
+async fn visible_skill_includes_prompt_content() {
+    let snapshot = SkillRunSnapshot::from_entries(vec![visible_skill(
         "alpha",
         "the description",
         "the prompt content",
@@ -145,13 +135,13 @@ async fn trusted_skill_includes_prompt_content() {
 }
 
 #[tokio::test]
-async fn trusted_skill_allows_operational_paths_in_prompt_content() {
+async fn visible_skill_allows_operational_paths_in_prompt_content() {
     let prompt = concat!(
         "Create a review worktree under /tmp/brassclaw-review-123 and ",
         "write the GitHub payload to /tmp/cr-review-payload.json."
     );
     let snapshot =
-        SkillRunSnapshot::from_entries(vec![visible_trusted("alpha", "the description", prompt)]);
+        SkillRunSnapshot::from_entries(vec![visible_skill("alpha", "the description", prompt)]);
     let service = SkillContextService::new(snapshot.clone());
 
     let snippets = service.skill_snippets(&snapshot).await.unwrap();
@@ -171,23 +161,8 @@ async fn trusted_skill_allows_operational_paths_in_prompt_content() {
 }
 
 #[tokio::test]
-async fn installed_skill_excludes_prompt_content() {
-    let snapshot =
-        SkillRunSnapshot::from_entries(vec![visible_installed("alpha", "the description")]);
-    let service = SkillContextService::new(snapshot.clone());
-    let snippets = service.skill_snippets(&snapshot).await.unwrap();
-    assert_eq!(snippets.len(), 1);
-    assert!(snippets[0].safe_summary.contains("the description"));
-    assert!(snippets[0].model_content.contains("the description"));
-    assert!(
-        !snippets[0].model_content.contains("secret prompt"),
-        "installed skill must not expose prompt content"
-    );
-}
-
-#[tokio::test]
-async fn trusted_skill_without_prompt_uses_description_only() {
-    let snapshot = SkillRunSnapshot::from_entries(vec![visible_trusted_without_prompt(
+async fn visible_skill_without_prompt_uses_description_only() {
+    let snapshot = SkillRunSnapshot::from_entries(vec![visible_skill_without_prompt(
         "alpha",
         "the description",
     )]);
@@ -200,9 +175,9 @@ async fn trusted_skill_without_prompt_uses_description_only() {
 #[tokio::test]
 async fn deterministic_ordering_same_snapshot() {
     let snapshot = SkillRunSnapshot::from_entries(vec![
-        visible_trusted("charlie", "desc c", "prompt c"),
-        visible_trusted("alpha", "desc a", "prompt a"),
-        visible_trusted("bravo", "desc b", "prompt b"),
+        visible_skill("charlie", "desc c", "prompt c"),
+        visible_skill("alpha", "desc a", "prompt a"),
+        visible_skill("bravo", "desc b", "prompt b"),
     ]);
     let service = SkillContextService::new(snapshot.clone());
     let first = service.skill_snippets(&snapshot).await.unwrap();
@@ -219,14 +194,14 @@ async fn deterministic_ordering_same_snapshot() {
 #[tokio::test]
 async fn deterministic_ordering_shuffled_input() {
     let entries_a = vec![
-        visible_trusted("charlie", "desc c", "prompt c"),
-        visible_trusted("alpha", "desc a", "prompt a"),
-        visible_trusted("bravo", "desc b", "prompt b"),
+        visible_skill("charlie", "desc c", "prompt c"),
+        visible_skill("alpha", "desc a", "prompt a"),
+        visible_skill("bravo", "desc b", "prompt b"),
     ];
     let entries_b = vec![
-        visible_trusted("bravo", "desc b", "prompt b"),
-        visible_trusted("charlie", "desc c", "prompt c"),
-        visible_trusted("alpha", "desc a", "prompt a"),
+        visible_skill("bravo", "desc b", "prompt b"),
+        visible_skill("charlie", "desc c", "prompt c"),
+        visible_skill("alpha", "desc a", "prompt a"),
     ];
     let snap_a = SkillRunSnapshot::from_entries(entries_a);
     let snap_b = SkillRunSnapshot::from_entries(entries_b);
@@ -242,12 +217,12 @@ async fn deterministic_ordering_shuffled_input() {
 #[tokio::test]
 async fn snapshot_version_determinism() {
     let entries_a = vec![
-        visible_trusted("charlie", "desc c", "prompt c"),
-        visible_trusted("alpha", "desc a", "prompt a"),
+        visible_skill("charlie", "desc c", "prompt c"),
+        visible_skill("alpha", "desc a", "prompt a"),
     ];
     let entries_b = vec![
-        visible_trusted("alpha", "desc a", "prompt a"),
-        visible_trusted("charlie", "desc c", "prompt c"),
+        visible_skill("alpha", "desc a", "prompt a"),
+        visible_skill("charlie", "desc c", "prompt c"),
     ];
     let snap_a = SkillRunSnapshot::from_entries(entries_a);
     let snap_b = SkillRunSnapshot::from_entries(entries_b);
@@ -259,7 +234,7 @@ async fn snapshot_version_determinism() {
 
 #[tokio::test]
 async fn snapshot_version_uses_sha256_digest() {
-    let snapshot = SkillRunSnapshot::from_entries(vec![visible_trusted("alpha", "desc", "prompt")]);
+    let snapshot = SkillRunSnapshot::from_entries(vec![visible_skill("alpha", "desc", "prompt")]);
 
     assert!(
         snapshot.snapshot_version.starts_with("sha256:"),
@@ -276,7 +251,7 @@ async fn snapshot_version_uses_sha256_digest() {
 #[tokio::test]
 async fn tampered_snapshot_version_fails_closed() {
     let mut snapshot =
-        SkillRunSnapshot::from_entries(vec![visible_trusted("alpha", "desc", "prompt")]);
+        SkillRunSnapshot::from_entries(vec![visible_skill("alpha", "desc", "prompt")]);
     snapshot.entries[0].safe_description = "tampered desc".to_string();
 
     let service = SkillContextService::new(snapshot.clone());
@@ -291,7 +266,7 @@ async fn oversized_single_snippet_is_allowed_within_aggregate_budget() {
     let model_content_bytes = safe_description.len() + "\n\n".len() + prompt.len();
     let max_context_bytes = "skill:alpha".len() + model_content_bytes;
     let snapshot =
-        SkillRunSnapshot::from_entries(vec![visible_trusted("alpha", safe_description, &prompt)]);
+        SkillRunSnapshot::from_entries(vec![visible_skill("alpha", safe_description, &prompt)]);
     let service = SkillContextService::with_budget(
         snapshot.clone(),
         SkillContextBudget {
@@ -313,7 +288,7 @@ async fn single_snippet_over_per_snippet_budget_falls_back_to_description() {
     // When full prompt + description exceeds the per-snippet cap, the service
     // falls back to safe_description only rather than hard-failing.
     let prompt = "x".repeat(128);
-    let snapshot = SkillRunSnapshot::from_entries(vec![visible_trusted("alpha", "desc", &prompt)]);
+    let snapshot = SkillRunSnapshot::from_entries(vec![visible_skill("alpha", "desc", &prompt)]);
     let service = SkillContextService::with_budget(
         snapshot.clone(),
         SkillContextBudget {
@@ -335,7 +310,7 @@ async fn single_snippet_at_per_snippet_budget_limit_is_allowed() {
     let prompt_prefix_bytes = safe_description.len() + "\n\n".len();
     let prompt = "x".repeat(max_snippet_bytes - prompt_prefix_bytes);
     let snapshot =
-        SkillRunSnapshot::from_entries(vec![visible_trusted("alpha", safe_description, &prompt)]);
+        SkillRunSnapshot::from_entries(vec![visible_skill("alpha", safe_description, &prompt)]);
     let service = SkillContextService::with_budget(
         snapshot.clone(),
         SkillContextBudget {
@@ -354,8 +329,8 @@ async fn aggregate_skill_context_stops_at_budget_without_error() {
     // When the aggregate budget is exhausted mid-list, the service returns
     // whatever fitted rather than failing the entire turn.
     let snapshot = SkillRunSnapshot::from_entries(vec![
-        visible_trusted("alpha", "first description", "first prompt"),
-        visible_trusted("beta", "second description", "second prompt"),
+        visible_skill("alpha", "first description", "first prompt"),
+        visible_skill("beta", "second description", "second prompt"),
     ]);
     let service = SkillContextService::with_budget(snapshot.clone(), SkillContextBudget::new(64));
 
@@ -372,8 +347,8 @@ async fn aggregate_skill_context_stops_at_budget_without_error() {
 #[tokio::test]
 async fn aggregate_skill_context_allows_exact_budget_limit() {
     let snapshot = SkillRunSnapshot::from_entries(vec![
-        visible_trusted_without_prompt("alpha", "first"),
-        visible_trusted_without_prompt("beta", "second"),
+        visible_skill_without_prompt("alpha", "first"),
+        visible_skill_without_prompt("beta", "second"),
     ]);
     let max_context_bytes =
         "skill:alpha".len() + "first".len() + "skill:beta".len() + "second".len();
@@ -395,7 +370,7 @@ async fn aggregate_skill_context_allows_exact_budget_limit() {
 async fn invalid_budget_configuration_is_distinct_from_exceeded_budget() {
     for budget in [SkillContextBudget::new(0)] {
         let snapshot =
-            SkillRunSnapshot::from_entries(vec![visible_trusted("alpha", "desc", "prompt")]);
+            SkillRunSnapshot::from_entries(vec![visible_skill("alpha", "desc", "prompt")]);
         let service = SkillContextService::with_budget(snapshot.clone(), budget);
 
         let err = service.skill_snippets(&snapshot).await.unwrap_err();
@@ -409,9 +384,9 @@ async fn invalid_budget_configuration_is_distinct_from_exceeded_budget() {
 
 #[tokio::test]
 async fn duplicate_ordering_keys_use_total_order() {
-    let mut alpha = visible_trusted("alpha", "desc a", "prompt a");
+    let mut alpha = visible_skill("alpha", "desc a", "prompt a");
     alpha.ordering_key = "same".to_string();
-    let mut beta = visible_trusted("beta", "desc b", "prompt b");
+    let mut beta = visible_skill("beta", "desc b", "prompt b");
     beta.ordering_key = "same".to_string();
 
     let snap_a = SkillRunSnapshot::from_entries(vec![beta.clone(), alpha.clone()]);
@@ -434,7 +409,7 @@ async fn unsafe_visible_metadata_fails_before_loop_snippet_emission() {
     let cases = vec![
         (
             "unsafe name would leak through snippet_ref",
-            SkillRunSnapshot::from_entries(vec![visible_trusted(
+            SkillRunSnapshot::from_entries(vec![visible_skill(
                 "/Users/alice/.ssh/id_rsa",
                 "safe description",
                 "safe prompt",
@@ -442,7 +417,7 @@ async fn unsafe_visible_metadata_fails_before_loop_snippet_emission() {
         ),
         (
             "unsafe description would leak through safe_summary",
-            SkillRunSnapshot::from_entries(vec![visible_trusted(
+            SkillRunSnapshot::from_entries(vec![visible_skill(
                 "alpha",
                 "raw capability handle cap_file_read_123",
                 "safe prompt",
@@ -450,7 +425,7 @@ async fn unsafe_visible_metadata_fails_before_loop_snippet_emission() {
         ),
         (
             "uppercase capability marker in description would leak through safe_summary",
-            SkillRunSnapshot::from_entries(vec![visible_trusted(
+            SkillRunSnapshot::from_entries(vec![visible_skill(
                 "alpha",
                 "raw capability handle CAP_file_read_123",
                 "safe prompt",
@@ -472,8 +447,8 @@ async fn unsafe_visible_metadata_fails_before_loop_snippet_emission() {
 #[tokio::test]
 async fn redaction_no_raw_paths_or_internals() {
     let snapshot = SkillRunSnapshot::from_entries(vec![
-        visible_trusted("alpha", "A helpful skill", "Use this skill to help"),
-        visible_installed("beta", "Another helpful skill"),
+        visible_skill("alpha", "A helpful skill", "Use this skill to help"),
+        visible_skill("beta", "Another helpful skill", "Also helpful"),
     ]);
     let service = SkillContextService::new(snapshot.clone());
     let snippets = service.skill_snippets(&snapshot).await.unwrap();
@@ -509,7 +484,7 @@ async fn redaction_no_raw_paths_or_internals() {
 #[tokio::test]
 async fn noop_skill_context_source_returns_empty() {
     let noop = NoopSkillContextSource;
-    let snapshot = SkillRunSnapshot::from_entries(vec![visible_trusted("alpha", "desc", "prompt")]);
+    let snapshot = SkillRunSnapshot::from_entries(vec![visible_skill("alpha", "desc", "prompt")]);
     let result = noop.skill_snippets(&snapshot).await.unwrap();
     assert!(result.is_empty());
 }
@@ -517,8 +492,8 @@ async fn noop_skill_context_source_returns_empty() {
 #[tokio::test]
 async fn mixed_visibility_correct_filtering() {
     let snapshot = SkillRunSnapshot::from_entries(vec![
-        visible_trusted("alpha", "trusted visible", "trusted prompt"),
-        visible_installed("beta", "installed visible"),
+        visible_skill("alpha", "visible with prompt", "alpha prompt"),
+        visible_skill("beta", "also visible", "beta prompt"),
         hidden_skill("gamma"),
         denied_skill("delta"),
     ]);
@@ -528,26 +503,20 @@ async fn mixed_visibility_correct_filtering() {
     // Only visible entries appear
     assert_eq!(snippets.len(), 2);
 
-    // Trusted includes prompt
+    // All visible skills include their prompt content (Phase 3: trust removed)
     let alpha = snippets
         .iter()
         .find(|s| s.snippet_ref == "skill:alpha")
         .unwrap();
-    assert!(alpha.safe_summary.contains("trusted visible"));
-    assert!(!alpha.safe_summary.contains("trusted prompt"));
-    assert!(alpha.model_content.contains("trusted visible"));
-    assert!(alpha.model_content.contains("trusted prompt"));
+    assert!(alpha.safe_summary.contains("visible with prompt"));
+    assert!(alpha.model_content.contains("alpha prompt"));
 
-    // Installed excludes prompt
     let beta = snippets
         .iter()
         .find(|s| s.snippet_ref == "skill:beta")
         .unwrap();
-    assert!(beta.safe_summary.contains("installed visible"));
-    assert!(
-        !beta.model_content.contains("secret prompt"),
-        "installed skill must not expose prompt content"
-    );
+    assert!(beta.safe_summary.contains("also visible"));
+    assert!(beta.model_content.contains("beta prompt"));
 
     // Hidden and denied are absent
     let refs: Vec<&str> = snippets.iter().map(|s| s.snippet_ref.as_str()).collect();
@@ -559,10 +528,15 @@ async fn mixed_visibility_correct_filtering() {
 async fn into_loop_snippet_conversion() {
     use brassclaw_turns::run_profile::LoopContextSnippet;
 
-    let snapshot = SkillRunSnapshot::from_entries(vec![visible_trusted("alpha", "desc", "prompt")]);
+    let snapshot = SkillRunSnapshot::from_entries(vec![visible_skill("alpha", "desc", "prompt")]);
     let service = SkillContextService::new(snapshot.clone());
     let snippets = service.skill_snippets(&snapshot).await.unwrap();
     let loop_snippet: LoopContextSnippet = snippets.into_iter().next().unwrap().into_loop_snippet();
     assert_eq!(loop_snippet.snippet_ref, "skill:alpha");
     assert!(loop_snippet.safe_summary.contains("desc"));
+    // Phase 3: all skills are trusted — trust_level must be "trusted"
+    assert_eq!(
+        loop_snippet.metadata.as_ref().unwrap().trust_level,
+        "trusted"
+    );
 }

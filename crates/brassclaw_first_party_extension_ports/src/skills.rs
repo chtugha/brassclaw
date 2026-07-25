@@ -311,7 +311,7 @@ mod tests {
         TurnActor, TurnId, TurnRunId, TurnScope,
         run_profile::{
             InMemoryRunProfileResolver, LoopRunContext, RunProfileResolutionRequest,
-            RunProfileResolver, SkillTrustLevel, SkillVisibility,
+            RunProfileResolver, SkillVisibility,
         },
     };
 
@@ -457,7 +457,6 @@ mod tests {
         assert_eq!(entries.len(), 2);
         assert!(entries.iter().any(|entry| {
             entry.name == "system-helper"
-                && entry.trust == SkillTrustLevel::Trusted
                 && entry.visibility == SkillVisibility::Visible
                 && entry
                     .prompt_content
@@ -466,7 +465,6 @@ mod tests {
         }));
         assert!(entries.iter().any(|entry| {
             entry.name == "user-helper"
-                && entry.trust == SkillTrustLevel::Trusted
                 && entry.visibility == SkillVisibility::Visible
                 && entry
                     .prompt_content
