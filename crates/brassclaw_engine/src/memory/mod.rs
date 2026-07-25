@@ -16,6 +16,7 @@ pub mod recipe_matcher;
 pub mod recipe_validator;
 pub mod retrieval;
 pub mod retrieval_dbless;
+pub mod retrieval_source;
 pub mod similarity_checker;
 pub mod skill_tracker;
 pub mod store;
@@ -25,6 +26,9 @@ pub use metric_outcome::MetricRecorder;
 pub use recipe_matcher::{RecipeMatch, RecipeMatcher, RecipeStepMatch, ToolSkillMatch};
 pub use recipe_validator::{RecipeValidator, ValidationResult};
 pub use retrieval::RetrievalEngine;
+pub use retrieval_source::{ComponentItem, ComponentScope, RamSource, RetrievalSource, RetrievalSourceError};
+#[cfg(feature = "skills-db")]
+pub use retrieval_source::PostgresSource;
 pub use similarity_checker::{SimilarityChecker, SimilarityMatch};
 pub use skill_tracker::SkillTracker;
 pub use store::MemoryStore;

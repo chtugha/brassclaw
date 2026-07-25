@@ -37,7 +37,7 @@ use super::scripting::{execute_code, json_to_monty, monty_to_json, monty_to_stri
 use super::thread_context::thread_execution_context;
 use crate::capability::lease::LeaseManager;
 use crate::capability::policy::PolicyEngine;
-use crate::memory::RetrievalEngine;
+use crate::memory::{ComponentScope, RetrievalEngine, RetrievalSource};
 use crate::runtime::lease_refresh::reconcile_dynamic_tool_lease;
 use crate::runtime::messaging::{SignalReceiver, ThreadOutcome, ThreadSignal};
 use crate::traits::effect::{EffectExecutor, ThreadExecutionContext};
@@ -459,6 +459,7 @@ pub async fn execute_orchestrator(
     gate_controller: &Arc<dyn crate::gate::GateController>,
     persisted_state: &serde_json::Value,
     #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
+    retrieval_source: Option<&Arc<dyn RetrievalSource>>,
 ) -> Result<OrchestratorResult, EngineError> {
     let mut total_tokens = TokenUsage::default();
 
@@ -693,10 +694,16 @@ pub async fn execute_orchestrator(
                     //   override_prompt_creation — bool; true → use formatted_content
                     //                              as the complete prompt base
                     //   matched_component_ids    — list of UUID strings
-                    // Phase 5 wires the full retrieval + assembly pipeline here.
-                    // Returns an empty result until then so default.py is always correct.
+                    // Phase 5: retrieval_source is the real backend (PostgresSource or
+                    // RamSource). Falls back to legacy retrieve_context when None.
                     "__assemble_prior_knowledge__" => {
-                        handle_assemble_prior_knowledge(args, thread, retrieval).await
+                        handle_assemble_prior_knowledge(
+                            args,
+                            thread,
+                            retrieval,
+                            retrieval_source,
+                        )
+                        .await
                     }
 
                     // Unknown — let Monty resolve it (user-defined functions, builtins)
@@ -2523,32 +2530,65 @@ async fn handle_retrieve_docs(
 
 /// Handle `__assemble_prior_knowledge__(goal, token_budget, sender_class_code)`.
 ///
-/// Phase 8 Step 8.1 (§3.13/§3.14 — two-surface PKC design):
+/// Phase 8 Step 8.1 / Phase 5 Step 6.1 (§3.13/§3.14 — two-surface PKC design):
 /// Returns `{content, formatted_content, override_prompt_creation,
 /// matched_component_ids}` to Python. The Python orchestrator uses
 /// `formatted_content` for `working_messages`; `content` (raw PKC) is
 /// reserved for Rust dispatch and KV-cache fingerprinting.
 ///
-/// **Stub:** the real retrieval + intent-driven assembly pipeline is wired in
-/// Phase 5. Until then this function delegates to `retrieve_context` to
-/// produce a best-effort formatted result so `default.py` runs correctly with
-/// the new call site.
+/// Priority:
+/// 1. `retrieval_source` (Phase 5 path) — `PostgresSource` or `RamSource`.
+/// 2. Legacy `retrieval` (`RetrievalEngine::retrieve_context`) — MemoryDoc path.
+/// 3. Empty result — no retrieval available.
 async fn handle_assemble_prior_knowledge(
     args: &[MontyObject],
     thread: &Thread,
     retrieval: Option<&RetrievalEngine>,
+    retrieval_source: Option<&Arc<dyn RetrievalSource>>,
 ) -> ExtFunctionResult {
-    // Maximum number of docs to retrieve in the stub path (Phase 5 replaces
-    // this with the full intent-driven pipeline that honours token_budget).
-    const STUB_MAX_DOCS: usize = 20;
-
     let goal = args.first().map(monty_to_string).unwrap_or_default();
+    let token_budget = args
+        .get(1)
+        .and_then(|v| match v {
+            MontyObject::Int(i) => Some(*i as usize),
+            _ => None,
+        })
+        .unwrap_or(100_000);
+    let sender_class_code = args
+        .get(2)
+        .map(monty_to_string)
+        .unwrap_or_else(|| "02".to_string());
 
-    // Phase 5 wires the real intent-driven assembly here.  Until then, fall
-    // back to `retrieve_context` to produce a minimal prior-knowledge result.
+    // Phase 5 path: use the RetrievalSource backend.
+    if let Some(source) = retrieval_source {
+        let scope = ComponentScope {
+            tenant_id: "default".to_string(),
+            user_id: thread.user_id.clone(),
+            agent_id: String::new(),
+            project_id: thread.project_id.to_string(),
+        };
+
+        match source
+            .fetch_for_consumer(&scope, &goal, token_budget, &sender_class_code)
+            .await
+        {
+            Ok(items) => {
+                return assemble_from_component_items(&items);
+            }
+            Err(e) => {
+                debug!("assemble_prior_knowledge: RetrievalSource failed: {e}");
+                // Fall through to legacy path.
+            }
+        }
+    }
+
+    // Legacy fallback: MemoryDoc-based RetrievalEngine.
+    // Maximum number of docs to retrieve in the legacy path.
+    const LEGACY_MAX_DOCS: usize = 20;
+
     let components = if let Some(r) = retrieval {
         match r
-            .retrieve_context(thread.project_id, &thread.user_id, &goal, STUB_MAX_DOCS)
+            .retrieve_context(thread.project_id, &thread.user_id, &goal, LEGACY_MAX_DOCS)
             .await
         {
             Ok(docs) => docs,
@@ -2568,8 +2608,6 @@ async fn handle_assemble_prior_knowledge(
         .collect();
 
     // Build the formatted LLM-readable JSON from the retrieved components.
-    // format_prior_knowledge_for_llm() is deterministic and stable across
-    // turns — same components in same order → same JSON → KV-cache prefix hits.
     let formatted = format_prior_knowledge_for_llm(&components, &matched_ids);
 
     // Raw content: plain-text concatenation for Rust dispatch + KV-cache
@@ -2577,6 +2615,80 @@ async fn handle_assemble_prior_knowledge(
     let raw_content: String = components
         .iter()
         .map(|d| format!("[{:?}] {}\n{}", d.doc_type, d.title, d.content))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+        "content": raw_content,
+        "formatted_content": formatted,
+        "override_prompt_creation": false,
+        "matched_component_ids": matched_ids,
+    })))
+}
+
+/// Build the PKC result from a vec of [`ComponentItem`]s (Phase 5 path).
+///
+/// Checks if any component requests Solution Override (§3.13). If exactly
+/// one Override component exists, returns it verbatim. Otherwise assembles
+/// the normal multi-component JSON.
+fn assemble_from_component_items(items: &[crate::memory::ComponentItem]) -> ExtFunctionResult {
+    // Solution Override: single component with override_prompt_creation = true.
+    let override_items: Vec<_> = items
+        .iter()
+        .filter(|item| item.override_prompt_creation)
+        .collect();
+    if override_items.len() == 1 {
+        let item = override_items[0];
+        let matched_ids = vec![item.id.to_string()];
+        return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+            "content": item.effective_content,
+            "formatted_content": item.effective_content,
+            "override_prompt_creation": true,
+            "matched_component_ids": matched_ids,
+        })));
+    }
+
+    // Normal Assembly: multi-component JSON ordered (class_code asc, prompt_uid asc).
+    let matched_ids: Vec<String> = items.iter().map(|item| item.id.to_string()).collect();
+
+    // Build the JSON entries using the same schema as format_prior_knowledge_for_llm.
+    let entries: Vec<serde_json::Value> = items
+        .iter()
+        .map(|item| {
+            let class_label = crate::memory::intent_system::class_label(item.class_code);
+            let mut entry = serde_json::json!({
+                "class": class_label,
+                "class_code": item.class_code,
+                "name": item.name,
+            });
+            if !item.description.is_empty() {
+                entry["description"] = serde_json::Value::String(item.description.clone());
+            }
+            if !item.effective_content.is_empty() {
+                entry["content"] = serde_json::Value::String(item.effective_content.clone());
+            }
+            entry
+        })
+        .collect();
+
+    let formatted = serde_json::json!({
+        "prior_knowledge": entries,
+        "matched_components": matched_ids,
+    })
+    .to_string();
+
+    // Raw content for Rust dispatch fingerprinting.
+    let raw_content: String = items
+        .iter()
+        .map(|item| {
+            format!(
+                "[class:{} {}] {}\n{}",
+                item.class_code,
+                crate::memory::intent_system::class_label(item.class_code),
+                item.name,
+                item.effective_content
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n\n");
 
@@ -6923,7 +7035,7 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
             MontyObject::String("02".into()),
         ];
 
-        let result = handle_assemble_prior_knowledge(&args, &thread, None).await;
+        let result = handle_assemble_prior_knowledge(&args, &thread, None, None).await;
         let json = match result {
             ExtFunctionResult::Return(obj) => monty_to_json(&obj),
             other => panic!("expected Return, got: {other:?}"),

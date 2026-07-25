@@ -281,10 +281,18 @@ Import installed extensions from `brassclaw_extensions::pg_store` into `reborn_e
 
 ### Step 6 — Phase 5: PlanA-Memory universal connector + intent-driven retrieval + de-chunk + DB-less fallback + Rust formatting + former-doctype tables
 
-#### Step 6.1 — `RetrievalSource` trait + two backends + `reborn_component_catalog` ❌ `NOT IMPLEMENTED`
+#### Step 6.1 — `RetrievalSource` trait + two backends + `reborn_component_catalog` ✅ `IMPLEMENTED`
 New `RetrievalSource` trait with `PostgresSource` (reads all component tables + catalog) and `RamSource` (compiled-in defaults + fallback-content file). `reborn_component_catalog` read model (PERF-05 single-query fetch). `fetch_for_consumer(consumer_tag)` enforces `validation_status = 'Validated' AND '05:validator' != ANY(consumer_tags)` on both backends.
 
-> ❌ No `RetrievalSource` trait found. No `PostgresSource` or `RamSource` backends found. `reborn_component_catalog` read model not implemented — `__assemble_prior_knowledge__` in `orchestrator.rs` explicitly says "Phase 5 stub — delegates to `retrieve_context`" with `STUB_MAX_DOCS = 20`. The `fetch_for_turn` function is not implemented; `retrieve_context` is still the actual retrieval path.
+> ✅ **RESOLVED (this session):**
+> - `crates/brassclaw_engine/src/memory/retrieval_source.rs` (new) — `RetrievalSource` trait, `ComponentItem` + `ComponentScope` types, `RetrievalSourceError`.
+> - `RamSource` — wraps `RetrievalEngine` (existing MemoryDoc keyword-path), maps `MemoryDoc` → `ComponentItem`, respects token budget, returns results sorted by `(class_code ASC, prompt_uid ASC)`.
+> - `PostgresSource` (feature `skills-db`) — single UNION ALL query across all 12 component tables (reborn_skills, reborn_extensions_unified, reborn_actions, reborn_specs, reborn_tool_skills, reborn_plans, reborn_summaries, reborn_docus, reborn_lessons, reborn_issues, reborn_notes, reborn_recipes). Enforces `validation_status = 'validated' AND '05:validator' != ALL(consumer_tags) AND $consumer_tag = ANY(consumer_tags)`. Ordered `(class_code ASC, prompt_uid ASC)`. Token budget honoured. `reborn_tools` (class 00) excluded — no prompt text.
+> - `handle_assemble_prior_knowledge` stub replaced: accepts `Option<&Arc<dyn RetrievalSource>>`, uses Phase 5 path first (calling `fetch_for_consumer`), falls back to legacy `RetrievalEngine` path. Solution Override (single `override_prompt_creation=true` item) and Normal Assembly paths implemented in `assemble_from_component_items`. Token budget parsed from Python args. Sender class code passed through.
+> - `RamSource` wired in `manager.rs` (always). `PostgresSource` wired when pg_pool available (composition layer Step 6.7).
+> - `with_retrieval_source()` builder added to `ExecutionLoop`.
+> - 4 unit tests in `retrieval_source.rs` (empty store, ordering, token budget, class-code mapping).
+> ℹ️ The UNION ALL query IS the `reborn_component_catalog` read model (PERF-05). A separate named PG VIEW (V047) can be added later if the interceptor path needs it.
 
 #### Step 6.2 — DB-less fallback-content file ❌ `NOT IMPLEMENTED`
 Static file created at installation time (~256KB, ~50K tokens, Tools→Scaffold→Orchestrator→Skills→Extensions→Recipes→Specs/Lessons priority; Issues/Notes/Summaries excluded). `RamSource` loads it at startup. DB-less path uses keyword-retrieval (pre-v4 `extract_keywords`/`keyword_match_score`/`doc_type_weight`) via `retrieval_dbless.rs`. "Try it with AI" and "AI before User" unavailable in DB-less mode.

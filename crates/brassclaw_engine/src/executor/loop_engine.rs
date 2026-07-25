@@ -130,6 +130,9 @@ pub struct ExecutionLoop {
     /// from `reborn_skills` instead of MemoryDoc filesystem discovery.
     #[cfg(feature = "skills-db")]
     pg_pool: Option<std::sync::Arc<brassclaw_pg::PgPool>>,
+    /// Phase 5 retrieval source (PostgresSource or RamSource) for
+    /// `__assemble_prior_knowledge__`. Falls back to legacy `retrieval` when None.
+    retrieval_source: Option<Arc<dyn crate::memory::RetrievalSource>>,
 }
 
 impl ExecutionLoop {
@@ -160,6 +163,7 @@ impl ExecutionLoop {
             gate_controller,
             #[cfg(feature = "skills-db")]
             pg_pool: None,
+            retrieval_source: None,
         }
     }
 
@@ -203,6 +207,15 @@ impl ExecutionLoop {
     /// Set platform metadata for self-awareness in system prompts.
     pub fn with_platform_info(mut self, info: crate::executor::prompt::PlatformInfo) -> Self {
         self.platform_info = Some(info);
+        self
+    }
+
+    /// Set the Phase 5 retrieval source for `__assemble_prior_knowledge__`.
+    pub fn with_retrieval_source(
+        mut self,
+        source: Arc<dyn crate::memory::RetrievalSource>,
+    ) -> Self {
+        self.retrieval_source = Some(source);
         self
     }
 
@@ -455,6 +468,7 @@ impl ExecutionLoop {
             &checkpoint.persisted_state,
             #[cfg(feature = "skills-db")]
             self.pg_pool.as_deref(),
+            self.retrieval_source.as_ref(),
         )
         .await;
 

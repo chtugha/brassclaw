@@ -357,7 +357,12 @@ impl ThreadManager {
         let policy = Arc::clone(&self.policy);
 
         let store_for_retrieval = Arc::clone(&self.store);
-        let retrieval = crate::memory::RetrievalEngine::new(store_for_retrieval);
+        let retrieval = crate::memory::RetrievalEngine::new(Arc::clone(&store_for_retrieval));
+        // Phase 5 retrieval source: RamSource wraps the same store for the
+        // __assemble_prior_knowledge__ path. PostgresSource is wired in the
+        // composition layer when a pg_pool is available.
+        let retrieval_source: Arc<dyn crate::memory::RetrievalSource> =
+            Arc::new(crate::memory::RamSource::new(store_for_retrieval));
 
         let gate_controller = self.gate_controller.read().await.clone();
         let exec_loop = ExecutionLoop::new(
@@ -373,7 +378,8 @@ impl ThreadManager {
         .with_capabilities(Arc::clone(&self.capabilities))
         .with_event_tx(self.event_tx.clone())
         .with_retrieval(retrieval)
-        .with_store(Arc::clone(&self.store));
+        .with_store(Arc::clone(&self.store))
+        .with_retrieval_source(retrieval_source);
 
         // Spawn background task
         let store_for_task = Arc::clone(&self.store);
