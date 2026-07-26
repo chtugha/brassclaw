@@ -30,7 +30,7 @@ restart on the pure-PG path.
 - Remove the "no persistent budget gate store yet" comment.
 - Run clippy + tests, commit + push.
 
-### Step 2 — Wire `PgExtensionInstallationStore` in the serve path
+### Step 2 — Wire `PgExtensionInstallationStore` in the serve path ✅ DONE
 
 **Files:** `crates/brassclaw_reborn_composition/src/factory.rs`,
 `crates/brassclaw_reborn_composition/src/runtime.rs`
@@ -161,7 +161,7 @@ populated; only the consumer is missing.
 | Step | Description | Status |
 |------|-------------|--------|
 | 1 | `PgBudgetGateStore` in `build_pg_runtime_stores` | ❌ NOT DONE |
-| 2 | `PgExtensionInstallationStore` in serve path | ❌ NOT DONE |
+| 2 | `PgExtensionInstallationStore` in serve path | ✅ DONE |
 | 3 | `PgOutboundStateStore` in projection services | ❌ NOT DONE |
 | 4 | `PgConversationStateStore` in serve path | ❌ NOT DONE |
 | 5 | Delete `build_production_shaped` dead chain (Option B) | ❌ NOT DONE |

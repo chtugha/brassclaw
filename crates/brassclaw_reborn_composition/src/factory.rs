@@ -578,7 +578,12 @@ pub async fn build_reborn_services(
                 // Copy over any extra fields that may have been set on the input.
                 let local_input = transfer_build_input_extras(local_input, &input);
                 let pg_pool_arc = Arc::new(pool.clone());
-                let mut services = build_local_dev(local_input).await?;
+                let mut services = build_local_dev(
+                    local_input,
+                    #[cfg(feature = "postgres")]
+                    Some(Arc::clone(&pg_pool_arc)),
+                )
+                .await?;
                 // Inject the PG pool so build_reborn_runtime can use PG-backed stores.
                 services.pg_pool = Some(pg_pool_arc);
                 // NOTE: `local_runtime.trigger_repository` is still `InMemoryTriggerRepository`
@@ -588,7 +593,12 @@ pub async fn build_reborn_services(
                 // subplan_pg4_runtime_pg_path.md.
                 return Ok(services);
             }
-            build_local_dev(input).await
+            build_local_dev(
+                input,
+                #[cfg(feature = "postgres")]
+                None,
+            )
+            .await
         }
     }
 }
@@ -651,7 +661,10 @@ fn production_config(
     config.require_credential_broker()
 }
 
-async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, RebornBuildError> {
+async fn build_local_dev(
+    input: RebornBuildInput,
+    #[cfg(feature = "postgres")] pg_pool: Option<Arc<deadpool_postgres::Pool>>,
+) -> Result<RebornServices, RebornBuildError> {
     let RebornBuildInput {
         profile,
         storage,
@@ -859,6 +872,28 @@ async fn build_local_dev(input: RebornBuildInput) -> Result<RebornServices, Rebo
         })?,
     );
     let extension_filesystem: Arc<dyn RootFilesystem> = filesystem.clone();
+    // On the hybrid serve path (LocalDev + PG pool), use PgExtensionInstallationStore
+    // so extension install records survive process restart.
+    // On the pure local-dev path (no pool), fall back to the filesystem store.
+    #[cfg(feature = "postgres")]
+    let extension_installation_store: Arc<dyn ExtensionInstallationStore> =
+        if let Some(pool) = pg_pool.as_ref() {
+            Arc::new(brassclaw_extensions::PgExtensionInstallationStore::new(
+                Arc::clone(pool),
+                "default",
+            ))
+        } else {
+            Arc::new(
+                FilesystemExtensionInstallationStore::load(extension_filesystem.clone())
+                    .await
+                    .map_err(|error| RebornBuildError::InvalidConfig {
+                        reason: format!(
+                            "extension installation state could not be loaded: {error}"
+                        ),
+                    })?,
+            )
+        };
+    #[cfg(not(feature = "postgres"))]
     let extension_installation_store: Arc<dyn ExtensionInstallationStore> = Arc::new(
         FilesystemExtensionInstallationStore::load(extension_filesystem.clone())
             .await
