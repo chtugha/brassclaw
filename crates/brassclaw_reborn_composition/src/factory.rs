@@ -441,10 +441,10 @@ pub(crate) async fn build_pg_runtime_stores(
     let resource_governor: Arc<dyn brassclaw_resources::ResourceGovernor> = Arc::new(
         brassclaw_resources::PersistentResourceGovernor::new(pg_governor_store),
     );
-    // No persistent budget gate store yet — in-memory is acceptable since gates
-    // are advisory pauses, not durable state.
+    // PG-backed budget-gate store: gates survive process restart and are
+    // visible across concurrent processes sharing the same pool.
     let budget_gate_store: Arc<dyn brassclaw_resources::BudgetGateStore> =
-        Arc::new(brassclaw_resources::InMemoryBudgetGateStore::new());
+        Arc::new(brassclaw_resources::PgBudgetGateStore::new(Arc::clone(&pool), "default"));
     let broadcast_budget_event_sink =
         Arc::new(brassclaw_resources::BroadcastBudgetEventSink::default());
     let event_log: Arc<dyn brassclaw_events::DurableEventLog> = Arc::new(
