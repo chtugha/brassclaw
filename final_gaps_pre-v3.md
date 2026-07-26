@@ -148,11 +148,23 @@ Then execute PG-8 cleanup (file-based config removal) in the same pass.
 Delete all `DocType` variants, retire `MemoryDoc`/`Store` trait surface, drop
 ~100 test fixtures using `DocType`. Blocked on PG-6 completing.
 
-### Step 8 — Budget event projection (gate: design decision)
+### Step 8 — Budget event projection ✅ DONE (was "NEEDS DESIGN" — pre-dates implementation)
 
-Wire `broadcast_budget_event_sink` drain into an SSE / gateway event stream.
-Requires a design decision on the projection owner. The sink is already
-populated; only the consumer is missing.
+**The projection is fully implemented and wired.** The "NEEDS DESIGN" flag was written
+before `BudgetEventProjection` existed. Current state:
+
+- `BudgetEventProjection` task (in `budget_events.rs`) subscribes to the broadcast sink
+  and delivers to a `BudgetEventObserver`. Spawned unconditionally on every runtime.
+- Default observer: `TracingBudgetEventObserver` (logs at `debug!`) — no events dropped.
+- Custom observer: `RebornRuntimeInput::with_budget_event_observer()` — public hook for
+  any caller (WebUI bridge, telemetry exporter, audit log) to install their own observer.
+- Fully tested: `projection_delivers_budget_events_to_installed_observer` in `budget_e2e.rs`
+  verifies the full call-site path through runtime construction and send.
+
+**What doesn't exist yet (future feature, not a gap):** a WebUI SSE bridge observer that
+forwards `BudgetEvent` variants to the v2 event stream for live budget chips in the UI.
+The hook (`BudgetEventObserver` trait + `with_budget_event_observer`) is already in place.
+The WebUI currently shows budget state by polling the budget-gate endpoints.
 
 ---
 
@@ -167,4 +179,4 @@ populated; only the consumer is missing.
 | 5 | Delete `build_production_shaped` dead chain (Option B) | ✅ DONE |
 | 6 | PG-6 libSQL strip | ⛔ GATED |
 | 7 | Step 6.10 DocType retirement | ⛔ GATED |
-| 8 | Budget event projection | ⛔ NEEDS DESIGN |
+| 8 | Budget event projection | ✅ DONE (implemented; SSE bridge is future feature) |

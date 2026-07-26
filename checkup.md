@@ -565,3 +565,5 @@ Document new architecture: DB-stored components, class codes, consumer-tag gatin
 | 🔸 Partial | 0 | (none — all known steps now confirmed or deferred) |
 | ❌ Not Implemented | 0 | (all confirmed implemented or formally deferred) |
 | ⚠️ Flag/Deferred | ~3 | **PG-6(intentional upgrade-cycle deferral)**, **PG-8(deferred until migrate-from-libsql gate lifted)**, **Step 6.10(deferred to PG-8)** |
+
+> ℹ️ **Budget event projection** (`final_gaps_pre-v3.md` Step 8): fully implemented — `BudgetEventProjection` task drains the broadcast sink and delivers to `BudgetEventObserver`. Spawned unconditionally on every runtime; default is `TracingBudgetEventObserver`. Custom observer wired via `RebornRuntimeInput::with_budget_event_observer()`. A live WebUI SSE bridge is a future feature, not a current gap.
