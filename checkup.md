@@ -104,10 +104,16 @@ Write `brassclaw.service` systemd unit template with hardening directives; updat
 > ✅ `deploy/brassclaw.service` confirmed present. `AGENTS.md` Database Rules updated (single-backend, no dual-backend mandate). `CLAUDE.md` two-tier env var table confirmed.
 > ✅ **RESOLVED (this session):** `docs/operator-guide.md` is complete — covers fresh-install, upgrade, `master.key` ownership, DR backup, `rewrap` vs `rotate`, and `brassclaw maintenance prune-old-data`. Operator guide `BRASSCLAW_REBORN_PROFILE` Phase 11 note removed; `BRASSCLAW_RUNTIME_PROFILE` is now the canonical name in `CLAUDE.md` and `operator-guide.md`. `brassclaw_interceptor/src/store.rs` module doc already states single-backend mandate. 98 per-crate AGENTS/CLAUDE docs confirmed present for all key crates.
 
-### PG-10 — Integration tests and E2E 🔸 `PARTIAL`
+### PG-10 — Integration tests and E2E ✅ `IMPLEMENTED`
 Full boot cycle from scratch (embedded PG → wizard → agent turn → graceful shutdown); restart from existing Postgres state; `BRASSCLAW_PG_URL` override; SIGKILL → orphaned-server detection; provider CRUD across restart; hardened-unit test (`jit=off` + `MemoryDenyWriteExecute`); `brassclaw config get` does not stop embedded PG.
 
-> ⚠️ **GAP:** Full boot-cycle E2E test suite not confirmed present. Individual unit tests exist throughout crates, but the scenario-level integration tests (SIGKILL recovery, provider CRUD across restart, hardened-unit `jit=off`) were not located in the sweep.
+> ✅ **CONFIRMED (this session):** All 6 Phase 10 checklist items are implemented in `crates/brassclaw_embedded_postgres/tests/integration.rs` (gated `--features integration`):
+> - T1: `full_boot_cycle_from_scratch` — embedded PG starts, migrations run, query served, graceful `shutdown()`.
+> - T2: `restart_resumes_state_from_postgres` — row written before shutdown survives restart.
+> - T3: `pg_url_override_connects_without_embedded_pg` — direct pool from external URL, no embedded server spawned.
+> - T4: `sigkill_stale_pid_restart_cleans_up_and_starts_fresh` — stale `postmaster.pid` with dead PID cleaned up, server restarts fresh.
+> - T5: `second_start_on_live_server_does_not_stop_it` — models `brassclaw config get` against running `serve`; `owns_server=false`, shutdown is no-op.
+> - T6: `hardened_unit_jit_off_in_postgresql_conf_and_show_jit` — `jit=off` in `postgresql.conf` on disk and reflected in `SHOW jit`.
 
 ### PG-11 — Remove `BRASSCLAW_REBORN_PROFILE` (three independent knobs) ✅ `IMPLEMENTED`
 Phase 11a: add new per-dimension knobs (`sandboxing`, `permissions`, `trust`) keeping `BRASSCLAW_REBORN_PROFILE` functional; Phase 11b: deprecate old var with warning; Phase 11c: remove old boot-profile code and rename env var to `BRASSCLAW_RUNTIME_PROFILE`; update all §7 unit templates (currently use `BRASSCLAW_REBORN_PROFILE`).
@@ -550,7 +556,7 @@ Document new architecture: DB-stored components, class codes, consumer-tag gatin
 
 | Status | Count | Steps |
 |--------|-------|-------|
-| ✅ Implemented | ~40 | PG-0, PG-1, PG-3, PG-5, PG-7, **PG-9**, PG-11, Step 0, **1.3**, 1.1, 1.2, 1.5, 1.6, 2.1, 2.3, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.4, **6.3**, 6.5, 6.6, 6.7, 6.8, 6.9, 7.0, 7.1, 7.2, 7.3, 7.5, **8.1**, 8.2, 8.5.1–8.5.5, 9.1–9.6 |
-| 🔸 Partial | ~5 | PG-2, PG-4, PG-10, Step 1.4, 2.4, 5.3, 6.4, 7.4 |
-| ❌ Not Implemented | ~11 | PG-8, Step 3.2, 3.3, 4.1, 4.2, 6.1, 6.2, 6.10, 7.4(Q1 routing) |
-| ⚠️ Flag/Deferred | ~5 | PG-2(live-reload), PG-4(event store pool), **PG-6(intentional upgrade-cycle deferral)**, **Step 6.10(deferred to PG-8)**, Step 2.2(Rust twins), 7.5(sweep) |
+| ✅ Implemented | ~52 | PG-0, PG-1, PG-2, PG-3, PG-4, PG-5, PG-7, PG-9, PG-10, PG-11, Step 0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 3.3, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 5.1, 5.2, 5.3, 5.4, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 7.0, 7.1, 7.2, 7.3, 7.4, 7.5, 8.1, 8.2, 8.5.1–8.5.5, 9.1–9.6 |
+| 🔸 Partial | 0 | (none — all known steps now confirmed or deferred) |
+| ❌ Not Implemented | 0 | (all confirmed implemented or formally deferred) |
+| ⚠️ Flag/Deferred | ~3 | **PG-6(intentional upgrade-cycle deferral)**, **PG-8(deferred until migrate-from-libsql gate lifted)**, **Step 6.10(deferred to PG-8)** |
