@@ -73,6 +73,7 @@ async fn webui_event_stream_enriches_activity_with_display_preview_from_store() 
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-preview-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_display_previews(Arc::clone(&display_previews));
     let events = services

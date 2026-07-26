@@ -51,7 +51,7 @@ path or pure-PG path), extension installs should be backed by
   both receive the PG-backed store.
 - Run clippy + tests, commit + push.
 
-### Step 3 — Wire `PgOutboundStateStore` in `build_reborn_projection_services()`
+### Step 3 — Wire `PgOutboundStateStore` in `build_reborn_projection_services()` ✅ DONE
 
 **File:** `crates/brassclaw_reborn_composition/src/projection.rs`
 
@@ -160,9 +160,9 @@ populated; only the consumer is missing.
 
 | Step | Description | Status |
 |------|-------------|--------|
-| 1 | `PgBudgetGateStore` in `build_pg_runtime_stores` | ❌ NOT DONE |
+| 1 | `PgBudgetGateStore` in `build_pg_runtime_stores` | ✅ DONE |
 | 2 | `PgExtensionInstallationStore` in serve path | ✅ DONE |
-| 3 | `PgOutboundStateStore` in projection services | ❌ NOT DONE |
+| 3 | `PgOutboundStateStore` in projection services | ✅ DONE |
 | 4 | `PgConversationStateStore` in serve path | ❌ NOT DONE |
 | 5 | Delete `build_production_shaped` dead chain (Option B) | ❌ NOT DONE |
 | 6 | PG-6 libSQL strip | ⛔ GATED |

@@ -25,6 +25,7 @@ fn live_projection_fixture(label: &str) -> LiveProjectionFixture {
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new(format!("{label}-reply")).unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let sink = services.with_live_progress_milestone_sink_for_publisher(
         Arc::new(InMemoryLoopHostMilestoneSink::default()),

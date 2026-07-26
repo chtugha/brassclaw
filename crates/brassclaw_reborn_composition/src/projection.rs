@@ -18,7 +18,7 @@ use brassclaw_event_streams::{
 use brassclaw_events::{DurableEventLog, EventCursor, EventStreamKey, ReadScope};
 use brassclaw_first_party_extension_ports::SkillActivationObserver;
 use brassclaw_host_api::UserId;
-use brassclaw_outbound::InMemoryOutboundStateStore;
+use brassclaw_outbound::OutboundStateStore;
 use brassclaw_product_adapters::{
     AdapterInstallationId, CapabilityActivityStatusView, CapabilityActivityView,
     CapabilityActivityViewInput, ExternalActorRef, ExternalConversationRef, ProductAdapterError,
@@ -158,6 +158,7 @@ impl RebornProjectionServices {
 pub(crate) fn build_reborn_projection_services(
     event_log: Arc<dyn DurableEventLog>,
     webui_reply_target_binding_ref: ReplyTargetBindingRef,
+    outbound_store: Arc<dyn OutboundStateStore>,
 ) -> RebornProjectionServices {
     let projection: Arc<dyn EventProjectionService> =
         Arc::new(ReplayEventProjectionService::from_runtime_log(event_log));
@@ -168,7 +169,7 @@ pub(crate) fn build_reborn_projection_services(
         Arc::new(InMemoryProjectionStreamAdmissionPolicy::default()),
         live_updates.clone(),
         Arc::new(NoExposureProjectionRedactionValidator),
-        Arc::new(InMemoryOutboundStateStore::default()),
+        outbound_store,
     ));
     RebornProjectionServices {
         event_stream_manager,

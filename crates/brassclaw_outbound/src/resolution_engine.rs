@@ -70,7 +70,13 @@ impl<'a> OutboundResolutionEngine<'a> {
         let kind = context.delivery_kind();
         let target = match &context.origin {
             RunNotificationOrigin::LiveSourceRoute { source_route } => {
-                source_route.reply_target_binding_ref.clone()
+                self.resolve_live_source_route_target(
+                    kind,
+                    &source_route.reply_target_binding_ref,
+                    scope,
+                    actor,
+                )
+                .await?
             }
             RunNotificationOrigin::Triggered { .. } => {
                 self.resolve_triggered_target(scope, actor, kind).await?
@@ -92,6 +98,32 @@ impl<'a> OutboundResolutionEngine<'a> {
         Ok(CommunicationDeliveryResolution::candidate(
             CommunicationDeliveryCandidate { target, kind },
         ))
+    }
+
+    /// For live (interactive) source route runs, approval and auth prompts are
+    /// always routed to the actor's configured preference targets rather than
+    /// back to the live source route. Final replies and progress updates go
+    /// directly to the source route because the live session is still open.
+    async fn resolve_live_source_route_target(
+        &self,
+        kind: CommunicationDeliveryKind,
+        source_route_target: &ReplyTargetBindingRef,
+        scope: &brassclaw_turns::TurnScope,
+        actor: &brassclaw_turns::TurnActor,
+    ) -> Result<ReplyTargetBindingRef, OutboundError> {
+        match kind {
+            CommunicationDeliveryKind::ApprovalPrompt => {
+                self.load_preference_target(scope, actor, PreferenceTargetKind::ApprovalPrompt)
+                    .await
+            }
+            CommunicationDeliveryKind::AuthPrompt => {
+                self.load_preference_target(scope, actor, PreferenceTargetKind::AuthPrompt)
+                    .await
+            }
+            CommunicationDeliveryKind::FinalReply
+            | CommunicationDeliveryKind::ProgressUpdate
+            | CommunicationDeliveryKind::DeliveryStatus => Ok(source_route_target.clone()),
+        }
     }
 
     async fn resolve_triggered_from_source_route_target(
@@ -332,7 +364,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn live_source_route_approval_needed_uses_the_source_route() {
+    async fn live_source_route_approval_needed_uses_the_approval_preference() {
         let store = InMemoryOutboundStateStore::default();
         let engine = OutboundResolutionEngine::new(&store);
 
@@ -354,14 +386,14 @@ mod tests {
                     reply_target_binding_ref: reply_ref("reply:source-route"),
                 },
             },
-            "reply:source-route",
+            "reply:approval",
             CommunicationDeliveryKind::ApprovalPrompt,
         )
         .await;
     }
 
     #[tokio::test]
-    async fn live_source_route_auth_required_uses_the_source_route() {
+    async fn live_source_route_auth_required_uses_the_auth_preference() {
         let store = InMemoryOutboundStateStore::default();
         let engine = OutboundResolutionEngine::new(&store);
 
@@ -383,7 +415,7 @@ mod tests {
                     reply_target_binding_ref: reply_ref("reply:source-route"),
                 },
             },
-            "reply:source-route",
+            "reply:auth",
             CommunicationDeliveryKind::AuthPrompt,
         )
         .await;

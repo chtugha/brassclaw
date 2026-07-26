@@ -18,6 +18,7 @@ async fn webui_event_stream_enriches_auth_prompt_through_projection_stream() {
     let services = build_reborn_projection_services(
         event_log_dyn,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(FakeTurnEventSource {
@@ -91,6 +92,7 @@ async fn webui_event_stream_uses_credential_requirement_for_manual_token_auth_pr
     let services = build_reborn_projection_services(
         event_log_dyn,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(FakeTurnEventSource {
@@ -157,6 +159,7 @@ async fn webui_event_stream_surfaces_auth_challenge_lookup_failure() {
     let services = build_reborn_projection_services(
         event_log_dyn,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(FakeTurnEventSource {
@@ -260,6 +263,7 @@ async fn webui_event_stream_creates_google_oauth_prompt_for_runtime_credential_g
     let services = build_reborn_projection_services(
         event_log_dyn,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(FakeTurnEventSource {
@@ -430,6 +434,7 @@ async fn webui_event_stream_creates_notion_dcr_oauth_prompt_for_runtime_credenti
     let services = build_reborn_projection_services(
         event_log_dyn,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(FakeTurnEventSource {

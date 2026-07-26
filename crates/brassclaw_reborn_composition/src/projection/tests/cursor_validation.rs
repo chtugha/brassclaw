@@ -19,6 +19,7 @@ async fn webui_event_stream_rejects_malformed_projection_cursor() {
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
 
     let error = services
@@ -62,6 +63,7 @@ async fn webui_event_stream_rejects_runtime_delivery_offset_above_payload_limit(
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
 
     let error = services
@@ -115,6 +117,7 @@ async fn webui_event_stream_rejects_runtime_delivery_offset_above_item_payload_c
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
 
     let error = services
@@ -166,6 +169,7 @@ async fn webui_event_stream_rejects_legacy_partial_snapshot_offset_above_item_pa
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
 
     let error = services

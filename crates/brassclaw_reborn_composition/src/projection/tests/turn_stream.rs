@@ -22,6 +22,7 @@ async fn webui_event_stream_resumes_after_serialized_projection_cursor() {
     let services = build_reborn_projection_services(
         event_log_dyn,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let first = services
         .webui_event_stream()
@@ -87,6 +88,7 @@ async fn webui_event_stream_resumes_mixed_batch_without_skipping_turn_event() {
     let services = build_reborn_projection_services(
         event_log_dyn,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(FakeTurnEventSource {
@@ -168,6 +170,7 @@ async fn webui_event_stream_projects_blocked_dependent_run_status() {
     let services = build_reborn_projection_services(
         event_log_dyn,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(FakeTurnEventSource {
@@ -246,6 +249,7 @@ async fn webui_event_stream_tolerates_initial_turn_event_rebase() {
     let services = build_reborn_projection_services(
         event_log_dyn,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(RebaseTurnEventSource {
@@ -308,6 +312,7 @@ async fn webui_event_stream_rejects_foreign_composite_turn_cursor() {
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
 
     let error = services
@@ -358,6 +363,7 @@ async fn webui_event_stream_rejects_foreign_composite_runtime_cursor() {
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
 
     let error = services
@@ -396,6 +402,7 @@ async fn webui_event_stream_emits_keepalive_when_only_turn_cursor_advances() {
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(FakeTurnEventSource {
@@ -486,6 +493,7 @@ async fn webui_event_stream_reads_past_filtered_turn_event_pages() {
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(FakeTurnEventSource { events }),
@@ -537,6 +545,7 @@ async fn webui_event_stream_does_not_prompt_for_stale_blocked_event() {
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(FakeTurnEventSource {
@@ -602,6 +611,7 @@ async fn webui_event_stream_uses_request_actor_for_projection_scope() {
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let events = services
         .webui_event_stream()
@@ -632,6 +642,7 @@ async fn webui_event_stream_filters_turn_events_by_owner_user() {
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(FakeTurnEventSource {

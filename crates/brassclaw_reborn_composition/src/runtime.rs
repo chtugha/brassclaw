@@ -2232,9 +2232,22 @@ pub async fn build_reborn_runtime(
     if trusted_laptop_access {
         append_trusted_laptop_access_audit(&audit_log, &thread_scope, &actor_user_id).await?;
     }
+    // Build outbound state store: PG-backed when pool available (notification
+    // targets survive process restart), in-memory fallback otherwise.
+    #[cfg(feature = "postgres")]
+    let outbound_store: Arc<dyn brassclaw_outbound::OutboundStateStore> =
+        if let Some(pool) = services.pg_pool.as_ref() {
+            Arc::new(brassclaw_outbound::PgOutboundStateStore::new((**pool).clone()))
+        } else {
+            Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default())
+        };
+    #[cfg(not(feature = "postgres"))]
+    let outbound_store: Arc<dyn brassclaw_outbound::OutboundStateStore> =
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default());
     let projection_services = build_reborn_projection_services(
         Arc::clone(&event_log),
         validated_identity.reply_target_binding_ref.clone(),
+        outbound_store,
     );
     let live_projection_publisher =
         projection_services.live_projection_publisher(actor_user_id.clone());

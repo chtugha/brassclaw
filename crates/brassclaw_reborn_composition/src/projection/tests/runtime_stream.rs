@@ -53,6 +53,7 @@ async fn webui_event_stream_drains_run_status_projection_from_event_stream_manag
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let events = services
         .webui_event_stream()
@@ -97,6 +98,7 @@ async fn webui_event_stream_drains_capability_activity_from_projection() {
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-activity-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let events = services
         .webui_event_stream()
@@ -169,6 +171,7 @@ async fn webui_event_stream_enriches_activity_with_display_preview_from_store() 
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-preview-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_display_previews(Arc::clone(&display_previews));
     let events = services
@@ -286,6 +289,7 @@ async fn webui_event_stream_replays_capability_started_before_folded_completion(
     let services = build_reborn_projection_services(
         event_log_dyn,
         ReplyTargetBindingRef::new("webui-activity-replay-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let initial = services
         .webui_event_stream()
@@ -382,6 +386,7 @@ async fn webui_event_stream_preserves_sanitized_capability_activity_error_kind()
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-activity-redacted-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let events = services
         .webui_event_stream()
@@ -414,6 +419,7 @@ async fn webui_event_stream_drains_live_reasoning_projection_from_update_source(
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-thinking-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let sink = services.with_live_progress_milestone_sink_for_publisher(
         Arc::new(InMemoryLoopHostMilestoneSink::default()),
@@ -486,6 +492,7 @@ async fn live_projection_is_keyed_to_run_actor_not_publisher_owner() {
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-actor-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     // Publisher built with the runtime owner — the fallback owner.
     let sink = services.with_live_progress_milestone_sink_for_publisher(
@@ -568,6 +575,7 @@ async fn webui_event_stream_drains_skill_activation_projection_from_observer() {
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-skill-activation-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let scope = TurnScope::new(
         tenant_id.clone(),
@@ -640,6 +648,7 @@ async fn webui_event_stream_bounds_skill_activation_projection_from_observer() {
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-skill-bounds-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let scope = TurnScope::new(
         tenant_id.clone(),
@@ -725,6 +734,7 @@ async fn webui_event_stream_drains_work_summary_projection_from_driver_note() {
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-work-summary-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let sink = services.with_live_progress_milestone_sink_for_publisher(
         Arc::new(InMemoryLoopHostMilestoneSink::default()),
@@ -793,6 +803,7 @@ async fn webui_event_stream_live_cursor_does_not_poison_runtime_failure_resume()
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-live-failure-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let sink = services.with_live_progress_milestone_sink_for_publisher(
         Arc::new(InMemoryLoopHostMilestoneSink::default()),
@@ -891,6 +902,7 @@ async fn webui_event_stream_maps_subscription_terminated_work_summary_to_context
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-terminated-summary-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let sink = services.with_live_progress_milestone_sink_for_publisher(
         Arc::new(InMemoryLoopHostMilestoneSink::default()),
@@ -956,6 +968,7 @@ async fn webui_event_stream_skips_empty_work_summary_body() {
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-empty-summary-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let sink = services.with_live_progress_milestone_sink_for_publisher(
         Arc::new(InMemoryLoopHostMilestoneSink::default()),
@@ -1026,6 +1039,7 @@ async fn webui_event_stream_resumes_inside_multi_payload_runtime_projection_item
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-activity-resume-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let initial_events = services
         .webui_event_stream()
@@ -1104,6 +1118,7 @@ async fn webui_event_stream_accepts_legacy_partial_origin_cursor() {
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-activity-legacy-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
 
     let resumed_events = services
@@ -1239,6 +1254,7 @@ async fn webui_event_stream_bounds_large_activity_history_before_dto_constructio
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-activity-overflow-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let initial_events = services
         .webui_event_stream()
@@ -1346,6 +1362,7 @@ async fn webui_event_stream_mints_resumable_cursors_for_long_valid_scope_ids() {
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-activity-long-scope-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let events = services
         .webui_event_stream()
@@ -1400,6 +1417,7 @@ async fn webui_event_stream_rebases_stale_partial_activity_cursor() {
     let services = build_reborn_projection_services(
         event_log_dyn,
         ReplyTargetBindingRef::new("webui-activity-stale-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let initial_events = services
         .webui_event_stream()
@@ -1518,6 +1536,7 @@ async fn webui_event_stream_drains_completed_and_failed_capability_activity_meta
     let services = build_reborn_projection_services(
         event_log,
         ReplyTargetBindingRef::new("webui-activity-terminal-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     );
     let events = services
         .webui_event_stream()

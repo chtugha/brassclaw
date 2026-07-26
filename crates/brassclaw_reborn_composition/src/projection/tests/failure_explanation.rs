@@ -41,6 +41,7 @@ async fn assert_failed_run_status_summary(
     let services = build_reborn_projection_services(
         event_log_dyn,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(FakeTurnEventSource {
@@ -108,6 +109,7 @@ async fn webui_event_stream_projects_model_credit_exhaustion_failure_summary() {
     let services = build_reborn_projection_services(
         event_log_dyn,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(FakeTurnEventSource {
@@ -176,6 +178,7 @@ async fn webui_event_stream_uses_model_failure_explanation_when_available() {
     let services = build_reborn_projection_services(
         event_log_dyn,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(FakeTurnEventSource {
@@ -250,6 +253,7 @@ async fn webui_event_stream_caches_model_failure_explanation_across_replay() {
     let services = build_reborn_projection_services(
         event_log_dyn,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(FakeTurnEventSource {
@@ -324,6 +328,7 @@ async fn webui_event_stream_projects_recovery_required_failure_summary() {
     let services = build_reborn_projection_services(
         event_log_dyn,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(FakeTurnEventSource {
@@ -394,6 +399,7 @@ async fn failure_details_returns_fallback_when_model_gateway_times_out() {
     let services = build_reborn_projection_services(
         event_log_dyn,
         ReplyTargetBindingRef::new("webui-events-reply").unwrap(),
+        Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default()),
     )
     .with_turn_events(
         Arc::new(FakeTurnEventSource {
