@@ -281,8 +281,10 @@ struct TriggerPollerServices {
     pairing_service: Arc<dyn brassclaw_conversations::ConversationActorPairingService>,
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn build_trigger_poller_services(
     local_runtime: Option<&crate::factory::RebornLocalRuntimeServices>,
+    #[cfg(feature = "postgres")] pg_pool: Option<&Arc<deadpool_postgres::Pool>>,
     turn_coordinator: Arc<dyn TurnCoordinator>,
     thread_service: Arc<dyn SessionThreadService>,
     authorizer_config: TriggerPollerAuthorizerConfig,
@@ -290,10 +292,50 @@ async fn build_trigger_poller_services(
     tenant_id: TenantId,
     default_agent_id: AgentId,
 ) -> Result<TriggerPollerServices, RebornRuntimeError> {
-    let authorizer = build_trigger_fire_authorizer(authorizer_config, access_checker, tenant_id)?;
+    let authorizer =
+        build_trigger_fire_authorizer(authorizer_config, access_checker, tenant_id.clone())?;
+
+    // Resolve conversation services: filesystem-backed for LocalDev, PG-backed
+    // for the pure-Postgres path.
+    #[cfg(feature = "postgres")]
+    if local_runtime.is_none() {
+        let pool = pg_pool.ok_or_else(|| RebornRuntimeError::InvalidArgument {
+            reason: "trigger poller on pure-postgres path requires a Postgres pool".to_string(),
+        })?;
+        let conversations =
+            brassclaw_conversations::InMemoryConversationServices::with_pg_store(
+                (**pool).clone(),
+                tenant_id.as_str(),
+            )
+            .await
+            .map_err(|error| RebornRuntimeError::InvalidArgument {
+                reason: format!("pg conversation services unavailable: {error}"),
+            })?;
+        #[cfg(any(test, feature = "test-support"))]
+        let pairing_service: Arc<dyn brassclaw_conversations::ConversationActorPairingService> =
+            Arc::new(conversations.clone());
+        let TriggerPollerServicesInner {
+            materializer,
+            trusted_submitter,
+        } = build_trigger_poller_services_from_conversation_services(
+            conversations.clone(),
+            conversations,
+            turn_coordinator,
+            thread_service,
+            default_agent_id,
+            authorizer,
+        );
+        return Ok(TriggerPollerServices {
+            materializer,
+            trusted_submitter,
+            #[cfg(any(test, feature = "test-support"))]
+            pairing_service,
+        });
+    }
+
     let local_runtime = local_runtime.ok_or_else(|| RebornRuntimeError::InvalidArgument {
-        reason: "trigger poller requires a local-dev runtime substrate for conversation \
-                 services; enable it on a LocalDev profile"
+        reason: "trigger poller requires a local-dev runtime substrate or a Postgres pool for \
+                 conversation services"
             .to_string(),
     })?;
     let conversations = local_runtime
@@ -2646,6 +2688,8 @@ pub async fn build_reborn_runtime(
         )?;
         let trigger_poller_services = build_trigger_poller_services(
             services.local_runtime.as_deref(),
+            #[cfg(feature = "postgres")]
+            services.pg_pool.as_ref(),
             Arc::clone(&planned_turn_coordinator),
             Arc::clone(&thread_service),
             trigger_poller.authorizer,

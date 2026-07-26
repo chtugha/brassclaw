@@ -68,7 +68,7 @@ fully implemented in `crates/brassclaw_outbound/src/pg_store.rs`.
   available).
 - Run clippy + tests, commit + push.
 
-### Step 4 — Wire `PgConversationStateStore` in the serve path
+### Step 4 — Wire `PgConversationStateStore` in the serve path ✅ DONE
 
 **Files:** `crates/brassclaw_conversations/src/pg_store.rs`,
 `crates/brassclaw_reborn_composition/src/`
@@ -163,7 +163,7 @@ populated; only the consumer is missing.
 | 1 | `PgBudgetGateStore` in `build_pg_runtime_stores` | ✅ DONE |
 | 2 | `PgExtensionInstallationStore` in serve path | ✅ DONE |
 | 3 | `PgOutboundStateStore` in projection services | ✅ DONE |
-| 4 | `PgConversationStateStore` in serve path | ❌ NOT DONE |
+| 4 | `PgConversationStateStore` in serve path | ✅ DONE |
 | 5 | Delete `build_production_shaped` dead chain (Option B) | ❌ NOT DONE |
 | 6 | PG-6 libSQL strip | ⛔ GATED |
 | 7 | Step 6.10 DocType retirement | ⛔ GATED |

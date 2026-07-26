@@ -55,6 +55,21 @@ impl InMemoryConversationServices {
         })
     }
 
+    /// Construct an [`InMemoryConversationServices`] backed by a
+    /// PostgreSQL-durable [`PgConversationStateStore`]. The in-process state
+    /// is rehydrated from the database at construction time; every subsequent
+    /// mutation is persisted before the call returns.
+    pub async fn with_pg_store(
+        pool: deadpool_postgres::Pool,
+        tenant_id: impl Into<String>,
+    ) -> Result<Self, InboundTurnError> {
+        let store = Arc::new(crate::pg_store::PgConversationStateStore::new(
+            pool,
+            tenant_id.into(),
+        ));
+        Self::with_state_repository(store).await
+    }
+
     async fn refresh_state_from_repository(&self) -> Result<(), InboundTurnError> {
         let Some(state_repository) = &self.state_repository else {
             return Ok(());
