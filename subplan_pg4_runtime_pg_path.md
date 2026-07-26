@@ -1,6 +1,6 @@
 # Subplan: PG-4 / factory-wiring — Extend `build_reborn_runtime` to the Postgres path
 
-## Status: STEP 1-3 IMPLEMENTED (previous session); STEP 9.3 IMPLEMENTED (this session)
+## Status: ✅ ALL STEPS IMPLEMENTED
 
 ### Resolved (previous sessions)
 - `PgSessionThreadService` wired in `build_reborn_runtime` when `services.pg_pool` is available
@@ -25,12 +25,27 @@
 - Test updated: `runtime_rejects_disabled_profile_before_local_substrate_lookup` updated to check
   the "resolved runtime policy" error (disabled profile has no runtime_policy).
 
-### Remaining
-- `turn_state`, `loop_checkpoint_store`, `checkpoint_state_store` still InMemory (hybrid path)
-- `run_state`, `approval_requests`, `capability_leases` in HostRuntimeServices still InMemory (hybrid path)
-- `trigger_repository` still InMemory (Arc aliasing prevents simple replacement on hybrid path)
-- Full pure-PG composition path (Steps 4–9 below) returns "not yet fully wired" error until done
-- `build_pg_backend_production_with_tools` + `build_postgres_production` remain `#[allow(dead_code)]`
+### Resolved (this session — Steps 4–9)
+- **Step 4–5**: `TurnStateDriverBox` newtype added to `brassclaw_turns` — wraps `Arc<dyn TurnStateDriver>`
+  as a concrete `Sized` type satisfying all `DefaultPlannedRuntimeParts<T>` bounds. All three sub-trait
+  delegating impls (`TurnStateStore`, `TurnSpawnTreeStateStore`, `TurnRunTransitionPort`,
+  `TurnEventProjectionSource`) wired via `async_trait`.
+- **Step 5**: All `local_runtime.X` references in `build_reborn_runtime` now use substrate-extracted
+  named locals: `turn_state_store`, `checkpoint_state_store`, `loop_checkpoint_store`, `thread_service`,
+  `event_log`, `audit_log`, `storage_root`, `system_prompt_path`, `broadcast_budget_sink`,
+  `substrate_approval_requests`, `substrate_capability_leases`, `substrate_mounts`, `substrate_trigger_repository`.
+  Pure-PG path falls through to `PgRuntimeStores` when `services.local_runtime` is None.
+- **Step 5.skill**: Skill context source guarded by `services.local_runtime.as_deref()` — pure-PG
+  path returns `(None, None, None)` with no filesystem skill loading.
+- **Step 6**: `pg_capability_wiring()` in `local_dev.rs` uses `ProductLiveCapabilityIo` for result
+  staging; drops the incorrect `LocalDevResultHydratingModelGateway` wrapping (not applicable without
+  local-dev REPL replay).
+- **Step 7**: `build_trigger_poller_services` accepts `Option<&RebornLocalRuntimeServices>` and
+  `EmptyTriggerTurnSnapshotSource` wired for pure-PG path.
+- **Step 8**: `EmptyApprovalTurnRunLocator` added; `build_trigger_active_run_lookup` accepts
+  `Option<Arc<LocalDevTurnStateStore>>`.
+- **Step 9**: `#[allow(dead_code)]` removed from `PgRuntimeStores` + `build_pg_runtime_stores`.
+  `E0603 TriggerError` private path fixed. `InMemoryTriggerRepository::default()` corrected.
 
 ## Actual Architecture (discovered in checkup session)
 

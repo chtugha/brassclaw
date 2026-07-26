@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +16,7 @@ use crate::{
     TurnStatus, TurnTimestamp,
     events::EventCursor,
     run_profile::{LoopCheckpointKind, LoopCheckpointStateRef, LoopModelRouteSnapshot},
+    runner::TurnRunTransitionPort,
 };
 
 #[async_trait]
@@ -118,6 +121,205 @@ pub trait TurnSpawnTreeStateStore: TurnStateStore {
         delta: u32,
     ) -> Result<(), TurnError>;
 }
+
+/// Combined supertrait for types that serve as the turn spawn-tree state
+/// store, the turn-run transition port, and the turn event projection source.
+///
+/// Implemented by every concrete store type (`InMemoryTurnStateStore`,
+/// `PgTurnStateStore`, `LifecyclePublishingTurnStateStore<S>`,
+/// `FilesystemTurnStateStore<F>`). Allows [`TurnStateDriverBox`] to wrap an
+/// `Arc<dyn TurnStateDriver>` as a concrete `Sized` type so the hybrid and
+/// pure-PG runtime paths can share a single composition function body.
+pub trait TurnStateDriver:
+    TurnSpawnTreeStateStore + TurnRunTransitionPort + crate::events::TurnEventProjectionSource
+{
+}
+
+/// Concrete, `Sized` wrapper around `Arc<dyn TurnStateDriver>`.
+///
+/// `DefaultPlannedRuntimeParts<T, G>` requires `T: Sized` because of the
+/// implicit `Sized` bound on type parameters. `dyn TurnStateDriver` is an
+/// unsized type object and cannot be used directly as `T`. This newtype wraps
+/// the trait object behind an `Arc` and provides delegating implementations of
+/// all three sub-traits (`TurnStateStore`, `TurnSpawnTreeStateStore`,
+/// `TurnRunTransitionPort`, and `TurnEventProjectionSource`) so that
+/// `TurnStateDriverBox` itself satisfies every bound while remaining `Sized`.
+pub struct TurnStateDriverBox(pub Arc<dyn TurnStateDriver>);
+
+impl TurnStateDriverBox {
+    /// Wrap an `Arc<dyn TurnStateDriver>` into a `TurnStateDriverBox`.
+    pub fn new(inner: Arc<dyn TurnStateDriver>) -> Self {
+        Self(inner)
+    }
+}
+
+#[async_trait::async_trait]
+impl TurnStateStore for TurnStateDriverBox {
+    async fn submit_turn(
+        &self,
+        request: crate::SubmitTurnRequest,
+        admission_policy: &dyn crate::TurnAdmissionPolicy,
+        run_profile_resolver: &dyn crate::RunProfileResolver,
+    ) -> Result<crate::SubmitTurnResponse, crate::TurnError> {
+        self.0.submit_turn(request, admission_policy, run_profile_resolver).await
+    }
+
+    async fn resume_turn(
+        &self,
+        request: crate::ResumeTurnRequest,
+    ) -> Result<crate::ResumeTurnResponse, crate::TurnError> {
+        self.0.resume_turn(request).await
+    }
+
+    async fn request_cancel(
+        &self,
+        request: crate::CancelRunRequest,
+    ) -> Result<crate::CancelRunResponse, crate::TurnError> {
+        self.0.request_cancel(request).await
+    }
+
+    async fn get_run_state(
+        &self,
+        request: crate::GetRunStateRequest,
+    ) -> Result<crate::TurnRunState, crate::TurnError> {
+        self.0.get_run_state(request).await
+    }
+}
+
+#[async_trait::async_trait]
+impl TurnSpawnTreeStateStore for TurnStateDriverBox {
+    async fn submit_child_turn(
+        &self,
+        request: crate::SubmitChildRunRequest,
+        admission_policy: &dyn crate::TurnAdmissionPolicy,
+        run_profile_resolver: &dyn crate::RunProfileResolver,
+    ) -> Result<crate::SubmitTurnResponse, crate::TurnError> {
+        self.0.submit_child_turn(request, admission_policy, run_profile_resolver).await
+    }
+
+    async fn children_of(
+        &self,
+        scope: &crate::TurnScope,
+        run_id: crate::TurnRunId,
+    ) -> Result<Vec<TurnRunRecord>, crate::TurnError> {
+        self.0.children_of(scope, run_id).await
+    }
+
+    async fn get_run_record(
+        &self,
+        scope: &crate::TurnScope,
+        run_id: crate::TurnRunId,
+    ) -> Result<Option<TurnRunRecord>, crate::TurnError> {
+        self.0.get_run_record(scope, run_id).await
+    }
+
+    async fn reserve_tree_descendants(
+        &self,
+        scope: &crate::TurnScope,
+        root_run_id: crate::TurnRunId,
+        delta: u32,
+        cap: u32,
+    ) -> Result<SpawnTreeReservation, crate::TurnError> {
+        self.0.reserve_tree_descendants(scope, root_run_id, delta, cap).await
+    }
+
+    async fn release_tree_descendants(
+        &self,
+        scope: &crate::TurnScope,
+        root_run_id: crate::TurnRunId,
+        delta: u32,
+    ) -> Result<(), crate::TurnError> {
+        self.0.release_tree_descendants(scope, root_run_id, delta).await
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::runner::TurnRunTransitionPort for TurnStateDriverBox {
+    async fn claim_next_run(
+        &self,
+        request: crate::runner::ClaimRunRequest,
+    ) -> Result<Option<crate::runner::ClaimedTurnRun>, crate::TurnError> {
+        self.0.claim_next_run(request).await
+    }
+
+    async fn heartbeat(
+        &self,
+        request: crate::runner::HeartbeatRequest,
+    ) -> Result<crate::events::EventCursor, crate::TurnError> {
+        self.0.heartbeat(request).await
+    }
+
+    async fn recover_expired_leases(
+        &self,
+        request: crate::runner::RecoverExpiredLeasesRequest,
+    ) -> Result<crate::runner::RecoverExpiredLeasesResponse, crate::TurnError> {
+        self.0.recover_expired_leases(request).await
+    }
+
+    async fn record_model_route_snapshot(
+        &self,
+        request: crate::runner::RecordModelRouteSnapshotRequest,
+    ) -> Result<crate::TurnRunState, crate::TurnError> {
+        self.0.record_model_route_snapshot(request).await
+    }
+
+    async fn block_run(
+        &self,
+        request: crate::runner::BlockRunRequest,
+    ) -> Result<crate::TurnRunState, crate::TurnError> {
+        self.0.block_run(request).await
+    }
+
+    async fn complete_run(
+        &self,
+        request: crate::runner::CompleteRunRequest,
+    ) -> Result<crate::TurnRunState, crate::TurnError> {
+        self.0.complete_run(request).await
+    }
+
+    async fn cancel_run(
+        &self,
+        request: crate::runner::CancelRunCompletionRequest,
+    ) -> Result<crate::TurnRunState, crate::TurnError> {
+        self.0.cancel_run(request).await
+    }
+
+    async fn fail_run(
+        &self,
+        request: crate::runner::FailRunRequest,
+    ) -> Result<crate::TurnRunState, crate::TurnError> {
+        self.0.fail_run(request).await
+    }
+
+    async fn relinquish_run(
+        &self,
+        request: crate::runner::RelinquishRunRequest,
+    ) -> Result<crate::TurnRunState, crate::TurnError> {
+        self.0.relinquish_run(request).await
+    }
+
+    async fn apply_validated_loop_exit(
+        &self,
+        request: crate::runner::ApplyValidatedLoopExitRequest,
+    ) -> Result<crate::TurnRunState, crate::TurnError> {
+        self.0.apply_validated_loop_exit(request).await
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::events::TurnEventProjectionSource for TurnStateDriverBox {
+    async fn read_turn_events_after(
+        &self,
+        scope: &crate::TurnScope,
+        owner_user_id: Option<&brassclaw_host_api::UserId>,
+        after: Option<crate::events::EventCursor>,
+        limit: usize,
+    ) -> Result<crate::events::TurnEventPage, crate::TurnError> {
+        self.0.read_turn_events_after(scope, owner_user_id, after, limit).await
+    }
+}
+
+impl TurnStateDriver for TurnStateDriverBox {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]

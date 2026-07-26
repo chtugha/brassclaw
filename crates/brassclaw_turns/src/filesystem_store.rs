@@ -555,6 +555,8 @@ where
     }
 }
 
+impl<F> crate::store::TurnStateDriver for FilesystemTurnStateStore<F> where F: RootFilesystem {}
+
 /// Pre-resolved run-profile resolver used to thread the resolver result
 /// *into* the apply closure. The resolver future runs once per
 /// `submit_turn` call outside the CAS loop because resolving may issue I/O

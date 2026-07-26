@@ -392,7 +392,6 @@ impl RebornLocalRuntimeServices {
 /// Constructed by [`build_pg_runtime_stores`]; consumed by the postgres branch
 /// in `build_reborn_runtime` instead of `RebornLocalRuntimeServices`.
 #[cfg(feature = "postgres")]
-#[allow(dead_code)] // Pure-PG path wiring: subplan_pg4_runtime_pg_path.md Steps 3–9
 pub(crate) struct PgRuntimeStores {
     pub(crate) pool: Arc<deadpool_postgres::Pool>,
     pub(crate) turn_state: Arc<brassclaw_turns::PgTurnStateStore>,
@@ -417,7 +416,6 @@ pub(crate) struct PgRuntimeStores {
 /// passed to `build_postgres_production`).  The prompt path is derived from it
 /// exactly as the local-dev path does.
 #[cfg(feature = "postgres")]
-#[allow(dead_code)] // Pure-PG path wiring: subplan_pg4_runtime_pg_path.md Steps 3–9
 pub(crate) async fn build_pg_runtime_stores(
     pool: Arc<deadpool_postgres::Pool>,
     reborn_home: &std::path::Path,

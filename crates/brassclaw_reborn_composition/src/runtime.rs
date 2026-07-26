@@ -282,7 +282,7 @@ struct TriggerPollerServices {
 }
 
 async fn build_trigger_poller_services(
-    local_runtime: &crate::factory::RebornLocalRuntimeServices,
+    local_runtime: Option<&crate::factory::RebornLocalRuntimeServices>,
     turn_coordinator: Arc<dyn TurnCoordinator>,
     thread_service: Arc<dyn SessionThreadService>,
     authorizer_config: TriggerPollerAuthorizerConfig,
@@ -291,6 +291,11 @@ async fn build_trigger_poller_services(
     default_agent_id: AgentId,
 ) -> Result<TriggerPollerServices, RebornRuntimeError> {
     let authorizer = build_trigger_fire_authorizer(authorizer_config, access_checker, tenant_id)?;
+    let local_runtime = local_runtime.ok_or_else(|| RebornRuntimeError::InvalidArgument {
+        reason: "trigger poller requires a local-dev runtime substrate for conversation \
+                 services; enable it on a LocalDev profile"
+            .to_string(),
+    })?;
     let conversations = local_runtime
         .durable_trigger_conversation_services()
         .await
@@ -399,11 +404,30 @@ where
 }
 
 fn build_trigger_active_run_lookup(
-    turn_state_store: Arc<LocalDevTurnStateStore>,
+    local_dev_turn_state: Option<Arc<LocalDevTurnStateStore>>,
 ) -> Arc<dyn brassclaw_triggers::TriggerActiveRunLookup> {
-    let snapshot_source: Arc<dyn TriggerTurnSnapshotSource> =
-        Arc::new(LocalTriggerTurnSnapshotSource::new(turn_state_store));
+    let snapshot_source: Arc<dyn TriggerTurnSnapshotSource> = match local_dev_turn_state {
+        Some(store) => Arc::new(LocalTriggerTurnSnapshotSource::new(store)),
+        // Pure-PG path: no in-process snapshot. Trigger poller handles
+        // duplicate-fire via DB-level trigger locking / idempotency keys.
+        None => Arc::new(EmptyTriggerTurnSnapshotSource),
+    };
     Arc::new(SnapshotActiveRunLookup::new(snapshot_source))
+}
+
+/// No-op snapshot source for the pure-PG path.
+///
+/// The PG trigger poller handles duplicate-fire via DB-level trigger
+/// locking and idempotency keys rather than an in-process turn snapshot.
+struct EmptyTriggerTurnSnapshotSource;
+
+#[async_trait::async_trait]
+impl TriggerTurnSnapshotSource for EmptyTriggerTurnSnapshotSource {
+    async fn snapshot(
+        &self,
+    ) -> Result<brassclaw_turns::TurnPersistenceSnapshot, brassclaw_triggers::TriggerError> {
+        Ok(brassclaw_turns::TurnPersistenceSnapshot::default())
+    }
 }
 
 struct LocalDevApprovalTurnRunLocator {
@@ -419,6 +443,33 @@ impl LocalDevApprovalTurnRunLocator {
         &self,
     ) -> Result<TurnPersistenceSnapshot, brassclaw_product_workflow::ProductWorkflowError> {
         Ok(self.turn_state.persistence_snapshot())
+    }
+}
+
+/// No-op approval turn run locator for the pure-postgres path.
+///
+/// On the PG path, approval records are visible through PgRunStateStore
+/// (not through an in-process snapshot).  This locator returns an empty
+/// list; the `RunStateApprovalInteractionReadModel` falls through to the
+/// PG-backed approval_requests store to fetch pending gates.
+struct EmptyApprovalTurnRunLocator;
+
+#[async_trait::async_trait]
+impl ApprovalTurnRunLocator for EmptyApprovalTurnRunLocator {
+    async fn blocked_approval_runs(
+        &self,
+        _scope: &ApprovalInteractionScope,
+    ) -> Result<Vec<ApprovalBlockedTurnRun>, brassclaw_product_workflow::ProductWorkflowError> {
+        Ok(Vec::new())
+    }
+
+    async fn approval_run_for_gate(
+        &self,
+        _scope: &ApprovalInteractionScope,
+        _gate_ref: &brassclaw_turns::GateRef,
+    ) -> Result<Option<brassclaw_turns::TurnRunId>, brassclaw_product_workflow::ProductWorkflowError>
+    {
+        Ok(None)
     }
 }
 
@@ -1567,25 +1618,129 @@ pub async fn build_reborn_runtime(
 
     let trusted_laptop_access = services_input.grants_trusted_laptop_access();
     let owner_id = services_input.owner_id().to_string();
+    // Extract `reborn_home` before consuming services_input — needed by the pure-PG
+    // path to derive the system-prompt storage root via build_pg_runtime_stores.
+    #[cfg(feature = "postgres")]
+    let pg_reborn_home: Option<std::path::PathBuf> =
+        services_input.pg_reborn_home().map(|p| p.to_path_buf());
     let mut services = build_reborn_services(services_input).await?;
 
-    // Fail early with a clear message if this is the pure-postgres path (no
-    // local-dev substrate).  The full PG path wiring is tracked in
-    // subplan_pg4_runtime_pg_path.md Steps 3–9 and is not yet implemented.
-    // The live production `brassclaw serve` path always uses the hybrid
-    // local-dev+PG path where local_runtime is Some.
-    if services.local_runtime.is_none() {
-        return Err(RebornRuntimeError::InvalidArgument {
-            reason: format!(
-                "profile={profile}: a local-dev runtime substrate is required; \
-                 the pure-postgres path (no local-dev substrate) is not yet fully wired — \
-                 use a LocalDev or LocalDevYolo profile with RebornStorageInput::Postgres \
-                 for the standard production serve path \
-                 (tracked in subplan_pg4_runtime_pg_path.md Steps 3–9)"
-            ),
-        });
-    }
-
+    // Resolve the runtime substrate: either the local-dev filesystem slab or,
+    // on the pure-postgres path, PG-backed equivalents for every store that
+    // `build_reborn_runtime` needs.  Both paths expose the same set of named
+    // locals so the rest of the function is path-agnostic.
+    //
+    // Hybrid path (brassclaw serve): LocalDev profile + RebornStorageInput::Postgres
+    //   → local_runtime is Some, pg_pool is Some.  Uses local_runtime stores for
+    //   turn-state and checkpoints; upgrades thread service to PG.
+    //
+    // Pure-PG path (build_postgres_production → hosted/production profile):
+    //   → local_runtime is None, pg_pool is Some.  Builds PgRuntimeStores here.
+    #[cfg(feature = "postgres")]
+    let pg_stores: Option<crate::factory::PgRuntimeStores>;
+    #[cfg(feature = "postgres")]
+    let (
+        turn_state_store,
+        checkpoint_state_store,
+        loop_checkpoint_store,
+        thread_service,
+        budget_event_sink_for_accountant,
+        resource_governor_for_accountant,
+        budget_gate_store_for_accountant,
+        event_log,
+        audit_log,
+        storage_root,
+        system_prompt_path,
+    ): (
+        Arc<brassclaw_turns::TurnStateDriverBox>,
+        Arc<dyn brassclaw_turns::CheckpointStateStore>,
+        Arc<dyn brassclaw_turns::LoopCheckpointStore>,
+        Arc<dyn brassclaw_threads::SessionThreadService>,
+        Arc<dyn brassclaw_resources::BudgetEventSink>,
+        Arc<dyn brassclaw_resources::ResourceGovernor>,
+        Arc<dyn brassclaw_resources::BudgetGateStore>,
+        Arc<dyn brassclaw_events::DurableEventLog>,
+        Arc<dyn brassclaw_events::DurableAuditLog>,
+        std::path::PathBuf,
+        std::path::PathBuf,
+    ) = if let Some(lr) = services.local_runtime.as_ref() {
+        pg_stores = None;
+        // Hybrid path: use local-dev stores, optionally upgrade thread service to PG.
+        let thread_svc: Arc<dyn brassclaw_threads::SessionThreadService> =
+            if let Some(pool) = services.pg_pool.as_ref() {
+                Arc::new(brassclaw_threads::PgSessionThreadService::new(
+                    Arc::clone(pool),
+                    "default",
+                ))
+            } else {
+                Arc::clone(&lr.thread_service)
+            };
+        let event_sink = Arc::clone(&lr.broadcast_budget_event_sink)
+            as Arc<dyn brassclaw_resources::BudgetEventSink>;
+        (
+            Arc::new(brassclaw_turns::TurnStateDriverBox::new(
+                Arc::clone(&lr.turn_state) as Arc<dyn brassclaw_turns::TurnStateDriver>,
+            )),
+            Arc::clone(&lr.checkpoint_state_store),
+            Arc::clone(&lr.loop_checkpoint_store),
+            thread_svc,
+            event_sink,
+            Arc::clone(&lr.resource_governor),
+            Arc::clone(&lr.budget_gate_store),
+            Arc::clone(&lr.event_log),
+            Arc::clone(&lr.audit_log),
+            lr.local_dev_storage_root.clone(),
+            lr.default_system_prompt_path.clone(),
+        )
+    } else {
+        // Pure-PG path: build PG-backed equivalents.
+        let pool = services.pg_pool.as_ref().ok_or_else(|| {
+            RebornRuntimeError::InvalidArgument {
+                reason: format!(
+                    "profile={profile}: neither a local-dev substrate nor a Postgres pool \
+                     is available; cannot assemble runtime"
+                ),
+            }
+        })?;
+        let reborn_home = pg_reborn_home
+            .as_deref()
+            .filter(|p| !p.as_os_str().is_empty())
+            .ok_or_else(|| RebornRuntimeError::InvalidArgument {
+                reason: "pure-postgres runtime path requires a reborn_home to derive \
+                         the system-prompt storage root"
+                    .to_string(),
+            })?;
+        let stores = crate::factory::build_pg_runtime_stores(Arc::clone(pool), reborn_home)
+            .await
+            .map_err(RebornRuntimeError::Build)?;
+        let event_sink = Arc::clone(&stores.broadcast_budget_event_sink)
+            as Arc<dyn brassclaw_resources::BudgetEventSink>;
+        let thread_svc: Arc<dyn brassclaw_threads::SessionThreadService> =
+            Arc::new(brassclaw_threads::PgSessionThreadService::new(
+                Arc::clone(pool),
+                "default",
+            ));
+        let result = (
+            Arc::new(brassclaw_turns::TurnStateDriverBox::new(
+                Arc::clone(&stores.turn_state) as Arc<dyn brassclaw_turns::TurnStateDriver>,
+            )),
+            Arc::clone(&stores.checkpoint_state_store),
+            Arc::clone(&stores.loop_checkpoint_store),
+            thread_svc,
+            event_sink,
+            Arc::clone(&stores.resource_governor),
+            Arc::clone(&stores.budget_gate_store),
+            Arc::clone(&stores.event_log),
+            Arc::clone(&stores.audit_log),
+            stores.local_dev_storage_root.clone(),
+            stores.default_system_prompt_path.clone(),
+        );
+        pg_stores = Some(stores);
+        result
+    };
+    #[cfg(not(feature = "postgres"))]
+    let _pg_stores: Option<()> = None;
+    #[cfg(not(feature = "postgres"))]
     let local_runtime =
         services
             .local_runtime
@@ -1593,23 +1748,129 @@ pub async fn build_reborn_runtime(
             .ok_or(RebornRuntimeError::InvalidArgument {
                 reason: "local-dev RebornServices did not provide runtime substrate".to_string(),
             })?;
-    let turn_state_store = Arc::clone(&local_runtime.turn_state);
+    #[cfg(not(feature = "postgres"))]
+    let turn_state_store: Arc<brassclaw_turns::TurnStateDriverBox> = Arc::new(
+        brassclaw_turns::TurnStateDriverBox::new(
+            Arc::clone(&local_runtime.turn_state) as Arc<dyn brassclaw_turns::TurnStateDriver>,
+        ),
+    );
+    #[cfg(not(feature = "postgres"))]
     let checkpoint_state_store = Arc::clone(&local_runtime.checkpoint_state_store);
+    #[cfg(not(feature = "postgres"))]
     let loop_checkpoint_store = Arc::clone(&local_runtime.loop_checkpoint_store);
-    // Thread service: use PgSessionThreadService whenever a PG pool is available.
-    // This upgrades thread-history durability on the hybrid (local-dev + PG) path.
-    #[cfg(feature = "postgres")]
-    let thread_service: Arc<dyn brassclaw_threads::SessionThreadService> =
-        if let Some(pool) = services.pg_pool.as_ref() {
-            Arc::new(brassclaw_threads::PgSessionThreadService::new(
-                Arc::clone(pool),
-                "default",
-            ))
-        } else {
-            Arc::clone(&local_runtime.thread_service)
-        };
     #[cfg(not(feature = "postgres"))]
     let thread_service = Arc::clone(&local_runtime.thread_service);
+    #[cfg(not(feature = "postgres"))]
+    let budget_event_sink_for_accountant =
+        Arc::clone(&local_runtime.broadcast_budget_event_sink)
+            as Arc<dyn brassclaw_resources::BudgetEventSink>;
+    #[cfg(not(feature = "postgres"))]
+    let resource_governor_for_accountant = Arc::clone(&local_runtime.resource_governor);
+    #[cfg(not(feature = "postgres"))]
+    let budget_gate_store_for_accountant = Arc::clone(&local_runtime.budget_gate_store);
+    #[cfg(not(feature = "postgres"))]
+    let event_log = Arc::clone(&local_runtime.event_log);
+    #[cfg(not(feature = "postgres"))]
+    let audit_log = Arc::clone(&local_runtime.audit_log);
+    #[cfg(not(feature = "postgres"))]
+    let storage_root = local_runtime.local_dev_storage_root.clone();
+    #[cfg(not(feature = "postgres"))]
+    let system_prompt_path = local_runtime.default_system_prompt_path.clone();
+
+    // Typed arc for LocalDevTurnStateStore — needed by build_webui_auth_interaction_service
+    // on the local-dev/hybrid path; unused on the pure-PG path.
+    let local_dev_turn_state: Option<Arc<crate::factory::LocalDevTurnStateStore>> =
+        services.local_runtime.as_ref().map(|lr| Arc::clone(&lr.turn_state));
+
+    // Concrete BroadcastBudgetEventSink — needed by BudgetEventProjection::spawn
+    // which takes `&BroadcastBudgetEventSink`.  Extracted separately from the
+    // tuple because the tuple uses Arc<dyn BudgetEventSink> for the accountant.
+    let broadcast_budget_sink: Arc<brassclaw_resources::BroadcastBudgetEventSink> = {
+        #[cfg(feature = "postgres")]
+        {
+            if let Some(lr) = services.local_runtime.as_ref() {
+                Arc::clone(&lr.broadcast_budget_event_sink)
+            } else if let Some(pg) = pg_stores.as_ref() {
+                Arc::clone(&pg.broadcast_budget_event_sink)
+            } else {
+                Arc::new(brassclaw_resources::BroadcastBudgetEventSink::default())
+            }
+        }
+        #[cfg(not(feature = "postgres"))]
+        Arc::clone(&local_runtime.broadcast_budget_event_sink)
+    };
+
+    // Extract approval_requests and capability_leases from the substrate.
+    // These are `Arc<dyn ...>` trait objects so they work for both paths.
+    let substrate_approval_requests: Arc<dyn brassclaw_run_state::ApprovalRequestStore> = {
+        #[cfg(feature = "postgres")]
+        {
+            if let Some(lr) = services.local_runtime.as_ref() {
+                Arc::clone(&lr.approval_requests) as Arc<dyn brassclaw_run_state::ApprovalRequestStore>
+            } else if let Some(pg) = pg_stores.as_ref() {
+                Arc::clone(&pg.approval_requests) as Arc<dyn brassclaw_run_state::ApprovalRequestStore>
+            } else {
+                return Err(RebornRuntimeError::InvalidArgument {
+                    reason: "approval store not available (no substrate)".to_string(),
+                });
+            }
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            Arc::clone(&local_runtime.approval_requests) as Arc<dyn brassclaw_run_state::ApprovalRequestStore>
+        }
+    };
+    let substrate_capability_leases: Arc<dyn brassclaw_authorization::CapabilityLeaseStore> = {
+        #[cfg(feature = "postgres")]
+        {
+            if let Some(lr) = services.local_runtime.as_ref() {
+                Arc::clone(&lr.capability_leases) as Arc<dyn brassclaw_authorization::CapabilityLeaseStore>
+            } else if let Some(pg) = pg_stores.as_ref() {
+                Arc::clone(&pg.capability_leases) as Arc<dyn brassclaw_authorization::CapabilityLeaseStore>
+            } else {
+                return Err(RebornRuntimeError::InvalidArgument {
+                    reason: "lease store not available (no substrate)".to_string(),
+                });
+            }
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            Arc::clone(&local_runtime.capability_leases) as Arc<dyn brassclaw_authorization::CapabilityLeaseStore>
+        }
+    };
+    // Extract workspace/skill/memory mounts — empty on the pure-PG path.
+    let substrate_workspace_mounts: brassclaw_host_api::MountView = services
+        .local_runtime
+        .as_ref()
+        .map(|lr| lr.workspace_mounts.clone())
+        .unwrap_or_default();
+    let substrate_skill_mounts: brassclaw_host_api::MountView = services
+        .local_runtime
+        .as_ref()
+        .map(|lr| lr.skill_mounts.clone())
+        .unwrap_or_default();
+    let substrate_memory_mounts: brassclaw_host_api::MountView = services
+        .local_runtime
+        .as_ref()
+        .map(|lr| lr.memory_mounts.clone())
+        .unwrap_or_default();
+    // Extract trigger repository from the substrate.
+    #[cfg(feature = "postgres")]
+    let substrate_trigger_repository: Arc<dyn brassclaw_triggers::TriggerRepository> = {
+        if let Some(lr) = services.local_runtime.as_ref() {
+            Arc::clone(&lr.trigger_repository)
+        } else if let Some(pg) = pg_stores.as_ref() {
+            Arc::clone(&pg.trigger_repository) as Arc<dyn brassclaw_triggers::TriggerRepository>
+        } else {
+            // Trigger poller disabled if no repository; it should not be enabled.
+            Arc::new(brassclaw_triggers::InMemoryTriggerRepository::default())
+        }
+    };
+    #[cfg(not(feature = "postgres"))]
+    let substrate_trigger_repository: Arc<dyn brassclaw_triggers::TriggerRepository> =
+        Arc::clone(&local_runtime.trigger_repository);
+    // Extract broadcast_budget_event_sink for the budget projection task.
+    // Uses the substrate variable already extracted above (broadcast_budget_event_sink_for_accountant).
 
     // Load max_duration_secs from reborn_monty_vm_settings (Step 6.3 live wiring).
     // Uses the system-scope row ("default" / "default") which holds the global
@@ -1719,17 +1980,31 @@ pub async fn build_reborn_runtime(
         match configured_skill_context_source {
             Some(source) => (Some(source), None, None),
             None => {
-                let local_dev_skills = local_dev_filesystem_skill_context_source(
-                    local_runtime,
-                    &validated_identity.tenant_id,
-                    regex_skill_activation_enabled,
-                    skill_context_tokens,
-                )?;
-                (
-                    Some(local_dev_skills.source),
-                    Some(local_dev_skills.activation_source),
-                    Some(local_dev_skills.execution_adapter),
-                )
+                // On the non-postgres build, `local_runtime` is a named local.
+                // On the postgres build (hybrid or pure-PG), use services.local_runtime;
+                // the pure-PG path has no local-dev filesystem so skill context is None.
+                #[cfg(not(feature = "postgres"))]
+                let local_runtime_ref: Option<&crate::factory::RebornLocalRuntimeServices> =
+                    Some(local_runtime);
+                #[cfg(feature = "postgres")]
+                let local_runtime_ref: Option<&crate::factory::RebornLocalRuntimeServices> =
+                    services.local_runtime.as_deref();
+                if let Some(lr) = local_runtime_ref {
+                    let local_dev_skills = local_dev_filesystem_skill_context_source(
+                        lr,
+                        &validated_identity.tenant_id,
+                        regex_skill_activation_enabled,
+                        skill_context_tokens,
+                    )?;
+                    (
+                        Some(local_dev_skills.source),
+                        Some(local_dev_skills.activation_source),
+                        Some(local_dev_skills.execution_adapter),
+                    )
+                } else {
+                    // Pure-PG path: no local-dev skill filesystem available.
+                    (None, None, None)
+                }
             }
         };
 
@@ -1907,14 +2182,11 @@ pub async fn build_reborn_runtime(
             // the governor writes to, so `BudgetEvent::GateOpened`
             // (emitted by the accountant) lands on the same downstream
             // projection as the governor's `Warned` / `Denied` events.
-            let event_sink: Arc<dyn brassclaw_resources::BudgetEventSink> =
-                Arc::clone(&local_runtime.broadcast_budget_event_sink)
-                    as Arc<dyn brassclaw_resources::BudgetEventSink>;
             let accountant = crate::build_default_budget_accountant(
-                Arc::clone(&local_runtime.resource_governor),
+                Arc::clone(&resource_governor_for_accountant),
                 cost_table,
-                Arc::clone(&local_runtime.budget_gate_store),
-                event_sink,
+                Arc::clone(&budget_gate_store_for_accountant),
+                Arc::clone(&budget_event_sink_for_accountant),
                 &resolved_budget_defaults,
             );
             Some(accountant)
@@ -1925,11 +2197,10 @@ pub async fn build_reborn_runtime(
     let loop_exit_evidence = Arc::new(ThreadCheckpointLoopExitEvidencePort::new_with_thread_scope(
         Arc::clone(&thread_service),
         Arc::clone(&turn_state_store) as Arc<dyn brassclaw_turns::TurnStateStore>,
-        Arc::clone(&loop_checkpoint_store) as Arc<dyn brassclaw_turns::LoopCheckpointStore>,
+        Arc::clone(&loop_checkpoint_store),
         thread_scope.clone(),
     ));
-    let event_log = Arc::clone(&local_runtime.event_log);
-    let audit_log = Arc::clone(&local_runtime.audit_log);
+    // `event_log` and `audit_log` are substrate variables extracted above.
     let milestone_thread_scope = ThreadScope {
         owner_user_id: Some(actor_user_id.clone()),
         ..thread_scope.clone()
@@ -1977,23 +2248,43 @@ pub async fn build_reborn_runtime(
         durable_milestone_sink,
         live_projection_publisher,
     );
-    let local_dev_capability_policy = Arc::new(local_dev_capability_policy().map_err(|error| {
-        tracing::error!(%error, "local-dev capability policy is invalid");
-        RebornRuntimeError::InvalidArgument {
-            reason: format!("local-dev capability policy is invalid: {error}"),
-        }
-    })?);
-    let local_dev_capabilities = local_dev::capability_wiring(
-        &services,
-        Arc::clone(&thread_service) as Arc<dyn SessionThreadService>,
-        thread_scope.clone(),
-        actor_user_id.clone(),
-        Arc::clone(&local_dev_capability_policy),
-        model_gateway,
-        milestone_sink.clone(),
-        skill_activation_source.clone(),
-    )
-    .ok_or(RebornRuntimeError::HostRuntimeUnavailable)?;
+    // Capability wiring: on the local-dev / hybrid path use the full
+    // `local_dev::capability_wiring` which wires workspace/skill/memory
+    // mounts, extension surface discovery, display previews, and skill
+    // activation.  On the pure-PG path (`services.local_runtime.is_none()`),
+    // use `local_dev::pg_capability_wiring` which wires the same IO surface
+    // against `HostRuntimeLoopCapabilityPortFactory` with empty mounts and
+    // allow-all policy.
+    let local_dev_capabilities = if services.local_runtime.is_some() {
+        let local_dev_capability_policy =
+            Arc::new(local_dev_capability_policy().map_err(|error| {
+                tracing::error!(%error, "local-dev capability policy is invalid");
+                RebornRuntimeError::InvalidArgument {
+                    reason: format!("local-dev capability policy is invalid: {error}"),
+                }
+            })?);
+        local_dev::capability_wiring(
+            &services,
+            Arc::clone(&thread_service) as Arc<dyn SessionThreadService>,
+            thread_scope.clone(),
+            actor_user_id.clone(),
+            Arc::clone(&local_dev_capability_policy),
+            model_gateway,
+            milestone_sink.clone(),
+            skill_activation_source.clone(),
+        )
+        .ok_or(RebornRuntimeError::HostRuntimeUnavailable)?
+    } else {
+        local_dev::pg_capability_wiring(
+            &services,
+            Arc::clone(&thread_service) as Arc<dyn SessionThreadService>,
+            thread_scope.clone(),
+            actor_user_id.clone(),
+            model_gateway,
+            milestone_sink.clone(),
+        )
+        .ok_or(RebornRuntimeError::HostRuntimeUnavailable)?
+    };
     let capability_factory = {
         // Wrap the capability factory with the content-cache decorator when
         // content_cache_threshold is configured.
@@ -2003,7 +2294,13 @@ pub async fn build_reborn_runtime(
                 threshold_tokens,
                 "content cache enabled: large tool results will be stubbed and cached"
             );
-            let slot = local_runtime.content_cache_slot.clone();
+            // Use the local-dev content-cache slot when available; fall back to a
+            // new default slot on the pure-PG path (no local-dev substrate).
+            let slot = services
+                .local_runtime
+                .as_ref()
+                .map(|lr| lr.content_cache_slot.clone())
+                .unwrap_or_default();
             let decorator = brassclaw_reborn::content_cache_port::ContentCachingPortDecorator::new(
                 slot,
                 threshold_tokens,
@@ -2031,19 +2328,36 @@ pub async fn build_reborn_runtime(
     // metadata (no `ExtensionRegistry`, no `ExtensionPackage`) and reaches ONLY
     // this hook factory, not the capability catalog or surface resolver.
     let hook_dispatcher_builder_factory = {
-        let third_party_input = crate::hooks::ThirdPartyDiscoveryInput {
-            filesystem: local_runtime.extension_filesystem.as_ref(),
-            tenant_id: &validated_identity.tenant_id,
+        // On the pure-PG path there is no local extension filesystem for
+        // third-party hook discovery — pass None to disable it.
+        // The two branches must be separate (type-level: the generic F differs
+        // between LocalDevRootFilesystem and the no-filesystem None case).
+        let projection_registry = if let Some(lr) = services.local_runtime.as_ref() {
+            let third_party_input = crate::hooks::ThirdPartyDiscoveryInput {
+                filesystem: lr.extension_filesystem.as_ref(),
+                tenant_id: &validated_identity.tenant_id,
+            };
+            crate::hooks::build_hook_projection_registry(
+                builtin_extension_registry()?,
+                Some(third_party_input),
+                hooks_config,
+            )
+            .await
+            .map_err(|error| RebornRuntimeError::InvalidArgument {
+                reason: format!("hook projection registry assembly failed: {error}"),
+            })?
+        } else {
+            // Pure-PG path: builtin-only registry, no third-party discovery.
+            crate::hooks::build_hook_projection_registry::<brassclaw_filesystem::LocalFilesystem>(
+                builtin_extension_registry()?,
+                None,
+                hooks_config,
+            )
+            .await
+            .map_err(|error| RebornRuntimeError::InvalidArgument {
+                reason: format!("hook projection registry assembly failed: {error}"),
+            })?
         };
-        let projection_registry = crate::hooks::build_hook_projection_registry(
-            builtin_extension_registry()?,
-            Some(third_party_input),
-            hooks_config,
-        )
-        .await
-        .map_err(|error| RebornRuntimeError::InvalidArgument {
-            reason: format!("hook projection registry assembly failed: {error}"),
-        })?;
         // Pass the Postgres pool when available so the hooks predicate-state
         // backend uses PostgresPredicateStateBackend instead of the in-memory
         // fallback (L6 fix). In local-dev the pool is None until embedded PG
@@ -2169,11 +2483,11 @@ pub async fn build_reborn_runtime(
         skill_context_source,
         input_queue: None,
         identity_context_source: Arc::new(
-            // Local-dev seeding validates the prompt path first, so non-file prompt paths fail
-            // as build errors before this runtime-level identity-source guard is reached.
+            // `storage_root` and `system_prompt_path` are extracted from the
+            // substrate (local-dev or PG) at the top of this function.
             DefaultSystemPromptIdentitySource::try_new(
-                local_runtime.local_dev_storage_root.clone(),
-                local_runtime.default_system_prompt_path.clone(),
+                storage_root.clone(),
+                system_prompt_path.clone(),
             )
             .map_err(|error| RebornRuntimeError::InvalidArgument {
                 reason: error.to_string(),
@@ -2232,36 +2546,52 @@ pub async fn build_reborn_runtime(
         )) as Arc<dyn brassclaw_turns::run_profile::SystemInferencePort>
     });
     let planned_turn_coordinator: Arc<dyn TurnCoordinator> = composition.coordinator.clone();
-    let approval_turn_runs = Arc::new(LocalDevApprovalTurnRunLocator::new(Arc::clone(
-        &turn_state_store,
-    )));
+    // The approval run locator needs the typed LocalDevTurnStateStore on the
+    // local-dev path.  On the pure-PG path, the locator is built using
+    // `LocalDevApprovalTurnRunLocator` is not suitable — we use an
+    // `EmptyApprovalTurnRunLocator` since approvals on the pure-PG path go
+    // through the PG run-state directly.
+    let approval_turn_runs: Arc<dyn brassclaw_product_workflow::ApprovalTurnRunLocator> =
+        if let Some(ld_turn_state) = &local_dev_turn_state {
+            Arc::new(LocalDevApprovalTurnRunLocator::new(Arc::clone(ld_turn_state)))
+        } else {
+            Arc::new(EmptyApprovalTurnRunLocator)
+        };
     let approval_read_model = Arc::new(RunStateApprovalInteractionReadModel::new(
-        local_runtime.approval_requests.clone(),
+        Arc::clone(&substrate_approval_requests),
         approval_turn_runs,
     ));
     let approval_audit_sink = Arc::new(InMemoryAuditSink::new());
     let approval_resolver = Arc::new(
         ApprovalResolverPort::new(
-            local_runtime.approval_requests.clone(),
-            local_runtime.capability_leases.clone(),
+            Arc::clone(&substrate_approval_requests),
+            Arc::clone(&substrate_capability_leases),
         )
         .with_audit_sink(approval_audit_sink.clone()),
     );
-    let approval_interaction_service: Arc<dyn ApprovalInteractionService> =
+    let approval_interaction_service: Arc<dyn ApprovalInteractionService> = {
+        let local_dev_capability_policy =
+            Arc::new(local_dev_capability_policy().map_err(|error| {
+                tracing::error!(%error, "local-dev capability policy is invalid for approval");
+                RebornRuntimeError::InvalidArgument {
+                    reason: format!("local-dev capability policy is invalid: {error}"),
+                }
+            })?);
         Arc::new(DefaultApprovalInteractionService::new(
             approval_read_model,
             Arc::new(approval::LocalDevApprovalLeaseTermsProvider::new(
                 local_dev_capability_policy,
-                local_runtime.workspace_mounts.clone(),
-                local_runtime.skill_mounts.clone(),
-                local_runtime.memory_mounts.clone(),
+                substrate_workspace_mounts,
+                substrate_skill_mounts,
+                substrate_memory_mounts,
             )),
             approval_resolver,
             Arc::clone(&planned_turn_coordinator),
-        ));
+        ))
+    };
     let auth_interaction_service = build_webui_auth_interaction_service(
         services.product_auth.as_deref(),
-        Arc::clone(&turn_state_store),
+        local_dev_turn_state.clone(),
         Arc::clone(&planned_turn_coordinator),
     );
     let turn_event_source: Arc<dyn TurnEventProjectionSource> = turn_state_store.clone();
@@ -2300,7 +2630,7 @@ pub async fn build_reborn_runtime(
             trigger_fire_access_checker.as_ref(),
         )?;
         let trigger_poller_services = build_trigger_poller_services(
-            local_runtime,
+            services.local_runtime.as_deref(),
             Arc::clone(&planned_turn_coordinator),
             Arc::clone(&thread_service),
             trigger_poller.authorizer,
@@ -2309,7 +2639,7 @@ pub async fn build_reborn_runtime(
             validated_identity.agent_id.clone(),
         )
         .await?;
-        let active_run_lookup = build_trigger_active_run_lookup(Arc::clone(&turn_state_store));
+        let active_run_lookup = build_trigger_active_run_lookup(local_dev_turn_state.clone());
         #[cfg(any(test, feature = "test-support"))]
         {
             trigger_conversation_pairing_value =
@@ -2318,7 +2648,7 @@ pub async fn build_reborn_runtime(
         trigger_poller_handle = spawn_trigger_poller(
             trigger_poller,
             TriggerPollerCompositionDeps {
-                repository: Arc::clone(&local_runtime.trigger_repository),
+                repository: Arc::clone(&substrate_trigger_repository),
                 materializer: trigger_poller_services.materializer,
                 trusted_submitter: trigger_poller_services.trusted_submitter,
                 active_run_lookup,
@@ -2353,15 +2683,15 @@ pub async fn build_reborn_runtime(
     // observer attached, and callers can install a richer observer
     // (SSE projection, telemetry export) through
     // `RebornRuntimeInput::with_budget_event_observer`.
-    let budget_event_projection = services.local_runtime.as_ref().map(|local_runtime| {
+    let budget_event_projection = {
         let observer = budget_event_observer.unwrap_or_else(|| {
             Arc::new(crate::TracingBudgetEventObserver) as Arc<dyn crate::BudgetEventObserver>
         });
-        crate::budget_events::BudgetEventProjection::spawn(
-            local_runtime.broadcast_budget_event_sink.as_ref(),
+        Some(crate::budget_events::BudgetEventProjection::spawn(
+            broadcast_budget_sink.as_ref(),
             observer,
-        )
-    });
+        ))
+    };
 
     // Wire plan library when enabled. The service holds an Arc to the root
     // filesystem so it can write plan documents and SKILL.md files.
@@ -2421,7 +2751,7 @@ pub async fn build_reborn_runtime(
 
 fn build_webui_auth_interaction_service(
     product_auth: Option<&RebornProductAuthServices>,
-    turn_state_store: Arc<LocalDevTurnStateStore>,
+    turn_state_store: Option<Arc<LocalDevTurnStateStore>>,
     turn_coordinator: Arc<dyn TurnCoordinator>,
 ) -> Arc<dyn AuthInteractionService> {
     // `AuthFlowRecordSource` is optional on the product-auth bundle because
@@ -2429,10 +2759,15 @@ fn build_webui_auth_interaction_service(
     // manager itself. Local-dev can render pending WebUI auth interactions only
     // when the bundle explicitly exposes this scoped projection; otherwise the
     // WebUI surface fails closed with a stable unavailable error.
+    // On the pure-PG path there is no in-process turn-state snapshot so
+    // auth challenge rendering is also unavailable.
     let Some(product_auth) = product_auth else {
         return Arc::new(auth_interaction::UnavailableAuthInteractionService);
     };
     let Some(flow_records) = product_auth.flow_record_source() else {
+        return Arc::new(auth_interaction::UnavailableAuthInteractionService);
+    };
+    let Some(turn_state_store) = turn_state_store else {
         return Arc::new(auth_interaction::UnavailableAuthInteractionService);
     };
     Arc::new(DefaultAuthInteractionService::new(

@@ -841,3 +841,114 @@ fn host_api_agent_loop_error(
 
 #[cfg(test)]
 mod tests;
+
+/// Capability wiring for the pure-postgres production path (no local-dev
+/// filesystem substrate).
+///
+/// Uses `ProductLiveCapabilityIo` for capability I/O staging and constructs a
+/// `HostRuntimeLoopCapabilityPortFactory` with empty mounts and allow-all
+/// surface policy.  Display previews are wired through the same
+/// `CapabilityDisplayPreviewStore` so the WebUI SSE stream works.
+/// No local filesystem, no extension surface discovery, no skill activation.
+pub(super) fn pg_capability_wiring(
+    services: &crate::RebornServices,
+    _thread_service: Arc<dyn SessionThreadService>,
+    _thread_scope: ThreadScope,
+    fallback_user_id: UserId,
+    model_gateway: Arc<dyn brassclaw_loop_support::HostManagedModelGateway>,
+    milestone_sink: Arc<dyn brassclaw_turns::run_profile::LoopHostMilestoneSink>,
+) -> Option<LocalDevCapabilityWiring> {
+    let runtime = services.host_runtime.clone()?;
+    let display_previews = Arc::new(crate::projection::CapabilityDisplayPreviewStore::default());
+    let capability_io = Arc::new(
+        crate::product_live_adapters::ProductLiveCapabilityIo::new(Arc::clone(&display_previews)),
+    );
+    let capability_input_resolver: Arc<dyn LoopCapabilityInputResolver> = capability_io.clone();
+    let capability_result_writer: Arc<dyn LoopCapabilityResultWriter> = capability_io.clone();
+    let capability_factory: Arc<dyn LoopCapabilityPortFactory> =
+        Arc::new(PgLoopCapabilityPortFactory {
+            runtime,
+            fallback_user_id,
+            input_resolver: Arc::clone(&capability_input_resolver),
+            result_writer: Arc::clone(&capability_result_writer),
+            milestone_sink,
+        });
+    // The pure-PG path uses ProductLiveCapabilityIo for result staging; the
+    // local-dev result-hydration shim (LocalDevResultHydratingModelGateway) is
+    // not applicable here because there is no in-process REPL replay.
+    Some(LocalDevCapabilityWiring {
+        capability_factory,
+        capability_input_resolver,
+        capability_result_writer,
+        model_gateway,
+        display_previews,
+    })
+}
+
+/// Capability factory for the pure-postgres production path.
+///
+/// Constructs a `HostRuntimeLoopCapabilityPortFactory` per run context with
+/// empty mounts and allow-all policy.
+#[derive(Clone)]
+struct PgLoopCapabilityPortFactory {
+    runtime: Arc<dyn brassclaw_host_runtime::HostRuntime>,
+    fallback_user_id: UserId,
+    input_resolver: Arc<dyn LoopCapabilityInputResolver>,
+    result_writer: Arc<dyn LoopCapabilityResultWriter>,
+    milestone_sink: Arc<dyn brassclaw_turns::run_profile::LoopHostMilestoneSink>,
+}
+
+#[async_trait::async_trait]
+impl LoopCapabilityPortFactory for PgLoopCapabilityPortFactory {
+    async fn create_capability_port(
+        &self,
+        run_context: &LoopRunContext,
+    ) -> Result<Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>, brassclaw_turns::run_profile::AgentLoopHostError>
+    {
+        use brassclaw_host_api::{ExecutionContext, RuntimeKind, TrustClass};
+        use brassclaw_host_runtime::{CapabilitySurfacePolicy, SurfaceKind, VisibleCapabilityRequest};
+        use brassclaw_loop_support::loop_driver_execution_extension_id;
+
+        let extension_id = loop_driver_execution_extension_id(run_context)?;
+        let user_id = run_context
+            .scope
+            .explicit_owner_user_id()
+            .cloned()
+            .or_else(|| run_context.actor().map(|a| a.user_id.clone()))
+            .unwrap_or_else(|| self.fallback_user_id.clone());
+        let mut context = ExecutionContext::local_default(
+            user_id,
+            extension_id,
+            RuntimeKind::FirstParty,
+            TrustClass::UserTrusted,
+            Default::default(),
+            Default::default(),
+        )
+        .map_err(host_api_agent_loop_error)?;
+        context.tenant_id = run_context.scope.tenant_id.clone();
+        context.agent_id = run_context.scope.agent_id.clone();
+        context.project_id = run_context.scope.project_id.clone();
+        context.thread_id = Some(run_context.thread_id.clone());
+        context.resource_scope.tenant_id = context.tenant_id.clone();
+        context.resource_scope.agent_id = context.agent_id.clone();
+        context.resource_scope.project_id = context.project_id.clone();
+        context.resource_scope.thread_id = context.thread_id.clone();
+        context.validate().map_err(host_api_agent_loop_error)?;
+
+        let visible_request =
+            VisibleCapabilityRequest::new(
+                context,
+                SurfaceKind::new("agent_loop").map_err(host_api_agent_loop_error)?,
+            )
+            .with_policy(CapabilitySurfacePolicy::allow_all());
+
+        Ok(HostRuntimeLoopCapabilityPortFactory::new(
+            Arc::clone(&self.runtime),
+            visible_request,
+            Arc::clone(&self.input_resolver),
+            Arc::clone(&self.result_writer),
+            Arc::clone(&self.milestone_sink),
+        )
+        .for_run_context(run_context.clone()))
+    }
+}

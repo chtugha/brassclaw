@@ -694,3 +694,28 @@ where
         Ok(state)
     }
 }
+
+#[async_trait]
+impl<S> crate::events::TurnEventProjectionSource for LifecyclePublishingTurnStateStore<S>
+where
+    S: crate::events::TurnEventProjectionSource + ?Sized,
+{
+    async fn read_turn_events_after(
+        &self,
+        scope: &crate::TurnScope,
+        owner_user_id: Option<&brassclaw_host_api::UserId>,
+        after: Option<crate::events::EventCursor>,
+        limit: usize,
+    ) -> Result<crate::events::TurnEventPage, crate::TurnError> {
+        self.inner.read_turn_events_after(scope, owner_user_id, after, limit).await
+    }
+}
+
+impl<S> crate::store::TurnStateDriver for LifecyclePublishingTurnStateStore<S>
+where
+    S: TurnSpawnTreeStateStore
+        + TurnRunTransitionPort
+        + crate::events::TurnEventProjectionSource
+        + ?Sized,
+{
+}

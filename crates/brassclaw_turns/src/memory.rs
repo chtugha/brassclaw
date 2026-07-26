@@ -1411,6 +1411,8 @@ impl TurnRunTransitionPort for InMemoryTurnStateStore {
     }
 }
 
+impl crate::store::TurnStateDriver for InMemoryTurnStateStore {}
+
 impl Inner {
     fn from_persistence_snapshot(
         snapshot: TurnPersistenceSnapshot,

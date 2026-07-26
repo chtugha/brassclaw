@@ -754,6 +754,8 @@ impl TurnRunTransitionPort for PgTurnStateStore {
     }
 }
 
+impl crate::store::TurnStateDriver for PgTurnStateStore {}
+
 // ---------------------------------------------------------------------------
 // Snapshot projection helpers (mirrors filesystem_store.rs)
 // ---------------------------------------------------------------------------

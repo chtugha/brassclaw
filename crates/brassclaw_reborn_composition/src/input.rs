@@ -168,8 +168,9 @@ pub(crate) enum RebornStorageInput {
         #[allow(dead_code)] // Phase-5 factory wiring
         secret_master_key: Option<brassclaw_secrets::SecretMaterial>,
         /// `$BRASSCLAW_REBORN_HOME` path, used by per-boot master-key resolution
-        /// to locate the raw-key file when `secret_master_key` is `None`.
-        #[allow(dead_code)] // Phase-5 factory wiring
+        /// to locate the raw-key file when `secret_master_key` is `None`, and by
+        /// `build_reborn_runtime` to seed the system-prompt storage root on the
+        /// pure-postgres path.
         reborn_home: PathBuf,
     },
 }
@@ -262,6 +263,18 @@ impl RebornBuildInput {
     pub fn pg_pool(&self) -> Option<&deadpool_postgres::Pool> {
         match &self.storage {
             RebornStorageInput::Postgres { pool, .. } => Some(pool),
+            _ => None,
+        }
+    }
+
+    /// Return the `reborn_home` path from a Postgres build input, if present.
+    ///
+    /// Used by `build_reborn_runtime` to derive the system-prompt storage root
+    /// on the pure-postgres path (no local-dev substrate).
+    #[cfg(feature = "postgres")]
+    pub(crate) fn pg_reborn_home(&self) -> Option<&std::path::Path> {
+        match &self.storage {
+            RebornStorageInput::Postgres { reborn_home, .. } => Some(reborn_home.as_path()),
             _ => None,
         }
     }

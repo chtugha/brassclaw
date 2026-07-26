@@ -9,10 +9,12 @@
 - Sub-step 5 (partial): `PgSubagentGoalStore` wired in `build_reborn_runtime` when `pg_pool` available
 - `PgSessionThreadService` wired in `build_reborn_runtime` when `pg_pool` available (not in original plan but implemented)
 
-### ⚠️ Remaining (blocked by Rust type system)
-- Sub-step 3: `LocalRuntimeSurface` enum / trait object for turn state
-- Sub-step 4: Full `build_reborn_runtime` postgres path (turn_state, loop_checkpoint, checkpoint_state)
-- Sub-step 6: Remove `#[allow(dead_code)]` (blocked until sub-steps 3/4 done)
+### ✅ Resolved (this session)
+- Sub-step 3: `TurnStateDriverBox` newtype + `TurnStateDriver` supertrait — concrete Sized wrapper
+  satisfying all DefaultPlannedRuntimeParts<T> bounds. Pure-PG path uses `PgRuntimeStores`.
+- Sub-step 4: Full `build_reborn_runtime` postgres path wired — all `local_runtime.X` refs replaced
+  by substrate-extracted locals (hybrid path) or PgRuntimeStores (pure-PG path).
+- Sub-step 6: `#[allow(dead_code)]` removed from `PgRuntimeStores` and `build_pg_runtime_stores`.
 
 See `subplan_pg4_runtime_pg_path.md` for the detailed remaining work.
 
