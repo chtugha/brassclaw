@@ -1639,6 +1639,7 @@ pub async fn build_reborn_runtime(
     #[cfg(feature = "postgres")]
     let pg_stores: Option<crate::factory::PgRuntimeStores>;
     #[cfg(feature = "postgres")]
+    #[allow(clippy::type_complexity)]
     let (
         turn_state_store,
         checkpoint_state_store,

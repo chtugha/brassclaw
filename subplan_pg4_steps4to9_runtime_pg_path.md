@@ -1,6 +1,6 @@
 # Subplan: PG-4 Steps 4–9 — Wire `build_reborn_runtime` for the pure-postgres path
 
-## Status: IN PROGRESS
+## Status: ✅ IMPLEMENTED
 
 ## Goal
 

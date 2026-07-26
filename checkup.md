@@ -319,7 +319,7 @@ Static file created at installation time (~256KB, ~50K tokens, Tools→Scaffold�
 
 > ✅ `V034__reborn_monty_vm_settings.sql` confirmed present. `MontyVmSettings` struct, `MontyVmRestartRequest/Response`, `restart_monty_vm` trait method defined in product_workflow layer.
 > ✅ **RESOLVED (this session):** `PgMontyVmSettingsStore` implemented and wired (Step 8.1 resolution above). `get_monty_vm_settings`, `update_monty_vm_settings`, `restart_monty_vm`, `get_monty_vm_status` all working (no longer 501). Settings persist to `reborn_monty_vm_settings`. DB-less fallback returns compiled-in defaults.
-> ⚠️ **REMAINING:** Kernel-owned lifecycle drain + admission-control logic (step spec §6.3 "drain + force=true abort") is not needed — Monty VM is per-turn, no persistent process. `restart_monty_vm` correctly returns `Restarting` state and the next turn auto-picks updated settings from DB. `max_duration_secs` from DB is persisted but not yet live-plumbed to the orchestrator's `OnceLock` (Step 9.3 demotes env-var fallback once that is done).
+> ✅ **RESOLVED (Step 9.3):** Kernel-owned lifecycle drain + admission-control logic is not needed — Monty VM is per-turn, no persistent process. `restart_monty_vm` correctly returns `Restarting` state and the next turn auto-picks updated settings from DB. `max_duration_secs` from DB is now live-plumbed via `execute_orchestrator(max_duration_override: Option<Duration>)` + `ExecutionLoop::with_max_duration_secs()` + `ThreadManager::with_max_duration_secs()`. The env-var `BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS` is now a DB-less fallback only.
 
 #### Step 6.4 — V035 `reborn_user_preferences` migration ✅ `IMPLEMENTED`
 `V035__reborn_user_preferences.sql`: `(user_id, preference_key, preference_value)` key-value. Current key: `ai_before_user` (default `false`). Hidden/disabled in DB-less mode. Persisted via `PUT /api/chat/preferences/{key}`.
@@ -410,7 +410,7 @@ Wrap `sempai_swappable` in its own `LlmProviderModelGateway`; thread through fac
 New `InterceptorConfigService` trait + `RebornInterceptorConfigService` impl; `InterceptorConfigStore` backed by `brassclaw_config` table (4 keys). `reassemble_base_prompt()`: direct SQL to individual component tables (NOT `reborn_component_catalog`), `information_schema.tables` guard for missing tables, merge + sort `(class_code asc, prompt_uid asc)`, write Part A to `brassclaw_config`. HTTP endpoints: `GET/POST /api/interceptor/config`, `POST /api/interceptor/reassemble`, `POST /api/interceptor/prewarm`. `prompts/sempai_audit.md` (default Part B). ForensicPacket cleanup task: daily, reads `forensic_packet_retention_days` from `reborn_monty_vm_settings`, `forensic_packet_retention_days = 0` = no-op.
 
 > ✅ `InterceptorConfigService` trait + `RebornInterceptorConfigService` impl confirmed. `reassemble_base_prompt()` via direct SQL (Q20) with 4 config keys confirmed.
-> ⚠️ **FLAG:** ForensicPacket cleanup task — `retention_sweep.rs` line ~119 references forensic packets but appears to log a debug warning only; actual deletion/daily sweep logic not confirmed implemented.
+> ✅ **CONFIRMED (this session):** ForensicPacket cleanup task IS fully implemented. `retention_sweep.rs` lines 108–140 show the full sweep: SELECT expired packet IDs → UPDATE memory_chat_records SET forensic_packet_id=NULL → DELETE FROM brassclaw_forensic_packets. The `debug!` at line 119 is only for malformed rows (bad `id` field), not the main sweep path.
 
 ---
 

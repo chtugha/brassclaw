@@ -393,7 +393,6 @@ impl RebornLocalRuntimeServices {
 /// in `build_reborn_runtime` instead of `RebornLocalRuntimeServices`.
 #[cfg(feature = "postgres")]
 pub(crate) struct PgRuntimeStores {
-    pub(crate) pool: Arc<deadpool_postgres::Pool>,
     pub(crate) turn_state: Arc<brassclaw_turns::PgTurnStateStore>,
     pub(crate) checkpoint_state_store: Arc<dyn brassclaw_turns::CheckpointStateStore>,
     pub(crate) loop_checkpoint_store: Arc<dyn brassclaw_turns::LoopCheckpointStore>,
@@ -468,7 +467,6 @@ pub(crate) async fn build_pg_runtime_stores(
         (*pool).clone(),
     ));
     Ok(PgRuntimeStores {
-        pool,
         turn_state,
         checkpoint_state_store,
         loop_checkpoint_store,
