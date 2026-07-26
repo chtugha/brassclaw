@@ -1,4 +1,12 @@
-# Subplan: Step 5.3 — Retire recipe_store.rs + recipe_library.rs ✅ COMPLETE
+# Subplan: Step 5.3 — Retire recipe_store.rs + recipe_library.rs
+
+## Status: ✅ IMPLEMENTED
+
+`PgRecipeStoreFacade` implements all 13 `RecipeStore` trait methods and is
+wired in `webui.rs:218`. `PgRecipeLibrary` wired in `runtime.rs:2388`.
+`recipe_store.rs` and `recipe_library.rs` retained as non-postgres fallback
+(deletion deferred to PG-8 when `migrate-from-libsql` gate lifts). Steps 1–4
+are complete. Step 4 (delete old files) is formally deferred to PG-8.
 
 > **Parent:** `checkup.md` Step 5.3 + PG-4 GAP (DocType::Recipe / DocType::ToolSkill routing)
 > **Goal:** Route `DocType::Recipe` / ToolSkill lookups through Postgres-native stores,

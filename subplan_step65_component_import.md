@@ -1,6 +1,13 @@
 # Subplan: Step 6.5 — component_import.rs document-splitting importer
 
-## Goal
+## Status: ✅ IMPLEMENTED
+
+`component_import.rs` (16KB) fully implemented with content-splitting,
+intent-example extraction, content-hash idempotency, per-table upserts, and
+scope mapping. `run_component_import` wired in `build_reborn_runtime` at boot
+(non-fatal) behind `all(postgres, skills-db)` gate. All sub-steps 1–8 complete.
+
+## Goal (historical)
 Implement `crates/brassclaw_reborn_composition/src/component_import.rs` — a
 one-shot, idempotent importer that reads `MemoryDoc` rows from
 `brassclaw_memory_docs` (V016) and migrates them into the 8 class-specific

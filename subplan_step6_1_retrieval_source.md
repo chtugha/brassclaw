@@ -1,6 +1,14 @@
 # Subplan: Step 6.1 — RetrievalSource Trait + PostgresSource + RamSource
 
-## Context
+## Status: ✅ IMPLEMENTED
+
+`retrieval_source.rs` is fully implemented with `RetrievalSource` trait,
+`ComponentItem`, `ComponentScope`, `PostgresSource` (UNION ALL across all
+component tables, feature `skills-db`), and `RamSource` (MemoryDoc keyword
+fallback). All sub-steps 1–9 complete. Wired into `orchestrator.rs` and
+factory/runtime.
+
+## Context (historical)
 
 The `__assemble_prior_knowledge__` host function in `orchestrator.rs` is a **stub** that
 delegates to the old `retrieve_context` path (which reads `memory_docs` / `DocType`-based

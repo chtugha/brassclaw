@@ -1,6 +1,12 @@
 # Subplan: Step 6.10 — Retire ALL DocType Variants
 
-## Context
+## Status: 🔸 PARTIAL (formally deferred to PG-8)
+
+`DocType` is marked `#[deprecated]` in `types/memory.rs`. Sub-step 1 done.
+Full enum deletion is gated on `MemoryDoc` + `Store` trait retirement (PG-8)
+when the `migrate-from-libsql` cleanup ships. Sub-steps 2–5 are deferred.
+
+## Context (historical)
 
 `DocType` is a Rust enum with 9 variants (`Skill`, `Recipe`, `ToolSkill`, `Plan`, `Summary`,
 `Lesson`, `Issue`, `Spec`, `Note`). It appears in 30+ files and 119+ reference sites.

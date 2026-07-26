@@ -164,7 +164,6 @@ fn skill_activation_host_error(
             ..
         }
         | brassclaw_first_party_extension_ports::SkillActivationSelectionError::ParseFailed
-        | brassclaw_first_party_extension_ports::SkillActivationSelectionError::TrustDataMissing
         | brassclaw_first_party_extension_ports::SkillActivationSelectionError::VisibilityDataMissing => {
             AgentLoopHostErrorKind::InvalidInvocation
         }

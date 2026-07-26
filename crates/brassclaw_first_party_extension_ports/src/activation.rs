@@ -154,10 +154,6 @@ pub enum SkillActivationSelectionError {
     SourceUnavailable,
     #[error("skill activation parse failed")]
     ParseFailed,
-    // Phase 3: TrustDataMissing kept for exhaustive-match compatibility;
-    // descriptor.trust() is gone — this variant is unreachable in production.
-    #[error("skill activation trust data missing")]
-    TrustDataMissing,
     #[error("skill activation visibility data missing")]
     VisibilityDataMissing,
     #[error("skill activation context budget exceeded")]
@@ -174,10 +170,6 @@ impl SkillActivationSelectionError {
                 HostSkillContextBuildError::AmbiguousSkill { name, sources }
             }
             Self::ParseFailed => HostSkillContextBuildError::ParseFailed,
-            // Phase 3: trust layer removed; TrustDataMissing is unreachable but
-            // kept for exhaustive matching. Map to Internal per the same rationale
-            // as skill_context.rs.
-            Self::TrustDataMissing => HostSkillContextBuildError::Internal,
             Self::VisibilityDataMissing => HostSkillContextBuildError::VisibilityDataMissing,
             Self::ContextBudgetExceeded => HostSkillContextBuildError::ContextBudgetExceeded,
             Self::Internal => HostSkillContextBuildError::Internal,

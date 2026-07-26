@@ -1,6 +1,17 @@
 # Subplan: Step 4.1 — Delete the Trust Layer
 
-## Goal
+## Status: ✅ IMPLEMENTED
+
+`SkillTrustLevel` enum, `trust_rank()`, `trust` fields on `InstalledSkillSnapshot`
+and `PromptSkillContextMetadata`, `SkillContextError::TrustDataMissing`, and all
+trust-based filters are completely removed from the codebase.
+
+NOTE: `SkillActivationSelectionError::TrustDataMissing` (in `activation.rs`) is a
+DIFFERENT enum variant that is kept for exhaustive-match compatibility — it is
+unreachable in production (no code path produces it), but removing it would require
+a minor change described in last_cleanup_pre-v3.md Step 2.
+
+## Goal (historical context)
 Remove `SkillTrustLevel`, `trust` fields, `trust_rank()`, and all trust-based attenuation
 from the codebase. After this step, `Validated == trusted` — all visible validated skills
 are treated as fully trusted (their prompt content is included). This is the Phase 3 design.

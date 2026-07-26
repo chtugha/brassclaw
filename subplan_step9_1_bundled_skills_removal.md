@@ -1,6 +1,14 @@
 # Subplan: Step 9.1 — Delete On-disk SKILL.md Discovery Code
 
-## Goal
+## Status: ✅ IMPLEMENTED
+
+`bundled_skills` module gated `#[cfg(not(feature = "skills-db"))]` in
+`lib.rs:34`. `build.rs:38` detects `CARGO_FEATURE_SKILLS_DB` and gates
+skill embedding. `skill_listing.rs` bundled-merge gated. `factory.rs` boot
+call gated. `bundled_skills.rs` retained but only compiled without `skills-db`.
+All steps 1–7 complete.
+
+## Goal (historical)
 Remove the v1 filesystem-backed skill path:
 - `crates/brassclaw_reborn_composition/src/bundled_skills.rs` (compile-time embedded skill installer)
 - The `embed_reborn_skills()` + `embed_migrated_skills_catalog()` calls in `build.rs`

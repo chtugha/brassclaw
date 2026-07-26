@@ -1,6 +1,13 @@
 # Sub-plan: Step 3.2 — Wire DbToolSource into Q1 auto-validation
 
-## Problem
+## Status: ✅ IMPLEMENTED
+
+`auto_validate_pending` is fully implemented in `pg_recipe_store.rs:1530`,
+wired as a background sweep via `spawn_q1_validation_sweep` in
+`retention_sweep.rs:168`, and called from `serve.rs:364` at startup.
+All sub-steps 3.2.1–3.2.7 are complete.
+
+## Problem (historical context)
 
 `DbToolSource` exists in `crates/brassclaw_engine/src/capability/db_tool_source.rs` and is fully
 implemented. `ComponentValidator::validate_by_class` accepts `available_tools: &[String]`. But:

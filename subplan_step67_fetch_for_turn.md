@@ -1,6 +1,14 @@
 # Subplan: Step 6.7 — fetch_for_turn / intent-driven retrieval
 
-## Goal
+## Status: ✅ IMPLEMENTED
+
+`fetch_for_turn` default method added to `RetrievalSource` trait.
+`FetchForTurnResult` enum added (`Components` + `Disambiguation` variants).
+`PostgresSource::fetch_for_turn` override implemented with `resolve_intent`
+→ match/disambiguation/no-match fallback. `handle_assemble_prior_knowledge`
+uses `fetch_for_turn`. All items 1–7 complete.
+
+## Goal (historical)
 Replace the "load all docs" UNION ALL path in `PostgresSource::fetch_for_consumer`
 with an intent-driven two-stage lookup:
 1. `resolve_intent(pool, scope, query)` → component_id / disambiguation / no-match

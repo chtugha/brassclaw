@@ -1,6 +1,14 @@
 # Subplan: Step 8.1 — Intent Inputs REST API
 
-## Goal
+## Status: ✅ IMPLEMENTED
+
+`PgIntentInputsStore` implemented in `pg_intent_inputs_store.rs`. All 3
+REST routes (`GET/PUT/DELETE /api/settings/intent-inputs`) added to
+`handlers.rs`, wired in `webui.rs:307`. Trait methods in
+`RebornServicesApi` and overrides in `RebornServices` complete.
+All steps A–G complete.
+
+## Goal (historical)
 Implement `GET/PUT/DELETE /api/settings/intent-inputs` routes so the Settings UI can
 list, upsert, and delete intent example rows in `reborn_intent_inputs`.
 

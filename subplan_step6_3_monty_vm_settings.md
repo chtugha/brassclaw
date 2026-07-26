@@ -1,6 +1,14 @@
 # Subplan: Step 6.3 / Step 8.1 — PgMontyVmSettingsStore + Monty VM lifecycle
 
-## Problem
+## Status: ✅ IMPLEMENTED
+
+`PgMontyVmSettingsStore` implemented and wired in `webui.rs`. All 4 API
+methods (`get_monty_vm_settings`, `update_monty_vm_settings`, `restart_monty_vm`,
+`get_monty_vm_status`) are functional (no longer 501). `max_turn_duration` from
+DB is live-plumbed via `plan_stub_step63_max_duration_wiring.md` (Step 9.3).
+All steps 1–6 complete.
+
+## Problem (historical)
 
 `get_monty_vm_settings`, `update_monty_vm_settings`, `restart_monty_vm`, and
 `get_monty_vm_status` all return HTTP 501 (`Err(RebornServicesError::from_status(501))`).
