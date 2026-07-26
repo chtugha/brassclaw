@@ -80,11 +80,15 @@ No code changes needed.
 `subplan_step6_10_doctype_retire.md` says DocType deletion is deferred to PG-8.
 `DocType` is `#[deprecated]`. Confirm this matches checkup.md.
 
-### Step 5 — Run full clippy + tests ✅
+### Step 5 — Run full clippy + tests ✅ DONE
 
 ```bash
 cargo clippy --all --benches --tests --examples --all-features -- -D warnings
 cargo test
 ```
 
-### Step 6 — Commit and push all changes ✅
+All tests pass, no warnings.
+
+### Step 6 — Commit and push all changes ✅ DONE
+
+Committed as `69ec39b3` and pushed to origin/main.

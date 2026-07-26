@@ -1563,12 +1563,13 @@ impl RebornRuntime {
 /// On return, the turn-runner worker is already running in the background and
 /// the returned `RebornRuntime` is ready to accept `send_user_message` calls.
 ///
-/// **Currently supported profiles:** `RebornCompositionProfile::LocalDev` and
-/// `RebornCompositionProfile::LocalDevYolo` are wired end-to-end here;
-/// production profiles will follow in a later slice (they currently return
-/// their substrate-only `RebornServices` and need durable thread/checkpoint
-/// stores wired before being driven). Passing a production profile returns a
-/// "not yet wired" error rather than partially starting an agent.
+/// **Supported paths:**
+/// - `LocalDev` / `LocalDevYolo` with `RebornStorageInput::LocalDev` — pure local-dev
+///   filesystem substrate.
+/// - `LocalDev` / `LocalDevYolo` with `RebornStorageInput::Postgres` (hybrid) — local-dev
+///   filesystem substrate + PG pool; thread service and subagent goals are PG-backed.
+/// - Any profile with `RebornServices { local_runtime: None, pg_pool: Some(_) }` (pure-PG
+///   path) — all stores built from the PG pool via `build_pg_runtime_stores`.
 pub async fn build_reborn_runtime(
     input: RebornRuntimeInput,
 ) -> Result<RebornRuntime, RebornRuntimeError> {

@@ -1,22 +1,20 @@
 # Sub-plan: PG-4 Phase-5 Factory Wiring
 ## Wire build_reborn_runtime for Postgres production path
 
-## Status (as of this checkup session)
+## Status: ✅ ALL SUB-STEPS IMPLEMENTED
 
-### ✅ Completed
-- Sub-step 1: `ProcessServices::postgres()` — already exists in `crates/brassclaw_processes/src/services.rs`
+### ✅ All sub-steps verified complete
+- Sub-step 1: `ProcessServices::postgres()` — exists in `crates/brassclaw_processes/src/services.rs`
 - Sub-step 2: `build_pg_backend_production_with_tools` uses `ProcessServices::postgres()` — confirmed
-- Sub-step 5 (partial): `PgSubagentGoalStore` wired in `build_reborn_runtime` when `pg_pool` available
-- `PgSessionThreadService` wired in `build_reborn_runtime` when `pg_pool` available (not in original plan but implemented)
-
-### ✅ Resolved (this session)
-- Sub-step 3: `TurnStateDriverBox` newtype + `TurnStateDriver` supertrait — concrete Sized wrapper
-  satisfying all DefaultPlannedRuntimeParts<T> bounds. Pure-PG path uses `PgRuntimeStores`.
-- Sub-step 4: Full `build_reborn_runtime` postgres path wired — all `local_runtime.X` refs replaced
-  by substrate-extracted locals (hybrid path) or PgRuntimeStores (pure-PG path).
+- Sub-step 3: `TurnStateDriverBox` newtype + `PgRuntimeStores` struct — implemented; pure-PG path
+  builds all stores from PG pool.
+- Sub-step 4: `build_reborn_runtime` supports all paths — hybrid (LocalDev+PG) and pure-PG.
+  `local_runtime` refs replaced by substrate-extracted locals or `PgRuntimeStores`. Doc comment updated.
+- Sub-step 5: `PgSubagentGoalStore` wired in `build_reborn_runtime` when `pg_pool` available.
+  `PgSessionThreadService` wired in same block (bonus, not in original plan).
 - Sub-step 6: `#[allow(dead_code)]` removed from `PgRuntimeStores` and `build_pg_runtime_stores`.
-
-See `subplan_pg4_runtime_pg_path.md` for the detailed remaining work.
+  (The `build_production_shaped` chain remains dead per `plan_stub_factory_production_path.md` Option C.)
+- Sub-step 7: clippy+tests pass; `checkup.md` PG-4 fully documented.
 
 ---
 

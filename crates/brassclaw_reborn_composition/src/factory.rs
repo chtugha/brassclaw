@@ -2159,9 +2159,11 @@ where
         event_store: brassclaw_reborn_event_store::RebornEventStoreConfig,
     ) -> Result<Self, RebornBuildError> {
         let scoped_filesystem = crate::wrap_scoped(Arc::clone(&filesystem));
-        // Filesystem capability lease store is kept here for the bundle; the
-        // PG-specific build path (build_pg_backend_production_with_tools) will
-        // override it with PgCapabilityLeaseStore via with_capability_leases.
+        // Filesystem capability lease store for the non-PG fallback path
+        // (build_backend_production_with_tools). The PG-specific path
+        // (build_pg_backend_production_with_tools) destructures the bundle,
+        // drops this field (`leases: _stores_leases`), and constructs
+        // PgCapabilityLeaseStore directly from the shared pool.
         let leases = Arc::new(FilesystemCapabilityLeaseStore::new(Arc::clone(
             &scoped_filesystem,
         )));

@@ -1,12 +1,21 @@
 # Subplan: PG-4 Wiring Gaps — Factory Postgres Store Wiring
 
-## Status (as of this checkup session)
+## Status: ✅ ALL STEPS IMPLEMENTED
 
 ### ✅ Steps 1–5 — CONFIRMED DONE (in dead-code path)
 `PgCapabilityLeaseStore`, `PgRunStateStore`, `PgApprovalRequestStore`, `PgTurnStateStore`,
 `PgResourceGovernorStore` are all wired in `build_pg_backend_production_with_tools`.
-The `#[allow(dead_code)]` functions exist and are correct. However, they are not yet reached
-by the live `brassclaw serve` path (hybrid local-dev+PG). See `subplan_pg4_runtime_pg_path.md`.
+- Step 1: `ProductionStoreBundle.leases` remains `Arc<FilesystemCapabilityLeaseStore<F>>` for the
+  non-PG fallback path; PG path drops it (`leases: _stores_leases`) and constructs
+  `PgCapabilityLeaseStore` directly. Comment updated to reflect this clearly.
+- Steps 2–4: `.with_pg_run_state()`, `.with_pg_turn_state_store()`, `.with_pg_resource_governor()`
+  all wired in `build_pg_backend_production_with_tools`.
+- Step 5: Separate `build_pg_backend_production_with_tools` function (non-Option pool) is the
+  chosen implementation of the Rust type-system constraint fix.
+
+The whole `build_production_shaped` → `build_postgres_production` → `build_pg_backend_production_with_tools`
+chain remains `#[allow(dead_code)]` per `plan_stub_factory_production_path.md` (Option C deferred).
+The live path is the hybrid LocalDev+PG path in `build_reborn_services` + `build_reborn_runtime`.
 
 ### ✅ Step 6 — Clippy and tests PASS (zero warnings, 490+ tests)
 
