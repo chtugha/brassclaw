@@ -2270,7 +2270,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "brassclaw_embedded_postgres",
- "brassclaw_host_api",
  "brassclaw_pg",
  "brassclaw_reborn_composition",
  "brassclaw_reborn_config",

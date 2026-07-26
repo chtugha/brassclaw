@@ -1,4 +1,4 @@
-use brassclaw_host_api::runtime_policy::RuntimeProfile;
+use brassclaw_reborn_composition::host_api::RuntimeProfile;
 use clap::{Args, Subcommand};
 
 use crate::runtime::RUNTIME_PROFILE_ENV;

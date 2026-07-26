@@ -241,6 +241,7 @@ pub use webui_serve::{
 /// these four newtypes are the WebUI gateway's host-identity facade.
 pub mod host_api {
     pub use brassclaw_host_api::{AgentId, ProjectId, TenantId, UserId};
+    pub use brassclaw_host_api::runtime_policy::RuntimeProfile;
 }
 
 /// Reborn-owned local trigger-fire access store, re-exported so host

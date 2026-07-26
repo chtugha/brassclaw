@@ -5,7 +5,7 @@ use std::{future::Future, thread};
 
 use anyhow::Context;
 
-use brassclaw_host_api::runtime_policy::RuntimeProfile;
+use brassclaw_reborn_composition::host_api::RuntimeProfile;
 use brassclaw_reborn_composition::{
     OAuthClientConfig, PollSettings, RebornBuildInput, RebornCompositionProfile,
     RebornLocalRuntimeProfileOptions, RebornRuntimeIdentity, RebornRuntimeInput,

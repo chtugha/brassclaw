@@ -2801,6 +2801,14 @@ fn no_direct_fs_reads_outside_migration_path() {
             "brassclaw_resources/src/lib.rs",
             "resources crate — reads resource governor snapshot files from disk",
         ),
+        (
+            "brassclaw_reborn_composition/src/skill_import.rs",
+            "CLI skill-import command — reads skill markdown files from an operator-supplied directory path",
+        ),
+        (
+            "brassclaw_engine/src/memory/retrieval_source.rs",
+            "memory retrieval fallback — reads a JSONL fallback-content file for the DB-less local dev path",
+        ),
     ];
 
     let mut violations = Vec::new();
