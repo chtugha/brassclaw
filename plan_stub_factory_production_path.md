@@ -1,6 +1,6 @@
 # Plan: Promote or Remove Dead Factory Production Path
 
-## Status: STUB — needs architectural decision
+## Status: ✅ EXECUTED — Option B (delete) applied
 
 ## Problem
 
@@ -61,7 +61,10 @@ Irreversible without git.
 Accept the dead code with a comment pointing to this plan. The `#[allow(dead_code)]`
 guards suppress compiler warnings. The chain is preserved for future Option A work.
 
-**Current choice: Option C** — defer until a hosted deployment profile is needed.
+**Executed choice: Option B** — dead chain deleted. The hybrid LocalDev+PG path
+combined with `build_reborn_runtime`'s pure-PG path covers the production use case.
+The `build_production_shaped` → `build_postgres_production` → `build_pg_backend_production_with_tools`
+chain and all its exclusive helpers were removed in `final_gaps Step 5`.
 
 ## Steps (when this plan is executed)
 

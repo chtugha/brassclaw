@@ -163,9 +163,12 @@ pub(crate) enum RebornStorageInput {
     #[cfg(feature = "postgres")]
     Postgres {
         pool: deadpool_postgres::Pool,
+        /// Postgres connection URL. Reserved for future use (previously forwarded to
+        /// a secondary event-store pool that has since been replaced by the shared pool).
+        #[allow(dead_code)]
         url: brassclaw_secrets::SecretMaterial,
         /// Pre-resolved master key (takes priority over per-boot table lookup).
-        #[allow(dead_code)] // Phase-5 factory wiring
+        #[allow(dead_code)]
         secret_master_key: Option<brassclaw_secrets::SecretMaterial>,
         /// `$BRASSCLAW_REBORN_HOME` path, used by per-boot master-key resolution
         /// to locate the raw-key file when `secret_master_key` is `None`, and by

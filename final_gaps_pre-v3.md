@@ -87,7 +87,7 @@ available.
 - For each: when `pg_pool` is `Some`, substitute `PgConversationStateStore`.
 - Run clippy + tests, commit + push.
 
-### Step 5 — Execute Option B: Delete `build_production_shaped` dead chain
+### Step 5 — Execute Option B: Delete `build_production_shaped` dead chain ✅ DONE
 
 **File:** `crates/brassclaw_reborn_composition/src/factory.rs`
 
@@ -164,7 +164,7 @@ populated; only the consumer is missing.
 | 2 | `PgExtensionInstallationStore` in serve path | ✅ DONE |
 | 3 | `PgOutboundStateStore` in projection services | ✅ DONE |
 | 4 | `PgConversationStateStore` in serve path | ✅ DONE |
-| 5 | Delete `build_production_shaped` dead chain (Option B) | ❌ NOT DONE |
+| 5 | Delete `build_production_shaped` dead chain (Option B) | ✅ DONE |
 | 6 | PG-6 libSQL strip | ⛔ GATED |
 | 7 | Step 6.10 DocType retirement | ⛔ GATED |
 | 8 | Budget event projection | ⛔ NEEDS DESIGN |
