@@ -81,3 +81,19 @@ tests/fixtures/llm_traces/live/*.log
 
 # sweepfix scratch folder
 .sweepfix/
+
+# Stale local release artifact directories — binaries belong in GitHub Releases,
+# not in the repository. CI-generated copies can be large and should never be committed.
+release-artifacts/
+release-artifacts-*/
+release-v*/
+releases/
+
+# Completed planning / subplan docs — one-shot execution scripts that have
+# served their purpose and would only add noise to history.
+subplan_*.md
+plan_stub_*.md
+final_gaps_pre-v3.md
+last_cleanup_pre-v3.md
+Recipe_System_Finalisation.md
+checkup.md
