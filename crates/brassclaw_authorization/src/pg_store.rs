@@ -75,7 +75,7 @@ impl PgCapabilityLeaseStore {
         let client = self.pool.get().await.map_err(map_pool)?;
         let row = client
             .query_opt(
-                "SELECT grant FROM brassclaw_capability_leases \
+                "SELECT \"grant\" FROM brassclaw_capability_leases \
                  WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
                 &[
                     &lease_id.as_uuid().to_string(),
@@ -150,7 +150,7 @@ impl CapabilityLeaseStore for PgCapabilityLeaseStore {
         client
             .execute(
                 "INSERT INTO brassclaw_capability_leases \
-                 (id, tenant_id, user_id, capability_id, status, grant, invocation_fingerprint) \
+                 (id, tenant_id, user_id, capability_id, status, \"grant\", invocation_fingerprint) \
                  VALUES ($1, $2, $3, $4, $5, $6, $7) \
                  ON CONFLICT (id) DO NOTHING",
                 &[
@@ -222,7 +222,7 @@ impl CapabilityLeaseStore for PgCapabilityLeaseStore {
         };
         let rows = match client
             .query(
-                "SELECT grant FROM brassclaw_capability_leases \
+                "SELECT \"grant\" FROM brassclaw_capability_leases \
                  WHERE tenant_id = $1 AND user_id = $2 \
                  ORDER BY created_at DESC",
                 &[&self.tenant_id, &user_id],
@@ -249,7 +249,7 @@ impl CapabilityLeaseStore for PgCapabilityLeaseStore {
         // Expiry filter in WHERE clause (not in partial index predicate — see §4.8 C1 note).
         let rows = match client
             .query(
-                "SELECT grant FROM brassclaw_capability_leases \
+                "SELECT \"grant\" FROM brassclaw_capability_leases \
                  WHERE tenant_id = $1 AND user_id = $2 AND status = 'active' \
                  ORDER BY created_at DESC",
                 &[&self.tenant_id, &user_id],

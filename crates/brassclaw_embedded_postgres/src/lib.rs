@@ -243,11 +243,12 @@ async fn resolve_pg_install_dir(
 async fn create_app_db(config: &EmbeddedPostgresConfig) -> Result<(), EmbeddedPostgresError> {
     use tokio_postgres::NoTls;
 
-    // Connect as the superuser to the default "postgres" maintenance database.
-    // The superuser was created by initdb with the name in config.superuser.
+    // Connect as the superuser to the default "postgres" maintenance database
+    // (created by initdb). We cannot connect to config.database yet because
+    // that is the database we are about to create.
     let connect_url = format!(
-        "postgresql://{}@127.0.0.1:{}/{}",
-        config.superuser, config.port, config.superuser
+        "postgresql://{}@127.0.0.1:{}/postgres",
+        config.superuser, config.port
     );
 
     let (client, connection) = tokio_postgres::connect(&connect_url, NoTls)

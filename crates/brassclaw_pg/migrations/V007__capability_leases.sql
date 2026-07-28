@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS brassclaw_capability_leases (
     -- Active→'active', Claimed→'claimed', Consumed→'consumed', Revoked→'revoked'.
     status          TEXT        NOT NULL DEFAULT 'active'
         CHECK (status IN ('active','claimed','consumed','revoked')),
-    grant           JSONB       NOT NULL,
+    "grant"         JSONB       NOT NULL,
     invocation_fingerprint TEXT,
     expires_at      TIMESTAMPTZ,
     revoked_at      TIMESTAMPTZ,
