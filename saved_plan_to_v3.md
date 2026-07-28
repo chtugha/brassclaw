@@ -978,6 +978,277 @@ All inserted at boot if the scope has no existing builtin components (idempotent
 
 ---
 
+### 0.17 Variable Intent Templates
+
+#### The problem
+
+`resolve_intent` matches `input_text = $query` — exact string equality. A Recipe variant
+whose execution depends on a runtime value (a path, a filename, a search pattern) cannot
+be expressed as a single intent row. Without a variable mechanism the author must
+pre-register every possible value as a separate row, which is impossible.
+
+#### The `%` slot marker
+
+Intent expressions authored on Recipe variants (and Skills with `intent_examples`) may
+contain `%` as a **positional slot marker**. `%` means "any sequence of tokens may appear
+here". The author controls where variability is allowed; the rest of the expression is
+literal and anchors the match.
+
+```
+# Literal expression (no slot) — stored and matched exactly as today:
+"list files of the current directory"
+
+# Template expressions (contain %):
+"show me all files in the % directory"
+"show me all files in the directory %"
+"read the file at %"
+"search for % in %"
+"edit % and change %"
+```
+
+`%` is purely an authoring and matching marker. After a template matches, the values
+captured in each `%` slot are extracted from the user text and passed to the
+`variable_patterns` extraction step (or auto-extracted from template segments when
+`variable_patterns` is absent — see §0.17.3).
+
+`variable_patterns` and `%` are **separate concerns**:
+- `%` drives **matching** — does this user text structurally fit this template?
+- `variable_patterns` drives **extraction** — what is the value of each slot?
+
+`variable_patterns` becomes optional for simple single-slot cases where auto-extraction
+from template segments is unambiguous (see §0.17.3).
+
+#### Terminology
+
+| Term | Meaning |
+|------|---------|
+| **literal expression** | Intent text with no `%` — stored and matched exactly (existing path) |
+| **template expression** | Intent text containing one or more `%` slots |
+| **template_prefix** | The literal text before the first `%` in a template |
+| **template_suffix** | The literal text after the last `%` in a template |
+| **anchor** | A non-empty `template_prefix` or non-empty `template_suffix` |
+
+---
+
+### 0.17.1 Matching — Three-Path Dispatch
+
+Template matching uses PostgreSQL's `LIKE` operator with the stored template as the
+**pattern** and the user text as the **value**:
+
+```sql
+'show me all files in the /tmp directory'
+  LIKE
+'show me all files in the % directory'
+-- → TRUE  (PostgreSQL native, no Rust pre-processing needed)
+```
+
+This is the reverse of the usual `LIKE` use — the pattern is stored in the DB, the
+concrete value is the incoming query. PostgreSQL supports this natively.
+
+Because plain sequential scanning of all template rows is too slow at scale, matching
+is pre-filtered using computed anchor columns and targeted indexes. Three index paths
+cover all valid templates:
+
+**Path 0 — Exact match (existing, unchanged):**
+```
+input_text = $user_text
+Uses the existing B-tree index on (scope, input_text, input_class).
+```
+
+**Path 1 — Prefix-anchored template (`template_prefix != ''`):**
+```
+template_prefix = "show me all files in the "
+User text must start with this prefix.
+Pre-filter: $user_text LIKE (template_prefix || '%')
+Full check:  $user_text LIKE input_text
+Uses B-tree index on (scope, template_prefix).
+```
+
+**Path 2 — Suffix-anchored template (`template_prefix = ''`, `template_suffix != ''`):**
+```
+Leading-% case: "% directory", "% in /tmp"
+template_suffix = " directory"
+User text must end with this suffix.
+Pre-filter (reverse trick): reverse($user_text) LIKE (reverse(template_suffix) || '%')
+Full check:  $user_text LIKE input_text
+Uses functional B-tree index on (scope, reverse(template_suffix)).
+```
+
+**Path 3 — Dual-anchored template (`template_prefix != ''` AND `template_suffix != ''`):**
+```
+"search for % in the % directory"
+prefix = "search for ", suffix = " directory"
+Uses the prefix index as primary pre-filter (more selective),
+suffix check eliminates remaining false candidates before full LIKE.
+Fastest path — two anchors eliminate nearly all non-matching rows.
+```
+
+**Blocked — no anchor (`template_prefix = ''` AND `template_suffix = ''`):**
+```
+"% in %", "% %", "%"
+Q1 hard error. Never reaches the DB.
+```
+
+The combined SQL for `resolve_intent` evaluates all four paths in a single query:
+
+```sql
+WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+  AND input_class = ANY($7)
+  AND (
+    -- Path 0: exact match (existing path, unchanged)
+    input_text = $5
+
+    -- Path 1: prefix-anchored template
+    OR (
+        is_template = true
+        AND template_prefix != ''
+        AND $5 LIKE (template_prefix || '%')
+        AND $5 LIKE input_text
+    )
+
+    -- Path 2: suffix-anchored template (leading-% case)
+    OR (
+        is_template = true
+        AND template_prefix = ''
+        AND template_suffix != ''
+        AND reverse($5) LIKE (reverse(template_suffix) || '%')
+        AND $5 LIKE input_text
+    )
+  )
+ORDER BY
+  CASE WHEN input_text = $5 THEN 0 ELSE 1 END,   -- exact match always beats template
+  CASE input_class WHEN $8 THEN 0 WHEN $9 THEN 1 WHEN $10 THEN 2 ELSE 3 END,
+  score DESC
+LIMIT 30
+```
+
+Dual-anchored templates (Path 3) are caught by Path 1 (prefix pre-filter fires, then
+full `LIKE` validates the suffix naturally). No separate path 3 branch is needed in SQL.
+
+---
+
+### 0.17.2 New Columns and Indexes on `reborn_intent_inputs`
+
+**Migration V054** adds three columns and two indexes:
+
+```sql
+-- V054__reborn_intent_inputs_template.sql
+
+ALTER TABLE reborn_intent_inputs
+  ADD COLUMN is_template      BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN template_prefix  TEXT,   -- literal text before first %;  NULL for literals
+  ADD COLUMN template_suffix  TEXT;   -- literal text after last %;    NULL for literals
+
+-- Path 1: prefix-anchored templates
+CREATE INDEX IF NOT EXISTS reborn_intent_inputs_template_prefix_idx
+    ON reborn_intent_inputs
+    (tenant_id, user_id, agent_id, project_id, template_prefix)
+    WHERE is_template = true AND template_prefix != '';
+
+-- Path 2: suffix-anchored templates (reverse trick for leading-% case)
+CREATE INDEX IF NOT EXISTS reborn_intent_inputs_template_suffix_rev_idx
+    ON reborn_intent_inputs
+    (tenant_id, user_id, agent_id, project_id, reverse(template_suffix))
+    WHERE is_template = true AND template_prefix = '' AND template_suffix != '';
+```
+
+**Existing rows** (literal expressions) are unaffected: `is_template = false`,
+`template_prefix = NULL`, `template_suffix = NULL`. The existing exact-match index
+and all existing query paths are unchanged.
+
+**Seeding a template row:**
+
+```rust
+fn seed_template_intent(expression: &str) -> (String, String, String) {
+    // expression = "show me all files in the % directory"
+    let prefix = expression.split('%').next().unwrap_or("").to_string();
+    let suffix = expression.split('%').last().unwrap_or("").to_string();
+    let suffix = if expression.contains('%') && suffix != prefix { suffix } else { String::new() };
+    // → prefix = "show me all files in the "
+    // → suffix = " directory"
+    // input_text stored as the template string with % intact
+    (expression.to_string(), prefix, suffix)
+}
+```
+
+`input_text` stores the template string as-is (with `%`). The UNIQUE constraint
+`(scope, input_text, input_class, component_id)` therefore naturally deduplicates
+templates: two identical template expressions for the same component are one row.
+
+---
+
+### 0.17.3 Post-Match Value Extraction
+
+Once a template row matches, the variable values must be extracted from the user text.
+
+**Auto-extraction from template segments (no `variable_patterns` needed):**
+
+Split the template on `%` → literal segments. Find each segment's position in the user
+text in order. The substring between consecutive segments is the captured slot value.
+
+```
+template:  "show me all files in the % directory"
+segments:  ["show me all files in the ", " directory"]
+user_text: "show me all files in the /tmp directory"
+
+Match segment[0] at position 0..25 → OK
+Match segment[1] from right → " directory" ends at position 41
+Slot[0] value = user_text[25..31] = "/tmp"
+```
+
+For multiple slots:
+```
+template:  "search for % in %"
+segments:  ["search for ", " in ", ""]
+user_text: "search for TODO in /src"
+
+Slot[0] = "TODO"   (between segment[0] and segment[1])
+Slot[1] = "/src"   (after segment[1] to end of string)
+```
+
+Auto-extraction is sufficient for most builtin Recipe variants. `variable_patterns`
+is used when:
+1. The extracted value needs **validation** (e.g. must start with `/`)
+2. The extracted value needs **transformation** (e.g. strip quotes)
+3. There are **overlapping templates** where the auto-extraction is ambiguous
+4. The slot name matters for `{{vars.name}}` substitution (auto-extract assigns
+   positional names `vars.slot0`, `vars.slot1`; `variable_patterns` assigns semantic names)
+
+When `variable_patterns` is present, it runs after auto-extraction as a refinement:
+the auto-extracted value is validated against the pattern. If it fails, the match is
+demoted (not rejected — the template still matched; extraction just gets the raw value).
+
+**Positional names:** Auto-extracted slots are named `slot0`, `slot1`, `slot2`, ...
+in left-to-right order. `{{vars.slot0}}` in ToolBinding `params` references the first
+slot. Authors who want semantic names (`{{vars.dir}}`, `{{vars.pattern}}`) add a
+`variable_patterns` entry that maps the positional regex capture to the named variable.
+
+---
+
+### 0.17.4 Q1 Validation Rules for Templates
+
+| Rule | Condition | Severity |
+|------|-----------|----------|
+| **No-anchor error** | `template_prefix = ''` AND `template_suffix = ''` (e.g. `"% in %"`, `"%"`) | **Hard error** — template too permissive; add literal text around each `%` |
+| **Leading-`%` warning** | `template_prefix = ''` AND `template_suffix != ''` (e.g. `"% directory"`) | **Warning** — valid and indexed, but imprecise; consider adding a word before `%` |
+| **Adjacent slots** | Two `%` with no literal text between them (e.g. `"search % %"`) | **Hard error** — adjacent slots are unextractable; separate them with literal text |
+| **Dangling `variable_patterns`** | A `variable_patterns` entry whose `name` does not appear as `{{vars.name}}` in any ToolBinding `params` | **Warning** — pattern defined but never used |
+| **Missing template** | `{{vars.slot0}}` used in ToolBinding `params` but expression has no `%`, and no `variable_patterns` | **Hard error** — variable referenced but no source defined |
+
+---
+
+### 0.17.5 Authoring in WebUI
+
+In the intent expression field, `%` is rendered as a styled token (highlighted chip, not
+plain text) so authors can see at a glance which parts of the expression are slots.
+
+The field shows live feedback:
+- **Green anchor indicator:** "Prefix anchor: `show me all files in the `" — anchored, fast.
+- **Yellow anchor indicator:** "Suffix anchor only: ` directory`" — valid, leading-`%` warning shown.
+- **Red indicator:** "No anchor — add literal text around `%`" — hard error, cannot save.
+
+---
+
 ## 1. Implementation Phases
 
 ### Phase A — StepDescription Schema + IBS Core
@@ -1323,6 +1594,17 @@ is non-empty and matches the pattern `^[a-z0-9_-]+\.[a-z0-9_.]+$` (e.g. `builtin
 Tool rows without a `capability_id` that are authored (not system) pass without error —
 `capability_id` is optional for user-authored custom tools.
 
+**§template-rules — Intent expression templates (applies to all component classes):**  
+Q1 runs `parse_template` against every intent expression in `intent_examples`. Rules:
+
+| Condition | Severity |
+|-----------|----------|
+| `template_prefix = ''` AND `template_suffix = ''` — e.g. `"% in %"`, `"%"` | **Hard error** — no anchor; add literal text around each `%` |
+| Two `%` with no literal text between them — e.g. `"search % %"` | **Hard error** — adjacent slots are unextractable |
+| `template_prefix = ''` AND `template_suffix != ''` — e.g. `"% directory"` | **Warning** — leading-`%` is valid and indexed via suffix; consider adding a word before `%` for precision |
+| `{{vars.name}}` in ToolBinding `params` but no `%` in any expression AND no `variable_patterns` for that name | **Hard error** — variable referenced but no source defined |
+| `variable_patterns` entry whose `name` does not appear in any `{{vars.name}}` reference | **Warning** — pattern defined but never used |
+
 #### Tests
 
 - Unit: Recipe with `snippet`-type step → Q1 fail with `IbsError::UnpromotedSnippet`
@@ -1580,6 +1862,151 @@ and editable without recompiling.
 
 ---
 
+### Phase M — Variable Intent Templates
+
+**Status:** [ ] Pending
+
+**Goal:** Add `%` slot marker support to intent expressions. Authors can write
+`"show me all files in the % directory"` as an intent expression and `resolve_intent`
+will match user text that fits the template. Value extraction is automatic from
+template segments; `variable_patterns` remains optional refinement.
+
+#### M.1 New migration: V054
+
+**File:** `crates/brassclaw_pg/migrations/V054__reborn_intent_inputs_template.sql`
+
+```sql
+ALTER TABLE reborn_intent_inputs
+  ADD COLUMN is_template      BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN template_prefix  TEXT,
+  ADD COLUMN template_suffix  TEXT;
+
+CREATE INDEX IF NOT EXISTS reborn_intent_inputs_template_prefix_idx
+    ON reborn_intent_inputs
+    (tenant_id, user_id, agent_id, project_id, template_prefix)
+    WHERE is_template = true AND template_prefix != '';
+
+CREATE INDEX IF NOT EXISTS reborn_intent_inputs_template_suffix_rev_idx
+    ON reborn_intent_inputs
+    (tenant_id, user_id, agent_id, project_id, reverse(template_suffix))
+    WHERE is_template = true AND template_prefix = '' AND template_suffix != '';
+```
+
+#### M.2 `seed_intent_input` upgrade
+
+**File:** `crates/brassclaw_engine/src/memory/intent_system.rs`
+
+Extend `seed_intent_input` to detect `%` in `input_text` and populate the new columns:
+
+```rust
+pub fn parse_template(expression: &str) -> Option<(String, String)> {
+    // Returns None if expression has no %, Some((prefix, suffix)) if it does.
+    // prefix = text before first %, suffix = text after last %.
+    // Adjacent-slot validation (two % with no literal between) done by caller (Q1).
+    if !expression.contains('%') { return None; }
+    let prefix = expression.splitn(2, '%').next().unwrap_or("").to_string();
+    let suffix = expression.rsplitn(2, '%').next().unwrap_or("").to_string();
+    // If suffix == prefix the expression is a bare "%" — both anchors empty.
+    let suffix = if suffix.as_str() == expression { String::new() } else { suffix };
+    Some((prefix, suffix))
+}
+```
+
+`seed_intent_input` sets `is_template`, `template_prefix`, `template_suffix` from
+`parse_template`. UNIQUE constraint already deduplicates on `(scope, input_text,
+input_class, component_id)` so re-seeding is idempotent.
+
+#### M.3 `resolve_intent` SQL upgrade
+
+**File:** `crates/brassclaw_engine/src/memory/intent_system.rs`
+
+Replace the single `AND input_text = $5` predicate with the three-path query from
+§0.17.1. The existing exact-match path (Path 0) is unchanged; Paths 1 and 2 are
+new OR branches. `ORDER BY` gains the `CASE WHEN input_text = $5 THEN 0 ELSE 1 END`
+tiebreaker so exact matches always outrank template matches for the same component.
+
+Pass `$5 = raw user_text` (exact match) — no normalisation step in Rust needed.
+PostgreSQL evaluates `$5 LIKE input_text` directly.
+
+#### M.4 Post-match extraction: `extract_template_slots`
+
+**File:** `crates/brassclaw_engine/src/memory/intent_system.rs` (or new
+`crates/brassclaw_engine/src/memory/template_extractor.rs`)
+
+```rust
+/// Given a matched template expression and the user text, extract slot values.
+/// Returns a Vec of (slot_index, value) pairs in left-to-right order.
+/// Slot names are "slot0", "slot1", ... unless overridden by variable_patterns.
+pub fn extract_template_slots(
+    template: &str,    // "show me all files in the % directory"
+    user_text: &str,   // "show me all files in the /tmp directory"
+) -> Vec<(String, String)>   // [("slot0", "/tmp")]
+```
+
+Algorithm: split `template` on `%` → literal segments. Find each segment left-to-right
+in `user_text`. Each gap between consecutive segments is a slot value.
+
+Called by `fetch_for_turn` (in `retrieval_source.rs`) after a template match resolves,
+before `variable_patterns` validation/refinement. The extracted `(name, value)` pairs
+feed the `{{vars.name}}` substitution step.
+
+#### M.5 `variable_patterns` as optional post-extract refinement
+
+When a template match occurs and `variable_patterns` is non-empty on the variant:
+1. Auto-extract slot values via `extract_template_slots`.
+2. For each `variable_patterns` entry: apply its regex to the auto-extracted value
+   (not to the full `user_text`). If the regex matches a named group, that group's
+   value replaces the positional slot name in the vars map.
+3. If `variable_patterns` is empty: use positional names `slot0`, `slot1`, ...
+
+This means an author can choose:
+- **Simple case:** `"show me files in the % directory"` — no `variable_patterns`. Slot
+  auto-extracted as `vars.slot0`. ToolBinding params reference `{{vars.slot0}}`.
+- **Semantic case:** Same template + `variable_patterns: [{name: "dir", pattern: ...}]`.
+  Auto-extract produces the raw value; the pattern validates and names it `vars.dir`.
+  ToolBinding params reference `{{vars.dir}}`.
+
+#### M.6 WebUI — template authoring feedback
+
+In the intent expression input field:
+- `%` characters rendered as a distinct chip/token (not plain text).
+- Live feedback line shows computed prefix/suffix anchors and their classification
+  (green = anchored, yellow = suffix-only leading-`%`, red = no-anchor blocked).
+- On save: Q1 template rules run immediately; error/warning shown inline.
+
+#### Files to create
+
+- `crates/brassclaw_pg/migrations/V054__reborn_intent_inputs_template.sql`
+- `crates/brassclaw_engine/src/memory/template_extractor.rs` (or inline in `intent_system.rs`)
+
+#### Files to modify
+
+- `crates/brassclaw_engine/src/memory/intent_system.rs`
+  — `parse_template` helper
+  — `seed_intent_input`: detect `%`, populate `is_template`/`template_prefix`/`template_suffix`
+  — `resolve_intent`: three-path SQL query
+- `crates/brassclaw_engine/src/memory/retrieval_source.rs`
+  — `fetch_for_turn`: after template match, call `extract_template_slots` before `variable_patterns` refinement
+- `crates/brassclaw_engine/src/memory/component_validator.rs` (Phase I)
+  — template Q1 rules (adjacent slots, no-anchor, dangling patterns) — add here when Phase I runs
+
+#### Tests
+
+- Unit: `parse_template("show me files in the % directory")` → `Some(("show me files in the ", " directory"))`
+- Unit: `parse_template("% directory")` → `Some(("", " directory"))`
+- Unit: `parse_template("% in %")` → `Some(("", ""))` → Q1 rejects (no anchor)
+- Unit: `parse_template("search for % in %")` → `Some(("search for ", ""))` — prefix-anchored, valid
+- Unit: `parse_template("no slots here")` → `None`
+- Unit: `extract_template_slots("show me files in the % dir", "show me files in the /tmp dir")` → `[("slot0", "/tmp")]`
+- Unit: `extract_template_slots("search for % in %", "search for TODO in /src")` → `[("slot0", "TODO"), ("slot1", "/src")]`
+- Unit: `extract_template_slots` with adjacent slots `"% %"` → empty / error (undefined behaviour blocked by Q1)
+- Integration: `resolve_intent("show me all files in the /tmp directory")` → matches template row `"show me all files in the % directory"`
+- Integration: `resolve_intent("show me all files in the /tmp directory")` — exact literal row present → ranks above template match for same component
+- Integration: `resolve_intent("/tmp directory")` → matches suffix-anchored template `"% directory"` via reverse index
+- Integration: slot values flow through to `{{vars.slot0}}` substitution in ToolBinding params
+
+---
+
 ## 2. Migration Sequence
 
 | Migration | Contents | Status |
@@ -1591,6 +2018,7 @@ and editable without recompiling.
 | `V051__reborn_skills_intent_examples.sql` | `ADD COLUMN intent_examples JSONB; ADD COLUMN required_skills JSONB` to `reborn_skills` | |
 | `V052__reborn_basic_prompt_store.sql` | New table: one row per scope, `bundle_json JSONB`, `is_stale BOOL`, `fingerprint TEXT` | |
 | `V053__reborn_tools_capability_id_and_system_source.sql` | `ADD COLUMN capability_id TEXT` to `reborn_tools` + `source = 'system'` allowed on tools/tool_skills/skills | |
+| `V054__reborn_intent_inputs_template.sql` | `ADD COLUMN is_template BOOL`, `template_prefix TEXT`, `template_suffix TEXT` to `reborn_intent_inputs`; two new partial indexes for prefix/suffix-anchored template matching (see §0.17.2) | |
 
 All additive. No DROP, no renames. No existing rows break.
 
@@ -1610,7 +2038,7 @@ avoiding the DB round-trip entirely.
 
 | # | Question | Recommendation |
 |---|----------|----------------|
-| 1 | Variable extraction: named capture groups vs. post-match LLM extraction? | Named capture groups for Phase A. LLM extraction as opt-in fallback when `variable_patterns` returns no captures and the variant carries a `llm_var_extraction_prompt` field. Keep the fast path fast. |
+| 1 | Variable extraction: named capture groups vs. post-match LLM extraction? | **Resolved — see §0.17.** Intent expressions use `%` slot markers for matching (Phase M). Slot values are auto-extracted from template segments (positional names `slot0`, `slot1`, …). `variable_patterns` is optional post-extraction refinement for semantic naming and validation. LLM extraction remains a future opt-in via `llm_var_extraction_prompt` on `RecipeVariant` (out of scope). |
 | 2 | BuildInstruction memoisation: per-process or always recompute? | Per-process. Key: `sha256(step_link + "\|" + sorted_include_uuids.join(","))`. Evict on any referenced component's `updated_at` change, Recipe `updated_at` change, or `step_formatter_id` component `updated_at` change. IBS is pure-Rust; memoisation avoids repeated UUID DB fetches for hot intents. |
 | 3 | `required_skills` inclusion: always include vs. score against current query? | Always include; cap at 10. |
 | 4 | `step_formatter_id` scope: per-recipe, per-variant, or per-step? | Per-recipe. Formatting style is consistent across a capability domain. |
