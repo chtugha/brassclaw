@@ -231,6 +231,24 @@ create_systemd_service() {
         log_step "Creating config directory: $reborn_home"
         mkdir -p "$reborn_home"
     fi
+
+    # If the postgres bin cache already exists somewhere (e.g. a previous root
+    # install at /root/.brassclaw/reborn/postgres/bin), copy it into the new
+    # service user's home so the first boot does not need to re-download from
+    # GitHub (which can be slow, rate-limited, or time out during startup).
+    local pg_bin_dst="$reborn_home/postgres/bin"
+    if [[ ! -d "$pg_bin_dst" ]]; then
+        for candidate_home in /root /home/*; do
+            local candidate_cache="$candidate_home/.brassclaw/reborn/postgres/bin"
+            if [[ -d "$candidate_cache" ]] && [[ "$(ls -A "$candidate_cache" 2>/dev/null)" ]]; then
+                log_step "Copying cached Postgres binaries from $candidate_cache to $pg_bin_dst ..."
+                mkdir -p "$pg_bin_dst"
+                cp -a "$candidate_cache/." "$pg_bin_dst/"
+                break
+            fi
+        done
+    fi
+
     chown -R "$service_user:$service_user" "$reborn_home"
 
     log_step "Writing $SYSTEMD_DIR/$SERVICE_NAME.service"
@@ -267,7 +285,22 @@ EOF
     systemctl daemon-reload
     systemctl enable "$SERVICE_NAME"
     systemctl start "$SERVICE_NAME"
-    sleep 3
+
+    # Wait up to 30 s for the service to become active. The first boot needs to
+    # download and extract the embedded Postgres binaries from GitHub (~40 MB),
+    # which takes longer than the previous hard-coded 3 s sleep.
+    local i=0
+    while [[ $i -lt 30 ]]; do
+        if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+            break
+        fi
+        # Abort early if the service has already failed (not just still starting).
+        if systemctl is-failed --quiet "$SERVICE_NAME" 2>/dev/null; then
+            break
+        fi
+        sleep 1
+        (( i++ )) || true
+    done
 
     if systemctl is-active --quiet "$SERVICE_NAME"; then
         log_info "Service started successfully"
