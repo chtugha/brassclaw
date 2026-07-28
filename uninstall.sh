@@ -8,7 +8,7 @@
 #   sudo bash uninstall.sh          # removes system binary + systemd service
 #   sudo bash uninstall.sh -y       # non-interactive, preserves config/data
 #   sudo bash uninstall.sh --wipe   # non-interactive, deletes EVERYTHING
-#                                   # (binary, service, config, and data dirs)
+#                                   # (binary, service, config, data, system user)
 #
 # Pipe-friendly (curl | sudo bash -s -- --wipe):
 #   curl -fsSL https://raw.githubusercontent.com/chtugha/brassclaw/main/uninstall.sh \
@@ -43,10 +43,8 @@ BINARY_NAME="brassclaw-reborn"
 # Legacy binary name from installs prior to the brassclaw-reborn rename
 LEGACY_BINARY_NAME="brassclaw"
 SERVICE_NAME="brassclaw"
+SERVICE_USER="brassclaw"
 SYSTEMD_DIR="/etc/systemd/system"
-CONFIG_DIR="${BRASSCLAW_REBORN_HOME:-$HOME/.brassclaw/reborn}"
-# Parent brassclaw data dir (offered for removal separately)
-DATA_DIR="${HOME}/.brassclaw"
 
 # ── privilege / install mode ──────────────────────────────────────────────────
 if [[ $EUID -eq 0 ]]; then
@@ -55,6 +53,41 @@ if [[ $EUID -eq 0 ]]; then
 else
     INSTALL_DIR="$HOME/.local/bin"
     INSTALL_MODE="user"
+fi
+
+# ── resolve all data dirs ─────────────────────────────────────────────────────
+# In system mode the service may run as the 'brassclaw' system user whose home
+# is /var/lib/brassclaw — not $HOME (which is /root when running sudo).
+# Collect every candidate data root so --wipe removes them all.
+WIPE_DIRS=()
+if [[ $INSTALL_MODE == "system" ]]; then
+    # Home of the dedicated system user (if it exists)
+    if id "$SERVICE_USER" &>/dev/null; then
+        svc_home=$(eval echo "~$SERVICE_USER" 2>/dev/null || true)
+        if [[ -n "$svc_home" && -d "$svc_home" ]]; then
+            WIPE_DIRS+=("$svc_home")
+        fi
+        # Also cover the fallback home used by install.sh
+        if [[ -d "/var/lib/brassclaw" ]]; then
+            WIPE_DIRS+=("/var/lib/brassclaw")
+        fi
+    fi
+    # Also cover any root-owned data from early installs
+    if [[ -d "/root/.brassclaw" ]]; then
+        WIPE_DIRS+=("/root/.brassclaw")
+    fi
+    # Cover SUDO_USER's home if invoked via sudo
+    if [[ -n "${SUDO_USER:-}" ]] && [[ "$SUDO_USER" != "root" ]]; then
+        sudo_home=$(eval echo "~$SUDO_USER" 2>/dev/null || true)
+        if [[ -n "$sudo_home" && -d "$sudo_home/.brassclaw" ]]; then
+            WIPE_DIRS+=("$sudo_home/.brassclaw")
+        fi
+    fi
+else
+    # User-local install
+    CONFIG_DIR="${BRASSCLAW_REBORN_HOME:-$HOME/.brassclaw/reborn}"
+    DATA_DIR="$HOME/.brassclaw"
+    WIPE_DIRS=("$DATA_DIR")
 fi
 
 # ── colours ───────────────────────────────────────────────────────────────────
@@ -75,8 +108,12 @@ if [[ $INSTALL_MODE == "system" ]] && [[ -f "$SYSTEMD_DIR/$SERVICE_NAME.service"
     echo -e "              ${RED}$SYSTEMD_DIR/$SERVICE_NAME.service${NC}"
 fi
 if [[ "$WIPE" == "true" ]]; then
-    echo -e "              ${RED}$CONFIG_DIR${NC} (config — wipe mode)"
-    echo -e "              ${RED}$DATA_DIR${NC} (all data — wipe mode)"
+    for d in "${WIPE_DIRS[@]+"${WIPE_DIRS[@]}"}"; do
+        echo -e "              ${RED}$d${NC} (data — wipe mode)"
+    done
+    if [[ $INSTALL_MODE == "system" ]] && id "$SERVICE_USER" &>/dev/null; then
+        echo -e "              ${RED}system user '$SERVICE_USER'${NC} (wipe mode)"
+    fi
 fi
 echo ""
 if [[ "$YES" == "true" ]]; then
@@ -133,52 +170,46 @@ if [[ $removed_any -eq 0 ]]; then
     log_warn "No binaries found at $INSTALL_DIR/$BINARY_NAME[.bak] or $INSTALL_DIR/$LEGACY_BINARY_NAME[.bak]"
 fi
 
-# ── optional config/data removal ─────────────────────────────────────────────
+# ── wipe data dirs ────────────────────────────────────────────────────────────
 echo ""
-if [[ -d "$CONFIG_DIR" ]]; then
-    if [[ "$WIPE" == "true" ]]; then
-        log_step "Removing reborn config directory (wipe mode)..."
-        rm -rf "$CONFIG_DIR"
-        log_info "Removed: $CONFIG_DIR"
-    else
-        echo -e "Reborn config dir ${BLUE}$CONFIG_DIR${NC} contains your data and will be kept."
-        if [[ "$YES" == "true" ]]; then
-            log_info "Config preserved at: $CONFIG_DIR (use --wipe to remove)"
-        else
-            read -rp "Remove reborn config dir? [y/N] " reply <"${TTY_IN:-/dev/tty}"
-            if [[ "$reply" =~ ^[Yy]$ ]]; then
-                log_step "Removing reborn config directory..."
-                rm -rf "$CONFIG_DIR"
-                log_info "Removed: $CONFIG_DIR"
+if [[ "$WIPE" == "true" ]]; then
+    for d in "${WIPE_DIRS[@]+"${WIPE_DIRS[@]}"}"; do
+        if [[ -d "$d" ]]; then
+            log_step "Removing $d ..."
+            rm -rf "$d"
+            log_info "Removed: $d"
+        fi
+    done
+    # Remove the /var/lib/brassclaw parent itself if it exists
+    if [[ $INSTALL_MODE == "system" ]] && [[ -d "/var/lib/brassclaw" ]]; then
+        rm -rf "/var/lib/brassclaw"
+        log_info "Removed: /var/lib/brassclaw"
+    fi
+    # Delete the dedicated system user and its home
+    if [[ $INSTALL_MODE == "system" ]] && id "$SERVICE_USER" &>/dev/null; then
+        log_step "Removing system user '$SERVICE_USER'..."
+        userdel -r "$SERVICE_USER" 2>/dev/null || userdel "$SERVICE_USER" 2>/dev/null || true
+        log_info "System user '$SERVICE_USER' removed."
+    fi
+else
+    # Interactive / -y: offer to keep or remove
+    for d in "${WIPE_DIRS[@]+"${WIPE_DIRS[@]}"}"; do
+        if [[ -d "$d" ]]; then
+            echo -e "Data dir ${BLUE}$d${NC} contains your config/data and will be kept."
+            if [[ "$YES" == "true" ]]; then
+                log_info "Data preserved at: $d (use --wipe to remove)"
             else
-                log_info "Config preserved at: $CONFIG_DIR"
+                read -rp "Remove $d? [y/N] " reply <"${TTY_IN:-/dev/tty}"
+                if [[ "$reply" =~ ^[Yy]$ ]]; then
+                    log_step "Removing $d..."
+                    rm -rf "$d"
+                    log_info "Removed: $d"
+                else
+                    log_info "Preserved: $d"
+                fi
             fi
         fi
-    fi
-fi
-
-# Offer to remove the parent ~/.brassclaw dir if now empty or at user request
-if [[ -d "$DATA_DIR" ]]; then
-    echo ""
-    if [[ "$WIPE" == "true" ]]; then
-        log_step "Removing parent data directory (wipe mode)..."
-        rm -rf "$DATA_DIR"
-        log_info "Removed: $DATA_DIR"
-    else
-        echo -e "Parent data dir ${BLUE}$DATA_DIR${NC} may contain logs, notes, and skill files."
-        if [[ "$YES" == "true" ]]; then
-            log_info "Data preserved at: $DATA_DIR (use --wipe to remove)"
-        else
-            read -rp "Remove entire $DATA_DIR too? [y/N] " reply <"${TTY_IN:-/dev/tty}"
-            if [[ "$reply" =~ ^[Yy]$ ]]; then
-                log_step "Removing $DATA_DIR..."
-                rm -rf "$DATA_DIR"
-                log_info "Removed: $DATA_DIR"
-            else
-                log_info "Data preserved at: $DATA_DIR"
-            fi
-        fi
-    fi
+    done
 fi
 
 echo ""

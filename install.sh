@@ -238,15 +238,19 @@ create_systemd_service() {
     # GitHub (which can be slow, rate-limited, or time out during startup).
     local pg_bin_dst="$reborn_home/postgres/bin"
     if [[ ! -d "$pg_bin_dst" ]]; then
-        for candidate_home in /root /home/*; do
+        local found_cache=""
+        for candidate_home in /root /home/* /var/lib/brassclaw; do
             local candidate_cache="$candidate_home/.brassclaw/reborn/postgres/bin"
             if [[ -d "$candidate_cache" ]] && [[ "$(ls -A "$candidate_cache" 2>/dev/null)" ]]; then
-                log_step "Copying cached Postgres binaries from $candidate_cache to $pg_bin_dst ..."
-                mkdir -p "$pg_bin_dst"
-                cp -a "$candidate_cache/." "$pg_bin_dst/"
+                found_cache="$candidate_cache"
                 break
             fi
         done
+        if [[ -n "$found_cache" ]]; then
+            log_step "Copying cached Postgres binaries from $found_cache to $pg_bin_dst ..."
+            mkdir -p "$pg_bin_dst"
+            cp -a "$found_cache/." "$pg_bin_dst/"
+        fi
     fi
 
     chown -R "$service_user:$service_user" "$reborn_home"
@@ -329,7 +333,18 @@ print_summary() {
     echo -e "${GREEN}  BrassClaw v$version installed!${NC}"
     echo -e "${BLUE}══════════════════════════════════════════${NC}"
     echo -e "  Binary:   $INSTALL_DIR/$BINARY_NAME"
-    echo -e "  Config:   $CONFIG_DIR"
+    if [[ $INSTALL_MODE == "system" ]]; then
+        # In system mode the actual config is under the service user's home,
+        # not $HOME (which is root when running sudo).
+        local svc_home="/var/lib/brassclaw"
+        if id "$SERVICE_NAME" &>/dev/null; then
+            local _h; _h=$(eval echo "~$SERVICE_NAME" 2>/dev/null || true)
+            [[ -n "$_h" && -d "$_h" ]] && svc_home="$_h"
+        fi
+        echo -e "  Config:   $svc_home/.brassclaw/reborn"
+    else
+        echo -e "  Config:   $CONFIG_DIR"
+    fi
     if [[ $INSTALL_MODE == "system" ]]; then
         echo -e "  Service:  systemctl {start|stop|restart|status} $SERVICE_NAME"
         echo -e "  Logs:     journalctl -u $SERVICE_NAME -f"

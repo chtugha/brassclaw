@@ -177,16 +177,22 @@ impl Drop for ManagedPostgres {
 async fn resolve_pg_install_dir(
     config: &EmbeddedPostgresConfig,
 ) -> Result<std::path::PathBuf, EmbeddedPostgresError> {
-    use postgresql_embedded::{PostgreSQL, Settings};
+    use postgresql_embedded::{PostgreSQL, Settings, VersionReq};
+
+    // Pin to the exact PG version compiled into checksums.rs so the binary
+    // archive matches our compiled-in SHA-256 digests.
+    let version = VersionReq::parse(&format!("={}", crate::checksums::PG_VERSION))
+        .map_err(|e| EmbeddedPostgresError::InitDb(format!("bad PG version req: {e}")))?;
 
     // `trust_installation_dir: true` tells postgresql_embedded to use
-    // `installation_dir` verbatim — without appending the version string.
+    // `installation_dir` verbatim — without appending a version suffix.
     // Without this flag the crate appends "16.4.0/" to the path, so binaries
     // end up at `bin_cache_dir/16.4.0/bin/initdb` while we look for them at
     // `bin_cache_dir/bin/initdb`.
     let settings = Settings {
         installation_dir: config.bin_cache_dir.clone(),
         trust_installation_dir: true,
+        version,
         ..Default::default()
     };
 

@@ -17,7 +17,12 @@ pub(crate) const LOG_MIN_DURATION_STATEMENT_MS: u32 = 1000;
 /// systemd unit. The two settings must be changed in tandem.
 ///
 /// `log_min_duration_statement` is set to `LOG_MIN_DURATION_STATEMENT_MS` (1 s).
-const POSTGRESQL_CONF_TUNING: &str = r#"max_connections = 20
+const POSTGRESQL_CONF_TUNING: &str = r#"# Force TCP listener on the correct port.
+# 'localhost' resolves to a Unix socket on Linux; unavailable under PrivateTmp=true.
+# Port must match BRASSCLAW_EMBEDDED_PG_PORT (default 5434).
+listen_addresses = '127.0.0.1'
+port = 5434
+max_connections = 20
 shared_buffers = 32MB
 work_mem = 4MB
 max_wal_size = 1GB
