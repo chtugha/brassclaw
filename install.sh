@@ -232,25 +232,51 @@ create_systemd_service() {
         mkdir -p "$reborn_home"
     fi
 
-    # If the postgres bin cache already exists somewhere (e.g. a previous root
-    # install at /root/.brassclaw/reborn/postgres/bin), copy it into the new
-    # service user's home so the first boot does not need to re-download from
-    # GitHub (which can be slow, rate-limited, or time out during startup).
+    # Pre-download and extract the pinned PostgreSQL 16 binaries during install
+    # so the service does not need to fetch ~40 MB from GitHub on first boot
+    # (which races against the startup timeout and always loses on a clean install).
+    #
+    # The archive layout from theseus-rs is:
+    #   postgresql-16.4.0-x86_64-unknown-linux-gnu/bin/initdb
+    #   postgresql-16.4.0-x86_64-unknown-linux-gnu/lib/...
+    # --strip-components=1 flattens that top-level dir so bin/ lands directly
+    # in pg_bin_dst, matching the path the binary looks for (bin_cache_dir/bin/initdb).
     local pg_bin_dst="$reborn_home/postgres/bin"
-    if [[ ! -d "$pg_bin_dst" ]]; then
-        local found_cache=""
-        for candidate_home in /root /home/* /var/lib/brassclaw; do
-            local candidate_cache="$candidate_home/.brassclaw/reborn/postgres/bin"
-            if [[ -d "$candidate_cache" ]] && [[ "$(ls -A "$candidate_cache" 2>/dev/null)" ]]; then
-                found_cache="$candidate_cache"
-                break
-            fi
-        done
-        if [[ -n "$found_cache" ]]; then
-            log_step "Copying cached Postgres binaries from $found_cache to $pg_bin_dst ..."
-            mkdir -p "$pg_bin_dst"
-            cp -a "$found_cache/." "$pg_bin_dst/"
+    local pg_version="16.4.0"
+    local pg_artifact="postgresql-${pg_version}-x86_64-unknown-linux-gnu.tar.gz"
+    local pg_url="https://github.com/theseus-rs/postgresql-binaries/releases/download/${pg_version}/${pg_artifact}"
+
+    # Check for an existing valid cache first (upgrade path)
+    local found_cache=""
+    for candidate_home in /root /home/* /var/lib/brassclaw; do
+        local candidate_cache="$candidate_home/.brassclaw/reborn/postgres/bin"
+        if [[ -d "$candidate_cache/bin" ]] && [[ -x "$candidate_cache/bin/initdb" ]]; then
+            found_cache="$candidate_cache"
+            break
         fi
+    done
+
+    if [[ -x "$pg_bin_dst/bin/initdb" ]]; then
+        log_info "Postgres binaries already present at $pg_bin_dst"
+    elif [[ -n "$found_cache" ]]; then
+        log_step "Copying cached Postgres binaries from $found_cache ..."
+        mkdir -p "$pg_bin_dst"
+        cp -a "$found_cache/." "$pg_bin_dst/"
+    else
+        log_step "Downloading PostgreSQL $pg_version binaries (~40 MB)..."
+        local tmp_pg
+        tmp_pg=$(mktemp -d)
+        # shellcheck disable=SC2064
+        trap "rm -rf $tmp_pg" EXIT
+        if curl -fsSL -o "$tmp_pg/$pg_artifact" "$pg_url"; then
+            mkdir -p "$pg_bin_dst"
+            tar -xzf "$tmp_pg/$pg_artifact" -C "$pg_bin_dst" --strip-components=1
+            log_info "PostgreSQL $pg_version extracted to $pg_bin_dst"
+        else
+            log_warn "Could not download PostgreSQL binaries — the service will attempt the download on first boot."
+        fi
+        trap - EXIT
+        rm -rf "$tmp_pg"
     fi
 
     chown -R "$service_user:$service_user" "$reborn_home"
