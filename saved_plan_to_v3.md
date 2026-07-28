@@ -38,6 +38,11 @@ Reading bottom-up is the correct direction. Every higher layer is composed *of* 
 │  Each variant encodes: which components to fetch, in what order,│
 │  with what variable bindings — to build a focused              │
 │  prior_knowledge patch for one specific user intent.            │
+│                                                                 │
+│  StepDescription (authoring layer, §0.14)                       │
+│  Human-editable YAML source: what each step does, which         │
+│  component is needed, who reads it (orchestrator vs. rust).     │
+│  Compiled into BuildInstruction by the IBS at intent-match time.│
 ├─────────────────────────────────────────────────────────────────┤
 │  Skill (class 1–3)         │  Action (class 16)                 │
 │  Orchestrator instructions │  LLM-free execution sequences.     │
@@ -70,253 +75,226 @@ separate table, separate concern.
 ### 0.2 ExtensionCatalogue — Correct Design
 
 An ExtensionCatalogue does **not** re-document commands. Every component it owns
-already documents itself:
-
-- A **Tool** describes the binary.
-- A **ToolSkill** describes how the Rust layer calls that tool.
-- A **Skill** describes how the orchestrator tells Rust to use that tool.
-- A **PythonCode** component carries utility code or inline orchestrator instructions.
-- A **Recipe** assembles all of the above into a step plan for a specific intent.
-
-The ExtensionCatalogue's job is to draw the **bigger picture**:
-> "This catalogue covers local file management. Its Recipes handle these task groups:
-> file-reading, directory-listing, file-copying, file-moving, file-permissions,
-> file-creation. Here is a map of which Recipes serve which use-cases."
-
-#### Mandatory shape
+already documents itself. The Catalogue draws the **bigger picture**:
+> "This catalogue covers local file management. Its Recipes handle these task groups..."
 
 | Section | Content |
 |---------|---------|
-| `name` | Catalogue identifier (e.g. `local-file-management`) |
+| `name` | Catalogue identifier |
 | `version` | Semver-like label |
 | `description` | One-paragraph summary for LLM fallback context |
-| `task_groups[]` | Named categories: `{ group_name, summary, recipe_ids[] }` |
+| `task_groups[]` | `{ group_name, summary, recipe_ids[] }` |
 | `child_component_ids[]` | All owned component UUIDs (any class) for lineage |
-| `intent_index[]` | Read-only copy of all intent expressions owned by child Recipes — **for forensic/audit purposes only, never seeded into `reborn_intent_inputs`** |
+| `intent_index[]` | Audit-only — never seeded into `reborn_intent_inputs` |
 
 ---
 
 ### 0.3 Recipe — Correct Design
 
-A Recipe is a **complete turn script**. It describes, step by step, which part
-of the entire turn pipeline does what, exactly when, using which component
-(fetched by UUID). It is the primary intent target.
+A Recipe is a **complete turn script**. It is the primary intent target.
 
 **Important — current vs. target state:**  
 The live `Recipe` struct in `crates/brassclaw_engine/src/types/recipe.rs` is the
-**v2 design**: `RecipeStep` holds `skill: String` (name reference) + `tool: String`
-(denormalized). There is no `RecipeVariant`, `BuildInstruction`, or `StepOwner`.
-Phase C replaces this with the v3 design described below. The existing
-`trigger` + `steps` fields are **preserved** as the Tier-1 / Tier-2 fallback
-so old Recipes continue to work without migration.
+**v2 design**: `RecipeStep { skill: String, tool: String, params, description }`.
+There is no `RecipeVariant`, `BuildInstruction`, `StepDescription`, or `StepOwner`.
+Phase C replaces this with the v3 design. The existing `trigger` + `steps` fields
+are **preserved** as the Tier-1 / Tier-2 fallback so old Recipes continue to work.
+
+#### How a Recipe works (v3 complete flow)
+
+```
+Author:
+  1. Author writes StepDescriptions in WebUI (YAML-structured, human-readable).
+  2. Each intent expression gets a link_formula pointing into StepDescriptions.
+
+Intent match (runtime):
+  1. resolve_intent(user_text) → Match { recipe_id, variant_key, link_formula }
+  2. InstructionBuilder::build_from_formula(recipe_id, link_formula, user_text)
+       → parses link_formula → loads StepDescription segments → compiles BuildInstruction
+  3. RetrievalEngine::fetch_by_instruction(scope, build_instruction, user_text, budget)
+       → fetches component bodies (Section A)
+  4. BuildInstruction is split into three typed outputs:
+       → OrchestratorContext   → fed into __assemble_prior_knowledge__ PKC
+       → RustContext           → written to reborn_pending_rust_context
+       → fetch_steps[]         → component bodies returned to PromptStage
+  5. Orchestrator reads its tailored prior-knowledge.
+  6. Rust layer reads its compact JSON package.
+```
 
 #### Mandatory shape
 
 | Field | Content |
 |-------|---------|
-| `name` | Recipe identifier (e.g. `listing-the-contents-of-a-directory`) |
-| `description` | One-sentence summary of what this Recipe accomplishes |
-| `category` | Task group (maps to `ExtensionCatalogue.task_groups[].group_name`) |
-| `variants[]` | One or more `RecipeVariant` entries; each fully specifies one turn |
-| `trigger` / `steps` | **Kept** — v2 fallback path (Tier-1 keyword match → LLM hint injection) |
+| `name` | Recipe identifier (e.g. `local-files-reading`) |
+| `description` | One-sentence summary |
+| `category` | Task group → `ExtensionCatalogue.task_groups[].group_name` |
+| `step_descriptions JSONB` | Array of `StepDescriptionN` (YAML text + parsed fields) |
+| `variants[]` | One or more `RecipeVariant` entries |
+| `trigger` / `steps` | **Kept** — v2 fallback path |
 
-#### Intent Variants — one per concrete user intent
+#### Intent Variants
 
-A Recipe has one variant per distinct usage pattern. Each variant:
-- owns its own set of intent expressions (stored as rows in `reborn_intent_inputs`)
-- contains a full, self-contained **`BuildInstruction`**: the complete recipe for
-  how to execute that specific intent from start to finish
-- carries its own variable-extraction patterns for runtime parameter binding
+Each variant:
+- Owns its own intent expressions (rows in `reborn_intent_inputs`)
+- Carries a `link_formula` specifying which StepDescription ranges to compile
+- The `BuildInstruction` is computed at runtime by the IBS, NOT stored as a blob
 
-Multiple intent rows in `reborn_intent_inputs` map to the same Recipe `component_id`
-but carry different `variant_key` values, selecting the correct `BuildInstruction`.
-
-**Example — Recipe `listing-the-contents-of-a-directory`:**
+**Example — Recipe `local-files-reading`:**
 
 ```
 variant: ls-l
-  intents: ["ls -l", "show me all files in the local directory",
-            "list files in the local directory", "show local directory files"]
-  build_instruction: { ... full turn script for ls -l ... }
+  intents: ["ls -l", "show me all files", "list files", "show local directory files"]
+  link_formula: "0:0-0:E"               ← all of Stepdescription0
 
 variant: ls-la
-  intents: ["ls -la", "show all files including hidden",
-            "show really all files", "list all files including hidden ones"]
-  build_instruction: { ... full turn script for ls -la ... }
+  intents: ["ls -la", "show all files including hidden", "list all files"]
+  link_formula: "0:0-0:30+1:0-1:E"      ← base 0..30, then all of Stepdescription1
 
 variant: ls-other-dir
-  intents: ["list all files of the /tmp directory",
-            "show files in {{vars.dir}}"]
+  intents: ["list files of the /tmp directory", "show files in {{vars.dir}}"]
   variable_patterns: [{ name: "dir", pattern: r"of the (?P<dir>[/\w.-]+)" }]
-  build_instruction: { ... same as ls-l but step params include {{vars.dir}} ... }
+  link_formula: "0:0-0:31+2:0-2:E"      ← base 0..31, then all of Stepdescription2
 ```
-
-All variants share the same Recipe `component_id` in `reborn_intent_inputs`.
-The `variant_key` column (added in V049) selects which `BuildInstruction` to execute.
 
 ---
 
-### 0.4 BuildInstruction — Dual-Audience Design
+### 0.4 BuildInstruction — Three-Audience Design
 
-> **Key design constraint:** A `BuildInstruction` serves **three distinct readers**,
-> and the format must make this split explicit and type-safe.
+> **Key design principle:** A `BuildInstruction` serves **three distinct runtime readers**.
+> Each reader gets a typed section containing exactly what it needs — nothing more.
+
+#### Codebase reality (grounds this design)
+
+**The Python orchestrator** (`default.py`, 1262 lines) has **zero built-in knowledge**
+of tools or skills. Every turn it calls `__assemble_prior_knowledge__(goal, budget, class)`
+to get its PKC from Rust. The `OrchestratorContext` must be serialized into this
+callback's response.
+
+**The Rust executioner** has no pre-loaded tool knowledge. Tools are resolved on-demand
+via `LeaseManager::active_for_thread()`. ToolSkill bodies are DB-fetched at dispatch time.
+The `RustContext` must be delivered via a transient per-turn table (§0.17).
 
 #### Three readers, three typed sections
 
-**Reader 1 — RetrievalEngine** (flat steps with owner `RetrievalEngine`):  
-Consumed by `fetch_by_instruction` (§0.6). Reads only `FetchComponents` steps to decide
-what to load into the context window. Does not touch the orchestrator or Rust contexts.
+**Section A — RetrievalEngine** (`fetch_steps[]`):  
+Consumed by `fetch_by_instruction`. Reads `FetchComponents` steps to know which component
+UUIDs to load from the DB into the context window.
 
-**Reader 2 — Orchestrator** (`orchestrator_context: OrchestratorContext`):  
-The orchestrator (Monty/default.py) reads a **typed struct** containing:
-- `skill_ids[]` — exact Skill component UUIDs to fetch
-- `python_code_ids[]` — exact PythonCode component UUIDs to fetch
-- `step_formatter_id` — PythonCode UUID that reformats step descriptions into LLM-optimal instructions
-- `control_flow_steps[]` — orchestrator-only steps (`ConditionalBranch`, `SetVariable`, `LoopSteps`, `CallAction`, `EmitEvent`)
+**Section B — Orchestrator** (`orchestrator_context: OrchestratorContext`):  
+Serialized into the `formatted_content` surface of `__assemble_prior_knowledge__`.
+Contains: Skill UUIDs to fetch, PythonCode UUIDs to fetch, `step_formatter_id`
+(optional PythonCode UUID that reformats step descriptions into LLM-optimal prose),
+and orchestrator control-flow steps.
 
-The orchestrator **does not** read ToolSkill bodies or Tool names — those are opaque at the orchestrator tier.
-
-**Reader 3 — RustLayer** (`rust_context: RustContext`):  
-The Rust execution layer reads a **compact JSON package** containing:
-- `tool_skill_ids[]` — exact ToolSkill component UUIDs
-- `tool_bindings[]` — array of `{ tool_name, params, error_policy }` (§0.4.1 below)
-
-The Rust layer **does not** receive the LLM prompt. Its package is separate and minimal.
-
-> **Why this split matters:**  
-> The orchestrator prompt must be KV-cache friendly (< 4k tokens), while the Rust layer
-> needs precise, schema-validated tool invocation data. Mixing them inflates prompt size
-> and couples unrelated concerns. Step descriptions serve **dual purpose**: human-readable
-> documentation **and** raw material for `step_formatter_id` to reformat into LLM-optimal
-> orchestrator instructions. The formatter is a PythonCode component that adapts verbosity,
-> tone, and ordering to suit the orchestrator's reasoning style without changing the
-> underlying logic.
+**Section C — Rust Layer** (`rust_context: RustContext`):  
+Written to `reborn_pending_rust_context` (V053). Contains: ToolSkill UUIDs and
+`ToolBinding[]` (tool_name + params + `ErrorPolicy`). The orchestrator never sees this.
 
 #### 0.4.1 ToolBinding + ErrorPolicy
-
-Each tool invocation in `RustContext` is wrapped in a `ToolBinding`:
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ToolBinding {
     pub tool_name: String,
-    pub params: serde_json::Value,  // {{vars.name}} substitution applied
+    pub params: serde_json::Value,   // {{vars.name}} substitution applied
     pub error_policy: ErrorPolicy,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "policy", rename_all = "snake_case")]
 pub enum ErrorPolicy {
-    Fail,   // Halt on error (default for most tools)
-    Ignore, // Continue even if tool fails
+    Fail,
+    Ignore,
     Retry { max_attempts: u32 },
-    Fallback { step_id: String },  // Jump to fallback step on error
+    Fallback { step_id: String },
 }
 ```
-
-This gives the Rust layer explicit error-handling instructions without requiring
-orchestrator intervention for retries or fallbacks.
 
 #### Structure
 
 ```
 BuildInstruction
-├── llm_call_required: bool              ← false for Actions/Tier0, true for Tier1+
-├── variable_patterns[]                  ← applied before any step executes
-├── basic_prompt_section_refs[]          ← navigation hints into cached basic-prompt
-├── fetch_steps[]                        ← Section A: RetrievalEngine-only
-│   └── [owner: RetrievalEngine]  FetchComponents  (with StepContextSpec)
-├── orchestrator_context: OrchestratorContext  ← Section B: typed struct
-│   ├── skill_ids[]                      ← UUIDs → fetch_component_by_id
-│   ├── python_code_ids[]                ← UUIDs → fetch_component_by_id
-│   ├── step_formatter_id                ← UUID of PythonCode that reformats step descriptions
-│   └── control_flow_steps[]             ← ConditionalBranch, SetVariable, LoopSteps, etc.
-└── rust_context: RustContext            ← Section C: compact JSON for Rust layer
-    ├── tool_skill_ids[]                 ← UUIDs → fetch_component_by_id
-    └── tool_bindings[]                  ← ToolBinding[] with ErrorPolicy per invocation
+├── llm_call_required: bool           ← false for Tier0/Actions, true for Tier1+
+├── variable_patterns[]               ← applied before any section is read
+├── basic_prompt_section_refs[]       ← navigation hints into cached basic-prompt
+│
+├── fetch_steps[]                     ← SECTION A: RetrievalEngine reads this only
+│   └── FetchComponentsStep { step_id, context_spec: StepContextSpec, description }
+│
+├── orchestrator_context              ← SECTION B: serialized into PKC __assemble_prior_knowledge__
+│   ├── skill_ids[]                   ← Skill component UUIDs → fetch_component_by_id
+│   ├── python_code_ids[]             ← PythonCode component UUIDs → fetch_component_by_id
+│   ├── step_formatter_id             ← Optional PythonCode UUID: reformats step descriptions
+│   └── control_flow_steps[]          ← RunPythonCode, ConditionalBranch, SetVariable, etc.
+│
+└── rust_context                      ← SECTION C: written to reborn_pending_rust_context
+    ├── tool_skill_ids[]              ← ToolSkill component UUIDs
+    └── tool_bindings[]               ← ToolBinding[] with ErrorPolicy per invocation
 ```
 
-The three sections **must not overlap**:
-- `fetch_steps` are read by `fetch_by_instruction` only (RetrievalEngine).
-- `orchestrator_context` is serialized into the LLM prompt **after** the RetrievalEngine returns the patch.
-- `rust_context` is serialized as a separate JSON payload and sent directly to the Rust layer; the orchestrator never sees it.
+**Invariant:** Sections must not overlap. An orchestrator step never references a ToolSkill.
+A Rust ToolBinding never references a Skill.
 
-#### Complete example — SSH connection
+#### Complete example — Recipe `local-files-reading`, variant `ls-la`
+
+(All examples use the recipe whose intents match "show me all files of the current directory")
 
 ```
-BuildInstruction for variant: ssh-connect
+BuildInstruction for variant: ls-la
+  (intent: "show all files including hidden in the current directory")
 
 llm_call_required: false   ← Tier 0: skip LLM, execute directly
-variable_patterns:
-  - { name: "host", pattern: r"(?:to|into) (?P<host>[\w.\-]+)" }
-basic_prompt_section_refs: ["§ssh-connect-skill"]
+variable_patterns: []      ← no vars in this variant
 
-# ── Section A: RetrievalEngine ────────────────────────────────────────────
+# ── SECTION A: RetrievalEngine ──────────────────────────────────────────
 fetch_steps:
-  - step_id: "fetch-ssh"
-    owner: RetrievalEngine
-    step_type: FetchComponents
+  - step_id: "fetch-ls"
     context_spec:
-      component_ids: ["<uuid:ssh-connect-skill>", "<uuid:ssh-toolskill>",
-                      "<uuid:ssh-result-handler>", "<uuid:ssh-preflight-code>"]
-    description: "Load SSH skill, ToolSkill, result handler, and preflight code"
+      component_ids:
+        - "<uuid:skill-ls>"
+        - "<uuid:pythoncode-ls>"
+        - "<uuid:toolskill-ls>"
+    description: "Load ls skill, orchestrator PythonCode, and ls ToolSkill"
 
-# ── Section B: Orchestrator ───────────────────────────────────────────────
+# ── SECTION B: Orchestrator ──────────────────────────────────────────────
 orchestrator_context:
-  skill_ids: ["<uuid:ssh-connect-skill>"]
-  python_code_ids: ["<uuid:ssh-pre-invocation-check>", "<uuid:ssh-result-handler>"]
-  step_formatter_id: "<uuid:terse-cli-formatter>"   ← reformats for CLI-style brevity
+  skill_ids:
+    - "<uuid:skill-ls>"
+  python_code_ids:
+    - "<uuid:pythoncode-ls>"
+  step_formatter_id: "<uuid:terse-cli-formatter>"   ← optional; omit for raw descriptions
   control_flow_steps:
-    - step_id: "preflight"
+    - step_id: "exec-ls"
       step_type: RunPythonCode
-      component_id: "<uuid:ssh-pre-invocation-check>"
-      params: { host: "{{vars.host}}" }
-      description: "Verify known_hosts entry and key availability"
-    - step_id: "format"
-      step_type: RunPythonCode
-      component_id: "<uuid:ssh-result-handler>"
-      description: "Format stdout/stderr for user; check exit code"
+      component_id: "<uuid:pythoncode-ls>"
+      description: "Use skill-ls to call the rust executioner; write output to chat"
 
-# ── Section C: RustLayer ──────────────────────────────────────────────────
+# ── SECTION C: RustLayer ─────────────────────────────────────────────────
 rust_context:
-  tool_skill_ids: ["<uuid:ssh-toolskill>"]
+  tool_skill_ids:
+    - "<uuid:toolskill-ls>"
   tool_bindings:
-    - tool_name: "ssh"
-      params: { host: "{{vars.host}}", timeout_secs: 10 }
+    - tool_name: "ls"
+      params: { flags: "-la" }
       error_policy: { policy: "fail" }
 ```
-
-The Retrieval Engine reads `fetch_steps` only. The orchestrator receives the typed
-`OrchestratorContext`. The Rust layer receives the compact `RustContext` JSON.
 
 ---
 
 ### 0.5 StepContextSpec — Per-Step Context Narrowing
 
-`StepContextSpec` is the type attached to each `FetchComponents` step that tells
-the Retrieval Engine precisely what to load for that step. It exists as a typed
-sub-field of `FetchComponentsStep` rather than loose `params`, so callers get
-compile-time guarantees.
-
 ```rust
-/// Per-step prior-knowledge fetch specification.
-/// Attached to FetchComponentsStep (step_type == FetchComponents).
+/// Attached to FetchComponentsStep. Tells RetrievalEngine precisely what to load.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct StepContextSpec {
-    /// Exact component UUIDs to fetch via fetch_component_by_id.
-    /// Empty means "no exact IDs required for this step."
+    /// Exact component UUIDs → fetch_component_by_id.
     #[serde(default)]
     pub component_ids: Vec<String>,
-    /// Class codes to additionally pull from UNION ALL (coarse class filter).
-    /// Usually empty when component_ids fully specifies what is needed.
+    /// Coarse class codes → narrow UNION ALL (usually empty when component_ids is set).
     #[serde(default)]
     pub class_codes: Vec<i32>,
 }
 ```
-
-`FetchComponentsStep.context_spec: StepContextSpec` — always present on
-`FetchComponents` steps. `fetch_by_instruction` reads this field to build its
-fetch list.
 
 ---
 
@@ -324,28 +302,22 @@ fetch list.
 
 #### Current state (grounded in code)
 
-`RetrievalSource` (in `retrieval_source.rs`) currently has two methods:
+`RetrievalSource` has two methods today:
 - `fetch_for_consumer` — keyword-scored UNION ALL, consumer-tag filtered
 - `fetch_for_turn` — intent-resolution then `fetch_component_by_id`, falls back to `fetch_for_consumer`
 
-`fetch_for_turn` returns a **single matched component** when intent resolves. It does
-not execute a `BuildInstruction`; that is entirely new in v3.
+`fetch_for_turn` returns a single matched component. It does not execute a `BuildInstruction`; that is entirely new in v3.
 
-`fetch_component_by_id` already handles classes 1–3, 4–9, 12–21 (plus 0 returns None).
-Classes 22 (PythonCode) and 23 (ExtensionCatalogue) must be added in Phases A and B.
+`fetch_component_by_id` handles classes 1–3, 4–9, 12–21 (0 returns None).
+Classes 22 and 23 added in Phases A and B.
 
 #### New method: `fetch_by_instruction`
 
-Added to the `RetrievalSource` trait as a default method:
-
 ```rust
-/// Execute a BuildInstruction's fetch plan and return an ordered
-/// prior_knowledge patch ready for injection as memory_snippets.
-///
-/// Only FetchComponents steps (fetch_steps[]) are processed.
-/// Variable substitution is applied to each component's effective_content
-/// using the instruction's variable_patterns matched against user_text.
-/// The RamSource default implementation falls back to fetch_for_consumer.
+/// Execute a BuildInstruction's fetch plan (Section A only).
+/// Returns ordered prior_knowledge patch for injection as memory_snippets.
+/// Variable substitution is applied to each component's effective_content.
+/// Default implementation falls back to fetch_for_consumer (RamSource / tests).
 async fn fetch_by_instruction(
     &self,
     scope: &ComponentScope,
@@ -353,31 +325,28 @@ async fn fetch_by_instruction(
     user_text: &str,
     token_budget: usize,
 ) -> Result<Vec<ComponentItem>, RetrievalSourceError> {
-    // Default: fall back to fetch_for_consumer (RamSource / test path)
     self.fetch_for_consumer(scope, user_text, token_budget, "02").await
 }
 ```
 
 `PostgresSource` overrides this:
-1. Extract variables from `user_text` using `instruction.variable_patterns` → `HashMap<name, value>`.
+1. Extract variables from `user_text` via `instruction.variable_patterns`.
 2. Iterate `instruction.fetch_steps`; collect all `FetchComponents` steps.
-3. For each step's `context_spec.component_ids`: call `fetch_component_by_id(uuid)`.
-4. For each step's `context_spec.class_codes`: run a narrow UNION ALL (class filter only).
+3. For each `context_spec.component_ids`: call `fetch_component_by_id(uuid)`.
+4. For each `context_spec.class_codes`: run narrow UNION ALL.
 5. Apply `{{vars.name}}` substitution to each `ComponentItem.effective_content`.
-6. Return assembled `Vec<ComponentItem>` in fetch-step order, capped to `token_budget`.
-
-`RamSource` uses the default (falls back to `fetch_for_consumer`) — acceptable for tests.
+6. Return in fetch-step order, capped to `token_budget`.
 
 #### Updated `fetch_for_turn` flow
 
 ```
 fetch_for_turn(scope, query, budget, sender_class)
   → resolve_intent(scope, query)
-      → Match { component_id, component_class_code, variant_key }
-          → fetch_component_by_id(component_id, class=21)   ← fetch the Recipe
-          → recipe.variants.find(variant_key)
-          → fetch_by_instruction(scope, &variant.build_instruction, query, budget)
-          → return FetchForTurnResult::Components(patch)
+      → Match { component_id, class_code, variant_key, link_formula }
+          → InstructionBuilder::build_from_formula(recipe_id, link_formula, query)
+          → fetch_by_instruction(scope, &build_instruction, query, budget)
+          → write rust_context → reborn_pending_rust_context
+          → return FetchForTurnResult::Components(orchestrator_patch)
       → Disambiguation { candidates }
           → return FetchForTurnResult::Disambiguation(candidates)
       → NoMatch | DbLessFallback
@@ -385,19 +354,17 @@ fetch_for_turn(scope, query, budget, sender_class)
           → return FetchForTurnResult::Components(broad_scan)
 ```
 
-`IntentResolution::Match` must carry `variant_key: Option<String>` (added in Phase C).
+`IntentResolution::Match` must carry `variant_key: Option<String>` and `link_formula: Option<String>`.
 
 ---
 
 ### 0.7 Current Turn Pipeline (Actual Code)
 
-Reading `canonical.rs` and `recipe.rs`, the current turn pipeline is:
-
 ```
 1.  CheckpointStage     — cancel-check
 2.  BudgetStage         — token/iteration budget check
-3.  InputStage          — drain pending user input into LoopExecutionState
-4.  RecipeStage         — [STUB] intent/recipe lookup hook (always falls through today)
+3.  InputStage          — drain pending user input → LoopExecutionState
+4.  RecipeStage         — [STUB] always falls through (structural debt in recipe.rs)
 5.  PromptStage         — assemble LLM prompt from history + prior_knowledge
 6.  InterceptorStage    — Sempai review of outgoing prompt (if connected)
 7.  ModelStage          — LLM call (Kohai)
@@ -408,23 +375,13 @@ Reading `canonical.rs` and `recipe.rs`, the current turn pipeline is:
 12. ExitStage           — clean exit
 ```
 
-**The critical gap:** `RecipeStage` (step 4) always falls through to Tier 2.
-The `recipe.rs` module-level "structural debt" comment documents two resolution
-paths; option 1 (add `last_user_text` to `LoopExecutionState`) is the chosen approach.
+**Critical gap:** `RecipeStage` (step 4) always falls through to Tier 2. Phase H closes this.
 
-`LoopExecutionState` (in `state.rs`) currently has no `last_user_text` field.
-It must be added and populated in `InputStage` so `RecipeStage` can read it.
-
-**Phase H** (§1.8 below) wires this.
+`LoopExecutionState` has no `last_user_text` field. Added in Phase H via `InputStage`.
 
 ---
 
-### 0.8 Normal Assembly — No-Match Path
-
-When `resolve_intent` returns `NoMatch` or `DbLessFallback`, `fetch_for_consumer`
-runs (keyword-scored UNION ALL). This is the "big basic-prompt" path.
-
-**Current `doc_type_weight_by_class` weights (retrieval_dbless.rs):**
+### 0.8 Normal Assembly — No-Match Path (UNION ALL weights)
 
 | Class | Label | Weight |
 |-------|-------|--------|
@@ -434,9 +391,11 @@ runs (keyword-scored UNION ALL). This is the "big basic-prompt" path.
 | 0 | Tool | 0.50 |
 | 1–3 | Skills | 0.45 |
 | 4–9 | Extensions | 0.42 |
+| **22** | **PythonCode** | **0.42** |
 | 13 | ToolSkill | 0.40 |
 | 18 | Lesson | 0.40 |
 | 21 | Recipe | 0.38 |
+| **23** | **ExtensionCatalogue** | **0.38** |
 | 16 | Action | 0.35 |
 | 14 | Plan | 0.30 |
 | 17 | Docu | 0.25 |
@@ -444,94 +403,327 @@ runs (keyword-scored UNION ALL). This is the "big basic-prompt" path.
 | 15 | Summary | 0.10 |
 | 20 | Note | 0.05 |
 
-**Additions needed for v3:**
-
-| Class | Label | Suggested weight | Rationale |
-|-------|-------|-----------------|-----------|
-| 22 | PythonCode | 0.42 | Peer of Extensions — orchestrator utility code |
-| 23 | ExtensionCatalogue | 0.38 | Peer of Recipes — domain overview, not tool implementation |
+Bold rows are new additions for v3.
 
 ---
 
 ### 0.9 Actions — LLM-Bypass
 
 Actions (class 16) already default to `override_prompt_creation = true` in V029.
-Their `steps` JSONB encodes 13 step types. When an Action is the matched component,
-its `BuildInstruction` has `llm_call_required: false`. The orchestrator reads
-this flag and executes the Action steps directly without calling the LLM.
+When an Action is the matched component, its `BuildInstruction` has
+`llm_call_required: false`. The orchestrator executes steps directly.
 
 ---
 
 ### 0.10 KV-Cache / LMCache-Aware Design
 
-#### Basic-prompt
+**Basic-prompt:** Pre-assembled `InstructionBundle` stored in `reborn_basic_prompt_store`
+(V051). Manual trigger only. Stale when any component passes Gate 2.
 
-The **basic-prompt** is the pre-assembled `InstructionBundle` containing all
-validated components. Stored in `reborn_basic_prompt_store` (one row per scope).
-
-- **Triggering:** Manual only (operator action).
-- **Fallback:** If no stored bundle exists, normal per-turn UNION ALL runs.
-- **Invalidation:** When a component passes Gate 2, the stored bundle is marked `stale`.
-  Stale prompts remain usable; they are never auto-deleted.
-
-#### KV-cache rules for the BuildInstruction patch
-
-- The patch **must not repeat** any content already in the stored basic-prompt.
-- Skill/ToolSkill bodies fetched for the orchestrator go into `memory_snippets`
-  (for orchestrator benefit) but **are not re-sent in the LLM message sequence**.
-- The patch may reference basic-prompt section headers as navigation hints:
-  `→ see §ssh-connect-skill` (the `basic_prompt_section_refs` field).
+**BuildInstruction patch rules:**
+- Must NOT repeat content already in the stored basic-prompt.
+- `basic_prompt_section_refs` carries navigation hints (pointers, not content).
 - Target patch size: < 4 k tokens.
+- Orchestrator patch: PRIORITY 2 (instruction snippets) in the bundle.
+- Memory: PRIORITY 3 (memory snippets).
+- Rust context: transient table, not in the bundle at all.
 
 ---
 
 ### 0.11 Extensions as Plugins — Translation Layer
 
-All external plugins (MCP servers and other formats) connect via a **translation
-layer only**. The translation layer converts an incoming MCP description payload
-into BrassClaw-native components:
-
-1. **Tools** (class 0) — one per MCP tool
-2. **ToolSkills** (class 13) — one per Tool
-3. **Skills** (class 1) — skeleton Skill per ToolSkill
-4. **Recipes** — skeleton Recipes for common invocation patterns (intent-less at first)
-5. **ExtensionCatalogue** (class 23) — one catalogue grouping all of the above
-
-All generated components enter the validation queue at `pending` and must pass
-Q1 + Q2 before becoming active.
+MCP → BrassClaw native: Tool (0) → ToolSkill (13) → Skill (1) → Recipe (21) → ExtensionCatalogue (23).
+All at `pending`, through Q1+Q2 before active.
 
 ---
 
 ### 0.12 Interceptor System
 
-The Interceptor saves each turn's prompt composition plan (the `BuildInstruction` +
-assembled patch, not the big basic-prompt). If a Sempai LLM is connected, the
-assembled outgoing prompt is routed through Sempai for review before shipping to
-Kohai. Sempai can approve, suggest a rewrite, or flag the pattern for Recipe creation.
-
-> **Scope note:** Full self-improvement and component-self-creation pipeline is
-> **out of scope** for this plan.
+Saves each turn's prompt composition plan (`BuildInstruction` + assembled patch).
+If Sempai connected: reviews before shipping to Kohai. Can flag patterns for Recipe creation.
 
 ---
 
 ### 0.13 Validation System — Two-Gate Pipeline
 
-**Gate 1 (Q1 — automatic):**
-- Malignant pattern scan (injection vectors, shell escalation in PythonCode/Actions)
-- Schema conformance: mandatory fields, length constraints, class-specific rules
-- Policy compliance: tool references exist in capability surface, class codes valid
-- Cross-reference check: Skill names in Recipe steps resolve to known Skills
-- S7 guard: Recipe steps that name a `tool` must also name a `skill`
-- On pass → `auto_passed` → queued for Gate 2
-- On fail → `auto_failed` → returned to author with error list
+**Gate 1 (Q1 — automatic):** Injection scan, schema conformance, S7 guard, cross-references.  
+**Gate 2 (Q2 — manual):** WebUI review; approve → `validated`.
 
-**Gate 2 (Q2 — manual):**
-- Manual review in WebUI validation tab
-- User may edit, re-submit for Q1, approve, or reject
-- On approve → `validated` → enters production
-- On reject → `rejected` → 30-day window → `garbage`
+---
 
-Q1 validator and component-creation wizard share the same validation functions.
+### 0.14 StepDescription Authoring Layer
+
+**StepDescription is the human-editable source of truth** for what a Recipe does. It is
+authored in the WebUI and compiled into a `BuildInstruction` at intent-match time by the
+Instruction-Building-System (§0.16). It is **not** the BuildInstruction.
+
+#### Mandatory fields per step
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `step_number` | int | 1-based position in the sequence |
+| `knowledge` | `"orchestrator" \| "rust" \| "both"` | Which runtime reads this step |
+| `goal` | string | What this step accomplishes |
+| `content` | string | Short description of step content |
+| `type` | `"text" \| "component" \| "snippet"` | Determines additional fields |
+
+#### Optional fields per step
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `info` | text | Long-form explanation, examples, warnings |
+| `include` | UUID[] | Component IDs (Tool / ToolSkill / Skill / PythonCode) needed here |
+| `code_snippet` | text | Inline Python code → auto-creates PythonCode component on save; sent to Q1 |
+
+#### Storage
+
+Stored as `step_descriptions JSONB` column on `reborn_recipes` (added in V054).
+The YAML-structured text is preserved inside the JSONB for human readability
+and WebUI rendering.
+
+#### Multi-StepDescription pattern (variants)
+
+- `Stepdescription0` — base, most common use-case  
+- `Stepdescription1` — variant 1 (individual part only; base provides common part via link_formula)  
+- `Stepdescription2`, `Stepdescription3`, ...
+
+#### Example — Recipe `local-files-reading`, Stepdescription0 (partial)
+
+```yaml
+description: "Stepdescription0 — base path (ls -l, current directory)"
+
+steps:
+  - step_number: 1
+    knowledge: "orchestrator"
+    goal: "Provide task context"
+    content: "Information explaining the task"
+    type: "text"
+    info: |
+      Task performed by orchestrator only. No LLM prompt created.
+      Rust receives: tool "ls" + toolskill "ls".
+      Orchestrator receives: skill "ls" + PythonCode "ls".
+      Orchestrator uses PythonCode to instruct the rust executioner via the skill.
+      Rust uses the toolskill to call the tool and returns output to the orchestrator,
+      who writes it to the chat window.
+    include: []
+
+  - step_number: 5
+    knowledge: "rust"
+    goal: "Provide tool"
+    content: "Tool \"ls\""
+    type: "component"
+    include: ["<uuid:tool-ls>"]
+
+  - step_number: 7
+    knowledge: "orchestrator"
+    goal: "Provide skill"
+    content: "Skill \"ls\""
+    type: "component"
+    include: ["<uuid:skill-ls>"]
+
+  - step_number: 11
+    knowledge: "orchestrator"
+    goal: "Provide orchestrator instructions"
+    content: "PythonCode \"ls\""
+    type: "component"
+    include: ["<uuid:pythoncode-ls>"]
+    info: |
+      Final step. PythonCode tells the orchestrator how to use the ls skill to call
+      the rust executioner and what to do with the output (write to chat window).
+```
+
+#### WebUI interaction
+
+- Component page → **StepDescriptions section**: all steps shown, editable on click.
+- Steps use dropdown fields for enum values (`knowledge`, `type`).
+- Intents section: all intent expressions editable; each shows its `link_formula`.
+- `code_snippet` field: on save → new PythonCode component created → sent to Q1 validator.
+  - While pending: greyed out in WebUI.
+  - If Q1 fails: snippet field cleared, PythonCode removed.
+  - If Q1 passes → Q2 → on validate: PythonCode added to step; parent Recipe re-queued.
+
+---
+
+### 0.15 Intent Linking Formula
+
+Every intent registered in `reborn_intent_inputs` carries a **link_formula** specifying
+which steps (from which StepDescriptions) to include when building the `BuildInstruction`.
+
+#### Notation
+
+```
+<desc_id>:<start>-<desc_id>:<end>[+<desc_id>:<start>-<desc_id>:<end>]*
+```
+
+- `<desc_id>` = `0` (base), `1` (variant 1), `2` (variant 2), ...
+- `<start>` = step number (1-based) or `0` = first step
+- `<end>` = step number or `E` = last step
+- `+` = concatenate segments in order
+
+#### Examples
+
+| Formula | Meaning |
+|---------|---------|
+| `0:0-0:E` | All steps of Stepdescription0 |
+| `0:0-0:30+1:0-1:E` | Base steps 0–30, then all of Stepdescription1 |
+| `0:0-0:31+2:0-2:E` | Base steps 0–31, then all of Stepdescription2 |
+| `0:0-0:30+1:0-1:11+3:0-3:E` | Base 0–30, Stepdescription1 steps 0–11, all of Stepdescription3 |
+
+#### Storage
+
+**Migration V052:** `ADD COLUMN link_formula TEXT` to `reborn_intent_inputs`.
+
+```
+| intent_expression              | component_id  | variant_key | link_formula            |
+|--------------------------------|---------------|-------------|-------------------------|
+| "ls -l"                        | <recipe-uuid> | null        | "0:0-0:E"               |
+| "show all files including ..." | <recipe-uuid> | "ls-la"     | "0:0-0:30+1:0-1:E"      |
+| "list files of the /tmp dir"   | <recipe-uuid> | "ls-dir"    | "0:0-0:31+2:0-2:E"      |
+```
+
+---
+
+### 0.16 Instruction-Building-System (IBS)
+
+The IBS **compiles** human-editable StepDescriptions into machine-optimized `BuildInstruction`
+structs at intent-match time. It is the central compiler layer of the v3 architecture.
+
+#### Responsibilities
+
+1. Parse `link_formula` → `Vec<(desc_id, step_start, step_end)>`
+2. Load `StepDescriptionN` for each referenced `desc_id` from `step_descriptions JSONB`
+3. Extract steps in the requested range per segment
+4. Apply variable substitution (`{{vars.name}}`)
+5. Separate by `knowledge` field → orchestrator steps vs rust steps
+6. Build `OrchestratorContext`:
+   - `skill_ids[]`: UUIDs from `include` where knowledge = "orchestrator" or "both", type = Skill
+   - `python_code_ids[]`: same, type = PythonCode
+   - `step_formatter_id`: per-recipe optional formatter UUID
+   - `control_flow_steps[]`: from `type: "snippet"` or `type: "component"` with control-flow semantics
+7. Build `RustContext`:
+   - `tool_skill_ids[]`: UUIDs from `include` where knowledge = "rust" or "both", type = ToolSkill
+   - `tool_bindings[]`: `ToolBinding { tool_name, params, error_policy }` per Tool UUID
+8. Build `fetch_steps[]` (Section A): all unique component UUIDs across all steps
+9. Return `BuildInstruction { llm_call_required, variable_patterns, fetch_steps, basic_prompt_section_refs, orchestrator_context, rust_context }`
+
+#### Interface
+
+```rust
+// crates/brassclaw_engine/src/memory/instruction_builder.rs  (new file)
+
+#[async_trait]
+pub trait InstructionBuilder: Send + Sync {
+    async fn build_from_formula(
+        &self,
+        recipe_id: Uuid,
+        link_formula: &str,
+        user_text: &str,   // For variable extraction
+    ) -> Result<BuildInstruction, InstructionBuilderError>;
+}
+```
+
+**Called by:** `PostgresSource::fetch_for_turn()` after intent resolution.
+
+**Caching:** In-process cache keyed by `(recipe_id, variant_key, variable_hash)`.
+TTL: 5 minutes. Invalidated when any included component's `updated_at` changes.
+
+---
+
+### 0.17 Turn DataFlow Upgrade (Three-Surface PKC)
+
+#### Current gap
+
+`__assemble_prior_knowledge__` returns one mixed blob containing orchestrator skills,
+Rust ToolSkills, and thread memories all mixed together. The orchestrator cannot
+distinguish "this is for me" from "this is for Rust".
+
+#### Proposed: Three-Surface PKC
+
+| Surface | PRIORITY | Content | Destination |
+|---------|----------|---------|-------------|
+| `orchestrator_knowledge` | 2 (instruction snippets) | Skill + PythonCode bodies, step instructions | `formatted_content` → LLM working_messages |
+| `memory_knowledge` | 3 (memory snippets) | Thread notes, relevant memories | `formatted_content` → LLM working_messages |
+| `rust_knowledge` | — (transient table) | ToolSkill bodies + ToolBinding params | `reborn_pending_rust_context` |
+
+**`__assemble_prior_knowledge__` return shape (upgraded):**
+
+```json
+{
+  "orchestrator_knowledge": {
+    "skill_bodies":       ["<uuid>: <skill content>", "..."],
+    "python_code_bodies": ["<uuid>: <pythoncode content>", "..."],
+    "step_instructions":  "<formatter-rendered instructions>",
+    "llm_call_required":  false
+  },
+  "memory_knowledge": {
+    "thread_notes":      ["..."],
+    "relevant_memories": ["..."]
+  },
+  "rust_pending_id": "<uuid-of-row-in-reborn_pending_rust_context>",
+  "override_prompt_creation": true,
+  "matched_component_ids": ["uuid1", "uuid2"]
+}
+```
+
+The orchestrator reads `orchestrator_knowledge` and `memory_knowledge`. It receives
+`rust_pending_id` as an opaque reference — it passes it to the Rust layer when
+sending the tool invocation. The orchestrator never reads `rust_knowledge`.
+
+#### Rust Context Delivery: Transient Table
+
+**Migration V053:** New table `reborn_pending_rust_context`:
+
+```sql
+CREATE TABLE reborn_pending_rust_context (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id         TEXT    NOT NULL,
+    iteration      INT     NOT NULL,
+    tool_skill_ids UUID[]  NOT NULL,
+    tool_bindings  JSONB   NOT NULL,
+    created_at     TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(run_id, iteration)
+);
+-- TTL: rows deleted 1 hour after created_at.
+```
+
+**Lifecycle:**
+1. `RecipeStage` inserts row after `fetch_by_instruction` completes.
+2. Rust reads row before first tool dispatch.
+3. Row deleted after turn completes (or 1-hour TTL).
+
+---
+
+### 0.18 v2 DocPlan Translation Layer
+
+**Goal:** Expand legacy `MemoryDoc` rows (type `Skill`, `Recipe`, `ToolSkill`) into the
+full v3 component graph. The existing `component_import.rs` already handles
+`Spec`, `Plan`, `Summary`, `Lesson`, `Issue`, `Note` (classes 12–20).
+
+#### Translation rules
+
+**Skill MemoryDoc → 5 components:**
+1. Tool (class 0) — from `param_template.tool_name`
+2. ToolSkill (class 13) — param_schema from metadata
+3. Skill (class 1) — body from `content`
+4. Recipe (class 21) — skeleton, empty `variants[]`, pending
+5. ExtensionCatalogue (class 23) — groups all above, pending
+
+**ToolSkill MemoryDoc → 1 component:**
+- ToolSkill (class 13) — direct migration
+
+**Recipe MemoryDoc → 1 component + seed StepDescription0:**
+- Recipe (class 21) — `trigger` + `steps` preserved as v2 fallback
+- StepDescription0 seeded from v2 `RecipeStep[]`
+
+**All translated components start at `pending` → Q1 → Q2 → `validated`.**  
+**Original MemoryDocs are marked `archived_at = now()`, never hard-deleted (V055).**
+
+#### CLI command (Phase J)
+
+```bash
+brassclaw translate-v2-docs --dry-run    # preview
+brassclaw translate-v2-docs --execute    # insert + queue for Q1
+```
 
 ---
 
@@ -541,27 +733,20 @@ Q1 validator and component-creation wizard share the same validation functions.
 
 **Status:** [ ] Pending
 
-**Goal:** New component class for Python code/instruction elements targeted at the orchestrator.
-
 **Files to create:**
 - `crates/brassclaw_pg/migrations/V047__reborn_python_code.sql`  
   Same column shape as `V036__reborn_specs.sql`. `class_code = 22`.  
-  Default consumer tags: `{02:orchestrator}` + `05:validator` until validated.
+  Default consumer tags: `{02:orchestrator, 05:validator}`.
 
 **Files to modify:**
-- `crates/brassclaw_engine/src/memory/retrieval_source.rs`  
-  — add class 22 to UNION ALL in `fetch_for_consumer` (content expr: `COALESCE(NULLIF(prior_knowledge_content,''), body)`)  
-  — add `22 => ("reborn_python_code", "COALESCE(NULLIF(prior_knowledge_content,''), body)")` to `fetch_component_by_id` match arm
-- `crates/brassclaw_engine/src/memory/intent_system.rs` — add `22 => "python_code"` to `class_label`
-- `crates/brassclaw_engine/src/types/memory.rs` — add `DocType::PythonCode`; add `(22, "python_code")` mapping
-- `crates/brassclaw_engine/src/memory/retrieval_dbless.rs` — add `22 => 0.42` to weight map
-- `crates/brassclaw_engine/src/memory/component_validator.rs` — class 22: name format + non-empty content + soft 10k token budget + shell-injection scan
-- `crates/brassclaw_reborn_composition/src/pg_python_code_store.rs` — new store (same pattern as `pg_recipe_store.rs`)
+- `crates/brassclaw_engine/src/memory/retrieval_source.rs` — add class 22 to UNION ALL + `fetch_component_by_id`
+- `crates/brassclaw_engine/src/memory/intent_system.rs` — add `22 => "python_code"`
+- `crates/brassclaw_engine/src/types/memory.rs` — add `DocType::PythonCode`
+- `crates/brassclaw_engine/src/memory/retrieval_dbless.rs` — add `22 => 0.42`
+- `crates/brassclaw_engine/src/memory/component_validator.rs` — class 22 dispatch
+- `crates/brassclaw_reborn_composition/src/pg_python_code_store.rs` — new store
 
-**Tests:**
-- Unit: `class_label(22) == "python_code"`
-- Unit: `doc_type_to_class_code(DocType::PythonCode).0 == 22`
-- Integration: PythonCode row → retrieved via `fetch_for_consumer` with tag `02:orchestrator`
+**Tests:** Unit: `class_label(22)`, `doc_type_to_class_code`. Integration: retrieve with consumer tag.
 
 ---
 
@@ -569,55 +754,34 @@ Q1 validator and component-creation wizard share the same validation functions.
 
 **Status:** [ ] Pending
 
-**Goal:** Documentation-container class that organises a capability domain.
-
 **Files to create:**
 - `crates/brassclaw_pg/migrations/V048__reborn_extension_catalogues.sql`  
   Columns: scope tuple + `name`, `description`, `version`, `overview_doc` (TEXT),  
-  `task_groups` (JSONB: `[{group_name, summary, recipe_ids[]}]`),  
-  `child_component_ids` (UUID[]), `intent_index` (JSONB, audit-only),  
-  `prior_knowledge_content`, `override_prompt_creation`,  
-  `class_code SMALLINT DEFAULT 23`, `prompt_uid`, `consumer_tags`,  
-  `intent_examples` JSONB, full validation lifecycle + lineage columns, timestamps.
+  `task_groups JSONB`, `child_component_ids UUID[]`, `intent_index JSONB`,  
+  `prior_knowledge_content`, `override_prompt_creation`, `class_code SMALLINT DEFAULT 23`,  
+  `prompt_uid`, `consumer_tags`, `intent_examples JSONB`, validation lifecycle, timestamps.
 
-**Files to modify:**
-- `crates/brassclaw_engine/src/memory/retrieval_source.rs`  
-  — add class 23 to UNION ALL (content = `overview_doc`)  
-  — add `23 => ("reborn_extension_catalogues", "overview_doc")` to `fetch_component_by_id`
-- `crates/brassclaw_engine/src/memory/intent_system.rs` — add `23 => "extension_catalogue"`
-- `crates/brassclaw_engine/src/types/memory.rs` — add `DocType::ExtensionCatalogue`
-- `crates/brassclaw_engine/src/memory/retrieval_dbless.rs` — add `23 => 0.38`
-- `crates/brassclaw_engine/src/memory/component_validator.rs`  
-  — class 23: name format + non-empty `overview_doc` + ≥1 `task_groups` entry + valid UUID syntax in `child_component_ids`
-- `crates/brassclaw_reborn_composition/src/pg_extension_catalogue_store.rs` — new store
+**Files to modify:** Same engine files as Phase A, but for class 23 (weight `0.38`, content = `overview_doc`).
 
-**Tests:**
-- Unit: `class_label(23) == "extension_catalogue"`
-- Integration: Catalogue with `task_groups` → retrieved with `overview_doc` as `effective_content`
+**Tests:** Unit: `class_label(23)`. Integration: catalogue retrieved with `overview_doc` as `effective_content`.
 
 ---
 
-### Phase C — Recipe v3: Variants + BuildInstruction
+### Phase C — Recipe v3: Variants + BuildInstruction + StepDescription storage
 
 **Status:** [ ] Pending
-
-**Goal:** Upgrade the `Recipe` struct (currently v2 — `RecipeStep { skill, tool, params, description }`)
-to the v3 variant model with structured `BuildInstruction`. The existing `trigger` + `steps`
-fields are **preserved** for backwards compatibility; they continue to serve the Tier-1 path.
 
 #### C.1 New types in `crates/brassclaw_engine/src/types/recipe.rs`
 
 ```rust
-/// Per-step context-fetch specification (present on FetchComponents steps).
+// --- Orchestrator section ---
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct StepContextSpec {
-    #[serde(default)]
-    pub component_ids: Vec<String>,  // exact UUIDs → fetch_component_by_id
-    #[serde(default)]
-    pub class_codes: Vec<i32>,       // coarse UNION ALL class filter
+    #[serde(default)] pub component_ids: Vec<String>,
+    #[serde(default)] pub class_codes: Vec<i32>,
 }
 
-/// A single fetch step read by the RetrievalEngine.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FetchComponentsStep {
     pub step_id: String,
@@ -625,22 +789,16 @@ pub struct FetchComponentsStep {
     pub description: String,
 }
 
-/// Orchestrator-only control-flow step.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ControlFlowStep {
     pub step_id: String,
     pub step_type: ControlFlowStepType,
     pub description: String,
-    #[serde(default)]
-    pub component_id: String,        // UUID for RunPythonCode, CallAction
-    #[serde(default)]
-    pub params: serde_json::Value,   // {{vars.name}} substitution supported
-    #[serde(default)]
-    pub condition: Option<String>,   // for ConditionalBranch, LoopSteps
-    #[serde(default)]
-    pub branch_targets: Option<BranchTargets>,
-    #[serde(default)]
-    pub loop_body: Vec<String>,      // step_ids to repeat
+    #[serde(default)] pub component_id: String,
+    #[serde(default)] pub params: serde_json::Value,
+    #[serde(default)] pub condition: Option<String>,
+    #[serde(default)] pub branch_targets: Option<BranchTargets>,
+    #[serde(default)] pub loop_body: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -656,149 +814,114 @@ pub enum ControlFlowStepType {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BranchTargets {
-    pub on_true: String,   // step_id
-    pub on_false: String,  // step_id
+    pub on_true: String,
+    pub on_false: String,
 }
 
-/// Typed context for the orchestrator.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct OrchestratorContext {
-    #[serde(default)]
-    pub skill_ids: Vec<String>,       // Skill component UUIDs
-    #[serde(default)]
-    pub python_code_ids: Vec<String>, // PythonCode component UUIDs
-    #[serde(default)]
-    pub step_formatter_id: Option<String>,  // PythonCode UUID that reformats step descriptions
-    #[serde(default)]
-    pub control_flow_steps: Vec<ControlFlowStep>,
+    #[serde(default)] pub skill_ids: Vec<String>,
+    #[serde(default)] pub python_code_ids: Vec<String>,
+    #[serde(default)] pub step_formatter_id: Option<String>,
+    #[serde(default)] pub control_flow_steps: Vec<ControlFlowStep>,
 }
 
-/// Error policy for tool invocation.
+// --- Rust section ---
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "policy", rename_all = "snake_case")]
 pub enum ErrorPolicy {
-    Fail,   // Halt on error (default)
-    Ignore, // Continue even if tool fails
+    Fail,
+    Ignore,
     Retry { max_attempts: u32 },
-    Fallback { step_id: String },  // Jump to fallback step on error
+    Fallback { step_id: String },
 }
 
-impl Default for ErrorPolicy {
-    fn default() -> Self {
-        ErrorPolicy::Fail
-    }
-}
+impl Default for ErrorPolicy { fn default() -> Self { ErrorPolicy::Fail } }
 
-/// Single tool invocation with error policy.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ToolBinding {
     pub tool_name: String,
-    pub params: serde_json::Value,  // {{vars.name}} substitution applied
-    #[serde(default)]
-    pub error_policy: ErrorPolicy,
+    pub params: serde_json::Value,
+    #[serde(default)] pub error_policy: ErrorPolicy,
 }
 
-/// Typed context for the Rust execution layer.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct RustContext {
-    #[serde(default)]
-    pub tool_skill_ids: Vec<String>,  // ToolSkill component UUIDs
-    #[serde(default)]
-    pub tool_bindings: Vec<ToolBinding>,
+    #[serde(default)] pub tool_skill_ids: Vec<String>,
+    #[serde(default)] pub tool_bindings: Vec<ToolBinding>,
 }
 
-/// Variable extracted from the user prompt via named-capture regex.
+// --- BuildInstruction ---
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct VariablePattern {
     pub name: String,
-    /// Regex with named capture group. Example: r"of the (?P<dir>[/\w\-\.]+)"
     pub pattern: String,
-    #[serde(default)]
-    pub default_value: Option<String>,
+    #[serde(default)] pub default_value: Option<String>,
 }
 
-/// Complete turn script stored in a RecipeVariant.
-/// Three typed sections: fetch_steps (RetrievalEngine), orchestrator_context, rust_context.
+/// Complete turn script compiled by the Instruction-Building-System.
+/// Three typed sections: fetch_steps, orchestrator_context, rust_context.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct BuildInstruction {
-    /// False for Actions/Tier0; true for Tier1+.
-    #[serde(default)]
-    pub llm_call_required: bool,
-    #[serde(default)]
-    pub variable_patterns: Vec<VariablePattern>,
-    /// Fetch steps — read by RetrievalEngine only.
-    #[serde(default)]
-    pub fetch_steps: Vec<FetchComponentsStep>,
-    /// Navigation hints into the cached basic-prompt (content NOT re-included).
-    #[serde(default)]
-    pub basic_prompt_section_refs: Vec<String>,
-    /// Orchestrator-specific typed context.
-    #[serde(default)]
-    pub orchestrator_context: OrchestratorContext,
-    /// Rust-layer-specific typed context (separate JSON payload).
-    #[serde(default)]
-    pub rust_context: RustContext,
+    #[serde(default)] pub llm_call_required: bool,
+    #[serde(default)] pub variable_patterns: Vec<VariablePattern>,
+    #[serde(default)] pub fetch_steps: Vec<FetchComponentsStep>,
+    #[serde(default)] pub basic_prompt_section_refs: Vec<String>,
+    #[serde(default)] pub orchestrator_context: OrchestratorContext,
+    #[serde(default)] pub rust_context: RustContext,
 }
 
 /// One intent variant of a Recipe.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RecipeVariant {
-    pub variant_key: String,         // e.g. "ls-l", "ls-la", "ls-other-dir"
+    pub variant_key: String,
     pub label: String,
     pub intent_examples: Vec<String>,
-    pub build_instruction: BuildInstruction,
+    pub link_formula: String,    // NEW — drives IBS; BuildInstruction computed at runtime
+    pub variable_patterns: Vec<VariablePattern>,  // per-variant runtime var extraction
 }
 ```
 
-Add to the existing `Recipe` struct:
+**Key change vs. previous plan:** `RecipeVariant` no longer contains a stored `build_instruction`.
+Instead it carries a `link_formula` string. The `BuildInstruction` is **computed at runtime**
+by the IBS. This means the human-readable StepDescription is always the single source of truth.
+
+Add to `Recipe` struct:
 ```rust
-/// v3 variant paths. When non-empty, intent resolution uses variant_key
-/// to select the BuildInstruction. When empty, falls back to trigger + steps (v2).
-#[serde(default)]
-pub variants: Vec<RecipeVariant>,
+#[serde(default)] pub variants: Vec<RecipeVariant>,
+#[serde(default)] pub step_descriptions: serde_json::Value,  // JSONB — see V054
 ```
 
-**Note:** The v2 `RecipeStep` is not removed — it backs the existing `trigger` + `steps` fallback.
+#### C.2 Migrations
 
-#### C.2 `variant_key` column on intent inputs
+- **V049:** `ADD COLUMN variant_key TEXT` on `reborn_intent_inputs`
+- **V052:** `ADD COLUMN link_formula TEXT` on `reborn_intent_inputs`
+- **V054:** `ADD COLUMN step_descriptions JSONB` on `reborn_recipes`
 
-**File:** `crates/brassclaw_pg/migrations/V049__reborn_intent_inputs_variant_key.sql`
-```sql
-ALTER TABLE reborn_intent_inputs
-    ADD COLUMN IF NOT EXISTS variant_key TEXT;
-```
+#### C.3 New file: `instruction_builder.rs`
 
-Update `IntentCandidate` and `IntentResolution::Match` to carry
-`variant_key: Option<String>`.  
-Update `seed_intent_input` to accept and store `variant_key`.
+See §0.16 for interface. Implements `PostgresInstructionBuilder` + `RamInstructionBuilder` (tests).
 
-#### C.3 `fetch_by_instruction` on `RetrievalSource`
+#### C.4 `fetch_by_instruction` on `RetrievalSource`
 
-See §0.6 above for the full signature and semantics.
+See §0.6 for signature. `PostgresSource` implementation iterates `fetch_steps`.
 
-`PostgresSource` implementation:
-1. Apply `instruction.variable_patterns` to `user_text` → `HashMap<name, value>`.
-2. Collect all `FetchComponents` steps from `instruction.fetch_steps`.
-3. For each step: call `fetch_component_by_id` for every UUID in `context_spec.component_ids`.
-4. Apply `{{vars.name}}` substitution to each `ComponentItem.effective_content`.
-5. Return assembled `Vec<ComponentItem>` in fetch-step order, capped to `token_budget`.
+#### C.5 Variant seeding into `reborn_intent_inputs`
 
-#### C.4 Variants seeded into `reborn_intent_inputs`
-
-On Recipe `auto_passed` transition: call `seed_intent_input` for each
-`(variant.intent_examples[i], variant.variant_key)` pair.
-
+On Recipe `auto_passed`: call `seed_intent_input(expression, component_id, variant_key, link_formula)`.  
 On Recipe delete/wipe: call `purge_component_inputs(component_id)`.
 
 **Tests:**
-- Unit: `RecipeVariant` + `BuildInstruction` serde roundtrips
-- Unit: `FetchComponentsStep` with `context_spec` roundtrips
-- Unit: `OrchestratorContext` + `RustContext` + `ToolBinding` + `ErrorPolicy` roundtrips
-- Unit: `seed_intent_input` with `variant_key = Some("ls-la")` stores non-null column
-- Integration: intent match → correct `variant_key` returned → correct variant steps used
-- Integration: `fetch_by_instruction` fetches exactly the listed UUIDs, in fetch-step order
-- Integration: `{{vars.dir}}` substitution applied correctly in `effective_content`
-- Integration: Rust layer receives compact `RustContext` JSON, not LLM prompt
+- Unit: `BuildInstruction`, `OrchestratorContext`, `RustContext`, `ToolBinding`, `ErrorPolicy` serde roundtrips
+- Unit: `FetchComponentsStep` + `StepContextSpec` roundtrips
+- Unit: IBS parses `"0:0-0:30+1:0-1:E"` → correct step ranges
+- Unit: IBS separates `knowledge: "orchestrator"` vs `"rust"` correctly
+- Integration: intent match → correct `variant_key` + `link_formula` returned
+- Integration: `fetch_by_instruction` fetches exactly the listed UUIDs, in order
+- Integration: `{{vars.dir}}` substitution applied in `effective_content`
+- Integration: `RustContext` written to `reborn_pending_rust_context`, readable by Rust layer
 
 ---
 
@@ -806,45 +929,16 @@ On Recipe delete/wipe: call `purge_component_inputs(component_id)`.
 
 **Status:** [ ] Pending
 
-#### D.1 `intent_examples` + `required_skills` on SkillManifest
-
 **File:** `crates/brassclaw_skills/src/types.rs`  
-Add to `SkillManifest`:
-```rust
-/// Intent expressions that should trigger this skill via the intent system.
-/// Each entry <= 512 chars, capped at 20 total.
-#[serde(default)]
-pub intent_examples: Vec<String>,
+Add `intent_examples: Vec<String>` (≤512 chars each, capped at 20) and
+`required_skills: Vec<String>` (capped at 10, no self-reference) to `SkillManifest`.
 
-/// Companion skills required for tool-chain or pipe constructs.
-/// Always included unconditionally when this skill is fetched in a BuildInstruction.
-/// Capped at 10 (author responsibility to keep the list relevant).
-#[serde(default)]
-pub required_skills: Vec<String>,
-```
+**Migration V050:** `ADD COLUMN intent_examples JSONB; ADD COLUMN required_skills JSONB` to `reborn_skills`.
 
-Add to `ActivationCriteria::enforce_limits`:
-- `intent_examples`: each entry <= 512 chars, total capped at 20.
-- `required_skills`: total capped at 10, no self-reference.
+On skill `auto_passed`: call `seed_intent_input` for each intent.  
+On skill delete: call `purge_component_inputs`.
 
-#### D.2 Seed intents on skill import/validation
-
-On skill `auto_passed` transition: call `seed_intent_input` for each
-`intent_examples` entry with `variant_key = None`.
-
-On skill wipe/delete: call `purge_component_inputs`.
-
-#### D.3 `required_skills` resolution in prior-knowledge builder
-
-When a Skill is selected into a `BuildInstruction` (via `orchestrator_context.skill_ids`),
-also fetch its `required_skills` list. Include all declared required Skills unconditionally.
-This enables tool-chain compositions like `grep-skill` referencing `pipe-skill`.
-
-**Tests:**
-- Unit: `SkillManifest` with `intent_examples` + `required_skills` YAML roundtrip
-- Unit: `intent_examples` entry of 513 chars → rejected by `enforce_limits`
-- Integration: Skill with `intent_examples` → resolves via `resolve_intent`
-- Integration: Skill with `required_skills: ["pipe-skill"]` → both Skills fetched in patch
+**Tests:** Unit: YAML roundtrip, limit enforcement. Integration: resolves via `resolve_intent`.
 
 ---
 
@@ -854,22 +948,10 @@ This enables tool-chain compositions like `grep-skill` referencing `pipe-skill`.
 
 **File:** `crates/brassclaw_engine/src/memory/recipe_validator.rs`
 
-Q1 rule S7: if `rust_context.tool_bindings[]` is non-empty but
-`orchestrator_context.skill_ids[]` is empty, error ("tools must be reached through a Skill").
+S7 guard: `rust_context.tool_bindings[]` non-empty but `orchestrator_context.skill_ids[]` empty → error.  
+Add variant step checks to `validate_recipe`.
 
-Q1 rule: `ControlFlowStep` with `step_type: RunPythonCode` and empty `component_id` → error.
-
-Add to `validate_recipe`: check `recipe.variants[].build_instruction` in addition to
-top-level `recipe.steps`.
-
-For `required_skills` cross-reference: during Q1, check each entry resolves to a
-known Skill name in the component DB. Emit soft warning (not hard error) if the
-referenced Skill is not yet in the DB (may be queued).
-
-**Tests:**
-- Unit: non-empty `tool_bindings` + empty `skill_ids` → validation error
-- Unit: `RunPythonCode` with empty `component_id` → error
-- Unit: correct pairing → no error
+**Tests:** Unit: S7 violation, empty `component_id`, correct ordering.
 
 ---
 
@@ -877,31 +959,10 @@ referenced Skill is not yet in the DB (may be queued).
 
 **Status:** [ ] Pending
 
-**File:** `crates/brassclaw_extensions/src/mcp_translation.rs` (new)
+**Files:** `crates/brassclaw_extensions/src/mcp_translation.rs` (new), `lifecycle.rs`.  
+MCP tool → Tool + ToolSkill + Skill + Recipe + ExtensionCatalogue, all `pending`.
 
-```
-translate_mcp_to_brassclaw(payload) -> Vec<NewComponent>
-  for each MCP tool:
-    1. NewTool (class 0, no prompt text)
-    2. NewToolSkill (class 13, param schema from MCP inputSchema)
-    3. NewSkill (class 1, skeleton "how to invoke <tool> via Rust layer")
-    4. skeleton Recipe (class 21, one variant per common pattern — pending)
-  + one NewExtensionCatalogue (class 23) grouping all of the above
-  -> all inserted with validation_status = 'pending'
-
-translate_brassclaw_to_mcp(skills) -> McpDescriptionPayload
-  for each validated Skill:
-    -> MCP tool descriptor { name, description, inputSchema }
-```
-
-**File:** `crates/brassclaw_extensions/src/lifecycle.rs`  
-On MCP extension install: call `translate_mcp_to_brassclaw`, insert all
-generated components, route to Q1 validation queue.
-
-**Tests:**
-- Unit: well-formed MCP payload → expected component count + types
-- Unit: empty tool list → empty output, no panic
-- Integration: MCP install → generated components appear in validation queue at `pending`
+**Tests:** Unit: MCP payload → component count. Integration: install → validation queue.
 
 ---
 
@@ -911,25 +972,15 @@ generated components, route to Q1 validation queue.
 
 **File:** `crates/brassclaw_engine/src/memory/component_validator.rs`
 
-New dispatch cases (added to `validate_by_class` match):
-
 | Class | Rules |
 |-------|-------|
-| 22 PythonCode | name format, non-empty content, soft 10k token budget, shell-injection scan |
-| 23 ExtensionCatalogue | name format, non-empty `overview_doc`, >=1 `task_groups`, valid UUID syntax in `child_component_ids`, class codes in `intent_index` entries are 0–23 or 50 |
-| 21 Recipe (variants) | each variant: non-empty `variant_key`, >=1 `intent_examples` (each <=512 chars), >=1 fetch step or orchestrator step; S7 guard (non-empty `tool_bindings` requires non-empty `skill_ids`) |
-| 1–3 Skills | `intent_examples` entries <=512 chars, capped at 20; `required_skills` capped at 10; no self-reference |
-| 16 Actions | validate `steps` JSONB against 13 step types; `allowed_tools` entries exist in capability surface |
+| 22 PythonCode | name, non-empty content, 10k budget, injection scan |
+| 23 ExtensionCatalogue | name, non-empty `overview_doc`, >=1 task_group, valid UUIDs in child_component_ids |
+| 21 Recipe (variants) | non-empty `variant_key`, >=1 intent_examples, valid `link_formula` syntax, S7 guard |
+| 1–3 Skills | intent_examples <=512 chars / <=20; required_skills <=10, no self-ref |
+| 16 Actions | steps JSONB against 13 step types |
 
-Q1 validator and component-creation wizard share the same rule functions. No duplication.
-
-**Tests:**
-- Unit: each new class with missing mandatory field → specific error
-- Unit: Recipe variant with `variant_key = ""` → error
-- Unit: PythonCode with known injection pattern → error
-- Unit: Skill `intent_examples` entry of 513 chars → rejected
-- Unit: Catalogue with zero `task_groups` → error
-- Unit: S7 guard: non-empty `tool_bindings` + empty `skill_ids` → error
+**Tests:** Unit: missing field → specific error for each class.
 
 ---
 
@@ -937,44 +988,18 @@ Q1 validator and component-creation wizard share the same rule functions. No dup
 
 **Status:** [ ] Pending
 
-**Goal:** Make `RecipeStage` actually dispatch instead of always passing through.
-This closes the gap documented in the `recipe.rs` "structural debt" comment.
+1. `crates/brassclaw_agent_loop/src/state.rs` — add `last_user_text: Option<String>`
+2. `crates/brassclaw_agent_loop/src/executor/input.rs` — populate from drained input
+3. `crates/brassclaw_agent_loop/src/executor/recipe.rs` — full Tier 0/1/2 dispatch:
+   - **Tier 0** (`wilson_lower >= 0.70`, `llm_call_required: false`):
+     - Call IBS → `fetch_by_instruction` → write `RustContext` to `reborn_pending_rust_context`
+     - Serialize `OrchestratorContext` → inject into `__assemble_prior_knowledge__` response
+     - Skip `PromptStage` and `ModelStage`
+     - Record outcome
+   - **Tier 1** (match, below Tier 0): inject ToolSkill summaries via `LoopExecutionState` hint
+   - **No match:** fall through to Tier 2 (unchanged)
 
-**Files to modify:**
-
-1. `crates/brassclaw_agent_loop/src/state.rs`  
-   Add to `LoopExecutionState`:
-   ```rust
-   /// Populated by InputStage; read by RecipeStage for intent resolution.
-   pub last_user_text: Option<String>,
-   ```
-
-2. `crates/brassclaw_agent_loop/src/executor/input.rs`  
-   After draining user input: `state.last_user_text = Some(drained_text)`.
-
-3. `crates/brassclaw_agent_loop/src/executor/recipe.rs`  
-   `RecipeStage::process`:
-   - Read `state.last_user_text`. If `None`, fall through (Tier 2 unchanged).
-   - Call `host.recipe_lookup().find_recipe(user_text)`.
-   - **Tier 0** (recipe match, `wilson_lower >= 0.70`, `validated`, `llm_call_required: false`):
-     - Call `fetch_by_instruction` with matched variant's `BuildInstruction`.
-     - Serialize `orchestrator_context` → LLM message (reformatted by `step_formatter_id` if present).
-     - Serialize `rust_context` → compact JSON sent to Rust layer separately.
-     - Execute via orchestrator host.
-     - Skip `PromptStage` and `ModelStage`.
-     - Record outcome → Wilson score update.
-   - **Tier 1** (recipe match, below Tier 0 threshold or `llm_call_required: true`):
-     - Call `find_skills` for ToolSkill summaries.
-     - Store summaries as hint in `LoopExecutionState` for `PromptStage` to inject.
-     - Continue through normal LLM path.
-   - **No match:** fall through to Tier 2 (unchanged).
-
-**Tests:**
-- Unit: `last_user_text` populated after `InputStage` processes user input
-- Integration: Tier 0 match → `PromptStage` and `ModelStage` not called
-- Integration: Tier 1 match → ToolSkill summaries present in assembled prompt
-- Integration: no match → full Tier 2 path runs unchanged
-- Integration: Rust layer receives `RustContext` JSON without LLM prompt content
+**Tests:** Unit: `last_user_text` set. Integration: Tier 0 skips LLM; Tier 1 injects hints; Tier 2 unchanged.
 
 ---
 
@@ -982,35 +1007,23 @@ This closes the gap documented in the `recipe.rs` "structural debt" comment.
 
 **Status:** [ ] Pending
 
-**Goal:** Create the basic-prompt storage infrastructure and wire it into the Interceptor.
+**Migration V051.** New `PgBasicPromptStore` facade:
+`get_for_scope`, `store`, `mark_stale`, `delete`.  
+Wire into Interceptor to append stored bundle before LLM shipment.  
+On component `validated` transition: call `mark_stale(scope)`.
 
-**Files to create:**
-- `crates/brassclaw_pg/migrations/V051__reborn_basic_prompt_store.sql`  
-  Table: one row per scope (`tenant_id, user_id, agent_id, project_id`).  
-  Columns: `id UUID PK`, scope tuple, `fingerprint TEXT` (SHA-256),  
-  `bundle_json JSONB` (serialised `InstructionBundle.messages`),  
-  `is_stale BOOLEAN DEFAULT false`, `assembled_at TIMESTAMPTZ`,  
-  `created_at`, `updated_at`.  
-  Unique constraint on scope tuple.
+---
 
-- `crates/brassclaw_reborn_composition/src/pg_basic_prompt_store.rs`  
-  Facade: `BasicPromptStore` trait + `PgBasicPromptStore` implementation.  
-  Methods:
-  - `get_for_scope(scope) -> Option<StoredBundle>`
-  - `store(scope, bundle, fingerprint) -> Result<()>`
-  - `mark_stale(scope) -> Result<()>`
-  - `delete(scope) -> Result<()>`
+### Phase J — v2 DocPlan Translation
 
-**Files to modify:**
-- `crates/brassclaw_reborn_composition/src/lib.rs` — export new store
-- `crates/brassclaw_interceptor/` (or equivalent) — append stored basic-prompt to outgoing message before shipping to LLM
-- Component validation transition hooks — on `auto_passed` → `validated`, call `mark_stale(scope)` for affected scope
+**Status:** [ ] Pending
 
-**Tests:**
-- Unit: `PgBasicPromptStore::store` + `get_for_scope` roundtrip
-- Unit: `mark_stale` sets `is_stale = true`
-- Integration: `validated` transition → basic-prompt marked stale
-- Integration: Interceptor appends stored bundle to outgoing prompt
+**New file:** `crates/brassclaw_reborn_composition/src/docplan_translator.rs`  
+**CLI:** `brassclaw translate-v2-docs --dry-run | --execute`
+
+**Skill MemoryDoc → Tool + ToolSkill + Skill + Recipe + ExtensionCatalogue (all `pending`).**  
+**Recipe MemoryDoc → Recipe with v2 `trigger+steps` + seed StepDescription0.**  
+**Original MemoryDocs → `archived_at = now()` (V055, not deleted).**
 
 ---
 
@@ -1021,108 +1034,104 @@ This closes the gap documented in the `recipe.rs` "structural debt" comment.
 | `V047__reborn_python_code.sql` | New table, class 22 | **Next** |
 | `V048__reborn_extension_catalogues.sql` | New table, class 23 | |
 | `V049__reborn_intent_inputs_variant_key.sql` | `ADD COLUMN variant_key TEXT` | |
-| `V050__reborn_skills_intent_examples.sql` | `ADD COLUMN intent_examples JSONB; ADD COLUMN required_skills JSONB` to `reborn_skills` | |
-| `V051__reborn_basic_prompt_store.sql` | New table: one row per scope; columns: `id UUID PK`, scope tuple, `fingerprint TEXT`, `bundle_json JSONB`, `is_stale BOOLEAN DEFAULT false`, `assembled_at TIMESTAMPTZ`, unique constraint on scope tuple | |
+| `V050__reborn_skills_intent_examples.sql` | `ADD COLUMN intent_examples JSONB; required_skills JSONB` to `reborn_skills` | |
+| `V051__reborn_basic_prompt_store.sql` | New table, one row per scope, `bundle_json JSONB`, `is_stale BOOL` | |
+| `V052__reborn_intent_inputs_link_formula.sql` | `ADD COLUMN link_formula TEXT` to `reborn_intent_inputs` | |
+| `V053__reborn_pending_rust_context.sql` | Transient per-turn Rust prior-knowledge table | |
+| `V054__reborn_recipes_step_descriptions.sql` | `ADD COLUMN step_descriptions JSONB` to `reborn_recipes` | |
+| `V055__brassclaw_memory_docs_archived_at.sql` | `ADD COLUMN archived_at TIMESTAMPTZ` to `brassclaw_memory_docs` | |
 
 All additive. No DROP, no renames. No existing rows break.
 
 ---
 
-## 3. Open Questions — Decisions Needed Before Phase C
+## 3. Open Questions
 
-1. **Variable extraction:** Named capture groups in intent expressions (e.g.
-   `r"of the (?P<dir>[/\w\-\.]+) directory"`) or a small post-match LLM extraction call?  
-   → **Recommendation:** named capture groups for Phase C. LLM extraction as a
-   follow-up fallback for complex prompts (Phase H+ or later).
+1. **Variable extraction:** Named capture groups vs. post-match LLM extraction?  
+   → **Recommendation:** Named capture groups for Phase C; LLM fallback later.
 
-2. **Shared step prefix across variants:** Full independent step list per variant
-   (simple, some duplication) or a shared prefix + divergence point (compact)?  
-   → **Recommendation:** full independent list per variant. Shared prefix is a
-   content convention, not enforced by schema. Keeps executor logic simple.
+2. **Shared step prefix:** Full independent step list per variant vs. shared prefix + divergence?  
+   → **Recommendation:** Full independent list per variant (link_formula handles sharing).
 
-3. **`required_skills` inclusion threshold:** Always include all declared required
-   skills, or score them against the current query first?  
-   → **Recommendation:** always include if declared. Keep the list short by convention
-   (capped at 10 by Q1 validator).
+3. **`required_skills` inclusion:** Always include vs. score against current query?  
+   → **Recommendation:** Always include; cap at 10.
 
-4. **`step_formatter_id` PythonCode component:** Should the formatter be mandatory
-   or optional per variant?  
-   → **Recommendation:** optional (`Option<String>`). If `None`, use the raw
-   `description` fields as-is. This allows gradual adoption and A/B testing.
+4. **`step_formatter_id` scope:** Per-recipe, per-variant, or per-step?  
+   → **Recommendation:** Per-recipe. Formatting style is consistent across a capability domain.
+
+5. **StepDescription storage format:** YAML files in git vs. JSONB in `reborn_recipes`?  
+   → **Recommendation:** JSONB column (simpler, no file management). YAML-formatted text preserved inside.
+
+6. **Rust delivery mechanism:** Transient table vs. ephemeral column vs. in-memory cache?  
+   → **Recommendation:** Transient table `reborn_pending_rust_context` (V053).
+
+7. **PKC split:** New `__retrieve_memories__` host function vs. three-surface PKC in same response?  
+   → **Recommendation:** Three-surface PKC (§0.17); no new host function.
+
+8. **v2 MemoryDoc preservation:** Delete after translation or archive?  
+   → **Recommendation:** Archive (V055 `archived_at`).
 
 ---
 
 ## 4. Out of Scope (Marked Postponed)
 
-- Full self-improvement pipeline (Interceptor-driven Recipe auto-creation from successful patterns)
+- Full self-improvement pipeline (Interceptor-driven Recipe auto-creation)
 - Component self-creation wizard
 - Automatic Sempai-driven prompt rewrites
-- `FormatOrchestratorPrompt` as a distinct step type (can be added in future iteration — for now, `step_formatter_id` is applied during serialization)
+- `FormatOrchestratorPrompt` as a distinct step type (handled via `step_formatter_id` during IBS compilation)
 
 ---
 
 ## 5. Turn Flow Summary
 
-Complete walkthrough of a single turn in the intended final state:
-
 ```
-User types: "show all files including hidden in /tmp"
+User types: "show all files including hidden in the current directory"
 |
 +- [InputStage]
-|   Drains input into LoopExecutionState.
-|   Sets last_user_text = "show all files including hidden in /tmp"
+|   Sets last_user_text = "show all files including hidden in the current directory"
 |
 +- [RecipeStage]
-|   Calls resolve_intent(query)
-|   -> Match: Recipe "listing-the-contents-of-a-directory"
-|             variant_key = "ls-la"
-|             variable_bindings = { dir: "/tmp" }
-|   -> Tier 0 check: wilson_lower = 0.82, llm_call_required = false -> eligible
+|   resolve_intent → Match { recipe_id, variant_key="ls-la", link_formula="0:0-0:30+1:0-1:E" }
+|   Tier 0 check: wilson_lower = 0.82, llm_call_required = false → eligible
 |
-+- [RetrievalEngine] fetch_by_instruction(build_instruction, user_text)
-|   Reads fetch_steps:
-|     -> fetches: <uuid:ls-skill>, <uuid:ls-toolskill>
-|   Applies variable substitution: {{vars.dir}} -> "/tmp"
-|   Returns prior_knowledge patch:
-|     [ls-skill body]
-|     [ls-toolskill body with /tmp substituted]
-|     basic_prompt_section_refs: ["§directory-listing"] (pointer, no content repeat)
++- [IBS] build_from_formula(recipe_id, "0:0-0:30+1:0-1:E", user_text)
+|   Loads Stepdescription0 steps 0..30, Stepdescription1 all steps
+|   Separates by knowledge:
+|     orchestrator steps → skill-ls, pythoncode-ls
+|     rust steps → tool-ls, toolskill-ls
+|   Returns BuildInstruction
 |
-+- [Tier 0 -- no LLM call]
-|   RecipeStage serializes orchestrator_context:
-|     skill_ids: [<uuid:ls-skill>]
-|     python_code_ids: [<uuid:ls-result-formatter>]
-|     step_formatter_id: <uuid:terse-cli-formatter> (optional)
-|     control_flow_steps: [RunPythonCode: format output]
-|   -> LLM message assembled (if step_formatter_id present: reformat descriptions)
++- [RetrievalEngine] fetch_by_instruction(build_instruction)
+|   Reads fetch_steps: fetches skill-ls + pythoncode-ls + toolskill-ls bodies
+|   Returns prior_knowledge patch (orchestrator-facing content only)
 |
-|   RecipeStage serializes rust_context (separate JSON package):
-|     tool_skill_ids: [<uuid:ls-toolskill>]
-|     tool_bindings: [{ tool: "ls", params: { dir: "/tmp", flags: "-la" }, error_policy: fail }]
-|   -> Rust layer receives compact JSON, executes ls /tmp -la
++- [RecipeStage] writes RustContext → reborn_pending_rust_context
+|   { tool_skill_ids: [toolskill-ls], tool_bindings: [{ tool:"ls", params:{flags:"-la"} }] }
 |
-|   Orchestrator reads control_flow_steps, formats result for user
++- [Tier 0 — no LLM call]
+|   __assemble_prior_knowledge__ returns three-surface PKC:
+|     orchestrator_knowledge: { skill_bodies:[skill-ls], python_code_bodies:[pythoncode-ls] }
+|     memory_knowledge: { thread_notes:[] }
+|     rust_pending_id: "<uuid>"
 |
-+- [InterceptorStage]
-|   Saves prompt composition plan (patch only, not the full basic-prompt).
-|   If Sempai connected: reviews execution plan before it runs.
+|   Orchestrator reads orchestrator_knowledge.
+|   Orchestrator runs pythoncode-ls → invokes skill-ls → tells Rust to execute
+|   Rust reads reborn_pending_rust_context by rust_pending_id
+|   Rust reads toolskill-ls params → executes ls -la → returns output
+|   Orchestrator writes output to chat window
 |
-+- [AssistantReplyStage]
-   Emits formatted directory listing to user.
-   RecipeStage records outcome -> Wilson score updated.
++- [InterceptorStage]  Saves composition plan. Sempai reviews if connected.
++- [AssistantReplyStage]  Emits directory listing. Wilson score updated.
 ```
 
 **No-match path (Tier 2):**
 
 ```
 User types: "explain recursion to me"
-|
 +- [InputStage]        last_user_text set
-+- [RecipeStage]       resolve_intent -> NoMatch -> falls through
-+- [PromptStage]       fetch_for_consumer() -> UNION ALL scan, keyword-scored,
-|                      token-budget-capped. Big basic-prompt + UNION ALL results assembled.
-+- [InterceptorStage]  Sempai reviews if connected.
-+- [ModelStage]        Full LLM call with assembled prompt.
-+- [AssistantReplyStage]  Emits LLM response.
-   (No Recipe outcome recorded.)
++- [RecipeStage]       resolve_intent → NoMatch → falls through
++- [PromptStage]       fetch_for_consumer() → UNION ALL scan, full PKC assembled
++- [InterceptorStage]  Sempai reviews if connected
++- [ModelStage]        Full LLM call
++- [AssistantReplyStage]  Emits LLM response. No Recipe outcome recorded.
 ```
