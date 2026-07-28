@@ -17,6 +17,9 @@
 -- pg_trgm is required (CREATE EXTENSION IF NOT EXISTS pg_trgm).
 -- Install script creates this extension before running migrations.
 
+-- pg_trgm is required for the GIN trigram index below.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 CREATE TABLE IF NOT EXISTS reborn_intent_inputs (
     -- Primary key
     id                  UUID        NOT NULL DEFAULT gen_random_uuid(),

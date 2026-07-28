@@ -63,14 +63,9 @@ CREATE TABLE IF NOT EXISTS reborn_tools (
     -- Each entry: '^[0-9]{2}(:[a-z0-9-]+)?$'
     -- Tools always carry {00:rusty} + 05:validator until validated.
     -- '05:validator' greys out all other tags until Step-2 manual validation.
-    consumer_tags           TEXT[]      NOT NULL DEFAULT '{}'
-        CHECK (
-            -- Every entry must match the tag code pattern.
-            array_length(array(
-                SELECT t FROM unnest(consumer_tags) t
-                WHERE t !~ '^[0-9]{2}(:[a-z0-9-]+)?$'
-            ), 1) IS NULL
-        ),
+    consumer_tags           TEXT[]      NOT NULL DEFAULT '{}',
+    -- Note: consumer_tags format check removed — subqueries in CHECK constraints
+    -- are not supported by PostgreSQL 16. Validation is enforced at the app layer.
 
     -- Provenance (immediate-write)
     source                  TEXT        NOT NULL DEFAULT 'authored'

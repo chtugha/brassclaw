@@ -73,13 +73,9 @@ CREATE TABLE IF NOT EXISTS reborn_actions (
 
     -- Consumer tags (validation-gated §3.9).
     -- Default: {01:monty, 02:orchestrator} + 05:validator until validated.
-    consumer_tags           TEXT[]      NOT NULL DEFAULT '{}'
-        CHECK (
-            array_length(array(
-                SELECT t FROM unnest(consumer_tags) t
-                WHERE t !~ '^[0-9]{2}(:[a-z0-9-]+)?$'
-            ), 1) IS NULL
-        ),
+    consumer_tags           TEXT[]      NOT NULL DEFAULT '{}',
+    -- Note: consumer_tags format check removed — subqueries in CHECK constraints
+    -- are not supported by PostgreSQL 16. Validation is enforced at the app layer.
 
     -- Intent examples (validation-gated; primary activation mechanism §3.12).
     intent_examples         JSONB       NOT NULL DEFAULT '[]',

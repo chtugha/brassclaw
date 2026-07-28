@@ -44,13 +44,9 @@ CREATE TABLE IF NOT EXISTS reborn_tool_skills (
         CHECK (class_code = 13),
     prompt_uid              BIGINT      NOT NULL DEFAULT nextval('reborn_tool_skills_prompt_uid_seq'),
 
-    consumer_tags           TEXT[]      NOT NULL DEFAULT '{}'
-        CHECK (
-            array_length(array(
-                SELECT t FROM unnest(consumer_tags) t
-                WHERE t !~ '^[0-9]{2}(:[a-z0-9-]+)?$'
-            ), 1) IS NULL
-        ),
+    consumer_tags           TEXT[]      NOT NULL DEFAULT '{}',
+    -- Note: consumer_tags format check removed — subqueries in CHECK constraints
+    -- are not supported by PostgreSQL 16. Validation is enforced at the app layer.
 
     intent_examples         JSONB,
 

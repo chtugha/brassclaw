@@ -27,14 +27,16 @@ for arg in "$@"; do
 done
 
 # When stdin is not a terminal (e.g. curl | bash), open /dev/tty for prompts.
-# If /dev/tty is also unavailable (no controlling terminal at all) we fall back
-# to auto-yes so the script does not silently cancel instead of running.
+# If /dev/tty is also unavailable or not readable (no controlling terminal at
+# all — common with `sudo bash` in a pipe), fall back to auto-yes so the
+# script does not silently cancel instead of running.
 if [[ -t 0 ]]; then
     TTY_IN=/dev/stdin
-elif [[ -e /dev/tty ]]; then
+elif { true <>/dev/tty; } 2>/dev/null; then
+    # /dev/tty exists AND can be opened for reading
     TTY_IN=/dev/tty
 else
-    TTY_IN=""          # no terminal — force non-interactive yes
+    TTY_IN=""          # no usable terminal — force non-interactive yes
     YES=true
 fi
 
@@ -123,13 +125,15 @@ if [[ "$YES" == "true" ]]; then
         echo "Proceeding non-interactively (-y: config/data preserved)"
     fi
 else
+    reply=""
     if [[ -z "$TTY_IN" ]]; then
         reply="y"
     else
-        read -rp "Continue? [y/N] " reply <"$TTY_IN"
+        read -rp "Continue? [y/N] " reply <"$TTY_IN" || reply=""
     fi
     if [[ ! "$reply" =~ ^[Yy]$ ]]; then
-        log_info "Cancelled."
+        log_info "Cancelled.  Re-run with -y to proceed non-interactively,"
+        log_info "or with --wipe to also delete all data."
         exit 0
     fi
 fi

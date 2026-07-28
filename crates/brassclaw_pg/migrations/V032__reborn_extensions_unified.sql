@@ -98,13 +98,9 @@ CREATE TABLE IF NOT EXISTS reborn_extensions_unified (
     -- Consumer tags (validation-gated, §3.9).
     -- Each entry must match '^[0-9]{2}(:[a-z0-9-]+)?$'.
     -- '05:validator' greys out all other tags until Step-2 validation.
-    consumer_tags           TEXT[]      NOT NULL DEFAULT '{}'
-        CHECK (
-            array_length(array(
-                SELECT t FROM unnest(consumer_tags) t
-                WHERE t !~ '^[0-9]{2}(:[a-z0-9-]+)?$'
-            ), 1) IS NULL
-        ),
+    consumer_tags           TEXT[]      NOT NULL DEFAULT '{}',
+    -- Note: consumer_tags format check removed — subqueries in CHECK constraints
+    -- are not supported by PostgreSQL 16. Validation is enforced at the app layer.
 
     -- Intent examples for the unified intent system (§3.12).
     -- Array of {input: text, class: 1|2|3} objects.
