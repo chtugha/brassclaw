@@ -865,6 +865,119 @@ A component with `validation_status = 'validated'` drives two side effects:
 
 ---
 
+
+### 0.16 Builtin Tool Bootstrap
+
+#### Ground truth
+
+All 23 first-party builtin tools are registered purely in Rust code
+(`crates/brassclaw_host_runtime/src/first_party_tools/`), under provider ID `"builtin"`.
+The DB tables `reborn_tools` (V030), `reborn_tool_skills` (V037), and `reborn_skills` (V027)
+are live and structurally ready, but contain **zero rows for builtins** today. The
+orchestrator receives no authored prior knowledge about when to use `grep` vs `read_file`,
+what memory_search expects, or when shell requires approval.
+
+`reborn_tools` currently has no column linking a DB row back to its registered capability ID
+(`"builtin.read_file"`). A `capability_id TEXT` column is needed (V053) to avoid fragile
+name-search lookups when the Rust execution layer needs to resolve a Tool row to its handler.
+
+#### What gets generated
+
+The builtin bootstrap generates the full v3 component stack for all 23 tools, grouped into
+**5 ExtensionCatalogues** by cognitive domain (not one per tool):
+
+| Catalogue | Tools covered | Recipes (approx) |
+|-----------|---------------|------------------|
+| `builtin-filesystem` | read_file, write_file, list_dir, glob, grep, apply_patch | 6–8 |
+| `builtin-network` | http, http.save | 3–4 |
+| `builtin-memory` | memory_search, memory_write, memory_read, memory_tree | 2 |
+| `builtin-process` | shell, spawn_subagent, trigger_create/list/remove | 5–6 |
+| `builtin-management` | skill_list/install/remove, echo, time, json | 4–5 |
+
+For each tool the bootstrap generates:
+- **Tool (class 0):** One row per `builtin.X` capability. `capability_id = "builtin.X"`,
+  `effect_type` mapped from EffectKind, `param_schema` from Rust schema structs in
+  `schemas.rs`, `source = "system"`.
+- **ToolSkill (class 13):** One per tool. Hand-authored `content` with: the exact
+  `tool_name`, annotated `param_schema`, preconditions, error handling, and critical safety
+  notes (especially for `shell`, `apply_patch`, `spawn_subagent`).
+- **Skill (class 1–3):** **Task-level, not tool-level.** The filesystem group gets 4–5
+  Skills covering task patterns (e.g. "find files" = glob + grep combined in one Skill
+  body), not 6 trivial single-tool Skills. Utilities (`echo`, `time`, `json`) get
+  PythonCode helpers instead of Skills (see Grain rule below).
+- **PythonCode (class 22):** For utility helpers that are sub-orchestrator patterns rather
+  than standalone capabilities: `json-query-helper`, `time-format-helper`, `patch-formatter`
+  (for apply_patch result formatting).
+- **Recipe (class 21):** Task-level, multi-variant where the cognitive grain demands it.
+  `builtin-edit-file` gets 3 variants; `builtin-http-fetch` gets 3. See §0.16.1 for the
+  full recipe list.
+- **ExtensionCatalogue (class 23):** One per domain. `overview_doc` describes the domain
+  model, not individual tools.
+
+#### Grain rule — Skill vs PythonCode
+
+Use a **Skill** when: the orchestrator needs narrative instructions for a task pattern
+that spans one or more tools — a complete capability description.  
+Use **PythonCode** when: the component is a utility helper used inside another Recipe's
+orchestrator channel, not a standalone capability.
+
+`echo`, `time`, `json` → PythonCode helpers.  
+All filesystem, network, memory, skill-management, trigger patterns → Skills.
+
+#### Validation at bootstrap
+
+All generated components are inserted with `source = "system"` and
+`validation_status = "validated"` (bypassing Q2 for system-authored components; Q1 still
+runs internally inside the seeder). This prevents the boot state from depending on a human
+completing Q2 before the agent can use its own core tools.
+
+`"system"` is a new allowed value for the `source` column on `reborn_tools`,
+`reborn_tool_skills`, and `reborn_skills` (V053 adds it to the CHECK constraints).
+Q1 errors in the seeder content are a build-time bug, not a runtime failure mode — they
+must be caught in CI.
+
+#### Shell + spawn_subagent safety invariants
+
+Two invariants encoded in ToolSkill bodies and enforced at Q1:
+
+1. **`builtin.shell`:** The shell ToolSkill `content` must include an explicit
+   approval-gate description. Any Recipe whose rust channel references `builtin.shell`
+   **must** have `llm_call_required: true` — enforced as a Q1 rule (see Phase I §shell-guard).
+   Open-ended shell cannot be Tier 0. Known-safe commands (e.g. `cargo build`) may be
+   Tier 1 at high Wilson score, but never Tier 0 without explicit allowlisting.
+
+2. **`builtin.spawn_subagent`:** The spawn_subagent ToolSkill must document: child cannot
+   exceed parent scope, budget inheritance, authorization model. Any Recipe using it must
+   be Tier 1 (`llm_call_required: true` enforced at Q1 — same rule as shell).
+
+#### §0.16.1 Full builtin Recipe list (target)
+
+| Recipe name | Variants | Tier | ToolSkills in rust channel |
+|-------------|----------|------|---------------------------|
+| `builtin-read-file` | 2 (by path, by glob) | 0 | read_file |
+| `builtin-write-file` | 2 (create, overwrite) | 1 | write_file |
+| `builtin-list-dir` | 2 (current dir, named dir) | 0 | list_dir |
+| `builtin-find-files` | 3 (by name, by ext, by pattern) | 0 | glob |
+| `builtin-search-content` | 3 (literal, regex, in dir) | 0 | grep |
+| `builtin-edit-file` | 3 (targeted edit, refactor, fix-line) | 1 | read_file + apply_patch |
+| `builtin-http-fetch` | 3 (GET, POST, with headers) | 1 | http |
+| `builtin-http-download` | 1 | 1 | http.save |
+| `builtin-remember` | 1 | 0 | memory_write |
+| `builtin-recall` | 1 | 0 | memory_search |
+| `builtin-run-shell` | 2 (known-safe cmd, open-ended) | 1 (always) | shell |
+| `builtin-spawn-subagent` | 2 (generic task, named procedure) | 1 (always) | spawn_subagent |
+| `builtin-create-trigger` | 1 | 1 | trigger_create |
+| `builtin-list-triggers` | 1 | 0 | trigger_list |
+| `builtin-remove-trigger` | 1 | 1 | trigger_remove |
+| `builtin-list-skills` | 1 | 0 | skill_list |
+| `builtin-install-skill` | 1 | 1 | skill_install |
+| `builtin-remove-skill` | 1 | 1 | skill_remove |
+
+**Total: ~23 Tools + 23 ToolSkills + 12–15 Skills + 4–5 PythonCode + 18–20 Recipes + 5 ExtensionCatalogues ≈ 85–90 components.**  
+All inserted at boot if the scope has no existing builtin components (idempotent).
+
+---
+
 ## 1. Implementation Phases
 
 ### Phase A — StepDescription Schema + IBS Core
@@ -1197,6 +1310,19 @@ New dispatch cases:
 runtime.** Any parse error that would blow up at runtime becomes a Q1 error with the
 full parse message. This is the primary correctness guard for formula authoring.
 
+**§shell-guard — Recipes referencing `builtin.shell` or `builtin.spawn_subagent`:**  
+If any `rust_steps[].include` UUID resolves to a ToolSkill whose `tool_name` is
+`"builtin.shell"` or `"builtin.spawn_subagent"`, the Recipe **must** have
+`llm_call_required: true`. Q1 returns a hard error if `llm_call_required: false` and
+either tool appears in the rust channel. This prevents open-ended shell/spawn from
+accidentally becoming a Tier 0 path.
+
+**§capability-id — Tool rows from builtin bootstrap:**  
+For class 0 (Tool) components with `source = "system"`, Q1 validates that `capability_id`
+is non-empty and matches the pattern `^[a-z0-9_-]+\.[a-z0-9_.]+$` (e.g. `builtin.read_file`).
+Tool rows without a `capability_id` that are authored (not system) pass without error —
+`capability_id` is optional for user-authored custom tools.
+
 #### Tests
 
 - Unit: Recipe with `snippet`-type step → Q1 fail with `IbsError::UnpromotedSnippet`
@@ -1207,6 +1333,11 @@ full parse message. This is the primary correctness guard for formula authoring.
 - Unit: ExtensionCatalogue with empty `overview_doc` → Q1 fail
 - Unit: Skill with `intent_examples` entry > 512 chars → Q1 fail
 - Unit: valid StepDescriptions, valid `step_link` → Q1 pass
+- Unit: §shell-guard: Recipe with `builtin.shell` ToolSkill in rust channel + `llm_call_required: false` → Q1 fail
+- Unit: §shell-guard: Recipe with `builtin.spawn_subagent` + `llm_call_required: false` → Q1 fail
+- Unit: §shell-guard: Recipe with `builtin.shell` + `llm_call_required: true` → Q1 pass
+- Unit: §capability-id: Tool row `source = "system"`, empty `capability_id` → Q1 fail
+- Unit: §capability-id: Tool row `source = "authored"`, no `capability_id` → Q1 pass (optional for user tools)
 
 ---
 
@@ -1270,19 +1401,30 @@ New `PgBasicPromptStore` facade: `get_for_scope`, `store`, `mark_stale`, `delete
 Wire into Interceptor to prepend stored bundle before LLM shipment.  
 On any component `validated` transition: call `mark_stale(scope)`.
 
-#### K.2 MCP Translation Layer
+#### K.2 MCP Translation Layer — External MCPs Only
 
 **File:** `crates/brassclaw_extensions/src/mcp_translation.rs` (new)
 
-For each MCP tool: generate Tool (class 0), ToolSkill (class 13), Skill (class 1), and
+> **Scope:** This translator handles **external third-party MCP servers only**.
+> Builtin first-party tools (`builtin.*`) are seeded by the separate `builtin_bootstrap.rs`
+> in Phase L — with hand-authored content and system-level validation bypass.
+> Do NOT run the MCP translator against builtin tools.
+
+For each external MCP tool: generate Tool (class 0), ToolSkill (class 13), Skill (class 1), and
 a skeleton Recipe (class 21) with auto-generated StepDescriptions:
-- Step 1: `knowledge: orchestrator`, `type: text`, `info`: auto-generated task context
+- Step 1: `knowledge: orchestrator`, `type: text`, `info`: auto-generated task context (from MCP tool description)
 - Step 2: `knowledge: rust`, `type: component`, `include`: [ToolSkill UUID]
 - Step 3: `knowledge: orchestrator`, `type: component`, `include`: [Skill UUID]
 - Default `step_link: "0:0-0:E"`
 
 One ExtensionCatalogue (class 23) grouping all generated components.
-All inserted with `validation_status = 'pending'`.
+All inserted with `validation_status = 'pending'` — external MCP content must go through Q1 + Q2.
+
+**Why external MCPs are treated differently from builtins:**
+- MCP content comes from untrusted third-party servers — must pass Q1 injection scan and Q2 manual review.
+- Skill bodies are auto-generated stubs and need human review before becoming active.
+- No `capability_id` is set — external MCPs are referenced by UUID, not by a registered capability name.
+- `source = "imported"` (not `"system"`).
 
 #### K.3 Cleanup
 
@@ -1307,6 +1449,137 @@ All inserted with `validation_status = 'pending'`.
 
 ---
 
+### Phase L — Builtin Tool Bootstrap Seeder
+
+**Status:** [ ] Pending
+
+**Goal:** Seed the full v3 component stack for all 23 builtin tools at first boot.
+This is a separate concern from the Phase K MCP translator. The MCP translator targets
+external third-party MCP servers (unknown shape, must enter Q1/Q2). The builtin bootstrap
+targets the 23 first-party tools: content is hand-authored, quality is guaranteed at
+compile time, and Q2 manual review is bypassed (`source = "system"`, `validation_status = "validated"`).
+
+#### L.1 New migration: V053
+
+```sql
+-- V053__reborn_tools_capability_id_and_system_source.sql
+ALTER TABLE reborn_tools ADD COLUMN IF NOT EXISTS capability_id TEXT;
+CREATE INDEX IF NOT EXISTS reborn_tools_capability_id_idx
+    ON reborn_tools (tenant_id, user_id, agent_id, project_id, capability_id)
+    WHERE capability_id IS NOT NULL;
+
+-- Allow "system" as a source value (alongside existing: authored, extracted, migrated, imported)
+ALTER TABLE reborn_tools
+    DROP CONSTRAINT IF EXISTS reborn_tools_source_check,
+    ADD CONSTRAINT reborn_tools_source_check
+        CHECK (source IN ('authored', 'extracted', 'migrated', 'imported', 'system'));
+ALTER TABLE reborn_tool_skills
+    DROP CONSTRAINT IF EXISTS reborn_tool_skills_source_check,
+    ADD CONSTRAINT reborn_tool_skills_source_check
+        CHECK (source IN ('authored', 'extracted', 'migrated', 'imported', 'system'));
+ALTER TABLE reborn_skills
+    DROP CONSTRAINT IF EXISTS reborn_skills_source_check,
+    ADD CONSTRAINT reborn_skills_source_check
+        CHECK (source IN ('authored', 'extracted', 'migrated', 'imported', 'system'));
+```
+
+`capability_id` links a `reborn_tools` row back to the Rust capability registry
+(`"builtin.read_file"`, etc.) without fragile name-search. The Rust execution layer
+uses this when resolving a Tool UUID to the registered handler.
+
+#### L.2 New file: `crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs`
+
+Seeder function: `pub async fn seed_builtin_components(pool: &PgPool, scope: &ComponentScope)`
+
+**Structure:**
+```
+seed_builtin_components(pool, scope):
+  if builtin components already exist for this scope → return (idempotent)
+  
+  for each builtin group (filesystem, network, memory, process, management):
+    1. Insert ExtensionCatalogue row (validated, source=system)
+    2. For each tool in group:
+         Insert Tool row (capability_id = "builtin.X", source=system, validated)
+         Insert ToolSkill row (tool_name = "builtin.X", source=system, validated)
+    3. For each task-level Skill in group:
+         Insert Skill row (body = hand-authored content, source=system, validated)
+         Seed intent_examples into reborn_intent_inputs
+    4. For each PythonCode helper in group:
+         Insert PythonCode row (source=system, validated)
+    5. For each Recipe in group (per §0.16.1):
+         Insert Recipe row + step_descriptions JSONB
+         Run IBS build_instruction as pre-flight (panics in debug builds on IbsError)
+         Seed intent_examples into reborn_intent_inputs with correct step_link
+         Insert Recipe row (source=system, validated)
+```
+
+**Hand-authored content** lives as `include_str!()` markdown files in
+`crates/brassclaw_engine/prompts/builtin/` — one file per component body (ToolSkill,
+Skill, PythonCode, ExtensionCatalogue overview_doc). This keeps them out of Rust source
+and editable without recompiling.
+
+**Called from** composition boot sequence, analogous to `component_import.rs`.
+
+#### L.3 Content files to create
+
+| Path | Component |
+|------|-----------|
+| `prompts/builtin/toolskill_read_file.md` | ToolSkill: annotated param schema, path rules, output size limits |
+| `prompts/builtin/toolskill_write_file.md` | ToolSkill: write modes, max 6 MiB, overwrite vs create |
+| `prompts/builtin/toolskill_list_dir.md` | ToolSkill: output format, scope boundary |
+| `prompts/builtin/toolskill_glob.md` | ToolSkill: v1 glob syntax, result ordering, scope |
+| `prompts/builtin/toolskill_grep.md` | ToolSkill: regex syntax, output modes, scope |
+| `prompts/builtin/toolskill_apply_patch.md` | ToolSkill: exact vs fuzzy match, retry semantics, error codes |
+| `prompts/builtin/toolskill_shell.md` | ToolSkill: **approval required**, 120s limit, quoting rules, when to prefer structured tools |
+| `prompts/builtin/toolskill_http.md` | ToolSkill: 15 MiB cap, 10s/30s timeout, redirect handling |
+| `prompts/builtin/toolskill_http_save.md` | ToolSkill: same as http + filesystem write scope |
+| `prompts/builtin/toolskill_memory_search.md` | ToolSkill: query format, score interpretation, budget |
+| `prompts/builtin/toolskill_memory_write.md` | ToolSkill: key format, TTL, scope |
+| `prompts/builtin/toolskill_memory_read.md` | ToolSkill: exact key lookup vs semantic search |
+| `prompts/builtin/toolskill_memory_tree.md` | ToolSkill: output format, traversal depth |
+| `prompts/builtin/toolskill_skill_list.md` | ToolSkill: output format, scope isolation |
+| `prompts/builtin/toolskill_skill_install.md` | ToolSkill: URL format, enters pending → Q1 → Q2 |
+| `prompts/builtin/toolskill_skill_remove.md` | ToolSkill: irreversible, scope isolation |
+| `prompts/builtin/toolskill_trigger_create.md` | ToolSkill: cron/interval format, ExternalWrite effect |
+| `prompts/builtin/toolskill_trigger_list.md` | ToolSkill: scope filtering |
+| `prompts/builtin/toolskill_trigger_remove.md` | ToolSkill: ExternalWrite, irreversibility |
+| `prompts/builtin/toolskill_spawn_subagent.md` | ToolSkill: **scope isolation**, budget inheritance, auth model |
+| `prompts/builtin/toolskill_echo.md` | ToolSkill: trivial passthrough |
+| `prompts/builtin/toolskill_time.md` | ToolSkill: operations list, ISO 8601 format |
+| `prompts/builtin/toolskill_json.md` | ToolSkill: parse/stringify/query/validate, jq-style queries |
+| `prompts/builtin/skill_filesystem.md` | Skill: when to use read_file vs glob vs grep; task patterns |
+| `prompts/builtin/skill_file_editing.md` | Skill: read → patch → verify flow; when to use exact vs fuzzy |
+| `prompts/builtin/skill_file_search.md` | Skill: combined glob + grep patterns for code search tasks |
+| `prompts/builtin/skill_http.md` | Skill: fetch vs download; API vs page; sanitize response |
+| `prompts/builtin/skill_memory.md` | Skill: when to search vs read vs tree; write-back rules |
+| `prompts/builtin/skill_memory_navigation.md` | Skill: how to use tree before diving into memory |
+| `prompts/builtin/skill_shell.md` | Skill: prefer structured tools; only use shell when unavoidable; always confirm destructive commands |
+| `prompts/builtin/skill_subagent.md` | Skill: when to delegate; how to frame child goal; handle child result |
+| `prompts/builtin/skill_skill_management.md` | Skill: install/remove semantics; user confirmation required; lifecycle |
+| `prompts/builtin/skill_trigger_management.md` | Skill: schedule vs ask; cron syntax; scope model |
+| `prompts/builtin/pythoncode_json_helper.md` | PythonCode: chain json.query + json.stringify patterns |
+| `prompts/builtin/pythoncode_time_helper.md` | PythonCode: common time format/diff patterns |
+| `prompts/builtin/pythoncode_patch_formatter.md` | PythonCode: format LLM edit intent into search-replace patch object |
+| `prompts/builtin/cat_filesystem.md` | ExtensionCatalogue overview_doc for builtin-filesystem |
+| `prompts/builtin/cat_network.md` | ExtensionCatalogue overview_doc for builtin-network |
+| `prompts/builtin/cat_memory.md` | ExtensionCatalogue overview_doc for builtin-memory |
+| `prompts/builtin/cat_process.md` | ExtensionCatalogue overview_doc for builtin-process |
+| `prompts/builtin/cat_management.md` | ExtensionCatalogue overview_doc for builtin-management |
+
+#### Tests
+
+- Unit: seeder runs on empty DB → 85–90 component rows inserted
+- Unit: seeder runs twice → idempotent (same row count, no duplicates)
+- Unit: all inserted Recipes pass `build_instruction` pre-flight with no `IbsError`
+- Unit: `builtin.shell` ToolSkill body contains "approval" text (safety content regression guard)
+- Unit: `builtin.spawn_subagent` ToolSkill body contains "scope isolation" text
+- Unit: every inserted Recipe with shell in rust channel has `llm_call_required = true`
+- Integration: `resolve_intent("read the file at /tmp/foo.txt")` → matches `builtin-read-file` Recipe
+- Integration: `resolve_intent("show me all files")` → matches `builtin-list-dir` or `builtin-find-files`
+- Integration: Tool row `capability_id = "builtin.read_file"` → look up by `capability_id` returns correct UUID
+
+---
+
 ## 2. Migration Sequence
 
 | Migration | Contents | Status |
@@ -1317,13 +1590,17 @@ All inserted with `validation_status = 'pending'`.
 | `V050__reborn_intent_inputs_step_link.sql` | `ADD COLUMN step_link TEXT` to `reborn_intent_inputs` | |
 | `V051__reborn_skills_intent_examples.sql` | `ADD COLUMN intent_examples JSONB; ADD COLUMN required_skills JSONB` to `reborn_skills` | |
 | `V052__reborn_basic_prompt_store.sql` | New table: one row per scope, `bundle_json JSONB`, `is_stale BOOL`, `fingerprint TEXT` | |
+| `V053__reborn_tools_capability_id_and_system_source.sql` | `ADD COLUMN capability_id TEXT` to `reborn_tools` + `source = 'system'` allowed on tools/tool_skills/skills | |
 
 All additive. No DROP, no renames. No existing rows break.
 
 **`step_link` is nullable** — existing intent rows without it use the existing
 `fetch_component_by_id` path unchanged. Zero breakage on upgrade.
 
-**No `reborn_pending_rust_context` table.** The earlier transient-table design (V053) is
+**`capability_id` is nullable** — existing Tool rows (user-authored) are unaffected.
+Only system-seeded builtin rows carry a `capability_id`.
+
+**No `reborn_pending_rust_context` table.** The earlier transient-table design is
 superseded: `SplitResult.rust_items` is delivered directly by `RecipeStage` at runtime,
 avoiding the DB round-trip entirely.
 
@@ -1340,6 +1617,11 @@ avoiding the DB round-trip entirely.
 | 5 | StepDescription storage format: YAML files in git vs. JSONB in `reborn_recipes`? | JSONB column (simpler, no file management). YAML-formatted text preserved inside the JSONB for human readability and WebUI rendering. |
 | 6 | Legacy DocPlan → v3 translation? | See §3.1. |
 | 7 | `__assemble_prior_knowledge__` removal timing? | Keep registered for one release cycle after Phase K ships. Document as deprecated in Phase K. Remove in the following cycle. |
+| 8 | Should builtin Tool/ToolSkill/Skill rows bypass Q2 (auto-validated)? | Yes — `source = "system"`, `validation_status = "validated"` at seeder insert. Q1 runs inside the seeder at build time. Q1 errors in seeder content are CI build failures. This prevents boot from requiring human Q2 completion for core tools. |
+| 9 | Should the MCP translator also be used for builtins? | No — wrong granularity (1:1 per tool, no task-level Skills, no PythonCode, no multi-ToolSkill Recipes). Use `builtin_bootstrap.rs` (Phase L) for builtins. MCP translator is for external third-party MCPs only. |
+| 10 | What recipe variants should `builtin.shell` have? | Two: (a) known-safe commands (allowlist: `cargo build/test/fmt/clippy`, `git status/log/diff`, `npm install/build`) at Tier 1 high-confidence; (b) open-ended arbitrary command at Tier 1 always with explicit approval annotation. Both have `llm_call_required: true` — no shell is ever Tier 0. |
+| 11 | How does the Rust execution layer resolve a Tool DB UUID to its registered capability handler? | Via `capability_id` column (V053). On tool dispatch: look up Tool row by UUID → read `capability_id` → look up handler in `FirstPartyCapabilityRegistry` by `capability_id`. For user-authored tools without `capability_id`, fall back to existing name-based resolution. |
+| 12 | Should builtin Recipes also have `source = "system"` and bypass Q2? | Yes — same reasoning as Q8. Builtin Recipe StepDescriptions are hand-authored and IBS pre-flight-checked at seeder run time. Q2 bypass for `source = "system"` Recipes is consistent with Tools and ToolSkills. |
 
 ### 3.1 Legacy DocPlan → v3 Component Translation
 
@@ -1366,6 +1648,21 @@ migrates these to class-specific tables. The gap: no v2 docs have StepDescriptio
 4. **Specs, Lessons, Notes:** Leave as-is. Served by the UNION ALL path; no StepDescriptions needed.
 
 Idempotent: components that already have `step_descriptions` are skipped.
+
+### 3.2 Builtin Tool Bootstrap Pipeline
+
+This is a **separate, automatic pipeline** that runs at every boot (not operator-triggered).
+It seeds the full v3 component stack for the 23 first-party builtin tools if not already present.
+See §0.16 for the full specification and Phase L for the implementation plan.
+
+**Relationship to §3.1:**  
+The `brassclaw migrate-to-v3` pipeline (§3.1) handles user-authored v2 documents.  
+The builtin bootstrap (§3.2 / Phase L) handles system tools that never had v2 representations.  
+They are independent — running one does not affect the other.
+
+**Idempotency guard:** The seeder checks `SELECT COUNT(*) FROM reborn_tools WHERE source = 'system'`
+for the current scope at boot. If ≥ 1 row exists, the seeder skips entirely. A full re-seed
+can be triggered by deleting system-sourced rows (operator action only).
 
 ---
 
