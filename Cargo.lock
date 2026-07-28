@@ -1285,7 +1285,7 @@ dependencies = [
 
 [[package]]
 name = "brassclaw"
-version = "0.54.0"
+version = "0.55.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1587,6 +1587,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.19",
  "tokio",
+ "tokio-postgres",
  "tracing",
 ]
 
@@ -2265,7 +2266,7 @@ dependencies = [
 
 [[package]]
 name = "brassclaw_reborn_cli"
-version = "0.54.0"
+version = "0.55.0"
 dependencies = [
  "anyhow",
  "async-trait",

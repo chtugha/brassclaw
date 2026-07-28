@@ -95,13 +95,21 @@ impl ManagedPostgres {
             }
         }
 
-        // Step 4: run initdb if needed.
+        // Step 4: run initdb if needed. PG_VERSION is written by initdb as the
+        // very first file — its absence means this is a fresh cluster.
+        let is_fresh_cluster = !config.data_dir.join("PG_VERSION").exists();
         initdb::run_initdb(&config, &pg_bin_dir).await?;
 
         // Step 5: start the server.
         let ctl = pgctl::PgCtl::new(&pg_bin_dir, &config.data_dir, config.port);
         ctl.start().await?;
         health::wait_for_ready(config.port).await?;
+
+        // Step 6: on a fresh cluster, create the role and database. initdb
+        // creates the superuser but not the application database/role.
+        if is_fresh_cluster {
+            create_app_db(&config).await?;
+        }
 
         Ok(Self {
             config,
@@ -225,6 +233,76 @@ async fn resolve_pg_install_dir(
     }
 
     Ok(install_dir)
+}
+
+/// Create the application role and database on a freshly initialised cluster.
+///
+/// `initdb` creates only the superuser (named after `config.superuser`).
+/// The application connection URL uses a role and database both named
+/// `config.database` — these must be created before migrations can run.
+async fn create_app_db(config: &EmbeddedPostgresConfig) -> Result<(), EmbeddedPostgresError> {
+    use tokio_postgres::NoTls;
+
+    // Connect as the superuser to the default "postgres" maintenance database.
+    // The superuser was created by initdb with the name in config.superuser.
+    let connect_url = format!(
+        "postgresql://{}@127.0.0.1:{}/{}",
+        config.superuser, config.port, config.superuser
+    );
+
+    let (client, connection) = tokio_postgres::connect(&connect_url, NoTls)
+        .await
+        .map_err(|e| EmbeddedPostgresError::InitDb(format!("could not connect for init SQL: {e}")))?;
+
+    // Drive the connection in the background.
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+
+    // CREATE ROLE … LOGIN is idempotent-guarded; skip if it already exists.
+    let role_exists: bool = client
+        .query_one(
+            "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = $1)",
+            &[&config.database],
+        )
+        .await
+        .map(|row| row.get(0))
+        .unwrap_or(false);
+
+    if !role_exists {
+        client
+            .execute(
+                &format!("CREATE ROLE {} LOGIN", config.database),
+                &[],
+            )
+            .await
+            .map_err(|e| EmbeddedPostgresError::InitDb(format!("CREATE ROLE failed: {e}")))?;
+        debug!(role = config.database, "created application role");
+    }
+
+    // CREATE DATABASE … is idempotent-guarded; skip if it already exists.
+    let db_exists: bool = client
+        .query_one(
+            "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)",
+            &[&config.database],
+        )
+        .await
+        .map(|row| row.get(0))
+        .unwrap_or(false);
+
+    if !db_exists {
+        // CREATE DATABASE cannot run inside a transaction block; use execute directly.
+        client
+            .execute(
+                &format!("CREATE DATABASE {} OWNER {}", config.database, config.database),
+                &[],
+            )
+            .await
+            .map_err(|e| EmbeddedPostgresError::InitDb(format!("CREATE DATABASE failed: {e}")))?;
+        debug!(database = config.database, "created application database");
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
