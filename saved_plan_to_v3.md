@@ -300,6 +300,7 @@ readability and WebUI rendering.
 | `info` | text | **For `type: "text"` steps: this IS the orchestrator instruction text** — not merely documentation. The IBS emits it verbatim into `orchestrator_steps[].info` and `handle_retrieve_docs` includes it in `orchestrator_content`. |
 | `include` | UUID[] | Component UUIDs needed at this step. IBS emits a fetch for each UUID. |
 | `codesnippet` | text | Inline Python code. On WebUI save: creates a PythonCode component (class 22), enters Q1 queue. Step greyed out until Q1+Q2 pass; promoted to `type: "component"` with the new UUID on Q2 pass. |
+| `dependencies` | string | Traversal expression into this step's component's `dependency_registry` (see §0.19). E.g. `"1[all], 5[2,6], 17[3, 7[1,4]]"`. Resolved at fetch time by `fetch_for_turn`. Absent or empty string = no dependencies. |
 
 #### Step types
 
@@ -358,6 +359,7 @@ steps:
     content: PythonCode "ls-result-handler"
     type: component
     include: ["<uuid:pythoncode-ls>"]
+    dependencies: "0[all]"        # load all of pythoncode-ls's declared dependencies
     info: |
       Final step. PythonCode tells the orchestrator how to invoke the skill,
       pass flags to Rust, and format output for the chat window.
@@ -476,10 +478,16 @@ fn build_instruction(
      rust-channel steps must have type:component with non-empty include
      all include UUIDs must parse as valid UUID v4
      S7 guard: if any rust_steps emit tool_bindings, orchestrator_steps must contain ≥1 skill_id
+     dependency expressions: parse each step's `dependencies` string into DependencyExpr tree
+       → parse errors are hard IBS errors (IbsError::InvalidDependencyExpr)
+       → out-of-range indices are not checked here (registry is in DB; checked at Q1)
 5. Partition:
      rust_steps[]         ← steps where knowledge ∈ {"rust", "both"}
      orchestrator_steps[] ← steps where knowledge ∈ {"orchestrator", "both"}
-6. Return BuildInstruction { rust_steps, orchestrator_steps,
+6. Attach parsed DependencyExpr to each RecipeStep that declared a dependencies field.
+   The IBS does NOT resolve UUIDs — it only parses the expression into a typed tree.
+   Resolution (recursive DB fetching) happens in fetch_for_turn (§0.19).
+7. Return BuildInstruction { rust_steps, orchestrator_steps,
                               variable_patterns, basic_prompt_refs,
                               llm_call_required }
 ```
@@ -530,6 +538,7 @@ pub enum IbsError {
     UnknownDescIdx { desc_idx: usize },
     ParseError { formula: String, reason: String },
     S7Violation,  // rust tool_bindings present but no orchestrator skill_ids
+    InvalidDependencyExpr { step_id: String, reason: String },
 }
 ```
 
@@ -1423,6 +1432,179 @@ graduation events, not polling `updated_at` or TTL expiry.
 
 ---
 
+### 0.19 Dependency Registry
+
+#### Every component owns a flat dependency registry
+
+Every component table gains a `dependency_registry JSONB` column. It is a flat,
+zero-indexed array of entries — each entry names one component this component depends on:
+
+```json
+[
+  { "idx": 0, "component_id": "<uuid:pipe-skill>",     "class_code": 1,  "label": "pipe-skill" },
+  { "idx": 1, "component_id": "<uuid:json-helper>",    "class_code": 22, "label": "json-helper" },
+  { "idx": 2, "component_id": "<uuid:toolskill-read>", "class_code": 13, "label": "toolskill-read" }
+]
+```
+
+- `idx` is the positional index used in traversal expressions on StepDescription steps.
+- `label` is human-readable, shown in the WebUI registry editor.
+- `class_code` drives channel routing (orchestrator vs rust) during traversal.
+- The registry is flat — sub-dependencies are declared on the referenced components
+  themselves, not nested here.
+
+The `dependency_registry` is authored in the WebUI component page, editable as a table.
+It is part of the component's validated content — changes require re-entry into Q1.
+
+---
+
+#### Traversal expressions on StepDescription steps
+
+A step's `dependencies` field is a **traversal expression** that walks the registry tree
+selectively. The expression is a comma-separated list of traversal nodes.
+
+**Traversal node syntax:**
+
+```
+<idx>               — load component at index <idx>; no sub-dependencies
+<idx>[all]          — load component at index <idx>; recursively load ALL of its
+                      dependency_registry entries and ALL of their sub-dependencies
+                      (full transitive closure from this node)
+<idx>[<n>,<m>,...]  — load component at index <idx>; from its registry load only
+                      indices <n>, <m>, ... (no further recursion unless nested)
+<idx>[<n>, <m>[all], <p>[<q>,<r>]]
+                    — mixed: index <n> (no sub-deps), <m> full transitive, <p> with
+                      selective sub-indices <q> and <r>
+```
+
+**Example:**
+
+```yaml
+- stepnumber: 3
+  knowledge: orchestrator
+  type: component
+  include: ["<uuid:skill-file-editing>"]
+  dependencies: "1[all], 5[2,6], 17[3, 7[1, 4]]"
+```
+
+Resolution of `1[all], 5[2,6], 17[3, 7[1,4]]` against `skill-file-editing`'s registry:
+
+```
+1[all]
+  → load registry[1] of skill-file-editing → <uuid:pipe-skill>
+  → load ALL of pipe-skill's dependency_registry, recursively
+      → pipe-skill.registry[0] → <uuid:tokenizer>  (no further deps)
+      → pipe-skill.registry[1] → <uuid:buffer>
+          → buffer.registry[0] → <uuid:allocator>  (leaf)
+      → ... (full transitive closure)
+
+5[2,6]
+  → load registry[5] of skill-file-editing → <uuid:formatter>
+  → load formatter.registry[2] → <uuid:indent-helper>  (no sub-deps)
+  → load formatter.registry[6] → <uuid:escape-helper>  (no sub-deps)
+
+17[3, 7[1,4]]
+  → load registry[17] of skill-file-editing → <uuid:validator>
+  → load validator.registry[3] → <uuid:schema-checker>  (no sub-deps)
+  → load validator.registry[7] → <uuid:type-coercer>
+      → load type-coercer.registry[1] → <uuid:int-parser>   (no sub-deps)
+      → load type-coercer.registry[4] → <uuid:float-parser> (no sub-deps)
+```
+
+---
+
+#### Resolution algorithm (at fetch time, not pre-embedded)
+
+The traversal expression is stored as a string in the StepDescription JSONB. The IBS
+parses it into a typed `DependencyExpr` tree at compile time (pure Rust, no DB). The
+**actual component fetching** happens in `fetch_for_turn` after IBS compilation, as
+`fetch_component_by_id` calls per resolved UUID.
+
+```
+resolve_dependencies(
+    root_component_id: Uuid,
+    expr: &DependencyExpr,
+    pool: &PgPool,
+    visited: &mut HashSet<Uuid>,    // deduplication + cycle guard
+) -> Vec<ComponentItem>
+
+For each node in expr:
+  1. Look up root_component.dependency_registry[node.idx]
+       → (dep_uuid, dep_class_code)
+  2. If dep_uuid ∈ visited → skip (already collected or cycle)
+  3. visited.insert(dep_uuid)
+  4. fetch_component_by_id(dep_uuid) → ComponentItem
+  5. Route by dep_class_code → orchestrator or rust channel
+  6. If node has sub-expression:
+       If sub-expression == All:
+           fetch dep_component.dependency_registry (one DB read)
+           for each entry: resolve_dependencies(dep_uuid, All, pool, visited)
+       Else:
+           resolve_dependencies(dep_uuid, sub_expr, pool, visited)
+  7. Collect result
+```
+
+**Deduplication:** `visited` is shared across the entire `fetch_for_turn` call for a
+given turn. A component UUID collected by any step's dependency traversal is not
+fetched again — regardless of which step triggered it.
+
+**Eager-loading rule:** On the first occurrence of a Skill UUID in the assembled step
+list, all dependencies declared on that step are resolved immediately. On subsequent
+steps that reference the same Skill UUID: the Skill itself is already in `visited` →
+skipped. Its dependencies were already loaded at the first occurrence.
+
+**Cycle protection:** The `visited` set prevents infinite recursion. If component A
+depends on B and B depends on A (or any longer cycle), the second encounter of either
+UUID is skipped silently. Q1 detects and rejects cycles statically (see below).
+
+---
+
+#### KV-cache interaction
+
+In steady state, the basic-prompt prefix already contains the bodies of all commonly-used
+Skills, ToolSkills, and PythonCode helpers. The dependency traversal is a graph walk
+over components that are **already in the LLM's context**. For each resolved dependency
+UUID, the IBS checks whether that UUID appears in `basic_prompt_section_refs` — if so,
+it emits a section reference instead of re-injecting the body. The token cost of
+dependency resolution in steady state is therefore near zero: the graph walk happens in
+Rust (fast), the components are already in the KV-cache prefix (no token cost).
+
+New or recently-validated components not yet in the prefix do incur a full body
+injection into the per-turn patch. This is the transient case — it resolves after the
+next basic-prompt rebuild.
+
+---
+
+#### Q1 validation rules for dependency_registry and traversal expressions
+
+| Rule | Condition | Severity |
+|------|-----------|----------|
+| **Self-reference** | Registry entry points to the same component's own UUID | Hard error |
+| **Invalid UUID** | Registry entry UUID does not resolve to any known component in this scope | Hard error |
+| **Out-of-range index** | Traversal expression references an index that does not exist in the component's registry | Hard error |
+| **Cycle detection** | Traversal expression (with `[all]`) would follow a dependency cycle | Hard error (static DFS from the traversal root) |
+| **Adjacent `[all]` depth** | `[all]` on a component whose own registry also contains `[all]` entries — warn author of potential large transitive closure | Warning |
+| **Unparseable expression** | `dependencies` string fails the traversal expression parser | Hard error (parse error message included) |
+
+Cycle detection at Q1 is a **static DFS** starting from the component being validated,
+following all `[all]` and explicit sub-expressions, using the current state of all
+referenced components' registries. Any back-edge in the DFS is a cycle → hard error on
+the component that closes the cycle.
+
+---
+
+#### Relationship to `required_skills` (Phase J)
+
+**`required_skills` on the `reborn_skills` table does not exist.** It was a previous
+design that placed dependency declarations on the Skill component itself. Under the
+dependency registry model, dependencies are declared:
+1. On the component's own `dependency_registry` (what it depends on)
+2. On the StepDescription step via the traversal expression (how deep to follow)
+
+Phase J is replaced by the dependency registry implementation (see revised Phase J below).
+
+---
+
 ## 1. Implementation Phases
 
 ### Phase A — StepDescription Schema + IBS Core
@@ -1441,9 +1623,26 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 
 - `crates/brassclaw_engine/src/memory/instruction_builder.rs`  
   New types: `StepDescriptionEntry`, `StepRange`, `StepOwner`, `RecipeStepType`,
-  `RecipeStep`, `VariablePattern`, `BuildInstruction`, `IbsError`.  
-  New functions: `parse_step_link(&str) -> Result<Vec<StepRange>, IbsError>` and
+  `RecipeStep`, `VariablePattern`, `BuildInstruction`, `IbsError`,
+  `DependencyExpr`, `DependencyNode` (the parsed traversal tree — see §0.19).  
+  New functions: `parse_step_link(&str) -> Result<Vec<StepRange>, IbsError>`,
+  `parse_dependency_expr(&str) -> Result<DependencyExpr, IbsError>`, and
   `build_instruction(step_link, step_descriptions, variable_patterns) -> Result<BuildInstruction, IbsError>`.
+
+  **`DependencyExpr` / `DependencyNode` types:**
+  ```rust
+  pub enum DependencySubExpr {
+      All,                          // [all] — full transitive closure
+      Selective(Vec<DependencyNode>), // [n, m[...], ...] — selective indices
+  }
+
+  pub struct DependencyNode {
+      pub idx: usize,
+      pub sub: Option<DependencySubExpr>, // None = load component only, no sub-deps
+  }
+
+  pub type DependencyExpr = Vec<DependencyNode>;
+  ```
 
 #### Files to modify
 
@@ -1453,7 +1652,11 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   ```rust
   #[serde(default)] pub variants: Vec<RecipeVariant>,
   #[serde(default)] pub step_descriptions: serde_json::Value,
+  #[serde(default)] pub dependency_registry: serde_json::Value,  // per-component, see §0.19
   ```
+  Note: `dependency_registry` is also added to `ToolSkill`, `Skill`, `PythonCode`,
+  and all other component types that participate in dependency traversal. Each component
+  owns its own flat indexed registry.
   `RecipeVariant`:
   ```rust
   pub struct RecipeVariant {
@@ -1476,7 +1679,12 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 - Unit: `build_instruction` with `snippet`-type step → `IbsError::UnpromotedSnippet`
 - Unit: step numbers non-monotonic within a StepDescription → `IbsError::StepOrderViolation`
 - Unit: S7 guard: rust tool_bindings present, no orchestrator skill_ids → `IbsError::S7Violation`
-- Unit: `BuildInstruction`, `ToolBinding`, `ErrorPolicy` serde roundtrips
+- Unit: `parse_dependency_expr("1[all], 5[2,6], 17[3, 7[1,4]]")` → correct `DependencyExpr` tree
+- Unit: `parse_dependency_expr("0")` → single node, no sub-expr
+- Unit: `parse_dependency_expr("1[all]")` → node with `DependencySubExpr::All`
+- Unit: `parse_dependency_expr("")` → empty vec (no dependencies)
+- Unit: malformed expression `"1[all"` → `IbsError::InvalidDependencyExpr`
+- Unit: `BuildInstruction`, `ToolBinding`, `ErrorPolicy`, `DependencyNode` serde roundtrips
 
 ---
 
@@ -1802,35 +2010,79 @@ Q1 runs `parse_template` against every intent expression in `intent_examples`. R
 
 ---
 
-### Phase J — Skill `intent_examples` + `required_skills`
+### Phase J — Skill `intent_examples` + Dependency Registry
 
 **Status:** [ ] Pending
 
-#### Files to modify
+**Note:** `required_skills` does not exist. Dependencies between components are expressed
+via each component's `dependency_registry` JSONB and step-level traversal expressions (§0.19).
+Phase J covers two concerns: (1) Skill intent_examples seeding, and (2) `dependency_registry`
+column on all component tables.
 
-- `crates/brassclaw_skills/src/types.rs` — add `intent_examples: Vec<String>` (≤512 chars each,
-  capped at 20) and `required_skills: Vec<String>` (capped at 10, no self-reference) to
-  `SkillManifest`; enforce limits in `ActivationCriteria::enforce_limits`.
-- `crates/brassclaw_skills/src/` — on skill `auto_passed` transition: call `seed_intent_input`
-  for each intent expression.
+#### J.1 Skill `intent_examples` seeding
+
+- `crates/brassclaw_skills/src/types.rs` — add `intent_examples: Vec<String>` (≤512 chars
+  each, capped at 20) to `SkillManifest`; enforce limits in `ActivationCriteria::enforce_limits`.
+- On skill `auto_passed` transition: call `seed_intent_input` for each intent expression.
 - On skill wipe/delete: call `purge_component_inputs(component_id)`.
-- IBS: when including a Skill step in orchestrator_steps, also include all declared
-  `required_skills` UUIDs in the same channel.
 
-#### Files to create
+**Migration V051:**
+```sql
+ALTER TABLE reborn_skills ADD COLUMN IF NOT EXISTS intent_examples JSONB;
+```
 
-- `crates/brassclaw_pg/migrations/V051__reborn_skills_intent_examples.sql`
-  ```sql
-  ALTER TABLE reborn_skills ADD COLUMN IF NOT EXISTS intent_examples JSONB;
-  ALTER TABLE reborn_skills ADD COLUMN IF NOT EXISTS required_skills JSONB;
-  ```
+#### J.2 `dependency_registry` column on all component tables
+
+Add `dependency_registry JSONB` to every component table that participates in dependency
+traversal. This is a nullable column — components with no declared dependencies have
+`dependency_registry = NULL` or `[]`.
+
+**Tables to add the column to** (one ALTER TABLE per table; can be a single migration):
+`reborn_skills`, `reborn_tools`, `reborn_tool_skills`, `reborn_recipes`, `reborn_actions`,
+`reborn_specs`, `reborn_plans`, `reborn_summaries`, `reborn_lessons`, `reborn_docus`,
+`reborn_issues`, `reborn_notes`, `reborn_extensions`.
+
+New tables (Phases B, C) include the column from creation: `reborn_python_code`,
+`reborn_extension_catalogues`.
+
+**Migration V051** (same file, additional statements):
+```sql
+ALTER TABLE reborn_skills        ADD COLUMN IF NOT EXISTS dependency_registry JSONB;
+ALTER TABLE reborn_tools         ADD COLUMN IF NOT EXISTS dependency_registry JSONB;
+ALTER TABLE reborn_tool_skills   ADD COLUMN IF NOT EXISTS dependency_registry JSONB;
+ALTER TABLE reborn_recipes       ADD COLUMN IF NOT EXISTS dependency_registry JSONB;
+-- ... repeated for all 13 tables
+```
+
+#### J.3 `resolve_dependencies` in `fetch_for_turn`
+
+**File:** `crates/brassclaw_engine/src/memory/retrieval_source.rs`
+
+After the IBS compiles a `BuildInstruction`, `fetch_for_turn` calls
+`resolve_dependencies` for each `RecipeStep` that carries a non-empty `DependencyExpr`:
+
+```rust
+async fn resolve_dependencies(
+    pool: &PgPool,
+    root_component_id: Uuid,
+    expr: &DependencyExpr,
+    visited: &mut HashSet<Uuid>,
+) -> Result<Vec<ComponentItem>, RetrievalSourceError>
+```
+
+Implements the algorithm from §0.19. Results are partitioned into rust/orchestrator
+channels by `class_code` and merged into the corresponding `SplitResult` item lists.
 
 #### Tests
 
-- Unit: `SkillManifest` with `intent_examples` + `required_skills` YAML roundtrip
+- Unit: `SkillManifest` with `intent_examples` YAML roundtrip
 - Unit: entry > 512 chars → rejected by `enforce_limits`
 - Integration: Skill with `intent_examples` → resolves via `resolve_intent`
-- Integration: Skill with `required_skills: ["pipe-skill"]` → both Skills in `orchestrator_items`
+- Integration: `resolve_dependencies` with `"1[all]"` → full transitive closure fetched
+- Integration: `resolve_dependencies` with `"5[2,6]"` → only indices 2 and 6 fetched, no sub-deps
+- Integration: `resolve_dependencies` — UUID already in `visited` → skipped (deduplication)
+- Integration: `resolve_dependencies` with cycle in registries → cycle node skipped (visited guard)
+- Integration: dependency components routed to correct channel by class_code
 
 ---
 
@@ -2401,7 +2653,7 @@ a recovery action. This covers edge cases from the V055 data migration.
 | `V048__reborn_python_code.sql` | New table `reborn_python_code`, class 22 | |
 | `V049__reborn_extension_catalogues.sql` | New table `reborn_extension_catalogues`, class 23 | |
 | `V050__reborn_intent_inputs_step_link.sql` | `ADD COLUMN step_link TEXT` to `reborn_intent_inputs` | |
-| `V051__reborn_skills_intent_examples.sql` | `ADD COLUMN intent_examples JSONB; ADD COLUMN required_skills JSONB` to `reborn_skills` | |
+| `V051__reborn_skills_intent_examples.sql` | `ADD COLUMN intent_examples JSONB` to `reborn_skills`; `ADD COLUMN dependency_registry JSONB` to all 13 component tables (see Phase J.2 — §0.19) | |
 | `V052__reborn_basic_prompt_store.sql` | New table: one row per scope, `bundle_json JSONB`, `is_stale BOOL`, `fingerprint TEXT` | |
 | `V053__reborn_tools_capability_id_and_system_source.sql` | `ADD COLUMN capability_id TEXT` to `reborn_tools` + `source = 'system'` allowed on tools/tool_skills/skills | |
 | `V054__reborn_intent_inputs_template.sql` | `ADD COLUMN is_template BOOL`, `template_prefix TEXT`, `template_suffix TEXT` to `reborn_intent_inputs`; two new partial indexes for prefix/suffix-anchored template matching (see §0.17.2) | |
@@ -2427,7 +2679,7 @@ avoiding the DB round-trip entirely.
 |---|----------|----------------|
 | 1 | Variable extraction: named capture groups vs. post-match LLM extraction? | **Resolved — see §0.17.** Intent expressions use `%` slot markers for matching (Phase M). Slot values are auto-extracted from template segments (positional names `slot0`, `slot1`, …). `variable_patterns` is optional post-extraction refinement for semantic naming and validation. LLM extraction remains a future opt-in via `llm_var_extraction_prompt` on `RecipeVariant` (out of scope). |
 | 2 | BuildInstruction memoisation: per-process or always recompute? | **Resolved — see §0.18 + Phase N.** Per-process SplitResult cache keyed on `sha256(step_link + "\|" + sorted_include_uuids.join(","))` per scope. Eviction is event-driven via `last_graduation_at` on the scope cursor (bumped by DB trigger when a component graduates from `reborn_validation_queue`). One sub-millisecond PK read per cache hit. No TTL required as primary mechanism. |
-| 3 | `required_skills` inclusion: always include vs. score against current query? | Always include; cap at 10. |
+| 3 | `required_skills` inclusion: always include vs. score against current query? | **Resolved — see §0.19.** `required_skills` does not exist. Dependencies are declared per-component in `dependency_registry` JSONB and referenced from StepDescription steps via typed traversal expressions (`1[all], 5[2,6], 17[3, 7[1,4]]`). Always resolved fully per the traversal expression — no scoring, no cap. KV-cache prefix absorbs token cost in steady state. |
 | 4 | `step_formatter_id` scope: per-recipe, per-variant, or per-step? | Per-recipe. Formatting style is consistent across a capability domain. |
 | 5 | StepDescription storage format: YAML files in git vs. JSONB in `reborn_recipes`? | JSONB column (simpler, no file management). YAML-formatted text preserved inside the JSONB for human readability and WebUI rendering. |
 | 6 | Legacy DocPlan → v3 translation? | See §3.1. |
