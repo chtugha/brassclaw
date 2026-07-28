@@ -282,8 +282,40 @@ It serves two audiences simultaneously:
   StepDescriptions directly — no intermediate format.
 
 StepDescriptions are stored as a JSONB column `step_descriptions` on `reborn_recipes`
-(added in V047). The YAML-formatted text is preserved inside the JSONB for human
-readability and WebUI rendering.
+(added in V047). Each element of the JSONB array holds **two representations** of the
+same StepDescription, kept in sync on every WebUI save:
+
+```json
+[
+  {
+    "desc_idx": 0,
+    "label": "base path (ls -l, current directory)",
+    "yaml_source": "steps:\n  - stepnumber: 1\n    knowledge: orchestrator\n ...",
+    "steps": [
+      {
+        "stepnumber": 1,
+        "knowledge": "orchestrator",
+        "goal": "Provide task context",
+        "content": "Information explaining the task",
+        "type": "text",
+        "info": "Task performed by orchestrator only...",
+        "include": [],
+        "dependencies": ""
+      }
+    ]
+  }
+]
+```
+
+- **`yaml_source`** — the raw YAML string as typed by the author. Preserved verbatim.
+  Used by the WebUI renderer (syntax-highlighted YAML editor). Never read by the IBS.
+- **`steps`** — the pre-parsed structured array. Used exclusively by the IBS.
+  Written by the WebUI on save: parse `yaml_source` → produce `steps` array.
+
+The IBS never parses YAML at runtime — it reads the pre-parsed `steps` array directly.
+YAML parsing happens exactly once, at WebUI save time, before Q1 runs. If `yaml_source`
+fails to parse (malformed YAML), the save is rejected before Q1 with a parse error shown
+inline in the WebUI. The `steps` array is therefore always consistent with `yaml_source`.
 
 #### Mandatory fields per step
 
@@ -1622,7 +1654,28 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 - `crates/brassclaw_engine/src/memory/instruction_builder.rs`  
   New types: `StepDescriptionEntry`, `StepRange`, `StepOwner`, `RecipeStepType`,
   `RecipeStep`, `VariablePattern`, `BuildInstruction`, `IbsError`,
-  `DependencyExpr`, `DependencyNode` (the parsed traversal tree — see §0.19).  
+  `DependencyExpr`, `DependencyNode` (the parsed traversal tree — see §0.19).
+
+  **`StepDescriptionEntry` shape** (maps to one element of the `step_descriptions` JSONB array):
+  ```rust
+  pub struct StepDescriptionEntry {
+      pub desc_idx:    usize,
+      pub label:       String,
+      pub yaml_source: String,              // preserved verbatim; never read by IBS
+      pub steps:       Vec<StepEntry>,      // pre-parsed; IBS reads this only
+  }
+
+  pub struct StepEntry {
+      pub stepnumber:   u32,
+      pub knowledge:    StepOwner,          // Orchestrator | Rust | Both
+      pub goal:         String,
+      pub content:      String,
+      pub step_type:    RecipeStepType,     // Text | Component | Snippet
+      pub info:         Option<String>,     // WebUI annotation only; not emitted at runtime
+      pub include:      Vec<uuid::Uuid>,    // component UUIDs
+      pub dependencies: Option<String>,     // traversal expression string (§0.19)
+  }
+  ```  
   New functions: `parse_step_link(&str) -> Result<Vec<StepRange>, IbsError>`,
   `parse_dependency_expr(&str) -> Result<DependencyExpr, IbsError>`, and
   `build_instruction(step_link, step_descriptions, variable_patterns) -> Result<BuildInstruction, IbsError>`.
@@ -1670,6 +1723,8 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 
 #### Tests
 
+- Unit: JSONB round-trip: `StepDescriptionEntry` with `yaml_source` + `steps` serialises and deserialises correctly
+- Unit: `yaml_source` field is preserved verbatim (not re-serialised from `steps`)
 - Unit: `parse_step_link("0:0-0:E")` → single range, all steps
 - Unit: `parse_step_link("0:0-0:30+1:0-1:E")` → two ranges, correct desc_idx and bounds
 - Unit: `build_instruction` with `knowledge: rust` step → step only in `rust_steps`
@@ -2679,7 +2734,7 @@ avoiding the DB round-trip entirely.
 | 2 | BuildInstruction memoisation: per-process or always recompute? | **Resolved — see §0.18 + Phase N.** Per-process SplitResult cache keyed on `sha256(step_link + "\|" + sorted_include_uuids.join(","))` per scope. Eviction is event-driven via `last_graduation_at` on the scope cursor (bumped by DB trigger when a component graduates from `reborn_validation_queue`). One sub-millisecond PK read per cache hit. No TTL required as primary mechanism. |
 | 3 | `required_skills` inclusion: always include vs. score against current query? | **Resolved — see §0.19.** `required_skills` does not exist. Dependencies are declared per-component in `dependency_registry` JSONB and referenced from StepDescription steps via typed traversal expressions (`1[all], 5[2,6], 17[3, 7[1,4]]`). Always resolved fully per the traversal expression — no scoring, no cap. KV-cache prefix absorbs token cost in steady state. |
 | 4 | `step_formatter_id` scope: per-recipe, per-variant, or per-step? | **Resolved — not needed.** `step_formatter_id` does not exist. Formatting is achieved by authoring PythonCode component bodies with the correct content and prose style. `type: "text"` steps are WebUI annotations only with no runtime emission. All three intent-match cases (Recipe match, near-miss, full fallback) have their formatting handled by PythonCode bodies, prepared prompt templates, and the KV-cache prefix respectively. |
-| 5 | StepDescription storage format: YAML files in git vs. JSONB in `reborn_recipes`? | JSONB column (simpler, no file management). YAML-formatted text preserved inside the JSONB for human readability and WebUI rendering. |
+| 5 | StepDescription storage format: YAML files in git vs. JSONB in `reborn_recipes`? | **Resolved — JSONB (§0.5).** YAML files in git are structurally incompatible (no WebUI write path, no scope isolation, requires deploy cycle). JSONB column on `reborn_recipes` is the correct choice. Each JSONB element holds a dual representation: `yaml_source` (raw YAML, WebUI display) + `steps` (pre-parsed array, IBS reads). YAML is parsed once at WebUI save time — the IBS never parses YAML at runtime. |
 | 6 | Legacy DocPlan → v3 translation? | See §3.1. |
 | 7 | `__assemble_prior_knowledge__` removal timing? | Keep registered for one release cycle after Phase K ships. Document as deprecated in Phase K. Remove in the following cycle. |
 | 8 | Should builtin Tool/ToolSkill/Skill rows bypass Q2 (auto-validated)? | Yes — `source = "system"`, `validation_status = "validated"` at seeder insert. Q1 runs inside the seeder at build time. Q1 errors in seeder content are CI build failures. This prevents boot from requiring human Q2 completion for core tools. |
