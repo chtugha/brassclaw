@@ -72,14 +72,10 @@ CREATE TABLE IF NOT EXISTS reborn_skills (
     -- Monty defaults:  {01:monty,02:orchestrator}
     -- LLM defaults:    {02:orchestrator,03:llm}
     -- All new/updated rows also receive 05:validator until Step-2 validation.
-    consumer_tags           TEXT[]      NOT NULL DEFAULT '{}'
-        CHECK (
-            -- Every entry must match the tag code pattern.
-            array_length(array(
-                SELECT t FROM unnest(consumer_tags) t
-                WHERE t !~ '^[0-9]{2}(:[a-z0-9-]+)?$'
-            ), 1) IS NULL
-        ),
+    consumer_tags           TEXT[]      NOT NULL DEFAULT '{}',
+    -- Note: a per-entry format check on consumer_tags ('^[0-9]{2}(:[a-z0-9-]+)?$')
+    -- cannot use a subquery in a CHECK constraint on PostgreSQL 16.
+    -- Format validation is enforced at the application layer instead.
 
     -- Reward columns (immediate-write — no validation gate)
     tier                    TEXT        NOT NULL DEFAULT 'seedling'
