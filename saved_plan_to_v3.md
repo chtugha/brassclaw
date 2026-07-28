@@ -343,7 +343,8 @@ async fn fetch_by_instruction(
 fetch_for_turn(scope, query, budget, sender_class)
   → resolve_intent(scope, query)
       → Match { component_id, class_code, variant_key, link_formula }
-          → InstructionBuilder::build_from_formula(recipe_id, link_formula, query)
+          → InstructionBuilder::build_from_formula(component_id /*=recipe_id*/, link_formula, query)
+          -- component_id IS the recipe_id when component_class_code == 21
           → fetch_by_instruction(scope, &build_instruction, query, budget)
           → write rust_context → reborn_pending_rust_context
           → return FetchForTurnResult::Components(orchestrator_patch)
@@ -410,8 +411,11 @@ Bold rows are new additions for v3.
 ### 0.9 Actions — LLM-Bypass
 
 Actions (class 16) already default to `override_prompt_creation = true` in V029.
-When an Action is the matched component, its `BuildInstruction` has
-`llm_call_required: false`. The orchestrator executes steps directly.
+Their `steps` JSONB encodes 13 step types and is **executed directly by the
+orchestrator without going through the IBS**. The IBS applies to Recipes (class 21)
+only. `llm_call_required: false` on `BuildInstruction` is a Recipe concept;
+Actions bypass both the IBS and the LLM via the existing Action executor path
+in `default.py` (lines 1010–1024). Do not confuse the two override mechanisms.
 
 ---
 
@@ -461,7 +465,8 @@ Instruction-Building-System (§0.16). It is **not** the BuildInstruction.
 
 | Field | Type | Meaning |
 |-------|------|---------|
-| `step_number` | int | 1-based position in the sequence |
+| `desc_id` | int | 0-based index of this StepDescription within the Recipe's array (0 = base, 1 = variant 1, ...). Must be unique per Recipe. Used by the IBS to resolve link_formula segments. |
+| `step_number` | int | 1-based position within this StepDescription's step sequence |
 | `knowledge` | `"orchestrator" \| "rust" \| "both"` | Which runtime reads this step |
 | `goal` | string | What this step accomplishes |
 | `content` | string | Short description of step content |
@@ -490,6 +495,7 @@ and WebUI rendering.
 #### Example — Recipe `local-files-reading`, Stepdescription0 (partial)
 
 ```yaml
+desc_id: 0    # 0-based index; 0 = base StepDescription
 description: "Stepdescription0 — base path (ls -l, current directory)"
 
 steps:
@@ -538,6 +544,10 @@ steps:
 - Steps use dropdown fields for enum values (`knowledge`, `type`).
 - Intents section: all intent expressions editable; each shows its `link_formula`.
 - `code_snippet` field: on save → new PythonCode component created → sent to Q1 validator.
+  **Security:** Snippet submission requires an authenticated session with the
+  `component:write` permission. Unauthenticated and read-only sessions must not
+  be able to submit snippets. The Q1 injection scan is the technical backstop;
+  ACL enforcement is the first line of defense.
   - While pending: greyed out in WebUI.
   - If Q1 fails: snippet field cleared, PythonCode removed.
   - If Q1 passes → Q2 → on validate: PythonCode added to step; parent Recipe re-queued.
@@ -555,10 +565,19 @@ which steps (from which StepDescriptions) to include when building the `BuildIns
 <desc_id>:<start>-<desc_id>:<end>[+<desc_id>:<start>-<desc_id>:<end>]*
 ```
 
-- `<desc_id>` = `0` (base), `1` (variant 1), `2` (variant 2), ...
-- `<start>` = step number (1-based) or `0` = first step
-- `<end>` = step number or `E` = last step
-- `+` = concatenate segments in order
+- `<desc_id>` = `0` (base StepDescription), `1` (variant 1), `2` (variant 2), ...
+  — always 0-based index into the `step_descriptions` JSONB array.
+- `<start>` = `step_number` of the first step to include (1-based, matching
+  `step_number` field in the StepDescription YAML). Use `0` as a sentinel
+  meaning "start from step_number 1" (i.e. the very first step regardless of
+  numbering gaps). The IBS resolves `0` → "first step in the sequence".
+- `<end>` = `step_number` of the last step to include (1-based), or `E` = last step.
+- `+` = concatenate segments in order.
+
+> **Indexing invariant:** `step_number` in StepDescriptions is always 1-based.
+> Formula `<start>` and `<end>` refer to `step_number` values (1-based), except
+> `0` which is a sentinel for "first". This avoids off-by-one confusion:
+> `0:1-0:E` and `0:0-0:E` both mean "all steps of Stepdescription0".
 
 #### Examples
 
@@ -571,7 +590,9 @@ which steps (from which StepDescriptions) to include when building the `BuildIns
 
 #### Storage
 
-**Migration V052:** `ADD COLUMN link_formula TEXT` to `reborn_intent_inputs`.
+**Migration V052:** `ADD COLUMN link_formula TEXT CHECK (length(link_formula) <= 4096)` to `reborn_intent_inputs`.
+
+**NULL handling:** Existing rows after V052 will have `link_formula IS NULL`. The IBS treats a NULL formula as a legacy intent match — it skips IBS compilation and falls through to the existing `fetch_component_by_id` path unchanged. Only rows seeded after Phase C carry a non-NULL formula.
 
 ```
 | intent_expression              | component_id  | variant_key | link_formula            |
@@ -625,7 +646,13 @@ pub trait InstructionBuilder: Send + Sync {
 **Called by:** `PostgresSource::fetch_for_turn()` after intent resolution.
 
 **Caching:** In-process cache keyed by `(recipe_id, variant_key, variable_hash)`.
-TTL: 5 minutes. Invalidated when any included component's `updated_at` changes.
+TTL: 5 minutes. Invalidated when:
+- Any `include`d component's `updated_at` changes, OR
+- The Recipe's own `updated_at` changes (e.g. a StepDescription was edited in the WebUI).
+
+Cache miss at high concurrency is safe: compilation is a local JSONB read + pure
+computation (no HTTP). No thundering-herd guard needed; concurrent misses compile
+redundantly and the last writer wins the cache slot (idempotent).
 
 ---
 
@@ -676,12 +703,19 @@ sending the tool invocation. The orchestrator never reads `rust_knowledge`.
 ```sql
 CREATE TABLE reborn_pending_rust_context (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    -- Scope isolation: reads must filter on (tenant_id, run_id, iteration).
+    -- A missing tenant_id filter would allow cross-tenant context reads (SEC).
+    tenant_id      TEXT    NOT NULL,
     run_id         TEXT    NOT NULL,
     iteration      INT     NOT NULL,
     tool_skill_ids UUID[]  NOT NULL,
     tool_bindings  JSONB   NOT NULL,
     created_at     TIMESTAMPTZ DEFAULT now(),
-    UNIQUE(run_id, iteration)
+    -- Index for fast lookup by (tenant, run, iteration); UNIQUE enforces one
+    -- context row per iteration. Multiple tool_bindings are stored in the JSONB
+    -- array on that single row — use INSERT ... ON CONFLICT DO UPDATE when a
+    -- second binding is added within the same iteration.
+    UNIQUE(tenant_id, run_id, iteration)
 );
 -- TTL: rows deleted 1 hour after created_at.
 ```
@@ -690,6 +724,9 @@ CREATE TABLE reborn_pending_rust_context (
 1. `RecipeStage` inserts row after `fetch_by_instruction` completes.
 2. Rust reads row before first tool dispatch.
 3. Row deleted after turn completes (or 1-hour TTL).
+
+---
+
 ## 1. Implementation Phases
 
 ### Phase A — PythonCode Component (class 22)
@@ -741,7 +778,8 @@ CREATE TABLE reborn_pending_rust_context (
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct StepContextSpec {
-    #[serde(default)] pub component_ids: Vec<String>,
+    // UUIDs as typed Uuid — parse errors caught at deserialization, not at use.
+    #[serde(default)] pub component_ids: Vec<uuid::Uuid>,
     #[serde(default)] pub class_codes: Vec<i32>,
 }
 
@@ -783,9 +821,10 @@ pub struct BranchTargets {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct OrchestratorContext {
-    #[serde(default)] pub skill_ids: Vec<String>,
-    #[serde(default)] pub python_code_ids: Vec<String>,
-    #[serde(default)] pub step_formatter_id: Option<String>,
+    // Typed UUIDs — parse errors surfaced at deserialization.
+    #[serde(default)] pub skill_ids: Vec<uuid::Uuid>,
+    #[serde(default)] pub python_code_ids: Vec<uuid::Uuid>,
+    #[serde(default)] pub step_formatter_id: Option<uuid::Uuid>,
     #[serde(default)] pub control_flow_steps: Vec<ControlFlowStep>,
 }
 
@@ -811,7 +850,7 @@ pub struct ToolBinding {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct RustContext {
-    #[serde(default)] pub tool_skill_ids: Vec<String>,
+    #[serde(default)] pub tool_skill_ids: Vec<uuid::Uuid>,
     #[serde(default)] pub tool_bindings: Vec<ToolBinding>,
 }
 
@@ -876,6 +915,30 @@ See §0.6 for signature. `PostgresSource` implementation iterates `fetch_steps`.
 On Recipe `auto_passed`: call `seed_intent_input(expression, component_id, variant_key, link_formula)`.  
 On Recipe delete/wipe: call `purge_component_inputs(component_id)`.
 
+#### C.6 Update `IntentResolution::Match` in `intent_system.rs`
+
+**File:** `crates/brassclaw_engine/src/memory/intent_system.rs`
+
+The live enum currently has:
+```rust
+Match { component_id: Uuid, component_class_code: i32 }
+```
+
+Add `variant_key` and `link_formula`:
+```rust
+Match {
+    component_id: Uuid,
+    component_class_code: i32,
+    variant_key: Option<String>,    // None for legacy / non-variant intents
+    link_formula: Option<String>,   // None when link_formula column is NULL (legacy rows)
+}
+```
+
+Update all match sites in `retrieval_source.rs` and `orchestrator.rs` that destructure
+`IntentResolution::Match { component_id, component_class_code }` to also bind (and use)
+`variant_key` and `link_formula`. Non-IBS paths treat `None` as a legacy match and fall
+through to the existing `fetch_component_by_id` path unchanged.
+
 **Tests:**
 - Unit: `BuildInstruction`, `OrchestratorContext`, `RustContext`, `ToolBinding`, `ErrorPolicy` serde roundtrips
 - Unit: `FetchComponentsStep` + `StepContextSpec` roundtrips
@@ -939,7 +1002,7 @@ MCP tool → Tool + ToolSkill + Skill + Recipe + ExtensionCatalogue, all `pendin
 |-------|-------|
 | 22 PythonCode | name, non-empty content, 10k budget, injection scan |
 | 23 ExtensionCatalogue | name, non-empty `overview_doc`, >=1 task_group, valid UUIDs in child_component_ids |
-| 21 Recipe (variants) | non-empty `variant_key`, >=1 intent_examples, valid `link_formula` syntax, S7 guard |
+| 21 Recipe (variants) | non-empty `variant_key`, >=1 intent_examples, `link_formula` parsed by the IBS formula parser (same function as runtime — any parse error becomes a Q1 error with the parse message), S7 guard |
 | 1–3 Skills | intent_examples <=512 chars / <=20; required_skills <=10, no self-ref |
 | 16 Actions | steps JSONB against 13 step types |
 
@@ -974,6 +1037,9 @@ MCP tool → Tool + ToolSkill + Skill + Recipe + ExtensionCatalogue, all `pendin
 `get_for_scope`, `store`, `mark_stale`, `delete`.  
 Wire into Interceptor to append stored bundle before LLM shipment.  
 On component `validated` transition: call `mark_stale(scope)`.
+
+---
+
 ## 2. Migration Sequence
 
 | Migration | Contents | Status |
