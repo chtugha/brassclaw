@@ -179,8 +179,14 @@ async fn resolve_pg_install_dir(
 ) -> Result<std::path::PathBuf, EmbeddedPostgresError> {
     use postgresql_embedded::{PostgreSQL, Settings};
 
+    // `trust_installation_dir: true` tells postgresql_embedded to use
+    // `installation_dir` verbatim — without appending the version string.
+    // Without this flag the crate appends "16.4.0/" to the path, so binaries
+    // end up at `bin_cache_dir/16.4.0/bin/initdb` while we look for them at
+    // `bin_cache_dir/bin/initdb`.
     let settings = Settings {
         installation_dir: config.bin_cache_dir.clone(),
+        trust_installation_dir: true,
         ..Default::default()
     };
 
@@ -191,8 +197,8 @@ async fn resolve_pg_install_dir(
         .await
         .map_err(|e| EmbeddedPostgresError::InitDb(e.to_string()))?;
 
-    // The installation root is the directory postgresql_embedded extracted into.
-    // It is the same value we supplied as `installation_dir`.
+    // The installation root is exactly bin_cache_dir (trust_installation_dir
+    // prevents the version-suffix append, so setup() extracts here directly).
     let install_dir = config.bin_cache_dir.clone();
 
     // Verify the checksum of the downloaded archive if it is still present on
