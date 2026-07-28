@@ -855,13 +855,25 @@ shipping to Kohai. Can flag patterns for Recipe creation.
 
 ### 0.15 Validation System — Two-Gate Pipeline
 
-**Gate 1 (Q1 — automatic):** Injection scan, schema conformance, S7 guard, cross-references.  
-**Gate 2 (Q2 — manual):** WebUI review; approve → `validated`.
+**Gate 1 (Q1 — automatic):** Injection scan, schema conformance, S7 guard, cross-references.
+Implemented in `component_validator.rs`. On pass: queue row transitions to state 2 (via
+`gate1_pass` — callable only from the validator). On fail: queue row stays at state 1
+with updated `validation_errors`.
 
-A component with `validation_status = 'validated'` drives two side effects:
-1. Its `updated_at` is refreshed.
-2. `reborn_basic_prompt_store.is_stale` is set to `true` for the affected scope.
-3. The IBS memo-cache for any `step_link` that references this component's UUID is evicted.
+**Gate 2 (Q2 — manual):** WebUI review. On approve: queue row deleted (graduation event),
+component `validation_status` set to `'validated'`. On reject: queue row transitions to
+state 3, `counter` incremented, `review_feedback` populated.
+
+**The queue and the status are separate state machines (§0.18):**
+- While a component is in `reborn_validation_queue` (states 1–4) it is pre-validation.
+  Its `validation_status` on the component table is `'pending'` or similar.
+- Once the queue row is deleted (Q2 approval), the component is post-validation.
+  Its `validation_status = 'validated'` is the sole retrieval gate.
+
+**Q2 approval drives three side effects:**
+1. Queue row deleted → `last_graduation_at` bumped on scope cursor (via DB trigger).
+2. Component `validation_status` set to `'validated'`.
+3. SplitResult memo-cache for this scope evicted on next hit (via `last_graduation_at` check).
 
 ---
 
@@ -1249,6 +1261,168 @@ The field shows live feedback:
 
 ---
 
+### 0.18 Validation Queue — Pre-Validation Lifecycle
+
+#### Two separate state machines
+
+The validation system has two distinct phases, each with its own authoritative state:
+
+```
+Component created / edited
+        │
+        ▼
+┌─────────────────────────────────────┐
+│     reborn_validation_queue         │   PRE-VALIDATION
+│                                     │   All components not yet manually approved
+│  state 1 — Q1 queue                 │   live here. Erased on manual approval.
+│  state 2 — Q1 passed (Gate 1 only) │
+│  state 3 — rejected (back to fix)  │
+│  state 4 — deletion candidate      │
+│  counter  — rejection count         │
+└─────────────────────────────────────┘
+        │
+        │  Manual approval (Q2) → row DELETED from queue
+        ▼
+┌─────────────────────────────────────┐
+│  validation_status on component     │   POST-VALIDATION
+│  table (existing, unchanged)        │   'validated' = active, trusted, in retrieval
+│                                     │   'upgrade_queued' = re-entering queue
+│  'validated' / 'upgrade_queued'     │   This system is untouched by this design.
+└─────────────────────────────────────┘
+```
+
+The two systems do not overlap. A component row is either in the queue (not yet
+manually approved) OR it has a `validation_status` that reflects its post-approval
+runtime identity. It cannot be in both states simultaneously.
+
+**Every component that is not yet manually validated must have a row in `reborn_validation_queue`.**  
+A component with no queue row and `validation_status != 'validated'` is an inconsistent state
+— detected and reported by an integrity check that runs at boot.
+
+---
+
+#### The queue states
+
+| State | Value | Meaning | Who can write it |
+|-------|-------|---------|-----------------|
+| Q1 queue | 1 | Submitted, awaiting Gate 1 (automatic) validation | Application layer |
+| Q1 passed | 2 | Gate 1 passed; awaiting Q2 manual review | **Gate 1 only** — never the application layer |
+| Rejected | 3 | Q2 reviewer rejected; author must revise and resubmit | Q2 reviewer action |
+| Deletion candidate | 4 | Too many rejections or manually condemned; awaiting cleanup | System (counter threshold) or Q2 reviewer |
+
+**State 2 is the security invariant.** No API endpoint, no application-layer code path,
+no direct SQL can set `state = 2`. Only the internal Gate 1 validator function transitions
+a row to state 2 after a clean Q1 result. This is enforced at the application layer
+(the only write path for state 2 is inside the validator) and documented as an
+inviolable rule — any code that sets `state = 2` outside the validator is a security bug.
+
+#### The rejection counter
+
+`counter` starts at 0 on row insert. It increments by 1 each time a component is rejected
+(state 2 → state 3, or state 3 → state 1 after author resubmits and is rejected again).
+It never resets. It is a permanent rejection history for this component version.
+
+When `counter` reaches a configurable threshold (default: 3), the queue system
+automatically promotes the row to state 4 (deletion candidate) without requiring a
+Q2 reviewer action. This prevents perpetually-stuck components from clogging the queue.
+
+#### Table shape
+
+```sql
+CREATE TABLE reborn_validation_queue (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- Scope — all reads and writes filter on the full tuple.
+    tenant_id       TEXT        NOT NULL,
+    user_id         TEXT        NOT NULL,
+    agent_id        TEXT        NOT NULL,
+    project_id      TEXT        NOT NULL,
+
+    -- The component this row tracks.
+    component_id    UUID        NOT NULL,
+    component_class SMALLINT    NOT NULL,   -- class_code; for WebUI filtering
+
+    -- Lifecycle state. 1=Q1_queue 2=Q1_passed 3=rejected 4=deletion_candidate.
+    -- State 2 may only be written by the Gate 1 validator.
+    state           SMALLINT    NOT NULL DEFAULT 1
+        CHECK (state IN (1, 2, 3, 4)),
+
+    -- Permanent rejection count. Never resets. Increments on each rejection.
+    counter         INT         NOT NULL DEFAULT 0,
+
+    -- Human-readable feedback from Q2 reviewer (populated on rejection).
+    review_feedback TEXT,
+
+    -- Q1 error messages (populated on Q1 fail, cleared on Q1 pass).
+    validation_errors TEXT[]    NOT NULL DEFAULT '{}',
+
+    -- Timestamps
+    submitted_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    -- One queue row per component at any time.
+    UNIQUE (tenant_id, user_id, agent_id, project_id, component_id)
+);
+
+CREATE INDEX reborn_validation_queue_scope_state_idx
+    ON reborn_validation_queue (tenant_id, user_id, agent_id, project_id, state);
+
+CREATE INDEX reborn_validation_queue_scope_class_idx
+    ON reborn_validation_queue (tenant_id, user_id, agent_id, project_id, component_class);
+
+-- Partial index: state 4 (deletion candidates) for cleanup job.
+CREATE INDEX reborn_validation_queue_deletion_idx
+    ON reborn_validation_queue (tenant_id, user_id, agent_id, project_id)
+    WHERE state = 4;
+```
+
+#### What moves to the queue table from component tables
+
+The following columns currently exist on every component table and describe
+**pre-validation** lifecycle — they belong in the queue and are removed
+from component tables (see Phase N):
+
+| Removed column | Moved to queue as | Notes |
+|----------------|-------------------|-------|
+| `queue_code TEXT` | `state SMALLINT` | Queue state replaces the text queue_code |
+| `review_attempts INT` | `counter INT` | Same concept, renamed and centralised |
+| `review_feedback TEXT` | `review_feedback TEXT` | Moved to queue |
+| `rejected_at TIMESTAMPTZ` | `updated_at TIMESTAMPTZ` on queue row | Queue row's `updated_at` serves this purpose |
+| `validation_errors TEXT[]` | `validation_errors TEXT[]` | Moved to queue; cleared on Q1 pass |
+
+**Columns that stay on component tables** (post-validation runtime identity):
+- `validation_status TEXT` — `'validated'` is the retrieval gate. All retrieval queries
+  (`WHERE validation_status = 'validated'`) continue to work unchanged.
+- All content columns, reward columns, lineage columns — unchanged.
+
+The net result: every component table loses 4–5 columns. The validation lifecycle
+is managed entirely by the queue while the component is pre-validated, and entirely
+by `validation_status` once it graduates.
+
+#### Cache invalidation via queue graduation
+
+When a component is manually approved (Q2 pass), its queue row is deleted. This
+deletion event is the authoritative cache invalidation signal.
+
+A companion column `last_graduation_at TIMESTAMPTZ` is added to the scope-level
+settings table (or a new lightweight `reborn_scope_cursors` table — one row per scope):
+
+```sql
+-- Added to existing reborn_monty_vm_settings or a new reborn_scope_cursors table:
+last_graduation_at TIMESTAMPTZ;
+-- Updated by a trigger on reborn_validation_queue DELETE.
+```
+
+The SplitResult cache (§0.7 memoisation) checks `last_graduation_at` on every hit.
+If it is newer than the cache entry's `cached_at`: discard all cache entries for this
+scope. One sub-millisecond PK read. No TTL required as primary mechanism — eviction
+is exact and event-driven.
+
+This resolves Open Question 2 completely: the cache eviction mechanism is queue
+graduation events, not polling `updated_at` or TTL expiry.
+
+---
+
 ## 1. Implementation Phases
 
 ### Phase A — StepDescription Schema + IBS Core
@@ -1316,7 +1490,10 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 
 - `crates/brassclaw_pg/migrations/V048__reborn_python_code.sql`  
   Same column shape as `V036__reborn_specs.sql`. `class_code = 22`.  
-  Default consumer tags: `{02:orchestrator, 05:validator}`.
+  Default consumer tags: `{02:orchestrator, 05:validator}`.  
+  **Do NOT include** `queue_code`, `review_attempts`, `review_feedback`, `rejected_at`,
+  or `validation_errors` columns — this table is created after Phase N is planned and
+  uses `reborn_validation_queue` from day one (see §0.18, Phase N.4).
 
 - `crates/brassclaw_reborn_composition/src/pg_python_code_store.rs` — new store
 
@@ -1348,8 +1525,10 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 - `crates/brassclaw_pg/migrations/V049__reborn_extension_catalogues.sql`  
   Columns: scope tuple + `name`, `description`, `version`, `overview_doc TEXT`,
   `task_groups JSONB`, `child_component_ids UUID[]`, `intent_index JSONB` (audit-only),
-  standard lifecycle columns (`validation_status`, `updated_at`, etc.),
-  `class_code SMALLINT DEFAULT 23`.
+  `validation_status TEXT` (post-validation gate only), `updated_at`, `created_at`,
+  `class_code SMALLINT DEFAULT 23`.  
+  **Do NOT include** `queue_code`, `review_attempts`, `review_feedback`, `rejected_at`,
+  or `validation_errors` columns — uses `reborn_validation_queue` from day one (§0.18, Phase N.4).
 
 - `crates/brassclaw_reborn_composition/src/pg_extension_catalogue_store.rs` — new store
 
@@ -2007,6 +2186,213 @@ In the intent expression input field:
 
 ---
 
+### Phase N — Validation Queue
+
+**Status:** [ ] Pending
+
+**Goal:** Introduce `reborn_validation_queue` as the single authoritative pre-validation
+lifecycle table. Move `queue_code`, `review_attempts`, `review_feedback`, `rejected_at`,
+and `validation_errors` off the 13 component tables and onto the queue. The component
+tables' `validation_status` column and all retrieval queries are unchanged.
+
+> **Pre-requisite awareness:** Phase N touches 13 component tables. Each column removal
+> is a two-step migration: (1) add the column to the queue table and populate it from
+> the existing component columns (data migration), (2) drop the now-redundant columns.
+> Both steps are in a single migration file (V055). The migration is additive-first,
+> destructive-second within one transaction to guarantee atomicity.
+
+#### N.1 New migration: V055
+
+**File:** `crates/brassclaw_pg/migrations/V055__reborn_validation_queue.sql`
+
+```sql
+-- Step 1: create the queue table (see §0.18 for full DDL)
+CREATE TABLE reborn_validation_queue ( ... );
+
+-- Step 2: populate from existing component table state
+-- For every component that is NOT yet 'validated':
+-- Map validation_status → state, review_attempts → counter, etc.
+INSERT INTO reborn_validation_queue
+    (tenant_id, user_id, agent_id, project_id,
+     component_id, component_class, state, counter,
+     review_feedback, validation_errors, submitted_at)
+SELECT
+    tenant_id, user_id, agent_id, project_id,
+    id,
+    1,  -- class_code
+    CASE validation_status
+        WHEN 'pending'           THEN 1
+        WHEN 'upgrade_queued'    THEN 1
+        WHEN 'auto_failed'       THEN 1
+        WHEN 'auto_passed'       THEN 2
+        WHEN 'review_requested'  THEN 2
+        WHEN 'rejected'          THEN 3
+        WHEN 'garbage'           THEN 4
+        ELSE 1
+    END,
+    COALESCE(review_attempts, 0),
+    review_feedback,
+    validation_errors,
+    created_at
+FROM reborn_skills
+WHERE validation_status != 'validated'
+-- Repeated for each of the 13 component tables with correct class_code values.
+ON CONFLICT DO NOTHING;
+
+-- Step 3: add last_graduation_at to scope cursor
+-- (Added to reborn_monty_vm_settings if it has a scope tuple,
+--  or to a new reborn_scope_cursors table — see note below)
+ALTER TABLE reborn_monty_vm_settings
+    ADD COLUMN IF NOT EXISTS last_graduation_at TIMESTAMPTZ;
+
+-- Step 4: trigger — bump last_graduation_at on queue row DELETE (= graduation)
+CREATE OR REPLACE FUNCTION reborn_validation_queue_graduation()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE reborn_monty_vm_settings
+       SET last_graduation_at = now()
+     WHERE tenant_id  = OLD.tenant_id
+       AND user_id    = OLD.user_id
+       AND agent_id   = OLD.agent_id
+       AND project_id = OLD.project_id;
+    RETURN OLD;
+END;
+$$;
+CREATE TRIGGER reborn_validation_queue_on_delete
+    AFTER DELETE ON reborn_validation_queue
+    FOR EACH ROW EXECUTE FUNCTION reborn_validation_queue_graduation();
+
+-- Step 5: drop redundant columns from component tables
+-- (After data has been migrated to the queue)
+ALTER TABLE reborn_skills
+    DROP COLUMN IF EXISTS queue_code,
+    DROP COLUMN IF EXISTS review_attempts,
+    DROP COLUMN IF EXISTS review_feedback,
+    DROP COLUMN IF EXISTS rejected_at,
+    DROP COLUMN IF EXISTS validation_errors;
+-- Repeated for all 13 component tables.
+-- validation_status is NOT dropped — it remains as the post-validation gate.
+```
+
+**Note on scope cursor:** If `reborn_monty_vm_settings` does not have a row for every
+scope (it may be sparsely populated), the trigger's UPDATE will silently do nothing for
+scopes without a settings row. In that case, use an `INSERT ... ON CONFLICT DO UPDATE`
+upsert, or create a dedicated `reborn_scope_cursors` table with one guaranteed row per
+scope. Resolve this during Phase N implementation by checking `reborn_monty_vm_settings`
+population guarantees.
+
+#### N.2 Application-layer write paths
+
+**File:** new `crates/brassclaw_reborn_composition/src/validation_queue.rs`
+
+```rust
+pub struct ValidationQueueStore { /* pool */ }
+
+impl ValidationQueueStore {
+    /// Submit a component to Q1 queue (state 1).
+    /// Called when a component is created or edited.
+    pub async fn submit(&self, scope, component_id, component_class) -> Result<()>;
+
+    /// Transition state 1 → state 2. ONLY called by Gate 1 validator on clean pass.
+    /// Returns Err if called from any other context (enforced by Rust visibility:
+    /// this method is pub(crate) and only reachable from component_validator.rs).
+    pub(crate) async fn gate1_pass(&self, scope, component_id, errors: &[]) -> Result<()>;
+
+    /// Record Q1 failure — stays in state 1, increments nothing (author must fix and resubmit).
+    pub(crate) async fn gate1_fail(&self, scope, component_id, errors: &[String]) -> Result<()>;
+
+    /// Q2 rejection: state 2 → state 3. Increments counter. Promotes to state 4 if counter >= threshold.
+    pub async fn reject(&self, scope, component_id, feedback: &str) -> Result<()>;
+
+    /// Q2 approval: delete queue row → graduation. Updates component's validation_status = 'validated'.
+    pub async fn approve(&self, scope, component_id) -> Result<()>;
+
+    /// List all queue rows for a scope (WebUI validation view).
+    pub async fn list(&self, scope, state_filter: Option<u8>) -> Result<Vec<QueueRow>>;
+
+    /// Deletion candidate cleanup: delete state-4 rows and their components.
+    pub async fn purge_deletion_candidates(&self, scope) -> Result<u64>;
+}
+```
+
+**Visibility invariant for `gate1_pass`:** `pub(crate)` — only callable from within
+`brassclaw_reborn_composition`. The Gate 1 validator lives in this crate. The API
+layer (webui_v2, ingress) cannot call `gate1_pass` directly — it can only call `submit`.
+This is the Rust-level enforcement of the state-2 write invariant.
+
+#### N.3 Cache integration
+
+The SplitResult memo-cache in `PostgresSource` gains a `last_graduation_at` check:
+
+```rust
+// On every cache hit, before returning the cached SplitResult:
+let cursor = sqlx::query_scalar!(
+    "SELECT last_graduation_at FROM reborn_monty_vm_settings
+     WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4",
+    scope.tenant_id, scope.user_id, scope.agent_id, scope.project_id
+).fetch_optional(pool).await?;
+
+if let Some(Some(graduated_at)) = cursor {
+    if graduated_at > cache_entry.cached_at {
+        cache.remove_scope(scope);
+        // Recompute — fall through to full fetch_for_turn
+    }
+}
+```
+
+One PK read per cache hit. Sub-millisecond. No TTL needed. Cache entries for a scope
+are evicted as a batch when any component in the scope graduates — conservative but
+correct. Fine-grained per-component eviction is a future optimisation.
+
+#### N.4 Component table cleanup
+
+Remove from all 13 component tables: `queue_code`, `review_attempts`, `review_feedback`,
+`rejected_at`, `validation_errors`.
+
+The 13 tables are: `reborn_skills`, `reborn_tools`, `reborn_tool_skills`,
+`reborn_recipes`, `reborn_actions`, `reborn_specs`, `reborn_plans`, `reborn_summaries`,
+`reborn_lessons`, `reborn_docus`, `reborn_issues`, `reborn_notes`,
+`reborn_extensions` (unified), plus the new Phase B/C tables `reborn_python_code` and
+`reborn_extension_catalogues` — which should be designed without these columns from
+the start (they are new tables authored after this design is decided).
+
+**`reborn_python_code` and `reborn_extension_catalogues` (Phases B and C):** These
+tables are created after Phase N is planned. They must NOT include `queue_code`,
+`review_attempts`, `review_feedback`, `rejected_at`, or `validation_errors` columns —
+they rely on `reborn_validation_queue` from day one.
+
+#### N.5 Integrity check at boot
+
+A boot-time check (in `brassclaw_reborn_composition` init sequence):
+
+```sql
+-- Components not in 'validated' state that have no queue row are inconsistent.
+SELECT component_id, 'skills' AS source FROM reborn_skills
+WHERE validation_status != 'validated'
+  AND id NOT IN (SELECT component_id FROM reborn_validation_queue
+                 WHERE tenant_id = $1 AND ...)
+-- UNION ALL for each table
+```
+
+Inconsistent rows are logged as warnings and automatically submitted to state 1 as
+a recovery action. This covers edge cases from the V055 data migration.
+
+#### Tests
+
+- Unit: `gate1_pass` is `pub(crate)` — not callable from outside the crate (compile-time)
+- Unit: submit → `state = 1`
+- Unit: `gate1_pass` → `state = 2`; `gate1_fail` → `state = 1`, errors populated
+- Unit: `reject` → `state = 3`, counter incremented
+- Unit: `reject` when `counter >= threshold` → `state = 4` (auto-promotion)
+- Unit: `approve` → queue row deleted; component `validation_status = 'validated'`
+- Integration: component approval → `last_graduation_at` bumped on scope cursor
+- Integration: cache hit after graduation → cache entry discarded, SplitResult recomputed
+- Integration: cache hit with no graduation → cached result returned, no recompute
+- Integration: boot integrity check → components with missing queue rows auto-submitted
+- Integration: `list(state_filter: Some(2))` → returns only Q1-passed components awaiting Q2
+
+---
+
 ## 2. Migration Sequence
 
 | Migration | Contents | Status |
@@ -2019,8 +2405,9 @@ In the intent expression input field:
 | `V052__reborn_basic_prompt_store.sql` | New table: one row per scope, `bundle_json JSONB`, `is_stale BOOL`, `fingerprint TEXT` | |
 | `V053__reborn_tools_capability_id_and_system_source.sql` | `ADD COLUMN capability_id TEXT` to `reborn_tools` + `source = 'system'` allowed on tools/tool_skills/skills | |
 | `V054__reborn_intent_inputs_template.sql` | `ADD COLUMN is_template BOOL`, `template_prefix TEXT`, `template_suffix TEXT` to `reborn_intent_inputs`; two new partial indexes for prefix/suffix-anchored template matching (see §0.17.2) | |
+| `V055__reborn_validation_queue.sql` | New table `reborn_validation_queue` (§0.18); populate from existing component table state; add `last_graduation_at` to scope cursor; graduation trigger; drop `queue_code`/`review_attempts`/`review_feedback`/`rejected_at`/`validation_errors` from all 13 component tables | |
 
-All additive. No DROP, no renames. No existing rows break.
+All additive-first. No DROP, no renames. No existing rows break.
 
 **`step_link` is nullable** — existing intent rows without it use the existing
 `fetch_component_by_id` path unchanged. Zero breakage on upgrade.
@@ -2039,7 +2426,7 @@ avoiding the DB round-trip entirely.
 | # | Question | Recommendation |
 |---|----------|----------------|
 | 1 | Variable extraction: named capture groups vs. post-match LLM extraction? | **Resolved — see §0.17.** Intent expressions use `%` slot markers for matching (Phase M). Slot values are auto-extracted from template segments (positional names `slot0`, `slot1`, …). `variable_patterns` is optional post-extraction refinement for semantic naming and validation. LLM extraction remains a future opt-in via `llm_var_extraction_prompt` on `RecipeVariant` (out of scope). |
-| 2 | BuildInstruction memoisation: per-process or always recompute? | Per-process. Key: `sha256(step_link + "\|" + sorted_include_uuids.join(","))`. Evict on any referenced component's `updated_at` change, Recipe `updated_at` change, or `step_formatter_id` component `updated_at` change. IBS is pure-Rust; memoisation avoids repeated UUID DB fetches for hot intents. |
+| 2 | BuildInstruction memoisation: per-process or always recompute? | **Resolved — see §0.18 + Phase N.** Per-process SplitResult cache keyed on `sha256(step_link + "\|" + sorted_include_uuids.join(","))` per scope. Eviction is event-driven via `last_graduation_at` on the scope cursor (bumped by DB trigger when a component graduates from `reborn_validation_queue`). One sub-millisecond PK read per cache hit. No TTL required as primary mechanism. |
 | 3 | `required_skills` inclusion: always include vs. score against current query? | Always include; cap at 10. |
 | 4 | `step_formatter_id` scope: per-recipe, per-variant, or per-step? | Per-recipe. Formatting style is consistent across a capability domain. |
 | 5 | StepDescription storage format: YAML files in git vs. JSONB in `reborn_recipes`? | JSONB column (simpler, no file management). YAML-formatted text preserved inside the JSONB for human readability and WebUI rendering. |
