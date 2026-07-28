@@ -105,7 +105,7 @@ Intent match (runtime):
        e. fetch_component_by_id for each UUID in orchestrator_steps → orchestrator_items
        f. Return FetchForTurnResult::SplitResult { rust_items, orchestrator_items, routing }
   3. RecipeStage: rust_items applied to Rust execution context (silently, not via orchestrator)
-  4. Orchestrator reads orchestrator_items + step annotations via __retrieve_docs__
+  4. Orchestrator reads orchestrator_items (Skill + PythonCode bodies) via __retrieve_docs__
   5. Rust layer executes using its pre-loaded context
 ```
 
@@ -170,8 +170,10 @@ Applied silently to the Rust execution context by `RecipeStage`. Never forwarded
 
 **Channel O — Orchestrator (`orchestrator_steps[]`)**  
 Steps with `knowledge: "orchestrator"` or `"both"`.  
-Contains: Skill UUIDs, PythonCode UUIDs, `type: "text"` annotations (the `info` field text
-IS the orchestrator instruction — not merely documentation), and control-flow hints.  
+Contains: Skill UUIDs and PythonCode UUIDs. PythonCode component bodies ARE the
+orchestrator instructions — authored with the correct content and formatting.
+`type: "text"` steps are authoring annotations only (WebUI documentation); they have
+no runtime emission.
 Serialized into `orchestrator_content` by `handle_retrieve_docs` in `orchestrator.rs`.
 
 #### 0.4.1 ToolBinding + ErrorPolicy
@@ -213,14 +215,14 @@ BuildInstruction
     └── RecipeStep { step_id, knowledge: Orchestrator/Both,
                      step_type: Text | Component,
                      include: Vec<Uuid>,          ← Skill / PythonCode UUIDs
-                     info: Option<String>,        ← IS the instruction text for type:text
-                     step_formatter_id: Option<Uuid> }  ← optional per-recipe prose formatter
+                     info: Option<String> }       ← WebUI annotation only; NOT emitted to orchestrator
 ```
 
 **Invariant:** Channels must not overlap.  
 A ToolSkill UUID must never appear in `orchestrator_steps`.  
 A Skill UUID must never appear in `rust_steps`.  
-An orchestrator step never references a ToolSkill. A rust step never references a Skill.
+An orchestrator step never references a ToolSkill. A rust step never references a Skill.  
+Orchestrator instructions live in PythonCode component bodies — not in `type: "text"` step `info` fields.
 
 #### Complete example — Recipe `local-files-reading`, variant `ls-la`
 
@@ -263,7 +265,7 @@ orchestrator_steps:
     knowledge: Orchestrator
     step_type: Component
     include: ["<uuid:pythoncode-ls>"]
-    step_formatter_id: "<uuid:terse-cli-formatter>"   ← optional; omit for raw step text
+    # The PythonCode component body is the formatted instruction — no separate formatter needed.
 ```
 
 ---
@@ -297,7 +299,7 @@ readability and WebUI rendering.
 
 | Field | Type | Meaning |
 |-------|------|---------|
-| `info` | text | **For `type: "text"` steps: this IS the orchestrator instruction text** — not merely documentation. The IBS emits it verbatim into `orchestrator_steps[].info` and `handle_retrieve_docs` includes it in `orchestrator_content`. |
+| `info` | text | Human-readable documentation about what this step does. Visible in the WebUI component page to help the author understand the step's purpose. **Not emitted to the orchestrator at runtime.** Orchestrator instructions live in PythonCode component bodies (`type: "component"` steps referencing class 22). |
 | `include` | UUID[] | Component UUIDs needed at this step. IBS emits a fetch for each UUID. |
 | `codesnippet` | text | Inline Python code. On WebUI save: creates a PythonCode component (class 22), enters Q1 queue. Step greyed out until Q1+Q2 pass; promoted to `type: "component"` with the new UUID on Q2 pass. |
 | `dependencies` | string | Traversal expression into this step's component's `dependency_registry` (see §0.19). E.g. `"1[all], 5[2,6], 17[3, 7[1,4]]"`. Resolved at fetch time by `fetch_for_turn`. Absent or empty string = no dependencies. |
@@ -306,13 +308,14 @@ readability and WebUI rendering.
 
 | Type | IBS behaviour |
 |------|--------------|
-| `text` | Emits an annotation step. No component fetch. The `info` field text IS the instruction for the orchestrator. Routed to orchestrator channel (or both) per `knowledge`. |
+| `text` | Authoring annotation only. No component fetch. No runtime emission — `type: "text"` steps produce nothing in `orchestrator_content`. They exist solely for WebUI readability: documenting what a step does, why it is here, what the author should know. |
 | `component` | Emits a fetch for each UUID in `include`. Routes item to rust or orchestrator channel based on `knowledge`. |
 | `snippet` | WebUI-only authoring shortcut. **IBS refuses to assemble** a BuildInstruction while any step has this type — it returns `IbsError::UnpromotedSnippet`. The step must be promoted to `type: "component"` after the created PythonCode passes Q1+Q2. |
 
-> **`info` field and the IBS:** The IBS does NOT silently ignore `info` text on `type: "text"`
-> steps. It is the primary instruction mechanism for context steps that carry no component UUID.
-> An orchestrator step with `type: "text"` and no `info` is a Q1 validation error.
+> **`type: "text"` steps and the IBS:** The IBS produces no output for `type: "text"` steps.
+> They are pure WebUI annotations. Orchestrator instructions are delivered exclusively via
+> `type: "component"` steps referencing PythonCode components (class 22). A `type: "text"`
+> step with no `info` is a Q1 **warning** (undocumented step), not an error.
 
 #### Multi-StepDescription pattern (variants)
 
@@ -470,7 +473,7 @@ fn build_instruction(
      Select steps[start..=end] from step_descriptions[desc_idx]
      Append to ordered step list
 3. For each step in the ordered list:
-     type == "text"      → emit annotation step; route by knowledge; info IS the instruction
+     type == "text"      → no runtime emission; step is WebUI annotation only; skip
      type == "component" → emit component fetch step; route by knowledge; emit UUIDs from include
      type == "snippet"   → return Err(IbsError::UnpromotedSnippet)
 4. Validate:
@@ -514,17 +517,12 @@ Step 4 [orchestrator — python_code]:
   Final step: use the skill to call Rust, format output for chat window.
 ```
 
-If `step_formatter_id` is set on any orchestrator_step, the referenced PythonCode body
-is also loaded and used to reformat the step block into LLM-optimal prose. The
-`step_formatter_id` is per-Recipe (consistent formatting style across a capability domain).
-
 #### Memoisation
 
 - **Key:** `sha256(step_link + "|" + sorted_include_uuids.join(","))`
 - **Eviction triggers (all must be monitored):**
-  1. Any `include`d component's `updated_at` changes
+  1. Any `include`d component's `updated_at` changes (via `last_graduation_at` scope cursor — §0.18)
   2. The Recipe's own `updated_at` changes (StepDescription edited in WebUI)
-  3. The `step_formatter_id` PythonCode component's `updated_at` changes
 - **Cache miss:** safe at high concurrency — compilation is pure computation (no HTTP, no DB).
   Concurrent misses compile redundantly; last writer wins the cache slot (idempotent).
 
@@ -882,7 +880,7 @@ state 3, `counter` incremented, `review_feedback` populated.
 **Q2 approval drives three side effects:**
 1. Queue row deleted → `last_graduation_at` bumped on scope cursor (via DB trigger).
 2. Component `validation_status` set to `'validated'`.
-3. SplitResult memo-cache for this scope evicted on next hit (via `last_graduation_at` check).
+3. SplitResult memo-cache for this scope evicted on next cache hit (via `last_graduation_at` check — §0.18).
 
 ---
 
@@ -1843,7 +1841,7 @@ and handle all four `FetchForTurnResult` variants. Register `__fetch_component__
   Replace the legacy `RetrievalEngine::retrieve_context` call with
   `retrieval_source.fetch_for_turn()`. Handle all four variants:
   - `SplitResult`: apply `rust_items` to Rust execution context silently;
-    format `orchestrator_items` + `type:text` step `info` text into `orchestrator_content`;
+    format `orchestrator_items` into `orchestrator_content`;
     return routing dict (see §0.9 shape).
   - `Components`: all items → `orchestrator_content` (no-match path, unchanged shape).
   - `ActionShortCircuit`: return `{ action_short_circuit: true, action_component_id, action_name }`.
@@ -1858,7 +1856,7 @@ and handle all four `FetchForTurnResult` variants. Register `__fetch_component__
 
 #### Tests
 
-- Unit: `SplitResult` → `orchestrator_content` contains Skills/PythonCode bodies and `type:text` info text; does NOT contain any ToolSkill bodies
+- Unit: `SplitResult` → `orchestrator_content` contains Skill bodies and PythonCode bodies; does NOT contain ToolSkill bodies; does NOT contain `type:text` step info text
 - Unit: `ActionShortCircuit` → `action_short_circuit: true`, empty `orchestrator_content`
 - Unit: `Components` (no-match) → `orchestrator_content` contains all items (baseline preserved)
 - Unit: `Disambiguation` → `disambiguation: true` with candidates list
@@ -2680,7 +2678,7 @@ avoiding the DB round-trip entirely.
 | 1 | Variable extraction: named capture groups vs. post-match LLM extraction? | **Resolved — see §0.17.** Intent expressions use `%` slot markers for matching (Phase M). Slot values are auto-extracted from template segments (positional names `slot0`, `slot1`, …). `variable_patterns` is optional post-extraction refinement for semantic naming and validation. LLM extraction remains a future opt-in via `llm_var_extraction_prompt` on `RecipeVariant` (out of scope). |
 | 2 | BuildInstruction memoisation: per-process or always recompute? | **Resolved — see §0.18 + Phase N.** Per-process SplitResult cache keyed on `sha256(step_link + "\|" + sorted_include_uuids.join(","))` per scope. Eviction is event-driven via `last_graduation_at` on the scope cursor (bumped by DB trigger when a component graduates from `reborn_validation_queue`). One sub-millisecond PK read per cache hit. No TTL required as primary mechanism. |
 | 3 | `required_skills` inclusion: always include vs. score against current query? | **Resolved — see §0.19.** `required_skills` does not exist. Dependencies are declared per-component in `dependency_registry` JSONB and referenced from StepDescription steps via typed traversal expressions (`1[all], 5[2,6], 17[3, 7[1,4]]`). Always resolved fully per the traversal expression — no scoring, no cap. KV-cache prefix absorbs token cost in steady state. |
-| 4 | `step_formatter_id` scope: per-recipe, per-variant, or per-step? | Per-recipe. Formatting style is consistent across a capability domain. |
+| 4 | `step_formatter_id` scope: per-recipe, per-variant, or per-step? | **Resolved — not needed.** `step_formatter_id` does not exist. Formatting is achieved by authoring PythonCode component bodies with the correct content and prose style. `type: "text"` steps are WebUI annotations only with no runtime emission. All three intent-match cases (Recipe match, near-miss, full fallback) have their formatting handled by PythonCode bodies, prepared prompt templates, and the KV-cache prefix respectively. |
 | 5 | StepDescription storage format: YAML files in git vs. JSONB in `reborn_recipes`? | JSONB column (simpler, no file management). YAML-formatted text preserved inside the JSONB for human readability and WebUI rendering. |
 | 6 | Legacy DocPlan → v3 translation? | See §3.1. |
 | 7 | `__assemble_prior_knowledge__` removal timing? | Keep registered for one release cycle after Phase K ships. Document as deprecated in Phase K. Remove in the following cycle. |
@@ -2700,7 +2698,7 @@ migrates these to class-specific tables. The gap: no v2 docs have StepDescriptio
 
 1. **Skills (class 1–3):** Extract imperative sentence candidates from skill `body` as
    seed intent examples. Generate StepDescription0:
-   - Step 1: `knowledge: orchestrator`, `type: text`, `info`: summarised body
+   - Step 1: `knowledge: orchestrator`, `type: text`, `info`: summary of what this skill does (WebUI annotation)
    - Step 2: `knowledge: orchestrator`, `type: component`, `include`: [skill UUID]
    Default `step_link: "0:0-0:E"`. Route to Q1.
 
@@ -2740,7 +2738,7 @@ can be triggered by deleting system-sourced rows (operator action only).
 - Automatic Sempai-driven prompt rewrites
 - LLM-based variable extraction fallback (Phase A uses regex only)
 - Tier 0 production activation (requires Phases A–H complete + Wilson scoring validated in production for ≥2 weeks)
-- `FormatOrchestratorPrompt` as a distinct step type (handled via `step_formatter_id` in the IBS)
+- `FormatOrchestratorPrompt` as a distinct step type (not needed — formatting handled by PythonCode component bodies)
 
 ---
 
