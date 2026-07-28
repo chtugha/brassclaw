@@ -281,6 +281,38 @@ create_systemd_service() {
 
     chown -R "$service_user:$service_user" "$reborn_home"
 
+    # Build pgvector from source if not already present and gcc/make are available.
+    # pgvector is required by the V0__shared_triggers migration (CREATE EXTENSION vector).
+    local vector_so="$pg_bin_dst/lib/vector.so"
+    local vector_ctl="$pg_bin_dst/share/extension/vector.control"
+    if [[ ! -f "$vector_so" ]] || [[ ! -f "$vector_ctl" ]]; then
+        if command -v gcc &>/dev/null && command -v make &>/dev/null; then
+            log_step "Building pgvector extension for embedded PostgreSQL..."
+            local tmp_vec
+            tmp_vec=$(mktemp -d)
+            # shellcheck disable=SC2064
+            trap "rm -rf $tmp_vec" EXIT
+            local pgvector_ver="0.8.0"
+            local pgvector_url="https://github.com/pgvector/pgvector/archive/refs/tags/v${pgvector_ver}.tar.gz"
+            if curl -fsSL -o "$tmp_vec/pgvector.tar.gz" "$pgvector_url"; then
+                tar -xzf "$tmp_vec/pgvector.tar.gz" -C "$tmp_vec" --strip-components=1
+                # Build against the embedded PG headers; PG_CONFIG must point to pg_config
+                make -C "$tmp_vec" PG_CONFIG="$pg_bin_dst/bin/pg_config" 2>&1 | tail -5
+                make -C "$tmp_vec" PG_CONFIG="$pg_bin_dst/bin/pg_config" install 2>&1 | tail -3
+                chown -R "$service_user:$service_user" "$pg_bin_dst/lib" "$pg_bin_dst/share/extension" 2>/dev/null || true
+                log_info "pgvector ${pgvector_ver} installed"
+            else
+                log_warn "Could not download pgvector — CREATE EXTENSION vector will fail."
+            fi
+            trap - EXIT
+            rm -rf "$tmp_vec"
+        else
+            log_warn "gcc/make not found — skipping pgvector build. CREATE EXTENSION vector will fail."
+        fi
+    else
+        log_info "pgvector already present at $pg_bin_dst"
+    fi
+
     log_step "Writing $SYSTEMD_DIR/$SERVICE_NAME.service"
     cat > "$existing_service" <<EOF
 [Unit]
