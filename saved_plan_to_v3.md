@@ -690,43 +690,6 @@ CREATE TABLE reborn_pending_rust_context (
 1. `RecipeStage` inserts row after `fetch_by_instruction` completes.
 2. Rust reads row before first tool dispatch.
 3. Row deleted after turn completes (or 1-hour TTL).
-
----
-
-### 0.18 v2 DocPlan Translation Layer
-
-**Goal:** Expand legacy `MemoryDoc` rows (type `Skill`, `Recipe`, `ToolSkill`) into the
-full v3 component graph. The existing `component_import.rs` already handles
-`Spec`, `Plan`, `Summary`, `Lesson`, `Issue`, `Note` (classes 12–20).
-
-#### Translation rules
-
-**Skill MemoryDoc → 5 components:**
-1. Tool (class 0) — from `param_template.tool_name`
-2. ToolSkill (class 13) — param_schema from metadata
-3. Skill (class 1) — body from `content`
-4. Recipe (class 21) — skeleton, empty `variants[]`, pending
-5. ExtensionCatalogue (class 23) — groups all above, pending
-
-**ToolSkill MemoryDoc → 1 component:**
-- ToolSkill (class 13) — direct migration
-
-**Recipe MemoryDoc → 1 component + seed StepDescription0:**
-- Recipe (class 21) — `trigger` + `steps` preserved as v2 fallback
-- StepDescription0 seeded from v2 `RecipeStep[]`
-
-**All translated components start at `pending` → Q1 → Q2 → `validated`.**  
-**Original MemoryDocs are marked `archived_at = now()`, never hard-deleted (V055).**
-
-#### CLI command (Phase J)
-
-```bash
-brassclaw translate-v2-docs --dry-run    # preview
-brassclaw translate-v2-docs --execute    # insert + queue for Q1
-```
-
----
-
 ## 1. Implementation Phases
 
 ### Phase A — PythonCode Component (class 22)
@@ -1011,22 +974,6 @@ MCP tool → Tool + ToolSkill + Skill + Recipe + ExtensionCatalogue, all `pendin
 `get_for_scope`, `store`, `mark_stale`, `delete`.  
 Wire into Interceptor to append stored bundle before LLM shipment.  
 On component `validated` transition: call `mark_stale(scope)`.
-
----
-
-### Phase J — v2 DocPlan Translation
-
-**Status:** [ ] Pending
-
-**New file:** `crates/brassclaw_reborn_composition/src/docplan_translator.rs`  
-**CLI:** `brassclaw translate-v2-docs --dry-run | --execute`
-
-**Skill MemoryDoc → Tool + ToolSkill + Skill + Recipe + ExtensionCatalogue (all `pending`).**  
-**Recipe MemoryDoc → Recipe with v2 `trigger+steps` + seed StepDescription0.**  
-**Original MemoryDocs → `archived_at = now()` (V055, not deleted).**
-
----
-
 ## 2. Migration Sequence
 
 | Migration | Contents | Status |
@@ -1039,7 +986,6 @@ On component `validated` transition: call `mark_stale(scope)`.
 | `V052__reborn_intent_inputs_link_formula.sql` | `ADD COLUMN link_formula TEXT` to `reborn_intent_inputs` | |
 | `V053__reborn_pending_rust_context.sql` | Transient per-turn Rust prior-knowledge table | |
 | `V054__reborn_recipes_step_descriptions.sql` | `ADD COLUMN step_descriptions JSONB` to `reborn_recipes` | |
-| `V055__brassclaw_memory_docs_archived_at.sql` | `ADD COLUMN archived_at TIMESTAMPTZ` to `brassclaw_memory_docs` | |
 
 All additive. No DROP, no renames. No existing rows break.
 
@@ -1068,8 +1014,6 @@ All additive. No DROP, no renames. No existing rows break.
 7. **PKC split:** New `__retrieve_memories__` host function vs. three-surface PKC in same response?  
    → **Recommendation:** Three-surface PKC (§0.17); no new host function.
 
-8. **v2 MemoryDoc preservation:** Delete after translation or archive?  
-   → **Recommendation:** Archive (V055 `archived_at`).
 
 ---
 
