@@ -26,6 +26,18 @@ for arg in "$@"; do
     esac
 done
 
+# When stdin is not a terminal (e.g. curl | bash), open /dev/tty for prompts.
+# If /dev/tty is also unavailable (no controlling terminal at all) we fall back
+# to auto-yes so the script does not silently cancel instead of running.
+if [[ -t 0 ]]; then
+    TTY_IN=/dev/stdin
+elif [[ -e /dev/tty ]]; then
+    TTY_IN=/dev/tty
+else
+    TTY_IN=""          # no terminal — force non-interactive yes
+    YES=true
+fi
+
 # The canonical installed binary name (same as install.sh uses)
 BINARY_NAME="brassclaw-reborn"
 # Legacy binary name from installs prior to the brassclaw-reborn rename
@@ -74,7 +86,11 @@ if [[ "$YES" == "true" ]]; then
         echo "Proceeding non-interactively (-y: config/data preserved)"
     fi
 else
-    read -rp "Continue? [y/N] " reply
+    if [[ -z "$TTY_IN" ]]; then
+        reply="y"
+    else
+        read -rp "Continue? [y/N] " reply <"$TTY_IN"
+    fi
     if [[ ! "$reply" =~ ^[Yy]$ ]]; then
         log_info "Cancelled."
         exit 0
@@ -129,7 +145,7 @@ if [[ -d "$CONFIG_DIR" ]]; then
         if [[ "$YES" == "true" ]]; then
             log_info "Config preserved at: $CONFIG_DIR (use --wipe to remove)"
         else
-            read -rp "Remove reborn config dir? [y/N] " reply
+            read -rp "Remove reborn config dir? [y/N] " reply <"${TTY_IN:-/dev/tty}"
             if [[ "$reply" =~ ^[Yy]$ ]]; then
                 log_step "Removing reborn config directory..."
                 rm -rf "$CONFIG_DIR"
@@ -153,7 +169,7 @@ if [[ -d "$DATA_DIR" ]]; then
         if [[ "$YES" == "true" ]]; then
             log_info "Data preserved at: $DATA_DIR (use --wipe to remove)"
         else
-            read -rp "Remove entire $DATA_DIR too? [y/N] " reply
+            read -rp "Remove entire $DATA_DIR too? [y/N] " reply <"${TTY_IN:-/dev/tty}"
             if [[ "$reply" =~ ^[Yy]$ ]]; then
                 log_step "Removing $DATA_DIR..."
                 rm -rf "$DATA_DIR"

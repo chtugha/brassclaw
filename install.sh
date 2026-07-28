@@ -164,6 +164,9 @@ download_binary() {
 
 # ── config dir ────────────────────────────────────────────────────────────────
 create_config_dir() {
+    # In system mode the config dir is created (with correct ownership) inside
+    # create_systemd_service once we know the service user; skip here.
+    [[ $INSTALL_MODE == "system" ]] && return 0
     if [[ ! -d "$CONFIG_DIR" ]]; then
         log_step "Creating config directory: $CONFIG_DIR"
         mkdir -p "$CONFIG_DIR"
@@ -177,9 +180,24 @@ create_systemd_service() {
     [[ $INSTALL_MODE != "system" ]] && return 0
     command -v systemctl &>/dev/null || { log_warn "systemctl not found — skipping service install."; return 0; }
 
-    local service_user="${SUDO_USER:-root}"
+    # Prefer the real user who called sudo. Fall back to a dedicated system
+    # account because initdb (embedded Postgres) refuses to run as root.
+    local service_user="${SUDO_USER:-}"
+    if [[ -z "$service_user" || "$service_user" == "root" ]]; then
+        service_user="brassclaw"
+        if ! id "$service_user" &>/dev/null; then
+            log_step "Creating system user '$service_user'..."
+            useradd --system --no-create-home --shell /usr/sbin/nologin "$service_user"
+        fi
+    fi
     local home_dir
     home_dir=$(eval echo "~$service_user")
+    # If the home doesn't exist (system user with --no-create-home), use /var/lib/brassclaw
+    if [[ ! -d "$home_dir" ]] || [[ "$home_dir" == "~$service_user" ]]; then
+        home_dir="/var/lib/brassclaw"
+        mkdir -p "$home_dir"
+        chown "$service_user:$service_user" "$home_dir"
+    fi
     local reborn_home="${home_dir}/.brassclaw/reborn"
     local existing_service="$SYSTEMD_DIR/$SERVICE_NAME.service"
 
@@ -207,6 +225,14 @@ create_systemd_service() {
         sleep 1
     fi
 
+    # Create the reborn config/data dir with correct ownership before writing
+    # the service file (the service won't start if the dir doesn't exist).
+    if [[ ! -d "$reborn_home" ]]; then
+        log_step "Creating config directory: $reborn_home"
+        mkdir -p "$reborn_home"
+    fi
+    chown -R "$service_user:$service_user" "$reborn_home"
+
     log_step "Writing $SYSTEMD_DIR/$SERVICE_NAME.service"
     cat > "$existing_service" <<EOF
 [Unit]
@@ -220,7 +246,7 @@ Type=simple
 User=$service_user
 WorkingDirectory=$reborn_home
 Environment=BRASSCLAW_REBORN_HOME=$reborn_home
-Environment=BRASSCLAW_REBORN_PROFILE=local-dev
+Environment=BRASSCLAW_RUNTIME_PROFILE=local_dev
 Environment=BRASSCLAW_REBORN_WEBUI_TOKEN=$webui_token
 Environment=BRASSCLAW_REBORN_WEBUI_USER_ID=$webui_user_id
 ExecStart=$INSTALL_DIR/$BINARY_NAME serve --host 0.0.0.0 --port 3000
@@ -231,7 +257,7 @@ StandardError=journal
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=$reborn_home /tmp
+ReadWritePaths=$reborn_home $home_dir /tmp
 
 [Install]
 WantedBy=multi-user.target
