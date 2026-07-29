@@ -688,13 +688,16 @@ async fn start_postgres_and_upgrade_input(
         .unwrap_or_else(|| "reborn-cli".to_string());
 
     let reborn_home = boot_config.home().path().to_path_buf();
+    let runtime_policy = brassclaw_reborn_composition::local_dev_runtime_policy()
+        .map_err(|e| anyhow!("failed to resolve local-dev runtime policy: {e}"))?;
     let pg_input = RebornBuildInput::postgres_with_reborn_home(
         RebornCompositionProfile::LocalDev,
         owner_id,
         pool,
         SecretMaterial::from(pg_url),
         reborn_home,
-    );
+    )
+    .with_runtime_policy(runtime_policy);
 
     // Replace the local-dev build input with the Postgres-backed one while
     // preserving every other runtime-level setting on `input`.

@@ -30,7 +30,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(disabled)'] }
 
 [package]
 name = "brassclaw"
-version = "0.59.0"
+version = "0.60.0"
 edition = "2024"
 rust-version = "1.92"
 description = "Secure personal AI assistant that protects your data and expands its capabilities on the fly"
@@ -143,7 +143,7 @@ brassclaw_runtime_policy = { path = "crates/brassclaw_runtime_policy", version =
 brassclaw_turns = { path = "crates/brassclaw_turns", version = "0.1.0" }
 
 # V2 Reborn CLI
-brassclaw_reborn_cli = { path = "crates/brassclaw_reborn_cli", version = "0.59.0" }
+brassclaw_reborn_cli = { path = "crates/brassclaw_reborn_cli", version = "0.60.0" }
 
 # Safety/sanitization
 brassclaw_engine = { path = "crates/brassclaw_engine", version = "0.1.0" }
