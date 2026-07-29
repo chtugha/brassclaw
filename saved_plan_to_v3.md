@@ -95,18 +95,28 @@ Author:
   2. Each intent expression gets a step_link pointing into StepDescriptions.
 
 Intent match (runtime):
-  1. resolve_intent(user_text) → Match { recipe_id, class_code:21, step_link }
-  2. fetch_for_turn:
-       a. Fetch step_descriptions JSONB from recipe row
-       b. IBS: build_instruction(step_link, step_descriptions, variable_patterns)
+  1. RecipeStage (agent_loop) calls fetch_for_turn(scope, user_text, budget, "02"):
+       a. resolve_intent(user_text) → Match { recipe_id, class_code:21, step_link }
+       b. Fetch step_descriptions JSONB + variable_patterns + wilson_lower + tier
+       c. IBS: build_instruction(step_link, step_descriptions, variable_patterns)
               → BuildInstruction { rust_steps[], orchestrator_steps[] }
-       c. Apply {{vars.name}} substitution
-       d. fetch_component_by_id for each UUID in rust_steps → rust_items
-       e. fetch_component_by_id for each UUID in orchestrator_steps → orchestrator_items
-       f. Return FetchForTurnResult::SplitResult { rust_items, orchestrator_items, routing }
-  3. RecipeStage: rust_items applied to Rust execution context (silently, not via orchestrator)
-  4. Orchestrator reads orchestrator_items (Skill + PythonCode bodies) via __assemble_prior_knowledge__
-  5. Rust layer executes using its pre-loaded context
+       d. Apply {{vars.name}} substitution
+       e. fetch_component_by_id for each UUID in rust_steps → rust_items
+       f. fetch_component_by_id for each UUID in orchestrator_steps → orchestrator_items
+       g. Return FetchForTurnResult::SplitResult { rust_items, orchestrator_items, routing }
+
+  ── Tier 0 (routing.tier0_eligible = true, llm_call_required = false): ────
+  2. RecipeStage applies rust_items to Rust execution context (silently).
+     PromptStage and ModelStage are SKIPPED.
+     Python scripting engine is called with pre-loaded orchestrator_items.
+
+  ── Tier 1 (routing.tier0_eligible = false OR llm_call_required = true): ──
+  2. RecipeStage stores rust_items → state.recipe_rust_context.
+     RecipeStage stores orchestrator_items → state.recipe_hint.
+  3. Executor applies rust_items before Python script starts.
+  4. Python step 0 calls __assemble_prior_knowledge__: handler returns the
+     pre-stashed orchestrator_items as orchestrator_content (no second fetch).
+  5. LLM is called; guided by the orchestrator_content recipe hint.
 ```
 
 #### Mandatory shape
@@ -1739,7 +1749,9 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 
 - `crates/brassclaw_engine/src/memory/instruction_builder.rs`  
   New types: `StepDescriptionEntry`, `StepRange`, `StepOwner`, `RecipeStepType`,
-  `RecipeStep`, `VariablePattern`, `BuildInstruction`, `IbsError`,
+  `IbsRecipeStep` (renamed from `RecipeStep` to avoid collision with the existing
+  v2 `RecipeStep { skill, tool, params, description }` in `types/recipe.rs`),
+  `VariablePattern`, `BuildInstruction`, `IbsError`,
   `DependencyExpr`, `DependencyNode` (the parsed traversal tree — see §0.19),
   `StepContextSpec` (derived content type for orchestrator formatting — see §0.5).
 
@@ -1786,7 +1798,7 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 
 - `crates/brassclaw_engine/src/types/recipe.rs` — add `BuildInstruction` two-channel shape;
   full `RecipeStepType` enum; `StepOwner`; `ToolBinding`; `ErrorPolicy`.  
-  Add to `Recipe` struct:
+  Add to `Recipe` struct (all `#[serde(default)]` so existing rows deserialise unchanged):
   ```rust
   #[serde(default)] pub variants: Vec<RecipeVariant>,
   #[serde(default)] pub step_descriptions: serde_json::Value,
@@ -1795,6 +1807,13 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   Note: `dependency_registry` is also added to `ToolSkill`, `Skill`, `PythonCode`,
   and all other component types that participate in dependency traversal. Each component
   owns its own flat indexed registry.
+
+  > **Naming note:** The existing `types/recipe.rs` already defines `RecipeStep { skill, tool,
+  > params, description }` — a name-based v2 type. The IBS module introduces a **different**
+  > `RecipeStep` type in `instruction_builder.rs` that uses UUIDs and channels. To avoid a
+  > naming collision: the IBS type is named `IbsRecipeStep` in `instruction_builder.rs`; the
+  > existing v2 `RecipeStep` in `types/recipe.rs` is NOT renamed (backward compatibility).
+
   `RecipeVariant`:
   ```rust
   pub struct RecipeVariant {
@@ -1956,6 +1975,14 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
        - For each UUID in `orchestrator_steps`: call `fetch_component_by_id` → `orchestrator_items`.
        - Return `SplitResult { rust_items, orchestrator_items, routing }`.
     3. After `resolve_intent` → `Match { step_link: None }`: existing `fetch_component_by_id` path (unchanged).
+  - **Extend `fetch_component_by_id` match arm for new classes 22 and 23** (added in Phases B and C):
+    the current `match component_class_code` in `retrieval_source.rs` has no arm for 22 or 23 —
+    those class codes currently return `None` (empty vec). Phase E adds:
+    ```rust
+    22 => Some(("reborn_python_code",    "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+    23 => Some(("reborn_extension_catalogues", "COALESCE(NULLIF(prior_knowledge_content,''), overview_doc)")),
+    ```
+    This is required before any Recipe step can reference a class 22 or 23 component UUID.
 
 #### Tests
 
@@ -1991,11 +2018,22 @@ four `FetchForTurnResult` variants — including the new `SplitResult` and
   **`handle_assemble_prior_knowledge`:**  
   The existing handler already calls `retrieval_source.fetch_for_turn()` and handles
   `Components` and `Disambiguation`. Extend it to handle the two new variants:
-  - `SplitResult`: apply `rust_items` to Rust execution context silently (channel R);
-    format `orchestrator_items` into `orchestrator_content` (channel O);
+  - `SplitResult`: format `orchestrator_items` into `orchestrator_content` (channel O);
     set `formatted_content = orchestrator_content` (backward compat alias);
     populate `action_short_circuit: false`, `disambiguation: false`;
+    include `rust_items` serialized in the return dict under `"rust_items"` (for the
+    caller — see note below);
     return extended routing dict (§0.9 shape).
+    > **Important — rust_items delivery:** `handle_assemble_prior_knowledge` runs inside
+    > the Python scripting engine and has NO access to the Rust execution context (the
+    > tool-dispatch layer managed at `RecipeStage` level). The handler CANNOT "apply"
+    > rust_items directly. Instead, `RecipeStage` (Phase H) calls `fetch_for_turn` BEFORE
+    > the Python script starts. For Tier 1 (where Python does run), `RecipeStage` stores the
+    > rust_items in the loop state and applies them to the execution context during that
+    > pre-Python pass. When Python later calls `__assemble_prior_knowledge__`, the handler
+    > returns the stashed orchestrator_content. The `"rust_items"` field in the dict is
+    > informational only — the Python side never calls Rust tools directly. Do NOT add
+    > rust_items application logic inside `handle_assemble_prior_knowledge`.
   - `ActionShortCircuit`: return `{ action_short_circuit: true, action_component_id, action_name,
     orchestrator_content: "", formatted_content: "", override_prompt_creation: false,
     matched_component_ids: [] }`.
@@ -2076,7 +2114,19 @@ and falls through to Tier 2 on no match.
 
 #### Files to modify
 
-1. `crates/brassclaw_agent_loop/src/state.rs` — add `last_user_text: Option<String>` to `LoopExecutionState`
+1. `crates/brassclaw_agent_loop/src/state.rs` — add to `LoopExecutionState`:
+   ```rust
+   /// Last user-visible input text; populated by InputStage on each drain.
+   /// Required by RecipeStage for fetch_for_turn query. See recipe.rs module doc.
+   #[serde(default)] pub last_user_text: Option<String>,
+   /// Stashed rust_items from a Tier 1 SplitResult. Applied to the Rust execution
+   /// context before the Python scripting engine starts each turn. Cleared after use.
+   #[serde(default)] pub recipe_rust_context: Vec<serde_json::Value>,
+   /// Stashed orchestrator_items hint from a Tier 1 SplitResult. PromptStage
+   /// injects this before the UNION ALL scan. Cleared after use.
+   #[serde(default)] pub recipe_hint: Option<serde_json::Value>,
+   ```
+   All three fields are `#[serde(default)]` so existing checkpoint payloads deserialise correctly.
 
 2. `crates/brassclaw_agent_loop/src/executor/input.rs` — populate `last_user_text` from
    drained input (the last user message text seen this turn)
@@ -2777,6 +2827,25 @@ correct. Fine-grained per-component eviction is a future optimisation.
 
 Remove from all 13 component tables: `queue_code`, `review_attempts`, `review_feedback`,
 `rejected_at`, `validation_errors`.
+
+> **Rust struct sync required:** After V055 drops these columns, the corresponding Rust
+> structs must be updated in the same phase. Affected:
+> - `Recipe` in `crates/brassclaw_engine/src/types/recipe.rs` —
+>   remove `validation_errors`, `review_feedback`, `review_attempts`, `rejected_at`.
+> - `ToolSkill` in same file — same fields.
+> Any sqlx query or struct that selects these columns will fail to compile after V055.
+> Use `#[serde(default)]` + `Option` migration: first populate queue (step 1 of V055),
+> then remove fields from structs + tables atomically.
+
+> **Rust struct sync required:** After V055 drops these columns, the corresponding Rust
+> structs must be updated in the same phase. Affected:
+> - `Recipe` in `crates/brassclaw_engine/src/types/recipe.rs` —
+>   remove `validation_errors`, `review_feedback`, `review_attempts`, `rejected_at`.
+> - `ToolSkill` in `crates/brassclaw_engine/src/types/recipe.rs` — same fields.
+> - Any sqlx query or struct that selects these columns by name will fail to compile.
+> Use `#[serde(default)]` + `Option` migration strategy: first add the queue columns to
+> the queue table (step 1 of V055), then remove from component structs + tables in the
+> same migration transaction. Failing to do this in sync will break deserialisation.
 
 The 13 tables are: `reborn_skills`, `reborn_tools`, `reborn_tool_skills`,
 `reborn_recipes`, `reborn_actions`, `reborn_specs`, `reborn_plans`, `reborn_summaries`,
