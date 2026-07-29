@@ -2133,30 +2133,46 @@ and falls through to Tier 2 on no match.
 
 3. `crates/brassclaw_agent_loop/src/executor/recipe.rs` — replace stub with full dispatch:
 
+   > **Enum note:** The current `RecipeStep` enum has only `Continue { state }`. Phase H
+   > adds `TierZero` and `ActionExecuted` variants. The internal enum is `RecipeStep`
+   > (the type alias `RecipeStageOutcome` used in comments below maps to it).
+   >
+   > **RecipeLookup vs fetch_for_turn:** `ctx.host.recipe_lookup()` is the v2 `RecipeLookup`
+   > port (name/keyword-based, MemoryDoc-backed). Phase H does NOT use it — it calls
+   > `PostgresSource::fetch_for_turn` directly via a new host slot. The `recipe_lookup()`
+   > port is left wired but not called on the v3 path.
+   >
+   > **rust_items application:** `RecipeStage` runs at the agent loop level (above the
+   > Python scripting engine) so it CAN apply rust_items to the Rust execution context
+   > directly. For Tier 1, rust_items are stashed in `state.recipe_rust_context` and
+   > applied by the executor before the Python script is invoked.
+
    ```
    RecipeStage::process(state):
-     user_text = state.last_user_text (skip if None)
+     user_text = state.last_user_text (return Continue if None)
      result = retrieval_source.fetch_for_turn(scope, user_text, budget, "02")
 
      match result:
        SplitResult { rust_items, orchestrator_items, routing }:
-         if routing.wilson_lower >= 0.70 && !routing.llm_call_required:
-           // Tier 0: no LLM
-           apply rust_items to Rust execution context
+         if routing.tier0_eligible && !routing.llm_call_required:
+           // Tier 0: no LLM — tier0_eligible = tier∈{mature,candidate} + wilson≥0.70
+           //                                    + validated + validation hook wired
+           apply rust_items to Rust execution context (RecipeStage has direct access)
            stash orchestrator_items in state for PromptStage bypass
-           return RecipeStageOutcome::TierZero { routing }
+           return RecipeStep::TierZero { routing }       // NEW variant
 
          else:
-           // Tier 1: inject hint, let LLM decide
-           stash orchestrator_items as hint in state.recipe_hint
-           return RecipeStageOutcome::Continue
+           // Tier 1: inject hint, let LLM decide.
+           stash rust_items in state.recipe_rust_context  // applied before Python starts
+           stash orchestrator_items in state.recipe_hint
+           return RecipeStep::Continue { state }
 
        ActionShortCircuit { component_id, name }:
-         execute Action directly
-         return RecipeStageOutcome::ActionExecuted
+         execute Action or stash for Python step-0 to handle
+         return RecipeStep::ActionExecuted { component_id, name }  // NEW variant
 
        Components(_) | Disambiguation(_) | (no match):
-         return RecipeStageOutcome::Continue   // Tier 2 — unchanged
+         return RecipeStep::Continue { state }  // Tier 2 — unchanged
    ```
 
 4. `PromptStage`: if `state.recipe_hint` is set (Tier 1), inject it into prior_knowledge
