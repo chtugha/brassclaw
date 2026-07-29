@@ -158,18 +158,38 @@ variant: ls-other-dir
 
 ### 0.4 BuildInstruction — Two-Channel Design
 
-> **Key design principle:** A `BuildInstruction` serves **two runtime readers**.
-> The IBS is the sole producer. BuildInstructions are never hand-authored or pre-stored.
-> StepDescriptions are the authoritative source; the BuildInstruction is a derived artefact.
+> **Key design principle — three parties, one artefact:**
+>
+> | Party | Role |
+> |-------|------|
+> | **Human author** (WebUI) | Writes `StepDescriptions` — YAML-structured, readable. Never touches a `BuildInstruction`. |
+> | **IBS** (Instruction-Building-System) | Sole producer. Compiles `StepDescriptions` → `BuildInstruction` at intent-match time. Never stores the result — it is ephemeral per-call (memoised in-process; see §0.7). |
+> | **Rust executor** (`RecipeStage`) | Reads `rust_steps[]` only. Applies ToolSkill UUIDs and ToolBindings to the Rust execution context. Never touches orchestrator content. |
+> | **Orchestrator** (`handle_assemble_prior_knowledge`) | Reads `orchestrator_steps[]` only. Serialises component bodies into `orchestrator_content`. Never touches rust channel content. |
+>
+> The two runtime readers (**Rust executor** and **Orchestrator**) each see exactly one channel.
+> Neither reader sees the other channel. The IBS is the sole bridge.
+>
+> **BuildInstructions are never stored** — not in the DB, not in session state.
+> The IBS compiles them on demand from the `step_descriptions` JSONB column plus the
+> resolved `step_link` formula. In-process memoisation (§0.7) eliminates the per-call cost
+> for repeated identical intents without requiring persistence.
 
 #### Why two channels, not three
 
 Earlier drafts described a three-section design (RetrievalEngine / Orchestrator / Rust).
 The v3 design simplifies: `fetch_steps` is eliminated as a separate section. The IBS
-directly emits `rust_steps[]` and `orchestrator_steps[]`, each containing `RecipeStep`
+directly emits `rust_steps[]` and `orchestrator_steps[]`, each containing `IbsRecipeStep`
 entries with UUIDs. `PostgresSource::fetch_for_turn` calls `fetch_component_by_id` for
-each UUID immediately after IBS compilation — there is no separate `fetch_by_instruction`
-method. The result is a `FetchForTurnResult::SplitResult` with two pre-fetched item lists.
+each UUID immediately after IBS compilation.
+
+> **No `fetch_by_instruction` method.**
+> There is no `RetrievalSource` method named `fetch_by_instruction` or similar.
+> The IBS runs synchronously *inside* `fetch_for_turn`, not as a separate retrieval pass.
+> `fetch_for_turn` calls `build_instruction(...)`, then immediately calls
+> `fetch_component_by_id` for every UUID the IBS emitted.
+> The result is `FetchForTurnResult::SplitResult` with two pre-fetched item lists.
+> Any design that adds a `fetch_by_instruction` method to `RetrievalSource` is wrong.
 
 #### Two readers, two typed channels
 
@@ -429,29 +449,39 @@ steps:
 
 #### StepContextSpec — typed context for each step's IBS output
 
-When the IBS compiles a `BuildInstruction`, each emitted step has a **context type** that
-determines how `handle_assemble_prior_knowledge` formats it into `orchestrator_content`.
-The context type is inferred from the component's class_code — authors do not set it manually.
+When the IBS compiles a `BuildInstruction`, each orchestrator-channel step has a **context type**
+(`StepContextSpec`) that determines how `handle_assemble_prior_knowledge` formats its body
+into `orchestrator_content`. The context type is inferred from the component's `class_code`
+after `fetch_component_by_id` returns — authors do not set it manually.
+
+**Class-code → StepContextSpec mapping** (computed at fetch time, not stored):
+
+| `class_code` | Class | `StepContextSpec` | Formatter heading |
+|---|---|---|---|
+| 1–3 | Skill | `Skill` | `## [Skill: {name}]` |
+| 12 | Spec | `Spec` | `## [Spec: {name}]` |
+| 13 | ToolSkill | *(never in orchestrator channel)* | — |
+| 21 | Recipe | `Recipe` | `## [Recipe: {name}]` |
+| 22 | PythonCode | `PythonCode` | `## [PythonCode: {name}]` |
+| 23 | ExtensionCatalogue | `Catalogue` | `## [Catalogue: {name}]` |
+| *(type: "text" step)* | *(no component fetch)* | `Annotation` | *(nothing emitted)* |
 
 ```rust
 /// Describes the kind of content emitted to the orchestrator for one step.
-/// Inferred by the IBS from the component's class_code when fetching each UUID.
+/// Inferred from the component's class_code in handle_assemble_prior_knowledge.
+/// `Annotation` is assigned when the step type is "text" (no component involved).
 pub enum StepContextSpec {
-    /// Skill (class 1–3): narrative instructions for using one or more tools.
-    Skill,
-    /// PythonCode (class 22): orchestrator code / inline instructions.
-    PythonCode,
-    /// Spec (class 12): reference documentation.
-    Spec,
-    /// Recipe (class 21): task-level instructions (nested recipe reference).
-    Recipe,
-    /// Text annotation (type: "text" steps): WebUI-only; never emitted at runtime.
-    Annotation,
+    Skill,           // class 1–3
+    Spec,            // class 12
+    Recipe,          // class 21 (nested recipe reference)
+    PythonCode,      // class 22
+    Catalogue,       // class 23
+    Annotation,      // type: "text" step — never emitted; WebUI-only
 }
 ```
 
-`StepContextSpec` is used by the formatter in `handle_assemble_prior_knowledge` to produce
-labelled headings in `orchestrator_content`:
+The formatter in `handle_assemble_prior_knowledge` iterates `orchestrator_items`, derives
+`StepContextSpec` from each item's `class_code`, and emits a labelled block:
 
 ```
 ## [Skill: ls]
@@ -461,13 +491,17 @@ labelled headings in `orchestrator_content`:
 <pythoncode body>
 ```
 
-This makes the orchestrator's context self-describing — each section is labelled with its
-component type and name. Authors do not need to add type annotations to their PythonCode
-bodies. The formatter handles all heading generation.
+This makes `orchestrator_content` self-describing. Authors do not need to add type headers
+to their PythonCode bodies or Skill bodies — the formatter generates them from class_code.
 
-`StepContextSpec` is a **derived type**, computed once per component fetch and not stored.
-It is not part of the `StepEntry` JSONB — it is computed in `handle_assemble_prior_knowledge`
-when iterating over `orchestrator_items`.
+**Invariant — ToolSkill is never in `orchestrator_items`.**
+`fetch_component_by_id` for a ToolSkill UUID (class 13) called from an orchestrator-channel
+step is a Q1 hard error. ToolSkills are Rust-channel-only. If a class 13 UUID appears in
+`orchestrator_steps[].include`, the IBS or Q1 must catch it before it reaches the formatter.
+
+`StepContextSpec` is a **derived type** — computed once per component fetch, never stored.
+It is not part of the `StepEntry` JSONB. It exists only in the formatter code path inside
+`handle_assemble_prior_knowledge` when iterating over `orchestrator_items`.
 
 ---
 
@@ -2224,18 +2258,98 @@ and falls through to Tier 2 on no match.
        RecipeStep::Continue { state: next } => *next,
    };
    ```
-   This is an exhaustive match. Adding `TierZero` and `ActionExecuted` variants will cause
-   a **compile error** until canonical.rs handles them. The executor loop must be restructured:
-   - `RecipeStep::Continue { state }` → continue to PromptStage (unchanged)
-   - `RecipeStep::TierZero { state, routing }` → skip PromptStage and ModelStage, emit reply
-   - `RecipeStep::ActionExecuted { state }` → skip PromptStage and ModelStage, emit reply
-   This is not trivial: the executor loop is a single `loop {}` block; skipping PromptStage
-   means branching before line 98. Implement as an enum over what follows RecipeStage:
-   `enum PostRecipeOutcome { NeedsPrompt(LoopExecutionState), TierZero(TierZeroPayload), ... }`.
+   This is an exhaustive match. Adding `TierZero` and `ActionExecuted` variants causes a
+   **compile error** until canonical.rs handles them. Restructure using an intermediate enum:
 
-5. `PromptStage`: if `state.recipe_hint` is set (Tier 1), inject it into prior_knowledge
-   before calling `fetch_for_consumer`. If `RecipeStep::TierZero`, skip `PromptStage`
-   and `ModelStage`.
+   ```rust
+   /// Produced by the RecipeStage dispatch inside canonical.rs.
+   /// Determines which pipeline stages run after RecipeStage.
+   enum PostRecipeOutcome {
+       /// Normal path — PromptStage, InterceptorStage, ModelStage all run.
+       NeedsPrompt(Box<LoopExecutionState>),
+       /// Tier 0: rust_items applied, orchestrator_items stashed.
+       /// PromptStage and ModelStage are SKIPPED.
+       /// Python scripting engine runs directly with stashed orchestrator context.
+       TierZero {
+           state:        Box<LoopExecutionState>,
+           routing:      TurnRoutingSignals,
+       },
+       /// Action short-circuit: no LLM, no prompt.
+       /// Python step-0 receives pkr["action_short_circuit"] = true.
+       ActionExecuted {
+           state:        Box<LoopExecutionState>,
+           component_id: Uuid,
+           name:         String,
+       },
+   }
+   ```
+
+   The canonical loop becomes:
+   ```
+   let outcome = match recipe_step {
+       RecipeStep::Continue { state }        => PostRecipeOutcome::NeedsPrompt(state),
+       RecipeStep::TierZero { state, routing } => PostRecipeOutcome::TierZero { state, routing },
+       RecipeStep::ActionExecuted { state, component_id, name }
+                                             => PostRecipeOutcome::ActionExecuted { ... },
+   };
+
+   match outcome {
+       PostRecipeOutcome::NeedsPrompt(state) => {
+           // run PromptStage → InterceptorStage → ModelStage (unchanged)
+       }
+       PostRecipeOutcome::TierZero { state, routing } => {
+           // skip PromptStage and ModelStage
+           // CapabilityStage handles tool execution using pre-loaded rust context
+           // AssistantReplyStage emits the result
+       }
+       PostRecipeOutcome::ActionExecuted { state, .. } => {
+           // skip PromptStage and ModelStage
+           // Python script already handled the action in step-0
+           // AssistantReplyStage emits the result
+       }
+   }
+   ```
+
+5. **Stash / unstash protocol — how RecipeStage and `handle_assemble_prior_knowledge` coordinate (Tier 1):**
+
+   > This is the trickiest coordination point in the whole architecture. Both `RecipeStage`
+   > (in the agent loop) and `handle_assemble_prior_knowledge` (inside the Python scripting
+   > engine) call `fetch_for_turn`. They must NOT both do a full IBS compilation + component fetch.
+
+   **The protocol:**
+
+   - **Tier 1 path in `RecipeStage`:**
+     1. Calls `fetch_for_turn` → `SplitResult { rust_items, orchestrator_items, routing }`.
+     2. Stores `orchestrator_items` serialized as `state.recipe_hint` (JSONB).
+     3. Stores `rust_items` serialized as `state.recipe_rust_context` (JSONB).
+     4. Returns `RecipeStep::Continue { state }` — does NOT skip PromptStage.
+
+   - **Tier 1 path in `handle_assemble_prior_knowledge`** (called by Python step-0):
+     1. Checks `state.recipe_hint`: **if set**, skip `fetch_for_turn` entirely.
+     2. Deserialize `state.recipe_hint` back to `Vec<ComponentItem>` as `orchestrator_items`.
+     3. Clear `state.recipe_hint` (consumed — one-shot).
+     4. Format `orchestrator_items` → `orchestrator_content` using StepContextSpec formatter.
+     5. Return the extended pkr dict.
+
+   **In other words:** For Tier 1, `RecipeStage` is the actual fetcher. The Python handler
+   just reads the stash. There is no double-fetch, no second `resolve_intent`, no second
+   IBS compilation. The handler's `fetch_for_turn` call is bypassed whenever a stash is present.
+
+   - **Tier 0 path:** `RecipeStage` returns `TierZero`. `PromptStage` and `ModelStage` are
+     skipped. The Python script still runs (the scripting engine is not the LLM call), but
+     it receives `pkr` from `__assemble_prior_knowledge__` which returns the stashed content
+     directly (same stash/unstash as Tier 1, just the PromptStage/ModelStage stages are absent).
+
+   **Rust state type constraint (repeated for clarity):** `state.recipe_hint` and
+   `state.recipe_rust_context` are typed as `serde_json::Value` — NOT `Vec<ComponentItem>`.
+   `ComponentItem` is in `brassclaw_engine`; `LoopExecutionState` is in `brassclaw_agent_loop`
+   which does NOT depend on `brassclaw_engine`. Serialization to `serde_json::Value` happens
+   at `RecipeStage` before storing in state. Deserialization from `Value` happens in
+   `handle_assemble_prior_knowledge` (which is in `brassclaw_engine` and CAN use `ComponentItem`).
+
+6. `PromptStage`: if `state.recipe_hint` is set (Tier 1), inject it into prior_knowledge
+   before calling `fetch_for_consumer`. If `PostRecipeOutcome::TierZero`, `PromptStage`
+   and `ModelStage` are skipped entirely via the `PostRecipeOutcome` dispatch above.
 
 #### Tests
 
@@ -3023,6 +3137,9 @@ avoiding the DB round-trip entirely.
 | 10 | What recipe variants should `builtin.shell` have? | Two: (a) known-safe commands (allowlist: `cargo build/test/fmt/clippy`, `git status/log/diff`, `npm install/build`) at Tier 1 high-confidence; (b) open-ended arbitrary command at Tier 1 always with explicit approval annotation. Both have `llm_call_required: true` — no shell is ever Tier 0. |
 | 11 | How does the Rust execution layer resolve a Tool DB UUID to its registered capability handler? | Via `capability_id` column (V053). On tool dispatch: look up Tool row by UUID → read `capability_id` → look up handler in `FirstPartyCapabilityRegistry` by `capability_id`. For user-authored tools without `capability_id`, fall back to existing name-based resolution. |
 | 12 | Should builtin Recipes also have `source = "system"` and bypass Q2? | Yes — same reasoning as Q8. Builtin Recipe StepDescriptions are hand-authored and IBS pre-flight-checked at seeder run time. Q2 bypass for `source = "system"` Recipes is consistent with Tools and ToolSkills. |
+| 13 | If `RecipeStage` already stashed the items (Tier 1), how does `handle_assemble_prior_knowledge` know not to call `fetch_for_turn` again? | **Resolved — stash/unstash protocol (Phase H §5).** `handle_assemble_prior_knowledge` checks `state.recipe_hint` before doing anything. If set, it skips `fetch_for_turn` entirely, deserializes the stashed `Vec<ComponentItem>` from `serde_json::Value`, clears the field (one-shot consume), and formats. If absent (Tier 2 / no-match), calls `fetch_for_turn` as before. No double-fetch, no second `resolve_intent`, no second IBS compilation. |
+| 14 | In Tier 0, `PromptStage` and `ModelStage` are skipped — but the Python script calls `__assemble_prior_knowledge__`. Where does Python execute in Tier 0? | The Python scripting engine is **not** the LLM call. `PromptStage` assembles the LLM input prompt; `ModelStage` sends it to the model. Both are skipped in Tier 0. `default.py` is invoked by `CapabilityStage` (or equivalent) independently. In Tier 0, Python runs step-0, calls `__assemble_prior_knowledge__` (gets the stash), and invokes skills/tools directly — no LLM round-trip in the middle. "Tier 0: no LLM" means no LLM call, not no Python execution. |
+| 15 | What happens if `build_instruction` returns an `IbsError` during the builtin seeder (Phase L)? `panic!` or return an error? | **Debug builds: `panic!`** — seeder content is hand-authored; an IbsError here is a compile-time bug. **Release builds:** `error!`-log, skip the Recipe row, continue. The seeder is idempotent — skipped rows do not block boot. CI must run the seeder in debug mode so IbsErrors become build failures before reaching production. |
 
 ### 3.1 Legacy DocPlan → v3 Component Translation
 
@@ -3111,17 +3228,27 @@ User types: "show all files including hidden in /tmp"
 │   routing.tier0_eligible = true (wilson_lower=0.82, tier=mature, validated)
 │   routing.llm_call_required = false → Tier 0
 │   apply rust_items to Rust execution context (silent, never forwarded to orchestrator)
-│   stash orchestrator_items in state
-│   return RecipeStageOutcome::TierZero
+│   serialize orchestrator_items → state.recipe_hint (JSONB stash, one-shot)
+│   serialize rust_items        → state.recipe_rust_context (JSONB stash, one-shot)
+│   return PostRecipeOutcome::TierZero
 │
-├─ [PromptStage skipped — Tier 0]
-├─ [ModelStage  skipped — Tier 0]
+├─ [PromptStage SKIPPED — no LLM prompt assembly needed]
+├─ [ModelStage  SKIPPED — no LLM call in Tier 0]
 │
-│   Orchestrator (Python) receives pkr from __assemble_prior_knowledge__:
+│   NOTE: The Python scripting engine (default.py) DOES run in Tier 0.
+│   "No LLM" means PromptStage (prompt assembly) + ModelStage (LLM call) are skipped.
+│   The Python engine is separate from the LLM call and is NOT skipped.
+│
+├─ [CapabilityStage / Python execution]
+│   Python runs default.py step 0:
+│     pkr = __assemble_prior_knowledge__(goal, budget, "02")
+│     handler checks state.recipe_hint → SET → unstash, skip fetch_for_turn
+│     clears state.recipe_hint (consumed)
 │     pkr["orchestrator_content"]:
-│       - Step 1 info text (task context annotation)
-│       - ls-skill body
-│       - ls-result-handler (PythonCode) body
+│       ## [Skill: ls]
+│         <ls-skill body>
+│       ## [PythonCode: ls-result-handler]
+│         <ls-result-handler body>
 │     pkr["matched_component_ids"]: [uuid-ls-skill, uuid-ls-result-handler]
 │     pkr["override_prompt_creation"]: true
 │   → No ToolSkill bodies. No memories. No UNION ALL noise.
@@ -3149,28 +3276,41 @@ User types: "edit main.rs and refactor the error handler"
 │     → resolve_intent → Match { component_id: uuid-builtin-edit-file,
 │                                class_code: 21,
 │                                step_link: "0:0-0:E+2:0-2:E" }
-│     → IBS → BuildInstruction { rust_steps, orchestrator_steps,
-│                                  llm_call_required: true }
+│     → IBS: build_instruction("0:0-0:E+2:0-2:E", step_descriptions, variable_patterns)
+│         rust_steps:         [component(uuid-edit-toolskill, knowledge:rust)]
+│         orchestrator_steps: [component(uuid-edit-skill), component(uuid-patch-formatter)]
+│         llm_call_required:  true
+│     → fetch rust_items, orchestrator_items
 │     → FetchForTurnResult::SplitResult { rust_items, orchestrator_items, routing }
-│   routing.tier0_eligible = false (wilson_lower=0.61 < 0.70 or llm_call_required=true) → Tier 1
-│   stash orchestrator_items as hint in state.recipe_hint
-│   return RecipeStageOutcome::Continue (does NOT skip PromptStage/ModelStage)
+│   routing.tier0_eligible = false (wilson_lower=0.61 < 0.70 or llm_call_required=true)
+│   serialize orchestrator_items → state.recipe_hint        (JSONB stash)
+│   serialize rust_items        → state.recipe_rust_context (JSONB stash)
+│   return PostRecipeOutcome::NeedsPrompt → (does NOT skip PromptStage/ModelStage)
 │
 ├─ [PromptStage]
-│   state.recipe_hint present → inject orchestrator_items into prior_knowledge
-│   before calling fetch_for_consumer (UNION ALL); recipe hint takes priority
-│   over generic UNION ALL results (does NOT call fetch_for_consumer if hint
-│   fills the budget; recipe hint is always injected first)
-│   volatile context injected separately
+│   state.recipe_hint present → deserialize orchestrator_items from stash
+│   inject as prior_knowledge BEFORE calling fetch_for_consumer (UNION ALL)
+│   recipe hint always injected first; UNION ALL fills remaining budget only
+│   volatile context injected separately (never mixed with prior knowledge)
+│   NOTE: recipe_hint is NOT consumed here (handler consumes it in step-0 below)
 │
-├─ [InterceptorStage]  Sempai reviews outgoing prompt (recipe hint visible)
+├─ [InterceptorStage]  Sempai reviews outgoing prompt (recipe hint visible to Sempai)
 │
-├─ [ModelStage]        LLM call
-│   Orchestrator reads pkr from __assemble_prior_knowledge__ (returns from stash):
-│     pkr["orchestrator_content"]: Skill + PythonCode bodies from SplitResult
-│     pkr["override_prompt_creation"]: depends on Recipe flag
-│   LLM uses the injected Skill bodies to decide how to proceed
-│   → LLM calls tools (capability calls) guided by recipe orchestrator content
+├─ [ModelStage]        LLM call with injected recipe context
+│
+├─ [CapabilityStage / Python execution]
+│   Python runs default.py step 0:
+│     pkr = __assemble_prior_knowledge__(goal, budget, "02")
+│     handler checks state.recipe_hint → SET → unstash, skip fetch_for_turn
+│     clears state.recipe_hint (consumed — one-shot)
+│     pkr["orchestrator_content"]:
+│       ## [Skill: file-editing]
+│         <skill body>
+│       ## [PythonCode: patch-formatter]
+│         <pythoncode body>
+│     pkr["override_prompt_creation"]: false (Tier 1 uses LLM)
+│   → LLM guided by skill bodies; capability calls execute via pre-loaded rust_context
+│   → rust_items applied from state.recipe_rust_context before Python starts
 │
 └─ [AssistantReplyStage]  emit LLM response; Wilson score updated
 ```
