@@ -105,7 +105,7 @@ Intent match (runtime):
        e. fetch_component_by_id for each UUID in orchestrator_steps → orchestrator_items
        f. Return FetchForTurnResult::SplitResult { rust_items, orchestrator_items, routing }
   3. RecipeStage: rust_items applied to Rust execution context (silently, not via orchestrator)
-  4. Orchestrator reads orchestrator_items (Skill + PythonCode bodies) via __retrieve_docs__
+  4. Orchestrator reads orchestrator_items (Skill + PythonCode bodies) via __assemble_prior_knowledge__
   5. Rust layer executes using its pre-loaded context
 ```
 
@@ -174,7 +174,7 @@ Contains: Skill UUIDs and PythonCode UUIDs. PythonCode component bodies ARE the
 orchestrator instructions — authored with the correct content and formatting.
 `type: "text"` steps are authoring annotations only (WebUI documentation); they have
 no runtime emission.
-Serialized into `orchestrator_content` by `handle_retrieve_docs` in `orchestrator.rs`.
+Serialized into `orchestrator_content` by the v3 `handle_assemble_prior_knowledge` in `orchestrator.rs`.
 
 #### 0.4.1 ToolBinding + ErrorPolicy
 
@@ -417,6 +417,48 @@ steps:
   - If Q1 fails: snippet field cleared, PythonCode removed.
   - If Q1+Q2 pass: step promoted to `type: "component"` with the new UUID; parent Recipe re-queued to Q1.
 
+#### StepContextSpec — typed context for each step's IBS output
+
+When the IBS compiles a `BuildInstruction`, each emitted step has a **context type** that
+determines how `handle_assemble_prior_knowledge` formats it into `orchestrator_content`.
+The context type is inferred from the component's class_code — authors do not set it manually.
+
+```rust
+/// Describes the kind of content emitted to the orchestrator for one step.
+/// Inferred by the IBS from the component's class_code when fetching each UUID.
+pub enum StepContextSpec {
+    /// Skill (class 1–3): narrative instructions for using one or more tools.
+    Skill,
+    /// PythonCode (class 22): orchestrator code / inline instructions.
+    PythonCode,
+    /// Spec (class 12): reference documentation.
+    Spec,
+    /// Recipe (class 21): task-level instructions (nested recipe reference).
+    Recipe,
+    /// Text annotation (type: "text" steps): WebUI-only; never emitted at runtime.
+    Annotation,
+}
+```
+
+`StepContextSpec` is used by the formatter in `handle_assemble_prior_knowledge` to produce
+labelled headings in `orchestrator_content`:
+
+```
+## [Skill: ls]
+<skill body>
+
+## [PythonCode: ls-result-handler]
+<pythoncode body>
+```
+
+This makes the orchestrator's context self-describing — each section is labelled with its
+component type and name. Authors do not need to add type annotations to their PythonCode
+bodies. The formatter handles all heading generation.
+
+`StepContextSpec` is a **derived type**, computed once per component fetch and not stored.
+It is not part of the `StepEntry` JSONB — it is computed in `handle_assemble_prior_knowledge`
+when iterating over `orchestrator_items`.
+
 ---
 
 ### 0.6 Intent-Link Formula (`step_link`)
@@ -532,8 +574,9 @@ fn build_instruction(
 
 #### LLM-formatted orchestrator content
 
-After assembly, `handle_retrieve_docs` in `orchestrator.rs` renders orchestrator_steps
-into a human+LLM-readable block (`orchestrator_content` in the `__retrieve_docs__` result):
+After assembly, `handle_assemble_prior_knowledge` in `orchestrator.rs` renders
+orchestrator_steps into a human+LLM-readable block (`orchestrator_content` in the
+`__assemble_prior_knowledge__` result):
 
 ```
 ## Task: {recipe.name} — variant: {variant_label}
@@ -720,14 +763,28 @@ PythonCode, ToolSkills — all go to the orchestrator together. There is no chan
 
 #### v3 step-0: single call
 
-The three-call block collapses to one call. The upgraded `__retrieve_docs__` handles
-everything — intent resolution, IBS compilation, channel split, Action routing.
+> **Important — which function is upgraded:**  
+> `__retrieve_docs__` is the **legacy** function. It calls the old `RetrievalEngine::retrieve_context`
+> (MemoryDoc path), returns a flat list `[{type, title, content}]`, and knows nothing about
+> `class_code`, intent resolution, or the component class system. It is the dead shim in the
+> current step-0.  
+> `__assemble_prior_knowledge__` is **already** the intent-capable path. It calls
+> `PostgresSource::fetch_for_turn`, handles `FetchForTurnResult::Components` and
+> `Disambiguation`, and returns `{content, formatted_content, override_prompt_creation,
+> matched_component_ids}`. This is the function that v3 upgrades — not `__retrieve_docs__`.  
+> After the v3 upgrade, `__assemble_prior_knowledge__` handles everything in one call.
+> The dead `__retrieve_docs__` shim at step-0 is removed (Phase G). The `__retrieve_docs__`
+> host function registration is kept for the one release cycle that custom orchestrators may
+> still call it (Phase K cleanup), then removed.
+
+The three-call block collapses to one call. The upgraded `__assemble_prior_knowledge__`
+handles everything — intent resolution, IBS compilation, channel split, Action routing.
 
 ```python
-# v3 default.py step 0:
+# v3 default.py step 0 — single call:
 if step == 0:
-    token_budget = config.get("prior_knowledge_token_budget", 100000)
-    pkr = __retrieve_docs__(goal, token_budget)
+    token_budget = config.get("prior_knowledge_token_budget", 100000) if isinstance(config, dict) else 100000
+    pkr = __assemble_prior_knowledge__(goal, token_budget, "02")
 
     if isinstance(pkr, dict):
         if pkr.get("action_short_circuit"):
@@ -752,39 +809,55 @@ if step == 0:
 
     # Active-skill tracking using matched UUIDs — no __list_skills__ round-trip.
     _set_active_skills_from_matched_ids(pkr.get("matched_component_ids", []), state)
+
+    # REMOVED in v3:
+    # - docs = __retrieve_docs__(goal, 5)       ← dead Action-detection shim (Phase G)
+    # - all_skills = __list_skills__()          ← IBS already selected Skills by UUID
+    # - active_skills = select_skills(...)      ← no longer needed
 ```
 
-#### What `__retrieve_docs__` returns in v3
+#### What `__assemble_prior_knowledge__` returns in v3
+
+The existing return shape is **extended** (not replaced) to carry the new v3 routing signals.
+Existing `{content, formatted_content, override_prompt_creation, matched_component_ids}`
+fields are preserved for backward compatibility with custom orchestrators.
 
 ```python
 {
-    # Orchestrator channel only.
+    # EXISTING fields (preserved):
+    "content":                  str,   # Raw PKC — Rust dispatch / KV-cache fingerprint only
+    "formatted_content":        str,   # DEPRECATED alias — same as orchestrator_content in v3
+    "override_prompt_creation": bool,
+
+    # EXTENDED in v3 — orchestrator channel content:
     # Skill bodies, PythonCode bodies, and any other orchestrator-channel component bodies.
     # type:text step info fields are NOT included — they are WebUI annotations only.
-    # ToolSkill bodies NEVER appear here.
+    # ToolSkill bodies NEVER appear here (Rust channel is delivered silently by RecipeStage).
     "orchestrator_content": str,
 
-    # Routing signals:
-    "override_prompt_creation": bool,
-    "action_short_circuit":     bool,
-    "action_component_id":      str,   # UUID (when action_short_circuit is true)
-    "action_name":              str,
-    "disambiguation":           bool,
-    "candidates":               list,
+    # v3 routing signals (new):
+    "action_short_circuit":  bool,
+    "action_component_id":   str,   # UUID (when action_short_circuit is true)
+    "action_name":           str,
+    "disambiguation":        bool,
+    "candidates":            list,
 
-    # Active-skill tracking:
-    "matched_component_ids":    list,  # orchestrator-channel UUIDs (Skills + PythonCode)
-                                       # passed to _set_active_skills_from_matched_ids;
-                                       # no __list_skills__() + select_skills() round-trip
+    # Active-skill tracking (extended):
+    "matched_component_ids": list,  # orchestrator-channel UUIDs (Skills + PythonCode)
+                                    # passed to _set_active_skills_from_matched_ids;
+                                    # no __list_skills__() + select_skills() round-trip
 }
 ```
 
 The Rust channel (ToolSkills, ToolBindings) is applied to the Rust execution context
-**inside the Rust handler, silently**. It never crosses to the orchestrator's `working_messages`.
+**inside `handle_assemble_prior_knowledge`, silently**. It never crosses to the
+orchestrator's `working_messages`. `formatted_content` is an alias for `orchestrator_content`
+in v3 — both are set to the same value. Custom orchestrators that already check
+`pkr["formatted_content"]` continue to work unchanged.
 
 #### `call_action` nested lookup migration
 
-`call_action` in `default.py` (line 844) currently calls `__retrieve_docs__(name, 1)` to
+`call_action` in `default.py` (line 844) currently calls `__retrieve_docs__(nested_name, 1)` to
 look up an Action by name. This is a search-by-name — fragile and hits the legacy path.
 
 **v3 replacement:** a new host function `__fetch_component__(uuid, class_code)` calls
@@ -792,13 +865,15 @@ look up an Action by name. This is a search-by-name — fragile and hits the leg
 
 ```python
 # Old (line 844):
-action_docs = __retrieve_docs__(action_name, 1)
+action_docs = __retrieve_docs__(nested_name, 1)
 # New:
 action_item = __fetch_component__(action_uuid, 16)
 ```
 
-`__assemble_prior_knowledge__` is superseded. It remains registered for backward
-compatibility with custom orchestrators. Removed in Phase K cleanup.
+`__retrieve_docs__` is the **dead legacy function** — it returns a flat `[{type, title, content}]`
+list with no class_code awareness. Custom orchestrators that call it still work (list vs dict
+return shapes diverge naturally), but it should not appear in v3 default.py at all.
+`__retrieve_docs__` registration is kept for one release cycle, then removed in Phase K.
 
 ---
 
@@ -824,8 +899,9 @@ compatibility with custom orchestrators. Removed in Phase K cleanup.
 `LoopExecutionState` has no `last_user_text` field. Added in Phase H via `InputStage`.
 
 **Prior-knowledge assembly** happens inside `PromptStage` (step 5) via the orchestrator's
-`__retrieve_docs__` call, which in v3 calls `PostgresSource::fetch_for_turn` and handles
-the full split and channel delivery internally.
+`__assemble_prior_knowledge__` call (step 0 in `default.py`), which calls
+`PostgresSource::fetch_for_turn` and handles the full split and channel delivery internally.
+The legacy `__retrieve_docs__` (MemoryDoc path) is NOT called in v3 step-0.
 
 ---
 
@@ -863,7 +939,7 @@ Their `steps` JSONB encodes 13 step types and is **executed directly by the orch
 without going through the IBS**. The IBS applies to Recipes (class 21) only.
 
 In v3, an Action intent match returns `FetchForTurnResult::ActionShortCircuit` — no
-BuildInstruction, no IBS compilation, no prior-knowledge assembly. The `__retrieve_docs__`
+BuildInstruction, no IBS compilation, no prior-knowledge assembly. The `__assemble_prior_knowledge__`
 return dict carries `action_short_circuit: true` + `action_component_id`. The Python
 step-0 block calls `execute_action_by_id` and returns immediately.
 
@@ -1658,7 +1734,8 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 - `crates/brassclaw_engine/src/memory/instruction_builder.rs`  
   New types: `StepDescriptionEntry`, `StepRange`, `StepOwner`, `RecipeStepType`,
   `RecipeStep`, `VariablePattern`, `BuildInstruction`, `IbsError`,
-  `DependencyExpr`, `DependencyNode` (the parsed traversal tree — see §0.19).
+  `DependencyExpr`, `DependencyNode` (the parsed traversal tree — see §0.19),
+  `StepContextSpec` (derived content type for orchestrator formatting — see §0.5).
 
   **`StepDescriptionEntry` shape** (maps to one element of the `step_descriptions` JSONB array):
   ```rust
@@ -1885,29 +1962,45 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
 
 ---
 
-### Phase F — `handle_retrieve_docs` Upgrade (Rust handler)
+### Phase F — `handle_assemble_prior_knowledge` Upgrade (Rust handler)
 
 **Status:** [ ] Pending
 
-**Goal:** Upgrade the Rust handler behind `__retrieve_docs__` to use `fetch_for_turn`
-and handle all four `FetchForTurnResult` variants. Register `__fetch_component__`.
+**Goal:** Upgrade the Rust handler behind `__assemble_prior_knowledge__` to handle all
+four `FetchForTurnResult` variants — including the new `SplitResult` and
+`ActionShortCircuit` variants added in Phase E. Register `__fetch_component__`.
+
+> **Clarification — which handler is upgraded:**  
+> `handle_retrieve_docs` calls `RetrievalEngine::retrieve_context` (legacy MemoryDoc path).
+> It is **not** upgraded — it is left registered for backward compatibility and removed in
+> Phase K.  
+> `handle_assemble_prior_knowledge` already calls `fetch_for_turn` via `PostgresSource`.
+> This is the handler that v3 extends to handle `SplitResult` and `ActionShortCircuit`.
 
 #### Files to modify
 
 - `crates/brassclaw_engine/src/executor/orchestrator.rs`
 
-  **`handle_retrieve_docs`:**  
-  Replace the legacy `RetrievalEngine::retrieve_context` call with
-  `retrieval_source.fetch_for_turn()`. Handle all four variants:
-  - `SplitResult`: apply `rust_items` to Rust execution context silently;
-    format `orchestrator_items` into `orchestrator_content`;
-    return routing dict (see §0.9 shape).
-  - `Components`: all items → `orchestrator_content` (no-match path, unchanged shape).
-  - `ActionShortCircuit`: return `{ action_short_circuit: true, action_component_id, action_name }`.
-  - `Disambiguation`: return `{ disambiguation: true, candidates }`.
+  **`handle_assemble_prior_knowledge`:**  
+  The existing handler already calls `retrieval_source.fetch_for_turn()` and handles
+  `Components` and `Disambiguation`. Extend it to handle the two new variants:
+  - `SplitResult`: apply `rust_items` to Rust execution context silently (channel R);
+    format `orchestrator_items` into `orchestrator_content` (channel O);
+    set `formatted_content = orchestrator_content` (backward compat alias);
+    populate `action_short_circuit: false`, `disambiguation: false`;
+    return extended routing dict (§0.9 shape).
+  - `ActionShortCircuit`: return `{ action_short_circuit: true, action_component_id, action_name,
+    orchestrator_content: "", formatted_content: "", override_prompt_creation: false,
+    matched_component_ids: [] }`.
+  - `Components` (no-match UNION ALL): all items → `orchestrator_content` **and**
+    `formatted_content` (both set) — existing behaviour, unchanged shape.
+  - `Disambiguation`: existing behaviour. Return `{ disambiguation: true, candidates }`.
 
-  Return value is always a dict — not a list. The Python side already guards
-  `isinstance(pkr, dict)` (from the existing `__assemble_prior_knowledge__` path).
+  Return value is always a dict. The Python side already guards `isinstance(pkr, dict)`
+  from the existing `__assemble_prior_knowledge__` usage.
+
+  **`handle_retrieve_docs` — no change.** Left as-is. It is the legacy path, kept for
+  one release cycle for custom orchestrators. Phase K removes it.
 
   **Register `__fetch_component__(uuid: str, class_code: int)`:**  
   New host function. Handler calls `fetch_component_by_id(uuid, class_code)` directly.
@@ -1916,9 +2009,11 @@ and handle all four `FetchForTurnResult` variants. Register `__fetch_component__
 #### Tests
 
 - Unit: `SplitResult` → `orchestrator_content` contains Skill bodies and PythonCode bodies; does NOT contain ToolSkill bodies; does NOT contain `type:text` step info text
-- Unit: `ActionShortCircuit` → `action_short_circuit: true`, empty `orchestrator_content`
+- Unit: `SplitResult` → `formatted_content` equals `orchestrator_content` (alias preserved)
+- Unit: `ActionShortCircuit` → `action_short_circuit: true`, `orchestrator_content: ""`
 - Unit: `Components` (no-match) → `orchestrator_content` contains all items (baseline preserved)
 - Unit: `Disambiguation` → `disambiguation: true` with candidates list
+- Unit: `handle_retrieve_docs` remains untouched — still returns flat `[{type, title, content}]` list
 - Integration: `__fetch_component__(uuid, 16)` → correct Action item returned
 
 ---
@@ -1927,25 +2022,40 @@ and handle all four `FetchForTurnResult` variants. Register `__fetch_component__
 
 **Status:** [ ] Pending
 
-**Goal:** Replace the three-call step-0 block with the single `__retrieve_docs__` call.
+**Goal:** Remove the dead step-0 shim calls from `default.py` so it makes a single
+`__assemble_prior_knowledge__` call (which is already the primary call at line 997).
 Migrate `call_action` nested lookup to `__fetch_component__`.
+
+> **What the current code does (lines 994–1032):**  
+> 1. `pkr = __assemble_prior_knowledge__(goal, token_budget, "02")` — PRIMARY call (works)  
+> 2. `docs = __retrieve_docs__(goal, 5)` — dead Action-detection shim (broken: `class_code`
+>    never in metadata, bug known, documented in §0.9 Problem 1)  
+> 3. `all_skills = __list_skills__()` + `select_skills(...)` — unnecessary round-trip
+>    (IBS already selected Skills by UUID; §0.9 Problem 2)  
+>
+> Phase G removes items 2 and 3. The primary `__assemble_prior_knowledge__` call (item 1)
+> stays. After Phase F upgrades the handler, `pkr` already carries `action_short_circuit`,
+> `disambiguation`, and `orchestrator_content` — no shim needed.
 
 #### Files to modify
 
 - `crates/brassclaw_engine/orchestrator/default.py`
-  - Replace step-0 block (lines ~994–1059) with v3 single-call pattern (§0.9).
-  - Remove `__retrieve_docs__(goal, 5)` dead Action detection shim.
-  - Remove `__list_skills__()` and `select_skills()` calls.
-  - Add `_set_active_skills_from_matched_ids(matched_ids, state)` helper.
+  - Remove the `docs = __retrieve_docs__(goal, 5)` block (lines ~1018–1028): dead shim, never fires.
+  - Remove `all_skills = __list_skills__()` and `select_skills()` calls (lines ~1031–1050).
+  - Extend the `pkr` dict handling after `__assemble_prior_knowledge__` to check the new
+    v3 fields: `action_short_circuit`, `disambiguation`, `orchestrator_content` (as described in §0.9).
+  - Add `_set_active_skills_from_matched_ids(pkr.get("matched_component_ids", []), state)` helper.
   - Replace `call_action` `__retrieve_docs__(nested_name, 1)` at line ~844 with
-    `__fetch_component__(uuid, 16)` (UUID sourced from the BuildInstruction step).
+    `__fetch_component__(action_uuid, 16)` (UUID sourced from the BuildInstruction step).
+  - `pkr["formatted_content"]` remains supported (backward compat alias) — code that checks
+    it continues to work. New code uses `pkr["orchestrator_content"]`.
 
 #### Tests
 
-- Unit: step-0 intent match → `orchestrator_content` injected; `__list_skills__` NOT called
-- Unit: action short-circuit → `execute_action_by_id` called; `__retrieve_docs__` inner shim removed
-- Unit: disambiguation → `handle_disambiguation` called
-- Unit: no-match → UNION ALL `orchestrator_content` injected (baseline preserved)
+- Unit: step-0 with upgraded pkr → `orchestrator_content` injected; `__list_skills__` NOT called; `__retrieve_docs__` shim NOT called
+- Unit: pkr has `action_short_circuit: true` → `execute_action_by_id` called, no LLM
+- Unit: pkr has `disambiguation: true` → `handle_disambiguation` called
+- Unit: no-match path → UNION ALL `orchestrator_content` injected (baseline preserved)
 - Integration: `call_action` using `__fetch_component__` → correct Action fetched by UUID
 
 ---
@@ -2018,7 +2128,7 @@ New dispatch cases:
 | 22 PythonCode | name format, non-empty content, soft 10k token budget, shell-injection scan |
 | 23 ExtensionCatalogue | name format, non-empty `overview_doc`, ≥1 `task_group`, valid UUID syntax in `child_component_ids` |
 | 21 Recipe (StepDescriptions) | call `instruction_builder::build_instruction` as pre-flight; reject on any `IbsError` with the parse message; all `include` UUIDs parse as UUID v4; no `snippet`-type steps; step numbers monotonically increasing; S7 guard |
-| 1–3 Skills | `intent_examples` entries ≤ 512 chars, capped at 20; `required_skills` capped at 10, no self-reference |
+| 1–3 Skills | `intent_examples` entries ≤ 512 chars, capped at 20; `dependency_registry` entries must have valid UUID syntax and non-empty `label` |
 | 16 Actions | `steps` JSONB validated against 13 known step types |
 
 **The `link_formula` / `step_link` parse check uses the same `parse_step_link` function as
@@ -2198,13 +2308,17 @@ All inserted with `validation_status = 'pending'` — external MCP content must 
 
 #### K.3 Cleanup
 
-- Remove `__assemble_prior_knowledge__` handler registration from `orchestrator.rs`.
-  It is superseded by the upgraded `__retrieve_docs__`. Remains callable for backward
-  compatibility with custom orchestrators for one release cycle; then removed.
-- Remove step-0 shim comment block from `default.py`.
+- Remove `__retrieve_docs__` handler registration from `orchestrator.rs`.
+  It is the legacy MemoryDoc path, superseded by the v3-upgraded `__assemble_prior_knowledge__`.
+  Remains registered for one release cycle (custom orchestrators may call it);
+  then removed.
+- Remove step-0 shim comment block from `default.py` (the `# Pre-Phase-5 fallback`
+  comment block around the dead `__retrieve_docs__(goal, 5)` call — Phase G already
+  removes the call itself; Phase K removes the comment artefact).
 - Add deprecation notice to `__list_skills__`: no longer called from default step-0;
   remains callable for external/custom orchestrators.
-- Remove dead `__retrieve_docs__(goal, 5)` Action-detection shim (lines ~1018–1028 in `default.py`).
+- `__assemble_prior_knowledge__` is **not removed**. It is the primary prior-knowledge
+  assembly function and stays as the canonical call in `default.py`.
 
 #### Tests (K.1)
 
@@ -2740,7 +2854,7 @@ avoiding the DB round-trip entirely.
 | 4 | `step_formatter_id` scope: per-recipe, per-variant, or per-step? | **Resolved — not needed.** `step_formatter_id` does not exist. Formatting is achieved by authoring PythonCode component bodies with the correct content and prose style. `type: "text"` steps are WebUI annotations only with no runtime emission. All three intent-match cases (Recipe match, near-miss, full fallback) have their formatting handled by PythonCode bodies, prepared prompt templates, and the KV-cache prefix respectively. |
 | 5 | StepDescription storage format: YAML files in git vs. JSONB in `reborn_recipes`? | **Resolved — JSONB (§0.5).** YAML files in git are structurally incompatible (no WebUI write path, no scope isolation, requires deploy cycle). JSONB column on `reborn_recipes` is the correct choice. Each JSONB element holds a dual representation: `yaml_source` (raw YAML, WebUI display) + `steps` (pre-parsed array, IBS reads). YAML is parsed once at WebUI save time — the IBS never parses YAML at runtime. |
 | 6 | Legacy DocPlan → v3 translation? | **Resolved — see §3.1.** JSONB is the storage format (Q5). The translation pipeline creates new v3 components from legacy MemoryDoc rows; dependency registries are decided at authoring time, not inferred by translation. Action-format steps with name references must be resolved to UUIDs; unresolvable names are Q1 hard errors. Step type (text/component/snippet) and component class are orthogonal. |
-| 7 | `__assemble_prior_knowledge__` removal timing? | Keep registered for one release cycle after Phase K ships. Document as deprecated in Phase K. Remove in the following cycle. |
+| 7 | `__assemble_prior_knowledge__` removal timing? | **Not removed.** `__assemble_prior_knowledge__` IS the v3-upgraded primary function — it already calls `fetch_for_turn` and returns `{content, formatted_content, override_prompt_creation, matched_component_ids}`. Phase F extends it to handle `SplitResult` and `ActionShortCircuit`. Phase G removes the dead `__retrieve_docs__(goal, 5)` shim from step-0 (NOT the `__assemble_prior_knowledge__` call). Phase K removes `__retrieve_docs__` handler registration (the legacy MemoryDoc path). |
 | 8 | Should builtin Tool/ToolSkill/Skill rows bypass Q2 (auto-validated)? | Yes — `source = "system"`, `validation_status = "validated"` at seeder insert. Q1 runs inside the seeder at build time. Q1 errors in seeder content are CI build failures. This prevents boot from requiring human Q2 completion for core tools. |
 | 9 | Should the MCP translator also be used for builtins? | No — wrong granularity (1:1 per tool, no task-level Skills, no PythonCode, no multi-ToolSkill Recipes). Use `builtin_bootstrap.rs` (Phase L) for builtins. MCP translator is for external third-party MCPs only. |
 | 10 | What recipe variants should `builtin.shell` have? | Two: (a) known-safe commands (allowlist: `cargo build/test/fmt/clippy`, `git status/log/diff`, `npm install/build`) at Tier 1 high-confidence; (b) open-ended arbitrary command at Tier 1 always with explicit approval annotation. Both have `llm_call_required: true` — no shell is ever Tier 0. |
@@ -2839,7 +2953,7 @@ User types: "show all files including hidden in /tmp"
 ├─ [PromptStage skipped — Tier 0]
 ├─ [ModelStage  skipped — Tier 0]
 │
-│   Orchestrator (Python) receives pkr from __retrieve_docs__:
+│   Orchestrator (Python) receives pkr from __assemble_prior_knowledge__:
 │     pkr["orchestrator_content"]:
 │       - Step 1 info text (task context annotation)
 │       - ls-skill body
@@ -2855,6 +2969,46 @@ User types: "show all files including hidden in /tmp"
 │
 ├─ [InterceptorStage]  Saves composition plan. Sempai reviews if connected.
 └─ [AssistantReplyStage]  Emits formatted directory listing. Wilson score updated.
+```
+
+### Tier 1 (intent match, LLM-guided)
+
+```
+User types: "edit main.rs and refactor the error handler"
+(wilson_lower = 0.61 — confident match, but llm_call_required = true)
+│
+├─ [InputStage]
+│   state.last_user_text = "edit main.rs and refactor the error handler"
+│
+├─ [RecipeStage]
+│   fetch_for_turn(scope, last_user_text, budget, "02")
+│     → resolve_intent → Match { component_id: uuid-builtin-edit-file,
+│                                class_code: 21,
+│                                step_link: "0:0-0:E+2:0-2:E" }
+│     → IBS → BuildInstruction { rust_steps, orchestrator_steps,
+│                                  llm_call_required: true }
+│     → FetchForTurnResult::SplitResult { rust_items, orchestrator_items, routing }
+│   routing.wilson_lower = 0.61, routing.llm_call_required = true → Tier 1
+│   stash orchestrator_items as hint in state.recipe_hint
+│   return RecipeStageOutcome::Continue (does NOT skip PromptStage/ModelStage)
+│
+├─ [PromptStage]
+│   state.recipe_hint present → inject orchestrator_items into prior_knowledge
+│   before calling fetch_for_consumer (UNION ALL); recipe hint takes priority
+│   over generic UNION ALL results (does NOT call fetch_for_consumer if hint
+│   fills the budget; recipe hint is always injected first)
+│   volatile context injected separately
+│
+├─ [InterceptorStage]  Sempai reviews outgoing prompt (recipe hint visible)
+│
+├─ [ModelStage]        LLM call
+│   Orchestrator reads pkr from __assemble_prior_knowledge__ (returns from stash):
+│     pkr["orchestrator_content"]: Skill + PythonCode bodies from SplitResult
+│     pkr["override_prompt_creation"]: depends on Recipe flag
+│   LLM uses the injected Skill bodies to decide how to proceed
+│   → LLM calls tools (capability calls) guided by recipe orchestrator content
+│
+└─ [AssistantReplyStage]  emit LLM response; Wilson score updated
 ```
 
 ### Tier 2 (no match — full LLM)
