@@ -26,17 +26,22 @@ for arg in "$@"; do
     esac
 done
 
-# When stdin is not a terminal (e.g. curl | bash), open /dev/tty for prompts.
-# If /dev/tty is also unavailable or not readable (no controlling terminal at
-# all — common with `sudo bash` in a pipe), fall back to auto-yes so the
-# script does not silently cancel instead of running.
+# Detect whether we have an interactive terminal for prompts.
+# When stdin is a pipe (e.g. curl | bash), /dev/tty may be technically
+# openable but read returns immediately empty under sudo with no controlling
+# terminal.  We therefore only use /dev/tty when we can confirm it is truly
+# interactive; otherwise we auto-yes so the script never silently cancels.
 if [[ -t 0 ]]; then
+    # stdin is a real terminal — prompt on stdin
     TTY_IN=/dev/stdin
-elif { true <>/dev/tty; } 2>/dev/null; then
-    # /dev/tty exists AND can be opened for reading
+elif [[ -t 2 ]] && [[ -c /dev/tty ]]; then
+    # stderr is a terminal (common with `sudo bash`), /dev/tty is a char
+    # device — open it and use it for prompts
     TTY_IN=/dev/tty
 else
-    TTY_IN=""          # no usable terminal — force non-interactive yes
+    # No usable terminal (pure pipe / cron / etc.) — proceed automatically.
+    # The user can pass -y (preserve data) or --wipe (delete everything).
+    TTY_IN=""
     YES=true
 fi
 
