@@ -222,7 +222,7 @@ BuildInstruction
 A ToolSkill UUID must never appear in `orchestrator_steps`.  
 A Skill UUID must never appear in `rust_steps`.  
 An orchestrator step never references a ToolSkill. A rust step never references a Skill.  
-Orchestrator instructions live in PythonCode component bodies — not in `type: "text"` step `info` fields.
+Runtime content for the orchestrator lives in component bodies loaded by `type: "component"` steps — not in `type: "text"` step `info` fields. Step type and component class are orthogonal.
 
 #### Complete example — Recipe `local-files-reading`, variant `ls-la`
 
@@ -331,7 +331,7 @@ inline in the WebUI. The `steps` array is therefore always consistent with `yaml
 
 | Field | Type | Meaning |
 |-------|------|---------|
-| `info` | text | Human-readable documentation about what this step does. Visible in the WebUI component page to help the author understand the step's purpose. **Not emitted to the orchestrator at runtime.** Orchestrator instructions live in PythonCode component bodies (`type: "component"` steps referencing class 22). |
+| `info` | text | Human-readable documentation about what this step does. Visible in the WebUI component page to help the author understand the step's purpose. **Not emitted to the orchestrator at runtime.** Orchestrator instructions are delivered by `type: "component"` steps — the body of the referenced component (Skill, PythonCode, or any other orchestrator-channel class) is what the orchestrator receives. |
 | `include` | UUID[] | Component UUIDs needed at this step. IBS emits a fetch for each UUID. |
 | `codesnippet` | text | Inline Python code. On WebUI save: creates a PythonCode component (class 22), enters Q1 queue. Step greyed out until Q1+Q2 pass; promoted to `type: "component"` with the new UUID on Q2 pass. |
 | `dependencies` | string | Traversal expression into this step's component's `dependency_registry` (see §0.19). E.g. `"1[all], 5[2,6], 17[3, 7[1,4]]"`. Resolved at fetch time by `fetch_for_turn`. Absent or empty string = no dependencies. |
@@ -345,9 +345,12 @@ inline in the WebUI. The `steps` array is therefore always consistent with `yaml
 | `snippet` | WebUI-only authoring shortcut. **IBS refuses to assemble** a BuildInstruction while any step has this type — it returns `IbsError::UnpromotedSnippet`. The step must be promoted to `type: "component"` after the created PythonCode passes Q1+Q2. |
 
 > **`type: "text"` steps and the IBS:** The IBS produces no output for `type: "text"` steps.
-> They are pure WebUI annotations. Orchestrator instructions are delivered exclusively via
-> `type: "component"` steps referencing PythonCode components (class 22). A `type: "text"`
-> step with no `info` is a Q1 **warning** (undocumented step), not an error.
+> They are pure WebUI annotations. Runtime content reaches the orchestrator exclusively via
+> `type: "component"` steps: the body of the referenced component — whether a Skill (class 1–3),
+> PythonCode (class 22), or any other orchestrator-channel class — is what the orchestrator
+> receives. Step type and component class are orthogonal: the step type determines IBS
+> handling; the component class and the step's `knowledge` field determine channel routing.
+> A `type: "text"` step with no `info` is a Q1 **warning** (undocumented step), not an error.
 
 #### Multi-StepDescription pattern (variants)
 
@@ -756,7 +759,8 @@ if step == 0:
 ```python
 {
     # Orchestrator channel only.
-    # Skills, PythonCode, LLM-formatted step annotations from type:text steps.
+    # Skill bodies, PythonCode bodies, and any other orchestrator-channel component bodies.
+    # type:text step info fields are NOT included — they are WebUI annotations only.
     # ToolSkill bodies NEVER appear here.
     "orchestrator_content": str,
 
@@ -2735,7 +2739,7 @@ avoiding the DB round-trip entirely.
 | 3 | `required_skills` inclusion: always include vs. score against current query? | **Resolved — see §0.19.** `required_skills` does not exist. Dependencies are declared per-component in `dependency_registry` JSONB and referenced from StepDescription steps via typed traversal expressions (`1[all], 5[2,6], 17[3, 7[1,4]]`). Always resolved fully per the traversal expression — no scoring, no cap. KV-cache prefix absorbs token cost in steady state. |
 | 4 | `step_formatter_id` scope: per-recipe, per-variant, or per-step? | **Resolved — not needed.** `step_formatter_id` does not exist. Formatting is achieved by authoring PythonCode component bodies with the correct content and prose style. `type: "text"` steps are WebUI annotations only with no runtime emission. All three intent-match cases (Recipe match, near-miss, full fallback) have their formatting handled by PythonCode bodies, prepared prompt templates, and the KV-cache prefix respectively. |
 | 5 | StepDescription storage format: YAML files in git vs. JSONB in `reborn_recipes`? | **Resolved — JSONB (§0.5).** YAML files in git are structurally incompatible (no WebUI write path, no scope isolation, requires deploy cycle). JSONB column on `reborn_recipes` is the correct choice. Each JSONB element holds a dual representation: `yaml_source` (raw YAML, WebUI display) + `steps` (pre-parsed array, IBS reads). YAML is parsed once at WebUI save time — the IBS never parses YAML at runtime. |
-| 6 | Legacy DocPlan → v3 translation? | See §3.1. |
+| 6 | Legacy DocPlan → v3 translation? | **Resolved — see §3.1.** JSONB is the storage format (Q5). The translation pipeline creates new v3 components from legacy MemoryDoc rows; dependency registries are decided at authoring time, not inferred by translation. Action-format steps with name references must be resolved to UUIDs; unresolvable names are Q1 hard errors. Step type (text/component/snippet) and component class are orthogonal. |
 | 7 | `__assemble_prior_knowledge__` removal timing? | Keep registered for one release cycle after Phase K ships. Document as deprecated in Phase K. Remove in the following cycle. |
 | 8 | Should builtin Tool/ToolSkill/Skill rows bypass Q2 (auto-validated)? | Yes — `source = "system"`, `validation_status = "validated"` at seeder insert. Q1 runs inside the seeder at build time. Q1 errors in seeder content are CI build failures. This prevents boot from requiring human Q2 completion for core tools. |
 | 9 | Should the MCP translator also be used for builtins? | No — wrong granularity (1:1 per tool, no task-level Skills, no PythonCode, no multi-ToolSkill Recipes). Use `builtin_bootstrap.rs` (Phase L) for builtins. MCP translator is for external third-party MCPs only. |
@@ -2761,9 +2765,14 @@ migrates these to class-specific tables. The gap: no v2 docs have StepDescriptio
    step. No intent examples (ToolSkills are referenced by Skills, not intent-matched directly).
 
 3. **Existing Recipes (class 21) without `step_descriptions`:** Map each entry in the
-   existing `steps` JSONB (13-type Action format) to the nearest StepDescription type.
-   Steps with no component reference → `type: text`. Steps with a component reference →
-   `type: component` with existing UUID in `include`. Route to Q1.
+   existing `steps` JSONB (13-type Action format) to v3 StepDescription steps:
+   - Steps with a component reference by **name**: resolve the name to a UUID by querying
+     the component tables (any class) within the same scope. On success → `type: component`
+     with the resolved UUID in `include`. On failure (name not found) → Q1 **hard error**
+     on the translated Recipe ("unresolvable component reference: <name>"); the Recipe is
+     flagged and requires manual correction before it can activate.
+   - Steps with no component reference → `type: text` (WebUI annotation only; no runtime effect).
+   Route to Q1. `yaml_source` is synthesised from the generated steps array.
 
 4. **Specs, Lessons, Notes:** Leave as-is. Served by the UNION ALL path; no StepDescriptions needed.
 
