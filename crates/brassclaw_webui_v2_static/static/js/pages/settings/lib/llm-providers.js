@@ -60,7 +60,11 @@ export function providerAcceptsApiKey(provider) {
 
 export function isProviderConfigured(provider, overrides) {
   const override = provider.builtin ? overrides[provider.id] || {} : {};
-  const needsKey = provider.builtin ? provider.api_key_required !== false : provider.adapter !== "ollama";
+  // Use api_key_required from the server snapshot for both builtin and custom
+  // providers. Custom openai-compatible providers pointed at local servers
+  // (vLLM, LM Studio, etc.) have api_key_required=false and must not be
+  // blocked by the key check.
+  const needsKey = provider.api_key_required !== false;
   const storedKey = provider.builtin ? override.api_key : provider.api_key;
   const hasDbKey = storedKey === API_KEY_UNCHANGED || (typeof storedKey === "string" && storedKey.length > 0);
   const keyOk = !needsKey || provider.has_api_key === true || hasDbKey;
@@ -88,7 +92,7 @@ export function groupProvidersByStatus(providers, overrides, activeProviderId) {
 
 export function providerMissingReason(provider, overrides) {
   const override = provider.builtin ? overrides[provider.id] || {} : {};
-  const needsKey = provider.builtin ? provider.api_key_required !== false : provider.adapter !== "ollama";
+  const needsKey = provider.api_key_required !== false;
   const storedKey = provider.builtin ? override.api_key : provider.api_key;
   const hasDbKey = storedKey === API_KEY_UNCHANGED || (typeof storedKey === "string" && storedKey.length > 0);
   if (needsKey && provider.has_api_key !== true && !hasDbKey) return "api_key";

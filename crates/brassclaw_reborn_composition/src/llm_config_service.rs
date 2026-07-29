@@ -1106,18 +1106,47 @@ impl LlmConfigService for RebornLlmConfigService {
         _caller: WebUiAuthenticatedCaller,
         request: LlmProbeRequest,
     ) -> Result<LlmModelsResult, LlmConfigServiceError> {
-        let provider = self.probe_provider(&request).await?;
-        match provider.list_models().await {
-            Ok(models) => Ok(LlmModelsResult {
-                ok: true,
-                models,
-                message: String::new(),
-            }),
-            Err(_) => Ok(LlmModelsResult {
+        // Resolve the API key the same way probe_provider does: prefer the
+        // inline key from the request; fall back to the stored key when the
+        // probe targets the persisted provider endpoint (SSRF-safe).
+        let stored_key_allowed = self.probe_matches_persisted_provider(&request).await?;
+        let api_key: Option<String> = if let Some(key) = request.api_key.as_ref() {
+            Some(key.expose_secret().to_string())
+        } else if stored_key_allowed {
+            self.keys
+                .read(&request.provider_id)
+                .await
+                .map_err(|_| LlmConfigServiceError::Unavailable)?
+                .map(|s| s.expose_secret().to_string())
+        } else {
+            None
+        };
+
+        // Use the models module directly rather than going through a provider
+        // chain — the default LlmProvider::list_models() returns empty for most
+        // adapters; fetch_models_for hits the real /v1/models endpoint.
+        let base_url = request.base_url.as_deref().filter(|u| !u.trim().is_empty());
+        let pairs = brassclaw_llm::models::fetch_models_for(
+            &request.provider_id,
+            &brassclaw_llm::models::ModelFetchOptions {
+                api_key: api_key.as_deref(),
+                base_url,
+            },
+        )
+        .await;
+
+        if pairs.is_empty() {
+            Ok(LlmModelsResult {
                 ok: false,
                 models: Vec::new(),
-                message: "could not list models for this provider".to_string(),
-            }),
+                message: "No models were returned by the provider endpoint.".to_string(),
+            })
+        } else {
+            Ok(LlmModelsResult {
+                ok: true,
+                models: pairs.into_iter().map(|(id, _label)| id).collect(),
+                message: String::new(),
+            })
         }
     }
 

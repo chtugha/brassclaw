@@ -575,7 +575,21 @@ pub async fn build_reborn_services(
                 )
                 .await?;
                 // Inject the PG pool so build_reborn_runtime can use PG-backed stores.
-                services.pg_pool = Some(pg_pool_arc);
+                services.pg_pool = Some(Arc::clone(&pg_pool_arc));
+                // Wire the token-settings and safety-config stores from the pool so the
+                // WebUI settings endpoints have a live backend instead of returning 503.
+                services.pg_token_settings_store = Some(Arc::new(
+                    crate::pg_token_settings_store::PgTokenSettingsStore::new(
+                        Arc::clone(&pg_pool_arc),
+                        "default",
+                    ),
+                ));
+                services.pg_safety_config_store = Some(Arc::new(
+                    brassclaw_product_workflow::PgSafetyConfigStore::new(
+                        Arc::clone(&pg_pool_arc),
+                        "default",
+                    ),
+                ));
                 // NOTE: `local_runtime.trigger_repository` is still `InMemoryTriggerRepository`
                 // because Arc::get_mut would fail (the Arc is aliased by the trigger-create hook
                 // stored inside host_runtime).  Fixing this properly requires threading a
