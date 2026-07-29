@@ -1983,6 +1983,13 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
     23 => Some(("reborn_extension_catalogues", "COALESCE(NULLIF(prior_knowledge_content,''), overview_doc)")),
     ```
     This is required before any Recipe step can reference a class 22 or 23 component UUID.
+    > **Security note:** `fetch_component_by_id` uses `format!()` to interpolate the table
+    > name and content expression into the SQL query string. This is safe **only because**
+    > both values come from a `match` on `component_class_code` and are hard-coded `&'static str`
+    > literals — never from user input. This pattern must NEVER be extended to accept
+    > user-supplied table names or column expressions. The class code itself is an `i32`
+    > from the DB, not from user input, so the dispatch is safe. Document this constraint
+    > in a code comment above the match arm when implementing.
 
 #### Tests
 
@@ -2003,6 +2010,7 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
 **Goal:** Upgrade the Rust handler behind `__assemble_prior_knowledge__` to handle all
 four `FetchForTurnResult` variants — including the new `SplitResult` and
 `ActionShortCircuit` variants added in Phase E. Register `__fetch_component__`.
+Fix the hardcoded `tenant_id: "default"` scope bug (see §below).
 
 > **Clarification — which handler is upgraded:**  
 > `handle_retrieve_docs` calls `RetrievalEngine::retrieve_context` (legacy MemoryDoc path).
@@ -2051,6 +2059,25 @@ four `FetchForTurnResult` variants — including the new `SplitResult` and
   New host function. Handler calls `fetch_component_by_id(uuid, class_code)` directly.
   Returns a single item dict or `None`. Used by `call_action` nested lookups (§0.9).
 
+#### Phase F security fix — hardcoded `tenant_id: "default"` in scope
+
+> **Bug found (orchestrator.rs line 2581):** `handle_assemble_prior_knowledge` currently
+> constructs `ComponentScope` as:
+> ```rust
+> ComponentScope {
+>     tenant_id: "default".to_string(),   // ← HARDCODED — wrong for multi-tenant
+>     user_id: thread.user_id.clone(),
+>     agent_id: String::new(),            // ← EMPTY — wrong for agent scoping
+>     project_id: thread.project_id.to_string(),
+> }
+> ```
+> This means all intent lookups ignore the real tenant_id and agent_id. In a
+> multi-tenant deployment, User A could match intents seeded by User B's tenant.
+> Phase F MUST fix this: the scope must be constructed from the actual thread's
+> tenant, agent, and project identities. The `Thread` struct must carry `tenant_id`
+> and `agent_id` (verify if they already exist; if not, they must be added).
+> This is a **correctness and isolation bug** — fix it as part of Phase F, not deferred.
+
 #### Tests
 
 - Unit: `SplitResult` → `orchestrator_content` contains Skill bodies and PythonCode bodies; does NOT contain ToolSkill bodies; does NOT contain `type:text` step info text
@@ -2059,7 +2086,9 @@ four `FetchForTurnResult` variants — including the new `SplitResult` and
 - Unit: `Components` (no-match) → `orchestrator_content` contains all items (baseline preserved)
 - Unit: `Disambiguation` → `disambiguation: true` with candidates list
 - Unit: `handle_retrieve_docs` remains untouched — still returns flat `[{type, title, content}]` list
+- Unit: `ComponentScope` in `handle_assemble_prior_knowledge` uses correct tenant_id and agent_id from thread (not hardcoded "default")
 - Integration: `__fetch_component__(uuid, 16)` → correct Action item returned
+- Integration: two-tenant setup → tenant A's intents do NOT match for tenant B's thread
 
 ---
 
@@ -2127,6 +2156,13 @@ and falls through to Tier 2 on no match.
    #[serde(default)] pub recipe_hint: Option<serde_json::Value>,
    ```
    All three fields are `#[serde(default)]` so existing checkpoint payloads deserialise correctly.
+   > **Crate boundary constraint:** `brassclaw_agent_loop` depends on `brassclaw_turns` but NOT
+   > on `brassclaw_engine`. `ComponentItem` is defined in `brassclaw_engine`. Therefore
+   > `recipe_rust_context` and `recipe_hint` CANNOT be typed as `Vec<ComponentItem>` or
+   > `Vec<ComponentItem>` — doing so would create a forbidden crate dependency.
+   > They are typed as `serde_json::Value` (pre-serialized at `RecipeStage` before being
+   > stored in state). The executor deserializes them back to component data when
+   > applying them to the execution context, using types from `brassclaw_turns` only.
 
 2. `crates/brassclaw_agent_loop/src/executor/input.rs` — populate `last_user_text` from
    drained input (the last user message text seen this turn)
@@ -2137,10 +2173,16 @@ and falls through to Tier 2 on no match.
    > adds `TierZero` and `ActionExecuted` variants. The internal enum is `RecipeStep`
    > (the type alias `RecipeStageOutcome` used in comments below maps to it).
    >
-   > **RecipeLookup vs fetch_for_turn:** `ctx.host.recipe_lookup()` is the v2 `RecipeLookup`
-   > port (name/keyword-based, MemoryDoc-backed). Phase H does NOT use it — it calls
-   > `PostgresSource::fetch_for_turn` directly via a new host slot. The `recipe_lookup()`
-   > port is left wired but not called on the v3 path.
+   > **RecipeLookup vs fetch_for_turn:** `ctx.host.recipe_lookup()` is backed by
+   > `PgRecipeLibrary` (in `pg_recipe_store.rs`) — a real Postgres implementation that
+   > queries `reborn_recipes` using trigger-based scoring (exact/keyword/pattern match).
+   > It is NOT a dead v2 path; it is wired and used in production via `runtime.rs`.
+   > However, it uses the old `trigger` JSONB scoring — not the intent-system (`resolve_intent`).
+   > Phase H uses `PostgresSource::fetch_for_turn` (intent-driven) instead.
+   > The `recipe_lookup()` port **must be kept wired and functional** — it provides the
+   > outcome recording path (`record_recipe_outcome`) that updates wilson_lower/tier.
+   > Phase H adds a parallel intent-driven lookup; both paths coexist during the v3 transition.
+   > `record_recipe_outcome` must be called from the v3 path too (same Wilson update needed).
    >
    > **rust_items application:** `RecipeStage` runs at the agent loop level (above the
    > Python scripting engine) so it CAN apply rust_items to the Rust execution context
@@ -2175,8 +2217,24 @@ and falls through to Tier 2 on no match.
          return RecipeStep::Continue { state }  // Tier 2 — unchanged
    ```
 
-4. `PromptStage`: if `state.recipe_hint` is set (Tier 1), inject it into prior_knowledge
-   before calling `fetch_for_consumer`. If `RecipeStageOutcome::TierZero`, skip `PromptStage`
+4. `crates/brassclaw_agent_loop/src/executor/canonical.rs` — **executor loop restructuring
+   required**. The current dispatch at line 94 is:
+   ```rust
+   state = match self.recipe.process(ctx, RecipeInput { state }).await? {
+       RecipeStep::Continue { state: next } => *next,
+   };
+   ```
+   This is an exhaustive match. Adding `TierZero` and `ActionExecuted` variants will cause
+   a **compile error** until canonical.rs handles them. The executor loop must be restructured:
+   - `RecipeStep::Continue { state }` → continue to PromptStage (unchanged)
+   - `RecipeStep::TierZero { state, routing }` → skip PromptStage and ModelStage, emit reply
+   - `RecipeStep::ActionExecuted { state }` → skip PromptStage and ModelStage, emit reply
+   This is not trivial: the executor loop is a single `loop {}` block; skipping PromptStage
+   means branching before line 98. Implement as an enum over what follows RecipeStage:
+   `enum PostRecipeOutcome { NeedsPrompt(LoopExecutionState), TierZero(TierZeroPayload), ... }`.
+
+5. `PromptStage`: if `state.recipe_hint` is set (Tier 1), inject it into prior_knowledge
+   before calling `fetch_for_consumer`. If `RecipeStep::TierZero`, skip `PromptStage`
    and `ModelStage`.
 
 #### Tests
@@ -2185,6 +2243,8 @@ and falls through to Tier 2 on no match.
 - Integration: Tier 0 match (wilson ≥ 0.70, `llm_call_required: false`) → `PromptStage` and `ModelStage` skipped
 - Integration: Tier 1 match (wilson < 0.70) → orchestrator hint injected, LLM called normally
 - Integration: no match → falls through to full LLM (Tier 2 unchanged)
+- Integration: Tier 0 success → `record_recipe_outcome(recipe_id, true)` called → wilson_lower updated
+- Integration: Tier 0 failure → `record_recipe_outcome(recipe_id, false)` called → tier possibly downgraded
 
 ---
 
@@ -2844,14 +2904,26 @@ correct. Fine-grained per-component eviction is a future optimisation.
 Remove from all 13 component tables: `queue_code`, `review_attempts`, `review_feedback`,
 `rejected_at`, `validation_errors`.
 
-> **Rust struct sync required:** After V055 drops these columns, the corresponding Rust
-> structs must be updated in the same phase. Affected:
-> - `Recipe` in `crates/brassclaw_engine/src/types/recipe.rs` —
+> **Rust struct sync required:** After V055 drops these columns, ALL structs that read
+> or write them must be updated atomically. Affected:
+> - `Recipe` + `ToolSkill` in `crates/brassclaw_engine/src/types/recipe.rs` —
 >   remove `validation_errors`, `review_feedback`, `review_attempts`, `rejected_at`.
-> - `ToolSkill` in same file — same fields.
-> Any sqlx query or struct that selects these columns will fail to compile after V055.
-> Use `#[serde(default)]` + `Option` migration: first populate queue (step 1 of V055),
-> then remove fields from structs + tables atomically.
+> - `PgRecipe` in `crates/brassclaw_reborn_composition/src/pg_recipe_store.rs` —
+>   this struct also selects `queue_code`, `review_attempts`, `review_feedback`,
+>   `rejected_at`, `validation_errors` from `reborn_recipes`. Must be updated.
+> - `component_validator.rs` — creates `Recipe` structs with `validation_errors`.
+> - `recipe_matcher.rs` — reads `wilson_lower` + `tier` (these are NOT dropped by V055,
+>   but the file also references `validation_errors` in some paths — audit required).
+> - Any other caller that constructs or destructures these structs.
+>
+> **Two-phase deploy required (zero-downtime):**
+> V055 drops columns. If the old binary is still running when V055 runs (rolling deploy),
+> it will SELECT dropped columns → runtime panic on every request. Required deploy order:
+> 1. Deploy new binary (with structs updated to not SELECT the dropped columns).
+> 2. Run V055 migration (now safe — binary no longer queries dropped columns).
+> This means the binary must handle `None`/missing values for these fields
+> gracefully BEFORE V055 runs. Use `Option<T>` + `#[serde(default)]` on the struct
+> fields in the interim. After V055 runs, fields can be removed entirely.
 
 > **Rust struct sync required:** After V055 drops these columns, the corresponding Rust
 > structs must be updated in the same phase. Affected:
