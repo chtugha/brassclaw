@@ -114,6 +114,9 @@ export function useProviderDialogForm({
         setMessage({ tone: "error", text: result.message || t("llm.modelsFetchFailed") });
       } else {
         setModels(result.models);
+        // Auto-select the first model when the field is still empty so the
+        // user can save immediately without manually picking a value.
+        setForm((prev) => ({ ...prev, model: prev.model || result.models[0] }));
         setMessage({ tone: "success", text: t("llm.modelsFetched", { count: result.models.length }) });
       }
     } catch (err) {
