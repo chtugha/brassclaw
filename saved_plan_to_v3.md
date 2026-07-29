@@ -676,6 +676,12 @@ pub struct TurnRoutingSignals {
     pub variant_label:            String,
     pub step_link:                String,
     pub llm_call_required:        bool,
+    /// Wilson lower-bound from the matched Recipe row (for metrics / logging).
+    pub wilson_lower:             f64,
+    /// Pre-computed from recipe.is_tier0_eligible(): tier ∈ {mature, candidate}
+    /// AND wilson_lower ≥ 0.70 AND validated AND validation hook wired.
+    /// RecipeStage checks this flag directly — does not need the full Recipe struct.
+    pub tier0_eligible:           bool,
 }
 ```
 
@@ -1958,6 +1964,7 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
 - Unit: Action (class 16) match → `ActionShortCircuit { component_id, name }`
 - Unit: match with `step_link: None` → existing `Components([single_item])` path unchanged
 - Unit: `{{vars.dir}}` substitution applied in `orchestrator_items[].effective_content`
+- Unit: `routing.wilson_lower` populated from Recipe row's `wilson_lower` field
 - Integration: full intent match → correct channel split confirmed by asserting item class_codes
 
 ---
@@ -2663,8 +2670,8 @@ WHERE validation_status != 'validated'
 ON CONFLICT DO NOTHING;
 
 -- Step 3: add last_graduation_at to scope cursor
--- (Added to reborn_monty_vm_settings if it has a scope tuple,
---  or to a new reborn_scope_cursors table — see note below)
+-- reborn_monty_vm_settings has one guaranteed row per scope (upserted on first access).
+-- The graduation trigger's UPDATE will always find a row. No separate cursor table needed.
 ALTER TABLE reborn_monty_vm_settings
     ADD COLUMN IF NOT EXISTS last_graduation_at TIMESTAMPTZ;
 
@@ -2697,12 +2704,11 @@ ALTER TABLE reborn_skills
 -- validation_status is NOT dropped — it remains as the post-validation gate.
 ```
 
-**Note on scope cursor:** If `reborn_monty_vm_settings` does not have a row for every
-scope (it may be sparsely populated), the trigger's UPDATE will silently do nothing for
-scopes without a settings row. In that case, use an `INSERT ... ON CONFLICT DO UPDATE`
-upsert, or create a dedicated `reborn_scope_cursors` table with one guaranteed row per
-scope. Resolve this during Phase N implementation by checking `reborn_monty_vm_settings`
-population guarantees.
+**Note on scope cursor:** `reborn_monty_vm_settings` has a guaranteed row for every
+active scope. `PgMontyVmSettingsStore::upsert` (line 103 in `pg_monty_vm_settings.rs`) is
+called on every scope's first access using `ON CONFLICT ... DO UPDATE` — no scope can reach
+the graduation trigger without a settings row. The trigger's `UPDATE` will always find a
+row. No separate `reborn_scope_cursors` table is needed. ✓ Resolved.
 
 #### N.2 Application-layer write paths
 
@@ -2945,7 +2951,8 @@ User types: "show all files including hidden in /tmp"
 │     → fetch orchestrator_items: [ComponentItem: ls-skill body,
 │                                   ComponentItem: ls-result-handler body]
 │     → FetchForTurnResult::SplitResult { rust_items, orchestrator_items, routing }
-│   routing.wilson_lower = 0.82, llm_call_required = false → Tier 0
+│   routing.tier0_eligible = true (wilson_lower=0.82, tier=mature, validated)
+│   routing.llm_call_required = false → Tier 0
 │   apply rust_items to Rust execution context (silent, never forwarded to orchestrator)
 │   stash orchestrator_items in state
 │   return RecipeStageOutcome::TierZero
@@ -2988,7 +2995,7 @@ User types: "edit main.rs and refactor the error handler"
 │     → IBS → BuildInstruction { rust_steps, orchestrator_steps,
 │                                  llm_call_required: true }
 │     → FetchForTurnResult::SplitResult { rust_items, orchestrator_items, routing }
-│   routing.wilson_lower = 0.61, routing.llm_call_required = true → Tier 1
+│   routing.tier0_eligible = false (wilson_lower=0.61 < 0.70 or llm_call_required=true) → Tier 1
 │   stash orchestrator_items as hint in state.recipe_hint
 │   return RecipeStageOutcome::Continue (does NOT skip PromptStage/ModelStage)
 │
