@@ -722,9 +722,16 @@ pub struct TurnRoutingSignals {
     pub llm_call_required:        bool,
     /// Wilson lower-bound from the matched Recipe row (for metrics / logging).
     pub wilson_lower:             f64,
-    /// Pre-computed from recipe.is_tier0_eligible(): tier ∈ {mature, candidate}
-    /// AND wilson_lower ≥ 0.70 AND validated AND validation hook wired.
-    /// RecipeStage checks this flag directly — does not need the full Recipe struct.
+    /// Pre-computed Tier 0 eligibility check.
+    /// TRUE only when ALL of: tier ∈ {mature, candidate}, wilson_lower ≥ 0.70,
+    /// validation_status = 'validated', AND validation ≠ None (hook wired).
+    ///
+    /// > **Discrepancy note:** `PgRecipe::is_tier0_eligible()` in `pg_recipe_store.rs`
+    /// > only checks `is_deliverable() && tier ∈ {mature, candidate}` — it OMITS the
+    /// > wilson_lower ≥ 0.70 guard. The v3 `TurnRoutingSignals` must use the full
+    /// > `Recipe::is_tier0_eligible()` check from `types/recipe.rs` (which includes
+    /// > the Wilson and validation-hook guard), NOT the stripped `PgRecipe` method.
+    /// > Phase E must compute this correctly when building `TurnRoutingSignals`.
     pub tier0_eligible:           bool,
 }
 ```
@@ -977,8 +984,18 @@ The legacy `__retrieve_docs__` (MemoryDoc path) is NOT called in v3 step-0.
 | 15 | Summary | 0.10 |
 | 20 | Note | 0.05 |
 
-Bold rows are new additions for v3. These weights are added to `doc_type_weight_by_class`
-in `retrieval_dbless.rs`.
+Bold rows are new additions for v3. These weights are added to the `doc_type_weight_by_class`
+function in `retrieval_source.rs` (the integer class-code → weight dispatch used by the
+fallback content search path). This is a **separate function** from `doc_type_weight(DocType)`
+in `retrieval_dbless.rs` which takes the `DocType` enum (not an integer).
+
+> **Phase B/C action:** Adding classes 22 and 23 also requires:
+> 1. Adding `DocType::PythonCode` and `DocType::ExtensionCatalogue` variants to the
+>    `DocType` enum in `crates/brassclaw_engine/src/types/memory.rs`.
+> 2. Adding match arms for these new variants in `doc_type_weight(DocType)` in `retrieval_dbless.rs`.
+> 3. Adding integer match arms `22 => 0.42` and `23 => 0.38` in the `doc_type_weight_by_class(i32)` function.
+> Both dispatch functions must be updated — missing either one leaves the new class codes
+> returning 0.0 on one path.
 
 ---
 
@@ -1967,17 +1984,25 @@ Same engine files as Phase B, but for class 23:
 
 #### Files to modify
 
-- `crates/brassclaw_engine/src/memory/intent_system.rs`  
-  Add `step_link: Option<String>` to `IntentResolution::Match`.  
-  Update the resolution query to `SELECT ... step_link FROM reborn_intent_inputs`.  
+- `crates/brassclaw_engine/src/memory/intent_system.rs`
+  Add `step_link: Option<String>` to `IntentResolution::Match`.
+  Update the resolution query to `SELECT ... step_link FROM reborn_intent_inputs`.
   Update `seed_intent_input` to accept and store `step_link`.
 
 - All call sites that destructure `IntentResolution::Match { component_id, component_class_code }`:
   bind `step_link` as well. Non-IBS paths treat `None` as a legacy match (unchanged behaviour).
 
+> **Sequencing invariant:** The Rust code change (adding `step_link` to `IntentResolution::Match`
+> and the `SELECT ... step_link` query) **requires V050 to have run first**. V050 adds the column.
+> If the code change deploys before V050 runs, the `SELECT` will fail at runtime.
+> Required order: run V050 migration → then deploy the code that reads `step_link`.
+> This means Phase D migration (V050) and Phase D code change are a two-step deploy,
+> not a single atomic deploy. Plan accordingly.
+
 **Notes:**
 - `step_link` replaces `variant_key`. No `variant_key` column is added to `reborn_intent_inputs`.
 - `step_link` is nullable. Existing rows use the existing `fetch_component_by_id` path unchanged.
+- The current `IntentResolution::Match` in the codebase has `{ component_id: Uuid, component_class_code: i32 }` — no `step_link`. All destructuring sites must be updated simultaneously.
 
 #### Tests
 
@@ -2199,7 +2224,17 @@ and falls through to Tier 2 on no match.
    > applying them to the execution context, using types from `brassclaw_turns` only.
 
 2. `crates/brassclaw_agent_loop/src/executor/input.rs` — populate `last_user_text` from
-   drained input (the last user message text seen this turn)
+   drained input (the last user message text seen this turn).
+
+   > **Codebase reality:** `consume_drainable_inputs` (input.rs line 154) currently processes
+   > `LoopInput::UserMessage { .. }` and `LoopInput::Steering { .. }` as matching drain-mode
+   > inputs, but **only advances `state.input_cursor`** — it never extracts the message text.
+   > Phase H must also modify `consume_drainable_inputs` (or add a parallel extraction pass)
+   > to capture the text from whichever `UserMessage`/`Steering` input was consumed.
+   > The text is needed before `RecipeStage` runs; it must be in `state.last_user_text`
+   > when `InputStage` returns `InputStep::Continue`.
+   > `LoopInput::UserMessage { content, .. }` and `LoopInput::Steering { content, .. }` carry
+   > the text — the exact field names must be confirmed when implementing.
 
 3. `crates/brassclaw_agent_loop/src/executor/recipe.rs` — replace stub with full dispatch:
 
@@ -2347,9 +2382,15 @@ and falls through to Tier 2 on no match.
    at `RecipeStage` before storing in state. Deserialization from `Value` happens in
    `handle_assemble_prior_knowledge` (which is in `brassclaw_engine` and CAN use `ComponentItem`).
 
-6. `PromptStage`: if `state.recipe_hint` is set (Tier 1), inject it into prior_knowledge
-   before calling `fetch_for_consumer`. If `PostRecipeOutcome::TierZero`, `PromptStage`
-   and `ModelStage` are skipped entirely via the `PostRecipeOutcome` dispatch above.
+6. **`PromptStage` / host `build_prompt_bundle`:** `PromptStage` calls
+   `ctx.host.build_prompt_bundle(context_request)` — it does NOT call `fetch_for_consumer`
+   directly. The recipe hint injection must happen **inside the host's `build_prompt_bundle`
+   implementation** (in `brassclaw_turns/src/run_profile/prompt.rs` or the composition layer),
+   not in `PromptStage` itself. The host must read `state.recipe_hint` from the
+   `LoopExecutionState` it receives and prepend the stashed orchestrator items into the
+   prompt bundle before the UNION ALL fallback scan fills the remaining token budget.
+   If `PostRecipeOutcome::TierZero`, `PromptStage` and `ModelStage` are skipped entirely
+   via the `PostRecipeOutcome` dispatch in `canonical.rs`.
 
 #### Tests
 
@@ -3020,34 +3061,34 @@ Remove from all 13 component tables: `queue_code`, `review_attempts`, `review_fe
 
 > **Rust struct sync required:** After V055 drops these columns, ALL structs that read
 > or write them must be updated atomically. Affected:
-> - `Recipe` + `ToolSkill` in `crates/brassclaw_engine/src/types/recipe.rs` —
->   remove `validation_errors`, `review_feedback`, `review_attempts`, `rejected_at`.
-> - `PgRecipe` in `crates/brassclaw_reborn_composition/src/pg_recipe_store.rs` —
->   this struct also selects `queue_code`, `review_attempts`, `review_feedback`,
->   `rejected_at`, `validation_errors` from `reborn_recipes`. Must be updated.
-> - `component_validator.rs` — creates `Recipe` structs with `validation_errors`.
-> - `recipe_matcher.rs` — reads `wilson_lower` + `tier` (these are NOT dropped by V055,
->   but the file also references `validation_errors` in some paths — audit required).
+>
+> - **`Recipe` + `ToolSkill` in `crates/brassclaw_engine/src/types/recipe.rs`:**
+>   Confirmed by inspection — these structs DO carry `validation_errors: Vec<String>`,
+>   `review_feedback: Option<String>`, `review_attempts: u32`, `rejected_at: Option<DateTime<Utc>>`.
+>   They do NOT have `queue_code` (queue_code is only in `PgRecipe`, not the domain type).
+>   Remove the four fields listed above.
+>
+> - **`PgRecipe` in `crates/brassclaw_reborn_composition/src/pg_recipe_store.rs`:**
+>   Confirmed by inspection — `RECIPE_SELECT` selects `queue_code`, `review_attempts`,
+>   `review_feedback`, `rejected_at`, `validation_errors` and the struct has matching fields.
+>   Remove all five from both `PgRecipe` and `RECIPE_SELECT`.
+>
+> - **`RecipeValidationStatusUpdate` in `pg_recipe_store.rs`:**
+>   This param struct has `validation_errors`, `review_feedback`, `queue_code` fields.
+>   Must be updated when the columns are dropped.
+>
+> - **`component_validator.rs`** — creates `Recipe` structs with `validation_errors`.
+> - **`recipe_matcher.rs`** — reads `wilson_lower` + `tier` (NOT dropped by V055),
+>   but also references `validation_errors` in some paths — audit required.
 > - Any other caller that constructs or destructures these structs.
 >
 > **Two-phase deploy required (zero-downtime):**
 > V055 drops columns. If the old binary is still running when V055 runs (rolling deploy),
 > it will SELECT dropped columns → runtime panic on every request. Required deploy order:
-> 1. Deploy new binary (with structs updated to not SELECT the dropped columns).
-> 2. Run V055 migration (now safe — binary no longer queries dropped columns).
-> This means the binary must handle `None`/missing values for these fields
-> gracefully BEFORE V055 runs. Use `Option<T>` + `#[serde(default)]` on the struct
-> fields in the interim. After V055 runs, fields can be removed entirely.
-
-> **Rust struct sync required:** After V055 drops these columns, the corresponding Rust
-> structs must be updated in the same phase. Affected:
-> - `Recipe` in `crates/brassclaw_engine/src/types/recipe.rs` —
->   remove `validation_errors`, `review_feedback`, `review_attempts`, `rejected_at`.
-> - `ToolSkill` in `crates/brassclaw_engine/src/types/recipe.rs` — same fields.
-> - Any sqlx query or struct that selects these columns by name will fail to compile.
-> Use `#[serde(default)]` + `Option` migration strategy: first add the queue columns to
-> the queue table (step 1 of V055), then remove from component structs + tables in the
-> same migration transaction. Failing to do this in sync will break deserialisation.
+> 1. Deploy new binary (with structs updated to use `Option<T>` + `#[serde(default)]`
+>    for the fields being dropped — existing data still returns values, new `None` is fine).
+> 2. Run V055 migration (now safe — binary no longer queries dropped columns as required).
+> 3. Remove the `Option` wrappers in a follow-up cleanup commit.
 
 The 13 tables are: `reborn_skills`, `reborn_tools`, `reborn_tool_skills`,
 `reborn_recipes`, `reborn_actions`, `reborn_specs`, `reborn_plans`, `reborn_summaries`,
@@ -3101,7 +3142,7 @@ a recovery action. This covers edge cases from the V055 data migration.
 | `V048__reborn_python_code.sql` | New table `reborn_python_code`, class 22 | |
 | `V049__reborn_extension_catalogues.sql` | New table `reborn_extension_catalogues`, class 23 | |
 | `V050__reborn_intent_inputs_step_link.sql` | `ADD COLUMN step_link TEXT` to `reborn_intent_inputs` | |
-| `V051__reborn_skills_intent_examples.sql` | `ADD COLUMN intent_examples JSONB` to `reborn_skills`; `ADD COLUMN dependency_registry JSONB` to all 13 component tables (see Phase J.2 — §0.19) | |
+| `V051__reborn_skills_intent_examples.sql` | `ADD COLUMN IF NOT EXISTS intent_examples JSONB` to `reborn_skills` (**no-op** — V027 already has this column); `ADD COLUMN dependency_registry JSONB` to all 13 component tables (see Phase J.2 — §0.19) | |
 | `V052__reborn_basic_prompt_store.sql` | New table: one row per scope, `bundle_json JSONB`, `is_stale BOOL`, `fingerprint TEXT` | |
 | `V053__reborn_tools_capability_id_and_system_source.sql` | `ADD COLUMN capability_id TEXT` to `reborn_tools` + `source = 'system'` allowed on tools/tool_skills/skills | |
 | `V054__reborn_intent_inputs_template.sql` | `ADD COLUMN is_template BOOL`, `template_prefix TEXT`, `template_suffix TEXT` to `reborn_intent_inputs`; two new partial indexes for prefix/suffix-anchored template matching (see §0.17.2) | |
@@ -3288,10 +3329,12 @@ User types: "edit main.rs and refactor the error handler"
 │   return PostRecipeOutcome::NeedsPrompt → (does NOT skip PromptStage/ModelStage)
 │
 ├─ [PromptStage]
-│   state.recipe_hint present → deserialize orchestrator_items from stash
-│   inject as prior_knowledge BEFORE calling fetch_for_consumer (UNION ALL)
-│   recipe hint always injected first; UNION ALL fills remaining budget only
-│   volatile context injected separately (never mixed with prior knowledge)
+│   NOTE: PromptStage calls ctx.host.build_prompt_bundle(context_request) — it does
+│   NOT call fetch_for_consumer directly. The recipe hint injection must happen
+│   INSIDE the host's build_prompt_bundle implementation, not in PromptStage itself.
+│   The host reads state.recipe_hint from the LoopExecutionState it receives and
+│   prepends the stashed orchestrator_items to the prompt bundle before the UNION ALL
+│   fallback scan. Phase H must wire this in the host implementation.
 │   NOTE: recipe_hint is NOT consumed here (handler consumes it in step-0 below)
 │
 ├─ [InterceptorStage]  Sempai reviews outgoing prompt (recipe hint visible to Sempai)
