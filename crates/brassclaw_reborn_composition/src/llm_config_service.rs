@@ -467,8 +467,67 @@ impl RebornLlmConfigService {
             )
             .await;
 
-        let mut providers = Vec::with_capacity(list.providers.len());
+        // Read the DB-stored Kohai selection so that custom (non-builtin)
+        // providers that were set active via `set_active` can be correctly
+        // marked as active in the snapshot.  Builtins resolve `active` via
+        // `config.toml` through `admin_list_async`; custom providers have no
+        // entry there and need this DB read.
+        #[cfg(feature = "postgres")]
+        let kohai_sel_from_db: Option<LlmActiveSelection> = {
+            use crate::db_config::list_config_keys;
+            if let Some(pool) = self.pg_pool.as_ref() {
+                list_config_keys(pool, &self.db_tenant_id)
+                    .await
+                    .ok()
+                    .and_then(|rows| {
+                        let kv: std::collections::HashMap<String, String> =
+                            rows.into_iter().collect();
+                        let provider_id = kv.get("llm.default.provider_id")?.to_string();
+                        if provider_id.is_empty() {
+                            return None;
+                        }
+                        let model = kv
+                            .get("llm.default.model")
+                            .cloned()
+                            .filter(|s| !s.is_empty());
+                        Some(LlmActiveSelection { provider_id, model })
+                    })
+            } else {
+                None
+            }
+        };
+        #[cfg(not(feature = "postgres"))]
+        let kohai_sel_from_db: Option<LlmActiveSelection> = None;
+
+        // Load custom providers from the DB-backed repo (when available).
+        // These are user-defined providers that are never in the builtin registry.
+        #[cfg(feature = "postgres")]
+        let db_custom_defs: Vec<brassclaw_llm::registry::ProviderDefinition> = {
+            if let Some(pg_repo) = self.pg_provider_repo.as_ref() {
+                pg_repo
+                    .load()
+                    .await
+                    .map_err(|_| LlmConfigServiceError::Unavailable)?
+            } else {
+                Vec::new()
+            }
+        };
+        #[cfg(not(feature = "postgres"))]
+        let db_custom_defs: Vec<brassclaw_llm::registry::ProviderDefinition> = Vec::new();
+
+        // Collect the ids of builtin providers so we can skip DB entries that
+        // shadow a builtin (those are overlays handled by the builtin path).
+        let builtin_ids: std::collections::HashSet<String> = list
+            .providers
+            .iter()
+            .map(|p| p.id.clone())
+            .collect();
+
+        let capacity = list.providers.len() + db_custom_defs.len();
+        let mut providers = Vec::with_capacity(capacity);
         let mut active = None;
+
+        // ── Builtin providers (from admin_list_async / config.toml) ─────────
         for info in list.providers {
             let stored_key_set = self
                 .keys
@@ -479,10 +538,25 @@ impl RebornLlmConfigService {
             let metadata = info.metadata;
             let env_key_set = metadata.as_ref().is_some_and(metadata_env_key_set);
             let api_key_set = stored_key_set || env_key_set;
-            if info.active && active.is_none() {
+
+            // For builtins, `info.active` is set by config.toml.  Also check
+            // the DB-stored kohai selection for the (edge) case where a builtin
+            // was activated via the WebUI after a custom provider was replaced.
+            let is_kohai = info.active
+                || kohai_sel_from_db
+                    .as_ref()
+                    .is_some_and(|sel| sel.provider_id == info.id);
+            let active_model = if is_kohai {
+                info.active_model
+                    .clone()
+                    .or_else(|| kohai_sel_from_db.as_ref().and_then(|sel| sel.model.clone()))
+            } else {
+                None
+            };
+            if is_kohai && active.is_none() {
                 active = Some(LlmActiveSelection {
                     provider_id: info.id.clone(),
-                    model: info.active_model.clone(),
+                    model: active_model.clone(),
                 });
             }
             let builtin_def = builtin_registry.find(&info.id);
@@ -502,7 +576,6 @@ impl RebornLlmConfigService {
                         max_output: b.max_output,
                     });
             let definition_context_window = builtin_def.and_then(|def| def.context_window_tokens);
-            let is_kohai = info.active;
             let is_sempai = sempai_sel
                 .as_ref()
                 .is_some_and(|s| s.provider_id == info.id);
@@ -519,8 +592,8 @@ impl RebornLlmConfigService {
                 default_model: info.default_model,
                 base_url: metadata.as_ref().and_then(|meta| meta.base_url.clone()),
                 builtin,
-                active: info.active,
-                active_model: info.active_model,
+                active: is_kohai,
+                active_model,
                 api_key_required: metadata
                     .as_ref()
                     .map(|meta| meta.api_key_required)
@@ -536,6 +609,68 @@ impl RebornLlmConfigService {
                     .unwrap_or(false),
                 token_budget: definition_budget,
                 context_window_tokens: definition_context_window,
+                is_kohai,
+                is_sempai,
+                is_embedding,
+            });
+        }
+
+        // ── Custom (DB-backed) providers ─────────────────────────────────────
+        // Skip any that shadow a builtin — those are overlays already included
+        // via the builtin path above.
+        for def in db_custom_defs {
+            if builtin_ids.contains(&def.id) {
+                continue;
+            }
+            let stored_key_set = self
+                .keys
+                .exists(&def.id)
+                .await
+                .map_err(|_| LlmConfigServiceError::Unavailable)?;
+            let is_kohai = kohai_sel_from_db
+                .as_ref()
+                .is_some_and(|sel| sel.provider_id == def.id);
+            let active_model = if is_kohai {
+                kohai_sel_from_db.as_ref().and_then(|sel| sel.model.clone())
+            } else {
+                None
+            };
+            if is_kohai && active.is_none() {
+                active = Some(LlmActiveSelection {
+                    provider_id: def.id.clone(),
+                    model: active_model.clone(),
+                });
+            }
+            let is_sempai = sempai_sel
+                .as_ref()
+                .is_some_and(|s| s.provider_id == def.id);
+            let is_embedding = embedding_sel
+                .as_ref()
+                .is_some_and(|s| s.provider_id == def.id);
+            // Convert the ProviderProtocol enum to its wire string.
+            let adapter = serde_json::to_value(def.protocol)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default();
+            providers.push(LlmProviderView {
+                id: def.id.clone(),
+                description: if def.description.is_empty() {
+                    def.id.clone()
+                } else {
+                    def.description.clone()
+                },
+                adapter,
+                default_model: def.default_model.clone(),
+                base_url: def.default_base_url.clone(),
+                builtin: false,
+                active: is_kohai,
+                active_model,
+                api_key_required: def.api_key_required,
+                accepts_api_key: def.api_key_env.is_some(),
+                api_key_set: stored_key_set,
+                can_list_models: false,
+                token_budget: None,
+                context_window_tokens: def.context_window_tokens,
                 is_kohai,
                 is_sempai,
                 is_embedding,
