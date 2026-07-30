@@ -879,11 +879,29 @@ The existing return shape is **extended** (not replaced) to carry the new v3 rou
 Existing `{content, formatted_content, override_prompt_creation, matched_component_ids}`
 fields are preserved for backward compatibility with custom orchestrators.
 
+> **⚠️ FINDING F — `formatted_content` in the current codebase is structured JSON, not flat string:**
+> `assemble_from_component_items` (orchestrator.rs:2674) currently produces `formatted_content`
+> as a JSON string: `{"prior_knowledge": [...], "matched_components": [...]}` — not a prose
+> string. The current `§0.9` description of `formatted_content` as a "formatted content blob"
+> may suggest prose. In v3, `formatted_content` becomes an alias for `orchestrator_content`,
+> which IS a formatted prose string (the StepContextSpec-headed block). Phase F must
+> explicitly change the shape: `formatted_content` transitions from a JSON-encoded object
+> to a prose string (= `orchestrator_content`). Custom orchestrators that currently parse
+> `formatted_content` as JSON will break if not warned. The Phase F migration note must
+> document this shape change. In the return dict, set:
+> ```python
+> result["formatted_content"]  = orchestrator_content_string   # NEW: prose string
+> result["orchestrator_content"] = orchestrator_content_string # also new field
+> ```
+> Any code that does `json.loads(pkr["formatted_content"])` will break — it must be
+> updated to use `pkr["orchestrator_content"]` or `pkr["formatted_content"]` as a string.
+> Document this in the Phase F change notes and the public changelog.
+
 ```python
 {
-    # EXISTING fields (preserved):
+    # EXISTING fields (preserved, shape changed in v3):
     "content":                  str,   # Raw PKC — Rust dispatch / KV-cache fingerprint only
-    "formatted_content":        str,   # DEPRECATED alias — same as orchestrator_content in v3
+    "formatted_content":        str,   # ⚠️ CHANGED in v3: was JSON object; now prose string alias for orchestrator_content
     "override_prompt_creation": bool,
 
     # EXTENDED in v3 — orchestrator channel content:
@@ -989,13 +1007,20 @@ function in `retrieval_source.rs` (the integer class-code → weight dispatch us
 fallback content search path). This is a **separate function** from `doc_type_weight(DocType)`
 in `retrieval_dbless.rs` which takes the `DocType` enum (not an integer).
 
-> **Phase B/C action:** Adding classes 22 and 23 also requires:
-> 1. Adding `DocType::PythonCode` and `DocType::ExtensionCatalogue` variants to the
->    `DocType` enum in `crates/brassclaw_engine/src/types/memory.rs`.
-> 2. Adding match arms for these new variants in `doc_type_weight(DocType)` in `retrieval_dbless.rs`.
-> 3. Adding integer match arms `22 => 0.42` and `23 => 0.38` in the `doc_type_weight_by_class(i32)` function.
-> Both dispatch functions must be updated — missing either one leaves the new class codes
-> returning 0.0 on one path.
+> **⚠️ FINDING B — `DocType` is `#[deprecated]` — DO NOT add new variants:**
+> The `DocType` enum in `crates/brassclaw_engine/src/types/memory.rs` is annotated
+> `#[deprecated(since = "0.1.0")]`. Adding `PythonCode` or `ExtensionCatalogue` variants
+> to it would extend a deprecated type and contradict the migration direction.
+>
+> **Phase B/C action:** Adding classes 22 and 23 requires:
+> 1. **Do NOT add `DocType::PythonCode` or `DocType::ExtensionCatalogue`** to `types/memory.rs`.
+>    The `DocType` enum is frozen. All new class-code dispatch uses integers only.
+> 2. Adding integer match arm `22 => 0.42` in `doc_type_weight_by_class(i32)` in `retrieval_source.rs`.
+> 3. Adding integer match arm `23 => 0.38` in `doc_type_weight_by_class(i32)`.
+> 4. The `doc_type_weight(DocType)` function in `retrieval_dbless.rs` is the legacy
+>    enum-keyed path — used only by `RamSource` / DB-less tests. It is NOT updated.
+>    Only `doc_type_weight_by_class(i32)` (the integer path) needs the new arms.
+> Missing the integer arm leaves the new class codes returning 0.0 on the UNION ALL path.
 
 ---
 
@@ -1917,18 +1942,36 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 
 #### Files to modify
 
-- `crates/brassclaw_engine/src/memory/retrieval_source.rs` — add class 22 to UNION ALL + `fetch_component_by_id`
+- `crates/brassclaw_engine/src/memory/retrieval_source.rs`
+  - Add class 22 to the `fetch_for_consumer` UNION ALL sub-select (new table arm with `reborn_python_code`).
+  - Add class 22 arm to `fetch_component_by_id` (currently returns `None` for class 22).
+  > **⚠️ FINDING C:** `fetch_for_consumer` (the UNION ALL fallback) and `fetch_component_by_id`
+  > (the direct UUID lookup) are **separate functions**. Both must have a class 22 arm.
+  > Currently neither has one — class 22 silently returns nothing on both code paths.
+  > Phase B adds both arms.
 - `crates/brassclaw_engine/src/memory/intent_system.rs` — add `22 => "python_code"` to `class_label`
-- `crates/brassclaw_engine/src/types/memory.rs` — add `DocType::PythonCode`
-- `crates/brassclaw_engine/src/memory/retrieval_dbless.rs` — add `22 => 0.42`
+- `crates/brassclaw_engine/src/memory/retrieval_source.rs` — add `22 => 0.42` arm to `doc_type_weight_by_class(i32)`
 - `crates/brassclaw_engine/src/memory/component_validator.rs` — class 22 dispatch:
-  name format, non-empty content, soft 10k token budget, shell-injection scan
+  name format, non-empty content, soft 10k token budget, shell-injection scan.
+  > **⚠️ FINDING E — `ComponentPayload` for class 22:** The existing `ComponentPayload` enum has
+  > `ToolSkill(&'a ToolSkill)`, `Recipe(&'a Recipe)`, and `Generic(GenericComponent<'a>)`.
+  > There is NO `PythonCode` variant. Class 22 validation must use `Generic(GenericComponent<'a>)`
+  > where `GenericComponent` carries `{ name, content, class_code }`. The `validate_by_class`
+  > dispatch adds a `22 =>` arm that reads from the `Generic` payload. A new dedicated
+  > `ComponentPayload::PythonCode` variant may be added if richer validation is needed, but
+  > the simpler path is to use `Generic`. The plan must not assume a `PythonCode` variant
+  > exists — it does not yet.
+
+> **Do NOT modify `crates/brassclaw_engine/src/types/memory.rs` (DocType enum).**
+> `DocType` is `#[deprecated(since = "0.1.0")]` and frozen. Phase B uses class-code integers
+> throughout. There is no `DocType::PythonCode`. See §0.11 note.
 
 #### Tests
 
 - Unit: `class_label(22) == "python_code"`
-- Unit: `doc_type_to_class_code(PythonCode) == 22`
+- Unit: `doc_type_weight_by_class(22) == 0.42`
 - Integration: PythonCode row retrieved via `fetch_for_consumer` with consumer tag `02:orchestrator`
+- Integration: PythonCode row retrieved via `fetch_component_by_id(uuid, 22)` (UUID lookup path)
 
 ---
 
@@ -1953,17 +1996,25 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 #### Files to modify
 
 Same engine files as Phase B, but for class 23:
-- `retrieval_source.rs` — class 23, `effective_content = overview_doc`
-- `intent_system.rs` — `23 => "extension_catalogue"`
-- `types/memory.rs` — `DocType::ExtensionCatalogue`
-- `retrieval_dbless.rs` — `23 => 0.38`
+- `retrieval_source.rs`
+  - Add class 23 arm to `fetch_for_consumer` UNION ALL sub-select (`reborn_extension_catalogues`, `effective_content = overview_doc`).
+  - Add class 23 arm to `fetch_component_by_id`.
+  > **⚠️ FINDING C (same as Phase B):** Both `fetch_for_consumer` AND `fetch_component_by_id`
+  > need a class 23 arm. Neither has one today.
+- `intent_system.rs` — `23 => "extension_catalogue"` in `class_label`
+- `retrieval_source.rs` — add `23 => 0.38` arm to `doc_type_weight_by_class(i32)`
 - `component_validator.rs` — class 23: name format, non-empty `overview_doc`, ≥1 `task_group`,
-  valid UUID syntax in `child_component_ids`
+  valid UUID syntax in `child_component_ids` (uses `ComponentPayload::Generic`)
+
+> **Do NOT modify `types/memory.rs` (DocType enum).** `DocType` is `#[deprecated]` and frozen.
+> No `DocType::ExtensionCatalogue`. See §0.11 note.
 
 #### Tests
 
 - Unit: `class_label(23) == "extension_catalogue"`
-- Integration: Catalogue with `task_groups` → retrieved with `overview_doc` as `effective_content`
+- Unit: `doc_type_weight_by_class(23) == 0.38`
+- Integration: Catalogue with `task_groups` → retrieved with `overview_doc` as `effective_content` via `fetch_for_consumer`
+- Integration: Catalogue retrieved via `fetch_component_by_id(uuid, 23)` (direct UUID lookup)
 
 ---
 
@@ -1988,9 +2039,22 @@ Same engine files as Phase B, but for class 23:
   Add `step_link: Option<String>` to `IntentResolution::Match`.
   Update the resolution query to `SELECT ... step_link FROM reborn_intent_inputs`.
   Update `seed_intent_input` to accept and store `step_link`.
+  > **⚠️ FINDING A — `record_disambiguation_choice` also returns `Match`:**
+  > `record_disambiguation_choice` (line 436 in `intent_system.rs`) returns
+  > `IntentResolution::Match { component_id, component_class_code }` — it does NOT receive
+  > a `step_link` parameter. When `step_link` is added to the `Match` variant, this function
+  > must also be updated: it must populate `step_link: None` (or look it up) when returning
+  > `Match`. If `None` is acceptable semantics here (user confirmed a component_id; the
+  > caller then re-fetches the recipe row including the step_link), then `step_link: None`
+  > is correct. Either way, `record_disambiguation_choice` is a **mandatory update site** —
+  > it will not compile until the `Match` struct change is reflected here too.
 
 - All call sites that destructure `IntentResolution::Match { component_id, component_class_code }`:
   bind `step_link` as well. Non-IBS paths treat `None` as a legacy match (unchanged behaviour).
+  Call sites include:
+  - `retrieval_source.rs` — `fetch_for_turn` (primary path)
+  - `orchestrator.rs` — any call site that destructures `Match`
+  - `intent_system.rs` — `record_disambiguation_choice` return statement (**FINDING A**)
 
 > **Sequencing invariant:** The Rust code change (adding `step_link` to `IntentResolution::Match`
 > and the `SELECT ... step_link` query) **requires V050 to have run first**. V050 adds the column.
@@ -2002,7 +2066,7 @@ Same engine files as Phase B, but for class 23:
 **Notes:**
 - `step_link` replaces `variant_key`. No `variant_key` column is added to `reborn_intent_inputs`.
 - `step_link` is nullable. Existing rows use the existing `fetch_component_by_id` path unchanged.
-- The current `IntentResolution::Match` in the codebase has `{ component_id: Uuid, component_class_code: i32 }` — no `step_link`. All destructuring sites must be updated simultaneously.
+- The current `IntentResolution::Match` in the codebase has `{ component_id: Uuid, component_class_code: i32 }` — no `step_link`. All destructuring sites, **including `record_disambiguation_choice`**, must be updated simultaneously.
 
 #### Tests
 
@@ -2253,6 +2317,18 @@ and falls through to Tier 2 on no match.
    > Phase H adds a parallel intent-driven lookup; both paths coexist during the v3 transition.
    > `record_recipe_outcome` must be called from the v3 path too (same Wilson update needed).
    >
+   > **⚠️ FINDING G — `PgRecipeLibrary::find_recipe` uses STRIPPED `is_tier0_eligible`:**
+   > `PgRecipeLibrary::find_recipe` (pg_recipe_store.rs:790) sets `tier0_eligible: recipe.is_tier0_eligible()`
+   > on the returned `RecipeMatchDto`, using `PgRecipe::is_tier0_eligible()` — which only checks
+   > `is_deliverable() && tier ∈ {mature, candidate}`. It **omits** the `wilson_lower >= 0.70`
+   > guard and the validation-hook check that `Recipe::is_tier0_eligible()` in `types/recipe.rs`
+   > performs. The v3 Tier 0 path in `RecipeStage` must NOT trust the `tier0_eligible` field
+   > from `RecipeMatchDto` for the Tier 0 decision. Instead, compute `tier0_eligible` from
+   > `TurnRoutingSignals` (populated by `fetch_for_turn` → Phase E, which uses the full check).
+   > The `RecipeMatchDto.tier0_eligible` field is a v2 artefact with an incomplete check.
+   > If `PgRecipeLibrary.find_recipe` is called anywhere for non-outcome-recording purposes
+   > in Phase H, do not use its `tier0_eligible` result for Tier 0 routing.
+   >
    > **rust_items application:** `RecipeStage` runs at the agent loop level (above the
    > Python scripting engine) so it CAN apply rust_items to the Rust execution context
    > directly. For Tier 1, rust_items are stashed in `state.recipe_rust_context` and
@@ -2409,12 +2485,22 @@ and falls through to Tier 2 on no match.
 
 **File:** `crates/brassclaw_engine/src/memory/component_validator.rs`
 
+> **⚠️ FINDING E — `ComponentPayload` enum has no `PythonCode` or `ExtensionCatalogue` variant:**
+> The existing `ComponentPayload` enum in `component_validator.rs` has only three variants:
+> `ToolSkill(&'a ToolSkill)`, `Recipe(&'a Recipe)`, and `Generic(GenericComponent<'a>)`.
+> Phase I must dispatch classes 22 and 23 through `ComponentPayload::Generic`, NOT through
+> a non-existent dedicated variant. The `GenericComponent` type must carry `{ name, content,
+> class_code }` (or equivalent) so the dispatch arm for `22 =>` and `23 =>` can extract the
+> fields it needs. If the `GenericComponent` shape does not yet carry all needed fields,
+> extend it — do NOT add a new `ComponentPayload` variant unless the extra validation logic
+> truly requires a richer typed shape that `Generic` cannot express.
+
 New dispatch cases:
 
 | Class | Rules |
 |-------|-------|
-| 22 PythonCode | name format, non-empty content, soft 10k token budget, shell-injection scan |
-| 23 ExtensionCatalogue | name format, non-empty `overview_doc`, ≥1 `task_group`, valid UUID syntax in `child_component_ids` |
+| 22 PythonCode | name format, non-empty content, soft 10k token budget, shell-injection scan — dispatched via `ComponentPayload::Generic` |
+| 23 ExtensionCatalogue | name format, non-empty `overview_doc`, ≥1 `task_group`, valid UUID syntax in `child_component_ids` — dispatched via `ComponentPayload::Generic` |
 | 21 Recipe (StepDescriptions) | call `instruction_builder::build_instruction` as pre-flight; reject on any `IbsError` with the parse message; all `include` UUIDs parse as UUID v4; no `snippet`-type steps; step numbers monotonically increasing; S7 guard |
 | 1–3 Skills | `intent_examples` entries ≤ 512 chars, capped at 20; `dependency_registry` entries must have valid UUID syntax and non-empty `label` |
 | 16 Actions | `steps` JSONB validated against 13 known step types |
@@ -2951,21 +3037,22 @@ WHERE validation_status != 'validated'
 ON CONFLICT DO NOTHING;
 
 -- Step 3: add last_graduation_at to scope cursor
--- reborn_monty_vm_settings has one guaranteed row per scope (upserted on first access).
--- The graduation trigger's UPDATE will always find a row. No separate cursor table needed.
 ALTER TABLE reborn_monty_vm_settings
     ADD COLUMN IF NOT EXISTS last_graduation_at TIMESTAMPTZ;
 
 -- Step 4: trigger — bump last_graduation_at on queue row DELETE (= graduation)
+-- ⚠️ FINDING D: PgMontyVmSettingsStore::upsert is NOT INSERT...ON CONFLICT — a scope row
+-- may not exist yet when the first graduation fires. Use INSERT...ON CONFLICT here, not
+-- a bare UPDATE, so the first graduation creates the cursor row atomically.
 CREATE OR REPLACE FUNCTION reborn_validation_queue_graduation()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
-    UPDATE reborn_monty_vm_settings
-       SET last_graduation_at = now()
-     WHERE tenant_id  = OLD.tenant_id
-       AND user_id    = OLD.user_id
-       AND agent_id   = OLD.agent_id
-       AND project_id = OLD.project_id;
+    INSERT INTO reborn_monty_vm_settings
+        (tenant_id, user_id, agent_id, project_id, last_graduation_at)
+    VALUES
+        (OLD.tenant_id, OLD.user_id, OLD.agent_id, OLD.project_id, now())
+    ON CONFLICT (tenant_id, user_id, agent_id, project_id)
+    DO UPDATE SET last_graduation_at = now();
     RETURN OLD;
 END;
 $$;
@@ -2986,10 +3073,32 @@ ALTER TABLE reborn_skills
 ```
 
 **Note on scope cursor:** `reborn_monty_vm_settings` has a guaranteed row for every
-active scope. `PgMontyVmSettingsStore::upsert` (line 103 in `pg_monty_vm_settings.rs`) is
-called on every scope's first access using `ON CONFLICT ... DO UPDATE` — no scope can reach
-the graduation trigger without a settings row. The trigger's `UPDATE` will always find a
-row. No separate `reborn_scope_cursors` table is needed. ✓ Resolved.
+active scope.
+
+> **⚠️ FINDING D — `PgMontyVmSettingsStore::upsert` is NOT a true INSERT … ON CONFLICT:**
+> The `upsert` method (line 103 in `pg_monty_vm_settings.rs`) does a `SELECT` first, then
+> writes. It is NOT an `INSERT ... ON CONFLICT DO UPDATE` pattern — it will NOT create a row
+> if one does not yet exist for the scope. If `reborn_monty_vm_settings` has no row for a
+> scope at graduation time, the trigger's `UPDATE reborn_monty_vm_settings SET last_graduation_at = now() WHERE ...`
+> is a **silent no-op** — graduation events would be invisible to the cache.
+>
+> **Required fix in Phase N:**
+> Either (a) change `PgMontyVmSettingsStore::upsert` to a real `INSERT ... ON CONFLICT DO UPDATE`
+> so a row is guaranteed to exist on first write, OR (b) in the graduation trigger function,
+> use `INSERT ... ON CONFLICT DO UPDATE` rather than a bare `UPDATE`:
+> ```sql
+> INSERT INTO reborn_monty_vm_settings (tenant_id, user_id, agent_id, project_id, last_graduation_at)
+>     VALUES (OLD.tenant_id, OLD.user_id, OLD.agent_id, OLD.project_id, now())
+>     ON CONFLICT (tenant_id, user_id, agent_id, project_id)
+>     DO UPDATE SET last_graduation_at = now();
+> ```
+> Option (b) is self-contained in the migration trigger and does not require changing
+> `PgMontyVmSettingsStore`. This is the recommended approach.
+>
+> The bare `UPDATE` in the current N.1 SQL block is wrong — it must be replaced with the
+> `INSERT ... ON CONFLICT DO UPDATE` form shown above in `reborn_validation_queue_graduation()`.
+
+No separate `reborn_scope_cursors` table is needed, but the trigger SQL must be the INSERT+ON CONFLICT form, not a bare UPDATE.
 
 #### N.2 Application-layer write paths
 
