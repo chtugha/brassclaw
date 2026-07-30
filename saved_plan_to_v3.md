@@ -641,10 +641,21 @@ Step 4 [orchestrator — python_code]:
 
 #### Memoisation
 
-- **Key:** `sha256(step_link + "|" + sorted_include_uuids.join(","))`
+- **Key:** `sha256(step_link + "|" + sorted_include_uuids.join(",") + "|" + sha256(variable_patterns_json))`
+
+  > **⚠️ PERF-01 / COMP-06 — variable_patterns must be in the cache key:**
+  > `variable_patterns` are stored on the Recipe row (not derived from `step_link`). If an
+  > author changes a Recipe's `variable_patterns` (e.g. renames `{{vars.dir}}` to
+  > `{{vars.path}}`) without touching `step_link` or any `include` UUIDs, the old cache
+  > key still matches but the cached `BuildInstruction` has the stale substitution rules.
+  > The cache key MUST include a deterministic hash of the serialized `variable_patterns`
+  > array. Suggested: `sha256(serde_json::to_string(&variable_patterns_sorted).unwrap())`.
+  > Always sort `variable_patterns` by `name` before hashing to make the key stable under
+  > authoring order changes.
+
 - **Eviction triggers (all must be monitored):**
   1. Any `include`d component's `updated_at` changes (via `last_graduation_at` scope cursor — §0.18)
-  2. The Recipe's own `updated_at` changes (StepDescription edited in WebUI)
+  2. The Recipe's own `updated_at` changes (StepDescription edited in WebUI, or variable_patterns changed)
 - **Cache miss:** safe at high concurrency — compilation is pure computation (no HTTP, no DB).
   Concurrent misses compile redundantly; last writer wins the cache slot (idempotent).
 
@@ -767,8 +778,18 @@ fetch_for_turn(scope, query, token_budget, consumer_tag):
                ii.  IBS: build_instruction(step_link, step_descriptions, variable_patterns)
                          → BuildInstruction { rust_steps[], orchestrator_steps[] }
                iii. Apply {{vars.name}} substitution (captured from user_text)
-               iv.  Fetch ComponentItem for each UUID in rust_steps → rust_items
-                    Fetch ComponentItem for each UUID in orchestrator_steps → orchestrator_items
+               iv.  Fetch ComponentItems for UUIDs in rust_steps → rust_items
+                    Fetch ComponentItems for UUIDs in orchestrator_steps → orchestrator_items
+
+                    > **⚠️ PERF-02 — batch UUID fetch required:**
+                    > Calling `fetch_component_by_id` once per UUID is O(N) individual DB
+                    > queries. A recipe with 6 steps = 6 round-trips before returning.
+                    > Phase E MUST implement a batched helper:
+                    > `fetch_components_by_ids(pool, scope, &[(Uuid, i32)]) -> Vec<ComponentItem>`
+                    > using `WHERE id = ANY($ids) AND tenant_id = $1 … AND validation_status = 'validated'`
+                    > per-table. The IBS groups UUIDs by channel already, so two batched
+                    > fetches (one per channel) replace N per-UUID queries on the hot path.
+
                → return FetchForTurnResult::SplitResult { rust_items, orchestrator_items, routing }
 
           c. step_link.is_none() (legacy intent or non-recipe class):
@@ -2004,7 +2025,21 @@ Same engine files as Phase B, but for class 23:
 - `intent_system.rs` — `23 => "extension_catalogue"` in `class_label`
 - `retrieval_source.rs` — add `23 => 0.38` arm to `doc_type_weight_by_class(i32)`
 - `component_validator.rs` — class 23: name format, non-empty `overview_doc`, ≥1 `task_group`,
-  valid UUID syntax in `child_component_ids` (uses `ComponentPayload::Generic`)
+  valid UUID syntax in `child_component_ids`
+
+  > **⚠️ COMP-04 — `GenericComponent` cannot carry `task_groups` JSONB for class 23:**
+  > `GenericComponent` (from `component_validator.rs`) has only `{ name, description, content }`.
+  > For class 23 (`ExtensionCatalogue`), `content` maps to `overview_doc` (a text field) — that
+  > part works. But the `≥1 task_group` validation rule requires accessing the `task_groups JSONB`
+  > column, which `GenericComponent` cannot carry. Two options:
+  > - **Option A (simpler):** extend `GenericComponent` with an optional `extra: Option<serde_json::Value>`
+  >   field that the caller populates for class 23 with the parsed `task_groups` JSON. The validator
+  >   checks `extra["task_groups"].as_array().map(|a| a.len() >= 1)`.
+  > - **Option B (typed):** add `ComponentPayload::ExtensionCatalogue(&'a ExtensionCatalogueData)`
+  >   with a small struct `{ name, overview_doc, task_groups }`. More explicit but requires a
+  >   new payload type.
+  > **Option A is recommended** as the minimal change that keeps `ComponentPayload` lean.
+  > Phase C must pick one and spec the concrete `GenericComponent` extension.
 
 > **Do NOT modify `types/memory.rs` (DocType enum).** `DocType` is `#[deprecated]` and frozen.
 > No `DocType::ExtensionCatalogue`. See §0.11 note.
@@ -2113,6 +2148,23 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
     > user-supplied table names or column expressions. The class code itself is an `i32`
     > from the DB, not from user input, so the dispatch is safe. Document this constraint
     > in a code comment above the match arm when implementing.
+
+  - **⚠️ PERF-02 (Phase E implementation):** Replace the per-UUID `fetch_component_by_id`
+    loop with a batched `fetch_components_by_ids` helper. Group the IBS output UUIDs by
+    `(table, content_expr)` pair (the same grouping used by the match arm), then issue one
+    `WHERE id = ANY($uuids) AND tenant_id = $1 … AND validation_status = 'validated'` query
+    per group. This reduces O(N) round-trips to at most O(tables) — in practice 1–2 for most
+    recipes. Re-use the same scope params and the same `format!()` pattern (same security
+    invariant: literals only). **This is a Phase E requirement, not a future optimisation.**
+
+  - **⚠️ PERF-03 — UNION ALL growth with classes 22 and 23:**
+    Adding two more sub-selects to `fetch_for_consumer` (currently 9 sub-selects) raises it to
+    11. Each sub-select requires an index scan on a scope + consumer_tag filtered index.
+    Verify that `reborn_python_code` and `reborn_extension_catalogues` have composite indexes
+    on `(tenant_id, user_id, agent_id, project_id, validation_status)` and that
+    `consumer_tags` has a GIN index. Without these, the two new arms degrade from index-scan to
+    seq-scan on every `fetch_for_consumer` call. Document the required indexes in the Phase B/C
+    migration files alongside the table CREATE.
 
 #### Tests
 
@@ -2286,6 +2338,16 @@ and falls through to Tier 2 on no match.
    > They are typed as `serde_json::Value` (pre-serialized at `RecipeStage` before being
    > stored in state). The executor deserializes them back to component data when
    > applying them to the execution context, using types from `brassclaw_turns` only.
+   >
+   > **⚠️ SEC-02 — stale recipe_hint survives checkpoint restore:**
+   > `recipe_hint` and `recipe_rust_context` are serialized in `LoopExecutionState` via
+   > `#[serde(default)]`. If the loop is checkpointed after `RecipeStage` sets the stash
+   > but before `handle_assemble_prior_knowledge` consumes it, then restores from that
+   > checkpoint on a retry, the stash is replayed — the handler will use a potentially
+   > stale pre-fetched result. To mitigate: always clear both fields at the start of each
+   > `RecipeStage::process` call (not just after consume), so a resumed turn re-fetches
+   > fresh. Phase H must add `state.recipe_hint = None; state.recipe_rust_context = vec![];`
+   > at the top of `RecipeStage::process` before doing anything else.
 
 2. `crates/brassclaw_agent_loop/src/executor/input.rs` — populate `last_user_text` from
    drained input (the last user message text seen this turn).
@@ -2297,8 +2359,13 @@ and falls through to Tier 2 on no match.
    > to capture the text from whichever `UserMessage`/`Steering` input was consumed.
    > The text is needed before `RecipeStage` runs; it must be in `state.last_user_text`
    > when `InputStage` returns `InputStep::Continue`.
-   > `LoopInput::UserMessage { content, .. }` and `LoopInput::Steering { content, .. }` carry
-   > the text — the exact field names must be confirmed when implementing.
+   >
+   > **⚠️ COMP-01 — `LoopInput` field names must be verified in `brassclaw_turns`:**
+   > The plan writes `LoopInput::UserMessage { content, .. }` but the actual struct
+   > definition lives in `brassclaw_turns` (not `brassclaw_agent_loop`). The field name
+   > `content` is an assumption — it has NOT been verified by reading that crate's source.
+   > Before implementing, read `brassclaw_turns/src/lib.rs` or wherever `LoopInput` is
+   > defined and confirm the exact field name. The implementation must not guess.
 
 3. `crates/brassclaw_agent_loop/src/executor/recipe.rs` — replace stub with full dispatch:
 
@@ -2372,6 +2439,26 @@ and falls through to Tier 2 on no match.
    This is an exhaustive match. Adding `TierZero` and `ActionExecuted` variants causes a
    **compile error** until canonical.rs handles them. Restructure using an intermediate enum:
 
+   > **⚠️ COMP-02 — `TurnRoutingSignals` crate boundary violation in `PostRecipeOutcome`:**
+   > `TurnRoutingSignals` is defined in `brassclaw_engine`. `canonical.rs` is in
+   > `brassclaw_agent_loop`, which does NOT depend on `brassclaw_engine`.
+   > Putting `routing: TurnRoutingSignals` in `PostRecipeOutcome::TierZero` would be a
+   > forbidden crate dependency. **Solution:** `PostRecipeOutcome::TierZero` must NOT carry
+   > the full `TurnRoutingSignals` struct. Instead it carries only the primitive fields that
+   > `canonical.rs` actually needs to make routing decisions — all of which are plain scalar
+   > types that can be defined locally or re-exported through `brassclaw_turns`:
+   > ```rust
+   > TierZero {
+   >     state:              Box<LoopExecutionState>,
+   >     tier0_eligible:     bool,    // already in state.recipe_hint context
+   >     llm_call_required:  bool,
+   > }
+   > ```
+   > `RecipeStep` (in `recipe.rs`) also must NOT carry `TurnRoutingSignals`. The routing
+   > signals that `canonical.rs` needs for its dispatch decision are at most two booleans.
+   > All richer metadata (variant_label, wilson_lower, step_link, matched_component_ids)
+   > are already serialized into `state.recipe_hint` by `RecipeStage` before returning.
+
    ```rust
    /// Produced by the RecipeStage dispatch inside canonical.rs.
    /// Determines which pipeline stages run after RecipeStage.
@@ -2379,13 +2466,21 @@ and falls through to Tier 2 on no match.
        /// Normal path — PromptStage, InterceptorStage, ModelStage all run.
        NeedsPrompt(Box<LoopExecutionState>),
        /// Tier 0: rust_items applied, orchestrator_items stashed.
-       /// PromptStage and ModelStage are SKIPPED.
+       /// PromptStage, InterceptorStage, AND ModelStage are ALL SKIPPED.
        /// Python scripting engine runs directly with stashed orchestrator context.
+       ///
+       /// ⚠️ COMP-07: InterceptorStage must ALSO be skipped. It runs between PromptStage
+       /// and ModelStage in canonical.rs. The `PostRecipeOutcome::TierZero` arm must jump
+       /// past the entire PromptStage + InterceptorStage + ModelStage block, not just
+       /// past PromptStage and ModelStage individually. This must be explicit in the
+       /// canonical.rs restructuring so InterceptorStage doesn't open a ForensicPacket
+       /// for a turn that has no model call to close it.
        TierZero {
-           state:        Box<LoopExecutionState>,
-           routing:      TurnRoutingSignals,
+           state:             Box<LoopExecutionState>,
+           tier0_eligible:    bool,
+           llm_call_required: bool,
        },
-       /// Action short-circuit: no LLM, no prompt.
+       /// Action short-circuit: no LLM, no prompt, no Interceptor.
        /// Python step-0 receives pkr["action_short_circuit"] = true.
        ActionExecuted {
            state:        Box<LoopExecutionState>,
@@ -2399,7 +2494,8 @@ and falls through to Tier 2 on no match.
    ```
    let outcome = match recipe_step {
        RecipeStep::Continue { state }        => PostRecipeOutcome::NeedsPrompt(state),
-       RecipeStep::TierZero { state, routing } => PostRecipeOutcome::TierZero { state, routing },
+       RecipeStep::TierZero { state, tier0_eligible, llm_call_required }
+                                             => PostRecipeOutcome::TierZero { state, tier0_eligible, llm_call_required },
        RecipeStep::ActionExecuted { state, component_id, name }
                                              => PostRecipeOutcome::ActionExecuted { ... },
    };
@@ -2408,13 +2504,14 @@ and falls through to Tier 2 on no match.
        PostRecipeOutcome::NeedsPrompt(state) => {
            // run PromptStage → InterceptorStage → ModelStage (unchanged)
        }
-       PostRecipeOutcome::TierZero { state, routing } => {
-           // skip PromptStage and ModelStage
+       PostRecipeOutcome::TierZero { state, .. } => {
+           // SKIP PromptStage, InterceptorStage, AND ModelStage entirely
+           // (no ForensicPacket opened; no model call made)
            // CapabilityStage handles tool execution using pre-loaded rust context
            // AssistantReplyStage emits the result
        }
        PostRecipeOutcome::ActionExecuted { state, .. } => {
-           // skip PromptStage and ModelStage
+           // SKIP PromptStage, InterceptorStage, AND ModelStage entirely
            // Python script already handled the action in step-0
            // AssistantReplyStage emits the result
        }
@@ -2468,6 +2565,21 @@ and falls through to Tier 2 on no match.
    If `PostRecipeOutcome::TierZero`, `PromptStage` and `ModelStage` are skipped entirely
    via the `PostRecipeOutcome` dispatch in `canonical.rs`.
 
+   > **⚠️ COMP-03 — recipe_hint consumed by BOTH PromptStage host AND Python step-0:**
+   > `PromptStage` calls `build_prompt_bundle` which reads `state.recipe_hint` to inject
+   > the hint into the prompt. Then Python step-0 calls `__assemble_prior_knowledge__` which
+   > ALSO reads `state.recipe_hint` and clears it (one-shot consume). There are two readers:
+   >
+   > - **PromptStage (via host):** reads `recipe_hint` to inject into the LLM prompt.
+   >   Must NOT clear it — Python step-0 still needs it.
+   > - **Python step-0 (via handler):** reads `recipe_hint`, formats it, clears it.
+   >
+   > The protocol requires that `build_prompt_bundle` reads but does NOT consume the hint.
+   > Only `handle_assemble_prior_knowledge` consumes (clears) it. This ordering constraint
+   > must be explicitly stated in Phase H implementation notes: "read in PromptStage, clear
+   > in Python step-0 handler only". If both clear it, Python gets `None` and falls through
+   > to a second `fetch_for_turn` — defeating the stash/unstash protocol.
+
 #### Tests
 
 - Unit: `last_user_text` populated by `InputStage` after draining input
@@ -2500,7 +2612,7 @@ New dispatch cases:
 | Class | Rules |
 |-------|-------|
 | 22 PythonCode | name format, non-empty content, soft 10k token budget, shell-injection scan — dispatched via `ComponentPayload::Generic` |
-| 23 ExtensionCatalogue | name format, non-empty `overview_doc`, ≥1 `task_group`, valid UUID syntax in `child_component_ids` — dispatched via `ComponentPayload::Generic` |
+| 23 ExtensionCatalogue | name format, non-empty `overview_doc`, ≥1 `task_group`, valid UUID syntax in `child_component_ids` — requires extended `GenericComponent` with `extra` field (see COMP-04 in Phase C) |
 | 21 Recipe (StepDescriptions) | call `instruction_builder::build_instruction` as pre-flight; reject on any `IbsError` with the parse message; all `include` UUIDs parse as UUID v4; no `snippet`-type steps; step numbers monotonically increasing; S7 guard |
 | 1–3 Skills | `intent_examples` entries ≤ 512 chars, capped at 20; `dependency_registry` entries must have valid UUID syntax and non-empty `label` |
 | 16 Actions | `steps` JSONB validated against 13 known step types |
