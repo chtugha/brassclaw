@@ -368,6 +368,58 @@ impl RebornLlmConfigService {
         None
     }
 
+    /// Read the Kohai (default) role selection from DB only.
+    ///
+    /// Keys: `llm.default.provider_id` / `llm.default.model` in `brassclaw_config`.
+    #[cfg(feature = "postgres")]
+    async fn read_kohai_sel_from_db(&self) -> Option<LlmActiveSelection> {
+        use crate::db_config::list_config_keys;
+        let pool = self.pg_pool.as_ref()?;
+        let rows = list_config_keys(pool, &self.db_tenant_id).await.ok()?;
+        let kv: std::collections::HashMap<String, String> = rows.into_iter().collect();
+        let provider_id = kv.get("llm.default.provider_id")?.to_string();
+        if provider_id.is_empty() {
+            return None;
+        }
+        let model = kv
+            .get("llm.default.model")
+            .cloned()
+            .filter(|s| !s.is_empty());
+        Some(LlmActiveSelection { provider_id, model })
+    }
+
+    /// Non-postgres build: Kohai DB selection not supported.
+    #[cfg(not(feature = "postgres"))]
+    async fn read_kohai_sel_from_db(&self) -> Option<LlmActiveSelection> {
+        None
+    }
+
+    /// Read the Embedding role selection from DB only (no file fallback).
+    ///
+    /// Keys: `embedding.provider_id` / `embedding.model` in `brassclaw_config`.
+    #[cfg(feature = "postgres")]
+    async fn read_embedding_sel_from_db(&self) -> Option<LlmActiveSelection> {
+        use crate::db_config::list_config_keys;
+        let pool = self.pg_pool.as_ref()?;
+        let rows = list_config_keys(pool, &self.db_tenant_id).await.ok()?;
+        let kv: std::collections::HashMap<String, String> = rows.into_iter().collect();
+        let provider_id = kv.get("embedding.provider_id")?.to_string();
+        if provider_id.is_empty() {
+            return None;
+        }
+        let model = kv
+            .get("embedding.model")
+            .cloned()
+            .filter(|s| !s.is_empty());
+        Some(LlmActiveSelection { provider_id, model })
+    }
+
+    /// Non-postgres build: embedding DB selection not supported.
+    #[cfg(not(feature = "postgres"))]
+    async fn read_embedding_sel_from_db(&self) -> Option<LlmActiveSelection> {
+        None
+    }
+
     /// Persist-then-reload: the file write already happened; refresh the
     /// running provider. A reload failure is logged, not fatal — the on-disk
     /// config is authoritative and applies on next restart.
