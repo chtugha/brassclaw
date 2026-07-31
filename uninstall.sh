@@ -27,20 +27,21 @@ for arg in "$@"; do
 done
 
 # Detect whether we have an interactive terminal for prompts.
-# When stdin is a pipe (e.g. curl | bash), /dev/tty may be technically
-# openable but read returns immediately empty under sudo with no controlling
-# terminal.  We therefore only use /dev/tty when we can confirm it is truly
-# interactive; otherwise we auto-yes so the script never silently cancels.
+#
+# When stdin is a pipe (curl | bash or curl | sudo bash), [[ -t 0 ]] is false.
+# Even if stderr is still attached to the calling terminal ([[ -t 2 ]] true),
+# opening /dev/tty for `read` under sudo+pipe is unreliable: bash may not have
+# a controlling terminal, so `read </dev/tty` returns immediately with an empty
+# string and the script silently cancels.
+#
+# Rule: if stdin is not a tty the session is non-interactive — set YES=true so
+# the script always proceeds.  The caller can still pass --wipe or -y to choose
+# the desired data-removal behaviour.
 if [[ -t 0 ]]; then
     # stdin is a real terminal — prompt on stdin
     TTY_IN=/dev/stdin
-elif [[ -t 2 ]] && [[ -c /dev/tty ]]; then
-    # stderr is a terminal (common with `sudo bash`), /dev/tty is a char
-    # device — open it and use it for prompts
-    TTY_IN=/dev/tty
 else
-    # No usable terminal (pure pipe / cron / etc.) — proceed automatically.
-    # The user can pass -y (preserve data) or --wipe (delete everything).
+    # stdin is a pipe or redirect — proceed automatically (no prompts).
     TTY_IN=""
     YES=true
 fi
@@ -92,7 +93,6 @@ if [[ $INSTALL_MODE == "system" ]]; then
     fi
 else
     # User-local install
-    CONFIG_DIR="${BRASSCLAW_REBORN_HOME:-$HOME/.brassclaw/reborn}"
     DATA_DIR="$HOME/.brassclaw"
     WIPE_DIRS=("$DATA_DIR")
 fi
@@ -176,7 +176,7 @@ for candidate in "$INSTALL_DIR/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME.bak" \
     fi
 done
 if [[ $removed_any -eq 0 ]]; then
-    log_warn "No binaries found at $INSTALL_DIR/$BINARY_NAME[.bak] or $INSTALL_DIR/$LEGACY_BINARY_NAME[.bak]"
+    log_warn "No binaries found at $INSTALL_DIR/${BINARY_NAME}[.bak] or $INSTALL_DIR/${LEGACY_BINARY_NAME}[.bak]"
 fi
 
 # ── wipe data dirs ────────────────────────────────────────────────────────────
@@ -208,7 +208,7 @@ else
             if [[ "$YES" == "true" ]]; then
                 log_info "Data preserved at: $d (use --wipe to remove)"
             else
-                read -rp "Remove $d? [y/N] " reply <"${TTY_IN:-/dev/tty}"
+                read -rp "Remove $d? [y/N] " reply <"$TTY_IN"
                 if [[ "$reply" =~ ^[Yy]$ ]]; then
                     log_step "Removing $d..."
                     rm -rf "$d"
