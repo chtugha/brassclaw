@@ -905,13 +905,17 @@ impl RebornLlmConfigService {
     /// Delete a provider definition from the DB-backed repo (or file fallback).
     ///
     /// Returns `true` if the provider was found and deleted.
+    /// Returns `Err(CannotDeleteBuiltin)` if the provider is a builtin.
     async fn delete_provider_definition(&self, id: &str) -> Result<bool, LlmConfigServiceError> {
         #[cfg(feature = "postgres")]
         if let Some(pg_repo) = self.pg_provider_repo.as_ref() {
-            return pg_repo
-                .delete(id)
-                .await
-                .map_err(|_| LlmConfigServiceError::Unavailable);
+            return pg_repo.delete(id).await.map_err(|e| {
+                if matches!(e, crate::pg_provider_repo::PgProviderRepoError::CannotDeleteBuiltin) {
+                    LlmConfigServiceError::CannotDeleteBuiltin
+                } else {
+                    LlmConfigServiceError::Unavailable
+                }
+            });
         }
         self.repo
             .delete_async(id)

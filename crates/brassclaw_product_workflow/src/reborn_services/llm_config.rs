@@ -364,6 +364,10 @@ pub enum LlmConfigServiceError {
     /// An internal invariant was violated.
     #[error("llm config internal error")]
     Internal,
+    /// Attempted to delete a builtin provider which is immutable.
+    /// Builtins can only be configured (reset), not deleted.
+    #[error("cannot delete a builtin provider")]
+    CannotDeleteBuiltin,
 }
 
 pub(super) fn map_llm_config_error(error: LlmConfigServiceError) -> RebornServicesError {
@@ -379,6 +383,11 @@ pub(super) fn map_llm_config_error(error: LlmConfigServiceError) -> RebornServic
         }
         LlmConfigServiceError::Unavailable => RebornServicesError::service_unavailable(true),
         LlmConfigServiceError::Internal => RebornServicesError::internal_invariant(),
+        LlmConfigServiceError::CannotDeleteBuiltin => {
+            // 422 Unprocessable Entity: the request is well-formed but semantically
+            // invalid — you cannot delete a builtin provider.
+            RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 422, false)
+        }
     }
 }
 
