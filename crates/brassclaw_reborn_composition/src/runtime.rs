@@ -5377,7 +5377,7 @@ mod tests {
 
         let runtime = build_reborn_runtime(input).await.expect("runtime builds");
         let runtime_turn_coordinator = runtime.webui_turn_coordinator();
-        let bundle = build_webui_services(&runtime, None).expect("webui bundle");
+        let bundle = build_webui_services(&runtime, None).await.expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
             TenantId::new("runtime-webui-tenant").unwrap(),
             UserId::new("runtime-webui-owner").unwrap(),
@@ -5495,7 +5495,7 @@ mod tests {
         .with_model_gateway_override(gateway);
 
         let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let bundle = build_webui_services(&runtime, None).expect("webui bundle");
+        let bundle = build_webui_services(&runtime, None).await.expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
             TenantId::new("runtime-webui-lifecycle-tenant").unwrap(),
             UserId::new("runtime-webui-lifecycle-owner").unwrap(),
@@ -5618,7 +5618,7 @@ mod tests {
 
         let mut runtime = build_reborn_runtime(input).await.expect("runtime builds");
         runtime.services.host_runtime = None;
-        let bundle = build_webui_services(&runtime, None).expect("webui bundle");
+        let bundle = build_webui_services(&runtime, None).await.expect("webui bundle");
         let caller_without_agent = WebUiAuthenticatedCaller::new(
             TenantId::new("runtime-webui-no-agent-tenant").unwrap(),
             UserId::new("runtime-webui-no-agent-owner").unwrap(),
@@ -5671,7 +5671,7 @@ mod tests {
 
         let mut runtime = build_reborn_runtime(input).await.expect("runtime builds");
         runtime.services.host_runtime = None;
-        let bundle = build_webui_services(&runtime, None).expect("webui bundle");
+        let bundle = build_webui_services(&runtime, None).await.expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
             TenantId::new("runtime-webui-no-host-tenant").unwrap(),
             UserId::new("runtime-webui-no-host-owner").unwrap(),
@@ -5719,7 +5719,7 @@ mod tests {
         .with_model_gateway_override(gateway);
 
         let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let bundle = build_webui_services(&runtime, None).expect("webui bundle");
+        let bundle = build_webui_services(&runtime, None).await.expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
             TenantId::new("runtime-webui-approval-tenant").unwrap(),
             UserId::new("runtime-webui-approval-owner").unwrap(),
@@ -5786,7 +5786,7 @@ mod tests {
         .with_model_gateway_override(gateway);
 
         let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let bundle = build_webui_services(&runtime, None).expect("webui bundle");
+        let bundle = build_webui_services(&runtime, None).await.expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
             TenantId::new("runtime-webui-auth-tenant").unwrap(),
             UserId::new("runtime-webui-auth-owner").unwrap(),
@@ -5852,7 +5852,7 @@ mod tests {
         .with_model_gateway_override(gateway);
 
         let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let bundle = build_webui_services(&runtime, None).expect("webui bundle");
+        let bundle = build_webui_services(&runtime, None).await.expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
             TenantId::new("runtime-webui-audit-tenant").unwrap(),
             UserId::new("runtime-webui-audit-owner").unwrap(),
@@ -6041,7 +6041,7 @@ mod tests {
         .with_model_gateway_override(gateway);
 
         let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let bundle = build_webui_services(&runtime, None).expect("webui bundle");
+        let bundle = build_webui_services(&runtime, None).await.expect("webui bundle");
         let webui_user_id = UserId::new("runtime-webui-skill-user").unwrap();
         let caller = WebUiAuthenticatedCaller::new(
             TenantId::new("runtime-webui-skill-tenant").unwrap(),

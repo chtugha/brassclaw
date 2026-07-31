@@ -393,6 +393,7 @@ impl ServeCommand {
                 None
             };
             let bundle = build_webui_services(&runtime, None)
+                .await
                 .context("failed to assemble WebUI services bundle")?;
 
             // Assemble the WebChat v2 auth surface (authenticator + optional

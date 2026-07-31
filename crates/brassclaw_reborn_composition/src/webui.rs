@@ -45,14 +45,14 @@ impl std::fmt::Debug for RebornWebuiBundle {
 /// host runtime or route server. It reuses the runtime's existing task-level
 /// composition and attaches the runtime-owned projection stream unless the
 /// caller supplies a custom stream.
-pub fn build_webui_services(
+pub async fn build_webui_services(
     runtime: &RebornRuntime,
     event_stream: Option<Arc<dyn ProjectionStream>>,
 ) -> Result<RebornWebuiBundle, RebornBuildError> {
-    build_webui_services_with_connectable_channels(runtime, event_stream, None)
+    build_webui_services_with_connectable_channels(runtime, event_stream, None).await
 }
 
-pub(crate) fn build_webui_services_with_connectable_channels(
+pub(crate) async fn build_webui_services_with_connectable_channels(
     runtime: &RebornRuntime,
     event_stream: Option<Arc<dyn ProjectionStream>>,
     connectable_channels: Option<Arc<dyn ConnectableChannelsProductFacade>>,
@@ -158,6 +158,17 @@ pub(crate) fn build_webui_services_with_connectable_channels(
                 pool.as_ref().clone(),
                 tenant_id.clone(),
             ));
+            // Seed builtin providers into the DB on every service start.
+            // upsert_builtin is idempotent so existing rows are updated with
+            // structural fields from the current binary's providers.json while
+            // operator-owned fields (base_url, model, etc.) are preserved.
+            if let Err(e) = seed_builtin_providers(&pg_repo).await {
+                tracing::warn!(
+                    error = %e,
+                    "builtin provider seeding failed; providers may be \
+                     missing from the settings UI until the next restart"
+                );
+            }
             llm_config = llm_config.with_pg_provider_repo(pg_repo, tenant_id);
         }
         // Wire the Sempai live-swap wrapper (Step 5.5.3).  When set,
@@ -320,4 +331,71 @@ pub(crate) fn build_webui_services_with_connectable_channels(
         product_auth: services.product_auth.clone(),
         readiness: services.readiness,
     })
+}
+
+/// Seed (or update) builtin provider definitions into the DB.
+///
+/// Called on every service start — `upsert_builtin` is idempotent so existing
+/// rows are updated with structural fields from the current binary's
+/// `providers.json` while operator-owned fields (base_url, model, description,
+/// api_key_required, token_budget) are preserved.
+///
+/// This ensures new builtins added in a binary upgrade are automatically
+/// available after restart without requiring a manual migration.
+///
+/// Non-fatal: individual provider seed failures are logged as warnings and do
+/// not prevent service startup.
+#[cfg(feature = "postgres")]
+pub async fn seed_builtin_providers(
+    pg_repo: &crate::pg_provider_repo::PgProviderRepo,
+) -> Result<(), crate::pg_provider_repo::PgProviderRepoError> {
+    use brassclaw_llm::ProviderDefinition;
+    use std::collections::HashMap;
+
+    let registry = brassclaw_llm::ProviderRegistry::try_load_from_path(None)
+        .map_err(|e| crate::pg_provider_repo::PgProviderRepoError::Db(e.to_string()))?;
+
+    // Load existing builtin rows for the Rust-side merge so we can preserve
+    // operator-owned fields (base_url, model, description, etc.).
+    let existing = pg_repo.load_all().await?;
+    let existing_map: HashMap<String, ProviderDefinition> = existing
+        .into_iter()
+        .filter(|(_, is_builtin)| *is_builtin)
+        .map(|(def, _)| (def.id.clone(), def))
+        .collect();
+
+    let mut seeded = 0usize;
+    for new_def in registry.all() {
+        // Merge: start from the new binary's canonical definition;
+        // overlay the operator-owned fields from any existing builtin row.
+        let merged = if let Some(existing_def) = existing_map.get(&new_def.id) {
+            let mut merged = new_def.clone();
+            // Operator-owned fields — preserve what the operator last set.
+            merged.default_base_url = existing_def.default_base_url.clone();
+            merged.default_model = existing_def.default_model.clone();
+            merged.description = existing_def.description.clone();
+            merged.api_key_required = existing_def.api_key_required;
+            merged.token_budget = existing_def.token_budget.clone();
+            merged
+        } else {
+            new_def.clone()
+        };
+
+        match pg_repo.upsert_builtin(merged).await {
+            Ok(true) => seeded += 1,
+            Ok(false) => tracing::warn!(
+                provider_id = %new_def.id,
+                "builtin provider skipped: a non-builtin row with the same id exists; \
+                 the builtin will not overwrite it"
+            ),
+            Err(e) => tracing::warn!(
+                provider_id = %new_def.id,
+                error = %e,
+                "failed to seed builtin provider"
+            ),
+        }
+    }
+
+    tracing::debug!(count = seeded, "seeded builtin LLM providers into DB");
+    Ok(())
 }

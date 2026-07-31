@@ -1,0 +1,14 @@
+-- V048: Marker migration for Rust-driven builtin provider seeding.
+--
+-- Builtin provider rows are inserted/updated in Rust at service startup by
+-- seed_builtin_providers() in brassclaw_reborn_composition::webui.
+--
+-- Why not seed here in SQL?
+-- ProviderDefinition (including the SetupHint enum) carries
+-- #[serde(deny_unknown_fields)].  Inserting raw JSON from SQL that does not
+-- exactly match the current struct layout would cause serde_json deserialisation
+-- errors at runtime.  All serialisation of ProviderDefinition goes through Rust.
+--
+-- This migration is a no-op SQL marker that advances the schema version so
+-- Flyway/refinery record the seeding checkpoint.
+SELECT 1;
