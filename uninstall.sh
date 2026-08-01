@@ -28,22 +28,24 @@ done
 
 # Detect whether we have an interactive terminal for prompts.
 #
-# When run as `curl ... | sudo bash`, sudo may allocate a PTY so [[ -t 0 ]]
-# is TRUE even though stdin carries the script body, not user keystrokes.
-# Reading from that stdin would drain script bytes, not a "y/N" reply.
-#
-# Reliable non-interactive detection combines three signals:
-#   1. [[ ! -t 0 ]]        — stdin is not a tty (plain pipe without sudo PTY)
-#   2. [[ -p /dev/stdin ]] — stdin is a named/anonymous pipe (Linux)
-#   3. $BASH_SOURCE is empty or the script has no on-disk path — piped inline
-#
-# If ANY signal indicates we are not in an interactive session, proceed
-# automatically.  The caller can pass --wipe or -y to control data removal.
+# When run as `curl ... | sudo bash`, sudo allocates a PTY for its child bash
+# process, so [[ -t 0 ]] is TRUE and [[ -p /dev/stdin ]] is FALSE — the naive
+# pipe heuristics all fail.  The authoritative signal is $0: when bash receives
+# a script on its own stdin (piped), $0 is "bash" or "-bash"; when it runs an
+# on-disk file the script path appears there.  Combining all four signals gives
+# robust coverage across plain pipe, sudo-PTY pipe, and bash -s invocations.
 _is_pipe=false
+# Signal 1: stdin is not a tty (plain pipe, no sudo PTY re-wrapping)
 [[ ! -t 0 ]]         && _is_pipe=true
+# Signal 2: stdin is a named/anonymous pipe (Linux)
 [[ -p /dev/stdin ]]  && _is_pipe=true
-# When piped inline via `bash -s` or `bash /dev/stdin`, BASH_SOURCE[0] is
-# empty, "-", or "/dev/stdin" — none of these are real on-disk files.
+# Signal 3: $0 is "bash" or "-bash" — script came in on stdin, not from a file
+_argv0="${0##*/}"
+if [[ "$_argv0" == "bash" || "$_argv0" == "-bash" || "$_argv0" == "sh" ]]; then
+    _is_pipe=true
+fi
+unset _argv0
+# Signal 4: BASH_SOURCE[0] is empty, "-", or a non-file-system path — piped inline
 _src="${BASH_SOURCE[0]:-}"
 if [[ -z "$_src" || "$_src" == "-" || "$_src" == "/dev/stdin" || \
       "$_src" == "/proc/self/fd/0" || "$_src" == "/dev/fd/0" ]]; then
