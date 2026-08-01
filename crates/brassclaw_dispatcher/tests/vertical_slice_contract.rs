@@ -232,23 +232,30 @@ fn sample_scope() -> ResourceScope {
     }
 }
 
+// Note: "wasm" runtime kind was removed. These tests now use "first_party"
+// with ManifestSource::HostBundled, which is the only source that permits
+// FirstParty runtimes. This preserves the original intent: test that a
+// non-MCP (FirstParty) adapter is required for a FirstParty manifest.
 const WASM_MANIFEST: &str = r#"
+schema_version = "reborn.extension_manifest.v2"
 id = "echo-wasm"
-name = "WASM Echo"
+name = "Echo FirstParty"
 version = "0.1.0"
-description = "WASM echo demo extension"
-trust = "untrusted"
+description = "Echo FirstParty demo extension"
+trust = "first_party_requested"
 
 [runtime]
-kind = "wasm"
-module = "wasm/echo.wasm"
+kind = "first_party"
+service = "echo_wasm_svc"
 
 [[capabilities]]
 id = "echo-wasm.say"
-description = "Echo text through WASM"
-effects = ["dispatch_capability"]
+description = "Echo text FirstParty"
+visibility = "model"
+input_schema_ref = "schemas/test/input.v1.json"
+output_schema_ref = "schemas/test/output.v1.json"
+prompt_doc_ref = "prompts/test.md"
 default_permission = "allow"
-parameters_schema = { type = "object", required = ["message"], properties = { message = { type = "string" } } }
 "#;
 
 const MCP_MANIFEST: &str = r#"

@@ -314,12 +314,14 @@ fn package_from_manifest(manifest: &str) -> ExtensionPackage {
 
 fn parse_manifest(manifest: &str) -> ExtensionManifest {
     let manifest = legacy_capability_fixture_to_v2(manifest);
-    ExtensionManifest::parse(
-        &manifest,
-        ManifestSource::InstalledLocal,
-        &HostPortCatalog::empty(),
-    )
-    .unwrap()
+    // Use HostBundled source for first-party manifests (required by the manifest
+    // parser — InstalledLocal only allows Mcp).
+    let source = if manifest.contains("first_party_requested") || manifest.contains("kind = \"first_party\"") {
+        ManifestSource::HostBundled
+    } else {
+        ManifestSource::InstalledLocal
+    };
+    ExtensionManifest::parse(&manifest, source, &HostPortCatalog::empty()).unwrap()
 }
 
 fn mounted_empty_extension_root() -> LocalFilesystem {
@@ -359,23 +361,30 @@ fn local_dev_policy() -> EffectiveRuntimePolicy {
     }
 }
 
+// Note: "wasm" runtime kind was removed. These tests now use "first_party"
+// with ManifestSource::HostBundled, which is the only source that permits
+// FirstParty runtimes. This preserves the original intent: test that a
+// non-MCP (FirstParty) adapter is required for a FirstParty manifest.
 const WASM_MANIFEST: &str = r#"
+schema_version = "reborn.extension_manifest.v2"
 id = "echo"
-name = "Echo WASM"
+name = "Echo FirstParty"
 version = "0.1.0"
-description = "Echo WASM integration extension"
-trust = "untrusted"
+description = "Echo FirstParty integration extension"
+trust = "first_party_requested"
 
 [runtime]
-kind = "wasm"
-module = "wasm/echo.wasm"
+kind = "first_party"
+service = "echo_svc"
 
 [[capabilities]]
 id = "echo.say"
-description = "Echo through WASM"
-effects = ["dispatch_capability"]
+description = "Echo FirstParty"
+visibility = "model"
+input_schema_ref = "schemas/test/input.v1.json"
+output_schema_ref = "schemas/test/output.v1.json"
+prompt_doc_ref = "prompts/test.md"
 default_permission = "allow"
-parameters_schema = { type = "object" }
 "#;
 
 const SCRIPT_MANIFEST: &str = r#"
