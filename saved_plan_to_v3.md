@@ -798,7 +798,7 @@ fetch_for_turn(scope, query, token_budget, consumer_tag):
        → Disambiguation { candidates }:
                → return FetchForTurnResult::Disambiguation(candidates)
 
-       → NoMatch / DbLessFallback:
+       → NoMatch:
                → fetch_for_consumer (UNION ALL) → return Components(broad_scan)
 ```
 
@@ -852,8 +852,8 @@ PythonCode, ToolSkills — all go to the orchestrator together. There is no chan
 > matched_component_ids}`. This is the function that v3 upgrades — not `__retrieve_docs__`.  
 > After the v3 upgrade, `__assemble_prior_knowledge__` handles everything in one call.
 > The dead `__retrieve_docs__` shim at step-0 is removed (Phase G). The `__retrieve_docs__`
-> host function registration is kept for the one release cycle that custom orchestrators may
-> still call it (Phase K cleanup), then removed.
+> host function registration is removed unconditionally in Phase K — there is no compatibility
+> window. Any custom orchestrator calling it must be updated before Phase K ships.
 
 The three-call block collapses to one call. The upgraded `__assemble_prior_knowledge__`
 handles everything — intent resolution, IBS compilation, channel split, Action routing.
@@ -967,9 +967,8 @@ action_item = __fetch_component__(action_uuid, 16)
 ```
 
 `__retrieve_docs__` is the **dead legacy function** — it returns a flat `[{type, title, content}]`
-list with no class_code awareness. Custom orchestrators that call it still work (list vs dict
-return shapes diverge naturally), but it should not appear in v3 default.py at all.
-`__retrieve_docs__` registration is kept for one release cycle, then removed in Phase K.
+list with no class_code awareness. It must not appear in v3 default.py at all.
+`__retrieve_docs__` registration is removed unconditionally in Phase K (no compatibility window).
 
 ---
 
@@ -1024,9 +1023,8 @@ The legacy `__retrieve_docs__` (MemoryDoc path) is NOT called in v3 step-0.
 | 20 | Note | 0.05 |
 
 Bold rows are new additions for v3. These weights are added to the `doc_type_weight_by_class`
-function in `retrieval_source.rs` (the integer class-code → weight dispatch used by the
-fallback content search path). This is a **separate function** from `doc_type_weight(DocType)`
-in `retrieval_dbless.rs` which takes the `DocType` enum (not an integer).
+function in `retrieval_dbless.rs` (the integer class-code → weight dispatch, shared by both
+`RamSource` unit tests and the `PostgresSource` UNION ALL path via `retrieval_source.rs`).
 
 > **⚠️ FINDING B — `DocType` is `#[deprecated]` — DO NOT add new variants:**
 > The `DocType` enum in `crates/brassclaw_engine/src/types/memory.rs` is annotated
@@ -1036,11 +1034,10 @@ in `retrieval_dbless.rs` which takes the `DocType` enum (not an integer).
 > **Phase B/C action:** Adding classes 22 and 23 requires:
 > 1. **Do NOT add `DocType::PythonCode` or `DocType::ExtensionCatalogue`** to `types/memory.rs`.
 >    The `DocType` enum is frozen. All new class-code dispatch uses integers only.
-> 2. Adding integer match arm `22 => 0.42` in `doc_type_weight_by_class(i32)` in `retrieval_source.rs`.
+> 2. Adding integer match arm `22 => 0.42` in `doc_type_weight_by_class(i32)` in `retrieval_dbless.rs`.
 > 3. Adding integer match arm `23 => 0.38` in `doc_type_weight_by_class(i32)`.
-> 4. The `doc_type_weight(DocType)` function in `retrieval_dbless.rs` is the legacy
->    enum-keyed path — used only by `RamSource` / DB-less tests. It is NOT updated.
->    Only `doc_type_weight_by_class(i32)` (the integer path) needs the new arms.
+>    The legacy `doc_type_weight(DocType)` function (enum-keyed) is **not updated** — it is
+>    deleted in Phase K along with the rest of `retrieval_dbless.rs`.
 > Missing the integer arm leaves the new class codes returning 0.0 on the UNION ALL path.
 
 ---
@@ -2187,10 +2184,9 @@ four `FetchForTurnResult` variants — including the new `SplitResult` and
 `ActionShortCircuit` variants added in Phase E. Register `__fetch_component__`.
 Fix the hardcoded `tenant_id: "default"` scope bug (see §below).
 
-> **Clarification — which handler is upgraded:**  
+> **Clarification — which handler is upgraded:**
 > `handle_retrieve_docs` calls `RetrievalEngine::retrieve_context` (legacy MemoryDoc path).
-> It is **not** upgraded — it is left registered for backward compatibility and removed in
-> Phase K.  
+> It is **not** upgraded — it is removed unconditionally in Phase K (no compatibility window).
 > `handle_assemble_prior_knowledge` already calls `fetch_for_turn` via `PostgresSource`.
 > This is the handler that v3 extends to handle `SplitResult` and `ActionShortCircuit`.
 
@@ -2227,8 +2223,8 @@ Fix the hardcoded `tenant_id: "default"` scope bug (see §below).
   Return value is always a dict. The Python side already guards `isinstance(pkr, dict)`
   from the existing `__assemble_prior_knowledge__` usage.
 
-  **`handle_retrieve_docs` — no change.** Left as-is. It is the legacy path, kept for
-  one release cycle for custom orchestrators. Phase K removes it.
+  **`handle_retrieve_docs` — no change in Phase F.** Phase K removes both the
+  registration and the function body. Do not add logic to this handler.
 
   **Register `__fetch_component__(uuid: str, class_code: int)`:**  
   New host function. Handler calls `fetch_component_by_id(uuid, class_code)` directly.
@@ -2794,13 +2790,25 @@ All inserted with `validation_status = 'pending'` — external MCP content must 
 
 #### K.3 Cleanup
 
-- Remove `__retrieve_docs__` handler registration from `orchestrator.rs`.
-  It is the legacy MemoryDoc path, superseded by the v3-upgraded `__assemble_prior_knowledge__`.
-  Remains registered for one release cycle (custom orchestrators may call it);
-  then removed.
+- Remove `__retrieve_docs__` handler registration from `orchestrator.rs` **now** (no
+  compatibility window). It is the legacy MemoryDoc path, fully superseded by the
+  v3-upgraded `__assemble_prior_knowledge__`. Any orchestrator still calling
+  `__retrieve_docs__` must be updated before Phase K ships.
 - Remove step-0 shim comment block from `default.py` (the `# Pre-Phase-5 fallback`
   comment block around the dead `__retrieve_docs__(goal, 5)` call — Phase G already
   removes the call itself; Phase K removes the comment artefact).
+- Delete `crates/brassclaw_engine/src/memory/retrieval_dbless.rs`. All helper
+  functions that survive (`extract_keywords`, `keyword_match_score`,
+  `doc_type_weight_by_class`) are moved to `retrieval_source.rs` as private helpers.
+  The `doc_type_weight(DocType)` enum-keyed function is deleted outright — it is only
+  used by `RamSource` tests, which are also deleted.
+- Delete `RamSource` from `retrieval_source.rs` and remove it from `mod.rs` exports.
+  `RamSource` is the DB-less fallback; it has no role in a Postgres-only deployment.
+  All unit tests that construct a `RamSource` directly are replaced by integration tests
+  against `PostgresSource`.
+- Remove `handle_retrieve_docs` from `orchestrator.rs` (the function body, not just
+  the registration). Remove `RetrievalEngine::retrieve_context` if it has no other
+  callers after this deletion.
 - Add deprecation notice to `__list_skills__`: no longer called from default step-0;
   remains callable for external/custom orchestrators.
 - `__assemble_prior_knowledge__` is **not removed**. It is the primary prior-knowledge

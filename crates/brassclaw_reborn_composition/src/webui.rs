@@ -128,13 +128,31 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
     }
     api = api.with_event_stream(event_stream.unwrap_or_else(|| runtime.webui_event_stream()));
 
-    // Compose the operator LLM-config settings service when the runtime was
-    // assembled with a boot config. The secret store stays private to this
-    // crate; the service is the only facade-shaped handle that leaves.
-    #[cfg(feature = "root-llm-provider")]
-    if let Some(boot) = runtime.webui_boot_config() {
+    // Compose the operator LLM-config settings service.
+    // Requires both root-llm-provider and postgres — the service is DB-exclusive
+    // after the V047/V048 migration.
+    #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
+    if let Some(pool) = services.pg_pool.clone() {
         let keys = crate::LlmKeyStore::new(runtime.services().secret_store());
-        let mut llm_config = crate::RebornLlmConfigService::new(boot.clone(), keys);
+        let tenant_id = runtime.webui_tenant_id().to_string();
+        let pg_repo = Arc::new(crate::pg_provider_repo::PgProviderRepo::new(
+            pool.as_ref().clone(),
+            tenant_id.clone(),
+        ));
+        // Seed builtin providers on every service start (idempotent).
+        if let Err(e) = seed_builtin_providers(&pg_repo).await {
+            tracing::warn!(
+                error = %e,
+                "builtin provider seeding failed; providers may be \
+                 missing from the settings UI until the next restart"
+            );
+        }
+        let mut llm_config = crate::RebornLlmConfigService::new(
+            keys,
+            pool.clone(),
+            pg_repo,
+            tenant_id,
+        );
         if let Some(adapter) = runtime.webui_llm_reload_adapter() {
             llm_config = llm_config
                 .with_reload_trigger(Arc::new(adapter) as Arc<dyn crate::LlmReloadTrigger>);
@@ -145,40 +163,9 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         if let Some(states) = runtime.webui_nearai_login_states() {
             llm_config = llm_config.with_nearai_login_states(states);
         }
-        // Wire PG pool for dual-writing role assignments to brassclaw_config (§3, §4.2).
-        // When present, set_active(Sempai/Embedding) also persists to the DB so the
-        // production factory picks up the selection on restart.
-        #[cfg(feature = "postgres")]
-        if let Some(pool) = services.pg_pool.clone() {
-            llm_config = llm_config.with_pg_pool(pool.clone());
-            // PG-2: also wire the DB-backed provider repo so upsert/delete
-            // writes to `brassclaw_llm_providers` rather than providers.json.
-            let tenant_id = runtime.webui_tenant_id().to_string();
-            let pg_repo = Arc::new(crate::pg_provider_repo::PgProviderRepo::new(
-                pool.as_ref().clone(),
-                tenant_id.clone(),
-            ));
-            // Seed builtin providers into the DB on every service start.
-            // upsert_builtin is idempotent so existing rows are updated with
-            // structural fields from the current binary's providers.json while
-            // operator-owned fields (base_url, model, etc.) are preserved.
-            if let Err(e) = seed_builtin_providers(&pg_repo).await {
-                tracing::warn!(
-                    error = %e,
-                    "builtin provider seeding failed; providers may be \
-                     missing from the settings UI until the next restart"
-                );
-            }
-            llm_config = llm_config.with_pg_provider_repo(pg_repo, tenant_id);
-        }
-        // Wire the Sempai live-swap wrapper (Step 5.5.3).  When set,
-        // set_active(Sempai, id) atomically swaps the inner provider.
         if let Some(swappable) = runtime.sempai_swappable() {
             llm_config = llm_config.with_sempai_swappable(swappable);
         }
-        // Wire the interceptor mode flag (Step 5.5.3).  When set,
-        // set_active(Sempai, id) flips the mode to Rerouting.
-        #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
         if let Some(mode) = runtime.interceptor_mode() {
             llm_config = llm_config.with_interceptor_mode(mode);
         }
@@ -346,7 +333,7 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
 /// Non-fatal: individual provider seed failures are logged as warnings and do
 /// not prevent service startup.
 #[cfg(feature = "postgres")]
-pub async fn seed_builtin_providers(
+pub(crate) async fn seed_builtin_providers(
     pg_repo: &crate::pg_provider_repo::PgProviderRepo,
 ) -> Result<(), crate::pg_provider_repo::PgProviderRepoError> {
     use brassclaw_llm::ProviderDefinition;

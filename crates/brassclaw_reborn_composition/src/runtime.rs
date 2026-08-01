@@ -623,13 +623,6 @@ impl RebornRuntime {
         &self.services
     }
 
-    /// Operator boot config, when the runtime was assembled with one. The
-    /// WebUI facade uses it to compose the LLM-config settings service.
-    #[cfg(feature = "root-llm-provider")]
-    pub(crate) fn webui_boot_config(&self) -> Option<&brassclaw_reborn_config::RebornBootConfig> {
-        self.boot.as_ref()
-    }
-
     /// The runtime's NEAR AI session manager, when an LLM seam is wired. The
     /// LLM-config service uses it so a completed NEAR AI login applies to the
     /// live provider on reload.
