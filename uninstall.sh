@@ -28,23 +28,42 @@ done
 
 # Detect whether we have an interactive terminal for prompts.
 #
-# When stdin is a pipe (curl | bash or curl | sudo bash), [[ -t 0 ]] is false.
-# Even if stderr is still attached to the calling terminal ([[ -t 2 ]] true),
-# opening /dev/tty for `read` under sudo+pipe is unreliable: bash may not have
-# a controlling terminal, so `read </dev/tty` returns immediately with an empty
-# string and the script silently cancels.
+# When run as `curl ... | sudo bash`, sudo may allocate a PTY so [[ -t 0 ]]
+# is TRUE even though stdin carries the script body, not user keystrokes.
+# Reading from that stdin would drain script bytes, not a "y/N" reply.
 #
-# Rule: if stdin is not a tty the session is non-interactive — set YES=true so
-# the script always proceeds.  The caller can still pass --wipe or -y to choose
-# the desired data-removal behaviour.
-if [[ -t 0 ]]; then
-    # stdin is a real terminal — prompt on stdin
+# Reliable non-interactive detection combines three signals:
+#   1. [[ ! -t 0 ]]        — stdin is not a tty (plain pipe without sudo PTY)
+#   2. [[ -p /dev/stdin ]] — stdin is a named/anonymous pipe (Linux)
+#   3. $BASH_SOURCE is empty or the script has no on-disk path — piped inline
+#
+# If ANY signal indicates we are not in an interactive session, proceed
+# automatically.  The caller can pass --wipe or -y to control data removal.
+_is_pipe=false
+[[ ! -t 0 ]]         && _is_pipe=true
+[[ -p /dev/stdin ]]  && _is_pipe=true
+# When piped inline via `bash -s` or `bash /dev/stdin`, BASH_SOURCE[0] is
+# empty, "-", or "/dev/stdin" — none of these are real on-disk files.
+_src="${BASH_SOURCE[0]:-}"
+if [[ -z "$_src" || "$_src" == "-" || "$_src" == "/dev/stdin" || \
+      "$_src" == "/proc/self/fd/0" || "$_src" == "/dev/fd/0" ]]; then
+    _is_pipe=true
+fi
+unset _src
+
+if [[ "$_is_pipe" == "true" ]]; then
+    # stdin is a pipe or inline — proceed automatically (no prompts).
+    TTY_IN=""
+    YES=true
+elif [[ -t 0 ]]; then
+    # stdin is a real interactive terminal — prompt on stdin
     TTY_IN=/dev/stdin
 else
-    # stdin is a pipe or redirect — proceed automatically (no prompts).
+    # stdin exists but is not a tty and not a recognised pipe — be safe.
     TTY_IN=""
     YES=true
 fi
+unset _is_pipe
 
 # The canonical installed binary name (same as install.sh uses)
 BINARY_NAME="brassclaw-reborn"
