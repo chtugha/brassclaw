@@ -184,6 +184,8 @@ pub use llm_catalog::{
     RebornLlmCatalogError, resolve_against_registry, resolve_llm_selection_against_catalog,
     resolve_reborn_runtime_llm,
 };
+#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
+pub use llm_catalog::resolve_llm_selection_against_catalog_db;
 #[cfg(feature = "root-llm-provider")]
 pub use llm_config_service::{LlmReloadTrigger, RebornLlmConfigService};
 #[cfg(feature = "root-llm-provider")]
@@ -209,6 +211,8 @@ pub use provider_admin::{
 };
 #[cfg(feature = "root-llm-provider")]
 pub use provider_admin_product_command::RebornProviderAdminProductCommandService;
+#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
+pub use pg_provider_repo::PgProviderRepo;
 #[cfg(feature = "root-llm-provider")]
 pub use provider_repo::{ProviderRepo, ProviderRepoError};
 pub use readiness::{

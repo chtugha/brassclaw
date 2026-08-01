@@ -66,7 +66,61 @@ impl ModelsCommand {
     }
 }
 
-#[cfg(feature = "root-llm-provider")]
+#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
+impl ModelsListCommand {
+    fn execute(self) -> anyhow::Result<()> {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?
+            .block_on(self.execute_async())
+    }
+
+    async fn execute_async(self) -> anyhow::Result<()> {
+        let context = RebornCliContext::resolve_from_env()?;
+        let admin =
+            brassclaw_reborn_composition::RebornProviderAdmin::new(context.boot_config().clone());
+
+        // Prefer DB-backed list when a pool is available — shows builtins + custom providers.
+        // Fall back to the compiled-in registry if the DB is unreachable.
+        let list = match crate::commands::config::pg_lifecycle::build_pg_pool().await {
+            Ok(raw_pool) => {
+                use std::sync::Arc;
+                let pool = Arc::new(raw_pool);
+                let tenant = "default";
+                let pg_repo = brassclaw_reborn_composition::PgProviderRepo::new(
+                    (*pool).clone(),
+                    tenant.to_string(),
+                );
+                match admin
+                    .list_from_db(&pg_repo, self.provider.as_deref(), self.verbose || self.provider.is_some())
+                    .await
+                {
+                    Ok(list) => list,
+                    Err(e) => {
+                        tracing::debug!(error = %e, "DB provider list failed; falling back to registry");
+                        admin.list(self.provider.as_deref(), self.verbose || self.provider.is_some())?
+                    }
+                }
+            }
+            Err(_) => {
+                admin.list(self.provider.as_deref(), self.verbose || self.provider.is_some())?
+            }
+        };
+
+        if self.json {
+            println!("{}", serde_json::to_string_pretty(&list)?);
+            return Ok(());
+        }
+        if self.provider.is_some() {
+            print_provider_detail(&list);
+        } else {
+            print_provider_list(&list, self.verbose);
+        }
+        Ok(())
+    }
+}
+
+#[cfg(all(feature = "root-llm-provider", not(feature = "postgres")))]
 impl ModelsListCommand {
     fn execute(self) -> anyhow::Result<()> {
         let context = RebornCliContext::resolve_from_env()?;

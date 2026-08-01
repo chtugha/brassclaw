@@ -1979,10 +1979,12 @@ async fn resolve_pg_embedding_provider(
     }
     let model = embedding.model.clone();
 
-    // Look up the provider definition from the DB.
+    // Look up the provider definition from the DB — load_all() returns both
+    // builtin and custom providers, so embedding configs pointing at a builtin
+    // provider (e.g. "openai") are resolved correctly.
     let provider_repo = PgProviderRepo::new(pool.clone(), tenant_id.to_string());
-    let providers = match provider_repo.load().await {
-        Ok(p) => p,
+    let providers = match provider_repo.load_all().await {
+        Ok(pairs) => pairs.into_iter().map(|(def, _)| def).collect::<Vec<_>>(),
         Err(err) => {
             tracing::debug!(error = %err, "failed to load providers for embedding resolution");
             return None;

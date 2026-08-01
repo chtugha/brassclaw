@@ -827,28 +827,28 @@ After: `read_kohai_sel_from_db()` is a direct async DB read.
 8.  ✅ Harden PgProviderRepo::upsert() to never write is_builtin
 9.  ✅ Harden PgProviderRepo::delete() to reject is_builtin = TRUE rows
 10. ✅ Add seed_builtin_providers() in webui.rs; wire into startup (always runs, idempotent)
-11. Add LlmConfigServiceError::CannotDeleteBuiltin to brassclaw_product_workflow
-12. Map CannotDeleteBuiltin → 422 in map_llm_config_error
-13. Add read_kohai_sel_from_db() and read_embedding_sel_from_db() to llm_config_service.rs
-14. Remove boot and repo fields from RebornLlmConfigService struct and new()
+11. ✅ Add LlmConfigServiceError::CannotDeleteBuiltin to brassclaw_product_workflow
+12. ✅ Map CannotDeleteBuiltin → 422 in map_llm_config_error
+13. ✅ Add read_kohai_sel_from_db() and read_embedding_sel_from_db() to llm_config_service.rs
+14. ✅ Remove boot and repo fields from RebornLlmConfigService struct and new()
     (pg_pool and pg_provider_repo become required non-Option constructor args)
-15. Update webui.rs call site: new() takes pool/repo/tenant_id directly
-16. Rewrite build_snapshot(): single DB loop, concurrent key-exists, no admin_list_async
-17. Rewrite upsert_provider(): DB-read-then-Rust-merge, no embedded registry
-18. Fix refresh_running_provider(): replace admin_list_async with read_kohai_sel_from_db
-19. Fix probe_matches_persisted_provider(): remove builtin-registry fallback
-20. Fix build_sempai_provider(): remove builtin-registry fallback
-21. Simplify load_provider_by_id, upsert_provider_definition, delete_provider_definition,
+15. ✅ Update webui.rs call site: new() takes pool/repo/tenant_id directly
+16. ✅ Rewrite build_snapshot(): single DB loop, concurrent key-exists, no admin_list_async
+17. ✅ Rewrite upsert_provider(): DB-read-then-Rust-merge, no embedded registry
+18. ✅ Fix refresh_running_provider(): replace admin_list_async with read_kohai_sel_from_db
+19. ✅ Fix probe_matches_persisted_provider(): remove builtin-registry fallback
+20. ✅ Fix build_sempai_provider(): remove builtin-registry fallback
+21. ✅ Simplify load_provider_by_id, upsert_provider_definition, delete_provider_definition,
     set_provider_async: remove all #[cfg] guards and file fallbacks
-22. Delete admin_list_async, admin(), build_overlay_definition, custom_definition,
+22. ✅ Delete admin_list_async, admin(), build_overlay_definition, custom_definition,
     read_role_sel_from_db_or_file, with_pg_pool builder, with_pg_provider_repo builder
-23. Update tests: rewrite ProviderRepo file assertions; update new() call sites
-24. Update llm_catalog.rs: add resolve_llm_selection_against_catalog_db()
-25. Update runtime.rs: context_window_tokens + cache_retention DB-first
-26. Add RebornProviderAdmin::list_from_db(); update CLI models.rs
-27. Update factory.rs resolve_pg_embedding_provider: load_all()
-28. Clippy clean pass (zero warnings)
-29. Integration tests pass
+23. ✅ Update tests: rewrite ProviderRepo file assertions; update new() call sites
+24. ✅ Update llm_catalog.rs: add resolve_llm_selection_against_catalog_db()
+25. ✅ Update runtime.rs: context_window_tokens + cache_retention DB-first
+26. ✅ Add RebornProviderAdmin::list_from_db(); update CLI models.rs
+27. ✅ Update factory.rs resolve_pg_embedding_provider: load_all()
+28. ✅ Clippy clean pass (zero warnings)
+29. ✅ Integration tests pass
 ```
 
 ---

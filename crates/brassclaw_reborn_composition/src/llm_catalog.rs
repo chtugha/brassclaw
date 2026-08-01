@@ -107,6 +107,10 @@ pub enum RebornLlmCatalogError {
         #[source]
         source: brassclaw_llm::LlmError,
     },
+    /// DB-backed resolution failed (pool error, query error, etc.).
+    /// Only raised by `resolve_llm_selection_against_catalog_db`.
+    #[error("DB-backed LLM catalog resolution failed: {reason}")]
+    DbError { reason: String },
 }
 
 /// Resolve the default Reborn runtime LLM from boot config, TOML selection,
@@ -220,6 +224,54 @@ pub fn resolve_llm_selection_against_catalog(
     let registry = ProviderRegistry::try_load_from_path(user_providers_path)
         .map_err(|source| RebornLlmCatalogError::CatalogLoad { source })?;
     resolve_against_registry(selection, &registry)
+}
+
+/// DB-backed variant of `resolve_llm_selection_against_catalog`.
+///
+/// Reads the active LLM selection and provider definition from Postgres rather
+/// than from `config.toml` + `providers.json`. Called on the live-reload path
+/// and in `runtime.rs` when a pool is available.
+///
+/// If no `provider_id` is set in `brassclaw_config` (first run, no provider
+/// configured yet), returns `Ok(None)`.
+#[cfg(feature = "postgres")]
+pub async fn resolve_llm_selection_against_catalog_db(
+    pool: &brassclaw_pg::PgPool,
+    tenant_id: &str,
+) -> Result<Option<brassclaw_llm::LlmConfig>, RebornLlmCatalogError> {
+    use crate::db_config::load_config_snapshot;
+    use crate::pg_provider_repo::PgProviderRepo;
+
+    // Read active selection from brassclaw_config.
+    let snapshot = load_config_snapshot(pool, tenant_id)
+        .await
+        .map_err(|e| RebornLlmCatalogError::DbError { reason: e.to_string() })?;
+    let Some(selection) = snapshot.default_llm_slot() else {
+        return Ok(None);
+    };
+    let Some(provider_id) = selection.provider_id.as_deref() else {
+        return Ok(None);
+    };
+
+    // Load the provider definition from DB.
+    let pg_repo = PgProviderRepo::new(pool.clone(), tenant_id.to_string());
+    let Some(definition) = pg_repo
+        .get(provider_id)
+        .await
+        .map_err(|e| RebornLlmCatalogError::DbError { reason: e.to_string() })?
+    else {
+        // Provider configured in DB config but no definition row exists yet
+        // (race between seeding and reload, or operator entered unknown id).
+        tracing::warn!(
+            provider_id = %provider_id,
+            "DB-backed LLM resolution: provider_id set in config but no definition found; \
+             starting without a live LLM"
+        );
+        return Ok(None);
+    };
+
+    let registry = ProviderRegistry::new(vec![definition]);
+    Ok(Some(resolve_against_registry(selection, &registry)?))
 }
 
 /// Resolve a selection against a pre-built registry. Useful in tests

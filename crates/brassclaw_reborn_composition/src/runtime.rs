@@ -1946,31 +1946,89 @@ pub async fn build_reborn_runtime(
     #[allow(unused_variables)]
     let resolved_cache_retention: Option<String> = None;
 
-    #[cfg(feature = "root-llm-provider")]
+    // DB-first: read context_window_tokens and cache_retention from the provider row
+    // seeded into brassclaw_llm_providers.  The compiled-in registry is the fallback
+    // for deployments where the DB pool is not yet available (cold boot, non-postgres).
+    #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
+    let resolved_context_window_tokens: Option<u32> = {
+        let db_val = if let (Some(pool), Some(l)) = (services.pg_pool.as_ref(), llm.as_ref()) {
+            let repo = crate::pg_provider_repo::PgProviderRepo::new(
+                (**pool).clone(),
+                identity.tenant_id.clone(),
+            );
+            repo.get(l.provider_id())
+                .await
+                .ok()
+                .flatten()
+                .and_then(|def| def.context_window_tokens)
+        } else {
+            None
+        };
+        db_val.or_else(|| {
+            llm.as_ref().and_then(|l| {
+                brassclaw_llm::ProviderRegistry::try_load_from_path(None)
+                    .ok()
+                    .and_then(|reg| reg.find(l.provider_id()).and_then(|d| d.context_window_tokens))
+            })
+        })
+    };
+    #[cfg(all(feature = "root-llm-provider", not(feature = "postgres")))]
     let resolved_context_window_tokens: Option<u32> = llm.as_ref().and_then(|l| {
         brassclaw_llm::ProviderRegistry::try_load_from_path(None)
             .ok()
-            .and_then(|reg| {
-                reg.find(l.provider_id())
-                    .and_then(|def| def.context_window_tokens)
-            })
+            .and_then(|reg| reg.find(l.provider_id()).and_then(|d| d.context_window_tokens))
     });
     #[cfg(not(feature = "root-llm-provider"))]
     let resolved_context_window_tokens: Option<u32> = None;
 
-    #[cfg(feature = "root-llm-provider")]
-    let resolved_cache_retention_from_db = resolved_cache_retention.clone();
-    #[cfg(feature = "root-llm-provider")]
-    let resolved_cache_retention_final: Option<String> = resolved_cache_retention_from_db
+    #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
+    let resolved_cache_retention_final: Option<String> = {
+        let db_val = if let (Some(pool), Some(l)) = (services.pg_pool.as_ref(), llm.as_ref()) {
+            let repo = crate::pg_provider_repo::PgProviderRepo::new(
+                (**pool).clone(),
+                identity.tenant_id.clone(),
+            );
+            repo.get(l.provider_id())
+                .await
+                .ok()
+                .flatten()
+                .and_then(|def| def.cache_retention)
+        } else {
+            None
+        };
+        db_val
+            .or_else(|| {
+                std::env::var("LLM_CACHE_RETENTION").ok().and_then(|raw| {
+                    match raw.parse::<brassclaw_llm::CacheRetention>() {
+                        Ok(cr) => Some(cr.to_string()),
+                        Err(error) => {
+                            tracing::debug!(
+                                cache_retention = %raw,
+                                error = %error,
+                                "ignoring unparseable LLM_CACHE_RETENTION; using DB/providers.json value"
+                            );
+                            None
+                        }
+                    }
+                })
+            })
+            .or_else(|| {
+                llm.as_ref().and_then(|l| {
+                    brassclaw_llm::ProviderRegistry::try_load_from_path(None)
+                        .ok()
+                        .and_then(|reg| {
+                            reg.find(l.provider_id()).and_then(|d| d.cache_retention.clone())
+                        })
+                })
+            })
+    };
+    #[cfg(all(feature = "root-llm-provider", not(feature = "postgres")))]
+    let resolved_cache_retention_final: Option<String> = resolved_cache_retention
         .or_else(|| {
             std::env::var("LLM_CACHE_RETENTION").ok().and_then(|raw| {
                 match raw.parse::<brassclaw_llm::CacheRetention>() {
                     Ok(cr) => Some(cr.to_string()),
                     Err(error) => {
-                        // Unknown values must not poison runtime config — fall
-                        // back to the providers.json value with a debug record
-                        // (matches the equivalent guard in
-                        // `build_production_model_gateway`).
                         tracing::debug!(
                             cache_retention = %raw,
                             error = %error,
@@ -1986,8 +2044,7 @@ pub async fn build_reborn_runtime(
                 brassclaw_llm::ProviderRegistry::try_load_from_path(None)
                     .ok()
                     .and_then(|reg| {
-                        reg.find(l.provider_id())
-                            .and_then(|def| def.cache_retention.clone())
+                        reg.find(l.provider_id()).and_then(|d| d.cache_retention.clone())
                     })
             })
         });
