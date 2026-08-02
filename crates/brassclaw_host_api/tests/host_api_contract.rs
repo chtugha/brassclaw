@@ -1042,15 +1042,18 @@ fn obligations_are_unique_and_canonicalized() {
 
 #[test]
 fn privileged_runtime_and_trust_classes_cannot_be_self_asserted_from_json() {
+    // Unprivileged variants round-trip through serde.
     assert_eq!(
         serde_json::from_value::<RuntimeKind>(json!("mcp")).unwrap(),
-        RuntimeKind::FirstParty
+        RuntimeKind::Mcp
     );
     assert_eq!(
         serde_json::from_value::<TrustClass>(json!("sandbox")).unwrap(),
         TrustClass::Sandbox
     );
 
+    // Privileged variants are host-assigned only — plain serde rejects them
+    // so untrusted JSON cannot self-assert first-party or system status.
     assert!(serde_json::from_value::<RuntimeKind>(json!("first_party")).is_err());
     assert!(serde_json::from_value::<RuntimeKind>(json!("system")).is_err());
     assert!(serde_json::from_value::<TrustClass>(json!("first_party")).is_err());
@@ -1059,8 +1062,10 @@ fn privileged_runtime_and_trust_classes_cannot_be_self_asserted_from_json() {
 
 #[test]
 fn runtime_http_egress_request_defaults_optional_body_controls() {
+    // Use Mcp — the only RuntimeKind that round-trips through plain serde.
+    // FirstParty / System have #[serde(skip_deserializing)] by design.
     let mut value = serde_json::to_value(RuntimeHttpEgressRequest {
-        runtime: RuntimeKind::FirstParty,
+        runtime: RuntimeKind::Mcp,
         scope: sample_context().resource_scope,
         capability_id: CapabilityId::new("http.fetch").unwrap(),
         method: NetworkMethod::Get,

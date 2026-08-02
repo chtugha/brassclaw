@@ -16,8 +16,10 @@ description = "Telegram product adapter"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "adapters/telegram-v2.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "telegram-v2"
+args = []
 
 [[host_api]]
 id = "brassclaw.product_adapter/v1"
@@ -164,8 +166,10 @@ description = "test"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "adapters/long.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "long-adapter"
+args = []
 
 [[host_api]]
 id = "brassclaw.product_adapter/v1"

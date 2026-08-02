@@ -190,6 +190,10 @@ fn extension_resource_scope() -> ResourceScope {
     }
 }
 
+// Note: "wasm" runtime kind was removed. This fixture uses "mcp" (compatible
+// with ManifestSource::InstalledLocal) since the test only exercises the
+// extension lifecycle audit events — it does not dispatch capability calls
+// and does not depend on the runtime kind.
 const EXTENSION_MANIFEST_WITH_RAW_SENTINELS: &str = r#"
 schema_version = "reborn.extension_manifest.v2"
 id = "echo"
@@ -199,8 +203,10 @@ description = "extension_raw_description_sentinel_3022"
 trust = "untrusted"
 
 [runtime]
-kind = "wasm"
-module = "wasm/extension_raw_asset_sentinel_3022.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "echo"
+args = []
 
 [[capabilities]]
 id = "echo.say"

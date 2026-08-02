@@ -41,8 +41,10 @@ description = "Telegram product adapter"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "adapters/telegram-v2.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "telegram-v2"
+args = []
 
 [[host_api]]
 id = "brassclaw.product_adapter/v1"
@@ -134,8 +136,10 @@ description = "No product adapter"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "wasm/plain.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "plain-tool"
+args = []
 
 [[capabilities]]
 id = "plain-tool.do"
@@ -374,8 +378,10 @@ description = "Extension with two product adapter sections"
 trust = "third_party"
 
 [runtime]
-kind = "wasm"
-module = "adapters/multi.wasm"
+kind = "mcp"
+transport = "stdio"
+command = "multi-adapter"
+args = []
 
 [[host_api]]
 id = "brassclaw.product_adapter/v1"

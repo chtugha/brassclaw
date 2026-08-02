@@ -217,8 +217,7 @@ impl RebornLlmConfigService {
             .await
         };
         if let Err(e) = pid_result {
-            tracing::debug!(key = provider_id_key, error = %e,
-                            "role DB write failed (file write already succeeded)");
+            tracing::debug!(key = provider_id_key, error = %e, "role DB write failed");
         }
 
         // model —— write when non-empty; delete when empty (slot cleared or unset).
@@ -235,8 +234,7 @@ impl RebornLlmConfigService {
             .await
         };
         if let Err(e) = model_result {
-            tracing::debug!(key = model_key, error = %e,
-                            "role DB write failed (file write already succeeded)");
+            tracing::debug!(key = model_key, error = %e, "role DB write failed");
         }
     }
 
@@ -292,8 +290,8 @@ impl RebornLlmConfigService {
         Some(LlmActiveSelection { provider_id, model })
     }
 
-    /// Persist-then-reload: the file write already happened; refresh the
-    /// running provider. A reload failure is logged, not fatal — the on-disk
+    /// Persist-then-reload: the DB write already happened; refresh the
+    /// running provider. A reload failure is logged, not fatal — the DB
     /// config is authoritative and applies on next restart.
     ///
     /// The reload swaps the live provider's *inner* backend. It does NOT yet
@@ -903,7 +901,8 @@ impl LlmConfigService for RebornLlmConfigService {
             }
             ProviderRole::Sempai => {
                 // Persist to DB (sole write target for the Sempai slot).
-                #[cfg(feature = "postgres")]
+                // No #[cfg] guard — postgres is required; the struct fields
+                // pg_pool/pg_provider_repo are always present.
                 self.save_role_to_db(
                     "llm.sempai.provider_id",
                     if id.is_empty() { "" } else { &id },
@@ -1124,13 +1123,11 @@ impl LlmConfigService for RebornLlmConfigService {
 
         // Poll for authorization off-thread: persist the tokens, make Codex the
         // active provider, and hot-swap the running provider. The frontend polls
-        // the snapshot until openai_codex is active. The on-disk session file is
-        // the source of truth, so a reload failure still applies on restart.
+        // the snapshot until openai_codex is active. The DB config is the source
+        // of truth, so a reload failure still applies on restart.
         let reload = self.reload.clone();
         let attempts = Arc::clone(&self.codex_login_attempts);
-        #[cfg(feature = "postgres")]
         let codex_pool = self.pg_pool.clone();
-        #[cfg(feature = "postgres")]
         let codex_tenant = self.db_tenant_id.clone();
         tokio::spawn(async move {
             if let Err(error) = manager.complete_device_code(&start).await {
@@ -1142,9 +1139,8 @@ impl LlmConfigService for RebornLlmConfigService {
                 tracing::debug!("codex login completed after a newer attempt superseded it");
                 return;
             }
-            #[cfg(feature = "postgres")]
             if let Err(error) = write_kohai_selection_to_db(
-                Some(&*codex_pool),
+                &codex_pool,
                 &codex_tenant,
                 "openai_codex",
                 None,
@@ -1205,8 +1201,7 @@ impl LlmConfigService for RebornLlmConfigService {
                 tracing::debug!(%error, "NEAR AI wallet login: token persist failed");
                 LlmConfigServiceError::Internal
             })?;
-        #[cfg(feature = "postgres")]
-        write_kohai_selection_to_db(Some(&*self.pg_pool), &self.db_tenant_id, "nearai", None)
+        write_kohai_selection_to_db(&self.pg_pool, &self.db_tenant_id, "nearai", None)
             .await
             .map_err(|error| {
                 tracing::debug!(%error, "NEAR AI wallet login: set active failed");
@@ -1306,19 +1301,15 @@ pub(crate) async fn apply_nearai_login(
 /// Write the Kohai provider + model to `brassclaw_config`.
 ///
 /// Used from background tasks (Codex login, NEAR AI wallet login) that lack
-/// `self` access. Falls back silently when no pool is provided or the
-/// feature flag is disabled (non-postgres builds).
-#[cfg(feature = "postgres")]
+/// `self` access. Postgres is required — `pg_pool` is a mandatory field on
+/// `RebornLlmConfigService` after the V047/V048 migration.
 pub(crate) async fn write_kohai_selection_to_db(
-    pool: Option<&brassclaw_pg::PgPool>,
+    pool: &Arc<brassclaw_pg::PgPool>,
     tenant_id: &str,
     provider_id: &str,
     model: Option<&str>,
 ) -> Result<(), String> {
     use crate::db_config::{ConfigWriteContext, save_config_key};
-    let Some(pool) = pool else {
-        return Ok(());
-    };
     save_config_key(
         pool,
         tenant_id,

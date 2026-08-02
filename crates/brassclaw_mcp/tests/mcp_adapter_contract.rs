@@ -1043,7 +1043,10 @@ async fn mcp_runtime_preserves_adapter_error_when_release_cleanup_fails() {
 
 #[tokio::test]
 async fn mcp_runtime_rejects_non_mcp_or_undeclared_capability_before_reserving() {
-    let non_mcp = package_from_manifest(SCRIPT_MANIFEST);
+    // Use a first_party package (ManifestSource::HostBundled) as the "non-mcp"
+    // case — it's the only non-Mcp runtime kind available to untrusted manifests
+    // since the Script runtime was removed in Phase 4.10.
+    let non_mcp = package_from_bundled_manifest(FIRST_PARTY_MANIFEST);
     let mcp = package_from_manifest(MCP_MANIFEST);
     let client = RecordingMcpClient::new(Ok(McpClientOutput::json(json!({"ok": true}))));
     let runtime = McpRuntime::new(McpRuntimeConfig::for_testing(), client.clone());
@@ -1065,7 +1068,10 @@ async fn mcp_runtime_rejects_non_mcp_or_undeclared_capability_before_reserving()
             &governor,
             McpExecutionRequest {
                 package: &non_mcp,
-                capability_id: &CapabilityId::new("script.echo").unwrap(),
+                // Must use a capability id that exists in the first-party manifest,
+                // so the CapabilityNotDeclared check is passed and we reach the
+                // runtime kind check (ExtensionRuntimeMismatch).
+                capability_id: &CapabilityId::new("first-party-echo.say").unwrap(),
                 scope: scope.clone(),
                 estimate: ResourceEstimate {
                     concurrency_slots: Some(1),
@@ -1080,7 +1086,7 @@ async fn mcp_runtime_rejects_non_mcp_or_undeclared_capability_before_reserving()
     assert!(matches!(
         non_mcp_err,
         McpError::ExtensionRuntimeMismatch {
-            actual: RuntimeKind::Mcp,
+            actual: RuntimeKind::FirstParty,
             ..
         }
     ));
@@ -1926,6 +1932,20 @@ fn package_from_manifest(manifest: &str) -> ExtensionPackage {
     ExtensionPackage::from_manifest(manifest, root).unwrap()
 }
 
+/// Like `package_from_manifest` but uses `ManifestSource::HostBundled`, which
+/// is required for `first_party` runtime kind manifests.
+fn package_from_bundled_manifest(manifest: &str) -> ExtensionPackage {
+    let manifest = ExtensionManifest::parse_with_optional_host_api_contracts(
+        manifest,
+        ManifestSource::HostBundled,
+        &HostPortCatalog::empty(),
+        &capability_provider_contracts(),
+    )
+    .unwrap();
+    let root = VirtualPath::new(format!("/system/extensions/{}", manifest.id.as_str())).unwrap();
+    ExtensionPackage::from_manifest(manifest, root).unwrap()
+}
+
 fn capability_provider_contracts() -> HostApiContractRegistry {
     let mut contracts = HostApiContractRegistry::new();
     contracts
@@ -2022,31 +2042,26 @@ input_schema_ref = "schemas/github-mcp/search.input.v1.json"
 output_schema_ref = "schemas/github-mcp/search.output.v1.json"
 "#;
 
-const SCRIPT_MANIFEST: &str = r#"schema_version = "reborn.extension_manifest.v2"
-id = "script"
-name = "Script Echo"
+// Note: "wasm" and "script" runtime kinds were removed. This manifest uses
+// "first_party" (ManifestSource::HostBundled) as the non-Mcp runtime
+// kind for tests that need to verify McpRuntime rejects wrong-runtime packages.
+const FIRST_PARTY_MANIFEST: &str = r#"schema_version = "reborn.extension_manifest.v2"
+id = "first-party-echo"
+name = "FirstParty Echo"
 version = "0.1.0"
-description = "Script demo extension"
-trust = "untrusted"
+description = "FirstParty demo extension"
+trust = "first_party_requested"
 
 [runtime]
-kind = "mcp"
-transport = "stdio"
-command = "script-echo"
-args = ["--json"]
+kind = "first_party"
+service = "echo_svc"
 
-[[host_api]]
-id = "brassclaw.capability_provider/v1"
-section = "capability_provider.tools"
-
-[capability_provider.tools]
-
-[[capability_provider.tools.capabilities]]
-id = "script.echo"
-description = "Echo text"
-effects = ["dispatch_capability"]
+[[capabilities]]
+id = "first-party-echo.say"
+description = "Echo"
+visibility = "model"
+input_schema_ref = "schemas/echo/input.v1.json"
+output_schema_ref = "schemas/echo/output.v1.json"
+prompt_doc_ref = "prompts/echo.md"
 default_permission = "allow"
-visibility = "api"
-input_schema_ref = "schemas/script/echo.input.v1.json"
-output_schema_ref = "schemas/script/echo.output.v1.json"
 "#;

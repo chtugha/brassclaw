@@ -853,6 +853,40 @@ After: `read_kohai_sel_from_db()` is a direct async DB read.
 
 ---
 
+## Post-Migration Correctness Fixes (checkup — committed after step 29)
+
+The following issues were found during a post-migration correctness audit and fixed:
+
+- **C1 — Stale `#[cfg(feature = "postgres")]` on Sempai persistence call** (llm_config_service.rs):
+  The `save_role_to_db` call in `ProviderRole::Sempai` was guarded by
+  `#[cfg(feature = "postgres")]`, which would silently skip persisting the Sempai
+  selection on any non-postgres build. Removed the guard — postgres is required.
+
+- **C2 — Stale log messages** (llm_config_service.rs):
+  `save_role_to_db` log messages said "role DB write failed (file write already
+  succeeded)". No file write exists after V047/V048. Fixed to "role DB write failed".
+
+- **C3 — Stale doc comment** (llm_config_service.rs):
+  `refresh_running_provider` doc referred to "the file write already happened" and
+  "on-disk config is authoritative". Updated to reflect DB-only persistence.
+
+- **C4 — `write_kohai_selection_to_db` had `#[cfg(feature = "postgres")]` guards
+  and `Option<&PgPool>` escape hatch** (llm_config_service.rs):
+  The function, its local variable captures (`codex_pool`, `codex_tenant`), and both
+  call sites were conditionally compiled out on non-postgres builds — meaning the
+  Codex login and NEAR AI wallet login would silently never persist the active
+  provider. All guards removed. `Option<&PgPool>` simplified to `&Arc<PgPool>`.
+
+- **C5 (known limitation) — CLI `list_from_db` reads `config.toml` for active selection**
+  (provider_admin.rs):
+  The CLI `models list` command uses DB-backed `list_from_db()` for the provider
+  list but reads `config.toml` for the active Kohai selection (no DB config access
+  in CLI context). The active marker may be stale if the selection was changed via
+  the WebUI after the last file-write. This is acceptable for the CLI read path —
+  all writes go to the DB.
+
+---
+
 ## Files Changed
 
 ```

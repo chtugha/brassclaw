@@ -483,11 +483,16 @@ async fn deserialize_runtime_event_resanitizes_error_kind() {
     // guard so the field cannot bypass sanitization.
     let scope = local_scope("alice", Some("default"));
     let serialized = {
+        // Use Mcp — the only RuntimeKind variant that round-trips through plain
+        // serde_json.  FirstParty / System have #[serde(skip_deserializing)] so
+        // they serialize but cannot be deserialized via the untrusted path (by
+        // design: privileged variants are host-assigned, not user-supplied).
+        // This test's purpose is error_kind sanitization, not runtime kind.
         let event = RuntimeEvent::dispatch_failed(
             scope,
             capability_id(),
             Some(extension_id()),
-            Some(RuntimeKind::FirstParty),
+            Some(RuntimeKind::Mcp),
             "missing_runtime_backend",
         );
         serde_json::to_value(&event).expect("serialize")

@@ -1480,13 +1480,16 @@ mod tests {
 
     #[test]
     fn capability_activity_view_accepts_sanitized_unclassified_error_kind() {
+        // "script" RuntimeKind was removed in Phase 4.10; use "mcp" (the only
+        // untrusted-deserializable variant). The test purpose is error_kind
+        // sanitization acceptance, not the runtime kind.
         let json = serde_json::json!({
             "invocation_id": InvocationId::new(),
             "thread_id": "thread-tool-activity",
-            "capability_id": "script.echo",
+            "capability_id": "echo.say",
             "status": "failed",
-            "provider": "script",
-            "runtime": "script",
+            "provider": "echo",
+            "runtime": "mcp",
             "process_id": null,
             "output_bytes": null,
             "error_kind": CAPABILITY_ACTIVITY_UNCLASSIFIED_ERROR_KIND,
