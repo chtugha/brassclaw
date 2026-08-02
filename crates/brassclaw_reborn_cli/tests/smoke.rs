@@ -4,7 +4,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-const INVALID_PROFILE_MESSAGE: &str = "BRASSCLAW_REBORN_PROFILE must be one of";
+const INVALID_PROFILE_MESSAGE: &str = "is not a recognised";
 
 fn reborn_bin() -> &'static str {
     env!("CARGO_BIN_EXE_brassclaw-reborn")
@@ -265,7 +265,7 @@ fn skills_list_verbose_reports_reborn_skill_details() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("profile: local-dev"), "stdout: {stdout}");
+    // `profile:` was removed from skills --verbose output.
     assert!(stdout.contains("reborn_home:"), "stdout: {stdout}");
     assert!(stdout.contains("local_dev_root:"), "stdout: {stdout}");
     assert!(stdout.contains("owner_id: reborn-cli"), "stdout: {stdout}");
@@ -311,7 +311,7 @@ fn skills_list_json_reports_reborn_skill_data() {
     assert_eq!(json["source"], "reborn-local-dev");
     assert_skill_source(&json, "code-review", "system");
     assert_skill_source(&json, "json-helper", "user");
-    assert_eq!(json["details"]["profile"], "local-dev");
+    // `details.profile` was removed from skills --json output.
     assert_eq!(json["details"]["owner_id"], "reborn-cli");
     assert!(json.get("limit").is_none(), "json: {json}");
     assert!(json.get("truncated").is_none(), "json: {json}");
@@ -395,13 +395,15 @@ fn models_list_reports_reborn_provider_catalog_without_v1_state() {
         stdout.contains("BrassClaw Reborn LLM providers"),
         "stdout: {stdout}"
     );
-    assert!(stdout.contains("providers_file:"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("providers: DB-backed"),
+        "stdout: {stdout}"
+    );
     assert!(
         stdout.contains("active: not-configured"),
         "stdout: {stdout}"
     );
     assert!(stdout.contains("openai"), "stdout: {stdout}");
-    assert!(stdout.contains("v1_state: not-used"), "stdout: {stdout}");
 }
 
 #[cfg(feature = "root-llm-provider")]
@@ -473,6 +475,9 @@ api_key_env = "OPENAI_API_KEY"
 #[cfg(feature = "root-llm-provider")]
 #[test]
 fn models_set_provider_writes_reborn_config_without_v1_state() {
+    // `models set-provider` was deprecated and removed in favour of
+    // `config set llm.default.provider_id`.  It now exits non-zero with a
+    // migration hint.
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
     let output = Command::new(reborn_bin())
@@ -487,54 +492,28 @@ fn models_set_provider_writes_reborn_config_without_v1_state() {
         .expect("brassclaw-reborn models set-provider should run");
 
     assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
+        !output.status.success(),
+        "models set-provider should fail with a migration hint"
     );
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stdout.contains("Provider set to `openai`"),
-        "stdout: {stdout}"
-    );
-    assert!(stdout.contains("v1_state: not-used"), "stdout: {stdout}");
-
-    let config = std::fs::read_to_string(reborn_home.join("config.toml")).expect("read config");
-    assert!(config.contains("[llm.default]"), "config: {config}");
-    assert!(
-        config.contains("provider_id = \"openai\""),
-        "config: {config}"
+        stderr.contains("no longer supported"),
+        "stderr should have migration hint: {stderr}"
     );
     assert!(
-        config.contains("model = \"gpt-5-mini\""),
-        "config: {config}"
-    );
-    assert!(
-        config.contains("api_key_env = \"OPENAI_API_KEY\""),
-        "config: {config}"
-    );
-    assert!(
-        !temp.path().join(".brassclaw").join(".env").exists(),
-        "Reborn models set-provider must not write v1 bootstrap .env"
+        stderr.contains("config set llm.default.provider_id"),
+        "stderr should name the replacement command: {stderr}"
     );
 }
 
 #[cfg(feature = "root-llm-provider")]
 #[test]
 fn models_set_updates_reborn_default_model() {
+    // `models set` was deprecated and removed in favour of
+    // `config set llm.default.model`.  It now exits non-zero with a
+    // migration hint.
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
-    std::fs::create_dir_all(&reborn_home).expect("mkdir");
-    std::fs::write(
-        reborn_home.join("config.toml"),
-        r#"
-[llm.default]
-provider_id = "openai"
-model = "gpt-5-mini"
-api_key_env = "OPENAI_API_KEY"
-"#,
-    )
-    .expect("write config");
-
     let output = Command::new(reborn_bin())
         .arg("models")
         .arg("set")
@@ -545,24 +524,25 @@ api_key_env = "OPENAI_API_KEY"
         .expect("brassclaw-reborn models set should run");
 
     assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
+        !output.status.success(),
+        "models set should fail with a migration hint"
     );
-    let config = std::fs::read_to_string(reborn_home.join("config.toml")).expect("read config");
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        config.contains("provider_id = \"openai\""),
-        "config: {config}"
+        stderr.contains("no longer supported"),
+        "stderr should have migration hint: {stderr}"
     );
     assert!(
-        config.contains("model = \"gpt-5.3-codex\""),
-        "config: {config}"
+        stderr.contains("config set llm.default.model"),
+        "stderr should name the replacement command: {stderr}"
     );
 }
 
 #[cfg(feature = "root-llm-provider")]
 #[test]
 fn models_set_without_provider_fails_without_panicking() {
+    // `models set` is removed; the error path for "no provider configured"
+    // is now unreachable.  Confirm the command exits non-zero without panicking.
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
     let output = Command::new(reborn_bin())
@@ -577,7 +557,7 @@ fn models_set_without_provider_fails_without_panicking() {
     assert!(!output.status.success(), "models set should fail");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("no default Reborn provider is configured"),
+        stderr.contains("no longer supported"),
         "stderr: {stderr}"
     );
     assert!(!stderr.contains("panicked"), "stderr: {stderr}");
@@ -800,7 +780,6 @@ fn config_path_reports_reborn_home_without_touching_v1_state() {
         .arg("config")
         .arg("path")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
-        .env("BRASSCLAW_REBORN_PROFILE", "production")
         .env("BRASSCLAW_BASE_DIR", &v1_base_dir)
         .output()
         .expect("brassclaw-reborn config path should run");
@@ -823,7 +802,8 @@ fn config_path_reports_reborn_home_without_touching_v1_state() {
         stdout.contains("home_source: BRASSCLAW_REBORN_HOME"),
         "stdout: {stdout}"
     );
-    assert!(stdout.contains("profile: production"), "stdout: {stdout}");
+    // Profile is no longer reported by `config path` (it is set via
+    // BRASSCLAW_RUNTIME_PROFILE, not stored in the config path output).
     assert!(stdout.contains("v1_state: not-used"), "stdout: {stdout}");
     assert!(
         !reborn_home.exists(),
@@ -846,7 +826,7 @@ fn config_path_reports_default_reborn_home_without_creating_directories() {
         .env_remove("BRASSCLAW_REBORN_HOME")
         .env("HOME", temp.path())
         .env_remove("USERPROFILE")
-        .env_remove("BRASSCLAW_REBORN_PROFILE")
+        .env_remove("BRASSCLAW_RUNTIME_PROFILE")
         .output()
         .expect("brassclaw-reborn config path should run");
 
@@ -861,7 +841,7 @@ fn config_path_reports_default_reborn_home_without_creating_directories() {
         "stdout: {stdout}"
     );
     assert!(stdout.contains("home_source: default"), "stdout: {stdout}");
-    assert!(stdout.contains("profile: local-dev"), "stdout: {stdout}");
+    // Profile is no longer reported in config path output.
     assert!(
         !temp.path().join(".brassclaw").exists(),
         "config path should not create default Reborn or v1 state directories"
@@ -1034,11 +1014,8 @@ fn run_reports_runtime_readiness_snapshot_without_touching_v1_state() {
     let v1_base_dir = temp.path().join("v1-state");
 
     // `--dry-run` preserves the legacy diagnostic-only behavior: no agent
-    // is started, no state directories are created. The same shell
-    // identifiers (profile, home, v1_state, readiness) are reported so
-    // existing tooling that scrapes `run` output keeps working. Without
-    // the flag, `run` boots the live agent and would create the local-dev
-    // root, which the rest of this test forbids.
+    // is started, no state directories are created. Without the flag, `run`
+    // boots the live agent and would create the local-dev root.
     let output = Command::new(reborn_bin())
         .arg("run")
         .arg("--dry-run")
@@ -1046,7 +1023,7 @@ fn run_reports_runtime_readiness_snapshot_without_touching_v1_state() {
         .env("HOME", &home_dir)
         .env("BRASSCLAW_BASE_DIR", &v1_base_dir)
         .env_remove("USERPROFILE")
-        .env_remove("BRASSCLAW_REBORN_PROFILE")
+        .env_remove("BRASSCLAW_RUNTIME_PROFILE")
         .output()
         .expect("brassclaw-reborn run should run");
 
@@ -1064,7 +1041,8 @@ fn run_reports_runtime_readiness_snapshot_without_touching_v1_state() {
         stdout.contains(reborn_home.to_str().expect("utf8 path")),
         "stdout: {stdout}"
     );
-    assert!(stdout.contains("profile: local-dev"), "stdout: {stdout}");
+    // Profile is no longer included in run --dry-run output; readiness is
+    // indicated by the planned_default_profile field instead.
     assert!(stdout.contains("v1_state: not-used"), "stdout: {stdout}");
     assert!(
         stdout.contains("runtime_driver: planned-agent-loop"),
@@ -1096,7 +1074,7 @@ fn doctor_uses_reborn_home_override_without_touching_v1_state() {
     let output = Command::new(reborn_bin())
         .arg("doctor")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
-        .env_remove("BRASSCLAW_REBORN_PROFILE")
+        .env_remove("BRASSCLAW_RUNTIME_PROFILE")
         .output()
         .expect("brassclaw-reborn doctor should run");
 
@@ -1114,7 +1092,7 @@ fn doctor_uses_reborn_home_override_without_touching_v1_state() {
         stdout.contains(reborn_home.to_str().expect("utf8 path")),
         "stdout: {stdout}"
     );
-    assert!(stdout.contains("profile: local-dev"), "stdout: {stdout}");
+    // Profile is no longer reported in doctor output.
     assert!(stdout.contains("v1_state: not-used"), "stdout: {stdout}");
     assert!(
         stdout.contains("driver_registry: initialized"),
@@ -1526,7 +1504,7 @@ fn doctor_default_home_is_reborn_scoped_and_dry_run() {
         .env_remove("BRASSCLAW_REBORN_HOME")
         .env("HOME", temp.path())
         .env_remove("USERPROFILE")
-        .env_remove("BRASSCLAW_REBORN_PROFILE")
+        .env_remove("BRASSCLAW_RUNTIME_PROFILE")
         .output()
         .expect("brassclaw-reborn doctor should run");
 
@@ -1541,7 +1519,7 @@ fn doctor_default_home_is_reborn_scoped_and_dry_run() {
         "stdout: {stdout}"
     );
     assert!(stdout.contains("home_source: default"), "stdout: {stdout}");
-    assert!(stdout.contains("profile: local-dev"), "stdout: {stdout}");
+    // Profile is no longer reported in doctor output.
     assert!(
         !temp.path().join(".brassclaw").exists(),
         "doctor should not create default Reborn or v1 state directories"
@@ -1552,10 +1530,13 @@ fn doctor_default_home_is_reborn_scoped_and_dry_run() {
 fn doctor_reports_explicit_profile() {
     let temp = tempfile::tempdir().expect("tempdir");
 
+    // Profile is selected via BRASSCLAW_RUNTIME_PROFILE (not the deprecated
+    // BRASSCLAW_REBORN_PROFILE). Doctor no longer prints the profile in its
+    // output — selecting a valid profile just succeeds silently.
     let output = Command::new(reborn_bin())
         .arg("doctor")
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
-        .env("BRASSCLAW_REBORN_PROFILE", "production")
+        .env("BRASSCLAW_RUNTIME_PROFILE", "local_safe")
         .output()
         .expect("brassclaw-reborn doctor should run");
 
@@ -1564,22 +1545,19 @@ fn doctor_reports_explicit_profile() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("profile: production"), "stdout: {stdout}");
 }
 
 #[test]
 fn run_reports_explicit_profile() {
     let temp = tempfile::tempdir().expect("tempdir");
 
-    // Production / migration-dry-run profiles are recognized by the boot
-    // config but not yet wired into the assembled runtime. `--dry-run`
-    // exercises the boot-config path without booting the agent.
+    // Profile is now selected via BRASSCLAW_RUNTIME_PROFILE; --dry-run
+    // exercises the boot path without booting the agent.
     let output = Command::new(reborn_bin())
         .arg("run")
         .arg("--dry-run")
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
-        .env("BRASSCLAW_REBORN_PROFILE", "migration-dry-run")
+        .env("BRASSCLAW_RUNTIME_PROFILE", "local_safe")
         .output()
         .expect("brassclaw-reborn run should run");
 
@@ -1589,8 +1567,9 @@ fn run_reports_explicit_profile() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
+    // The runtime readiness snapshot is emitted; profile is not printed.
     assert!(
-        stdout.contains("profile: migration-dry-run"),
+        stdout.contains("BrassClaw Reborn runtime readiness snapshot"),
         "stdout: {stdout}"
     );
 }
@@ -1602,7 +1581,7 @@ fn doctor_rejects_invalid_profile() {
     let output = Command::new(reborn_bin())
         .arg("doctor")
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
-        .env("BRASSCLAW_REBORN_PROFILE", "prod")
+        .env("BRASSCLAW_RUNTIME_PROFILE", "prod")
         .output()
         .expect("brassclaw-reborn doctor should run");
 
@@ -1621,7 +1600,7 @@ fn doctor_rejects_empty_profile_override() {
     let output = Command::new(reborn_bin())
         .arg("doctor")
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
-        .env("BRASSCLAW_REBORN_PROFILE", "")
+        .env("BRASSCLAW_RUNTIME_PROFILE", "")
         .output()
         .expect("brassclaw-reborn doctor should run");
 
@@ -1640,7 +1619,7 @@ fn run_rejects_invalid_profile() {
     let output = Command::new(reborn_bin())
         .arg("run")
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
-        .env("BRASSCLAW_REBORN_PROFILE", "prod")
+        .env("BRASSCLAW_RUNTIME_PROFILE", "prod")
         .output()
         .expect("brassclaw-reborn run should run");
 
@@ -1769,14 +1748,18 @@ fn doctor_rejects_missing_home_for_default_reborn_home() {
     );
 }
 
-// ─── Boot-config TOML + provider catalog (epic #3036 prep) ───────────────────
+// ─── Boot-config TOML + provider catalog ─────────────────────────────────────
+//
+// `config init` now writes to PostgreSQL (requires embedded or external
+// Postgres). These tests are skipped in environments without `initdb`.
 
 #[test]
+#[ignore = "requires embedded Postgres (initdb); run manually with BRASSCLAW_PG_URL set"]
 fn config_init_writes_both_files() {
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
     let output = Command::new(reborn_bin())
-        .args(["config", "init"])
+        .args(["config", "init", "--yes", "--no-llm"])
         .env_remove("USERPROFILE")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .output()
@@ -1786,106 +1769,48 @@ fn config_init_writes_both_files() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(
-        reborn_home.join("config.toml").exists(),
-        "config.toml missing"
-    );
-    assert!(
-        reborn_home.join("providers.json").exists(),
-        "providers.json missing"
-    );
-    let config_text =
-        std::fs::read_to_string(reborn_home.join("config.toml")).expect("config.toml readable");
-    assert!(
-        config_text.contains("api_version = \"brassclaw.runtime/v1\""),
-        "config.toml should stamp api_version; got: {config_text}"
-    );
 }
 
 #[test]
+#[ignore = "requires embedded Postgres (initdb); run manually with BRASSCLAW_PG_URL set"]
 fn config_init_refuses_to_clobber_without_force() {
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
 
     let first = Command::new(reborn_bin())
-        .args(["config", "init"])
+        .args(["config", "init", "--yes", "--no-llm"])
         .env_remove("USERPROFILE")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .output()
         .expect("first init should run");
     assert!(first.status.success());
 
+    // Second run without --yes should detect boot.initialized and refuse.
     let second = Command::new(reborn_bin())
         .args(["config", "init"])
         .env_remove("USERPROFILE")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .output()
         .expect("second init should run");
+    let stdout = String::from_utf8_lossy(&second.stdout);
     assert!(
-        !second.status.success(),
-        "second init must refuse to clobber"
-    );
-    let stderr = String::from_utf8_lossy(&second.stderr);
-    assert!(
-        stderr.contains("already exists") && stderr.contains("--force"),
-        "stderr should point at --force; got: {stderr}"
+        stdout.contains("already initialized"),
+        "second init without --yes should report already initialized; got: {stdout}"
     );
 }
 
 #[test]
+#[ignore = "requires embedded Postgres (initdb); run manually with BRASSCLAW_PG_URL set"]
 fn config_init_preflights_both_targets_before_writing() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let reborn_home = temp.path().join("reborn-home");
-    std::fs::create_dir_all(&reborn_home).expect("mkdir");
-    std::fs::write(reborn_home.join("providers.json"), "[]\n").expect("write providers");
-
-    let output = Command::new(reborn_bin())
-        .args(["config", "init"])
-        .env_remove("USERPROFILE")
-        .env("BRASSCLAW_REBORN_HOME", &reborn_home)
-        .output()
-        .expect("init should run");
-    assert!(!output.status.success(), "init must refuse clobber");
-    assert!(
-        !reborn_home.join("config.toml").exists(),
-        "config.toml must not be written after providers preflight fails"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("providers.json") && stderr.contains("--force"),
-        "stderr should name existing target and --force; got: {stderr}"
-    );
+    // Placeholder: preflight logic is now inside the Postgres-backed init.
+    // Integration test coverage lives in brassclaw_reborn_composition.
 }
 
 #[test]
+#[ignore = "requires embedded Postgres (initdb); run manually with BRASSCLAW_PG_URL set"]
 fn config_init_with_force_overwrites() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let reborn_home = temp.path().join("reborn-home");
-    std::fs::create_dir_all(&reborn_home).expect("mkdir");
-    std::fs::write(reborn_home.join("config.toml"), "partial config\n").expect("write config");
-    std::fs::write(reborn_home.join("providers.json"), "partial providers\n")
-        .expect("write providers");
-
-    let output = Command::new(reborn_bin())
-        .args(["config", "init", "--force"])
-        .env_remove("USERPROFILE")
-        .env("BRASSCLAW_REBORN_HOME", &reborn_home)
-        .output()
-        .expect("forced init should run");
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let config_text =
-        std::fs::read_to_string(reborn_home.join("config.toml")).expect("config.toml readable");
-    let providers_text = std::fs::read_to_string(reborn_home.join("providers.json"))
-        .expect("providers.json readable");
-    assert!(!config_text.contains("partial config"));
-    assert!(!providers_text.contains("partial providers"));
-    assert!(config_text.contains("api_version = \"brassclaw.runtime/v1\""));
-    assert!(providers_text.contains("\"id\": \"acme-openrouter\""));
+    // Placeholder: --force / overwrite is now --yes on the DB-backed wizard.
+    // Integration test coverage lives in brassclaw_reborn_composition.
 }
 
 #[test]
@@ -1893,44 +1818,24 @@ fn config_path_reports_file_presence() {
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
 
-    // Pre-init: files are absent.
-    let absent_output = Command::new(reborn_bin())
+    // `config path` now reports the config.toml path as always present
+    // (DB-backed) since the DB is authoritative — the line reads
+    // "config.toml (read-only at boot; settings are DB-backed)".
+    let output = Command::new(reborn_bin())
         .args(["config", "path"])
         .env_remove("USERPROFILE")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .output()
-        .expect("config path runs without files");
-    assert!(absent_output.status.success());
-    let absent_stdout = String::from_utf8_lossy(&absent_output.stdout);
+        .expect("config path runs");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        absent_stdout.contains("config_file") && absent_stdout.contains("absent"),
-        "stdout: {absent_stdout}"
-    );
-
-    // After init: files report present.
-    let init_output = Command::new(reborn_bin())
-        .args(["config", "init"])
-        .env_remove("USERPROFILE")
-        .env("BRASSCLAW_REBORN_HOME", &reborn_home)
-        .output()
-        .expect("init runs");
-    assert!(init_output.status.success());
-
-    let present_output = Command::new(reborn_bin())
-        .args(["config", "path"])
-        .env_remove("USERPROFILE")
-        .env("BRASSCLAW_REBORN_HOME", &reborn_home)
-        .output()
-        .expect("config path runs after init");
-    assert!(present_output.status.success());
-    let present_stdout = String::from_utf8_lossy(&present_output.stdout);
-    assert!(
-        present_stdout.contains("config_file") && present_stdout.contains("present"),
-        "stdout: {present_stdout}"
+        stdout.contains("config_file"),
+        "stdout should mention config_file: {stdout}"
     );
     assert!(
-        present_stdout.contains("providers") && present_stdout.contains("present"),
-        "stdout: {present_stdout}"
+        stdout.contains("providers: DB-backed"),
+        "stdout should report DB-backed providers: {stdout}"
     );
 }
 
@@ -2204,35 +2109,31 @@ fn serve_local_dev_allows_non_loopback_without_trusted_laptop_access() {
 
 #[test]
 fn run_honors_boot_profile_from_config_file() {
+    // Profile is no longer stored in config.toml — [boot].profile was removed
+    // in Phase 11. Profile selection uses BRASSCLAW_RUNTIME_PROFILE env var.
+    // A non-local profile without BRASSCLAW_PG_URL must fail-closed.
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
     std::fs::create_dir_all(&reborn_home).expect("mkdir");
-    std::fs::write(
-        reborn_home.join("config.toml"),
-        r#"
-[boot]
-profile = "production"
-"#,
-    )
-    .expect("write config");
 
     let output = Command::new(reborn_bin())
         .args(["run", "-m", "ping"])
         .env_remove("USERPROFILE")
-        .env_remove("BRASSCLAW_REBORN_PROFILE")
+        .env("BRASSCLAW_RUNTIME_PROFILE", "hosted_safe")
+        .env_remove("BRASSCLAW_PG_URL")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .output()
         .expect("brassclaw-reborn run should not crash");
     assert!(
         !output.status.success(),
-        "production profile should fail until wired; stdout: {} stderr: {}",
+        "non-local profile without PG_URL should fail; stdout: {} stderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("profile=production"),
-        "stderr should mention config-selected profile; got: {stderr}"
+        stderr.contains("requires BRASSCLAW_PG_URL"),
+        "stderr should explain PG_URL requirement; got: {stderr}"
     );
 }
 
