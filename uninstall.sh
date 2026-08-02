@@ -28,44 +28,20 @@ done
 
 # Detect whether we have an interactive terminal for prompts.
 #
-# When run as `curl ... | sudo bash`, sudo allocates a PTY for its child bash
-# process, so [[ -t 0 ]] is TRUE and [[ -p /dev/stdin ]] is FALSE — the naive
-# pipe heuristics all fail.  The authoritative signal is $0: when bash receives
-# a script on its own stdin (piped), $0 is "bash" or "-bash"; when it runs an
-# on-disk file the script path appears there.  Combining all four signals gives
-# robust coverage across plain pipe, sudo-PTY pipe, and bash -s invocations.
-_is_pipe=false
-# Signal 1: stdin is not a tty (plain pipe, no sudo PTY re-wrapping)
-[[ ! -t 0 ]]         && _is_pipe=true
-# Signal 2: stdin is a named/anonymous pipe (Linux)
-[[ -p /dev/stdin ]]  && _is_pipe=true
-# Signal 3: $0 is "bash" or "-bash" — script came in on stdin, not from a file
-_argv0="${0##*/}"
-if [[ "$_argv0" == "bash" || "$_argv0" == "-bash" || "$_argv0" == "sh" ]]; then
-    _is_pipe=true
-fi
-unset _argv0
-# Signal 4: BASH_SOURCE[0] is empty, "-", or a non-file-system path — piped inline
-_src="${BASH_SOURCE[0]:-}"
-if [[ -z "$_src" || "$_src" == "-" || "$_src" == "/dev/stdin" || \
-      "$_src" == "/proc/self/fd/0" || "$_src" == "/dev/fd/0" ]]; then
-    _is_pipe=true
-fi
-unset _src
-
-if [[ "$_is_pipe" == "true" ]]; then
-    # stdin is a pipe or inline — proceed automatically (no prompts).
-    TTY_IN=""
-    YES=true
-elif [[ -t 0 ]]; then
-    # stdin is a real interactive terminal — prompt on stdin
-    TTY_IN=/dev/stdin
+# The only reliable way to get a terminal for prompts regardless of how the
+# script was launched (curl|bash, curl|sudo bash, sudo bash file, bash file)
+# is to open /dev/tty directly — the process's controlling terminal.
+# If /dev/tty cannot be opened we are non-interactive and proceed automatically.
+if { TTY_IN=$(tty 2>/dev/null) && [[ -n "$TTY_IN" ]] && [[ -r "$TTY_IN" ]]; } \
+   && exec 3<"$TTY_IN" 2>/dev/null; then
+    # /dev/tty is available — interactive prompts can be shown on fd 3
+    :
 else
-    # stdin exists but is not a tty and not a recognised pipe — be safe.
+    # No controlling terminal (piped, daemonised, etc.) — auto-proceed.
     TTY_IN=""
     YES=true
+    exec 3</dev/null 2>/dev/null || true
 fi
-unset _is_pipe
 
 # The canonical installed binary name (same as install.sh uses)
 BINARY_NAME="brassclaw-reborn"
@@ -151,12 +127,7 @@ if [[ "$YES" == "true" ]]; then
         echo "Proceeding non-interactively (-y: config/data preserved)"
     fi
 else
-    reply=""
-    if [[ -z "$TTY_IN" ]]; then
-        reply="y"
-    else
-        read -rp "Continue? [y/N] " reply <"$TTY_IN" || reply=""
-    fi
+    read -rp "Continue? [y/N] " reply <&3 || reply=""
     if [[ ! "$reply" =~ ^[Yy]$ ]]; then
         log_info "Cancelled.  Re-run with -y to proceed non-interactively,"
         log_info "or with --wipe to also delete all data."
@@ -229,7 +200,7 @@ else
             if [[ "$YES" == "true" ]]; then
                 log_info "Data preserved at: $d (use --wipe to remove)"
             else
-                read -rp "Remove $d? [y/N] " reply <"$TTY_IN"
+                read -rp "Remove $d? [y/N] " reply <&3
                 if [[ "$reply" =~ ^[Yy]$ ]]; then
                     log_step "Removing $d..."
                     rm -rf "$d"
