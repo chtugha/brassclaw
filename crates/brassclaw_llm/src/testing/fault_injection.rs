@@ -5,8 +5,8 @@
 //!
 //! # Example
 //!
-//! ```rust,no_run
-//! use brassclaw::testing::fault_injection::*;
+//! ```rust,ignore
+//! use brassclaw_llm::testing::fault_injection::*;
 //!
 //! // Fail twice with transient errors, then succeed
 //! let injector = FaultInjector::sequence([

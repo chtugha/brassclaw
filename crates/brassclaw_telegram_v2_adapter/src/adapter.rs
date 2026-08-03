@@ -676,10 +676,10 @@ mod tests {
                 serde_json::from_value(serde_json::json!({
                     "invocation_id": uuid::Uuid::new_v4(),
                     "thread_id": "thread-activity",
-                    "capability_id": "script.echo",
+                    "capability_id": "mcp.echo",
                     "status": "running",
-                    "provider": "script",
-                    "runtime": "script",
+                    "provider": "mcp",
+                    "runtime": "mcp",
                     "process_id": null,
                     "output_bytes": null,
                     "error_kind": null,

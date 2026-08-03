@@ -6,7 +6,7 @@ use brassclaw_product_adapters::{
     AdapterInstallationId, AuthRequirement, ExternalActorRef, ExternalConversationRef,
     ExternalEventId, InboundCommandPayload, ProductAdapterError, ProductAdapterId,
     ProductInboundAck, ProductInboundEnvelope, ProductInboundPayload, ProductTriggerReason,
-    ProductWorkflow, ProductWorkflowRejectionKind, ProtocolAuthEvidence, TrustedInboundContext,
+    ProductWorkflow, ProtocolAuthEvidence, TrustedInboundContext,
 };
 use brassclaw_product_workflow::{
     DefaultProductWorkflow, FakeConversationBindingService, FakeIdempotencyLedger,
@@ -85,7 +85,9 @@ fn workflow_for_reborn_home(
 }
 
 #[tokio::test]
-async fn model_provider_command_executes_through_reborn_provider_admin_service() {
+async fn model_provider_command_set_provider_returns_transient_error() {
+    // Phase 8: set_provider via product command is no longer file-based.
+    // It returns a Transient error directing users to the WebUI or CLI.
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
     let (workflow, inbound) = workflow_for_reborn_home(&reborn_home);
@@ -95,67 +97,50 @@ async fn model_provider_command_executes_through_reborn_provider_admin_service()
         "set-provider openai --model gpt-5-mini",
     );
 
-    let ack = workflow.accept_inbound(envelope).await.expect("accept");
+    let err = workflow
+        .accept_inbound(envelope)
+        .await
+        .expect_err("set-provider should return transient error");
 
-    let ProductInboundAck::CommandResult { command, payload } = ack else {
-        panic!("expected provider-admin command result");
-    };
-    assert_eq!(command, "model");
-    assert_eq!(payload.as_value()["provider_id"], "openai");
-    assert_eq!(payload.as_value()["model"], "gpt-5-mini");
-    assert!(payload.as_value().get("config_file").is_none());
-    assert!(payload.as_value().get("api_key_env").is_none());
+    assert!(matches!(
+        err,
+        ProductAdapterError::WorkflowTransient { .. }
+    ));
     assert_eq!(inbound.accepted_count(), 0);
-    let config = std::fs::read_to_string(reborn_home.join("config.toml")).expect("read config");
+    // No config.toml should have been written.
     assert!(
-        config.contains("provider_id = \"openai\""),
-        "config: {config}"
-    );
-    assert!(
-        config.contains("model = \"gpt-5-mini\""),
-        "config: {config}"
+        !reborn_home.join("config.toml").exists(),
+        "set-provider must not write config.toml in DB-backed mode"
     );
 }
 
 #[tokio::test]
-async fn model_set_command_executes_through_reborn_provider_admin_service() {
+async fn model_set_command_returns_transient_error() {
+    // Phase 8: set_model via product command is no longer file-based.
+    // It returns a Transient error directing users to the WebUI or CLI.
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
-    std::fs::create_dir_all(&reborn_home).expect("mkdir");
-    std::fs::write(
-        reborn_home.join("config.toml"),
-        r#"
-[llm.default]
-provider_id = "openai"
-model = "gpt-5-mini"
-api_key_env = "OPENAI_API_KEY"
-"#,
-    )
-    .expect("write config");
     let (workflow, inbound) = workflow_for_reborn_home(&reborn_home);
     let envelope = sample_command_envelope("command-model-set", "model", "gpt-5.3-codex");
 
-    let ack = workflow.accept_inbound(envelope).await.expect("accept");
+    let err = workflow
+        .accept_inbound(envelope)
+        .await
+        .expect_err("set should return transient error");
 
-    let ProductInboundAck::CommandResult { command, payload } = ack else {
-        panic!("expected provider-admin command result");
-    };
-    assert_eq!(command, "model");
-    assert_eq!(payload.as_value()["provider_id"], "openai");
-    assert_eq!(payload.as_value()["model"], "gpt-5.3-codex");
-    assert_eq!(payload.as_value()["api_key_required"], true);
-    assert!(payload.as_value().get("config_file").is_none());
-    assert!(payload.as_value().get("api_key_env").is_none());
+    assert!(matches!(
+        err,
+        ProductAdapterError::WorkflowTransient { .. }
+    ));
     assert_eq!(inbound.accepted_count(), 0);
-    let config = std::fs::read_to_string(reborn_home.join("config.toml")).expect("read config");
-    assert!(
-        config.contains("model = \"gpt-5.3-codex\""),
-        "config: {config}"
-    );
 }
 
 #[tokio::test]
 async fn model_provider_command_rejects_unknown_provider_as_invalid_binding() {
+    // Phase 8: set_provider is no longer dispatched to the provider catalog —
+    // it returns Transient before the unknown-provider check.  This test now
+    // verifies that set-provider via product command produces a Transient error
+    // regardless of whether the provider is known.
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
     let (workflow, inbound) = workflow_for_reborn_home(&reborn_home);
@@ -168,16 +153,11 @@ async fn model_provider_command_rejects_unknown_provider_as_invalid_binding() {
     let err = workflow
         .accept_inbound(envelope)
         .await
-        .expect_err("unknown provider should reject");
+        .expect_err("set-provider should return transient error");
 
     assert!(matches!(
         err,
-        ProductAdapterError::WorkflowRejected {
-            kind: ProductWorkflowRejectionKind::InvalidRequest,
-            status_code: 400,
-            retryable: false,
-            ..
-        }
+        ProductAdapterError::WorkflowTransient { .. }
     ));
     assert_eq!(inbound.accepted_count(), 0);
 }

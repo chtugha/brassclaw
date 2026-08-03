@@ -306,7 +306,7 @@ fn derive_wrapping_key(passphrase: &[u8], salt: &[u8]) -> Result<[u8; 32], Maste
         reason: format!("argon2 params: {e}"),
     })?;
     let argon2 = Argon2::new(argon2::Algorithm::Argon2id, Version::V0x13, params);
-    let salt_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(salt);
+    let salt_b64 = base64::engine::general_purpose::STANDARD_NO_PAD.encode(salt);
     let salt_str = SaltString::from_b64(&salt_b64).map_err(|e| MasterKeyResolveError::Unwrap {
         reason: format!("argon2 salt: {e}"),
     })?;
