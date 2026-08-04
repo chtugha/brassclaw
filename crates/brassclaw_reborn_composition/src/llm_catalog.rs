@@ -35,8 +35,7 @@ pub enum RebornLlmCatalogError {
     MissingProviderId,
     /// `provider_id` doesn't exist in the merged catalog.
     #[error(
-        "llm provider id `{requested}` not found in the provider catalog \
-         (compiled-in + $BRASSCLAW_REBORN_HOME/providers.json); known ids: [{known}]"
+        "llm provider id `{requested}` not found in the provider catalog; known ids: [{known}]"
     )]
     UnknownProvider { requested: String, known: String },
     /// Provider requires an API key but the resolved env var isn't set.
@@ -55,14 +54,14 @@ pub enum RebornLlmCatalogError {
     )]
     ApiKeyEnvUnconfigured { provider: String },
     /// Provider's API-key env-var name is malformed. Do not echo it:
-    /// malformed values may be pasted secret material from providers.json.
+    /// malformed values may be pasted secret material from the provider catalog.
     #[error(
         "llm provider `{provider}` has an invalid api_key_env value; it must be an env-var name \
          like `OPENAI_API_KEY`, never the secret value"
     )]
     ApiKeyEnvInvalid { provider: String },
     /// Catalog field is malformed or secret-shaped. Do not echo it:
-    /// values may be pasted secret material from providers.json.
+    /// values may be pasted secret material from the provider catalog.
     #[error(
         "llm provider `{provider}` at providers.json[{catalog_index}] has an invalid catalog field `{field}`; \
          provider catalog fields must not contain inline secret material"

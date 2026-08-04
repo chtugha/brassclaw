@@ -107,7 +107,6 @@ pub(crate) mod plan_library;
 mod provider_admin;
 #[cfg(feature = "root-llm-provider")]
 mod provider_admin_product_command;
-#[cfg(feature = "root-llm-provider")]
 mod readiness;
 mod recipe_library;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
