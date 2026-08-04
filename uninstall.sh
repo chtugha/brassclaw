@@ -28,17 +28,14 @@ done
 
 # Detect whether we have an interactive terminal for prompts.
 #
-# The only reliable way to get a terminal for prompts regardless of how the
-# script was launched (curl|bash, curl|sudo bash, sudo bash file, bash file)
-# is to open /dev/tty directly — the process's controlling terminal.
+# Open /dev/tty directly — it is the process's controlling terminal regardless
+# of how stdin is redirected (curl|bash, curl|sudo bash, sudo bash file, etc.).
 # If /dev/tty cannot be opened we are non-interactive and proceed automatically.
-if { TTY_IN=$(tty 2>/dev/null) && [[ -n "$TTY_IN" ]] && [[ -r "$TTY_IN" ]]; } \
-   && exec 3<"$TTY_IN" 2>/dev/null; then
+if exec 3>/dev/tty 2>/dev/null; then
     # /dev/tty is available — interactive prompts can be shown on fd 3
     :
 else
     # No controlling terminal (piped, daemonised, etc.) — auto-proceed.
-    TTY_IN=""
     YES=true
     exec 3</dev/null 2>/dev/null || true
 fi
@@ -127,7 +124,7 @@ if [[ "$YES" == "true" ]]; then
         echo "Proceeding non-interactively (-y: config/data preserved)"
     fi
 else
-    read -rp "Continue? [y/N] " reply <&3 || reply=""
+    read -rp "Continue? [y/N] " reply </dev/tty || reply=""
     if [[ ! "$reply" =~ ^[Yy]$ ]]; then
         log_info "Cancelled.  Re-run with -y to proceed non-interactively,"
         log_info "or with --wipe to also delete all data."
@@ -200,7 +197,7 @@ else
             if [[ "$YES" == "true" ]]; then
                 log_info "Data preserved at: $d (use --wipe to remove)"
             else
-                read -rp "Remove $d? [y/N] " reply <&3
+                read -rp "Remove $d? [y/N] " reply </dev/tty
                 if [[ "$reply" =~ ^[Yy]$ ]]; then
                     log_step "Removing $d..."
                     rm -rf "$d"
