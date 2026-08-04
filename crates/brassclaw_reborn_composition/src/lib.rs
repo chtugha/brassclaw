@@ -108,7 +108,6 @@ mod provider_admin;
 #[cfg(feature = "root-llm-provider")]
 mod provider_admin_product_command;
 #[cfg(feature = "root-llm-provider")]
-mod provider_repo;
 mod readiness;
 mod recipe_library;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
@@ -213,8 +212,6 @@ pub use provider_admin::{
 pub use provider_admin_product_command::RebornProviderAdminProductCommandService;
 #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
 pub use pg_provider_repo::PgProviderRepo;
-#[cfg(feature = "root-llm-provider")]
-pub use provider_repo::{ProviderRepo, ProviderRepoError};
 pub use readiness::{
     RebornFacadeReadiness, RebornReadiness, RebornReadinessState, RebornWorkerReadiness,
 };

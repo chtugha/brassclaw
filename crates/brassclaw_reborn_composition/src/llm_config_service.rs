@@ -838,7 +838,7 @@ impl LlmConfigService for RebornLlmConfigService {
         provider_id: String,
     ) -> Result<LlmConfigSnapshot, LlmConfigServiceError> {
         let id = validate_provider_id(&provider_id)?;
-        // Delete via DB-backed repo (when available) or file-based repo.
+        // Delete via DB-backed repo.
         let removed = self.delete_provider_definition(&id).await?;
         if !removed {
             return Err(LlmConfigServiceError::NotFound);

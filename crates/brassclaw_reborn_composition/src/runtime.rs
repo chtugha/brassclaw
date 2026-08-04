@@ -238,10 +238,6 @@ pub struct RebornRuntime {
     /// future use when a state-port decorator feeds it without checkpoint I/O).
     #[allow(dead_code)]
     plan_state_slot: Option<crate::plan_library::CurrentPlanStateSlot>,
-    /// Operator boot config, carried so the WebUI facade can compose the
-    /// LLM-config settings service over `providers.json` / `config.toml`.
-    #[cfg(feature = "root-llm-provider")]
-    boot: Option<brassclaw_reborn_config::RebornBootConfig>,
     /// Hot-swap handle for the live LLM provider, when one was wired at boot.
     #[cfg(feature = "root-llm-provider")]
     llm_reload: Option<RebornLlmReloadParts>,
@@ -660,33 +656,28 @@ impl RebornRuntime {
 
     /// Live LLM-provider reload trigger for the settings service. Returns the
     /// bare adapter (not yet Arc-wrapped) when an LLM provider was wired at
-    /// boot; otherwise `None`, in which case config edits persist to disk and
-    /// apply on the next restart.
-    ///
-    /// Returning the concrete adapter allows the caller to call
-    /// `.with_on_provider_changed(…)` before `Arc`-wrapping it.
+    /// boot and a Postgres pool is available; otherwise `None`.
     #[cfg(feature = "root-llm-provider")]
     pub(crate) fn webui_llm_reload_adapter(
         &self,
     ) -> Option<crate::llm_reload::RebornLlmReloadAdapter> {
-        let boot = self.boot.as_ref()?;
         let parts = self.llm_reload.as_ref()?;
-        let adapter = crate::llm_reload::RebornLlmReloadAdapter::new(
-            boot.clone(),
-            Arc::clone(&parts.reload_handle),
-            Arc::clone(&parts.session),
-            crate::LlmKeyStore::new(self.services.secret_store()),
-        );
-        // PG-2: wire the Postgres pool so live-reload reads config from DB
-        // instead of config.toml.
         #[cfg(feature = "postgres")]
-        let adapter = if let Some(pool) = self.services.pg_pool.as_ref() {
+        let pool = self.services.pg_pool.as_ref()?;
+        #[cfg(not(feature = "postgres"))]
+        return None;
+        #[cfg(feature = "postgres")]
+        {
             let tenant_id = self.thread_scope.tenant_id.as_str().to_string();
-            adapter.with_pg_pool(Arc::clone(pool), tenant_id)
-        } else {
-            adapter
-        };
-        Some(adapter)
+            let adapter = crate::llm_reload::RebornLlmReloadAdapter::new(
+                Arc::clone(&parts.reload_handle),
+                Arc::clone(&parts.session),
+                crate::LlmKeyStore::new(self.services.secret_store()),
+                Arc::clone(pool),
+                tenant_id,
+            );
+            Some(adapter)
+        }
     }
 
     /// Convenience wrapper that returns the adapter already `Arc`-wrapped.
@@ -1613,7 +1604,7 @@ pub async fn build_reborn_runtime(
         #[cfg(feature = "root-llm-provider")]
         llm,
         #[cfg(feature = "root-llm-provider")]
-        boot,
+        boot: _,
         runner,
         trigger_poller,
         trigger_fire_access_checker,
@@ -2849,8 +2840,6 @@ pub async fn build_reborn_runtime(
         skill_execution_adapter,
         plan_library,
         plan_state_slot,
-        #[cfg(feature = "root-llm-provider")]
-        boot,
         #[cfg(feature = "root-llm-provider")]
         llm_reload,
         #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]

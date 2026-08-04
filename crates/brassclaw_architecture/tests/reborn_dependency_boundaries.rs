@@ -2730,10 +2730,6 @@ fn no_direct_fs_reads_outside_migration_path() {
             "reads the bundled default system prompt template at startup",
         ),
         (
-            "brassclaw_reborn_composition/src/provider_repo.rs",
-            "reads provider config files from the operator-managed provider repo",
-        ),
-        (
             "brassclaw_reborn_composition/src/secrets_master.rs",
             "secrets master key ceremony — reads passphrase/key files per BRASSCLAW_SECRETS_PASSPHRASE_FILE",
         ),

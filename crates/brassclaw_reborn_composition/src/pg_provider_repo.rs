@@ -2,8 +2,7 @@
 //!
 //! As of V047/V048, this repo is the exclusive runtime source of truth for
 //! ALL providers — both builtins (seeded from `providers.json` at boot) and
-//! custom (operator-defined). The file-based `ProviderRepo` is retained only
-//! as a CLI offline fallback and is not used by the running service.
+//! custom (operator-defined).
 //!
 //! ## `is_builtin` invariants
 //!

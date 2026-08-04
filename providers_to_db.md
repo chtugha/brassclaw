@@ -885,6 +885,42 @@ The following issues were found during a post-migration correctness audit and fi
   the WebUI after the last file-write. This is acceptable for the CLI read path —
   all writes go to the DB.
 
+## Post-Migration DB-Less Fallback Removal (second audit — after uninstall.sh fix)
+
+A second audit identified remaining db-less fallback code that was not removed
+during the main 29-step migration. All items below have been fixed:
+
+- **I1 — `ProviderRepo`/`ProviderRepoError` still exported from `lib.rs`**
+  (lib.rs line 217): The public re-export `pub use provider_repo::{ProviderRepo,
+  ProviderRepoError}` was removed. The `provider_repo.rs` file is retained (its
+  own internal tests still use file I/O) but nothing external consumes it.
+
+- **I2 — `llm_reload.rs` had `#[cfg(not(feature = "postgres"))]` fallback to
+  `config.toml` and `pg_pool: Option<Arc<PgPool>>`**: Rewrote `RebornLlmReloadAdapter`
+  to require `pg_pool: Arc<PgPool>` and `tenant_id` in its constructor. Removed
+  `with_pg_pool()` builder. Reload now always calls
+  `resolve_llm_selection_against_catalog_db`. Updated `runtime.rs::webui_llm_reload_adapter`
+  to return `None` when no pool is available (non-postgres builds).
+
+- **I3 — Stale comment in `llm_config_service.rs::delete_provider`** (line 841):
+  "Delete via DB-backed repo (when available) or file-based repo" → "Delete via
+  DB-backed repo."
+
+- **I4 — `#[cfg(all(feature = "root-llm-provider", not(feature = "postgres")))]`
+  `ModelsListCommand::execute` block in `models.rs`**: Removed the entire non-postgres
+  fallback `impl ModelsListCommand` that used only the compiled-in registry.
+
+- **I5 — `llm_catalog.rs` docstring referenced `providers.json` overlay and TOML
+  3-layer model**: Replaced with accurate DB-first description reflecting V047/V048.
+
+- **I6 — Dead `on_provider_changed` field in `RebornLlmReloadAdapter`**: The
+  `Option<ProviderChangedCallback>` field was always `None` (no setter ever called)
+  and the impl of `on_provider_changed` just called the option if present. Removed
+  the field and the impl, letting the trait's default no-op handle all calls.
+
+- **I7 — `pg_provider_repo.rs` doc said file-based `ProviderRepo` retained as CLI
+  offline fallback**: Updated to remove the stale mention.
+
 ---
 
 ## Files Changed

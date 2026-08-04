@@ -120,29 +120,6 @@ impl ModelsListCommand {
     }
 }
 
-#[cfg(all(feature = "root-llm-provider", not(feature = "postgres")))]
-impl ModelsListCommand {
-    fn execute(self) -> anyhow::Result<()> {
-        let context = RebornCliContext::resolve_from_env()?;
-        let admin =
-            brassclaw_reborn_composition::RebornProviderAdmin::new(context.boot_config().clone());
-        let list = admin.list(
-            self.provider.as_deref(),
-            self.verbose || self.provider.is_some(),
-        )?;
-        if self.json {
-            println!("{}", serde_json::to_string_pretty(&list)?);
-            return Ok(());
-        }
-        if self.provider.is_some() {
-            print_provider_detail(&list);
-        } else {
-            print_provider_list(&list, self.verbose);
-        }
-        Ok(())
-    }
-}
-
 #[cfg(not(feature = "root-llm-provider"))]
 impl ModelsListCommand {
     fn execute(self) -> anyhow::Result<()> {

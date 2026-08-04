@@ -1,30 +1,14 @@
 //! Provider-catalog resolution for the assembled Reborn runtime.
 //!
-//! The three-layer LLM config model the operator sees:
+//! After V047/V048 the source of truth for all providers (builtins and custom)
+//! is the `brassclaw_llm_providers` DB table, seeded at boot by
+//! `webui::seed_builtin_providers`. The active slot selection is stored in
+//! `brassclaw_config` via `db_config`.
 //!
-//! 1. **Catalog** — built-in `providers.json` + optional user-overlay
-//!    `$BRASSCLAW_REBORN_HOME/providers.json` (same JSON shape as
-//!    v1's `~/.brassclaw/providers.json`). Loaded here via
-//!    `brassclaw_llm::ProviderRegistry::load_from_path`.
-//! 2. **Selection** — boot TOML's `[llm.<slot>]` section, parsed by
-//!    `brassclaw_reborn_config::LlmSlotSelection`. "Use provider X
-//!    for the `default` slot, with model Y."
-//! 3. **Runtime config** — derived here. The resolved `ProviderDefinition`
-//!    plus the selection's overrides becomes an `brassclaw_llm::LlmConfig`
-//!    that `build_reborn_runtime` wires through the shared LLM provider
-//!    chain.
-//!
-//! This module is the home of step 3. Lives behind the
-//! `root-llm-provider` feature so the substrate-only composition stays
-//! free of `brassclaw_llm`.
-//!
-//! When epic
-//! [#3036](https://github.com/chtugha/brassclaw/issues/3036)'s blueprint
-//! apply service lands, it writes the selection into the eventual
-//! `ProviderRepo` instead of into a TOML file; the runtime then reads
-//! from the repo. The resolution logic in this module survives that
-//! transition unchanged — the only thing that changes is whether the
-//! `LlmSlotSelection` input came from a TOML reader or a repo read.
+//! This module resolves a selection into a concrete `brassclaw_llm::LlmConfig`
+//! ready to wire through the shared LLM provider chain. Lives behind the
+//! `root-llm-provider` feature so the substrate-only composition stays free
+//! of `brassclaw_llm`.
 
 use std::path::Path;
 
