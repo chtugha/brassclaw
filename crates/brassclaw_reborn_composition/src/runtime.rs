@@ -1603,8 +1603,6 @@ pub async fn build_reborn_runtime(
         services: services_input,
         #[cfg(feature = "root-llm-provider")]
         llm,
-        #[cfg(feature = "root-llm-provider")]
-        boot: _,
         runner,
         trigger_poller,
         trigger_fire_access_checker,
@@ -1934,12 +1932,11 @@ pub async fn build_reborn_runtime(
     let resolved_max_output_tokens: Option<u32> = None;
     let resolved_inline_control_tokens: Option<usize> = None;
     let resolved_total_input_tokens: Option<usize> = None;
-    #[allow(unused_variables)]
-    let resolved_cache_retention: Option<String> = None;
 
-    // DB-first: read context_window_tokens and cache_retention from the provider row
-    // seeded into brassclaw_llm_providers.  The compiled-in registry is the fallback
-    // for deployments where the DB pool is not yet available (cold boot, non-postgres).
+    // DB-first: read context_window_tokens from the provider row seeded into
+    // brassclaw_llm_providers.  Falls back to the compiled-in registry when the
+    // DB pool is unavailable (e.g. postgres feature disabled — db-less paths are
+    // not supported in production but must compile).
     #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
     let resolved_context_window_tokens: Option<u32> = {
         let db_val = if let (Some(pool), Some(l)) = (services.pg_pool.as_ref(), llm.as_ref()) {
@@ -1963,12 +1960,9 @@ pub async fn build_reborn_runtime(
             })
         })
     };
+    // Non-postgres builds have no provider DB; context window is unavailable.
     #[cfg(all(feature = "root-llm-provider", not(feature = "postgres")))]
-    let resolved_context_window_tokens: Option<u32> = llm.as_ref().and_then(|l| {
-        brassclaw_llm::ProviderRegistry::try_load_from_path(None)
-            .ok()
-            .and_then(|reg| reg.find(l.provider_id()).and_then(|d| d.context_window_tokens))
-    });
+    let resolved_context_window_tokens: Option<u32> = None;
     #[cfg(not(feature = "root-llm-provider"))]
     let resolved_context_window_tokens: Option<u32> = None;
 
@@ -1996,7 +1990,7 @@ pub async fn build_reborn_runtime(
                             tracing::debug!(
                                 cache_retention = %raw,
                                 error = %error,
-                                "ignoring unparseable LLM_CACHE_RETENTION; using DB/providers.json value"
+                                "ignoring unparseable LLM_CACHE_RETENTION; using DB value"
                             );
                             None
                         }
@@ -2013,32 +2007,10 @@ pub async fn build_reborn_runtime(
                 })
             })
     };
+    // Non-postgres builds have no provider DB; cache retention is unavailable.
     #[cfg(all(feature = "root-llm-provider", not(feature = "postgres")))]
-    let resolved_cache_retention_final: Option<String> = resolved_cache_retention
-        .or_else(|| {
-            std::env::var("LLM_CACHE_RETENTION").ok().and_then(|raw| {
-                match raw.parse::<brassclaw_llm::CacheRetention>() {
-                    Ok(cr) => Some(cr.to_string()),
-                    Err(error) => {
-                        tracing::debug!(
-                            cache_retention = %raw,
-                            error = %error,
-                            "ignoring unparseable LLM_CACHE_RETENTION; using providers.json value"
-                        );
-                        None
-                    }
-                }
-            })
-        })
-        .or_else(|| {
-            llm.as_ref().and_then(|l| {
-                brassclaw_llm::ProviderRegistry::try_load_from_path(None)
-                    .ok()
-                    .and_then(|reg| {
-                        reg.find(l.provider_id()).and_then(|d| d.cache_retention.clone())
-                    })
-            })
-        });
+    #[allow(unused_variables)]
+    let resolved_cache_retention_final: Option<String> = None;
     #[cfg(not(feature = "root-llm-provider"))]
     #[allow(unused_variables)]
     let resolved_cache_retention_final: Option<String> = None;

@@ -29,8 +29,6 @@ use brassclaw_host_api::{AgentId, ProjectId, TenantId, Timestamp, UserId};
 use brassclaw_loop_support::HostManagedModelGateway;
 use brassclaw_loop_support::HostSkillContextSource;
 use brassclaw_reborn_config::BudgetDefaults;
-#[cfg(feature = "root-llm-provider")]
-use brassclaw_reborn_config::RebornBootConfig;
 use brassclaw_triggers::{TriggerId, TriggerPollerWorkerConfig};
 
 use crate::hooks::HooksActivationConfig;
@@ -247,11 +245,6 @@ pub struct RebornRuntimeInput {
     pub services: Option<RebornBuildInput>,
     #[cfg(feature = "root-llm-provider")]
     pub llm: Option<ResolvedRebornLlm>,
-    /// Operator boot config. When present (and `root-llm-provider` is on), the
-    /// WebUI facade composes the LLM-config settings service from it so the
-    /// settings surface can read/write `providers.json` + `config.toml`.
-    #[cfg(feature = "root-llm-provider")]
-    pub boot: Option<RebornBootConfig>,
     pub runner: TurnRunnerSettings,
     pub trigger_poller: TriggerPollerSettings,
     pub trigger_fire_access_checker: Option<Arc<dyn TriggerFireAccessChecker>>,
@@ -327,8 +320,6 @@ impl RebornRuntimeInput {
             services: Some(services),
             #[cfg(feature = "root-llm-provider")]
             llm: None,
-            #[cfg(feature = "root-llm-provider")]
-            boot: None,
             runner: TurnRunnerSettings::default(),
             trigger_poller: TriggerPollerSettings::default(),
             trigger_fire_access_checker: None,
@@ -383,14 +374,6 @@ impl RebornRuntimeInput {
     #[cfg(feature = "root-llm-provider")]
     pub fn with_resolved_llm(mut self, llm: ResolvedRebornLlm) -> Self {
         self.llm = Some(llm);
-        self
-    }
-
-    /// Supply the operator boot config so the WebUI facade can compose the
-    /// LLM-config settings service.
-    #[cfg(feature = "root-llm-provider")]
-    pub fn with_boot_config(mut self, boot: RebornBootConfig) -> Self {
-        self.boot = Some(boot);
         self
     }
 

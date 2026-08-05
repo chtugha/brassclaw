@@ -328,9 +328,6 @@ pub(crate) fn build_runtime_input_with_options(
                 );
             }
         }
-        // Carry the boot config so the WebUI facade can compose the operator
-        // LLM-config settings service over `providers.json` / `config.toml`.
-        runtime_input = runtime_input.with_boot_config(config.clone());
     }
 
     Ok(runtime_input)
