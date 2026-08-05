@@ -921,6 +921,54 @@ during the main 29-step migration. All items below have been fixed:
 - **I7 — `pg_provider_repo.rs` doc said file-based `ProviderRepo` retained as CLI
   offline fallback**: Updated to remove the stale mention.
 
+## Post-Migration DB-Less Fallback Removal (third audit — readiness, runtime, RebornRuntimeInput)
+
+A third audit during the plan checkup found additional items not removed in the
+first two audits. All items below have been fixed:
+
+- **J1 — `mod readiness` gated under `root-llm-provider` in `lib.rs`**:
+  The `readiness` module (`RebornReadiness`, `RebornFacadeReadiness`,
+  `RebornWorkerReadiness`, `RebornReadinessState`) was gated by
+  `#[cfg(feature = "root-llm-provider")]` but exported unconditionally via
+  `pub use readiness::...`. This caused a compile error when
+  `root-llm-provider` is disabled. The `#[cfg]` guard was incorrect — the
+  module is used everywhere. Guard removed.
+
+- **J2 — Stale `UnknownProvider` error message in `llm_catalog.rs`**:
+  The error read `"not found in the provider catalog (compiled-in +
+  $BRASSCLAW_REBORN_HOME/providers.json)"`. After V047/V048 the DB is the
+  sole source of truth. Simplified to `"not found in the provider catalog"`.
+  Doc comments referencing `providers.json` as the source of secret material
+  updated to say `"provider catalog"`.
+
+- **J3 — Non-postgres db-less fallback in `runtime.rs` for
+  `resolved_context_window_tokens`**: The block
+  `#[cfg(all(feature = "root-llm-provider", not(feature = "postgres")))]`
+  loaded the compiled-in registry via `try_load_from_path(None)` to resolve
+  the context window. Since the db-less design is abandoned, replaced with
+  `None` for non-postgres builds.
+
+- **J4 — Same fallback for `resolved_cache_retention_final`**: The non-postgres
+  block for cache retention also called `try_load_from_path(None)` and
+  processed `LLM_CACHE_RETENTION`. Replaced with `None`. Also fixed stale log
+  message: "using DB/providers.json value" → "using DB value". The dead
+  `resolved_cache_retention` variable (used only in the removed block) was
+  deleted.
+
+- **J5 — Dead `RebornRuntimeInput::boot` field and `with_boot_config()` builder**:
+  After V047/V048 the `LlmConfigService` is constructed directly from
+  `pg_pool`/`pg_provider_repo`/`tenant_id` in `webui.rs`. The `boot` field
+  in `RebornRuntimeInput` and its builder method `with_boot_config()` were
+  still present but `build_reborn_runtime` explicitly ignored it via
+  `boot: _`. Removed:
+    * `RebornRuntimeInput::boot: Option<RebornBootConfig>` struct field
+    * `RebornRuntimeInput::from_services` default init for `boot: None`
+    * `with_boot_config()` builder method
+    * `boot: _` ignore in `build_reborn_runtime` destructure
+    * `RebornBootConfig` import from `runtime_input.rs`
+    * `with_boot_config()` call in `brassclaw_reborn_cli/src/commands/serve.rs`
+    * `with_boot_config()` call in `brassclaw_reborn_cli/src/runtime/mod.rs`
+
 ---
 
 ## Files Changed
