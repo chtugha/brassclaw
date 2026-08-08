@@ -559,8 +559,16 @@ impl RebornLlmConfigService {
         id: String,
         model: Option<String>,
     ) -> Result<(), crate::RebornProviderAdminError> {
-        use crate::db_config::{ConfigWriteContext, save_config_key};
+        use crate::db_config::{ConfigWriteContext, delete_config_key, save_config_key};
         let tenant = &self.db_tenant_id;
+
+        // When id is empty, delete the slot instead of writing an empty string.
+        if id.is_empty() {
+            let _ = delete_config_key(&self.pg_pool, tenant, "llm.default.provider_id").await;
+            let _ = delete_config_key(&self.pg_pool, tenant, "llm.default.model").await;
+            return Ok(());
+        }
+
         if let Err(e) = save_config_key(
             &self.pg_pool,
             tenant,
@@ -576,7 +584,10 @@ impl RebornLlmConfigService {
             });
         }
         let model_val = model.as_deref().unwrap_or("");
-        if let Err(e) = save_config_key(
+        // Delete model key when empty; write otherwise (consistent with save_role_to_db).
+        if model_val.is_empty() {
+            let _ = delete_config_key(&self.pg_pool, tenant, "llm.default.model").await;
+        } else if let Err(e) = save_config_key(
             &self.pg_pool,
             tenant,
             "llm.default.model",

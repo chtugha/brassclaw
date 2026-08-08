@@ -232,7 +232,7 @@ pub async fn resolve_llm_selection_against_catalog_db(
     let Some(selection) = snapshot.default_llm_slot() else {
         return Ok(None);
     };
-    let Some(provider_id) = selection.provider_id.as_deref() else {
+    let Some(provider_id) = selection.provider_id.as_deref().filter(|id| !id.is_empty()) else {
         return Ok(None);
     };
 

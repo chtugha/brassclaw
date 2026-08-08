@@ -379,11 +379,15 @@ fn assemble_llm(kv: &BTreeMap<String, String>) -> Option<BTreeMap<String, LlmSlo
 
         let entry = map.entry(slot.to_string()).or_default();
         match field {
-            "provider_id" => entry.provider_id = Some(value.clone()),
-            "model" => entry.model = Some(value.clone()),
-            "api_key_env" => entry.api_key_env = Some(value.clone()),
-            "base_url" => entry.base_url = Some(value.clone()),
-            _ => {} // unknown field — ignore; forward-compat
+            // Treat empty strings as absent — stale empty rows must not be
+            // returned as Some(""), which would pass through the provider_id
+            // guard in resolve_llm_selection_against_catalog_db and trigger
+            // a spurious "provider not found" warning on every reload.
+            "provider_id" if !value.is_empty() => entry.provider_id = Some(value.clone()),
+            "model" if !value.is_empty() => entry.model = Some(value.clone()),
+            "api_key_env" if !value.is_empty() => entry.api_key_env = Some(value.clone()),
+            "base_url" if !value.is_empty() => entry.base_url = Some(value.clone()),
+            _ => {} // unknown field or empty value — skip; forward-compat
         }
     }
 
