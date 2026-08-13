@@ -1,3 +1,8 @@
+# ── Cross-compilation targets ─────────────────────────────────────────────────
+[target.x86_64-unknown-linux-musl]
+linker = "x86_64-linux-musl-gcc"
+ar = "x86_64-linux-musl-ar"
+
 # ── Sparse registry protocol ──────────────────────────────────────────────────
 # Replaces the legacy git-based index with an HTTP sparse fetch.
 # Dramatically speeds up `cargo update` and first-time dependency resolution.

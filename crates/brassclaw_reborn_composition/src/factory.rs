@@ -768,9 +768,28 @@ async fn build_local_dev(
         DefaultTurnCoordinator::new(Arc::clone(&store_graph.turn_state)),
     );
     let local_dev_product_auth_filesystem = local_dev_scoped_filesystem(Arc::clone(&filesystem));
-    let local_dev_secret_store =
-        build_local_dev_secret_store(&root, Arc::clone(&local_dev_product_auth_filesystem))?;
-    let secret_store: Arc<dyn SecretStore> = local_dev_secret_store.clone();
+    // When a PG pool is available (the hybrid serve path), use PgSecretStore so that
+    // LLM API keys and other secrets survive process restart.  Without a pool (pure
+    // local-dev in tests), fall back to the filesystem store.
+    #[cfg(feature = "postgres")]
+    let secret_store: Arc<dyn SecretStore> = if let Some(pool) = pg_pool.as_ref() {
+        let master_key = resolve_local_dev_secret_master_key(&root)?;
+        Arc::new(brassclaw_secrets::PgSecretStore::new(
+            (**pool).clone(),
+            master_key,
+            "default",
+        )?)
+    } else {
+        let local_dev_secret_store =
+            build_local_dev_secret_store(&root, Arc::clone(&local_dev_product_auth_filesystem))?;
+        local_dev_secret_store as Arc<dyn SecretStore>
+    };
+    #[cfg(not(feature = "postgres"))]
+    let secret_store: Arc<dyn SecretStore> = {
+        let local_dev_secret_store =
+            build_local_dev_secret_store(&root, Arc::clone(&local_dev_product_auth_filesystem))?;
+        local_dev_secret_store as Arc<dyn SecretStore>
+    };
     let local_dev_trust_policy = Arc::new(local_dev_first_party_trust_policy()?);
     let local_dev_trust_invalidation_bus = Arc::new(brassclaw_trust::InvalidationBus::new());
     let mut services = HostRuntimeServices::new(

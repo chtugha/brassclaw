@@ -1690,34 +1690,67 @@ pub async fn build_reborn_runtime(
         std::path::PathBuf,
         std::path::PathBuf,
     ) = if let Some(lr) = services.local_runtime.as_ref() {
-        pg_stores = None;
-        // Hybrid path: use local-dev stores, optionally upgrade thread service to PG.
-        let thread_svc: Arc<dyn brassclaw_threads::SessionThreadService> =
-            if let Some(pool) = services.pg_pool.as_ref() {
+        // Hybrid path: when a PG pool is present, upgrade all runtime stores to
+        // PG-backed implementations so state survives process restart.  Without a
+        // pool (pure local-dev / test), fall back to the in-memory stores.
+        if let Some(pool) = services.pg_pool.as_ref() {
+            let reborn_home = pg_reborn_home
+                .as_deref()
+                .filter(|p| !p.as_os_str().is_empty())
+                .ok_or_else(|| RebornRuntimeError::InvalidArgument {
+                    reason: "hybrid runtime path requires a reborn_home to derive \
+                             the system-prompt storage root"
+                        .to_string(),
+                })?;
+            let stores = crate::factory::build_pg_runtime_stores(Arc::clone(pool), reborn_home)
+                .await
+                .map_err(RebornRuntimeError::Build)?;
+            let thread_svc: Arc<dyn brassclaw_threads::SessionThreadService> =
                 Arc::new(brassclaw_threads::PgSessionThreadService::new(
                     Arc::clone(pool),
                     "default",
-                ))
-            } else {
-                Arc::clone(&lr.thread_service)
-            };
-        let event_sink = Arc::clone(&lr.broadcast_budget_event_sink)
-            as Arc<dyn brassclaw_resources::BudgetEventSink>;
-        (
-            Arc::new(brassclaw_turns::TurnStateDriverBox::new(
-                Arc::clone(&lr.turn_state) as Arc<dyn brassclaw_turns::TurnStateDriver>,
-            )),
-            Arc::clone(&lr.checkpoint_state_store),
-            Arc::clone(&lr.loop_checkpoint_store),
-            thread_svc,
-            event_sink,
-            Arc::clone(&lr.resource_governor),
-            Arc::clone(&lr.budget_gate_store),
-            Arc::clone(&lr.event_log),
-            Arc::clone(&lr.audit_log),
-            lr.local_dev_storage_root.clone(),
-            lr.default_system_prompt_path.clone(),
-        )
+                ));
+            let event_sink = Arc::clone(&stores.broadcast_budget_event_sink)
+                as Arc<dyn brassclaw_resources::BudgetEventSink>;
+            let result = (
+                Arc::new(brassclaw_turns::TurnStateDriverBox::new(
+                    Arc::clone(&stores.turn_state) as Arc<dyn brassclaw_turns::TurnStateDriver>,
+                )),
+                Arc::clone(&stores.checkpoint_state_store),
+                Arc::clone(&stores.loop_checkpoint_store),
+                thread_svc,
+                event_sink,
+                Arc::clone(&stores.resource_governor),
+                Arc::clone(&stores.budget_gate_store),
+                Arc::clone(&stores.event_log),
+                Arc::clone(&stores.audit_log),
+                stores.local_dev_storage_root.clone(),
+                stores.default_system_prompt_path.clone(),
+            );
+            pg_stores = Some(stores);
+            result
+        } else {
+            pg_stores = None;
+            let thread_svc: Arc<dyn brassclaw_threads::SessionThreadService> =
+                Arc::clone(&lr.thread_service);
+            let event_sink = Arc::clone(&lr.broadcast_budget_event_sink)
+                as Arc<dyn brassclaw_resources::BudgetEventSink>;
+            (
+                Arc::new(brassclaw_turns::TurnStateDriverBox::new(
+                    Arc::clone(&lr.turn_state) as Arc<dyn brassclaw_turns::TurnStateDriver>,
+                )),
+                Arc::clone(&lr.checkpoint_state_store),
+                Arc::clone(&lr.loop_checkpoint_store),
+                thread_svc,
+                event_sink,
+                Arc::clone(&lr.resource_governor),
+                Arc::clone(&lr.budget_gate_store),
+                Arc::clone(&lr.event_log),
+                Arc::clone(&lr.audit_log),
+                lr.local_dev_storage_root.clone(),
+                lr.default_system_prompt_path.clone(),
+            )
+        }
     } else {
         // Pure-PG path: build PG-backed equivalents.
         let pool = services.pg_pool.as_ref().ok_or_else(|| {
@@ -1804,9 +1837,21 @@ pub async fn build_reborn_runtime(
     let system_prompt_path = local_runtime.default_system_prompt_path.clone();
 
     // Typed arc for LocalDevTurnStateStore — needed by build_webui_auth_interaction_service
-    // on the local-dev/hybrid path; unused on the pure-PG path.
-    let local_dev_turn_state: Option<Arc<crate::factory::LocalDevTurnStateStore>> =
-        services.local_runtime.as_ref().map(|lr| Arc::clone(&lr.turn_state));
+    // and LocalDevApprovalTurnRunLocator on the pure local-dev path.  When the hybrid path
+    // has upgraded to PG stores (pg_stores.is_some()), use None so the PG-compatible no-op
+    // locators are picked instead (EmptyApprovalTurnRunLocator / EmptyTriggerTurnSnapshotSource).
+    let local_dev_turn_state: Option<Arc<crate::factory::LocalDevTurnStateStore>> = {
+        #[cfg(feature = "postgres")]
+        {
+            if pg_stores.is_some() {
+                None
+            } else {
+                services.local_runtime.as_ref().map(|lr| Arc::clone(&lr.turn_state))
+            }
+        }
+        #[cfg(not(feature = "postgres"))]
+        services.local_runtime.as_ref().map(|lr| Arc::clone(&lr.turn_state))
+    };
 
     // Concrete BroadcastBudgetEventSink — needed by BudgetEventProjection::spawn
     // which takes `&BroadcastBudgetEventSink`.  Extracted separately from the
@@ -1814,10 +1859,13 @@ pub async fn build_reborn_runtime(
     let broadcast_budget_sink: Arc<brassclaw_resources::BroadcastBudgetEventSink> = {
         #[cfg(feature = "postgres")]
         {
-            if let Some(lr) = services.local_runtime.as_ref() {
-                Arc::clone(&lr.broadcast_budget_event_sink)
-            } else if let Some(pg) = pg_stores.as_ref() {
+            // Prefer PG stores (set on hybrid-with-pool and pure-PG paths) over the
+            // in-memory sink so event subscriptions use the same sink that the accountant
+            // writes to.
+            if let Some(pg) = pg_stores.as_ref() {
                 Arc::clone(&pg.broadcast_budget_event_sink)
+            } else if let Some(lr) = services.local_runtime.as_ref() {
+                Arc::clone(&lr.broadcast_budget_event_sink)
             } else {
                 Arc::new(brassclaw_resources::BroadcastBudgetEventSink::default())
             }
@@ -1828,13 +1876,15 @@ pub async fn build_reborn_runtime(
 
     // Extract approval_requests and capability_leases from the substrate.
     // These are `Arc<dyn ...>` trait objects so they work for both paths.
+    // Priority: PG stores (set on both the hybrid-with-pool and pure-PG paths) win over
+    // local-dev in-memory stores so that approvals survive process restart on the serve path.
     let substrate_approval_requests: Arc<dyn brassclaw_run_state::ApprovalRequestStore> = {
         #[cfg(feature = "postgres")]
         {
-            if let Some(lr) = services.local_runtime.as_ref() {
-                Arc::clone(&lr.approval_requests) as Arc<dyn brassclaw_run_state::ApprovalRequestStore>
-            } else if let Some(pg) = pg_stores.as_ref() {
+            if let Some(pg) = pg_stores.as_ref() {
                 Arc::clone(&pg.approval_requests) as Arc<dyn brassclaw_run_state::ApprovalRequestStore>
+            } else if let Some(lr) = services.local_runtime.as_ref() {
+                Arc::clone(&lr.approval_requests) as Arc<dyn brassclaw_run_state::ApprovalRequestStore>
             } else {
                 return Err(RebornRuntimeError::InvalidArgument {
                     reason: "approval store not available (no substrate)".to_string(),
@@ -1849,10 +1899,10 @@ pub async fn build_reborn_runtime(
     let substrate_capability_leases: Arc<dyn brassclaw_authorization::CapabilityLeaseStore> = {
         #[cfg(feature = "postgres")]
         {
-            if let Some(lr) = services.local_runtime.as_ref() {
-                Arc::clone(&lr.capability_leases) as Arc<dyn brassclaw_authorization::CapabilityLeaseStore>
-            } else if let Some(pg) = pg_stores.as_ref() {
+            if let Some(pg) = pg_stores.as_ref() {
                 Arc::clone(&pg.capability_leases) as Arc<dyn brassclaw_authorization::CapabilityLeaseStore>
+            } else if let Some(lr) = services.local_runtime.as_ref() {
+                Arc::clone(&lr.capability_leases) as Arc<dyn brassclaw_authorization::CapabilityLeaseStore>
             } else {
                 return Err(RebornRuntimeError::InvalidArgument {
                     reason: "lease store not available (no substrate)".to_string(),

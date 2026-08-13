@@ -282,15 +282,17 @@ impl PgTurnStateStore {
         let client = self.pool.get().await.map_err(map_pg_pool)?;
         // The payload is a TurnPersistenceSnapshot; runs is an array of
         // TurnRunRecord objects each of which has a "run_id" field.
+        // Use a serde_json::Value so tokio_postgres encodes the parameter as
+        // jsonb (OID 3802) rather than text, which avoids "error serializing
+        // parameter N" when the prepared statement resolves the type as jsonb.
+        let needle: serde_json::Value =
+            serde_json::json!([{"run_id": run_id_str}]);
         let row = client
             .query_opt(
                 "SELECT turn_id FROM brassclaw_turns \
                  WHERE tenant_id = $1 AND status = 'snapshot' \
-                   AND payload->'runs' @> $2::jsonb",
-                &[
-                    &self.tenant_id,
-                    &format!("[{{\"run_id\":\"{}\"}}]", run_id_str),
-                ],
+                   AND payload->'runs' @> $2",
+                &[&self.tenant_id, &needle],
             )
             .await
             .map_err(map_pg)?;
