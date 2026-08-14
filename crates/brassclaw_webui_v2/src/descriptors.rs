@@ -75,8 +75,7 @@ pub const WEBUI_V2_ROUTE_REASSEMBLE_INTERCEPTOR: &str = "webui.v2.reassemble_int
 pub const WEBUI_V2_ROUTE_PREWARM_INTERCEPTOR: &str = "webui.v2.prewarm_interceptor";
 
 pub const WEBUI_V2_PATTERN_GET_INTERCEPTOR_CONFIG: &str = "/api/webchat/v2/interceptor/config";
-pub const WEBUI_V2_PATTERN_REASSEMBLE_INTERCEPTOR: &str =
-    "/api/webchat/v2/interceptor/reassemble";
+pub const WEBUI_V2_PATTERN_REASSEMBLE_INTERCEPTOR: &str = "/api/webchat/v2/interceptor/reassemble";
 pub const WEBUI_V2_PATTERN_PREWARM_INTERCEPTOR: &str = "/api/webchat/v2/interceptor/prewarm";
 
 // Phase 6 — Settings UI routes (10-tab editor).

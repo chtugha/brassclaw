@@ -20,18 +20,18 @@ use super::{
     TurnRunWakeNotifier, TurnStateStore, build_reborn_event_stores, production_wiring_report,
     set_runtime_http_egress, set_tool_call_http_egress,
 };
+use crate::LocalHostProcessPort;
+use crate::RuntimeHttpBodyStore;
+use crate::http_body::UnsupportedRuntimeHttpBodyStore;
 #[cfg(feature = "postgres")]
 use brassclaw_approvals::pg_store::PgApprovalRequestStore;
 #[cfg(feature = "postgres")]
 use brassclaw_resources::PgResourceGovernorStore;
 #[cfg(feature = "postgres")]
 use brassclaw_run_state::pg_store::PgRunStateStore;
+use brassclaw_secrets::{CredentialAccountStore, CredentialSessionStore};
 #[cfg(feature = "postgres")]
 use brassclaw_turns::PgTurnStateStore;
-use crate::LocalHostProcessPort;
-use crate::RuntimeHttpBodyStore;
-use crate::http_body::UnsupportedRuntimeHttpBodyStore;
-use brassclaw_secrets::{CredentialAccountStore, CredentialSessionStore};
 
 impl<F, G, S, R> HostRuntimeServices<F, G, S, R>
 where
@@ -503,12 +503,7 @@ where
     pub fn with_pg_resource_governor(
         self,
         pool: Arc<deadpool_postgres::Pool>,
-    ) -> HostRuntimeServices<
-        F,
-        PersistentResourceGovernor<PgResourceGovernorStore>,
-        S,
-        R,
-    > {
+    ) -> HostRuntimeServices<F, PersistentResourceGovernor<PgResourceGovernorStore>, S, R> {
         let store = PgResourceGovernorStore::new(pool, "default");
         self.with_resource_governor(Arc::new(PersistentResourceGovernor::new(store)))
     }

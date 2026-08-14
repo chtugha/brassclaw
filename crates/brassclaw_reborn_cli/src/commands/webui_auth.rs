@@ -99,12 +99,7 @@ pub(crate) async fn build_webui_auth_surface(
     if let Some(cfg) = local_trigger_access {
         let store = open_local_trigger_access_store(cfg.pool);
         user_directory = user_directory.with_local_trigger_access(
-            LocalTriggerAccessBootstrap::new(
-                store,
-                cfg.tenant_id,
-                cfg.agent_id,
-                cfg.project_id,
-            ),
+            LocalTriggerAccessBootstrap::new(store, cfg.tenant_id, cfg.agent_id, cfg.project_id),
         );
     }
 

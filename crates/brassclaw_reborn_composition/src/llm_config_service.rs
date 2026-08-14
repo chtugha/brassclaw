@@ -28,8 +28,8 @@ use brassclaw_product_workflow::{
 use brassclaw_reborn_config::LlmSlotSelection;
 use secrecy::{ExposeSecret as _, SecretString};
 
-use crate::llm_catalog::{apply_stored_api_key, resolve_against_registry};
 use crate::LlmKeyStore;
+use crate::llm_catalog::{apply_stored_api_key, resolve_against_registry};
 
 const NEARAI_LOGIN_STATE_TTL: Duration = Duration::from_secs(15 * 60);
 const CODEX_LOGIN_ATTEMPT_TTL: Duration = Duration::from_secs(15 * 60);
@@ -241,7 +241,9 @@ impl RebornLlmConfigService {
     /// Read the Sempai role selection from DB.
     async fn read_sempai_sel_from_db(&self) -> Option<LlmActiveSelection> {
         use crate::db_config::list_config_keys;
-        let rows = list_config_keys(&self.pg_pool, &self.db_tenant_id).await.ok()?;
+        let rows = list_config_keys(&self.pg_pool, &self.db_tenant_id)
+            .await
+            .ok()?;
         let kv: std::collections::HashMap<String, String> = rows.into_iter().collect();
         let provider_id = kv.get("llm.sempai.provider_id")?.to_string();
         if provider_id.is_empty() {
@@ -259,7 +261,9 @@ impl RebornLlmConfigService {
     /// Keys: `llm.default.provider_id` / `llm.default.model` in `brassclaw_config`.
     async fn read_kohai_sel_from_db(&self) -> Option<LlmActiveSelection> {
         use crate::db_config::list_config_keys;
-        let rows = list_config_keys(&self.pg_pool, &self.db_tenant_id).await.ok()?;
+        let rows = list_config_keys(&self.pg_pool, &self.db_tenant_id)
+            .await
+            .ok()?;
         let kv: std::collections::HashMap<String, String> = rows.into_iter().collect();
         let provider_id = kv.get("llm.default.provider_id")?.to_string();
         if provider_id.is_empty() {
@@ -277,16 +281,15 @@ impl RebornLlmConfigService {
     /// Keys: `embedding.provider_id` / `embedding.model` in `brassclaw_config`.
     async fn read_embedding_sel_from_db(&self) -> Option<LlmActiveSelection> {
         use crate::db_config::list_config_keys;
-        let rows = list_config_keys(&self.pg_pool, &self.db_tenant_id).await.ok()?;
+        let rows = list_config_keys(&self.pg_pool, &self.db_tenant_id)
+            .await
+            .ok()?;
         let kv: std::collections::HashMap<String, String> = rows.into_iter().collect();
         let provider_id = kv.get("embedding.provider_id")?.to_string();
         if provider_id.is_empty() {
             return None;
         }
-        let model = kv
-            .get("embedding.model")
-            .cloned()
-            .filter(|s| !s.is_empty());
+        let model = kv.get("embedding.model").cloned().filter(|s| !s.is_empty());
         Some(LlmActiveSelection { provider_id, model })
     }
 
@@ -354,8 +357,8 @@ impl RebornLlmConfigService {
             api_key_env: None,
             base_url: None,
         };
-        let mut config = resolve_against_registry(&selection, &registry)
-            .map_err(|e| format!("resolve: {e}"))?;
+        let mut config =
+            resolve_against_registry(&selection, &registry).map_err(|e| format!("resolve: {e}"))?;
         if let Ok(Some(stored)) = self.keys.read(provider_id).await {
             crate::llm_catalog::apply_stored_api_key(&mut config, stored);
         }
@@ -400,9 +403,7 @@ impl RebornLlmConfigService {
                 .is_some_and(|env| std::env::var(env).is_ok());
             let api_key_set = stored_key_set || env_key_set;
 
-            let is_kohai = kohai_sel
-                .as_ref()
-                .is_some_and(|s| s.provider_id == def.id);
+            let is_kohai = kohai_sel.as_ref().is_some_and(|s| s.provider_id == def.id);
             let active_model = is_kohai
                 .then(|| kohai_sel.as_ref().and_then(|s| s.model.clone()))
                 .flatten();
@@ -653,7 +654,10 @@ impl RebornLlmConfigService {
     /// Returns `Err(CannotDeleteBuiltin)` if the provider is a builtin.
     async fn delete_provider_definition(&self, id: &str) -> Result<bool, LlmConfigServiceError> {
         self.pg_provider_repo.delete(id).await.map_err(|e| {
-            if matches!(e, crate::pg_provider_repo::PgProviderRepoError::CannotDeleteBuiltin) {
+            if matches!(
+                e,
+                crate::pg_provider_repo::PgProviderRepoError::CannotDeleteBuiltin
+            ) {
                 LlmConfigServiceError::CannotDeleteBuiltin
             } else {
                 LlmConfigServiceError::Unavailable
@@ -760,8 +764,12 @@ impl LlmConfigService for RebornLlmConfigService {
             if let Some(name) = request.name.as_deref().filter(|n| !n.trim().is_empty()) {
                 merged.description = name.to_string();
             }
-            let key_present = has_new_key || stored_key_present
-                || existing_def.api_key_env.as_ref().is_some_and(|env| std::env::var(env).is_ok());
+            let key_present = has_new_key
+                || stored_key_present
+                || existing_def
+                    .api_key_env
+                    .as_ref()
+                    .is_some_and(|env| std::env::var(env).is_ok());
             merged.api_key_required = !key_present;
             merged
         } else {
@@ -930,7 +938,10 @@ impl LlmConfigService for RebornLlmConfigService {
                         let new_provider: Arc<dyn LlmProvider> = if id.is_empty() {
                             Arc::new(crate::runtime::PlaceholderLlmProvider)
                         } else {
-                            match self.build_sempai_provider(&id, request.model.as_deref()).await {
+                            match self
+                                .build_sempai_provider(&id, request.model.as_deref())
+                                .await
+                            {
                                 Ok(p) => p,
                                 Err(e) => {
                                     tracing::debug!(
@@ -1150,13 +1161,8 @@ impl LlmConfigService for RebornLlmConfigService {
                 tracing::debug!("codex login completed after a newer attempt superseded it");
                 return;
             }
-            if let Err(error) = write_kohai_selection_to_db(
-                &codex_pool,
-                &codex_tenant,
-                "openai_codex",
-                None,
-            )
-            .await
+            if let Err(error) =
+                write_kohai_selection_to_db(&codex_pool, &codex_tenant, "openai_codex", None).await
             {
                 tracing::debug!(%error, "codex login: could not set active provider");
                 return;
@@ -1632,7 +1638,6 @@ mod tests {
             .expect_err("unknown adapter must fail");
         assert!(matches!(err, LlmConfigServiceError::InvalidRequest { .. }));
     }
-
 }
 
 // ─── Integration tests ─────────────────────────────────────────────────────

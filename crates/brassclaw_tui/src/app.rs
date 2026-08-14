@@ -9,7 +9,6 @@
 //! The app owns the terminal, manages alternate screen / raw mode, and
 //! renders frames at ~30fps using a tick timer.
 
-
 // Minimum terminal width (columns) at which the sidebar is shown; narrower
 // terminals use a full-width layout.
 const SIDEBAR_MIN_WIDTH: u16 = 40;
@@ -22,7 +21,6 @@ const MAX_TOAST_COUNT: usize = 3;
 
 // Number of log lines scrolled per page-up/page-down keypress.
 const LOGS_PAGE_SCROLL_LINES: i16 = -5;
-
 
 use std::io::{self, Write};
 use std::time::Duration;
@@ -1964,7 +1962,10 @@ fn thread_list_sidebar_area(size: Rect, layout: &TuiLayout, state: &AppState) ->
     let sidebar_area = horizontal[2];
     let sidebar_split = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(HALF_PERCENT), Constraint::Percentage(HALF_PERCENT)])
+        .constraints([
+            Constraint::Percentage(HALF_PERCENT),
+            Constraint::Percentage(HALF_PERCENT),
+        ])
         .split(sidebar_area);
     Some(sidebar_split[1])
 }
@@ -2172,7 +2173,10 @@ fn render_frame(
                 // Split sidebar into tool panel and thread list
                 let sidebar_split = Layout::default()
                     .direction(Direction::Vertical)
-                    .constraints([Constraint::Percentage(HALF_PERCENT), Constraint::Percentage(HALF_PERCENT)])
+                    .constraints([
+                        Constraint::Percentage(HALF_PERCENT),
+                        Constraint::Percentage(HALF_PERCENT),
+                    ])
                     .split(sidebar_area);
 
                 widgets

@@ -360,9 +360,13 @@ mod tests {
 
     #[test]
     fn extract_numeric_from_top_level() {
-        let args = SanitizedArguments::from_json(serde_json::json!({"amount": TEST_NUMERIC_AMOUNT}));
+        let args =
+            SanitizedArguments::from_json(serde_json::json!({"amount": TEST_NUMERIC_AMOUNT}));
         assert!(args.is_resolved());
-        assert_eq!(args.extract_numeric("amount"), Some(Decimal::from(TEST_NUMERIC_AMOUNT)));
+        assert_eq!(
+            args.extract_numeric("amount"),
+            Some(Decimal::from(TEST_NUMERIC_AMOUNT))
+        );
     }
 
     #[test]
@@ -412,7 +416,8 @@ mod tests {
     /// unresolved/malformed input.
     #[test]
     fn malformed_indexer_returns_none_not_parent_value() {
-        let args = SanitizedArguments::from_json(serde_json::json!({"amount": TEST_NUMERIC_AMOUNT}));
+        let args =
+            SanitizedArguments::from_json(serde_json::json!({"amount": TEST_NUMERIC_AMOUNT}));
         // Non-numeric index — must NOT resolve to the parent `amount`.
         assert_eq!(args.extract_numeric("amount[foo]"), None);
         // Unterminated bracket.

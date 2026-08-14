@@ -52,7 +52,8 @@ use brassclaw_engine::types::recipe::{Recipe, RecipeSource, ToolSkill, Validatio
 use brassclaw_product_workflow::{
     ComponentAuditStatus, OutcomeKind, RecipeDetail, RecipeKind, RecipeStore, RecipeStoreError,
     RecipeSummary, RecordOutcomeRequest, RecordOutcomeResponse, ToolSkillDetail, ToolSkillSummary,
-    UpdateValidationStatusResponse, ValidationQueueFilter, ValidationQueueItem, ValidationStatusValue,
+    UpdateValidationStatusResponse, ValidationQueueFilter, ValidationQueueItem,
+    ValidationStatusValue,
 };
 use chrono::Utc;
 
@@ -480,13 +481,17 @@ impl RecipeStore for StoreBackedRecipeStore {
         } else {
             DocType::ToolSkill
         };
-        let doc = find_own_doc(&self.store, project_id_typed, user_id, doc_type, component_id)
-            .await?
-            .ok_or_else(|| {
-                RecipeStoreError::NotFound(format!(
-                    "component '{component_id}' (class {class_code})"
-                ))
-            })?;
+        let doc = find_own_doc(
+            &self.store,
+            project_id_typed,
+            user_id,
+            doc_type,
+            component_id,
+        )
+        .await?
+        .ok_or_else(|| {
+            RecipeStoreError::NotFound(format!("component '{component_id}' (class {class_code})"))
+        })?;
 
         // Verify we are in Q4: must be Rejected with review_attempts >= 3.
         let review_attempts = match doc_type {
@@ -499,7 +504,7 @@ impl RecipeStore for StoreBackedRecipeStore {
             _ => {
                 return Err(RecipeStoreError::Invalid(
                     "unsupported doc type for re-review".to_string(),
-                ))
+                ));
             }
         };
         let (current_status, attempts) = review_attempts;
@@ -515,13 +520,21 @@ impl RecipeStore for StoreBackedRecipeStore {
         match class_code {
             21 => {
                 self.update_recipe_validation_status(
-                    user_id, project_id, component_id, "pending", feedback,
+                    user_id,
+                    project_id,
+                    component_id,
+                    "pending",
+                    feedback,
                 )
                 .await
             }
             _ => {
                 self.update_skill_validation_status(
-                    user_id, project_id, component_id, "pending", feedback,
+                    user_id,
+                    project_id,
+                    component_id,
+                    "pending",
+                    feedback,
                 )
                 .await
             }
@@ -556,9 +569,7 @@ impl RecipeStore for StoreBackedRecipeStore {
         )
         .await?
         .ok_or_else(|| {
-            RecipeStoreError::NotFound(format!(
-                "component '{component_id}' (class {class_code})"
-            ))
+            RecipeStoreError::NotFound(format!("component '{component_id}' (class {class_code})"))
         })?;
 
         // Guard: only Garbage or Rejected-with-3-attempts may be wiped.
@@ -572,7 +583,7 @@ impl RecipeStore for StoreBackedRecipeStore {
             _ => {
                 return Err(RecipeStoreError::Invalid(
                     "unsupported doc type for delete".to_string(),
-                ))
+                ));
             }
         };
         // Only Q4 items may be wiped: Garbage (already wiped) or Rejected with
@@ -625,13 +636,14 @@ impl RecipeStore for StoreBackedRecipeStore {
                 skill.review_feedback = None;
                 skill.updated_at = Utc::now();
                 updated_doc.updated_at = skill.updated_at;
-                skill.to_metadata()
+                skill
+                    .to_metadata()
                     .map_err(|e| RecipeStoreError::Invalid(format!("encode: {e}")))?
             }
             _ => {
                 return Err(RecipeStoreError::Invalid(
                     "unsupported doc type for wipe".to_string(),
-                ))
+                ));
             }
         };
         updated_doc.metadata = new_metadata;
@@ -667,9 +679,14 @@ impl RecipeStore for StoreBackedRecipeStore {
         // they are NOT part of the typed ToolSkill struct, so we read them directly
         // from the MemoryDoc metadata without deserializing through ToolSkill.
         let project_id_typed = parse_project_id(project_id)?;
-        let doc =
-            find_doc(&self.store, project_id_typed, user_id, DocType::ToolSkill, component_id)
-                .await?;
+        let doc = find_doc(
+            &self.store,
+            project_id_typed,
+            user_id,
+            DocType::ToolSkill,
+            component_id,
+        )
+        .await?;
 
         let Some(doc) = doc else {
             // Component not found — return "not_applicable" rather than an error
@@ -1112,17 +1129,23 @@ mod tests {
     #[async_trait::async_trait]
     impl Store for InMemoryEngineStore {
         async fn save_thread(&self, _thread: &Thread) -> Result<(), EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement save_thread (recipe-test-only scope)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement save_thread (recipe-test-only scope)"
+            )
         }
         async fn load_thread(&self, _id: ThreadId) -> Result<Option<Thread>, EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement load_thread (recipe-test-only scope)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement load_thread (recipe-test-only scope)"
+            )
         }
         async fn list_threads(
             &self,
             _project_id: ProjectId,
             _user_id: &str,
         ) -> Result<Vec<Thread>, EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement list_threads (recipe-test-only scope)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement list_threads (recipe-test-only scope)"
+            )
         }
         async fn update_thread_state(
             &self,

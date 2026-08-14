@@ -469,9 +469,12 @@ mod tests {
 
     #[test]
     fn resolve_master_key_uses_keychain_when_env_is_absent() {
-        let resolved = resolve_master_key_from_sources(None, Ok(Some(vec![TEST_KEY_FILL_BYTE_BB; MASTER_KEY_REQUIRED_LEN])))
-            .unwrap()
-            .unwrap();
+        let resolved = resolve_master_key_from_sources(
+            None,
+            Ok(Some(vec![TEST_KEY_FILL_BYTE_BB; MASTER_KEY_REQUIRED_LEN])),
+        )
+        .unwrap()
+        .unwrap();
 
         assert_eq!(resolved, "bb".repeat(32));
     }
@@ -494,10 +497,12 @@ mod tests {
 
     #[test]
     fn resolve_master_key_ignores_blank_env_key() {
-        let resolved =
-            resolve_master_key_from_sources(Some(" \t ".to_string()), Ok(Some(vec![TEST_KEY_FILL_BYTE_AB; MASTER_KEY_REQUIRED_LEN])))
-                .expect("keychain resolver should succeed")
-                .expect("keychain key should be used");
+        let resolved = resolve_master_key_from_sources(
+            Some(" \t ".to_string()),
+            Ok(Some(vec![TEST_KEY_FILL_BYTE_AB; MASTER_KEY_REQUIRED_LEN])),
+        )
+        .expect("keychain resolver should succeed")
+        .expect("keychain key should be used");
 
         assert_eq!(resolved, "ab".repeat(32));
     }
@@ -563,7 +568,13 @@ mod tests {
     #[test]
     fn resolve_master_key_rejects_short_keychain_key() {
         assert!(matches!(
-            resolve_master_key_from_sources(None, Ok(Some(vec![TEST_KEY_FILL_BYTE_AB; MASTER_KEY_REQUIRED_LEN - 1]))),
+            resolve_master_key_from_sources(
+                None,
+                Ok(Some(vec![
+                    TEST_KEY_FILL_BYTE_AB;
+                    MASTER_KEY_REQUIRED_LEN - 1
+                ]))
+            ),
             Err(SecretError::InvalidMasterKey)
         ));
     }

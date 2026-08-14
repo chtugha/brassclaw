@@ -141,8 +141,16 @@ impl ProviderToolCallReferenceEnvelope {
             "provider response reasoning",
             MAX_MODEL_OBSERVATION_BYTES,
         )?;
-        validate_optional_provider_text(&self.reasoning, "provider reasoning", MAX_MODEL_OBSERVATION_BYTES)?;
-        validate_optional_provider_text(&self.signature, "provider signature", MAX_MODEL_OBSERVATION_BYTES)?;
+        validate_optional_provider_text(
+            &self.reasoning,
+            "provider reasoning",
+            MAX_MODEL_OBSERVATION_BYTES,
+        )?;
+        validate_optional_provider_text(
+            &self.signature,
+            "provider signature",
+            MAX_MODEL_OBSERVATION_BYTES,
+        )?;
         Ok(())
     }
 }

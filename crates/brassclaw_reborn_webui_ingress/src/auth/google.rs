@@ -400,7 +400,11 @@ mod tests {
     #[tokio::test]
     async fn exchange_code_decodes_id_token_into_profile() {
         let client_id: &'static str = "client-id-123";
-        let id_token = make_id_token(client_id, None, chrono::Utc::now().timestamp() + TEST_JWT_LIFETIME_SECS);
+        let id_token = make_id_token(
+            client_id,
+            None,
+            chrono::Utc::now().timestamp() + TEST_JWT_LIFETIME_SECS,
+        );
         let addr = spawn_mock_token_endpoint(id_token).await;
         let endpoint = format!("http://{addr}/token");
 

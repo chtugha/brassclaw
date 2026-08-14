@@ -395,10 +395,7 @@ fn models_list_reports_reborn_provider_catalog_without_v1_state() {
         stdout.contains("BrassClaw Reborn LLM providers"),
         "stdout: {stdout}"
     );
-    assert!(
-        stdout.contains("providers: DB-backed"),
-        "stdout: {stdout}"
-    );
+    assert!(stdout.contains("providers: DB-backed"), "stdout: {stdout}");
     assert!(
         stdout.contains("active: not-configured"),
         "stdout: {stdout}"
@@ -556,10 +553,7 @@ fn models_set_without_provider_fails_without_panicking() {
 
     assert!(!output.status.success(), "models set should fail");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("no longer supported"),
-        "stderr: {stderr}"
-    );
+    assert!(stderr.contains("no longer supported"), "stderr: {stderr}");
     assert!(!stderr.contains("panicked"), "stderr: {stderr}");
 }
 

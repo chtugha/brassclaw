@@ -485,11 +485,7 @@ mod tests {
             .with_skill_md(
                 crate::SkillSourceKind::User,
                 "alpha",
-                skill_md(
-                    "alpha",
-                    "safe description",
-                    "PROMPT_CONTENT_SENTINEL",
-                ),
+                skill_md("alpha", "safe description", "PROMPT_CONTENT_SENTINEL"),
             ),
         );
         let adapter = SkillBundleContextSource::new(source);
@@ -501,7 +497,11 @@ mod tests {
         assert_eq!(snippets.len(), 1);
         assert!(snippets[0].safe_summary.contains("safe description"));
         // Phase 3: prompt content is included in model_content for all visible skills.
-        assert!(snippets[0].model_content.contains("PROMPT_CONTENT_SENTINEL"));
+        assert!(
+            snippets[0]
+                .model_content
+                .contains("PROMPT_CONTENT_SENTINEL")
+        );
     }
 
     #[tokio::test]

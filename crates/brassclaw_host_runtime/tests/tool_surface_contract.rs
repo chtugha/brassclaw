@@ -1,7 +1,6 @@
 /// Integer value used as an invalid-type header value in schema rejection tests.
 const INVALID_HEADER_INT: i64 = 123;
 
-
 mod support;
 
 use support::legacy_capability_fixture_to_v2_with_schema_suffix as legacy_capability_fixture_to_v2;

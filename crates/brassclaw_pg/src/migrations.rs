@@ -103,16 +103,14 @@ async fn reconcile_history(client: &deadpool_postgres::Client) -> Result<(), PgE
     //   checksum VARCHAR(255)
     // We must create it here so we can insert rows before the runner sees it.
     client
-        .batch_execute(
-            &format!(
-                "CREATE TABLE IF NOT EXISTS refinery_schema_history (
+        .batch_execute(&format!(
+            "CREATE TABLE IF NOT EXISTS refinery_schema_history (
                 version     INT4        PRIMARY KEY,
                 name        VARCHAR({REFINERY_VARCHAR_LEN}) NOT NULL,
                 applied_on  VARCHAR({REFINERY_VARCHAR_LEN}) NOT NULL,
                 checksum    VARCHAR({REFINERY_VARCHAR_LEN}) NOT NULL
             )"
-            ),
-        )
+        ))
         .await
         .map_err(|e| PgError::Migration(e.to_string()))?;
 

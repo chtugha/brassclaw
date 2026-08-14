@@ -648,8 +648,9 @@ fn hydrate_tool_result_messages(
 fn model_visible_tool_result_content(
     output: &serde_json::Value,
 ) -> Result<String, HostManagedModelError> {
-    let mut content =
-        String::with_capacity(LOCAL_DEV_MODEL_VISIBLE_TOOL_RESULT_MAX_BYTES.min(LOCAL_DEV_TOOL_RESULT_INITIAL_CAPACITY));
+    let mut content = String::with_capacity(
+        LOCAL_DEV_MODEL_VISIBLE_TOOL_RESULT_MAX_BYTES.min(LOCAL_DEV_TOOL_RESULT_INITIAL_CAPACITY),
+    );
     let truncated = append_model_visible_value(output, &mut content);
     if content.is_empty() {
         return Err(HostManagedModelError::safe(
@@ -860,9 +861,9 @@ pub(super) fn pg_capability_wiring(
 ) -> Option<LocalDevCapabilityWiring> {
     let runtime = services.host_runtime.clone()?;
     let display_previews = Arc::new(crate::projection::CapabilityDisplayPreviewStore::default());
-    let capability_io = Arc::new(
-        crate::product_live_adapters::ProductLiveCapabilityIo::new(Arc::clone(&display_previews)),
-    );
+    let capability_io = Arc::new(crate::product_live_adapters::ProductLiveCapabilityIo::new(
+        Arc::clone(&display_previews),
+    ));
     let capability_input_resolver: Arc<dyn LoopCapabilityInputResolver> = capability_io.clone();
     let capability_result_writer: Arc<dyn LoopCapabilityResultWriter> = capability_io.clone();
     let capability_factory: Arc<dyn LoopCapabilityPortFactory> =
@@ -903,10 +904,14 @@ impl LoopCapabilityPortFactory for PgLoopCapabilityPortFactory {
     async fn create_capability_port(
         &self,
         run_context: &LoopRunContext,
-    ) -> Result<Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>, brassclaw_turns::run_profile::AgentLoopHostError>
-    {
+    ) -> Result<
+        Arc<dyn brassclaw_turns::run_profile::LoopCapabilityPort>,
+        brassclaw_turns::run_profile::AgentLoopHostError,
+    > {
         use brassclaw_host_api::{ExecutionContext, RuntimeKind, TrustClass};
-        use brassclaw_host_runtime::{CapabilitySurfacePolicy, SurfaceKind, VisibleCapabilityRequest};
+        use brassclaw_host_runtime::{
+            CapabilitySurfacePolicy, SurfaceKind, VisibleCapabilityRequest,
+        };
         use brassclaw_loop_support::loop_driver_execution_extension_id;
 
         let extension_id = loop_driver_execution_extension_id(run_context)?;
@@ -935,12 +940,11 @@ impl LoopCapabilityPortFactory for PgLoopCapabilityPortFactory {
         context.resource_scope.thread_id = context.thread_id.clone();
         context.validate().map_err(host_api_agent_loop_error)?;
 
-        let visible_request =
-            VisibleCapabilityRequest::new(
-                context,
-                SurfaceKind::new("agent_loop").map_err(host_api_agent_loop_error)?,
-            )
-            .with_policy(CapabilitySurfacePolicy::allow_all());
+        let visible_request = VisibleCapabilityRequest::new(
+            context,
+            SurfaceKind::new("agent_loop").map_err(host_api_agent_loop_error)?,
+        )
+        .with_policy(CapabilitySurfacePolicy::allow_all());
 
         Ok(HostRuntimeLoopCapabilityPortFactory::new(
             Arc::clone(&self.runtime),

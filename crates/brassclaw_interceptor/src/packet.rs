@@ -342,13 +342,12 @@ mod tests {
         // Simulate the rerouting path: with_sempai_review is called first
         // (empty kohai_response placeholder), then with_kohai_response_sempai_reviewed
         // fills in the actual Kohai response.
-        let packet = ForensicPacket::new("run-1", 0, make_prompt())
-            .with_sempai_review("", None, review);
+        let packet =
+            ForensicPacket::new("run-1", 0, make_prompt()).with_sempai_review("", None, review);
         assert_eq!(packet.status, PacketStatus::SempaiReviewed);
 
         // on_kohai_response would call this method:
-        let final_packet =
-            packet.with_kohai_response_sempai_reviewed("Kohai replied here.", None);
+        let final_packet = packet.with_kohai_response_sempai_reviewed("Kohai replied here.", None);
         // Status must remain SempaiReviewed — not regress to Complete.
         assert_eq!(final_packet.status, PacketStatus::SempaiReviewed);
         assert_eq!(

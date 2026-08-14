@@ -20,12 +20,11 @@ use axum::extract::{Extension, Path, Query, State};
 use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use brassclaw_product_workflow::{
-    CodexLoginStart, InterceptorConfigSnapshot, LifecyclePackageKind, LifecyclePackageRef,
-    LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult,
-    MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettingsResponse,
-    MontyVmStatusResponse, NearAiLoginRequest,
-    NearAiLoginStart, NearAiWalletLoginRequest, NearAiWalletLoginResult, OutcomeKind,
-    ProductWorkflowError, ProjectionCursor, RebornCancelRunResponse,
+    CodexLoginStart, ComponentAuditStatus, InterceptorConfigSnapshot, LifecyclePackageKind,
+    LifecyclePackageRef, LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult,
+    MontyVmRestartRequest, MontyVmRestartResponse, MontyVmSettingsResponse, MontyVmStatusResponse,
+    NearAiLoginRequest, NearAiLoginStart, NearAiWalletLoginRequest, NearAiWalletLoginResult,
+    OutcomeKind, ProductWorkflowError, ProjectionCursor, RebornCancelRunResponse,
     RebornConnectableChannelListResponse, RebornCreateThreadResponse, RebornDeleteThreadRequest,
     RebornDeleteThreadResponse, RebornExtensionActionResponse, RebornExtensionListResponse,
     RebornExtensionRegistryResponse, RebornInstallSkillRequest, RebornListAutomationsResponse,
@@ -35,8 +34,8 @@ use brassclaw_product_workflow::{
     RebornSkillRemoveResult, RebornStreamEventsRequest, RebornSubmitTurnResponse,
     RebornTimelineRequest, RebornTimelineResponse, RebornUpdateCapabilityPermissionRequest,
     RebornUpdateCapabilityPermissionResponse, RecipeDetail, RecipeListResponse,
-    ComponentAuditStatus, RecordOutcomeRequest, RecordOutcomeResponse, SetActiveLlmRequest,
-    SettingsListResponse, ToolSkillDetail, ToolSkillListResponse, UpdateChatPreferenceRequest,
+    RecordOutcomeRequest, RecordOutcomeResponse, SetActiveLlmRequest, SettingsListResponse,
+    ToolSkillDetail, ToolSkillListResponse, UpdateChatPreferenceRequest,
     UpdateChatPreferenceResponse, UpdateInterceptorConfigRequest, UpdateMontyVmSettingsRequest,
     UpdateValidationStatusRequest, UpdateValidationStatusResponse, UpsertLlmProviderRequest,
     ValidationQueueCountResponse, ValidationQueueFilter, ValidationQueueListResponse,
@@ -1332,7 +1331,6 @@ pub async fn get_component_audit_status(
     Ok(Json(result))
 }
 
-
 /// `GET /api/webchat/v2/interceptor/config`
 ///
 /// Returns the current interceptor configuration snapshot (mode, base prompt
@@ -1585,10 +1583,7 @@ pub async fn upsert_intent_input(
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(body): Json<brassclaw_product_workflow::UpsertIntentInputRequest>,
 ) -> Result<Json<brassclaw_product_workflow::IntentInputRow>, WebUiV2HttpError> {
-    let row = state
-        .services()
-        .upsert_intent_input(caller, body)
-        .await?;
+    let row = state.services().upsert_intent_input(caller, body).await?;
     Ok(Json(row))
 }
 
@@ -1607,12 +1602,7 @@ pub async fn delete_intent_inputs(
 ) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
     let count = state
         .services()
-        .delete_intent_inputs_for_component(
-            caller,
-            query.project_id,
-            class_code,
-            component_id,
-        )
+        .delete_intent_inputs_for_component(caller, query.project_id, class_code, component_id)
         .await?;
     Ok(Json(serde_json::json!({ "deleted": count })))
 }

@@ -214,7 +214,7 @@ async fn text_only_host_factory_builds_complete_agent_loop_driver_host() {
             surface_version: Some(surface.version.clone()),
             model_preference: None,
             capability_view: None,
-                resolved_messages: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -329,7 +329,7 @@ async fn text_only_host_factory_sanitizes_gateway_error_summaries() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
-                resolved_messages: None,
+            resolved_messages: None,
         })
         .await
         .unwrap_err();
@@ -386,7 +386,7 @@ async fn text_only_host_factory_invokes_model_budget_accountant() {
         surface_version: None,
         model_preference: None,
         capability_view: None,
-                resolved_messages: None,
+        resolved_messages: None,
     })
     .await
     .unwrap();
@@ -993,7 +993,7 @@ async fn text_only_host_factory_includes_safety_context_in_prompt_bundle() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
-                resolved_messages: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -1045,7 +1045,7 @@ async fn text_only_host_factory_uses_explicit_local_noop_safety_context() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
-                resolved_messages: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -1540,7 +1540,7 @@ async fn text_only_host_e2e_keeps_persisted_model_route_through_full_flow() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
-                resolved_messages: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -2637,7 +2637,7 @@ async fn product_live_runtime_builds_when_all_required_adapters_are_present() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
-                resolved_messages: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -2807,7 +2807,7 @@ async fn text_only_host_factory_threads_model_route_snapshot_to_gateway() {
             surface_version: None,
             model_preference: None,
             capability_view: None,
-                resolved_messages: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -3073,7 +3073,7 @@ async fn text_only_host_e2e_flow_persists_checkpoint_mapping_in_turn_state_store
             surface_version: Some(surface_version.clone()),
             model_preference: None,
             capability_view: None,
-                resolved_messages: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -3403,7 +3403,7 @@ async fn text_only_host_factory_threads_identity_source_to_prompt_and_model() {
             surface_version: Some(surface.version),
             model_preference: None,
             capability_view: None,
-                resolved_messages: None,
+            resolved_messages: None,
         })
         .await
         .unwrap();
@@ -4085,7 +4085,7 @@ async fn text_only_host_prompt_bundle_includes_surface_metadata_and_still_stream
         surface_version: Some(surface.version),
         model_preference: None,
         capability_view: None,
-                resolved_messages: None,
+        resolved_messages: None,
     })
     .await
     .unwrap();

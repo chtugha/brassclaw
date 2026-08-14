@@ -203,7 +203,13 @@ async fn oidc_authenticator_accepts_valid_jwks_signed_token_and_rejects_bad_clai
     );
 
     // (4) Expired → rejected.
-    let expired = sign_token(&key.private_pem, TEST_KID, TEST_ISSUER, TEST_AUDIENCE, -TEST_EXPIRED_JWT_SECS);
+    let expired = sign_token(
+        &key.private_pem,
+        TEST_KID,
+        TEST_ISSUER,
+        TEST_AUDIENCE,
+        -TEST_EXPIRED_JWT_SECS,
+    );
     assert!(
         auth.authenticate(&expired).await.is_none(),
         "expired JWT must be rejected",

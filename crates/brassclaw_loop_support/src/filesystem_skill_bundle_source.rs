@@ -41,7 +41,11 @@ impl FilesystemSkillBundleRoot {
 
     /// Creates a built-in system skill root.
     pub fn system(root: ScopedPath) -> Self {
-        Self::new(SkillSourceKind::System, root, Some(SkillVisibility::Visible))
+        Self::new(
+            SkillSourceKind::System,
+            root,
+            Some(SkillVisibility::Visible),
+        )
     }
 
     /// Creates a user-owned skill root.
@@ -51,8 +55,11 @@ impl FilesystemSkillBundleRoot {
 
     /// Creates a tenant-shared skill root.
     pub fn tenant_shared(root: ScopedPath, tenant_id: TenantId) -> Self {
-        let mut root =
-            Self::new(SkillSourceKind::TenantShared, root, Some(SkillVisibility::Visible));
+        let mut root = Self::new(
+            SkillSourceKind::TenantShared,
+            root,
+            Some(SkillVisibility::Visible),
+        );
         root.tenant_id = Some(tenant_id);
         root
     }

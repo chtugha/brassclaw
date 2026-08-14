@@ -161,7 +161,9 @@ impl TurnStateStore for TurnStateDriverBox {
         admission_policy: &dyn crate::TurnAdmissionPolicy,
         run_profile_resolver: &dyn crate::RunProfileResolver,
     ) -> Result<crate::SubmitTurnResponse, crate::TurnError> {
-        self.0.submit_turn(request, admission_policy, run_profile_resolver).await
+        self.0
+            .submit_turn(request, admission_policy, run_profile_resolver)
+            .await
     }
 
     async fn resume_turn(
@@ -194,7 +196,9 @@ impl TurnSpawnTreeStateStore for TurnStateDriverBox {
         admission_policy: &dyn crate::TurnAdmissionPolicy,
         run_profile_resolver: &dyn crate::RunProfileResolver,
     ) -> Result<crate::SubmitTurnResponse, crate::TurnError> {
-        self.0.submit_child_turn(request, admission_policy, run_profile_resolver).await
+        self.0
+            .submit_child_turn(request, admission_policy, run_profile_resolver)
+            .await
     }
 
     async fn children_of(
@@ -220,7 +224,9 @@ impl TurnSpawnTreeStateStore for TurnStateDriverBox {
         delta: u32,
         cap: u32,
     ) -> Result<SpawnTreeReservation, crate::TurnError> {
-        self.0.reserve_tree_descendants(scope, root_run_id, delta, cap).await
+        self.0
+            .reserve_tree_descendants(scope, root_run_id, delta, cap)
+            .await
     }
 
     async fn release_tree_descendants(
@@ -229,7 +235,9 @@ impl TurnSpawnTreeStateStore for TurnStateDriverBox {
         root_run_id: crate::TurnRunId,
         delta: u32,
     ) -> Result<(), crate::TurnError> {
-        self.0.release_tree_descendants(scope, root_run_id, delta).await
+        self.0
+            .release_tree_descendants(scope, root_run_id, delta)
+            .await
     }
 }
 
@@ -315,7 +323,9 @@ impl crate::events::TurnEventProjectionSource for TurnStateDriverBox {
         after: Option<crate::events::EventCursor>,
         limit: usize,
     ) -> Result<crate::events::TurnEventPage, crate::TurnError> {
-        self.0.read_turn_events_after(scope, owner_user_id, after, limit).await
+        self.0
+            .read_turn_events_after(scope, owner_user_id, after, limit)
+            .await
     }
 }
 

@@ -93,11 +93,7 @@ pub enum InterceptorConfigServiceError {
 /// Returns a stable [`RebornServicesError`] for an unavailable interceptor
 /// config service.  Callers use this in the `Option::ok_or_else` path.
 pub fn interceptor_config_unavailable() -> crate::RebornServicesError {
-    crate::RebornServicesError::from_status(
-        crate::RebornServicesErrorCode::Unavailable,
-        503,
-        false,
-    )
+    crate::RebornServicesError::from_status(crate::RebornServicesErrorCode::Unavailable, 503, false)
 }
 
 /// Map an [`InterceptorConfigServiceError`] to a [`RebornServicesError`].

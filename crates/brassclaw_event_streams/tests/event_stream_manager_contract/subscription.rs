@@ -18,7 +18,10 @@ async fn access_policy_runs_before_projection_or_live_subscription() {
     let error = manager
         .subscribe(subscribe_request(
             scope.clone(),
-            Some(ProjectionCursor::for_scope(scope, EventCursor::new(super::STALE_CURSOR))),
+            Some(ProjectionCursor::for_scope(
+                scope,
+                EventCursor::new(super::STALE_CURSOR),
+            )),
         ))
         .await
         .expect_err("access denial");

@@ -367,7 +367,7 @@ impl CredentialManager {
         };
         let now = Utc::now().timestamp_millis();
         // 60_000 ms = 1-minute buffer: reject tokens expiring in under a minute.
-            expiry_ms > (now + 60_000)
+        expiry_ms > (now + 60_000)
     }
 
     pub(crate) async fn get_valid_credential(&self) -> Result<OAuthCredential> {

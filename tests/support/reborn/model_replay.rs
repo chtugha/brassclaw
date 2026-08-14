@@ -404,7 +404,11 @@ fn request_message_summary(request: &HostManagedModelRequest) -> String {
         .messages
         .iter()
         .map(|message| {
-            let snippet = message.content.chars().take(MESSAGE_SNIPPET_CHARS).collect::<String>();
+            let snippet = message
+                .content
+                .chars()
+                .take(MESSAGE_SNIPPET_CHARS)
+                .collect::<String>();
             format!("{:?}:{snippet}", message.role)
         })
         .collect::<Vec<_>>()

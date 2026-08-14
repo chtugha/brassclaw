@@ -147,12 +147,8 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
                  missing from the settings UI until the next restart"
             );
         }
-        let mut llm_config = crate::RebornLlmConfigService::new(
-            keys,
-            pool.clone(),
-            pg_repo,
-            tenant_id,
-        );
+        let mut llm_config =
+            crate::RebornLlmConfigService::new(keys, pool.clone(), pg_repo, tenant_id);
         if let Some(adapter) = runtime.webui_llm_reload_adapter() {
             llm_config = llm_config
                 .with_reload_trigger(Arc::new(adapter) as Arc<dyn crate::LlmReloadTrigger>);
@@ -218,9 +214,10 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
             tenant_id,
             "default",
         );
-        api = api.with_recipe_store(
-            Arc::new(facade) as Arc<dyn brassclaw_product_workflow::RecipeStore>
-        );
+        api =
+            api.with_recipe_store(
+                Arc::new(facade) as Arc<dyn brassclaw_product_workflow::RecipeStore>
+            );
         tracing::debug!("RecipeStore wired through PgRecipeStoreFacade (reborn_recipes)");
     } else if let Some(memory_doc_store) = services.pg_memory_doc_store.clone() {
         // Non-postgres fallback: keep old MemoryDoc-backed store until PG-8 cleanup.
@@ -250,20 +247,15 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
     if let Some(pool) = services.pg_pool.clone() {
         let tenant_id = runtime.webui_tenant_id().to_string();
         let mut interceptor_svc =
-            crate::interceptor_config_service::RebornInterceptorConfigService::new(
-                pool,
-                tenant_id,
-            );
+            crate::interceptor_config_service::RebornInterceptorConfigService::new(pool, tenant_id);
         if let Some(mode) = runtime.interceptor_mode() {
             interceptor_svc = interceptor_svc.with_interceptor_mode(mode);
         }
         if let Some(gateway) = runtime.sempai_gateway() {
             interceptor_svc = interceptor_svc.with_sempai_gateway(gateway);
         }
-        api = api.with_interceptor_config_service(
-            Arc::new(interceptor_svc)
-                as Arc<dyn brassclaw_product_workflow::InterceptorConfigService>,
-        );
+        api = api.with_interceptor_config_service(Arc::new(interceptor_svc)
+            as Arc<dyn brassclaw_product_workflow::InterceptorConfigService>);
     }
 
     // Wire the Monty VM settings store (postgres path).
@@ -277,10 +269,9 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
             tenant_id,
             agent_id,
         );
-        api = api.with_monty_vm_settings_store(
-            Arc::new(monty_vm_store)
-                as Arc<dyn brassclaw_product_workflow::MontyVmSettingsStore>,
-        );
+        api = api
+            .with_monty_vm_settings_store(Arc::new(monty_vm_store)
+                as Arc<dyn brassclaw_product_workflow::MontyVmSettingsStore>);
         tracing::debug!("MontyVmSettingsStore wired through PgMontyVmSettingsStore");
     }
 
@@ -291,7 +282,7 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         let pref_store =
             crate::pg_user_preference_store::PgUserPreferenceStore::new(Arc::clone(pool));
         api = api.with_chat_preference_store(
-            Arc::new(pref_store) as Arc<dyn brassclaw_product_workflow::ChatPreferenceStore>,
+            Arc::new(pref_store) as Arc<dyn brassclaw_product_workflow::ChatPreferenceStore>
         );
         tracing::debug!("ChatPreferenceStore wired through PgUserPreferenceStore");
     }
@@ -308,7 +299,7 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
             agent_id,
         );
         api = api.with_intent_inputs_store(
-            Arc::new(intent_store) as Arc<dyn brassclaw_product_workflow::IntentInputsStore>,
+            Arc::new(intent_store) as Arc<dyn brassclaw_product_workflow::IntentInputsStore>
         );
         tracing::debug!("IntentInputsStore wired through PgIntentInputsStore");
     }

@@ -114,13 +114,11 @@ impl<F: RootFilesystem + ?Sized + 'static> DocPlanDissector<F> {
             if plan_type_entry.file_type != brassclaw_filesystem::FileType::Directory {
                 continue;
             }
-            let type_path = match VirtualPath::new(format!(
-                "{}/{}",
-                PLAN_LIBRARY_ROOT, plan_type_entry.name
-            )) {
-                Ok(p) => p,
-                Err(_) => continue,
-            };
+            let type_path =
+                match VirtualPath::new(format!("{}/{}", PLAN_LIBRARY_ROOT, plan_type_entry.name)) {
+                    Ok(p) => p,
+                    Err(_) => continue,
+                };
             let plan_files = match self.filesystem.list_dir(&type_path).await {
                 Ok(f) => f,
                 Err(_) => continue,
@@ -169,7 +167,13 @@ impl<F: RootFilesystem + ?Sized + 'static> DocPlanDissector<F> {
         // 1. Emit a monty-class extension row (thin orchestration body).
         let ext_name = format!("plan-{}-{}", plan_type, slug)
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '-'
+                }
+            })
             .collect::<String>();
         let ext_name = sanitize_name(&ext_name);
         let ext_payload = serde_json::json!({

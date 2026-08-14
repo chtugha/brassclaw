@@ -925,7 +925,11 @@ pub fn compute_value_scorecard(envelope: &TraceContributionEnvelope) -> TraceVal
         envelope.outcome.task_success,
         TaskSuccess::Failure | TaskSuccess::Partial
     );
-    let difficulty = if failed_or_partial { DIFFICULTY_FAILED_OR_PARTIAL } else { DIFFICULTY_SUCCESS };
+    let difficulty = if failed_or_partial {
+        DIFFICULTY_FAILED_OR_PARTIAL
+    } else {
+        DIFFICULTY_SUCCESS
+    };
     let dependability = if envelope.events.is_empty() {
         0.0
     } else if envelope.privacy.redaction_hash.starts_with("sha256:") {
@@ -5139,7 +5143,8 @@ fn is_disallowed_trace_upload_claim_issuer_ip(ip: IpAddr) -> bool {
                 || (octets[0] == 100 && (64..=127).contains(&octets[1]))
                 || (octets[0] == IPV4_LINK_LOCAL_FIRST && octets[1] == IPV4_LINK_LOCAL_SECOND)
                 || (octets[0] == 172 && (16..=31).contains(&octets[1]))
-                || (octets[0] == IPV4_CLASS_C_PRIVATE_FIRST && octets[1] == IPV4_CLASS_C_PRIVATE_SECOND)
+                || (octets[0] == IPV4_CLASS_C_PRIVATE_FIRST
+                    && octets[1] == IPV4_CLASS_C_PRIVATE_SECOND)
                 || (octets[0] == 198 && (18..=19).contains(&octets[1]))
                 || octets[0] >= IPV4_MULTICAST_RESERVED_FIRST_OCTET
         }

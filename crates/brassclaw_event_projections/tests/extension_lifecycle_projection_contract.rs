@@ -59,7 +59,9 @@ async fn extension_lifecycle_projects_metadata_only_from_durable_audit_log() {
     service.remove(&extension_id).await.unwrap();
 
     assert!(service.registry().get_extension(&extension_id).is_none());
-    let projection = ReplayAuditProjectionService::from_audit_log(Arc::clone(&audit_log) as Arc<dyn brassclaw_events::DurableAuditLog>);
+    let projection = ReplayAuditProjectionService::from_audit_log(
+        Arc::clone(&audit_log) as Arc<dyn brassclaw_events::DurableAuditLog>
+    );
     let snapshot = projection
         .snapshot(AuditProjectionRequest {
             scope: ProjectionScope::from_resource_scope(&extension_resource_scope()),

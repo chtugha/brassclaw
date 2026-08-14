@@ -122,17 +122,17 @@ impl ComponentValidator {
             },
             // Extensions (04-09)
             4..=9 => match &component {
-                ComponentPayload::Generic(g) => validate_soft_budget(g, config, BUDGET_STANDARD, false),
-                ComponentPayload::ToolSkill(skill) => {
-                    validate_soft_budget_named(
-                        skill.name.as_str(),
-                        skill.description.as_str(),
-                        skill.code_snippet.as_deref().unwrap_or(""),
-                        config,
-                        BUDGET_STANDARD,
-                        false,
-                    )
+                ComponentPayload::Generic(g) => {
+                    validate_soft_budget(g, config, BUDGET_STANDARD, false)
                 }
+                ComponentPayload::ToolSkill(skill) => validate_soft_budget_named(
+                    skill.name.as_str(),
+                    skill.description.as_str(),
+                    skill.code_snippet.as_deref().unwrap_or(""),
+                    config,
+                    BUDGET_STANDARD,
+                    false,
+                ),
                 ComponentPayload::Recipe(_) => {
                     ValidationResult::from_error("Extension class does not accept a Recipe payload")
                 }
@@ -184,9 +184,7 @@ impl ComponentValidator {
                         s.description.as_str(),
                         s.code_snippet.as_deref().unwrap_or(""),
                     ),
-                    ComponentPayload::Recipe(r) => {
-                        (r.name.as_str(), r.description.as_str(), "")
-                    }
+                    ComponentPayload::Recipe(r) => (r.name.as_str(), r.description.as_str(), ""),
                 };
                 validate_soft_budget_named(name, desc, content, config, BUDGET_NOTES, false)
             }
@@ -257,7 +255,9 @@ fn validate_soft_budget_named(
     validate_name_generic(name, &mut result);
     validate_description_soft(description, &mut result);
     if content.is_empty() {
-        result.warnings.push("Component content is empty".to_string());
+        result
+            .warnings
+            .push("Component content is empty".to_string());
     }
     let budget = config.token_budget.unwrap_or(default_budget);
     let hard = config.token_budget_hard_error.unwrap_or(default_hard);
@@ -278,7 +278,9 @@ fn validate_no_budget(name: &str, description: &str, content: &str) -> Validatio
     validate_name_generic(name, &mut result);
     validate_description_soft(description, &mut result);
     if content.is_empty() {
-        result.warnings.push("Component content is empty".to_string());
+        result
+            .warnings
+            .push("Component content is empty".to_string());
     }
     result
 }
@@ -336,7 +338,9 @@ fn validate_tool_generic(
     // an error is always added because tool_name + param_schema cannot be verified.
     let mut result = validate_skill_generic(component, config);
     // Replace the generic "needs ToolSkill" message with a tool-specific one.
-    result.errors.retain(|e| !e.contains("Skill class requires a ToolSkill payload"));
+    result
+        .errors
+        .retain(|e| !e.contains("Skill class requires a ToolSkill payload"));
     result.errors.push(
         "Tool class requires a ToolSkill payload for tool_name and param_schema validation; \
          Generic payload was supplied — upgrade to ToolSkill to complete validation"
@@ -375,7 +379,9 @@ fn apply_config_overrides_skill(
 /// no consecutive hyphens, no leading/trailing hyphens).
 fn validate_name_skill(name: &str, result: &mut ValidationResult) {
     if name.is_empty() {
-        result.errors.push("Skill name must not be empty".to_string());
+        result
+            .errors
+            .push("Skill name must not be empty".to_string());
         return;
     }
     if name.len() > 64 {
@@ -407,7 +413,9 @@ fn validate_name_skill(name: &str, result: &mut ValidationResult) {
 /// Generic name check for non-skill classes (max 256, non-empty).
 fn validate_name_generic(name: &str, result: &mut ValidationResult) {
     if name.is_empty() {
-        result.errors.push("Component name must not be empty".to_string());
+        result
+            .errors
+            .push("Component name must not be empty".to_string());
     } else if name.len() > 256 {
         result.errors.push(format!(
             "Component name exceeds 256 chars ({} chars)",
@@ -570,7 +578,10 @@ mod tests {
             &[],
         );
         assert!(
-            result.warnings.iter().any(|w| w.contains("config override")),
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("config override")),
             "expected config-override warning, got {:?}",
             result.warnings
         );
@@ -593,7 +604,10 @@ mod tests {
             &[],
         );
         assert!(
-            result.errors.iter().any(|e| e.contains("ToolSkill payload")),
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("ToolSkill payload")),
             "expected explicit ToolSkill-required error, got {:?}",
             result.errors
         );
@@ -614,7 +628,10 @@ mod tests {
             &[],
         );
         assert!(
-            result.errors.iter().any(|e| e.contains("description must not be empty")),
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("description must not be empty")),
             "expected hard error for empty description, got {:?}",
             result.errors
         );
@@ -643,7 +660,9 @@ mod tests {
 
     #[test]
     fn extension_recipe_payload_returns_error() {
-        use crate::types::recipe::{RecipeSource, RecipeTrigger, RecipeValidation, ValidationStatus};
+        use crate::types::recipe::{
+            RecipeSource, RecipeTrigger, RecipeValidation, ValidationStatus,
+        };
         let recipe = crate::types::recipe::Recipe {
             id: "r1".into(),
             name: "my-recipe".into(),
@@ -685,7 +704,10 @@ mod tests {
             &[],
         );
         assert!(
-            result.errors.iter().any(|e| e.contains("does not accept a Recipe payload")),
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("does not accept a Recipe payload")),
             "expected Recipe-rejected error for extension class, got {:?}",
             result.errors
         );

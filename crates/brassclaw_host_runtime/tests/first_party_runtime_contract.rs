@@ -1,7 +1,6 @@
 /// Integer value used as an invalid-type URL in rejection tests.
 const INVALID_TYPE_INT: i64 = 123;
 
-
 use std::{
     panic::AssertUnwindSafe,
     sync::{Arc, Mutex},

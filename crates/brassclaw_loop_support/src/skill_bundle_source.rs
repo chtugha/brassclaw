@@ -194,10 +194,7 @@ pub struct SkillBundleDescriptor {
 
 impl SkillBundleDescriptor {
     /// Creates a descriptor with the default `SKILL.md` descriptor path.
-    pub fn new(
-        id: SkillBundleId,
-        visibility: Option<SkillVisibility>,
-    ) -> Self {
+    pub fn new(id: SkillBundleId, visibility: Option<SkillVisibility>) -> Self {
         Self {
             provenance: SkillBundleProvenance::new(id.source_kind()),
             id,
@@ -374,13 +371,15 @@ mod tests {
 
     #[test]
     fn skill_bundle_descriptor_can_override_provenance_with_content_hash() {
-        let descriptor =
-            SkillBundleDescriptor::new(id(SkillSourceKind::User, "code-review"), Some(SkillVisibility::Visible))
-                .with_skill_md_path(SkillFilePath::new("nested/SKILL.md").unwrap())
-                .with_provenance(
-                    SkillBundleProvenance::new(SkillSourceKind::TenantShared)
-                        .with_content_hash("sha256:abc123"),
-                );
+        let descriptor = SkillBundleDescriptor::new(
+            id(SkillSourceKind::User, "code-review"),
+            Some(SkillVisibility::Visible),
+        )
+        .with_skill_md_path(SkillFilePath::new("nested/SKILL.md").unwrap())
+        .with_provenance(
+            SkillBundleProvenance::new(SkillSourceKind::TenantShared)
+                .with_content_hash("sha256:abc123"),
+        );
 
         assert_eq!(descriptor.id().source_kind(), SkillSourceKind::User);
         assert_eq!(descriptor.id().name(), "code-review");

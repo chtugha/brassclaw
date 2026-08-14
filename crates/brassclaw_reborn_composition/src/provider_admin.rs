@@ -367,7 +367,9 @@ fn provider_info(
     }
 }
 
-pub(crate) fn provider_protocol_wire_name(protocol: brassclaw_llm::registry::ProviderProtocol) -> String {
+pub(crate) fn provider_protocol_wire_name(
+    protocol: brassclaw_llm::registry::ProviderProtocol,
+) -> String {
     serde_json::to_value(protocol)
         .ok()
         .and_then(|value| value.as_str().map(str::to_string))

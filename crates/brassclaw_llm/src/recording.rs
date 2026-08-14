@@ -1710,7 +1710,8 @@ mod tests {
         // These are non-sensitive numeric fields that must NOT be redacted.
         const TOKEN_COUNT_FIXTURE: u32 = 42;
         const OUTPUT_TOKENS_FIXTURE: u32 = 50;
-        let body = format!(r#"{{
+        let body = format!(
+            r#"{{
             "token_count": {TOKEN_COUNT_FIXTURE},
             "input_tokens": 100,
             "output_tokens": {OUTPUT_TOKENS_FIXTURE},
@@ -1720,7 +1721,8 @@ mod tests {
             "auth_method": "oauth",
             "auth_url": "https://example.com/auth",
             "authorization_type": "bearer"
-        }}"#);
+        }}"#
+        );
         let body = body.as_str();
         let redacted = redact_body(body);
         let parsed: serde_json::Value = serde_json::from_str(&redacted).unwrap();

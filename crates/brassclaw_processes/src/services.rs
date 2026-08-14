@@ -168,7 +168,10 @@ impl ProcessServices<crate::pg_store::PgProcessStore, crate::pg_store::PgProcess
         let t = tenant_id.into();
         Self::new(
             Arc::new(crate::pg_store::PgProcessStore::new(Arc::clone(&pool), &t)),
-            Arc::new(crate::pg_store::PgProcessResultStore::new(Arc::clone(&pool), &t)),
+            Arc::new(crate::pg_store::PgProcessResultStore::new(
+                Arc::clone(&pool),
+                &t,
+            )),
         )
     }
 }

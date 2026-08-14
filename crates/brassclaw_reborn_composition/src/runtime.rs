@@ -96,10 +96,7 @@ use crate::trigger_poller::{
     TriggerPollerCompositionDeps, TriggerPollerRuntimeHandle, TriggerTurnSnapshotSource,
     spawn_trigger_poller,
 };
-use crate::{
-    RebornBuildError, RebornProductAuthServices, RebornServices,
-    build_reborn_services,
-};
+use crate::{RebornBuildError, RebornProductAuthServices, RebornServices, build_reborn_services};
 
 const MAX_DESCENDANT_CANCEL_NODES: usize = 1_000;
 
@@ -298,18 +295,18 @@ async fn build_trigger_poller_services(
         let pool = pg_pool.ok_or_else(|| RebornRuntimeError::InvalidArgument {
             reason: "trigger poller on pure-postgres path requires a Postgres pool".to_string(),
         })?;
-        let conversations =
-            brassclaw_conversations::InMemoryConversationServices::with_pg_store(
-                (**pool).clone(),
-                tenant_id.as_str(),
-            )
-            .await
-            .map_err(|error| RebornRuntimeError::InvalidArgument {
-                reason: format!("pg conversation services unavailable: {error}"),
-            })?;
+        let conversations = brassclaw_conversations::InMemoryConversationServices::with_pg_store(
+            (**pool).clone(),
+            tenant_id.as_str(),
+        )
+        .await
+        .map_err(|error| RebornRuntimeError::InvalidArgument {
+            reason: format!("pg conversation services unavailable: {error}"),
+        })?;
         #[cfg(any(test, feature = "test-support"))]
-        let pairing_service: Arc<dyn brassclaw_conversations::ConversationActorPairingService> =
-            Arc::new(conversations.clone());
+        let pairing_service: Arc<
+            dyn brassclaw_conversations::ConversationActorPairingService,
+        > = Arc::new(conversations.clone());
         let TriggerPollerServicesInner {
             materializer,
             trusted_submitter,
@@ -692,9 +689,7 @@ impl RebornRuntime {
     /// settings service uses this to hot-swap the Sempai provider without a
     /// restart.
     #[cfg(feature = "root-llm-provider")]
-    pub(crate) fn sempai_swappable(
-        &self,
-    ) -> Option<Arc<brassclaw_llm::SwappableLlmProvider>> {
+    pub(crate) fn sempai_swappable(&self) -> Option<Arc<brassclaw_llm::SwappableLlmProvider>> {
         self.llm_reload
             .as_ref()
             .and_then(|r| r.sempai_swappable.clone())
@@ -715,9 +710,7 @@ impl RebornRuntime {
     /// The shared interceptor mode flag.  The LLM-config settings service flips
     /// this when the operator activates or deactivates the Sempai provider.
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
-    pub(crate) fn interceptor_mode(
-        &self,
-    ) -> Option<brassclaw_interceptor::SharedInterceptorMode> {
+    pub(crate) fn interceptor_mode(&self) -> Option<brassclaw_interceptor::SharedInterceptorMode> {
         self.interceptor_mode.clone()
     }
 
@@ -1704,9 +1697,13 @@ pub async fn build_reborn_runtime(
                              the system-prompt storage root"
                         .to_string(),
                 })?;
-            let stores = crate::factory::build_pg_runtime_stores(Arc::clone(pool), reborn_home, &pg_tenant_id)
-                .await
-                .map_err(RebornRuntimeError::Build)?;
+            let stores = crate::factory::build_pg_runtime_stores(
+                Arc::clone(pool),
+                reborn_home,
+                &pg_tenant_id,
+            )
+            .await
+            .map_err(RebornRuntimeError::Build)?;
             let thread_svc: Arc<dyn brassclaw_threads::SessionThreadService> =
                 Arc::new(brassclaw_threads::PgSessionThreadService::new(
                     Arc::clone(pool),
@@ -1755,13 +1752,15 @@ pub async fn build_reborn_runtime(
         }
     } else {
         // Pure-PG path: build PG-backed equivalents.
-        let pool = services.pg_pool.as_ref().ok_or_else(|| {
-            RebornRuntimeError::InvalidArgument {
-                reason: "neither a local-dev substrate nor a Postgres pool is available; \
+        let pool =
+            services
+                .pg_pool
+                .as_ref()
+                .ok_or_else(|| RebornRuntimeError::InvalidArgument {
+                    reason: "neither a local-dev substrate nor a Postgres pool is available; \
                          cannot assemble runtime"
-                    .to_string(),
-            }
-        })?;
+                        .to_string(),
+                })?;
         let reborn_home = pg_reborn_home
             .as_deref()
             .filter(|p| !p.as_os_str().is_empty())
@@ -1770,16 +1769,15 @@ pub async fn build_reborn_runtime(
                          the system-prompt storage root"
                     .to_string(),
             })?;
-        let stores = crate::factory::build_pg_runtime_stores(Arc::clone(pool), reborn_home, &pg_tenant_id)
-            .await
-            .map_err(RebornRuntimeError::Build)?;
+        let stores =
+            crate::factory::build_pg_runtime_stores(Arc::clone(pool), reborn_home, &pg_tenant_id)
+                .await
+                .map_err(RebornRuntimeError::Build)?;
         let event_sink = Arc::clone(&stores.broadcast_budget_event_sink)
             as Arc<dyn brassclaw_resources::BudgetEventSink>;
-        let thread_svc: Arc<dyn brassclaw_threads::SessionThreadService> =
-            Arc::new(brassclaw_threads::PgSessionThreadService::new(
-                Arc::clone(pool),
-                pg_tenant_id.as_str(),
-            ));
+        let thread_svc: Arc<dyn brassclaw_threads::SessionThreadService> = Arc::new(
+            brassclaw_threads::PgSessionThreadService::new(Arc::clone(pool), pg_tenant_id.as_str()),
+        );
         let result = (
             Arc::new(brassclaw_turns::TurnStateDriverBox::new(
                 Arc::clone(&stores.turn_state) as Arc<dyn brassclaw_turns::TurnStateDriver>,
@@ -1809,11 +1807,10 @@ pub async fn build_reborn_runtime(
                 reason: "local-dev RebornServices did not provide runtime substrate".to_string(),
             })?;
     #[cfg(not(feature = "postgres"))]
-    let turn_state_store: Arc<brassclaw_turns::TurnStateDriverBox> = Arc::new(
-        brassclaw_turns::TurnStateDriverBox::new(
+    let turn_state_store: Arc<brassclaw_turns::TurnStateDriverBox> =
+        Arc::new(brassclaw_turns::TurnStateDriverBox::new(
             Arc::clone(&local_runtime.turn_state) as Arc<dyn brassclaw_turns::TurnStateDriver>,
-        ),
-    );
+        ));
     #[cfg(not(feature = "postgres"))]
     let checkpoint_state_store = Arc::clone(&local_runtime.checkpoint_state_store);
     #[cfg(not(feature = "postgres"))]
@@ -1821,9 +1818,8 @@ pub async fn build_reborn_runtime(
     #[cfg(not(feature = "postgres"))]
     let thread_service = Arc::clone(&local_runtime.thread_service);
     #[cfg(not(feature = "postgres"))]
-    let budget_event_sink_for_accountant =
-        Arc::clone(&local_runtime.broadcast_budget_event_sink)
-            as Arc<dyn brassclaw_resources::BudgetEventSink>;
+    let budget_event_sink_for_accountant = Arc::clone(&local_runtime.broadcast_budget_event_sink)
+        as Arc<dyn brassclaw_resources::BudgetEventSink>;
     #[cfg(not(feature = "postgres"))]
     let resource_governor_for_accountant = Arc::clone(&local_runtime.resource_governor);
     #[cfg(not(feature = "postgres"))]
@@ -1847,11 +1843,17 @@ pub async fn build_reborn_runtime(
             if pg_stores.is_some() {
                 None
             } else {
-                services.local_runtime.as_ref().map(|lr| Arc::clone(&lr.turn_state))
+                services
+                    .local_runtime
+                    .as_ref()
+                    .map(|lr| Arc::clone(&lr.turn_state))
             }
         }
         #[cfg(not(feature = "postgres"))]
-        services.local_runtime.as_ref().map(|lr| Arc::clone(&lr.turn_state))
+        services
+            .local_runtime
+            .as_ref()
+            .map(|lr| Arc::clone(&lr.turn_state))
     };
 
     // Concrete BroadcastBudgetEventSink — needed by BudgetEventProjection::spawn
@@ -1883,9 +1885,11 @@ pub async fn build_reborn_runtime(
         #[cfg(feature = "postgres")]
         {
             if let Some(pg) = pg_stores.as_ref() {
-                Arc::clone(&pg.approval_requests) as Arc<dyn brassclaw_run_state::ApprovalRequestStore>
+                Arc::clone(&pg.approval_requests)
+                    as Arc<dyn brassclaw_run_state::ApprovalRequestStore>
             } else if let Some(lr) = services.local_runtime.as_ref() {
-                Arc::clone(&lr.approval_requests) as Arc<dyn brassclaw_run_state::ApprovalRequestStore>
+                Arc::clone(&lr.approval_requests)
+                    as Arc<dyn brassclaw_run_state::ApprovalRequestStore>
             } else {
                 return Err(RebornRuntimeError::InvalidArgument {
                     reason: "approval store not available (no substrate)".to_string(),
@@ -1894,16 +1898,19 @@ pub async fn build_reborn_runtime(
         }
         #[cfg(not(feature = "postgres"))]
         {
-            Arc::clone(&local_runtime.approval_requests) as Arc<dyn brassclaw_run_state::ApprovalRequestStore>
+            Arc::clone(&local_runtime.approval_requests)
+                as Arc<dyn brassclaw_run_state::ApprovalRequestStore>
         }
     };
     let substrate_capability_leases: Arc<dyn brassclaw_authorization::CapabilityLeaseStore> = {
         #[cfg(feature = "postgres")]
         {
             if let Some(pg) = pg_stores.as_ref() {
-                Arc::clone(&pg.capability_leases) as Arc<dyn brassclaw_authorization::CapabilityLeaseStore>
+                Arc::clone(&pg.capability_leases)
+                    as Arc<dyn brassclaw_authorization::CapabilityLeaseStore>
             } else if let Some(lr) = services.local_runtime.as_ref() {
-                Arc::clone(&lr.capability_leases) as Arc<dyn brassclaw_authorization::CapabilityLeaseStore>
+                Arc::clone(&lr.capability_leases)
+                    as Arc<dyn brassclaw_authorization::CapabilityLeaseStore>
             } else {
                 return Err(RebornRuntimeError::InvalidArgument {
                     reason: "lease store not available (no substrate)".to_string(),
@@ -1912,7 +1919,8 @@ pub async fn build_reborn_runtime(
         }
         #[cfg(not(feature = "postgres"))]
         {
-            Arc::clone(&local_runtime.capability_leases) as Arc<dyn brassclaw_authorization::CapabilityLeaseStore>
+            Arc::clone(&local_runtime.capability_leases)
+                as Arc<dyn brassclaw_authorization::CapabilityLeaseStore>
         }
     };
     // Extract workspace/skill/memory mounts — empty on the pure-PG path.
@@ -1965,9 +1973,9 @@ pub async fn build_reborn_runtime(
                     "default",
                 );
                 match store.get("default", "default").await {
-                    Ok(settings) => Some(std::time::Duration::from_secs(
-                        settings.max_duration_secs,
-                    )),
+                    Ok(settings) => {
+                        Some(std::time::Duration::from_secs(settings.max_duration_secs))
+                    }
                     Err(_) => None,
                 }
             } else {
@@ -2007,7 +2015,10 @@ pub async fn build_reborn_runtime(
             llm.as_ref().and_then(|l| {
                 brassclaw_llm::ProviderRegistry::try_load_from_path(None)
                     .ok()
-                    .and_then(|reg| reg.find(l.provider_id()).and_then(|d| d.context_window_tokens))
+                    .and_then(|reg| {
+                        reg.find(l.provider_id())
+                            .and_then(|d| d.context_window_tokens)
+                    })
             })
         })
     };
@@ -2053,7 +2064,8 @@ pub async fn build_reborn_runtime(
                     brassclaw_llm::ProviderRegistry::try_load_from_path(None)
                         .ok()
                         .and_then(|reg| {
-                            reg.find(l.provider_id()).and_then(|d| d.cache_retention.clone())
+                            reg.find(l.provider_id())
+                                .and_then(|d| d.cache_retention.clone())
                         })
                 })
             })
@@ -2092,11 +2104,13 @@ pub async fn build_reborn_runtime(
                 // On the postgres build (hybrid or pure-PG), use services.local_runtime;
                 // the pure-PG path has no local-dev filesystem so skill context is None.
                 #[cfg(not(feature = "postgres"))]
-                let local_runtime_ref: Option<&crate::factory::RebornLocalRuntimeServices> =
-                    Some(local_runtime);
+                let local_runtime_ref: Option<
+                    &crate::factory::RebornLocalRuntimeServices,
+                > = Some(local_runtime);
                 #[cfg(feature = "postgres")]
-                let local_runtime_ref: Option<&crate::factory::RebornLocalRuntimeServices> =
-                    services.local_runtime.as_deref();
+                let local_runtime_ref: Option<
+                    &crate::factory::RebornLocalRuntimeServices,
+                > = services.local_runtime.as_deref();
                 if let Some(lr) = local_runtime_ref {
                     let local_dev_skills = local_dev_filesystem_skill_context_source(
                         lr,
@@ -2140,9 +2154,9 @@ pub async fn build_reborn_runtime(
                 if summary.inserted > 0 || summary.updated > 0 {
                     tracing::debug!(
                         inserted = summary.inserted,
-                        updated  = summary.updated,
-                        skipped  = summary.skipped,
-                        failed   = summary.failed.len(),
+                        updated = summary.updated,
+                        skipped = summary.skipped,
+                        failed = summary.failed.len(),
                         "component_import: legacy MemoryDoc rows migrated to component tables"
                     );
                 }
@@ -2328,9 +2342,9 @@ pub async fn build_reborn_runtime(
     #[cfg(feature = "postgres")]
     let subagent_goal_store: Arc<dyn brassclaw_reborn::runtime::RuntimeSubagentGoalStore> =
         if let Some(pool) = services.pg_pool.as_ref() {
-            Arc::new(brassclaw_reborn::subagent::goal_store::PgSubagentGoalStore::new(
-                (**pool).clone(),
-            ))
+            Arc::new(
+                brassclaw_reborn::subagent::goal_store::PgSubagentGoalStore::new((**pool).clone()),
+            )
         } else {
             Arc::new(InMemoryBoundedSubagentGoalStore::new())
         };
@@ -2345,7 +2359,9 @@ pub async fn build_reborn_runtime(
     #[cfg(feature = "postgres")]
     let outbound_store: Arc<dyn brassclaw_outbound::OutboundStateStore> =
         if let Some(pool) = services.pg_pool.as_ref() {
-            Arc::new(brassclaw_outbound::PgOutboundStateStore::new((**pool).clone()))
+            Arc::new(brassclaw_outbound::PgOutboundStateStore::new(
+                (**pool).clone(),
+            ))
         } else {
             Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default())
         };
@@ -2505,11 +2521,15 @@ pub async fn build_reborn_runtime(
     // pool is wired.  Falls back to the MemoryDoc-backed RecipeLibrary when no
     // pool is available (non-postgres / local-dev without embedded PG).
     #[cfg(feature = "postgres")]
-    let recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>> =
-        services.pg_pool.as_ref().map(|pool| {
-            Arc::new(crate::pg_recipe_store::PgRecipeLibrary::local_dev(Arc::clone(pool)))
-                as Arc<dyn brassclaw_turns::run_profile::RecipeLookup>
-        }).or_else(|| {
+    let recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>> = services
+        .pg_pool
+        .as_ref()
+        .map(|pool| {
+            Arc::new(crate::pg_recipe_store::PgRecipeLibrary::local_dev(
+                Arc::clone(pool),
+            )) as Arc<dyn brassclaw_turns::run_profile::RecipeLookup>
+        })
+        .or_else(|| {
             // Fallback: MemoryDoc-backed store (retained until PG-8 cleanup).
             services.pg_memory_doc_store.as_ref().map(|store| {
                 let dyn_store: Arc<dyn brassclaw_engine::traits::store::Store> =
@@ -2550,10 +2570,8 @@ pub async fn build_reborn_runtime(
     // Routes Sempai-proposed component updates and intent examples to Q1
     // validation queue so operators can review before they take effect.
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
-    let proposal_sink: Option<Arc<dyn brassclaw_interceptor::SempaiProposalSink>> = services
-        .pg_pool
-        .as_ref()
-        .map(|pool| {
+    let proposal_sink: Option<Arc<dyn brassclaw_interceptor::SempaiProposalSink>> =
+        services.pg_pool.as_ref().map(|pool| {
             Arc::new(crate::sempai_proposal_sink::PgSempaiProposalSink::new(
                 Arc::clone(pool),
                 validated_identity.tenant_id.as_str(),
@@ -2676,7 +2694,9 @@ pub async fn build_reborn_runtime(
     // through the PG run-state directly.
     let approval_turn_runs: Arc<dyn brassclaw_product_workflow::ApprovalTurnRunLocator> =
         if let Some(ld_turn_state) = &local_dev_turn_state {
-            Arc::new(LocalDevApprovalTurnRunLocator::new(Arc::clone(ld_turn_state)))
+            Arc::new(LocalDevApprovalTurnRunLocator::new(Arc::clone(
+                ld_turn_state,
+            )))
         } else {
             Arc::new(EmptyApprovalTurnRunLocator)
         };
@@ -3177,8 +3197,7 @@ pub(crate) struct RebornLlmReloadParts {
     /// Sempai model gateway — wraps `sempai_swappable` in a
     /// `LlmProviderModelGateway` so the interceptor host can call it via the
     /// `HostManagedModelGateway` trait without knowing the concrete type.
-    pub(crate) sempai_gateway:
-        Option<Arc<dyn brassclaw_loop_support::HostManagedModelGateway>>,
+    pub(crate) sempai_gateway: Option<Arc<dyn brassclaw_loop_support::HostManagedModelGateway>>,
 }
 
 #[cfg(feature = "root-llm-provider")]
@@ -3250,12 +3269,9 @@ fn wrap_swappable_gateway(
     // Build the Sempai gateway using a dedicated "sempai_model" profile.
     // The gateway is backed by the swappable so a live-swap of the inner
     // provider is picked up immediately without rebuilding the gateway.
-    let sempai_model_profile_id =
-        ModelProfileId::new("sempai_model").map_err(|reason| {
-            RebornRuntimeError::LlmProvider(format!(
-                "invalid sempai model profile id: {reason}"
-            ))
-        })?;
+    let sempai_model_profile_id = ModelProfileId::new("sempai_model").map_err(|reason| {
+        RebornRuntimeError::LlmProvider(format!("invalid sempai model profile id: {reason}"))
+    })?;
     let sempai_policy =
         LlmModelProfilePolicy::new().allow_model_profile(sempai_model_profile_id, None);
     let sempai_provider: Arc<dyn LlmProvider> =
@@ -5433,7 +5449,9 @@ mod tests {
 
         let runtime = build_reborn_runtime(input).await.expect("runtime builds");
         let runtime_turn_coordinator = runtime.webui_turn_coordinator();
-        let bundle = build_webui_services(&runtime, None).await.expect("webui bundle");
+        let bundle = build_webui_services(&runtime, None)
+            .await
+            .expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
             TenantId::new("runtime-webui-tenant").unwrap(),
             UserId::new("runtime-webui-owner").unwrap(),
@@ -5551,7 +5569,9 @@ mod tests {
         .with_model_gateway_override(gateway);
 
         let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let bundle = build_webui_services(&runtime, None).await.expect("webui bundle");
+        let bundle = build_webui_services(&runtime, None)
+            .await
+            .expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
             TenantId::new("runtime-webui-lifecycle-tenant").unwrap(),
             UserId::new("runtime-webui-lifecycle-owner").unwrap(),
@@ -5674,7 +5694,9 @@ mod tests {
 
         let mut runtime = build_reborn_runtime(input).await.expect("runtime builds");
         runtime.services.host_runtime = None;
-        let bundle = build_webui_services(&runtime, None).await.expect("webui bundle");
+        let bundle = build_webui_services(&runtime, None)
+            .await
+            .expect("webui bundle");
         let caller_without_agent = WebUiAuthenticatedCaller::new(
             TenantId::new("runtime-webui-no-agent-tenant").unwrap(),
             UserId::new("runtime-webui-no-agent-owner").unwrap(),
@@ -5727,7 +5749,9 @@ mod tests {
 
         let mut runtime = build_reborn_runtime(input).await.expect("runtime builds");
         runtime.services.host_runtime = None;
-        let bundle = build_webui_services(&runtime, None).await.expect("webui bundle");
+        let bundle = build_webui_services(&runtime, None)
+            .await
+            .expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
             TenantId::new("runtime-webui-no-host-tenant").unwrap(),
             UserId::new("runtime-webui-no-host-owner").unwrap(),
@@ -5775,7 +5799,9 @@ mod tests {
         .with_model_gateway_override(gateway);
 
         let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let bundle = build_webui_services(&runtime, None).await.expect("webui bundle");
+        let bundle = build_webui_services(&runtime, None)
+            .await
+            .expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
             TenantId::new("runtime-webui-approval-tenant").unwrap(),
             UserId::new("runtime-webui-approval-owner").unwrap(),
@@ -5842,7 +5868,9 @@ mod tests {
         .with_model_gateway_override(gateway);
 
         let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let bundle = build_webui_services(&runtime, None).await.expect("webui bundle");
+        let bundle = build_webui_services(&runtime, None)
+            .await
+            .expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
             TenantId::new("runtime-webui-auth-tenant").unwrap(),
             UserId::new("runtime-webui-auth-owner").unwrap(),
@@ -5908,7 +5936,9 @@ mod tests {
         .with_model_gateway_override(gateway);
 
         let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let bundle = build_webui_services(&runtime, None).await.expect("webui bundle");
+        let bundle = build_webui_services(&runtime, None)
+            .await
+            .expect("webui bundle");
         let caller = WebUiAuthenticatedCaller::new(
             TenantId::new("runtime-webui-audit-tenant").unwrap(),
             UserId::new("runtime-webui-audit-owner").unwrap(),
@@ -6097,7 +6127,9 @@ mod tests {
         .with_model_gateway_override(gateway);
 
         let runtime = build_reborn_runtime(input).await.expect("runtime builds");
-        let bundle = build_webui_services(&runtime, None).await.expect("webui bundle");
+        let bundle = build_webui_services(&runtime, None)
+            .await
+            .expect("webui bundle");
         let webui_user_id = UserId::new("runtime-webui-skill-user").unwrap();
         let caller = WebUiAuthenticatedCaller::new(
             TenantId::new("runtime-webui-skill-tenant").unwrap(),

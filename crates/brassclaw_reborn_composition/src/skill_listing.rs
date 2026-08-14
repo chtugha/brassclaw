@@ -1,9 +1,9 @@
 #[cfg(not(feature = "skills-db"))]
 use std::collections::HashSet;
 
-use brassclaw_skills::{SkillManagementError, SkillManagementErrorKind};
 #[cfg(not(feature = "skills-db"))]
 use brassclaw_skills::ManagedSkillSource;
+use brassclaw_skills::{SkillManagementError, SkillManagementErrorKind};
 
 use crate::{
     RebornBuildError,
@@ -43,9 +43,9 @@ pub async fn list_reborn_local_skills(
             .map(|skill| (skill.name.clone(), skill.source.as_str()))
             .collect::<HashSet<_>>();
         skills.extend(
-            bundled_skills
-                .into_iter()
-                .filter(|skill| !existing_keys.contains(&(skill.name.clone(), skill.source.as_str()))),
+            bundled_skills.into_iter().filter(|skill| {
+                !existing_keys.contains(&(skill.name.clone(), skill.source.as_str()))
+            }),
         );
     }
 

@@ -226,9 +226,11 @@ pub async fn resolve_llm_selection_against_catalog_db(
     use crate::pg_provider_repo::PgProviderRepo;
 
     // Read active selection from brassclaw_config.
-    let snapshot = load_config_snapshot(pool, tenant_id)
-        .await
-        .map_err(|e| RebornLlmCatalogError::DbError { reason: e.to_string() })?;
+    let snapshot = load_config_snapshot(pool, tenant_id).await.map_err(|e| {
+        RebornLlmCatalogError::DbError {
+            reason: e.to_string(),
+        }
+    })?;
     let Some(selection) = snapshot.default_llm_slot() else {
         return Ok(None);
     };
@@ -238,10 +240,13 @@ pub async fn resolve_llm_selection_against_catalog_db(
 
     // Load the provider definition from DB.
     let pg_repo = PgProviderRepo::new(pool.clone(), tenant_id.to_string());
-    let Some(definition) = pg_repo
-        .get(provider_id)
-        .await
-        .map_err(|e| RebornLlmCatalogError::DbError { reason: e.to_string() })?
+    let Some(definition) =
+        pg_repo
+            .get(provider_id)
+            .await
+            .map_err(|e| RebornLlmCatalogError::DbError {
+                reason: e.to_string(),
+            })?
     else {
         // Provider configured in DB config but no definition row exists yet
         // (race between seeding and reload, or operator entered unknown id).

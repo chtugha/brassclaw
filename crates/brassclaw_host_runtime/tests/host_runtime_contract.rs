@@ -1009,10 +1009,7 @@ async fn default_runtime_health_without_probe_reports_required_runtimes_missing(
 
     assert!(!health.ready);
     // ECHO_MANIFEST now uses RuntimeKind::Mcp (wasm runtime was removed).
-    assert_eq!(
-        health.missing_runtime_backends,
-        vec![RuntimeKind::Mcp]
-    );
+    assert_eq!(health.missing_runtime_backends, vec![RuntimeKind::Mcp]);
 }
 
 #[tokio::test]

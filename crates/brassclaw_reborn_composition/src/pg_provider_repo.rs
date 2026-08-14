@@ -59,9 +59,7 @@ impl PgProviderRepo {
     /// Load all active (non-deleted) provider definitions — both builtin and custom.
     ///
     /// Returns `(definition, is_builtin)` pairs, builtins ordered first.
-    pub async fn load_all(
-        &self,
-    ) -> Result<Vec<(ProviderDefinition, bool)>, PgProviderRepoError> {
+    pub async fn load_all(&self) -> Result<Vec<(ProviderDefinition, bool)>, PgProviderRepoError> {
         let client = self.pool.get().await?;
         let rows = client
             .query(

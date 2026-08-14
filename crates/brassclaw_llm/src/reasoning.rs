@@ -4100,5 +4100,4 @@ That's my plan."#;
         assert_eq!(selections.len(), 1);
         assert_eq!(selections[0].tool_name, "memory_write");
     }
-
 }

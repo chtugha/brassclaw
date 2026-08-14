@@ -92,19 +92,27 @@ impl ModelsListCommand {
                     tenant.to_string(),
                 );
                 match admin
-                    .list_from_db(&pg_repo, self.provider.as_deref(), self.verbose || self.provider.is_some())
+                    .list_from_db(
+                        &pg_repo,
+                        self.provider.as_deref(),
+                        self.verbose || self.provider.is_some(),
+                    )
                     .await
                 {
                     Ok(list) => list,
                     Err(e) => {
                         tracing::debug!(error = %e, "DB provider list failed; falling back to registry");
-                        admin.list(self.provider.as_deref(), self.verbose || self.provider.is_some())?
+                        admin.list(
+                            self.provider.as_deref(),
+                            self.verbose || self.provider.is_some(),
+                        )?
                     }
                 }
             }
-            Err(_) => {
-                admin.list(self.provider.as_deref(), self.verbose || self.provider.is_some())?
-            }
+            Err(_) => admin.list(
+                self.provider.as_deref(),
+                self.verbose || self.provider.is_some(),
+            )?,
         };
 
         if self.json {

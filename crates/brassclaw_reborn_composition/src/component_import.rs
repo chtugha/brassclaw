@@ -137,8 +137,10 @@ mod inner {
                 // Trim name to 250 chars (table constraint is 256).
                 let name: String = name.chars().take(250).collect();
                 let hash = sha256_hex(&format!("{}\n\n{}", title, chunk));
-                let consumer_tags: Vec<String> =
-                    consumer_tags_for_table(table).iter().map(|s| s.to_string()).collect();
+                let consumer_tags: Vec<String> = consumer_tags_for_table(table)
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
 
                 let intent_examples = extract_intent_examples(&title, chunk);
 

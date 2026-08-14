@@ -11,11 +11,11 @@
 
 use std::sync::Arc;
 
+use super::retrieval_dbless::{doc_type_weight, extract_keywords, keyword_match_score};
 use crate::traits::store::Store;
 use crate::types::error::EngineError;
 use crate::types::memory::MemoryDoc;
 use crate::types::project::ProjectId;
-use super::retrieval_dbless::{doc_type_weight, extract_keywords, keyword_match_score};
 
 /// Retrieves relevant memory docs for a thread's context.
 pub struct RetrievalEngine {

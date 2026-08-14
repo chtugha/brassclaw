@@ -1195,21 +1195,14 @@ async fn thread_context_port_filters_skill_visibility_and_installed_prompt_conte
 #[test]
 fn skill_snapshot_builder_keeps_prompt_content_for_visible_skills() {
     let snapshot = build_skill_run_snapshot(vec![HostSkillContextCandidate::new(
-        skill_md(
-            "alpha",
-            "visible description",
-            "prompt content visible",
-        ),
+        skill_md("alpha", "visible description", "prompt content visible"),
         Some(SkillVisibility::Visible),
     )])
     .unwrap();
 
     assert_eq!(snapshot.entries.len(), 1);
     assert!(snapshot.entries[0].prompt_content.is_some());
-    assert_eq!(
-        snapshot.entries[0].safe_description,
-        "visible description"
-    );
+    assert_eq!(snapshot.entries[0].safe_description, "visible description");
     let serialized = serde_json::to_string(&snapshot).unwrap();
     assert!(serialized.contains("prompt content visible"));
 }
@@ -1218,10 +1211,7 @@ fn skill_snapshot_builder_keeps_prompt_content_for_visible_skills() {
 async fn thread_context_port_ignores_malformed_hidden_skill_content() {
     let fixture = ThreadFixture::new().await;
     let source = Arc::new(StaticSkillContextSource::new(vec![
-        HostSkillContextCandidate::new(
-            "not valid SKILL.md",
-            Some(SkillVisibility::Hidden),
-        ),
+        HostSkillContextCandidate::new("not valid SKILL.md", Some(SkillVisibility::Hidden)),
         HostSkillContextCandidate::unavailable(Some(SkillVisibility::Denied)),
         HostSkillContextCandidate::new(
             skill_md("alpha", "visible description", "visible prompt"),
@@ -3505,10 +3495,7 @@ fn skill_bundle_descriptor(
     name: &str,
     visibility: Option<SkillVisibility>,
 ) -> SkillBundleDescriptor {
-    SkillBundleDescriptor::new(
-        SkillBundleId::new(source_kind, name).unwrap(),
-        visibility,
-    )
+    SkillBundleDescriptor::new(SkillBundleId::new(source_kind, name).unwrap(), visibility)
 }
 
 struct MutableSkillContextSource {

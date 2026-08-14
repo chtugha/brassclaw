@@ -2776,8 +2776,6 @@ mod tests {
     /// Sentinel int passed as `model` kwarg to verify that non-string values are rejected.
     const INVALID_MODEL_INT: i64 = 42;
 
-
-
     /// Truncate a string to at most `max_bytes`, snapping to a UTF-8 char
     /// boundary so assertion messages never panic on multibyte output.
     fn truncate_for_assert(s: &str, max_bytes: usize) -> &str {
@@ -4117,7 +4115,10 @@ except Exception as e:
                     MontyObject::String("prompt".into()),
                     MontyObject::String("hi".into()),
                 ),
-                (MontyObject::String("model".into()), MontyObject::Int(INVALID_MODEL_INT)),
+                (
+                    MontyObject::String("model".into()),
+                    MontyObject::Int(INVALID_MODEL_INT),
+                ),
             ],
             &(Arc::clone(&llm) as Arc<dyn crate::traits::llm::LlmBackend>),
             &mut tokens,

@@ -341,7 +341,8 @@ async fn fetch_snapshot_rejects_redaction_failure() {
 #[tokio::test]
 async fn fetch_snapshot_maps_projection_snapshot_errors() {
     let scope = projection_scope("thread-a");
-    let rebase_requested = ProjectionCursor::for_scope(scope.clone(), EventCursor::new(super::STALE_CURSOR));
+    let rebase_requested =
+        ProjectionCursor::for_scope(scope.clone(), EventCursor::new(super::STALE_CURSOR));
     let rebase_earliest = ProjectionCursor::origin_for_scope(scope.clone());
 
     for (projection_error, expected) in [

@@ -1,7 +1,6 @@
 /// JSON-RPC error code for "method not found" (per JSON-RPC 2.0 spec).
 const JSONRPC_METHOD_NOT_FOUND: i32 = -32601;
 
-
 use brassclaw_capabilities::{
     CapabilityObligationHandler, CapabilityObligationPhase, CapabilityObligationRequest,
 };

@@ -467,9 +467,7 @@ impl ExecutionLoop {
         // Execute the Python orchestrator with host function dispatch.
         // max_duration_override resolves the DB-backed budget (Step 9.3):
         // Some(dur) → uses DB value; None → falls back to env-var / compiled-in default.
-        let max_duration_override = self
-            .max_duration_secs
-            .map(std::time::Duration::from_secs);
+        let max_duration_override = self.max_duration_secs.map(std::time::Duration::from_secs);
         let result = crate::executor::orchestrator::execute_orchestrator(
             &orchestrator_code,
             &mut self.thread,

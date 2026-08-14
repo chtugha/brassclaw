@@ -503,7 +503,8 @@ mod tests {
     }
 
     fn test_outbound_target() -> brassclaw_product_adapters::ProductOutboundTarget {
-        let reply = crate::render::build_reply_target_binding(TEST_ADAPTER_CHAT_ID, Some(7), Some(42));
+        let reply =
+            crate::render::build_reply_target_binding(TEST_ADAPTER_CHAT_ID, Some(7), Some(42));
         let conv = brassclaw_product_adapters::ExternalConversationRef::new(
             None,
             TEST_ADAPTER_CHAT_ID.to_string(),

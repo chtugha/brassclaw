@@ -206,8 +206,8 @@ pub fn wilson_lower_bound(successes: u64, failures: u64, z: f64) -> f64 {
     let n_f = n as f64;
     let p_hat = successes as f64 / n_f;
     let z2 = z * z;
-    let numerator =
-        p_hat + z2 / (2.0 * n_f) - z * ((p_hat * (1.0 - p_hat) + z2 / (WILSON_SCORE_INNER_DIVISOR * n_f)) / n_f).sqrt();
+    let numerator = p_hat + z2 / (2.0 * n_f)
+        - z * ((p_hat * (1.0 - p_hat) + z2 / (WILSON_SCORE_INNER_DIVISOR * n_f)) / n_f).sqrt();
     let denominator = 1.0 + z2 / n_f;
     numerator / denominator
 }

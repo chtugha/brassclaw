@@ -1842,7 +1842,7 @@ async fn production_loop_model_gateway_rejects_forged_context_summary_before_pro
             surface_version: None,
             model_preference: None,
             capability_view: None,
-                resolved_messages: None,
+            resolved_messages: None,
         })
         .await
         .unwrap_err();
@@ -1891,7 +1891,7 @@ async fn production_loop_model_gateway_rejects_unvalidated_surface_before_provid
             surface_version: Some(CapabilitySurfaceVersion::new("surface-stale").unwrap()),
             model_preference: None,
             capability_view: None,
-                resolved_messages: None,
+            resolved_messages: None,
         })
         .await
         .unwrap_err();
@@ -2332,7 +2332,7 @@ async fn production_loop_request_with_safety(
         surface_version: None,
         model_preference,
         capability_view: None,
-                resolved_messages: None,
+        resolved_messages: None,
     }
 }
 

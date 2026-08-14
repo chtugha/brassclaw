@@ -1303,7 +1303,8 @@ mod tests {
         let big = serde_json::json!({
             "description": "x".repeat(100_000)
         });
-        let result = serialize_json_capped(&big, TEST_SERIALIZE_CAP_BYTES).expect("should serialize");
+        let result =
+            serialize_json_capped(&big, TEST_SERIALIZE_CAP_BYTES).expect("should serialize");
         assert!(
             result.text.len() <= TEST_SERIALIZE_CAP_BYTES,
             "capped serializer must bound output to max_bytes; got {} bytes",

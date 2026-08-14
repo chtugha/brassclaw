@@ -15,7 +15,6 @@ const SHELL_TIMEOUT_OVER_MAX_SECS: u32 = 121;
 /// Expected byte count for the fixture that writes exactly 17 bytes.
 const FIXTURE_BYTES_WRITTEN: u64 = 17;
 
-
 use std::{
     collections::BTreeMap,
     io::Write,

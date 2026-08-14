@@ -707,15 +707,16 @@ where
         after: Option<crate::events::EventCursor>,
         limit: usize,
     ) -> Result<crate::events::TurnEventPage, crate::TurnError> {
-        self.inner.read_turn_events_after(scope, owner_user_id, after, limit).await
+        self.inner
+            .read_turn_events_after(scope, owner_user_id, after, limit)
+            .await
     }
 }
 
-impl<S> crate::store::TurnStateDriver for LifecyclePublishingTurnStateStore<S>
-where
+impl<S> crate::store::TurnStateDriver for LifecyclePublishingTurnStateStore<S> where
     S: TurnSpawnTreeStateStore
         + TurnRunTransitionPort
         + crate::events::TurnEventProjectionSource
-        + ?Sized,
+        + ?Sized
 {
 }

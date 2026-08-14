@@ -385,7 +385,8 @@ mod tests {
             message_ref: message_ref("msg:user"),
         }]));
         let port = HostQueueLoopInputPort::new(queue.clone(), run_context.clone());
-        let future = LoopInputCursor::from_host_token(&run_context, cursor_token(UNISSUED_SEQUENCE));
+        let future =
+            LoopInputCursor::from_host_token(&run_context, cursor_token(UNISSUED_SEQUENCE));
 
         let error = port
             .poll_inputs(future, 8)

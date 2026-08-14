@@ -425,7 +425,8 @@ async fn durable_policy_subscription_delivery_flow(store: &impl OutboundStateSto
     );
 
     seed_subscription(store).await;
-    let cursor = ProjectionCursor::for_scope(projection_scope(), EventCursor::new(TEST_CURSOR_SEQ_A));
+    let cursor =
+        ProjectionCursor::for_scope(projection_scope(), EventCursor::new(TEST_CURSOR_SEQ_A));
     store
         .advance_subscription_cursor(AdvanceSubscriptionCursorRequest {
             subscription_id: subscription_id(),
@@ -1110,7 +1111,8 @@ async fn advance_subscription_cursor_retries_through_cas_conflict() {
         .arm("/engine/tenants/test/users/test/outbound/subscriptions/", 1)
         .await;
 
-    let cursor = ProjectionCursor::for_scope(projection_scope(), EventCursor::new(TEST_CURSOR_SEQ_RACED));
+    let cursor =
+        ProjectionCursor::for_scope(projection_scope(), EventCursor::new(TEST_CURSOR_SEQ_RACED));
     store
         .advance_subscription_cursor(AdvanceSubscriptionCursorRequest {
             subscription_id: subscription_id(),

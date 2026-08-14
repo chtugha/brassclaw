@@ -474,13 +474,15 @@ where
                             .await?;
                         if let Some(h) = &previous_access_secret
                             && previous_access_secret.as_ref() != account.access_secret.as_ref()
-                            && let Err(e) = self.secret_store.delete(&request.scope.resource, h).await
+                            && let Err(e) =
+                                self.secret_store.delete(&request.scope.resource, h).await
                         {
                             tracing::debug!(error = %e, "product_auth flows: best-effort replaced access-secret purge failed");
                         }
                         if let Some(h) = &previous_refresh_secret
                             && previous_refresh_secret.as_ref() != account.refresh_secret.as_ref()
-                            && let Err(e) = self.secret_store.delete(&request.scope.resource, h).await
+                            && let Err(e) =
+                                self.secret_store.delete(&request.scope.resource, h).await
                         {
                             tracing::debug!(error = %e, "product_auth flows: best-effort replaced refresh-secret purge failed");
                         }

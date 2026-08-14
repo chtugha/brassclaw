@@ -421,10 +421,9 @@ pub use lifecycle::{
 pub use pg_store::PgExtensionInstallationStore;
 pub use registry::{ExtensionRegistry, SharedExtensionRegistry};
 pub use unified_store::{
-    ExtensionClass, NewUnifiedExtension, PayloadUpdate, PgUnifiedExtensionStore,
-    UnifiedExtension, UnifiedExtensionStore, UnifiedStoreError, ValidationStatusUpdate,
-    project_as_manifest_v2, project_as_prompt_template, project_as_recipe_stage,
-    project_as_rusty_capability,
+    ExtensionClass, NewUnifiedExtension, PayloadUpdate, PgUnifiedExtensionStore, UnifiedExtension,
+    UnifiedExtensionStore, UnifiedStoreError, ValidationStatusUpdate, project_as_manifest_v2,
+    project_as_prompt_template, project_as_recipe_stage, project_as_rusty_capability,
 };
 
 /// Filesystem-backed extension discovery.

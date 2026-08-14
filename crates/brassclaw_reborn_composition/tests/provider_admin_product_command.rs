@@ -102,10 +102,7 @@ async fn model_provider_command_set_provider_returns_transient_error() {
         .await
         .expect_err("set-provider should return transient error");
 
-    assert!(matches!(
-        err,
-        ProductAdapterError::WorkflowTransient { .. }
-    ));
+    assert!(matches!(err, ProductAdapterError::WorkflowTransient { .. }));
     assert_eq!(inbound.accepted_count(), 0);
     // No config.toml should have been written.
     assert!(
@@ -128,10 +125,7 @@ async fn model_set_command_returns_transient_error() {
         .await
         .expect_err("set should return transient error");
 
-    assert!(matches!(
-        err,
-        ProductAdapterError::WorkflowTransient { .. }
-    ));
+    assert!(matches!(err, ProductAdapterError::WorkflowTransient { .. }));
     assert_eq!(inbound.accepted_count(), 0);
 }
 
@@ -155,10 +149,7 @@ async fn model_provider_command_rejects_unknown_provider_as_invalid_binding() {
         .await
         .expect_err("set-provider should return transient error");
 
-    assert!(matches!(
-        err,
-        ProductAdapterError::WorkflowTransient { .. }
-    ));
+    assert!(matches!(err, ProductAdapterError::WorkflowTransient { .. }));
     assert_eq!(inbound.accepted_count(), 0);
 }
 

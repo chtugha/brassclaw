@@ -454,7 +454,8 @@ async fn event_stream_manager_runtime_resume_rebases_stale_cursor_to_snapshot() 
     let manager = event_stream_manager(Arc::clone(&runtime_log), audit_log);
     let scope = scope_for_thread(ThreadId::new("thread-a").unwrap());
     let projection_scope = ProjectionScope::from_resource_scope(&scope);
-    let stale_cursor = ProjectionCursor::for_scope(projection_scope.clone(), EventCursor::new(STALE_CURSOR));
+    let stale_cursor =
+        ProjectionCursor::for_scope(projection_scope.clone(), EventCursor::new(STALE_CURSOR));
 
     runtime_log
         .append(RuntimeEvent::dispatch_requested(

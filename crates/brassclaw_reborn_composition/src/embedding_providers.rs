@@ -239,7 +239,11 @@ struct OpenAiEmbeddings {
 }
 
 impl OpenAiEmbeddings {
-    fn with_model(api_key: impl Into<SecretString>, model: impl Into<String>, dimension: usize) -> Self {
+    fn with_model(
+        api_key: impl Into<SecretString>,
+        model: impl Into<String>,
+        dimension: usize,
+    ) -> Self {
         Self {
             client: reqwest::Client::new(),
             api_key: api_key.into(),
@@ -318,7 +322,10 @@ impl EmbeddingProvider for OpenAiEmbeddings {
         let response = self
             .client
             .post(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key.expose_secret()))
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.api_key.expose_secret()),
+            )
             .json(&request)
             .send()
             .await

@@ -13,9 +13,9 @@ use brassclaw_host_runtime::{
     TurnRunSchedulerConfig, TurnRunSchedulerHandle,
 };
 #[cfg(feature = "postgres")]
-use brassclaw_reborn_composition::RebornRuntimeProcessBinding;
-#[cfg(feature = "postgres")]
 use brassclaw_reborn_composition::RebornBuildError;
+#[cfg(feature = "postgres")]
+use brassclaw_reborn_composition::RebornRuntimeProcessBinding;
 use brassclaw_reborn_composition::{
     RebornBuildInput, RebornManualTokenSetupRequest, RebornManualTokenSubmitRequest,
     RebornReadinessState, build_reborn_services,

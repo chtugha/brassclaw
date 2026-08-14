@@ -294,8 +294,12 @@ mod tests {
             "line one\rline two",
             "line one\tline two",
         ] {
-            validate_optional_provider_metadata_text(Some(value), "provider reasoning", TEST_PROVIDER_METADATA_MAX_BYTES)
-                .expect("metadata text whitespace control should pass");
+            validate_optional_provider_metadata_text(
+                Some(value),
+                "provider reasoning",
+                TEST_PROVIDER_METADATA_MAX_BYTES,
+            )
+            .expect("metadata text whitespace control should pass");
         }
     }
 

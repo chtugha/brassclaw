@@ -63,7 +63,12 @@ mod inner {
                      FROM reborn_monty_vm_settings
                      WHERE tenant_id = $1 AND user_id = $2
                        AND agent_id  = $3 AND project_id = $4",
-                    &[&self.tenant_id.as_str(), &user_id, &self.agent_id.as_str(), &project_id],
+                    &[
+                        &self.tenant_id.as_str(),
+                        &user_id,
+                        &self.agent_id.as_str(),
+                        &project_id,
+                    ],
                 )
                 .await
                 .map_err(Self::map_pg)?;
@@ -85,15 +90,15 @@ mod inner {
                         failure_rollback_threshold: failure_rollback_threshold.max(1) as u32,
                         prior_knowledge_token_budget: prior_knowledge_token_budget.max(0) as u32,
                         q4_retention_days: q4_retention_days.max(0) as u32,
-                        forensic_packet_retention_days: forensic_packet_retention_days.max(0) as u32,
+                        forensic_packet_retention_days: forensic_packet_retention_days.max(0)
+                            as u32,
                         active_orchestrator_id: active_orchestrator_id.map(|u| u.to_string()),
                     })
                 }
                 None => {
                     debug!(
                         user_id,
-                        project_id,
-                        "monty_vm_settings: no row found, returning defaults"
+                        project_id, "monty_vm_settings: no row found, returning defaults"
                     );
                     Ok(default_monty_vm_settings())
                 }
@@ -132,16 +137,19 @@ mod inner {
                 .unwrap_or(128 * 1024 * 1024) as i64;
             let failure_rollback_threshold = update
                 .failure_rollback_threshold
-                .unwrap_or(current.failure_rollback_threshold) as i16;
+                .unwrap_or(current.failure_rollback_threshold)
+                as i16;
             let prior_knowledge_token_budget = update
                 .prior_knowledge_token_budget
-                .unwrap_or(current.prior_knowledge_token_budget) as i32;
+                .unwrap_or(current.prior_knowledge_token_budget)
+                as i32;
             let q4_retention_days = update
                 .q4_retention_days
                 .unwrap_or(current.q4_retention_days) as i32;
             let forensic_packet_retention_days = update
                 .forensic_packet_retention_days
-                .unwrap_or(current.forensic_packet_retention_days) as i32;
+                .unwrap_or(current.forensic_packet_retention_days)
+                as i32;
             let active_orchestrator_id: Option<uuid::Uuid> = update
                 .active_orchestrator_id
                 .as_deref()

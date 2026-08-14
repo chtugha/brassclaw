@@ -19,9 +19,6 @@ pub use conformance::{
     evaluate_profile_conformance,
 };
 pub use error::{CapabilityInvocationError, ResumeContextMismatchKind};
-pub use tool_registry::{
-    ToolRegistry, ToolRegistryError, ToolRegistryStore, ToolScopeKey,
-};
 pub use host::CapabilityHost;
 pub use obligations::{
     CapabilityObligationAbortRequest, CapabilityObligationCompletionRequest,
@@ -32,3 +29,4 @@ pub use requests::{
     CapabilityInvocationRequest, CapabilityInvocationResult, CapabilityResumeRequest,
     CapabilitySpawnRequest, CapabilitySpawnResult,
 };
+pub use tool_registry::{ToolRegistry, ToolRegistryError, ToolRegistryStore, ToolScopeKey};

@@ -176,8 +176,11 @@ pub fn spawn_q1_validation_sweep(
 
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(Q1_SWEEP_INTERVAL);
-        let facade =
-            crate::pg_recipe_store::PgRecipeStoreFacade::new(Arc::clone(&pool), &tenant_id, &agent_id);
+        let facade = crate::pg_recipe_store::PgRecipeStoreFacade::new(
+            Arc::clone(&pool),
+            &tenant_id,
+            &agent_id,
+        );
         loop {
             ticker.tick().await;
             match brassclaw_product_workflow::RecipeStore::auto_validate_pending(

@@ -22,9 +22,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use crate::traits::store::Store;
 use crate::types::error::EngineError;
 use crate::types::project::ProjectId;
-use crate::traits::store::Store;
 
 /// Approximate tokens-per-byte for English prose (~4 bytes/token).
 const TOKENS_PER_BYTE: f64 = 0.25;
@@ -666,13 +666,9 @@ impl RetrievalSource for PostgresSource {
             }) => {
                 // Score already incremented inside resolve_intent (PERF-03).
                 // Fetch the specific component from its class table (SEC-01 gate).
-                let items = fetch_component_by_id(
-                    &self.pool,
-                    scope,
-                    component_id,
-                    component_class_code,
-                )
-                .await?;
+                let items =
+                    fetch_component_by_id(&self.pool, scope, component_id, component_class_code)
+                        .await?;
                 Ok(FetchForTurnResult::Components(items))
             }
             Ok(IntentResolution::Disambiguation { candidates }) => {
@@ -722,19 +718,58 @@ async fn fetch_component_by_id(
     // Tables with only description (extensions, actions) use COALESCE(prior_knowledge_content, description).
     // reborn_tools (class 0) has no prompt text and is excluded.
     let table_and_content: Option<(&'static str, &'static str)> = match component_class_code {
-        1..=3 => Some(("reborn_skills", "COALESCE(NULLIF(prior_knowledge_content,''), body)")),
-        4..=9 => Some(("reborn_extensions_unified", "COALESCE(prior_knowledge_content, description)")),
-        10 | 50 => Some(("reborn_skills", "COALESCE(NULLIF(prior_knowledge_content,''), body)")),
-        12 => Some(("reborn_specs", "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
-        13 => Some(("reborn_tool_skills", "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
-        14 => Some(("reborn_plans", "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
-        15 => Some(("reborn_summaries", "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
-        16 => Some(("reborn_actions", "COALESCE(prior_knowledge_content, description)")),
-        17 => Some(("reborn_docus", "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
-        18 => Some(("reborn_lessons", "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
-        19 => Some(("reborn_issues", "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
-        20 => Some(("reborn_notes", "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
-        21 => Some(("reborn_recipes", "COALESCE(NULLIF(prior_knowledge_content,''), '')")),
+        1..=3 => Some((
+            "reborn_skills",
+            "COALESCE(NULLIF(prior_knowledge_content,''), body)",
+        )),
+        4..=9 => Some((
+            "reborn_extensions_unified",
+            "COALESCE(prior_knowledge_content, description)",
+        )),
+        10 | 50 => Some((
+            "reborn_skills",
+            "COALESCE(NULLIF(prior_knowledge_content,''), body)",
+        )),
+        12 => Some((
+            "reborn_specs",
+            "COALESCE(NULLIF(prior_knowledge_content,''), content)",
+        )),
+        13 => Some((
+            "reborn_tool_skills",
+            "COALESCE(NULLIF(prior_knowledge_content,''), content)",
+        )),
+        14 => Some((
+            "reborn_plans",
+            "COALESCE(NULLIF(prior_knowledge_content,''), content)",
+        )),
+        15 => Some((
+            "reborn_summaries",
+            "COALESCE(NULLIF(prior_knowledge_content,''), content)",
+        )),
+        16 => Some((
+            "reborn_actions",
+            "COALESCE(prior_knowledge_content, description)",
+        )),
+        17 => Some((
+            "reborn_docus",
+            "COALESCE(NULLIF(prior_knowledge_content,''), content)",
+        )),
+        18 => Some((
+            "reborn_lessons",
+            "COALESCE(NULLIF(prior_knowledge_content,''), content)",
+        )),
+        19 => Some((
+            "reborn_issues",
+            "COALESCE(NULLIF(prior_knowledge_content,''), content)",
+        )),
+        20 => Some((
+            "reborn_notes",
+            "COALESCE(NULLIF(prior_knowledge_content,''), content)",
+        )),
+        21 => Some((
+            "reborn_recipes",
+            "COALESCE(NULLIF(prior_knowledge_content,''), '')",
+        )),
         _ => None,
     };
 
@@ -805,15 +840,15 @@ async fn fetch_component_by_id(
 fn doc_type_to_class_code(doc_type: crate::types::memory::DocType) -> (i32, &'static str) {
     use crate::types::memory::DocType;
     match doc_type {
-        DocType::Skill     => (3,  "skill_llm"),
-        DocType::Spec      => (12, "spec"),
+        DocType::Skill => (3, "skill_llm"),
+        DocType::Spec => (12, "spec"),
         DocType::ToolSkill => (13, "tool_skill"),
-        DocType::Plan      => (14, "plan"),
-        DocType::Summary   => (15, "summary"),
-        DocType::Lesson    => (18, "lesson"),
-        DocType::Issue     => (19, "issue"),
-        DocType::Note      => (20, "note"),
-        DocType::Recipe    => (21, "recipe"),
+        DocType::Plan => (14, "plan"),
+        DocType::Summary => (15, "summary"),
+        DocType::Lesson => (18, "lesson"),
+        DocType::Issue => (19, "issue"),
+        DocType::Note => (20, "note"),
+        DocType::Recipe => (21, "recipe"),
     }
 }
 
@@ -857,9 +892,27 @@ mod tests {
     async fn ram_source_returns_docs_ordered_by_class_then_uid() {
         let project = ProjectId::new();
         let store = make_store(vec![
-            MemoryDoc::new(project, "test-user", DocType::Note, "Note A", "note content"),
-            MemoryDoc::new(project, "test-user", DocType::Spec, "Spec A", "spec content"),
-            MemoryDoc::new(project, "test-user", DocType::Lesson, "Lesson A", "lesson content"),
+            MemoryDoc::new(
+                project,
+                "test-user",
+                DocType::Note,
+                "Note A",
+                "note content",
+            ),
+            MemoryDoc::new(
+                project,
+                "test-user",
+                DocType::Spec,
+                "Spec A",
+                "spec content",
+            ),
+            MemoryDoc::new(
+                project,
+                "test-user",
+                DocType::Lesson,
+                "Lesson A",
+                "lesson content",
+            ),
         ]);
         let source = RamSource::new(store);
         let scope = test_scope(&project.to_string());
@@ -883,9 +936,27 @@ mod tests {
         // Create docs with large content that will exceed the budget
         let large_content = "x".repeat(50_000); // ~12,500 tokens
         let store = make_store(vec![
-            MemoryDoc::new(project, "test-user", DocType::Lesson, "Lesson 1", &large_content),
-            MemoryDoc::new(project, "test-user", DocType::Lesson, "Lesson 2", &large_content),
-            MemoryDoc::new(project, "test-user", DocType::Lesson, "Lesson 3", &large_content),
+            MemoryDoc::new(
+                project,
+                "test-user",
+                DocType::Lesson,
+                "Lesson 1",
+                &large_content,
+            ),
+            MemoryDoc::new(
+                project,
+                "test-user",
+                DocType::Lesson,
+                "Lesson 2",
+                &large_content,
+            ),
+            MemoryDoc::new(
+                project,
+                "test-user",
+                DocType::Lesson,
+                "Lesson 3",
+                &large_content,
+            ),
         ]);
         let source = RamSource::new(store);
         let scope = test_scope(&project.to_string());
@@ -966,7 +1037,10 @@ mod tests {
             .unwrap();
 
         // Should find the lesson about errors
-        assert!(!result.is_empty(), "fallback file should be searched when store is empty");
+        assert!(
+            !result.is_empty(),
+            "fallback file should be searched when store is empty"
+        );
         assert!(
             result.iter().any(|item| item.name == "lesson-about-errors"),
             "lesson matching 'error' query should be returned"

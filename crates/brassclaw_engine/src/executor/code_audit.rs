@@ -132,12 +132,8 @@ pub async fn run_code_audit(
 
     let text = match &output.response {
         LlmResponse::Text(t) => t.clone(),
-        LlmResponse::ActionCalls { content, .. } => {
-            content.clone().unwrap_or_default()
-        }
-        LlmResponse::Code { content, .. } => {
-            content.clone().unwrap_or_default()
-        }
+        LlmResponse::ActionCalls { content, .. } => content.clone().unwrap_or_default(),
+        LlmResponse::Code { content, .. } => content.clone().unwrap_or_default(),
     };
 
     if text.is_empty() {
@@ -200,7 +196,10 @@ mod tests {
     #[test]
     fn parse_all_pass_returns_clean() {
         let text = "PASS\nPASS\nPASS\nPASS\nPASS";
-        assert!(matches!(parse_audit_response(text), CodeAuditResult::AuditClean));
+        assert!(matches!(
+            parse_audit_response(text),
+            CodeAuditResult::AuditClean
+        ));
     }
 
     #[test]
@@ -228,7 +227,10 @@ mod tests {
 
     #[test]
     fn parse_empty_response_returns_clean() {
-        assert!(matches!(parse_audit_response(""), CodeAuditResult::AuditClean));
+        assert!(matches!(
+            parse_audit_response(""),
+            CodeAuditResult::AuditClean
+        ));
     }
 
     #[test]

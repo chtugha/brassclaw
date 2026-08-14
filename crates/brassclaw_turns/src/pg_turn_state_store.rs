@@ -285,8 +285,7 @@ impl PgTurnStateStore {
         // Use a serde_json::Value so tokio_postgres encodes the parameter as
         // jsonb (OID 3802) rather than text, which avoids "error serializing
         // parameter N" when the prepared statement resolves the type as jsonb.
-        let needle: serde_json::Value =
-            serde_json::json!([{"run_id": run_id_str}]);
+        let needle: serde_json::Value = serde_json::json!([{"run_id": run_id_str}]);
         let row = client
             .query_opt(
                 "SELECT turn_id FROM brassclaw_turns \

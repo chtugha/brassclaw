@@ -246,63 +246,83 @@ mod tests {
             &self,
             _thread: &brassclaw_engine::types::thread::Thread,
         ) -> Result<(), EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
+            )
         }
         async fn load_thread(
             &self,
             _id: brassclaw_engine::types::thread::ThreadId,
         ) -> Result<Option<brassclaw_engine::types::thread::Thread>, EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
+            )
         }
         async fn list_threads(
             &self,
             _project_id: ProjectId,
             _user_id: &str,
         ) -> Result<Vec<brassclaw_engine::types::thread::Thread>, EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
+            )
         }
         async fn update_thread_state(
             &self,
             _id: brassclaw_engine::types::thread::ThreadId,
             _state: brassclaw_engine::types::thread::ThreadState,
         ) -> Result<(), EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
+            )
         }
         async fn save_step(
             &self,
             _step: &brassclaw_engine::types::step::Step,
         ) -> Result<(), EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
+            )
         }
         async fn load_steps(
             &self,
             _thread_id: brassclaw_engine::types::thread::ThreadId,
         ) -> Result<Vec<brassclaw_engine::types::step::Step>, EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
+            )
         }
         async fn append_events(
             &self,
             _events: &[brassclaw_engine::types::event::ThreadEvent],
         ) -> Result<(), EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
+            )
         }
         async fn load_events(
             &self,
             _thread_id: brassclaw_engine::types::thread::ThreadId,
         ) -> Result<Vec<brassclaw_engine::types::event::ThreadEvent>, EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
+            )
         }
         async fn save_project(
             &self,
             _project: &brassclaw_engine::types::project::Project,
         ) -> Result<(), EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
+            )
         }
         async fn load_project(
             &self,
             _id: ProjectId,
         ) -> Result<Option<brassclaw_engine::types::project::Project>, EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
+            )
         }
         async fn save_memory_doc(&self, doc: &MemoryDoc) -> Result<(), EngineError> {
             let mut docs = self.docs.write().await;
@@ -331,47 +351,61 @@ mod tests {
             &self,
             _lease: &brassclaw_engine::types::capability::CapabilityLease,
         ) -> Result<(), EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
+            )
         }
         async fn load_active_leases(
             &self,
             _thread_id: brassclaw_engine::types::thread::ThreadId,
         ) -> Result<Vec<brassclaw_engine::types::capability::CapabilityLease>, EngineError>
         {
-            panic!("test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
+            )
         }
         async fn revoke_lease(
             &self,
             _lease_id: brassclaw_engine::types::capability::LeaseId,
             _reason: &str,
         ) -> Result<(), EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
+            )
         }
         async fn save_mission(
             &self,
             _mission: &brassclaw_engine::types::mission::Mission,
         ) -> Result<(), EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
+            )
         }
         async fn load_mission(
             &self,
             _id: brassclaw_engine::types::mission::MissionId,
         ) -> Result<Option<brassclaw_engine::types::mission::Mission>, EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
+            )
         }
         async fn list_missions(
             &self,
             _project_id: ProjectId,
             _user_id: &str,
         ) -> Result<Vec<brassclaw_engine::types::mission::Mission>, EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
+            )
         }
         async fn update_mission_status(
             &self,
             _id: brassclaw_engine::types::mission::MissionId,
             _status: brassclaw_engine::types::mission::MissionStatus,
         ) -> Result<(), EngineError> {
-            panic!("test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)")
+            panic!(
+                "test double: InMemoryEngineStore does not implement this method (MemoryDoc test scope only)"
+            )
         }
     }
 

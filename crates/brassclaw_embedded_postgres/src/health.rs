@@ -51,8 +51,19 @@ pub async fn check_postmaster_pid(data_dir: &Path) -> Option<u32> {
     let contents = tokio::fs::read_to_string(&pid_file).await.ok()?;
     let pid: u32 = contents.lines().next()?.trim().parse().ok()?;
 
-    // Safety: kill(pid, 0) checks existence without sending a signal.
-    // POSIX guarantees errno=ESRCH when the process does not exist.
-    let alive = unsafe { libc::kill(pid as libc::pid_t, 0) } == 0;
-    if alive { Some(pid) } else { None }
+    #[cfg(unix)]
+    {
+        // Safety: kill(pid, 0) checks existence without sending a signal.
+        // POSIX guarantees errno=ESRCH when the process does not exist.
+        let alive = unsafe { libc::kill(pid as libc::pid_t, 0) } == 0;
+        if alive { Some(pid) } else { None }
+    }
+    #[cfg(not(unix))]
+    {
+        // On non-Unix platforms (e.g. Windows) there is no kill(2). The PID
+        // file was written by a Unix Postgres binary so we cannot reach this
+        // code in practice, but we return Some to be conservative.
+        let _ = pid;
+        Some(pid)
+    }
 }

@@ -21,17 +21,19 @@ pub mod similarity_checker;
 pub mod skill_tracker;
 pub mod store;
 
-pub use component_validator::{ComponentPayload, ComponentValidator, GenericComponent, ValidationConfig};
+pub use component_validator::{
+    ComponentPayload, ComponentValidator, GenericComponent, ValidationConfig,
+};
 pub use metric_outcome::MetricRecorder;
 pub use recipe_matcher::{RecipeMatch, RecipeMatcher, RecipeStepMatch, ToolSkillMatch};
 pub use recipe_validator::{RecipeValidator, ValidationResult};
 pub use retrieval::RetrievalEngine;
-pub use retrieval_source::{
-    ComponentItem, ComponentScope, FallbackEntry, FetchForTurnResult, RamSource, RetrievalSource,
-    RetrievalSourceError, load_fallback_file, FALLBACK_CONTENT_FILE_ENV,
-};
 #[cfg(feature = "skills-db")]
 pub use retrieval_source::PostgresSource;
+pub use retrieval_source::{
+    ComponentItem, ComponentScope, FALLBACK_CONTENT_FILE_ENV, FallbackEntry, FetchForTurnResult,
+    RamSource, RetrievalSource, RetrievalSourceError, load_fallback_file,
+};
 pub use similarity_checker::{SimilarityChecker, SimilarityMatch};
 pub use skill_tracker::SkillTracker;
 pub use store::MemoryStore;

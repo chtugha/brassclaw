@@ -42,10 +42,7 @@ pub struct HostSkillContextCandidate {
 }
 
 impl HostSkillContextCandidate {
-    pub fn new(
-        skill_md: impl Into<String>,
-        visibility: Option<SkillVisibility>,
-    ) -> Self {
+    pub fn new(skill_md: impl Into<String>, visibility: Option<SkillVisibility>) -> Self {
         Self {
             skill_md: Some(skill_md.into()),
             visibility,
@@ -147,7 +144,11 @@ pub fn build_skill_run_snapshot(
             .ok_or(HostSkillContextBuildError::SourceUnavailable)?;
         let parsed =
             parse_skill_md(&skill_md).map_err(|_| HostSkillContextBuildError::ParseFailed)?;
-        entries.push(parsed_skill_to_snapshot_entry(parsed, visibility, candidate.ordering_key));
+        entries.push(parsed_skill_to_snapshot_entry(
+            parsed,
+            visibility,
+            candidate.ordering_key,
+        ));
     }
 
     Ok(SkillRunSnapshot::from_entries(entries))

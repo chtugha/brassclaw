@@ -96,7 +96,9 @@ impl TurnContextBudget {
         let output_reserved =
             ((context_window_tokens as u64 * allocation.output_reserved_pct as u64) / 100) as u32;
         // Floor at MIN_OUTPUT_RESERVED tokens so small-window models still have room for a reply.
-        let output_reserved = output_reserved.max(Self::MIN_OUTPUT_RESERVED).min(context_window_tokens);
+        let output_reserved = output_reserved
+            .max(Self::MIN_OUTPUT_RESERVED)
+            .min(context_window_tokens);
         let remaining = context_window_tokens.saturating_sub(output_reserved);
         let skill_snippet_tokens =
             (remaining as u64 * allocation.skill_snippet_pct as u64 / 100) as u32;
@@ -191,7 +193,9 @@ impl ObservedMessageAverage {
         }
         let prev = self.value.load(Ordering::Relaxed) as u64;
         // EMA fixed-point: weight 75% old, 25% new (α = 0.25), scaled by 100.
-        let next = (prev * Self::EMA_OLD_WEIGHT + (observed_tokens_per_message as u64 * 100) * Self::EMA_NEW_WEIGHT) / 100;
+        let next = (prev * Self::EMA_OLD_WEIGHT
+            + (observed_tokens_per_message as u64 * 100) * Self::EMA_NEW_WEIGHT)
+            / 100;
         self.value.store(next as usize, Ordering::Relaxed);
     }
 }

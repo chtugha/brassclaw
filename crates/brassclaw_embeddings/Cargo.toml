@@ -22,7 +22,7 @@ testing = []
 
 [dependencies]
 async-trait = "0.1"
-lru = "0.16.3"
+lru = "0.18.2"
 sha2 = "0.10"
 thiserror = "2"
 tracing = "0.1"

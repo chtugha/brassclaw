@@ -123,7 +123,10 @@ pub async fn build_reborn_event_stores(
         RebornEventStoreConfig::SharedPool { pool, tenant_id } => {
             // Reuse the existing pool — no second connection pool opened.
             Ok(RebornEventStores {
-                events: std::sync::Arc::new(PgDurableEventLog::new(pool.clone(), tenant_id.clone())),
+                events: std::sync::Arc::new(PgDurableEventLog::new(
+                    pool.clone(),
+                    tenant_id.clone(),
+                )),
                 audit: std::sync::Arc::new(PgDurableAuditLog::new(pool, tenant_id)),
             })
         }

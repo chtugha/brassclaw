@@ -2442,7 +2442,10 @@ fn build_meta_prompt(
         let payload_str = serde_json::to_string_pretty(payload).unwrap_or_default();
         // Show up to TRIGGER_PAYLOAD_PREVIEW_CHARS chars to keep the goal prompt readable.
         const TRIGGER_PAYLOAD_PREVIEW_CHARS: usize = 1000;
-        let preview: String = payload_str.chars().take(TRIGGER_PAYLOAD_PREVIEW_CHARS).collect();
+        let preview: String = payload_str
+            .chars()
+            .take(TRIGGER_PAYLOAD_PREVIEW_CHARS)
+            .collect();
         parts.push(format!("\n## Trigger Payload\n```json\n{preview}\n```"));
     }
 

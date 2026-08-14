@@ -219,11 +219,7 @@ async fn fetch_for_wrong_scope_returns_empty_registry() {
         registry_b.is_empty(),
         "scope_b must return an empty registry — scope_a tools must not leak across scopes"
     );
-    assert_eq!(
-        registry_b.len(),
-        0,
-        "len() must be 0 for an empty registry"
-    );
+    assert_eq!(registry_b.len(), 0, "len() must be 0 for an empty registry");
 
     // Fetch scope_a — must still return its tools (unaffected by scope_b query).
     let names_a = store

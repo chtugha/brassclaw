@@ -1516,10 +1516,7 @@ async fn host_runtime_services_resume_runtime_policy_denial_fails_matching_block
     // SCRIPT_NETWORK_MANIFEST uses kind="mcp" and effects=["dispatch_capability","network"].
     // With network_denied_runtime_policy the planner rejects before dispatch → "network_denied".
     // (Previously kind="script" failed with "process_backend_none" after the network check.)
-    assert_eq!(
-        failed_run.error_kind.as_deref(),
-        Some("network_denied")
-    );
+    assert_eq!(failed_run.error_kind.as_deref(), Some("network_denied"));
     assert_eq!(
         fixture
             .capability_leases

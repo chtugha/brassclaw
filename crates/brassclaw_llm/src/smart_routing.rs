@@ -539,7 +539,8 @@ fn score_complexity_internal(
 
     // Token estimate (based on char count): <20 chars = 0, >=520 chars = 100
     let char_count = prompt.len();
-    let token_score = ((char_count as i32 - 20).max(0) as f32 / TOKEN_COUNT_CHARS_PER_UNIT).min(MAX_DIMENSION_SCORE) as u32;
+    let token_score = ((char_count as i32 - 20).max(0) as f32 / TOKEN_COUNT_CHARS_PER_UNIT)
+        .min(MAX_DIMENSION_SCORE) as u32;
     components.insert("token_estimate".to_string(), token_score);
     if char_count > 200 {
         hints.push(format!("Long prompt ({char_count} chars)"));
@@ -547,7 +548,8 @@ fn score_complexity_internal(
 
     // Reasoning words
     let reasoning_count = count_matches(&RE_REASONING, prompt);
-    let reasoning_score = (reasoning_count * KEYWORD_SCORE_WEIGHT).min(MAX_DIMENSION_SCORE as usize) as u32;
+    let reasoning_score =
+        (reasoning_count * KEYWORD_SCORE_WEIGHT).min(MAX_DIMENSION_SCORE as usize) as u32;
     components.insert("reasoning_words".to_string(), reasoning_score);
     if reasoning_count >= 2 {
         hints.push(format!("reasoning_words: {reasoning_count} matches"));
@@ -555,7 +557,8 @@ fn score_complexity_internal(
 
     // Multi-step
     let multi_step_count = count_matches(&RE_MULTI_STEP, prompt);
-    let multi_step_score = (multi_step_count * KEYWORD_SCORE_WEIGHT).min(MAX_DIMENSION_SCORE as usize) as u32;
+    let multi_step_score =
+        (multi_step_count * KEYWORD_SCORE_WEIGHT).min(MAX_DIMENSION_SCORE as usize) as u32;
     components.insert("multi_step".to_string(), multi_step_score);
     if multi_step_count >= 2 {
         hints.push(format!("multi_step: {multi_step_count} matches"));
@@ -563,7 +566,8 @@ fn score_complexity_internal(
 
     // Creativity
     let creativity_count = count_matches(&RE_CREATIVITY, prompt);
-    let creativity_score = (creativity_count * KEYWORD_SCORE_WEIGHT).min(MAX_DIMENSION_SCORE as usize) as u32;
+    let creativity_score =
+        (creativity_count * KEYWORD_SCORE_WEIGHT).min(MAX_DIMENSION_SCORE as usize) as u32;
     components.insert("creativity".to_string(), creativity_score);
     if creativity_count >= 2 {
         hints.push(format!("creativity: {creativity_count} matches"));
@@ -571,7 +575,8 @@ fn score_complexity_internal(
 
     // Precision
     let precision_count = count_matches(&RE_PRECISION, prompt);
-    let precision_score = (precision_count * KEYWORD_SCORE_WEIGHT).min(MAX_DIMENSION_SCORE as usize) as u32;
+    let precision_score =
+        (precision_count * KEYWORD_SCORE_WEIGHT).min(MAX_DIMENSION_SCORE as usize) as u32;
     components.insert("precision".to_string(), precision_score);
 
     // Code indicators
@@ -589,7 +594,8 @@ fn score_complexity_internal(
 
     // Safety sensitivity
     let safety_count = count_matches(&RE_SAFETY, prompt);
-    let safety_score = (safety_count * KEYWORD_SCORE_WEIGHT).min(MAX_DIMENSION_SCORE as usize) as u32;
+    let safety_score =
+        (safety_count * KEYWORD_SCORE_WEIGHT).min(MAX_DIMENSION_SCORE as usize) as u32;
     components.insert("safety_sensitivity".to_string(), safety_score);
     if safety_count >= 1 {
         hints.push(format!("safety_sensitivity: {safety_count} matches"));
@@ -597,12 +603,14 @@ fn score_complexity_internal(
 
     // Context dependency
     let context_count = count_matches(&RE_CONTEXT, prompt);
-    let context_score = (context_count * KEYWORD_SCORE_WEIGHT).min(MAX_DIMENSION_SCORE as usize) as u32;
+    let context_score =
+        (context_count * KEYWORD_SCORE_WEIGHT).min(MAX_DIMENSION_SCORE as usize) as u32;
     components.insert("context_dependency".to_string(), context_score);
 
     // Domain specific
     let domain_count = count_matches(domain_regex, prompt);
-    let domain_score = (domain_count * KEYWORD_SCORE_WEIGHT).min(MAX_DIMENSION_SCORE as usize) as u32;
+    let domain_score =
+        (domain_count * KEYWORD_SCORE_WEIGHT).min(MAX_DIMENSION_SCORE as usize) as u32;
     components.insert("domain_specific".to_string(), domain_score);
     if domain_count >= 2 {
         hints.push(format!("domain_specific: {domain_count} matches"));
@@ -610,13 +618,15 @@ fn score_complexity_internal(
 
     // Ambiguity (vague pronouns)
     let vague_count = count_matches(&RE_VAGUE, prompt);
-    let ambiguity_score = (vague_count * WEAK_KEYWORD_SCORE_WEIGHT).min(MAX_DIMENSION_SCORE as usize) as u32;
+    let ambiguity_score =
+        (vague_count * WEAK_KEYWORD_SCORE_WEIGHT).min(MAX_DIMENSION_SCORE as usize) as u32;
     components.insert("ambiguity".to_string(), ambiguity_score);
 
     // Question complexity
     let question_marks = prompt.matches('?').count();
     let open_ended_count = count_matches(&RE_OPEN_ENDED, prompt);
-    let question_score = ((question_marks * 20) + (open_ended_count * WEAK_KEYWORD_SCORE_WEIGHT)).min(MAX_DIMENSION_SCORE as usize) as u32;
+    let question_score = ((question_marks * 20) + (open_ended_count * WEAK_KEYWORD_SCORE_WEIGHT))
+        .min(MAX_DIMENSION_SCORE as usize) as u32;
     components.insert("question_complexity".to_string(), question_score);
     if question_marks >= 2 {
         hints.push(format!("Multiple questions: {question_marks}"));

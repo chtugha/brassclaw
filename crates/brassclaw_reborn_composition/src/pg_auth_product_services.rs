@@ -148,7 +148,10 @@ impl PgAuthProductServices {
         // Defence-in-depth: reject unknown tables in all builds (debug_assert
         // alone is stripped in --release).
         if !Self::ALLOWED_TABLES.contains(&table) {
-            tracing::debug!(table, "pg_auth_product_services: get_record called with unknown table");
+            tracing::debug!(
+                table,
+                "pg_auth_product_services: get_record called with unknown table"
+            );
             return Err(AuthProductError::BackendUnavailable);
         }
         let client = self.pool.get().await.map_err(pool_err)?;
@@ -181,7 +184,10 @@ impl PgAuthProductServices {
         expected_revision: Option<i64>,
     ) -> Result<(), AuthProductError> {
         if !Self::ALLOWED_TABLES.contains(&table) {
-            tracing::debug!(table, "pg_auth_product_services: put_record called with unknown table");
+            tracing::debug!(
+                table,
+                "pg_auth_product_services: put_record called with unknown table"
+            );
             return Err(AuthProductError::BackendUnavailable);
         }
         let json = serde_json::to_value(record).map_err(|e| {
@@ -249,7 +255,10 @@ impl PgAuthProductServices {
         id: &str,
     ) -> Result<bool, AuthProductError> {
         if !Self::ALLOWED_TABLES.contains(&table) {
-            tracing::debug!(table, "pg_auth_product_services: delete_record called with unknown table");
+            tracing::debug!(
+                table,
+                "pg_auth_product_services: delete_record called with unknown table"
+            );
             return Err(AuthProductError::BackendUnavailable);
         }
         let client = self.pool.get().await.map_err(pool_err)?;
@@ -269,11 +278,17 @@ impl PgAuthProductServices {
         filter_val: &str,
     ) -> Result<Vec<T>, AuthProductError> {
         if !Self::ALLOWED_TABLES.contains(&table) {
-            tracing::debug!(table, "pg_auth_product_services: list_records called with unknown table");
+            tracing::debug!(
+                table,
+                "pg_auth_product_services: list_records called with unknown table"
+            );
             return Err(AuthProductError::BackendUnavailable);
         }
         if !Self::ALLOWED_FILTER_COLS.contains(&filter_col) {
-            tracing::debug!(filter_col, "pg_auth_product_services: list_records called with unknown filter column");
+            tracing::debug!(
+                filter_col,
+                "pg_auth_product_services: list_records called with unknown filter column"
+            );
             return Err(AuthProductError::BackendUnavailable);
         }
         let client = self.pool.get().await.map_err(pool_err)?;

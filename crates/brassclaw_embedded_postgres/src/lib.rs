@@ -253,7 +253,9 @@ async fn create_app_db(config: &EmbeddedPostgresConfig) -> Result<(), EmbeddedPo
 
     let (client, connection) = tokio_postgres::connect(&connect_url, NoTls)
         .await
-        .map_err(|e| EmbeddedPostgresError::InitDb(format!("could not connect for init SQL: {e}")))?;
+        .map_err(|e| {
+            EmbeddedPostgresError::InitDb(format!("could not connect for init SQL: {e}"))
+        })?;
 
     // Drive the connection in the background.
     tokio::spawn(async move {
@@ -272,10 +274,7 @@ async fn create_app_db(config: &EmbeddedPostgresConfig) -> Result<(), EmbeddedPo
 
     if !role_exists {
         client
-            .execute(
-                &format!("CREATE ROLE {} LOGIN", config.database),
-                &[],
-            )
+            .execute(&format!("CREATE ROLE {} LOGIN", config.database), &[])
             .await
             .map_err(|e| EmbeddedPostgresError::InitDb(format!("CREATE ROLE failed: {e}")))?;
         debug!(role = config.database, "created application role");
@@ -295,7 +294,10 @@ async fn create_app_db(config: &EmbeddedPostgresConfig) -> Result<(), EmbeddedPo
         // CREATE DATABASE cannot run inside a transaction block; use execute directly.
         client
             .execute(
-                &format!("CREATE DATABASE {} OWNER {}", config.database, config.database),
+                &format!(
+                    "CREATE DATABASE {} OWNER {}",
+                    config.database, config.database
+                ),
                 &[],
             )
             .await

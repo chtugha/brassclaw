@@ -293,7 +293,9 @@ fn score_trigger(trigger: &RecipeTrigger, user_input: &str) -> f64 {
 // exponential backtracking on adversarial inputs. 10 000 bytes rejects
 // genuinely pathological regexes while still allowing typical trigger patterns.
 fn regex_limited(pattern: &str) -> Result<regex::Regex, regex::Error> {
-    regex::RegexBuilder::new(pattern).size_limit(REGEX_SIZE_LIMIT_BYTES).build()
+    regex::RegexBuilder::new(pattern)
+        .size_limit(REGEX_SIZE_LIMIT_BYTES)
+        .build()
 }
 
 fn validation_kind(v: &RecipeValidation) -> String {
@@ -408,7 +410,10 @@ mod tests {
         );
         // Confirm recipe_matcher's exact filter expression rejects it.
         let is_reachable = matches!(auto_passed.validation_status, ValidationStatus::Validated);
-        assert!(!is_reachable, "AutoPassed recipe must not be reachable by the loop");
+        assert!(
+            !is_reachable,
+            "AutoPassed recipe must not be reachable by the loop"
+        );
     }
 
     #[test]
@@ -435,21 +440,30 @@ mod tests {
     fn recipe_filter_accepts_validated_only() {
         let validated = minimal_recipe(ValidationStatus::Validated);
         let is_reachable = matches!(validated.validation_status, ValidationStatus::Validated);
-        assert!(is_reachable, "Validated recipe must be reachable by the loop");
+        assert!(
+            is_reachable,
+            "Validated recipe must be reachable by the loop"
+        );
     }
 
     #[test]
     fn tool_skill_filter_rejects_auto_passed() {
         let skill = minimal_tool_skill(ValidationStatus::AutoPassed);
         let is_reachable = matches!(skill.validation_status, ValidationStatus::Validated);
-        assert!(!is_reachable, "AutoPassed ToolSkill must not be reachable by the loop");
+        assert!(
+            !is_reachable,
+            "AutoPassed ToolSkill must not be reachable by the loop"
+        );
     }
 
     #[test]
     fn tool_skill_filter_accepts_validated_only() {
         let skill = minimal_tool_skill(ValidationStatus::Validated);
         let is_reachable = matches!(skill.validation_status, ValidationStatus::Validated);
-        assert!(is_reachable, "Validated ToolSkill must be reachable by the loop");
+        assert!(
+            is_reachable,
+            "Validated ToolSkill must be reachable by the loop"
+        );
     }
 
     fn kw_trigger(words: &[&str], threshold: f64) -> RecipeTrigger {

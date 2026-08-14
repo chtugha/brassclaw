@@ -11,11 +11,11 @@ use brassclaw_trust::HostTrustPolicy;
 
 use secrecy::SecretString;
 
+use crate::RebornProductAuthServicePorts;
 use crate::google_oauth::google_provider_spec;
 use crate::notion_oauth::notion_provider_spec;
 use crate::oauth_dcr::OAuthDcrProviderConfig;
 use crate::oauth_provider_client::HostOAuthProviderSpec;
-use crate::RebornProductAuthServicePorts;
 
 /// Composition-time OAuth client metadata.
 ///

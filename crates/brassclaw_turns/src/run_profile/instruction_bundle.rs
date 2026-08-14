@@ -14,8 +14,7 @@ use crate::LoopMessageRef;
 use super::{
     AgentLoopHostError, AgentLoopHostErrorKind, CapabilityDescriptorView, LoopContextBundle,
     LoopContextMessage, LoopContextSnippet, LoopInlineMessage, LoopInlineMessageRole,
-    LoopModelMessage, LoopRunContext, PromptSkillContextMetadata,
-    VisibleCapabilitySurface,
+    LoopModelMessage, LoopRunContext, PromptSkillContextMetadata, VisibleCapabilitySurface,
     prompt_text::{PromptTextSurface, validate_model_safe_text, validate_prompt_text},
     skill_snippet_model_message_ref,
 };

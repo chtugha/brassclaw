@@ -39,6 +39,20 @@ ignore = [
     # a shared host, so the Marvin Attack is not exploitable in our deployment model.
     # Remove once openidconnect/jwt-simple upgrades to an rsa release without this advisory.
     "RUSTSEC-2023-0071",
+    # lru: IterMut stacked-borrows violation (RUSTSEC-2026-0002).
+    # Our direct deps now use lru ≥ 0.16.3 (patched). The remaining lru 0.12.5
+    # is a transitive dep of ratatui 0.29.0 (via brassclaw_tui). The iterator
+    # is not used by ratatui internally in a way that triggers the violation.
+    # Remove once ratatui upgrades to lru ≥ 0.16.3.
+    "RUSTSEC-2026-0002",
+    # lru: panic-safety use-after-free in LruCache::pop() (RUSTSEC-2026-0253).
+    # Our direct deps now use lru 0.18.2 (patched). The remaining lru 0.12.5
+    # is a transitive dep of ratatui 0.29.0 (via brassclaw_tui). The pop()
+    # call in ratatui's eviction path does not use key types with panicking
+    # Drop impls, and catch_unwind is not used in that code path, so the
+    # UAF/double-free is not reachable in practice.
+    # Remove once ratatui upgrades to lru ≥ 0.18.2.
+    "RUSTSEC-2026-0253",
 ]
 
 [licenses]

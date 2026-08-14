@@ -789,8 +789,12 @@ impl std::fmt::Display for TurnRunnerError {
 /// Error during driver invocation (before `LoopExit` is returned).
 #[derive(Debug)]
 enum DriverInvocationError {
-    DriverNotFound { reason: String },
-    HostCreationFailed { reason: String },
+    DriverNotFound {
+        reason: String,
+    },
+    HostCreationFailed {
+        reason: String,
+    },
     RouteSnapshotPersistenceFailed(TurnError),
     DriverError(AgentLoopDriverError),
     DriverPanic,

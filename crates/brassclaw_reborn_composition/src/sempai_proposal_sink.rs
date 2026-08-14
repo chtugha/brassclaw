@@ -79,7 +79,10 @@ mod inner {
                 let name = match blob.get("name").and_then(|v| v.as_str()) {
                     Some(n) if !n.is_empty() => n.to_string(),
                     _ => {
-                        debug!(idx, "sempai_proposal: proposed_recipe_update missing name — skipped");
+                        debug!(
+                            idx,
+                            "sempai_proposal: proposed_recipe_update missing name — skipped"
+                        );
                         continue;
                     }
                 };
@@ -89,10 +92,7 @@ mod inner {
                     .unwrap_or("")
                     .to_string();
                 let trigger = blob.get("trigger").cloned();
-                let steps = blob
-                    .get("steps")
-                    .cloned()
-                    .unwrap_or(serde_json::json!([]));
+                let steps = blob.get("steps").cloned().unwrap_or(serde_json::json!([]));
                 let prior_knowledge_content = blob
                     .get("prior_knowledge_content")
                     .and_then(|v| v.as_str())
@@ -133,7 +133,10 @@ mod inner {
                 let input_text = match blob.get("input").and_then(|v| v.as_str()) {
                     Some(t) if !t.is_empty() => t.to_string(),
                     _ => {
-                        debug!(idx, "sempai_proposal: proposed_intent_example missing input — skipped");
+                        debug!(
+                            idx,
+                            "sempai_proposal: proposed_intent_example missing input — skipped"
+                        );
                         continue;
                     }
                 };
@@ -146,7 +149,10 @@ mod inner {
                     user_id: user_id.to_string(),
                     agent_id: self.agent_id.clone(),
                     project_id: project_id.to_string(),
-                    name: format!("intent_proposal:{}", &input_text[..input_text.len().min(60)]),
+                    name: format!(
+                        "intent_proposal:{}",
+                        &input_text[..input_text.len().min(60)]
+                    ),
                     description: format!("Sempai-proposed intent example: {input_text}"),
                     trigger: None,
                     steps: serde_json::json!([]),

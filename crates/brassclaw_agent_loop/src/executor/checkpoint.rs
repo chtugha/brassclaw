@@ -1,9 +1,9 @@
 use async_trait::async_trait;
-use tracing;
 use brassclaw_turns::{
     LoopGateRef,
     run_profile::{LoopCheckpointRequest, LoopProgressEvent, StageCheckpointPayloadRequest},
 };
+use tracing;
 
 use crate::state::{CheckpointKind, LoopExecutionState};
 

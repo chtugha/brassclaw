@@ -974,10 +974,12 @@ where
                     // layer never writes pre-resolved messages to the thread
                     // store, so this ref is never persisted or resolved.
                     let sentinel_ref = LoopMessageRef::new("interceptor:pre-resolved".to_string())
-                        .map_err(|_| AgentLoopHostError::new(
-                            AgentLoopHostErrorKind::Internal,
-                            "pre-resolved interceptor message ref is invalid",
-                        ))?;
+                        .map_err(|_| {
+                            AgentLoopHostError::new(
+                                AgentLoopHostErrorKind::Internal,
+                                "pre-resolved interceptor message ref is invalid",
+                            )
+                        })?;
                     Ok(HostManagedModelMessage {
                         role: role_enum,
                         content,

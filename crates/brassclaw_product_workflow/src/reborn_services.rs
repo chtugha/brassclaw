@@ -3578,7 +3578,13 @@ impl RebornServicesApi for RebornServices {
             .ok_or_else(recipe_store_unavailable)?;
         let user_id = caller.user_id.to_string();
         store
-            .re_review_component(&user_id, project_id, class_code, component_id, feedback.as_deref())
+            .re_review_component(
+                &user_id,
+                project_id,
+                class_code,
+                component_id,
+                feedback.as_deref(),
+            )
             .await
             .map_err(map_recipe_store_error)
     }
@@ -3781,10 +3787,7 @@ impl RebornServicesApi for RebornServices {
                     )
                 }
             })?;
-        Ok(crate::settings::UpdateChatPreferenceResponse {
-            key,
-            value: stored,
-        })
+        Ok(crate::settings::UpdateChatPreferenceResponse { key, value: stored })
     }
 
     async fn list_intent_inputs(
@@ -3797,13 +3800,22 @@ impl RebornServicesApi for RebornServices {
             RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 501, false)
         })?;
         let user_id = caller.user_id.as_str().to_string();
-        let agent_id = caller.agent_id.as_ref().map(|a| a.as_str()).unwrap_or("").to_string();
+        let agent_id = caller
+            .agent_id
+            .as_ref()
+            .map(|a| a.as_str())
+            .unwrap_or("")
+            .to_string();
         let items = store
             .list(&user_id, &agent_id, &project_id, component_id.as_deref())
             .await
             .map_err(|e| {
                 tracing::debug!("intent_inputs list error: {e}");
-                RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 500, false)
+                RebornServicesError::from_status(
+                    RebornServicesErrorCode::InvalidRequest,
+                    500,
+                    false,
+                )
             })?;
         Ok(crate::settings::IntentInputListResponse { items })
     }
@@ -3817,17 +3829,30 @@ impl RebornServicesApi for RebornServices {
             RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 501, false)
         })?;
         let user_id = caller.user_id.as_str().to_string();
-        let agent_id = caller.agent_id.as_ref().map(|a| a.as_str()).unwrap_or("").to_string();
+        let agent_id = caller
+            .agent_id
+            .as_ref()
+            .map(|a| a.as_str())
+            .unwrap_or("")
+            .to_string();
         let row = store
             .upsert(&user_id, &agent_id, &request.project_id, &request)
             .await
             .map_err(|e| {
                 let msg = e.to_string();
                 if msg.contains("unknown input_class") || msg.contains("text too long") {
-                    RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 400, false)
+                    RebornServicesError::from_status(
+                        RebornServicesErrorCode::InvalidRequest,
+                        400,
+                        false,
+                    )
                 } else {
                     tracing::debug!("intent_inputs upsert error: {e}");
-                    RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 500, false)
+                    RebornServicesError::from_status(
+                        RebornServicesErrorCode::InvalidRequest,
+                        500,
+                        false,
+                    )
                 }
             })?;
         Ok(row)
@@ -3844,13 +3869,22 @@ impl RebornServicesApi for RebornServices {
             RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 501, false)
         })?;
         let user_id = caller.user_id.as_str().to_string();
-        let agent_id = caller.agent_id.as_ref().map(|a| a.as_str()).unwrap_or("").to_string();
+        let agent_id = caller
+            .agent_id
+            .as_ref()
+            .map(|a| a.as_str())
+            .unwrap_or("")
+            .to_string();
         let count = store
             .purge_for_component(&user_id, &agent_id, &project_id, &component_id)
             .await
             .map_err(|e| {
                 tracing::debug!("intent_inputs purge error: {e}");
-                RebornServicesError::from_status(RebornServicesErrorCode::InvalidRequest, 500, false)
+                RebornServicesError::from_status(
+                    RebornServicesErrorCode::InvalidRequest,
+                    500,
+                    false,
+                )
             })?;
         Ok(count)
     }

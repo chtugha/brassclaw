@@ -830,11 +830,8 @@ impl ActivationCandidateCacheKey {
 
 impl ActivationCandidate {
     fn into_context_candidate(self) -> HostSkillContextCandidate {
-        HostSkillContextCandidate::new(
-            self.skill_md,
-            self.descriptor.visibility().copied(),
-        )
-        .with_ordering_key(descriptor_context_ordering_key(&self.descriptor))
+        HostSkillContextCandidate::new(self.skill_md, self.descriptor.visibility().copied())
+            .with_ordering_key(descriptor_context_ordering_key(&self.descriptor))
     }
 }
 
@@ -1343,14 +1340,11 @@ mod tests {
     impl ChangingSkillBundleSource {
         fn new(name: &str, first: String, second: String) -> Self {
             let id = SkillBundleId::new(SkillSourceKind::User, name).unwrap();
-            let descriptor = SkillBundleDescriptor::new(
-                id,
-                Some(SkillVisibility::Visible),
-            )
-            .with_provenance(
-                brassclaw_loop_support::SkillBundleProvenance::new(SkillSourceKind::User)
-                    .with_content_hash("stable-test-hash"),
-            );
+            let descriptor = SkillBundleDescriptor::new(id, Some(SkillVisibility::Visible))
+                .with_provenance(
+                    brassclaw_loop_support::SkillBundleProvenance::new(SkillSourceKind::User)
+                        .with_content_hash("stable-test-hash"),
+                );
             Self {
                 descriptor,
                 first: first.into_bytes(),

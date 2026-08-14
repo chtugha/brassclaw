@@ -21,11 +21,11 @@ use sha2::{Digest, Sha256};
 use crate::gating;
 use crate::install_metadata::INSTALL_METADATA_FILE_NAME;
 pub use crate::install_metadata::InstalledSkillMetadata;
-use crate::selector::TOKENS_PER_BYTE;
 use crate::parser::{
     SkillParseError, parse_skill_md, parse_skill_md_for_install_recovery,
     split_skill_md_frontmatter,
 };
+use crate::selector::TOKENS_PER_BYTE;
 use crate::types::{GatingRequirements, LoadedSkill, MAX_PROMPT_FILE_SIZE, SkillSource};
 use crate::validation::{
     SafeRelativePathError, normalize_line_endings, normalize_safe_relative_path,
@@ -439,9 +439,9 @@ impl SkillRegistry {
             if meta.is_dir() {
                 let skill_md = path.join("SKILL.md");
                 if tokio::fs::try_exists(&skill_md).await.unwrap_or(false) {
-                        count += 1;
-                        let source = make_source(path.clone());
-                        match self.load_skill_md(&skill_md, source).await {
+                    count += 1;
+                    let source = make_source(path.clone());
+                    match self.load_skill_md(&skill_md, source).await {
                         Ok((name, skill)) => {
                             tracing::debug!("Loaded skill: {}", name);
                             results.push((name, skill));
@@ -515,8 +515,7 @@ impl SkillRegistry {
                 );
                 continue;
             }
-            match load_from_content(content, SkillSource::Bundled(PathBuf::from(name))).await
-            {
+            match load_from_content(content, SkillSource::Bundled(PathBuf::from(name))).await {
                 Ok((loaded_name, skill)) => {
                     tracing::debug!("Loaded bundled skill: {}", loaded_name);
                     results.push((loaded_name, skill));

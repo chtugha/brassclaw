@@ -285,9 +285,9 @@ mod inner {
                 Some(ref n) if n.len() > 64 => result
                     .errors
                     .push(format!("skill name exceeds 64 chars ({} chars)", n.len())),
-                Some(ref n) if n.contains("--") => result
-                    .errors
-                    .push(format!("skill name '{n}' contains consecutive hyphens '--'")),
+                Some(ref n) if n.contains("--") => result.errors.push(format!(
+                    "skill name '{n}' contains consecutive hyphens '--'"
+                )),
                 _ => {}
             }
         }
@@ -360,9 +360,9 @@ mod inner {
                         .push(format!("intent_examples[{i}] missing 'input' string field"));
                 }
                 if !class_ok {
-                    result.errors.push(format!(
-                        "intent_examples[{i}] 'class' must be 1, 2, or 3"
-                    ));
+                    result
+                        .errors
+                        .push(format!("intent_examples[{i}] 'class' must be 1, 2, or 3"));
                 }
             }
         } else {
@@ -420,19 +420,20 @@ mod inner {
             // Step-1 local validation.
             let vr = validate_row(input);
             if !vr.is_ok() {
-                return Err(DbSkillStoreError::Validation {
-                    errors: vr.errors,
-                });
+                return Err(DbSkillStoreError::Validation { errors: vr.errors });
             }
 
-            let name = normalize_skill_identifier(input.name.trim())
-                .ok_or_else(|| DbSkillStoreError::UnnormalizableName {
+            let name = normalize_skill_identifier(input.name.trim()).ok_or_else(|| {
+                DbSkillStoreError::UnnormalizableName {
                     raw: input.name.clone(),
-                })?;
+                }
+            })?;
 
-            let class = SkillClassCode::from_compatibility(&input.compatibility)
-                .ok_or_else(|| DbSkillStoreError::UnknownClass {
-                    value: input.compatibility.clone(),
+            let class =
+                SkillClassCode::from_compatibility(&input.compatibility).ok_or_else(|| {
+                    DbSkillStoreError::UnknownClass {
+                        value: input.compatibility.clone(),
+                    }
                 })?;
 
             // Seed consumer tags: class defaults + caller extras + 05:validator.
@@ -530,7 +531,7 @@ mod inner {
             let rows = client
                 .query(
                     &format!(
-                    "SELECT
+                        "SELECT
                         id, tenant_id, user_id, agent_id, project_id,
                         name, description, body, compatibility, license,
                         allowed_tools, version, class_code, prompt_uid,
@@ -553,7 +554,9 @@ mod inner {
                       AND validation_status = 'validated'
                       AND $5 = ANY(consumer_tags)
                       AND NOT ('{}' = ANY(consumer_tags))
-                    ORDER BY class_code ASC, prompt_uid ASC", VALIDATOR_CONSUMER_TAG),
+                    ORDER BY class_code ASC, prompt_uid ASC",
+                        VALIDATOR_CONSUMER_TAG
+                    ),
                     &[
                         &scope.tenant_id,
                         &scope.user_id,
@@ -672,9 +675,7 @@ mod inner {
             // Step-1 local validation before writing.
             let vr = validate_row(input);
             if !vr.is_ok() {
-                return Err(DbSkillStoreError::Validation {
-                    errors: vr.errors,
-                });
+                return Err(DbSkillStoreError::Validation { errors: vr.errors });
             }
 
             let escaped_body = escape_skill_content(&input.body);
@@ -682,7 +683,8 @@ mod inner {
             let client = self.pool.get().await.map_err(PgError::from)?;
             let affected = client
                 .execute(
-                    &format!("UPDATE reborn_skills SET
+                    &format!(
+                        "UPDATE reborn_skills SET
                         description      = $6,
                         body             = $7,
                         compatibility    = $8,
@@ -713,7 +715,9 @@ mod inner {
                        AND tenant_id  = $2
                        AND user_id    = $3
                        AND agent_id   = $4
-                       AND project_id = $5", VALIDATOR_CONSUMER_TAG),
+                       AND project_id = $5",
+                        VALIDATOR_CONSUMER_TAG
+                    ),
                     &[
                         &id,
                         &scope.tenant_id,
@@ -808,7 +812,8 @@ mod inner {
 
             let affected = client
                 .execute(
-                    &format!("UPDATE reborn_skills SET
+                    &format!(
+                        "UPDATE reborn_skills SET
                         validation_status = 'validated',
                         queue_code        = NULL,
                         -- Remove {0} tag to activate consumer tags.
@@ -818,7 +823,9 @@ mod inner {
                        AND user_id    = $3
                        AND agent_id   = $4
                        AND project_id = $5
-                       AND validation_status = 'auto_passed'", VALIDATOR_CONSUMER_TAG),
+                       AND validation_status = 'auto_passed'",
+                        VALIDATOR_CONSUMER_TAG
+                    ),
                     &[
                         &id,
                         &scope.tenant_id,
@@ -949,9 +956,7 @@ mod inner {
     // Row mapping helper
     // -----------------------------------------------------------------------
 
-    fn row_from_pg(
-        row: &PgRow,
-    ) -> Result<DbSkillRow, DbSkillStoreError> {
+    fn row_from_pg(row: &PgRow) -> Result<DbSkillRow, DbSkillStoreError> {
         Ok(DbSkillRow {
             id: row.get("id"),
             scope: SkillScope {
@@ -1111,10 +1116,11 @@ mod inner {
             let mut input = base_input();
             input.intent_examples = json!([{"input": "foo", "class": 9}]);
             let vr = validate_row(&input);
-            assert!(vr
-                .errors
-                .iter()
-                .any(|e| e.contains("'class' must be 1, 2, or 3")));
+            assert!(
+                vr.errors
+                    .iter()
+                    .any(|e| e.contains("'class' must be 1, 2, or 3"))
+            );
         }
 
         #[test]
@@ -1122,10 +1128,11 @@ mod inner {
             let mut input = base_input();
             input.extra_consumer_tags = vec!["bad-tag".into()];
             let vr = validate_row(&input);
-            assert!(vr
-                .errors
-                .iter()
-                .any(|e| e.contains("does not match required format")));
+            assert!(
+                vr.errors
+                    .iter()
+                    .any(|e| e.contains("does not match required format"))
+            );
         }
 
         #[test]
@@ -1134,7 +1141,9 @@ mod inner {
             input.source = "unknown_source".into();
             let vr = validate_row(&input);
             assert!(
-                vr.errors.iter().any(|e| e.contains("not valid") && e.contains("source")),
+                vr.errors
+                    .iter()
+                    .any(|e| e.contains("not valid") && e.contains("source")),
                 "expected source validation error, got: {:?}",
                 vr.errors
             );
@@ -1190,10 +1199,7 @@ mod inner {
                 SkillClassCode::from_compatibility("brassclaw-class:llm"),
                 Some(SkillClassCode::Llm)
             );
-            assert_eq!(
-                SkillClassCode::from_compatibility("something-else"),
-                None
-            );
+            assert_eq!(SkillClassCode::from_compatibility("something-else"), None);
         }
 
         #[test]

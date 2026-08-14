@@ -635,8 +635,9 @@ mod tests {
             // at 1 throughout — should NOT trigger excessive repetition.
             // This matches issue #1025: "combining marks are distinct chars,
             // so this should NOT trigger."
-            let combining_marks: Vec<char> =
-                (0x0300u32..=COMBINING_MARKS_RANGE_END).filter_map(char::from_u32).collect();
+            let combining_marks: Vec<char> = (0x0300u32..=COMBINING_MARKS_RANGE_END)
+                .filter_map(char::from_u32)
+                .collect();
             assert!(combining_marks.len() >= 50);
             let marks: String = combining_marks[..50].iter().collect();
             let input = format!("prefix a{marks}suffix padding to reach minimum length for check");

@@ -316,7 +316,9 @@ fn parse_manifest(manifest: &str) -> ExtensionManifest {
     let manifest = legacy_capability_fixture_to_v2(manifest);
     // Use HostBundled source for first-party manifests (required by the manifest
     // parser — InstalledLocal only allows Mcp).
-    let source = if manifest.contains("first_party_requested") || manifest.contains("kind = \"first_party\"") {
+    let source = if manifest.contains("first_party_requested")
+        || manifest.contains("kind = \"first_party\"")
+    {
         ManifestSource::HostBundled
     } else {
         ManifestSource::InstalledLocal

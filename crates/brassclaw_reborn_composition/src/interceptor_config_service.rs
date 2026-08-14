@@ -45,20 +45,20 @@ const KEY_PREWARM_LAST_AT: &str = "interceptor.sempai_prewarm_last_at";
 /// section header in the assembled Sempai base prompt and does NOT
 /// re-read `class_code` from the DB rows.
 const COMPONENT_TABLES: &[(&str, u16)] = &[
-    ("reborn_skills",             1),   // V027  CHECK (class_code IN (1, 2, 3)) — primary label = Skill
-    ("reborn_tools",              0),   // V030  CHECK (class_code = 0)
-    ("reborn_actions",           16),   // V029  CHECK (class_code = 16)
-    ("reborn_specs",             12),   // V036  CHECK (class_code = 12)
-    ("reborn_summaries",         15),   // V039  CHECK (class_code = 15)
-    ("reborn_lessons",           18),   // V041  CHECK (class_code = 18)
-    ("reborn_issues",            19),   // V042  CHECK (class_code = 19)
-    ("reborn_notes",             20),   // V043  CHECK (class_code = 20)
-    ("reborn_recipes",           21),   // V033  CHECK (class_code = 21)
-    ("reborn_tool_skills",       13),   // V037  CHECK (class_code = 13)
-    ("reborn_plans",             14),   // V038  CHECK (class_code = 14)
-    ("reborn_extensions_unified", 9),   // V032  CHECK (class_code IN (4–9)); 9 = Misc/Extension used as section label
-    ("reborn_orchestrators",     10),   // future migration; gracefully skipped when absent
-    ("reborn_scaffolds",         50),   // future migration; gracefully skipped when absent
+    ("reborn_skills", 1), // V027  CHECK (class_code IN (1, 2, 3)) — primary label = Skill
+    ("reborn_tools", 0),  // V030  CHECK (class_code = 0)
+    ("reborn_actions", 16), // V029  CHECK (class_code = 16)
+    ("reborn_specs", 12), // V036  CHECK (class_code = 12)
+    ("reborn_summaries", 15), // V039  CHECK (class_code = 15)
+    ("reborn_lessons", 18), // V041  CHECK (class_code = 18)
+    ("reborn_issues", 19), // V042  CHECK (class_code = 19)
+    ("reborn_notes", 20), // V043  CHECK (class_code = 20)
+    ("reborn_recipes", 21), // V033  CHECK (class_code = 21)
+    ("reborn_tool_skills", 13), // V037  CHECK (class_code = 13)
+    ("reborn_plans", 14), // V038  CHECK (class_code = 14)
+    ("reborn_extensions_unified", 9), // V032  CHECK (class_code IN (4–9)); 9 = Misc/Extension used as section label
+    ("reborn_orchestrators", 10),     // future migration; gracefully skipped when absent
+    ("reborn_scaffolds", 50),         // future migration; gracefully skipped when absent
 ];
 
 /// Class code → human-readable type label for Part A headers.
@@ -96,10 +96,7 @@ pub struct RebornInterceptorConfigService {
 }
 
 impl RebornInterceptorConfigService {
-    pub fn new(
-        pool: Arc<PgPool>,
-        tenant_id: impl Into<String>,
-    ) -> Self {
+    pub fn new(pool: Arc<PgPool>, tenant_id: impl Into<String>) -> Self {
         Self {
             pool,
             tenant_id: tenant_id.into(),
@@ -164,12 +161,9 @@ impl RebornInterceptorConfigService {
             mode: mode_str,
             base_prompt_assembled_at: kv.get(KEY_BASE_PROMPT_ASSEMBLED_AT).cloned(),
             base_prompt_size_chars: base_prompt_size,
-            persona: kv
-                .get(KEY_PERSONA)
-                .cloned()
-                .unwrap_or_else(|| {
-                    brassclaw_reborn::loop_driver_host::DEFAULT_SEMPAI_PERSONA.to_string()
-                }),
+            persona: kv.get(KEY_PERSONA).cloned().unwrap_or_else(|| {
+                brassclaw_reborn::loop_driver_host::DEFAULT_SEMPAI_PERSONA.to_string()
+            }),
             prewarm_last_at: kv.get(KEY_PREWARM_LAST_AT).cloned(),
             components_since_rebuild: None,
         }
@@ -208,13 +202,13 @@ impl RebornInterceptorConfigService {
     /// Checks `information_schema.tables` before querying each table so
     /// tables from later phases (not yet deployed) are skipped gracefully.
     async fn do_reassemble(&self) -> Result<String, InterceptorConfigServiceError> {
-        let client = self
-            .pool
-            .get()
-            .await
-            .map_err(|e| InterceptorConfigServiceError::InvalidRequest {
-                reason: format!("db pool: {e}"),
-            })?;
+        let client =
+            self.pool
+                .get()
+                .await
+                .map_err(|e| InterceptorConfigServiceError::InvalidRequest {
+                    reason: format!("db pool: {e}"),
+                })?;
 
         // Discover which component tables actually exist.
         let table_rows = client
@@ -223,10 +217,7 @@ impl RebornInterceptorConfigService {
                  WHERE table_schema = 'public' \
                    AND table_type = 'BASE TABLE' \
                    AND table_name = ANY($1)",
-                &[&COMPONENT_TABLES
-                    .iter()
-                    .map(|(t, _)| *t)
-                    .collect::<Vec<_>>()],
+                &[&COMPONENT_TABLES.iter().map(|(t, _)| *t).collect::<Vec<_>>()],
             )
             .await
             .map_err(|e| InterceptorConfigServiceError::InvalidRequest {
@@ -431,12 +422,11 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
                 reason: format!("model profile id: {e}"),
             }
         })?;
-        let content_ref =
-            LoopMessageRef::new("interceptor:prewarm".to_string()).map_err(|e| {
-                InterceptorConfigServiceError::InvalidRequest {
-                    reason: format!("message ref: {e}"),
-                }
-            })?;
+        let content_ref = LoopMessageRef::new("interceptor:prewarm".to_string()).map_err(|e| {
+            InterceptorConfigServiceError::InvalidRequest {
+                reason: format!("message ref: {e}"),
+            }
+        })?;
         let request = HostManagedModelRequest {
             model_profile_id: profile_id,
             messages: vec![HostManagedModelMessage {
@@ -452,12 +442,11 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
             turn_id: TurnId::new(),
         };
 
-        gateway
-            .stream_model(request)
-            .await
-            .map_err(|e| InterceptorConfigServiceError::InvalidRequest {
+        gateway.stream_model(request).await.map_err(|e| {
+            InterceptorConfigServiceError::InvalidRequest {
                 reason: format!("prewarm gateway call: {e}"),
-            })?;
+            }
+        })?;
 
         let prewarm_at = chrono::Utc::now().to_rfc3339();
         save_config_key(

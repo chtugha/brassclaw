@@ -120,7 +120,9 @@ async fn polymarket_daily_cap_denies_after_ten_invocations() {
     // `installed_hook.rs::evaluate` and the friction-findings doc — and is
     // pinned here so a future change that surfaces manifest-supplied
     // strings to the model has to update this assertion deliberately.
-    let denied = dispatcher.dispatch_before_capability(&ctx([TEST_INVOCATION_SENTINEL; 32])).await;
+    let denied = dispatcher
+        .dispatch_before_capability(&ctx([TEST_INVOCATION_SENTINEL; 32]))
+        .await;
     match denied.decision.view() {
         GateDecisionView::Deny { reason } => {
             assert_eq!(

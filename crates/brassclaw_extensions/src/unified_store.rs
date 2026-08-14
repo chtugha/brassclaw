@@ -196,7 +196,9 @@ impl UnifiedExtension {
     /// Returns true iff the `05:validator` tag is present (component is in a
     /// validation queue and must not be delivered to consumers — §3.5.1).
     pub fn has_validator_tag(&self) -> bool {
-        self.consumer_tags.iter().any(|t| t == VALIDATOR_CONSUMER_TAG)
+        self.consumer_tags
+            .iter()
+            .any(|t| t == VALIDATOR_CONSUMER_TAG)
     }
 
     /// Returns true iff the row is deliverable: validated + no validator tag.
@@ -823,4 +825,3 @@ pub fn project_as_prompt_template(ext: &UnifiedExtension) -> Option<&str> {
         .or_else(|| ext.payload.get("body"))
         .and_then(|v| v.as_str())
 }
-

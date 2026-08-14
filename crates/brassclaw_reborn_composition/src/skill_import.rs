@@ -82,20 +82,20 @@ mod inner {
         let skill_files = collect_skill_files(skills_root)?;
 
         for file_path in &skill_files {
-            let content = tokio::fs::read_to_string(file_path)
-                .await
-                .map_err(|e| ImportError::Io {
-                    path: file_path.display().to_string(),
-                    reason: e.to_string(),
-                })?;
+            let content =
+                tokio::fs::read_to_string(file_path)
+                    .await
+                    .map_err(|e| ImportError::Io {
+                        path: file_path.display().to_string(),
+                        reason: e.to_string(),
+                    })?;
 
             let parsed = match parse_skill_md(&content) {
                 Ok(p) => p,
                 Err(e) => {
-                    summary.failed.push((
-                        file_path.display().to_string(),
-                        format!("parse error: {e}"),
-                    ));
+                    summary
+                        .failed
+                        .push((file_path.display().to_string(), format!("parse error: {e}")));
                     continue;
                 }
             };
@@ -327,9 +327,7 @@ mod inner {
         let re = TOOL_RE.get_or_init(|| {
             regex::Regex::new(r"`([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)`").unwrap() // safety: hardcoded literal
         });
-        re.captures_iter(body)
-            .map(|c| c[1].to_string())
-            .collect()
+        re.captures_iter(body).map(|c| c[1].to_string()).collect()
     }
 
     /// Extract the body section that documents a specific tool.
@@ -339,10 +337,7 @@ mod inner {
     /// to the entire body if no heading is found.
     fn extract_tool_section(body: &str, tool_name: &str) -> String {
         // Find the tool short-name (part after the dot, e.g. "api" from "github.api").
-        let short = tool_name
-            .split('.')
-            .next_back()
-            .unwrap_or(tool_name);
+        let short = tool_name.split('.').next_back().unwrap_or(tool_name);
 
         let lines: Vec<&str> = body.lines().collect();
         let mut start = None;
@@ -352,8 +347,7 @@ mod inner {
             let trimmed = line.trim_start_matches('#');
             let hashes = line.len() - trimmed.len();
             if hashes > 0
-                && (line.to_lowercase().contains(tool_name)
-                    || line.to_lowercase().contains(short))
+                && (line.to_lowercase().contains(tool_name) || line.to_lowercase().contains(short))
             {
                 start = Some(i);
                 heading_level = hashes;
@@ -437,7 +431,9 @@ mod inner {
                     Ok(RowOutcome::Skipped)
                 } else {
                     // Content changed — reset to pending and update.
-                    store.update_content(existing.id, &existing.scope, input).await?;
+                    store
+                        .update_content(existing.id, &existing.scope, input)
+                        .await?;
                     Ok(RowOutcome::Updated)
                 }
             }
@@ -471,7 +467,8 @@ mod inner {
 
         #[test]
         fn extract_tool_names_finds_backtick_tools() {
-            let body = "Call `github.api` to list repos. Use `fs.read` to read files. Also `github.api`.";
+            let body =
+                "Call `github.api` to list repos. Use `fs.read` to read files. Also `github.api`.";
             let tools = extract_tool_names(body);
             assert!(tools.contains("github.api"), "{tools:?}");
             assert!(tools.contains("fs.read"), "{tools:?}");
@@ -480,23 +477,30 @@ mod inner {
 
         #[test]
         fn intent_examples_from_keywords_and_tags() {
-            let m = manifest_with_keywords(
-                vec!["github", "list issues"],
-                vec!["devops"],
-            );
+            let m = manifest_with_keywords(vec!["github", "list issues"], vec!["devops"]);
             let examples = extract_intent_examples(&m, "");
             let arr = examples.as_array().unwrap();
 
             // "github" → class 1
-            assert!(arr.iter().any(|e| e["input"] == "github" && e["class"] == 1));
+            assert!(
+                arr.iter()
+                    .any(|e| e["input"] == "github" && e["class"] == 1)
+            );
             // "list issues" → class 2
-            assert!(arr.iter().any(|e| e["input"] == "list issues" && e["class"] == 2));
+            assert!(
+                arr.iter()
+                    .any(|e| e["input"] == "list issues" && e["class"] == 2)
+            );
             // "devops" tag → class 1
-            assert!(arr.iter().any(|e| e["input"] == "devops" && e["class"] == 1));
+            assert!(
+                arr.iter()
+                    .any(|e| e["input"] == "devops" && e["class"] == 1)
+            );
             // description first sentence → class 3
-            assert!(arr
-                .iter()
-                .any(|e| e["class"] == 3 && e["input"].as_str().unwrap().len() > 5));
+            assert!(
+                arr.iter()
+                    .any(|e| e["class"] == 3 && e["input"].as_str().unwrap().len() > 5)
+            );
         }
 
         #[test]

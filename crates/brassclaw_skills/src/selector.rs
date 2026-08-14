@@ -917,7 +917,10 @@ mod tests {
     fn test_apply_confidence_factor_source_independent() {
         // Same score regardless of whether the caller passes authored or extracted metrics
         // (the is_authored parameter was removed in Phase 3).
-        assert_eq!(apply_confidence_factor(100, 0.8), apply_confidence_factor(100, 0.8));
+        assert_eq!(
+            apply_confidence_factor(100, 0.8),
+            apply_confidence_factor(100, 0.8)
+        );
     }
 
     #[test]

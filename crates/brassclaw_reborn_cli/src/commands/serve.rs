@@ -402,15 +402,14 @@ impl ServeCommand {
             // seeded on login.  Without a pool (local-dev no-PG path) the
             // bootstrap is skipped.
             // Use runtime.services().pg_pool() (same pool, borrowed after build).
-            let sso_trigger_access = runtime
-                .services()
-                .pg_pool()
-                .map(|p| crate::commands::webui_auth::LocalTriggerAccessBootstrapConfig {
+            let sso_trigger_access = runtime.services().pg_pool().map(|p| {
+                crate::commands::webui_auth::LocalTriggerAccessBootstrapConfig {
                     pool: (**p).clone(),
                     tenant_id: tenant_id.clone(),
                     agent_id: default_agent_id.clone(),
                     project_id: default_project_id.clone(),
-                });
+                }
+            });
 
             let crate::commands::webui_auth::WebuiAuthSurface {
                 authenticator,

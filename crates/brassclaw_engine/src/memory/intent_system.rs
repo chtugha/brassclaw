@@ -83,7 +83,10 @@ struct IncrementBucket {
 /// Build the string key for a scope. Cheap: one heap alloc per call.
 #[cfg(feature = "skills-db")]
 fn scope_bucket_key(scope: &IntentScope) -> String {
-    format!("{}/{}/{}/{}", scope.tenant_id, scope.user_id, scope.agent_id, scope.project_id)
+    format!(
+        "{}/{}/{}/{}",
+        scope.tenant_id, scope.user_id, scope.agent_id, scope.project_id
+    )
 }
 
 /// Global in-process token-bucket map (scope_key → bucket).
@@ -259,16 +262,16 @@ pub fn match_order(query_class: InputClass) -> [i16; 3] {
 ///   21=recipe, 50=scaffold.
 pub fn class_label(class_code: i32) -> String {
     match class_code {
-        0  => "tool",
-        1  => "skill_rusty",
-        2  => "skill_monty",
-        3  => "skill_llm",
-        4  => "extension_worker",
-        5  => "extension_cron",
-        6  => "extension_trigger",
-        7  => "extension_webhook",
-        8  => "extension_plan",
-        9  => "extension_revision",
+        0 => "tool",
+        1 => "skill_rusty",
+        2 => "skill_monty",
+        3 => "skill_llm",
+        4 => "extension_worker",
+        5 => "extension_cron",
+        6 => "extension_trigger",
+        7 => "extension_webhook",
+        8 => "extension_plan",
+        9 => "extension_revision",
         10 => "orchestrator",
         11 => "reserved",
         12 => "spec",
@@ -282,7 +285,7 @@ pub fn class_label(class_code: i32) -> String {
         20 => "note",
         21 => "recipe",
         50 => "scaffold",
-        _  => "component",
+        _ => "component",
     }
     .to_string()
 }
@@ -336,7 +339,10 @@ pub async fn resolve_intent(
     // PERF-02: single query with CASE WHEN ordering.
     // The query scans rows for the exact input_text across all three preferred
     // classes, ordered by preference position, then score DESC.
-    let client = pool.get().await.map_err(|e| IntentSystemError::Db(e.to_string()))?;
+    let client = pool
+        .get()
+        .await
+        .map_err(|e| IntentSystemError::Db(e.to_string()))?;
 
     let rows = client
         .query(
@@ -441,7 +447,10 @@ pub async fn record_disambiguation_choice(
     component_class_code: i32,
 ) -> Result<IntentResolution, IntentSystemError> {
     use tracing::debug;
-    let client = pool.get().await.map_err(|e| IntentSystemError::Db(e.to_string()))?;
+    let client = pool
+        .get()
+        .await
+        .map_err(|e| IntentSystemError::Db(e.to_string()))?;
     increment_score(&client, scope, row_id).await?;
     debug!(
         row_id = %row_id,
@@ -468,7 +477,10 @@ pub async fn seed_intent_input(
     component_class_code: i32,
     source: IntentSource,
 ) -> Result<(), IntentSystemError> {
-    let client = pool.get().await.map_err(|e| IntentSystemError::Db(e.to_string()))?;
+    let client = pool
+        .get()
+        .await
+        .map_err(|e| IntentSystemError::Db(e.to_string()))?;
     client
         .execute(
             "INSERT INTO reborn_intent_inputs
@@ -508,7 +520,10 @@ pub async fn purge_component_inputs(
     scope: &IntentScope,
     component_id: Uuid,
 ) -> Result<u64, IntentSystemError> {
-    let client = pool.get().await.map_err(|e| IntentSystemError::Db(e.to_string()))?;
+    let client = pool
+        .get()
+        .await
+        .map_err(|e| IntentSystemError::Db(e.to_string()))?;
     let result = client
         .execute(
             "DELETE FROM reborn_intent_inputs
@@ -561,7 +576,8 @@ async fn increment_score(
         let map = guard.get_or_insert_with(HashMap::new);
         let now = Instant::now();
         // Check if the current entry exists and whether its window has expired.
-        let expired = map.get(&key)
+        let expired = map
+            .get(&key)
             .map(|b| b.window_start.elapsed() >= Duration::from_secs(3600))
             .unwrap_or(false);
         if expired {
@@ -631,7 +647,10 @@ mod tests {
 
     #[test]
     fn classify_four_words_no_punct() {
-        assert_eq!(classify_query("list open github issues"), InputClass::Partial);
+        assert_eq!(
+            classify_query("list open github issues"),
+            InputClass::Partial
+        );
     }
 
     #[test]
@@ -740,17 +759,17 @@ mod tests {
     #[test]
     fn class_label_known_codes() {
         // Core classes 0-3
-        assert_eq!(class_label(0),  "tool");
-        assert_eq!(class_label(1),  "skill_rusty");
-        assert_eq!(class_label(2),  "skill_monty");
-        assert_eq!(class_label(3),  "skill_llm");
+        assert_eq!(class_label(0), "tool");
+        assert_eq!(class_label(1), "skill_rusty");
+        assert_eq!(class_label(2), "skill_monty");
+        assert_eq!(class_label(3), "skill_llm");
         // Extensions 4-9
-        assert_eq!(class_label(4),  "extension_worker");
-        assert_eq!(class_label(5),  "extension_cron");
-        assert_eq!(class_label(6),  "extension_trigger");
-        assert_eq!(class_label(7),  "extension_webhook");
-        assert_eq!(class_label(8),  "extension_plan");
-        assert_eq!(class_label(9),  "extension_revision");
+        assert_eq!(class_label(4), "extension_worker");
+        assert_eq!(class_label(5), "extension_cron");
+        assert_eq!(class_label(6), "extension_trigger");
+        assert_eq!(class_label(7), "extension_webhook");
+        assert_eq!(class_label(8), "extension_plan");
+        assert_eq!(class_label(9), "extension_revision");
         // System classes
         assert_eq!(class_label(10), "orchestrator");
         assert_eq!(class_label(11), "reserved");

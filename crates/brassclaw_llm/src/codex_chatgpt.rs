@@ -418,7 +418,9 @@ impl CodexChatGptProvider {
                 let current_token = self.api_key.read().await.clone();
 
                 if current_token.expose_secret() != api_key.expose_secret() {
-                    tracing::debug!("Received 401, but another request already refreshed the token");
+                    tracing::debug!(
+                        "Received 401, but another request already refreshed the token"
+                    );
                     let retry_resp = Self::send_http_request(
                         &self.client,
                         &url,

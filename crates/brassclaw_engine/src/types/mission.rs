@@ -658,7 +658,10 @@ mod tests {
         // Whichever the cron crate picks, it must NOT land in the missing
         // local interval [02:00, 03:00) on 2027-03-14.
         let fire_local = fire.with_timezone(&tz.tz());
-        if fire_local.year() == DST_TEST_YEAR && fire_local.month() == DST_TEST_MONTH && fire_local.day() == DST_SPRING_FORWARD_DAY {
+        if fire_local.year() == DST_TEST_YEAR
+            && fire_local.month() == DST_TEST_MONTH
+            && fire_local.day() == DST_SPRING_FORWARD_DAY
+        {
             // If it lands on DST day, the wall-clock hour must be >= 3 (EDT).
             assert!(
                 fire_local.hour() >= 3,

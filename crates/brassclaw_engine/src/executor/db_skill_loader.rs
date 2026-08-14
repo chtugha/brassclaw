@@ -288,7 +288,10 @@ mod inner {
         fn render_skills_block_contains_skill_xml() {
             let row = sample_row();
             let block = render_skills_block(&[row]);
-            assert!(block.contains("<skill name=\"github-fetch-issues\""), "{block}");
+            assert!(
+                block.contains("<skill name=\"github-fetch-issues\""),
+                "{block}"
+            );
             assert!(block.contains("version=\"1.0.0\""), "{block}");
             assert!(block.contains("class=\"llm\""), "{block}");
             assert!(block.contains("</skill>"), "{block}");

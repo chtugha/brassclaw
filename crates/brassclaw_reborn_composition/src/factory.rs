@@ -57,8 +57,6 @@ use brassclaw_turns::{
     InMemoryCheckpointStateStore, InMemoryLoopCheckpointStore, InMemoryTurnStateStore,
 };
 
-#[cfg(feature = "postgres")]
-use crate::pg_auth_product_services::PgAuthProductServices;
 use crate::RebornProductAuthServicePorts;
 use crate::default_system_prompt::seed_default_system_prompt;
 use crate::input::{RebornRuntimeProcessBinding, RebornStorageInput};
@@ -69,12 +67,13 @@ use crate::local_dev_mounts::{
     skill_management_mount_view, workspace_mount_view,
 };
 use crate::mcp::hosted_http_mcp_runtime;
+#[cfg(feature = "postgres")]
+use crate::pg_auth_product_services::PgAuthProductServices;
 use crate::product_auth_providers::{OAuthProviderComposition, compose_provider_client};
 use crate::product_auth_runtime_credentials::ProductAuthRuntimeCredentialResolver;
 use crate::{
-    RebornAuthContinuationDispatcher, RebornBuildError, RebornBuildInput,
-    RebornFacadeReadiness, RebornProductAuthServices, RebornReadiness, RebornReadinessState,
-    RebornWorkerReadiness,
+    RebornAuthContinuationDispatcher, RebornBuildError, RebornBuildInput, RebornFacadeReadiness,
+    RebornProductAuthServices, RebornReadiness, RebornReadinessState, RebornWorkerReadiness,
 };
 use crate::{
     available_extensions::{
@@ -389,8 +388,7 @@ pub(crate) struct PgRuntimeStores {
     pub(crate) capability_leases: Arc<brassclaw_authorization::PgCapabilityLeaseStore>,
     pub(crate) resource_governor: Arc<dyn brassclaw_resources::ResourceGovernor>,
     pub(crate) budget_gate_store: Arc<dyn brassclaw_resources::BudgetGateStore>,
-    pub(crate) broadcast_budget_event_sink:
-        Arc<brassclaw_resources::BroadcastBudgetEventSink>,
+    pub(crate) broadcast_budget_event_sink: Arc<brassclaw_resources::BroadcastBudgetEventSink>,
     pub(crate) event_log: Arc<dyn brassclaw_events::DurableEventLog>,
     pub(crate) audit_log: Arc<dyn brassclaw_events::DurableAuditLog>,
     pub(crate) local_dev_storage_root: PathBuf,
@@ -424,17 +422,16 @@ pub(crate) async fn build_pg_runtime_stores(
         tenant_id,
     ));
     let capability_leases = Arc::new(PgCapabilityLeaseStore::new(Arc::clone(&pool), tenant_id));
-    let pg_governor_store = brassclaw_resources::PgResourceGovernorStore::new(
-        Arc::clone(&pool),
-        tenant_id,
-    );
+    let pg_governor_store =
+        brassclaw_resources::PgResourceGovernorStore::new(Arc::clone(&pool), tenant_id);
     let resource_governor: Arc<dyn brassclaw_resources::ResourceGovernor> = Arc::new(
         brassclaw_resources::PersistentResourceGovernor::new(pg_governor_store),
     );
     // PG-backed budget-gate store: gates survive process restart and are
     // visible across concurrent processes sharing the same pool.
-    let budget_gate_store: Arc<dyn brassclaw_resources::BudgetGateStore> =
-        Arc::new(brassclaw_resources::PgBudgetGateStore::new(Arc::clone(&pool), tenant_id));
+    let budget_gate_store: Arc<dyn brassclaw_resources::BudgetGateStore> = Arc::new(
+        brassclaw_resources::PgBudgetGateStore::new(Arc::clone(&pool), tenant_id),
+    );
     let broadcast_budget_event_sink =
         Arc::new(brassclaw_resources::BroadcastBudgetEventSink::default());
     let event_log: Arc<dyn brassclaw_events::DurableEventLog> = Arc::new(
@@ -445,14 +442,14 @@ pub(crate) async fn build_pg_runtime_stores(
     );
     // Derive storage root and default prompt path the same way as local-dev.
     let local_dev_storage_root = reborn_home.join("db");
-    let default_system_prompt_path =
-        local_dev_default_system_prompt_path(&local_dev_storage_root);
+    let default_system_prompt_path = local_dev_default_system_prompt_path(&local_dev_storage_root);
     // Ensure the default system prompt exists (idempotent — already seeded on
     // first run but may not be present in a fresh PG-only deployment).
-    seed_default_system_prompt(&local_dev_storage_root, &default_system_prompt_path)
-        .map_err(|error| RebornBuildError::InvalidConfig {
+    seed_default_system_prompt(&local_dev_storage_root, &default_system_prompt_path).map_err(
+        |error| RebornBuildError::InvalidConfig {
             reason: format!("failed to seed default system prompt: {error}"),
-        })?;
+        },
+    )?;
     let trigger_repository = Arc::new(brassclaw_triggers::PostgresTriggerRepository::new(
         (*pool).clone(),
     ));
@@ -545,19 +542,15 @@ pub async fn build_reborn_services(
     // `build_reborn_runtime` picks up the pool from `services.pg_pool` to use
     // PG-backed stores for all durable state.
     if let RebornStorageInput::Postgres {
-        pool,
-        reborn_home,
-        ..
+        pool, reborn_home, ..
     } = &input.storage
     {
         let local_root = reborn_home.join("db");
-        let local_input =
-            RebornBuildInput::local_dev(input.owner_id.clone(), local_root);
+        let local_input = RebornBuildInput::local_dev(input.owner_id.clone(), local_root);
         let effective_tenant_id = input.tenant_id.as_deref().unwrap_or("reborn-cli");
         let local_input = transfer_build_input_extras(local_input, &input);
         let pg_pool_arc = Arc::new(pool.clone());
-        let mut services = build_local_dev(local_input, Some(Arc::clone(&pg_pool_arc)))
-            .await?;
+        let mut services = build_local_dev(local_input, Some(Arc::clone(&pg_pool_arc))).await?;
         services.pg_pool = Some(Arc::clone(&pg_pool_arc));
         services.pg_token_settings_store = Some(Arc::new(
             crate::pg_token_settings_store::PgTokenSettingsStore::new(
@@ -583,7 +576,10 @@ pub async fn build_reborn_services(
 /// Used by the Phase-5 hybrid path in [`build_reborn_services`] to preserve
 /// the caller-supplied runtime policy, process binding, and OAuth configs
 /// when converting a Postgres storage input to a local-dev storage input.
-fn transfer_build_input_extras(mut dst: RebornBuildInput, src: &RebornBuildInput) -> RebornBuildInput {
+fn transfer_build_input_extras(
+    mut dst: RebornBuildInput,
+    src: &RebornBuildInput,
+) -> RebornBuildInput {
     dst.runtime_policy = src.runtime_policy.clone();
     dst.runtime_process_binding = src.runtime_process_binding.clone();
     dst.product_auth_ports = src.product_auth_ports.clone();
@@ -663,7 +659,6 @@ where
     }
     Arc::new(services)
 }
-
 
 async fn build_local_dev(
     input: RebornBuildInput,
@@ -909,24 +904,23 @@ async fn build_local_dev(
     // so extension install records survive process restart.
     // On the pure local-dev path (no pool), fall back to the filesystem store.
     #[cfg(feature = "postgres")]
-    let extension_installation_store: Arc<dyn ExtensionInstallationStore> =
-        if let Some(pool) = pg_pool.as_ref() {
-            let effective_tenant_id = tenant_id.as_deref().unwrap_or("reborn-cli");
-            Arc::new(brassclaw_extensions::PgExtensionInstallationStore::new(
-                Arc::clone(pool),
-                effective_tenant_id,
-            ))
-        } else {
-            Arc::new(
-                FilesystemExtensionInstallationStore::load(extension_filesystem.clone())
-                    .await
-                    .map_err(|error| RebornBuildError::InvalidConfig {
-                        reason: format!(
-                            "extension installation state could not be loaded: {error}"
-                        ),
-                    })?,
-            )
-        };
+    let extension_installation_store: Arc<dyn ExtensionInstallationStore> = if let Some(pool) =
+        pg_pool.as_ref()
+    {
+        let effective_tenant_id = tenant_id.as_deref().unwrap_or("reborn-cli");
+        Arc::new(brassclaw_extensions::PgExtensionInstallationStore::new(
+            Arc::clone(pool),
+            effective_tenant_id,
+        ))
+    } else {
+        Arc::new(
+            FilesystemExtensionInstallationStore::load(extension_filesystem.clone())
+                .await
+                .map_err(|error| RebornBuildError::InvalidConfig {
+                    reason: format!("extension installation state could not be loaded: {error}"),
+                })?,
+        )
+    };
     #[cfg(not(feature = "postgres"))]
     let extension_installation_store: Arc<dyn ExtensionInstallationStore> = Arc::new(
         FilesystemExtensionInstallationStore::load(extension_filesystem.clone())
@@ -1162,7 +1156,6 @@ impl TriggerCreateHook for LocalRuntimeTriggerCreatorPairingHook {
         pair_trigger_creator(&conversations, record).await
     }
 }
-
 
 async fn pair_trigger_creator(
     pairing: &dyn ConversationActorPairingService,
@@ -1809,10 +1802,6 @@ fn nearai_allowed_effects() -> Vec<EffectKind> {
     ]
 }
 
-
-
-
-
 #[cfg(feature = "postgres")]
 type FilesystemProductionHostRuntimeServices<F> = HostRuntimeServices<
     F,
@@ -1959,7 +1948,6 @@ where
     }
 }
 
-
 #[cfg(feature = "postgres")]
 async fn build_filesystem_secret_credential_stores<F>(
     scoped_filesystem: Arc<ScopedFilesystem<F>>,
@@ -1988,8 +1976,6 @@ async fn resolve_explicit_or_keychain_master_key(
         Ok(None)
     }
 }
-
-
 
 /// Resolve the embedding provider from `brassclaw_config` for the given tenant.
 ///

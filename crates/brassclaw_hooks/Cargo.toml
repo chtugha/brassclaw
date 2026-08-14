@@ -30,7 +30,7 @@ brassclaw_events = { path = "../brassclaw_events" }
 brassclaw_host_api = { path = "../brassclaw_host_api" }
 brassclaw_prompt_envelope = { path = "../brassclaw_prompt_envelope" }
 brassclaw_turns = { path = "../brassclaw_turns" }
-lru = "0.16"
+lru = "0.18"
 rust_decimal = { version = "1", features = ["serde", "serde-with-str"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

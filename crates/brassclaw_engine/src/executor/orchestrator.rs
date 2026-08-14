@@ -703,13 +703,8 @@ pub async fn execute_orchestrator(
                     // Phase 5: retrieval_source is the real backend (PostgresSource or
                     // RamSource). Falls back to legacy retrieve_context when None.
                     "__assemble_prior_knowledge__" => {
-                        handle_assemble_prior_knowledge(
-                            args,
-                            thread,
-                            retrieval,
-                            retrieval_source,
-                        )
-                        .await
+                        handle_assemble_prior_knowledge(args, thread, retrieval, retrieval_source)
+                            .await
                     }
 
                     // Unknown — let Monty resolve it (user-defined functions, builtins)
@@ -2642,10 +2637,7 @@ async fn handle_assemble_prior_knowledge(
     };
 
     // Collect matched component UUIDs (raw PKC dispatch identity).
-    let matched_ids: Vec<String> = components
-        .iter()
-        .map(|d| d.id.0.to_string())
-        .collect();
+    let matched_ids: Vec<String> = components.iter().map(|d| d.id.0.to_string()).collect();
 
     // Build the formatted LLM-readable JSON from the retrieved components.
     let formatted = format_prior_knowledge_for_llm(&components, &matched_ids);
@@ -2758,15 +2750,15 @@ const CLASS_CODE_RECIPE: i32 = 21;
 fn doc_type_class_code(doc_type: crate::types::memory::DocType) -> (i32, &'static str) {
     use crate::types::memory::DocType;
     match doc_type {
-        DocType::Spec      => (CLASS_CODE_SPEC,      "spec"),
+        DocType::Spec => (CLASS_CODE_SPEC, "spec"),
         DocType::ToolSkill => (CLASS_CODE_TOOL_SKILL, "tool_skill"),
-        DocType::Plan      => (CLASS_CODE_PLAN,      "plan"),
-        DocType::Summary   => (CLASS_CODE_SUMMARY,   "summary"),
-        DocType::Lesson    => (CLASS_CODE_LESSON,    "lesson"),
-        DocType::Issue     => (CLASS_CODE_ISSUE,     "issue"),
-        DocType::Note      => (CLASS_CODE_NOTE,      "note"),
-        DocType::Skill     => (CLASS_CODE_SKILL,     "skill_llm"),
-        DocType::Recipe    => (CLASS_CODE_RECIPE,    "recipe"),
+        DocType::Plan => (CLASS_CODE_PLAN, "plan"),
+        DocType::Summary => (CLASS_CODE_SUMMARY, "summary"),
+        DocType::Lesson => (CLASS_CODE_LESSON, "lesson"),
+        DocType::Issue => (CLASS_CODE_ISSUE, "issue"),
+        DocType::Note => (CLASS_CODE_NOTE, "note"),
+        DocType::Skill => (CLASS_CODE_SKILL, "skill_llm"),
+        DocType::Recipe => (CLASS_CODE_RECIPE, "recipe"),
     }
 }
 
@@ -2797,18 +2789,32 @@ pub(crate) fn format_prior_knowledge_for_llm(
             // Build the entry with only non-empty fields so that NULL/absent
             // DB columns never inject extra tokens into the stream.
             let mut entry = serde_json::Map::new();
-            entry.insert("class".into(),      serde_json::Value::String(class_label.to_string()));
-            entry.insert("class_code".into(), serde_json::Value::Number(class_code.into()));
-            entry.insert("name".into(),       serde_json::Value::String(d.title.clone()));
+            entry.insert(
+                "class".into(),
+                serde_json::Value::String(class_label.to_string()),
+            );
+            entry.insert(
+                "class_code".into(),
+                serde_json::Value::Number(class_code.into()),
+            );
+            entry.insert("name".into(), serde_json::Value::String(d.title.clone()));
             if !d.content.is_empty() {
-                entry.insert("content".into(), serde_json::Value::String(d.content.clone()));
+                entry.insert(
+                    "content".into(),
+                    serde_json::Value::String(d.content.clone()),
+                );
             }
             // Surface `description` from metadata if the component carries one.
-            if let Some(desc) = d.metadata.get("description")
+            if let Some(desc) = d
+                .metadata
+                .get("description")
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty())
             {
-                entry.insert("description".into(), serde_json::Value::String(desc.to_string()));
+                entry.insert(
+                    "description".into(),
+                    serde_json::Value::String(desc.to_string()),
+                );
             }
             serde_json::Value::Object(entry)
         })
@@ -3125,7 +3131,7 @@ async fn handle_list_skills(
         let scope = scope_from_thread_ids(
             &thread.user_id, // tenant_id stub (Phase 1 — Phase 2+ will tighten)
             &thread.user_id,
-            "default",       // agent_id stub (Phase 1)
+            "default", // agent_id stub (Phase 1)
             thread.project_id.0.to_string(),
         );
         match fetch_llm_skills_as_json(pool, &scope).await {
@@ -3345,14 +3351,8 @@ async fn handle_validate_component(
 ) -> ExtFunctionResult {
     use crate::types::memory::{DocType, MemoryDoc};
 
-    let title = args
-        .first()
-        .map(monty_to_string)
-        .unwrap_or_default();
-    let content = args
-        .get(1)
-        .map(monty_to_string)
-        .unwrap_or_default();
+    let title = args.first().map(monty_to_string).unwrap_or_default();
+    let content = args.get(1).map(monty_to_string).unwrap_or_default();
     let doc_type_str = args
         .get(2)
         .map(monty_to_string)
@@ -3361,7 +3361,9 @@ async fn handle_validate_component(
 
     if title.is_empty() || content.is_empty() {
         debug!("__validate_component__: empty title or content — no-op");
-        return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({"queued": false, "reason": "empty payload"})));
+        return ExtFunctionResult::Return(json_to_monty(
+            &serde_json::json!({"queued": false, "reason": "empty payload"}),
+        ));
     }
 
     // Map doc_type string to the DocType enum (lenient fallback to Note).
@@ -3390,7 +3392,9 @@ async fn handle_validate_component(
 
     let Some(store) = store else {
         debug!("__validate_component__: no store available — skipping write");
-        return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({"queued": false, "reason": "no_store"})));
+        return ExtFunctionResult::Return(json_to_monty(
+            &serde_json::json!({"queued": false, "reason": "no_store"}),
+        ));
     };
 
     // Build the update-candidate metadata.
@@ -3424,9 +3428,8 @@ async fn handle_validate_component(
     candidate.metadata = serde_json::Value::Object(meta);
 
     let candidate_id = format!("{}", candidate.id.0);
-    let save_result = crate::runtime::with_trusted_internal_writes(
-        store.save_memory_doc(&candidate)
-    ).await;
+    let save_result =
+        crate::runtime::with_trusted_internal_writes(store.save_memory_doc(&candidate)).await;
 
     match save_result {
         Ok(_) => {
@@ -4066,7 +4069,8 @@ mod tests {
             "expected user-safe timeout reason, got: {rendered}"
         );
         assert!(
-            rendered.contains("DB-less mode") && rendered.contains("BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS"),
+            rendered.contains("DB-less mode")
+                && rendered.contains("BRASSCLAW_ORCHESTRATOR_MAX_DURATION_SECS"),
             "reason must mention DB-less-mode env var fallback, got: {rendered}"
         );
     }
@@ -4245,7 +4249,8 @@ mod tests {
         let runner =
             MontyRun::new(code, "test.py", vec![]).expect("Failed to parse orchestrator helpers");
         let mut stdout = String::new();
-        let tracker = LimitedTracker::new(ResourceLimits::new().max_allocations(TEST_MAX_ALLOCATIONS));
+        let tracker =
+            LimitedTracker::new(ResourceLimits::new().max_allocations(TEST_MAX_ALLOCATIONS));
 
         let mut progress = runner
             .start(vec![], tracker, PrintWriter::CollectString(&mut stdout))
@@ -5739,9 +5744,8 @@ else:
     fn code_errors_none_limit_skips_failure_check() {
         // Regression: same None-guard for the code-error branch at line 660.
         // consecutive_errors = TEST_CONSECUTIVE_ERRORS; None limit must not trigger.
-        let result = eval_python_int(
-            &format!(
-                r#"
+        let result = eval_python_int(&format!(
+            r#"
 max_consecutive_errors = None
 consecutive_errors = {ce}
 failed = False
@@ -5752,9 +5756,8 @@ if failed:
 else:
     FINAL(0)
 "#,
-                ce = TEST_CONSECUTIVE_ERRORS,
-            ),
-        );
+            ce = TEST_CONSECUTIVE_ERRORS,
+        ));
         assert_eq!(
             result, 0,
             "None limit should not trigger failure regardless of consecutive_errors"
@@ -6201,7 +6204,10 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
                 MontyObject::String("field".into()),
                 MontyObject::String("tokens".into()),
             ),
-            (MontyObject::String("value".into()), MontyObject::Int(TEST_NEG_TOKENS_50)),
+            (
+                MontyObject::String("value".into()),
+                MontyObject::Int(TEST_NEG_TOKENS_50),
+            ),
             (
                 MontyObject::String("message".into()),
                 MontyObject::String("token budget low".into()),
@@ -6837,7 +6843,11 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
             .list_memory_docs(thread.project_id, &thread.user_id)
             .await
             .unwrap();
-        assert_eq!(docs.len(), 1, "exactly one update-candidate must be written");
+        assert_eq!(
+            docs.len(),
+            1,
+            "exactly one update-candidate must be written"
+        );
     }
 
     #[tokio::test]
@@ -6980,9 +6990,12 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         let d1 = make_plan_doc("plan-alpha", "alpha content");
         let d2 = make_skill_doc("skill-beta", "beta content");
         let ids: Vec<String> = vec![d1.id.0.to_string(), d2.id.0.to_string()];
-        let first  = format_prior_knowledge_for_llm(&[d1.clone(), d2.clone()], &ids);
+        let first = format_prior_knowledge_for_llm(&[d1.clone(), d2.clone()], &ids);
         let second = format_prior_knowledge_for_llm(&[d1, d2], &ids);
-        assert_eq!(first, second, "same component set must produce byte-identical formatted_content");
+        assert_eq!(
+            first, second,
+            "same component set must produce byte-identical formatted_content"
+        );
     }
 
     /// 6.1.5b — result is valid JSON and carries both `content` and
@@ -7009,7 +7022,7 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
             "test-user",
             DocType::Recipe,
             "my-recipe",
-            "",  // empty content — must be omitted from JSON
+            "", // empty content — must be omitted from JSON
         );
 
         let ids: Vec<String> = vec![
@@ -7020,12 +7033,22 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         let json_str = format_prior_knowledge_for_llm(&[plan_doc, skill_doc, recipe_doc], &ids);
 
         // Must be parseable JSON.
-        let parsed: serde_json::Value = serde_json::from_str(&json_str)
-            .expect("formatted_content must be valid JSON");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json_str).expect("formatted_content must be valid JSON");
 
         // Top-level keys.
-        assert!(parsed.get("prior_knowledge").and_then(|v| v.as_array()).is_some());
-        assert!(parsed.get("matched_components").and_then(|v| v.as_array()).is_some());
+        assert!(
+            parsed
+                .get("prior_knowledge")
+                .and_then(|v| v.as_array())
+                .is_some()
+        );
+        assert!(
+            parsed
+                .get("matched_components")
+                .and_then(|v| v.as_array())
+                .is_some()
+        );
 
         let entries = parsed["prior_knowledge"].as_array().unwrap();
         assert_eq!(entries.len(), 3);
@@ -7036,7 +7059,10 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         assert_eq!(plan_entry["class_code"], 14);
         assert_eq!(plan_entry["name"], "deploy-to-kubernetes");
         assert_eq!(plan_entry["description"], "K8s deploy procedure");
-        assert!(plan_entry.get("content").is_some(), "non-empty content must appear");
+        assert!(
+            plan_entry.get("content").is_some(),
+            "non-empty content must appear"
+        );
 
         // Skill entry: class_code=3.
         assert_eq!(entries[1]["class_code"], 3);
@@ -7082,15 +7108,20 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         };
 
         // Both surfaces must be present.
-        assert!(json.get("content").is_some(),           "content key required");
-        assert!(json.get("formatted_content").is_some(), "formatted_content key required");
+        assert!(json.get("content").is_some(), "content key required");
+        assert!(
+            json.get("formatted_content").is_some(),
+            "formatted_content key required"
+        );
         assert!(json.get("override_prompt_creation").is_some());
         assert!(json.get("matched_component_ids").is_some());
 
         // formatted_content must itself be valid JSON.
-        let fc = json["formatted_content"].as_str().expect("formatted_content must be a string");
-        let _: serde_json::Value = serde_json::from_str(fc)
-            .expect("formatted_content must be valid JSON");
+        let fc = json["formatted_content"]
+            .as_str()
+            .expect("formatted_content must be a string");
+        let _: serde_json::Value =
+            serde_json::from_str(fc).expect("formatted_content must be valid JSON");
     }
 
     /// 6.1.5e — regression: raw `content` (plain-text) must never be equal to
@@ -7106,9 +7137,12 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         let raw = format!("[{:?}] {}\n{}", doc.doc_type, doc.title, doc.content);
 
         // Formatted must be valid JSON; raw must not start with `{`.
-        assert!(formatted.starts_with('{'), "formatted_content must be a JSON object");
-        assert!(!raw.starts_with('{'),      "raw content must not be JSON");
-        assert_ne!(formatted, raw,          "raw and formatted surfaces must differ");
+        assert!(
+            formatted.starts_with('{'),
+            "formatted_content must be a JSON object"
+        );
+        assert!(!raw.starts_with('{'), "raw content must not be JSON");
+        assert_ne!(formatted, raw, "raw and formatted surfaces must differ");
 
         // Formatted must not contain the raw `[Plan]` prefix that Rust uses internally.
         assert!(

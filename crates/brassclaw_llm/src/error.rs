@@ -88,7 +88,8 @@ pub(crate) fn context_length_error(status_code: u16, response_text: &str) -> Opt
     }
 
     let lower = response_text.to_ascii_lowercase();
-    let is_context_overflow = status_code == HTTP_PAYLOAD_TOO_LARGE || is_context_length_error_message(&lower);
+    let is_context_overflow =
+        status_code == HTTP_PAYLOAD_TOO_LARGE || is_context_length_error_message(&lower);
     if !is_context_overflow {
         return None;
     }

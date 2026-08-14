@@ -11,11 +11,11 @@ mod inner {
     use std::sync::Arc;
 
     use async_trait::async_trait;
+    use brassclaw_engine::memory::intent_system::{
+        InputClass, IntentScope, IntentSource, purge_component_inputs, seed_intent_input,
+    };
     use brassclaw_pg::PgPool;
     use brassclaw_product_workflow::{IntentInputRow, IntentInputsStore, UpsertIntentInputRequest};
-    use brassclaw_engine::memory::intent_system::{
-        IntentScope, IntentSource, InputClass, seed_intent_input, purge_component_inputs,
-    };
     use uuid::Uuid;
 
     /// Input text length cap (arbitrary safety ceiling; spec doesn't define one).
@@ -45,7 +45,11 @@ mod inner {
 
     impl PgIntentInputsStore {
         pub(crate) fn new(pool: Arc<PgPool>, tenant_id: String, agent_id: String) -> Self {
-            Self { pool, tenant_id, agent_id }
+            Self {
+                pool,
+                tenant_id,
+                agent_id,
+            }
         }
     }
 
@@ -58,17 +62,16 @@ mod inner {
             project_id: &str,
             component_id: Option<&str>,
         ) -> Result<Vec<IntentInputRow>, Box<dyn std::error::Error + Send + Sync>> {
-            let client = self
-                .pool
-                .get()
-                .await
-                .map_err(|e| Box::new(PgIntentInputsError::Pool(e.to_string()))
-                    as Box<dyn std::error::Error + Send + Sync>)?;
+            let client = self.pool.get().await.map_err(|e| {
+                Box::new(PgIntentInputsError::Pool(e.to_string()))
+                    as Box<dyn std::error::Error + Send + Sync>
+            })?;
 
             let rows = if let Some(cid) = component_id {
-                let cid_uuid = Uuid::parse_str(cid)
-                    .map_err(|e| Box::new(PgIntentInputsError::BadUuid(e.to_string()))
-                        as Box<dyn std::error::Error + Send + Sync>)?;
+                let cid_uuid = Uuid::parse_str(cid).map_err(|e| {
+                    Box::new(PgIntentInputsError::BadUuid(e.to_string()))
+                        as Box<dyn std::error::Error + Send + Sync>
+                })?;
                 client
                     .query(
                         "SELECT id::text, input_text, input_class, component_id::text,
@@ -77,11 +80,19 @@ mod inner {
                          WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3
                            AND project_id = $4 AND component_id = $5
                          ORDER BY score DESC, created_at ASC LIMIT 500",
-                        &[&self.tenant_id, &user_id, &self.agent_id, &project_id, &cid_uuid],
+                        &[
+                            &self.tenant_id,
+                            &user_id,
+                            &self.agent_id,
+                            &project_id,
+                            &cid_uuid,
+                        ],
                     )
                     .await
-                    .map_err(|e| Box::new(PgIntentInputsError::Db(e.to_string()))
-                        as Box<dyn std::error::Error + Send + Sync>)?
+                    .map_err(|e| {
+                        Box::new(PgIntentInputsError::Db(e.to_string()))
+                            as Box<dyn std::error::Error + Send + Sync>
+                    })?
             } else {
                 client
                     .query(
@@ -94,8 +105,10 @@ mod inner {
                         &[&self.tenant_id, &user_id, &self.agent_id, &project_id],
                     )
                     .await
-                    .map_err(|e| Box::new(PgIntentInputsError::Db(e.to_string()))
-                        as Box<dyn std::error::Error + Send + Sync>)?
+                    .map_err(|e| {
+                        Box::new(PgIntentInputsError::Db(e.to_string()))
+                            as Box<dyn std::error::Error + Send + Sync>
+                    })?
             };
 
             let items = rows
@@ -133,9 +146,10 @@ mod inner {
                     return Err(Box::new(PgIntentInputsError::BadInputClass(other)));
                 }
             };
-            let component_id = Uuid::parse_str(&req.component_id)
-                .map_err(|e| Box::new(PgIntentInputsError::BadUuid(e.to_string()))
-                    as Box<dyn std::error::Error + Send + Sync>)?;
+            let component_id = Uuid::parse_str(&req.component_id).map_err(|e| {
+                Box::new(PgIntentInputsError::BadUuid(e.to_string()))
+                    as Box<dyn std::error::Error + Send + Sync>
+            })?;
 
             let scope = IntentScope {
                 tenant_id: self.tenant_id.clone(),
@@ -154,16 +168,16 @@ mod inner {
                 IntentSource::Seeded,
             )
             .await
-            .map_err(|e| Box::new(PgIntentInputsError::Db(e.to_string()))
-                as Box<dyn std::error::Error + Send + Sync>)?;
+            .map_err(|e| {
+                Box::new(PgIntentInputsError::Db(e.to_string()))
+                    as Box<dyn std::error::Error + Send + Sync>
+            })?;
 
             // Re-fetch the just-upserted row so we can return canonical state.
-            let client = self
-                .pool
-                .get()
-                .await
-                .map_err(|e| Box::new(PgIntentInputsError::Pool(e.to_string()))
-                    as Box<dyn std::error::Error + Send + Sync>)?;
+            let client = self.pool.get().await.map_err(|e| {
+                Box::new(PgIntentInputsError::Pool(e.to_string()))
+                    as Box<dyn std::error::Error + Send + Sync>
+            })?;
             let row = client
                 .query_one(
                     "SELECT id::text, input_text, input_class, component_id::text,
@@ -183,8 +197,10 @@ mod inner {
                     ],
                 )
                 .await
-                .map_err(|e| Box::new(PgIntentInputsError::Db(e.to_string()))
-                    as Box<dyn std::error::Error + Send + Sync>)?;
+                .map_err(|e| {
+                    Box::new(PgIntentInputsError::Db(e.to_string()))
+                        as Box<dyn std::error::Error + Send + Sync>
+                })?;
 
             Ok(IntentInputRow {
                 id: row.get::<_, String>(0),
@@ -205,9 +221,10 @@ mod inner {
             project_id: &str,
             component_id: &str,
         ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
-            let component_uuid = Uuid::parse_str(component_id)
-                .map_err(|e| Box::new(PgIntentInputsError::BadUuid(e.to_string()))
-                    as Box<dyn std::error::Error + Send + Sync>)?;
+            let component_uuid = Uuid::parse_str(component_id).map_err(|e| {
+                Box::new(PgIntentInputsError::BadUuid(e.to_string()))
+                    as Box<dyn std::error::Error + Send + Sync>
+            })?;
 
             let scope = IntentScope {
                 tenant_id: self.tenant_id.clone(),
@@ -218,8 +235,10 @@ mod inner {
 
             let count = purge_component_inputs(&self.pool, &scope, component_uuid)
                 .await
-                .map_err(|e| Box::new(PgIntentInputsError::Db(e.to_string()))
-                    as Box<dyn std::error::Error + Send + Sync>)?;
+                .map_err(|e| {
+                    Box::new(PgIntentInputsError::Db(e.to_string()))
+                        as Box<dyn std::error::Error + Send + Sync>
+                })?;
 
             Ok(count)
         }

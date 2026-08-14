@@ -290,9 +290,27 @@ async fn cross_user_isolation_scope_passed_to_backend() {
 #[tokio::test]
 async fn cross_scope_backend_results_are_filtered() {
     let results = vec![
-        make_result("tenant-a", "user-x", "allowed.md", SCORE_ALLOWED, "allowed snippet"),
-        make_result("tenant-b", "user-x", "wrong-tenant.md", SCORE_WRONG_TENANT, "tenant leak"),
-        make_result("tenant-a", "user-y", "wrong-user.md", SCORE_WRONG_USER, "user leak"),
+        make_result(
+            "tenant-a",
+            "user-x",
+            "allowed.md",
+            SCORE_ALLOWED,
+            "allowed snippet",
+        ),
+        make_result(
+            "tenant-b",
+            "user-x",
+            "wrong-tenant.md",
+            SCORE_WRONG_TENANT,
+            "tenant leak",
+        ),
+        make_result(
+            "tenant-a",
+            "user-y",
+            "wrong-user.md",
+            SCORE_WRONG_USER,
+            "user leak",
+        ),
         make_result_with_agent(
             "tenant-a",
             "user-x",

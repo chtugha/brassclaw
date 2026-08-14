@@ -33,14 +33,12 @@ mod budget;
 mod budget_events;
 #[cfg(not(feature = "skills-db"))]
 mod bundled_skills;
-pub mod db_config;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub mod component_import;
+pub mod db_config;
+mod default_system_prompt;
 #[cfg(feature = "postgres")]
 pub(crate) mod docplan_dissector;
-#[cfg(feature = "skills-db")]
-pub mod skill_import;
-mod default_system_prompt;
 mod error;
 mod extension_installation_store;
 mod extension_lifecycle;
@@ -50,9 +48,9 @@ mod factory;
 mod google_oauth;
 mod gsuite;
 mod hooks;
+mod input;
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 pub mod interceptor_config_service;
-mod input;
 mod lifecycle;
 #[cfg(feature = "root-llm-provider")]
 mod llm_catalog;
@@ -85,6 +83,8 @@ mod product_auth_serve;
 mod product_live_adapters;
 mod production_runtime_policy;
 mod projection;
+#[cfg(feature = "skills-db")]
+pub mod skill_import;
 pub use auth_prompt::{AuthChallengeProvider, AuthChallengeView};
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 pub(crate) mod embedding_providers;
@@ -97,10 +97,17 @@ pub mod migration;
 pub(crate) mod pg_auth_product_services;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_chat_memory_record_store;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) mod pg_intent_inputs_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_memory_doc_store;
+pub(crate) mod pg_monty_vm_settings;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_recipe_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_token_settings_store;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_user_preference_store;
 pub(crate) mod plan_library;
 #[cfg(feature = "root-llm-provider")]
 mod provider_admin;
@@ -108,15 +115,6 @@ mod provider_admin;
 mod provider_admin_product_command;
 mod readiness;
 mod recipe_library;
-#[cfg(all(feature = "postgres", feature = "skills-db"))]
-pub(crate) mod pg_intent_inputs_store;
-pub(crate) mod pg_monty_vm_settings;
-#[cfg(feature = "postgres")]
-pub(crate) mod pg_user_preference_store;
-#[cfg(feature = "postgres")]
-pub(crate) mod pg_recipe_store;
-#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
-pub(crate) mod sempai_proposal_sink;
 #[cfg(feature = "postgres")]
 pub(crate) mod recipe_store;
 #[cfg(feature = "postgres")]
@@ -127,6 +125,8 @@ mod runtime;
 mod runtime_input;
 #[cfg(feature = "postgres")]
 pub mod secrets_master;
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+pub(crate) mod sempai_proposal_sink;
 mod skill_listing;
 #[cfg(feature = "test-support")]
 pub mod test_support;
@@ -176,13 +176,13 @@ pub use hooks::{
     tenant_extension_root,
 };
 pub use input::{OAuthClientConfig, RebornBuildInput, RebornRuntimeProcessBinding};
+#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
+pub use llm_catalog::resolve_llm_selection_against_catalog_db;
 #[cfg(feature = "root-llm-provider")]
 pub use llm_catalog::{
     RebornLlmCatalogError, resolve_against_registry, resolve_llm_selection_against_catalog,
     resolve_reborn_runtime_llm,
 };
-#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
-pub use llm_catalog::resolve_llm_selection_against_catalog_db;
 #[cfg(feature = "root-llm-provider")]
 pub use llm_config_service::{LlmReloadTrigger, RebornLlmConfigService};
 #[cfg(feature = "root-llm-provider")]
@@ -192,6 +192,8 @@ pub use local_runtime_profile::{
     local_dev_yolo_runtime_policy, local_runtime_build_input,
     local_runtime_build_input_with_options,
 };
+#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
+pub use pg_provider_repo::PgProviderRepo;
 pub use product_live_adapters::{
     ProductLiveCapabilityAuthorityResolver, ProductLiveCapabilityIo, ProductLiveModelRouteSettings,
     ProductLivePlannedRuntimeAdapterConfig, ProductLivePlannedRuntimeAdapterError,
@@ -207,8 +209,6 @@ pub use provider_admin::{
 };
 #[cfg(feature = "root-llm-provider")]
 pub use provider_admin_product_command::RebornProviderAdminProductCommandService;
-#[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
-pub use pg_provider_repo::PgProviderRepo;
 pub use readiness::{
     RebornFacadeReadiness, RebornReadiness, RebornReadinessState, RebornWorkerReadiness,
 };
@@ -238,8 +238,8 @@ pub use webui_serve::{
 /// the composition CLAUDE.md says "Expose facade-shaped handles only";
 /// these four newtypes are the WebUI gateway's host-identity facade.
 pub mod host_api {
-    pub use brassclaw_host_api::{AgentId, ProjectId, TenantId, UserId};
     pub use brassclaw_host_api::runtime_policy::RuntimeProfile;
+    pub use brassclaw_host_api::{AgentId, ProjectId, TenantId, UserId};
 }
 
 /// Reborn-owned local trigger-fire access store, re-exported so host

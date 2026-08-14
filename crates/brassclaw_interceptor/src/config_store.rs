@@ -34,10 +34,7 @@ pub trait InterceptorConfigStore: Send + Sync {
     async fn load(&self) -> Result<InterceptorConfig, crate::InterceptorError>;
 
     /// Persist the Sempai persona text.
-    async fn save_persona(
-        &self,
-        persona: &str,
-    ) -> Result<(), crate::InterceptorError>;
+    async fn save_persona(&self, persona: &str) -> Result<(), crate::InterceptorError>;
 
     /// Persist the assembled base prompt and its assembly timestamp.
     async fn save_base_prompt(
@@ -47,8 +44,5 @@ pub trait InterceptorConfigStore: Send + Sync {
     ) -> Result<(), crate::InterceptorError>;
 
     /// Persist the pre-warm timestamp.
-    async fn save_prewarm_last_at(
-        &self,
-        timestamp: &str,
-    ) -> Result<(), crate::InterceptorError>;
+    async fn save_prewarm_last_at(&self, timestamp: &str) -> Result<(), crate::InterceptorError>;
 }

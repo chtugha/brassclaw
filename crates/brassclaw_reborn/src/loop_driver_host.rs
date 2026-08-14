@@ -18,8 +18,8 @@ use brassclaw_hooks::middleware::{
 };
 use brassclaw_host_api::ExtensionId;
 use brassclaw_interceptor::{
-    CapturedPrompt, ForensicPacket, InterceptorStore, KohaiUsage, NoopInterceptorStore,
-    PacketId, TokenAccountingSnapshot,
+    CapturedPrompt, ForensicPacket, InterceptorStore, KohaiUsage, NoopInterceptorStore, PacketId,
+    TokenAccountingSnapshot,
 };
 #[cfg(feature = "root-llm-provider")]
 use brassclaw_interceptor::{NoopProposalSink, SempaiProposalSink};
@@ -1393,10 +1393,7 @@ where
     /// `on_prompt_assembled` calls the Sempai to review and adjust the
     /// Kohai prompt before it is forwarded.
     #[cfg(feature = "root-llm-provider")]
-    pub fn with_sempai_gateway(
-        mut self,
-        gateway: Arc<dyn HostManagedModelGateway>,
-    ) -> Self {
+    pub fn with_sempai_gateway(mut self, gateway: Arc<dyn HostManagedModelGateway>) -> Self {
         self.sempai_gateway = Some(gateway);
         self
     }
@@ -1939,13 +1936,7 @@ impl brassclaw_turns::run_profile::LoopInterceptorPort for RebornLoopDriverHost 
             (self.sempai_gateway.as_ref(), self.interceptor_mode.as_ref())
             && mode.get() == brassclaw_interceptor::InterceptorMode::Rerouting
             && let Some(result) = self
-                .run_sempai_review(
-                    run_id,
-                    iteration,
-                    &packet_id,
-                    messages,
-                    gateway,
-                )
+                .run_sempai_review(run_id, iteration, &packet_id, messages, gateway)
                 .await
         {
             return Some(result);
