@@ -88,12 +88,10 @@ struct SkillListConfig {
 
 fn build_skill_list_config(config: &RebornBootConfig) -> anyhow::Result<SkillListConfig> {
     let config_file = crate::runtime::read_config_file(config)?;
-    // Run the profile resolution to surface any fail-closed errors (e.g.
-    // non-local BRASSCLAW_RUNTIME_PROFILE without BRASSCLAW_PG_URL) before
-    // listing skills. All valid paths reaching here are local-dev-shaped.
-    if crate::runtime::runtime_profile_from_env()?.is_none() {
-        let _ = crate::runtime::composition_profile_from_legacy_env(config, config_file.as_ref())?;
-    }
+    // Surface any fail-closed errors (legacy env var set, non-local profile
+    // without BRASSCLAW_PG_URL) before listing skills.
+    crate::runtime::reject_legacy_reborn_profile_env()?;
+    let _ = crate::runtime::runtime_profile_from_env()?;
     Ok(SkillListConfig {
         owner_id: crate::runtime::default_owner_id(config_file.as_ref()).to_string(),
         local_dev_root: config.home().path().join("local-dev"),

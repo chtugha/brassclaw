@@ -60,7 +60,6 @@ async fn local_dev_yolo_shell_translates_workspace_workdir_without_scoped_mounts
     std::fs::create_dir_all(&host_home).expect("host home root");
     let services = crate::build_reborn_services(
         crate::local_runtime_build_input_with_options(
-            crate::RebornCompositionProfile::LocalDevYolo,
             "local-dev-shell-owner",
             storage_root,
             crate::RebornLocalRuntimeProfileOptions {

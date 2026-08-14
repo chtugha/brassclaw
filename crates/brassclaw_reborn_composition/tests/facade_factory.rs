@@ -15,7 +15,7 @@ use brassclaw_host_runtime::{
 #[cfg(feature = "postgres")]
 use brassclaw_reborn_composition::RebornRuntimeProcessBinding;
 #[cfg(feature = "postgres")]
-use brassclaw_reborn_composition::{RebornBuildError, RebornCompositionProfile};
+use brassclaw_reborn_composition::RebornBuildError;
 use brassclaw_reborn_composition::{
     RebornBuildInput, RebornManualTokenSetupRequest, RebornManualTokenSubmitRequest,
     RebornReadinessState, build_reborn_services,
@@ -311,7 +311,6 @@ async fn production_postgres_services_migrate_trigger_repository_before_runtime_
     let reborn_home = tempfile::tempdir().expect("tempdir").keep();
     let services = build_reborn_services(
         RebornBuildInput::postgres(
-            RebornCompositionProfile::LocalDev,
             "test-owner",
             pool.clone(),
             SecretMaterial::from(database_url),
@@ -358,7 +357,6 @@ async fn production_postgres_services_require_process_port_for_first_party_runti
     let reborn_home = tempfile::tempdir().expect("tempdir").keep();
     let result = build_reborn_services(
         RebornBuildInput::postgres(
-            RebornCompositionProfile::LocalDev,
             "test-owner",
             pool,
             SecretMaterial::from(database_url),
@@ -405,7 +403,6 @@ async fn migration_dry_run_requires_postgres_process_port_for_first_party_runtim
     let reborn_home = tempfile::tempdir().expect("tempdir").keep();
     let result = build_reborn_services(
         RebornBuildInput::postgres(
-            RebornCompositionProfile::LocalDev,
             "test-owner",
             pool,
             SecretMaterial::from(database_url),

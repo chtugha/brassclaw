@@ -15,7 +15,7 @@ use crate::google_oauth::google_provider_spec;
 use crate::notion_oauth::notion_provider_spec;
 use crate::oauth_dcr::OAuthDcrProviderConfig;
 use crate::oauth_provider_client::HostOAuthProviderSpec;
-use crate::{RebornCompositionProfile, RebornProductAuthServicePorts};
+use crate::RebornProductAuthServicePorts;
 
 /// Composition-time OAuth client metadata.
 ///
@@ -139,7 +139,6 @@ impl RebornRuntimeProcessBinding {
 }
 
 pub struct RebornBuildInput {
-    pub(crate) profile: RebornCompositionProfile,
     pub(crate) owner_id: String,
     /// Tenant scope for Postgres-backed durable stores (secret store,
     /// credential broker, product-auth tables).  `None` in pure local-dev
@@ -183,11 +182,6 @@ pub(crate) enum RebornStorageInput {
 }
 
 impl RebornBuildInput {
-    /// Selected composition profile.
-    pub fn profile(&self) -> RebornCompositionProfile {
-        self.profile
-    }
-
     /// Owner id (string form). Used by the assembled runtime to mint the
     /// `UserId` actor for inbound CLI messages.
     pub fn owner_id(&self) -> &str {
@@ -206,29 +200,14 @@ impl RebornBuildInput {
         self
     }
 
+    /// Build a disabled (no-op) input, typically used in tests that do not
+    /// need a running runtime.
     pub fn disabled(owner_id: impl Into<String>) -> Self {
-        Self::new(
-            RebornCompositionProfile::Disabled,
-            owner_id,
-            RebornStorageInput::Disabled,
-        )
+        Self::new(owner_id, RebornStorageInput::Disabled)
     }
 
     pub fn local_dev(owner_id: impl Into<String>, root: PathBuf) -> Self {
-        Self::local_dev_with_profile(RebornCompositionProfile::LocalDev, owner_id, root)
-    }
-
-    pub(crate) fn local_dev_with_profile(
-        profile: RebornCompositionProfile,
-        owner_id: impl Into<String>,
-        root: PathBuf,
-    ) -> Self {
-        debug_assert!(matches!(
-            profile,
-            RebornCompositionProfile::LocalDev | RebornCompositionProfile::LocalDevYolo
-        ));
         Self::new(
-            profile,
             owner_id,
             RebornStorageInput::LocalDev {
                 root,
@@ -302,7 +281,6 @@ impl RebornBuildInput {
 
     #[cfg(feature = "postgres")]
     pub fn postgres(
-        profile: RebornCompositionProfile,
         owner_id: impl Into<String>,
         pool: deadpool_postgres::Pool,
         url: brassclaw_secrets::SecretMaterial,
@@ -310,7 +288,6 @@ impl RebornBuildInput {
         reborn_home: PathBuf,
     ) -> Self {
         Self::new(
-            profile,
             owner_id,
             RebornStorageInput::Postgres {
                 pool,
@@ -328,42 +305,18 @@ impl RebornBuildInput {
     /// for the raw-key-on-disk ceremony to locate `.secrets-master-key`.
     #[cfg(feature = "postgres")]
     pub fn postgres_with_reborn_home(
-        profile: RebornCompositionProfile,
         owner_id: impl Into<String>,
         pool: deadpool_postgres::Pool,
         url: brassclaw_secrets::SecretMaterial,
         reborn_home: PathBuf,
     ) -> Self {
         Self::new(
-            profile,
             owner_id,
             RebornStorageInput::Postgres {
                 pool,
                 url,
                 secret_master_key: None,
                 reborn_home,
-            },
-        )
-    }
-
-    /// Deprecated: prefer [`Self::postgres_with_reborn_home`]. Kept for call
-    /// sites that pass an explicit pre-resolved key.
-    #[deprecated(note = "prefer `postgres_with_reborn_home`")]
-    #[cfg(feature = "postgres")]
-    pub fn postgres_with_resolved_secret_master_key(
-        profile: RebornCompositionProfile,
-        owner_id: impl Into<String>,
-        pool: deadpool_postgres::Pool,
-        url: brassclaw_secrets::SecretMaterial,
-    ) -> Self {
-        Self::new(
-            profile,
-            owner_id,
-            RebornStorageInput::Postgres {
-                pool,
-                url,
-                secret_master_key: None,
-                reborn_home: PathBuf::new(),
             },
         )
     }
@@ -499,13 +452,8 @@ impl RebornBuildInput {
         self
     }
 
-    fn new(
-        profile: RebornCompositionProfile,
-        owner_id: impl Into<String>,
-        storage: RebornStorageInput,
-    ) -> Self {
+    fn new(owner_id: impl Into<String>, storage: RebornStorageInput) -> Self {
         Self {
-            profile,
             owner_id: owner_id.into(),
             tenant_id: None,
             storage,

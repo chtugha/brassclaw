@@ -84,7 +84,6 @@ mod product_auth_runtime_credentials;
 mod product_auth_serve;
 mod product_live_adapters;
 mod production_runtime_policy;
-mod profile;
 mod projection;
 pub use auth_prompt::{AuthChallengeProvider, AuthChallengeView};
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
@@ -200,7 +199,6 @@ pub use product_live_adapters::{
     capability_allowlist, visible_capability_request_for_run,
 };
 pub use production_runtime_policy::RebornProductionRuntimePolicy;
-pub use profile::{RebornCompositionProfile, RebornCompositionProfileParseError};
 #[cfg(feature = "root-llm-provider")]
 pub use provider_admin::{
     RebornModelRoutesState, RebornProviderAdmin, RebornProviderAdminError, RebornProviderInfo,

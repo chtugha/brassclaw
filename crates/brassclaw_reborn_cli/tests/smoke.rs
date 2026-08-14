@@ -1927,7 +1927,7 @@ fn run_confirm_host_access_requires_home_or_userprofile() {
         .args(["run", "--confirm-host-access", "-m", "ping"])
         .env_clear()
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
-        .env("BRASSCLAW_REBORN_PROFILE", "local-dev-yolo")
+        .env("BRASSCLAW_RUNTIME_PROFILE", "local_yolo")
         .output()
         .expect("brassclaw-reborn run should not crash");
 
@@ -1952,7 +1952,7 @@ fn run_confirm_host_access_uses_userprofile_when_home_is_absent() {
         .args(["run", "--confirm-host-access", "-m", "ping"])
         .env_clear()
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
-        .env("BRASSCLAW_REBORN_PROFILE", "local-dev-yolo")
+        .env("BRASSCLAW_RUNTIME_PROFILE", "local_yolo")
         .env("USERPROFILE", &host_home)
         .output()
         .expect("brassclaw-reborn run should not crash");
@@ -2450,7 +2450,7 @@ fn local_yolo_command(temp: &tempfile::TempDir, args: &[&str]) -> Command {
         .args(args)
         .env_clear()
         .env("BRASSCLAW_REBORN_HOME", reborn_home)
-        .env("BRASSCLAW_REBORN_PROFILE", "local-dev-yolo")
+        .env("BRASSCLAW_RUNTIME_PROFILE", "local_yolo")
         .env("HOME", home);
     command
 }

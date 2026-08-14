@@ -405,9 +405,9 @@ See `.env.example` for all environment variables.
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `BRASSCLAW_REBORN_HOME` | `~/.brassclaw/reborn` | Reborn state root |
-| `BRASSCLAW_RUNTIME_PROFILE` | `local_dev` | Fine-grained runtime profile: `local_dev` (default), `local_safe`, `local_yolo`, `hosted_safe`, etc. — see `brassclaw runtime-profile list`. `BRASSCLAW_REBORN_PROFILE` (old name) still accepted with a deprecation warning. |
+| `BRASSCLAW_RUNTIME_PROFILE` | `local_dev` | Per-invocation capability policy: `local_dev` (default), `local_safe`, `local_yolo`, `hosted_safe`, etc. — see `brassclaw runtime-profile list`. Controls the security resolver only; **Postgres is always the storage backend**. `BRASSCLAW_REBORN_PROFILE` (old composition-profile name) is a hard startup error — remove it from any systemd units or env files. |
 | `BRASSCLAW_REBORN_LOG` | — | Log filter (e.g., `brassclaw=debug`) |
-| `BRASSCLAW_PG_URL` | — | External Postgres URL; optional for local profiles, required for hosted/production |
+| `BRASSCLAW_PG_URL` | — | External Postgres URL; optional for single-host local deployments (embedded Postgres used when absent), required for hosted/production |
 | `BRASSCLAW_EMBEDDED_PG_PORT` | 5434 | Override embedded Postgres port |
 | `BRASSCLAW_SECRETS_PASSPHRASE_FILE` | — | Path to master-key passphrase file; set only for passphrase-wrapped ceremony |
 

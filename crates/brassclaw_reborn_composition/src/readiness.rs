@@ -1,7 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use crate::RebornCompositionProfile;
-
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RebornReadinessState {
@@ -25,7 +23,6 @@ pub struct RebornWorkerReadiness {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RebornReadiness {
-    pub profile: RebornCompositionProfile,
     pub state: RebornReadinessState,
     pub facades: RebornFacadeReadiness,
     #[serde(default)]
@@ -35,7 +32,6 @@ pub struct RebornReadiness {
 impl RebornReadiness {
     pub const fn disabled() -> Self {
         Self {
-            profile: RebornCompositionProfile::Disabled,
             state: RebornReadinessState::Disabled,
             facades: RebornFacadeReadiness {
                 host_runtime: false,
@@ -58,7 +54,6 @@ mod tests {
     fn readiness_deserializes_without_workers_for_older_payloads() {
         let readiness: RebornReadiness = serde_json::from_str(
             r#"{
-                "profile": "local-dev",
                 "state": "dev-only",
                 "facades": {
                     "host_runtime": true,
@@ -69,7 +64,6 @@ mod tests {
         )
         .expect("readiness deserializes");
 
-        assert_eq!(readiness.profile, RebornCompositionProfile::LocalDev);
         assert_eq!(readiness.state, RebornReadinessState::DevOnly);
         assert_eq!(readiness.workers, RebornWorkerReadiness::default());
     }

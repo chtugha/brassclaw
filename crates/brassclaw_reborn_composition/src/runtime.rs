@@ -97,7 +97,7 @@ use crate::trigger_poller::{
     spawn_trigger_poller,
 };
 use crate::{
-    RebornBuildError, RebornCompositionProfile, RebornProductAuthServices, RebornServices,
+    RebornBuildError, RebornProductAuthServices, RebornServices,
     build_reborn_services,
 };
 
@@ -1633,7 +1633,6 @@ pub async fn build_reborn_runtime(
         reason: "RebornRuntimeInput.services is required".to_string(),
     })?;
 
-    let profile = services_input.profile();
     if services_input.runtime_policy().is_none() {
         return Err(RebornRuntimeError::InvalidArgument {
             reason: "RebornRuntimeInput.services must include a resolved runtime policy"
@@ -1755,10 +1754,9 @@ pub async fn build_reborn_runtime(
         // Pure-PG path: build PG-backed equivalents.
         let pool = services.pg_pool.as_ref().ok_or_else(|| {
             RebornRuntimeError::InvalidArgument {
-                reason: format!(
-                    "profile={profile}: neither a local-dev substrate nor a Postgres pool \
-                     is available; cannot assemble runtime"
-                ),
+                reason: "neither a local-dev substrate nor a Postgres pool is available; \
+                         cannot assemble runtime"
+                    .to_string(),
             }
         })?;
         let reborn_home = pg_reborn_home
@@ -2257,9 +2255,11 @@ pub async fn build_reborn_runtime(
     // re-read by the wiring helper).
     let model_budget_accountant: Option<
         Arc<dyn brassclaw_turns::run_profile::LoopModelBudgetAccountant>,
-    > = match (profile, resolved_cost_table) {
-        (RebornCompositionProfile::LocalDevYolo, _) => None,
-        (_, Some(cost_table)) => {
+    > = match (trusted_laptop_access, resolved_cost_table) {
+        // Skip budget enforcement for trusted-laptop-access (yolo) profiles —
+        // the local user has full host access and budget limits are counterproductive.
+        (true, _) => None,
+        (false, Some(cost_table)) => {
             let resolved_budget_defaults = match budget_defaults {
                 Some(defaults) => {
                     defaults
@@ -3964,13 +3964,9 @@ mod tests {
         policy.secret_mode = SecretMode::InheritedEnv;
 
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev_with_profile(
-                crate::RebornCompositionProfile::LocalDevYolo,
-                "runtime-yolo-audit-owner",
-                root.path().join("local-dev"),
-            )
-            .with_runtime_policy(policy)
-            .with_local_dev_confirmed_host_home_root(host_home),
+            RebornBuildInput::local_dev("runtime-yolo-audit-owner", root.path().join("local-dev"))
+                .with_runtime_policy(policy)
+                .with_local_dev_confirmed_host_home_root(host_home),
         )
         .with_identity(RebornRuntimeIdentity {
             tenant_id: "runtime-yolo-audit-tenant".to_string(),
@@ -4265,15 +4261,11 @@ mod tests {
         );
 
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev_with_profile(
-                crate::RebornCompositionProfile::LocalDevYolo,
-                "runtime-yolo-budget-owner",
-                root.path().join("local-dev"),
-            )
-            .with_runtime_policy(
-                crate::local_dev_yolo_runtime_policy(true).expect("local-yolo policy resolves"),
-            )
-            .with_local_dev_confirmed_host_home_root(host_home),
+            RebornBuildInput::local_dev("runtime-yolo-budget-owner", root.path().join("local-dev"))
+                .with_runtime_policy(
+                    crate::local_dev_yolo_runtime_policy(true).expect("local-yolo policy resolves"),
+                )
+                .with_local_dev_confirmed_host_home_root(host_home),
         )
         .with_identity(RebornRuntimeIdentity {
             tenant_id: "runtime-yolo-budget-tenant".to_string(),

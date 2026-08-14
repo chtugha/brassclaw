@@ -1050,16 +1050,12 @@ mod tests {
             .into_owned();
 
         let services = crate::build_reborn_services(
-            crate::RebornBuildInput::local_dev_with_profile(
-                crate::RebornCompositionProfile::LocalDevYolo,
-                "local-dev-yolo-host-owner",
-                storage_root,
-            )
-            .with_runtime_policy(
-                crate::local_dev_yolo_runtime_policy(true).expect("local-yolo policy resolves"), // safety: test-only helper in #[cfg(test)] module.
-            )
-            .with_local_dev_workspace_root(workspace_root.clone())
-            .with_local_dev_confirmed_host_home_root(host_home.clone()),
+            crate::RebornBuildInput::local_dev("local-dev-yolo-host-owner", storage_root)
+                .with_runtime_policy(
+                    crate::local_dev_yolo_runtime_policy(true).expect("local-yolo policy resolves"), // safety: test-only helper in #[cfg(test)] module.
+                )
+                .with_local_dev_workspace_root(workspace_root.clone())
+                .with_local_dev_confirmed_host_home_root(host_home.clone()),
         )
         .await
         .expect("local-dev-yolo services build"); // safety: test-only assertion in #[cfg(test)] module.

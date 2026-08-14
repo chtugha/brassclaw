@@ -71,7 +71,7 @@ use crate::mcp::hosted_http_mcp_runtime;
 use crate::product_auth_providers::{OAuthProviderComposition, compose_provider_client};
 use crate::product_auth_runtime_credentials::ProductAuthRuntimeCredentialResolver;
 use crate::{
-    RebornAuthContinuationDispatcher, RebornBuildError, RebornBuildInput, RebornCompositionProfile,
+    RebornAuthContinuationDispatcher, RebornBuildError, RebornBuildInput,
     RebornFacadeReadiness, RebornProductAuthServices, RebornReadiness, RebornReadinessState,
     RebornWorkerReadiness,
 };
@@ -532,68 +532,46 @@ impl RebornServices {
 pub async fn build_reborn_services(
     input: RebornBuildInput,
 ) -> Result<RebornServices, RebornBuildError> {
-    tracing::debug!(
-        profile = %input.profile,
-        owner_id = %input.owner_id,
-        "building Reborn composition facades"
-    );
-    match input.profile {
-        RebornCompositionProfile::Disabled => Ok(RebornServices::disabled()),
-        RebornCompositionProfile::LocalDev | RebornCompositionProfile::LocalDevYolo => {
-            // Phase-5 hybrid path: when a Postgres pool is supplied alongside a
-            // local-dev profile (the production `brassclaw serve` path), build
-            // the local-dev filesystem substrate *and* expose the PG pool.
-            // The local-dev filesystem provides the workspace, skills, hooks and
-            // extension infrastructure; `build_reborn_runtime` picks up the pool
-            // from `services.pg_pool` to upgrade thread service and subagent goal
-            // store to PG-backed implementations.  Full turn-state / run-state /
-            // approval / lease wiring to PG is tracked in subplan_pg4_runtime_pg_path.md.
-            #[cfg(feature = "postgres")]
-            if let RebornStorageInput::Postgres {
-                pool,
-                reborn_home,
-                ..
-            } = &input.storage
-            {
-                // Convert the Postgres input into a local-dev input using the
-                // reborn_home as the local filesystem root, then add the PG pool.
-                let local_root = reborn_home.join("db");
-                let local_input = RebornBuildInput::local_dev_with_profile(
-                    input.profile,
-                    input.owner_id.clone(),
-                    local_root,
-                );
-                // Copy over any extra fields that may have been set on the input.
-                let local_input = transfer_build_input_extras(local_input, &input);
-                let pg_pool_arc = Arc::new(pool.clone());
-                let mut services = build_local_dev(local_input, Some(Arc::clone(&pg_pool_arc)))
-                    .await?;
-                // Inject the PG pool so build_reborn_runtime can use PG-backed stores.
-                services.pg_pool = Some(Arc::clone(&pg_pool_arc));
-                // Wire the token-settings and safety-config stores from the pool so the
-                // WebUI settings endpoints have a live backend instead of returning 503.
-                services.pg_token_settings_store = Some(Arc::new(
-                    crate::pg_token_settings_store::PgTokenSettingsStore::new(
-                        Arc::clone(&pg_pool_arc),
-                        "default",
-                    ),
-                ));
-                services.pg_safety_config_store = Some(Arc::new(
-                    brassclaw_product_workflow::PgSafetyConfigStore::new(
-                        Arc::clone(&pg_pool_arc),
-                        "default",
-                    ),
-                ));
-                // NOTE: `local_runtime.trigger_repository` is still `InMemoryTriggerRepository`
-                // because Arc::get_mut would fail (the Arc is aliased by the trigger-create hook
-                // stored inside host_runtime).  Fixing this properly requires threading a
-                // `trigger_repository_override` through `build_local_dev` — tracked in
-                // subplan_pg4_runtime_pg_path.md.
-                return Ok(services);
-            }
-            build_local_dev(input, None).await
-        }
+    tracing::debug!(owner_id = %input.owner_id, "building Reborn composition facades");
+    // Disabled input → return a no-op runtime (used in tests).
+    if let RebornStorageInput::Disabled = &input.storage {
+        return Ok(RebornServices::disabled());
     }
+    // Postgres input: build the local-dev filesystem substrate on top of the
+    // PG pool (the production `brassclaw serve` path).  The local-dev
+    // filesystem provides workspace, skills, hooks and extension infrastructure;
+    // `build_reborn_runtime` picks up the pool from `services.pg_pool` to use
+    // PG-backed stores for all durable state.
+    if let RebornStorageInput::Postgres {
+        pool,
+        reborn_home,
+        ..
+    } = &input.storage
+    {
+        let local_root = reborn_home.join("db");
+        let local_input =
+            RebornBuildInput::local_dev(input.owner_id.clone(), local_root);
+        let local_input = transfer_build_input_extras(local_input, &input);
+        let pg_pool_arc = Arc::new(pool.clone());
+        let mut services = build_local_dev(local_input, Some(Arc::clone(&pg_pool_arc)))
+            .await?;
+        services.pg_pool = Some(Arc::clone(&pg_pool_arc));
+        services.pg_token_settings_store = Some(Arc::new(
+            crate::pg_token_settings_store::PgTokenSettingsStore::new(
+                Arc::clone(&pg_pool_arc),
+                "default",
+            ),
+        ));
+        services.pg_safety_config_store = Some(Arc::new(
+            brassclaw_product_workflow::PgSafetyConfigStore::new(
+                Arc::clone(&pg_pool_arc),
+                "default",
+            ),
+        ));
+        return Ok(services);
+    }
+    // LocalDev input (pure filesystem, no PG — used in tests).
+    build_local_dev(input, None).await
 }
 
 /// Copy runtime-policy and other extra fields that cannot be set via
@@ -689,7 +667,6 @@ async fn build_local_dev(
     pg_pool: Option<Arc<deadpool_postgres::Pool>>,
 ) -> Result<RebornServices, RebornBuildError> {
     let RebornBuildInput {
-        profile,
         storage,
         runtime_policy,
         runtime_process_binding,
@@ -707,7 +684,7 @@ async fn build_local_dev(
     } = storage
     else {
         return Err(RebornBuildError::InvalidConfig {
-            reason: "local-dev profile requires local-dev storage input".to_string(),
+            reason: "build_local_dev requires a LocalDev storage input".to_string(),
         });
     };
     std::fs::create_dir_all(&root).map_err(|_| RebornBuildError::InvalidConfig {
@@ -1040,7 +1017,7 @@ async fn build_local_dev(
         // Local-dev always composes a safe in-memory product-auth boundary when
         // the caller does not inject one; readiness tracks the assembled facade.
         product_auth: Some(product_auth),
-        readiness: readiness_for(profile, true, true, true),
+        readiness: readiness_for(RebornReadinessState::DevOnly, true, true, true),
         local_runtime: Some(Arc::clone(&store_graph.local_runtime)),
         // No PG pool in local-dev until embedded PG is wired (Phase 6).
         #[cfg(feature = "postgres")]
@@ -2127,19 +2104,12 @@ pub(crate) async fn resolve_pg_embedding_provider_pub(
 }
 
 fn readiness_for(
-    profile: RebornCompositionProfile,
+    state: RebornReadinessState,
     host_runtime: bool,
     turn_coordinator: bool,
     product_auth: bool,
 ) -> RebornReadiness {
-    let state = match profile {
-        RebornCompositionProfile::Disabled => RebornReadinessState::Disabled,
-        RebornCompositionProfile::LocalDev | RebornCompositionProfile::LocalDevYolo => {
-            RebornReadinessState::DevOnly
-        }
-    };
     RebornReadiness {
-        profile,
         state,
         facades: RebornFacadeReadiness {
             host_runtime,
@@ -2986,11 +2956,11 @@ mod tests {
 
     #[test]
     fn local_dev_readiness_reflects_product_auth_presence() {
-        let without_auth = readiness_for(RebornCompositionProfile::LocalDev, true, true, false);
+        let without_auth = readiness_for(RebornReadinessState::DevOnly, true, true, false);
         assert_eq!(without_auth.state, RebornReadinessState::DevOnly);
         assert!(!without_auth.facades.product_auth);
 
-        let with_auth = readiness_for(RebornCompositionProfile::LocalDev, true, true, true);
+        let with_auth = readiness_for(RebornReadinessState::DevOnly, true, true, true);
         assert_eq!(with_auth.state, RebornReadinessState::DevOnly);
         assert!(with_auth.facades.product_auth);
     }

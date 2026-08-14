@@ -8,10 +8,9 @@ use brassclaw_reborn_composition::build_webui_services;
 use brassclaw_reborn_composition::host_api::{AgentId, ProjectId, TenantId, UserId};
 use brassclaw_reborn_composition::{
     GoogleOAuthRouteConfig, LocalTriggerAccessRole, LocalTriggerAccessSeed,
-    LocalTriggerAccessSource, RebornBuildInput, RebornCompositionProfile, RebornReadiness,
-    RebornRuntimeIdentity, RebornRuntimeInput, TriggerFireAccessChecker, WebuiAuthenticator,
-    WebuiServeConfig, build_reborn_runtime, open_local_trigger_access_store,
-    webui_v2_app_with_lifecycle,
+    LocalTriggerAccessSource, RebornBuildInput, RebornReadiness, RebornRuntimeIdentity,
+    RebornRuntimeInput, TriggerFireAccessChecker, WebuiAuthenticator, WebuiServeConfig,
+    build_reborn_runtime, open_local_trigger_access_store, webui_v2_app_with_lifecycle,
 };
 use brassclaw_reborn_config::IdentitySection;
 use brassclaw_reborn_webui_ingress::{
@@ -688,7 +687,6 @@ async fn start_postgres_and_upgrade_input(
     let runtime_policy = brassclaw_reborn_composition::local_dev_runtime_policy()
         .map_err(|e| anyhow!("failed to resolve local-dev runtime policy: {e}"))?;
     let pg_input = RebornBuildInput::postgres_with_reborn_home(
-        RebornCompositionProfile::LocalDev,
         owner_id,
         pool,
         SecretMaterial::from(pg_url),

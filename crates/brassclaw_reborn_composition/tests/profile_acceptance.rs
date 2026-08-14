@@ -1,33 +1,9 @@
 use brassclaw_reborn_composition::{
-    RebornCompositionProfile, RebornReadiness, RebornReadinessState, local_dev_yolo_runtime_policy,
+    RebornReadiness, RebornReadinessState, local_dev_yolo_runtime_policy,
 };
 
 use brassclaw_host_api::runtime_policy::{FilesystemBackendKind, RuntimeProfile, SecretMode};
 use brassclaw_runtime_policy::ResolveError;
-
-#[test]
-fn profile_parse_accepts_kebab_and_snake_case() {
-    assert_eq!(
-        "disabled".parse::<RebornCompositionProfile>().unwrap(),
-        RebornCompositionProfile::Disabled
-    );
-    assert_eq!(
-        "local_dev".parse::<RebornCompositionProfile>().unwrap(),
-        RebornCompositionProfile::LocalDev
-    );
-    assert_eq!(
-        "local_dev_yolo"
-            .parse::<RebornCompositionProfile>()
-            .unwrap(),
-        RebornCompositionProfile::LocalDevYolo
-    );
-    assert_eq!(
-        "local-dev-yolo"
-            .parse::<RebornCompositionProfile>()
-            .unwrap(),
-        RebornCompositionProfile::LocalDevYolo
-    );
-}
 
 #[test]
 fn local_dev_yolo_runtime_policy_inherits_host_environment() {
