@@ -132,7 +132,11 @@ async fn start_postgres_container() -> Option<(
         .with_db_name("brassclaw_test")
         .with_user("postgres")
         .with_password("postgres")
-        .with_tag("16-alpine");
+        // pgvector/pgvector:pg16 bundles the `vector` extension required by V000.
+        // The plain postgres:16-alpine image does not include pgvector and causes
+        // V000__shared_triggers to fail with "extension not found".
+        .with_image_name("pgvector/pgvector")
+        .with_tag("pg16");
 
     let container = match image.start().await {
         Ok(container) => container,
