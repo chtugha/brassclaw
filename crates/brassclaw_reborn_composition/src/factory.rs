@@ -406,25 +406,26 @@ pub(crate) struct PgRuntimeStores {
 pub(crate) async fn build_pg_runtime_stores(
     pool: Arc<deadpool_postgres::Pool>,
     reborn_home: &std::path::Path,
+    tenant_id: &str,
 ) -> Result<PgRuntimeStores, RebornBuildError> {
     let turn_state = Arc::new(brassclaw_turns::PgTurnStateStore::new(
         Arc::clone(&pool),
-        "default",
+        tenant_id,
     ));
     let checkpoint_state_store: Arc<dyn brassclaw_turns::CheckpointStateStore> = Arc::new(
-        brassclaw_loop_support::PgCheckpointStateStore::new(Arc::clone(&pool), "default"),
+        brassclaw_loop_support::PgCheckpointStateStore::new(Arc::clone(&pool), tenant_id),
     );
     // PgTurnStateStore implements LoopCheckpointStore — reuse the same instance.
     let loop_checkpoint_store: Arc<dyn brassclaw_turns::LoopCheckpointStore> =
         Arc::clone(&turn_state) as Arc<dyn brassclaw_turns::LoopCheckpointStore>;
     let approval_requests = Arc::new(brassclaw_approvals::pg_store::PgApprovalRequestStore::new(
         Arc::clone(&pool),
-        "default",
+        tenant_id,
     ));
-    let capability_leases = Arc::new(PgCapabilityLeaseStore::new(Arc::clone(&pool), "default"));
+    let capability_leases = Arc::new(PgCapabilityLeaseStore::new(Arc::clone(&pool), tenant_id));
     let pg_governor_store = brassclaw_resources::PgResourceGovernorStore::new(
         Arc::clone(&pool),
-        "default",
+        tenant_id,
     );
     let resource_governor: Arc<dyn brassclaw_resources::ResourceGovernor> = Arc::new(
         brassclaw_resources::PersistentResourceGovernor::new(pg_governor_store),
@@ -432,14 +433,14 @@ pub(crate) async fn build_pg_runtime_stores(
     // PG-backed budget-gate store: gates survive process restart and are
     // visible across concurrent processes sharing the same pool.
     let budget_gate_store: Arc<dyn brassclaw_resources::BudgetGateStore> =
-        Arc::new(brassclaw_resources::PgBudgetGateStore::new(Arc::clone(&pool), "default"));
+        Arc::new(brassclaw_resources::PgBudgetGateStore::new(Arc::clone(&pool), tenant_id));
     let broadcast_budget_event_sink =
         Arc::new(brassclaw_resources::BroadcastBudgetEventSink::default());
     let event_log: Arc<dyn brassclaw_events::DurableEventLog> = Arc::new(
-        brassclaw_reborn_event_store::PgDurableEventLog::new(Arc::clone(&pool), "default"),
+        brassclaw_reborn_event_store::PgDurableEventLog::new(Arc::clone(&pool), tenant_id),
     );
     let audit_log: Arc<dyn brassclaw_events::DurableAuditLog> = Arc::new(
-        brassclaw_reborn_event_store::PgDurableAuditLog::new(Arc::clone(&pool), "default"),
+        brassclaw_reborn_event_store::PgDurableAuditLog::new(Arc::clone(&pool), tenant_id),
     );
     // Derive storage root and default prompt path the same way as local-dev.
     let local_dev_storage_root = reborn_home.join("db");
@@ -551,6 +552,7 @@ pub async fn build_reborn_services(
         let local_root = reborn_home.join("db");
         let local_input =
             RebornBuildInput::local_dev(input.owner_id.clone(), local_root);
+        let effective_tenant_id = input.tenant_id.as_deref().unwrap_or("reborn-cli");
         let local_input = transfer_build_input_extras(local_input, &input);
         let pg_pool_arc = Arc::new(pool.clone());
         let mut services = build_local_dev(local_input, Some(Arc::clone(&pg_pool_arc)))
@@ -559,13 +561,13 @@ pub async fn build_reborn_services(
         services.pg_token_settings_store = Some(Arc::new(
             crate::pg_token_settings_store::PgTokenSettingsStore::new(
                 Arc::clone(&pg_pool_arc),
-                "default",
+                effective_tenant_id,
             ),
         ));
         services.pg_safety_config_store = Some(Arc::new(
             brassclaw_product_workflow::PgSafetyConfigStore::new(
                 Arc::clone(&pg_pool_arc),
-                "default",
+                effective_tenant_id,
             ),
         ));
         return Ok(services);
@@ -783,10 +785,11 @@ async fn build_local_dev(
     #[cfg(feature = "postgres")]
     let secret_store: Arc<dyn SecretStore> = if let Some(pool) = pg_pool.as_ref() {
         let master_key = resolve_local_dev_secret_master_key(&root)?;
+        let effective_tenant_id = tenant_id.as_deref().unwrap_or("reborn-cli");
         Arc::new(brassclaw_secrets::PgSecretStore::new(
             (**pool).clone(),
             master_key,
-            "default",
+            effective_tenant_id,
         )?)
     } else {
         let local_dev_secret_store =
@@ -907,9 +910,10 @@ async fn build_local_dev(
     #[cfg(feature = "postgres")]
     let extension_installation_store: Arc<dyn ExtensionInstallationStore> =
         if let Some(pool) = pg_pool.as_ref() {
+            let effective_tenant_id = tenant_id.as_deref().unwrap_or("reborn-cli");
             Arc::new(brassclaw_extensions::PgExtensionInstallationStore::new(
                 Arc::clone(pool),
-                "default",
+                effective_tenant_id,
             ))
         } else {
             Arc::new(

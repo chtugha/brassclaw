@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.64.0] - 2026-08-12
+
+### Added
+
+- *(unified-runtime)* **`RebornBuildInput.tenant_id`** (`input.rs`): new optional field and `with_tenant_id()` builder method. The `serve` path now threads the operator-configured tenant id (from `[identity].tenant` in `config.toml`, default `"reborn-cli"`) through all Postgres-backed store constructors so every durable store (secret store, credential broker, session threads, turn state, approval/lease stores, event/audit logs, extension installation store, product-auth tables, token settings, safety config) is scoped to the correct tenant rather than the hardcoded `"default"`.
+- *(unified-runtime)* **Phase B-2 — `PgAuthProductServices`** (`factory.rs`): when a PG pool and tenant_id are both present (the hybrid `serve` path), `build_local_dev` now uses `PgAuthProductServices` instead of `FilesystemAuthProductServices` so OAuth credential accounts and auth flows survive process restart. Product-auth DDL migrations (`CREATE TABLE IF NOT EXISTS brassclaw_product_auth_accounts/flows/interactions`) run at startup.
+- *(unified-runtime)* **Tenant-id-aware `build_pg_runtime_stores`** (`factory.rs`): `build_pg_runtime_stores` now accepts a `tenant_id: &str` parameter and uses it for all store constructors instead of the previous hardcoded `"default"`.
+
+### Fixed
+
+- *(unified-runtime)* **Crash loop: `projection stream access denied` every 2 s** (`runtime.rs`, `factory.rs`): root cause was a tenant_id mismatch — all PG stores were constructed with `tenant_id = "default"` while the runtime identity used `tenant_id = "reborn-cli"` (configured in `[identity].tenant`). Session threads stored under `"default"` could never be located by a caller presenting `"reborn-cli"` scope, causing every SSE projection subscribe to fail with `AccessDenied` and immediately retry. Fixed by threading the runtime's `identity.tenant_id` through `build_pg_runtime_stores`, `PgSessionThreadService`, `PgSecretStore`, `PgTokenSettingsStore`, `PgSafetyConfigStore`, and `PgExtensionInstallationStore`.
+
+### Changed
+
+- *(unified-runtime)* **Phase B-3 — Removed `RebornCompositionProfile` enum** (`profile.rs` deleted): the 3-variant composition-profile enum (`Disabled`, `LocalDev`, `LocalDevYolo`) has been removed. `build_reborn_services` no longer branches on a composition profile; all `LocalDev` inputs always use the same path and `LocalDevYolo` is expressed purely via the per-invocation `RuntimeProfile::LocalYolo` policy. `local_runtime_build_input_with_options` no longer accepts a `profile` parameter. `BRASSCLAW_REBORN_PROFILE` (the legacy composition-profile env var) now triggers a hard startup error if set. `BRASSCLAW_RUNTIME_PROFILE` continues to control the per-invocation capability policy.
+- *(unified-runtime)* **Phase B-1 — All runtime stores upgraded to PG** (`runtime.rs`): the hybrid serve path (`local_runtime is Some, pg_pool is Some`) now uses `build_pg_runtime_stores` for all durable runtime state (turn-state, checkpoint, approval, lease, resource governor, budget gate, event log, audit log, trigger repository) via `PgSessionThreadService`. In-memory stores are used only in pure local-dev (tests, no pool).
+- *(unified-runtime)* `transfer_build_input_extras` now copies `tenant_id` from src to dst, ensuring the tenant scope is preserved when the Postgres input is converted to a local-dev input for the hybrid path.
+- *(docs)* `AGENTS.md`: updated `BRASSCLAW_RUNTIME_PROFILE` documentation — the env var now controls only the per-invocation `RuntimeProfile` for capability policy; composition-profile selection (which was `local_dev`/`local_dev_yolo`) has been removed. Removed reference to `local_dev` / `local_safe` / `local_yolo` / `hosted_safe` as composition-level choices from the Key Environment Variables table.
+
 ## [0.52.0] - 2026-07-27
 
 ### Added

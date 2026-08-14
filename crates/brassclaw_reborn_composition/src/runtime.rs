@@ -1646,6 +1646,10 @@ pub async fn build_reborn_runtime(
     #[cfg(feature = "postgres")]
     let pg_reborn_home: Option<std::path::PathBuf> =
         services_input.pg_reborn_home().map(|p| p.to_path_buf());
+    // Extract the runtime tenant_id before consuming `identity` — the PG store
+    // constructors need it before `validate_runtime_identity` is called later.
+    #[cfg(feature = "postgres")]
+    let pg_tenant_id: String = identity.tenant_id.clone();
     let mut services = build_reborn_services(services_input).await?;
 
     // Resolve the runtime substrate: either the local-dev filesystem slab or,
@@ -1700,13 +1704,13 @@ pub async fn build_reborn_runtime(
                              the system-prompt storage root"
                         .to_string(),
                 })?;
-            let stores = crate::factory::build_pg_runtime_stores(Arc::clone(pool), reborn_home)
+            let stores = crate::factory::build_pg_runtime_stores(Arc::clone(pool), reborn_home, &pg_tenant_id)
                 .await
                 .map_err(RebornRuntimeError::Build)?;
             let thread_svc: Arc<dyn brassclaw_threads::SessionThreadService> =
                 Arc::new(brassclaw_threads::PgSessionThreadService::new(
                     Arc::clone(pool),
-                    "default",
+                    pg_tenant_id.as_str(),
                 ));
             let event_sink = Arc::clone(&stores.broadcast_budget_event_sink)
                 as Arc<dyn brassclaw_resources::BudgetEventSink>;
@@ -1766,7 +1770,7 @@ pub async fn build_reborn_runtime(
                          the system-prompt storage root"
                     .to_string(),
             })?;
-        let stores = crate::factory::build_pg_runtime_stores(Arc::clone(pool), reborn_home)
+        let stores = crate::factory::build_pg_runtime_stores(Arc::clone(pool), reborn_home, &pg_tenant_id)
             .await
             .map_err(RebornRuntimeError::Build)?;
         let event_sink = Arc::clone(&stores.broadcast_budget_event_sink)
@@ -1774,7 +1778,7 @@ pub async fn build_reborn_runtime(
         let thread_svc: Arc<dyn brassclaw_threads::SessionThreadService> =
             Arc::new(brassclaw_threads::PgSessionThreadService::new(
                 Arc::clone(pool),
-                "default",
+                pg_tenant_id.as_str(),
             ));
         let result = (
             Arc::new(brassclaw_turns::TurnStateDriverBox::new(
