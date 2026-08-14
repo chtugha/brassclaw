@@ -68,7 +68,7 @@ in the unit file because they contain no secret material.
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `BRASSCLAW_REBORN_HOME` | `~/.brassclaw/reborn` | State root (data dir, embedded PG) |
-| `BRASSCLAW_RUNTIME_PROFILE` | `local_dev` | Fine-grained runtime profile — see `brassclaw runtime-profile list`. (`BRASSCLAW_REBORN_PROFILE` still accepted with a deprecation warning.) |
+| `BRASSCLAW_RUNTIME_PROFILE` | `local_dev` | Per-invocation capability policy — see `brassclaw runtime-profile list`. Controls security posture only; Postgres is always the storage backend. `BRASSCLAW_REBORN_PROFILE` (old name) is a **hard startup error** — remove it from any unit files. |
 | `BRASSCLAW_REBORN_LOG` | — | Log filter (e.g., `brassclaw=info`) |
 | `BRASSCLAW_PG_URL` | — | External Postgres URL; omit to use embedded Postgres |
 | `BRASSCLAW_EMBEDDED_PG_PORT` | `5434` | Override embedded Postgres port if 5434 is taken |

@@ -1590,12 +1590,11 @@ impl RebornRuntime {
 /// the returned `RebornRuntime` is ready to accept `send_user_message` calls.
 ///
 /// **Supported paths:**
-/// - `LocalDev` / `LocalDevYolo` with `RebornStorageInput::LocalDev` — pure local-dev
-///   filesystem substrate.
-/// - `LocalDev` / `LocalDevYolo` with `RebornStorageInput::Postgres` (hybrid) — local-dev
-///   filesystem substrate + PG pool; thread service and subagent goals are PG-backed.
-/// - Any profile with `RebornServices { local_runtime: None, pg_pool: Some(_) }` (pure-PG
-///   path) — all stores built from the PG pool via `build_pg_runtime_stores`.
+/// - `RebornStorageInput::LocalDev` without a PG pool — pure local-dev filesystem substrate.
+/// - `RebornStorageInput::LocalDev` with a PG pool — local-dev filesystem substrate + PG pool;
+///   all runtime stores (turn state, thread service, approval, etc.) are PG-backed.
+/// - `RebornServices { local_runtime: None, pg_pool: Some(_) }` (pure-PG path) — all stores
+///   built from the PG pool via `build_pg_runtime_stores`.
 pub async fn build_reborn_runtime(
     input: RebornRuntimeInput,
 ) -> Result<RebornRuntime, RebornRuntimeError> {
