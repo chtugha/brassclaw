@@ -10,9 +10,6 @@
 //! `CREATE TABLE IF NOT EXISTS` DDL inline (no refinery migration number
 //! assigned; these tables are composition-internal to the auth layer).
 
-// Phase-5 postgres wiring — not yet called from the factory; items unused until wiring lands.
-#![allow(dead_code)]
-
 use std::sync::{Arc, Mutex, Weak};
 
 use async_trait::async_trait;

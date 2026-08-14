@@ -5,7 +5,6 @@ use std::{
 };
 
 use crate::product_auth_durable::{FilesystemAuthProductServices, UnavailableAuthProviderClient};
-use brassclaw_auth::AuthProviderClient;
 #[cfg(feature = "postgres")]
 use brassclaw_authorization::FilesystemCapabilityLeaseStore;
 use brassclaw_authorization::GrantAuthorizer;
@@ -41,10 +40,8 @@ use brassclaw_host_runtime::{
 use brassclaw_processes::ProcessServices;
 use brassclaw_product_workflow::ProductAuthTurnGateResumeDispatcher;
 use brassclaw_resources::InMemoryResourceGovernor;
-#[cfg(feature = "postgres")]
 use brassclaw_resources::{FilesystemResourceGovernorStore, PersistentResourceGovernor};
 use brassclaw_run_state::{InMemoryApprovalRequestStore, InMemoryRunStateStore};
-#[cfg(feature = "postgres")]
 use brassclaw_secrets::FilesystemCredentialBroker;
 use brassclaw_secrets::FilesystemSecretStore;
 use brassclaw_secrets::SecretStore;
@@ -60,6 +57,7 @@ use brassclaw_turns::{
     InMemoryCheckpointStateStore, InMemoryLoopCheckpointStore, InMemoryTurnStateStore,
 };
 
+use crate::pg_auth_product_services::PgAuthProductServices;
 use crate::RebornProductAuthServicePorts;
 use crate::default_system_prompt::seed_default_system_prompt;
 use crate::input::{RebornRuntimeProcessBinding, RebornStorageInput};
@@ -568,12 +566,8 @@ pub async fn build_reborn_services(
                 // Copy over any extra fields that may have been set on the input.
                 let local_input = transfer_build_input_extras(local_input, &input);
                 let pg_pool_arc = Arc::new(pool.clone());
-                let mut services = build_local_dev(
-                    local_input,
-                    #[cfg(feature = "postgres")]
-                    Some(Arc::clone(&pg_pool_arc)),
-                )
-                .await?;
+                let mut services = build_local_dev(local_input, Some(Arc::clone(&pg_pool_arc)))
+                    .await?;
                 // Inject the PG pool so build_reborn_runtime can use PG-backed stores.
                 services.pg_pool = Some(Arc::clone(&pg_pool_arc));
                 // Wire the token-settings and safety-config stores from the pool so the
@@ -597,12 +591,7 @@ pub async fn build_reborn_services(
                 // subplan_pg4_runtime_pg_path.md.
                 return Ok(services);
             }
-            build_local_dev(
-                input,
-                #[cfg(feature = "postgres")]
-                None,
-            )
-            .await
+            build_local_dev(input, None).await
         }
     }
 }
@@ -613,7 +602,6 @@ pub async fn build_reborn_services(
 /// Used by the Phase-5 hybrid path in [`build_reborn_services`] to preserve
 /// the caller-supplied runtime policy, process binding, and OAuth configs
 /// when converting a Postgres storage input to a local-dev storage input.
-#[cfg(feature = "postgres")]
 fn transfer_build_input_extras(mut dst: RebornBuildInput, src: &RebornBuildInput) -> RebornBuildInput {
     dst.runtime_policy = src.runtime_policy.clone();
     dst.runtime_process_binding = src.runtime_process_binding.clone();
@@ -624,6 +612,7 @@ fn transfer_build_input_extras(mut dst: RebornBuildInput, src: &RebornBuildInput
     dst.require_runtime_http_egress = src.require_runtime_http_egress;
     dst.production_trust_policy = src.production_trust_policy.clone();
     dst.turn_run_wake_notifier = src.turn_run_wake_notifier.clone();
+    dst.tenant_id = src.tenant_id.clone();
     dst
 }
 
@@ -652,10 +641,52 @@ fn compose_product_auth_services(
     Arc::new(services)
 }
 
+/// Build `RebornProductAuthServices` from a shared durable-service type `T`
+/// that satisfies all product-auth port bounds.
+///
+/// Used by `build_local_dev` to compose either `FilesystemAuthProductServices`
+/// or `PgAuthProductServices` depending on which backend is available.
+fn compose_durable_product_auth_services<T>(
+    durable: Arc<T>,
+    turn_coordinator: Arc<dyn brassclaw_turns::TurnCoordinator>,
+    provider_composition: &OAuthProviderComposition,
+) -> Arc<RebornProductAuthServices>
+where
+    T: brassclaw_auth::AuthFlowManager
+        + brassclaw_auth::AuthFlowRecordSource
+        + brassclaw_auth::AuthInteractionService
+        + brassclaw_auth::CredentialSetupService
+        + brassclaw_auth::CredentialAccountService
+        + brassclaw_auth::CredentialAccountRecordSource
+        + brassclaw_auth::SecretCleanupService
+        + crate::manual_token_flow::RebornManualTokenFlowService
+        + 'static,
+{
+    let provider_client: Arc<dyn brassclaw_auth::AuthProviderClient> = provider_composition
+        .client
+        .clone()
+        .unwrap_or_else(|| Arc::new(UnavailableAuthProviderClient));
+    let ports = RebornProductAuthServicePorts::from_shared_with_provider(
+        Arc::clone(&durable),
+        provider_client,
+    );
+    let flow_record_source: Arc<dyn brassclaw_auth::AuthFlowRecordSource> = durable;
+    let mut services = ports
+        .into_services(auth_continuation_dispatcher(turn_coordinator))
+        .with_flow_record_source(flow_record_source);
+    if let Some(registry) = provider_composition.dcr_registry.clone() {
+        services = services.with_dcr_oauth_registry(registry);
+    }
+    if let Some(registry) = provider_composition.gate_registry.clone() {
+        services = services.with_oauth_gate_registry(registry);
+    }
+    Arc::new(services)
+}
+
 
 async fn build_local_dev(
     input: RebornBuildInput,
-    #[cfg(feature = "postgres")] pg_pool: Option<Arc<deadpool_postgres::Pool>>,
+    pg_pool: Option<Arc<deadpool_postgres::Pool>>,
 ) -> Result<RebornServices, RebornBuildError> {
     let RebornBuildInput {
         profile,
@@ -666,6 +697,7 @@ async fn build_local_dev(
         oauth_provider_configs,
         oauth_dcr_provider_configs,
         owner_id,
+        tenant_id,
         ..
     } = input;
     let RebornStorageInput::LocalDev {
@@ -837,29 +869,38 @@ async fn build_local_dev(
             compose_product_auth_services(ports, turn_coordinator.clone(), provider_composition)
         }
         None => {
-            let durable_services = Arc::new(FilesystemAuthProductServices::new(
-                local_dev_product_auth_filesystem,
-                Arc::clone(&secret_store),
-            ));
-            let provider_client: Arc<dyn AuthProviderClient> = provider_composition
-                .client
-                .clone()
-                .unwrap_or_else(|| Arc::new(UnavailableAuthProviderClient));
-            let services = RebornProductAuthServicePorts::from_shared_with_provider(
-                Arc::clone(&durable_services),
-                provider_client,
-            )
-            .into_services(auth_continuation_dispatcher(turn_coordinator.clone()))
-            .with_flow_record_source(durable_services);
-            let services = match provider_composition.dcr_registry.clone() {
-                Some(registry) => services.with_dcr_oauth_registry(registry),
-                None => services,
-            };
-            let services = match provider_composition.gate_registry.clone() {
-                Some(registry) => services.with_oauth_gate_registry(registry),
-                None => services,
-            };
-            Arc::new(services)
+            // When a PG pool and tenant_id are both present (hybrid serve path),
+            // use PgAuthProductServices so OAuth credentials and flows survive
+            // process restart. Falls back to FilesystemAuthProductServices for
+            // pure local-dev (tests, no pool, or no tenant_id).
+            if let (Some(pool), Some(ref tid)) = (pg_pool.as_ref(), tenant_id.as_ref()) {
+                // Run product-auth DDL (CREATE TABLE IF NOT EXISTS, idempotent).
+                crate::pg_auth_product_services::run_auth_migrations(pool)
+                    .await
+                    .map_err(|_| RebornBuildError::InvalidConfig {
+                        reason: "product-auth DDL migrations failed".to_string(),
+                    })?;
+                let _ = tid; // tenant_id scopes are embedded in PgSecretStore/ResourceScope rows
+                let pg_auth = Arc::new(PgAuthProductServices::new(
+                    Arc::clone(pool),
+                    Arc::clone(&secret_store),
+                ));
+                compose_durable_product_auth_services(
+                    pg_auth,
+                    turn_coordinator.clone(),
+                    &provider_composition,
+                )
+            } else {
+                let durable_services = Arc::new(FilesystemAuthProductServices::new(
+                    local_dev_product_auth_filesystem,
+                    Arc::clone(&secret_store),
+                ));
+                compose_durable_product_auth_services(
+                    durable_services,
+                    turn_coordinator.clone(),
+                    &provider_composition,
+                )
+            }
         }
     };
     services = services.with_runtime_credential_account_resolver(Arc::new(

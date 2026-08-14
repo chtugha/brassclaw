@@ -141,6 +141,10 @@ impl RebornRuntimeProcessBinding {
 pub struct RebornBuildInput {
     pub(crate) profile: RebornCompositionProfile,
     pub(crate) owner_id: String,
+    /// Tenant scope for Postgres-backed durable stores (secret store,
+    /// credential broker, product-auth tables).  `None` in pure local-dev
+    /// (test) builds where the filesystem backend is used instead.
+    pub(crate) tenant_id: Option<String>,
     pub(crate) storage: RebornStorageInput,
     pub(crate) production_trust_policy: Option<Arc<HostTrustPolicy>>,
     pub(crate) runtime_policy: Option<EffectiveRuntimePolicy>,
@@ -485,6 +489,16 @@ impl RebornBuildInput {
             .push(OAuthDcrProviderBackendConfig { config });
     }
 
+    /// Set the tenant identifier for Postgres-backed durable stores.
+    ///
+    /// When present on a `local_dev` build input that also carries a PG pool
+    /// (the hybrid serve path), `build_local_dev` uses `PgCredentialBroker`
+    /// and `PgAuthProductServices` instead of `FilesystemAuthProductServices`.
+    pub fn with_tenant_id(mut self, tenant_id: impl Into<String>) -> Self {
+        self.tenant_id = Some(tenant_id.into());
+        self
+    }
+
     fn new(
         profile: RebornCompositionProfile,
         owner_id: impl Into<String>,
@@ -493,6 +507,7 @@ impl RebornBuildInput {
         Self {
             profile,
             owner_id: owner_id.into(),
+            tenant_id: None,
             storage,
             production_trust_policy: None,
             runtime_policy: None,

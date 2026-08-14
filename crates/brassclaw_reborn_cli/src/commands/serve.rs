@@ -320,7 +320,8 @@ impl ServeCommand {
             // back to the local-dev path when the `postgres` feature is off.
             #[cfg(feature = "postgres")]
             let (mut runtime_input, managed_pg) =
-                start_postgres_and_upgrade_input(runtime_input, context.boot_config()).await?;
+                start_postgres_and_upgrade_input(runtime_input, context.boot_config(), &tenant_id)
+                    .await?;
             #[cfg(not(feature = "postgres"))]
             let managed_pg: Option<brassclaw_embedded_postgres::ManagedPostgres> = None;
 
@@ -644,6 +645,7 @@ fn canonical_host_name(host: &str) -> &str {
 async fn start_postgres_and_upgrade_input(
     input: RebornRuntimeInput,
     boot_config: &brassclaw_reborn_config::RebornBootConfig,
+    tenant_id: &TenantId,
 ) -> anyhow::Result<(
     RebornRuntimeInput,
     Option<brassclaw_embedded_postgres::ManagedPostgres>,
@@ -692,7 +694,8 @@ async fn start_postgres_and_upgrade_input(
         SecretMaterial::from(pg_url),
         reborn_home,
     )
-    .with_runtime_policy(runtime_policy);
+    .with_runtime_policy(runtime_policy)
+    .with_tenant_id(tenant_id.as_str());
 
     // Replace the local-dev build input with the Postgres-backed one while
     // preserving every other runtime-level setting on `input`.
