@@ -551,7 +551,9 @@ pub async fn build_reborn_services(
         // requires a TenantSandbox backend but no binding was supplied (or vice
         // versa). This is the fail-closed gate that the facade_factory tests
         // exercise via `require_runtime_http_egress` / `required_runtime_backends`.
-        if input.production_trust_policy.is_some() && let Some(ref runtime_policy) = input.runtime_policy {
+        if input.production_trust_policy.is_some()
+            && let Some(ref runtime_policy) = input.runtime_policy
+        {
             input
                 .runtime_process_binding
                 .validate_for_production_policy(runtime_policy)
