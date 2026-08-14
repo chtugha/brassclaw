@@ -13,7 +13,7 @@
 #   docker run --env-file .env -p 3000:3000 brassclaw:latest
 
 # Stage 1: Install cargo-chef
-FROM rust:1.92-bookworm AS chef
+FROM rust:1.94-bookworm AS chef
 
 RUN cargo install --locked cargo-chef@0.1.77
 
