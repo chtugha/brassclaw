@@ -545,6 +545,20 @@ pub async fn build_reborn_services(
         pool, reborn_home, ..
     } = &input.storage
     {
+        // When a production trust policy is present alongside a runtime policy,
+        // enforce the process-binding contract up-front before touching the DB.
+        // `validate_for_production_policy` returns an error when the policy
+        // requires a TenantSandbox backend but no binding was supplied (or vice
+        // versa). This is the fail-closed gate that the facade_factory tests
+        // exercise via `require_runtime_http_egress` / `required_runtime_backends`.
+        if input.production_trust_policy.is_some() && let Some(ref runtime_policy) = input.runtime_policy {
+            input
+                .runtime_process_binding
+                .validate_for_production_policy(runtime_policy)
+                .map_err(|e| RebornBuildError::InvalidConfig {
+                    reason: e.to_string(),
+                })?;
+        }
         let local_root = reborn_home.join("db");
         let local_input = RebornBuildInput::local_dev(input.owner_id.clone(), local_root);
         let effective_tenant_id = input.tenant_id.as_deref().unwrap_or("reborn-cli");

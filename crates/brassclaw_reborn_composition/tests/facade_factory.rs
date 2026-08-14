@@ -335,7 +335,8 @@ async fn production_postgres_services_migrate_trigger_repository_before_runtime_
 
     let client = pool.get().await.expect("connect postgres state db");
     let row = client
-        .query_one("SELECT COUNT(*) FROM trigger_records", &[])
+        // V021 renamed trigger_records → brassclaw_triggers
+        .query_one("SELECT COUNT(*) FROM brassclaw_triggers", &[])
         .await
         .expect("trigger table exists after production build");
     let count: i64 = row.get(0);
