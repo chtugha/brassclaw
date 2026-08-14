@@ -11,7 +11,11 @@ repository = "https://github.com/chtugha/brassclaw"
 publish = false
 
 [features]
-default = []
+# Postgres and root-llm-provider are mandatory for every production build.
+# In-memory backends are acceptable in unit tests only. Setting both as
+# defaults ensures `cargo test -p brassclaw_reborn_composition` (default
+# features) compiles the same code path the binary uses.
+default = ["postgres", "root-llm-provider"]
 # Upgrade-release gate: compiles the libSQL→Postgres data migration module.
 # Default-on for the upgrade release. Removed in the release after.
 migrate-from-libsql = ["dep:libsql"]

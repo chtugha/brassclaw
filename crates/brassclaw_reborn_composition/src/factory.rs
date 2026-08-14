@@ -57,6 +57,7 @@ use brassclaw_turns::{
     InMemoryCheckpointStateStore, InMemoryLoopCheckpointStore, InMemoryTurnStateStore,
 };
 
+#[cfg(feature = "postgres")]
 use crate::pg_auth_product_services::PgAuthProductServices;
 use crate::RebornProductAuthServicePorts;
 use crate::default_system_prompt::seed_default_system_prompt;
@@ -572,7 +573,7 @@ pub async fn build_reborn_services(
         ));
         return Ok(services);
     }
-    // LocalDev input (pure filesystem, no PG — used in tests).
+    // LocalDev input (pure filesystem, no PG pool — used in unit tests only).
     build_local_dev(input, None).await
 }
 

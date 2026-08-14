@@ -419,7 +419,13 @@ LLM provider configuration is managed via `brassclaw config set` or the first-ru
 
 ## Database
 
-All persistence uses Postgres (`brassclaw_pg` crate + embedded Postgres via `brassclaw_embedded_postgres`). In-memory backends are acceptable for unit tests only.
+**Postgres is mandatory. There is no non-Postgres production build path.**
+
+All persistence uses Postgres (`brassclaw_pg` crate + embedded Postgres via `brassclaw_embedded_postgres`). In-memory backends are acceptable for **unit tests only** — never in production code or integration paths.
+
+The `postgres` cargo feature in `brassclaw_reborn_composition` is set as a **required default** (`default = ["postgres"]`). Do not add `#[cfg(not(feature = "postgres"))]` fallback paths to production composition or factory code. If you need a non-postgres code path, it belongs only in test fixtures.
+
+The `RebornCompositionProfile` enum and all composition-level profile selection have been removed. There is no `local_dev` vs `hosted` composition split — Postgres is always the backend. `BRASSCLAW_RUNTIME_PROFILE` controls only the per-invocation capability policy (security resolver), never the storage backend. `BRASSCLAW_REBORN_PROFILE` is a hard startup error.
 
 - Treat bootstrap config, DB-backed settings, and encrypted secrets as distinct layers.
 - Do not break config precedence, bootstrap env loading, DB-backed config reload, or post-secrets LLM re-resolution.
