@@ -1,7 +1,21 @@
 # Plan: Unified Postgres-backed Runtime (Remove Profiles + DB Secrets)
 
-**Date:** 2026-08-09  
+**Date:** 2026-08-09
 **Scope:** Two phases — an immediate 2-hour bug-fix (Phase A) then a multi-sprint architectural consolidation (Phase B).
+
+## Completion Status
+
+| Phase | Status | SHA |
+|-------|--------|-----|
+| A — Wire PgSecretStore | ✅ Done | `08f0dea3` |
+| B-1 — Upgrade in-memory stores to PG | ✅ Done | `08f0dea3` |
+| B-2 — Wire PgCredentialBroker, add tenant_id | ✅ Done | `587d5014` |
+| B-3 — Remove RebornCompositionProfile | ✅ Done | `7b2527a3` |
+| B-4 — Test/doc cleanup | ✅ Done | `4f0fbda4` |
+
+All phases complete. Postgres is now the only runtime backend. `RebornCompositionProfile` is deleted.
+`BRASSCLAW_REBORN_PROFILE` is a hard startup error. `BRASSCLAW_RUNTIME_PROFILE` controls per-invocation
+security posture only.
 
 ---
 
