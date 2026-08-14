@@ -550,6 +550,13 @@ pub async fn build_reborn_services(
         let effective_tenant_id = input.tenant_id.as_deref().unwrap_or("reborn-cli");
         let local_input = transfer_build_input_extras(local_input, &input);
         let pg_pool_arc = Arc::new(pool.clone());
+        // Run schema migrations before any PG-backed store (extension install,
+        // secret, credential, trigger, etc.) attempts to query the DB.
+        brassclaw_pg::migrations::run_migrations(&pg_pool_arc)
+            .await
+            .map_err(|e| RebornBuildError::InvalidConfig {
+                reason: format!("postgres schema migrations failed: {e}"),
+            })?;
         let mut services = build_local_dev(local_input, Some(Arc::clone(&pg_pool_arc))).await?;
         services.pg_pool = Some(Arc::clone(&pg_pool_arc));
         services.pg_token_settings_store = Some(Arc::new(
