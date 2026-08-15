@@ -1585,10 +1585,12 @@ name = "brassclaw_embedded_postgres"
 version = "0.1.0"
 dependencies = [
  "brassclaw_pg",
+ "flate2",
  "hex",
  "libc",
  "postgresql_embedded",
  "sha2 0.10.9",
+ "tar",
  "target-triple",
  "tempfile",
  "thiserror 2.0.19",

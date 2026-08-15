@@ -6,6 +6,7 @@ pub mod checksums;
 pub mod config;
 pub mod download;
 pub mod error;
+pub mod extract;
 pub mod health;
 pub mod initdb;
 pub mod pgctl;
@@ -177,62 +178,18 @@ impl Drop for ManagedPostgres {
     }
 }
 
-/// Resolve the PostgreSQL installation directory, downloading if necessary.
+/// Resolve the PostgreSQL installation directory, extracting the compile-time
+/// embedded archive if the binaries are not yet cached.
 ///
-/// Uses `postgresql_embedded` to handle the download and caching.
-/// The returned path is the root of the Postgres installation (the directory
-/// containing `bin/`, `lib/`, `share/`, etc.).
+/// This replaces the old `postgresql_embedded::setup()` download path.
+/// Postgres binaries are now baked into the binary at compile time via
+/// `build.rs` + `include_bytes!`, so no outbound HTTP is required at runtime.
 async fn resolve_pg_install_dir(
     config: &EmbeddedPostgresConfig,
 ) -> Result<std::path::PathBuf, EmbeddedPostgresError> {
-    use postgresql_embedded::{PostgreSQL, Settings, VersionReq};
-
-    // Pin to the exact PG version compiled into checksums.rs so the binary
-    // archive matches our compiled-in SHA-256 digests.
-    let version = VersionReq::parse(&format!("={}", crate::checksums::PG_VERSION))
-        .map_err(|e| EmbeddedPostgresError::InitDb(format!("bad PG version req: {e}")))?;
-
-    // `trust_installation_dir: true` tells postgresql_embedded to use
-    // `installation_dir` verbatim — without appending a version suffix.
-    // Without this flag the crate appends "16.4.0/" to the path, so binaries
-    // end up at `bin_cache_dir/16.4.0/bin/initdb` while we look for them at
-    // `bin_cache_dir/bin/initdb`.
-    let settings = Settings {
-        installation_dir: config.bin_cache_dir.clone(),
-        trust_installation_dir: true,
-        version,
-        ..Default::default()
-    };
-
-    // Construct and initialize the PostgreSQL instance. This downloads the
-    // binary archive if not already cached.
-    let mut pg = PostgreSQL::new(settings);
-    pg.setup()
-        .await
-        .map_err(|e| EmbeddedPostgresError::InitDb(e.to_string()))?;
-
-    // The installation root is exactly bin_cache_dir (trust_installation_dir
-    // prevents the version-suffix append, so setup() extracts here directly).
-    let install_dir = config.bin_cache_dir.clone();
-
-    // Verify the checksum of the downloaded archive if it is still present on
-    // disk. postgresql_embedded may remove the archive after extraction; when
-    // it is absent the check is skipped (best-effort). A missing archive on a
-    // cached installation is normal and not an error.
-    let archive_glob_base = install_dir.clone();
-    if let Ok(mut entries) = tokio::fs::read_dir(&archive_glob_base).await {
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            let name = entry.file_name();
-            let s = name.to_string_lossy();
-            // Match the compressed archive before extraction (tar.gz or zip).
-            if (s.ends_with(".tar.gz") || s.ends_with(".zip")) && s.contains("postgresql") {
-                download::verify_archive(&entry.path())?;
-                break;
-            }
-        }
-    }
-
-    Ok(install_dir)
+    // Extract from embedded bytes if initdb is not already present.
+    extract::ensure_pg_extracted(&config.bin_cache_dir).await?;
+    Ok(config.bin_cache_dir.clone())
 }
 
 /// Create the application role and database on a freshly initialised cluster.
