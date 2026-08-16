@@ -17,11 +17,12 @@ use tracing::debug;
 use crate::error::EmbeddedPostgresError;
 
 /// The Postgres binary archive, embedded at compile time by `build.rs`.
-/// On platforms where `build.rs` wrote a non-empty archive the bytes are the
-/// real tarball.  On unsupported targets / no-postgres feature builds the
-/// dummy empty file is embedded (extraction is never called in that case
-/// because `start()` will return an UnsupportedPlatform error first).
 static EMBEDDED_PG_ARCHIVE: &[u8] = include_bytes!(env!("EMBEDDED_PG_ARCHIVE"));
+
+/// The pgvector extension files archive, embedded at compile time by `build.rs`.
+/// Contains `lib/vector.so` (or `.dylib`), `share/extension/vector.control`,
+/// and `share/extension/vector--*.sql`. Empty on unsupported targets.
+static EMBEDDED_PGVECTOR_ARCHIVE: &[u8] = include_bytes!(env!("EMBEDDED_PGVECTOR_ARCHIVE"));
 
 /// Ensure the PostgreSQL binaries are extracted into `bin_cache_dir`.
 ///
@@ -74,9 +75,22 @@ pub async fn ensure_pg_extracted(bin_cache_dir: &Path) -> Result<(), EmbeddedPos
     // Extraction is CPU-bound; run on the blocking thread pool so we don't
     // stall the async executor.
     let dest = bin_cache_dir.to_path_buf();
-    tokio::task::spawn_blocking(move || extract_tarball(EMBEDDED_PG_ARCHIVE, &dest))
-        .await
-        .map_err(|e| EmbeddedPostgresError::InitDb(format!("extraction task panicked: {e}")))?
+    tokio::task::spawn_blocking(move || {
+        extract_tarball(EMBEDDED_PG_ARCHIVE, &dest)?;
+        // Install pgvector files if the archive is non-empty (Linux/macOS).
+        if !EMBEDDED_PGVECTOR_ARCHIVE.is_empty() {
+            // pgvector archive has NO top-level directory to strip — files are
+            // directly `lib/vector.so`, `share/extension/vector.control`, etc.
+            extract_flat_tarball(EMBEDDED_PGVECTOR_ARCHIVE, &dest)?;
+            debug!(
+                dest = %dest.display(),
+                "pgvector extension files extracted"
+            );
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| EmbeddedPostgresError::InitDb(format!("extraction task panicked: {e}")))?
 }
 
 /// Extract a gzip-compressed tar archive from `bytes` into `dest`.
@@ -193,5 +207,61 @@ fn extract_tarball(bytes: &[u8], dest: &Path) -> Result<(), EmbeddedPostgresErro
     }
 
     debug!(dest = %dest.display(), "PostgreSQL archive extracted successfully");
+    Ok(())
+}
+
+/// Extract a flat tar.gz (no top-level directory to strip) into `dest`.
+///
+/// Used for the pgvector archive whose entries are directly `lib/vector.so`,
+/// `share/extension/vector.control`, etc.  No path component stripping.
+fn extract_flat_tarball(bytes: &[u8], dest: &Path) -> Result<(), EmbeddedPostgresError> {
+    let gz = GzDecoder::new(bytes);
+    let mut archive = tar::Archive::new(gz);
+
+    for entry in archive.entries().map_err(|e| EmbeddedPostgresError::InitDb(e.to_string()))? {
+        let mut entry = entry.map_err(|e| EmbeddedPostgresError::InitDb(e.to_string()))?;
+        let entry_path = entry
+            .path()
+            .map_err(|e| EmbeddedPostgresError::InitDb(e.to_string()))?
+            .into_owned();
+
+        let out_path = dest.join(&entry_path);
+
+        if entry.header().entry_type().is_dir() {
+            std::fs::create_dir_all(&out_path).map_err(|e| EmbeddedPostgresError::Io {
+                path: out_path.display().to_string(),
+                reason: e.to_string(),
+            })?;
+            continue;
+        }
+
+        if let Some(parent) = out_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| EmbeddedPostgresError::Io {
+                path: parent.display().to_string(),
+                reason: e.to_string(),
+            })?;
+        }
+
+        #[cfg(unix)]
+        let mode = entry.header().mode().ok();
+
+        let mut out_file = std::fs::File::create(&out_path).map_err(|e| {
+            EmbeddedPostgresError::Io {
+                path: out_path.display().to_string(),
+                reason: e.to_string(),
+            }
+        })?;
+        std::io::copy(&mut entry, &mut out_file).map_err(|e| EmbeddedPostgresError::Io {
+            path: out_path.display().to_string(),
+            reason: e.to_string(),
+        })?;
+
+        #[cfg(unix)]
+        if let Some(mode) = mode {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(mode);
+            let _ = std::fs::set_permissions(&out_path, perms);
+        }
+    }
     Ok(())
 }

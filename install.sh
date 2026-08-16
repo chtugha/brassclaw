@@ -329,6 +329,15 @@ Environment=BRASSCLAW_REBORN_HOME=$reborn_home
 Environment=BRASSCLAW_RUNTIME_PROFILE=local_dev
 Environment=BRASSCLAW_REBORN_WEBUI_TOKEN=$webui_token
 Environment=BRASSCLAW_REBORN_WEBUI_USER_ID=$webui_user_id
+# Embedded Postgres is managed by the brassclaw service.
+# Default port: 5434 (loopback only). To override:
+#   - Port:            Environment=BRASSCLAW_EMBEDDED_PG_PORT=5434
+#   - Listen address:  Environment=BRASSCLAW_EMBEDDED_PG_LISTEN_ADDRESSES=0.0.0.0
+#   Note: listen_addresses is a first-boot setting (written to postgresql.conf
+#   by initdb). To change it on an existing cluster, edit
+#   $reborn_home/postgres/data/postgresql.conf and restart the service.
+# To use an external Postgres instead of the embedded one:
+#   Environment=BRASSCLAW_PG_URL=postgresql://user:pass@host:5432/brassclaw
 ExecStart=$INSTALL_DIR/$BINARY_NAME serve --host 0.0.0.0 --port 3000
 Restart=on-failure
 RestartSec=5

@@ -11,7 +11,7 @@ pub mod health;
 pub mod initdb;
 pub mod pgctl;
 
-pub use config::EmbeddedPostgresConfig;
+pub use config::{DEFAULT_EMBEDDED_PG_LISTEN_ADDRESSES, EmbeddedPostgresConfig};
 pub use error::EmbeddedPostgresError;
 
 /// A managed embedded PostgreSQL instance.

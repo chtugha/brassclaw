@@ -29,6 +29,16 @@ pub struct EmbeddedPostgresConfig {
 /// Default port for the embedded Postgres instance when `BRASSCLAW_EMBEDDED_PG_PORT` is unset.
 pub const DEFAULT_EMBEDDED_PG_PORT: u16 = 5434;
 
+/// Default listen addresses for the embedded Postgres instance.
+///
+/// The default is `127.0.0.1` (loopback-only). Set
+/// `BRASSCLAW_EMBEDDED_PG_LISTEN_ADDRESSES=0.0.0.0` before first boot to
+/// allow connections from the local network. This is a first-boot setting:
+/// `postgresql.conf` is written by `initdb` and is not modified on restart;
+/// to change it on an existing cluster, edit `$REBORN_HOME/postgres/data/postgresql.conf`
+/// directly and restart the service.
+pub const DEFAULT_EMBEDDED_PG_LISTEN_ADDRESSES: &str = "127.0.0.1";
+
 impl EmbeddedPostgresConfig {
     /// Construct a config from a `$REBORN_HOME` base directory.
     pub fn from_reborn_home(home: &Path) -> Self {

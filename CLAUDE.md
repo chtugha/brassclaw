@@ -409,6 +409,7 @@ See `.env.example` for all environment variables.
 | `BRASSCLAW_REBORN_LOG` | — | Log filter (e.g., `brassclaw=debug`) |
 | `BRASSCLAW_PG_URL` | — | External Postgres URL; optional for single-host local deployments (embedded Postgres used when absent), required for hosted/production |
 | `BRASSCLAW_EMBEDDED_PG_PORT` | 5434 | Override embedded Postgres port |
+| `BRASSCLAW_EMBEDDED_PG_LISTEN_ADDRESSES` | `127.0.0.1` | Override embedded Postgres listen addresses. Set to `0.0.0.0` to allow LAN connections. **First-boot only**: `postgresql.conf` is written once by `initdb`; to change on an existing cluster, edit `$REBORN_HOME/postgres/data/postgresql.conf` and restart the service. |
 | `BRASSCLAW_SECRETS_PASSPHRASE_FILE` | — | Path to master-key passphrase file; set only for passphrase-wrapped ceremony |
 
 **Operator-trusted tier** (data-driven, read by configured name after DB is up — set via `EnvironmentFile=` in the systemd unit):
