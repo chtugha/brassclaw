@@ -95,7 +95,7 @@ Use `--dry-run` for a side-effect-free readiness snapshot. Expected fields in th
 - `local_runtime_shell_readiness: ready`
 - `planned_default_profile: available`
 
-For `BRASSCLAW_REBORN_PROFILE=local-dev-yolo`, `run`, `repl`, and `serve` require `--confirm-host-access` before the runtime receives trusted-laptop host access. Confirmed access mounts the host home through `/host`.
+For `BRASSCLAW_RUNTIME_PROFILE=local_yolo`, `run`, `repl`, and `serve` require `--confirm-host-access` before the runtime receives trusted-laptop host access. Confirmed access mounts the host home through `/host`.
 
 ### `serve`
 
@@ -302,22 +302,25 @@ Home resolution precedence:
 
 The resolver rejects unsafe or misleading homes, including empty paths, relative paths, filesystem root, parent-directory components, and known v1 state-root aliases such as `$HOME/.brassclaw` or `BRASSCLAW_BASE_DIR`.
 
-## Profiles
+## Runtime Profiles
 
-Use `BRASSCLAW_REBORN_PROFILE` to select the boot profile.
+Use `BRASSCLAW_RUNTIME_PROFILE` to select the per-invocation capability and security policy.
+**`BRASSCLAW_REBORN_PROFILE` is a hard startup error — do not set it.**
 
 Supported values:
 
-- `local-dev` (default)
-- `local-dev-yolo`
-- `production`
-- `migration-dry-run`
+- `local_dev` (default) — home use, tool confirmations enabled
+- `local_safe` — home use, more conservative capability grants
+- `local_yolo` — home use, no confirmations (requires `--confirm-host-access`)
+- `hosted_safe` — server deployments (requires `BRASSCLAW_PG_URL`)
+
+Runtime profiles control security posture only. Postgres is always the storage backend.
 
 Example:
 
 ```bash
 BRASSCLAW_REBORN_HOME="$PWD/.reborn-home" \
-BRASSCLAW_REBORN_PROFILE=production \
+BRASSCLAW_RUNTIME_PROFILE=hosted_safe \
 brassclaw doctor
 ```
 

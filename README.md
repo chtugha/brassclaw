@@ -221,9 +221,6 @@ provider_id = "openai_compatible"
 model = "Qwen/Qwen2.5-7B-Instruct-AWQ"
 api_key_env = "BRASSCLAW_VLLM_KEY"
 base_url = "http://localhost:8000/v1"
-
-[boot]
-profile = "local-dev"
 ```
 
 Environment variables override config file values — see the table below.
@@ -233,23 +230,22 @@ Environment variables override config file values — see the table below.
 | Variable | Description |
 |----------|-------------|
 | `BRASSCLAW_REBORN_HOME` | Data directory (default: `~/.brassclaw/reborn`) |
-| `BRASSCLAW_REBORN_PROFILE` | Active profile (default: `local-dev`) |
+| `BRASSCLAW_RUNTIME_PROFILE` | Per-invocation capability/security policy (default: `local_dev`). Valid values: `local_dev`, `local_safe`, `local_yolo`, `hosted_safe`. Controls security posture only — Postgres is always the storage backend. **`BRASSCLAW_REBORN_PROFILE` is a hard startup error — do not set it.** |
 | `BRASSCLAW_REBORN_LOG` | Log level (`info`, `debug`, `trace`) |
-| `LLM_BACKEND` | Provider: `openai_compatible` or `ollama` |
-| `LLM_BASE_URL` | Base URL for OpenAI-compatible endpoint |
-| `LLM_MODEL` | Model identifier |
-| `LLM_API_KEY` | API key (`none` for local servers) |
+| `BRASSCLAW_PG_URL` | External Postgres URL. Optional for local deployments (embedded Postgres used when absent). Required for hosted deployments. |
 | `BRASSCLAW_REBORN_WEBUI_TOKEN` | Bearer token for WebUI authentication |
 | `BRASSCLAW_REBORN_WEBUI_USER_ID` | User identity injected into sessions |
 
-### Profiles
+### Runtime Profiles
 
-| Profile | Best for | Database | Notes |
-|---------|----------|----------|-------|
-| `local-dev` | Home use (default) | libSQL embedded | Tool confirmations enabled |
-| `local-dev-yolo` | Home use, no confirmations | libSQL embedded | Tools execute without prompting |
-| `production` | Single/multi-user server | PostgreSQL | Sandbox enabled |
-| `migration-dry-run` | Schema migration testing | libSQL embedded | Read-only migrations |
+Runtime profiles control the per-invocation capability and security policy. They do **not** affect storage — Postgres is always used.
+
+| Profile | Best for | Notes |
+|---------|----------|-------|
+| `local_dev` | Home use (default) | Tool confirmations enabled, trusted laptop host access |
+| `local_safe` | Home use, restricted | More conservative capability grants |
+| `local_yolo` | Home use, no confirmations | Tools execute without prompting. Requires `--confirm-host-access` |
+| `hosted_safe` | Server deployments | Requires `BRASSCLAW_PG_URL`. Sandbox enforced. |
 
 ### Token budget
 

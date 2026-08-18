@@ -37,7 +37,7 @@ Additionally, `RamSource` (a DB-less retrieval backend), `DbLessFallback` intent
 
 ### Step 2 — Fix Documentation: Remove `BRASSCLAW_REBORN_PROFILE` References
 
-**Status:** [ ] Pending
+**Status:** [DONE]
 
 **Files:**
 - `README.md` lines ~225-245: References `BRASSCLAW_REBORN_PROFILE` as active profile env var and has a "Profiles" section — remove or update to `BRASSCLAW_RUNTIME_PROFILE`

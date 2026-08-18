@@ -1140,8 +1140,9 @@ Profile files live in `profiles/` at the repo root.
 | Variable | Purpose |
 |---|---|
 | `BRASSCLAW_REBORN_HOME` | State root (default: `~/.brassclaw/reborn`) |
-| `BRASSCLAW_REBORN_PROFILE` | Boot profile override |
+| `BRASSCLAW_RUNTIME_PROFILE` | Per-invocation capability/security policy (`local_dev`, `local_safe`, `local_yolo`, `hosted_safe`). **`BRASSCLAW_REBORN_PROFILE` is a hard startup error** — do not set it. |
 | `BRASSCLAW_REBORN_LOG` | Tracing filter (`RUST_LOG` format) |
+| `BRASSCLAW_PG_URL` | External Postgres URL. Optional for local deployments (embedded Postgres used when absent). |
 | `LLM_BACKEND` | LLM provider fallback |
 | `LLM_BASE_URL` | OpenAI-compatible endpoint URL |
 | `LLM_MODEL` | Model name |
