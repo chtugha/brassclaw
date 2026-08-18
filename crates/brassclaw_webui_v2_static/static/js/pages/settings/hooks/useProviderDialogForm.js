@@ -114,9 +114,13 @@ export function useProviderDialogForm({
         setMessage({ tone: "error", text: result.message || t("llm.modelsFetchFailed") });
       } else {
         setModels(result.models);
-        // Auto-select the first model when the field is still empty so the
-        // user can save immediately without manually picking a value.
-        setForm((prev) => ({ ...prev, model: prev.model || result.models[0] }));
+        // Auto-select the first model when the current value is absent or is
+        // not in the fetched list (stale / placeholder value). This ensures
+        // the form state matches what the dropdown visually shows.
+        setForm((prev) => ({
+          ...prev,
+          model: result.models.includes(prev.model) ? prev.model : result.models[0],
+        }));
         setMessage({ tone: "success", text: t("llm.modelsFetched", { count: result.models.length }) });
       }
     } catch (err) {
