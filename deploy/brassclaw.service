@@ -13,11 +13,11 @@ WorkingDirectory=/opt/brassclaw
 
 # Bootstrap tier — non-secret; safe as inline Environment=
 Environment=BRASSCLAW_REBORN_HOME=/var/lib/brassclaw
-# NOTE: Use BRASSCLAW_REBORN_PROFILE until Phase 11 ships. Phase 11 renames this
-# to BRASSCLAW_RUNTIME_PROFILE (and expands the value set to 12 RuntimeProfile
-# variants). Until then, valid values are: local-dev, local-dev-yolo, production.
-# local-dev maps to the LocalSafe policy for single-host serve deployments.
-Environment=BRASSCLAW_REBORN_PROFILE=local-dev
+# BRASSCLAW_RUNTIME_PROFILE controls the per-invocation capability/security policy.
+# Valid values: local_dev (default), local_safe, local_yolo, hosted_safe.
+# This does NOT affect the storage backend — Postgres is always used.
+# BRASSCLAW_REBORN_PROFILE is a hard startup error — do not set it.
+Environment=BRASSCLAW_RUNTIME_PROFILE=local_dev
 Environment=BRASSCLAW_REBORN_LOG=brassclaw=info
 # BRASSCLAW_PG_URL is OPTIONAL for local-* profiles — omit to use embedded Postgres:
 # Environment=BRASSCLAW_PG_URL=postgresql://brassclaw@127.0.0.1:5434/brassclaw

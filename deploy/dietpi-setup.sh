@@ -117,7 +117,7 @@ Environment=BRASSCLAW_REBORN_LOG=debug
 Environment=BRASSCLAW_REBORN_WEBUI_TOKEN=${WEBUI_TOKEN}
 Environment=BRASSCLAW_REBORN_WEBUI_USER_ID=brassclaw-admin
 Environment=BRASSCLAW_REBORN_HOME=/root/.brassclaw/reborn
-Environment=BRASSCLAW_REBORN_PROFILE=local-dev-yolo
+Environment=BRASSCLAW_RUNTIME_PROFILE=local_yolo
 Environment=LLM_BACKEND=openai_compatible
 Environment=LLM_BASE_URL=http://${VLLM_HOST}:${VLLM_PORT}/v1
 Environment=LLM_API_KEY=none
