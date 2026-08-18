@@ -770,7 +770,12 @@ impl LlmConfigService for RebornLlmConfigService {
                     .api_key_env
                     .as_ref()
                     .is_some_and(|env| std::env::var(env).is_ok());
-            merged.api_key_required = !key_present;
+            // For builtins, the canonical definition says whether an API key is
+            // *structurally required*.  Saving without a key must not flip an
+            // optional-key provider (api_key_required = false) to required.
+            // Only relax the requirement (true → false) when a key is now
+            // present; never tighten it (false → true) when no key is given.
+            merged.api_key_required = existing_def.api_key_required && !key_present;
             merged
         } else {
             // Custom or new provider: build from request.

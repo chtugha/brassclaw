@@ -349,10 +349,13 @@ pub(crate) async fn seed_builtin_providers(
         let merged = if let Some(existing_def) = existing_map.get(&new_def.id) {
             let mut merged = new_def.clone();
             // Operator-owned fields — preserve what the operator last set.
+            // Note: api_key_required is intentionally NOT copied from the existing
+            // DB row; the canonical binary definition is always authoritative for
+            // whether a key is structurally required.  Copying the DB value would
+            // re-seed any corruption introduced by a previous buggy save.
             merged.default_base_url = existing_def.default_base_url.clone();
             merged.default_model = existing_def.default_model.clone();
             merged.description = existing_def.description.clone();
-            merged.api_key_required = existing_def.api_key_required;
             merged.token_budget = existing_def.token_budget.clone();
             merged
         } else {
