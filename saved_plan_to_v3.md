@@ -1,9 +1,26 @@
 # Recipe System Finalisation Plan — v3
 
-> **Status:** Draft — for review before implementation begins.  
-> **Scope:** Closes all architectural gaps identified in the Vision vs. Implementation analysis.  
-> **No code changes are made by this document.**  
-> **Next migration:** V047 (current highest: V046).
+> **Status:** Draft — for review before implementation begins.
+> **Scope:** Closes all architectural gaps identified in the Vision vs. Implementation analysis.
+> **No code changes are made by this document.**
+> **Next migration:** V050 (current highest: V049 — V047–V049 were used for LLM provider and session migrations unrelated to this plan).
+>
+> **⚠️ MIGRATION NUMBER CORRECTION:** The original plan assumed V047 as the next migration.
+> Three migrations were added since: `V047__llm_providers_is_builtin.sql`,
+> `V048__seed_builtin_providers.sql`, `V049__session_threads_version.sql`.
+> All migration numbers in this plan have been corrected accordingly:
+>
+> | Original | Corrected | Phase |
+> |----------|-----------|-------|
+> | V047 | V050 | Phase A |
+> | V048 | V051 | Phase B |
+> | V049 | V052 | Phase C |
+> | V050 | V053 | Phase D |
+> | V051 | V054 | Phase J |
+> | V052 | V055 | Phase K.1 |
+> | V053 | V056 | Phase L.1 |
+> | V054 | V057 | Phase M.1 |
+> | V055 | V058 | Phase N.1 |
 
 ---
 
@@ -3345,7 +3362,7 @@ WHERE validation_status != 'validated'
 ```
 
 Inconsistent rows are logged as warnings and automatically submitted to state 1 as
-a recovery action. This covers edge cases from the V055 data migration.
+a recovery action. This covers edge cases from the V058 data migration.
 
 #### Tests
 
@@ -3367,15 +3384,15 @@ a recovery action. This covers edge cases from the V055 data migration.
 
 | Migration | Contents | Status |
 |-----------|----------|--------|
-| `V047__reborn_recipe_step_descriptions.sql` | `ADD COLUMN step_descriptions JSONB` to `reborn_recipes` | **Next** |
-| `V048__reborn_python_code.sql` | New table `reborn_python_code`, class 22 | |
-| `V049__reborn_extension_catalogues.sql` | New table `reborn_extension_catalogues`, class 23 | |
-| `V050__reborn_intent_inputs_step_link.sql` | `ADD COLUMN step_link TEXT` to `reborn_intent_inputs` | |
-| `V051__reborn_skills_intent_examples.sql` | `ADD COLUMN IF NOT EXISTS intent_examples JSONB` to `reborn_skills` (**no-op** — V027 already has this column); `ADD COLUMN dependency_registry JSONB` to all 13 component tables (see Phase J.2 — §0.19) | |
-| `V052__reborn_basic_prompt_store.sql` | New table: one row per scope, `bundle_json JSONB`, `is_stale BOOL`, `fingerprint TEXT` | |
-| `V053__reborn_tools_capability_id_and_system_source.sql` | `ADD COLUMN capability_id TEXT` to `reborn_tools` + `source = 'system'` allowed on tools/tool_skills/skills | |
-| `V054__reborn_intent_inputs_template.sql` | `ADD COLUMN is_template BOOL`, `template_prefix TEXT`, `template_suffix TEXT` to `reborn_intent_inputs`; two new partial indexes for prefix/suffix-anchored template matching (see §0.17.2) | |
-| `V055__reborn_validation_queue.sql` | New table `reborn_validation_queue` (§0.18); populate from existing component table state; add `last_graduation_at` to scope cursor; graduation trigger; drop `queue_code`/`review_attempts`/`review_feedback`/`rejected_at`/`validation_errors` from all 13 component tables | |
+| `V050__reborn_recipe_step_descriptions.sql` | `ADD COLUMN step_descriptions JSONB` to `reborn_recipes` | **Next** |
+| `V051__reborn_python_code.sql` | New table `reborn_python_code`, class 22 | |
+| `V052__reborn_extension_catalogues.sql` | New table `reborn_extension_catalogues`, class 23 | |
+| `V053__reborn_intent_inputs_step_link.sql` | `ADD COLUMN step_link TEXT` to `reborn_intent_inputs` | |
+| `V054__reborn_skills_intent_examples.sql` | `ADD COLUMN IF NOT EXISTS intent_examples JSONB` to `reborn_skills` (**no-op** — V027 already has this column); `ADD COLUMN dependency_registry JSONB` to all 13 component tables (see Phase J.2 — §0.19) | |
+| `V055__reborn_basic_prompt_store.sql` | New table: one row per scope, `bundle_json JSONB`, `is_stale BOOL`, `fingerprint TEXT` | |
+| `V056__reborn_tools_capability_id_and_system_source.sql` | `ADD COLUMN capability_id TEXT` to `reborn_tools` + `source = 'system'` allowed on tools/tool_skills/skills | |
+| `V057__reborn_intent_inputs_template.sql` | `ADD COLUMN is_template BOOL`, `template_prefix TEXT`, `template_suffix TEXT` to `reborn_intent_inputs`; two new partial indexes for prefix/suffix-anchored template matching (see §0.17.2) | |
+| `V058__reborn_validation_queue.sql` | New table `reborn_validation_queue` (§0.18); populate from existing component table state; add `last_graduation_at` to scope cursor; graduation trigger; drop `queue_code`/`review_attempts`/`review_feedback`/`rejected_at`/`validation_errors` from all 13 component tables | |
 
 All additive-first. No DROP, no renames. No existing rows break.
 
@@ -3405,7 +3422,7 @@ avoiding the DB round-trip entirely.
 | 8 | Should builtin Tool/ToolSkill/Skill rows bypass Q2 (auto-validated)? | Yes — `source = "system"`, `validation_status = "validated"` at seeder insert. Q1 runs inside the seeder at build time. Q1 errors in seeder content are CI build failures. This prevents boot from requiring human Q2 completion for core tools. |
 | 9 | Should the MCP translator also be used for builtins? | No — wrong granularity (1:1 per tool, no task-level Skills, no PythonCode, no multi-ToolSkill Recipes). Use `builtin_bootstrap.rs` (Phase L) for builtins. MCP translator is for external third-party MCPs only. |
 | 10 | What recipe variants should `builtin.shell` have? | Two: (a) known-safe commands (allowlist: `cargo build/test/fmt/clippy`, `git status/log/diff`, `npm install/build`) at Tier 1 high-confidence; (b) open-ended arbitrary command at Tier 1 always with explicit approval annotation. Both have `llm_call_required: true` — no shell is ever Tier 0. |
-| 11 | How does the Rust execution layer resolve a Tool DB UUID to its registered capability handler? | Via `capability_id` column (V053). On tool dispatch: look up Tool row by UUID → read `capability_id` → look up handler in `FirstPartyCapabilityRegistry` by `capability_id`. For user-authored tools without `capability_id`, fall back to existing name-based resolution. |
+| 11 | How does the Rust execution layer resolve a Tool DB UUID to its registered capability handler? | Via `capability_id` column (V056). On tool dispatch: look up Tool row by UUID → read `capability_id` → look up handler in `FirstPartyCapabilityRegistry` by `capability_id`. For user-authored tools without `capability_id`, fall back to existing name-based resolution. |
 | 12 | Should builtin Recipes also have `source = "system"` and bypass Q2? | Yes — same reasoning as Q8. Builtin Recipe StepDescriptions are hand-authored and IBS pre-flight-checked at seeder run time. Q2 bypass for `source = "system"` Recipes is consistent with Tools and ToolSkills. |
 | 13 | If `RecipeStage` already stashed the items (Tier 1), how does `handle_assemble_prior_knowledge` know not to call `fetch_for_turn` again? | **Resolved — stash/unstash protocol (Phase H §5).** `handle_assemble_prior_knowledge` checks `state.recipe_hint` before doing anything. If set, it skips `fetch_for_turn` entirely, deserializes the stashed `Vec<ComponentItem>` from `serde_json::Value`, clears the field (one-shot consume), and formats. If absent (Tier 2 / no-match), calls `fetch_for_turn` as before. No double-fetch, no second `resolve_intent`, no second IBS compilation. |
 | 14 | In Tier 0, `PromptStage` and `ModelStage` are skipped — but the Python script calls `__assemble_prior_knowledge__`. Where does Python execute in Tier 0? | The Python scripting engine is **not** the LLM call. `PromptStage` assembles the LLM input prompt; `ModelStage` sends it to the model. Both are skipped in Tier 0. `default.py` is invoked by `CapabilityStage` (or equivalent) independently. In Tier 0, Python runs step-0, calls `__assemble_prior_knowledge__` (gets the stash), and invokes skills/tools directly — no LLM round-trip in the middle. "Tier 0: no LLM" means no LLM call, not no Python execution. |
