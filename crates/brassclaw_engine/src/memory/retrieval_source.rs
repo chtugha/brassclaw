@@ -676,7 +676,7 @@ impl RetrievalSource for PostgresSource {
                 // a disambiguation message before proceeding.
                 Ok(FetchForTurnResult::Disambiguation(candidates))
             }
-            Ok(IntentResolution::NoMatch) | Ok(IntentResolution::DbLessFallback) | Err(_) => {
+            Ok(IntentResolution::NoMatch) | Err(_) => {
                 // No intent match (or DB error): fall back to the full UNION ALL.
                 let items = self
                     .fetch_for_consumer(scope, query, token_budget, sender_class_code)

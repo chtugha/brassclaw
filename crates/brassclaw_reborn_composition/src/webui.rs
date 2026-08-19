@@ -204,8 +204,10 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
         ));
         tracing::debug!("ReductionRuleStore wired through PgMemoryDocStore");
     }
-    // Wire PgRecipeStoreFacade as the RecipeStore (Step 5.3 — reborn_recipes table).
-    // Falls back to the MemoryDoc-backed store when no PG pool is available.
+    // Wire PgRecipeStoreFacade as the RecipeStore (reborn_recipes table).
+    // Postgres is mandatory — the MemoryDoc-backed fallback has been removed.
+    // When no PG pool is available the RecipeStore is not wired (recipe endpoints
+    // return "unavailable") rather than silently falling back to legacy storage.
     #[cfg(feature = "postgres")]
     if let Some(pool) = services.pg_pool.as_ref() {
         let tenant_id = runtime.webui_tenant_id();
@@ -214,21 +216,10 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
             tenant_id,
             "default",
         );
-        api =
-            api.with_recipe_store(
-                Arc::new(facade) as Arc<dyn brassclaw_product_workflow::RecipeStore>
-            );
-        tracing::debug!("RecipeStore wired through PgRecipeStoreFacade (reborn_recipes)");
-    } else if let Some(memory_doc_store) = services.pg_memory_doc_store.clone() {
-        // Non-postgres fallback: keep old MemoryDoc-backed store until PG-8 cleanup.
-        let dyn_store: Arc<dyn brassclaw_engine::traits::store::Store> =
-            Arc::clone(&memory_doc_store) as Arc<dyn brassclaw_engine::traits::store::Store>;
-        let recipe_store =
-            crate::recipe_store::StoreBackedRecipeStore::open(Arc::clone(&dyn_store));
         api = api.with_recipe_store(
-            Arc::new(recipe_store) as Arc<dyn brassclaw_product_workflow::RecipeStore>
+            Arc::new(facade) as Arc<dyn brassclaw_product_workflow::RecipeStore>
         );
-        tracing::debug!("RecipeStore wired through StoreBackedRecipeStore (fallback, MemoryDoc)");
+        tracing::debug!("RecipeStore wired through PgRecipeStoreFacade (reborn_recipes)");
     }
 
     // Wire the extension registry for Tools API

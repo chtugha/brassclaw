@@ -1,17 +1,11 @@
-//! Recipe-Skill-Tool library adapter (Phase 7).
+//! MemoryDoc-backed Recipe library adapter (legacy).
 //!
-//! Bridges between the persisted Recipe / ToolSkill MemoryDocs and the
-//! `brassclaw_turns::run_profile::RecipeLookup` trait that the agent
-//! loop's `RecipeStage` consults. The agent loop is intentionally
-//! ignorant of how the library is persisted — the trait boundary
-//! keeps `brassclaw_agent_loop` free of `brassclaw_engine` deps.
+//! This module is scheduled for removal in Phase K once the Postgres-only
+//! `PgRecipeLibrary` is the sole implementation. The MemoryDoc fallback path
+//! that constructed this type has been removed (Goal 2: postgres is mandatory).
 //!
-//! Tier 0 selection (direct execution, no LLM round-trip) is deliberately
-//! not implemented in this adapter — Phase 7 ships the lookup + planner
-//! surface; Tier 0 dispatch arrives when the executor exposes a
-//! `CapabilityCall`-shaped payload channel. Until then, looking up a
-//! recipe only causes the prompt stage to inject the matched ToolSkill
-//! summaries (Tier 1) — a soft signal that the LLM can choose to follow.
+//! TODO(Phase K): delete this module entirely.
+#![allow(dead_code)]
 
 use async_trait::async_trait;
 use brassclaw_turns::run_profile::{

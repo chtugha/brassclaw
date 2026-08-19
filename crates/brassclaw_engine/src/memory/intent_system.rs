@@ -41,12 +41,6 @@
 //! Increments use `UPDATE … SET score = LEAST(score + 1, 100) RETURNING score`
 //! — atomic; no SELECT-then-UPDATE race.
 //!
-//! # DB-less mode
-//!
-//! When no pool is available, `resolve_intent` returns
-//! `IntentResolution::DbLessFallback` immediately.  The orchestrator falls back
-//! to keyword retrieval via `RamSource`.
-//!
 //! # Feature gate
 //!
 //! DB-path functions require the `skills-db` feature (same pool as skill loading).
@@ -181,9 +175,6 @@ pub enum IntentResolution {
     /// No match found in the intent table.  Orchestrator should emit a
     /// "reformulate" message (or silent fallback if "AI before User" is ON).
     NoMatch,
-    /// The intent system is in DB-less mode.  Orchestrator falls back to
-    /// keyword retrieval via `RamSource`.
-    DbLessFallback,
 }
 
 /// Source tag for learned intent inputs (SEC-05).

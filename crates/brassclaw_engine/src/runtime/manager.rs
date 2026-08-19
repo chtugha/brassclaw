@@ -374,9 +374,11 @@ impl ThreadManager {
 
         let store_for_retrieval = Arc::clone(&self.store);
         let retrieval = crate::memory::RetrievalEngine::new(Arc::clone(&store_for_retrieval));
-        // Phase 5 retrieval source: RamSource wraps the same store for the
-        // __assemble_prior_knowledge__ path. PostgresSource is wired in the
-        // composition layer when a pg_pool is available.
+        // TODO(Phase K): RamSource is the active retrieval backend. Replace with
+        // PostgresSource once the composition layer wires it via with_retrieval_source().
+        // PostgresSource requires a pg_pool; it is instantiated in the composition layer
+        // and must override this default. Until Phase K, the intent system's PostgresSource
+        // path is NOT active in production — only the RamSource keyword fallback runs.
         let retrieval_source: Arc<dyn crate::memory::RetrievalSource> =
             Arc::new(crate::memory::RamSource::new(store_for_retrieval));
 

@@ -37,6 +37,11 @@
 //! see the same numbers from one source of truth).
 
 #![forbid(unsafe_code)]
+// This module is legacy MemoryDoc-backed code scheduled for removal in Phase K.
+// The production path that used StoreBackedRecipeStore has been replaced by
+// PgRecipeStoreFacade (postgres is mandatory). Tests are retained until Phase K.
+// TODO(Phase K): delete this entire module.
+#![allow(dead_code)]
 
 /// Class code assigned to Recipes per spec §4.
 const RECIPE_CLASS_CODE: u16 = 21;

@@ -50,7 +50,7 @@ Additionally, `RamSource` (a DB-less retrieval backend), `DbLessFallback` intent
 
 ### Step 3 — Eliminate In-Memory Subagent Goal Store Fallback (`runtime.rs`)
 
-**Status:** [ ] Pending
+**Status:** [DONE]
 
 **File:** `crates/brassclaw_reborn_composition/src/runtime.rs` lines ~2343-2355
 
@@ -82,7 +82,7 @@ let subagent_goal_store: Arc<dyn brassclaw_reborn::runtime::RuntimeSubagentGoalS
 
 ### Step 4 — Eliminate In-Memory Outbound State Store Fallback (`runtime.rs`)
 
-**Status:** [ ] Pending
+**Status:** [DONE]
 
 **File:** `crates/brassclaw_reborn_composition/src/runtime.rs` lines ~2360-2374
 
@@ -105,7 +105,7 @@ let outbound_store: Arc<dyn brassclaw_outbound::OutboundStateStore> =
 
 ### Step 5 — Eliminate Filesystem Secret Store Fallback (`factory.rs`)
 
-**Status:** [ ] Pending
+**Status:** [DONE] — Verified safe. The `pg_pool = None` branch in `build_local_dev()` is only reachable from unit tests (comment at line ~592 of factory.rs explicitly states "used in unit tests only"). The filesystem fallback is intentional for test isolation. Added a code comment to document this invariant.
 
 **File:** `crates/brassclaw_reborn_composition/src/factory.rs` lines ~804-823
 
@@ -134,7 +134,7 @@ let secret_store: Arc<dyn SecretStore> = if let Some(pool) = pg_pool.as_ref() {
 
 ### Step 6 — Eliminate MemoryDoc Recipe Store Fallback (`webui.rs`)
 
-**Status:** [ ] Pending
+**Status:** [DONE]
 
 **File:** `crates/brassclaw_reborn_composition/src/webui.rs` lines ~209-231
 
@@ -157,7 +157,7 @@ if let Some(pool) = services.pg_pool.as_ref() {
 
 ### Step 7 — Eliminate MemoryDoc Recipe Library Fallback (`runtime.rs`)
 
-**Status:** [ ] Pending
+**Status:** [DONE]
 
 **File:** `crates/brassclaw_reborn_composition/src/runtime.rs` lines ~2523-2541
 

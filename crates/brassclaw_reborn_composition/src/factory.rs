@@ -799,8 +799,14 @@ async fn build_local_dev(
     );
     let local_dev_product_auth_filesystem = local_dev_scoped_filesystem(Arc::clone(&filesystem));
     // When a PG pool is available (the hybrid serve path), use PgSecretStore so that
-    // LLM API keys and other secrets survive process restart.  Without a pool (pure
-    // local-dev in tests), fall back to the filesystem store.
+    // LLM API keys and other secrets survive process restart.  Without a pool,
+    // fall back to the filesystem store.
+    //
+    // NOTE: The `pg_pool = None` branch is only reachable from unit tests — see
+    // the `build_reborn_services` call at line ~592:
+    //   `build_local_dev(input, None).await`  // "used in unit tests only"
+    // Production serve paths always pass a pool. This filesystem fallback is
+    // intentional for test isolation and is NOT a production postgres-less path.
     #[cfg(feature = "postgres")]
     let secret_store: Arc<dyn SecretStore> = if let Some(pool) = pg_pool.as_ref() {
         let master_key = resolve_local_dev_secret_master_key(&root)?;

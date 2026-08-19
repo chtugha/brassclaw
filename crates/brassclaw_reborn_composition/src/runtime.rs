@@ -62,6 +62,7 @@ use brassclaw_reborn::runtime::{
     DefaultPlannedRuntimeBuildError, DefaultPlannedRuntimeConfig, DefaultPlannedRuntimeParts,
     build_default_planned_runtime,
 };
+#[cfg(not(feature = "postgres"))]
 use brassclaw_reborn::subagent::goal_store::InMemoryBoundedSubagentGoalStore;
 use brassclaw_reborn::subagent::{
     flavors::StaticSubagentDefinitionResolver, gate_resolution::BoundedSubagentGateResolutionStore,
@@ -2336,35 +2337,40 @@ pub async fn build_reborn_runtime(
     let durable_milestone_sink: Arc<dyn LoopHostMilestoneSink> = Arc::new(
         DurableLoopHostMilestoneSink::new(Arc::clone(&event_log), milestone_scope),
     );
-    // Use PgSubagentGoalStore when a Postgres pool is available so subagent
-    // goals survive process restarts.  Falls back to the bounded in-memory
-    // store for local-dev builds without an embedded PG instance.
+    // Postgres is mandatory — subagent goals must survive process restarts.
+    // Fail hard if the pool is not available rather than silently losing goals.
     #[cfg(feature = "postgres")]
-    let subagent_goal_store: Arc<dyn brassclaw_reborn::runtime::RuntimeSubagentGoalStore> =
-        if let Some(pool) = services.pg_pool.as_ref() {
-            Arc::new(
-                brassclaw_reborn::subagent::goal_store::PgSubagentGoalStore::new((**pool).clone()),
-            )
-        } else {
-            Arc::new(InMemoryBoundedSubagentGoalStore::new())
-        };
+    let subagent_goal_store: Arc<dyn brassclaw_reborn::runtime::RuntimeSubagentGoalStore> = {
+        let pool = services.pg_pool.as_ref().ok_or_else(|| {
+            RebornRuntimeError::InvalidArgument {
+                reason: "Postgres pool is required for PgSubagentGoalStore \
+                         (postgres is mandatory; in-memory fallback removed)"
+                    .to_string(),
+            }
+        })?;
+        Arc::new(brassclaw_reborn::subagent::goal_store::PgSubagentGoalStore::new(
+            (**pool).clone(),
+        ))
+    };
     #[cfg(not(feature = "postgres"))]
     let subagent_goal_store: Arc<dyn brassclaw_reborn::runtime::RuntimeSubagentGoalStore> =
         Arc::new(InMemoryBoundedSubagentGoalStore::new());
     if trusted_laptop_access {
         append_trusted_laptop_access_audit(&audit_log, &thread_scope, &actor_user_id).await?;
     }
-    // Build outbound state store: PG-backed when pool available (notification
-    // targets survive process restart), in-memory fallback otherwise.
+    // Postgres is mandatory — outbound notification targets must survive restarts.
+    // Fail hard if the pool is not available rather than silently using in-memory state.
     #[cfg(feature = "postgres")]
-    let outbound_store: Arc<dyn brassclaw_outbound::OutboundStateStore> =
-        if let Some(pool) = services.pg_pool.as_ref() {
-            Arc::new(brassclaw_outbound::PgOutboundStateStore::new(
-                (**pool).clone(),
-            ))
-        } else {
-            Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default())
-        };
+    let outbound_store: Arc<dyn brassclaw_outbound::OutboundStateStore> = {
+        let pool = services.pg_pool.as_ref().ok_or_else(|| {
+            RebornRuntimeError::InvalidArgument {
+                reason: "Postgres pool is required for PgOutboundStateStore \
+                         (postgres is mandatory; in-memory fallback removed)"
+                    .to_string(),
+            }
+        })?;
+        Arc::new(brassclaw_outbound::PgOutboundStateStore::new((**pool).clone()))
+    };
     #[cfg(not(feature = "postgres"))]
     let outbound_store: Arc<dyn brassclaw_outbound::OutboundStateStore> =
         Arc::new(brassclaw_outbound::InMemoryOutboundStateStore::default());
@@ -2517,9 +2523,10 @@ pub async fn build_reborn_runtime(
         })?
     };
 
-    // Step 5.3: Use PgRecipeLibrary (reads from reborn_recipes) when a Postgres
-    // pool is wired.  Falls back to the MemoryDoc-backed RecipeLibrary when no
-    // pool is available (non-postgres / local-dev without embedded PG).
+    // Step 5.3: Use PgRecipeLibrary (reads from reborn_recipes).
+    // Postgres is mandatory — the MemoryDoc-backed fallback has been removed.
+    // When the pool is None, recipe_lookup is None (RecipeStage falls through to
+    // Tier 2, which is the correct explicit behaviour when PG is unavailable).
     #[cfg(feature = "postgres")]
     let recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>> = services
         .pg_pool
@@ -2528,15 +2535,6 @@ pub async fn build_reborn_runtime(
             Arc::new(crate::pg_recipe_store::PgRecipeLibrary::local_dev(
                 Arc::clone(pool),
             )) as Arc<dyn brassclaw_turns::run_profile::RecipeLookup>
-        })
-        .or_else(|| {
-            // Fallback: MemoryDoc-backed store (retained until PG-8 cleanup).
-            services.pg_memory_doc_store.as_ref().map(|store| {
-                let dyn_store: Arc<dyn brassclaw_engine::traits::store::Store> =
-                    Arc::clone(store) as Arc<dyn brassclaw_engine::traits::store::Store>;
-                Arc::new(crate::recipe_library::RecipeLibrary::new(dyn_store))
-                    as Arc<dyn brassclaw_turns::run_profile::RecipeLookup>
-            })
         });
     #[cfg(not(feature = "postgres"))]
     let recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>> = None;
