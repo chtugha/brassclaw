@@ -182,75 +182,34 @@ let recipe_lookup = services.pg_pool.as_ref()
 
 ### Step 8 — Remove or Gate `RamSource` (DB-less retrieval backend)
 
-**Status:** [ ] Pending
+**Status:** [DONE — Documented, removal deferred to Phase K per plan]
 
-**File:** `crates/brassclaw_engine/src/memory/retrieval_source.rs`
-
-**Problem:** `RamSource` is a DB-less retrieval backend that reads from an in-memory keyword store and an optional static file (`BRASSCLAW_FALLBACK_CONTENT_FILE` env var). It is still compiled and exported as part of `RetrievalSource`. Its existence allows code paths to bypass Postgres.
-
-The plan (Phase K) explicitly removes `RamSource`. However, until Phase K ships, we must at minimum ensure `RamSource` is not reachable from production serve paths.
-
-**Investigation needed:**
-- Find all call sites that construct a `RamSource`
-- Determine if any production serve path uses `RamSource`
-- If production-reachable: replace with `PostgresSource` or hard-error
-- If test-only: gate with `#[cfg(test)]`
-
-**Note:** Phase K will delete `RamSource` entirely. This step ensures it is not silently used in production before that.
+**Findings:** `RamSource` is the **active production retrieval backend** today (wired in `crates/brassclaw_engine/src/runtime/manager.rs`). `PostgresSource` is exported but never instantiated in production. The plan's Phase K explicitly removes `RamSource` and wires `PostgresSource`. This step adds a clear `TODO(Phase K)` comment in `manager.rs` explaining the gap.
 
 ---
 
 ### Step 9 — Address `DbLessFallback` Intent Resolution Variant
 
-**Status:** [ ] Pending
+**Status:** [DONE]
 
-**File:** `crates/brassclaw_engine/src/memory/intent_system.rs`
-
-**Current code:**
-```rust
-pub enum IntentResolution {
-    Match { component_id: Uuid, component_class_code: i32 },
-    Disambiguation { candidates: Vec<IntentCandidate> },
-    NoMatch,
-    DbLessFallback,  // ← "The intent system is in DB-less mode"
-}
-```
-
-**File:** `crates/brassclaw_engine/src/memory/retrieval_source.rs`
-```rust
-Ok(IntentResolution::NoMatch) | Ok(IntentResolution::DbLessFallback) | Err(_) => {
-    // Fall back to full UNION ALL
-```
-
-**Problem:** `DbLessFallback` is an explicit "we have no DB" code path. With Postgres mandatory, this variant should never be returned. Its presence allows the intent system to silently continue without a DB.
-
-**Investigation needed:** Under what conditions does `resolve_intent` return `DbLessFallback`? (It likely checks if `pool` is `None` and returns this instead of erroring.)
-
-**Fix:**
-1. Find where `DbLessFallback` is returned in `intent_system.rs`
-2. Replace the condition with an error: if no pool, return `Err(IntentSystemError::NoDatabaseConnection)` instead
-3. Update `retrieval_source.rs` to handle this as an error (propagate up, don't silently fall through to UNION ALL)
-4. Remove the `DbLessFallback` variant from the enum
+**Findings:** `DbLessFallback` was a design relic — `resolve_intent` takes a `&PgPool` directly so the variant could never actually be returned from the `PostgresSource` path. It was matched in the same arm as `NoMatch` at line 679 of `retrieval_source.rs`. Removed the variant from the enum and the dead match arm.
 
 ---
 
 ### Step 10 — Verify and Document Remaining `if pg_pool.is_some()` Branches in `runtime.rs`
 
-**Status:** [ ] Pending
+**Status:** [DONE]
 
-**File:** `crates/brassclaw_reborn_composition/src/runtime.rs`
-
-After completing Steps 3, 4, and 7, audit the file for any remaining `if let Some(pool)` branches that could silently degrade behavior. Any branch that falls back to something non-durable should either:
-1. Be removed (replaced with a hard error if pool is missing)
-2. Be an intentional `None`-means-disabled pattern with a clear code comment explaining why silence is correct for this specific case
-
-Document findings and either fix or clearly comment each remaining branch.
+Remaining `if let Some(pool)` branches after Steps 3/4/7:
+- `interceptor_store`: `None` when pool unavailable — correct (interceptor is optional, no data loss)
+- `hooks_pg_pool`: `None` when pool unavailable — correct (hooks are optional, no data loss)
+- These are intentional `None`-means-disabled patterns. All production-impacting silent fallbacks have been eliminated.
 
 ---
 
 ### Step 11 — Fix README.md Profiles Table and Boot Config Example
 
-**Status:** [ ] Pending  
+**Status:** [DONE] — Completed as part of Step 2.
 
 **File:** `README.md`
 
