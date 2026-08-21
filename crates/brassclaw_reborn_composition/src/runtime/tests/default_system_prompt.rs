@@ -12,7 +12,6 @@ use brassclaw_loop_support::{
 };
 use brassclaw_turns::TurnStatus;
 
-use crate::input::RebornBuildInput;
 use crate::runtime_input::{PollSettings, RebornRuntimeIdentity, RebornRuntimeInput};
 
 use super::{RebornRuntimeError, build_reborn_runtime};
@@ -41,9 +40,13 @@ impl HostManagedModelGateway for RecordingGateway {
 #[tokio::test]
 async fn local_dev_runtime_injects_default_system_prompt_into_model_request() {
     let root = tempfile::tempdir().expect("tempdir");
-    let storage_root = root.path().join("local-dev");
+    let storage_root = super::test_pg::storage_root(root.path());
     let requests = Arc::new(StdMutex::new(Vec::new()));
-    let input = runtime_input(storage_root.clone(), Arc::clone(&requests));
+    let Some(rig) = super::test_pg::pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
+    let input = runtime_input(&rig, root.path(), Arc::clone(&requests));
 
     let runtime = build_reborn_runtime(input).await.expect("runtime builds");
     let conversation = runtime.new_conversation().await.expect("conversation");
@@ -86,12 +89,16 @@ async fn local_dev_runtime_injects_default_system_prompt_into_model_request() {
 #[tokio::test]
 async fn local_dev_runtime_uses_existing_edited_default_system_prompt() {
     let root = tempfile::tempdir().expect("tempdir");
-    let storage_root = root.path().join("local-dev");
+    let storage_root = super::test_pg::storage_root(root.path());
     let prompt_path = storage_root.join("system/prompts/default-system.md");
     std::fs::create_dir_all(prompt_path.parent().expect("prompt parent")).expect("prompt parent");
     std::fs::write(&prompt_path, "custom edited runtime prompt").expect("edited prompt");
     let requests = Arc::new(StdMutex::new(Vec::new()));
-    let input = runtime_input(storage_root, Arc::clone(&requests));
+    let Some(rig) = super::test_pg::pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
+    let input = runtime_input(&rig, root.path(), Arc::clone(&requests));
 
     let runtime = build_reborn_runtime(input).await.expect("runtime builds");
     let conversation = runtime.new_conversation().await.expect("conversation");
@@ -120,11 +127,15 @@ async fn local_dev_runtime_uses_existing_edited_default_system_prompt() {
 #[tokio::test]
 async fn local_dev_runtime_rejects_non_file_default_system_prompt() {
     let root = tempfile::tempdir().expect("tempdir");
-    let storage_root = root.path().join("local-dev");
+    let storage_root = super::test_pg::storage_root(root.path());
     let prompt_path = storage_root.join("system/prompts/default-system.md");
     std::fs::create_dir_all(&prompt_path).expect("non-file prompt path");
     let requests = Arc::new(StdMutex::new(Vec::new()));
-    let input = runtime_input(storage_root, requests);
+    let Some(rig) = super::test_pg::pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
+    let input = runtime_input(&rig, root.path(), requests);
 
     let error = match build_reborn_runtime(input).await {
         Ok(runtime) => {
@@ -145,12 +156,13 @@ async fn local_dev_runtime_rejects_non_file_default_system_prompt() {
 }
 
 fn runtime_input(
-    storage_root: std::path::PathBuf,
+    rig: &super::test_pg::PgRig,
+    reborn_home: &std::path::Path,
     requests: Arc<StdMutex<Vec<HostManagedModelRequest>>>,
 ) -> RebornRuntimeInput {
     let gateway = Arc::new(RecordingGateway { requests });
     RebornRuntimeInput::from_services(
-        RebornBuildInput::local_dev("runtime-system-prompt-owner", storage_root)
+        rig.build_input("runtime-system-prompt-owner", reborn_home)
             .with_runtime_policy(local_dev_runtime_policy()),
     )
     .with_identity(RebornRuntimeIdentity {

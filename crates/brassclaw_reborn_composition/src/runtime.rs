@@ -111,6 +111,9 @@ mod auth_interaction_tests;
 mod default_system_prompt_tests;
 mod local_dev;
 mod skills;
+#[cfg(test)]
+#[path = "runtime/test_pg.rs"]
+mod test_pg;
 
 #[cfg(test)]
 pub(crate) use local_dev::SKILL_ACTIVATE_CAPABILITY_ID;
@@ -3478,7 +3481,6 @@ mod tests {
     use rust_decimal_macros::dec;
 
     use crate::RebornReadinessState;
-    use crate::input::RebornBuildInput;
     use crate::runtime_input::{
         PollSettings, RebornRuntimeIdentity, RebornRuntimeInput, TriggerFireAccessCheck,
         TriggerFireAccessChecker, TriggerFireAccessDecision, TriggerFireAccessError,
@@ -3982,8 +3984,12 @@ mod tests {
         policy.network_mode = NetworkMode::Direct;
         policy.secret_mode = SecretMode::InheritedEnv;
 
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-yolo-audit-owner", root.path().join("local-dev"))
+            rig.build_input("runtime-yolo-audit-owner", root.path())
                 .with_runtime_policy(policy)
                 .with_local_dev_confirmed_host_home_root(host_home),
         )
@@ -4040,12 +4046,13 @@ mod tests {
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
 
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev(
-                "runtime-trigger-readiness-owner",
-                root.path().join("local-dev"),
-            )
-            .with_runtime_policy(local_dev_runtime_policy()),
+            rig.build_input("runtime-trigger-readiness-owner", root.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
             tenant_id: "runtime-trigger-readiness-tenant".to_string(),
@@ -4074,12 +4081,13 @@ mod tests {
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
 
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev(
-                "runtime-trigger-auth-required-owner",
-                root.path().join("local-dev"),
-            )
-            .with_runtime_policy(local_dev_runtime_policy()),
+            rig.build_input("runtime-trigger-auth-required-owner", root.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
             tenant_id: "runtime-trigger-auth-required-tenant".to_string(),
@@ -4116,12 +4124,13 @@ mod tests {
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
 
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev(
-                "runtime-trigger-auth-supplied-owner",
-                root.path().join("local-dev"),
-            )
-            .with_runtime_policy(local_dev_runtime_policy()),
+            rig.build_input("runtime-trigger-auth-supplied-owner", root.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
             tenant_id: "runtime-trigger-auth-supplied-tenant".to_string(),
@@ -4151,12 +4160,13 @@ mod tests {
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
 
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev(
-                "runtime-trigger-disabled-owner",
-                root.path().join("local-dev"),
-            )
-            .with_runtime_policy(local_dev_runtime_policy()),
+            rig.build_input("runtime-trigger-disabled-owner", root.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
             tenant_id: "runtime-trigger-disabled-tenant".to_string(),
@@ -4191,12 +4201,13 @@ mod tests {
         }
         .with_tenant_scoped_authorizer_for_test();
 
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev(
-                "runtime-trigger-invalid-config-owner",
-                root.path().join("local-dev"),
-            )
-            .with_runtime_policy(local_dev_runtime_policy()),
+            rig.build_input("runtime-trigger-invalid-config-owner", root.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
             tenant_id: "runtime-trigger-invalid-config-tenant".to_string(),
@@ -4231,12 +4242,13 @@ mod tests {
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
 
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev(
-                "runtime-trigger-shutdown-owner",
-                root.path().join("local-dev"),
-            )
-            .with_runtime_policy(local_dev_runtime_policy()),
+            rig.build_input("runtime-trigger-shutdown-owner", root.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
             tenant_id: "runtime-trigger-shutdown-tenant".to_string(),
@@ -4279,8 +4291,12 @@ mod tests {
             },
         );
 
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-yolo-budget-owner", root.path().join("local-dev"))
+            rig.build_input("runtime-yolo-budget-owner", root.path())
                 .with_runtime_policy(
                     crate::local_dev_yolo_runtime_policy(true).expect("local-yolo policy resolves"),
                 )
@@ -4328,8 +4344,12 @@ mod tests {
             reply: "recorded runtime reply".to_string(),
             requests: Arc::clone(&requests),
         });
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-success-owner", root.path().join("local-dev"))
+            rig.build_input("runtime-success-owner", root.path())
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
@@ -4388,12 +4408,13 @@ mod tests {
             reply: "unused".to_string(),
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev(
-                "runtime-cancel-child-owner",
-                root.path().join("local-dev"),
-            )
-            .with_runtime_policy(local_dev_runtime_policy()),
+            rig.build_input("runtime-cancel-child-owner", root.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
             tenant_id: "runtime-cancel-child-tenant".to_string(),
@@ -4555,8 +4576,12 @@ mod tests {
         let skill_context_source = Arc::new(FailingSkillContextSource::default());
         let skill_context_source_for_input: Arc<dyn HostSkillContextSource> =
             skill_context_source.clone();
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-skill-owner", root.path().join("local-dev"))
+            rig.build_input("runtime-skill-owner", root.path())
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
@@ -4604,8 +4629,12 @@ mod tests {
         let root = tempfile::tempdir().expect("tempdir");
         let gateway = Arc::new(ToolCallingGateway::default());
         let gateway_for_runtime: Arc<dyn HostManagedModelGateway> = gateway.clone();
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-tools-owner", root.path().join("local-dev"))
+            rig.build_input("runtime-tools-owner", root.path())
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
@@ -4714,8 +4743,12 @@ mod tests {
             ),
         ]));
         let skill_context_source: Arc<dyn HostSkillContextSource> = skill_source;
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-skill-owner", root.path().join("local-dev"))
+            rig.build_input("runtime-skill-owner", root.path())
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
@@ -4770,7 +4803,7 @@ mod tests {
     #[tokio::test]
     async fn local_dev_runtime_prefers_configured_skill_context_source_over_filesystem_default() {
         let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = root.path().join("local-dev");
+        let storage_root = super::test_pg::storage_root(root.path());
         std::fs::create_dir_all(storage_root.join("system/skills/filesystem-helper"))
             .expect("filesystem skill dir");
         std::fs::write(
@@ -4798,8 +4831,12 @@ mod tests {
             ),
         ]));
         let skill_context_source: Arc<dyn HostSkillContextSource> = skill_source;
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-skill-override-owner", storage_root)
+            rig.build_input("runtime-skill-override-owner", root.path())
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
@@ -4856,7 +4893,7 @@ mod tests {
     #[tokio::test]
     async fn local_dev_runtime_wires_filesystem_skills_by_default_to_model_calls() {
         let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = root.path().join("local-dev");
+        let storage_root = super::test_pg::storage_root(root.path());
         std::fs::create_dir_all(storage_root.join("system/skills/system-helper"))
             .expect("system skill dir");
         std::fs::write(
@@ -4894,8 +4931,12 @@ mod tests {
             reply: "filesystem skill context ok".to_string(),
             requests: Arc::clone(&requests),
         });
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-filesystem-skill-owner", storage_root)
+            rig.build_input("runtime-filesystem-skill-owner", root.path())
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
@@ -4954,7 +4995,7 @@ mod tests {
     #[tokio::test]
     async fn execute_skill_message_returns_plan_and_reads_active_bundle_assets() {
         let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = root.path().join("local-dev");
+        let storage_root = super::test_pg::storage_root(root.path());
         std::fs::create_dir_all(storage_root.join("skills/asset-helper/references"))
             .expect("asset skill references dir");
         std::fs::write(
@@ -4976,8 +5017,12 @@ mod tests {
             reply: "asset helper ok".to_string(),
             requests: Arc::clone(&requests),
         });
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-skill-exec-owner", storage_root)
+            rig.build_input("runtime-skill-exec-owner", root.path())
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
@@ -5057,7 +5102,7 @@ mod tests {
     #[tokio::test]
     async fn local_dev_runtime_fails_closed_for_ambiguous_explicit_skill_before_model_call() {
         let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = root.path().join("local-dev");
+        let storage_root = super::test_pg::storage_root(root.path());
         std::fs::create_dir_all(storage_root.join("system/skills/code-review"))
             .expect("system skill dir");
         std::fs::write(
@@ -5084,8 +5129,12 @@ mod tests {
             reply: "should not reach model".to_string(),
             requests: Arc::clone(&requests),
         });
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-ambiguous-skill-owner", storage_root)
+            rig.build_input("runtime-ambiguous-skill-owner", root.path())
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
@@ -5125,7 +5174,7 @@ mod tests {
     #[tokio::test]
     async fn local_dev_runtime_suppresses_explicit_setup_skill_when_workspace_marker_exists() {
         let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = root.path().join("local-dev");
+        let storage_root = super::test_pg::storage_root(root.path());
         std::fs::create_dir_all(storage_root.join("skills/marker-helper")).expect("user skill dir");
         std::fs::create_dir_all(storage_root.join("workspace/markers")).expect("marker dir");
         std::fs::write(
@@ -5148,8 +5197,12 @@ mod tests {
             reply: "setup marker ok".to_string(),
             requests: Arc::clone(&requests),
         });
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-setup-marker-owner", storage_root)
+            rig.build_input("runtime-setup-marker-owner", root.path())
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
@@ -5200,7 +5253,7 @@ mod tests {
     #[tokio::test]
     async fn local_dev_runtime_activates_setup_skill_when_workspace_marker_is_absent() {
         let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = root.path().join("local-dev");
+        let storage_root = super::test_pg::storage_root(root.path());
         std::fs::create_dir_all(storage_root.join("skills/marker-helper")).expect("user skill dir");
         std::fs::write(
             storage_root.join("skills/marker-helper/SKILL.md"),
@@ -5217,8 +5270,12 @@ mod tests {
             reply: "setup marker absent ok".to_string(),
             requests: Arc::clone(&requests),
         });
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-setup-marker-absent-owner", storage_root)
+            rig.build_input("runtime-setup-marker-absent-owner", root.path())
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
@@ -5273,15 +5330,19 @@ mod tests {
     #[tokio::test]
     async fn local_dev_runtime_rejects_workspace_overlapping_default_skill_roots() {
         let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = root.path().join("local-dev");
+        let storage_root = super::test_pg::storage_root(root.path());
         let workspace_root = storage_root.join("skills");
         let requests = Arc::new(StdMutex::new(Vec::new()));
         let gateway = Arc::new(RecordingGateway {
             reply: "should not build".to_string(),
             requests,
         });
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-overlap-owner", storage_root)
+            rig.build_input("runtime-overlap-owner", root.path())
                 .with_local_dev_workspace_root(workspace_root)
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
@@ -5312,7 +5373,7 @@ mod tests {
     #[tokio::test]
     async fn local_dev_runtime_skips_invalid_filesystem_skill_before_model_call() {
         let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = root.path().join("local-dev");
+        let storage_root = super::test_pg::storage_root(root.path());
         std::fs::create_dir_all(storage_root.join("skills/bad-helper")).expect("bad skill dir");
         std::fs::write(
             storage_root.join("skills/bad-helper/SKILL.md"),
@@ -5328,8 +5389,12 @@ mod tests {
             reply: "invalid skill skipped".to_string(),
             requests: Arc::clone(&requests),
         });
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-bad-skill-owner", storage_root)
+            rig.build_input("runtime-bad-skill-owner", root.path())
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
@@ -5380,8 +5445,12 @@ mod tests {
         .expect("write sentinel");
         let gateway = Arc::new(WorkspaceListingGateway::default());
         let gateway_for_runtime: Arc<dyn HostManagedModelGateway> = gateway.clone();
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-workspace-owner", root.path().join("local-dev"))
+            rig.build_input("runtime-workspace-owner", root.path())
                 .with_local_dev_workspace_root(workspace_root.path().to_path_buf())
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
@@ -5431,8 +5500,12 @@ mod tests {
             reply: "webui projection ok".to_string(),
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-webui-owner", root.path().join("local-dev"))
+            rig.build_input("runtime-webui-owner", root.path())
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
@@ -5549,12 +5622,13 @@ mod tests {
             reply: "webui lifecycle ok".to_string(),
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev(
-                "runtime-webui-lifecycle-owner",
-                root.path().join("local-dev"),
-            )
-            .with_runtime_policy(local_dev_runtime_policy()),
+            rig.build_input("runtime-webui-lifecycle-owner", root.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
             tenant_id: "runtime-webui-lifecycle-tenant".to_string(),
@@ -5673,12 +5747,13 @@ mod tests {
             reply: "unused".to_string(),
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev(
-                "runtime-webui-no-agent-owner",
-                root.path().join("local-dev"),
-            )
-            .with_runtime_policy(local_dev_runtime_policy()),
+            rig.build_input("runtime-webui-no-agent-owner", root.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
             tenant_id: "runtime-webui-no-agent-tenant".to_string(),
@@ -5728,12 +5803,13 @@ mod tests {
             reply: "unused".to_string(),
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev(
-                "runtime-webui-no-host-owner",
-                root.path().join("local-dev"),
-            )
-            .with_runtime_policy(local_dev_runtime_policy()),
+            rig.build_input("runtime-webui-no-host-owner", root.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
             tenant_id: "runtime-webui-no-host-tenant".to_string(),
@@ -5779,12 +5855,13 @@ mod tests {
             reply: "unused".to_string(),
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev(
-                "runtime-webui-approval-owner",
-                root.path().join("local-dev"),
-            )
-            .with_runtime_policy(local_dev_runtime_policy()),
+            rig.build_input("runtime-webui-approval-owner", root.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
             tenant_id: "runtime-webui-approval-tenant".to_string(),
@@ -5851,8 +5928,12 @@ mod tests {
             reply: "unused".to_string(),
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-webui-auth-owner", root.path().join("local-dev"))
+            rig.build_input("runtime-webui-auth-owner", root.path())
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
@@ -5919,8 +6000,12 @@ mod tests {
             reply: "unused".to_string(),
             requests: Arc::new(StdMutex::new(Vec::new())),
         });
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-webui-audit-owner", root.path().join("local-dev"))
+            rig.build_input("runtime-webui-audit-owner", root.path())
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
@@ -6094,7 +6179,7 @@ mod tests {
     #[tokio::test]
     async fn local_dev_webui_bundle_records_selectable_filesystem_skill_context() {
         let root = tempfile::tempdir().expect("tempdir");
-        let storage_root = root.path().join("local-dev");
+        let storage_root = super::test_pg::storage_root(root.path());
         std::fs::create_dir_all(storage_root.join("skills/webui-helper")).expect("user skill dir");
         std::fs::write(
             storage_root.join("skills/webui-helper/SKILL.md"),
@@ -6110,8 +6195,12 @@ mod tests {
             reply: "webui skill context ok".to_string(),
             requests: Arc::clone(&requests),
         });
+        let Some(rig) = super::test_pg::pg_rig().await else {
+            return;
+        };
+        let _db_guard = rig.lock_db().await;
         let input = RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev("runtime-webui-skill-owner", storage_root)
+            rig.build_input("runtime-webui-skill-owner", root.path())
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {

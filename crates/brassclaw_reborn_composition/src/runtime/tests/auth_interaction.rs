@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -29,7 +28,6 @@ use brassclaw_turns::{
 };
 use chrono::Utc;
 
-use crate::input::RebornBuildInput;
 use crate::runtime_input::{RebornRuntimeIdentity, RebornRuntimeInput, TurnRunnerSettings};
 use crate::{RebornProductAuthServicePorts, RebornRuntimeProcessBinding};
 
@@ -53,13 +51,13 @@ impl HostManagedModelGateway for UnusedModelGateway {
 #[tokio::test]
 async fn local_dev_runtime_auth_interactions_use_flow_record_source() {
     let root = tempfile::tempdir().expect("tempdir");
-    let runtime = build_runtime(
-        "auth-read-model-present",
-        root.path().join("local-dev"),
-        None,
-    )
-    .await
-    .expect("runtime builds");
+    let Some(rig) = super::test_pg::pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
+    let runtime = build_runtime(&rig, "auth-read-model-present", root.path(), None)
+        .await
+        .expect("runtime builds");
     let conversation = runtime.new_conversation().await.expect("conversation");
     let subject_user_id = UserId::new("team-agent-user").expect("subject user id");
     let scope = TurnScope::new_with_owner(
@@ -99,13 +97,13 @@ async fn local_dev_runtime_auth_interactions_are_unavailable_without_flow_record
     let auth = Arc::new(InMemoryAuthProductServices::new());
     let ports = RebornProductAuthServicePorts::from_shared(auth);
     let root = tempfile::tempdir().expect("tempdir");
-    let runtime = build_runtime(
-        "auth-read-model-absent",
-        root.path().join("local-dev"),
-        Some(ports),
-    )
-    .await
-    .expect("runtime builds");
+    let Some(rig) = super::test_pg::pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
+    let runtime = build_runtime(&rig, "auth-read-model-absent", root.path(), Some(ports))
+        .await
+        .expect("runtime builds");
     assert!(
         runtime
             .services
@@ -144,11 +142,13 @@ async fn local_dev_runtime_auth_interactions_are_unavailable_without_flow_record
 }
 
 async fn build_runtime(
+    rig: &super::test_pg::PgRig,
     owner: &str,
-    storage_root: PathBuf,
+    reborn_home: &std::path::Path,
     product_auth_ports: Option<RebornProductAuthServicePorts>,
 ) -> Result<RebornRuntime, super::RebornRuntimeError> {
-    let mut services = RebornBuildInput::local_dev(owner, storage_root)
+    let mut services = rig
+        .build_input(owner, reborn_home)
         .with_runtime_policy(local_dev_runtime_policy())
         .with_runtime_process_binding(RebornRuntimeProcessBinding::None);
     if let Some(ports) = product_auth_ports {

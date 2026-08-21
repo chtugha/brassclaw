@@ -178,6 +178,19 @@ pub(crate) enum RebornStorageInput {
         /// `build_reborn_runtime` to seed the system-prompt storage root on the
         /// pure-postgres path.
         reborn_home: PathBuf,
+        /// Hybrid-path parity (Phase A.5 upgrade): optional override for the
+        /// local-dev filesystem substrate's workspace root, which backs the
+        /// `/workspace` workdir alias. `None` falls back to
+        /// `reborn_home.join("db").join("workspace")` (the default hybrid
+        /// substrate root). `transfer_build_input_extras` threads this into the
+        /// inner `LocalDev` input so an explicit override is honored on the
+        /// production hybrid path, not just on pure `LocalDev` storage.
+        workspace_root: Option<PathBuf>,
+        /// Hybrid-path parity (Phase A.5 upgrade): optional confirmed host-home
+        /// root backing the `/host` workdir alias, required when the runtime
+        /// policy uses `FilesystemBackendKind::HostWorkspaceAndHome`. Threaded
+        /// into the inner `LocalDev` input by `transfer_build_input_extras`.
+        host_home_root: Option<PathBuf>,
     },
 }
 
@@ -217,24 +230,55 @@ impl RebornBuildInput {
         )
     }
 
+    /// Override the workspace root backing the `/workspace` workdir alias.
+    ///
+    /// Applies to both the pure `LocalDev` storage variant and the hybrid
+    /// `Postgres` storage variant (Phase A.5 upgrade — hybrid-path parity).
+    /// On the hybrid path `transfer_build_input_extras` threads this into the
+    /// inner `LocalDev` substrate so the `/workspace` alias honors the override.
     pub fn with_local_dev_workspace_root(mut self, workspace_root: PathBuf) -> Self {
-        if let RebornStorageInput::LocalDev {
-            workspace_root: root,
-            ..
-        } = &mut self.storage
-        {
-            *root = Some(workspace_root);
+        match &mut self.storage {
+            RebornStorageInput::LocalDev {
+                workspace_root: root,
+                ..
+            } => {
+                *root = Some(workspace_root);
+            }
+            #[cfg(feature = "postgres")]
+            RebornStorageInput::Postgres {
+                workspace_root: root,
+                ..
+            } => {
+                *root = Some(workspace_root);
+            }
+            _ => {}
         }
         self
     }
 
+    /// Override the confirmed host-home root backing the `/host` workdir alias,
+    /// required when the runtime policy uses `HostWorkspaceAndHome`.
+    ///
+    /// Applies to both the pure `LocalDev` storage variant and the hybrid
+    /// `Postgres` storage variant (Phase A.5 upgrade — hybrid-path parity).
+    /// On the hybrid path `transfer_build_input_extras` threads this into the
+    /// inner `LocalDev` substrate so the `/host` alias honors the override.
     pub fn with_local_dev_confirmed_host_home_root(mut self, host_home_root: PathBuf) -> Self {
-        if let RebornStorageInput::LocalDev {
-            host_home_root: root,
-            ..
-        } = &mut self.storage
-        {
-            *root = Some(host_home_root);
+        match &mut self.storage {
+            RebornStorageInput::LocalDev {
+                host_home_root: root,
+                ..
+            } => {
+                *root = Some(host_home_root);
+            }
+            #[cfg(feature = "postgres")]
+            RebornStorageInput::Postgres {
+                host_home_root: root,
+                ..
+            } => {
+                *root = Some(host_home_root);
+            }
+            _ => {}
         }
         self
     }
@@ -294,6 +338,8 @@ impl RebornBuildInput {
                 url,
                 secret_master_key: Some(secret_master_key),
                 reborn_home,
+                workspace_root: None,
+                host_home_root: None,
             },
         )
     }
@@ -317,6 +363,8 @@ impl RebornBuildInput {
                 url,
                 secret_master_key: None,
                 reborn_home,
+                workspace_root: None,
+                host_home_root: None,
             },
         )
     }

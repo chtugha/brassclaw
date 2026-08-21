@@ -613,6 +613,34 @@ fn transfer_build_input_extras(
     dst.production_trust_policy = src.production_trust_policy.clone();
     dst.turn_run_wake_notifier = src.turn_run_wake_notifier.clone();
     dst.tenant_id = src.tenant_id.clone();
+    // Hybrid-path parity (Phase A.5 upgrade): thread configured workspace /
+    // host-home overrides from a `Postgres` storage input into the inner
+    // `LocalDev` filesystem substrate so the `/workspace` and `/host` workdir
+    // aliases honor an explicit override on the production hybrid path, not
+    // just on pure `LocalDev` storage. Only fires when the source is the
+    // hybrid `Postgres` input (the sole caller builds `dst` as a fresh
+    // `LocalDev` input with both overrides `None`).
+    #[cfg(feature = "postgres")]
+    if let (
+        RebornStorageInput::LocalDev {
+            workspace_root: dst_workspace,
+            host_home_root: dst_host_home,
+            ..
+        },
+        RebornStorageInput::Postgres {
+            workspace_root: src_workspace,
+            host_home_root: src_host_home,
+            ..
+        },
+    ) = (&mut dst.storage, &src.storage)
+    {
+        if dst_workspace.is_none() {
+            *dst_workspace = src_workspace.clone();
+        }
+        if dst_host_home.is_none() {
+            *dst_host_home = src_host_home.clone();
+        }
+    }
     dst
 }
 
