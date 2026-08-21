@@ -56,6 +56,23 @@ The following issues were found by reading the live codebase and corrected direc
 | `FIND-27` | Phase H item 3 | Pseudocode code fence still contained `retrieval_source.fetch_for_turn(...)`. FIND-10 fixed the note but not the fence itself. | Pseudocode corrected to `ctx.host.fetch_for_turn(context, ...)` |
 | `FIND-08` (addendum) | Phase E | Clarified that `FetchForTurnResult` / `TurnRoutingSignals` / `ActionShortCircuit` / `SplitResult` are **greenfield new types** (not extensions of existing types). | FIND-08 addendum added in Phase E "Files to modify" |
 
+### Pass 4 findings (5-subagent full re-review — each verified against live source)
+
+| Tag | Severity | Location | Finding | Fix Applied |
+|-----|----------|----------|---------|-------------|
+| `DRIVER-GAP-MODEL-A` | **CRITICAL** | Phase H / §0.3 / §0.9 / §5 / DRIVER-PREREQ | A prior draft of the DRIVER-GAP resolution claimed Tier 0 "works today" by reusing `override_prompt_creation: true` to skip `__llm_complete__`. FALSE: `default.py:998-1008` only swaps `working_messages` and FALLS THROUGH to `__llm_complete__` (`:1103`); the only pre-`__llm_complete__` return is the DEAD `__retrieve_docs__`+`class_code==16` shim (`:1018-1027`; §0.9 Problem 1 — never fires). So Tier 0 does NOT work today. | 7 plan locations corrected: a DEDICATED `tier_zero: true` pkr signal (NOT `override_prompt_creation` — that is the Solution-Override LLM path) emitted by `handle_assemble_prior_knowledge` (`orchestrator.rs:2552`) when `SplitResult.llm_call_required == false`, + a NEW `if pkr.get("tier_zero"): return execute_recipe_orchestrator_channel(...)` early-return branch in `default.py` step-0 (sibling of `action_short_circuit`, before `__llm_complete__`). Genuinely NEW wiring landing in Phase H. |
+| `PARAM-GAP` | **CRITICAL** | §0.17.1 / Phase M.3 | The `resolve_intent` three-path SQL wrote `ANY($7)` (skipping `$6`) and `CASE ... WHEN $8/$9/$10` (10 params, off-by-one). `tokio_postgres` binds positionally → runtime `parameters ... but statement requires ...` crash. | §0.17.1 SQL renumbered to `ANY($6)` + CASE `$7/$8/$9` = 9 params, matching live `intent_system.rs:339-367`. Added a bind-arg order table + carry-forward note in Phase M.3. |
+| `VARPAT-COL-GAP` | **CRITICAL** | Phase A / V050 / §2 | `variants` JSONB had NO migration anywhere in V050–V058, yet Phase A persists `variants` and Phase M.5 depends on `variable_patterns` nested in `variants`. A SELECT on a non-existent column is a hard runtime SQL error. | V050 now creates ALL three Phase A store columns (`step_descriptions`, `variants`, `dependency_registry`) on `reborn_recipes`. §2 table row updated. |
+| `DEPREG-TIMING-GAP` | **CRITICAL** | Phase A / V050 / V054 | `dependency_registry` on `reborn_recipes` is not created until V054 (Phase J.2), but Phase A's store round-trips it from V050 → between V050 and V054 the SELECT reads a non-existent column. | Folded into the V050 fix (V050 creates `dependency_registry` on recipes); V054's recipe line is `IF NOT EXISTS` → idempotent no-op. V054 comment updated. |
+| `FIND-NEW-01` | **CRITICAL** | Phase A | IBS types (`BuildInstruction`, `RecipeStepType`, `StepOwner`) were listed in BOTH `instruction_builder.rs` (create) and `types/recipe.rs` (modify) — ambiguous duplicate home; `ToolBinding`/`ErrorPolicy` only in `types/recipe.rs` but belong with `IbsRecipeStep`. | `instruction_builder.rs` is now the SOLE home for all IBS-domain types (added `ToolBinding`/`ErrorPolicy`). `types/recipe.rs` now only adds `RecipeVariant` (with shape) + the three `Recipe` struct fields; explicit "do NOT duplicate" note. |
+| `FIND-NEW-02` | HIGH | §0.4 | The BuildInstruction structure diagram labelled both channel steps `RecipeStep`, but Phase A renames the IBS per-step struct to `IbsRecipeStep` (collision with v2 `RecipeStep`). | Diagram corrected to `IbsRecipeStep` (both channels) + FIND-NEW-02 callout. |
+| `FIND-NEW-03` | HIGH | Phase D | "Update `seed_intent_input` to accept and store `step_link`" was underspecified — no signature, column list, placeholder count, or ON CONFLICT clause. | Fully specified: 8th param `step_link: Option<&str>`, INSERT 12 cols / 11 placeholders (`$11`), `ON CONFLICT ... DO UPDATE SET ... step_link = EXCLUDED.step_link`, all callers must pass new arg. Verified against `intent_system.rs:463-505`. |
+| `EXT-NAME` | HIGH | Phase J.2 / §2 / N.4 | The extensions table is `reborn_extensions_unified` (`V032:57`), but the J.2 list + N.4 prose used the bare `reborn_extensions` → V054 `ALTER TABLE` / V058 `DROP COLUMN` would fail (`relation does not exist`). | Both bare refs corrected to `reborn_extensions_unified` + EXT-NAME callout in J.2. |
+| `SCHEMA-01` (incomplete) | MEDIUM | Phase N.4 | The SCHEMA-01 note named only `reborn_recipes` as SMALLINT; actually 10 tables use SMALLINT (extensions_unified, recipes, specs, tool_skills, plans, summaries, docus, lessons, issues, notes) and 3 use INT (skills, actions, tools). | Note expanded with the full verified split; cleanest fix `COALESCE(review_attempts::INT, 0)` on EVERY arm (uniform; `INT::INT` no-op). Populate SQL example updated. |
+| `J.3-XREF` | LOW | Phase J.3 | J.3 `resolve_dependencies` fetches class-22/23 deps via `fetch_component_by_id`/`class_label`, but didn't cross-reference where those 22/23 arms land. | J.3 cross-reference note added (Phase E arms + Phase B/C `class_label`). |
+| `PGRECIPE-LINE` | LOW | Phase A | `PgRecipe` struct cited as "line ~110"; verified at `pg_recipe_store.rs:91`. | Cite corrected to ~91. |
+| `HANDLE-ASSEMBLE-LINE` | LOW | Phase H | `handle_assemble_prior_knowledge` def verified at `orchestrator.rs:2552` (dispatched at :563, defined at :795 was a prior conflation). | Cite made consistent (2552) across the DRIVER-GAP corrections. |
+
 ### Pass 2 findings (first deep-read pass)
 
 | Tag | Location | Finding | Fix Applied |
@@ -70,7 +87,7 @@ The following issues were found by reading the live codebase and corrected direc
 | `RECIPE-SELECT` | Phase A | Plan cited wrong "line 117/147/208/219" for PgRecipe/NewPgRecipe/RECIPE_SELECT/decode_recipe_row. Verified: PgRecipe starts at ~110, NewPgRecipe at ~145, RECIPE_SELECT at ~208, decode_recipe_row at ~219. | Phase A "Files to modify" updated with verified locations + instruction to append new columns at END of RECIPE_SELECT (not middle) |
 | `SQLX-01` | Phase N.3 | Cache-check code example used `sqlx::query_scalar!` macro. The codebase uses `tokio-postgres` / `deadpool-postgres`, not sqlx. | N.3 code block replaced with correct `pool.get()` + `client.query_opt()` pattern |
 | `TIER0-GAP` | Phase H / Q14 | Plan does not specify how the Python scripting engine is "kicked" in Tier 0 (when CapabilityStage normally reacts to model output, not invents it). | **✅ RESOLVED** — Option 1 chosen: a new `TierZeroExecutionStage` inserted between `RecipeStage` and `AssistantReplyStage` in `canonical.rs` invokes the Python orchestrator in no-LLM mode via the new `LoopOrchestratorPort` host port. `CapabilityStage` is NOT bent (it keeps its model-output assumption). See Phase H.0 §H5 and the §5 Tier 0 diagram |
-| `DRIVER-GAP` | Phase H / §0.3 / §5 | **Root cause behind TIER0-GAP.** The production turn driver is the engine `ExecutionLoop::run` (`loop_engine.rs:413`), which runs the Python `execute_orchestrator` directly with NO stage pipeline — Python (Monty) IS the outer loop and calls the LLM itself via `__llm_complete__` (`default.py:1103` → `handle_llm_complete` at `orchestrator.rs:563`). The agent-loop `DefaultExecutorPipeline::execute` (`canonical.rs`) — where `RecipeStage`/`PromptStage`/`ModelStage`/`CapabilityStage` live — is a SKELETON: no product surface calls it (`DefaultExecutorPipeline`/`execute_family` appear only inside `brassclaw_agent_loop`). `brassclaw_agent_loop` does NOT depend on `brassclaw_engine`, and `__assemble_prior_knowledge__` exists ONLY in `brassclaw_engine`. So the plan's RecipeStage↔Python-step-0 stash/unstash (Phase H item 5) and the §5 Tier 0 diagram ("Python runs `default.py` step 0" inside the agent loop) both assume a RecipeStage-then-Python unification that does NOT exist. **The plan was silently mixing two execution models:** (A) `ExecutionLoop`/Monty = Python is the outer loop, calls `__llm_complete__`; (B) `DefaultExecutorPipeline`/agent_loop = no Python, `ModelStage` calls the LLM. | **✅ RESOLVED — model selection made explicit, both paths covered during migration.** **Engine path (A, current production):** Tier 0 reuses the EXISTING deterministic no-LLM signal — `execute_action_procedure` (`default.py:901`, "returns without calling `__llm_complete__`") + `override_prompt_creation: true` (`orchestrator.rs:2689`). Phase H wires `fetch_for_turn` `SplitResult { llm_call_required: false }` so `handle_assemble_prior_knowledge` returns `override_prompt_creation: true`; Python step-0 then skips `__llm_complete__` and runs the recipe's orchestrator channel deterministically. No new "kick" — the kick IS `default.py` step-0, already live. This gives production Tier 0 NOW, before any switchover. **Agent-loop path (B/C, target state):** `LoopOrchestratorPort` (15th `AgentLoopDriverHost` port, implemented by `brassclaw_reborn_composition` — the only crate depending on both `brassclaw_engine` and `brassclaw_agent_loop`) + `TierZeroExecutionStage` bridge agent-loop stages to the engine orchestrator (`run_step_zero` Tier 1; `run_tier_zero` Tier 0). Active after the agent-loop becomes the driver (`DRIVER-PREREQ`). **LLM-call ownership (v3 target):** once the agent-loop is the driver, `ModelStage` owns the Tier 1+ LLM call and the Python `__llm_complete__` loop is retired (Python reduced to step-0 prior-knowledge + Tier-0 no-LLM execution). During migration both mechanisms coexist: engine path serves production (A), agent-loop stages are test-only until switchover (B/C). |
+| `DRIVER-GAP` | Phase H / §0.3 / §5 | **Root cause behind TIER0-GAP.** The production turn driver is the engine `ExecutionLoop::run` (`loop_engine.rs:413`), which runs the Python `execute_orchestrator` directly with NO stage pipeline — Python (Monty) IS the outer loop and calls the LLM itself via `__llm_complete__` (`default.py:1103` → `handle_llm_complete`, dispatched at `orchestrator.rs:563`, defined at `orchestrator.rs:795`). The agent-loop `DefaultExecutorPipeline::execute` (`canonical.rs`) — where `RecipeStage`/`PromptStage`/`ModelStage`/`CapabilityStage` live — is a SKELETON: no product surface calls it (`DefaultExecutorPipeline`/`execute_family` appear only inside `brassclaw_agent_loop`). `brassclaw_agent_loop` does NOT depend on `brassclaw_engine`, and `__assemble_prior_knowledge__` exists ONLY in `brassclaw_engine`. So the plan's RecipeStage↔Python-step-0 stash/unstash (Phase H item 5) and the §5 Tier 0 diagram ("Python runs `default.py` step 0" inside the agent loop) both assume a RecipeStage-then-Python unification that does NOT exist. **The plan was silently mixing two execution models:** (A) `ExecutionLoop`/Monty = Python is the outer loop, calls `__llm_complete__`; (B) `DefaultExecutorPipeline`/agent_loop = no Python, `ModelStage` calls the LLM. | **✅ RESOLVED — model selection made explicit, both paths covered during migration.** **Engine path (A, current production):** ⚠️ Corrected — a prior draft wrongly claimed Tier 0 "works today" by reusing `override_prompt_creation: true` to skip `__llm_complete__`. That is FALSE: `override_prompt_creation: true` (`default.py:998-1008`) only swaps `working_messages` and FALLS THROUGH to `__llm_complete__`; the only pre-`__llm_complete__` return today is the DEAD `__retrieve_docs__`+`class_code==16` shim (`default.py:1018-1027`; §0.9 Problem 1 — never fires). So Tier 0 does NOT work today. Phase H adds a DEDICATED `tier_zero: true` pkr signal (NOT `override_prompt_creation` — that is the Solution-Override LLM path) emitted by `handle_assemble_prior_knowledge` when `SplitResult.llm_call_required == false`, plus a NEW `if pkr.get("tier_zero"): return execute_recipe_orchestrator_channel(...)` early-return branch in `default.py` step-0 (sibling of the `action_short_circuit` return, before `__llm_complete__`), generalising the `execute_action_procedure` (`default.py:901`) no-LLM pattern from class-16 Actions to Tier-0 Recipes. This is genuinely NEW wiring landing in Phase H. **Agent-loop path (B/C, target state):** `LoopOrchestratorPort` (15th `AgentLoopDriverHost` port, implemented by `brassclaw_reborn_composition` — the only crate depending on both `brassclaw_engine` and `brassclaw_agent_loop`) + `TierZeroExecutionStage` bridge agent-loop stages to the engine orchestrator (`run_step_zero` Tier 1; `run_tier_zero` Tier 0). Active after the agent-loop becomes the driver (`DRIVER-PREREQ`). **LLM-call ownership (v3 target):** once the agent-loop is the driver, `ModelStage` owns the Tier 1+ LLM call and the Python `__llm_complete__` loop is retired (Python reduced to step-0 prior-knowledge + Tier-0 no-LLM execution). During migration both mechanisms coexist: engine path serves production (Tier 0 via `tier_zero` once Phase H lands it), agent-loop stages are test-only until switchover (B/C). |
 | `TIER0-ICS` | §5 Turn Flow | The Tier 0 turn flow incorrectly showed `InterceptorStage` running normally. Per COMP-07, InterceptorStage MUST be skipped in Tier 0 (it would open a ForensicPacket without a model call to close it). | Tier 0 flow diagram updated |
 | `DOCTYPE-B` | §0.11 FINDING B §3 | "weight dispatch function itself is already gone" — wrong. `doc_type_weight(DocType)` still exists. Only the i32-keyed variant doesn't. | FINDING B item 3 corrected |
 | `LOOPSTATE` | Phase H §1 | Added explicit verification that `LoopExecutionState` has NO `last_user_text`, `recipe_rust_context`, or `recipe_hint` fields currently. | Phase H state.rs addition note augmented |
@@ -168,13 +185,21 @@ Intent match (runtime):
 
   Model A — ExecutionLoop/Monty (CURRENT PRODUCTION; no RecipeStage exists):
   2. Python step-0 calls __assemble_prior_knowledge__ → fetch_for_turn → SplitResult.
-     When routing.llm_call_required == false, handler returns
-     override_prompt_creation: true (reuses the Solution-Override signal,
-     orchestrator.rs:2683-2691) + the orchestrator_items as orchestrator_content.
-  3. Python step-0 sees override_prompt_creation: true → SKIPS __llm_complete__ and
-     runs the recipe's orchestrator channel (skills + PythonCode) deterministically
-     against the pre-loaded rust execution context (execute_action_procedure pattern,
-     default.py:901). The kick IS default.py step-0 — already live, no new stage.
+     When routing.llm_call_required == false, the handler returns a DEDICATED
+     `tier_zero: true` signal (NEW — do NOT reuse `override_prompt_creation`; see
+     Phase H item 3b + §0.9 v3 step-0) plus the orchestrator_items as
+     `orchestrator_content` and the rust_items pre-applied to the execution context.
+  3. Python step-0 sees `tier_zero: true` → NEW early-return branch (parallel to the
+     `action_short_circuit` return) runs the recipe's orchestrator channel
+     (skills + PythonCode) deterministically against the pre-loaded rust execution
+     context and returns WITHOUT calling `__llm_complete__` (the
+     `execute_action_procedure` "return before __llm_complete__" pattern,
+     `default.py:901`, generalised to Tier-0 Recipes). ⚠️ This is NEW wiring:
+     today `override_prompt_creation: true` does NOT skip `__llm_complete__`
+     (default.py:998-1008 only swaps `working_messages` and falls through), and the
+     only pre-`__llm_complete__` return today is the dead `__retrieve_docs__` class-16
+     shim (§0.9 Problem 1). Tier 0 on the engine path lands when Phase H adds the
+     `tier_zero` signal + this early-return branch — NOT "today".
 
   Model B/C — DefaultExecutorPipeline/agent_loop (TARGET STATE; skeleton today):
   2. RecipeStage applies rust_items to Rust execution context (silently).
@@ -332,16 +357,23 @@ BuildInstruction
 ├── basic_prompt_section_refs[]       ← navigation hints into cached basic-prompt (no re-fetch)
 │
 ├── rust_steps[]                      ← CHANNEL R: Rust execution layer reads this only
-│   └── RecipeStep { step_id, knowledge: Rust/Both,
-│                    include: Vec<Uuid>,          ← ToolSkill UUIDs
-│                    tool_bindings: Vec<ToolBinding> }
+│   └── IbsRecipeStep { step_id, knowledge: Rust/Both,
+│                       include: Vec<Uuid>,          ← ToolSkill UUIDs
+│                       tool_bindings: Vec<ToolBinding> }
 │
 └── orchestrator_steps[]              ← CHANNEL O: serialized into orchestrator_content
-    └── RecipeStep { step_id, knowledge: Orchestrator/Both,
-                     step_type: Text | Component,
-                     include: Vec<Uuid>,          ← Skill / PythonCode UUIDs
-                     info: Option<String> }       ← WebUI annotation only; NOT emitted to orchestrator
+    └── IbsRecipeStep { step_id, knowledge: Orchestrator/Both,
+                        step_type: Text | Component,
+                        include: Vec<Uuid>,          ← Skill / PythonCode UUIDs
+                        info: Option<String> }       ← WebUI annotation only; NOT emitted to orchestrator
 ```
+
+> **⚠️ FIND-NEW-02 — per-step struct is `IbsRecipeStep`, not `RecipeStep`.** Phase A
+> renames the IBS per-step struct from `RecipeStep` to `IbsRecipeStep` to avoid a
+> name collision with the existing v2 `RecipeStep { skill, tool, params, description }`
+> in `types/recipe.rs` (see Phase A "Files to create"). This diagram previously
+> labelled both channel steps `RecipeStep`; corrected to `IbsRecipeStep`. The v2
+> `RecipeStep` (the Tier-1/Tier-2 fallback) is unrelated and stays in `types/recipe.rs`.
 
 **Invariant:** Channels must not overlap.  
 A ToolSkill UUID must never appear in `orchestrator_steps`.  
@@ -982,9 +1014,37 @@ if step == 0:
             __transition_to__("completed", "action completed")
             return action_result
 
+        # Tier-0 Recipe (class 21, llm_call_required == false) — NEW no-LLM
+        # early return. This is NOT the same as `override_prompt_creation`
+        # (Solution Override, an LLM path — see below). `tier_zero` is a
+        # dedicated signal emitted by `handle_assemble_prior_knowledge` when
+        # `fetch_for_turn` returns `SplitResult { llm_call_required: false }`.
+        # It runs the recipe's orchestrator channel (skills + PythonCode)
+        # deterministically against the pre-loaded rust execution context and
+        # returns WITHOUT calling `__llm_complete__` — exactly the
+        # `execute_action_procedure` "return before __llm_complete__" pattern,
+        # generalised from class-16 Actions to Tier-0 Recipes. See §0.3 Model A
+        # and Phase H item 3b. NOTE: today (pre-Phase-H) this branch does not
+        # exist and `override_prompt_creation: true` does NOT skip
+        # `__llm_complete__` — it only swaps `working_messages` (default.py:998)
+        # and falls through to the LLM. The class-16 short-circuit that exists
+        # today is the dead `__retrieve_docs__` shim (§0.9 Problem 1). So this
+        # `tier_zero` branch is genuinely NEW wiring landing in Phase H.
+        if pkr.get("tier_zero"):
+            __emit_event__("recipe_tier_zero_started", recipe=pkr.get("recipe_name", ""))
+            __transition_to__("running", "recipe tier-0 execution")
+            tier0_result = execute_recipe_orchestrator_channel(pkr, goal, state)
+            __transition_to__("completed", "recipe tier-0 completed")
+            return tier0_result
+
         if pkr.get("disambiguation"):
             return handle_disambiguation(pkr["candidates"], state)
 
+        # Solution Override (§3.13) — LLM path: the override content becomes
+        # the whole user message. This is NOT a no-LLM Tier-0 path (Tier 0
+        # returns early via `tier_zero` above). Control FALLS THROUGH to
+        # `__llm_complete__` with the override as the user message — this is
+        # the existing default.py:998-1008 behaviour, unchanged.
         if pkr.get("override_prompt_creation"):
             working_messages = [{"role": "User",
                                   "content": pkr.get("orchestrator_content", "")}]
@@ -1497,7 +1557,7 @@ The combined SQL for `resolve_intent` evaluates all four paths in a single query
 
 ```sql
 WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
-  AND input_class = ANY($7)
+  AND input_class = ANY($6)
   AND (
     -- Path 0: exact match (existing path, unchanged)
     input_text = $5
@@ -1521,10 +1581,36 @@ WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
   )
 ORDER BY
   CASE WHEN input_text = $5 THEN 0 ELSE 1 END,   -- exact match always beats template
-  CASE input_class WHEN $8 THEN 0 WHEN $9 THEN 1 WHEN $10 THEN 2 ELSE 3 END,
+  CASE input_class WHEN $7 THEN 0 WHEN $8 THEN 1 WHEN $9 THEN 2 ELSE 3 END,
   score DESC
 LIMIT 30
 ```
+
+> **⚠️ PARAM-GAP — parameter binding order MUST match the live `resolve_intent`**
+> (verified `intent_system.rs:339-367`). The placeholders bind positionally in
+> `tokio_postgres`/`deadpool-postgres` — a numbering gap or off-by-one is a runtime
+> `parameters ... but statement requires ...` error, not a compile error. The 9 bind
+> args MUST be passed in EXACTLY this order (same as the current production query):
+>
+> | `$N` | bind arg | source |
+> |------|----------|--------|
+> | `$1` | `tenant_id`   | `scope.tenant_id` |
+> | `$2` | `user_id`     | `scope.user_id` |
+> | `$3` | `agent_id`    | `scope.agent_id` |
+> | `$4` | `project_id`  | `scope.project_id` |
+> | `$5` | `query`       | the raw user text (no Rust normalisation) |
+> | `$6` | `order_vec`   | the `input_class = ANY($6)` array (Vec<i16>) |
+> | `$7` | `order[0]`    | CASE `WHEN $7 THEN 0` |
+> | `$8` | `order[1]`    | `WHEN $8 THEN 1` |
+> | `$9` | `order[2]`    | `WHEN $9 THEN 2` |
+>
+> A prior draft of this block wrote `ANY($7)` (skipping `$6`) and `CASE ... WHEN $8/$9/$10`
+> (10 params, off-by-one) — that would crash at runtime. Fixed here to `$6` (ANY) +
+> `$7/$8/$9` (CASE) = 9 params, matching the live code. The only structural change vs
+> the current query is replacing the hard `AND input_text = $5` filter with the
+> `AND (input_text = $5 OR <template paths>)` OR-group, and prefixing the ORDER BY with
+> the `CASE WHEN input_text = $5 THEN 0 ELSE 1 END` exact-match tiebreaker. The
+> parameter set and order are otherwise unchanged.
 
 Dual-anchored templates (Path 3) are caught by Path 1 (prefix pre-filter fires, then
 full `LIKE` validates the suffix naturally). No separate path 3 branch is needed in SQL.
@@ -2001,16 +2087,48 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 
 - `crates/brassclaw_pg/migrations/V050__reborn_recipe_step_descriptions.sql`
   ```sql
-  ALTER TABLE reborn_recipes ADD COLUMN IF NOT EXISTS step_descriptions JSONB;
+  -- V050 carries ALL THREE v3 Recipe columns so the Phase A store round-trip
+  -- (PgRecipe / NewPgRecipe / RECIPE_SELECT / decode_recipe_row / INSERT / UPDATE,
+  -- which reads+writes all three at indices 31/32/33) is never orphaned.
+  -- `dependency_registry` is added to the other 12 component tables in V054;
+  -- V054's `reborn_recipes` line is `IF NOT EXISTS` → idempotent no-op here.
+  ALTER TABLE reborn_recipes ADD COLUMN IF NOT EXISTS step_descriptions   JSONB;
+  ALTER TABLE reborn_recipes ADD COLUMN IF NOT EXISTS variants            JSONB;
+  ALTER TABLE reborn_recipes ADD COLUMN IF NOT EXISTS dependency_registry JSONB;
   ```
 
+  > **⚠️ VARPAT-COL-GAP / DEPREG-TIMING-GAP — V050 must create all three columns
+  > (not just `step_descriptions`).** A prior draft had V050 create only
+  > `step_descriptions`. But Phase A's "Files to modify" adds `variants` +
+  > `dependency_registry` to `PgRecipe`/`NewPgRecipe`/`RECIPE_SELECT`
+  > (indices 31/32/33) and the FIND-07 INSERT/UPDATE writes all three. Two gaps
+  > would otherwise result:
+  > 1. **VARPAT-COL-GAP:** `variants` had NO migration anywhere in V050–V058, yet
+  >    Phase A persists it and Phase M.5 depends on `variable_patterns` nested in
+  >    `variants`. A SELECT on a non-existent column is a hard SQL error at runtime.
+  > 2. **DEPREG-TIMING-GAP:** `dependency_registry` on `reborn_recipes` is not
+  >    created until V054 (Phase J.2), but Phase A's store round-trips it from V050.
+  >    Between V050 and V054 the SELECT would read a column that does not exist.
+  >
+  > Fix: V050 creates all three columns on `reborn_recipes` atomically. `variants`
+  > is recipe-specific (no other table has it). `dependency_registry` is also
+  > created on the other 12 component tables in V054; V054's
+  > `ALTER TABLE reborn_recipes ADD COLUMN IF NOT EXISTS dependency_registry JSONB`
+  > is then an idempotent no-op (the column already exists from V050). This is the
+  > lowest-churn, additive fix and preserves the plan's invariant that the store
+  > round-trips every column from the phase that introduces the struct field.
+
 - `crates/brassclaw_engine/src/memory/instruction_builder.rs`  
-  New types: `StepDescriptionEntry`, `StepRange`, `StepOwner`, `RecipeStepType`,
+  New types (this module is the **sole home** for all IBS-domain types — see
+  FIND-NEW-01; do NOT also define any of these in `types/recipe.rs`):
+  `StepDescriptionEntry`, `StepRange`, `StepOwner`, `RecipeStepType`,
   `IbsRecipeStep` (renamed from `RecipeStep` to avoid collision with the existing
   v2 `RecipeStep { skill, tool, params, description }` in `types/recipe.rs`),
   `VariablePattern`, `BuildInstruction`, `IbsError`,
   `DependencyExpr`, `DependencyNode` (the parsed traversal tree — see §0.19),
-  `StepContextSpec` (derived content type for orchestrator formatting — see §0.5).
+  `StepContextSpec` (derived content type for orchestrator formatting — see §0.5),
+  `ToolBinding` (§0.4.1 — referenced by `IbsRecipeStep.tool_bindings`),
+  `ErrorPolicy` (§0.4.1 — referenced by `ToolBinding.error_policy`).
 
   **`StepDescriptionEntry` shape** (maps to one element of the `step_descriptions` JSONB array):
   ```rust
@@ -2053,13 +2171,28 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 
 #### Files to modify
 
-- `crates/brassclaw_engine/src/types/recipe.rs` — add `BuildInstruction` two-channel shape;
-  full `RecipeStepType` enum; `StepOwner`; `ToolBinding`; `ErrorPolicy`.  
+- `crates/brassclaw_engine/src/types/recipe.rs` — add the `RecipeVariant` authoring type
+  and three new `Recipe` struct fields. **Do NOT add `BuildInstruction` /
+  `RecipeStepType` / `StepOwner` / `ToolBinding` / `ErrorPolicy` here** — those IBS-domain
+  types live solely in `instruction_builder.rs` (Files to create; FIND-NEW-01). This file
+  only adds the Recipe *model* (what is authored + persisted), not the IBS *build* types.
   Add to `Recipe` struct (all `#[serde(default)]` so existing rows deserialise unchanged):
   ```rust
   #[serde(default)] pub variants: Vec<RecipeVariant>,
   #[serde(default)] pub step_descriptions: serde_json::Value,
   #[serde(default)] pub dependency_registry: serde_json::Value,  // per-component, see §0.19
+  ```
+  **`RecipeVariant` shape** (one entry per distinct intent — §0.3; stored in the
+  `variants` JSONB column added by V050):
+  ```rust
+  use crate::memory::instruction_builder::VariablePattern;  // sole home is instruction_builder.rs
+
+  pub struct RecipeVariant {
+      pub name:              String,                  // variant id, e.g. "ls-la"
+      pub step_link:         Option<String>,          // points into step_descriptions (§0.3)
+      pub variable_patterns: Vec<VariablePattern>,   // §0.17.3; empty = positional slot names
+      pub intent_examples:   Vec<String>,             // authored; seeded to reborn_intent_inputs on save
+  }
   ```
   Note: `dependency_registry` is also added to `ToolSkill`, `Skill`, `PythonCode`,
   and all other component types that participate in dependency traversal. Each component
@@ -2071,7 +2204,8 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   loaded).
 
   **Verified struct locations (read from source):**
-  - `PgRecipe` struct starts at **line ~110** (first field `id`); fields include
+  - `PgRecipe` struct starts at **line ~91** (verified `pg_recipe_store.rs:91`,
+    `pub(crate) struct PgRecipe`; first field `id`); fields include
     `validation_errors: Vec<String>` (line ~116), `review_feedback: Option<String>`,
     `review_attempts: i16`, `rejected_at`, `queue_code`. Add `step_descriptions: serde_json::Value`,
     `variants: serde_json::Value`, `dependency_registry: serde_json::Value` fields.
@@ -2363,6 +2497,54 @@ Same engine files as Phase B, but for class 23:
   Add `step_link: Option<String>` to `IntentResolution::Match`.
   Update the resolution query to `SELECT ... step_link FROM reborn_intent_inputs`.
   Update `seed_intent_input` to accept and store `step_link`.
+  > **⚠️ FIND-NEW-03 — `seed_intent_input` extension is fully specified here (verified
+  > against `intent_system.rs:463-505`).** The live function has 7 params and an INSERT
+  > with 11 columns / 10 placeholders (`VALUES ($1..$8,1,$9,$10)` — `score` is the literal
+  > `1`) and `ON CONFLICT (...) DO UPDATE SET source, needs_review, updated_at`. The
+  > `step_link` extension is NOT just "accept and store" — three concrete edits:
+  >
+  > 1. **Signature** — add an 8th param:
+  >    ```rust
+  >    pub async fn seed_intent_input(
+  >        pool: &brassclaw_pg::PgPool,
+  >        scope: &IntentScope,
+  >        input_text: &str,
+  >        input_class: InputClass,
+  >        component_id: Uuid,
+  >        component_class_code: i32,
+  >        source: IntentSource,
+  >        step_link: Option<&str>,   // NEW — None for non-Recipe inputs; the variant's
+  >                                   //        step_link for Recipe (class 21) variant intents
+  >    ) -> Result<(), IntentSystemError>
+  >    ```
+  > 2. **INSERT** — add `step_link` to the column list AND a new placeholder `$11`:
+  >    ```sql
+  >    INSERT INTO reborn_intent_inputs
+  >        (tenant_id, user_id, agent_id, project_id,
+  >         input_text, input_class, component_id, component_class_code,
+  >         score, source, needs_review, step_link)          -- 12 columns (was 11)
+  >    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$10,$11)          -- 11 placeholders (was 10)
+  >    ON CONFLICT (tenant_id, user_id, agent_id, project_id,
+  >                 input_text, input_class, component_id)
+  >    DO UPDATE SET
+  >        source       = EXCLUDED.source,
+  >        needs_review = EXCLUDED.needs_review,
+  >        step_link    = EXCLUDED.step_link,                 -- NEW
+  >        updated_at   = now()
+  >    ```
+  >    The bind slice gains `&step_link` as the 11th arg (after `&source.needs_review()`).
+  >    `step_link` is NOT part of the conflict key (the key is scope+input_text+
+  >    input_class+component_id); it is updated via `SET` on re-seed.
+  > 3. **All existing callers** must pass the new `step_link` arg — the compiler
+  >    catches a missing arg (arity mismatch). Non-Recipe seeders pass `None`; the
+  >    Recipe variant seeder (Phase D / Phase L seeder) passes the variant's
+  >    `step_link` (so `resolve_intent` can return it for the IBS path). J.1's
+  >    `auto_passed` → `seed_intent_input` wiring (Phase J) passes `None` for Skill
+  >    intents. The WebUI Recipe save path (Phase A round-trip) re-seeds each
+  >    variant's `intent_examples` with that variant's `step_link`.
+  >
+  > **Sequencing:** as with the `SELECT`, this INSERT edit requires V053 to have run
+  > (the `step_link` column must exist) — see the sequencing invariant below.
   > **⚠️ FINDING A — `record_disambiguation_choice` also returns `Match` — verified against code:**
   > Confirmed at `intent_system.rs:433–455`: `record_disambiguation_choice` takes
   > `(pool, scope, row_id, component_id, component_class_code)` as parameters (no `step_link`)
@@ -3038,30 +3220,44 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
 > The plan was silently mixing two runtimes. Verified against live code:
 > - **Model A — `ExecutionLoop` / Monty (CURRENT PRODUCTION).** `loop_engine.rs:413` runs
 >   `execute_orchestrator`; Python IS the outer loop and calls the LLM itself via
->   `__llm_complete__` (`default.py:1103` → `handle_llm_complete`, `orchestrator.rs:563`).
->   `RecipeStage`/`ModelStage` do not exist here. The engine ALREADY has a deterministic
->   no-LLM path: `execute_action_procedure` (`default.py:901`, "returns without calling
->   `__llm_complete__`") for class-16 Actions, gated by `override_prompt_creation: true`
->   (`orchestrator.rs:2689`, set by `assemble_from_component_items` for a Solution Override).
+>   `__llm_complete__` (`default.py:1103` → `handle_llm_complete`, dispatched at
+>   `orchestrator.rs:563`, defined at `orchestrator.rs:795`). `RecipeStage`/`ModelStage` do
+>   not exist here. The engine has a deterministic no-LLM *pattern* —
+>   `execute_action_procedure` (`default.py:901`, "returns without calling
+>   `__llm_complete__`") for class-16 Actions — but it is NOT gated by
+>   `override_prompt_creation`. Verified: the `override_prompt_creation` block
+>   (`default.py:998-1008`) only swaps `working_messages` and FALLS THROUGH to
+>   `__llm_complete__`; the only pre-`__llm_complete__` return is the dead
+>   `__retrieve_docs__`+`class_code==16` shim (`default.py:1018-1027`; §0.9 Problem 1 — never
+>   fires, the shim surfaces no `class_code`). `override_prompt_creation: true` is set by
+>   `assemble_from_component_items` (`orchestrator.rs:2689`) for a Solution Override, which
+>   is an LLM path, NOT a no-LLM path. So today NO deterministic no-LLM turn path actually
+>   works in production.
 > - **Model B/C — `DefaultExecutorPipeline` / agent_loop (TARGET STATE, skeleton today).**
 >   `canonical.rs`; no Python access (`brassclaw_agent_loop` does not depend on
 >   `brassclaw_engine`). `RecipeStage`/`ModelStage`/`TierZeroExecutionStage` live here.
 >
-> **Resolution — production Tier 0 lands NOW via Model A (no switchover needed), agent-loop
-> stages are the target state active after switchover:**
+> **Resolution — production Tier 0 lands via Model A once Phase H adds the `tier_zero`
+> signal + early-return branch (NOT "today"); agent-loop stages are the target state active
+> after switchover:**
 > - **Phase H §A (engine path, production):** wire `fetch_for_turn` `SplitResult` with
->   `llm_call_required: false` so that `handle_assemble_prior_knowledge` returns
->   `override_prompt_creation: true` (reusing the existing Solution-Override signal at
->   `orchestrator.rs:2683-2691`). Python step-0 then skips `__llm_complete__` and runs the
->   recipe's orchestrator channel (skills + PythonCode) deterministically against the
->   pre-loaded rust execution context — exactly the `execute_action_procedure` pattern,
->   generalised from class-16 Actions to Tier-0 Recipes. **No new "kick" stage is needed for
->   the engine path — the kick IS `default.py` step-0, already live.** This is the agent's
->   Option A and it works today. Phase H's engine-side work is: (1) make
->   `handle_assemble_prior_knowledge` emit `override_prompt_creation: true` when
->   `routing.llm_call_required == false`; (2) ensure step-0's deterministic branch consumes
->   the stashed `orchestrator_items` (Tier-1 stash/unstash, item 5) and drives the Rust
->   executioner via the loaded skills without an LLM round-trip.
+>   `llm_call_required: false` so that `handle_assemble_prior_knowledge` returns a DEDICATED
+>   `tier_zero: true` field (NEW — do NOT reuse `override_prompt_creation`; that is the
+>   Solution-Override LLM path at `orchestrator.rs:2683-2691` and must stay an LLM path) plus
+>   `orchestrator_content`. Python step-0 gets a NEW `if pkr.get("tier_zero"): return
+>   execute_recipe_orchestrator_channel(...)` early-return branch (sibling of the
+>   `action_short_circuit` return, placed before `__llm_complete__` at `default.py:1103`)
+>   that runs the recipe's orchestrator channel (skills + PythonCode) deterministically
+>   against the pre-loaded rust execution context — the `execute_action_procedure` pattern
+>   generalised from class-16 Actions to Tier-0 Recipes. **⚠️ This is NEW wiring, not a
+>   "no new kick" generalisation of something live:** the kick is the new `tier_zero`
+>   early-return branch; today no such branch exists and Tier 0 does not work. Phase H's
+>   engine-side work is: (1) make `handle_assemble_prior_knowledge` emit `tier_zero: true`
+>   (NOT `override_prompt_creation`) when `routing.llm_call_required == false`; (2) add the
+>   `tier_zero` early-return branch + `execute_recipe_orchestrator_channel` helper to
+>   `default.py` step-0; (3) ensure it consumes the stashed `orchestrator_items`
+>   (Tier-1 stash/unstash, item 5) and drives the Rust executioner via the loaded skills
+>   without an LLM round-trip.
 > - **Phase H §B/C (agent-loop path, target state):** `LoopOrchestratorPort` +
 >   `TierZeroExecutionStage` (above). Until the agent-loop `DefaultExecutorPipeline` is wired
 >   as the production driver (or the engine `ExecutionLoop::run` retired), this stage work is
@@ -3072,10 +3268,14 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
 > - **LLM-call ownership (v3 target):** once the agent-loop is the driver, `ModelStage` owns
 >   the Tier 1+ LLM call and the Python `__llm_complete__` loop is retired (Python reduced to
 >   step-0 prior-knowledge + Tier-0 no-LLM execution). **During migration both mechanisms
->   coexist:** Model A serves production (Tier 0 via `override_prompt_creation`); Model B/C
->   stages are test-only until switchover. The earlier draft "rejected" the engine-side
->   implementation — that was wrong: it would have left production with no Tier 0 until an
->   indefinite switchover. The engine-side mechanism is retained and is the production path.
+>   coexist:** Model A serves production (Tier 0 via `tier_zero` once Phase H lands it);
+>   Model B/C stages are test-only until switchover. The earlier draft "rejected" the
+>   engine-side implementation — that was wrong: it would have left production with no Tier 0
+>   until an indefinite switchover. The engine-side mechanism is retained and is the
+>   production path. A subsequent draft then over-corrected by claiming Tier 0 "works today"
+>   via `override_prompt_creation` — also wrong (that signal does not skip
+>   `__llm_complete__`); corrected here to the dedicated `tier_zero` signal + new
+>   early-return branch.
 
 > **Note:** All three ports (`LoopRetrievalPort`, `resolve_message_text` via
 > `LoopContextPort`, and `LoopOrchestratorPort`) are **Phase H prerequisites**, not Phase K
@@ -3342,30 +3542,44 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
          return RecipeStep::Continue { state }  // Tier 2 — unchanged
    ```
 
-3b. `crates/brassclaw_engine/src/executor/orchestrator.rs` — **engine-path Tier 0 wiring
-   (Model A, CURRENT PRODUCTION — see DRIVER-GAP / H5 MODEL SELECTION).** The agent-loop
-   `RecipeStage` (item 3) does not run in production today; production is the engine
-   `ExecutionLoop` where Python step-0 calls `__assemble_prior_knowledge__`. Phase H must
-   therefore ALSO wire Tier 0 on the engine path so production gets Tier 0 before any
-   agent-loop switchover:
-   - In `handle_assemble_prior_knowledge` (orchestrator.rs:2574+): when
-     `fetch_for_turn` returns `SplitResult { routing, .. }` with
-     `routing.llm_call_required == false`, emit `override_prompt_creation: true` in the
-     returned pkr (reuse the Solution-Override signal already produced by
-     `assemble_from_component_items` at orchestrator.rs:2683-2691) and surface the
-     `orchestrator_items` as `orchestrator_content`. This is the Tier-0 "no LLM" signal.
-   - In `default.py` step-0: the existing `override_prompt_creation: true` branch
-     (the `execute_action_procedure` deterministic path, `default.py:901`, "returns
-     without calling `__llm_complete__`") is generalised from class-16 Actions to
-     Tier-0 Recipes: when `pkr["override_prompt_creation"]` is true AND the matched
-     components are a recipe's orchestrator channel (skills + PythonCode), run them
-     deterministically against the pre-loaded rust execution context and return the
-     formatted reply — no `__llm_complete__` round-trip.
-   - **No new stage, no new "kick":** the kick IS `default.py` step-0, already live for
-     Actions. Phase H generalises the existing deterministic branch, it does not invent a
-     new execution entry point. This is the agent's Option A and it works today.
-   - Tier 1 on the engine path is unchanged: `override_prompt_creation: false`, Python
-     calls `__llm_complete__` guided by `orchestrator_content` (current behaviour).
+3b. `crates/brassclaw_engine/src/executor/orchestrator.rs` + `default.py` — **engine-path
+   Tier 0 wiring (Model A, CURRENT PRODUCTION — see DRIVER-GAP / H5 MODEL SELECTION).** The
+   agent-loop `RecipeStage` (item 3) does not run in production today; production is the
+   engine `ExecutionLoop` where Python step-0 calls `__assemble_prior_knowledge__`. Phase H
+   must therefore ALSO wire Tier 0 on the engine path so production gets Tier 0 before any
+   agent-loop switchover. **⚠️ Corrected (prior draft was wrong):** a prior draft claimed
+   Tier 0 "works today" by reusing the `override_prompt_creation: true` signal to skip
+   `__llm_complete__`. That is FALSE against live code — `override_prompt_creation: true`
+   (default.py:998-1008) only swaps `working_messages` and FALLS THROUGH to
+   `__llm_complete__` (default.py:1103); it does NOT short-circuit. The only
+   pre-`__llm_complete__` return today is the dead `__retrieve_docs__`+`class_code==16`
+   shim (default.py:1018-1027; §0.9 Problem 1 — never fires because the shim surfaces no
+   `class_code`). And `handle_assemble_prior_knowledge` (orchestrator.rs:2552) today
+   returns only `{content, formatted_content, override_prompt_creation,
+   matched_component_ids}` — no `action_short_circuit`, no `tier_zero`. So Tier 0 does
+   NOT work today; Phase H must ADD it. Two changes:
+   - In `handle_assemble_prior_knowledge` (orchestrator.rs:2552; the `SplitResult` arm is
+     added by Phase E/F): when `fetch_for_turn` returns `SplitResult { routing, .. }` with
+     `routing.llm_call_required == false`, return a pkr with a **DEDICATED `tier_zero: true`**
+     field (NEW — do NOT set `override_prompt_creation`; that is the Solution-Override
+     LLM path and must remain an LLM path), the `orchestrator_items` serialised as
+     `orchestrator_content`, and `recipe_name` for telemetry. The `rust_items` are applied
+     to the rust execution context server-side (the executor path that
+     `execute_recipe_orchestrator_channel` reads). `matched_component_ids` carries the
+     orchestrator-channel UUIDs. (Mirror the existing `action_short_circuit` pkr shape that
+     Phase F wires for class-16 Actions — same "no-LLM early-return" family, separate field.)
+   - In `default.py` step-0: add a NEW early-return branch (see the §0.9 v3 step-0
+     pseudocode) — `if pkr.get("tier_zero"): return execute_recipe_orchestrator_channel(pkr,
+     goal, state)` — placed alongside the `action_short_circuit` return and BEFORE the
+     `__llm_complete__` call (default.py:1103). `execute_recipe_orchestrator_channel` is a
+     NEW helper (sibling of `execute_action_procedure`, default.py:901) that drives the
+     loaded skills to instruct the Rust executioner, runs the PythonCode formatters, and
+     returns a `complete_result` without an LLM round-trip. Do NOT route Tier 0 through the
+     `override_prompt_creation` branch — that would conflate the no-LLM Tier-0 path with the
+     LLM Solution-Override path and break Solution Override.
+   - Tier 1 on the engine path is unchanged: `tier_zero` false, `override_prompt_creation`
+     false, Python calls `__llm_complete__` guided by `orchestrator_content` (current
+     behaviour).
 
 4. `crates/brassclaw_agent_loop/src/executor/canonical.rs` — **executor loop restructuring
    required**. The current dispatch at line 94 is:
@@ -3766,6 +3980,9 @@ cannot match skill intents. J.1 wires that propagation:
 -- Note: reborn_skills.intent_examples already exists (V027) — no-op omitted.
 -- reborn_python_code (V051) and reborn_extension_catalogues (V052) include this
 -- column at creation time — no ALTER needed here for those tables.
+-- reborn_recipes ALREADY has dependency_registry from V050 (Phase A — see
+-- VARPAT-COL-GAP / DEPREG-TIMING-GAP note); its line below is `IF NOT EXISTS`
+-- → idempotent no-op, kept for the single-migration-covers-all-tables invariant.
 ```
 
 #### J.2 `dependency_registry` column on all component tables
@@ -3777,7 +3994,15 @@ traversal. This is a nullable column — components with no declared dependencie
 **Tables to add the column to** (one ALTER TABLE per table; can be a single migration):
 `reborn_skills`, `reborn_tools`, `reborn_tool_skills`, `reborn_recipes`, `reborn_actions`,
 `reborn_specs`, `reborn_plans`, `reborn_summaries`, `reborn_lessons`, `reborn_docus`,
-`reborn_issues`, `reborn_notes`, `reborn_extensions`.
+`reborn_issues`, `reborn_notes`, `reborn_extensions_unified`.
+> **⚠️ EXT-NAME — the extensions table is `reborn_extensions_unified`, not
+> `reborn_extensions`.** Verified `V032__reborn_extensions_unified.sql:57`:
+> `CREATE TABLE IF NOT EXISTS reborn_extensions_unified`. A prior draft of this list
+> wrote the bare `reborn_extensions`, which would make the V054 `ALTER TABLE` (and the
+> V058 `DROP COLUMN`) fail with `relation "reborn_extensions" does not exist`. Use the
+> real name `reborn_extensions_unified` in every per-table ALTER/DROP. (The PERF-03
+> sub-select list at line 67 and the populate UNION ALL at line 4801 already use the
+> correct `reborn_extensions_unified` name.)
 
 New tables (Phases B, C) include the column from creation: `reborn_python_code`,
 `reborn_extension_catalogues`.
@@ -3809,6 +4034,18 @@ async fn resolve_dependencies(
 
 Implements the algorithm from §0.19. Results are partitioned into rust/orchestrator
 channels by `class_code` and merged into the corresponding `SplitResult` item lists.
+
+> **Cross-reference (class 22/23 dependency fetches):** `resolve_dependencies` loads
+> each dependency component via `fetch_component_by_id`, which dispatches on
+> `class_code` to pick the table + content expression (the `table_and_content` match).
+> Class 22 (`reborn_python_code`) and 23 (`reborn_extension_catalogues`) arms are
+> added in **Phase E** (`retrieval_source.rs` — see the `22 => Some(("reborn_python_code",
+> ...))` / `23 => Some(("reborn_extension_catalogues", ...))` arms), and the matching
+> `class_label` arms (`22 => "python_code"`, `23 => "extension_catalogue"`) are added in
+> **Phase B / Phase C** (`intent_system.rs`). A StepDescription `dependencies` traversal
+> that resolves to a class-22/23 component therefore works only once Phase E + B/C have
+> landed (J.3 runs after all of A–E by phase order, so this is satisfied). No new arm is
+> added in J.3 itself — J.3 only consumes the Phase E/B/C arms.
 
 #### Tests
 
@@ -4167,6 +4404,13 @@ tiebreaker so exact matches always outrank template matches for the same compone
 Pass `$5 = raw user_text` (exact match) — no normalisation step in Rust needed.
 PostgreSQL evaluates `$5 LIKE input_text` directly.
 
+> **⚠️ PARAM-GAP (carry-forward from §0.17.1):** keep the existing 9-arg bind order
+> exactly (`[tenant, user, agent, project, query, order_vec, order[0], order[1], order[2]]`).
+> The new query only swaps the `AND input_text = $5` hard filter for the
+> `AND (input_text = $5 OR <template paths>)` OR-group and prepends the exact-match
+> ORDER BY tiebreaker — `$6` (ANY) and `$7/$8/$9` (CASE) stay in the same positions as
+> the current `intent_system.rs:357-367` bind slice. See the §0.17.1 PARAM-GAP table.
+
 #### M.4 Post-match extraction: `extract_template_slots`
 
 **File:** `crates/brassclaw_engine/src/memory/intent_system.rs` (or new
@@ -4290,7 +4534,7 @@ SELECT
         WHEN 'garbage'           THEN 4
         ELSE 1
     END,
-    COALESCE(review_attempts, 0),
+    COALESCE(review_attempts::INT, 0),  -- SCHEMA-01: ::INT cast on every arm (uniform)
     review_feedback,
     validation_errors,
     created_at
@@ -4508,13 +4752,26 @@ Remove from all 13 component tables: `queue_code`, `review_attempts`, `review_fe
 >   Remove the four fields listed above.
 >
 > - **⚠️ SCHEMA-01 — `review_attempts` type inconsistency across tables:**
->   Verified: `reborn_recipes` (V033) defines `review_attempts SMALLINT`, but `reborn_skills`
->   (V027) defines it as `INT`. `PgRecipe.review_attempts` is `i16` (matching SMALLINT for
->   recipes). This type inconsistency is pre-existing and affects V058's populate step:
->   the `COALESCE(review_attempts, 0)` expression in the INSERT must produce an `INT` (the
->   `reborn_validation_queue.counter INT` column uses INT, not SMALLINT). For `reborn_recipes`
->   rows: `COALESCE(review_attempts::INT, 0)` — explicit cast needed. This is a minor V058
->   migration detail but must be handled correctly to avoid runtime type errors.
+>   Verified against every migration (grep `review_attempts` + type): **10 tables define
+>   `review_attempts SMALLINT`** — `reborn_extensions_unified` (V032), `reborn_recipes`
+>   (V033), `reborn_specs` (V036), `reborn_tool_skills` (V037), `reborn_plans` (V038),
+>   `reborn_summaries` (V039), `reborn_docus` (V040), `reborn_lessons` (V041),
+>   `reborn_issues` (V042), `reborn_notes` (V043) — and **3 tables define it `INT`** —
+>   `reborn_skills` (V027), `reborn_actions` (V029), `reborn_tools` (V030). `PgRecipe.
+>   review_attempts` is `i16` (matching SMALLINT for recipes). This type inconsistency is
+>   pre-existing and affects V058's populate step: each per-table arm's
+>   `COALESCE(review_attempts, 0)` feeds `reborn_validation_queue.counter INT`. For the 10
+>   SMALLINT arms the expression's type is SMALLINT; PostgreSQL *will* implicitly widen
+>   SMALLINT→INT on INSERT into the INT column, so it does not hard-fail — BUT relying on
+>   the implicit assignment cast is fragile (a future reader cannot tell if it is
+>   intentional) and the plan's prior wording ("for reborn_recipes rows: cast needed")
+>   only named ONE of the ten SMALLINT tables. **Cleanest fix (apply on EVERY per-table
+>   arm, both SMALLINT and INT): `COALESCE(review_attempts::INT, 0)`.** `INT::INT` is a
+>   harmless no-op for the 3 INT tables; the cast makes all 13 arms produce INT
+>   deterministically, removing any reliance on implicit-cast rules and any ambiguity.
+>   Also update the populate SQL example (the `counter` line) to use this cast. This is a
+>   minor V058 migration detail but must be handled uniformly to avoid runtime type
+>   surprises.
 >
 > - **`PgRecipe` in `crates/brassclaw_reborn_composition/src/pg_recipe_store.rs`:**
 >   Confirmed by inspection — `RECIPE_SELECT` selects `queue_code`, `review_attempts`,
@@ -4559,7 +4816,7 @@ Remove from all 13 component tables: `queue_code`, `review_attempts`, `review_fe
 The 13 tables are: `reborn_skills`, `reborn_tools`, `reborn_tool_skills`,
 `reborn_recipes`, `reborn_actions`, `reborn_specs`, `reborn_plans`, `reborn_summaries`,
 `reborn_lessons`, `reborn_docus`, `reborn_issues`, `reborn_notes`,
-`reborn_extensions` (unified), plus the new Phase B/C tables `reborn_python_code` and
+`reborn_extensions_unified`, plus the new Phase B/C tables `reborn_python_code` and
 `reborn_extension_catalogues` — which should be designed without these columns from
 the start (they are new tables authored after this design is decided).
 
@@ -4639,7 +4896,7 @@ moment V058 lands.
 
 | Migration | Contents | Status |
 |-----------|----------|--------|
-| `V050__reborn_recipe_step_descriptions.sql` | `ADD COLUMN step_descriptions JSONB` to `reborn_recipes` | **Next** |
+| `V050__reborn_recipe_step_descriptions.sql` | `ADD COLUMN step_descriptions JSONB`, `variants JSONB`, `dependency_registry JSONB` to `reborn_recipes` (all three Phase A store columns — see VARPAT-COL-GAP / DEPREG-TIMING-GAP note in Phase A) | **Next** |
 | `V051__reborn_python_code.sql` | New table `reborn_python_code`, class 22 | |
 | `V052__reborn_extension_catalogues.sql` | New table `reborn_extension_catalogues`, class 23 | |
 | `V053__reborn_intent_inputs_step_link.sql` | `ADD COLUMN step_link TEXT` to `reborn_intent_inputs` | |
@@ -4803,12 +5060,15 @@ can be triggered by deleting system-sourced rows (operator action only).
 > shows the **agent-loop path (Model B/C, target state)** — `RecipeStage` + `TierZeroExecutionStage`
 > + `LoopOrchestratorPort`. **Current production uses Model A (engine `ExecutionLoop`)**,
 > which has no `RecipeStage`/`InputStage`: Python step-0 calls `__assemble_prior_knowledge__`
-> → `fetch_for_turn` → `SplitResult`; when `llm_call_required == false` the handler returns
-> `override_prompt_creation: true` and Python skips `__llm_complete__`, running the
-> orchestrator channel deterministically (the `execute_action_procedure` pattern,
-> `default.py:901`). The two paths are functionally equivalent for Tier 0; the agent-loop
-> path is exercised only in tests until the switchover (DRIVER-PREREQ). See item 3b for the
-> engine-path wiring.
+> → `fetch_for_turn` → `SplitResult`; when `llm_call_required == false` the handler returns a
+> DEDICATED `tier_zero: true` signal (NOT `override_prompt_creation` — that is the LLM
+> Solution-Override path) and Python step-0's NEW `tier_zero` early-return branch runs the
+> orchestrator channel deterministically without `__llm_complete__` (the
+> `execute_action_procedure` pattern, `default.py:901`, generalised to Tier-0 Recipes). The
+> two paths are functionally equivalent for Tier 0; the agent-loop path is exercised only in
+> tests until the switchover (DRIVER-PREREQ). ⚠️ Tier 0 on the engine path does NOT work
+> today — it lands when Phase H adds the `tier_zero` signal + early-return branch (item 3b).
+> See item 3b for the engine-path wiring.
 
 ```
 User types: "show all files including hidden in /tmp"
@@ -4863,7 +5123,7 @@ User types: "show all files including hidden in /tmp"
 │       ## [PythonCode: ls-result-handler]
 │         <ls-result-handler body>
 │     pkr["matched_component_ids"]: [uuid-ls-skill, uuid-ls-result-handler]
-│     pkr["override_prompt_creation"]: true
+│     pkr["tier_zero"]: true            # NEW no-LLM signal (NOT override_prompt_creation)
 │   → No ToolSkill bodies. No memories. No UNION ALL noise.
 │   → _set_active_skills_from_matched_ids([uuid-ls-skill, uuid-ls-result-handler], state)
 │   → Orchestrator invokes ls-skill → instructs Rust executioner: ls /tmp -la
