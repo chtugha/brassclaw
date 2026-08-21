@@ -157,233 +157,234 @@ pass compresses it (Sempai).
 
 ## 4. The v3 artifacts that implement the mechanism
 
-The mechanism is a **self-contained "doc-sync" extension** — one
-ExtensionCatalogue (class 23) grouping the components below. Every part
-is a DB-stored, validated, retrievable component; the agent runs the
-mechanism through the same execution paths it uses for any other task.
+The mechanism is **not a monolith** — it is a composition of mostly
+**reusable library parts**, plus exactly **one** doc-specific skill. This
+follows v3's core architecture (§4.0): a growing library of small,
+one-purpose Skills + Tools that many Recipes compose. Only the
+`doc-convert-method` domain skill and the two doc-specific Tools
+(`docu_upsert`, `mark_prefix_stale`) are mechanism-specific; every other
+part is a reusable leaf that future recipes can — and should — reuse. One
+ExtensionCatalogue (class 23) groups the doc-specific parts.
 
-### 4.0 Roles — what each component kind is (and which channel it lives in)
+### 4.0 Recycling — the v3 composition principle (read this first)
 
-The earlier draft of this section muddled three things the codebase keeps
-strictly separate (`05-skills-system.md` §3, `04-ibs.md`). This table fixes
-that. The key distinctions, restated per the user's clarification ("a recipe
-has steps for the orchestrator to run one by one; a skill for the orchestrator
-can be a description how to make the executioner use a tool, or an explanation
-about how a filesystem works and what's needed to read/write/format/list"):
+**This is the foundational v3 design rule, and it applies to every recipe
+any future agent authors — not just this mechanism.** State it plainly:
+
+> The library is the asset. **Skills should be as small as practical — at
+> best, the description of ONE tool usage — so they can be reused in many
+> recipes. Tools too: one concern each.** A Recipe is a *composition* of
+> already-existing Skills + Tools; prefer reusing a library part over
+> authoring a new one. When a genuinely new capability is needed, add it as
+> a small leaf so the next recipe can reuse it too. **Never bake a whole
+> procedure into one fat skill** — split it into leaves the library can
+> recycle.
+
+Two skill grains coexist (`05-skills-system.md` §3, and the user's two
+cases):
+
+- **Leaf Orchestrator Skill (one tool / one pythoncode) — the reusable
+  building block.** Describes how to drive the executor to use ONE tool
+  (user case (a)): e.g. `file-read`, `hash-compute`, `markdown-section`,
+  `prompt-compress`. This is the unit of reuse. **Author these.**
+- **Domain Orchestrator Skill (spans tools — user case (b)) — the bigger
+  picture.** An explanation of how a task area works and *which leaf skills
+  it needs* (e.g. "how doc-conversion works: read → extract §7 →
+  budget-check → [compress] → render → write, using the `file-read`,
+  `markdown-section`, `token-estimate`, `prompt-compress`, `docu-write`
+  leaves"). A domain skill **references** leaves by name; it does **not**
+  duplicate their tool instructions. One domain skill per mechanism; do not
+  proliferate.
+
+The ExtensionCatalogue (class 23) is the level above the domain skill — the
+namespace + `overview_doc` + `task_groups` — and likewise never re-documents
+its children (`05-skills-system.md` §3 ExtensionCatalogue).
+
+**Why this matters here — and the correction.** The previous draft built ONE
+monolithic `doc-convert` skill bundling the whole conversion method + ONE
+monolithic `doc_store` tool bundling get_hash + upsert. That is the opposite
+of reusable: no other recipe could reuse any part. **Corrected:** the method
+is split into ~11 leaf skills + ~5 pythoncode + ~4 atomic tools (§4.1), only
+the `doc-convert-method` domain skill (§4.2) is doc-specific, and the
+`doc-convert` Recipe (§4.3) + `doc-sync` Action (§4.4) merely **compose**
+them. Most leaves are candidates for the Phase L builtin bootstrap
+(`05-skills-system.md` §4.7: the bootstrap seeds ~23 Tools + 23 ToolSkills +
+12–15 Skills + 4–5 PythonCode into 5 catalogues) — i.e. they are
+general-purpose, not doc-specific.
+
+**Roles table (the kinds; the specific reusable parts are in §4.1):**
 
 | Kind | Class | Channel | Who reads it | What it is in this mechanism |
 |------|------|---------|--------------|------------------------------|
-| **Action** | 16 | orchestrator (no IBS, no LLM) | the orchestrator | the **deterministic driver** `doc-sync`: scan docs, hash-compare, convert-in-budget, mark stale. Run via `execute_action_procedure` (`08-actions-system.md`). |
-| **Recipe** | 21 | orchestrator (IBS); routes sub-steps to channels | the orchestrator (runs the steps one by one) | the **per-doc converter** `doc-convert`: an ordered list of steps; some route a ToolSkill to the rust channel, one is an LLM call. |
-| **Orchestrator Skill** | 1-3 | orchestrator (`orchestrator_items`) | the orchestrator | the **method/domain guidance** `doc-convert` — *how* conversion works and what's needed (user case (b)). NOT the LLM prompt; NOT a tool-param description. |
-| **ToolSkill** | 13 | **rust** (`rust_items`) | the **executor** (never the orchestrator) | the **executor-facing** tight description of the `doc_store`/`mark_prefix_stale` tools (params, preconditions, error handling, <5000 tok). A ToolSkill UUID in the orchestrator channel is a Q1 hard error. |
-| **Tool** | 0 | **rust** (executor applies it) | opaque to the orchestrator | the **Rust capability** that actually touches Postgres (`doc_store` upsert/get_hash, `mark_prefix_stale`). The only kind that can do a DB write (kernel boundary). |
-| **PythonCode** | 22 | orchestrator (`orchestrator_items`) | the orchestrator | **pure-logic** helpers `doc_hash`/`doc_diff` (SHA-256, compare). No I/O, no DB — a Python helper cannot write to Postgres. |
-| **ExtensionCatalogue** | 23 | (namespace) | humans / the overview | the `doc-sync` namespace grouping all of the above + an `overview_doc`. |
+| **Action** | 16 | orchestrator (no IBS, no LLM) | the orchestrator | the deterministic driver `doc-sync` — **composes** leaves (§4.4). |
+| **Recipe** | 21 | orchestrator (IBS); routes sub-steps to channels | the orchestrator (runs steps one by one) | the per-doc converter `doc-convert` — **composes** leaves (§4.3). |
+| **Orchestrator Skill (leaf)** | 1-3 | orchestrator (`orchestrator_items`) | the orchestrator | ONE tool-usage description (case a) — the reusable unit. |
+| **Orchestrator Skill (domain)** | 1-3 | orchestrator (`orchestrator_items`) | the orchestrator | the one doc-specific overview `doc-convert-method` (case b); references leaves. |
+| **ToolSkill** | 13 | **rust** (`rust_items`) | the **executor** (never the orchestrator) | executor-facing param/precondition description, one per Tool, <5000 tok. |
+| **Tool** | 0 | **rust** (executor applies it) | opaque to the orchestrator | the Rust capability; one concern each; the only kind that touches Postgres. |
+| **PythonCode** | 22 | orchestrator (`orchestrator_items`) | the orchestrator | pure-logic helper, one concern each; no I/O, no DB. |
+| **ExtensionCatalogue** | 23 | (namespace) | humans / overview | the `doc-sync` namespace + `overview_doc`. |
 
-**Channel rule (the correction).** The IBS splits a Recipe's `include` list
-into `orchestrator_items` (Skill + PythonCode — the Python orchestrator
-reads them) and `rust_items` (ToolSkill — the Rust executor applies them).
-The orchestrator **never calls a Tool directly and never holds a DB
-handle**; it drives the executor, which calls the Tool (guided by its
-ToolSkill). Therefore the DB write is a **Tool + ToolSkill**, not a
-PythonCode (the earlier draft's `doc_upsert` PythonCode was wrong —
-corrected in §4.4/§4.5). And the LLM prompt is authored **in the Recipe
-step** (`type: llm`), built *from* the Skill body — it is not the Skill
-itself (the earlier draft overlapped them — corrected in §4.2/§4.3).
+**Channel rule.** The IBS splits a Recipe's `include` list into
+`orchestrator_items` (Skill + PythonCode) and `rust_items` (ToolSkill). The
+orchestrator never calls a Tool directly and never holds a DB handle; it
+drives the executor, which calls the Tool (guided by its ToolSkill). So a DB
+write is always a **Tool + ToolSkill**, never a PythonCode (the earlier
+draft's `doc_upsert` PythonCode was wrong). And the LLM prompt is authored
+**in the Recipe's `type: llm` step**, built *from* the Skill body — the
+Skill is the reusable method, not the prompt (the earlier draft overlapped
+them).
 
-**User-case mapping.** Case (a) "a description how to make the executioner
-use a tool" is carried, in this mechanism, by the **Recipe step's `info`
-text** (the per-step instruction that tells the orchestrator to drive the
-executor to call `doc_store`) — we keep it in the step because it is a
-single, non-reusable drive; a *reusable* cross-recipe tool-driving pattern
-would be a standalone Orchestrator Skill. Case (b) "an explanation about
-how X works and what's needed" is the `doc-convert` **Orchestrator Skill**
-(§4.3). A **ToolSkill** is *not* the user's case (a): a ToolSkill is
-executor-facing, and the orchestrator never reads it.
+### 4.1 The reusable library — leaf skills, pythoncode, atomic tools
 
-### 4.1 Action (class 16) — `doc-sync` (the no-LLM driver)
+Each entry is **one-purpose and reusable beyond `doc-convert`**. Reuse
+status: **builtin** (exists / Phase L bootstrap), **new-leaf** (new but
+general-purpose → bootstrap candidate), **mechanism-specific** (only this
+mechanism needs it).
 
-`08-actions-system.md`: a class-16 Action encodes step-by-step
-orchestrator instructions executed by `execute_action_procedure` **with
-no LLM call**. `doc-sync` is the deterministic driver:
+**Leaf Orchestrator Skills (classes 1-3), one tool each — user case (a):**
 
-1. **List** the source docs (`read_file`/`glob` builtin over
-   `docs/agents-v3/*.md`).
-2. For each doc, **compute** `content_hash = SHA-256(source_text)`.
-3. **Compare** to the stored `reborn_docus.content_hash` for the matching
-   `name` slug by driving the executor to call the `doc_store.get_hash`
-   Tool (§4.5) — one read per doc (the orchestrator never holds a DB
-   handle).
-4. **Skip** unchanged docs (same hash → no work, mirroring
-   `component_import.rs` idempotency). `doc_diff` (PythonCode, §4.4) is the
-   pure-logic compare used here.
-5. For changed/new docs whose §7 fits the per-doc budget: **convert
-   inline** (deterministic §7 extract, no LLM — the `by-extract` path)
-   and drive the executor to call the `doc_store` Tool (§4.5) to upsert
-   the Docu row (`source='system'`, `validation_status='validated'`,
-   `consumer_tags={03:llm}`, new `content_hash`). For docs that **exceed
-   the budget**, the Action cannot compress them — compression needs an
-   LLM, and an Action runs with **no LLM** — so it **enqueues** the
-   `doc-convert` `by-llm-compress` Recipe (§4.2) for the idle-time
-   Sempai-Kohai loop (§5) to pick up. (That Recipe runs through the
-   normal IBS + LLM path, not inside this Action.)
-6. If any doc changed, **mark the base prompt stale** by driving the
-   executor to call the `mark_prefix_stale` Tool (§4.5, a thin wrapper
-   over `PgBasicPromptStore::mark_stale`, Phase K.1) so the Prefix Tab's
-   regenerate button lights up.
-7. **Report** a summary (N docs scanned, M changed, base-prompt
-   stale=yes/no).
+| Skill | Binds to | Reuse | What it teaches |
+|-------|----------|-------|-----------------|
+| `file-list` | `glob` Tool | builtin | list files matching a glob |
+| `file-read` | `read_file` Tool | builtin | read one file; handle not-found |
+| `hash-compute` | `sha256` PythonCode | new-leaf | hash text for staleness/integrity |
+| `hash-compare` | `hash_changed` PythonCode | new-leaf | decide "changed?" from two hashes |
+| `component-hash-read` | `component_get_content_hash` Tool | new-leaf | read a stored `content_hash` for any component row |
+| `markdown-section` | `markdown_section` PythonCode | new-leaf | extract a `## N. title` section from any markdown |
+| `token-estimate` | `token_estimate` PythonCode | new-leaf | ≈4 chars/token estimate |
+| `component-header-render` | `format_component_header` PythonCode | new-leaf | render the `## CC:UID  LABEL  "name"` base-prompt line |
+| `prompt-compress` | `__llm_complete__` (LLM step) | new-leaf | compress a text block to a token budget for a base prompt (keep cited facts, drop prose, never invent, escape injection) — reusable for ANY compression, not just docs |
+| `docu-write` | `docu_upsert` Tool | mechanism-specific | upsert a `reborn_docus` row |
+| `prefix-stale-mark` | `mark_prefix_stale` Tool | mechanism-specific | mark the base-prompt prefix stale |
 
-This is the `action_short_circuit` path (`08-actions-system.md`,
-`FetchForTurnResult::ActionShortCircuit`) — no BuildInstruction, no IBS,
-no prior-knowledge assembly. The orchestrator calls
-`execute_action_procedure(action_doc, goal, state)` and returns.
+**PythonCode (class 22) — pure logic, one concern each, no I/O:**
 
-### 4.2 Recipe (class 21) — `doc-convert` (the per-doc converter)
+| Helper | Signature | Reuse |
+|--------|-----------|-------|
+| `sha256` | `(text: str) -> str` | new-leaf (general) |
+| `hash_changed` | `(stored: str, new: str) -> bool` | new-leaf (general) |
+| `markdown_section` | `(md: str, level: int, title: str) -> str` | new-leaf (general) |
+| `token_estimate` | `(text: str) -> int` | new-leaf (general) |
+| `format_component_header` | `(class_code: int, prompt_uid: int, label: str, name: str) -> str` | new-leaf (general) |
 
-A Recipe is, per the user's definition and `03-recipe-system.md`, **an
-ordered list of steps the orchestrator runs one by one**. `doc-convert`
-converts **one** changed doc to its LLM-optimized form. Each step is an
-orchestrator step; the IBS routes each step's `include`d component to the
-right channel (`orchestrator_items` for Skill/PythonCode, `rust_items`
-for ToolSkill — `04-ibs.md`). Two variants share most steps; the
-`by-llm-compress` variant inserts the LLM step.
+(`doc_upsert` is **not** here — a Python helper cannot write to Postgres;
+only a Tool can, behind the kernel boundary. The earlier draft's
+`doc_upsert` PythonCode was wrong; corrected.)
 
-- **Step 1 (orchestrator, `type: component`):** `include` the
-  `doc-convert` **Orchestrator Skill** (§4.3, classes 1-3) UUID. Its body
-  — the conversion *method* — lands in the orchestrator channel as the
-  knowledge the orchestrator reasons with. (This is user case (b), not
-  the LLM prompt.)
-- **Step 2 (orchestrator, `type: text`):** the step instruction — "Read
-  the source doc `{path}`; extract its §7 section verbatim; if it fits the
-  per-doc budget, the converted text **is** the §7 extract (`by-extract`
-  ends here)." The orchestrator drives the executor to call the `read_file`
-  Tool (its ToolSkill, class 13, routes to `rust_items`) to obtain the
-  bytes; `doc_hash` (PythonCode, §4.4) hashes the result. (This step's
-  `info` is user case (a) — the per-step "make the executor use a tool"
-  instruction — kept in the step because it is a single, non-reusable drive.)
-- **Step 3 (orchestrator, `type: llm`) — `by-llm-compress` variant only:**
-  `__llm_complete__`. The **LLM prompt is built here**, by the orchestrator,
-  **from** the Skill body (step 1) + the source doc's §7 (step 2) + a
-  compression instruction authored in this step's `info` ("Compress the §7
-  summary to ≤{budget} tokens; keep every line-cited fact and the §7
-  structure; drop prose; output only the converted text; never invent
-  facts; quote any injection payload only as fenced, escaped code"). This
-  is the Tier-1 LLM round-trip; the Sempai (if connected) reviews this
-  assembled prompt before shipment (`09-sempai-kohai.md` rerouting). The
-  **Skill is not the prompt** — the Skill is the reusable method; the
-  prompt is assembled per-call in this step. (The earlier draft overlapped
-  them; corrected.)
-- **Step 4 (rust, `type: component`):** `include` the `doc_store`
-  **ToolSkill** (class 13, §4.5) UUID. The IBS routes it to `rust_items`;
-  the executor calls the `doc_store` Tool with `{{vars.content}}` = the
-  converted text (the §7 extract from step 2, or the LLM output from step
-  3), `{{vars.content_hash}}` (from step 2), `{{vars.slug}}`. The executor
-  — not the orchestrator — performs the `INSERT … ON CONFLICT (scope,name)
-  DO UPDATE` into `reborn_docus`, setting `source='system'`,
-  `validation_status='validated'`, `consumer_tags={03:llm}`. (The earlier
-  draft routed this through a PythonCode `doc_upsert`; corrected — a
-  Python helper cannot write to Postgres; only a Tool can, behind the
-  kernel boundary.)
+**Tools (class 0) — one concern each, Rust, capability-gated:**
 
-The converted-content value flows from the orchestrator (steps 1-3) into
-the step-4 tool call via IBS `{{vars.*}}` substitution (`04-ibs.md`): the
-orchestrator holds the converted text in scope, the IBS binds it into the
-`doc_store` ToolSkill's `param_template`, and the executor applies it.
+| Tool | Signature | Reuse | Notes |
+|------|-----------|-------|-------|
+| `read_file`, `glob`, `memory_*` | — | builtin | reused as-is |
+| `component_get_content_hash` | `(table, scope, name) -> str?` | new-leaf | read-only staleness probe for ANY component table |
+| `docu_upsert` | `(scope, name, content, content_hash, …) -> ()` | mechanism-specific | `INSERT … ON CONFLICT (scope,name) DO UPDATE` into `reborn_docus`; sets `source='system'`, `validated`, `consumer_tags={03:llm}` |
+| `mark_prefix_stale` | `(scope) -> ()` | mechanism-specific | wraps `PgBasicPromptStore::mark_stale` (Phase K.1) |
 
-Variants: `by-extract` = steps 1, 2, 4 (no LLM — Tier 0 at high Wilson);
-`by-llm-compress` = steps 1, 2, 3, 4 (Tier 1). The `doc-sync` Action (§4.1)
-runs `by-extract` inline; it enqueues `by-llm-compress` for over-budget
-docs (the Action itself has no LLM).
+Each new Tool gets a **ToolSkill (class 13)** — executor-facing param
+schema / preconditions / error handling (<5000 tok). The ToolSkill UUID is
+what a Recipe step `include`s to route the call to `rust_items`; a ToolSkill
+UUID in the orchestrator channel is a Q1 hard error (`04-ibs.md`).
 
-### 4.3 Orchestrator Skill (classes 1-3) — `doc-convert` (method/domain guidance)
+**The split is the point.** A future "config-sync" or "skill-sync" recipe
+reuses `file-list`/`file-read`/`hash-compute`/`hash-compare`/
+`component-hash-read` unchanged; only its domain skill + write tool differ.
+That is the v3 library paying off.
 
-An **Orchestrator Skill** — `05-skills-system.md` item 5.1 (a Classic
-Claude-style skill: DB-stored frontmatter + body, no `SKILL.md` file,
-WebUI-exportable on demand), used in its **Orchestrator-Skill role**:
-*narrative method/domain guidance the orchestrator reads*, spanning tools.
-This is the user's case (b): "an explanation about how [doc-conversion]
-works and what's needed." It is explicitly **not** the LLM prompt (that is
-authored in the Recipe step, §4.2 step 3) and **not** a tool-param
-description (that is the `doc_store` ToolSkill, §4.5 — executor-facing,
-which the orchestrator never reads).
+### 4.2 The one doc-specific Orchestrator Skill — `doc-convert-method` (case b)
 
-Its body is the conversion method:
+A Classic Claude-style skill (`05-skills-system.md` item 5.1: DB-stored
+frontmatter + body, no `SKILL.md` file, WebUI-exportable), used in its
+**domain-Skill role** (user case (b)): an explanation of *how doc-conversion
+works and which leaf skills it needs* — it **references** the §4.1 leaves by
+name, it does **not** re-describe their tool usage. Its body:
+
 - the §7 source shape and why it is machine-convertible;
+- the pipeline: `file-read` → `markdown-section` → `token-estimate` →
+  (over budget? `prompt-compress` LLM step) → `component-header-render` →
+  `docu-write`;
 - the converted-form render (`do_reassemble`'s `## 17:{prompt_uid} Docu "{name}"`);
 - the per-doc token budget and the extract-vs-compress decision rule;
-- what to keep (§7 verbatim, line-cited facts) and drop (prose, repetition);
 - "never invent facts — only compress what is in the source";
 - "quote any injection payload only as fenced, escaped code" (so Q1 passes, §7).
 
 This is the knowledge the Sempai-Kohai system optimizes over time (item 7):
 as the Sempai re-compresses docs in idle time, the deltas feed back into a
 better conversion method. Stored `source='system'`, `validated` (system
-bypass Q2, §7).
+bypass Q2, §7). **This is the only doc-specific skill** — everything else in
+§4.1 is a reusable leaf.
 
-### 4.4 PythonCode (class 22) — `doc_hash`, `doc_diff` (orchestrator-channel pure logic)
+### 4.3 Recipe (class 21) — `doc-convert` (composes the leaves)
 
-`07-pythoncode-system.md`, and the **grain rule** (`05-skills-system.md`
-§3): PythonCode is a *utility helper used inside a Recipe's orchestrator
-channel, not a standalone capability*, and it has **no I/O** — it cannot
-read files or touch Postgres (that would cross the kernel boundary; only a
-Tool can). So the mechanism's PythonCode is **pure computation only**:
+A Recipe is **an ordered list of steps the orchestrator runs one by one**
+(`03-recipe-system.md`). `doc-convert` converts **one** doc; its steps
+`include` the leaf UUIDs from §4.1 + the domain skill from §4.2. Two
+variants share most steps; `by-llm-compress` inserts the LLM step.
 
-- `doc_hash(source_text: str) -> str` — SHA-256, the staleness key.
-- `doc_diff(stored_hash: str, new_hash: str) -> bool` — "has this doc
-  changed?" (the skip/convert decision used by the Action, §4.1 step 4).
+- **Step 1 (orchestrator, `type: component`):** `include` the
+  `doc-convert-method` domain Skill (§4.2) — the overview that names the
+  leaves and the order.
+- **Step 2 (orchestrator, `type: component`):** `include` the `file-read`
+  leaf Skill + its `read_file` ToolSkill (rust) → read `{path}`.
+- **Step 3 (orchestrator, `type: component`):** `include` `markdown-section`
+  (PythonCode) → extract §7; `include` `hash-compute` + `token-estimate`
+  leaves → `content_hash` + token count.
+- **Step 4 (orchestrator, `type: llm`) — `by-llm-compress` variant only:**
+  `__llm_complete__` using the `prompt-compress` leaf Skill's rubric; the
+  prompt is assembled here from the domain skill (step 1) + the §7 text
+  (step 3) + the budget. Sempai reviews before shipment
+  (`09-sempai-kohai.md`). (The Skill is the reusable rubric; the prompt is
+  assembled per-call — they are not the same thing.)
+- **Step 5 (orchestrator, `type: component`):** `include` `component-header-render`
+  (PythonCode) → render the `## 17:…` header.
+- **Step 6 (rust, `type: component`):** `include` the `docu-write` leaf
+  Skill + the `docu_upsert` ToolSkill (rust) → the executor writes the
+  `reborn_docus` row (`source='system'`, `validated`, `consumer_tags={03:llm}`,
+  new `content_hash`). Values flow in via IBS `{{vars.*}}` substitution
+  (`04-ibs.md`): the orchestrator holds the converted text, the IBS binds it
+  into the ToolSkill's `param_template`, the executor applies it.
 
-The **DB write is not PythonCode.** The earlier draft's `doc_upsert`
-PythonCode was wrong: a Python helper in the Monty-VM sandbox has no DB
-handle and cannot perform an `INSERT … ON CONFLICT`. Corrected: the upsert
-is the `doc_store` **Tool** (§4.5), invoked by the executor. `doc_hash`/
-`doc_diff` are the snippet→component-promotion path of
-`07-pythoncode-system.md`: authored as PythonCode, Q1-scanned for
-shell-injection, stored `source='system'`, `validated`.
+Variants: `by-extract` = steps 1,2,3,5,6 (no LLM — Tier 0); `by-llm-compress`
+= steps 1,2,3,4,5,6 (Tier 1). The `doc-sync` Action (§4.4) runs `by-extract`
+inline; it enqueues `by-llm-compress` for over-budget docs (an Action has no
+LLM).
 
-### 4.5 Tool (class 0) + ToolSkill (class 13) — `doc_store`, `mark_prefix_stale`, builtins
+### 4.4 Action (class 16) — `doc-sync` (composes the leaves)
 
-The only kind that touches Postgres is a **Tool (class 0)** — a Rust
-execution-layer capability, opaque to the orchestrator (`06-tools-system.md`,
-`05-skills-system.md` §3). The orchestrator does not call tools directly; it
-drives the executor, which calls the tool. The mechanism uses:
+`08-actions-system.md`: a class-16 Action is step-by-step orchestrator
+instructions run by `execute_action_procedure` **with no LLM call** — the
+`action_short_circuit` path (no BuildInstruction, no IBS, no prior-knowledge
+assembly). `doc-sync` composes the §4.1 leaves:
 
-- **Reused builtin tools:** `read_file`, `glob` (list/read source docs),
-  `memory_*` (scratch). Each already has a ToolSkill (class 13) registered.
-- **New Tool `doc_store`** — the Postgres accessor: `upsert(scope, slug,
-  content, content_hash)` performs the `INSERT … ON CONFLICT (scope, name)
-  DO UPDATE` into `reborn_docus` (mirrors `PgMontyVmSettingsStore::upsert`'s
-  `INSERT … ON CONFLICT … DO UPDATE`, `16-kernel-composition.md`), setting
-  `source='system'`, `validation_status='validated'`, `consumer_tags={03:llm}`;
-  `get_hash(scope, slug)` reads the stored `content_hash` for the staleness
-  compare (the Action's step 3). Both reads and writes go through this tool
-  — the orchestrator never holds a DB handle.
-- **New Tool `mark_prefix_stale`** — a thin wrapper over
-  `PgBasicPromptStore::mark_stale` (Phase K.1) so the Action can signal the
-  Prefix Tab to regenerate. Alternatively, reuse the existing
-  interceptor/prewarm-adjacent path; the design prefers the explicit,
-  capability-gated tool so the stale-mark is auditable.
+1. `file-list` leaf + `glob` Tool → list `docs/agents-v3/*.md`.
+2. Per doc: `file-read` leaf + `read_file` Tool → source text.
+3. `hash-compute` leaf → `content_hash = SHA-256(source_text)`.
+4. `component-hash-read` leaf + `component_get_content_hash` Tool → stored
+   hash; `hash-compare` leaf → changed? Skip unchanged (mirrors
+   `component_import.rs` idempotency).
+5. Changed & in-budget: run `doc-convert` `by-extract` (§4.3) inline (no
+   LLM) → `docu-write` writes the row. Over-budget: **enqueue**
+   `doc-convert` `by-llm-compress` for the idle-time Sempai-Kohai loop (§5)
+   — an Action cannot run the LLM step itself.
+6. If any changed: `prefix-stale-mark` leaf + `mark_prefix_stale` Tool →
+   light up the Prefix Tab regenerate button (Phase K.1).
+7. Report (N scanned, M changed, stale=yes/no).
 
-Each new Tool gets a **ToolSkill (class 13)** — the *executor-facing* tight
-description (param schema, preconditions, error handling, <5000 tokens).
-The ToolSkill UUID is what a Recipe step `include`s to route the call to
-the **rust channel** (`rust_items`); a ToolSkill UUID appearing in the
-orchestrator channel is a Q1 hard error (`04-ibs.md`). The orchestrator
-never reads ToolSkill bodies. (Note: `doc_store` and `mark_prefix_stale`
-are new **Rust** capabilities — see the host-prerequisite note in §9.3.)
+### 4.5 ExtensionCatalogue (class 23) — `doc-sync`
 
-### 4.6 ExtensionCatalogue (class 23) — `doc-sync`
-
-`15-component-catalog.md` §0.2: one ExtensionCatalogue grouping all the
-above — the `doc-sync` **Action** (class 16), the `doc-convert` **Recipe**
-(class 21), the `doc-convert` **Orchestrator Skill** (classes 1-3), the
-`doc_hash`/`doc_diff` **PythonCode** (class 22), and the `doc_store`/
-`mark_prefix_stale` **Tools** (class 0) + their **ToolSkills** (class 13)
-— under the `doc-sync` namespace, with an `overview_doc` describing the
+`15-component-catalog.md` §0.2: one ExtensionCatalogue grouping the
+`doc-sync` Action (16), `doc-convert` Recipe (21), the `doc-convert-method`
+domain Skill (1-3), the §4.1 leaf Skills + PythonCode + Tools/ToolSkills —
+under the `doc-sync` namespace, with an `overview_doc` describing the
 mechanism and how the parts fit (the bigger picture; it never re-documents
 the components). `source='system'`, `validation_status='validated'` (the
-bootstrap pattern of §0.16 / `17-webui-prefix-tab.md`).
+bootstrap pattern of §0.16 / `17-webui-prefix-tab.md`). **Note:** the
+general-purpose leaves (`file-read`, `hash-compute`, `markdown-section`,
+`prompt-compress`, …) belong in the matching *builtin* catalogue
+(`builtin-filesystem` / `builtin-memory` / `builtin-management`,
+`05-skills-system.md` §4.7) and are only *referenced* by `doc-sync`; the
+`doc-sync` catalogue owns only the doc-specific parts (the domain skill,
+`docu_upsert`/`mark_prefix_stale`, the Recipe, the Action).
 
 ---
 
@@ -462,8 +463,9 @@ regenerated docs" requirement:
   budget) + injection scan on the converted text. A converted doc that
   accidentally contains an injection pattern (e.g. the source doc
   documents prompt-injection and the §7 summary quotes a payload) fails
-  Q1 — the converter must sanitize (the `doc-convert` Skill's rubric
-  includes "quote injection payloads only as fenced, escaped code").
+  Q1 — the converter must sanitize (the `doc-convert-method` domain skill
+  and the `prompt-compress` leaf both carry "quote injection payloads only
+  as fenced, escaped code").
 - **Operator-authored or Sempai-proposed conversions** (a human edits a
   doc in the WebUI, or the Sempai proposes a re-compression) go through
   the **full Q1 + Q2 queue** (`validation_status='pending'`, enqueued to
@@ -488,52 +490,66 @@ task rules):
    `interceptor_config_service.rs`. Add a unit test asserting
    `do_reassemble` includes a validated Docu row. (Small Rust edit; no
    migration.)
-2. **PythonCode helpers (class 22):** author `doc_hash`, `doc_diff` as
-   PythonCode components — **pure logic only** (SHA-256, compare), no I/O
+2. **Reusable PythonCode leaves (class 22):** author `sha256`,
+   `hash_changed`, `markdown_section`, `token_estimate`,
+   `format_component_header` — **pure logic, one concern each, no I/O**
    (the snippet→component path of `07-pythoncode-system.md`). Q1-scan for
-   shell-injection. Store `source='system'`, `validated`. (`doc_upsert`
-   is **not** PythonCode — see step 3.)
-3. **Tool + ToolSkill (class 0 + 13):** author the **Rust** capabilities
-   `doc_store` (`upsert`/`get_hash` — the `INSERT … ON CONFLICT … DO
-   UPDATE` into `reborn_docus`) and `mark_prefix_stale` (wraps
-   `PgBasicPromptStore::mark_stale`), plus their **executor-facing
-   ToolSkills** (class 13). These are the only parts that touch Postgres
-   (kernel boundary); the orchestrator drives the executor to call them.
-   (This is host Rust code — see §9.3.)
-4. **Orchestrator Skill (classes 1-3):** author the `doc-convert`
-   **Orchestrator Skill** — the conversion *method/domain guidance*
-   (user case (b); NOT the LLM prompt, NOT a tool-param description).
-   Q1 + (system bypass Q2). Store `validated`.
-5. **Recipe (class 21):** author the `doc-convert` Recipe (variants
-   `by-extract` Tier 0, `by-llm-compress` Tier 1) with `step_descriptions`
-   JSONB. Its steps `include` the Orchestrator Skill UUID (orchestrator
-   channel) and the `doc_store` ToolSkill UUID (rust channel) — so the
-   Tool/ToolSkill from step 3 must exist first. Store `validated`.
-6. **Action (class 16):** author the `doc-sync` Action
-   (`execute_action_procedure`, no LLM) — the scan/decide/extract/upsert/
-   mark-stale driver; enqueues the `by-llm-compress` Recipe for
-   over-budget docs. Store `validated`.
-7. **ExtensionCatalogue (class 23):** register the `doc-sync`
-   ExtensionCatalogue grouping Action + Recipe + Skill + PythonCode +
-   Tools/ToolSkills, with `overview_doc`.
-8. **Idle-time wiring:** register `doc-sync` as a Kohai idle-time work
+   shell-injection. Store `source='system'`, `validated`. These are
+   general-purpose → bootstrap candidates.
+3. **Reusable + mechanism-specific Tools + ToolSkills (class 0 + 13):**
+   author the **Rust** capabilities `component_get_content_hash`
+   (read-only staleness probe for any component table — reusable),
+   `docu_upsert` (the `INSERT … ON CONFLICT … DO UPDATE` into
+   `reborn_docus` — mechanism-specific), and `mark_prefix_stale` (wraps
+   `PgBasicPromptStore::mark_stale` — mechanism-specific), plus their
+   **executor-facing ToolSkills** (class 13). `read_file`/`glob`/`memory_*`
+   are reused as-is. These are the only parts that touch Postgres (kernel
+   boundary); the orchestrator drives the executor to call them. (Host
+   Rust code — see §9.3.) The split (read probe vs write vs stale-mark) is
+   deliberate so other "sync" recipes can reuse `component_get_content_hash`.
+4. **Reusable leaf Orchestrator Skills (classes 1-3):** author the
+   one-tool-each leaves — `file-list`, `file-read`, `hash-compute`,
+   `hash-compare`, `component-hash-read`, `markdown-section`,
+   `token-estimate`, `component-header-render`, `prompt-compress`,
+   `docu-write`, `prefix-stale-mark` (§4.1). Each binds to ONE tool /
+   pythoncode (user case (a)). Q1 + (system bypass Q2). Store `validated`.
+   Most are general-purpose → bootstrap candidates.
+5. **The one domain Orchestrator Skill (classes 1-3):** author
+   `doc-convert-method` (§4.2) — the doc-specific overview that *references*
+   the §4.1 leaves by name (user case (b); NOT the LLM prompt, NOT a
+   tool-param description). Q1 + (system bypass Q2). Store `validated`.
+6. **Recipe (class 21):** author `doc-convert` (variants `by-extract`
+   Tier 0, `by-llm-compress` Tier 1) with `step_descriptions` JSONB. Its
+   steps `include` the leaf UUIDs from step 4 + the domain skill from
+   step 5 + the ToolSkill UUIDs from step 3 — so steps 3-5 must exist
+   first. Store `validated`.
+7. **Action (class 16):** author `doc-sync` (`execute_action_procedure`,
+   no LLM) — the scan/decide/extract/upsert/mark-stale driver that
+   *composes* the §4.1 leaves; enqueues `by-llm-compress` for over-budget
+   docs. Store `validated`.
+8. **ExtensionCatalogue (class 23):** register `doc-sync` owning only the
+   doc-specific parts (domain skill, `docu_upsert`/`mark_prefix_stale`,
+   Recipe, Action); the general-purpose leaves live in the matching
+   builtin catalogue and are referenced. With `overview_doc`.
+9. **Idle-time wiring:** register `doc-sync` as a Kohai idle-time work
    item (`09-sempai-kohai.md`) and/or a scheduled trigger. This is the
    "runs automatically" step.
-9. **End-to-end test:** change a `docs/agents-v3/*.md`, run `doc-sync`,
-   assert the `reborn_docus` row updated (new `content_hash`), the base
-   prompt is `is_stale`, and a Prefix Tab regenerate pulls the new
-   converted doc into the assembled bundle.
+10. **End-to-end test:** change a `docs/agents-v3/*.md`, run `doc-sync`,
+    assert the `reborn_docus` row updated (new `content_hash`), the base
+    prompt is `is_stale`, and a Prefix Tab regenerate pulls the new
+    converted doc into the assembled bundle.
 
 **Host-Rust prerequisites** (the unavoidable exceptions to "not code per
 se"): step 1 (the `COMPONENT_TABLES`/`class_label` const edit) and step 3
-(the `doc_store`/`mark_prefix_stale` Tools + their ToolSkills). Both are
-host code because (a) the base-prompt assembler is a Rust const, and (b)
-a DB write can only be a Rust capability — the agent cannot write to
-Postgres from PythonCode. Steps 2, 4-8 are pure v3 artifacts (DB rows +
-the agent operating on itself). No new migrations are required (V040
-already has every column; `reborn_docus.source` has no CHECK to relax;
-`reborn_basic_prompt_store` V056 is the Phase K.1 prerequisite the design
-depends on).
+(the `component_get_content_hash`/`docu_upsert`/`mark_prefix_stale` Tools
++ their ToolSkills). Both are host code because (a) the base-prompt
+assembler is a Rust const, and (b) a DB read/write/stale-mark can only be
+a Rust capability — the agent cannot touch Postgres from PythonCode
+(kernel boundary). Steps 2, 4-9 are pure v3 artifacts (DB rows + the agent
+operating on itself); many leaves are Phase-L bootstrap candidates. No new
+migrations are required (V040 already has every column; `reborn_docus.source`
+has no CHECK to relax; `reborn_basic_prompt_store` V056 is the Phase K.1
+prerequisite the design depends on).
 
 ---
 
@@ -551,20 +567,20 @@ Before I implement, I need the user to confirm:
    Q1 internal), while operator/Sempai-proposed conversions go through
    full Q1+Q2. Confirm this matches intent (else every regeneration
    blocks on a human reviewer).
-3. **The host-Rust prerequisites** (§2.2 / §4.5 / steps 1+3): there are
-   **two** pieces of host code this "not code per se" mechanism cannot
-   avoid. (a) Adding `reborn_docus` to the `COMPONENT_TABLES` const +
-   `class_label` — an additive edit so `do_reassemble` reads Docu rows.
-   (b) The `doc_store` + `mark_prefix_stale` **Tools (class 0)** + their
-   **ToolSkills (class 13)** — because a DB write / stale-mark can only
-   be a Rust capability; the orchestrator cannot write to Postgres from
-   PythonCode (kernel boundary). The user said "not code per se, but as
-   a recipe, skills, tools, python-code, action component" — and
-   **Tools are explicitly in that list**, so (b) is in-spirit a v3
-   artifact; (a) is the one true host-const exception. Confirm both are
-   acceptable. (Alternative to (b): reuse/extend an existing DB-write
-   tool instead of adding `doc_store` — needs investigation; flagged
-   here, not decided.)
+3. **The host-Rust prerequisites** (§2.2 / §4.1 / §4.5 / steps 1+3):
+   there are **two** pieces of host code this "not code per se" mechanism
+   cannot avoid. (a) Adding `reborn_docus` to the `COMPONENT_TABLES` const
+   + `class_label` — an additive edit so `do_reassemble` reads Docu rows.
+   (b) The `component_get_content_hash` + `docu_upsert` + `mark_prefix_stale`
+   **Tools (class 0)** + their **ToolSkills (class 13)** — because a DB
+   read/write/stale-mark can only be a Rust capability; the orchestrator
+   cannot touch Postgres from PythonCode (kernel boundary). The user said
+   "not code per se, but as a recipe, skills, tools, python-code, action
+   component" — and **Tools are explicitly in that list**, so (b) is
+   in-spirit a v3 artifact; (a) is the one true host-const exception.
+   Confirm both are acceptable. (Alternative to (b): reuse/extend an
+   existing DB-write tool instead of adding `docu_upsert` — needs
+   investigation; flagged here, not decided.)
 4. **Idle-time vs trigger.** Should the auto-refresh be Kohai idle-time
    (needs a Sempai for the compress variant; deterministic extract runs
    without), a scheduled trigger, or both? **Recommend: both** — trigger
@@ -586,6 +602,6 @@ would do it before you actually start with it"), I am stopping here for
 the user to review this approach and approve it (and answer the open
 decisions in §9) before implementation begins.
 
-If approved, the work proceeds as the 8 steps in §8, one at a time,
+If approved, the work proceeds as the 10 steps in §8, one at a time,
 commit + push to `origin/main` after each — exactly as the prior
 documentation steps were done.

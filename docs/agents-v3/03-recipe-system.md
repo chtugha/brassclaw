@@ -18,6 +18,16 @@ round-trip** (Tier 0); a lower-confidence match injects known-good patterns into
 (Tier 1); no match falls through to full LLM reasoning (Tier 2), and a success can be **extracted**
 into a new recipe + ToolSkill pair.
 
+**A recipe is a composition, not a monolith (the v3 recycling principle,
+`05-skills-system.md` "Recycling").** Each step `include`s **already-existing,
+one-purpose library parts** — leaf Skills (one tool each), ToolSkills, PythonCode
+— by UUID; the recipe is the *ordering* and the *wiring* (`{{vars.*}}`), not the
+capability itself. Prefer reusing a library part over authoring a new one; when a
+genuinely new capability is needed, add it as a small leaf so the next recipe can
+reuse it too. Never bake a whole procedure into one fat skill — split it into
+leaves. (See `DOC_CONVERSION_MECHANISM_DESIGN.md` §4.0/§4.3 for a worked
+example: one `doc-convert` recipe composing ~11 reusable leaves + one domain skill.)
+
 ## 2. Location
 
 - **Data types:** `crates/brassclaw_engine/src/types/recipe.rs` (`Recipe`, `RecipeStep`,

@@ -117,6 +117,37 @@ pub struct SkillManifest {
 patterns → Skills. Both live in the **orchestrator channel** (`orchestrator_steps[]` in the IBS);
 the formatter derives a `StepContextSpec` (`Skill` vs `PythonCode`) from `class_code`.
 
+### Recycling — compose recipes from one-tool leaf skills (the v3 library principle)
+
+The grain rule above says *when* to use a Skill vs PythonCode. The **recycling
+rule** says *how big* a Skill should be: **as small as practical — at best, the
+description of ONE tool usage — so it can be reused across many recipes. Tools
+too: one concern each.** The library (the catalog of validated Skills + Tools +
+ToolSkills + PythonCode) is the asset; a Recipe is a **composition** of
+already-existing library parts. Prefer reusing a library part over authoring a
+new one; when a genuinely new capability is needed, add it as a small leaf so
+the next recipe can reuse it too. **Never bake a whole procedure into one fat
+skill** — split it into leaves the library can recycle.
+
+Two skill grains therefore coexist (the user's two cases):
+
+- **Leaf skill (one tool / one pythoncode)** — the reusable building block;
+  describes how to drive the executor to use ONE tool (user case (a): "a
+  description how to make the executioner use a tool"). This is the unit of
+  reuse. **Author these.**
+- **Domain skill (spans tools)** — the bigger picture (user case (b): "an
+  explanation about how a filesystem works and what's needed to read/write/
+  format/list"). A domain skill **references** leaf skills by name; it does
+  **not** re-duplicate their tool instructions. One per task area; do not
+  proliferate.
+
+The ExtensionCatalogue (class 23, below) is the level above the domain skill and
+likewise never re-documents its children. The Phase L builtin bootstrap (§4.7)
+seeds the first ~85–90 library components into 5 catalogues — the starter
+library every recipe composes from. `DOC_CONVERSION_MECHANISM_DESIGN.md` §4.0
+applies this concretely: the `doc-sync` mechanism is one domain skill + many
+reusable leaves, composed by one recipe + one action.
+
 ### ExtensionCatalogue (class 23) — `reborn_extension_catalogues` (V053, Phase C)
 
 A documentation container that organises a capability domain. It **does not re-document**

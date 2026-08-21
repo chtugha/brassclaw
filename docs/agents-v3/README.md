@@ -43,7 +43,7 @@ documentation effort.
 | 15 | `15-component-catalog.md` | Full class-code taxonomy (0–23), `COMPONENT_TABLES` + `class_label`, common content-table shape (V036 canonical), content-column dispatch (`fetch_component_by_id`), `prompt_uid` stable ordering key, SCH-02 `prior_knowledge_content`, lineage, legacy `MemoryDoc`→class-table import (`component_import.rs`), hierarchy (§0.1), ExtensionCatalogue (§0.2), StepContextSpec (§0.5), cognitive-weight/`FINDING B` (frozen `DocType`), V050–V059 additive migrations | done |
 | 16 | `16-kernel-composition.md` | Kernel authority crates (`brassclaw_trust`/`secrets`/`safety`/`capabilities`/`runtime_policy`/`process_sandbox`/`reborn_identity`/`outbound`/`approvals`) with non-negotiable boundaries; composition wiring (`brassclaw_reborn_composition`: `factory.rs` `RebornServices`/`build_reborn_services`, `runtime.rs` `RebornRuntime`, `webui_v2_app` security middleware stack); runtime profile (Goal 1: `RebornCompositionProfile` removed, `BRASSCLAW_RUNTIME_PROFILE` = capability policy only; Goal 2: Postgres mandatory, partial); kernel is not a v3 migration target | done |
 | 17 | `17-webui-prefix-tab.md` | WebUI v2 SPA (React + Rust route layer + host ingress), descriptor-driven routes, 17 settings tabs, existing base-prompt compile path (Interceptor tab reassemble+prewarm → `do_reassemble`/`prewarm` Sempai-gateway shipment, `brassclaw_config` key-value storage), v3 Prefix Tab (Phase K.1 + item 8: `reborn_basic_prompt_store` V056, `PgBasicPromptStore`, `mark_stale`-on-graduation, generate/regenerate per prefix, `base-prompt` placeholder substitution §0.13), SKILL.md export (item 5.1, not yet implemented) | done |
-| — | `DOC_CONVERSION_MECHANISM_DESIGN.md` | Design/approach (presented, not yet implemented, stopped for approval) for the auto-conversion mechanism (repeat item 4): converts each `docs/agents-v3/*.md` to LLM-optimized form, stores as `reborn_docus` (class 17) components, auto-updates via `content_hash` + idle-time Sempai-Kohai loop, injects into base prompt (Prefix Tab) + per-turn retrieval; built AS v3 artifacts with corrected roles — Action `doc-sync` (class 16, no-LLM driver) + Recipe `doc-convert` (class 21, ordered steps) + Orchestrator Skill `doc-convert` (classes 1-3, method guidance) + PythonCode `doc_hash`/`doc_diff` (class 22, pure logic) + Tool `doc_store`/`mark_prefix_stale` (class 0, Rust DB capability) + their ToolSkills (class 13) + ExtensionCatalogue (class 23) | presented |
+| — | `DOC_CONVERSION_MECHANISM_DESIGN.md` | Design/approach (presented, not yet implemented, stopped for approval) for the auto-conversion mechanism (repeat item 4): converts each `docs/agents-v3/*.md` to LLM-optimized form, stores as `reborn_docus` (class 17) components, auto-updates via `content_hash` + idle-time Sempai-Kohai loop, injects into base prompt (Prefix Tab) + per-turn retrieval; built AS v3 artifacts per the **recycling principle** (§4.0: many one-tool reusable leaf skills/tools the library recycles + ONE doc-specific domain skill `doc-convert-method`) — Recipe `doc-convert` (class 21) + Action `doc-sync` (class 16, no-LLM) **compose** the leaves; PythonCode `sha256`/`hash_changed`/`markdown_section`/`token_estimate`/`format_component_header` (class 22, pure logic); Tools `component_get_content_hash`/`docu_upsert`/`mark_prefix_stale` (class 0) + ToolSkills (class 13); ExtensionCatalogue `doc-sync` (class 23) | presented |
 
 ---
 
@@ -62,6 +62,23 @@ parseable by the conversion mechanism:
 7. **LLM-relevant summary** — the compact, concept-dense form the conversion mechanism will
    further optimize for inclusion in the base prompt / prefixes / on-demand retrieval. This is
    the seed the mechanism refines, not the final compiled form.
+
+---
+
+## v3 architecture principle — recycling (read this before authoring any recipe)
+
+**The library is the asset.** Skills should be as small as practical — **at best, the
+description of ONE tool usage** — so they can be reused in many recipes. Tools too: one concern
+each. A Recipe (class 21) is a **composition** of already-existing, one-purpose library parts
+(leaf Skills, ToolSkills, PythonCode) referenced by UUID in each step's `include`; the recipe is
+the *ordering* + the *wiring*, not the capability itself. Prefer reusing a library part over
+authoring a new one; when a genuinely new capability is needed, add it as a small leaf so the next
+recipe can reuse it too. **Never bake a whole procedure into one fat skill.** Two skill grains
+coexist: **leaf skills** (one tool — the reusable unit, user case (a)) and **domain skills** (span
+tools, the bigger picture that *references* leaves by name, user case (b)); one domain skill per
+task area. See `05-skills-system.md` "Recycling" and `03-recipe-system.md` §1; the worked example
+is `DOC_CONVERSION_MECHANISM_DESIGN.md` §4.0/§4.3 (one recipe + one action composing ~11 reusable
+leaves + one domain skill).
 
 ---
 
