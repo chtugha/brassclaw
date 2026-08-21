@@ -4,8 +4,19 @@
 > artifacts: class-0 Tools (full DB row spec), class-13 ToolSkills (executor-facing only),
 > class-22 PythonCode (pure logic + orchestrator executor bodies), class-1–3 Skills (leaf +
 > domain, orchestrator-facing narrative), class-21 Recipes (with `step_descriptions` JSONB +
-> intent examples), class-16 Actions (deterministic no-LLM procedures), and class-23
-> ExtensionCatalogues (five, one per domain).
+> intent examples), and class-23 ExtensionCatalogues (24 total: 5 global domain catalogues +
+> 19 per-tool catalogues, one per individual tool/capability section).
+>
+> **ExtensionCatalogue design:** Two tiers of catalogues are provided.
+> The **5 global domain catalogues** (`builtin-filesystem`, `builtin-network`, `builtin-memory`,
+> `builtin-process`, `builtin-management`) group all components of an entire domain and are
+> loaded when the orchestrator needs full domain context.
+> The **19 per-tool catalogues** (`ext-read-file`, `ext-write-file`, `ext-list-dir`, `ext-glob`,
+> `ext-grep`, `ext-apply-patch`, `ext-http`, `ext-http-save`, `ext-memory-search`,
+> `ext-memory-write`, `ext-memory-read`, `ext-memory-tree`, `ext-time`, `ext-json`, `ext-shell`,
+> `ext-skill-management`, `ext-trigger-management`, `ext-spawn-subagent`, `ext-web-search`) each
+> own exactly one tool's full component stack. Load a per-tool catalogue when the orchestrator
+> needs only one tool's context — this reduces context size and improves routing precision.
 >
 > ---
 >
@@ -5177,6 +5188,1685 @@ validation_status: "validated"
 
 ---
 
+## Step 6.x — Additional Grep Leaf Skills, PythonCode, and Recipes
+
+> These additions fill the grep variant gap. Each approach (case-insensitive, type-filtered)
+> gets its own leaf skill and Tier-0 recipe — the orchestrator can route here directly
+> without any LLM disambiguation.
+
+### Step 6.x.1 — Leaf Skill: `skill-grep-case-insensitive` (class 1)
+
+> Separate grain: case-insensitive search is a distinct approach and common enough to
+> warrant its own leaf skill and recipe.
+
+```
+name:        "skill-grep-case-insensitive"
+class_code:  1
+description: "Leaf skill: how to perform a case-insensitive regex search across files."
+body: |
+  Use `ts-grep` with `case_insensitive=true` when the match should be case-independent
+  (e.g. searching for 'error' should also match 'Error', 'ERROR'). Combine with any
+  output_mode (files_with_matches, content, count). This is a distinct approach from
+  the default case-sensitive search — prefer this skill when the user says 'any case',
+  'case insensitive', or when the pattern contains mixed-case user input.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 6.x.2 — Leaf Skill: `skill-grep-type-filtered` (class 1)
+
+> Separate grain: restrict grep to specific file types via glob filter.
+
+```
+name:        "skill-grep-type-filtered"
+class_code:  1
+description: "Leaf skill: how to restrict a grep search to specific file types using the glob filter."
+body: |
+  Use `ts-grep` with the `glob` parameter to restrict the search to a specific file type
+  (e.g. glob='*.rs' to search only Rust files, glob='*.{ts,tsx}' for TypeScript). This
+  is more precise than a workspace-root grep and avoids noise from unrelated file types.
+  Combine with any output_mode. When the user specifies a file type in their search
+  intent, always use the glob filter — it reduces result noise significantly.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 6.x.3 — PythonCode: `pc-exec-grep-case-insensitive` (class 22)
+
+> Orchestrator executor for case-insensitive grep with content output mode.
+
+```
+name:        "pc-exec-grep-case-insensitive"
+description: "Orchestrator executor: calls __execute_action__ for a case-insensitive grep
+              via builtin.grep. Input: pattern (string), path (optional), output_mode
+              (optional, default 'files_with_matches'). Sets case_insensitive=true."
+content: |
+  # Orchestrator executor body.
+  _pattern = "{{vars.slot0}}"
+  _path = "{{vars.slot1}}"
+  _output_mode = "{{vars.slot2}}"
+  _params = {"pattern": _pattern, "case_insensitive": True}
+  if _path and _path != "":
+      _params["path"] = _path
+  if _output_mode and _output_mode != "":
+      _params["output_mode"] = _output_mode
+  else:
+      _params["output_mode"] = "files_with_matches"
+  result = __execute_action__("grep", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 6.x.4 — PythonCode: `pc-exec-grep-type-filtered` (class 22)
+
+> Orchestrator executor for type-filtered grep with glob parameter.
+
+```
+name:        "pc-exec-grep-type-filtered"
+description: "Orchestrator executor: calls __execute_action__ for a type-filtered grep
+              via builtin.grep. Input: pattern (string), glob_filter (string e.g. '*.rs'),
+              path (optional), output_mode (optional, default 'files_with_matches')."
+content: |
+  # Orchestrator executor body.
+  _pattern = "{{vars.slot0}}"
+  _glob_filter = "{{vars.slot1}}"
+  _path = "{{vars.slot2}}"
+  _output_mode = "{{vars.slot3}}"
+  _params = {"pattern": _pattern, "glob": _glob_filter}
+  if _path and _path != "":
+      _params["path"] = _path
+  if _output_mode and _output_mode != "":
+      _params["output_mode"] = _output_mode
+  else:
+      _params["output_mode"] = "files_with_matches"
+  result = __execute_action__("grep", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 6.x.5 — Recipe: `file-grep-case-insensitive` (class 21)
+
+> **Tier:** 0 — case-insensitive grep variant. Routes here when the user specifies
+> case-insensitive matching. One recipe per approach.
+
+```
+name:        "file-grep-case-insensitive"
+description: "Search file contents case-insensitively using a regular expression."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-grep>"],
+    "label":   "Pre-load ts-grep ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-grep-case-insensitive>"],
+    "label":   "PythonCode calls __execute_action__(grep, {pattern, case_insensitive:true, ...})"
+  }
+]
+intent_examples: [
+  {"input": "find all uses of Error (any case)",               "class": 1},
+  {"input": "case insensitive search for this pattern",        "class": 1},
+  {"input": "find this word regardless of capitalisation",     "class": 1},
+  {"input": "grep case insensitive",                           "class": 1},
+  {"input": "search for TODO ignoring case",                   "class": 2},
+  {"input": "case-insensitive regex search in the codebase",   "class": 1},
+  {"input": "find 'config' in any capitalisation",             "class": 2},
+  {"input": "grep -i for this pattern",                        "class": 1},
+  {"input": "search files case insensitively",                 "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 6.x.6 — Recipe: `file-grep-type-filtered` (class 21)
+
+> **Tier:** 0 — type-filtered grep variant. Routes here when the user specifies a file
+> type alongside a search pattern. One recipe per approach.
+
+```
+name:        "file-grep-type-filtered"
+description: "Search only specific file types for a pattern using a glob file-type filter."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-grep>"],
+    "label":   "Pre-load ts-grep ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-grep-type-filtered>"],
+    "label":   "PythonCode calls __execute_action__(grep, {pattern, glob:'*.ext', ...})"
+  }
+]
+intent_examples: [
+  {"input": "find this pattern only in .rs files",             "class": 1},
+  {"input": "grep for this in TypeScript files only",          "class": 1},
+  {"input": "search only Python files for this string",        "class": 1},
+  {"input": "find this in .json config files",                 "class": 2},
+  {"input": "grep only Rust source files for this pattern",    "class": 1},
+  {"input": "search in .ts and .tsx files",                    "class": 2},
+  {"input": "find this function only in test files",           "class": 2},
+  {"input": "grep specific file extension for pattern",        "class": 1},
+  {"input": "search only markdown files for this text",        "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 4.x — Additional List-Dir Leaf Skills, PythonCode, and Recipes
+
+> These additions fill the list_dir variant gap. Filtering by type (files only, dirs only)
+> is a common orchestrator need — each approach gets its own leaf skill and recipe.
+
+### Step 4.x.1 — Leaf Skill: `skill-list-dir-files-only` (class 1)
+
+> Separate grain: list only files (no subdirectories) in a directory.
+
+```
+name:        "skill-list-dir-files-only"
+class_code:  1
+description: "Leaf skill: how to list only regular files (no subdirectories) in a directory."
+body: |
+  Use `ts-list-dir` and then filter the result with `pc-exec-list-filter-by-type` to
+  return only entries of type 'file'. This is useful when you want to process every file
+  in a directory without recursing, and you want to skip subdirectory entries. The
+  filter is applied in the PythonCode step after the list call returns.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 4.x.2 — Leaf Skill: `skill-list-dir-dirs-only` (class 1)
+
+> Separate grain: list only subdirectories in a directory.
+
+```
+name:        "skill-list-dir-dirs-only"
+class_code:  1
+description: "Leaf skill: how to list only subdirectories in a directory."
+body: |
+  Use `ts-list-dir` and then filter the result with `pc-exec-list-filter-by-type` to
+  return only entries of type 'directory'. This is useful when exploring the top-level
+  structure of a project (e.g. list only the immediate subdirectories of the repo root).
+  The filter is applied in the PythonCode step after the list call returns.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 4.x.3 — PythonCode: `pc-exec-list-filter-by-type` (class 22)
+
+> Pure logic: filters a list_dir result to a specific entry type. No I/O, no imports.
+
+```
+name:        "pc-exec-list-filter-by-type"
+description: "Pure-logic helper: filters a list_dir result to only entries of a given type.
+              Input: entries (list from list_dir result), entry_type ('file' | 'directory').
+              Output: {entries, entry_type, count} — only matching entries."
+content: |
+  # No I/O, no imports. IBS bakes in entries and entry_type before execution.
+  # __execute_action__ is NOT called here — this is a post-processing step.
+  _entries = {{vars.slot0}}
+  _entry_type = "{{vars.slot1}}"
+  if not isinstance(_entries, list):
+      _entries = []
+  filtered = [e for e in _entries if isinstance(e, dict) and e.get("type") == _entry_type]
+  result = {"entries": filtered, "entry_type": _entry_type, "count": len(filtered)}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 4.x.4 — PythonCode: `pc-url-encode` (class 22)
+
+> Pure logic: URL-encodes a string. Placed near list_dir helpers for convenience;
+> used by HTTP and web-search recipes.
+
+```
+name:        "pc-url-encode"
+description: "Pure-logic helper: URL-encodes a string (percent-encoding, spaces as %20).
+              Input: raw string. Output: {encoded, raw}."
+content: |
+  import urllib.parse as _up
+  _raw = "{{vars.slot0}}"
+  _encoded = _up.quote(_raw.strip(), safe="")
+  result = {"encoded": _encoded, "raw": _raw}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 4.x.5 — Recipe: `file-list-files-only` (class 21)
+
+> **Tier:** 0 — list only regular files in a directory. One recipe per variant.
+> Files-only listing is a distinct use case from a full directory listing.
+
+```
+name:        "file-list-files-only"
+description: "List only regular files (no subdirectories) in a directory."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-list-dir>"],
+    "label":   "Pre-load ts-list-dir ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-list-dir>", "<uuid:pc-exec-list-filter-by-type>"],
+    "label":   "PythonCode: list_dir then filter entries to type='file'"
+  }
+]
+intent_examples: [
+  {"input": "list only the files in this directory",           "class": 1},
+  {"input": "show me files without subdirectories",            "class": 1},
+  {"input": "files only, no folders",                          "class": 1},
+  {"input": "list all files in this directory (no dirs)",      "class": 1},
+  {"input": "what files are directly in the src folder",       "class": 2},
+  {"input": "show only file entries not directories",          "class": 1},
+  {"input": "list files in the project root",                  "class": 2},
+  {"input": "just the files please no subfolders",             "class": 1},
+  {"input": "enumerate files in this folder",                  "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 8.x — Additional HTTP Leaf Skills, PythonCode, and Recipes
+
+> These additions fill the HTTP variant gap. HEAD, authenticated GET, PUT, DELETE, and
+> webhook-POST are all distinct dispatch patterns deserving their own leaf skills and
+> Tier-0 recipes. One approach per leaf skill; one pattern per recipe.
+
+### Step 8.x.1 — Leaf Skill: `skill-http-head` (class 1)
+
+> Separate grain: HEAD requests (metadata only, no response body).
+
+```
+name:        "skill-http-head"
+class_code:  1
+description: "Leaf skill: how to make an HTTP HEAD request to check resource metadata."
+body: |
+  Use `ts-http-fetch` with method='head' (via pc-exec-http-head) when you only need
+  the response headers and status code — not the response body. HEAD is cheaper than
+  GET for large resources and is the correct method for existence checks, content-type
+  inspection, and reachability tests. The response body will be empty; inspect the
+  status code (200 = exists, 404 = not found, etc.) and headers.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 8.x.2 — Leaf Skill: `skill-http-put` (class 1)
+
+> Separate grain: PUT requests (replace a resource at a URL).
+
+```
+name:        "skill-http-put"
+class_code:  1
+description: "Leaf skill: how to make an HTTP PUT request to replace a resource."
+body: |
+  Use `ts-http-fetch` with method='put' and a `body` (via pc-exec-http-put) when the
+  target API uses PUT semantics (idempotent full replacement of a resource). Include a
+  Content-Type header (typically 'application/json') and an Authorization header when
+  required. Non-2xx responses are not tool errors — always check the status field.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 8.x.3 — Leaf Skill: `skill-http-delete` (class 1)
+
+> Separate grain: DELETE requests (remove a resource at a URL).
+
+```
+name:        "skill-http-delete"
+class_code:  1
+description: "Leaf skill: how to make an HTTP DELETE request to remove a resource."
+body: |
+  Use `ts-http-fetch` with method='delete' (via pc-exec-http-delete) to remove a
+  resource via REST API. DELETE has ExternalWrite semantics — always confirm with the
+  user before dispatching. Include Authorization headers when required. Check the
+  response status (204 No Content = success for many REST APIs; 404 = already gone).
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 8.x.4 — PythonCode: `pc-exec-http-head` (class 22)
+
+```
+name:        "pc-exec-http-head"
+description: "Orchestrator executor: calls __execute_action__ for an HTTP HEAD request via
+              builtin.http. Input: url (string). Output: status code and headers only."
+content: |
+  # Orchestrator executor body.
+  _url = "{{vars.slot0}}"
+  result = __execute_action__("http", {"url": _url, "method": "head"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 8.x.5 — PythonCode: `pc-exec-http-get-authenticated` (class 22)
+
+```
+name:        "pc-exec-http-get-authenticated"
+description: "Orchestrator executor: calls __execute_action__ for an authenticated HTTP GET
+              via builtin.http. Input: url (string), auth_header_value (string — full value
+              for the Authorization header, e.g. 'Bearer <token>'). Output: status + body."
+content: |
+  # Orchestrator executor body.
+  _url = "{{vars.slot0}}"
+  _auth = "{{vars.slot1}}"
+  _params = {"url": _url, "method": "get", "headers": {"Authorization": _auth}}
+  result = __execute_action__("http", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 8.x.6 — PythonCode: `pc-exec-http-put` (class 22)
+
+```
+name:        "pc-exec-http-put"
+description: "Orchestrator executor: calls __execute_action__ for an HTTP PUT request via
+              builtin.http. Input: url (string), body (JSON value), headers (optional dict).
+              Output: status + body."
+content: |
+  # Orchestrator executor body.
+  _url = "{{vars.slot0}}"
+  _body = {{vars.slot1}}
+  _headers = {{vars.slot2}}
+  _params = {"url": _url, "method": "put", "body": _body}
+  if _headers:
+      _params["headers"] = _headers
+  result = __execute_action__("http", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 8.x.7 — PythonCode: `pc-exec-http-delete` (class 22)
+
+```
+name:        "pc-exec-http-delete"
+description: "Orchestrator executor: calls __execute_action__ for an HTTP DELETE request via
+              builtin.http. Input: url (string), headers (optional dict with auth).
+              Output: status + body."
+content: |
+  # Orchestrator executor body.
+  _url = "{{vars.slot0}}"
+  _headers = {{vars.slot1}}
+  _params = {"url": _url, "method": "delete"}
+  if _headers:
+      _params["headers"] = _headers
+  result = __execute_action__("http", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 8.x.8 — Recipe: `http-head` (class 21)
+
+> **Tier:** 0 — deterministic HEAD dispatch. One recipe per method variant.
+> HEAD requests are a distinct pattern: metadata-only, no body, used for existence
+> checks and reachability tests.
+
+```
+name:        "http-head"
+description: "Send an HTTP HEAD request to check resource metadata (status + headers only)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-http-head>"],
+    "label":   "PythonCode calls __execute_action__(http, {url, method:'head'})"
+  }
+]
+intent_examples: [
+  {"input": "check if this URL exists",                        "class": 1},
+  {"input": "HEAD request to this endpoint",                   "class": 1},
+  {"input": "check if this resource is reachable",             "class": 1},
+  {"input": "what content type does this URL return",          "class": 2},
+  {"input": "check the headers of this URL without downloading","class": 2},
+  {"input": "HTTP HEAD this URL",                              "class": 1},
+  {"input": "test if this API endpoint is up",                 "class": 2},
+  {"input": "check resource metadata without fetching body",   "class": 1},
+  {"input": "is this URL reachable",                           "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 8.x.9 — Recipe: `http-authenticated-get` (class 21)
+
+> **Tier:** 0 — deterministic authenticated GET. One recipe per auth pattern.
+> The auth token is a slot variable baked in by IBS — the orchestrator calls this
+> recipe deterministically without LLM involvement.
+
+```
+name:        "http-authenticated-get"
+description: "Fetch a URL via HTTP GET with a Bearer token Authorization header."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-http-get-authenticated>"],
+    "label":   "PythonCode calls __execute_action__(http, {url, method:get, headers:{Authorization:...}})"
+  }
+]
+intent_examples: [
+  {"input": "call this API with my bearer token",              "class": 1},
+  {"input": "authenticated GET request to this endpoint",      "class": 1},
+  {"input": "fetch this URL with Authorization header",        "class": 1},
+  {"input": "GET this private API endpoint",                   "class": 2},
+  {"input": "call this REST API using bearer auth",            "class": 2},
+  {"input": "fetch the protected resource with my token",      "class": 2},
+  {"input": "HTTP GET with bearer token",                      "class": 1},
+  {"input": "authenticated http get",                          "class": 1},
+  {"input": "call this endpoint with my API key as bearer",    "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 8.x.10 — Recipe: `http-put` (class 21)
+
+> **Tier:** 1 — LLM must compose the PUT URL, headers, and replacement body.
+
+```
+name:        "http-put"
+description: "Send an HTTP PUT request to replace a resource at a URL."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-http-put>", "<uuid:skill-http-authenticated>"],
+    "label":   "Load http-put + auth leaf skill context"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM constructs the PUT URL, headers, and replacement body from user instructions"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch binding"
+  }
+]
+intent_examples: [
+  {"input": "update this resource via PUT",                    "class": 1},
+  {"input": "PUT request to replace this record",             "class": 1},
+  {"input": "replace this API resource via PUT",              "class": 1},
+  {"input": "HTTP PUT to this endpoint",                      "class": 1},
+  {"input": "send a PUT request with this body",              "class": 2},
+  {"input": "update this REST resource",                      "class": 2},
+  {"input": "PUT to update this configuration",               "class": 2},
+  {"input": "replace the document via REST PUT",              "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 8.x.11 — Recipe: `http-delete` (class 21)
+
+> **Tier:** 1 — LLM confirms the DELETE target and ExternalWrite effect with user.
+
+```
+name:        "http-delete"
+description: "Send an HTTP DELETE request to remove a resource, with user confirmation."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-http-delete>", "<uuid:skill-http-authenticated>"],
+    "label":   "Load http-delete + auth leaf skill context"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM confirms target URL with user (ExternalWrite — irreversible), then calls ts-http-fetch"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch binding"
+  }
+]
+intent_examples: [
+  {"input": "delete this resource via REST API",               "class": 1},
+  {"input": "send a DELETE request to this endpoint",         "class": 1},
+  {"input": "HTTP DELETE this record",                        "class": 1},
+  {"input": "remove this resource via REST",                  "class": 2},
+  {"input": "delete this API entry",                          "class": 2},
+  {"input": "call DELETE on this endpoint",                   "class": 1},
+  {"input": "destroy this resource via HTTP",                 "class": 2},
+  {"input": "DELETE request to remove this item",             "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 8.x.12 — Recipe: `http-post-json-webhook` (class 21)
+
+> **Tier:** 0 — deterministic POST with a pre-structured JSON body for webhook calls.
+> A webhook POST has a known URL and a fixed-shape JSON body (event type + payload).
+> The orchestrator can dispatch this deterministically when all slots are baked in.
+
+```
+name:        "http-post-json-webhook"
+description: "Send a JSON webhook POST notification to a pre-configured URL."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-http-post>"],
+    "label":   "PythonCode calls __execute_action__(http, {url, method:post, body:{event, payload}, headers:{Content-Type:application/json}})"
+  }
+]
+intent_examples: [
+  {"input": "send a webhook notification",                     "class": 1},
+  {"input": "post a JSON event to this webhook URL",           "class": 1},
+  {"input": "fire a webhook with this payload",                "class": 1},
+  {"input": "send a webhook alert",                            "class": 2},
+  {"input": "notify the webhook endpoint",                     "class": 1},
+  {"input": "trigger the webhook with a JSON body",            "class": 1},
+  {"input": "post event to webhook",                           "class": 1},
+  {"input": "send a hook notification to this URL",            "class": 2},
+  {"input": "call the webhook endpoint with JSON",             "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 13.x.4 — Recipe: `memory-tree-deep` (class 21)
+
+> **Tier:** 0 — memory tree listing with depth=5. One recipe per depth variant.
+> Deep tree traversal is a distinct use case from the default depth=1 surface scan.
+> Routes here when the user wants to see the full nested memory structure.
+
+```
+name:        "memory-tree-deep"
+description: "List the deep directory structure of the agent's persistent memory (depth=5)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-tree>"],
+    "label":   "Pre-load ts-memory-tree ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-tree>"],
+    "label":   "PythonCode calls __execute_action__(memory_tree, {depth:5})"
+  }
+]
+intent_examples: [
+  {"input": "show me the full memory structure",               "class": 1},
+  {"input": "deep memory tree listing",                        "class": 1},
+  {"input": "show all levels of memory directory",             "class": 1},
+  {"input": "full nested memory tree",                         "class": 1},
+  {"input": "memory tree deep",                                "class": 1},
+  {"input": "show everything in my memory store",              "class": 2},
+  {"input": "list the complete memory hierarchy",              "class": 2},
+  {"input": "what is the full structure of my memory",         "class": 2},
+  {"input": "explore all levels of memory",                    "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 16.x — Additional Skill-List Recipes
+
+> Two new Tier-0 variants for scope-specific skill listing. The orchestrator can route
+> directly to the right scope without asking the LLM to interpret 'user' vs 'system'.
+
+### Step 16.x.1 — Recipe: `skill-list-user-only` (class 21)
+
+> **Tier:** 0 — list only user-scope installed skills.
+
+```
+name:        "skill-list-user-only"
+description: "List only user-installed skills (scope='user')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-skill-list>"],
+    "label":   "Pre-load ts-skill-list ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-skill-list>"],
+    "label":   "PythonCode calls __execute_action__(skill_list, {scope:'user'})"
+  }
+]
+intent_examples: [
+  {"input": "what skills have I installed",                    "class": 1},
+  {"input": "list my user-installed skills",                   "class": 1},
+  {"input": "show only the skills I added",                    "class": 1},
+  {"input": "which user skills do I have",                     "class": 1},
+  {"input": "my custom skills list",                           "class": 2},
+  {"input": "show skills installed by user",                   "class": 1},
+  {"input": "list user-scope skills",                          "class": 1},
+  {"input": "what have I installed as skills",                 "class": 2},
+  {"input": "my skill library",                                "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 16.x.2 — Recipe: `skill-list-system-only` (class 21)
+
+> **Tier:** 0 — list only system-provided built-in skills.
+
+```
+name:        "skill-list-system-only"
+description: "List only system-provided built-in skills (scope='system')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-skill-list>"],
+    "label":   "Pre-load ts-skill-list ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-skill-list>"],
+    "label":   "PythonCode calls __execute_action__(skill_list, {scope:'system'})"
+  }
+]
+intent_examples: [
+  {"input": "what built-in skills are available",              "class": 1},
+  {"input": "list system skills",                              "class": 1},
+  {"input": "show me the built-in capabilities",               "class": 1},
+  {"input": "what system-level skills exist",                  "class": 1},
+  {"input": "list the system builtins",                        "class": 1},
+  {"input": "show only system-provided skills",                "class": 1},
+  {"input": "what skills come with the system",                "class": 2},
+  {"input": "list builtin skills scope system",                "class": 1},
+  {"input": "show factory-installed skills",                   "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 14.x — Domain Skill `skill-time` (class 2)
+
+> References all time leaf skills by name. No duplicated content. Replaces the
+> individual leaf skills being referenced loosely from the management catalogue.
+
+```
+name:        "skill-time"
+class_code:  2
+description: "The time domain provides one tool for all time operations:
+
+              GETTING CURRENT TIME:
+              — skill-time-now: Get the current UTC timestamp (and optionally in a timezone).
+
+              PARSING:
+              — skill-time-parse: Parse a timestamp string into a structured time value.
+
+              CONVERTING:
+              — skill-time-convert: Convert a timestamp to a different timezone.
+
+              Decision guide:
+              • What time is it now → skill-time-now
+              • Time in a specific timezone → skill-time-now (with timezone parameter)
+              • Parse a date/time string → skill-time-parse
+              • Convert between timezones → skill-time-convert
+
+              PythonCode in the orchestrator must NEVER use datetime.now() or any date
+              library directly — always call skill-time-now first to get the current time
+              from the runtime clock."
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 15.x — Domain Skill `skill-json` (class 2)
+
+> References all JSON leaf skills by name. No duplicated content.
+
+```
+name:        "skill-json"
+class_code:  2
+description: "The JSON domain provides one tool for four JSON operations:
+
+              EXTRACTING:
+              — skill-json-query: Extract a value by dot/bracket path from a JSON structure.
+
+              SERIALIZING:
+              — skill-json-stringify: Convert a structured value to a pretty-printed JSON string.
+
+              PARSING:
+              — skill-json-parse: Parse a JSON string into a structured value.
+
+              VALIDATING:
+              — skill-json-validate: Check whether a string is valid JSON (returns {valid, error}).
+
+              Decision guide:
+              • Need a field from a JSON response → skill-json-query
+              • Need to write JSON to a file or display it → skill-json-stringify
+              • Have a raw JSON string, need a dict/list → skill-json-parse
+              • Unsure if a string is valid JSON before parsing → skill-json-validate first
+
+              Always validate before parsing when the source is external or user-provided.
+              pc-json-extract-field is an alternative pure-Python extractor for multi-hop
+              path resolution when the json tool is not available in the current context."
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 22.x — Per-Tool ExtensionCatalogues (class 23)
+
+> One ExtensionCatalogue per tool/section. These sit alongside the five global domain
+> catalogues and provide more precise grouping: each catalogue owns exactly one tool's
+> full component stack (Tool + ToolSkill + PythonCode + Leaf Skills + Recipes).
+>
+> **Design principle — extension per section:**
+> The global domain catalogues (builtin-filesystem, builtin-network, etc.) group all
+> components of a domain. The per-tool catalogues drill down further: `ext-read-file`
+> owns only the read_file components. This enables more precise recipe construction,
+> narrower context injection, and finer-grained capability grants. When the orchestrator
+> needs only file-reading context, it loads `ext-read-file` — not the entire filesystem
+> catalogue.
+
+### Step 22.x.1 — ExtensionCatalogue: `ext-read-file` (class 23)
+
+```
+name:         "ext-read-file"
+class_code:   23
+overview_doc: |
+  # File Read Capability
+  Tool: builtin.read_file
+  Effect: read (sandboxed to workspace mount)
+
+  Reads a file's content (full or line-range). Use for inspecting source files,
+  config files, logs, or any workspace file before editing or processing it.
+
+  Approaches:
+  - Full read: path only → file-read recipe
+  - Ranged read: path + range → file-read-range recipe
+  - Large file: paginate using range='N-M' in iterations
+
+task_groups:
+  - group_name:  "file-read-full"
+    description: "Read a complete file"
+  - group_name:  "file-read-range"
+    description: "Read a specific line range"
+
+child_component_ids: [
+  "<uuid:read_file>",
+  "<uuid:ts-read-file>",
+  "<uuid:pc-exec-read-file>",
+  "<uuid:skill-read-file>",
+  "<uuid:skill-read-file-range>",
+  "<uuid:file-read>",
+  "<uuid:file-read-range>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.2 — ExtensionCatalogue: `ext-write-file` (class 23)
+
+```
+name:         "ext-write-file"
+class_code:   23
+overview_doc: |
+  # File Write Capability
+  Tool: builtin.write_file
+  Effect: write (sandboxed to workspace mount)
+
+  Writes or replaces a file's full content. Use when creating a new file or
+  intentionally replacing an entire file. For partial edits, prefer ext-apply-patch.
+
+  Approaches:
+  - New file: path + new content → file-write recipe
+  - Full replace: read first, then write with new content → file-write recipe
+
+task_groups:
+  - group_name:  "file-write-new"
+    description: "Create a new file"
+  - group_name:  "file-write-replace"
+    description: "Fully replace existing file content"
+
+child_component_ids: [
+  "<uuid:write_file>",
+  "<uuid:ts-write-file>",
+  "<uuid:pc-exec-write-file>",
+  "<uuid:skill-write-file-new>",
+  "<uuid:skill-write-file-replace>",
+  "<uuid:file-write>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.3 — ExtensionCatalogue: `ext-list-dir` (class 23)
+
+```
+name:         "ext-list-dir"
+class_code:   23
+overview_doc: |
+  # Directory Listing Capability
+  Tool: builtin.list_dir
+  Effect: read_filesystem (sandboxed to workspace mount)
+
+  Lists directory contents: single level, recursive tree, or type-filtered.
+
+  Approaches:
+  - Shallow listing: path only → file-list recipe
+  - Recursive scan: path + recursive:true → file-list-recursive recipe
+  - Files only: list then filter → file-list-files-only recipe
+
+task_groups:
+  - group_name:  "dir-list-shallow"
+    description: "Single-level directory listing"
+  - group_name:  "dir-list-recursive"
+    description: "Recursive directory tree scan"
+  - group_name:  "dir-list-filtered"
+    description: "Type-filtered listing (files-only)"
+
+child_component_ids: [
+  "<uuid:list_dir>",
+  "<uuid:ts-list-dir>",
+  "<uuid:pc-exec-list-dir>",
+  "<uuid:pc-exec-list-filter-by-type>",
+  "<uuid:skill-list-dir>",
+  "<uuid:skill-list-dir-recursive>",
+  "<uuid:skill-list-dir-files-only>",
+  "<uuid:skill-list-dir-dirs-only>",
+  "<uuid:file-list>",
+  "<uuid:file-list-recursive>",
+  "<uuid:file-list-files-only>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.4 — ExtensionCatalogue: `ext-glob` (class 23)
+
+```
+name:         "ext-glob"
+class_code:   23
+overview_doc: |
+  # Glob File Search Capability
+  Tool: builtin.glob
+  Effect: read_filesystem (sandboxed to workspace mount)
+
+  Finds files by name or extension pattern. Sorted by modification time.
+
+  Approaches:
+  - By extension: **/*.ext → file-glob-by-extension recipe
+  - By name pattern: **/name* → file-glob-by-name recipe
+  - In a subdirectory: path + pattern → file-glob-in-subdir recipe
+  - Generic pattern: any pattern → file-glob recipe
+
+task_groups:
+  - group_name:  "glob-by-extension"
+    description: "Find all files of a specific extension"
+  - group_name:  "glob-by-name"
+    description: "Find files matching a name pattern"
+  - group_name:  "glob-in-subdir"
+    description: "Restrict glob to a subdirectory"
+
+child_component_ids: [
+  "<uuid:glob>",
+  "<uuid:ts-glob>",
+  "<uuid:pc-exec-glob>",
+  "<uuid:skill-glob-by-extension>",
+  "<uuid:skill-glob-by-name>",
+  "<uuid:skill-glob-in-subdir>",
+  "<uuid:file-glob>",
+  "<uuid:file-glob-by-extension>",
+  "<uuid:file-glob-by-name>",
+  "<uuid:file-glob-in-subdir>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.5 — ExtensionCatalogue: `ext-grep` (class 23)
+
+```
+name:         "ext-grep"
+class_code:   23
+overview_doc: |
+  # Grep Content Search Capability
+  Tool: builtin.grep
+  Effect: read_filesystem (sandboxed to workspace mount)
+
+  Searches file contents by regex or literal pattern. Three output modes:
+  files_with_matches (fast, compact), content (matching lines + context), count (frequency).
+
+  Approaches:
+  - Which files: output_mode=files_with_matches → file-grep-files recipe
+  - Matching lines: output_mode=content → file-grep-content recipe
+  - Count occurrences: output_mode=count → file-grep-count recipe
+  - Case-insensitive: case_insensitive=true → file-grep-case-insensitive recipe
+  - Type-filtered: glob='*.ext' → file-grep-type-filtered recipe
+
+task_groups:
+  - group_name:  "grep-files"
+    description: "Find which files contain a pattern"
+  - group_name:  "grep-content"
+    description: "Retrieve matching lines with context"
+  - group_name:  "grep-count"
+    description: "Count occurrences without returning content"
+  - group_name:  "grep-insensitive"
+    description: "Case-insensitive search"
+  - group_name:  "grep-typed"
+    description: "Type-filtered search"
+
+child_component_ids: [
+  "<uuid:grep>",
+  "<uuid:ts-grep>",
+  "<uuid:pc-exec-grep>",
+  "<uuid:pc-exec-grep-case-insensitive>",
+  "<uuid:pc-exec-grep-type-filtered>",
+  "<uuid:skill-grep-files>",
+  "<uuid:skill-grep-content>",
+  "<uuid:skill-grep-count>",
+  "<uuid:skill-grep-case-insensitive>",
+  "<uuid:skill-grep-type-filtered>",
+  "<uuid:file-grep>",
+  "<uuid:file-grep-files>",
+  "<uuid:file-grep-content>",
+  "<uuid:file-grep-count>",
+  "<uuid:file-grep-case-insensitive>",
+  "<uuid:file-grep-type-filtered>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.6 — ExtensionCatalogue: `ext-apply-patch` (class 23)
+
+```
+name:         "ext-apply-patch"
+class_code:   23
+overview_doc: |
+  # Apply Patch Capability
+  Tool: builtin.apply_patch
+  Effect: mixed (reads + writes the file, sandboxed to workspace mount)
+  Permission: Ask (requires user confirmation in most profiles)
+
+  Applies a targeted search-replace edit to a file. Safer than full file replacement
+  because it requires exact matching of the old content.
+
+  Approaches:
+  - Single unique replacement: old_string + new_string → file-patch recipe
+  - Replace all occurrences: replace_all=true → file-patch recipe (LLM decides)
+
+  Always Tier 1: the LLM must read the file first and compose exact old/new strings.
+
+task_groups:
+  - group_name:  "patch-single"
+    description: "Replace one unique occurrence"
+  - group_name:  "patch-all"
+    description: "Replace all occurrences of a string"
+
+child_component_ids: [
+  "<uuid:apply_patch>",
+  "<uuid:ts-apply-patch>",
+  "<uuid:skill-apply-patch-single>",
+  "<uuid:skill-apply-patch-all>",
+  "<uuid:file-patch>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.7 — ExtensionCatalogue: `ext-http` (class 23)
+
+```
+name:         "ext-http"
+class_code:   23
+overview_doc: |
+  # HTTP Inline-Response Capability
+  Tool: builtin.http
+  Effect: network_egress
+  Permission: Ask
+
+  Issues HTTP requests (GET, POST, PUT, DELETE, HEAD) and returns the response inline
+  (body capped at 256 KiB). For larger responses use ext-http-save.
+
+  Approaches:
+  - GET a URL: → http-get recipe (Tier 0)
+  - GET JSON API: → http-get-json recipe (Tier 0, Accept:application/json header)
+  - GET authenticated: → http-authenticated-get recipe (Tier 0, Bearer token)
+  - HEAD (metadata only): → http-head recipe (Tier 0)
+  - POST JSON body: → http-post recipe (Tier 1, LLM composes body)
+  - POST webhook: → http-post-json-webhook recipe (Tier 0, pre-structured body)
+  - PUT (replace resource): → http-put recipe (Tier 1, LLM composes body)
+  - DELETE (remove resource): → http-delete recipe (Tier 1, user confirmation required)
+
+task_groups:
+  - group_name:  "http-get"
+    description: "GET requests (various auth/format variants)"
+  - group_name:  "http-mutate"
+    description: "POST, PUT, DELETE requests"
+  - group_name:  "http-head"
+    description: "HEAD requests for metadata/existence checks"
+
+child_component_ids: [
+  "<uuid:http>",
+  "<uuid:ts-http-fetch>",
+  "<uuid:pc-exec-http-get>",
+  "<uuid:pc-exec-http-get-authenticated>",
+  "<uuid:pc-exec-http-post>",
+  "<uuid:pc-exec-http-head>",
+  "<uuid:pc-exec-http-put>",
+  "<uuid:pc-exec-http-delete>",
+  "<uuid:pc-http-status-check>",
+  "<uuid:pc-json-extract-field>",
+  "<uuid:skill-http-get>",
+  "<uuid:skill-http-post>",
+  "<uuid:skill-http-authenticated>",
+  "<uuid:skill-http-head>",
+  "<uuid:skill-http-put>",
+  "<uuid:skill-http-delete>",
+  "<uuid:http-get>",
+  "<uuid:http-get-json>",
+  "<uuid:http-authenticated-get>",
+  "<uuid:http-head>",
+  "<uuid:http-post>",
+  "<uuid:http-post-json-webhook>",
+  "<uuid:http-put>",
+  "<uuid:http-delete>",
+  "<uuid:skill-http>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.8 — ExtensionCatalogue: `ext-http-save` (class 23)
+
+```
+name:         "ext-http-save"
+class_code:   23
+overview_doc: |
+  # HTTP Save-to-File Capability
+  Tool: builtin.http.save
+  Effect: network_egress + write_filesystem
+  Permission: Ask
+
+  Issues an HTTP request and saves the response body to a scoped workspace file.
+  Use when the response exceeds 256 KiB or must be persisted for later processing.
+
+  Approaches:
+  - Download and save: url + save_to → http-save recipe (Tier 0)
+  - Save large API response for parsing: url + save_to → http-save recipe (Tier 0)
+
+task_groups:
+  - group_name:  "http-save-download"
+    description: "Download and save to workspace file"
+  - group_name:  "http-save-api"
+    description: "Save large API response for later processing"
+
+child_component_ids: [
+  "<uuid:http.save>",
+  "<uuid:ts-http-save>",
+  "<uuid:pc-exec-http-save>",
+  "<uuid:skill-http-save-download>",
+  "<uuid:skill-http-save-api>",
+  "<uuid:http-save>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.9 — ExtensionCatalogue: `ext-memory-search` (class 23)
+
+```
+name:         "ext-memory-search"
+class_code:   23
+overview_doc: |
+  # Memory Semantic Search Capability
+  Tool: builtin.memory_search
+  Effect: read_memory
+
+  Searches the agent's persistent memory by natural-language query. Returns ranked
+  documents by semantic similarity.
+
+  Approaches:
+  - Focused search (default limit=5): → memory-search recipe (Tier 0)
+  - Broad recall (limit=20): → memory-search-broad recipe (Tier 0)
+
+task_groups:
+  - group_name:  "memory-search-focused"
+    description: "Targeted semantic search"
+  - group_name:  "memory-search-broad"
+    description: "Wide recall for session start or full-topic discovery"
+
+child_component_ids: [
+  "<uuid:memory_search>",
+  "<uuid:ts-memory-search>",
+  "<uuid:pc-exec-memory-search>",
+  "<uuid:skill-memory-search>",
+  "<uuid:skill-memory-search-broad>",
+  "<uuid:memory-search>",
+  "<uuid:memory-search-broad>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.10 — ExtensionCatalogue: `ext-memory-write` (class 23)
+
+```
+name:         "ext-memory-write"
+class_code:   23
+overview_doc: |
+  # Memory Write Capability
+  Tool: builtin.memory_write
+  Effect: write_memory
+
+  Writes, appends, or patches the agent's persistent memory. Three targets:
+  daily_log (default), MEMORY.md (main), or any relative memory path.
+
+  Approaches:
+  - Append to daily log: → memory-write-log recipe (Tier 0)
+  - Append to MEMORY.md: → memory-write-main recipe (Tier 0)
+  - Generic write: → memory-write recipe (Tier 0)
+  - Targeted patch: → memory-write-patch recipe (Tier 0)
+
+task_groups:
+  - group_name:  "memory-write-log"
+    description: "Append to daily log"
+  - group_name:  "memory-write-main"
+    description: "Append to MEMORY.md"
+  - group_name:  "memory-write-patch"
+    description: "Targeted patch of existing document"
+
+child_component_ids: [
+  "<uuid:memory_write>",
+  "<uuid:ts-memory-write>",
+  "<uuid:pc-exec-memory-write>",
+  "<uuid:pc-exec-memory-patch>",
+  "<uuid:pc-memory-format-entry>",
+  "<uuid:skill-memory-write-log>",
+  "<uuid:skill-memory-write-main>",
+  "<uuid:skill-memory-write-patch>",
+  "<uuid:memory-write>",
+  "<uuid:memory-write-log>",
+  "<uuid:memory-write-main>",
+  "<uuid:memory-write-patch>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.11 — ExtensionCatalogue: `ext-memory-read` (class 23)
+
+```
+name:         "ext-memory-read"
+class_code:   23
+overview_doc: |
+  # Memory Read by Path Capability
+  Tool: builtin.memory_read
+  Effect: read_memory
+
+  Reads a specific memory document by its known path. Use memory_search when the
+  path is unknown.
+
+  Approaches:
+  - Generic read by path: → memory-read recipe (Tier 0)
+  - Read MEMORY.md: → memory-read-main recipe (Tier 0)
+  - Read HEARTBEAT.md: → memory-read-heartbeat recipe (Tier 0)
+
+task_groups:
+  - group_name:  "memory-read-by-path"
+    description: "Read a memory document by known path"
+  - group_name:  "memory-read-wellknown"
+    description: "Read well-known documents (MEMORY.md, HEARTBEAT.md)"
+
+child_component_ids: [
+  "<uuid:memory_read>",
+  "<uuid:ts-memory-read>",
+  "<uuid:pc-exec-memory-read>",
+  "<uuid:pc-memory-extract-section>",
+  "<uuid:skill-memory-read>",
+  "<uuid:memory-read>",
+  "<uuid:memory-read-main>",
+  "<uuid:memory-read-heartbeat>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.12 — ExtensionCatalogue: `ext-memory-tree` (class 23)
+
+```
+name:         "ext-memory-tree"
+class_code:   23
+overview_doc: |
+  # Memory Tree Directory Listing Capability
+  Tool: builtin.memory_tree
+  Effect: read_memory
+
+  Lists the hierarchical directory structure of the agent's persistent memory.
+  Use to discover what documents exist before searching or reading.
+
+  Approaches:
+  - Shallow tree (depth=1): → memory-tree recipe (Tier 0)
+  - Deep tree (depth=5): → memory-tree-deep recipe (Tier 0)
+
+task_groups:
+  - group_name:  "memory-tree-shallow"
+    description: "Root-level tree listing"
+  - group_name:  "memory-tree-deep"
+    description: "Deep nested tree listing"
+
+child_component_ids: [
+  "<uuid:memory_tree>",
+  "<uuid:ts-memory-tree>",
+  "<uuid:pc-exec-memory-tree>",
+  "<uuid:skill-memory-tree>",
+  "<uuid:memory-tree>",
+  "<uuid:memory-tree-deep>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.13 — ExtensionCatalogue: `ext-time` (class 23)
+
+```
+name:         "ext-time"
+class_code:   23
+overview_doc: |
+  # Time Operations Capability
+  Tool: builtin.time
+  Effect: read_only
+
+  Provides three time operations via a single tool: now, parse, convert.
+
+  Approaches:
+  - Get current time (UTC): → time-now recipe (Tier 0)
+  - Get current time in a timezone: → time-now-tz recipe (Tier 0)
+  - Parse a timestamp string: → time-parse recipe (Tier 0)
+  - Convert between timezones: → time-convert recipe (Tier 0)
+
+  PythonCode MUST NOT use datetime.now() — always use the time tool.
+
+task_groups:
+  - group_name:  "time-now"
+    description: "Get current time"
+  - group_name:  "time-parse"
+    description: "Parse timestamp strings"
+  - group_name:  "time-convert"
+    description: "Timezone conversion"
+
+child_component_ids: [
+  "<uuid:time>",
+  "<uuid:ts-time-now>",
+  "<uuid:ts-time-parse>",
+  "<uuid:ts-time-convert>",
+  "<uuid:pc-exec-time-now>",
+  "<uuid:pc-exec-time-parse>",
+  "<uuid:pc-exec-time-convert>",
+  "<uuid:skill-time-now>",
+  "<uuid:skill-time-parse>",
+  "<uuid:skill-time-convert>",
+  "<uuid:skill-time>",
+  "<uuid:time-now>",
+  "<uuid:time-now-tz>",
+  "<uuid:time-parse>",
+  "<uuid:time-convert>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.14 — ExtensionCatalogue: `ext-json` (class 23)
+
+```
+name:         "ext-json"
+class_code:   23
+overview_doc: |
+  # JSON Operations Capability
+  Tool: builtin.json
+  Effect: read_only
+
+  Provides four JSON operations via a single tool: query, stringify, parse, validate.
+
+  Approaches:
+  - Extract a field by path: → json-query recipe (Tier 0)
+  - Stringify / pretty-print: → json-stringify recipe (Tier 0)
+  - Parse JSON string: → json-parse recipe (Tier 0)
+  - Validate JSON syntax: → json-validate recipe (Tier 0)
+
+  Always validate before parsing when the source is external or user-provided.
+
+task_groups:
+  - group_name:  "json-query"
+    description: "Extract values by path"
+  - group_name:  "json-stringify-parse"
+    description: "Serialize and deserialize"
+  - group_name:  "json-validate"
+    description: "Syntax validation"
+
+child_component_ids: [
+  "<uuid:json>",
+  "<uuid:ts-json-query>",
+  "<uuid:ts-json-stringify>",
+  "<uuid:ts-json-validate>",
+  "<uuid:pc-exec-json-query>",
+  "<uuid:pc-exec-json-stringify>",
+  "<uuid:pc-exec-json-validate>",
+  "<uuid:skill-json-query>",
+  "<uuid:skill-json-stringify>",
+  "<uuid:skill-json-parse>",
+  "<uuid:skill-json-validate>",
+  "<uuid:skill-json>",
+  "<uuid:json-query>",
+  "<uuid:json-stringify>",
+  "<uuid:json-parse>",
+  "<uuid:json-validate>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.15 — ExtensionCatalogue: `ext-shell` (class 23)
+
+```
+name:         "ext-shell"
+class_code:   23
+overview_doc: |
+  # Shell Execution Capability
+  Tool: builtin.shell
+  Effect: mixed (sandboxed subprocess)
+  Permission: Ask
+
+  §shell-guard: ALL recipes using this tool are Tier 1 (llm_call_required=true).
+  The LLM must compose and validate every command. No Tier-0 shell dispatch.
+
+  Approaches:
+  - Single command: → shell-run recipe (Tier 1)
+  - Multi-line script: → shell-script recipe (Tier 1)
+
+  Prefer structured filesystem, network, and memory tools over shell whenever possible.
+  Shell is the last resort when no structured tool covers the need.
+
+task_groups:
+  - group_name:  "shell-single"
+    description: "Run a single validated shell command"
+  - group_name:  "shell-script"
+    description: "Run a multi-line shell script authored by the LLM"
+
+child_component_ids: [
+  "<uuid:shell>",
+  "<uuid:ts-shell-run>",
+  "<uuid:skill-shell-run>",
+  "<uuid:skill-shell-safe-check>",
+  "<uuid:skill-shell>",
+  "<uuid:shell-run>",
+  "<uuid:shell-script>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.16 — ExtensionCatalogue: `ext-skill-management` (class 23)
+
+```
+name:         "ext-skill-management"
+class_code:   23
+overview_doc: |
+  # Skill Management Capability
+  Tools: builtin.skill_list, builtin.skill_install, builtin.skill_remove
+  Effects: Read (list), Write (install/remove)
+
+  Manages the installed skill library. List is Tier 0. Install and Remove are Tier 1
+  (user confirmation required — both have side effects on the capability stack).
+
+  Approaches:
+  - List all skills: → skill-list recipe (Tier 0)
+  - List user skills only: → skill-list-user-only recipe (Tier 0)
+  - List system skills only: → skill-list-system-only recipe (Tier 0)
+  - Install a skill: → skill-install recipe (Tier 1)
+  - Remove a skill: → skill-remove recipe (Tier 1)
+
+task_groups:
+  - group_name:  "skill-list"
+    description: "Enumerate installed skills (scope-filtered)"
+  - group_name:  "skill-install"
+    description: "Install a new skill from URL/path"
+  - group_name:  "skill-remove"
+    description: "Remove an installed skill"
+
+child_component_ids: [
+  "<uuid:skill_list>",
+  "<uuid:ts-skill-list>",
+  "<uuid:pc-exec-skill-list>",
+  "<uuid:skill-skill-list>",
+  "<uuid:skill-list>",
+  "<uuid:skill-list-user-only>",
+  "<uuid:skill-list-system-only>",
+
+  "<uuid:skill_install>",
+  "<uuid:ts-skill-install>",
+  "<uuid:skill-skill-install>",
+  "<uuid:skill-install>",
+
+  "<uuid:skill_remove>",
+  "<uuid:ts-skill-remove>",
+  "<uuid:skill-skill-remove>",
+  "<uuid:skill-remove>",
+
+  "<uuid:skill-skills>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.17 — ExtensionCatalogue: `ext-trigger-management` (class 23)
+
+```
+name:         "ext-trigger-management"
+class_code:   23
+overview_doc: |
+  # Trigger Management Capability
+  Tools: builtin.trigger_list, builtin.trigger_create, builtin.trigger_remove
+  Effects: Read (list), ExternalWrite (create/remove)
+
+  Manages persistent scheduled triggers. List is Tier 0. Create and Remove are Tier 1
+  (ExternalWrite effect, user confirmation required).
+
+  Approaches:
+  - List all triggers: → trigger-list recipe (Tier 0)
+  - Create a trigger: → trigger-create recipe (Tier 1)
+  - Remove a trigger: → trigger-remove recipe (Tier 1)
+
+task_groups:
+  - group_name:  "trigger-list"
+    description: "Enumerate configured triggers"
+  - group_name:  "trigger-create"
+    description: "Schedule a new trigger"
+  - group_name:  "trigger-remove"
+    description: "Remove a scheduled trigger"
+
+child_component_ids: [
+  "<uuid:trigger_list>",
+  "<uuid:ts-trigger-list>",
+  "<uuid:pc-exec-trigger-list>",
+  "<uuid:skill-trigger-list>",
+  "<uuid:trigger-list>",
+
+  "<uuid:trigger_create>",
+  "<uuid:ts-trigger-create>",
+  "<uuid:skill-trigger-create>",
+  "<uuid:trigger-create>",
+
+  "<uuid:trigger_remove>",
+  "<uuid:ts-trigger-remove>",
+  "<uuid:skill-trigger-remove>",
+  "<uuid:trigger-remove>",
+
+  "<uuid:skill-triggers>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.18 — ExtensionCatalogue: `ext-spawn-subagent` (class 23)
+
+```
+name:         "ext-spawn-subagent"
+class_code:   23
+overview_doc: |
+  # Child Agent Delegation Capability
+  Tool: builtin.spawn_subagent
+  Effect: ExternalWrite
+
+  §spawn_subagent-guard: ALL recipes using this tool are Tier 1 (llm_call_required=true).
+  The LLM MUST frame the goal and confirm delegation. No Tier-0 spawn dispatch.
+
+  Approaches:
+  - Goal delegation: write clear goal + context → subagent-spawn recipe (Tier 1)
+  - Named procedure: specify recipe_name → subagent-spawn recipe (Tier 1)
+
+task_groups:
+  - group_name:  "subagent-goal"
+    description: "Delegate a self-contained sub-goal to a child agent"
+  - group_name:  "subagent-procedure"
+    description: "Run a named recipe as a child agent procedure"
+
+child_component_ids: [
+  "<uuid:spawn_subagent>",
+  "<uuid:ts-spawn-subagent>",
+  "<uuid:skill-spawn-subagent>",
+  "<uuid:skill-spawn-named-procedure>",
+  "<uuid:skill-subagent>",
+  "<uuid:subagent-spawn>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 22.x.19 — ExtensionCatalogue: `ext-web-search` (class 23)
+
+```
+name:         "ext-web-search"
+class_code:   23
+overview_doc: |
+  # Web Search Composition Capability
+  Tool: builtin.http (composed — no dedicated web_search capability)
+  Effect: network_egress (read)
+
+  Web search is a composed capability: builtin.http GET + JSON extraction.
+  A search API endpoint must be configured in the session scope first.
+
+  Approaches:
+  - Search the web: → web-search recipe (Tier 1 — LLM formulates query, interprets results)
+
+task_groups:
+  - group_name:  "web-search"
+    description: "Query a configured search API and extract results"
+
+child_component_ids: [
+  "<uuid:ts-web-search>",
+  "<uuid:pc-web-search-extract>",
+  "<uuid:pc-web-search-query-build>",
+  "<uuid:pc-url-encode>",
+  "<uuid:skill-web-search>",
+  "<uuid:web-search>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+
+
 ## Step 22 — ExtensionCatalogue: `builtin-filesystem` (class 23)
 
 > Owns all filesystem capability components. Groups Tool, ToolSkill, PythonCode,
@@ -5244,10 +6934,14 @@ child_component_ids: [
   "<uuid:builtin.list_dir>",
   "<uuid:ts-list-dir>",
   "<uuid:pc-exec-list-dir>",
+  "<uuid:pc-exec-list-filter-by-type>",
   "<uuid:skill-list-dir>",
   "<uuid:skill-list-dir-recursive>",
+  "<uuid:skill-list-dir-files-only>",
+  "<uuid:skill-list-dir-dirs-only>",
   "<uuid:file-list>",
   "<uuid:file-list-recursive>",
+  "<uuid:file-list-files-only>",
 
   "<uuid:builtin.glob>",
   "<uuid:ts-glob>",
@@ -5263,13 +6957,19 @@ child_component_ids: [
   "<uuid:builtin.grep>",
   "<uuid:ts-grep>",
   "<uuid:pc-exec-grep>",
+  "<uuid:pc-exec-grep-case-insensitive>",
+  "<uuid:pc-exec-grep-type-filtered>",
   "<uuid:skill-grep-files>",
   "<uuid:skill-grep-content>",
   "<uuid:skill-grep-count>",
+  "<uuid:skill-grep-case-insensitive>",
+  "<uuid:skill-grep-type-filtered>",
   "<uuid:file-grep>",
   "<uuid:file-grep-files>",
   "<uuid:file-grep-content>",
   "<uuid:file-grep-count>",
+  "<uuid:file-grep-case-insensitive>",
+  "<uuid:file-grep-type-filtered>",
 
   "<uuid:builtin.apply_patch>",
   "<uuid:ts-apply-patch>",
@@ -5333,15 +7033,27 @@ child_component_ids: [
   "<uuid:builtin.http>",
   "<uuid:ts-http-fetch>",
   "<uuid:pc-exec-http-get>",
+  "<uuid:pc-exec-http-get-authenticated>",
   "<uuid:pc-exec-http-post>",
+  "<uuid:pc-exec-http-head>",
+  "<uuid:pc-exec-http-put>",
+  "<uuid:pc-exec-http-delete>",
   "<uuid:pc-http-status-check>",
   "<uuid:pc-json-extract-field>",
   "<uuid:skill-http-get>",
   "<uuid:skill-http-post>",
   "<uuid:skill-http-authenticated>",
+  "<uuid:skill-http-head>",
+  "<uuid:skill-http-put>",
+  "<uuid:skill-http-delete>",
   "<uuid:http-get>",
   "<uuid:http-get-json>",
+  "<uuid:http-authenticated-get>",
+  "<uuid:http-head>",
   "<uuid:http-post>",
+  "<uuid:http-post-json-webhook>",
+  "<uuid:http-put>",
+  "<uuid:http-delete>",
 
   "<uuid:builtin.http.save>",
   "<uuid:ts-http-save>",
@@ -5355,6 +7067,7 @@ child_component_ids: [
   "<uuid:ts-web-search>",
   "<uuid:pc-web-search-extract>",
   "<uuid:pc-web-search-query-build>",
+  "<uuid:pc-url-encode>",
   "<uuid:skill-web-search>",
   "<uuid:web-search>"
 ]
@@ -5420,6 +7133,7 @@ child_component_ids: [
   "<uuid:ts-memory-write>",
   "<uuid:pc-exec-memory-write>",
   "<uuid:pc-exec-memory-patch>",
+  "<uuid:pc-memory-format-entry>",
   "<uuid:skill-memory-write-log>",
   "<uuid:skill-memory-write-main>",
   "<uuid:skill-memory-write-patch>",
@@ -5431,6 +7145,7 @@ child_component_ids: [
   "<uuid:builtin.memory_read>",
   "<uuid:ts-memory-read>",
   "<uuid:pc-exec-memory-read>",
+  "<uuid:pc-memory-extract-section>",
   "<uuid:skill-memory-read>",
   "<uuid:memory-read>",
   "<uuid:memory-read-main>",
@@ -5441,9 +7156,8 @@ child_component_ids: [
   "<uuid:pc-exec-memory-tree>",
   "<uuid:skill-memory-tree>",
   "<uuid:memory-tree>",
+  "<uuid:memory-tree-deep>",
 
-  "<uuid:pc-memory-extract-section>",
-  "<uuid:pc-memory-format-entry>",
   "<uuid:skill-memory>"
 ]
 source: "system"
@@ -5598,6 +7312,8 @@ child_component_ids: [
   "<uuid:pc-exec-skill-list>",
   "<uuid:skill-skill-list>",
   "<uuid:skill-list>",
+  "<uuid:skill-list-user-only>",
+  "<uuid:skill-list-system-only>",
 
   "<uuid:builtin.skill_install>",
   "<uuid:ts-skill-install>",
@@ -5621,6 +7337,7 @@ child_component_ids: [
   "<uuid:skill-time-now>",
   "<uuid:skill-time-parse>",
   "<uuid:skill-time-convert>",
+  "<uuid:skill-time>",
   "<uuid:time-now>",
   "<uuid:time-now-tz>",
   "<uuid:time-parse>",
@@ -5637,6 +7354,7 @@ child_component_ids: [
   "<uuid:skill-json-stringify>",
   "<uuid:skill-json-parse>",
   "<uuid:skill-json-validate>",
+  "<uuid:skill-json>",
   "<uuid:json-query>",
   "<uuid:json-stringify>",
   "<uuid:json-parse>",
@@ -5659,19 +7377,21 @@ validation_status: "validated"
 |-------|------|-------|-----------------|
 | 0 | Tool | 23 | builtin.shell, read_file, write_file, list_dir, glob, grep, apply_patch, http, http.save, memory_search, memory_write, memory_read, memory_tree, time, json, skill_list, skill_install, skill_remove, trigger_create, trigger_list, trigger_remove, spawn_subagent, echo |
 | 13 | ToolSkill | 28 | ts-shell-run, ts-read-file, ts-write-file, ts-list-dir, ts-glob, ts-grep, ts-apply-patch, ts-http-fetch, ts-http-save, ts-memory-search, ts-memory-write, ts-memory-read, ts-memory-tree, ts-time-now, ts-time-parse, ts-time-convert, ts-json-query, ts-json-stringify, ts-json-validate, ts-skill-list, ts-skill-install, ts-skill-remove, ts-trigger-create, ts-trigger-list, ts-trigger-remove, ts-spawn-subagent, ts-web-search, ts-echo |
-| 22 | PythonCode | 27 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-glob, pc-exec-grep, pc-exec-http-get, pc-exec-http-post, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-web-search-extract, pc-web-search-query-build |
-| 1 | Leaf Skill | 44 | skill-shell-run, skill-shell-safe-check, skill-read-file, skill-read-file-range, skill-write-file-new, skill-write-file-replace, skill-list-dir, skill-list-dir-recursive, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, skill-memory-read, skill-memory-tree, skill-time-now, skill-time-parse, skill-time-convert, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search |
-| 2 | Domain Skill | 7 | skill-filesystem, skill-http, skill-memory, skill-shell, skill-skills, skill-triggers, skill-subagent |
-| 21 | Recipe | 46 | file-read, file-read-range, file-write, file-list, file-list-recursive, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-grep, file-grep-files, file-grep-content, file-grep-count, file-patch, http-get, http-get-json, http-post, http-save, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, time-now, time-now-tz, time-parse, time-convert, json-query, json-stringify, json-parse, json-validate, skill-list, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, subagent-spawn, web-search, shell-run, shell-script |
-| 23 | ExtensionCatalogue | 5 | builtin-filesystem, builtin-network, builtin-memory, builtin-process, builtin-management |
+| 22 | PythonCode | 35 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-list-filter-by-type, pc-exec-glob, pc-exec-grep, pc-exec-grep-case-insensitive, pc-exec-grep-type-filtered, pc-exec-http-get, pc-exec-http-get-authenticated, pc-exec-http-post, pc-exec-http-head, pc-exec-http-put, pc-exec-http-delete, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-url-encode, pc-web-search-extract, pc-web-search-query-build |
+| 1 | Leaf Skill | 52 | skill-shell-run, skill-shell-safe-check, skill-read-file, skill-read-file-range, skill-write-file-new, skill-write-file-replace, skill-list-dir, skill-list-dir-recursive, skill-list-dir-files-only, skill-list-dir-dirs-only, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-grep-case-insensitive, skill-grep-type-filtered, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-head, skill-http-put, skill-http-delete, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, skill-memory-read, skill-memory-tree, skill-time-now, skill-time-parse, skill-time-convert, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search (52 total) |
+| 2 | Domain Skill | 9 | skill-filesystem, skill-http, skill-memory, skill-shell, skill-skills, skill-triggers, skill-subagent, skill-time, skill-json |
+| 21 | Recipe | 62 | file-read, file-read-range, file-write, file-list, file-list-recursive, file-list-files-only, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-grep, file-grep-files, file-grep-content, file-grep-count, file-grep-case-insensitive, file-grep-type-filtered, file-patch, http-get, http-get-json, http-authenticated-get, http-head, http-post, http-post-json-webhook, http-put, http-delete, http-save, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, memory-tree-deep, time-now, time-now-tz, time-parse, time-convert, json-query, json-stringify, json-parse, json-validate, skill-list, skill-list-user-only, skill-list-system-only, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, subagent-spawn, web-search, shell-run, shell-script |
+| 23 | ExtensionCatalogue | 24 | builtin-filesystem, builtin-network, builtin-memory, builtin-process, builtin-management, ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch, ext-http, ext-http-save, ext-memory-search, ext-memory-write, ext-memory-read, ext-memory-tree, ext-time, ext-json, ext-shell, ext-skill-management, ext-trigger-management, ext-spawn-subagent, ext-web-search |
 
-> **Actual totals (v3):** 23 Tools + 28 ToolSkills + 27 PythonCode + 44 Leaf Skills + 7 Domain Skills + 44 Recipes + 5 ExtensionCatalogues = **178 components**
+> **Actual totals (v3, revised):** 23 Tools + 28 ToolSkills + 35 PythonCode + 52 Leaf Skills + 9 Domain Skills + 62 Recipes + 24 ExtensionCatalogues = **233 components**
 >
 > (Original plan estimate was 85–90. The increase is intentional: the two-channel
 > architecture adds one PythonCode per Tier-0 recipe dispatch; the skill-granularity rule
-> adds 2–3 leaf skills per original monolithic skill; and the **one-recipe-per-variant rule**
+> adds 2–3 leaf skills per original monolithic skill; the **one-recipe-per-variant rule**
 > adds dedicated Tier-0 recipes for every distinct invocation pattern, eliminating LLM
-> disambiguation overhead and maximizing orchestrator autonomy.)
+> disambiguation overhead and maximizing orchestrator autonomy; and the **per-tool
+> ExtensionCatalogue rule** adds 19 new fine-grained catalogues alongside the 5 global
+> domain catalogues for more precise context injection.)
 
 ---
 
@@ -5694,13 +7414,13 @@ For each domain group:
 
 #### Group insertion order
 
-| Pass | Group | ExtensionCatalogue | Tools | ToolSkills | PythonCode | Leaf Skills | Domain Skills | Recipes |
-|------|-------|--------------------|-------|------------|------------|-------------|---------------|---------|
-| 1 | filesystem | builtin-filesystem | 6 | 6 | 7 | 12 | 1 | 14 |
-| 2 | network | builtin-network | 2 | 3 | 6 | 5 | 1 | 4 |
-| 3 | memory | builtin-memory | 4 | 4 | 7 | 7 | 1 | 10 |
-| 4 | process | builtin-process | 5 | 6 | 1 | 6 | 3 | 7 |
-| 5 | management | builtin-management | 6 | 9 | 7 | 14 | 1 | 9 |
+| Pass | Group | Primary ExtCatalogue | Per-tool ExtCatalogues | Tools | ToolSkills | PythonCode | Leaf Skills | Domain Skills | Recipes |
+|------|-------|----------------------|------------------------|-------|------------|------------|-------------|---------------|---------|
+| 1 | filesystem | builtin-filesystem | ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch | 6 | 6 | 9 | 16 | 1 | 17 |
+| 2 | network | builtin-network | ext-http, ext-http-save, ext-web-search | 2 | 3 | 12 | 9 | 1 | 11 |
+| 3 | memory | builtin-memory | ext-memory-search, ext-memory-write, ext-memory-read, ext-memory-tree | 4 | 4 | 7 | 7 | 1 | 11 |
+| 4 | process | builtin-process | ext-shell, ext-spawn-subagent, ext-trigger-management | 5 | 6 | 1 | 6 | 3 | 7 |
+| 5 | management | builtin-management | ext-skill-management, ext-time, ext-json | 6 | 9 | 7 | 14 | 3 | 11 |
 
 ---
 
@@ -5740,4 +7460,4 @@ producing duplicate rows.
 
 ---
 
-*End of builtin_stuff_v3.md — all Steps + Final section complete. v3 revised: 180 components, 46 Tier-0 recipes, orchestrator-first design.*
+*End of builtin_stuff_v3.md — all Steps + Final section complete. v3 fully revised: 233 components, 62 Recipes (including 47 Tier-0), 24 ExtensionCatalogues (5 global domain + 19 per-tool), orchestrator-first design.*
