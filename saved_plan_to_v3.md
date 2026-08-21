@@ -1521,9 +1521,27 @@ Saves each turn's composition plan (`BuildInstruction` orchestrator_steps + rout
 not the basic-prompt content). If Sempai is connected: reviews the outgoing prompt before
 shipping to Kohai. Can flag patterns for Recipe creation.
 
+> **⚠️ Revised/extended by §0.23 (v3 direction).** The interceptor is extended to:
+> (1) **Sempai auto-creates ALL component types** — not just recipes — via a generalised
+> `SempaiReviewOutcome` + `SempaiProposalSink` (§0.23.6); (2) the kohai prompt store
+> (`PgInterceptorStore`/`PromptSegment`) captures **component UUID references** and keeps
+> packets for **6 weeks max** (§0.23.7); (3) an **idle self-improvement sweep** (idle ≥ 2h
+> AND after 15:00 local, once/day) reassembles prompts + chat history and asks the Sempai
+> for component creation/upgrades → Q1 (§0.23.8). Implementation folds into **Phase K**
+> (§0.23.11).
+
 ---
 
 ### 0.15 Validation System — Two-Gate Pipeline
+
+> **⚠️ Revised by §0.23.2.** Q1 is **upgraded from pure-Rust to orchestrated**: the
+> `component_validator.rs` logic is split into v3 components and Q1 runs a sandboxed
+> agent-loop orchestrator instance. There is **no permanent deterministic floor** (even
+> injection/schema checks become orchestrated test components over time); the
+> calculated risk is accepted and reduces itself via self-improvement (§0.23.8).
+> `component_validator.rs` is **retired at Phase N**. The **state-2 invariant is
+> retained**: only the Q1 orchestrator writes `state = 2`. The text below is the
+> pre-revision reference; see §0.23.2 for the authoritative upgraded design.
 
 **Gate 1 (Q1 — automatic):** Injection scan, schema conformance, S7 guard, cross-references.
 Implemented in `component_validator.rs`. On pass: queue row transitions to state 2 (via
@@ -1550,6 +1568,16 @@ state 3, `counter` incremented, `review_feedback` populated.
 
 
 ### 0.16 Builtin Tool Bootstrap
+
+> **⚠️ Further revised by §0.23.3 / §0.23.9.** Phase L now **also seeds the
+> trusted-root validation system** alongside the builtin-tool stack: one pre-trusted
+> Extension per class + four category main-Recipes per class (each calling
+> sub-recipes) + one basic Recipe per class + one formatter PythonCode per class. The
+> validation system is itself built from v3 components (trusted root + evolvable via
+> Sempai→Q1→Q2). All `source='system'` components — builtins **and** validation-system
+> trusted root — graduate via the automated-but-auditable Q2 (Phase P.0), no bypass.
+> See §0.23.3 (component shape), §0.23.4 (formatter/`formatted_content`), §0.23.9
+> (ordering: L seeds the trusted root right before Phase N's orchestrated Q1).
 
 > **⚠️ REVISED by Answer 2 to the doc-conversion review + Phase P.0.** The
 > bypass pattern described below (builtins seeded with
@@ -1969,6 +1997,16 @@ The field shows live feedback:
 ---
 
 ### 0.18 Validation Queue — Pre-Validation Lifecycle
+
+> **⚠️ Revised by §0.23.2 + §0.23.5.** Two changes: (1) Q1 is now **orchestrated**
+> (not deterministic/no-LLM) — see §0.23.2; the state-2 "only Gate 1 writes it"
+> invariant is retained. (2) The **"non-overlapping states" invariant below is
+> revised for upgrades**: a validated live row **stays validated and keeps serving
+> retrieval** while a queue row carries an upgrade copy in the new `proposed_payload
+> JSONB` column; Q2 approval overwrites the live row, Q2 rejection discards the copy.
+> `validation_status='upgrade_queued'` is **not** set on the live row. For **new**
+> components the original invariant (component `'pending'` + queue row, not served)
+> is unchanged. See §0.23.5 for the authoritative upgrade model.
 
 #### Two separate state machines
 
@@ -2745,6 +2783,336 @@ Per `14-validation-queue.md` and Answer 2 — **nothing ever bypasses Q1+Q2:**
 
 ---
 
+### 0.23 Sempai-Driven Auto-Creation & Self-Improving Orchestrated Validation
+
+> **Subsystem:** The v3 direction that **brings the §4 "Out of Scope" self-improvement
+> items INTO scope** and **upgrades Q1 from pure-Rust to orchestrated**. Four ideas,
+> resolved by collaborative design Q&A (recorded inline):
+> 1. **Sempai auto-creates ALL component types** (not just recipes) → Q1 queue.
+> 2. **Q1 validates by running an orchestrator instance** that exercises the
+>    component (security / performance / token-budget / v3-design adherence), with
+>    Sempai help — the validation system is **itself built from v3 components**.
+> 3. **The validation system is self-improving** — it sends validation prompts to the
+>    kohai-sempai system; the kohai saves the prompts + Sempai answers (as references
+>    to existing components) so the validation system's own components can be upgraded.
+> 4. **Everything new — including new validation-system components — must be
+>    validated** through Q1+Q2 (no bypass).
+>
+> **Implementation directive (Q7):** fold this functionality into the **already
+> existing plan steps** for the validation system and the kohai-sempai system — do
+> NOT create trailing phases Q/R/S. The folding map is §0.23.11.
+>
+> **Grounded in:** `crates/brassclaw_interceptor/` (Sempai/Kohai, `SempaiProposalSink`,
+> `ForensicPacket`/`CapturedPrompt`/`PromptSegment`, `PgInterceptorStore`),
+> `crates/brassclaw_reborn_composition/src/sempai_proposal_sink.rs`
+> (`PgSempaiProposalSink` — recipes-only today),
+> `crates/brassclaw_engine/src/memory/component_validator.rs` (pure-Rust Q1 today),
+> `crates/brassclaw_host_runtime/` (`sandbox_process/`, `services/process_executor`,
+> `first_party_tools/` — the sandboxed orchestrator runtime),
+> `docs/agents-v3/09-sempai-kohai.md` + `14-validation-queue.md` +
+> `15-component-catalog.md`, and §0.14 / §0.15 / §0.16 / §0.18 of this plan.
+
+#### 0.23.1 Scope changes (§4 items brought into scope)
+
+The following §4 "Out of Scope (Marked Postponed)" items are **now IN SCOPE**,
+implemented per this section:
+
+- ~~Full self-improvement pipeline (Interceptor-driven Recipe auto-creation)~~ →
+  IN SCOPE (§0.23.6 + §0.23.8). Generalised from Recipe-only to **all component
+  types** (tools, tool_skills, skills, extensions, python_code,
+  extension_catalogues, recipes, **intents**).
+- ~~Component self-creation wizard~~ → IN SCOPE (§0.23.6). The "wizard" is the
+  Sempai auto-creation path itself; WebUI manual authoring remains as the
+  operator-in-the-loop review/edit path (§0.23.5).
+- ~~Automatic Sempai-driven prompt rewrites~~ → IN SCOPE (§0.23.8). The idle
+  self-improvement sweep reassembles prompts + chat history and asks the Sempai
+  for component-creation/upgrades; the existing inline rerouting prompt-rewrite
+  (`adjusted_volatile_messages`) is unchanged.
+
+#### 0.23.2 Q1 upgraded from pure-Rust to orchestrated
+
+**Decision (Q1):** Q1 is upgraded. What was pure-Rust
+(`ComponentValidator::validate_by_class`) is **split into v3 components** — tools,
+skills, tool_skills, python_code, recipes, extensions — and Q1 **runs an orchestrator
+instance** that executes the validation Recipe for the component's class.
+
+**Runtime (Q1-runtime / N6 decision):** each Q1 validation is a **full sandboxed
+agent-loop orchestrator run** via the existing `sandbox_process` /
+`services/process_executor`, with **restricted capabilities**, a **per-validation
+token budget** enforced, and **cannot mutate production state**. The validation
+orchestrator may exercise the component under test (run a Recipe's steps, execute a
+PythonCode body) inside the sandbox, but never persists outcomes to production tables.
+
+**Security invariant — revised (Q1 + N1 decisions):**
+- **State 2 remains a security invariant.** Only the Q1 orchestrator
+  (`run_q1_validation` in composition, §0.23.9) may write `state = 2`. No API
+  endpoint, no application-layer path, no direct SQL may set it. This is the
+  retained boundary — it is about **who** writes state 2, not about Q1 being LLM-free.
+- **No permanent deterministic floor.** Even injection-scan and schema-conformance
+  **eventually become orchestrated test components**. The calculated risk (Q1 begins
+  with LLM-based category checks) is accepted and **reduces itself rapidly**: the
+  self-improvement loop (§0.23.8) creates deterministic test components that phase
+  out LLM calls until LLM is not needed at all. There is no kept-around pure-Rust
+  floor that self-improvement cannot reach.
+
+> **⚠️ Revision of §0.15 / §0.18 wording.** §0.15 currently says Q1 is
+> "Injection scan, schema conformance, S7 guard, cross-references … Implemented in
+> `component_validator.rs`" and §0.18 says Q1 is "automatic, deterministic, no LLM."
+> Both are **superseded by §0.23.2**: Q1 becomes orchestrated (LLM-assisted
+> initially, deterministically self-improving over time). `component_validator.rs`
+> is **retired at Phase N** (§0.23.9), not kept as a floor. The state-2
+> "only Gate 1 writes it" invariant is retained verbatim.
+
+#### 0.23.3 The validation system is built from v3 components (trusted-root + evolvable)
+
+**Decisions (Q2 + Q6 + N7):** the validation system is itself a set of v3 components,
+bootstrapped as a **trusted root** and **evolvable** via the same Sempai→Q1→Q2 path.
+
+**Component shape:**
+- **One pre-trusted Extension per component class** (classes 0, 1–3, 4–9, 12–23 — all
+  retrievable classes). Each Extension carries: the **task description**, the
+  **format** the component must conform to, the **token budget**, **what needs to be
+  tested**, and **security concerns** for that class.
+- **Four main Recipes per class** — one per test category
+  (**security, performance, token budget, v3-design adherence**) — and **each main
+  Recipe calls sub-recipes** (Q6). The sub-recipes perform the actual test steps
+  (calling tools / skills / python_code, some hitting the kohai-sempai).
+- **One basic Recipe per class** (the bootstrap recipe, Q2): at the start it does
+  little more than **create a prompt for the kohai-sempai system** composed from:
+  the Extension content (**LLM-formatted**, see §0.23.4), the recipe(s), the
+  component under test, and a **query** to test for what the Extension's description
+  asks. Over time, self-improvement replaces this LLM prompt with deterministic
+  sub-recipes (§0.23.8).
+- **One formatter PythonCode per class** (§0.23.4) — computes `formatted_content`.
+
+**Validation matrix scope (N7):** all retrievable classes (0, 1–3, 4–9, 12–23), all 4
+categories per class, seeded as **builtin validation components in Phase L (trusted
+root)**. (~15 class groups × 1 Extension + 4 main-Recipes + sub-recipes + 1 formatter
+PythonCode each.) Classes that do not conceptually need a category (e.g. a Note under
+"performance") still receive a trivial recipe for that category, so the matrix is
+uniform and self-improvement can fill it in deterministically.
+
+**Evolvable (Q2):** if the Sempai creates a **new** validation-system component (a new
+sub-recipe, a sharper security skill, etc.), that component **must also go through
+Q1+Q2** like any other component — there is no bypass for validation-system
+components. The trusted root is the seed; everything after is gated.
+
+#### 0.23.4 `formatted_content` — persisted LLM-formatted version on every component
+
+**Decision (Q2 + N3):** every component table gains a **`formatted_content TEXT`
+column** holding the **LLM-formatted version** of the component, so validation
+prompts (and base-prompt assembly) can be composed from pre-formatted content without
+re-formatting at runtime.
+
+- **Computed at save time** by the **per-class formatter PythonCode component**
+  (§0.23.3), via a **lighter in-process sandboxed PythonCode executor** (N3 decision:
+  sandboxed PythonCode run, **no full agent loop**) — cheaper than a Q1 orchestrator
+  run. Re-computed on every content change.
+- **Migration:** added to **all 13 component tables** in the **same all-tables
+  migration that adds `dependency_registry`** — i.e. `V055__reborn_dependency_registry.sql`
+  carries both `dependency_registry JSONB` **and** `formatted_content TEXT`
+  (additive, `IF NOT EXISTS`). This folds the column into the existing Phase J.2
+  step (Q7). For Recipe variants, a per-variant formatted view is derived at assembly
+  time from the row `formatted_content` + variant `variable_patterns` (no extra
+  column needed in Phase A; revisit if profiling shows reformatting cost).
+
+> **⚠️ Build item (Phase J.2 / L):** the **lightweight in-process sandboxed
+> PythonCode executor** must exist for save-time formatting. If no such executor
+> exists today (the runtime only has the full sandboxed `process_executor` path),
+> Phase J.2 builds it as a restricted single-component PythonCode runner
+> (sandboxed, no orchestrator loop, no tool dispatch, no network) — used by the
+> formatter and reusable by other single-PythonCode needs. Confirm against live
+> source at Phase J.2 implementation.
+
+#### 0.23.5 Upgrade model — validated-live + queue-copy + `proposed_payload` (revises §0.18)
+
+**Decision (N2 + final upgrade-model confirmation):** editing a validated component
+does **NOT** remove it from retrieval.
+
+- The **live validated row stays `validation_status='validated'` and keeps serving
+  retrieval** while the edit is pending.
+- A **COPY** of the edited version is sent to the validation queue. The queue row
+  carries the proposed new payload in a **new `proposed_payload JSONB` column**
+  (set for upgrades; `NULL` for new-component submissions, where the component row
+  itself is the payload at `'pending'`).
+- On **Q2 approval (graduation)**: the `proposed_payload` is applied to the live
+  component row (overwrite/upgrade), `validation_status` stays `'validated'`, the
+  queue row is deleted (graduation trigger fires). For new components, graduation
+  just flips the component row to `'validated'` and deletes the queue row.
+- On **Q2 rejection**: the queue copy is discarded (queue row → state 3/4); the live
+  row is untouched.
+
+**Revision of §0.18 "non-overlapping states" invariant:** the invariant holds for
+**new** components (component `'pending'` + queue row, not served). It is **revised
+for upgrades**: a validated live row **can** coexist with a queue row carrying an
+upgrade copy. `validation_status='upgrade_queued'` is **NOT set on the live component
+row** (that would drop it from retrieval, which is exactly the regression the user
+rejected); the pending upgrade is tracked **solely** by the queue row's state. The
+queue's `UNIQUE (scope, component_id)` constraint still holds — one pending upgrade
+per component at a time (concurrent edits are rejected while a copy is queued).
+
+**Migration:** `proposed_payload JSONB` is added to `reborn_validation_queue` in
+**V051** (Phase A.5, same migration that creates the table) — additive, nullable.
+
+#### 0.23.6 Sempai auto-creates ALL component types (extends SempaiProposalSink + SempaiReviewOutcome)
+
+**Decision (Q4):** the Sempai proposal path is generalised from recipes-only to **all
+component types**: tools (0), tool_skills (13), skills (1–3), extensions (4–9),
+python_code (22), extension_catalogues (23), recipes (21), and **intent examples**.
+
+- `SempaiReviewOutcome` (`crates/brassclaw_interceptor/src/packet.rs`) gains
+  `proposed_tools`, `proposed_tool_skills`, `proposed_skills`,
+  `proposed_extensions`, `proposed_python_code`, `proposed_catalogues` alongside the
+  existing `proposed_recipe_updates` / `proposed_intent_examples`. (Or a single typed
+  `proposed_components: Vec<ComponentProposal>` with a class tag — chosen at Phase K
+  implementation for least churn; the trait signature change is the load-bearing
+  part.)
+- `SempaiProposalSink::submit_proposals` (`proposal_sink.rs`) is generalised to
+  accept all classes; `PgSempaiProposalSink` (composition) inserts into the correct
+  class table via the class→table dispatch (same map `fetch_component_by_id` uses),
+  each at `validation_status='pending'` + a queue row (state 1). Best-effort, never
+  aborts the Kohai call (unchanged).
+- **WebUI manual authoring remains** (Q4) as the operator-in-the-loop path: a manual
+  create or edit sends the new/edited version into the same validation queue (new
+  component → `'pending'` + queue row; edit of validated → copy + `proposed_payload`
+  per §0.23.5). The production row is written/overwritten **only after Q2 success**.
+
+> **⚠️ This resolves FIND-NEW-17's前提.** FIND-NEW-17 assumed a "WebUI save handler"
+> that creates recipes directly. Under §0.23.6 there is **no direct production write
+> on save** — saves enqueue to validation. Intent seeding therefore moves to
+> **graduation** (§0.23.5 / Phase N), not raw save. See the FIND-NEW-17 revision
+> note in Phase A.
+
+#### 0.23.7 Kohai prompt store — component-UUID references + 6-week retention (extends interceptor)
+
+**Decision (Q3 + N4):** the kohai stores prompts + their composing parts **as
+references to already-existing components in the DB**, so prompts + chat history can
+be reassembled and sent to the Sempai with a component-creation query during the idle
+sweep (§0.23.8).
+
+- **Extend `PgInterceptorStore` / `ForensicPacket` / `CapturedPrompt` / `PromptSegment`**
+  (`crates/brassclaw_interceptor/`) so each `PromptSegment` captures the **component
+  UUID** it came from (not just the string provenance like `"skill:ibm_bob_people"`).
+  Prompts reassemble **by reference** (load the referenced component rows).
+- **No new table** (N4). The interceptor packet store is the kohai prompt store.
+- **Retention: 6 weeks max.** A retention sweep deletes packets older than 6 weeks
+  (this is a packet-store TTL, distinct from the SplitResult memo-cache which stays
+  event-driven / no-TTL per §0.18).
+
+> **⚠️ Build item (Phase K):** extend the interceptor packet/segment schema with a
+> component-UUID column and add the 6-week retention sweep. The UUID column is an
+> additive ALTER **folded into `V056`** (Phase K's single migration), **not a separate
+> `V062` file** — see the §0.23.10 ordering note for why (refinery applies migrations in
+> strict ascending order and the embedded Postgres data dir is persistent across boots,
+> so a `V062` landing in Phase K before `V057`–`V061` of Phases L–P.0 would silently skip
+> those later lower-numbered migrations). Confirm the exact packet-store table/column
+> shape against the live `PgInterceptorStore` schema at Phase K implementation. The
+> retention sweep is a background job in composition (alongside the idle sweep machinery).
+
+#### 0.23.8 Self-improvement sweep — idle ≥ 2h AND after 15:00
+
+**Decisions (Q5 + N5):** the validation-system self-improvement loop runs as an
+**in-process background task** with two gating conditions, **both** required:
+
+1. The system has been **idle for ≥ 2 hours** ("idle" = no active agent turns and no
+   in-flight LLM calls).
+2. The current **server-local time is after 15:00**.
+
+When both first hold, the sweep **runs once per day** (then waits until the next
+day's eligible window). The sweep:
+
+1. **Reassembles** recent prompts + chat history from the kohai prompt store
+   (§0.23.7) **by component reference** (loads the referenced component rows).
+2. **Sends all of it to the Sempai** with a **component-creation query** — asking for
+   new recipes / tools / skills / **intents** / extensions / python_code / upgrades
+   to existing components (including validation-system components, §0.23.3 evolvable).
+3. **Saves the prompts + Sempai answers** (as component references + the resulting
+   proposals) so the validation system accumulates evidence for future upgrades.
+4. The Sempai's proposals enter **Q1** via `SempaiProposalSink` (§0.23.6) — best
+   effort, never bypassing validation.
+
+> **⚠️ Build item (Phase K):** the idle-detection (no active turns / no in-flight LLM
+> calls for 2h) + the 15:00-local gate + the once/day cadence + the reassemble-and-
+> query-Sempai execution. Implemented as a composition background task using the
+> existing turn/LLM-call activity signals. Settings (idle threshold, start hour,
+> enabled flag) are configurable in `reborn_monty_vm_settings` (V034) — additive
+> columns, fold into Phase K. Default: idle=2h, start=15:00 local, enabled=true.
+
+#### 0.23.9 Bootstrap ordering & ComponentValidator retirement
+
+**Decision (final ordering confirmation):**
+
+- **Phase L seeds the trusted-root validation system** (basic Extensions + basic
+  Recipes + 4 category main-Recipes + sub-recipes + formatter PythonCode, per class
+  — §0.23.3) **right before Phase N's orchestrated Q1**, alongside the existing
+  builtin-tool stack. Phase L's `source='system'` components graduate via the
+  automated-but-auditable Q2 (Phase P.0) — **no bypass** (Answer 2 retained).
+- **Phase N implements orchestrated Q1** (`run_q1_validation` in a new
+  `crates/brassclaw_reborn_composition/src/q1_orchestrator.rs`): loads the validation
+  Recipe for the component's class, runs the **full sandboxed agent-loop orchestrator**
+  (§0.23.2), collects the four category results, and on a clean result writes
+  `state = 2` (the retained security invariant). `gate1_pass` / `gate1_fail` stay
+  `pub(crate)` on `ValidationQueueStore`; the engine cannot call them (FIND-P9-01
+  retained).
+- **The pure-Rust `ComponentValidator` is retired at Phase N** (not kept as a floor).
+  Between Phase A.5 and Phase N, components sit at `'pending'` with queue rows and Q1
+  does not run (the existing documented limitation is unchanged). Phase N is the
+  cutover: orchestrated Q1 goes live, `component_validator.rs` is removed.
+
+> **⚠️ Note on the calculated risk.** Between Phase N (orchestrated Q1 live) and the
+> self-improvement loop phasing out LLM, Q1 uses LLM-based category checks. This is
+> the accepted calculated risk (Q1/N1 decisions). The risk window is bounded by the
+> idle sweep's rate of producing deterministic test components (§0.23.8).
+
+#### 0.23.10 Migration & data-model summary
+
+| Migration | Change | Phase |
+|-----------|--------|-------|
+| `V051__reborn_validation_queue.sql` | **+ `proposed_payload JSONB`** (upgrade copy payload; nullable) alongside the table+indexes already planned. | A.5 |
+| `V055__reborn_dependency_registry.sql` | **+ `formatted_content TEXT`** on all 13 component tables, alongside `dependency_registry JSONB`. File now carries two additive columns. | J.2 |
+| `V056__reborn_basic_prompt_store.sql` (Phase K **single** migration — **folded**) | Phase K's one migration carries **all** Phase K additive DDL: `CREATE TABLE reborn_basic_prompt_store`; **+ component-UUID reference column(s) on the interceptor packet/segment store** (§0.23.7, enables reference-based prompt reassembly — confirm exact shape vs the live `PgInterceptorStore` schema at Phase K); **+ `reborn_monty_vm_settings` validation-improve cols** (`validation_idle_threshold_minutes INT NOT NULL DEFAULT 120`, `validation_improve_start_hour INT NOT NULL DEFAULT 15`, `validation_improve_enabled BOOLEAN NOT NULL DEFAULT true`, §0.23.8). **Not split into `V062`/`V063`** — see the ordering note below. | K |
+| `V061__reborn_validation_queue_q2_actor.sql` (P.0, already noted) | `q2_actor` on the queue for automated-auditable Q2. | P.0 |
+
+> **⚠️ Ordering note — why V062/V063 are folded into V056 (not separate files).**
+> Refinery (`refinery::embed_migrations!`, `runner().run_async()` in
+> `brassclaw_pg/src/migrations.rs`) applies migrations in **strict ascending version
+> order**, and the embedded Postgres data dir is **persistent across boots**
+> (`brassclaw_embedded_postgres/src/initdb.rs` — `run_initdb` skips silently if the data
+> dir already exists and is non-empty). Phase K runs at sort_order 12, **before** Phases
+> L–P.0 (sort_order 13–17) which own `V057`–`V061`. A separate `V062`/`V063` landing in
+> Phase K would be applied before `V057`–`V061` even exist; when those lower-numbered
+> migrations are later added, refinery would silently skip them (its "apply everything
+> after the current max applied version" step sees `V062`/`V063` as the max, never
+> reaching `V057`–`V061`) — a silent data-loss hazard on every persistent DB. Folding
+> all Phase K additive DDL into the single `V056` keeps migration numbers strictly
+> ascending with phase execution order. `V061` (Phase P.0, sort_order 17) stays separate
+> — it is numerically after `V060` (Phase O, sort_order 16), so it is in order.
+
+No new component class code is introduced (the validation-system components reuse
+existing classes: Extensions 4–9, Recipes 21, Skills 1–3, ToolSkills 13, Tools 0,
+PythonCode 22). Validation prompt/answer pairs are stored as **interceptor packets +
+component references** (§0.23.7), not a new class.
+
+#### 0.23.11 Plan-step folding map (Q7 — fold into existing steps, no trailing phases)
+
+| New functionality | Folded into existing step | What that step now also does |
+|--------------------|---------------------------|------------------------------|
+| Queue `proposed_payload` column; upgrade-copy graduation logic | **Phase A.5** (queue table) + **Phase N** (graduation) | A.5: V051 adds `proposed_payload`. N: graduation applies `proposed_payload` to live row on Q2 approval (§0.23.5). |
+| `formatted_content` column + per-class formatter PythonCode + light PythonCode executor | **Phase J.2** (dependency_registry all-tables migration) + **Phase L** (seeder) | J.2: V055 adds `formatted_content` + builds the light in-process PythonCode executor. L: seeds the per-class formatter PythonCode components. |
+| Sempai auto-creates all types; `SempaiReviewOutcome` + `SempaiProposalSink` generalised; WebUI save → queue (no direct write) | **Phase K** (interceptor) | K: generalise the proposal sink + outcome to all classes; route WebUI saves to the queue (new components `'pending'`; edits → copy + `proposed_payload`). |
+| Kohai prompt store: component-UUID refs + 6-week retention | **Phase K** (interceptor) | K: extend `PgInterceptorStore`/`PromptSegment` with component UUIDs (additive ALTER folded into `V056`, not a separate `V062` — see §0.23.10 ordering note); add the 6-week retention sweep. |
+| Idle self-improvement sweep (≥2h idle + after 15:00, once/day) | **Phase K** (interceptor) | K: in-process background task + `reborn_monty_vm_settings` config cols; reassemble → Sempai → Q1. |
+| Trusted-root validation system (Extensions + Recipes + formatters per class) | **Phase L** (builtin seeder) | L: seeds the validation-system trusted root alongside the builtin-tool stack (all via automated-auditable Q2, no bypass). |
+| Orchestrated Q1 (`q1_orchestrator.rs`, sandboxed agent-loop run, state-2 invariant); retire `ComponentValidator` | **Phase N** (validation queue) | N: implements orchestrated Q1, removes `component_validator.rs`, wires graduation for new + upgrade-copy (§0.23.5). |
+| Automated-auditable Q2 actor recording | **Phase P.0** | P.0: V061 `q2_actor`; the seeder/automation is the recorded Q2 actor for builtins incl. validation-system trusted root. |
+
+> **Net effect on the phase list:** no new phases are appended. Phases A.5, J.2, K,
+> L, N, P.0 each absorb the items above. Phase A is unaffected except for the
+> FIND-NEW-17 revision (intent seeding moves to graduation / Phase N; Phase A still
+> round-trips `variants` in the store so the data is preserved).
+
+---
+
 ## 1. Implementation Phases
 
 ### Phase A — StepDescription Schema + IBS Core
@@ -3009,6 +3377,14 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   - `RecipeValidationStatusUpdate` struct at **line ~170**: has `validation_errors`,
     `review_feedback`, `queue_code` — do NOT modify in Phase A (Phase N drops these).
   - The WebUI save path (create/update recipe) must pass `step_descriptions` through.
+ > **⚠️ FIND-NEW-17 — REVISED by §0.23.6 (intent seeding moves to graduation).**
+ > Under §0.23.6 there is **no direct production write on save** — a WebUI save
+ > (or Sempai proposal) enqueues the component to validation; the production row is
+ > written/overwritten **only after Q2 success**. Therefore the intent-seeding call
+ > below is correct in *logic* but its **trigger point moves from "on save" to "on
+ > Q2 graduation"** (Phase N, §0.23.5). Phase A does **not** seed intents; it only
+ > round-trips `variants` in the store so the data is preserved until graduation
+ > seeds it. The original block below is retained as the pre-revision reference:
  > **⚠️ FIND-NEW-17 — WebUI save path MUST also seed intent rows from `variants`:**
  > When a Recipe is saved with `variants` populated, the save handler (the composition
  > endpoint that calls `PgRecipeStore::insert` or `update`) MUST also iterate each
@@ -3152,6 +3528,12 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 ### Phase A.5 — Validation Queue Table (Decision 2)
 
 **Status:** [ ] Pending
+
+> **§0.23.5 fold-in:** V051 also adds `proposed_payload JSONB` (nullable) to
+> `reborn_validation_queue` — the upgrade-copy payload (§0.23.5). The
+> `ValidationQueueStore` application layer carries `proposed_payload` through
+> submit (set for upgrades, null for new-component submissions) and exposes it to
+> graduation. The graduation *apply* logic itself lands in Phase N (§0.23.9).
 
 **Goal:** Create `reborn_validation_queue` table (DDL + indexes only) and the
 `ValidationQueueStore` application layer **before** Phase B creates classes 22/23.
@@ -6060,6 +6442,14 @@ Q1 runs `parse_template` against every intent expression in `intent_examples`. R
 
 **Status:** [ ] Pending
 
+> **§0.23.4 fold-in (J.2):** V055 also adds `formatted_content TEXT` (nullable) to
+> all 13 component tables — the persisted LLM-formatted version computed at save
+> time by the per-class formatter PythonCode (§0.23.4). J.2 also builds the
+> **lightweight in-process sandboxed PythonCode executor** (single-component run,
+> no orchestrator loop, no tool dispatch, no network) that the formatters use; if
+> no such executor exists today, J.2 creates it (confirm against live source). The
+> per-class formatter PythonCode *components* themselves are seeded in Phase L.
+
 **Note:** `required_skills` does not exist. Dependencies between components are expressed
 via each component's `dependency_registry` JSONB and step-level traversal expressions (§0.19).
 Phase J covers two concerns: (1) Skill intent_examples seeding, and (2) `dependency_registry`
@@ -6235,6 +6625,22 @@ channels by `class_code` and merged into the corresponding `SplitResult` item li
 
 **Status:** [ ] Pending
 
+> **§0.23.6 + §0.23.7 + §0.23.8 fold-in:** Phase K also absorbs three §0.23 items:
+> (1) **Sempai auto-creates all component types** — generalise `SempaiReviewOutcome`
+> (`packet.rs`) and `SempaiProposalSink::submit_proposals` (`proposal_sink.rs`) beyond
+> recipes to tools/tool_skills/skills/extensions/python_code/catalogues/intents;
+> `PgSempaiProposalSink` inserts into the correct class table (class→table dispatch);
+> route WebUI saves to the queue with **no direct production write** (new → `'pending'`
+> + queue row; edit of validated → copy + `proposed_payload`, live row stays validated).
+> (2) **Kohai prompt store** — extend `PgInterceptorStore`/`PromptSegment` to capture
+> **component UUID references** (additive ALTER **folded into `V056`**, not a separate
+> `V062` — confirm vs live schema; see §0.23.10 ordering note for the refinery
+> ascending-order constraint) + add a **6-week retention sweep**. (3) **Idle
+> self-improvement sweep** — in-process background task, idle ≥ 2h AND after 15:00
+> local, once/day: reassemble prompts + chat history by reference → Sempai
+> component-creation query → proposals enter Q1; config cols on
+> `reborn_monty_vm_settings` (additive, **folded into `V056`**, not a separate `V063`).
+
 #### K.1 BasicPromptStore + Prefix Tab (UI migration from Interceptor tab)
 
 > **Grounded in:** `17-webui-prefix-tab.md`, `saved_plan_to_v3.md §0.13`, user item 8 (Prefix Tab),
@@ -6246,6 +6652,20 @@ channels by `class_code` and merged into the corresponding `SplitResult` item li
 ##### K.1.1 Database migration
 
 **Migration V056** (**was V055 before Decision 2**; file: `V056__reborn_basic_prompt_store.sql`).
+
+> **⚠️ §0.23.7 + §0.23.8 fold-in — V056 is Phase K's SINGLE migration.** Beyond
+> `reborn_basic_prompt_store` (below), V056 **also** carries: (a) the component-UUID
+> reference column(s) on the interceptor packet/segment store (§0.23.7 — confirm exact
+> shape against the live `PgInterceptorStore` schema at Phase K); (b) the
+> `reborn_monty_vm_settings` validation-improve cols (§0.23.8:
+> `validation_idle_threshold_minutes INT NOT NULL DEFAULT 120`,
+> `validation_improve_start_hour INT NOT NULL DEFAULT 15`,
+> `validation_improve_enabled BOOLEAN NOT NULL DEFAULT true`). These are **not** split
+> into separate `V062`/`V063` files — refinery applies migrations in strict ascending
+> order and the embedded PG data dir is persistent across boots, so a `V062`/`V063` in
+> Phase K (sort_order 12) would silently skip `V057`–`V061` (Phases L–P.0). See §0.23.10
+> ordering note. Append the ALTERs for (a) and (b) to this same `V056__…sql` file after
+> the `CREATE TABLE` + indexes below.
 
 ```sql
 CREATE TABLE reborn_basic_prompt_store (
@@ -7019,6 +7439,16 @@ All inserted with `validation_status = 'pending'` — external MCP content must 
 
 **Status:** [ ] Pending
 
+> **§0.23.3 + §0.23.9 fold-in:** Phase L also seeds the **trusted-root validation
+> system** alongside the builtin-tool stack: one pre-trusted Extension per class +
+> four category main-Recipes per class (security / performance / token-budget /
+> v3-design-adherence, each calling sub-recipes) + one basic Recipe per class + one
+> formatter PythonCode per class (§0.23.3). All `source='system'` components —
+> builtins **and** the validation-system trusted root — graduate via the
+> automated-but-auditable Q2 (Phase P.0), **no bypass** (Answer 2 retained). This
+> seeding **must land right before Phase N's orchestrated Q1** (§0.23.9) so the
+> validation components exist when orchestrated Q1 goes live.
+
 **Goal:** Seed the full v3 component stack for all 23 builtin tools at first boot.
 This is a separate concern from the Phase K MCP translator. The MCP translator targets
 external third-party MCP servers (unknown shape, must enter Q1/Q2). The builtin bootstrap
@@ -7326,6 +7756,20 @@ In the intent expression input field:
 ### Phase N — Validation Queue (Populate + Drop)
 
 **Status:** [ ] Pending
+
+> **§0.23.2 + §0.23.5 + §0.23.9 fold-in:** Phase N also (1) implements **orchestrated
+> Q1** — a new `crates/brassclaw_reborn_composition/src/q1_orchestrator.rs`
+> (`run_q1_validation`) that loads the validation Recipe for the component's class and
+> runs a **full sandboxed agent-loop orchestrator** (existing `sandbox_process` /
+> `process_executor`, restricted capabilities, per-validation token budget, cannot
+> mutate production state); on a clean result it writes `state = 2` (the retained
+> security invariant — only the Q1 orchestrator writes state 2; `gate1_pass`/
+> `gate1_fail` stay `pub(crate)`). The pure-Rust `component_validator.rs` is **retired
+> here** (not kept as a floor). (2) Wires **graduation for both paths**: new
+> components flip to `'validated'` + delete queue row; **upgrade-copies** apply
+> `proposed_payload` to the live row on Q2 approval (live row stayed validated+served
+> until then), delete queue row. (3) **Seeds intents from graduated `variants`**
+> (FIND-NEW-17 revised — intent seeding moves here from save-time, per §0.23.6).
 
 **Goal:** Populate `reborn_validation_queue` from existing component tables; add the
 `last_graduation_at` scope cursor; wire the graduation trigger; drop `queue_code`,
@@ -7889,6 +8333,12 @@ change to time/USD budgets.
 
 **Status:** [ ] Pending
 
+> **§0.23.9 + §0.23.10 fold-in:** Phase P.0's automated-but-auditable Q2 (V061
+> `q2_actor`) also graduates the **Phase-L validation-system trusted-root
+> components** — the seeder/automation is the recorded Q2 actor for every
+> `source='system'` component, whether a builtin tool or a validation-system
+> Extension/Recipe/formatter. No `source='system'` component bypasses Q1+Q2.
+
 **Goal:** So that system-authored/builtin components — including the
 doc-conversion mechanism's own artifacts (§0.22) and its converted docs —
 graduate through Q1+Q2 with **no silent bypass** (Answer 2: "Nothing ever
@@ -8056,18 +8506,19 @@ the WebUI Docs save never writes `validated` directly (store-level guard).
 | Migration | Contents | Status |
 |-----------|----------|--------|
 | `V050__reborn_recipe_step_descriptions.sql` | `ADD COLUMN step_descriptions JSONB`, `variants JSONB`, `dependency_registry JSONB` to `reborn_recipes` (all three Phase A store columns — see VARPAT-COL-GAP / DEPREG-TIMING-GAP note in Phase A) | **Next** |
-| **`V051__reborn_validation_queue.sql`** | **NEW (Decision 2 / Phase A.5):** `CREATE TABLE reborn_validation_queue` + indexes only. No data migration. No column drops. This enables all component classes (including the new 22/23) to enter the queue from their very first WebUI-authored save. `ValidationQueueStore` application layer also lands in Phase A.5. | |
+| **`V051__reborn_validation_queue.sql`** | **NEW (Decision 2 / Phase A.5):** `CREATE TABLE reborn_validation_queue` + indexes only. No data migration. No column drops. This enables all component classes (including the new 22/23) to enter the queue from their very first WebUI-authored save. `ValidationQueueStore` application layer also lands in Phase A.5. **§0.23.5 addition:** the table also carries `proposed_payload JSONB` (nullable) — the upgrade-copy payload used when an edit to a validated component is pending (live row stays validated+served; Q2 approval applies the payload). | |
 | `V052__reborn_python_code.sql` | New table `reborn_python_code`, class 22 (**was V051** before Decision 2) | |
 | `V053__reborn_extension_catalogues.sql` | New table `reborn_extension_catalogues`, class 23 (**was V052** before Decision 2) | |
 | `V054__reborn_intent_inputs_step_link.sql` | `ADD COLUMN step_link TEXT` to `reborn_intent_inputs` (**was V053** before Decision 2) | |
-| ~~`V055__reborn_skills_intent_examples.sql`~~ → **`V055__reborn_dependency_registry.sql`** | `ADD COLUMN dependency_registry JSONB` to all 13 component tables (**was V054** before Decision 2; see Phase J.2 — §0.19). The `intent_examples` ALTER is a **no-op** (V027 already has the column) and has been removed per FIND-12. The file must be named `V055__reborn_dependency_registry.sql`. | |
-| `V056__reborn_basic_prompt_store.sql` | New table: one row per scope, `bundle_json JSONB`, `is_stale BOOL`, `fingerprint TEXT` (**was V055** before Decision 2) | |
+| ~~`V055__reborn_skills_intent_examples.sql`~~ → **`V055__reborn_dependency_registry.sql`** | `ADD COLUMN dependency_registry JSONB` to all 13 component tables (**was V054** before Decision 2; see Phase J.2 — §0.19). The `intent_examples` ALTER is a **no-op** (V027 already has the column) and has been removed per FIND-12. The file must be named `V055__reborn_dependency_registry.sql`. **§0.23.4 addition:** this same all-tables migration also adds `formatted_content TEXT` (nullable) to all 13 component tables — the persisted LLM-formatted version computed at save time by the per-class formatter PythonCode (Phase J.2 builds the light in-process PythonCode executor; Phase L seeds the formatter components). | |
+| `V056__reborn_basic_prompt_store.sql` | **Phase K single migration (folded — was V055 before Decision 2).** Carries **all** Phase K additive DDL: (a) new table `reborn_basic_prompt_store` — one row per scope, `bundle_json JSONB`, `is_stale BOOL`, `fingerprint TEXT`; (b) **§0.23.7 fold-in:** component-UUID reference column(s) on the interceptor packet/segment store so prompts reassemble **by reference** (enables the idle self-improvement sweep, §0.23.8) — **confirm exact column shape against the live `PgInterceptorStore` schema at Phase K**; (c) **§0.23.8 fold-in:** `reborn_monty_vm_settings` validation-improve cols (`validation_idle_threshold_minutes INT NOT NULL DEFAULT 120`, `validation_improve_start_hour INT NOT NULL DEFAULT 15`, `validation_improve_enabled BOOLEAN NOT NULL DEFAULT true`). **Not split into `V062`/`V063`** — refinery applies migrations in strict ascending order and the embedded PG data dir is persistent across boots, so a `V062`/`V063` landing in Phase K (sort_order 12) before `V057`–`V061` (Phases L–P.0) would silently skip those later lower-numbered migrations. Folding into `V056` keeps numbers ascending with execution order. See §0.23.10 ordering note. | |
 | `V057__reborn_tools_capability_id_and_system_source.sql` | `ADD COLUMN capability_id TEXT` to `reborn_tools` + `source = 'system'` allowed on tools/tool_skills/skills (**was V056** before Decision 2) | |
 | `V058__reborn_intent_inputs_template.sql` | `ADD COLUMN is_template BOOL`, `template_prefix TEXT`, `template_suffix TEXT` to `reborn_intent_inputs`; two new partial indexes for prefix/suffix-anchored template matching (**was V057** before Decision 2; see §0.17.2) | |
 | `V059__reborn_validation_queue_populate.sql` | **Phase N only:** populate `reborn_validation_queue` from existing component table state; add `last_graduation_at` to scope cursor; graduation trigger; drop `queue_code`/`review_attempts`/`review_feedback`/`rejected_at`/`validation_errors` from all 13 component tables. `CREATE TABLE` is in V051. (**was V058** before Decision 2) | |
 | `V060__reborn_monty_vm_settings_token_budgets_enabled.sql` | **Phase O (§0.21 — user item, Answer 5):** `ALTER TABLE reborn_monty_vm_settings ADD COLUMN token_budgets_enabled BOOLEAN NOT NULL DEFAULT true;` — the global token-budget kill switch. Additive only; existing rows backfill to `true` (today's behaviour). Independent of Phases A–N; shippable in any order after V034 exists (it already does, live). | |
+| `V061__reborn_validation_queue_q2_actor.sql` | **Phase P.0 (§0.23.10):** `ALTER TABLE reborn_validation_queue ADD COLUMN q2_actor TEXT;` — records the automated-but-auditable Q2 actor for `source='system'` graduation (builtins + validation-system trusted root). Additive, nullable. Already tentatively noted under Phase P.0. | |
 
-All additive-first. No DROP, no renames. No existing rows break. V059 is the only migration with DROP statements — all others (including V060) are additive.
+All additive-first. No DROP, no renames. No existing rows break. V059 is the only migration with DROP statements — all others (including V060–V061) are additive. (The §0.23.7/§0.23.8 Phase K additive DDL — interceptor packet component-UUID refs + `reborn_monty_vm_settings` validation-improve cols — is **folded into `V056`**, not separate `V062`/`V063` files; see the `V056` row above and §0.23.10 ordering note.)
 
 > **Phase P (§0.22 — doc-conversion) adds NO migration.** It reuses the
 > already-live `V040__reborn_docus` (Docu table — has `content_hash` + lineage
@@ -8200,9 +8651,13 @@ can be triggered by deleting system-sourced rows (operator action only).
 
 ## 4. Out of Scope (Marked Postponed)
 
-- Full self-improvement pipeline (Interceptor-driven Recipe auto-creation)
-- Component self-creation wizard
-- Automatic Sempai-driven prompt rewrites
+> **⚠️ Three items below are now IN SCOPE per §0.23** (v3 direction, folded into
+> existing phases A.5 / J.2 / K / L / N / P.0 — see §0.23.11). They are retained
+> here with strikethrough + an in-scope pointer for traceability:
+
+- ~~Full self-improvement pipeline (Interceptor-driven Recipe auto-creation)~~ → **IN SCOPE (§0.23.6 + §0.23.8)** — generalised to all component types, not just recipes.
+- ~~Component self-creation wizard~~ → **IN SCOPE (§0.23.6)** — the Sempai auto-creation path is the wizard; WebUI manual authoring remains as operator-in-the-loop review/edit.
+- ~~Automatic Sempai-driven prompt rewrites~~ → **IN SCOPE (§0.23.8)** — the idle self-improvement sweep (≥2h idle + after 15:00 local) reassembles prompts + chat history and asks the Sempai for component creation/upgrades → Q1.
 - LLM-based variable extraction fallback (Phase A uses regex only)
 - Tier 0 production activation (requires Phases A–H complete + Wilson scoring validated in production for ≥2 weeks)
 - `FormatOrchestratorPrompt` as a distinct step type (not needed — formatting handled by PythonCode component bodies)
