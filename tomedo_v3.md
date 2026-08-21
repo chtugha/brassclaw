@@ -28,9 +28,15 @@
 >
 > **Tomedo-specific Tier 0 eligibility:**
 > All read-only tomedo API calls (GET endpoints) with a known patient ID or no
-> parameters are Tier 0. Write operations do not exist in the tomedo REST API
-> (it is read-only from the integration perspective). Every recipe below
-> targets Tier 0 unless noted otherwise.
+> parameters are Tier 0. The **direct mTLS REST API at port 8443 is read-only**
+> from the external integration perspective (all probed endpoints are GET only).
+> Write operations to tomedo (appointments, Karteieinträge, patient data) are
+> only available via the **official tomedo.API** — a separate, cloud-brokered
+> partner API that requires a signed agreement with zollsoft (see §future-api).
+> LLM-assisted composition of tomedo objects (Python markers, SQL statistics,
+> letter templates, CustomKarteiEinträge, patient forms) is Tier 1 — the LLM
+> generates code/XML/JSON that the user then pastes into the tomedo UI.
+> Every recipe below targets Tier 0 unless noted otherwise.
 >
 > **Auth guard (§tomedo-auth):**
 > All tomedo tool calls require `tomedo_base_url` and `tomedo_cert_pem` config
@@ -149,6 +155,90 @@
 > ende      — end epoch ms
 > info      — description text
 > ```
+>
+> ---
+>
+> ## §future-api — Official tomedo.API (Partner Program, Write-Capable)
+>
+> **Status:** Early-release partner program (Beta with VITAS completed Nov 2025).
+> Not accessible via direct mTLS. Requires signed partner agreement with zollsoft.
+>
+> **What it is:** A separate, cloud-brokered API built by zollsoft for third-party
+> software vendors (teleassistants, booking systems, etc.). VITAS was the first
+> partner; PraxisConcierge and others are waiting. Documentation is NDA-gated and
+> issued only after contract signing.
+>
+> **What it covers (from forum evidence):**
+> - Calendar/appointment read AND write (booking, cancellation) — the primary use
+>   case for AI telephone assistants like VITAS
+> - Patient lookup (name, insurance number)
+> - Prescription/referral status
+> - The API runs through a zollsoft-operated intermediary server (authentication
+>   layer), not directly against the practice server
+> - Uses token-based auth (not mTLS) — multiple partners can connect simultaneously
+>   once each implements the authentication
+>
+> **Write-back to Karteieinträge (v1.163+):** tomedo v1.163 added write-back to
+> Karteieinträge via Aktionsketten (action chains inside the tomedo UI — not via
+> external REST). The external REST write-back for `datenTransferProxy` fields is
+> planned for v1.165+. This is NOT available via the direct mTLS port 8443 today.
+>
+> **Integration path for BrassClaw:**
+> 1. Request tomedo.API partner access via zollsoft (contact: Toni Ringling/Madita
+>    Poslovsky at zollsoft GmbH, Jena).
+> 2. Sign partner agreement. Receive API documentation and credentials.
+> 3. Implement a new `tool` (class 0) wrapping `builtin.http` against the
+>    zollsoft cloud intermediary endpoint with token auth.
+> 4. All write recipes (appointment creation, Karteieintrag write, patient update)
+>    will be Tier 1: LLM confirms the content, orchestrator executes.
+>
+> **This plan does NOT implement write operations** because the API is partner-gated
+> and the endpoint shapes are not publicly documented. The recipes below are
+> read-only against the direct mTLS API. A `v4` extension plan should add write
+> operations once the partner API is accessible.
+>
+> ---
+>
+> ## §llm-objects — LLM-Assisted tomedo Object Composition
+>
+> **Source:** tomedo support page (Aug 2026) + zollsoft forum posts (Sep 2025).
+> **Summary:** tomedo provides context files (`.txt`/`.md`) that teach an LLM the
+> syntax for each object type. The user pastes the context + their prompt into
+> an external LLM (ChatGPT, Gemini, Ollama), gets back generated code, and pastes
+> it into the tomedo UI. BrassClaw can automate the composition step: load the
+> context, call the LLM, return the generated object ready to paste.
+>
+> **Available context files (from zollsoft):**
+> | File | Object type | Output format | tomedo integration point |
+> |------|-------------|--------------|--------------------------|
+> | `pythonmarker_context.txt` | Automatic Python marker | Python code | Einstellungen > Praxisorganisation > Automatische Marker |
+> | `statistikKompakt.txt` / `statistik_context.txt` | Custom statistics | SQL query | Statistik module |
+> | `briefvorlage_context.txt` / `Briefvorlagen.txt` | Letter templates | HTML | Briefschreibung |
+> | `briefkommandos_context.txt` / `BriefkommandosKompakt.txt` | Letter placeholders | Lookup reference | Used inside letter templates |
+> | `patientenformular_context.txt` / `Patientenformulare.txt` | Patient forms | JSON (SurveyJS) | Patientenformulare > JSON tab |
+> | `customkckeKonpakt.md` / `customkarteieintrag_context.txt` | CustomKarteiEinträge | XML | Kartei > CustomKarteiEintrag editor |
+>
+> **Tier classification:** All composition recipes are **Tier 1** — the LLM must
+> compose the object. The orchestrator loads the context file content (via
+> `builtin.file_read` or embedded as a skill body), then calls the LLM with the
+> user's requirement as a prompt suffix.
+>
+> **Use cases confirmed by forum users (Dr. Baumann et al., Sep 2025):**
+> 1. Python marker for birthday reminders, lab value alerts, diagnosis flags
+> 2. SQL statistics for billing analysis (GOÄ/EBM ziffer queries)
+> 3. CT/MRI report structured extraction templates (Briefvorlagen)
+> 4. Tumour documentation CKEs with TNM, histology, therapy fields
+> 5. Patient forms for intake anamnesis, consent, COVID triage
+> 6. Sleep lab / pulmonology structured report templates
+>
+> **Architecture for BrassClaw:**
+> ```
+> channel: "orchestrator"  → Skill body contains full context file text embedded
+> channel: "llm"           → LLM receives: context + user requirement
+> channel: "orchestrator"  → PythonCode extracts generated code block from LLM response
+> ```
+> The orchestrator delivers the final output as a copy-pasteable code block
+> for the user to insert into tomedo. No direct write to tomedo needed.
 >
 > ---
 
@@ -1373,9 +1463,18 @@ body: |
   Check tomedo_cert_pem config before any direct API call.
 
   TIER-0 ELIGIBILITY:
-  All read operations with a known patient_id are Tier 0. No tomedo write
-  endpoints exist — the API is read-only from this integration. Name search
-  is Tier 1 (LLM composes the query from user intent).
+  All read operations with a known patient_id are Tier 0.
+  The direct mTLS REST API (port 8443) is read-only — no write endpoints.
+  Name search is Tier 1 (LLM composes the query from user intent).
+  LLM object composition (Python markers, stats, letters, CKEs, forms) is Tier 1.
+  Official tomedo.API write operations (appointments, Karteieintrag) require the
+  partner program — see §future-api in the plan header for details.
+
+  LLM OBJECT COMPOSITION (§llm-objects):
+  Use skill-tomedo-compose-python-marker, skill-tomedo-compose-statistic,
+  skill-tomedo-compose-briefvorlage, skill-tomedo-compose-cke,
+  skill-tomedo-compose-patientenformular for tomedo object generation.
+  These are Tier 1 — LLM composes the output using embedded context files.
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1422,6 +1521,269 @@ consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
 ```
+
+
+## Step 4b — Leaf Skills for LLM Object Composition (class 1)
+
+One leaf skill per object type. Each embeds the full zollsoft context file text
+in the skill body so the orchestrator can inject it into the LLM prompt.
+All are Tier 1 — the LLM must compose the output.
+
+---
+
+### Step 4b.1 — Leaf Skill: `skill-tomedo-compose-python-marker` (class 1)
+
+```
+name:        "skill-tomedo-compose-python-marker"
+class_code:  1
+description: "Leaf skill: compose a tomedo automatic Python marker using the zollsoft context file."
+body: |
+  Use this skill when the user wants to create an automatic Python marker for tomedo.
+  Python markers run automatically and can flag patients in the patient list or record.
+
+  INTEGRATION POINT: tomedo > Einstellungen > Praxisorganisation > Automatische Marker
+  OUTPUT FORMAT: Python code block
+  HOW TO USE: Copy the generated Python code and paste it into a new/existing marker.
+
+  CONTEXT FILE (pythonmarker_context.txt — embed full content from zollsoft download):
+  The context teaches the LLM the tomedo Python marker API:
+  - patient object structure (name, birthdate, diagnoses, medications, appointments)
+  - Available Python functions and variables inside a marker script
+  - Return convention: set `result` to the marker text (empty string = no marker)
+  - Access to today's date, patient birthdate, last appointment, etc.
+
+  PROMPT PATTERN:
+  [Full context file content]
+  ---
+  Erstelle einen Python-Marker, der [user requirement in German].
+
+  COMMON USE CASES (from forum users):
+  - Birthday reminder: marker set if birthday within next N days
+  - Lab value alert: marker if last lab value outside reference range
+  - Diagnosis flag: marker if specific ICD code in diagnoses list
+  - Appointment reminder: marker if no appointment in next 90 days
+  - Medication warning: marker if specific medication combination present
+
+  After the LLM generates the code, return it as a formatted code block
+  with instructions: "Kopieren Sie diesen Code in tomedo unter
+  Einstellungen > Praxisorganisation > Automatische Marker."
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4b.2 — Leaf Skill: `skill-tomedo-compose-statistic` (class 1)
+
+```
+name:        "skill-tomedo-compose-statistic"
+class_code:  1
+description: "Leaf skill: compose a tomedo statistics SQL query using the zollsoft context file."
+body: |
+  Use this skill when the user wants to create a custom SQL statistics query for tomedo.
+  Statistics queries run against the tomedo PostgreSQL database.
+
+  INTEGRATION POINT: tomedo > Statistiken > Neue Statistik > SQL-Abfrage
+  OUTPUT FORMAT: SQL query
+  HOW TO USE: Paste the generated SQL into the SQL field of a new statistics entry.
+
+  CONTEXT FILE (statistikKompakt.txt / statistik_context.txt — zollsoft download):
+  The context teaches the LLM:
+  - Available tomedo database table names and key columns
+  - How to join patient, schein, leistung, diagnose tables
+  - Date/period filtering conventions (e.g., current quarter, last year)
+  - GOÄ/EBM ziffer access and filtering
+
+  PROMPT PATTERN:
+  [Full context file content]
+  ---
+  Erstelle eine SQL-Statistik, die [user requirement in German].
+
+  COMMON USE CASES (from forum users):
+  - GOÄ/EBM billing analysis for a time period
+  - Patient list filtered by diagnosis (ICD code)
+  - Medication frequency analysis
+  - Appointment volume per doctor per quarter
+  - HZV participation status overview
+
+  After the LLM generates the SQL, return it as a formatted code block
+  with instructions: "Fügen Sie diese SQL-Abfrage in tomedo unter
+  Statistiken > Neue Statistik > SQL ein."
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4b.3 — Leaf Skill: `skill-tomedo-compose-briefvorlage` (class 1)
+
+```
+name:        "skill-tomedo-compose-briefvorlage"
+class_code:  1
+description: "Leaf skill: compose a tomedo letter template (Briefvorlage) using the zollsoft context file."
+body: |
+  Use this skill when the user wants to create a professional letter template for tomedo.
+  Letter templates use HTML with tomedo Briefkommando placeholders.
+
+  INTEGRATION POINT: tomedo > Briefschreibung > Briefvorlagen
+  OUTPUT FORMAT: HTML with Briefkommando placeholders ($[...]$)
+  HOW TO USE: Create a new Briefvorlage and paste the generated HTML.
+
+  CONTEXT FILE (briefvorlage_context.txt / Briefvorlagen.txt — zollsoft download):
+  The context teaches the LLM:
+  - Supported HTML tags and styling
+  - Briefkommando placeholder syntax: $[d:Nachname]$, $[&p.vorname]$, etc.
+  - Page layout, header/footer, logo positioning
+  - Table formatting for lab values, medications, billing items
+
+  BRIEF HINT: To find the exact Briefkommando placeholder for a specific field,
+  use skill-tomedo-lookup-briefkommando BEFORE composing the template.
+
+  PROMPT PATTERN:
+  [Full context file content]
+  ---
+  Erstelle eine Briefvorlage für [user requirement in German].
+
+  COMMON USE CASES (from forum users):
+  - Medical report (Befundbericht) with structured sections
+  - Patient letter with address block and greeting
+  - Referral letter (Überweisungsschreiben) with diagnosis and medication
+  - CT/MRI report with formatted sections (from Dr. Baumann's prompts)
+  - Sleep lab report extraction (Schlaflaborbericht-Auswertung)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4b.4 — Leaf Skill: `skill-tomedo-lookup-briefkommando` (class 1)
+
+```
+name:        "skill-tomedo-lookup-briefkommando"
+class_code:  1
+description: "Leaf skill: look up the correct Briefkommando placeholder for a given patient/practice data field."
+body: |
+  Use this skill when the user needs to find the exact Briefkommando placeholder
+  for a specific data field to use in a letter template.
+  This is a LOOKUP skill — it does NOT generate a complete template.
+
+  INTEGRATION: Briefkommandos are used inside Briefvorlagen as $[...]$ placeholders.
+
+  CONTEXT FILE (briefkommandos_context.txt / BriefkommandosKompakt.txt — zollsoft download):
+  Acts as a knowledge base — not to generate objects but to find the right placeholder.
+
+  PROMPT PATTERN:
+  [Full context file content]
+  ---
+  Welches Briefkommando gibt [user's field description in German] aus?
+
+  EXAMPLES:
+  - "Welches Briefkommando gibt das Geburtsdatum des Patienten aus?"
+  - "Welches Briefkommando gibt den Namen des angemeldeten Nutzers aus?"
+  - "Welches Briefkommando gibt die vollständige Patientenadresse aus?"
+
+  Return the LLM's answer as a short formatted list of placeholders
+  with descriptions. The user can then use these in a Briefvorlage.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4b.5 — Leaf Skill: `skill-tomedo-compose-cke` (class 1)
+
+```
+name:        "skill-tomedo-compose-cke"
+class_code:  1
+description: "Leaf skill: compose a tomedo CustomKarteiEintrag (CKE) XML definition using the zollsoft context file."
+body: |
+  Use this skill when the user wants to create a structured data entry form
+  (CustomKarteiEintrag) for the tomedo patient record (Kartei).
+  CKEs standardise documentation of recurring events (vaccinations, tumour data, etc.).
+
+  INTEGRATION POINT: tomedo > Kartei > CustomKarteiEintrag editor
+  OUTPUT FORMAT: XML definition
+  HOW TO USE: Import the XML into a new CKE type in tomedo.
+
+  CONTEXT FILE (customkckeKonpakt.md / customkarteieintrag_context.txt — zollsoft download):
+  The context teaches the LLM:
+  - XML element structure for CKE fields
+  - Supported field types: text, dropdown, date, number, boolean, checkbox
+  - Conditional field visibility
+  - Field labels (German/English)
+
+  PROMPT PATTERN:
+  [Full context file content]
+  ---
+  Erstelle einen CustomKarteiEintrag für [user requirement in German].
+
+  COMMON USE CASES (from forum users — Dr. Baumann, Dr. Wanzar, Christoph Baumbach):
+  - Vaccination documentation (vaccine name dropdown, date, batch number)
+  - Tumour documentation: TNM formula, histology, therapy, staging
+  - ILD/COPD/asthma structured follow-up form
+  - Sleep lab result entry (ESS, RDI, pressure, mask, CPAP settings)
+  - Allergy documentation with prick test parameters and sensitisation
+
+  After the LLM generates the XML, return it as a formatted code block
+  with instructions for how to import it into tomedo.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4b.6 — Leaf Skill: `skill-tomedo-compose-patientenformular` (class 1)
+
+```
+name:        "skill-tomedo-compose-patientenformular"
+class_code:  1
+description: "Leaf skill: compose a tomedo patient form (Patientenformular) JSON definition using the zollsoft context file."
+body: |
+  Use this skill when the user wants to create a digital patient questionnaire/form
+  for tomedo. Patient forms use SurveyJS JSON format and can be filled on a tablet
+  or via the patient portal.
+
+  INTEGRATION POINT: tomedo > Patientenformulare > JSON tab
+  OUTPUT FORMAT: JSON (SurveyJS schema)
+  HOW TO USE: Create a new Patientenformular, switch to the JSON tab, paste the JSON.
+
+  CONTEXT FILE (patientenformular_context.txt / Patientenformulare.txt — zollsoft download):
+  The context teaches the LLM:
+  - SurveyJS JSON structure (title, pages, elements)
+  - Supported element types: text, boolean, radiogroup, dropdown, date, signature, HTML
+  - Conditional visibility with visibleIf
+  - Multi-language support (de/en)
+  - Required field marking
+
+  NOTE: The LLM output may need minor corrections for complex logic (scores,
+  conditional groups, pre-filled fields). Review before production use.
+
+  PROMPT PATTERN:
+  [Full context file content]
+  ---
+  Erstelle ein Patientenformular für [user requirement in German].
+
+  COMMON USE CASES (from forum users):
+  - Intake anamnesis for respiratory diseases
+  - COVID/infection triage questionnaire (children/adults)
+  - Consent form for procedures
+  - Pre-appointment questionnaire (medication history, allergies)
+  - Allergy anamnesis with detailed symptom tracking
+
+  After the LLM generates the JSON, return it with instructions:
+  "Erstellen Sie ein neues Patientenformular in tomedo und fügen Sie
+  diesen JSON-Code in den JSON-Tab ein."
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
 
 
 ## Step 5 — Recipes (class 21)
@@ -2164,6 +2526,221 @@ source: "system"
 validation_status: "validated"
 ```
 
+---
+
+### Recipe: `tomedo-compose-python-marker` (class 21) — Tier 1
+
+```
+name:              "tomedo-compose-python-marker"
+description:       "Generate a tomedo automatic Python marker using the zollsoft context file and LLM composition."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-compose-python-marker>", "<uuid:skill-tomedo>"],
+    "label":   "Load Python-marker composition skill + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM receives zollsoft Python marker context + user requirement → generates Python code"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": [],
+    "label":   "Extract code block from LLM response, format with paste instructions"
+  }
+]
+intent_examples: [
+  {"input": "python marker erstellen",                   "class": 2},
+  {"input": "automatischer marker geburtstagshinweis",   "class": 2},
+  {"input": "marker für patienten mit diabetes",         "class": 3},
+  {"input": "create python marker tomedo",               "class": 2},
+  {"input": "marker wenn kein termin in 90 tagen",       "class": 3},
+  {"input": "automatischer hinweis in tagesliste",       "class": 2},
+  {"input": "marker bei laborwert außerhalb normbereich","class": 3},
+  {"input": "generate automatic marker tomedo",          "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-compose-statistic` (class 21) — Tier 1
+
+```
+name:              "tomedo-compose-statistic"
+description:       "Generate a custom tomedo SQL statistics query using the zollsoft context file and LLM composition."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-compose-statistic>", "<uuid:skill-tomedo>"],
+    "label":   "Load statistics composition skill + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM receives zollsoft statistics context + user requirement → generates SQL"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": [],
+    "label":   "Extract SQL block, format with paste instructions for Statistiken module"
+  }
+]
+intent_examples: [
+  {"input": "statistik erstellen tomedo",                "class": 2},
+  {"input": "sql auswertung patienten",                  "class": 2},
+  {"input": "statistik alle patienten mit diagnose",     "class": 3},
+  {"input": "generate statistics query tomedo",          "class": 2},
+  {"input": "goä ziffer auswertung letztes quartal",     "class": 3},
+  {"input": "ebm leistungsstatistik",                    "class": 2},
+  {"input": "create custom statistic tomedo",            "class": 2},
+  {"input": "medikamentenauswertung sql",                "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-compose-briefvorlage` (class 21) — Tier 1
+
+```
+name:              "tomedo-compose-briefvorlage"
+description:       "Generate a tomedo letter template (Briefvorlage) HTML using the zollsoft context file and LLM composition."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-compose-briefvorlage>", "<uuid:skill-tomedo>"],
+    "label":   "Load Briefvorlage composition skill + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM receives zollsoft Briefvorlage context + user requirement → generates HTML"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": [],
+    "label":   "Extract HTML block, format with paste instructions for Briefschreibung"
+  }
+]
+intent_examples: [
+  {"input": "briefvorlage erstellen",                    "class": 2},
+  {"input": "arztbrief vorlage tomedo",                  "class": 2},
+  {"input": "befundbericht vorlage mit tabelle",         "class": 3},
+  {"input": "create letter template tomedo",             "class": 2},
+  {"input": "ct befund vorlage strukturiert",            "class": 3},
+  {"input": "schlaflaborbericht vorlage",                "class": 2},
+  {"input": "überweisungsschreiben vorlage",             "class": 2},
+  {"input": "brief template with patient address",       "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-compose-cke` (class 21) — Tier 1
+
+```
+name:              "tomedo-compose-cke"
+description:       "Generate a tomedo CustomKarteiEintrag (CKE) XML definition using the zollsoft context file and LLM composition."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-compose-cke>", "<uuid:skill-tomedo>"],
+    "label":   "Load CKE composition skill + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM receives zollsoft CKE context + user requirement → generates XML"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": [],
+    "label":   "Extract XML block, format with import instructions for CKE editor"
+  }
+]
+intent_examples: [
+  {"input": "cke erstellen tomedo",                      "class": 2},
+  {"input": "custom karteieintrag impfung",              "class": 2},
+  {"input": "tumordokumentation cke",                    "class": 2},
+  {"input": "create custom kartei entry",                "class": 2},
+  {"input": "cke für ild dokumentation",                 "class": 3},
+  {"input": "strukturierter karteieintrag erstellen",    "class": 2},
+  {"input": "customkarteieintrag xml generieren",        "class": 2},
+  {"input": "schlafprotokoll cke cpap",                  "class": 3}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-compose-patientenformular` (class 21) — Tier 1
+
+```
+name:              "tomedo-compose-patientenformular"
+description:       "Generate a tomedo patient form (Patientenformular) JSON definition using the zollsoft context file and LLM composition."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-compose-patientenformular>", "<uuid:skill-tomedo>"],
+    "label":   "Load Patientenformular composition skill + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM receives zollsoft patient form context + user requirement → generates JSON"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": [],
+    "label":   "Extract JSON block, format with instructions for Patientenformulare JSON tab"
+  }
+]
+intent_examples: [
+  {"input": "patientenformular erstellen",               "class": 2},
+  {"input": "fragebogen für patienten anlegen",          "class": 2},
+  {"input": "anamnese fragebogen atemwege",              "class": 3},
+  {"input": "create patient form tomedo",                "class": 2},
+  {"input": "einverständniserklärung formular",          "class": 2},
+  {"input": "triage fragebogen infekt kinder",           "class": 3},
+  {"input": "patient questionnaire json tomedo",         "class": 2},
+  {"input": "digital patient intake form",               "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
 
 ## Step 6 — ExtensionCatalogues (class 23)
 
@@ -2199,13 +2776,26 @@ overview_doc: |
   └─────────────────────────────────────────────────────────────────────────┘
   NOT AVAILABLE: phone-number search (confirmed returns empty dict).
 
+  WRITE OPERATIONS (future):
+  The official tomedo.API (partner program, NDA-gated) supports appointments
+  and Karteieintrag writes. This is NOT in scope for v3 — see §future-api.
+
+  LLM OBJECT COMPOSITION (§llm-objects):
+  The composition recipes generate tomedo objects (Python markers, SQL stats,
+  letter templates, CKEs, patient forms) using zollsoft context files + LLM.
+  Output is copy-pasteable — no direct write to tomedo required.
+
   TASK GROUPS:
-  1. Health checks:  tomedo-serverstatus
-  2. Patient reads:  tomedo-patient-detail, tomedo-patient-diagnoses,
-                     tomedo-patient-medications, tomedo-patient-next-appointment,
-                     tomedo-patient-visits
-  3. Patient search: tomedo-patient-search-by-name (Tier 1)
-  4. Full context:   tomedo-patient-full-context (composed)
+  1. Health checks:    tomedo-serverstatus
+  2. Patient reads:    tomedo-patient-detail, tomedo-patient-diagnoses,
+                       tomedo-patient-medications, tomedo-patient-next-appointment,
+                       tomedo-patient-visits
+  3. Patient search:   tomedo-patient-search-by-name (Tier 1)
+  4. Full context:     tomedo-patient-full-context (composed)
+  5. Object composition (Tier 1, LLM):
+     tomedo-compose-python-marker, tomedo-compose-statistic,
+     tomedo-compose-briefvorlage, tomedo-compose-cke,
+     tomedo-compose-patientenformular
 
   KEY DATA SHAPES:
   • geburtsDatum: epoch ms, may be negative (before 1970)
@@ -2236,6 +2826,17 @@ task_groups: [
     "group_name": "patient-search",
     "summary": "Search patients by name (Tier 1, LLM required)",
     "recipe_ids": ["tomedo-patient-search-by-name"]
+  },
+  {
+    "group_name": "llm-object-composition",
+    "summary": "Generate tomedo configuration objects (markers, SQL, templates, CKEs, forms) via LLM — Tier 1",
+    "recipe_ids": [
+      "tomedo-compose-python-marker",
+      "tomedo-compose-statistic",
+      "tomedo-compose-briefvorlage",
+      "tomedo-compose-cke",
+      "tomedo-compose-patientenformular"
+    ]
   }
 ]
 consumer_tags:   ["02:orchestrator", "05:validator"]
@@ -2329,13 +2930,13 @@ validation_status: "validated"
 | Class | Count | Names |
 |-------|-------|-------|
 | 0 — Tool | 2 | `tomedo-api`, `tomedo-crawl-api` |
-| 1 — Leaf Skill | 14 | `skill-tomedo-serverstatus` … `skill-tomedo-format-context` |
+| 1 — Leaf Skill | 20 | `skill-tomedo-serverstatus` … `skill-tomedo-compose-patientenformular` |
 | 2 — Domain Skill | 2 | `skill-tomedo`, `skill-tomedo-crawl` |
 | 13 — ToolSkill | 14 | `ts-tomedo-serverstatus` … `ts-tomedo-crawl-config-read` |
-| 21 — Recipe | 13 | `tomedo-serverstatus` … `tomedo-patient-search-by-name` |
+| 21 — Recipe | 18 | `tomedo-serverstatus` … `tomedo-compose-patientenformular` |
 | 22 — PythonCode | 20 | `pc-tomedo-serverstatus` … `pc-tomedo-filter-recent-patients` |
 | 23 — ExtensionCatalogue | 2 | `ext-tomedo`, `ext-tomedo-crawl` |
-| **Total** | **67** | |
+| **Total** | **78** | |
 
 ---
 
@@ -2344,7 +2945,7 @@ validation_status: "validated"
 | Tier | Recipes | Reason |
 |------|---------|--------|
 | **Tier 0** | 12 | All read ops with known params — deterministic, no LLM needed |
-| **Tier 1** | 1 | `tomedo-patient-search-by-name` — LLM composes URL-encoded name query |
+| **Tier 1** | 6 | Name search (LLM query) + 5 LLM object composition recipes |
 
 ---
 
@@ -2395,7 +2996,7 @@ Group 4 — PythonCode pure-logic helpers (class 22, no __execute_action__):
   35. pc-tomedo-extract-phone-fields
   36. pc-tomedo-filter-recent-patients
 
-Group 5 — Leaf Skills (class 1):
+Group 5 — Leaf Skills (class 1) — REST API reads + crawl:
   37. skill-tomedo-serverstatus
   38. skill-tomedo-patient-list
   39. skill-tomedo-patient-detail
@@ -2411,29 +3012,42 @@ Group 5 — Leaf Skills (class 1):
   49. skill-tomedo-crawl-config-read
   50. skill-tomedo-format-context
 
-Group 6 — Domain Skills (class 2):
-  51. skill-tomedo
-  52. skill-tomedo-crawl
+Group 5b — Leaf Skills (class 1) — LLM object composition:
+  51. skill-tomedo-compose-python-marker
+  52. skill-tomedo-compose-statistic
+  53. skill-tomedo-compose-briefvorlage
+  54. skill-tomedo-lookup-briefkommando
+  55. skill-tomedo-compose-cke
+  56. skill-tomedo-compose-patientenformular
 
-Group 7 — Recipes (class 21):
-  53. tomedo-serverstatus
-  54. tomedo-patient-detail
-  55. tomedo-patient-diagnoses
-  56. tomedo-patient-medications
-  57. tomedo-patient-next-appointment
-  58. tomedo-patient-visits
-  59. tomedo-phone-lookup
-  60. tomedo-rag-query
-  61. tomedo-rag-query-for-patient
-  62. tomedo-crawl-health
-  63. tomedo-crawl-trigger
-  64. tomedo-crawl-config-read
-  65. tomedo-patient-full-context
-  66. tomedo-patient-search-by-name  (Tier 1)
+Group 6 — Domain Skills (class 2):
+  57. skill-tomedo
+  58. skill-tomedo-crawl
+
+Group 7 — Recipes (class 21) — Tier 0 (read) + Tier 1 (search/compose):
+  59. tomedo-serverstatus
+  60. tomedo-patient-detail
+  61. tomedo-patient-diagnoses
+  62. tomedo-patient-medications
+  63. tomedo-patient-next-appointment
+  64. tomedo-patient-visits
+  65. tomedo-phone-lookup
+  66. tomedo-rag-query
+  67. tomedo-rag-query-for-patient
+  68. tomedo-crawl-health
+  69. tomedo-crawl-trigger
+  70. tomedo-crawl-config-read
+  71. tomedo-patient-full-context
+  72. tomedo-patient-search-by-name      (Tier 1 — name search)
+  73. tomedo-compose-python-marker       (Tier 1 — LLM compose)
+  74. tomedo-compose-statistic           (Tier 1 — LLM compose)
+  75. tomedo-compose-briefvorlage        (Tier 1 — LLM compose)
+  76. tomedo-compose-cke                 (Tier 1 — LLM compose)
+  77. tomedo-compose-patientenformular   (Tier 1 — LLM compose)
 
 Group 8 — ExtensionCatalogues (class 23):
-  67. ext-tomedo
-  68. ext-tomedo-crawl
+  78. ext-tomedo
+  79. ext-tomedo-crawl
 ```
 
 > **Note:** Seeding happens after all lower-dependency classes are seeded.
@@ -2459,10 +3073,13 @@ computed on first insert and checked on subsequent runs.
 | Both surfaces via `builtin.http` | No separate Rust capability needed — http already handles mTLS |
 | 14 ToolSkills (not 2) | One per distinct URL pattern — maps to exact recipe steps |
 | 13 PythonCode executors + 7 pure-logic helpers | Executors call `__execute_action__`; helpers transform data without I/O |
-| 14 leaf skills | One per distinct approach — enforces the one-function-per-skill rule |
+| 20 leaf skills (14 + 6 composition) | One per distinct approach — enforces the one-function-per-skill rule |
 | 12 Tier-0 recipes | All known-ID read ops are deterministic — no LLM needed |
-| 1 Tier-1 recipe | Name search only — LLM must compose URL-encoded query |
+| 6 Tier-1 recipes | 1 name search (LLM query) + 5 LLM object composition recipes |
 | `tomedo-patient-full-context` | Multi-step composed recipe; always chains the same 4 calls |
 | Phone lookup via sidecar only | Confirmed: server-side phone search returns `{}` (non-functional) |
 | German + English intent examples | Praxis staff speak German; orchestrator must handle both |
+| Direct mTLS REST API is read-only | Confirmed live 2026-04-11; write ops require official tomedo.API partner program |
+| LLM composition uses embedded context files | zollsoft provides `pythonmarker_context.txt` etc; BrassClaw embeds in skill bodies |
+| No write to tomedo from composition recipes | Output is copy-pasteable code/XML/JSON — user pastes into tomedo UI |
 
