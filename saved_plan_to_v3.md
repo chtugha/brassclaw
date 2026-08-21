@@ -7660,7 +7660,7 @@ a string literal — to stay in sync with the handler registry.
 | `"builtin.trigger_remove"` | `trigger_management.rs::TRIGGER_REMOVE_CAPABILITY_ID` |
 | `"builtin.spawn_subagent"` | `spawn_subagent.rs::SPAWN_SUBAGENT_CAPABILITY_ID` |
 
-**Content source for all 178 component bodies:** `builtin_stuff_v3.md` (Steps 1–26).
+**Content source for all 319 component bodies:** `builtin_stuff_v3.md` (Steps 1–26 + Step 14.x).
 Every ToolSkill body, Leaf/Domain Skill body, PythonCode body, ExtensionCatalogue
 `overview_doc`, and Recipe `step_descriptions` JSON is fully specified there. The
 implementer transcribes each body into the corresponding `const &str` in
@@ -7700,7 +7700,7 @@ seed_builtin_components(pool, scope):
 **Hand-authored content** lives as named `const &str` literals **inline in
 `builtin_bootstrap.rs`** — one constant per component body (ToolSkill, Skill,
 PythonCode, ExtensionCatalogue `overview_doc`, Recipe `step_descriptions` JSON). The
-full body text for all 178 components is already specified in `builtin_stuff_v3.md`
+full body text for all 319 components is already specified in `builtin_stuff_v3.md`
 and is transcribed into these constants at implementation time.
 
 **No `include_str!()` and no `prompts/builtin/` directory.** The `include_str!()` +
@@ -7725,9 +7725,9 @@ const CAT_FILESYSTEM_OVERVIEW: &str = "...ExtensionCatalogue overview_doc...";
 
 #### L.3 Content source
 
-**No content files to create.** All 178 component bodies (28 ToolSkills, 27 PythonCode
-bodies, 44 Leaf Skills, 7 Domain Skills, 46 Recipes with `step_descriptions` JSONB,
-5 ExtensionCatalogue `overview_doc` strings, 23 Tool rows) are fully specified in
+**No content files to create.** All 319 component bodies (30 ToolSkills, 62 PythonCode
+bodies, 76 Leaf Skills, 9 Domain Skills, 95 Recipes with `step_descriptions` JSONB,
+24 ExtensionCatalogue `overview_doc` strings, 23 Tool rows) are fully specified in
 `builtin_stuff_v3.md` (Steps 1–26 + Final section). The implementer transcribes each
 body from that document into the corresponding `const &str` in `builtin_bootstrap.rs`.
 
