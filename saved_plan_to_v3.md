@@ -43,9 +43,30 @@
 
 ---
 
-## Codebase Audit Pass — Corrections Applied (Review Passes 2 + 3 + 5 + 7 + 8)
+## Codebase Audit Pass — Corrections Applied (Review Passes 2 + 3 + 5 + 7 + 8 + 9; Pass 9 inline fixes applied)
 
 The following issues were found by reading the live codebase and corrected directly in this plan. Each is tagged with a marker so implementers can grep for them.
+
+### Pass 9 findings (full plan + codebase cross-read — new issues found)
+
+| Tag | Severity | Location | Finding | Fix Applied |
+|-----|----------|----------|---------|-------------|
+| `FIND-P9-01` | **CRITICAL** | Phase A.5 / §0.18 / `gate1_pass` crate-boundary | `gate1_pass` is `pub(crate)` on `ValidationQueueStore` in `brassclaw_reborn_composition`. BUT `ComponentValidator` lives in `brassclaw_engine` (a separate crate). `brassclaw_engine` CANNOT call `pub(crate)` methods from another crate. The Q1 orchestration sequence must therefore live entirely in `brassclaw_reborn_composition`: call `ComponentValidator::validate_by_class` (pure fn, importable cross-crate) → call `gate1_pass` or `gate1_fail` in the same crate. Add `crates/brassclaw_reborn_composition/src/q1_orchestrator.rs` with function `run_q1_validation(pool, scope, component_id, class_code, payload, config, queue_store)` that owns the cross-crate orchestration. Never call `gate1_pass` from `brassclaw_engine`. | Phase A.5 "Files to create" updated: add `q1_orchestrator.rs`. Phase I updated: new Q1 rules go in `component_validator.rs` (engine, pure logic); composition `q1_orchestrator.rs` orchestrates the call. |
+| `FIND-P9-02` | **CRITICAL** | Phase H item 3b / `execute_recipe_orchestrator_channel` unspecified | This Python function is referenced 6+ times but never defined. Specification: `def execute_recipe_orchestrator_channel(pkr, goal, state)`: (1) extract `orchestrator_content` from `pkr` (pre-assembled Skill+PythonCode block); (2) for each Skill/PythonCode step in `orchestrator_content` in order: interpret the step instructions, call `__execute_action__` on the Rust executioner using ToolSkill bindings (already in execution context from `RecipeStage`); (3) run PythonCode formatter bodies; (4) return `{"result": formatted_output, "outcome": "success"}` or `{"outcome": "error", "message": ...}`. **DESIGN RISK:** Skill bodies are narrative LLM instructions, not formal programs — interpreting them without an LLM is fragile. **Recommended Q1 constraint:** Tier-0 recipes (`llm_call_required: false`) MUST have ONLY `PythonCode` components in `orchestrator_steps`, never `Skill` components. This makes Tier 0 deterministic: PythonCode is executable Python, not LLM prose. Add this as a hard Q1 rule in Phase I §shell-guard. | Phase H item 3b + §0.9 updated with specification. Phase I §shell-guard extended with Tier-0 PythonCode-only rule. |
+| `FIND-P9-03` | **CRITICAL** | Phase H / `RetrievalTurnResult`, `PriorKnowledgeBundle`, `TierZeroReply` never defined | All three `brassclaw_turns`-native types are referenced but never given struct definitions. Specs: `pub struct RetrievalTurnResult { pub tier0_eligible: bool, pub llm_call_required: bool, pub rust_items: serde_json::Value, pub orchestrator_items: serde_json::Value, pub routing_meta: serde_json::Value }`. `pub struct PriorKnowledgeBundle { pub orchestrator_content: String, pub matched_component_ids: Vec<String>, pub override_prompt_creation: bool }`. `pub struct TierZeroReply { pub text: String, pub matched_component_ids: Vec<String> }`. Define all three in `crates/brassclaw_turns/src/run_profile/host.rs` alongside the port traits. | Phase H §H.0 updated with full struct definitions. |
+| `FIND-P9-04` | **CRITICAL** | Phase E / `fetch_components_by_ids` (PERF-02) — never specified | Spec: `async fn fetch_components_by_ids(pool: &PgPool, scope: &ComponentScope, ids_by_class: &[(Uuid, i32)]) -> Result<Vec<ComponentItem>, RetrievalSourceError>`. Group by `(table, content_expr)` from the class-code match; for each group: `SELECT ... FROM {table} WHERE id = ANY($1) AND tenant_id=$2 AND user_id=$3 AND agent_id=$4 AND project_id=$5 AND validation_status='validated' AND '05:validator' != ALL(consumer_tags)`. Same security invariant as `fetch_component_by_id` (literals only, never user input). | Phase E "Files to modify" updated with full specification. |
+| `FIND-P9-05` | **CRITICAL** | Phase A.5 `ValidationQueueStore::approve` — transaction not specified | `approve` touches two tables (`reborn_validation_queue` DELETE + component table UPDATE). Must be one transaction. Flow: (1) BEGIN; (2) UPDATE {component_table} SET validation_status='validated' WHERE id=$component_id AND scope; (3) DELETE FROM reborn_validation_queue WHERE component_id=$1 AND scope (trigger fires here); (4) COMMIT. Dispatch on `component_class` to find the target table using the same class→table map as `fetch_component_by_id`. Unknown class → return error before transaction. | Phase A.5 `ValidationQueueStore::approve` spec updated with transaction requirement, dispatch on component_class, and ordering (UPDATE before DELETE). |
+| `FIND-P9-06` | **CRITICAL** | Phase G `call_action` Option A — data migration never specified | Phase G recommends Option A (add `action_id: UUID` to `call_action` step defs) but never provides the migration SQL, ambiguity handling, or fallback. Migration (run at Phase G deploy, not a Flyway migration): `UPDATE reborn_actions SET steps = (SELECT jsonb_agg(CASE WHEN step->>'type'='call_action' AND step->>'action' IS NOT NULL THEN step || jsonb_build_object('action_id', (SELECT id::text FROM reborn_actions a2 WHERE a2.name=step->>'action' AND a2.tenant_id=a1.tenant_id AND a2.user_id=a1.user_id AND a2.agent_id=a1.agent_id AND a2.project_id=a1.project_id LIMIT 1)) ELSE step END) FROM jsonb_array_elements(steps) step) FROM reborn_actions a1 WHERE a1.id=reborn_actions.id`. Ambiguous/unresolvable: leave `action_id` null; at runtime null falls back to Option B (`__resolve_component_by_name__`). Post-migration audit: `SELECT id, steps FROM reborn_actions WHERE steps @> '[{"type":"call_action"}]'::jsonb AND steps @> '[{"type":"call_action","action_id":null}]'::jsonb`. | Phase G "Files to modify" updated with migration SQL, fallback, and audit query. |
+| `FIND-P9-07` | **HIGH** | Phase A.5 V051 `UNIQUE` constraint column order | Phase A.5 DDL: `UNIQUE (component_id, tenant_id, user_id, agent_id, project_id)`. §0.18: `UNIQUE (tenant_id, user_id, agent_id, project_id, component_id)`. Scope-first is more efficient (queries always filter scope first). | Phase A.5 DDL corrected to scope-first ordering matching §0.18. |
+| `FIND-P9-08` | **HIGH** | Phase A.5 V051 `state` comment — wrong label for state 2 | DDL comment says `2=Q2_pending`. Should be `2=Q1_passed`. State 2 = Gate 1 PASSED, awaiting Q2 manual review. Writing "Q2_pending" implies the Q2 reviewer sets it — that is the OPPOSITE of the security invariant (only Gate 1 writes state 2). | V051 DDL comment corrected to `1=Q1_queue, 2=Q1_passed, 3=rejected, 4=deletion_candidate`. |
+| `FIND-P9-09` | **HIGH** | Phase A `PgRecipe::is_tier0_eligible()` fix — `has_validation` check not applicable | `Recipe::is_tier0_eligible()` checks `has_validation` (validation hook wired). `PgRecipe` has no `validation` field (no `RecipeValidation` column on `reborn_recipes`). The plan's proposed fix (`is_deliverable() && tier ∈ {mature,candidate} && wilson_lower >= 0.70`) is correct for `PgRecipe`. The validation-hook guard lives in `TurnRoutingSignals` (from `fetch_for_turn`). Plan is correct as stated. | No change. Confirmed correct. |
+| `FIND-P9-10` | **HIGH** | Phase J stale "V054 intent_examples no-op" references | After Decision 2 V-number shifts, Phase J still mentions "V054's ADD COLUMN intent_examples as NO-OP". Post-shift this is V055. All "V054 intent_examples" references must read "V055 (NO-OP omitted per FIND-12)". | Phase J body updated. |
+| `FIND-P9-11` | **HIGH** | Phase N.1 V059 SQL comment says "abort V058" | Should say "abort V059". | Phase N.1 comment corrected. |
+| `FIND-P9-12` | **MEDIUM** | Phase M.2 test list missing trailing-`%` case | `parse_template("search for %")` → `Some(("search for ", ""))` (prefix-anchored, suffix empty) is missing from tests. | Test added to Phase M.2. |
+| `FIND-P9-13` | **MEDIUM** | Phase B/C `recipe_store.rs` display label note | Labels are display labels not class names (`13 => "Guide"`, `18 => "Snippet"`, etc.). Implementers must not confuse display labels with class identifiers. `22 => "PythonCode"` and `23 => "Catalogue"` are correct single-word additions. | Note added for implementer clarity. |
+| `FIND-P9-14` | **MEDIUM** | Phase L V057 `DROP CONSTRAINT IF EXISTS reborn_recipes_source_check` is a no-op | V033 has no source CHECK on `reborn_recipes`. The IF EXISTS prevents an error but this is a silent no-op. | V057 comment updated to document this. |
+| `FIND-P9-15` | **MEDIUM** | Phase H §5 `handle_assemble_prior_knowledge` reads `state.recipe_hint` — crate boundary violation | `brassclaw_engine` does not depend on `brassclaw_agent_loop`. The handler CANNOT read `LoopExecutionState.recipe_hint`. Correct model: the stage reads `state.recipe_hint` and passes it as a parameter to `run_step_zero`; the composition host passes it to the engine handler as an argument. The handler receives `recipe_hint: Option<serde_json::Value>` as a parameter — never reads `LoopExecutionState`. Stage clears `state.recipe_hint = None` AFTER `run_step_zero` returns. | Phase H §5 corrected throughout. All "handler checks state.recipe_hint" replaced with "stage extracts recipe_hint from state, passes as parameter; handler receives as argument; stage clears after return." |
+| `FIND-P9-16` | **LOW** | Phase M.2 suffix logic verified correct | `rsplitn(2, '%').next()` correctly yields the text after the last `%`. Tests confirmed correct. | No change. |
 
 ### Pass 8 findings (full `Thread` struct read — new critical issue)
 
@@ -791,6 +812,11 @@ fn build_instruction(
      rust-channel steps must have type:component with non-empty include
      all include UUIDs must parse as valid UUID v4
      S7 guard: if any rust_steps emit tool_bindings, orchestrator_steps must contain ≥1 skill_id
+       (Tier 1: Skill body is read by LLM to direct the executor)
+       S7-extension for Tier 0: if llm_call_required==false AND rust_steps has tool_bindings,
+       orchestrator_steps must contain ≥1 PythonCode UUID (class 22) — not a Skill UUID, because
+       Skill bodies require an LLM interpreter. A Tier-0 recipe with tool_bindings and empty
+       orchestrator_steps is a Q1 hard error (§tier0-orchestrator-channel Rule 2).
      dependency expressions: parse each step's `dependencies` string into DependencyExpr tree
        → parse errors are hard IBS errors (IbsError::InvalidDependencyExpr)
        → out-of-range indices are not checked here (registry is in DB; checked at Q1)
@@ -2569,13 +2595,17 @@ not just after Phase N.
       component_id     UUID NOT NULL,
       component_class  SMALLINT NOT NULL,
       state            SMALLINT NOT NULL DEFAULT 1,
-      -- state values: 1=Q1_pending 2=Q2_pending 3=rejected 4=deletion_candidate
+      -- state values: 1=Q1_pending, 2=Q1_passed (awaiting Q2 manual review), 3=rejected, 4=deletion_candidate
+      -- ⚠️ FIND-P9-08: state 2 = Gate 1 PASSED. Only Gate 1 sets state 2 (pub(crate) gate1_pass).
+      -- The Q2 reviewer approves from state 2 → approve() deletes the row (graduation).
       counter          INT NOT NULL DEFAULT 0,
       review_feedback  TEXT,
       validation_errors TEXT[] NOT NULL DEFAULT '{}',
       submitted_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-      UNIQUE (component_id, tenant_id, user_id, agent_id, project_id)
+      -- ⚠️ FIND-P9-07: scope-first ordering matches all query patterns (queries always
+      -- filter scope first, then component_id). component_id-first is wrong index order.
+      UNIQUE (tenant_id, user_id, agent_id, project_id, component_id)
   );
   CREATE INDEX reborn_validation_queue_scope_state_idx
       ON reborn_validation_queue (tenant_id, user_id, agent_id, project_id, state);
@@ -2597,6 +2627,75 @@ not just after Phase N.
   `approve`, `list`, `purge_deletion_candidates`). Implement the full store here in Phase A.5;
   Phase N.2 becomes a no-op (already done) — mark it so when Phase N is reached.
 
+  > **⚠️ FIND-P9-05 — `approve` must be ONE TRANSACTION across two tables:**
+  > `approve` touches both `reborn_validation_queue` (DELETE) and the target component
+  > table (UPDATE `validation_status = 'validated'`). These must be atomic. If the DELETE
+  > succeeds but the UPDATE fails, the queue row is gone and the component stays `pending` —
+  > a permanent orphan.
+  >
+  > **Required implementation:**
+  > ```
+  > BEGIN;
+  > (1) Dispatch on component_class → resolve the target table using the same class→table
+  >     map as fetch_component_by_id. Unknown class → return error BEFORE starting the
+  >     transaction (no wasted BEGIN).
+  > (2) UPDATE {component_table} SET validation_status = 'validated'
+  >     WHERE id = $component_id AND tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND
+  >     project_id=$4;
+  >     If 0 rows updated → ROLLBACK + return error (component disappeared).
+  > (3) DELETE FROM reborn_validation_queue
+  >     WHERE component_id = $component_id AND tenant_id=$1 AND user_id=$2 AND agent_id=$3
+  >     AND project_id=$4;
+  >     The graduation trigger fires here, updating last_graduation_at.
+  > COMMIT;
+  > ```
+  > **Ordering note:** UPDATE before DELETE so the trigger fires only after the component
+  > row is already validated — no window where the queue row is deleted but the component
+  > is still `pending`. Return `Ok(component_id)` for the caller.
+  >
+  > **⚠️ FIND-P9-01 — `approve` is `pub` but `gate1_pass` is `pub(crate)`. The Q1
+  > orchestration (validate → gate1_pass/gate1_fail) MUST live in
+  > `brassclaw_reborn_composition`, NOT in `brassclaw_engine`.** `ComponentValidator`
+  > (`brassclaw_engine`) is a pure function importable cross-crate; it does not call
+  > `gate1_pass`. The composition crate calls it and then calls `gate1_pass`. This
+  > cross-crate wiring lives in `q1_orchestrator.rs` (see "Files to create" below).
+
+- `crates/brassclaw_reborn_composition/src/q1_orchestrator.rs` (**NEW — FIND-P9-01**)
+
+  > **⚠️ FIND-P9-01 — `gate1_pass` is `pub(crate)` in `brassclaw_reborn_composition`.
+  > `ComponentValidator` is in `brassclaw_engine` (a DIFFERENT crate).
+  > `brassclaw_engine` CANNOT call `pub(crate)` methods from `brassclaw_reborn_composition`.
+  > Therefore the Q1 orchestration sequence MUST live entirely inside
+  > `brassclaw_reborn_composition`.**
+
+  Function signature:
+  ```rust
+  pub async fn run_q1_validation(
+      pool: &PgPool,
+      scope: &ComponentScope,
+      component_id: Uuid,
+      class_code: i32,
+      payload: ComponentPayload<'_>,       // from brassclaw_engine — importable cross-crate
+      config: &ValidatorConfig,
+      queue_store: &ValidationQueueStore,
+  ) -> Result<Q1Outcome, Q1Error>
+  ```
+
+  Flow:
+  1. Call `ComponentValidator::validate_by_class(class_code, payload, config)` — this is a
+     pure function from `brassclaw_engine`; `brassclaw_reborn_composition` CAN call it
+     (it depends on `brassclaw_engine`).
+  2. If validation succeeds → call `queue_store.gate1_pass(scope, component_id, &[])`.
+  3. If validation fails with errors → call `queue_store.gate1_fail(scope, component_id, &errors)`.
+  4. Return `Q1Outcome::Passed` or `Q1Outcome::Failed { errors }`.
+
+  `ComponentValidator::validate_by_class` must be `pub` (not `pub(crate)`) so
+  `brassclaw_reborn_composition` can import it. Verify its visibility when implementing;
+  adjust if needed.
+
+  Wire `run_q1_validation` into the WebUI-save path for classes 22 and 23 (Phase B/C),
+  and into the boot-integrity pass for all classes (Phase N).
+
 #### Files to modify
 
 - `crates/brassclaw_reborn_composition/src/lib.rs` (or the composition wiring file) — expose
@@ -2609,9 +2708,14 @@ not just after Phase N.
 - Unit: `gate1_pass` transitions `state 1 → 2`; `gate1_fail` keeps `state = 1` and populates errors
 - Unit: `reject` transitions `state 2 → 3` and increments `counter`
 - Unit: `reject` when `counter >= threshold` → `state = 4`
-- Unit: `approve` deletes the queue row and returns the component UUID for the caller to set `validation_status = 'validated'`
+- Unit: `approve` executes UPDATE + DELETE in one transaction; partial failures roll back atomically
+- Unit: `approve` with unknown `component_class` → error returned before transaction begins
+- Unit: `approve` with missing component row → ROLLBACK, queue row preserved, error returned
+- Unit: `approve` deletes the queue row and returns `Ok(component_id)` on success
 - Unit: `gate1_pass` is `pub(crate)` — confirm it is not callable from outside the composition crate
-- Integration: round-trip with actual Postgres — `submit` → `gate1_pass` → `approve` → queue row deleted
+- Unit: `run_q1_validation` — valid payload → `gate1_pass` called with empty errors
+- Unit: `run_q1_validation` — invalid payload → `gate1_fail` called with error list
+- Integration: round-trip with actual Postgres — `submit` → `run_q1_validation` → `approve` → queue row deleted, component `validation_status = 'validated'`
 
 ---
 
@@ -3235,6 +3339,64 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
     recipes. Re-use the same scope params and the same `format!()` pattern (same security
     invariant: literals only). **This is a Phase E requirement, not a future optimisation.**
 
+    > **⚠️ FIND-P9-04 — `fetch_components_by_ids` is never specified. Full spec below.**
+
+    ```rust
+    /// Batch-fetches multiple components in O(tables) round-trips instead of O(N).
+    /// Groups `ids_by_class` by (table, content_expr) using the same class→table match
+    /// as `fetch_component_by_id`. Emits one `WHERE id = ANY($1) AND scope...` query per group.
+    ///
+    /// SECURITY: `table_name` and `content_expr` are ALWAYS `&'static str` literals from the
+    /// class-code match arm — never user input. This is the same invariant as
+    /// `fetch_component_by_id`. NEVER extend this function to accept user-supplied table names.
+    async fn fetch_components_by_ids(
+        pool:        &PgPool,
+        scope:       &ComponentScope,
+        ids_by_class: &[(Uuid, i32)],  // (component_id, class_code) pairs
+    ) -> Result<Vec<ComponentItem>, RetrievalSourceError> {
+        // 1. Group by (table_name, content_expr) using the same match arm as fetch_component_by_id.
+        //    Unknown class codes are silently skipped (same behaviour as fetch_component_by_id
+        //    returning None — let the caller handle missing items via the returned Vec length).
+        let mut groups: HashMap<(&'static str, &'static str), Vec<Uuid>> = HashMap::new();
+        for (id, class_code) in ids_by_class {
+            if let Some((table, content_expr)) = class_code_to_table(*class_code) {
+                groups.entry((table, content_expr)).or_default().push(*id);
+            }
+        }
+
+        // 2. For each group: one SELECT with id = ANY($1) and all scope + validation filters.
+        //    The WHERE clause replicates fetch_component_by_id's safety guarantees exactly:
+        //    validation_status='validated' AND '05:validator' != ALL(consumer_tags).
+        let mut results = Vec::new();
+        for ((table, content_expr), ids) in &groups {
+            let sql = format!(
+                "SELECT id, {content_expr} AS content, consumer_tags, class_code \
+                 FROM {table} \
+                 WHERE id = ANY($1) \
+                   AND tenant_id=$2 AND user_id=$3 AND agent_id=$4 AND project_id=$5 \
+                   AND validation_status='validated' \
+                   AND '05:validator' != ALL(consumer_tags)",
+            );
+            // ids is Vec<Uuid> — bind as $1 with sqlx's array binding.
+            let rows = sqlx::query(&sql)
+                .bind(ids.as_slice())
+                .bind(&scope.tenant_id)
+                .bind(&scope.user_id)
+                .bind(&scope.agent_id)
+                .bind(&scope.project_id)
+                .fetch_all(pool).await?;
+            for row in rows {
+                results.push(ComponentItem::from_row(&row)?);
+            }
+        }
+        Ok(results)
+    }
+    ```
+
+    Extract the `class_code_to_table(code: i32) -> Option<(&'static str, &'static str)>` helper
+    from the existing match arm in `fetch_component_by_id` so both functions share the same
+    mapping — no duplication of the literal table/column mapping.
+
   > **⚠️ FIND-08 correction — `FetchForTurnResult`, `TurnRoutingSignals`, `ActionShortCircuit`, and
   > `SplitResult` are NEW types that do NOT yet exist:** Verified `retrieval_source.rs:90–96` —
   > `FetchForTurnResult` currently has exactly TWO variants: `Components` and `Disambiguation`.
@@ -3506,16 +3668,53 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
   - Add `_set_active_skills_from_matched_ids(pkr.get("matched_component_ids", []), state)` helper.
   - Replace `call_action` `__retrieve_docs__(nested_name, 1)` at line ~844 with
     `__fetch_component__(action_uuid, 16)`.
-    > **⚠️ FIND-P7-13 — `call_action` references actions BY NAME, not by UUID.**
-    > `default.py:844` does `nested_docs = __retrieve_docs__(nested_name, 1)` where `nested_name`
-    > is a string action name from the step def. Replacing this with `__fetch_component__(uuid, 16)`
-    > requires knowing the UUID. Phase G must pick one of two strategies:
-    > - **Option A (recommended):** Require authors to add `action_id: UUID` to `call_action`
-    >   step defs. At Phase G deploy, run a data migration that for each `call_action` step in
-    >   all V029 Action rows, resolves the action name to its UUID and writes `action_id` into
-    >   the step dict. Then at runtime: `action_doc = __fetch_component__(step_def["action_id"], 16)`.
-    > - **Option B (stop-gap):** Register a new host function `__resolve_component_by_name__(name, 16)`
-    >   that performs a name lookup. Keeps the existing `action` string field working.
+    > **⚠️ FIND-P7-13 + FIND-P9-06 — `call_action` references actions BY NAME, not by UUID.
+    > Option A is chosen (recommended). Full migration SQL and audit query are below.**
+    >
+    > - **Option A (recommended — chosen):** Require authors to add `action_id: UUID` to
+    >   `call_action` step defs. At Phase G deploy, run the data migration SQL below.
+    >   At runtime: `action_doc = __fetch_component__(step_def["action_id"], 16)`.
+    >   Unresolvable names → `action_id` stays null; runtime falls back to Option B path.
+    > - **Option B (stop-gap, fallback for null action_id):** If `action_id` is null at
+    >   runtime (unresolved at migration time), call `__resolve_component_by_name__(name, 16)`.
+    >   Both paths must be implemented — Option A failures degrade gracefully.
+    >
+    > **Migration SQL (run at Phase G deploy, NOT a Flyway migration — data-only):**
+    > ```sql
+    > -- Resolve call_action step names to UUIDs in-place.
+    > -- Unresolvable names leave action_id absent/null → fallback to name lookup at runtime.
+    > UPDATE reborn_actions a1
+    > SET steps = (
+    >     SELECT jsonb_agg(
+    >         CASE
+    >             WHEN step->>'type' = 'call_action'
+    >              AND step->>'action' IS NOT NULL
+    >              AND step->>'action_id' IS NULL
+    >             THEN step || jsonb_build_object('action_id',
+    >                 (SELECT a2.id::text
+    >                  FROM reborn_actions a2
+    >                  WHERE a2.name     = step->>'action'
+    >                    AND a2.tenant_id  = a1.tenant_id
+    >                    AND a2.user_id    = a1.user_id
+    >                    AND a2.agent_id   = a1.agent_id
+    >                    AND a2.project_id = a1.project_id
+    >                  LIMIT 1)
+    >             )
+    >             ELSE step
+    >         END
+    >     )
+    >     FROM jsonb_array_elements(a1.steps) AS step
+    > )
+    > WHERE a1.steps @> '[{"type":"call_action"}]'::jsonb;
+    > ```
+    > **Post-migration audit** (run immediately after — find still-unresolved steps):
+    > ```sql
+    > SELECT a.id, a.name, step->>'action' AS unresolved_action_name
+    > FROM reborn_actions a, jsonb_array_elements(a.steps) AS step
+    > WHERE step->>'type' = 'call_action'
+    >   AND (step->>'action_id' IS NULL OR step->>'action_id' = 'null');
+    > ```
+    > Review output and fix or accept each row before deploying Phase G.
     > The original plan statement "UUID sourced from the BuildInstruction step" is WRONG for
     > `call_action` — these are Action steps (class 16 internal steps), not BuildInstruction steps.
   - `pkr["formatted_content"]` remains supported (backward compat alias) — code that checks
@@ -3561,6 +3760,66 @@ depend on `brassclaw_engine`. Two things `RecipeStage` needs are only reachable 
 `brassclaw_engine` or host-side state, so they MUST be exposed as new `brassclaw_turns`
 host ports — mirroring the existing `LoopRecipePort::recipe_lookup` → `&dyn RecipeLookup`
 pattern (host.rs:2081–2093). Add both before the `RecipeStage` dispatch body:
+
+> **⚠️ FIND-P9-03 — `RetrievalTurnResult`, `PriorKnowledgeBundle`, and `TierZeroReply` are
+> referenced throughout Phase H but never defined. All three are `brassclaw_turns`-native types.
+> Define them in `crates/brassclaw_turns/src/run_profile/host.rs` alongside the port traits.**
+>
+> ```rust
+> // ─── brassclaw_turns-native types (crate boundary: no engine types inside) ──────────────
+>
+> /// Returned by LoopRetrievalPort::fetch_for_turn. Carries the routing signals and
+> /// pre-serialized component arrays. Uses serde_json::Value throughout — ComponentItem
+> /// (brassclaw_engine) must NOT appear here.
+> pub struct RetrievalTurnResult {
+>     /// True when the matched recipe is mature/candidate + wilson_lower >= 0.70
+>     /// + validated + validation hook wired. Full Tier-0 eligibility check.
+>     pub tier0_eligible:    bool,
+>     /// True when the recipe declares llm_call_required = true.
+>     /// Tier 0 requires both tier0_eligible == true AND llm_call_required == false.
+>     pub llm_call_required: bool,
+>     /// Serialized Vec<ComponentItem> for the rust channel (ToolSkills, PythonCode helpers).
+>     /// Applied to the Rust execution context before Python starts.
+>     pub rust_items:        serde_json::Value,
+>     /// Serialized Vec<ComponentItem> for the orchestrator channel (Skills, PythonCode).
+>     /// Stashed in state.recipe_hint; consumed by Python step-0 handler.
+>     pub orchestrator_items: serde_json::Value,
+>     /// Routing metadata (recipe name, matched component UUIDs, variant label, etc.)
+>     /// for telemetry and stash/unstash disambiguation.
+>     pub routing_meta:      serde_json::Value,
+> }
+>
+> /// Returned by LoopOrchestratorPort::run_step_zero. Carries the formatted
+> /// prior-knowledge bundle that PromptStage / build_prompt_bundle injects into
+> /// the LLM prompt for Tier 1. Plain string + metadata — no engine types.
+> pub struct PriorKnowledgeBundle {
+>     /// The assembled orchestrator_content block (Skills + PythonCode bodies, formatted).
+>     /// This is what PromptStage prepends to the LLM context window.
+>     pub orchestrator_content: String,
+>     /// The UUIDs of matched components, for telemetry and record_recipe_outcome.
+>     pub matched_component_ids: Vec<String>,
+>     /// When true, the composition host chose to replace the entire prompt with this
+>     /// content (Solution Override path). Normally false.
+>     pub override_prompt_creation: bool,
+> }
+>
+> /// Returned by LoopOrchestratorPort::run_tier_zero. The Tier-0 reply text to emit
+> /// directly to the user, with no LLM call.
+> pub struct TierZeroReply {
+>     /// The formatted output text to emit as the assistant reply.
+>     pub text: String,
+>     /// The UUIDs of matched components that produced this reply, for Wilson scoring.
+>     pub matched_component_ids: Vec<String>,
+> }
+> ```
+>
+> **Visibility:** all three are `pub` structs in `brassclaw_turns`. `brassclaw_agent_loop`
+> (which uses them in `RecipeStage`, `canonical.rs`) depends on `brassclaw_turns` and can
+> import them. `brassclaw_reborn_composition` (which implements the host ports) also depends
+> on `brassclaw_turns`.
+>
+> **Serde:** all three should `#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]`
+> so they can be logged and passed across the host boundary without friction.
 
 **H4 — retrieval port (the `fetch_for_turn` host boundary).** `RetrievalSource` /
 `PostgresSource` / `FetchForTurnResult` / `ComponentItem` all live in `brassclaw_engine`
@@ -4083,12 +4342,103 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
    - In `default.py` step-0: add a NEW early-return branch (see the §0.9 v3 step-0
      pseudocode) — `if pkr.get("tier_zero"): return execute_recipe_orchestrator_channel(pkr,
      goal, state)` — placed alongside the `action_short_circuit` return and BEFORE the
-     `__llm_complete__` call (default.py:1103). `execute_recipe_orchestrator_channel` is a
-     NEW helper (sibling of `execute_action_procedure`, default.py:901) that drives the
-     loaded skills to instruct the Rust executioner, runs the PythonCode formatters, and
-     returns a `complete_result` without an LLM round-trip. Do NOT route Tier 0 through the
-     `override_prompt_creation` branch — that would conflate the no-LLM Tier-0 path with the
-     LLM Solution-Override path and break Solution Override.
+     `__llm_complete__` call (default.py:1103).
+
+     > **⚠️ FIND-P9-02 — `execute_recipe_orchestrator_channel` is referenced 6+ times but
+     > never specified. Full specification below.**
+
+     `execute_recipe_orchestrator_channel` is a NEW helper function in `default.py`,
+     sibling of `execute_action_procedure` (default.py:901). Specification:
+
+     ```python
+     def execute_recipe_orchestrator_channel(pkr: dict, goal: str, state) -> dict:
+         """
+         Tier-0 execution: runs the recipe's orchestrator channel (Skills + PythonCode)
+         against the pre-loaded Rust execution context WITHOUT an LLM call.
+
+         Called when pkr["tier_zero"] is True. The orchestrator_items were already
+         applied to the Rust execution context by handle_assemble_prior_knowledge
+         (rust_items via RecipeStage/state.recipe_rust_context; orchestrator_items
+         in pkr["orchestrator_content"] as the formatted block).
+
+         Returns a complete_result dict with outcome="success" or outcome="error".
+         """
+         orchestrator_content = pkr.get("orchestrator_content", "")
+         matched_ids = pkr.get("matched_component_ids", [])
+
+         # Parse the orchestrator_content block into ordered steps.
+         # The format is the IBS-produced section headers + bodies:
+         #   ## [PythonCode: <name>]
+         #   <python body>
+         #
+         # ⚠️ ARCHITECTURAL INVARIANT: The orchestrator is ALWAYS the supervisory layer.
+         # It is always the PythonCode in orchestrator_steps that calls __execute_action__
+         # on the Rust executor. The Rust channel (rust_steps) only pre-loads which ToolSkills
+         # are available — it does NOT self-execute. Therefore orchestrator_content must NEVER
+         # be empty when rust_steps has tool_bindings (enforced by Q1 Rule 2, S7-extension).
+         # At runtime, an empty orchestrator_content means Q1 was bypassed — fail explicitly.
+         #
+         # ⚠️ FIND-P9-02 CONSTRAINT: orchestrator_steps may ONLY contain PythonCode (class 22).
+         # Skill bodies are narrative LLM instructions; executing them without an LLM is undefined
+         # behaviour. Enforced at Q1 time (Phase I). At runtime, non-PythonCode → hard error.
+
+         if not orchestrator_content.strip():
+             return {"outcome": "error",
+                     "message": "Tier-0 recipe has no orchestrator channel content. "
+                                "Add a PythonCode component to orchestrator_steps that "
+                                "calls __execute_action__ and formats the result. "
+                                "(Q1 Rule 2 / S7-extension should have caught this.)"}
+
+         steps = _parse_orchestrator_channel_steps(orchestrator_content)
+         result_parts = []
+
+         for step in steps:
+             if step["type"] == "python":
+                 # Execute the PythonCode body in a sandboxed local scope.
+                 # The scope includes: goal, state, pkr, __execute_action__, __fetch_component__.
+                 # The PythonCode body should assign its output to `result`.
+                 local_scope = {
+                     "goal": goal, "state": state, "pkr": pkr,
+                     "__execute_action__": __execute_action__,
+                     "__fetch_component__": __fetch_component__,
+                 }
+                 try:
+                     exec(step["body"], {}, local_scope)
+                     step_result = local_scope.get("result", "")
+                     result_parts.append(str(step_result))
+                 except Exception as e:
+                     return {"outcome": "error", "message": f"PythonCode step '{step['name']}' failed: {e}"}
+             elif step["type"] == "toolskill":
+                 # ToolSkill steps are pre-loaded into the Rust execution context by
+                 # RecipeStage (state.recipe_rust_context). The orchestrator invokes them
+                 # via __execute_action__ using the skill's binding params.
+                 # (ToolSkill bodies are in the rust channel, not orchestrator channel —
+                 # if a ToolSkill appears here, that is a Q1 violation.)
+                 return {"outcome": "error",
+                         "message": f"Skill/ToolSkill component '{step['name']}' in "
+                                    f"orchestrator_steps is not allowed for Tier-0 recipes. "
+                                    f"Only PythonCode is permitted (Phase I §shell-guard). "
+                                    f"Promote recipe to Tier 1 or replace with PythonCode."}
+             else:
+                 return {"outcome": "error", "message": f"Unknown step type '{step['type']}'"}
+
+         formatted_output = "\n".join(result_parts)
+         return {
+             "result": formatted_output,
+             "outcome": "success",
+             "matched_component_ids": matched_ids,
+         }
+     ```
+
+     Helper `_parse_orchestrator_channel_steps(orchestrator_content)` parses the
+     `## [PythonCode: <name>]` / `## [Skill: <name>]` block format produced by IBS and
+     returns a list of `{"type": "python"|"toolskill", "name": str, "body": str}` dicts.
+     This helper is also used in tests.
+
+     Do NOT route Tier 0 through the `override_prompt_creation` branch — that would
+     conflate the no-LLM Tier-0 path with the LLM Solution-Override path and break
+     Solution Override.
+
    - Tier 1 on the engine path is unchanged: `tier_zero` false, `override_prompt_creation`
      false, Python calls `__llm_complete__` guided by `orchestrator_content` (current
      behaviour).
@@ -4222,7 +4572,27 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
 
    > This is the trickiest coordination point in the whole architecture. Both `RecipeStage`
    > (in the agent loop) and `handle_assemble_prior_knowledge` (inside the Python scripting
-   > engine) call `fetch_for_turn`. They must NOT both do a full IBS compilation + component fetch.
+   > engine) would naively call `fetch_for_turn`. They must NOT both do a full IBS
+   > compilation + component fetch — the stash/unstash protocol prevents the double-fetch.
+
+   > **⚠️ FIND-P9-15 — crate-boundary correction: `handle_assemble_prior_knowledge` is in
+   > `brassclaw_engine`, which does NOT depend on `brassclaw_agent_loop`. It CANNOT read
+   > `LoopExecutionState.recipe_hint` directly. The correct flow is:**
+   >
+   > 1. The STAGE (`RecipeStage`, in `brassclaw_agent_loop`) reads `state.recipe_hint` and
+   >    passes it as a parameter to `ctx.host.run_step_zero(context, recipe_hint.as_ref())`.
+   > 2. The COMPOSITION HOST (`brassclaw_reborn_composition`) implements `run_step_zero`:
+   >    it receives `recipe_hint: Option<&serde_json::Value>` as a function parameter and
+   >    passes it down to the engine handler.
+   > 3. `handle_assemble_prior_knowledge` (in `brassclaw_engine`) receives
+   >    `recipe_hint: Option<serde_json::Value>` as a function argument — it NEVER reads
+   >    `LoopExecutionState`. It sees the value because the composition host extracted it
+   >    from state and passed it through the port boundary.
+   > 4. The STAGE clears `state.recipe_hint = None` AFTER `run_step_zero` returns
+   >    (not inside the handler — the handler has no `&mut state` access).
+   >
+   > Any description that says "handler checks state.recipe_hint" is WRONG — the handler
+   > does not have access to state. The stage extracts, passes, and clears.
 
    **The protocol:**
 
@@ -4232,21 +4602,31 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
      3. Stores `rust_items` serialized as `state.recipe_rust_context` (JSONB).
      4. Returns `RecipeStep::Continue { state }` — does NOT skip PromptStage.
 
-   - **Tier 1 path in `handle_assemble_prior_knowledge`** (called by Python step-0):
-     1. Checks `state.recipe_hint`: **if set**, skip `fetch_for_turn` entirely.
-     2. Deserialize `state.recipe_hint` back to `Vec<ComponentItem>` as `orchestrator_items`.
-     3. Clear `state.recipe_hint` (consumed — one-shot).
-     4. Format `orchestrator_items` → `orchestrator_content` using StepContextSpec formatter.
-     5. Return the extended pkr dict.
+   - **Tier 1 path in the composition host's `run_step_zero`** (called via `LoopOrchestratorPort`):
+     1. Receives `recipe_hint: Option<&serde_json::Value>` as a parameter (extracted from
+        `state.recipe_hint` by the stage BEFORE the call).
+     2. Passes it to `handle_assemble_prior_knowledge(recipe_hint, ...)` as a function
+        argument.
+     3. The handler: if `recipe_hint` is `Some(v)` → use the stashed value, skip
+        `fetch_for_turn` entirely. Deserialize `v` back to `Vec<ComponentItem>` as
+        `orchestrator_items`. Format → `orchestrator_content`. Return extended pkr.
+     4. Returns `PriorKnowledgeBundle { orchestrator_content, matched_component_ids, .. }`.
+   - After `ctx.host.run_step_zero(...)` returns, the STAGE clears:
+     ```rust
+     state.recipe_hint = None;       // one-shot consume
+     state.recipe_rust_context = vec![];
+     ```
+     (The handler never clears state — it has no `&mut LoopExecutionState` access.)
 
    **In other words:** For Tier 1, `RecipeStage` is the actual fetcher. The Python handler
-   just reads the stash. There is no double-fetch, no second `resolve_intent`, no second
-   IBS compilation. The handler's `fetch_for_turn` call is bypassed whenever a stash is present.
+   just reads the stash PASSED AS A PARAMETER. There is no double-fetch, no second
+   `resolve_intent`, no second IBS compilation.
 
    - **Tier 0 path:** `RecipeStage` returns `TierZero`. `PromptStage` and `ModelStage` are
      skipped. The Python script still runs (the scripting engine is not the LLM call), but
-     it receives `pkr` from `__assemble_prior_knowledge__` which returns the stashed content
-     directly (same stash/unstash as Tier 1, just the PromptStage/ModelStage stages are absent).
+     it receives `pkr` from `__assemble_prior_knowledge__` which uses the `recipe_hint`
+     parameter passed by the composition host (same stash/unstash pattern as Tier 1,
+     just the PromptStage/ModelStage stages are absent).
 
    **Rust state type constraint (repeated for clarity):** `state.recipe_hint` and
    `state.recipe_rust_context` are typed as `serde_json::Value` — NOT `Vec<ComponentItem>`.
@@ -4260,8 +4640,9 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
    > `handle_assemble_prior_knowledge`. It does NOT describe how the agent-loop stages reach
    > that engine handler — `brassclaw_agent_loop` cannot import `brassclaw_engine`. Under the
    > v3 unified model (Phase H.0 §H5), the invocation goes through the `LoopOrchestratorPort`
-   > host port: Tier 1 step-0 is `ctx.host.run_step_zero(context, &state.recipe_hint)` (the
-   > composition host delegates to `handle_assemble_prior_knowledge`); Tier 0 is
+   > host port: Tier 1 step-0 is `ctx.host.run_step_zero(context, state.recipe_hint.as_ref())`
+   > (the composition host delegates to `handle_assemble_prior_knowledge`, passing the hint
+   > as a parameter); Tier 0 is
    > `ctx.host.run_tier_zero(...)` via the `TierZeroExecutionStage`. The stash/unstash logic
    > itself is unchanged — only the call boundary is the port, not a direct engine import.
 
@@ -4361,12 +4742,97 @@ New dispatch cases:
 runtime.** Any parse error that would blow up at runtime becomes a Q1 error with the
 full parse message. This is the primary correctness guard for formula authoring.
 
-**§shell-guard — Recipes referencing `builtin.shell` or `builtin.spawn_subagent`:**  
+**§shell-guard — Recipes referencing `builtin.shell` or `builtin.spawn_subagent`:**
 If any `rust_steps[].include` UUID resolves to a ToolSkill whose `tool_name` is
 `"builtin.shell"` or `"builtin.spawn_subagent"`, the Recipe **must** have
 `llm_call_required: true`. Q1 returns a hard error if `llm_call_required: false` and
 either tool appears in the rust channel. This prevents open-ended shell/spawn from
 accidentally becoming a Tier 0 path.
+
+**§tier0-orchestrator-channel — Tier-0 recipes MUST have an orchestrator supervisor:**
+
+> **⚠️ ARCHITECTURAL CORRECTION (user review):** A prior draft of this section claimed that
+> "most Tier-0 recipes have empty `orchestrator_steps`" and that the Rust executor can run
+> autonomously from ToolBindings alone. **This is wrong.** The orchestrator is always the
+> supervisory layer. Even in Tier 0 it is the Python orchestrator (`execute_recipe_orchestrator_channel`)
+> that calls `__execute_action__` on the Rust executor — not the Rust executor acting on its own.
+> The Rust channel (`rust_steps`) pre-loads *which* ToolSkills are available and *with which
+> params*, but it is the orchestrator's PythonCode body that actually issues the call.
+> A recipe with `rust_steps` that has `tool_bindings` AND empty `orchestrator_steps` has
+> a loaded gun that nobody fires. **The S7 guard must cover this case.**
+
+**Architectural invariant — the orchestrator always supervises:**
+
+```
+user message
+  → orchestrator (Python, default.py)
+    → step 0: __assemble_prior_knowledge__ → intent match → recipe fetched
+      [rust channel pre-loads ToolSkill context into Rust executor — silent]
+      [orchestrator channel → orchestrator_content delivered to Python]
+    → execute_recipe_orchestrator_channel(pkr, goal, state):
+        PythonCode body calls __execute_action__(tool_name, params)
+        → Rust executor runs tool with pre-loaded ToolSkill binding
+        → result returned to orchestrator
+        PythonCode formats result → assigns to `result`
+    → orchestrator presents result to user
+```
+
+The Rust executor **never acts without an orchestrator call**. `rust_steps` pre-loads
+context; `orchestrator_steps` (PythonCode) directs and presents.
+
+**Design rationale (why Skill bodies cannot replace PythonCode in Tier 0):**
+- In **Tier 1** (`llm_call_required: true`): the LLM reads the Skill body (narrative prose) from
+  `orchestrator_content` and uses it as instructions to decide *if and how* to call tools.
+  The LLM is the interpreter of "pass the directory path from the user's message to the ls tool."
+- In **Tier 0** (`llm_call_required: false`): there is NO LLM. Nobody interprets the Skill body.
+  `execute_recipe_orchestrator_channel` must act directly — it can `exec()` a PythonCode body
+  but cannot "interpret" narrative prose without an LLM round-trip, defeating Tier 0's purpose.
+  PythonCode is the deterministic replacement for the LLM's supervisory role.
+
+**What a Tier-0 recipe's orchestrator PythonCode does:**
+
+It is not just "post-processing." It is the full supervisory step:
+1. Call `__execute_action__` with the tool name and the pre-extracted `vars` params.
+2. Receive the Rust executor's result.
+3. Format the result for the user.
+4. Assign to `result`.
+
+Example — `builtin-read-file` (Tier 0):
+```python
+# PythonCode body: "read-file-executor"
+# vars["path"] was extracted by the template mechanism (Phase M) from the user's message
+tool_output = __execute_action__("read_file", {"path": vars["path"]})
+result = tool_output  # raw file content, or format it as needed
+```
+
+The ToolBinding in `rust_steps` pre-stages *that* `read_file` is available and *which params
+pattern* it uses — but the PythonCode above is what actually runs it. Without the PythonCode,
+the ToolBinding is never invoked.
+
+> **⚠️ FIND-P9-02 + S7-EXTENSION — Q1 rules for Tier-0 orchestrator channel:**
+>
+> **Rule 1 (Skill forbidden):** `llm_call_required = false` AND any UUID in
+> `orchestrator_steps[].include` resolves to class 1, 2, or 3 (Skill) → **Q1 hard error**:
+> `"Tier-0 recipes may only reference PythonCode (class 22) in orchestrator_steps. Found
+> Skill '{name}'. Either replace with PythonCode, or set llm_call_required: true."`.
+>
+> **Rule 2 (S7-extension — PythonCode required when rust_steps has tool_bindings):**
+> `llm_call_required = false` AND `rust_steps` contains any step with non-empty
+> `tool_bindings` AND `orchestrator_steps` is empty → **Q1 hard error**:
+> `"Tier-0 recipe has tool_bindings in rust_steps but no PythonCode in
+> orchestrator_steps. The orchestrator must supervise tool execution — add a PythonCode
+> component that calls __execute_action__ and formats the result."`.
+> *(Extension of the existing S7 guard for the Tier-0 case specifically.)*
+>
+> **Rule 3 (no tool_bindings → empty orchestrator_steps is valid):** If `rust_steps` has
+> no `tool_bindings` (i.e. the Rust channel only pre-loads ToolSkill context but issues
+> no specific parameterised call), then `orchestrator_steps` may be empty — the PythonCode
+> in `orchestrator_steps` is only mandatory when there is a tool call to supervise. This
+> edge case may not arise in practice for built-in recipes but is architecturally valid.
+>
+> **Scope:** `rust_steps` may contain ToolSkills freely — they are the pre-loaded execution
+> context. Only `orchestrator_steps` component UUIDs are class-checked. Rule 2 enforces
+> that a tool_binding always has an orchestrator supervisor.
 
 **§capability-id — Tool rows from builtin bootstrap:**  
 For class 0 (Tool) components with `source = "system"`, Q1 validates that `capability_id`
@@ -4398,6 +4864,12 @@ Q1 runs `parse_template` against every intent expression in `intent_examples`. R
 - Unit: §shell-guard: Recipe with `builtin.shell` ToolSkill in rust channel + `llm_call_required: false` → Q1 fail
 - Unit: §shell-guard: Recipe with `builtin.spawn_subagent` + `llm_call_required: false` → Q1 fail
 - Unit: §shell-guard: Recipe with `builtin.shell` + `llm_call_required: true` → Q1 pass
+- Unit: §tier0-orchestrator-channel Rule 1: Recipe `llm_call_required: false` + Skill (class 1) in `orchestrator_steps` → Q1 hard error
+- Unit: §tier0-orchestrator-channel Rule 1: Recipe `llm_call_required: false` + PythonCode (class 22) in `orchestrator_steps` → Q1 pass
+- Unit: §tier0-orchestrator-channel Rule 2 (S7-extension): Recipe `llm_call_required: false` + non-empty `tool_bindings` in `rust_steps` + empty `orchestrator_steps` → Q1 hard error (orchestrator must supervise)
+- Unit: §tier0-orchestrator-channel Rule 2 satisfied: Recipe `llm_call_required: false` + non-empty `tool_bindings` + PythonCode in `orchestrator_steps` → Q1 pass
+- Unit: §tier0-orchestrator-channel Rule 3: Recipe `llm_call_required: false` + no `tool_bindings` in `rust_steps` + empty `orchestrator_steps` → Q1 pass (nothing to supervise)
+- Unit: §tier0-orchestrator-channel: Recipe `llm_call_required: true` + Skill UUID in `orchestrator_steps` → Q1 pass (Tier 1 recipes may use Skills)
 - Unit: §capability-id: Tool row `source = "system"`, empty `capability_id` → Q1 fail
 - Unit: §capability-id: Tool row `source = "authored"`, no `capability_id` → Q1 pass (optional for user tools)
 
@@ -4418,9 +4890,10 @@ Intent examples already live on `reborn_skills.intent_examples` (JSONB array of
 `{input, class}` objects, `class` ∈ 1|2|3) — added in `V027__reborn_skills.sql:67` with a
 GIN index at `V027:139–141`. They are authored via the **skill store** input structs
 (`CreateSkillInput`/`UpdateSkillInput`, `db_store.rs:167`/`:207`), validated to the
-`{input, class}` shape at `db_store.rs:348–371`. **Migration V054's `ADD COLUMN IF NOT
-EXISTS intent_examples` is therefore a NO-OP** (the §2 table already flags this) — do not
-expect it to create a column.
+`{input, class}` shape at `db_store.rs:348–371`. **Migration V055's `ADD COLUMN IF NOT
+EXISTS intent_examples` would be a NO-OP** (the §2 table already flags this, and per
+FIND-12 the no-op line has been removed from V055 entirely; the file is named
+`V055__reborn_dependency_registry.sql`) — do not expect a column to be created.
 
 The genuinely missing piece is **propagation into the intent table**: today
 `reborn_skills.intent_examples` never reaches `reborn_intent_inputs`, so `resolve_intent`
@@ -4451,7 +4924,7 @@ cannot match skill intents. J.1 wires that propagation:
 > dropped as shape-incompatible (intent examples stay DB-only via the store API), and the real
 > wiring (`auto_passed → seed_intent_input` + `purge_component_inputs` on delete) is retained.
 > Original audit detail retained below for traceability:
-> 1. **Migration V054 `ADD COLUMN IF NOT EXISTS intent_examples` is a NO-OP.** `reborn_skills`
+> 1. **Migration V055 `ADD COLUMN IF NOT EXISTS intent_examples` was originally planned but is a NO-OP (FIND-12 removed it).** `reborn_skills`
 >    already has an `intent_examples JSONB NOT NULL DEFAULT '[]'` column — added in
 >    `V027__reborn_skills.sql:67`, with a GIN index at `V027:139–141`. It stores an array of
 >    `{input, class}` objects (the `class` is 1|2|3), **not** an array of strings. The §2 migration
@@ -4740,12 +5213,16 @@ ALTER TABLE reborn_skills
     ADD CONSTRAINT reborn_skills_source_check
         CHECK (source IN ('authored', 'extracted', 'migrated', 'imported', 'system'));
 
--- ⚠️ FIND-P6-02: reborn_recipes has no source CHECK constraint in V033 (source defaults to
--- 'authored' without a CHECK). Add it here for documentation correctness and to prevent
--- any future CHECK-tightening migration from excluding 'system' Recipes.
+-- ⚠️ FIND-P6-02 + FIND-P9-14: reborn_recipes has NO source CHECK constraint in V033.
+-- V033 has: source TEXT NOT NULL DEFAULT 'authored' (no CHECK clause).
+-- A DROP CONSTRAINT IF EXISTS for reborn_recipes would be a SILENT NO-OP.
+-- We do NOT issue a DROP here (nothing to drop). We only ADD the new constraint:
 ALTER TABLE reborn_recipes
     ADD CONSTRAINT reborn_recipes_source_check
         CHECK (source IN ('authored', 'extracted', 'migrated', 'imported', 'system'));
+-- Note: The DROP … IF EXISTS pattern used for reborn_tools/reborn_tool_skills/reborn_skills
+-- above is correct for those tables (V027 has source CHECK on reborn_skills; etc.).
+-- Do NOT copy that pattern for reborn_recipes — there is no prior constraint to drop.
 ```
 
 `capability_id` links a `reborn_tools` row back to the Rust capability registry
@@ -4999,6 +5476,7 @@ In the intent expression input field:
 - Unit: `parse_template("% directory")` → `Some(("", " directory"))`
 - Unit: `parse_template("% in %")` → `Some(("", ""))` → Q1 rejects (no anchor)
 - Unit: `parse_template("search for % in %")` → `Some(("search for ", ""))` — prefix-anchored, valid
+- Unit: `parse_template("search for %")` → `Some(("search for ", ""))` — trailing `%`, prefix-anchored (FIND-P9-12)
 - Unit: `parse_template("no slots here")` → `None`
 - Unit: `extract_template_slots("show me files in the % dir", "show me files in the /tmp dir")` → `[("slot0", "/tmp")]`
 - Unit: `extract_template_slots("search for % in %", "search for TODO in /src")` → `[("slot0", "TODO"), ("slot1", "/src")]`
@@ -5085,7 +5563,8 @@ WHERE validation_status != 'validated'
 --     '{}'::TEXT[] AS validation_errors         -- no Q1 errors yet
 -- (the scope columns tenant_id/user_id/agent_id/project_id and the CASE on
 -- validation_status ARE available on all 15 tables). Failing to substitute the
--- literals would make the 22/23 arm reference a non-existent column and abort V058.
+-- literals would make the 22/23 arm reference a non-existent column and abort V059.
+-- ⚠️ FIND-P9-11: this is V059 (not V058; after Decision 2 V-number shift).
 ON CONFLICT DO NOTHING;
 
 -- Step 3: add last_graduation_at to scope cursor
@@ -5676,10 +6155,12 @@ User types: "show all files including hidden in /tmp"
 │   The composition host delegates to the engine orchestrator's no-LLM entry point
 │   (the same `__assemble_prior_knowledge__` + skill/PythonCode channel, but invoked
 │   through the LoopOrchestratorPort bridge since brassclaw_agent_loop cannot import
-│   brassclaw_engine). Server-side the orchestrator:
-│     pkr = __assemble_prior_knowledge__(goal, budget, "02")
-│     handler checks state.recipe_hint → SET → unstash, skip fetch_for_turn
-│     clears state.recipe_hint (consumed)
+│   brassclaw_engine). The stage extracts recipe_hint from state, passes as parameter:
+│     # FIND-P9-15: stage passes recipe_hint as parameter, NOT read from state by handler
+│     pkr = __assemble_prior_knowledge__(goal, budget, "02",
+│               recipe_hint=<extracted from state.recipe_hint by stage>)
+│     handler receives recipe_hint param → SET → use stashed value, skip fetch_for_turn
+│     # Stage clears state.recipe_hint AFTER run_tier_zero returns (not the handler)
 │     pkr["orchestrator_content"]:
 │       ## [Skill: ls]
 │         <ls-skill body>
@@ -5757,11 +6238,13 @@ User types: "edit main.rs and refactor the error handler"
 │   Host reads request.recipe_hint, prepends orchestrator items to bundle (LLM sees it).
 │   PromptStage does NOT clear state.recipe_hint (COMP-03 — Python step-0 clears it).
 │
-│   ctx.host.run_step_zero(context, &state.recipe_hint) called here (PRE-LLM):
+│   ctx.host.run_step_zero(context, state.recipe_hint.as_ref()) called here (PRE-LLM):
+│     # FIND-P9-15: stage passes recipe_hint as parameter; handler never reads LoopExecutionState
 │     → Python step-0 starts
-│     → pkr = __assemble_prior_knowledge__(goal, budget, "02")
-│     → handler checks state.recipe_hint → SET → unstash (skips fetch_for_turn)
-│     → clears state.recipe_hint (consumed — one-shot)
+│     → pkr = __assemble_prior_knowledge__(goal, budget, "02",
+│                 recipe_hint=<parameter from stage>)
+│     → handler receives recipe_hint param → SET → use stashed value (skips fetch_for_turn)
+│     → Stage clears state.recipe_hint AFTER run_step_zero returns (not the handler)
 │     → pkr["orchestrator_content"]:
 │         ## [Skill: file-editing]
 │           <skill body>
