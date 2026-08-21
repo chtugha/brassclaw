@@ -7,6 +7,15 @@
 > Rust code** ("not code per se, but as a recipe, skills, tools,
 > python-code, action component"), and the approach must be presented
 > before implementation begins.
+> **Folded into the master plan.** This design has been integrated into
+> `saved_plan_to_v3.md` where each part belongs: the design-level spec is
+> **§0.22 Doc-Conversion Mechanism** (with subsections §0.22.1–§0.22.7
+> mirroring this doc's §1–§7); the implementation is **Phase P** (steps
+> mirroring this doc's §8), with prerequisites **Phase P.0** (validation-
+> system extension, this doc's §10 follow-up) and **Phase P.1** (on-disk
+> system-skills migration). Open Questions #8 and #12 and §0.16 / Phase L
+> were revised accordingly. The plan (`saved_plan_to_v3.md`) is now the
+> authoritative source; this document is retained as the detailed reference.
 > **Grounded in:** the 17 per-system docs `docs/agents-v3/01..17-*.md`
 > (each carrying a §7 "LLM-summary (machine-convertible)" section),
 > `15-component-catalog.md` (class-code taxonomy, `reborn_docus`

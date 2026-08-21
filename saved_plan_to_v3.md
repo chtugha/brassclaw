@@ -1551,6 +1551,16 @@ state 3, `counter` incremented, `review_feedback` populated.
 
 ### 0.16 Builtin Tool Bootstrap
 
+> **⚠️ REVISED by Answer 2 to the doc-conversion review + Phase P.0.** The
+> bypass pattern described below (builtins seeded with
+> `validation_status='validated'`, Q2 skipped) is **superseded**: nothing
+> ever bypasses Q1+Q2. Builtins now enter `reborn_validation_queue` at
+> `'pending'`, run Q1, and graduate via an **automated-but-auditable Q2**
+> (the seeder/automation is the recorded Q2 actor — never a silent skip).
+> `source='system'` is provenance only and never gates validation. The text
+> below is retained as the pre-revision reference; Phase P.0 implements the
+> revision (also see Open Questions #8 and #12, both superseded).
+
 #### Ground truth
 
 All 23 first-party builtin tools are registered purely in Rust code
@@ -2455,6 +2465,283 @@ backstops. The WebUI toggle carries help text stating the cost implication.
 
 **Implementation:** Phase O, migration `V060` (see §2). No other phase
 depends on it; it is additive and independently shippable.
+
+### §0.22 Doc-Conversion Mechanism (auto doc→DB conversion for the base-prompt prefix; user repeat item 4)
+
+> **Subsystem:** Automatically converts each `docs/agents-v3/*.md` into an
+> LLM-optimized form, stores it in the DB, keeps it fresh on change, and
+> injects it into the base-prompt prefix (+ per-turn retrieval). Built **as
+> v3 agent artifacts** (Recipe + Skills + Tools + PythonCode + Action), **not
+> Rust code** — the agent operates on itself through the same component
+> catalog + execution paths it uses for every other task.
+> **Implementation:** Phase P (prerequisites Phase P.0 + P.1). No new
+> migration (reuses live V040; see §2).
+> **Grounded in:** the 17 per-system docs `docs/agents-v3/01..17-*.md` (each
+> carries a §7 "LLM-summary (machine-convertible)" section),
+> `15-component-catalog.md` (class 17 = Docu),
+> `crates/brassclaw_pg/migrations/V040__reborn_docus.sql` (Docu schema),
+> `crates/brassclaw_reborn_composition/src/interceptor_config_service.rs`
+> (`COMPONENT_TABLES:47`, `class_label:65`, `do_reassemble:204`),
+> `crates/brassclaw_reborn_composition/src/component_import.rs`
+> (`content_hash` idempotency), `10-prefix-base-prompt.md` +
+> `17-webui-prefix-tab.md` (prefix caching, `reborn_basic_prompt_store` V056,
+> `mark_stale`-on-graduation), `14-validation-queue.md` (Q1/Q2),
+> `08-actions-system.md` (class-16 Action no-LLM `execute_action_procedure`),
+> `03-recipe-system.md` (Tier-0/1/2), `07-pythoncode-system.md` (class 22),
+> `05-skills-system.md` / `06-tools-system.md`, and §0.13 / §0.16 / §0.18 /
+> Phase K.1 of this plan. Full design: `docs/agents-v3/DOC_CONVERSION_MECHANISM_DESIGN.md`.
+
+#### §0.22.1 Goal & scope
+
+The mechanism (user repeat item 4): (1) **convert** each `docs/agents-v3/*.md`
+into an LLM-optimized (token-efficient, prompt-ready) form; (2) **insert** it
+into the DB; (3) **auto-update** the stored converted docs when source docs
+change; (4) make converted docs **injectable into an LLM prompt** if needed or
+selected; (5) make the **prefix prompts (base prompt) contain** these converted
++ optimized docs; (6) **run on change events only** — a source
+`docs/agents-v3/*.md` file change on disk, or a `reborn_docus` row change in the
+DB (Answer 4). **No idle-time loop, no scheduled cadence, no boot trigger.**
+(7) Built as v3 agent artifacts, not Rust code.
+
+The Sempai-Kohai idle-time self-optimization loop (item 7, `09-sempai-kohai.md`)
+is **not** in the refresh loop. Its only role: when the `by-llm-compress`
+variant runs and a Sempai is connected, the Sempai reviews the compression
+prompt before shipment; without a Sempai, only the deterministic `by-extract`
+variant runs.
+
+#### §0.22.2 Storage — `reborn_docus` (class 17), store BOTH versions (Answer 1)
+
+Class 17 = Docu is the catalog's reserved home for reference documentation
+(`15-component-catalog.md`) — not a Spec (12), Note (20), or ExtensionCatalogue
+(23). `reborn_docus` (V040) already has every column needed:
+
+| Column | Use |
+|--------|-----|
+| `name` | stable key = source doc slug, e.g. `agents-v3::02-intent-system` (`UNIQUE(tenant,user,agent,project,name)`) |
+| `content` | per-row text — source row = unconverted markdown; converted row = LLM-optimized text (`do_reassemble` reads the converted row) |
+| `prior_knowledge_content` (SCH-02) | richer form for the per-turn retrieval path (`PostgresSource`) |
+| `class_code` | `17` (CHECK `= 17`) |
+| `prompt_uid` | sequence — stable base-prompt ordering key |
+| `consumer_tags` | `{03:llm}` (and `{02:orchestrator}` where relevant) — **never `05:validator`** on a graduated row or `do_reassemble` excludes it |
+| `validation_status` | `'validated'` **only after full Q1+Q2 graduation** (Answer 2); upsert always sets `'pending'`; no bypass path |
+| `source` | provenance label only (`'system'`/`'authored'`/`'migrated'`); no `source` CHECK on `reborn_docus`, so `'system'` is allowed with no migration. **Never gates validation** (Answer 2) |
+| `content_hash` | SHA-256 of the source `.md` — the staleness key (mirrors `component_import.rs`) |
+| lineage (`similarity_parent_id`, `replaces_id`, `parent_version`, `last_audit_at`, `audit_failure_count`) | links source → converted row; versions the converted doc across regenerations |
+
+**Storing both versions (Answer 1)** — two `reborn_docus` rows per doc, linked
+by lineage, no schema change:
+
+| Row | `name` convention | `content` | `source` | `validation_status` | role |
+|-----|-------------------|-----------|----------|---------------------|------|
+| **source** | `agents-v3::02-intent-system` (slug) | unconverted source markdown | `'system'`/`'authored'` | Q1+Q2 → `'validated'` | auditable original; `content_hash` computed from this |
+| **converted** | `agents-v3::02-intent-system::llm` | LLM-optimized text | `'system'` | Q1+Q2 → `'validated'` | what `do_reassemble` reads into the base prompt |
+
+The converted row points at the source row via `similarity_parent_id`
+(`replaces_id` on re-conversion), carrying `parent_version`. A re-conversion
+writes a new converted-row version (lineage); the active converted row is the
+one with `validation_status='validated'`. Both rows pass Q1+Q2 independently.
+
+**The one composition prerequisite (not a migration).** `reborn_docus` is **not**
+in `COMPONENT_TABLES` (`interceptor_config_service.rs:47`) and `class_label`
+(`:65`) has no `17` arm (falls to `_ => "Component"`), so `do_reassemble`
+(`:204`) does not read Docu rows today. For converted docs to flow into the
+base prompt (item 4.5), add `("reborn_docus", 17)` to `COMPONENT_TABLES` and
+`17 => "Docu"` to `class_label`. This is an **additive Rust const edit in
+composition**, not SQL — no data movement, no row breakage (consistent with how
+`reborn_orchestrators`/`reborn_scaffolds` are already listed and gracefully
+skipped when absent). This is the single piece of "host" code the mechanism
+needs; everything else is v3 artifacts.
+
+#### §0.22.3 The conversion + no per-doc token budget (Answer 5)
+
+Each source doc follows the 7-section convention (§1 Purpose · §2 Location ·
+§3 Data model · §4 Behavior · §5 Relations · §6 Today vs v3 · **§7 LLM-summary
+(machine-convertible)**). §7 was authored specifically to be machine-convertible,
+so the conversion is largely **deterministic** (extract §7 + header metadata)
+with an **optional LLM-assisted compression** pass.
+
+The converted form stored in `reborn_docus.content` matches `do_reassemble`'s
+render format exactly:
+```
+## 17:{prompt_uid}  Docu  "{name}"
+
+<doc-slug> · <one-line description>
+<§7 LLM-summary verbatim, or LLM-compressed>
+```
+so `do_reassemble` just concatenates it with the other validated components,
+ordered by `(class_code, prompt_uid)`.
+
+**No per-doc token budget (Answer 5).** Docs are not budget-limited; the
+deterministic §7 extract is used verbatim, and the LLM compression pass runs
+for clarity/injection-safety, **not** to hit a token ceiling. Whether any token
+budget applies anywhere in the codebase is governed by the global kill switch
+(§0.21 / Phase O).
+
+#### §0.22.4 The v3 artifacts + the generic-DB-tool rule (Answer 3)
+
+**Recycling — the v3 composition principle (applies to every future recipe,
+not just this one).** Skills should be as small as practical — at best the
+description of ONE tool usage — so they can be reused in many recipes. Tools
+too: one concern each. A Recipe is a *composition* of already-existing Skills +
+Tools; prefer reusing a library part over authoring a new one. Never bake a
+whole procedure into one fat skill — split it into leaves the library can
+recycle. Two skill grains coexist (`05-skills-system.md` §3): **leaf**
+Orchestrator Skills (one tool / one pythoncode — the reusable unit, user case
+(a)) and **domain** Orchestrator Skills (span tools — the bigger picture that
+*references* leaves by name, never duplicates their tool instructions; user
+case (b); one per mechanism).
+
+**Tool vs Skill — the generic-DB-tool rule (Answer 3).** A Tool (class 0) is
+the opaque Rust capability that touches Postgres (the kernel boundary); keep it
+**maximally generic**. **One generic DB-reading (and DB-writing) Tool
+suffices** — not a per-purpose Tool per read/write/stale-mark. The per-purpose
+specificity lives in **Skills** (one per reading/writing approach) and in
+**sub-recipes** that tell the orchestrator how to use each skill to call Rust
+to read from / write to the DB in a certain way. The single DB Tool is recycled
+by every future "sync" recipe; only the skills/sub-recipes differ.
+
+**The artifact set for this mechanism:**
+
+| Kind | Class | Channel | What it is here |
+|------|------|---------|-----------------|
+| Action | 16 | orchestrator (no IBS, no LLM) | `doc-sync` — deterministic driver, composes leaves |
+| Recipe | 21 | orchestrator (IBS); routes sub-steps | `doc-convert` — per-doc converter, composes leaves |
+| Orchestrator Skill (leaf) | 1-3 | orchestrator | one-tool-each reusable leaves |
+| Orchestrator Skill (domain) | 1-3 | orchestrator | `doc-convert-method` — the one doc-specific overview |
+| ToolSkill | 13 | **rust** | executor-facing param schema, one per Tool |
+| Tool | 0 | **rust** | Rust capability; the only kind that touches Postgres |
+| PythonCode | 22 | orchestrator | pure-logic helpers, one concern each, no I/O |
+| ExtensionCatalogue | 23 | namespace | `doc-sync` namespace + `overview_doc` |
+
+**Channel rule.** The IBS splits a Recipe's `include` list into
+`orchestrator_items` (Skill + PythonCode) and `rust_items` (ToolSkill). The
+orchestrator never calls a Tool directly and never holds a DB handle; it drives
+the executor, which calls the Tool (guided by its ToolSkill). So a DB write is
+always a **Tool + ToolSkill**, never a PythonCode. The LLM prompt is authored
+**in the Recipe's `type: llm` step**, built *from* the Skill body — the Skill
+is the reusable method, not the prompt.
+
+**Leaf library (§4.1 of the design doc)** — each entry one-purpose and reusable
+beyond `doc-convert`. Per the generic-DB-tool rule, the three DB-access shapes
+are **one generic Tool + three leaf skills** (not three Tools):
+
+- **Leaf Orchestrator Skills (1-3):** `file-list` (glob), `file-read` (read_file),
+  `hash-compute` (sha256 PythonCode), `hash-compare` (hash_changed PythonCode),
+  `db-read-hash` (`component_db` op=read_hash), `db-upsert-docus`
+  (`component_db` op=upsert, table=reborn_docus — always `pending`, §0.22.7),
+  `db-mark-prefix-stale` (`component_db` op=mark_stale), `markdown-section`
+  (markdown_section PythonCode), `component-header-render`
+  (format_component_header PythonCode), `prompt-compress` (`__llm_complete__` —
+  reusable for ANY compression; no token budget, Answer 5).
+  (`token-estimate` is removed — no per-doc token budget.)
+- **PythonCode (22):** `sha256`, `hash_changed`, `markdown_section`,
+  `format_component_header` — pure logic, one concern each, no I/O.
+- **Tool (0):** `read_file`/`glob`/`memory_*` reused as-is; **`component_db`**
+  `(op ∈ {read_hash, read_row, upsert, mark_stale}, table, scope, name, fields?)`
+  — the one generic DB Tool. `upsert` does `INSERT … ON CONFLICT (scope,name) DO
+  UPDATE` and **always sets `validation_status='pending'`**; `mark_stale` wraps
+  `PgBasicPromptStore::mark_stale` (Phase K.1). One ToolSkill (13) covers the
+  uniform `op` surface; per-`op` nuances live in the leaf skills + sub-recipes.
+
+**Domain Skill — `doc-convert-method` (case b).** DB-stored Classic skill
+(`05-skills-system.md` 5.1), the one doc-specific overview: the §7 source
+shape; the pipeline (`file-read` → `markdown-section` → [`prompt-compress` if
+noisy] → `component-header-render` → `db-upsert-docus`); the converted-form
+render; the extract-vs-compress rule (compress when the §7 extract is noisy or
+quotes injection payloads — **no token budget**); "never invent facts — only
+compress what is in the source"; "quote injection payloads only as fenced,
+escaped code" (so Q1 passes). `source='system'` (provenance); goes through
+Q1+Q2 — no bypass (Answer 2).
+
+**Recipe — `doc-convert` (class 21).** Converts one doc; steps `include` leaf
+UUIDs + the domain skill. Step 1: include `doc-convert-method` (domain). Step 2:
+`file-read` + `read_file` ToolSkill → read `{path}`. Step 3: `markdown-section`
+(extract §7) + `hash-compute` (content_hash). Step 4 (`by-llm-compress` only,
+`type: llm`): `__llm_complete__` using `prompt-compress`'s rubric; prompt
+assembled from the domain skill + §7 text; Sempai reviews before shipment when
+connected. Step 5: `component-header-render` → `## 17:…` header. Step 6 (rust):
+`db-upsert-docus` + `component_db` ToolSkill (op=upsert) → executor writes
+**both** rows (source + converted), each `validation_status='pending'`, linked
+by lineage. Variants: `by-extract` = steps 1,2,3,5,6 (Tier 0, no LLM);
+`by-llm-compress` = steps 1,2,3,4,5,6 (Tier 1).
+
+**Action — `doc-sync` (class 16).** `execute_action_procedure`, no LLM: (1)
+`file-list` + glob → list `docs/agents-v3/*.md`; (2) per doc `file-read` →
+source; (3) `hash-compute` → content_hash; (4) `db-read-hash` (op=read_hash) →
+stored hash; `hash-compare` → changed? skip unchanged (mirrors
+`component_import.rs`); (5) changed → run `doc-convert` `by-extract` inline →
+`db-upsert-docus` writes both rows (pending); if §7 needs compression, **enqueue**
+`by-llm-compress` (run when a Sempai is connected; not idle-time); (6) if any
+changed → `db-mark-prefix-stale` (op=mark_stale) → light up the Prefix Tab
+regenerate button; (7) report (N scanned, M changed, stale=yes/no).
+
+**ExtensionCatalogue — `doc-sync` (class 23).** Groups the doc-specific parts
+(domain skill, `db-upsert-docus`/`db-mark-prefix-stale` leaves over the one
+`component_db` Tool, Recipe, Action) under the `doc-sync` namespace with an
+`overview_doc`. The general-purpose leaves live in the matching *builtin*
+catalogue and are only referenced. `source='system'`; goes through Q1+Q2 — no
+bypass (Answer 2; revises the §0.16 / `17-webui-prefix-tab.md` bootstrap-bypass
+pattern — see Phase P.0).
+
+#### §0.22.5 The refresh loop — event-driven (file / DB change only, Answer 4)
+
+**No auto-refresh, no idle-time loop, no cadence, no boot trigger.** The
+Kohai/Sempai system is not in the refresh loop. (1) **File-change trigger:** a
+watcher on `docs/agents-v3/*.md` fires `doc-sync` when a source doc changes on
+disk. (2) **DB-change trigger:** a `reborn_docus` row change (doc edited via
+the WebUI Docs section, §0.22.7, or a Sempai-proposed re-compression graduating)
+fires `doc-sync` for the affected slug. (3) **Staleness-driven, not
+cadence-driven:** O(N) hash compares on the changed set only; `content_hash` is
+the staleness key; no periodic full sweep. (4) **Base-prompt invalidation:** on
+any change, the Action calls `db-mark-prefix-stale` (op=mark_stale); the Prefix
+Tab shows stale; regeneration re-runs `do_reassemble` (now reading the freshly
+converted Docu rows, prerequisite §0.22.2) and re-prewarms the KV cache. (5)
+**No per-turn cost:** conversion is event-time, not per-turn; per-turn prompts
+carry only the `base-prompt` placeholder + a <4k patch (§0.13).
+
+#### §0.22.6 Injection paths (how converted docs reach a prompt)
+
+Three paths, all already in the architecture: (1) **Base prompt (bulk) — the
+prefix:** once `reborn_docus` is in `COMPONENT_TABLES`, `do_reassemble` reads
+every validated Docu row into the base-prompt bundle; the Prefix Tab compiles
+it (item 4.5). (2) **Per-turn retrieval (selected):**
+`PostgresSource::fetch_for_turn` returns intent-relevant Docu rows for a turn's
+prior-knowledge assembly (item 4.4). (3) **Section pointers (navigational):**
+for docs not in the base prompt, `basic_prompt_section_refs` (§0.13) carries
+pointers — the LLM already has the body from the KV cache, so the per-turn patch
+only references it.
+
+#### §0.22.7 Validation — nothing bypasses Q1+Q2 (Answer 2) + WebUI Docs section
+
+Per `14-validation-queue.md` and Answer 2 — **nothing ever bypasses Q1+Q2:**
+- **Every converted doc goes through the full Q1+Q2 queue.** Upsert sets
+  `validation_status='pending'` → Q1 (Gate 1) → Q2 (review) → `'validated'`.
+  This includes the agent's own `docs/agents-v3/*.md` conversions,
+  system-authored docs, and any Sempai-proposed re-compression. There is **no
+  `source='system'` Q2-bypass path**; `source` is provenance only and never
+  gates validation. (The earlier "system bypass Q2" pattern is removed — Answer 2.)
+- **Q1 (Gate 1, automatic)** runs on every converted doc
+  (`component_validator.rs`): structural check + injection scan. A converted doc
+  that accidentally contains an injection pattern (e.g. the source documents
+  prompt-injection and §7 quotes a payload) fails Q1 — the converter sanitizes
+  (the domain skill + `prompt-compress` both carry "quote injection payloads
+  only as fenced, escaped code").
+- **Q2 (review)** graduates the doc. For system-authored/builtin docs this is an
+  **automated-but-auditable** Q2 graduation recorded in the queue (never a silent
+  skip) — this requires the validation-system extension (Phase P.0); until it
+  exists, system-authored conversions cannot be marked `validated` and will not
+  reach the base prompt. For operator-authored/Sempai-proposed conversions, Q2
+  is the human reviewer. Q2 approval → `db-mark-prefix-stale` (op=mark_stale) →
+  Prefix Tab regenerate.
+- **WebUI Docs section (Answer 2).** A new WebUI section lists `reborn_docus`
+  rows (source + converted, with validation status) and allows manual editing.
+  **Saving an edited doc sends it to the validation queue again**
+  (`validation_status='pending'`, enqueued to `reborn_validation_queue`) — it
+  never writes `validated` directly. Mirrors the existing validation-queue tab
+  pattern
+  (`./crates/brassclaw_webui_v2_static/static/js/pages/settings/components/validation-queue-tab.js`).
+- **Lineage.** A re-conversion that changes content writes a new row version via
+  the lineage columns; the active row is the one with `validation_status='validated'`.
 
 ---
 
@@ -7598,6 +7885,160 @@ USD budgets remain enforced as backstops and are **not** affected by this
 switch (§0.21). The toggle is operator-only and logged. Out of scope: any
 change to time/USD budgets.
 
+### Phase P.0 — Validation-system extension: automated-but-auditable Q2 (prerequisite for Phase P; Answer 2)
+
+**Status:** [ ] Pending
+
+**Goal:** So that system-authored/builtin components — including the
+doc-conversion mechanism's own artifacts (§0.22) and its converted docs —
+graduate through Q1+Q2 with **no silent bypass** (Answer 2: "Nothing ever
+bypasses the Q1+Q2 system"). This **revises §0.16 / Phase L**, which currently
+let builtins skip the queue (Open Question #8 — now superseded by Answer 2),
+and unblocks Phase P's no-bypass stance.
+
+**What changes.** Every component — including `source='system'` builtin seeds
+— enters `reborn_validation_queue` at `validation_status='pending'`, runs Q1
+(Gate 1, `component_validator.rs`), and then a **recorded Q2 graduation**
+(automated for system-authored: the seeder/automation is the Q2 *actor*,
+recorded in the queue, never a silent skip). No code path writes `validated`
+without a queue graduation record. `source` is provenance only and never gates
+validation.
+
+**Migration (TBD by subplan):** possibly one small additive column on
+`reborn_validation_queue` (V051) to record the Q2 actor type
+(`auto-system` vs `human`) so automated graduations are auditable/distinct.
+To be confirmed against V051's actual columns when the subplan is written —
+not invented here.
+
+**Files (indicative):** `crates/brassclaw_reborn_composition/src/q1_orchestrator.rs`
+(the cross-crate Q1 orchestration — FIND-P9-01), the Phase L
+`builtin_bootstrap.rs` seeder (must enqueue + record Q2, **not** insert
+`validated` directly), `ValidationQueueStore` (the automated-Q2 graduation
+method), and the WebUI validation-queue tab (surface auto vs human Q2 actor).
+
+**Depends on:** V051 (Phase A.5 — queue table).
+
+**Tests:**
+- Unit: a system-authored component submitted → Q1 passes → automated Q2
+  graduation recorded (actor=`auto-system`) → row `validation_status='validated'`.
+- Unit/security: no code path inserts `validation_status='validated'` without a
+  queue graduation record (grep-enforced + a store-level guard).
+- Integration: the Phase L builtin bootstrap seeds a builtin Tool through the
+  queue and it graduates (no direct `validated` insert).
+
+### Phase P.1 — Migrate on-disk system skills to DB rows through Q1+Q2 (prerequisite for Phase P; audit finding)
+
+**Status:** [ ] Pending
+
+**Goal:** Remove the `SYSTEM_SKILLS_ROOT` / `SkillSource::System` bypass
+(validation-bypass audit finding 1): on-disk `SKILL.md` system skills become
+`reborn_skills` DB rows that pass Q1+Q2 (via Phase P.0). Also satisfies v3
+goal 5.1 (skills are DB-stored; no physical `SKILL.md` — exportable on demand
+via the WebUI, Phase K.1 §K.1.7).
+
+**What changes.** The on-disk system skills loaded at
+`crates/brassclaw_skills/src/management.rs:243`/`:263`
+(`SYSTEM_SKILLS_ROOT="/system/skills"`, `:34`) as `SkillSource::System` via
+`parse_skill_md` — without becoming `reborn_skills` DB rows, so Q1+Q2 never
+run — are migrated into `reborn_skills` rows seeded through the Phase P.0
+path. The disk-loaded `SkillSource::System` path is removed (or relegated to a
+one-time import). `db_skill_loader.rs:67` (which filters `validated`) then
+loads them as first-class DB skills.
+
+**Files (indicative):** `crates/brassclaw_skills/src/management.rs`
+(`SYSTEM_SKILLS_ROOT`, the `:243`/`:263` load sites, `parse_skill_md`), the
+seeder, `crates/brassclaw_skills/src/db_skill_loader.rs` (`:67` validated
+filter).
+
+**Depends on:** Phase P.0.
+
+**Tests:**
+- Integration: a system skill seeded → appears as a `reborn_skills` row →
+  passes Q1+Q2 → `validated` → loaded by `db_skill_loader`.
+- Regression: no `SkillSource::System` disk load remains for migrated skills
+  (grep-enforced).
+
+### Phase P — Doc-Conversion Mechanism (§0.22; user repeat item 4)
+
+**Status:** [ ] Pending
+
+**Goal:** Implement the §0.22 mechanism — auto-convert each
+`docs/agents-v3/*.md` to an LLM-optimized form, store both versions in
+`reborn_docus`, keep them fresh on change events, and inject them into the
+base-prompt prefix + per-turn retrieval — **as v3 agent artifacts** (Recipe +
+Skills + Tools + PythonCode + Action), not Rust code.
+
+**Prerequisites:** V040 (live — Docu table); V051 (Phase A.5 — validation
+queue); V052/V053 (Phase B/C — `reborn_python_code` / `reborn_extension_catalogues`
+tables); V056 (Phase K.1 — `reborn_basic_prompt_store`); V057
+(`capability_id` for the `component_db` Tool); Phase K.1
+(`PgBasicPromptStore::mark_stale`); **Phase P.0** (no-bypass Q2); **Phase P.1**
+(system-skills DB migration).
+
+**Migration:** **none.** Phase P reuses existing V040/V051/V052/V053/V056/V057
+— see §2. The only host code is the step-1 composition const edit and the
+step-3 `component_db` Rust Tool (+ its ToolSkill DB row, seeded through Phase
+P.0); everything else is v3 artifacts authored as DB rows through Q1+Q2.
+
+**Steps (the §8 sequence; one at a time, commit + push after each):**
+
+1. **Composition prerequisite:** add `("reborn_docus", 17)` to
+   `COMPONENT_TABLES` and `17 => "Docu"` to `class_label` in
+   `interceptor_config_service.rs`; unit test that `do_reassemble` includes a
+   validated Docu row. (Small Rust edit; no migration.)
+2. **PythonCode leaves (class 22):** author `sha256`, `hash_changed`,
+   `markdown_section`, `format_component_header` — pure logic, one concern
+   each, no I/O; Q1-scanned; through Q1+Q2 (Phase P.0). General-purpose →
+   bootstrap candidates.
+3. **The one generic DB Tool + ToolSkill (class 0 + 13):** author the **Rust**
+   capability `component_db` (`op ∈ {read_hash, read_row, upsert, mark_stale}`,
+   §0.22.4) + its single executor-facing ToolSkill. `upsert` does
+   `INSERT … ON CONFLICT … DO UPDATE` into `reborn_docus` and **always sets
+   `validation_status='pending'`**; `mark_stale` wraps
+   `PgBasicPromptStore::mark_stale`. `read_file`/`glob`/`memory_*` reused
+   as-is. (Host Rust — the only part besides step 1 that touches Postgres /
+   the kernel boundary.) One generic Tool, not three.
+4. **Leaf Orchestrator Skills (classes 1-3):** author the one-tool-each leaves
+   — `file-list`, `file-read`, `hash-compute`, `hash-compare`, `db-read-hash`,
+   `markdown-section`, `component-header-render`, `prompt-compress`, plus the
+   doc-specific `db-upsert-docus` and `db-mark-prefix-stale`. The DB leaves
+   bind to the one `component_db` Tool (different `op`); the rest bind to
+   their own tool/pythoncode. Through Q1+Q2 (Phase P.0) — no bypass.
+5. **Domain Orchestrator Skill (classes 1-3):** author `doc-convert-method`
+   (§0.22.4) — the doc-specific overview referencing the leaves by name.
+   Through Q1+Q2 — no bypass.
+6. **Recipe (class 21):** author `doc-convert` (variants `by-extract` Tier 0,
+   `by-llm-compress` Tier 1) with `step_descriptions` JSONB; steps `include`
+   the step-4 leaf UUIDs + the step-5 domain skill + the step-3 `component_db`
+   ToolSkill UUID. Through Q1+Q2 — no bypass.
+7. **Action (class 16):** author `doc-sync` (`execute_action_procedure`, no
+   LLM) — the scan/decide/extract/upsert/mark-stale driver composing the
+   leaves; enqueues `by-llm-compress` for docs whose §7 extract needs
+   compression (no budget gate — Answer 5). Through Q1+Q2 — no bypass.
+8. **ExtensionCatalogue (class 23):** register `doc-sync` owning only the
+   doc-specific parts (domain skill, `db-upsert-docus`/`db-mark-prefix-stale`
+   leaves over the one `component_db` Tool, Recipe, Action); general-purpose
+   leaves live in the matching builtin catalogue and are referenced. With
+   `overview_doc`.
+9. **Event wiring (Answer 4):** wire `doc-sync` to fire on (a) a file-watch on
+   `docs/agents-v3/*.md` (source doc changed on disk), and (b) a
+   `reborn_docus` row-change signal (doc edited via the WebUI Docs section, or
+   a re-compression graduating). No idle-time loop, no cadence, no boot
+   trigger (§0.22.5).
+10. **WebUI Docs section (Answer 2):** list `reborn_docus` rows (source +
+    converted, with validation status) + manual editing; **saving an edited
+    doc sends it to the validation queue again** (`pending`, enqueued) — never
+    writes `validated` directly. Mirror the existing validation-queue tab
+    pattern (`validation-queue-tab.js`); add i18n keys for all packs.
+11. **End-to-end test:** change a `docs/agents-v3/*.md` → `doc-sync` fires →
+    `reborn_docus` rows updated (new `content_hash`, both source + converted
+    versions) → base prompt `is_stale` → Prefix Tab regenerate pulls the new
+    converted doc into the assembled bundle.
+
+**Tests:** per-step unit tests + the step-11 e2e. Security: a converted doc
+whose §7 quotes an injection payload fails Q1 (the converter must sanitize);
+the WebUI Docs save never writes `validated` directly (store-level guard).
+
 ---
 
 ## 2. Migration Sequence
@@ -7617,6 +8058,19 @@ change to time/USD budgets.
 | `V060__reborn_monty_vm_settings_token_budgets_enabled.sql` | **Phase O (§0.21 — user item, Answer 5):** `ALTER TABLE reborn_monty_vm_settings ADD COLUMN token_budgets_enabled BOOLEAN NOT NULL DEFAULT true;` — the global token-budget kill switch. Additive only; existing rows backfill to `true` (today's behaviour). Independent of Phases A–N; shippable in any order after V034 exists (it already does, live). | |
 
 All additive-first. No DROP, no renames. No existing rows break. V059 is the only migration with DROP statements — all others (including V060) are additive.
+
+> **Phase P (§0.22 — doc-conversion) adds NO migration.** It reuses the
+> already-live `V040__reborn_docus` (Docu table — has `content_hash` + lineage
+> + SCH-02 + `validation_status`), plus `V051` (validation queue), `V052`/`V053`
+> (`reborn_python_code` / `reborn_extension_catalogues`), `V056`
+> (`reborn_basic_prompt_store`), and `V057` (`capability_id` for the
+> `component_db` Tool). The only host-Rust edits are the step-1
+> `COMPONENT_TABLES`/`class_label` const (no migration) and the step-3
+> `component_db` Tool. **Phase P.0** (validation-system extension) may add one
+> small additive column to `reborn_validation_queue` (V051) to record the Q2
+> actor type — to be confirmed by the P.0 subplan against V051's actual columns;
+> if needed it would be `V061__reborn_validation_queue_q2_actor.sql` (additive
+> only). **Phase P.1** (on-disk system-skills migration) adds no migration.
 
 > **✅ Review note (pre-v3 audit) — §2 ordering hazard (validation queue vs. new classes
 > 22/23) — RESOLVED (Decision 2: queue table split into V051 + V059):** The original
@@ -7675,11 +8129,11 @@ avoiding the DB round-trip entirely.
 | 5 | StepDescription storage format: YAML files in git vs. JSONB in `reborn_recipes`? | **Resolved — JSONB (§0.5).** YAML files in git are structurally incompatible (no WebUI write path, no scope isolation, requires deploy cycle). JSONB column on `reborn_recipes` is the correct choice. Each JSONB element holds a dual representation: `yaml_source` (raw YAML, WebUI display) + `steps` (pre-parsed array, IBS reads). YAML is parsed once at WebUI save time — the IBS never parses YAML at runtime. |
 | 6 | Legacy DocPlan → v3 translation? | **Resolved — see §3.1.** JSONB is the storage format (Q5). The translation pipeline creates new v3 components from legacy MemoryDoc rows; dependency registries are decided at authoring time, not inferred by translation. Action-format steps with name references must be resolved to UUIDs; unresolvable names are Q1 hard errors. Step type (text/component/snippet) and component class are orthogonal. |
 | 7 | `__assemble_prior_knowledge__` removal timing? | **Not removed.** `__assemble_prior_knowledge__` IS the v3-upgraded primary function — it already calls `fetch_for_turn` and returns `{content, formatted_content, override_prompt_creation, matched_component_ids}`. Phase F extends it to handle `SplitResult` and `ActionShortCircuit`. Phase G removes the dead `__retrieve_docs__(goal, 5)` shim from step-0 (NOT the `__assemble_prior_knowledge__` call). Phase K removes `__retrieve_docs__` handler registration (the legacy MemoryDoc path). |
-| 8 | Should builtin Tool/ToolSkill/Skill rows bypass Q2 (auto-validated)? | Yes — `source = "system"`, `validation_status = "validated"` at seeder insert. Q1 runs inside the seeder at build time. Q1 errors in seeder content are CI build failures. This prevents boot from requiring human Q2 completion for core tools. |
+| 8 | Should builtin Tool/ToolSkill/Skill rows bypass Q2 (auto-validated)? | **SUPERSEDED — Answer 2 to the doc-conversion review: "Nothing ever bypasses the Q1+Q2 system."** The old answer (direct `validated` insert at seeder time, Q2 bypassed) is overruled. Builtins now go through Q1 + an **automated-but-auditable Q2** graduation recorded in the queue (never a silent skip; the seeder/automation is the Q2 *actor*). This is implemented by **Phase P.0**, which revises §0.16 / Phase L. ~~Yes — `source = "system"`, `validation_status = "validated"` at seeder insert. Q1 runs inside the seeder at build time. Q1 errors in seeder content are CI build failures.~~ (Retained for reference only — superseded.) |
 | 9 | Should the MCP translator also be used for builtins? | No — wrong granularity (1:1 per tool, no task-level Skills, no PythonCode, no multi-ToolSkill Recipes). Use `builtin_bootstrap.rs` (Phase L) for builtins. MCP translator is for external third-party MCPs only. |
 | 10 | What recipe variants should `builtin.shell` have? | Two: (a) known-safe commands (allowlist: `cargo build/test/fmt/clippy`, `git status/log/diff`, `npm install/build`) at Tier 1 high-confidence; (b) open-ended arbitrary command at Tier 1 always with explicit approval annotation. Both have `llm_call_required: true` — no shell is ever Tier 0. |
 | 11 | How does the Rust execution layer resolve a Tool DB UUID to its registered capability handler? | Via `capability_id` column (V057 — was V056 before Decision 2). On tool dispatch: look up Tool row by UUID → read `capability_id` → look up handler in `FirstPartyCapabilityRegistry` by `capability_id`. For user-authored tools without `capability_id`, fall back to existing name-based resolution. |
-| 12 | Should builtin Recipes also have `source = "system"` and bypass Q2? | Yes — same reasoning as Q8. Builtin Recipe StepDescriptions are hand-authored and IBS pre-flight-checked at seeder run time. Q2 bypass for `source = "system"` Recipes is consistent with Tools and ToolSkills. |
+| 12 | Should builtin Recipes also have `source = "system"` and bypass Q2? | **SUPERSEDED — same as Q8 (Answer 2): nothing bypasses Q1+Q2.** Builtin Recipes now go through Q1 + automated-but-auditable Q2 via Phase P.0. ~~Yes — same reasoning as Q8. Builtin Recipe StepDescriptions are hand-authored and IBS pre-flight-checked at seeder run time. Q2 bypass for `source = "system"` Recipes is consistent with Tools and ToolSkills.~~ (Retained for reference only — superseded.) |
 | 13 | If `RecipeStage` already stashed the items (Tier 1), how does `assemble_prior_knowledge_with_hint` know not to call `fetch_for_turn` again? | **Resolved — stash/unstash protocol (Phase H §5, FIND-P9-15 + FIND-NEW-PASS12-01 corrected).** The composition host calls the new `pub` function `assemble_prior_knowledge_with_hint(thread, goal, ..., recipe_hint: Option<serde_json::Value>)` (NOT `handle_assemble_prior_knowledge` directly — that is private and takes `args: &[MontyObject]`). The correct flow: (1) `RecipeStage` (agent_loop) reads `state.recipe_hint` and passes it as a parameter to `ctx.host.run_step_zero(context, recipe_hint.as_ref())`; (2) the composition host calls `assemble_prior_knowledge_with_hint(..., recipe_hint.cloned())`; (3) `assemble_prior_knowledge_with_hint`: if `recipe_hint` is `Some(v)` → use the stashed orchestrator_items, skip `fetch_for_turn` entirely, deserialize, format, return `PkrAssemblyResult`; if `None`, call `fetch_for_turn` as before; (4) the STAGE clears `state.recipe_hint = None` AFTER `run_step_zero` returns. No double-fetch, no second `resolve_intent`, no second IBS compilation. |
 | 14 | In Tier 0, `PromptStage` and `ModelStage` are skipped — but the Python script calls `__assemble_prior_knowledge__`. Where does Python execute in Tier 0? | The Python scripting engine is **not** the LLM call. `PromptStage` assembles the LLM input prompt; `ModelStage` sends it to the model. Both are skipped in Tier 0. `default.py` is invoked by a dedicated **`TierZeroExecutionStage`** (NOT `CapabilityStage` — see the resolution below). In Tier 0, Python runs step-0, calls `__assemble_prior_knowledge__` (gets the stash), and invokes skills/tools directly — no LLM round-trip in the middle. "Tier 0: no LLM" means no LLM call, not no Python execution. **✅ DESIGN GAP RESOLVED (Option 1 chosen — `TierZeroExecutionStage` + `LoopOrchestratorPort`):** In the normal pipeline `CapabilityStage` processes tool-call responses from the model, so it CANNOT kick Python in Tier 0 (there is no model output). The plan now specifies the mechanism: a new `TierZeroExecutionStage` inserted between `RecipeStage` and `AssistantReplyStage` in `canonical.rs` calls `ctx.host.run_tier_zero(context, &state.recipe_hint, &state.recipe_rust_context)` — a new `LoopOrchestratorPort` host port (15th `AgentLoopDriverHost` port, implemented by `brassclaw_reborn_composition`, the only crate depending on both `brassclaw_engine` and `brassclaw_agent_loop`). `CapabilityStage` is NOT bent and is simply skipped. Option 2 (synthetic signal into `LoopCapabilityPort`) is rejected — it would couple the capability port to Tier 0 routing. See Phase H.0 §H5 for the full port spec and §5 for the corrected Tier 0 turn-flow diagram. **⚠️ DRIVER-PREREQ:** this mechanism is exercised only in agent-loop tests until the agent-loop `DefaultExecutorPipeline` is wired as the production driver (today the engine `ExecutionLoop::run` drives turns with no stage pipeline); see DRIVER-GAP in the index. |
 | 15 | What happens if `build_instruction` returns an `IbsError` during the builtin seeder (Phase L)? `panic!` or return an error? | **Debug builds: `panic!`** — seeder content is hand-authored; an IbsError here is a compile-time bug. **Release builds:** `error!`-log, skip the Recipe row, continue. The seeder is idempotent — skipped rows do not block boot. CI must run the seeder in debug mode so IbsErrors become build failures before reaching production. |
