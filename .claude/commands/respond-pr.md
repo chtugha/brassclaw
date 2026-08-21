@@ -78,4 +78,4 @@ For each comment addressed, reply on the PR with a short message stating what wa
 - Do not make changes beyond what the review comments ask for. Stay focused.
 - If a comment suggests a change you disagree with, present your reasoning to the user during the planning phase rather than silently ignoring it.
 - Follow BrassClaw conventions: no `.unwrap()` in production code, use `crate::` imports, `thiserror` errors.
-- If changes touch persistence, verify both database backends are updated.
+- All persistence uses PostgreSQL only — no libSQL; new store methods go into the `Pg*` type in the relevant crate.

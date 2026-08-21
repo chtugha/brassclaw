@@ -100,12 +100,12 @@ Read EVERY changed file in full (not just diff hunks). For PRs touching >20 file
 - No `.unwrap()` or `.expect()` in production code
 - Prefer `crate::` for cross-module imports (`super::` OK in tests/intra-module)
 - Error types use `thiserror`
-- If persistence touched, both backends updated (postgres.rs AND libsql/)
-- New tools implement `Tool` trait correctly and registered
-- External tool output passes through safety layer
+- All persistence uses PostgreSQL via `deadpool-postgres`; no libSQL/dual-backend
+- New first-party tools registered in `crates/brassclaw_host_runtime/src/first_party.rs`
+- External tool output passes through safety layer (`crates/brassclaw_safety/`)
 - Tool parameters redacted before logging/SSE
 - No byte-index slicing on external strings
-- Case-insensitive comparisons where needed
+- `debug!` for internal diagnostics — never `info!`/`warn!` in background tasks (corrupts REPL)
 
 ### Correctness
 Off-by-one, wrong operators, inverted conditions, unreachable code, type confusion, error propagation, broken invariants, TOCTOU races.
@@ -171,8 +171,8 @@ Follow BrassClaw conventions:
 - `thiserror` for errors
 - `crate::` imports
 - No `.unwrap()` in production
-- Both DB backends if persistence touched
-- Regression test for every bug fix (enforced by commit-msg hook; bypass only with `[skip-regression-check]` if genuinely not feasible)
+- Postgres only — no libSQL dual-backend; all stores are `Pg*` types
+- Regression test for every bug fix (bypass only with `[skip-regression-check]` if genuinely not feasible)
 
 After all fixes implemented, proceed to Phase 4.
 
@@ -194,10 +194,9 @@ cargo clippy --all --benches --tests --examples --all-features
 cargo test --lib
 ```
 
-If persistence changes are present, also verify feature isolation:
+Run clippy after all fixes:
 ```bash
-cargo check --no-default-features --features libsql
-cargo check --all-features
+cargo clippy --all --benches --tests --examples --all-features -- -D warnings
 ```
 
 **If any step fails:** fix the issue and re-run. Do NOT proceed past a failing step. Loop up to 3 times per step. If still failing after 3 attempts, report the failure and stop.

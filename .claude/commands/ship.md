@@ -22,4 +22,4 @@ The expected outcome for a clean ship is:
 - `cargo clippy` has zero warnings
 - All tests pass
 
-Note: Integration tests (`--test workspace_integration`) require a PostgreSQL database and are expected to fail locally. Only report `--lib` test failures as blocking.
+Note: Integration tests (`--features integration`) require a PostgreSQL database. Only report `--lib` test failures as blocking.

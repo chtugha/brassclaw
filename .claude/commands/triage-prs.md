@@ -27,22 +27,22 @@ gh pr list --state merged --search "merged:>=$(date -v-7d +%Y-%m-%d)" --limit 10
 
 ## Step 2: Classify each PR by module
 
-For each open PR, determine the primary module it touches by examining the `files` field. Classify into these categories based on the dominant `src/` subdirectory:
+For each open PR, determine the primary module it touches by examining the `files` field. Classify into these categories based on the dominant `crates/` path:
 
 | Category | Directories |
 |----------|------------|
-| **LLM & Inference** | `src/llm/` |
-| **Agent Core** | `src/agent/`, `src/skills/` |
-| **Tools** | `src/tools/`, `tools-src/` |
-| **Channels** | `src/channels/`, `channels-src/` |
-| **Storage & Memory** | `src/db/`, `src/workspace/`, `migrations/` |
-| **Security** | `src/safety/`, `src/secrets/` |
-| **Config & Setup** | `src/config.rs`, `src/setup/`, `src/cli/` |
-| **Sandbox & Orchestration** | `src/sandbox/`, `src/orchestrator/`, `src/worker/` |
-| **Hooks & Extensions** | `src/hooks/`, `src/extensions/` |
-| **Context & History** | `src/context/`, `src/history/`, `src/estimation/`, `src/evaluation/` |
-| **Web Gateway** | `src/channels/web/` |
-| **CI/CD & Docs** | `.github/`, `README.md`, `CLAUDE.md`, `*.md` (no src) |
+| **LLM & Inference** | `crates/brassclaw_llm/` |
+| **Agent Loop** | `crates/brassclaw_agent_loop/`, `crates/brassclaw_turns/` |
+| **Engine** | `crates/brassclaw_engine/` |
+| **Tools & Dispatch** | `crates/brassclaw_host_runtime/`, `crates/brassclaw_dispatcher/` |
+| **Extensions & MCP** | `crates/brassclaw_extensions/`, `crates/brassclaw_mcp/` |
+| **Storage & DB** | `crates/brassclaw_pg/`, `crates/brassclaw_reborn_event_store/` |
+| **Security & Secrets** | `crates/brassclaw_safety/`, `crates/brassclaw_secrets/` |
+| **Composition & Config** | `crates/brassclaw_reborn_composition/`, `crates/brassclaw_reborn_config/` |
+| **WebUI v2** | `crates/brassclaw_webui_v2/`, `crates/brassclaw_webui_v2_static/` |
+| **Skills** | `crates/brassclaw_skills/` |
+| **CLI & Runtime** | `crates/brassclaw_reborn_cli/`, `crates/brassclaw_reborn/` |
+| **CI/CD & Docs** | `.github/`, `README.md`, `AGENTS.md`, `CLAUDE.md`, `*.md` (no crates) |
 | **Other** | Anything else |
 
 If a PR touches multiple modules, assign it to the **primary** module (most files changed) but note the cross-cutting modules.

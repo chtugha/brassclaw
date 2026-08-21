@@ -51,13 +51,14 @@ Go through the changes with each of these lenses. For every finding, note the fi
 
 ### BrassClaw-specific checks
 
-In addition to the general lenses below, check BrassClaw conventions (see CLAUDE.md):
+In addition to the general lenses below, check BrassClaw conventions (see CLAUDE.md and AGENTS.md):
 - No `.unwrap()` or `.expect()` in production code (tests are fine)
 - Use `crate::` imports, not `super::`
 - Error types use `thiserror` in `error.rs`
-- If the change touches persistence, verify both database backends are updated (PostgreSQL in `postgres.rs` AND libSQL in `libsql_backend.rs`)
-- New tools must implement the `Tool` trait correctly and be registered in `registry.rs`
-- External tool output must pass through the safety layer
+- All persistence uses PostgreSQL only — no libSQL/dual-backend; stores are `Pg*` types in `crates/`
+- New first-party tools registered in `crates/brassclaw_host_runtime/src/first_party.rs`
+- External tool output must pass through `crates/brassclaw_safety/`
+- `info!`/`warn!` in background tasks corrupts the Reborn REPL — use `debug!` for internal diagnostics
 
 ### 4a. Correctness and bugs
 

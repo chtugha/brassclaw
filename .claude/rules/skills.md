@@ -1,18 +1,19 @@
 ---
 paths:
-  - "src/skills/**"
-  - "skills/**"
+  - "crates/brassclaw_skills/**"
 ---
 # Skills System
 
-SKILL.md files extend the agent's prompt with domain-specific instructions. Each skill is a YAML frontmatter block (metadata, activation criteria, required tools) followed by a markdown body injected into the LLM context.
+`SKILL.md` files extend the agent's prompt with domain-specific instructions. Each skill is a YAML frontmatter block (metadata, activation criteria, required tools) followed by a markdown body injected into the LLM context.
+
+Skills in the v3 Reborn stack are stored in the database (`brassclaw_skills` crate, `PgSkillStore`) scoped to `(tenant_id, user_id, agent_id)`. They are also importable from bundled `.md` files at boot time via `crates/brassclaw_reborn_composition/src/skill_import.rs`.
 
 ## Trust Model
 
 | Trust Level | Source | Tool Access |
 |-------------|--------|-------------|
-| **Trusted** | User-placed in `~/.ironclaw/skills/` or workspace `skills/` | All tools available to the agent |
-| **Installed** | Downloaded from ClawHub registry or HTTPS skill URL (`~/.ironclaw/installed_skills/`, or URL provenance metadata in Reborn scoped skill storage) | Read-only tools only (no shell, file write, HTTP) |
+| **Trusted** | Agent-scoped DB-stored skills (user-owned) | All tools available to the agent |
+| **Installed** | Downloaded from registry or URL, stored with provenance metadata | Read-only tools only (no shell, file write, HTTP) |
 
 ## SKILL.md Format
 
@@ -40,21 +41,20 @@ requires:
 ```
 
 Only the top-level `requires:` block is supported. The legacy nested shape
-`metadata.openclaw.requires` is unsupported and ignored by the current parser,
-so older external skills must be migrated instead of relying on silent
-compatibility.
+`metadata.openclaw.requires` is unsupported and ignored by the current parser.
 
-## Selection Pipeline
+## Selection Pipeline (`crates/brassclaw_skills/src/selector.rs`)
 
-1. **Gating** -- Check binary/env/config requirements; skip skills whose prerequisites are missing
-2. **Scoring** -- Deterministic scoring: keywords (10/5 pts, cap 30) + patterns (20 pts, cap 40) + tags (3 pts, cap 15). `exclude_keywords` veto (score = 0 if any present). Pattern (regex) scoring is gated on `SKILLS_REGEX_ACTIVATION_ENABLED` (default `true`); when `false`, regex activation contributes 0 and only keywords/tags/explicit mentions can select a skill.
-3. **Budget** -- Select top-scoring skills within `SKILLS_MAX_TOKENS` prompt budget
-4. **Attenuation** -- Minimum trust across active skills determines tool ceiling; installed skills lose dangerous tools
+1. **Gating** (`gating.rs`) — Check binary/env/config requirements; skip skills whose prerequisites are missing
+2. **Scoring** — Deterministic scoring: keywords (10/5 pts, cap 30) + patterns (20 pts, cap 40) + tags (3 pts, cap 15). `exclude_keywords` veto (score = 0 if any present). Pattern (regex) scoring is gated on a runtime config flag; when disabled, regex activation contributes 0 and only keywords/tags/explicit mentions can select a skill.
+3. **Budget** — Select top-scoring skills within `SKILLS_MAX_TOKENS` prompt budget
+4. **Attenuation** — Minimum trust across active skills determines tool ceiling; installed skills lose dangerous tools
 
 ## Skill Tools
 
-- `skill_list` -- List all discovered skills with trust level and status
-- `skill_search` -- Search ClawHub registry for available skills
-- `skill_install` -- Install a skill from raw SKILL.md content or ClawHub
-- `skill_install_url` -- Fetch and install a skill from an HTTPS raw SKILL.md, ZIP bundle, or supported GitHub repository/tree URL
-- `skill_remove` -- Remove an installed skill
+First-party tools registered in `crates/brassclaw_host_runtime/src/first_party_tools/` handle:
+- `skill_list` — List all discovered skills with trust level and status
+- `skill_search` — Search registry for available skills
+- `skill_install` — Install a skill from raw SKILL.md content or registry
+- `skill_install_url` — Fetch and install a skill from an HTTPS raw SKILL.md, ZIP bundle, or supported GitHub repository/tree URL
+- `skill_remove` — Remove an installed skill

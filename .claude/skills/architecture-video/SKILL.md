@@ -20,13 +20,14 @@ Generates and maintains the animated architecture overview video in `docs/archit
 
 Read these files to understand the current system architecture:
 
-- `CLAUDE.md` — top-level project structure, module specs, key traits, principles
-- `crates/ironclaw_engine/CLAUDE.md` — engine v2 primitives, execution loop, CodeAct
-- `src/agent/CLAUDE.md` — agent loop architecture
-- `src/llm/CLAUDE.md` — LLM provider architecture
-- `src/db/CLAUDE.md` — database dual-backend architecture
-- `src/tools/README.md` — tool system architecture
-- `src/workspace/README.md` — workspace/memory architecture
+- `AGENTS.md` — top-level project structure, module specs, key traits, principles
+- `CLAUDE.md` — engineering discipline and codebase rules
+- `crates/AGENTS.md` — crate-level location table and mental model
+- `crates/brassclaw_agent_loop/CLAUDE.md` — agent loop driver
+- `crates/brassclaw_engine/` — engine executor, orchestrator, memory
+- `crates/brassclaw_turns/src/run_profile/CLAUDE.md` — turn host ports
+- `crates/brassclaw_reborn_composition/CLAUDE.md` — composition and wiring
+- `crates/brassclaw_llm/` — LLM provider routing and decorator chain
 
 ### 2. Read current video scenes
 
@@ -75,14 +76,14 @@ Render script: `scripts/render-architecture-video.sh`
 |---|-------|------|----------|---------|
 | 1 | Title | TitleScene.tsx | 4s | Animated BrassClaw logo + tagline |
 | 2 | Five Primitives | PrimitivesScene.tsx | 8s | Thread / Step / Capability / MemoryDoc / Project |
-| 3 | Execution Loop | ExecutionLoopScene.tsx | 8s | 7-step ExecutionLoop::run() pipeline |
+| 3 | Execution Loop | ExecutionLoopScene.tsx | 8s | 7-step agent loop pipeline |
 | 4 | CodeAct | CodeActScene.tsx | 10s | Python code → host fns → suspend/resume flow |
 | 5 | Thread State | ThreadStateScene.tsx | 7s | Created→Running⇄Waiting/Suspended→Completed/Failed→Done |
 | 6 | Skills Pipeline | SkillsPipelineScene.tsx | 8s | Gating → Scoring → Budget → Attenuation |
-| 7 | Tool Dispatch | ToolDispatchScene.tsx | 9s | 9-step ToolDispatcher::dispatch() pipeline |
-| 8 | Channels Routing | ChannelsRoutingScene.tsx | 7s | Channel trait + stream::select_all merging |
-| 9 | Channel Impls | ChannelImplsScene.tsx | 7s | REPL / HTTP / Web / Signal / TUI / WASM |
-| 10 | Traits | TraitsScene.tsx | 8s | 8 traits with concrete implementers |
+| 7 | Tool Dispatch | ToolDispatchScene.tsx | 9s | Tool dispatch pipeline |
+| 8 | Channels Routing | ChannelsRoutingScene.tsx | 7s | Reborn WebUI + API ingress routing |
+| 9 | Channel Impls | ChannelImplsScene.tsx | 7s | WebUI v2 / CLI / Telegram / Triggers |
+| 10 | Traits | TraitsScene.tsx | 8s | Key port traits with concrete implementers |
 | 11 | LLM Decorators | LlmDecoratorScene.tsx | 7s | SmartRouting→CircuitBreaker→...→Base decorator chain |
 | 12 | Outro | OutroScene.tsx | 5s | Start Contributing + getting-started steps |
 
@@ -148,8 +149,8 @@ Use the `CodeBlock` component from `../components/Code` for syntax-highlighted c
 ```tsx
 import { CodeBlock } from "../components/Code";
 
-<CodeBlock code={`pub trait Channel: Send + Sync {
-  async fn start(&self) -> Result<MessageStream>;
+<CodeBlock code={`pub trait AgentLoopDriverHost: Send + Sync {
+  // ...
 }`} fontSize={13} />
 ```
 

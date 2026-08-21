@@ -1,95 +1,114 @@
 ---
-description: Scaffold a new SSE event end-to-end (Rust backend to web frontend)
+description: Scaffold a new SSE/WebSocket event end-to-end (Rust engine event to Reborn WebUI frontend)
 allowed-tools: Read, Edit, Write, Glob, Grep, Bash(cargo fmt:*), Bash(cargo clippy:*), Bash(cargo test:*)
 argument-hint: <event_name> [description]
 model: opus
 ---
 
-Add a new SSE event called `$ARGUMENTS` to the BrassClaw web gateway. This involves changes across 5 files in a specific order. Follow each step exactly.
+Add a new event called `$ARGUMENTS` to the BrassClaw Reborn WebUI. Events flow from the engine event log through projection to the SSE stream. Follow each step exactly.
 
-## Step 1: Add `StatusUpdate` variant
+## Architecture
 
-**File**: `src/channels/channel.rs`
+```
+brassclaw_engine::EventKind (engine event)
+  → crates/brassclaw_reborn_event_store/ (persisted event)
+    → crates/brassclaw_event_projections/ (projection → AppEvent)
+      → brassclaw_reborn_composition/src/projection/ (SSE broadcast)
+        → crates/brassclaw_webui_v2_static/js/ (frontend listener)
+```
 
-Find the `StatusUpdate` enum and add a new variant. Use the event name in PascalCase. Include any fields the event needs as named fields (not a generic String).
+All events MUST project from a source log per `.claude/rules/gateway-events.md`. Never broadcast directly from a handler.
 
-Example for reference (existing variants):
+## Step 1: Add the engine `EventKind` variant
+
+**File**: `crates/brassclaw_engine/src/` (find the `EventKind` enum)
+
+Add a new variant. Use the event name in PascalCase. Include typed fields — never a generic `String` payload.
+
 ```rust
-pub enum StatusUpdate {
-    Thinking(String),
-    ToolStarted { name: String },
-    ToolCompleted { name: String, success: bool },
-    Status(String),
-    ApprovalNeeded {
-        request_id: String,
-        tool_name: String,
-        description: String,
-        parameters: serde_json::Value,
+pub enum EventKind {
+    // existing variants...
+    <EventName> {
+        // typed fields
     },
 }
 ```
 
-## Step 2: Map to `SseEvent` in web channel
+## Step 2: Add the projection arm
 
-**File**: `src/channels/web/mod.rs`
+**File**: `crates/brassclaw_event_projections/src/` (find the projection function for `EventKind`)
 
-Find the `send_status` method in the `Channel` impl for `WebChannel`. Add a match arm for the new `StatusUpdate` variant that maps it to an `SseEvent`. The SSE event name should be snake_case.
+Add a match arm that converts the new `EventKind` variant to an `AppEvent`. The SSE event name should be `snake_case`.
 
-Look at existing match arms for the pattern. The event data is serialized as JSON.
+## Step 3: Add the `AppEvent` variant (if needed)
 
-## Step 3: Add types if needed
+**File**: `crates/brassclaw_reborn_webui_ingress/src/` or wherever `AppEvent` is defined.
 
-**File**: `src/channels/web/types.rs`
+If the event carries structured data, add a serializable variant:
 
-If the event carries structured data beyond a simple string, add a serializable DTO struct here. Use `#[derive(Debug, Clone, Serialize, Deserialize)]`. Follow the existing patterns in the file.
-
-## Step 4: Add frontend handler
-
-**File**: `crates/ironclaw_gateway/static/js/core/sse.js`
-
-In the `connectSSE()` function, add a new `eventSource.addEventListener()` for the snake_case event name. Parse the JSON data and call a handler function.
-
-Create the handler function that updates the DOM. Put it in the split file that matches its surface — e.g. `js/core/onboarding.js` for auth/onboarding handlers, `js/surfaces/chat.js` for chat message handlers, `js/surfaces/jobs.js` for sandbox job events. Follow existing patterns:
-- `showApproval(data)` for complex card-style UI
-- `addMessage(role, content)` for simple text
-- `setStatus(text, spinning)` for status bar updates
-
-## Step 5: Add CSS if needed
-
-**File**: pick the matching surface under `crates/ironclaw_gateway/static/styles/surfaces/` (e.g. `chat.css` for chat UI, `jobs.css` for sandbox job cards) or `styles/components/` for cross-surface reusable pieces.
-
-If the event needs custom UI (cards, badges, etc.), add styles. Follow the existing naming conventions (`.approval-card`, `.log-entry`, etc.).
-
-## Step 6: Send the event from Rust
-
-Identify where in the backend this event should be triggered. Common locations:
-- `src/agent/agent_loop.rs` - During message processing or tool execution
-- `src/worker/job.rs` - During job execution
-- `src/agent/heartbeat.rs` - During periodic execution
-
-Use the existing pattern:
 ```rust
-let _ = self.channels.send_status(
-    &message.channel,
-    StatusUpdate::YourNewVariant { ... },
-    &message.metadata,
-).await;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AppEvent {
+    // existing variants...
+    <EventName>(<EventName>Data),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct <EventName>Data {
+    // typed fields
+}
 ```
+
+## Step 4: Emit the engine event at the right point
+
+Find the appropriate location in the engine or host runtime where this event should be emitted. Use the existing event emission pattern — never broadcast SSE directly.
+
+```rust
+// In the appropriate engine path:
+event_tx.send(EventKind::<EventName> { /* fields */ }).await?;
+```
+
+## Step 5: Add frontend handler
+
+**File**: `crates/brassclaw_webui_v2_static/js/`
+
+Find the SSE connection setup and add a new `addEventListener` for the snake_case event name:
+
+```js
+sse.addEventListener('<event_name>', (e) => {
+    const data = JSON.parse(e.data);
+    handle<EventName>(data);
+});
+
+function handle<EventName>(data) {
+    // update the relevant UI section
+}
+```
+
+## Step 6: Add CSS if needed
+
+If the event needs custom UI (cards, badges, etc.), add styles to the appropriate surface CSS file in `crates/brassclaw_webui_v2_static/styles/`.
 
 ## Step 7: Quality gate
 
-Run `cargo fmt` and `cargo clippy --all --benches --tests --examples --all-features` to verify the changes compile cleanly.
+```bash
+cargo fmt
+cargo clippy --all --benches --tests --examples --all-features -- -D warnings
+cargo test -p brassclaw_event_projections
+```
+
+Verify the `// projection-exempt:` rule is NOT needed — the event flows through the projection layer, not a direct broadcast.
 
 ## Checklist
 
 Before finishing, verify:
-- [ ] `StatusUpdate` variant added in `channel.rs`
-- [ ] Match arm added in `web/mod.rs` `send_status`
-- [ ] DTO added in `types.rs` (if needed)
-- [ ] `addEventListener` added in `app.js`
-- [ ] Handler function created in `app.js`
+- [ ] `EventKind` variant added with typed fields
+- [ ] Projection arm added (EventKind → AppEvent)
+- [ ] `AppEvent` variant added (if needed)
+- [ ] Engine event emitted at correct location
+- [ ] Frontend `addEventListener` added
+- [ ] Frontend handler function created
 - [ ] CSS styles added (if needed)
-- [ ] Event sent from appropriate backend location
 - [ ] `cargo fmt` clean
-- [ ] `cargo clippy` clean
-- [ ] Non-web channels unaffected (they ignore unknown StatusUpdate variants)
+- [ ] `cargo clippy` clean with `-D warnings`
+- [ ] No direct `broadcast` call added outside the projection dispatcher

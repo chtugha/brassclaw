@@ -1,95 +1,50 @@
 ---
 paths:
-  - "src/db/**"
-  - "src/history/**"
-  - "migrations/**"
+  - "crates/**/*.rs"
+  - "crates/brassclaw_pg/migrations/**"
 ---
 # Database Rules
 
 ## Status & Direction
 
-The repo is migrating off per-crate `Store`/`Repository` traits onto a
-single universal `RootFilesystem` mount table (`crates/ironclaw_filesystem/`).
-Under the new model, every persistence concern is a mount path
-(`/system/secrets`, `/system/processes`, `/engine/threads`, …) backed by
-exactly one `RootFilesystem` implementation — typed stores become thin
-wrappers around `ScopedFilesystem` and own no backend dispatch of their
-own. See `crates/ironclaw_filesystem/CLAUDE.md` and the
-`2026-05-14-universal-fs-dispatch.md` plan/ADR.
-
-**New persistence features go on `ScopedFilesystem`, not into `src/db/`.**
-The rules below cover the *legacy* per-crate dual-backend pattern that
-still exists in `src/db/`, `src/history/`, and `migrations/`. Touch them
-only when fixing or extending code that already lives there; do not add
-new sub-traits or per-domain backends.
-
-This file is `paths`-scoped to those legacy directories so the rule
-loads when (and only when) you're inside them. New code under
-`crates/ironclaw_filesystem/`, consumer crates routing through it, or
-any new mount-backed store should follow the unified-surface contract
-in `crates/ironclaw_filesystem/CLAUDE.md` instead.
+All persistence uses **PostgreSQL** — the only supported backend. There is no libSQL/Turso dual-backend, no `src/db/` legacy layer, and no `RootFilesystem` mount-based abstraction. All new persistence goes into the `crates/brassclaw_pg/migrations/` folder (Flyway-style `.sql` files) and is accessed via `deadpool-postgres` pools.
 
 ---
 
-## Legacy: Dual-Backend Per-Crate Pattern
-
-Dual-backend persistence: PostgreSQL + libSQL/Turso. **All new persistence features must support both backends.** *(Applies only inside the legacy directories scoped above. For new crates, mount through `RootFilesystem` and let the wiring layer pick the backend.)*
-
-See `src/db/CLAUDE.md` for full schema, dialect differences, and libSQL limitations.
-
 ## Adding a New Operation
 
-1. Decide which sub-trait it belongs to (`ConversationStore`, `JobStore`, `SandboxStore`, `RoutineStore`, `ToolFailureStore`, `SettingsStore`, `WorkspaceStore`) or create a new one
-2. Add the async method signature to that sub-trait in `src/db/mod.rs`
-3. Implement in `src/db/postgres.rs` (delegate to `Store`/`Repository`)
-4. Implement in `src/db/libsql/<module>.rs` (use `self.connect().await?` per operation)
-5. Add migration if needed:
-   - PostgreSQL: new `migrations/VN__description.sql`
-   - libSQL: add entry to `INCREMENTAL_MIGRATIONS` in `libsql_migrations.rs`
-   - **Version numbering**: always number after the highest version on `staging`/`main` — those migrations may already be in production. Check with `git ls-tree origin/staging migrations/` and staging's `INCREMENTAL_MIGRATIONS`. Never reuse or insert before an existing version.
-6. Test feature isolation:
-   ```bash
-   cargo check                                          # postgres (default)
-   cargo check --no-default-features --features libsql  # libsql only
-   cargo check --all-features                           # both
-   ```
+1. Identify which store/crate owns the concern (e.g. `brassclaw_turns`, `brassclaw_reborn_composition`, `brassclaw_engine`).
+2. Add the async method signature to the relevant trait (usually a `*Store` or `*Repository` trait in the crate).
+3. Implement in the `Pg*` concrete type in the same crate (naming pattern: `PgTurnStateStore`, `PgApprovalRequestStore`, etc.).
+4. Add a migration if needed:
+   - New file: `crates/brassclaw_pg/migrations/VNNN__description.sql`
+   - **Version numbering**: always number after the highest existing migration. Check with `git ls-files crates/brassclaw_pg/migrations/` to find the current highest `VNNN`. Never reuse or insert before an existing version.
+5. Run `cargo test -p <crate_name>` and `cargo test -p <crate_name> --features integration` to verify.
 
-## SQL Dialect Translation Checklist
+## SQL Dialect
 
-When writing SQL for both backends, translate these types:
-
-| PostgreSQL | libSQL |
-|-----------|--------|
-| `UUID` | `TEXT` |
-| `TIMESTAMPTZ` | `TEXT` (ISO-8601, write with `fmt_ts()`, read with `get_ts()`) |
-| `JSONB` | `TEXT` (JSON string) |
-| `BOOLEAN` | `INTEGER` (0/1 -- use `get_i64(row, idx) != 0` to read) |
-| `NUMERIC` | `TEXT` (preserves `rust_decimal` precision) |
-| `TEXT[]` | `TEXT` (JSON-encoded array) |
-| `VECTOR` | `BLOB` (flexible dimensions; vector index dropped, brute-force search fallback) |
-| `jsonb_set(col, '{key}', val)` | `json_patch(col, '{"key": val}')` -- replaces top-level keys entirely, cannot do partial nested updates |
-| `DEFAULT NOW()` | `DEFAULT (datetime('now'))` |
-| `tsvector` + `ts_rank_cd` | FTS5 virtual table + sync triggers |
-
-## Schema Translation Beyond DDL
-
-Don't just translate `CREATE TABLE`. Also check:
-- **Indexes** -- diff `CREATE INDEX` statements between backends
-- **Seed data** -- check for `INSERT INTO` in migrations (e.g., `leak_detection_patterns`)
-- **Triggers** -- PostgreSQL functions vs SQLite triggers (no stored procs in SQLite)
+PostgreSQL only. Use:
+- `UUID` (not TEXT), `TIMESTAMPTZ` (not TEXT), `JSONB` (not TEXT), `BOOLEAN`, `BIGINT`, `VECTOR`
+- Parameterized queries via `tokio-postgres` `client.query(&stmt, &[...])` — never string-formatted SQL.
+- `pool.get()` → `client` → `client.query_opt(...)` / `client.execute(...)` (no `sqlx` macros).
 
 ## Transaction Safety
 
-Multi-step operations (INSERT+INSERT, UPDATE+DELETE, read-modify-write) MUST be wrapped in a transaction. Ask: "If this crashes between step N and N+1, is the database consistent?" If not, wrap in a transaction. Applies to both backends.
+Multi-step operations (INSERT+INSERT, UPDATE+DELETE, read-modify-write) MUST be wrapped in a transaction. Ask: "If this crashes between step N and N+1, is the database consistent?" If not, wrap in a transaction.
 
-## libSQL Connection Model
+## Migration Naming
 
-`LibSqlBackend::connect()` creates a fresh connection per operation with `PRAGMA busy_timeout = 5000`. This is intentional -- no pool exists. Never hold connections open across `await` points. Satellite stores (`LibSqlSecretsStore`, `LibSqlWasmToolStore`) receive `Arc<LibSqlDatabase>` via `shared_db()` and call `.connect()` themselves -- never pass a live `Connection`.
+```
+V050__recipe_tables.sql
+V051__validation_queue.sql
+```
+
+Lowercase, descriptive noun-phrase after the `__` separator. The `V` prefix and `__` double-underscore are required. Flyway validates this format on startup.
 
 ## Never Delete LLM Output Data
 
-All LLM execution data — thread messages, steps, events, tool call parameters and results — must **never** be deleted from the database. This is the most valuable data in the system. No `DELETE` statements, no `DROP`, no truncation of LLM-generated content. In-memory caches (HashMaps in `HybridStore`) may evict entries for memory pressure, but database rows are permanent. Load methods must fall back to the database on a cache miss.
+All LLM execution data — thread messages, steps, events, tool call parameters and results — must **never** be deleted from the database. This is the most valuable data in the system. No `DELETE` statements, no `DROP`, no truncation of LLM-generated content.
 
 ## Fix the Pattern, Not the Instance
 
-When fixing a bug in one backend's SQL, always grep for the same pattern in the other. A fix to `postgres.rs` that doesn't also fix `libsql/jobs.rs` is half a fix. Same applies to satellite stores.
+When fixing a bug in one store's SQL, grep for the same pattern across all stores in the affected crate. A partial fix is not a fix.

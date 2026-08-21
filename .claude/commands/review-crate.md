@@ -48,11 +48,11 @@ cargo test --lib 2>&1
 
 If any of these fail, record the failures as findings. If `cargo test` has ignored tests, note which ones and why.
 
-Note: Integration tests (`--test workspace_integration`) require a PostgreSQL database and are expected to fail locally. Only report `--lib` test failures as blocking.
+Note: Integration tests (`--features integration`) require a PostgreSQL database. Only report `--lib` test failures as blocking.
 
 ## Step 4: Scan for unfinished work
 
-Search the entire `src/` tree for:
+Search the entire `crates/` tree for:
 
 ```
 todo!
@@ -172,7 +172,7 @@ BrassClaw convention: use `crate::` imports, not `super::`. Flag any `super::` i
 - Are there `impl` blocks that look incomplete?
 - Are `Default` implementations sensible?
 
-BrassClaw key traits: `Database` (~60 methods), `Channel`, `Tool`, `LlmProvider`, `SuccessEvaluator`, `EmbeddingProvider`. If any new methods were added to `Database`, verify both `postgres.rs` and `libsql_backend.rs` implement them.
+BrassClaw key traits: `LlmProvider`, `SecretStore`, `AgentLoopDriverHost` + its port traits (14+), `RetrievalSource`, `ValidationQueueStore`, `RecipeLookup`. If any new port methods are added to `AgentLoopDriverHost`, verify all host implementations are updated.
 
 ### 7c. Test coverage gaps
 

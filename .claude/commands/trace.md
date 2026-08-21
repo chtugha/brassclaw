@@ -9,75 +9,72 @@ Trace the flow of `$ARGUMENTS` through the BrassClaw codebase. Your job is to ma
 
 ## Architecture Reference
 
-BrassClaw has three main data flow paths. Identify which one(s) are relevant and trace through them:
+BrassClaw Reborn is organized in three layers: **Products** (surface/UX), **Loops** (agent behavior), and **Kernel** (authority/security). See `AGENTS.md` for the full mental model.
 
-### Message Flow (user input to LLM response)
-```
-Channel (cli/web/wasm) → IncomingMessage
-  → Agent::run() message loop (agent_loop.rs)
-    → handle_message() dispatches by Submission type
-      → SubmissionParser::parse() (submission.rs) classifies input
-      → process_user_input() for new turns
-      → process_approval() for tool approval responses
-      → handle_command() for /commands
-    → run_agentic_loop() iterates LLM calls
-      → Reasoning::respond_with_tools() (reasoning.rs)
-        → LlmProvider::complete_with_tools() (nearai_chat.rs or nearai.rs)
-      → Tool execution with approval gating
-      → Context message accumulation
-    → Response flows back through Channel::send_response()
-```
+The main data flow paths are:
 
-### SSE Event Flow (backend status to web UI)
+### Turn Flow (user input to agent response)
+
 ```
-StatusUpdate variant (channel.rs)
-  → Channel::send_status() trait method
-    → WebChannel::send_status() (web/mod.rs) maps to SseEvent
-      → broadcast via tokio::broadcast channel
-    → SSE endpoint streams events (web/server.rs)
-      → Browser EventSource listener (js/core/sse.js)
-        → DOM update function (js/surfaces/<surface>.js or js/core/<module>.js)
-        → CSS styling (styles/surfaces/<surface>.css or styles/components/*.css)
+brassclaw_reborn_webui_ingress (HTTP/WS ingress)
+  → TrustedInboundTurnRequest / UntrustedInboundTurnRequest (brassclaw_turns)
+    → brassclaw_turns/src/coordinator.rs — admission + scoping
+      → brassclaw_turns/src/runner.rs — turn runner
+        → brassclaw_turns/src/run_profile/ — run profile (host, driver)
+          → brassclaw_agent_loop — agent loop driver
+            → brassclaw_engine — engine executor (Python orchestrator or direct)
+              → brassclaw_host_runtime — tool dispatch, process execution
+                → brassclaw_llm — LLM provider routing
+          → brassclaw_turns/src/response.rs — response emitted
 ```
 
-### Tool Flow (tool definition to execution)
+### Event Flow (engine events to WebUI)
+
 ```
-Tool trait impl (tools/builtin/*.rs or tools/mcp/client.rs or tools/wasm/wrapper.rs)
-  → ToolRegistry::register() (tools/registry.rs)
-  → tool_definitions() builds Vec<ToolDefinition> for LLM
-    → ToolDefinition { name, description, parameters } (llm/provider.rs)
-    → Serialized to ChatCompletionTool (nearai_chat.rs)
-  → LLM returns ToolCall { id, name, arguments }
-  → agent_loop.rs executes via execute_chat_tool()
-    → Safety layer sanitizes output
-    → Result added as ChatMessage::tool_result()
+brassclaw_engine::EventKind (event emitted during execution)
+  → crates/brassclaw_reborn_event_store/ (persisted to DB)
+    → crates/brassclaw_event_projections/ (projected to AppEvent)
+      → brassclaw_reborn_composition/src/projection/ (SSE broadcast)
+        → brassclaw_webui_v2_static/js/ (frontend EventSource)
+```
+
+### Tool Dispatch Flow
+
+```
+Engine / orchestrator (default.py) calls __execute_action__(name, params)
+  → brassclaw_agent_loop executor dispatch
+    → brassclaw_dispatcher (capability lookup, lease check, policy)
+      → brassclaw_host_runtime first-party tool handler
+        or brassclaw_mcp MCP server call
+      → safety scan (brassclaw_safety)
+    → result returned to engine turn
 ```
 
 ## Tracing Instructions
 
 1. **Read** each file in the relevant flow path, focusing on the functions that handle the data.
-2. **Identify transforms**: Where does the data change shape? (e.g., `McpTool.input_schema` → `ToolDefinition.parameters` → `ChatCompletionTool.function.parameters`)
+2. **Identify transforms**: Where does the data change shape?
 3. **Identify failure points**: Where could the data be lost, malformed, or misrouted?
 4. **Report the chain**: List every file:line involved, what happens at each step, and where the issue (if any) is.
 
 ## Key Files Quick Reference
 
-| Area | File | Key Functions |
-|------|------|---------------|
-| Message dispatch | `src/agent/agent_loop.rs` | `handle_message`, `process_user_input`, `process_approval`, `run_agentic_loop` |
-| Input parsing | `src/agent/submission.rs` | `SubmissionParser::parse` |
-| LLM reasoning | `src/llm/reasoning.rs` | `respond_with_tools`, `select_tools`, `plan` |
-| Chat completions | `src/llm/nearai_chat.rs` | `complete_with_tools`, `From<ChatMessage>` |
-| Responses API | `src/llm/nearai.rs` | `complete_with_tools`, `split_messages` |
-| Channel trait | `src/channels/channel.rs` | `Channel`, `StatusUpdate`, `IncomingMessage` |
-| Web gateway | `src/channels/web/mod.rs` | `send_status`, `send_response` |
-| Web server | `src/channels/web/server.rs` | Route handlers, SSE endpoints |
-| Web frontend | `crates/ironclaw_gateway/static/js/` (core/ + surfaces/) | SSE listeners in `core/sse.js`; DOM builders per surface |
-| Tool registry | `src/tools/registry.rs` | `tool_definitions`, `get`, `register` |
-| MCP tools | `src/tools/mcp/client.rs` | `McpToolWrapper`, `list_tools`, `call_tool` |
-| MCP protocol | `src/tools/mcp/protocol.rs` | `McpTool`, `inputSchema` |
-| Safety | `src/safety/sanitizer.rs` | `sanitize_tool_output`, `wrap_for_llm` |
-| Session state | `src/agent/session.rs` | `ThreadState`, `Turn`, `PendingApproval` |
+| Area | Crate/File | Key Items |
+|------|-----------|-----------|
+| Turn admission | `crates/brassclaw_turns/src/admission.rs` | `TurnAdmissionPolicy` |
+| Turn runner | `crates/brassclaw_turns/src/runner.rs` | `run_turn` |
+| Run profile host | `crates/brassclaw_turns/src/run_profile/host.rs` | `AgentLoopDriverHost` trait, all port traits |
+| Agent loop driver | `crates/brassclaw_agent_loop/src/executor.rs` | `execute_turn` |
+| Engine executor | `crates/brassclaw_engine/src/executor/loop_engine.rs` | `execute_orchestrator` |
+| Python orchestrator | `crates/brassclaw_engine/src/executor/orchestrator.rs` | `execute_orchestrator` (pub) |
+| First-party tools | `crates/brassclaw_host_runtime/src/first_party.rs` | tool dispatch |
+| Tool dispatch | `crates/brassclaw_dispatcher/` | capability dispatch |
+| LLM routing | `crates/brassclaw_llm/src/` | `LlmProvider` trait, decorators |
+| Safety | `crates/brassclaw_safety/src/` | `sanitizer.rs`, `leak_detector.rs` |
+| Memory/retrieval | `crates/brassclaw_engine/src/memory/` | `retrieval_source.rs`, `fetch_for_turn` |
+| Intent system | `crates/brassclaw_engine/src/memory/intent_system.rs` | `resolve_intent` |
+| Composition wiring | `crates/brassclaw_reborn_composition/src/runtime.rs` | `build_reborn_runtime` |
+| WebUI ingress | `crates/brassclaw_reborn_webui_ingress/src/` | auth, session, turn submission |
 
 ## Output Format
 

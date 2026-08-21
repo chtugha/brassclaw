@@ -1,8 +1,8 @@
 # B-3: Remove RebornCompositionProfile
 
-**Parent plan:** `unified-runtime-plan.md` Sprint B-3  
-**Date:** 2026-08-09  
-**Status:** IN PROGRESS
+**Parent plan:** `unified-runtime-plan.md` Sprint B-3
+**Date:** 2026-08-09
+**Status:** ✅ COMPLETE — merged at `7b2527a3`
 
 ---
 

@@ -63,8 +63,7 @@ Enter planning mode to design the implementation. The plan MUST cover:
    - Error paths (invalid input, missing data, permission denied)
    - Edge cases (empty collections, boundary values, concurrent access)
 5. **BrassClaw-specific concerns**:
-   - If the change touches persistence, both database backends must be updated (`postgres.rs` and `libsql_backend.rs`)
-   - New `Database` trait methods need implementations in both backends
+   - All persistence uses PostgreSQL only — no libSQL/dual-backend; new store methods go into the `Pg*` type in the relevant crate
    - No `.unwrap()` or `.expect()` in production code
    - Use `crate::` imports, not `super::`
    - Error types via `thiserror` in `error.rs`
@@ -86,7 +85,7 @@ After the plan is approved:
    - `cargo test --lib` (all tests pass)
 4. If any check fails, fix it before proceeding.
 
-Note: Integration tests (`--test workspace_integration`) require PostgreSQL and are expected to fail locally. Only `--lib` test failures are blocking.
+Note: Integration tests (`--features integration`) require PostgreSQL. Only `--lib` test failures are blocking for local work.
 
 ## Step 7: Commit and summarize
 

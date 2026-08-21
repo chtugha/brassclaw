@@ -1,7 +1,6 @@
 ---
 paths:
   - "crates/**/*.rs"
-  - "src/**/*.rs"
 ---
 # Architecture Discipline — Stop the Sprawl Before It Ships
 
@@ -11,7 +10,7 @@ individual symptoms look reasonable in isolation (one extra Arc, one
 extra method arg, one `with_*` builder, one `#[allow(...)]`). The
 class is recognizable only when you grep for the smoke alarms across
 the crate: 11 `#[allow(clippy::too_many_arguments)]` annotations in
-`crates/ironclaw_engine/`, a 7,933-line `runtime/mission.rs`, two
+`crates/brassclaw_engine/`, a 7,933-line `orchestrator.rs`, two
 parallel action-dispatch pipelines, and the same six Arcs threaded
 through three layers without ever being given a name.
 
@@ -157,8 +156,7 @@ because each layer catches a different failure mode.
 - **Pre-commit catches the mechanical patterns.** A regex on staged
   diffs is enough for #1 (annotation grep), #2 (paired patterns),
   and #5 (line count). These are cheap, deterministic, and run on
-  every commit. Add to `scripts/pre-commit-safety.sh` as Check #10
-  (`ARCH-SPRAWL`) following the existing format.
+  every commit.
 - **CI / clippy catches what compilers can express.** clippy already
   emits `too_many_arguments`. The rule is "don't silence it without
   a plan link." No new CI check needed; existing default works once
