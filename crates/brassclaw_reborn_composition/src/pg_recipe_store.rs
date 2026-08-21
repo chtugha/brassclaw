@@ -137,8 +137,15 @@ impl PgRecipe {
     }
 
     /// Returns true iff this recipe is eligible for Tier-0 direct execution.
+    ///
+    /// Requires the same `wilson_lower >= 0.70` guard that the engine-domain
+    /// [`brassclaw_engine::types::recipe::Recipe::is_tier0_eligible`] applies,
+    /// so a `mature`/`candidate` row that has never been used (wilson 0.0) is
+    /// never silently escalated to Tier 0 (FIND-P7-11 / FIND-05).
     pub(crate) fn is_tier0_eligible(&self) -> bool {
-        self.is_deliverable() && matches!(self.tier.as_str(), "mature" | "candidate")
+        self.is_deliverable()
+            && matches!(self.tier.as_str(), "mature" | "candidate")
+            && self.wilson_lower >= 0.70
     }
 }
 
@@ -1717,5 +1724,133 @@ fn derive_queue_code(new_status: &str, review_attempts: i16) -> String {
         "rejected" => "q4_rejection".to_string(),
         "garbage" => "garbage".to_string(),
         _ => "q2_manual".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    /// Build a `PgRecipe` that is Tier-0 eligible by default: validated, no
+    /// `05:validator` tag, `tier = "mature"`, `wilson_lower = 0.80`. Each test
+    /// mutates one field to confirm that single guard blocks eligibility.
+    fn base_recipe() -> PgRecipe {
+        PgRecipe {
+            id: Uuid::nil(),
+            tenant_id: "local".to_string(),
+            user_id: "default".to_string(),
+            agent_id: "default".to_string(),
+            project_id: "default".to_string(),
+            name: "test-recipe".to_string(),
+            description: "test".to_string(),
+            trigger: None,
+            steps: serde_json::json!([]),
+            status: "active".to_string(),
+            prior_knowledge_content: None,
+            override_prompt_creation: false,
+            class_code: 21,
+            prompt_uid: 0,
+            consumer_tags: vec![],
+            intent_examples: None,
+            tier: "mature".to_string(),
+            usage_count: 0,
+            success_count: 0,
+            failure_count: 0,
+            wilson_lower: 0.80,
+            validation_status: "validated".to_string(),
+            validation_errors: vec![],
+            review_feedback: None,
+            review_attempts: 0,
+            rejected_at: None,
+            queue_code: None,
+            source: "test".to_string(),
+            content_hash: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn tier0_eligible_when_all_guards_hold() {
+        assert!(base_recipe().is_tier0_eligible());
+        // candidate tier is also eligible with a high enough wilson score.
+        let mut r = base_recipe();
+        r.tier = "candidate".to_string();
+        assert!(r.is_tier0_eligible());
+    }
+
+    #[test]
+    fn tier0_blocked_when_wilson_below_threshold() {
+        // FIND-P7-11 / FIND-05: a mature row that was never used (wilson 0.0)
+        // must NOT be silently escalated to Tier 0.
+        let mut r = base_recipe();
+        r.wilson_lower = 0.0;
+        assert!(!r.is_tier0_eligible(), "wilson 0.0 must block Tier 0");
+
+        // Just under the threshold still blocks.
+        r.wilson_lower = 0.69;
+        assert!(!r.is_tier0_eligible(), "wilson 0.69 must block Tier 0");
+
+        // Exactly 0.70 passes (>= comparison).
+        r.wilson_lower = 0.70;
+        assert!(r.is_tier0_eligible(), "wilson 0.70 must pass Tier 0");
+    }
+
+    #[test]
+    fn tier0_blocked_when_tier_is_immature() {
+        for tier in ["seedling", "growing", "rejected", ""] {
+            let mut r = base_recipe();
+            r.tier = tier.to_string();
+            assert!(!r.is_tier0_eligible(), "tier={tier:?} must block Tier 0");
+        }
+    }
+
+    #[test]
+    fn tier0_blocked_when_not_validated() {
+        for status in ["pending", "rejected", "auto_failed", "garbage", "upgrade_queued"] {
+            let mut r = base_recipe();
+            r.validation_status = status.to_string();
+            assert!(
+                !r.is_tier0_eligible(),
+                "validation_status={status:?} must block Tier 0"
+            );
+        }
+    }
+
+    #[test]
+    fn tier0_blocked_when_validator_tag_present() {
+        // SEC-01: a row carrying the 05:validator tag is under evaluation and
+        // must not be delivered, hence not Tier-0 eligible.
+        let mut r = base_recipe();
+        r.consumer_tags = vec!["05:validator".to_string()];
+        assert!(!r.is_tier0_eligible());
+        // A non-validator tag does not block.
+        let mut r = base_recipe();
+        r.consumer_tags = vec!["misc".to_string()];
+        assert!(r.is_tier0_eligible());
+    }
+
+    #[test]
+    fn has_validator_tag_detects_tag_in_any_position() {
+        let mut r = base_recipe();
+        r.consumer_tags = vec!["a".to_string(), "05:validator".to_string(), "b".to_string()];
+        assert!(r.has_validator_tag());
+        r.consumer_tags = vec!["a".to_string(), "b".to_string()];
+        assert!(!r.has_validator_tag());
+    }
+
+    #[test]
+    fn is_deliverable_requires_validated_and_no_validator_tag() {
+        let r = base_recipe();
+        assert!(r.is_deliverable());
+
+        let mut r = base_recipe();
+        r.validation_status = "pending".to_string();
+        assert!(!r.is_deliverable());
+
+        let mut r = base_recipe();
+        r.consumer_tags = vec!["05:validator".to_string()];
+        assert!(!r.is_deliverable());
     }
 }
