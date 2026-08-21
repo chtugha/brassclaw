@@ -37,9 +37,26 @@
 
 ---
 
-## Codebase Audit Pass — Corrections Applied (Review Pass 2)
+## Codebase Audit Pass — Corrections Applied (Review Passes 2 + 3)
 
-The following issues were found by reading the live codebase and corrected directly in this plan. Each is tagged with a marker so implementers can grep for them:
+The following issues were found by reading the live codebase and corrected directly in this plan. Each is tagged with a marker so implementers can grep for them.
+
+### Pass 3 findings (deep cross-check — verified against full source)
+
+| Tag | Location | Finding | Fix Applied |
+|-----|----------|---------|-------------|
+| `FIND-17/28` | Phase H §H0 H3 | `LoopContextPort` (host.rs:778) has only ONE method (`load_loop_context`) and is a **required** trait — always present in `AgentLoopDriverHost` supertrait (line 2187). Adding `resolve_message_text` without a default impl breaks ALL existing host implementors. | Phase H item 2 updated: `resolve_message_text` must have a `Err(Unimplemented)` default body in the trait definition |
+| `FIND-18/25` | Phase H item 2 | `consume_drainable_inputs` (input.rs:154) is a **pure free function** with no `ctx`. There is no "drain function". The matching drain-mode inputs (lines 169–173) do `consumed_len += 1; continue` — `message_ref` is NEVER captured. | Phase H item 2 rewritten with Option A (return last ref from free function) / Option B (pre-scan in `InputStage::process`) |
+| `FIND-19` | Phase H item 6 | `LoopPromptBundleRequest` (host.rs:987) has 7 fields confirmed. Test mock at `support.rs:340` is one known construction site. All construction sites need `recipe_hint: None`. | Phase H item 6 updated with grep command and known site list |
+| `FIND-20` | Phase B, C | Three `class_label` copies have DIFFERENT label styles: `intent_system.rs` = lowercase snake_case, `interceptor_config_service.rs` = `&'static str` title-case, `recipe_store.rs` = `String` title-case. | Phase B+C "Files to modify" and test assertions updated with correct labels per copy |
+| `FIND-21` | Phase A | INSERT at `pg_recipe_store.rs:261–283` uses 13 columns (`$1`–`$13`). After Phase A additions → 16 columns (`$1`–`$16`). Off-by-one causes tokio-postgres panic. | FIND-07 note extended with verified column counts |
+| `FIND-22` | Phase E.0 | `factory.rs` has ZERO direct references to `ThreadManager`/`MissionManager`/`ConversationManager`. Engine managers are built via `services.host_runtime_for_local_testing()`. | Phase E.0 Option A/B step 4 updated: "trace the builder API — no direct ThreadManager call in factory.rs" |
+| `FIND-23` | Phase D | `retrieval_source.rs:516–519` inline destructures `IntentResolution::Match { component_id, component_class_code }` — will compile-fail after Phase D adds `step_link`. | Phase D "call sites" section updated with exact line and required binding |
+| `FIND-26` | §2 table | Migration table showed old filename `V054__reborn_skills_intent_examples.sql`. | §2 table row updated: `V054__reborn_dependency_registry.sql` |
+| `FIND-27` | Phase H item 3 | Pseudocode code fence still contained `retrieval_source.fetch_for_turn(...)`. FIND-10 fixed the note but not the fence itself. | Pseudocode corrected to `ctx.host.fetch_for_turn(context, ...)` |
+| `FIND-08` (addendum) | Phase E | Clarified that `FetchForTurnResult` / `TurnRoutingSignals` / `ActionShortCircuit` / `SplitResult` are **greenfield new types** (not extensions of existing types). | FIND-08 addendum added in Phase E "Files to modify" |
+
+### Pass 2 findings (first deep-read pass)
 
 | Tag | Location | Finding | Fix Applied |
 |-----|----------|---------|-------------|
@@ -2078,6 +2095,32 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   review note. Either way, the store must round-trip the column from Phase A so it is
   never orphaned.
 
+  > **⚠️ FIND-07 — Phase A must also update the INSERT and UPDATE SQL statements:**
+  > Adding `step_descriptions`/`variants`/`dependency_registry` to `PgRecipe` + `RECIPE_SELECT`
+  > + `decode_recipe_row` is only half the work. The INSERT and UPDATE SQL must also be updated.
+  > Before implementing, locate the exact SQL statements:
+  > - **INSERT:** verified at `pg_recipe_store.rs:261–283` — INSERT statement currently uses
+  >   13 columns (`tenant_id, user_id, agent_id, project_id, name, description, trigger, steps,
+  >   prior_knowledge_content, override_prompt_creation, consumer_tags, intent_examples, source`)
+  >   with parameters `$1`–`$13`. After adding the three new columns the INSERT becomes 16 columns
+  >   with parameters `$1`–`$16`. The RETURNING clause (`RETURNING id`) stays unchanged. The
+  >   parameter binding array must also add three entries for the new fields.
+  > - **UPDATE:** there is an `update_validation_status` method at `pg_recipe_store.rs:384–420`
+  >   that updates only `validation_status`, `validation_errors`, `review_feedback`, `queue_code`.
+  >   This does NOT need `step_descriptions`. Look for a general recipe update/upsert statement
+  >   (if one exists for the WebUI save path) and add `step_descriptions = $N`, `variants = $N+1`,
+  >   `dependency_registry = $N+2` to the SET clause.
+  > - **`NewPgRecipe`:** the three new fields (`step_descriptions`, `variants`, `dependency_registry`)
+  >   must be added to this struct (all `Option<serde_json::Value>` with `None` as default for
+  >   backwards compatibility when creating recipes without step_descriptions).
+  > - **⚠️ FIND-21 — concrete INSERT parameter count:** The current INSERT has 13 columns
+  >   (`$1`–`$13`). After adding `step_descriptions`, `variants`, `dependency_registry`, the
+  >   parameter count MUST be exactly `$1`–`$16`. Off-by-one here causes a runtime panic
+  >   (tokio-postgres will reject a mismatch between the column count and the params array length).
+  >   Count before committing.
+  > Failure to update the INSERT/UPDATE means the Phase A column is SELECT-able but never written —
+  > it will always be NULL until the SQL is fixed, silently defeating the round-trip goal.
+
   > **Naming note:** The existing `types/recipe.rs` already defines `RecipeStep { skill, tool,
   > params, description }` — a name-based v2 type. The IBS module introduces a **different**
   > `RecipeStep` type in `instruction_builder.rs` that uses UUIDs and channels. To avoid a
@@ -2177,6 +2220,7 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   > Currently neither has one — class 22 silently returns nothing on both code paths.
   > Phase B adds both arms.
 - `crates/brassclaw_engine/src/memory/intent_system.rs` — add `22 => "python_code"` to `class_label`
+  (lowercase snake_case — consistent with `intent_system.rs` style: e.g. `21 => "recipe"`)
   > **✅ Review note (pre-v3 audit) — RESOLVED (obsolete, do not implement):** the plan previously also instructed adding a
   > `22 => 0.42` arm to `doc_type_weight_by_class(i32)` in `retrieval_source.rs`. That
   > function no longer exists (removed in `Goals_pre_v3_review.md` Step 12) — both retrieval
@@ -2199,7 +2243,9 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 
 #### Tests
 
-- Unit: `class_label(22) == "python_code"`
+- Unit: `class_label(22) == "python_code"` (in `intent_system.rs` test — add to existing `class_label_known_codes` test fn)
+- Unit: `interceptor_config_service::class_label(22) == "PythonCode"` (local copy — `&'static str` style, NOT snake_case — FIND-20)
+- Unit: `recipe_store::class_label(22) == "PythonCode"` (local copy — `String` + title-case style — FIND-20)
 - ~~Unit: `doc_type_weight_by_class(22) == 0.42`~~ — **removed**: function no longer exists (§0.11 review note)
 - Integration: PythonCode row retrieved via `fetch_for_consumer` with consumer tag `02:orchestrator`
 - Integration: PythonCode row retrieved via `fetch_component_by_id(uuid, 22)` (UUID lookup path)
@@ -2238,7 +2284,22 @@ Same engine files as Phase B, but for class 23:
   - Add class 23 arm to `fetch_component_by_id`.
   > **⚠️ FINDING C (same as Phase B):** Both `fetch_for_consumer` AND `fetch_component_by_id`
   > need a class 23 arm. Neither has one today.
-- `intent_system.rs` — `23 => "extension_catalogue"` in `class_label`
+- `intent_system.rs` — `23 => "extension_catalogue"` in `class_label` (lowercase snake_case —
+  consistent with `intent_system.rs` style; e.g. `21 => "recipe"`)
+
+  > **⚠️ FIND-20 — THREE `class_label` copies have DIFFERENT label styles. Use the correct style
+  > for each copy:**
+  >
+  > | File | Style | Class 22 arm | Class 23 arm |
+  > |------|-------|-------------|-------------|
+  > | `intent_system.rs:254` | lowercase snake_case | `22 => "python_code"` | `23 => "extension_catalogue"` |
+  > | `interceptor_config_service.rs:65` | returns `&'static str`, mixed case | `22 => "PythonCode"` | `23 => "Catalogue"` |
+  > | `recipe_store.rs:861` | title-case `.to_string()` | `22 => "PythonCode".to_string()` | `23 => "Catalogue".to_string()` |
+  >
+  > The `interceptor_config_service.rs` copy also has its return type annotated as `&'static str`
+  > (not `String`), so the match arms must use string literals `"PythonCode"`, not
+  > `.to_string()`. Keep the return type and style consistent with each copy.
+  > The `recipe_store.rs` copy returns `String` via `.to_string()` — use `"PythonCode".to_string()` there.
   > **✅ Review note (pre-v3 audit) — RESOLVED (obsolete, do not implement):** as with Phase B, the previously-planned `23 => 0.38`
   > arm on `doc_type_weight_by_class(i32)` in `retrieval_source.rs` is obsolete — that
   > function was already removed; see §0.11 review note. No weight arm to add.
@@ -2258,13 +2319,23 @@ Same engine files as Phase B, but for class 23:
   >   new payload type.
   > **Option A is recommended** as the minimal change that keeps `ComponentPayload` lean.
   > Phase C must pick one and spec the concrete `GenericComponent` extension.
+  >
+  > **⚠️ FIND-06 — Option A requires cascading changes to ALL existing `GenericComponent` constructors:**
+  > Adding `extra: Option<serde_json::Value>` to `GenericComponent` (verified struct at
+  > `component_validator.rs:62–67`: has exactly three fields `name`, `description`, `content`) will
+  > require updating EVERY call site that constructs `GenericComponent { name, description, content }`
+  > to also pass `extra: None`. Before implementing, grep for all `GenericComponent {` construction
+  > sites and add `extra: None` to each. This is a mandatory breaking change to the struct — not just
+  > the validator dispatch. Option B avoids this structural change but adds a new payload type.
 
 > **Do NOT modify `types/memory.rs` (DocType enum).** `DocType` is `#[deprecated]` and frozen.
 > No `DocType::ExtensionCatalogue`. See §0.11 note.
 
 #### Tests
 
-- Unit: `class_label(23) == "extension_catalogue"`
+- Unit: `class_label(23) == "extension_catalogue"` (in `intent_system.rs` test — add to existing `class_label_known_codes` test fn)
+- Unit: `interceptor_config_service::class_label(23) == "Catalogue"` (local copy — `&'static str` style — FIND-20)
+- Unit: `recipe_store::class_label(23) == "Catalogue"` (local copy — `String` + title-case style — FIND-20)
 - ~~Unit: `doc_type_weight_by_class(23) == 0.38`~~ — **removed**: function no longer exists (§0.11 review note)
 - Integration: Catalogue with `task_groups` → retrieved with `overview_doc` as `effective_content` via `fetch_for_consumer`
 - Integration: Catalogue retrieved via `fetch_component_by_id(uuid, 23)` (direct UUID lookup)
@@ -2308,9 +2379,33 @@ Same engine files as Phase B, but for class 23:
 - All call sites that destructure `IntentResolution::Match { component_id, component_class_code }`:
   bind `step_link` as well. Non-IBS paths treat `None` as a legacy match (unchanged behaviour).
   Call sites include:
-  - `retrieval_source.rs` — `fetch_for_turn` (primary path)
+  - `retrieval_source.rs` — `fetch_for_turn` at **line 516–519** (primary path, inline destructure;
+    currently `{ component_id, component_class_code }` — add `step_link: _` or `step_link` to bind)
   - `orchestrator.rs` — any call site that destructures `Match`
   - `intent_system.rs` — `record_disambiguation_choice` return statement (**FINDING A**)
+
+  > **⚠️ FIND-23 — `retrieval_source.rs::fetch_for_turn` line 516–519 is a mandatory compile-time
+  > update site for Phase D:** verified by reading the code — `PostgresSource::fetch_for_turn`
+  > (lines 515–519) contains:
+  > ```rust
+  > match resolve_intent(&self.pool, &intent_scope, query).await {
+  >     Ok(IntentResolution::Match {
+  >         component_id,
+  >         component_class_code,
+  >     }) => { ... }
+  > ```
+  > When `step_link: Option<String>` is added to `IntentResolution::Match`, this inline
+  > destructure will fail to compile. Add `step_link` to the binding:
+  > ```rust
+  > Ok(IntentResolution::Match {
+  >     component_id,
+  >     component_class_code,
+  >     step_link,
+  > }) => { ... }
+  > ```
+  > The compiler will catch this — do not miss it. This is the same retrieval_source.rs
+  > file that Phase E subsequently upgrades to dispatch on `step_link`. Phase D adds the
+  > `step_link` binding; Phase E adds the dispatch logic using it.
 
 > **Sequencing invariant:** The Rust code change (adding `step_link` to `IntentResolution::Match`
 > and the `SELECT ... step_link` query) **requires V053 to have run first**. V053 adds the column.
@@ -2393,31 +2488,75 @@ production retrieval path breaks." E.0 is that wiring sub-task, pulled forward.
 
 - `crates/brassclaw_engine/src/runtime/manager.rs` — `ThreadManager::new` (line 64) does
   NOT take a `pg_pool`, and lines 382–383 build `RamSource` internally from `self.store`.
-  Add a composition-injectable override: an `Option<Arc<dyn RetrievalSource>>` field on
-  `ThreadManager` (line ~34) + a `with_retrieval_source(Arc<dyn RetrievalSource>) -> Self`
-  builder method on `ThreadManager`. The `ExecutionLoop::with_retrieval_source` method
-  already exists (`loop_engine.rs:219`) and is already called at `manager.rs:400`; Phase E.0
-  merely needs to make `ThreadManager` pass the override down into that call:
-  ```rust
-  // In ThreadManager spawn path (lines 377-383), replace the RamSource construction:
-  // E.0: PostgresSource is the live intent-driven retrieval backend.
-  // RamSource is retained only until Phase K.3 deletes it.
-  let retrieval_source: Arc<dyn crate::memory::RetrievalSource> = self
-      .retrieval_source_override
-      .clone()
-      .unwrap_or_else(|| Arc::new(crate::memory::RamSource::new(store_for_retrieval)));
-  ```
-  Remove the `TODO(Phase K)` comment at `manager.rs:377` (satisfied by E.0). Keep
-  `RamSource` importable (Phase K.3 deletes it).
 
-- **Injection site (see ARCH-02):** The composition layer must call
-  `thread_manager.with_retrieval_source(Arc::new(PostgresSource::new(pg_pool.clone())))` at
-  the point where `ThreadManager` is constructed. Before implementing, trace from the
-  composition layer (`RebornRuntime` or its builder) down to the `ThreadManager::new()` call
-  in `mission.rs` or `conversation.rs` to find the correct injection point. The `pg_pool`
-  (`Arc<brassclaw_pg::PgPool>`) must be in scope at that point. The composition layer already
-  depends on `brassclaw_engine`, so importing `PostgresSource` there is crate-boundary-clean
-  (unlike `brassclaw_agent_loop`/`brassclaw_turns` — see §H.0).
+  > **⚠️ FIND-02 FIX — composition does NOT hold `ThreadManager` directly:** Verified by
+  > grepping the composition crate: `ThreadManager` is never constructed in
+  > `brassclaw_reborn_composition`. It is constructed inside `brassclaw_engine`'s
+  > `MissionManager` (`mission.rs:3916`) and `ConversationManager` (`conversation.rs:57`).
+  > The composition layer holds these engine managers, not `ThreadManager` directly.
+  > Therefore the injection chain must be:
+  > `ThreadManager` ← `MissionManager` ← `ConversationManager` ← composition factory.
+  >
+  > **Recommended approach — inject `pg_pool` not `Arc<dyn RetrievalSource>` (FIND-14):**
+  > Instead of a `retrieval_source_override: Option<Arc<dyn RetrievalSource>>` field,
+  > add `pg_pool: Option<Arc<brassclaw_pg::PgPool>>` to `ThreadManager`. In the spawn path,
+  > build `PostgresSource::new(pool.clone())` behind `#[cfg(feature = "skills-db")]` when
+  > the pool is present; otherwise fall back to `RamSource`. This avoids the trait-object
+  > wrap/unwrap cycle and keeps `PostgresSource` construction inside the engine where it belongs.
+  >
+  > **However**, if `Arc<dyn RetrievalSource>` override is preferred for testability, it is
+  > also valid — just thread it through `MissionManager`/`ConversationManager` as well.
+
+  **Concrete changes required:**
+
+  Option A (pool injection — recommended):
+  1. Add `pg_pool: Option<Arc<brassclaw_pg::PgPool>>` to `ThreadManager` (line ~34) +
+     `with_pg_pool(Arc<brassclaw_pg::PgPool>) -> Self` builder.
+  2. In spawn path (lines 377–383): if `self.pg_pool.is_some()` →
+     `Arc::new(crate::memory::PostgresSource::new(pool.clone()))` else `RamSource`.
+  3. Add `with_pg_pool` pass-through on `MissionManager` and `ConversationManager`.
+  4. In composition factory (`factory.rs`): after constructing the engine runtime,
+     call `.with_pg_pool(pg_pool.clone())` before the manager is used. The `pg_pool` is
+     already available in the factory (it holds the Postgres pool for all DB operations).
+
+  Option B (RetrievalSource override — if testability requires it):
+  1. Add `retrieval_source_override: Option<Arc<dyn crate::memory::RetrievalSource>>` to
+     `ThreadManager` (line ~34) + builder.
+  2. In spawn path: `self.retrieval_source_override.clone().unwrap_or_else(|| RamSource...)`.
+  3. Add pass-through on `MissionManager` and `ConversationManager`.
+  4. Composition factory constructs `Arc::new(PostgresSource::new(pg_pool.clone()))` and
+     passes it via the builder chain.
+
+  > **⚠️ FIND-22 — `factory.rs` NEVER directly instantiates `ThreadManager`, `MissionManager`,
+  > or `ConversationManager`:** Verified by grepping `factory.rs` — ZERO matches for those types.
+  > The factory produces a `RebornServices` struct via `build_local_dev` and related functions.
+  > The engine runtime is built inside `RebornServices` (the `host_runtime` field is populated via
+  > `services.host_runtime_for_local_testing()` at line ~1040). `ThreadManager` is constructed
+  > deep inside the engine, not in the composition layer.
+  >
+  > **Correct injection approach:**
+  > - The `pg_pool` IS available in `factory.rs` (confirmed: `services.pg_pool` at line 257,
+  >   set to `Some(Arc::clone(&pg_pool_arc))` at line 577).
+  > - The injection must go through the **engine's builder API** — whatever method builds the
+  >   engine runtime that eventually creates `ThreadManager` instances. Option A requires
+  >   adding a `with_pg_pool` method to the engine runtime builder that threads down to
+  >   `MissionManager::new` → `ConversationManager::new` → `ThreadManager::new`.
+  > - The implementer must trace `services.host_runtime_for_local_testing()` (or equivalent
+  >   `build_reborn_runtime` path in `factory.rs:542`) to find where `ThreadManager::new` is
+  >   called, confirm the engine builder API exists or must be added, and wire the pool there.
+  > - Step 4 in Option A above ("`In composition factory (factory.rs): call .with_pg_pool(pg_pool.clone())`")
+  >   is the correct final wiring location — but the call will be on the **engine runtime builder
+  >   object** found at that trace site, not on a `ThreadManager` directly visible in `factory.rs`.
+  > - Do NOT assume there is a direct `ThreadManager` call in `factory.rs` — there is none.
+
+  Either way: remove the `TODO(Phase K)` comment at `manager.rs:377` (satisfied by E.0).
+  Keep `RamSource` importable (Phase K.3 deletes it).
+
+- **Files to modify in the composition layer (FIND-02):**
+  - `crates/brassclaw_engine/src/runtime/manager.rs` — add pool/source override field + builder
+  - `crates/brassclaw_engine/src/runtime/mission.rs` — pass pool/source through to `ThreadManager::new`
+  - `crates/brassclaw_engine/src/runtime/conversation.rs` — same
+  - `crates/brassclaw_reborn_composition/src/factory.rs` — call the builder with `pg_pool` after constructing the engine runtime. The `pg_pool` is already available here.
 
 #### Acceptance (must be verified live, not just unit-tested)
 
@@ -2500,6 +2639,12 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
     per group. This reduces O(N) round-trips to at most O(tables) — in practice 1–2 for most
     recipes. Re-use the same scope params and the same `format!()` pattern (same security
     invariant: literals only). **This is a Phase E requirement, not a future optimisation.**
+
+  > **⚠️ FIND-08 correction — `FetchForTurnResult`, `TurnRoutingSignals`, `ActionShortCircuit`, and
+  > `SplitResult` are NEW types that do NOT yet exist:** Verified `retrieval_source.rs:90–96` —
+  > `FetchForTurnResult` currently has exactly TWO variants: `Components` and `Disambiguation`.
+  > Phase E CREATES all the new variants and `TurnRoutingSignals` from scratch. No existing type
+  > needs to be "extended" — these are greenfield additions.
 
   - **⚠️ PERF-03 — UNION ALL growth with classes 22 and 23:**
     **Verified:** `fetch_for_consumer` currently has **12 sub-selects** (not 9 as previously
@@ -2957,10 +3102,12 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
    /// injects this before the UNION ALL scan. Cleared after use.
    #[serde(default)] pub recipe_hint: Option<serde_json::Value>,
    ```
-   The struct currently ends with `pending_prose_conversion`, `content_cache`, and a
-   `skill_hint` or similar field. Append the three new fields **after** the last existing
-   field; the `#[serde(default)]` attribute ensures all existing checkpoint JSON payloads
-   that lack these fields still deserialise without error.
+   The struct currently ends with `pending_prose_conversion: Option<String>` (line 93),
+   `content_cache: ContentCacheState` (line 98), and `spawn_subagent_hint: Option<String>`
+   (line 102) — **verified by reading `state.rs:47–103`**. Append the three new fields
+   **after `spawn_subagent_hint`** (the last existing field); the `#[serde(default)]` attribute
+   ensures all existing checkpoint JSON payloads that lack these fields still deserialise
+   without error.
    > **Crate boundary constraint:** `brassclaw_agent_loop` depends on `brassclaw_turns` but NOT
    > on `brassclaw_engine`. `ComponentItem` is defined in `brassclaw_engine`. Therefore
    > `recipe_rust_context` and `recipe_hint` CANNOT be typed as `Vec<ComponentItem>` or
@@ -2989,6 +3136,87 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
    > to capture the text from whichever `UserMessage`/`Steering` input was consumed.
    > The text is needed before `RecipeStage` runs; it must be in `state.last_user_text`
    > when `InputStage` returns `InputStep::Continue`.
+   >
+   > **⚠️ FIND-18 — `consume_drainable_inputs` is a PURE FUNCTION with no host access;
+   > there is no `drain` function in `input.rs`:**
+   > Verified by reading `input.rs:154–211`: `consume_drainable_inputs` is a free function
+   > (`pub(super) fn consume_drainable_inputs(batch, mode, state)`) with NO `ctx` parameter.
+   > The matching drain-mode inputs (lines 169–173) are handled as:
+   > ```rust
+   > if user_facing_input_matches_drain_mode(input, mode) {
+   >     consumed_len += 1;
+   >     drained = true;
+   >     continue;   // <-- message_ref is NEVER captured here
+   > }
+   > ```
+   > The `LoopInput::UserMessage { message_ref }` variant is matched by
+   > `user_facing_input_matches_drain_mode` (a separate function at line 213) and then
+   > the `consumed_len += 1; continue` branch runs — the `message_ref` is discarded.
+   >
+   > **Required Phase H restructuring of `InputStage::process`:**
+   > The function holding `ctx` is `InputStage::process` (which receives
+   > `ctx: StageContext<'_>`). The correct Phase H implementation is one of:
+   > - **Option A (return last ref from free function):** Modify `consume_drainable_inputs`
+   >   to also return `Option<LoopMessageRef>` (the last consumed user-facing input's ref).
+   >   The caller (`InputStage::process`) then calls
+   >   `ctx.host.resolve_message_text(context, &message_ref).await` and stores in
+   >   `state.last_user_text`. This requires changing the return type of
+   >   `consume_drainable_inputs` from `(bool, Vec<...>, Option<...>)` to
+   >   `(bool, Vec<...>, Option<...>, Option<LoopMessageRef>)`.
+   > - **Option B (parallel extraction in `InputStage::process`):** Before calling
+   >   `consume_drainable_inputs`, scan the `batch.inputs` array in `InputStage::process`
+   >   to find the last user-facing input ref, resolve it via the host, then call
+   >   `consume_drainable_inputs` as before.
+   >
+   > **Option A is recommended** — it keeps the ref extraction inside the function that
+   > already iterates the inputs. Do NOT add a "drain function" — it does not exist.
+   > Do NOT call `ctx.host.resolve_message_text` from `consume_drainable_inputs` — it
+   > has no `ctx`.
+   >
+   > **⚠️ FIND-04 — `resolve_message_text` composition implementation is missing from "Files to modify":**
+   > The plan's §H.0 specifies adding `resolve_message_text` to `LoopContextPort` with a
+   > default impl. But it does NOT list which composition file implements the non-default
+   > (real) version that reads the raw text from `messages_by_run`. This is required.
+   >
+   > **⚠️ FIND-28 — `resolve_message_text` MUST have a default implementation in the trait body:**
+   > Verified: `LoopContextPort` (host.rs:778–784) currently has only ONE method:
+   > `load_loop_context`. It is a **required** trait — it is in the `AgentLoopDriverHost`
+   > supertrait list (line 2187). Adding `resolve_message_text` WITHOUT a default body is a
+   > **breaking change** — every existing `AgentLoopDriverHost` implementor (including all test
+   > hosts in `support.rs`) must implement it. Phase H MUST provide a default implementation
+   > directly in the `LoopContextPort` trait body:
+   > ```rust
+   > async fn resolve_message_text(
+   >     &self,
+   >     _context: &LoopRunContext,
+   >     _message_ref: &LoopMessageRef,
+   > ) -> Result<String, AgentLoopHostError> {
+   >     Err(AgentLoopHostError::new(
+   >         AgentLoopHostErrorKind::Unimplemented,
+   >         "resolve_message_text not implemented by this host",
+   >     ))
+   > }
+   > ```
+   > Only the composition host (which has access to `messages_by_run`) overrides this default.
+   > Test hosts inherit the default and return `Err(Unimplemented)`, which means
+   > `state.last_user_text` stays `None` in tests — acceptable since test recipes can
+   > seed `last_user_text` directly for unit testing.
+   >
+   > **Additional "Files to modify" for H3:**
+   > - `crates/brassclaw_turns/src/run_profile/host.rs` — add `resolve_message_text` method
+   >   to `LoopContextPort` trait **with a default impl** (see FIND-28 above).
+   > - The composition host implementation file (the struct that implements
+   >   `AgentLoopDriverHost` in `brassclaw_reborn_composition`) — implement
+   >   `resolve_message_text` by reading from the composition-layer `messages_by_run` store
+   >   (the `SkillActivationMessage { text }` keyed by `message_ref`, written at
+   >   `activation.rs:254–272`, live until `clear_accepted_message` at `runtime.rs:1062`).
+   >   The implementer must identify which composition struct implements the host trait and
+   >   add `resolve_message_text` there. This is a concrete new file that must be listed.
+   > - `crates/brassclaw_agent_loop/src/executor/input.rs` — modify `consume_drainable_inputs`
+   >   to also return the last user-facing `LoopMessageRef` (Option A above). Then in
+   >   `InputStage::process`, call `ctx.host.resolve_message_text(context, &ref).await`
+   >   and store in `state.last_user_text`. There is NO `drain` function — `InputStage::process`
+   >   is the function that holds `ctx` (see FIND-18).
    >
    > **⚠️ COMP-01 — `LoopInput` field names must be verified in `brassclaw_turns`:**
    > The plan writes `LoopInput::UserMessage { content, .. }` but the actual struct
@@ -3045,6 +3273,16 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
    > If `PgRecipeLibrary.find_recipe` is called anywhere for non-outcome-recording purposes
    > in Phase H, do not use its `tier0_eligible` result for Tier 0 routing.
    >
+   > **⚠️ FIND-05 — Fix `PgRecipe::is_tier0_eligible()` to prevent silent Tier-0 escalation:**
+   > The stripped method at `pg_recipe_store.rs:140–142` will continue to be callable by
+   > future code and will silently return `true` for low-confidence recipes (wilson < 0.70).
+   > This must be fixed: either (a) fix the method to also check `self.wilson_lower >= 0.70`
+   > (the `PgRecipe` struct already carries `wilson_lower: f64` at line ~114, so the check
+   > is one line), or (b) deprecate the method with a doc comment "Use `TurnRoutingSignals`
+   > from `fetch_for_turn` for Tier 0 decisions — this method's check is incomplete."
+   > Option (a) is strongly preferred. Fix this in the same Phase E commit as the
+   > `TurnRoutingSignals` addition to ensure no window where the wrong check is used.
+   >
    > **rust_items application:** `RecipeStage` runs at the agent loop level (above the
    > Python scripting engine) so it CAN apply rust_items to the Rust execution context
    > directly. For Tier 1, rust_items are stashed in `state.recipe_rust_context` and
@@ -3070,10 +3308,16 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
    > engine import — Phase H must specify the host port method that exposes `fetch_for_turn` to
    > `RecipeStage` (the §0.3 flow assumes this exists; verify it does, or add it).
 
+   > **⚠️ FIND-27 — pseudocode still uses wrong `retrieval_source.fetch_for_turn(...)` call:**
+   > This is the call corrected by FIND-10. The pseudocode must use the host port.
+
    ```
    RecipeStage::process(state):
      user_text = state.last_user_text (return Continue if None)
-     result = retrieval_source.fetch_for_turn(scope, user_text, budget, "02")
+     result = ctx.host.fetch_for_turn(context, user_text, budget, "02")
+             // ↑ FIND-10/FIND-27 fix: NOT `retrieval_source.fetch_for_turn`
+             // The host port (LoopRetrievalPort) is the only way to reach
+             // fetch_for_turn from brassclaw_agent_loop.
 
      match result:
        SplitResult { rust_items, orchestrator_items, routing }:
@@ -3299,11 +3543,41 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
    `ctx.host.build_prompt_bundle(context_request)` — it does NOT call `fetch_for_consumer`
    directly. The recipe hint injection must happen **inside the host's `build_prompt_bundle`
    implementation** (in `brassclaw_turns/src/run_profile/prompt.rs` or the composition layer),
-   not in `PromptStage` itself. The host must read `state.recipe_hint` from the
-   `LoopExecutionState` it receives and prepend the stashed orchestrator items into the
-   prompt bundle before the UNION ALL fallback scan fills the remaining token budget.
+   not in `PromptStage` itself.
    If `PostRecipeOutcome::TierZero`, `PromptStage` and `ModelStage` are skipped entirely
    via the `PostRecipeOutcome` dispatch in `canonical.rs`.
+
+   > **⚠️ FIND-11 — `build_prompt_bundle` does NOT receive `LoopExecutionState`; it receives**
+   > **`LoopPromptBundleRequest`. The host cannot "read `state.recipe_hint`" from the request:**
+   > `LoopPromptBundleRequest` (in `brassclaw_turns`) is the struct passed to `build_prompt_bundle`.
+   > It does not contain `LoopExecutionState`. The host cannot access `state.recipe_hint` unless
+   > the field is explicitly included in the request struct.
+   >
+   > **Concrete fix:** Add `recipe_hint: Option<serde_json::Value>` to `LoopPromptBundleRequest`
+   > in `brassclaw_turns/src/run_profile/host.rs` (or wherever `LoopPromptBundleRequest` is
+   > defined). In `PromptStage::process`, before calling `ctx.host.build_prompt_bundle(...)`,
+   > copy `state.recipe_hint.clone()` into the request field. Do NOT clear `state.recipe_hint`
+   > in `PromptStage` — Python step-0's handler clears it (one-shot consume, per COMP-03).
+   >
+   > **Phase H "Files to modify" must include:**
+   > - `crates/brassclaw_turns/src/run_profile/host.rs` (line 987) — add `recipe_hint: Option<serde_json::Value>`
+   >   to `LoopPromptBundleRequest`. This is a **breaking change** to the struct.
+   >
+   > **⚠️ FIND-19 — ALL `LoopPromptBundleRequest` construction sites must add `recipe_hint: None`:**
+   > Verified construction sites:
+   > - `crates/brassclaw_agent_loop/src/executor/tests/support.rs:340` — `NoInlineContextStrategy::plan_context_request` builds `LoopPromptBundleRequest { mode, context_cursor: None, surface_version: None, checkpoint_state_ref: None, max_messages: Some(16), inline_messages: Vec::new(), capability_view: None }` — must add `recipe_hint: None`.
+   > - Any `ContextStrategy::plan_context_request` implementations in the composition layer — grep for `LoopPromptBundleRequest {` in `brassclaw_reborn_composition/src/` before implementing.
+   > - Any other crate that constructs `LoopPromptBundleRequest` — run `grep -r "LoopPromptBundleRequest {" crates/` to find all sites.
+   > All must add `recipe_hint: None` or the actual hint. Missing sites cause compile errors.
+   >   This is a breaking change to the struct.
+   > - `crates/brassclaw_agent_loop/src/executor/prompt.rs` — in `PromptStage::process`, set
+   >   `request.recipe_hint = state.recipe_hint.clone()` before calling `build_prompt_bundle`.
+   > - The composition host's `build_prompt_bundle` implementation — read `request.recipe_hint`
+   >   and prepend the stashed orchestrator items to the bundle before the UNION ALL scan.
+   >
+   > **COMP-03 remains valid:** `build_prompt_bundle` reads the hint but must NOT clear it.
+   > Only `handle_assemble_prior_knowledge` (Python handler) clears it. The hint must be
+   > set into the request from `state.recipe_hint` and NOT cleared from state by PromptStage.
 
    > **⚠️ COMP-03 — recipe_hint consumed by BOTH PromptStage host AND Python step-0:**
    > `PromptStage` calls `build_prompt_bundle` which reads `state.recipe_hint` to inject
@@ -3479,12 +3753,19 @@ cannot match skill intents. J.1 wires that propagation:
 >    correct core of J.1; the `SkillManifest`/`Vec<String>` addition is a separable authoring
 >    question (point 2) and the migration is a no-op (point 1).
 
-**Migration V054:**
+> **⚠️ FIND-12 — The no-op `intent_examples` line should be dropped from V054. The migration
+> file should be named for its actual work: `V054__reborn_dependency_registry.sql`.**
+> Including a NO-OP ALTER in a production migration file adds noise to migration history
+> and confuses reviewers. Since `IF NOT EXISTS` makes it harmless, it won't break anything,
+> but it should be removed for clarity. The migration's name should reflect its real content.
+
+**Migration V054 (rename recommended to `V054__reborn_dependency_registry.sql`):**
 ```sql
--- NO-OP: reborn_skills.intent_examples already exists (V027__reborn_skills.sql:67,
--- JSONB NOT NULL DEFAULT '[]' of {input, class} objects). IF NOT EXISTS makes this
--- idempotent and harmless; do not expect it to create a column.
-ALTER TABLE reborn_skills ADD COLUMN IF NOT EXISTS intent_examples JSONB;
+-- V054__reborn_dependency_registry.sql
+-- Adds dependency_registry JSONB to all 13 component tables (§0.19 / Phase J.2).
+-- Note: reborn_skills.intent_examples already exists (V027) — no-op omitted.
+-- reborn_python_code (V051) and reborn_extension_catalogues (V052) include this
+-- column at creation time — no ALTER needed here for those tables.
 ```
 
 #### J.2 `dependency_registry` column on all component tables
@@ -3848,14 +4129,27 @@ pub fn parse_template(expression: &str) -> Option<(String, String)> {
     // Returns None if expression has no %, Some((prefix, suffix)) if it does.
     // prefix = text before first %, suffix = text after last %.
     // Adjacent-slot validation (two % with no literal between) done by caller (Q1).
+    //
+    // ⚠️ FIND-01 FIX: The earlier "suffix == expression" guard was dead code (the
+    // early-return above prevents it from ever firing) and obscured the intent.
+    // Replaced with a clear implementation.
     if !expression.contains('%') { return None; }
+    // prefix = everything before the FIRST '%'
     let prefix = expression.splitn(2, '%').next().unwrap_or("").to_string();
+    // suffix = everything after the LAST '%'
+    // rsplitn(2, '%') yields the portion AFTER the last '%' first.
     let suffix = expression.rsplitn(2, '%').next().unwrap_or("").to_string();
-    // If suffix == prefix the expression is a bare "%" — both anchors empty.
-    let suffix = if suffix.as_str() == expression { String::new() } else { suffix };
     Some((prefix, suffix))
 }
 ```
+
+> **⚠️ FIND-01 NOTE — add test:** The test suite must include:
+> - `parse_template("%")` → `Some(("".to_string(), "".to_string()))` — both anchors
+>   empty → Q1 hard error (no-anchor rule).
+> - `parse_template("% in %")` → `Some(("".to_string(), ""))` — prefix empty, suffix
+>   empty (last `%` is at end) → Q1 hard error.
+> - `parse_template("search for %")` → `Some(("search for ".to_string(), "".to_string()))` — prefix-anchored.
+> - `parse_template("% directory")` → `Some(("".to_string(), " directory".to_string()))` — suffix-anchored.
 
 `seed_intent_input` sets `is_template`, `template_prefix`, `template_suffix` from
 `parse_template`. UNIQUE constraint already deduplicates on `(scope, input_text,
@@ -4035,13 +4329,18 @@ ALTER TABLE reborn_monty_vm_settings
 CREATE OR REPLACE FUNCTION reborn_validation_queue_graduation()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
+    -- Requires: reborn_monty_vm_settings_scope_unique UNIQUE constraint (V034).
     INSERT INTO reborn_monty_vm_settings
         (tenant_id, user_id, agent_id, project_id, last_graduation_at)
     VALUES
         (OLD.tenant_id, OLD.user_id, OLD.agent_id, OLD.project_id, now())
     ON CONFLICT (tenant_id, user_id, agent_id, project_id)
     DO UPDATE SET last_graduation_at = now();
-    RETURN OLD;
+    -- ⚠️ FIND-13 FIX: AFTER DELETE triggers should RETURN NULL.
+    -- PostgreSQL ignores the return value of AFTER triggers. RETURN OLD works
+    -- but is the idiom for BEFORE triggers (it signals "proceed with the row op").
+    -- RETURN NULL is the correct idiom for AFTER triggers.
+    RETURN NULL;
 END;
 $$;
 CREATE TRIGGER reborn_validation_queue_on_delete
@@ -4344,7 +4643,7 @@ moment V058 lands.
 | `V051__reborn_python_code.sql` | New table `reborn_python_code`, class 22 | |
 | `V052__reborn_extension_catalogues.sql` | New table `reborn_extension_catalogues`, class 23 | |
 | `V053__reborn_intent_inputs_step_link.sql` | `ADD COLUMN step_link TEXT` to `reborn_intent_inputs` | |
-| `V054__reborn_skills_intent_examples.sql` | `ADD COLUMN IF NOT EXISTS intent_examples JSONB` to `reborn_skills` (**no-op** — V027 already has this column); `ADD COLUMN dependency_registry JSONB` to all 13 component tables (see Phase J.2 — §0.19) | |
+| ~~`V054__reborn_skills_intent_examples.sql`~~ → **`V054__reborn_dependency_registry.sql`** | `ADD COLUMN dependency_registry JSONB` to all 13 component tables (see Phase J.2 — §0.19). The `intent_examples` ALTER is a **no-op** (V027 already has the column) and has been removed from this migration per FIND-12. The file must be named `V054__reborn_dependency_registry.sql`. | |
 | `V055__reborn_basic_prompt_store.sql` | New table: one row per scope, `bundle_json JSONB`, `is_stale BOOL`, `fingerprint TEXT` | |
 | `V056__reborn_tools_capability_id_and_system_source.sql` | `ADD COLUMN capability_id TEXT` to `reborn_tools` + `source = 'system'` allowed on tools/tool_skills/skills | |
 | `V057__reborn_intent_inputs_template.sql` | `ADD COLUMN is_template BOOL`, `template_prefix TEXT`, `template_suffix TEXT` to `reborn_intent_inputs`; two new partial indexes for prefix/suffix-anchored template matching (see §0.17.2) | |
@@ -4613,36 +4912,44 @@ User types: "edit main.rs and refactor the error handler"
 │   serialize rust_items        → state.recipe_rust_context (JSONB stash)
 │   return PostRecipeOutcome::NeedsPrompt → (does NOT skip PromptStage/ModelStage)
 │
+│
+│   ⚠️ FIND-16 FIX — THIS DIAGRAM IS IN THE WRONG ORDER. Python step-0
+│   (`__assemble_prior_knowledge__`) runs BEFORE the LLM call. The correct order is:
+│   PromptStage invokes ctx.host.run_step_zero() → Python step-0 unstashes
+│   recipe_hint → pkr returned → prompt bundle assembled → LLM called guided by bundle.
+│   The "CapabilityStage" block BELOW is post-LLM capability EXECUTION (steps 1+),
+│   NOT step-0. The diagram is kept as-is for backward reference but implementers
+│   MUST follow the corrected flow described in Phase H item 6 / §H.0 §H5.
+│   (FIND-16 in the review findings — diagram should be redrawn before Phase H.)
+│
+│   ⚠️ FIND-15 NOTE — Tier 1 dual-path intent (DELIBERATE, document explicitly):
+│   For Tier 1, the recipe hint reaches the LLM via TWO paths:
+│   (1) PromptStage calls ctx.host.build_prompt_bundle() → request.recipe_hint is set →
+│       host prepends orchestrator_items to the LLM prompt bundle (LLM sees it).
+│   (2) Python step-0 calls __assemble_prior_knowledge__() → handler reads the stash →
+│       returns pkr["orchestrator_content"] (Python orchestrator sees it and uses it to
+│       direct the Rust executioner after the LLM responds).
+│   Both injections are INTENTIONAL: the LLM is guided by the prompt, and Python is
+│   informed about the loaded components to correctly dispatch tool calls post-LLM.
+│   These are complementary, not duplicate — the LLM path is pre-turn guidance, the
+│   Python path is post-turn execution direction.
+│
 ├─ [PromptStage]
-│   NOTE: PromptStage calls ctx.host.build_prompt_bundle(context_request) — it does
-│   NOT call fetch_for_consumer directly. The recipe hint injection must happen
-│   INSIDE the host's build_prompt_bundle implementation, not in PromptStage itself.
-│   The host reads state.recipe_hint from the LoopExecutionState it receives and
-│   prepends the stashed orchestrator_items to the prompt bundle before the UNION ALL
-│   fallback scan. Phase H must wire this in the host implementation.
-│   NOTE: recipe_hint is NOT consumed here (handler consumes it in step-0 below)
+│   NOTE: PromptStage calls ctx.host.build_prompt_bundle(context_request).
+│   FIND-11 FIX: PromptStage copies state.recipe_hint → request.recipe_hint field.
+│   Host reads request.recipe_hint and prepends orchestrator items to prompt bundle
+│   before the UNION ALL scan. PromptStage does NOT clear state.recipe_hint (COMP-03).
+│   ctx.host.run_step_zero() is also called here (pre-LLM) → Python step-0 unstashes
+│   recipe_hint → pkr returned → state.recipe_hint cleared (consumed — one-shot).
 │
 ├─ [InterceptorStage]  Sempai reviews outgoing prompt (recipe hint visible to Sempai)
 │
 ├─ [ModelStage]        LLM call with injected recipe context
 │
-│   ⚠️ DRIVER-GAP cross-reference (Tier 1 ordering): the block below is labelled
-│   "CapabilityStage / Python execution / Python runs default.py step 0", but per §0.3
-│   step-0 (prior-knowledge assembly) runs BEFORE the LLM call, and per Phase H.0 §H5
-│   it is invoked via `ctx.host.run_step_zero(context, &state.recipe_hint)` (the
-│   LoopOrchestratorPort bridge), NOT by CapabilityStage. The `pkr = __assemble_prior_
-│   knowledge__` detail below is the server-side step-0 logic (correct); its INVOCATION
-│   point is pre-`ModelStage` (the stash is read by `build_prompt_bundle` + step-0, then
-│   the LLM is called guided by it). The post-LLM block is capability/tool EXECUTION
-│   (steps 1+), not step-0. This diagram should be reordered so step-0 precedes
-│   PromptStage/ModelStage when Phase H is implemented; the logic is unchanged.
-│
 ├─ [CapabilityStage / Python execution]
-│   Python runs default.py step 0:
-│     pkr = __assemble_prior_knowledge__(goal, budget, "02")
-│     handler checks state.recipe_hint → SET → unstash, skip fetch_for_turn
-│     clears state.recipe_hint (consumed — one-shot)
-│     pkr["orchestrator_content"]:
+│   Post-LLM: Python steps 1+ execute tool calls from model response.
+│   (Step-0 already ran in PromptStage — see FIND-16 correction above.)
+│   pkr["orchestrator_content"] was returned by step-0 (pre-LLM):
 │       ## [Skill: file-editing]
 │         <skill body>
 │       ## [PythonCode: patch-formatter]
