@@ -494,10 +494,11 @@ pub struct ToolBinding {
 /// The `types/ibs.rs` "Files to create" block in Phase A MUST match this exactly.
 /// An earlier draft of types/ibs.rs used { Propagate, Retry { max_attempts: u8 },
 /// Fallback { message: String } } — that variant set is wrong; use the definitions below.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "policy", rename_all = "snake_case")]
 pub enum ErrorPolicy {
     /// Fail the turn immediately — hard error, no retry.
+    #[default]
     Fail,
     /// Ignore the error and continue — the orchestrator receives an empty result.
     Ignore,
@@ -507,7 +508,11 @@ pub enum ErrorPolicy {
     Fallback { step_id: String },
 }
 
-impl Default for ErrorPolicy { fn default() -> Self { ErrorPolicy::Fail } }
+// Default: Fail. Implemented via `#[derive(Default)]` + `#[default]` on `Fail`
+// (FIND-IBS-06) — semantically identical to the hand-written
+// `impl Default for ErrorPolicy { fn default() -> Self { ErrorPolicy::Fail } }`
+// that an earlier draft showed, and clippy-clean under `derivable_impls` which
+// the repo's zero-warning rule mandates.
 ```
 
 #### Structure
@@ -910,6 +915,49 @@ fn build_instruction(
                               llm_call_required }
 ```
 
+> **⚠️ FIND-IBS-01 — empty-include rule is a Q1 invalidation, NOT an IBS error.**
+> Assembly step 4 lists "rust-channel steps must have type:component with
+> non-empty include". Rationale for the requirement: `type: "component"`
+> semantically means "emit a fetch for each UUID in `include`" (§0.5 step
+> types) — an empty `include` contradicts the declared type (the step says it
+> will fetch components but lists none). This is a **structural authoring
+> defect**, not a runtime semantic. The IBS runs at intent-match time **after**
+> the component has passed Q1 validation; it assumes Q1-validated input.
+> Therefore the empty-include rule is enforced at **Q1** (`ComponentValidator`,
+> Phase I): on failure it **invalidates the component and routes it to the
+> review-queue for repair** (§0.23.5). The IBS does **NOT** add a new
+> `IbsError` variant for it — the canonical `IbsError` enum (§0.7 Errors) is
+> unchanged. If a structurally-defective row somehow reaches the IBS, it is a
+> Q1 gate failure (the validation gate missed it), not an IBS compile error.
+> The IBS still enforces the other step-4 rules that are pure compile-time
+> checks: monotonic stepnumbers (FIND-IBS-03), valid include UUIDs (already
+> typed `Uuid`), the S7 guard, and dependency-expression parsing.
+>
+> **⚠️ FIND-IBS-02 — `build_instruction` takes an `llm_call_required` param.**
+> `BuildInstruction.llm_call_required` must be set, but the IBS does not know
+> the recipe's tier (that is a function of `wilson_lower`, owned by the caller).
+> Resolution (collaborative Q&A): `build_instruction` gains a fourth param
+> `llm_call_required: bool`; the caller (`fetch_for_turn`, Phase E.0) computes
+> it from the recipe's tier/wilson and passes it in. The IBS stores it directly
+> into `BuildInstruction`. The **Tier-0 class-22 S7-extension** ("if
+> `llm_call_required==false` AND rust has tool_bindings, orchestrator must
+> contain ≥1 PythonCode UUID (class 22)") remains a **Q1** check — the IBS
+> cannot distinguish a Skill UUID from a PythonCode UUID (class_code is resolved
+> at fetch time per §0.5, UUIDs are opaque to the IBS). The IBS enforces only
+> the basic S7 guard ("rust tool_bindings present → orchestrator_steps must
+> contain ≥1 step with non-empty include").
+>
+> **⚠️ FIND-IBS-03 — monotonic check scope is ALL `StepDescriptionEntry`.**
+> Assembly step 4 "step numbers must be monotonically increasing within each
+> StepDescription" is validated over **every** `StepDescriptionEntry` provided
+> in the slice, not only those referenced by the parsed `step_link` ranges.
+> This catches malformed unreferenced variants too (never suppress a defect).
+>
+> **⚠️ FIND-IBS-04 — `IbsRecipeStep.step_id` is synthesized.** `StepEntry` has
+> no `step_id` field; `IbsRecipeStep.step_id` (used for `IbsError` attribution)
+> is synthesized as `format!("{desc_idx}:{stepnumber}")` — stable, unique, no
+> authoring change.
+
 #### LLM-formatted orchestrator content
 
 After assembly, `handle_assemble_prior_knowledge` in `orchestrator.rs` renders
@@ -982,9 +1030,12 @@ pub fn build_instruction(
     step_link:         &str,
     step_descriptions: &[StepDescriptionEntry],
     variable_patterns: &[VariablePattern],
+    llm_call_required: bool,            // FIND-IBS-02: caller passes tier-derived bool
 ) -> Result<BuildInstruction, IbsError>;
 
 pub fn parse_step_link(step_link: &str) -> Result<Vec<StepRange>, IbsError>;
+
+pub fn parse_dependency_expr(expr: &str) -> Result<DependencyExpr, IbsError>;
 ```
 
 No trait, no async. Called synchronously inside `fetch_for_turn`.
@@ -3240,10 +3291,13 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   ///
   /// ⚠️ FIND-AUDIT-11: canonical definition — matches §0.4.1 exactly.
   /// Do NOT use Propagate/Retry{u8}/Fallback{message} — that was an earlier wrong draft.
-  #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+  /// Default: Fail — via `#[derive(Default)]` + `#[default]` on `Fail` (FIND-IBS-06;
+  /// clippy-clean under `derivable_impls`, semantically identical to a hand-written impl).
+  #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
   #[serde(tag = "policy", rename_all = "snake_case")]
   pub enum ErrorPolicy {
       /// Fail the turn immediately — hard error, no retry.
+      #[default]
       Fail,
       /// Ignore the error and continue — orchestrator receives an empty result.
       Ignore,
@@ -3251,10 +3305,6 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
       Retry { max_attempts: u32 },
       /// On error, jump to the step with id step_id within the same BuildInstruction.
       Fallback { step_id: String },
-  }
-
-  impl Default for ErrorPolicy {
-      fn default() -> Self { ErrorPolicy::Fail }
   }
 
   /// Binding from a Rust-channel IBS step to a specific tool invocation.
@@ -3315,12 +3365,25 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
       pub step_type:    RecipeStepType,     // Text | Component | Snippet
       pub info:         Option<String>,     // WebUI annotation only; not emitted at runtime
       pub include:      Vec<uuid::Uuid>,    // component UUIDs
+      pub tool_bindings: Vec<ToolBinding>,  // rust-channel tool calls (§0.4.1); empty for orchestrator-only steps
       pub dependencies: Option<String>,     // traversal expression string (§0.19)
   }
-  ```  
+  ```
+
+  > **⚠️ FIND-IBS-05 — `StepEntry` MUST carry `tool_bindings`.** §0.4.1 states
+  > ToolBinding is "persisted in the `step_descriptions` JSONB column (inside
+  > rust-channel IbsRecipeStep tool_bindings)", and the §0.7 S7 guard keys off
+  > rust `tool_bindings`. The earlier StepEntry shape omitted the field — that
+  > was a gap. Resolution (collaborative Q&A): add
+  > `#[serde(default)] pub tool_bindings: Vec<ToolBinding>` to `StepEntry`.
+  > Authors write concrete tool calls (`tool_id`/`tool_name`/`params`/`error_policy`)
+  > per rust-channel step; the IBS passes them through to the compiled
+  > `IbsRecipeStep.tool_bindings`. Empty for orchestrator-only steps. The
+  > `ToolBinding`/`ErrorPolicy` types are imported from `crate::types::ibs`.
+
   New functions: `parse_step_link(&str) -> Result<Vec<StepRange>, IbsError>`,
   `parse_dependency_expr(&str) -> Result<DependencyExpr, IbsError>`, and
-  `build_instruction(step_link, step_descriptions, variable_patterns) -> Result<BuildInstruction, IbsError>`.
+  `build_instruction(step_link, step_descriptions, variable_patterns, llm_call_required) -> Result<BuildInstruction, IbsError>` (FIND-IBS-02 adds the `llm_call_required` param).
 
   **`DependencyExpr` / `DependencyNode` types:**
   ```rust

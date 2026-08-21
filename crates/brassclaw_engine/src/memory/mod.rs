@@ -11,6 +11,7 @@
 
 pub mod component_validator;
 pub mod intent_system;
+pub mod instruction_builder;
 pub mod metric_outcome;
 pub mod recipe_matcher;
 pub mod recipe_validator;
