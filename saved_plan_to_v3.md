@@ -3171,8 +3171,9 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   -- V050 carries ALL THREE v3 Recipe columns so the Phase A store round-trip
   -- (PgRecipe / NewPgRecipe / RECIPE_SELECT / decode_recipe_row / INSERT / UPDATE,
   -- which reads+writes all three at indices 31/32/33) is never orphaned.
-  -- `dependency_registry` is added to the other 12 component tables in V054;
-  -- V054's `reborn_recipes` line is `IF NOT EXISTS` → idempotent no-op here.
+  -- `dependency_registry` is added to the other 12 component tables in V055
+  -- (Phase J.2, was V054 before Decision 2); V055's `reborn_recipes` line is
+  -- `IF NOT EXISTS` → idempotent no-op here.
   ALTER TABLE reborn_recipes ADD COLUMN IF NOT EXISTS step_descriptions   JSONB;
   ALTER TABLE reborn_recipes ADD COLUMN IF NOT EXISTS variants            JSONB;
   ALTER TABLE reborn_recipes ADD COLUMN IF NOT EXISTS dependency_registry JSONB;
@@ -3188,12 +3189,13 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   >    Phase A persists it and Phase M.5 depends on `variable_patterns` nested in
   >    `variants`. A SELECT on a non-existent column is a hard SQL error at runtime.
   > 2. **DEPREG-TIMING-GAP:** `dependency_registry` on `reborn_recipes` is not
-  >    created until V054 (Phase J.2), but Phase A's store round-trips it from V050.
-  >    Between V050 and V054 the SELECT would read a column that does not exist.
+  >    created until V055 (Phase J.2, was V054 before Decision 2), but Phase A's
+  >    store round-trips it from V050. Between V050 and V055 the SELECT would read
+  >    a column that does not exist.
   >
   > Fix: V050 creates all three columns on `reborn_recipes` atomically. `variants`
   > is recipe-specific (no other table has it). `dependency_registry` is also
-  > created on the other 12 component tables in V054; V054's
+  > created on the other 12 component tables in V055 (Phase J.2); V055's
   > `ALTER TABLE reborn_recipes ADD COLUMN IF NOT EXISTS dependency_registry JSONB`
   > is then an idempotent no-op (the column already exists from V050). This is the
   > lowest-churn, additive fix and preserves the plan's invariant that the store
