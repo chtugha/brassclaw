@@ -2381,6 +2381,81 @@ are already resolved.
 | No `snippet`-type steps | Step type = `snippet` in step_descriptions | Phase I |
 | Each PythonCode step is self-contained | Steps must not read state from other steps | Architecture (§0.20.1) — not mechanically Q1 checkable, enforced by documentation |
 
+### §0.21 Global Token-Budget Kill Switch (user item, Answer 5 of the doc-conversion review)
+
+> **Subsystem:** A single operator-facing toggle that, when disabled, makes
+> **token budgets play no role anywhere in the code** — not used in any
+> decision or function. When re-enabled, every token budget is enforced
+> again exactly as today.
+> **Grounded in:** the live token-budget consumers —
+> `crates/brassclaw_product_workflow/src/settings.rs:48`
+> (`prior_knowledge_token_budget: u32`, default `100_000` at `:193`, update
+> DTO `Option<u32>` at `:64`),
+> `crates/brassclaw_reborn_composition/src/pg_monty_vm_settings.rs`
+> (`PgMontyVmSettingsStore` persists it to `reborn_monty_vm_settings`,
+> read `:83`, upsert `:142-190`),
+> `crates/brassclaw_engine/src/executor/orchestrator.rs:2844`
+> (`handle_check_budget` — the `__check_budget__` VM host fn reading
+> `thread.config.max_tokens_total` / `max_duration` / `max_budget_usd`),
+> `crates/brassclaw_engine/src/types/thread.rs` (`ThreadConfig` token/time/
+> USD caps), `crates/brassclaw_agent_loop/src/token_budget.rs`
+> (`TokenBudgetTracker` + `estimate_tokens`), `fetch_for_turn(scope, query,
+> token_budget, consumer_tag)` (retrieval budget, §0.11),
+> `crates/brassclaw_skills/src/registry.rs` (skill budget),
+> `crates/brassclaw_interceptor/src/packet.rs` (interceptor packet budget),
+> and the per-request output `max_tokens` across `crates/brassclaw_llm/*`.
+
+**Concept.** A single per-scope boolean `token_budgets_enabled` (default
+`true`), persisted on `reborn_monty_vm_settings` (the existing per-scope
+settings table — V034 — that already holds `prior_knowledge_token_budget`,
+so no new table). A `TokenBudgetPolicy { enabled: bool }` resolver reads it
+once at turn start and is threaded into every consumer. When `false`, every
+"over budget?" / "how many tokens remain?" / "drop/truncate on budget?"
+decision returns *no limit / infinite / do not drop*.
+
+**Exact boundary — what the switch controls (token budgets only).** When
+disabled, the following become no-ops / unlimited:
+
+| Consumer | File:line | Behaviour when disabled |
+|----------|-----------|--------------------------|
+| prior-knowledge injection cap | `settings.rs:48` + `fetch_for_turn` budget | `prior_knowledge_token_budget` ignored; the full assembled prior-knowledge blob is injected (no truncation). `fetch_for_turn` receives `usize::MAX`. |
+| message-selection token tracker | `token_budget.rs` (`TokenBudgetTracker`) | `remaining()` = `usize::MAX`; `would_exceed` always `false`; messages are never dropped on token-budget grounds. |
+| `__check_budget__` tokens | `orchestrator.rs:2844` | `tokens_remaining` = `u64::MAX` — the orchestrator's "stop on token exhaustion" branch never fires on token grounds. |
+| `ThreadConfig.max_tokens_total` | `types/thread.rs` | enforcement skipped when disabled. |
+| skill budget | `skills/registry.rs` | unlimited. |
+| interceptor packet budget | `interceptor/packet.rs` | unlimited. |
+| LLM per-request output `max_tokens` | `brassclaw_llm/*` | set to the provider's documented maximum output (or omitted when the provider treats absence as max) — generation is not token-truncated. |
+
+**What the switch does NOT control (explicitly out of scope).** Time budget
+(`max_duration` / `time_remaining_ms`) and USD budget (`max_budget_usd` /
+`usd_remaining`) are **separate resource limits, not token budgets**; they
+remain enforced. `handle_check_budget`'s `time_remaining_ms` and
+`usd_remaining` fields are unchanged by this switch. They remain as
+cost/runaway backstops.
+
+**Policy type.** `TokenBudgetPolicy { enabled: bool }` lives in
+`brassclaw_reborn_composition` (co-located with `PgMontyVmSettingsStore`).
+`enabled()` returns the bool. The single substitution point every consumer
+uses is `cap_or_unlimited(cap: usize) -> usize` → returns `cap` when
+enabled, `usize::MAX` when disabled. Consumers call this instead of reading
+their cap directly, so the switch is one read at turn start + one helper —
+no scattered `if enabled` ladders.
+
+**Per-scope, not cross-tenant.** The setting rides the existing
+`reborn_monty_vm_settings` scope (tenant + agent, `user_id`/`project_id`
+per-call — the same scope as `prior_knowledge_token_budget`). "Everywhere
+in the whole code" means everywhere for this agent's execution. A
+cross-tenant global is **not** the design; the existing per-scope settings
+page is the surface.
+
+**Safety.** Disabling token budgets removes a cost/runaway guard. The
+toggle is operator-only (the bearer-authenticated Monty-VM settings
+endpoint), its writes are logged, and time + USD limits stay enforced as
+backstops. The WebUI toggle carries help text stating the cost implication.
+
+**Implementation:** Phase O, migration `V060` (see §2). No other phase
+depends on it; it is additive and independently shippable.
+
 ---
 
 ## 1. Implementation Phases
@@ -7426,6 +7501,103 @@ required for manual imports, restored backups, or any path that bypasses the Web
 - Integration: boot integrity check → components with missing queue rows auto-submitted
 - Integration: `list(state_filter: Some(2))` → returns only Q1-passed components awaiting Q2
 
+### Phase O — Global Token-Budget Kill Switch (§0.21)
+
+**Status:** [ ] Pending
+
+**Goal:** Add the operator-facing WebUI toggle that, when disabled, makes
+every token budget in the codebase play no role in any decision or function
+(§0.21). When re-enabled, all token budgets are enforced exactly as today.
+Additive and independently shippable — no other phase depends on it.
+
+**Migration:** `V060__reborn_monty_vm_settings_token_budgets_enabled.sql`
+
+```sql
+ALTER TABLE reborn_monty_vm_settings
+    ADD COLUMN token_budgets_enabled BOOLEAN NOT NULL DEFAULT true;
+```
+
+Additive only. Existing rows backfill to `true` (today's behaviour). No
+DROP, no rename. This is the *only* schema change in Phase O — the setting
+rides the existing `reborn_monty_vm_settings` table (V034) that already
+holds `prior_knowledge_token_budget`, so no new table is minted.
+
+**Files to create / modify (in dependency order):**
+
+1. **Migration** `V060__…sql` (above).
+2. **`crates/brassclaw_reborn_composition/src/pg_monty_vm_settings.rs`** —
+   add `token_budgets_enabled: bool` (default `true`) to the read struct +
+   `Option<bool>` to the update path; extend the `SELECT` column list and
+   the `INSERT … ON CONFLICT … DO UPDATE` to set
+   `token_budgets_enabled = EXCLUDED.token_budgets_enabled` (mirror the
+   existing `prior_knowledge_token_budget` read at `:83` and upsert at
+   `:142-190`). Co-locate the new `TokenBudgetPolicy { enabled: bool }`
+   type + `pub fn cap_or_unlimited(cap: usize) -> usize` here (returns
+   `cap` when `enabled`, `usize::MAX` when not). Add a
+   `load_token_budget_policy(user_id, project_id)` read that returns the
+   policy for the scope (cached for the turn).
+3. **`crates/brassclaw_product_workflow/src/settings.rs`** — add
+   `token_budgets_enabled: bool` (default `true`) to `MontyVmSettings`
+   (near `:48`) and `Option<bool>` to `UpdateMontyVmSettingsRequest`
+   (near `:64`); default the read to `true` at `:193`.
+4. **Facade / HTTP** — extend the existing `GET` and `PUT
+   /api/settings/monty-vm` handler to read + persist
+   `token_budgets_enabled`. No new route, no new descriptor: the Monty-VM
+   settings endpoint already exists; this is one more field on the same
+   DTO. Update `tests/webui_v2_handlers_contract.rs` (the
+   `prior_knowledge_token_budget: 2000` sites at `:893`/`:912`) to include
+   `token_budgets_enabled`.
+5. **Thread the policy** from composition (turn start) into the loop
+   (`brassclaw_agent_loop`), the engine executor (`brassclaw_engine`), the
+   retrieval source (`fetch_for_turn`), the interceptor, the skills
+   registry, and the LLM layer. Read once per turn; pass `&TokenBudgetPolicy`
+   (or a `bool`) down — no per-consumer DB reads.
+6. **Apply `cap_or_unlimited` / `enabled()` at every consumer (§0.21 table):**
+   - `crates/brassclaw_engine/src/executor/orchestrator.rs:2844
+     handle_check_budget` — `tokens_remaining = u64::MAX` when disabled
+     (leave `time_remaining_ms` / `usd_remaining` unchanged).
+   - `crates/brassclaw_engine/src/types/thread.rs` — skip
+     `max_tokens_total` enforcement when disabled.
+   - `crates/brassclaw_agent_loop/src/token_budget.rs` — construct
+     `TokenBudgetTracker` with `usize::MAX` when disabled; `would_exceed`
+     returns `false`; message selection never drops on token budget.
+   - `fetch_for_turn` budget argument → `usize::MAX` when disabled (full
+     assembled prior knowledge injected, no truncation).
+   - `crates/brassclaw_skills/src/registry.rs` — skill budget unlimited.
+   - `crates/brassclaw_interceptor/src/packet.rs` — packet token budget
+     unlimited.
+   - `crates/brassclaw_llm/*` per-request output `max_tokens` → provider
+     documented max (or omitted) when disabled.
+7. **WebUI** `crates/brassclaw_webui_v2_static` — add a toggle card to the
+   existing Settings (Monty-VM) page: "Token budgets enabled" (default on)
+   with help text stating the cost/runaway implication and that time + USD
+   limits remain. PUT `token_budgets_enabled` via the existing settings
+   hook + `apiFetch` (no new endpoint). Add the i18n key (e.g.
+   `"settings.tokenBudgetsEnabled"`) to `i18n/en.js` and all other language
+   packs. `node --check` the changed JS.
+
+**Tests:**
+- Unit: `TokenBudgetPolicy::cap_or_unlimited(8000)` → `8000` when enabled,
+  `usize::MAX` when disabled.
+- Unit: `handle_check_budget` with policy disabled →
+  `tokens_remaining == u64::MAX`; `time_remaining_ms` / `usd_remaining`
+  still computed from config (unchanged).
+- Unit: `TokenBudgetTracker` constructed under a disabled policy →
+  `remaining()` never `0`, `would_exceed(n)` `false` for any `n`.
+- Integration: `PUT token_budgets_enabled=false` → `GET` returns `false`;
+  a turn runs with prior-knowledge injection uncapped (assert the full
+  assembled blob is injected, no truncation); `__check_budget__` reports
+  `tokens_remaining == u64::MAX`.
+- Integration: toggle back to `true` → caps re-enforced (truncation +
+  `tokens_remaining` depletion resume).
+- Security: the toggle endpoint is bearer-authenticated; an unauthenticated
+  PUT is rejected (mirror the existing settings endpoint's auth test).
+
+**Safety / scope notes:** Disabling removes a cost/runaway guard; time and
+USD budgets remain enforced as backstops and are **not** affected by this
+switch (§0.21). The toggle is operator-only and logged. Out of scope: any
+change to time/USD budgets.
+
 ---
 
 ## 2. Migration Sequence
@@ -7442,8 +7614,9 @@ required for manual imports, restored backups, or any path that bypasses the Web
 | `V057__reborn_tools_capability_id_and_system_source.sql` | `ADD COLUMN capability_id TEXT` to `reborn_tools` + `source = 'system'` allowed on tools/tool_skills/skills (**was V056** before Decision 2) | |
 | `V058__reborn_intent_inputs_template.sql` | `ADD COLUMN is_template BOOL`, `template_prefix TEXT`, `template_suffix TEXT` to `reborn_intent_inputs`; two new partial indexes for prefix/suffix-anchored template matching (**was V057** before Decision 2; see §0.17.2) | |
 | `V059__reborn_validation_queue_populate.sql` | **Phase N only:** populate `reborn_validation_queue` from existing component table state; add `last_graduation_at` to scope cursor; graduation trigger; drop `queue_code`/`review_attempts`/`review_feedback`/`rejected_at`/`validation_errors` from all 13 component tables. `CREATE TABLE` is in V051. (**was V058** before Decision 2) | |
+| `V060__reborn_monty_vm_settings_token_budgets_enabled.sql` | **Phase O (§0.21 — user item, Answer 5):** `ALTER TABLE reborn_monty_vm_settings ADD COLUMN token_budgets_enabled BOOLEAN NOT NULL DEFAULT true;` — the global token-budget kill switch. Additive only; existing rows backfill to `true` (today's behaviour). Independent of Phases A–N; shippable in any order after V034 exists (it already does, live). | |
 
-All additive-first. No DROP, no renames. No existing rows break. V059 is the only migration with DROP statements — all others are additive.
+All additive-first. No DROP, no renames. No existing rows break. V059 is the only migration with DROP statements — all others (including V060) are additive.
 
 > **✅ Review note (pre-v3 audit) — §2 ordering hazard (validation queue vs. new classes
 > 22/23) — RESOLVED (Decision 2: queue table split into V051 + V059):** The original
