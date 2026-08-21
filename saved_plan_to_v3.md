@@ -37,6 +37,30 @@
 
 ---
 
+## Codebase Audit Pass — Corrections Applied (Review Pass 2)
+
+The following issues were found by reading the live codebase and corrected directly in this plan. Each is tagged with a marker so implementers can grep for them:
+
+| Tag | Location | Finding | Fix Applied |
+|-----|----------|---------|-------------|
+| `ARCH-01` | Phase E.0 | Plan said "`ExecutionLoop::with_retrieval_source` is internal-only, not callable from composition" but didn't clarify that `with_retrieval_source` already EXISTS on `ExecutionLoop` (at `loop_engine.rs:219`) and is already called at `manager.rs:400`. The task is to add the override field to `ThreadManager`, not `ExecutionLoop`. | Phase E.0 "Files to modify" rewritten with verified method location |
+| `ARCH-02` | Phase E.0 | Plan stated injection site is `crates/brassclaw_reborn_composition/src/runtime.rs`. `ThreadManager` does NOT appear there — it is instantiated in `mission.rs` / `conversation.rs`. | Phase E.0 now explicitly warns the injection site claim is wrong; implementer must trace `ThreadManager::new()` calls |
+| `SCHEMA-01` | Phase N.4 | `reborn_recipes` (V033) uses `SMALLINT` for `review_attempts`, but `reborn_skills` (V027) uses `INT`. V058 populate uses `COALESCE(review_attempts, 0)` — needs `::INT` cast for SMALLINT tables. | Added as a note under N.4 struct audit section |
+| `RETRIEVAL-01` | §0.11 / K.3 | Plan stated `doc_type_weight(DocType)` was "already removed in Step 12 pass." It was NOT — file `retrieval_dbless.rs` still exists and contains the function (lines ~76–88). `doc_type_weight_by_class(i32)` (the i32 variant) does not exist. | §0.11 review note corrected; K.3 deletion instructions updated |
+| `PERF-03` | Phase E | Plan said `fetch_for_consumer` has "currently 9 sub-selects." Verified: it has **12** (reborn_skills, reborn_extensions_unified, reborn_actions, reborn_specs, reborn_tool_skills, reborn_plans, reborn_summaries, reborn_docus, reborn_lessons, reborn_issues, reborn_notes, reborn_recipes). Adding classes 22/23 → 14. | PERF-03 count corrected |
+| `CANONICAL-01` | Phase H §4 | The canonical.rs `RecipeStep::Continue` match is exhaustive (single variant). This will be a compile error when Phase H adds `TierZero` and `ActionExecuted`. | Added verification note under COMP-02 |
+| `FINDING-A` | Phase D | `record_disambiguation_choice` line reference was "436" — verified actual body is at lines 433–455. Return statement at line 451. | Updated to exact verified line numbers |
+| `RECIPE-SELECT` | Phase A | Plan cited wrong "line 117/147/208/219" for PgRecipe/NewPgRecipe/RECIPE_SELECT/decode_recipe_row. Verified: PgRecipe starts at ~110, NewPgRecipe at ~145, RECIPE_SELECT at ~208, decode_recipe_row at ~219. | Phase A "Files to modify" updated with verified locations + instruction to append new columns at END of RECIPE_SELECT (not middle) |
+| `SQLX-01` | Phase N.3 | Cache-check code example used `sqlx::query_scalar!` macro. The codebase uses `tokio-postgres` / `deadpool-postgres`, not sqlx. | N.3 code block replaced with correct `pool.get()` + `client.query_opt()` pattern |
+| `TIER0-GAP` | Phase H / Q14 | Plan does not specify how the Python scripting engine is "kicked" in Tier 0 (when CapabilityStage normally reacts to model output, not invents it). | **✅ RESOLVED** — Option 1 chosen: a new `TierZeroExecutionStage` inserted between `RecipeStage` and `AssistantReplyStage` in `canonical.rs` invokes the Python orchestrator in no-LLM mode via the new `LoopOrchestratorPort` host port. `CapabilityStage` is NOT bent (it keeps its model-output assumption). See Phase H.0 §H5 and the §5 Tier 0 diagram |
+| `DRIVER-GAP` | Phase H / §0.3 / §5 | **Root cause behind TIER0-GAP.** The production turn driver is the engine `ExecutionLoop::run` (`loop_engine.rs:413`), which runs the Python `execute_orchestrator` directly with NO stage pipeline — Python (Monty) IS the outer loop and calls the LLM itself via `__llm_complete__` (`default.py:1103` → `handle_llm_complete` at `orchestrator.rs:563`). The agent-loop `DefaultExecutorPipeline::execute` (`canonical.rs`) — where `RecipeStage`/`PromptStage`/`ModelStage`/`CapabilityStage` live — is a SKELETON: no product surface calls it (`DefaultExecutorPipeline`/`execute_family` appear only inside `brassclaw_agent_loop`). `brassclaw_agent_loop` does NOT depend on `brassclaw_engine`, and `__assemble_prior_knowledge__` exists ONLY in `brassclaw_engine`. So the plan's RecipeStage↔Python-step-0 stash/unstash (Phase H item 5) and the §5 Tier 0 diagram ("Python runs `default.py` step 0" inside the agent loop) both assume a RecipeStage-then-Python unification that does NOT exist. **The plan was silently mixing two execution models:** (A) `ExecutionLoop`/Monty = Python is the outer loop, calls `__llm_complete__`; (B) `DefaultExecutorPipeline`/agent_loop = no Python, `ModelStage` calls the LLM. | **✅ RESOLVED — model selection made explicit, both paths covered during migration.** **Engine path (A, current production):** Tier 0 reuses the EXISTING deterministic no-LLM signal — `execute_action_procedure` (`default.py:901`, "returns without calling `__llm_complete__`") + `override_prompt_creation: true` (`orchestrator.rs:2689`). Phase H wires `fetch_for_turn` `SplitResult { llm_call_required: false }` so `handle_assemble_prior_knowledge` returns `override_prompt_creation: true`; Python step-0 then skips `__llm_complete__` and runs the recipe's orchestrator channel deterministically. No new "kick" — the kick IS `default.py` step-0, already live. This gives production Tier 0 NOW, before any switchover. **Agent-loop path (B/C, target state):** `LoopOrchestratorPort` (15th `AgentLoopDriverHost` port, implemented by `brassclaw_reborn_composition` — the only crate depending on both `brassclaw_engine` and `brassclaw_agent_loop`) + `TierZeroExecutionStage` bridge agent-loop stages to the engine orchestrator (`run_step_zero` Tier 1; `run_tier_zero` Tier 0). Active after the agent-loop becomes the driver (`DRIVER-PREREQ`). **LLM-call ownership (v3 target):** once the agent-loop is the driver, `ModelStage` owns the Tier 1+ LLM call and the Python `__llm_complete__` loop is retired (Python reduced to step-0 prior-knowledge + Tier-0 no-LLM execution). During migration both mechanisms coexist: engine path serves production (A), agent-loop stages are test-only until switchover (B/C). |
+| `TIER0-ICS` | §5 Turn Flow | The Tier 0 turn flow incorrectly showed `InterceptorStage` running normally. Per COMP-07, InterceptorStage MUST be skipped in Tier 0 (it would open a ForensicPacket without a model call to close it). | Tier 0 flow diagram updated |
+| `DOCTYPE-B` | §0.11 FINDING B §3 | "weight dispatch function itself is already gone" — wrong. `doc_type_weight(DocType)` still exists. Only the i32-keyed variant doesn't. | FINDING B item 3 corrected |
+| `LOOPSTATE` | Phase H §1 | Added explicit verification that `LoopExecutionState` has NO `last_user_text`, `recipe_rust_context`, or `recipe_hint` fields currently. | Phase H state.rs addition note augmented |
+| `HOSTPORTS` | Phase H §H.0 | Added exact verified list of all 13 current `AgentLoopDriverHost` supertrait ports, with instruction to add `LoopRetrievalPort` as 14th entry after `LoopInterceptorPort`. | Phase H H.0 retrieval port note updated |
+
+---
+
 ## 0. Architecture Vision (Canonical Reference)
 
 ### 0.1 Component Hierarchy — Bottom to Top
@@ -123,9 +147,24 @@ Intent match (runtime):
        g. Return FetchForTurnResult::SplitResult { rust_items, orchestrator_items, routing }
 
   ── Tier 0 (routing.tier0_eligible = true, llm_call_required = false): ────
+  Two execution models (see DRIVER-GAP / Phase H.0 §H5 MODEL SELECTION):
+
+  Model A — ExecutionLoop/Monty (CURRENT PRODUCTION; no RecipeStage exists):
+  2. Python step-0 calls __assemble_prior_knowledge__ → fetch_for_turn → SplitResult.
+     When routing.llm_call_required == false, handler returns
+     override_prompt_creation: true (reuses the Solution-Override signal,
+     orchestrator.rs:2683-2691) + the orchestrator_items as orchestrator_content.
+  3. Python step-0 sees override_prompt_creation: true → SKIPS __llm_complete__ and
+     runs the recipe's orchestrator channel (skills + PythonCode) deterministically
+     against the pre-loaded rust execution context (execute_action_procedure pattern,
+     default.py:901). The kick IS default.py step-0 — already live, no new stage.
+
+  Model B/C — DefaultExecutorPipeline/agent_loop (TARGET STATE; skeleton today):
   2. RecipeStage applies rust_items to Rust execution context (silently).
-     PromptStage and ModelStage are SKIPPED.
-     Python scripting engine is called with pre-loaded orchestrator_items.
+     PromptStage, InterceptorStage, and ModelStage are SKIPPED.
+  3. TierZeroExecutionStage calls ctx.host.run_tier_zero(...) (LoopOrchestratorPort
+     bridge to the engine orchestrator's no-LLM entry point) with the stashed
+     orchestrator_items; AssistantReplyStage emits the result.
 
   ── Tier 1 (routing.tier0_eligible = false OR llm_call_required = true): ──
   2. RecipeStage stores rust_items → state.recipe_rust_context.
@@ -134,6 +173,7 @@ Intent match (runtime):
   4. Python step 0 calls __assemble_prior_knowledge__: handler returns the
      pre-stashed orchestrator_items as orchestrator_content (no second fetch).
   5. LLM is called; guided by the orchestrator_content recipe hint.
+     (Model A: Python calls __llm_complete__. Model B/C: ModelStage calls the LLM.)
 ```
 
 > **✅ Review note (pre-v3 audit) — intent-driven retrieval is dormant in production today —
@@ -1056,6 +1096,11 @@ list with no class_code awareness. It must not appear in v3 default.py at all.
 ```
 
 **Critical gap:** `RecipeStage` (step 4) always falls through to Tier 2. Phase H closes this.
+**Verified:** `recipe.rs` (85 lines, full file read) confirms the stage always returns
+`RecipeStep::Continue` with a structural debt comment: "user text is not yet accessible
+from `LoopExecutionState` at this pipeline position." The `RecipeStep` enum has exactly
+ONE variant: `Continue { state: Box<LoopExecutionState> }`. Phase H adds `TierZero` and
+`ActionExecuted`.
 
 `LoopExecutionState` has no `last_user_text` field. Added in Phase H via `InputStage`.
 
@@ -1063,6 +1108,15 @@ list with no class_code awareness. It must not appear in v3 default.py at all.
 `__assemble_prior_knowledge__` call (step 0 in `default.py`), which calls
 `PostgresSource::fetch_for_turn` and handles the full split and channel delivery internally.
 The legacy `__retrieve_docs__` (MemoryDoc path) is NOT called in v3 step-0.
+
+> **⚠️ DRIVER-GAP cross-reference:** the sentence above assumes the agent-loop `PromptStage`
+> and the engine Python `__assemble_prior_knowledge__` share one turn. They do NOT today —
+> the production driver is the engine `ExecutionLoop::run` (stage-free); the agent-loop
+> `DefaultExecutorPipeline` (where `PromptStage` lives) is a skeleton with no Python access,
+> and `brassclaw_agent_loop` cannot import `brassclaw_engine`. Phase H.0 §H5 resolves this with
+> a `LoopOrchestratorPort` host port (composition-bridged): Tier 1 step-0 is reached via
+> `run_step_zero`, and Tier 0 via `run_tier_zero` (the `TierZeroExecutionStage` kick). Until
+> the agent-loop pipeline is wired as the driver (DRIVER-PREREQ), this flow is test-only.
 
 ---
 
@@ -1090,26 +1144,28 @@ The legacy `__retrieve_docs__` (MemoryDoc path) is NOT called in v3 step-0.
 
 Bold rows are new additions for v3.
 
-> **✅ Review note (pre-v3 audit) — `doc_type_weight_by_class` no longer exists — RESOLVED (obsolete, do not implement):**
-> the function is gone (commit `e0e7d164`); the weight table below is historical/authoring-intent
-> only — no match arm exists to add for classes 22/23 (both backends now order by
-> `(class_code ASC, prompt_uid ASC)`). Original detail retained:
-> `Goals_pre_v3_review.md` Step 12 (already implemented, commit `e0e7d164`) removed
-> `doc_type_weight_by_class` from `retrieval_dbless.rs` entirely, together with the
-> filesystem fallback-content path it served. **Verified by grep: the function does not
-> exist anywhere in `crates/` today.** Both `RamSource::fetch_for_consumer` and
-> `PostgresSource::fetch_for_consumer` now return components ordered by
-> `(class_code ASC, prompt_uid ASC)` (confirmed in `retrieval_source.rs` — doc comments at
-> lines 21/100/111/239 and the `ORDER BY class_code ASC, prompt_uid ASC` SQL at line 441).
-> There is no keyword/weight scoring step left to extend for classes 22/23.
+> **✅ Review note (pre-v3 audit) — `doc_type_weight_by_class(i32)` does not exist — RESOLVED
+> (obsolete, do not implement). CORRECTION: `doc_type_weight(DocType)` DOES still exist in
+> `retrieval_dbless.rs` but is separate and takes the deprecated enum, not an i32:**
+> The function `doc_type_weight_by_class(i32)` (the i32-keyed variant) does not exist. However,
+> `retrieval_dbless.rs` still contains `doc_type_weight(DocType) -> f64` (lines ~76–88), which
+> takes the **deprecated** `DocType` enum. This function remains as part of `RamSource`'s keyword
+> scoring. It already covers `DocType::Recipe => 0.35` and `DocType::ToolSkill => 0.40` but has
+> no `PythonCode` or `ExtensionCatalogue` variants — because `DocType` is frozen (§0.11 FINDING B).
+> Classes 22 and 23 cannot be added to `doc_type_weight` (frozen enum). **This is consistent with
+> the plan's direction:** when `RamSource` is deleted in Phase K.3, `doc_type_weight(DocType)`
+> (along with `extract_keywords` and `keyword_match_score`) is moved to `retrieval_source.rs` as
+> private helpers or deleted entirely. `PostgresSource::fetch_for_consumer` orders by
+> `(class_code ASC, prompt_uid ASC)` — no weight function used. Classes 22/23 sort automatically
+> once rows exist.
 >
 > The weight table above is retained here **for historical/authoring intent only** (it shows
 > the *relative priority* the original design wanted new classes to have). It must NOT be
-> read as an instruction to add match arms to `doc_type_weight_by_class` — doing so is
-> impossible because the function is gone. Phases B and C below have been corrected to drop
-> the "add weight arm" sub-steps; classes 22/23 only need a `class_label` arm (§0.11 FINDING B
-> below) and the `fetch_for_consumer` / `fetch_component_by_id` arms — ordering is automatic
-> via `class_code ASC`.
+> read as an instruction to add match arms to any weight function — `doc_type_weight_by_class`
+> does not exist, and `doc_type_weight(DocType)` uses a frozen deprecated enum. Phases B and C
+> below have been corrected to drop the "add weight arm" sub-steps; classes 22/23 only need a
+> `class_label` arm (§0.11 FINDING B below) and the `fetch_for_consumer` / `fetch_component_by_id`
+> arms — ordering is automatic via `class_code ASC`.
 
 > **⚠️ FINDING B — `DocType` is `#[deprecated]` — DO NOT add new variants:**
 > The `DocType` enum in `crates/brassclaw_engine/src/types/memory.rs` is annotated
@@ -1120,12 +1176,13 @@ Bold rows are new additions for v3.
 > 1. **Do NOT add `DocType::PythonCode` or `DocType::ExtensionCatalogue`** to `types/memory.rs`.
 >    The `DocType` enum is frozen. All new class-code dispatch uses integers only.
 > 2. ~~Adding integer match arm `22 => 0.42` in `doc_type_weight_by_class(i32)`~~ — **OBSOLETE**:
->    `doc_type_weight_by_class` was deleted in the pre-v3 Step 12 cleanup, not Phase K. No weight
->    arm exists to add. Skip this sub-step entirely.
-> 3. ~~Adding integer match arm `23 => 0.38`~~ — **OBSOLETE**, same reason.
->    `retrieval_dbless.rs` and the enum-keyed `doc_type_weight(DocType)` function are still
->    scheduled for full deletion in Phase K (§K.3) together with `RamSource`, but the weight
->    dispatch function itself is already gone.
+>    `doc_type_weight_by_class(i32)` does not exist. The only weight function in
+>    `retrieval_dbless.rs` is the enum-keyed `doc_type_weight(DocType)`, which accepts only
+>    existing `DocType` variants and cannot be extended with frozen-enum entries. No arm to add.
+> 3. ~~Adding enum variant arm `DocType::PythonCode` / `DocType::ExtensionCatalogue` to
+>    `doc_type_weight(DocType)`~~ — **OBSOLETE**: `DocType` is frozen; adding variants to it is
+>    explicitly prohibited by FINDING B. `retrieval_dbless.rs` and `doc_type_weight(DocType)` are
+>    scheduled for full deletion in Phase K.3 together with `RamSource`. Skip this sub-step.
 > No action is needed to make classes 22/23 sort correctly — `ORDER BY class_code ASC,
 > prompt_uid ASC` already places them deterministically once rows exist in their tables.
 
@@ -1994,16 +2051,26 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 - `crates/brassclaw_reborn_composition/src/pg_recipe_store.rs` — extend the **store
   round-trip** so the new `step_descriptions` / `variants` / `dependency_registry` columns
   are persisted AND loaded (otherwise the Phase A column is orphaned / write-only / never
-  loaded):
-  - `PgRecipe` struct (line 117): add `step_descriptions: serde_json::Value`,
-    `variants: Vec<RecipeVariant>`, `dependency_registry: serde_json::Value` fields.
-  - `RECIPE_SELECT` (line 208): add the three columns to the SELECT list.
-  - `decode_recipe_row` (line 219, **positional** — see M5): read the three columns at the
-    correct positional index. Because `decode_recipe_row` is positional, adding columns
-    means **re-indexing every later `row.get::<_, T>(N)` call** in the same edit (see the
-    M5 review note; Phase N column drops require the same discipline).
-  - `NewPgRecipe` (line 147): carry the three fields so INSERT/UPDATE persist them. The
-    WebUI save path (create/update recipe) must pass `step_descriptions` through.
+  loaded).
+
+  **Verified struct locations (read from source):**
+  - `PgRecipe` struct starts at **line ~110** (first field `id`); fields include
+    `validation_errors: Vec<String>` (line ~116), `review_feedback: Option<String>`,
+    `review_attempts: i16`, `rejected_at`, `queue_code`. Add `step_descriptions: serde_json::Value`,
+    `variants: serde_json::Value`, `dependency_registry: serde_json::Value` fields.
+  - `NewPgRecipe` struct starts at **line ~145** (the plan's "line 147" is approximately
+    correct). Add the three fields so INSERT/UPDATE persist them.
+  - `RECIPE_SELECT` constant at **line ~208** (verified): currently selects 31 columns ending
+    at `updated_at` (index 30 in `decode_recipe_row`). Add the three new columns at the end of
+    the SELECT list (indices 31, 32, 33) to avoid re-indexing all 31 existing positions.
+  - `decode_recipe_row` at **line ~219** (verified): reads columns by positional index
+    (row.get(0) through row.get(30)). Adding the three columns at the END of `RECIPE_SELECT`
+    means appending `row.get(31)`, `row.get(32)`, `row.get(33)` — no re-indexing of existing
+    positions needed if placed at the end. **Do NOT insert the new columns in the middle of
+    `RECIPE_SELECT`** — that would require re-numbering all subsequent `row.get(N)` calls.
+  - `RecipeValidationStatusUpdate` struct at **line ~170**: has `validation_errors`,
+    `review_feedback`, `queue_code` — do NOT modify in Phase A (Phase N drops these).
+  - The WebUI save path (create/update recipe) must pass `step_descriptions` through.
   This makes the column writable + loadable from Phase A. Whether `RecipeMatchDto`
   (line 799) exposes `step_descriptions` to the runtime `RecipeStage` is a **Phase H**
   decision (extend the DTO + `find_recipe` path, or route `RecipeStage` through
@@ -2225,15 +2292,18 @@ Same engine files as Phase B, but for class 23:
   Add `step_link: Option<String>` to `IntentResolution::Match`.
   Update the resolution query to `SELECT ... step_link FROM reborn_intent_inputs`.
   Update `seed_intent_input` to accept and store `step_link`.
-  > **⚠️ FINDING A — `record_disambiguation_choice` also returns `Match`:**
-  > `record_disambiguation_choice` (line 436 in `intent_system.rs`) returns
-  > `IntentResolution::Match { component_id, component_class_code }` — it does NOT receive
-  > a `step_link` parameter. When `step_link` is added to the `Match` variant, this function
-  > must also be updated: it must populate `step_link: None` (or look it up) when returning
-  > `Match`. If `None` is acceptable semantics here (user confirmed a component_id; the
-  > caller then re-fetches the recipe row including the step_link), then `step_link: None`
-  > is correct. Either way, `record_disambiguation_choice` is a **mandatory update site** —
-  > it will not compile until the `Match` struct change is reflected here too.
+  > **⚠️ FINDING A — `record_disambiguation_choice` also returns `Match` — verified against code:**
+  > Confirmed at `intent_system.rs:433–455`: `record_disambiguation_choice` takes
+  > `(pool, scope, row_id, component_id, component_class_code)` as parameters (no `step_link`)
+  > and returns `Ok(IntentResolution::Match { component_id, component_class_code })` at line 451.
+  > When `step_link: Option<String>` is added to the `Match` variant, this return statement must
+  > be updated to include `step_link: None`. This is the correct semantics: a user who clicked
+  > a disambiguation button confirmed a `component_id` — the caller then re-fetches the recipe
+  > row for its `step_link`. `step_link: None` here instructs the caller to use the legacy
+  > `fetch_component_by_id` path, which for a Recipe match will fall through to the intent-less
+  > retrieval path (acceptable post-disambiguation — the full IBS path with step_link is taken
+  > on the _next_ turn when the user's text directly matches the intent). Either way this is a
+  > **mandatory compile-time update site** — the compiler will catch it.
 
 - All call sites that destructure `IntentResolution::Match { component_id, component_class_code }`:
   bind `step_link` as well. Non-IBS paths treat `None` as a legacy match (unchanged behaviour).
@@ -2282,13 +2352,54 @@ production retrieval path breaks." E.0 is that wiring sub-task, pulled forward.
 
 #### Files to modify
 
+> **⚠️ ARCH-01 — `ThreadManager` does NOT have `with_retrieval_source`; it lives on `ExecutionLoop`:**
+> Verified in the codebase: `with_retrieval_source` is defined on `ExecutionLoop`
+> (`crates/brassclaw_engine/src/executor/loop_engine.rs:219`) and is called at `manager.rs:400`
+> when building the `ExecutionLoop` inside the `ThreadManager::spawn` path. `ThreadManager`
+> itself has no such method and no `retrieval_source_override` field. The plan's framing
+> that "the `ExecutionLoop::with_retrieval_source` at line 400 is internal-only, not
+> callable from composition" is **correct** — but the solution must therefore be:
+> add the override field + builder method to `ThreadManager` itself (so composition can call it
+> before `spawn`), NOT to `ExecutionLoop` (which is built inside `spawn` and not
+> accessible from outside the engine crate). This is exactly what Phase E.0 prescribes —
+> the description below is correct; only the "(the `ExecutionLoop::with_retrieval_source`
+> at line 400 is internal-only)" parenthetical has been clarified to confirm that
+> `with_retrieval_source` already exists on `ExecutionLoop` and is already called
+> inside `manager.rs:400` — but it is driven by an `Arc<dyn RetrievalSource>` that
+> `ThreadManager` builds at spawn-time from its own fields. Phase E.0's task is to
+> add `retrieval_source_override: Option<Arc<dyn RetrievalSource>>` to `ThreadManager`
+> (line ~34) + a builder method, then use it in the spawn path at lines 377–383.
+
+> **⚠️ ARCH-02 — `ThreadManager` is NOT instantiated in `crates/brassclaw_reborn_composition/src/runtime.rs`:**
+> Verified by grepping all files in the composition crate: `ThreadManager` does NOT appear
+> in `runtime.rs` or anywhere under `crates/brassclaw_reborn_composition/src/`. The engine's
+> `ThreadManager` is instantiated in `crates/brassclaw_engine/src/runtime/mission.rs` and
+> `conversation.rs`. The composition layer wraps `ConversationManager` (which internally
+> creates `ThreadManager` instances). Therefore Phase E.0's injection point is NOT
+> `crates/brassclaw_reborn_composition/src/runtime.rs` — it must be wherever
+> `ThreadManager::new()` is called and the composition layer has access to the `pg_pool`.
+> **Correct injection points to investigate before implementing:**
+> 1. `crates/brassclaw_engine/src/runtime/mission.rs` — contains `ThreadManager` instantiation;
+>    verify whether composition passes a `pg_pool` down to this layer.
+> 2. `crates/brassclaw_engine/src/runtime/conversation.rs` — same question.
+> 3. Alternatively: thread the `pg_pool` through from the composition layer's `RebornRuntime`
+>    (or whichever composition-layer service owns the `PgPool`) down through the engine
+>    initialization path to the `ThreadManager` construction site.
+> The Phase E.0 implementer **must** trace the actual `ThreadManager::new()` call site in
+> the composition + engine boundary, confirm where a `PgPool` is available, and wire
+> `PostgresSource` there. The plan's assumption that the injection site is
+> `crates/brassclaw_reborn_composition/src/runtime.rs` is **wrong** and must not be
+> followed literally.
+
 - `crates/brassclaw_engine/src/runtime/manager.rs` — `ThreadManager::new` (line 64) does
   NOT take a `pg_pool`, and lines 382–383 build `RamSource` internally from `self.store`.
   Add a composition-injectable override: an `Option<Arc<dyn RetrievalSource>>` field on
-  `ThreadManager` + a `with_retrieval_source(Arc<dyn RetrievalSource>)` builder (the
-  `ExecutionLoop::with_retrieval_source` at line 400 is internal-only, not callable from
-  composition). In the spawn path (377–400), use the injected source when set:
+  `ThreadManager` (line ~34) + a `with_retrieval_source(Arc<dyn RetrievalSource>) -> Self`
+  builder method on `ThreadManager`. The `ExecutionLoop::with_retrieval_source` method
+  already exists (`loop_engine.rs:219`) and is already called at `manager.rs:400`; Phase E.0
+  merely needs to make `ThreadManager` pass the override down into that call:
   ```rust
+  // In ThreadManager spawn path (lines 377-383), replace the RamSource construction:
   // E.0: PostgresSource is the live intent-driven retrieval backend.
   // RamSource is retained only until Phase K.3 deletes it.
   let retrieval_source: Arc<dyn crate::memory::RetrievalSource> = self
@@ -2297,17 +2408,16 @@ production retrieval path breaks." E.0 is that wiring sub-task, pulled forward.
       .unwrap_or_else(|| Arc::new(crate::memory::RamSource::new(store_for_retrieval)));
   ```
   Remove the `TODO(Phase K)` comment at `manager.rs:377` (satisfied by E.0). Keep
-  `RamSource` importable (Phase K.3 deletes it). (Alternative: add a `pg_pool` field to
-  `ThreadManager` and build `PostgresSource` at 382–383 when present — equally valid; pick
-  whichever matches the existing composition wiring. Either way, no `pg_pool` in
-  production → hard error, never a silent `RamSource` fallback.)
-- `crates/brassclaw_reborn_composition/src/runtime.rs` — where the engine `ThreadManager`
-  is built (the composition layer owns the `pg_pool`), construct
-  `PostgresSource::new(pg_pool.clone())` (`PostgresSource::new` takes `Arc<PgPool>`,
-  `retrieval_source.rs:248`) and inject it via the new
-  `ThreadManager::with_retrieval_source(...)`. The composition layer already depends on
-  `brassclaw_engine`, so importing `PostgresSource` there is crate-boundary-clean (unlike
-  `brassclaw_agent_loop`/`brassclaw_turns` — see §H.0).
+  `RamSource` importable (Phase K.3 deletes it).
+
+- **Injection site (see ARCH-02):** The composition layer must call
+  `thread_manager.with_retrieval_source(Arc::new(PostgresSource::new(pg_pool.clone())))` at
+  the point where `ThreadManager` is constructed. Before implementing, trace from the
+  composition layer (`RebornRuntime` or its builder) down to the `ThreadManager::new()` call
+  in `mission.rs` or `conversation.rs` to find the correct injection point. The `pg_pool`
+  (`Arc<brassclaw_pg::PgPool>`) must be in scope at that point. The composition layer already
+  depends on `brassclaw_engine`, so importing `PostgresSource` there is crate-boundary-clean
+  (unlike `brassclaw_agent_loop`/`brassclaw_turns` — see §H.0).
 
 #### Acceptance (must be verified live, not just unit-tested)
 
@@ -2392,8 +2502,11 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
     invariant: literals only). **This is a Phase E requirement, not a future optimisation.**
 
   - **⚠️ PERF-03 — UNION ALL growth with classes 22 and 23:**
-    Adding two more sub-selects to `fetch_for_consumer` (currently 9 sub-selects) raises it to
-    11. Each sub-select requires an index scan on a scope + consumer_tag filtered index.
+    **Verified:** `fetch_for_consumer` currently has **12 sub-selects** (not 9 as previously
+    stated): reborn_skills, reborn_extensions_unified, reborn_actions, reborn_specs,
+    reborn_tool_skills, reborn_plans, reborn_summaries, reborn_docus, reborn_lessons,
+    reborn_issues, reborn_notes, reborn_recipes. Adding classes 22 and 23 raises it to **14**.
+    Each sub-select requires an index scan on a scope + consumer_tag filtered index.
     Verify that `reborn_python_code` and `reborn_extension_catalogues` have composite indexes
     on `(tenant_id, user_id, agent_id, project_id, validation_status)` and that
     `consumer_tags` has a GIN index. Without these, the two new arms degrade from index-scan to
@@ -2650,7 +2763,12 @@ pattern (host.rs:2081–2093). Add both before the `RecipeStage` dispatch body:
   rust/orchestrator item arrays as `serde_json::Value` — the same crate-boundary
   discipline already used for `state.recipe_rust_context` / `state.recipe_hint` (see the
   constraint note in item 1 below). Add `LoopRetrievalPort` to the `AgentLoopDriverHost`
-  supertrait list (host.rs:2185–2201) and a `NoRetrieval` default impl returning `None`
+  supertrait list (host.rs:2185–2201 — **verified: current supertrait list has 13 ports:
+  LoopRunInfoPort, LoopContextPort, LoopPromptPort, LoopInputPort, LoopModelPort,
+  LoopCapabilityPort, LoopTranscriptPort, LoopCheckpointPort, LoopProgressPort,
+  LoopCompactionPort, LoopCancellationPort, LoopRecipePort, LoopInterceptorPort**;
+  add `LoopRetrievalPort` as the 14th entry in the `+ Sync` block after `LoopInterceptorPort`)
+  and a `NoRetrieval` default impl returning `None`
   (mirror `NoRecipeLookup`). `RecipeStage::process` calls
   `ctx.host.fetch_for_turn(context, user_text, budget, "02")` — NOT a direct
   `PostgresSource` import. (The §0.3 pseudocode `retrieval_source.fetch_for_turn` is
@@ -2694,16 +2812,140 @@ value alone.
   `ctx.host.resolve_message_text(context, &last_message_ref)` and stores the result in
   `state.last_user_text`. This is the exact call H3 asked the plan to specify.
 
-> **Note:** Both ports are **Phase H prerequisites**, not Phase K afterthoughts. They are
-> additive `brassclaw_turns` traits with `NoRetrieval` / `resolve_message_text`-returning-
-> `None` defaults, so existing host impls (tests) keep compiling. They MUST be added in
-> the same phase as the `RecipeStage` dispatch body (item 3) — the dispatch pseudocode
-> (`result = retrieval_source.fetch_for_turn(...)`, `user_text = state.last_user_text`)
-> is unimplementable without them.
+**H5 — orchestrator port (the Python bridge — resolves DRIVER-GAP + TIER0-GAP).**
+The plan's RecipeStage↔Python-step-0 stash/unstash (item 5) and the §5 Tier 0 diagram both
+assume the agent-loop `RecipeStage` and the engine Python orchestrator run in the **same
+turn** — `RecipeStage` stashes into `state`, then Python step-0 (`__assemble_prior_knowledge__`)
+reads the stash. **This unification does not exist today.** Verified:
+- The production turn driver is the engine `ExecutionLoop::run` (`loop_engine.rs:413`), which
+  calls `execute_orchestrator` (Python `default.py`) directly with **no stage pipeline**.
+- The agent-loop `DefaultExecutorPipeline::execute` (`canonical.rs`) — where `RecipeStage`,
+  `PromptStage`, `ModelStage`, `CapabilityStage` live — is a **skeleton**: `DefaultExecutorPipeline`
+  / `execute_family` appear **only** inside `brassclaw_agent_loop` (canonical.rs, pipeline.rs,
+  tests). No product surface drives it.
+- `brassclaw_agent_loop` does **not** depend on `brassclaw_engine` (Cargo.toml), and
+  `__assemble_prior_knowledge__` exists **only** in `brassclaw_engine` (orchestrator.rs,
+  loop_engine.rs, default.py, retrieval_source.rs). The agent loop cannot import it.
+
+So a third host port is required — the **only** crate that can bridge the two is
+`brassclaw_reborn_composition`, which depends on **both** `brassclaw_engine` and
+`brassclaw_agent_loop` (Cargo.toml). Add:
+- `crates/brassclaw_turns/src/run_profile/host.rs` — a new opt-in port, added to the
+  `AgentLoopDriverHost` supertrait list as the **15th** entry (immediately after the
+  `LoopRetrievalPort` added by H4 — verified current list has 13 ports ending at
+  `LoopInterceptorPort` at host.rs:2198; H4 makes `LoopRetrievalPort` the 14th; this is 15th):
+  ```rust
+  /// Bridge from agent-loop stages to the engine Python orchestrator.
+  /// Implemented only by composition (the sole crate depending on both
+  /// brassclaw_engine and brassclaw_agent_loop). Hosts without an orchestrator
+  /// inherit `NoOrchestrator`; Tier 0 then falls back to Tier 2 (no short-circuit)
+  /// and Tier 1 step-0 runs the legacy in-orchestrator fetch (no stash).
+  pub trait LoopOrchestratorPort: Send + Sync {
+      /// Tier 1: run Python step-0 prior-knowledge assembly. Reads the stashed
+      /// `recipe_hint` (one-shot consume) and returns the formatted prior-knowledge
+      /// bundle that PromptStage / build_prompt_bundle injects. Does NOT call the LLM.
+      async fn run_step_zero(
+          &self,
+          context: &LoopRunContext,
+          recipe_hint: Option<&serde_json::Value>,
+      ) -> Option<PriorKnowledgeBundle>;
+
+      /// Tier 0: run the orchestrator channel (skills + PythonCode) with NO LLM.
+      /// Consumes the stashed `recipe_hint` (orchestrator_items) + `recipe_rust_context`,
+      /// drives the Rust executioner via the loaded skills, and returns the reply
+      /// text for AssistantReplyStage. Returns None if no orchestrator is wired
+      /// (RecipeStage must then fall back to Tier 2).
+      async fn run_tier_zero(
+          &self,
+          context: &LoopRunContext,
+          recipe_hint: &serde_json::Value,
+          recipe_rust_context: &serde_json::Value,
+      ) -> Option<TierZeroReply>;
+  }
+  ```
+  `PriorKnowledgeBundle` and `TierZeroReply` are **`brassclaw_turns`-native** types (plain
+  `serde_json::Value` / `String` payloads) — same crate-boundary discipline as
+  `RetrievalTurnResult` (H4) and `state.recipe_hint` (item 1). Add a `NoOrchestrator` default
+  impl returning `None` (mirror `NoRetrieval` / `NoRecipeLookup`).
+- `crates/brassclaw_reborn_composition/src/...` — implement `LoopOrchestratorPort` by
+  delegating to the engine orchestrator: `run_step_zero` → the `handle_assemble_prior_knowledge`
+  path (orchestrator.rs:2574+) with the stash; `run_tier_zero` → a new no-LLM entry point on
+  the engine orchestrator that runs the skill/PythonCode channel against the pre-loaded rust
+  execution context and returns the formatted reply. (Requires the rust execution context to
+  be applied first — see item 4 / the `TierZeroExecutionStage` below.)
+
+**TIER0-GAP resolution — the kick mechanism (Option 1, chosen):** add a new
+`TierZeroExecutionStage` to `canonical.rs`, inserted between `RecipeStage` and
+`AssistantReplyStage`, invoked **only** on `PostRecipeOutcome::TierZero`. It:
+1. Applies the stashed `recipe_rust_context` to the Rust execution context (the orchestrator
+   port does this server-side, or the stage hands it through).
+2. Calls `ctx.host.run_tier_zero(context, &recipe_hint, &recipe_rust_context)`.
+3. On `Some(reply)` → emits via `AssistantReplyStage` (PromptStage/InterceptorStage/ModelStage/
+   CapabilityStage all skipped).
+4. On `None` (no orchestrator wired) → degrades to Tier 2: re-enter the normal
+   NeedsPrompt path (or end the turn with a no-match). This keeps Tier 0 **opt-in** via the
+   host port, matching the dormancy pattern.
+`CapabilityStage` is **not** bent — it keeps its "react to model output" assumption and is
+simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
+`LoopCapabilityPort`), which would couple the capability port to Tier 0 routing.
+
+> **⚠️ DRIVER-PREREQ + MODEL SELECTION — two execution models, both covered during migration.**
+> The plan was silently mixing two runtimes. Verified against live code:
+> - **Model A — `ExecutionLoop` / Monty (CURRENT PRODUCTION).** `loop_engine.rs:413` runs
+>   `execute_orchestrator`; Python IS the outer loop and calls the LLM itself via
+>   `__llm_complete__` (`default.py:1103` → `handle_llm_complete`, `orchestrator.rs:563`).
+>   `RecipeStage`/`ModelStage` do not exist here. The engine ALREADY has a deterministic
+>   no-LLM path: `execute_action_procedure` (`default.py:901`, "returns without calling
+>   `__llm_complete__`") for class-16 Actions, gated by `override_prompt_creation: true`
+>   (`orchestrator.rs:2689`, set by `assemble_from_component_items` for a Solution Override).
+> - **Model B/C — `DefaultExecutorPipeline` / agent_loop (TARGET STATE, skeleton today).**
+>   `canonical.rs`; no Python access (`brassclaw_agent_loop` does not depend on
+>   `brassclaw_engine`). `RecipeStage`/`ModelStage`/`TierZeroExecutionStage` live here.
+>
+> **Resolution — production Tier 0 lands NOW via Model A (no switchover needed), agent-loop
+> stages are the target state active after switchover:**
+> - **Phase H §A (engine path, production):** wire `fetch_for_turn` `SplitResult` with
+>   `llm_call_required: false` so that `handle_assemble_prior_knowledge` returns
+>   `override_prompt_creation: true` (reusing the existing Solution-Override signal at
+>   `orchestrator.rs:2683-2691`). Python step-0 then skips `__llm_complete__` and runs the
+>   recipe's orchestrator channel (skills + PythonCode) deterministically against the
+>   pre-loaded rust execution context — exactly the `execute_action_procedure` pattern,
+>   generalised from class-16 Actions to Tier-0 Recipes. **No new "kick" stage is needed for
+>   the engine path — the kick IS `default.py` step-0, already live.** This is the agent's
+>   Option A and it works today. Phase H's engine-side work is: (1) make
+>   `handle_assemble_prior_knowledge` emit `override_prompt_creation: true` when
+>   `routing.llm_call_required == false`; (2) ensure step-0's deterministic branch consumes
+>   the stashed `orchestrator_items` (Tier-1 stash/unstash, item 5) and drives the Rust
+>   executioner via the loaded skills without an LLM round-trip.
+> - **Phase H §B/C (agent-loop path, target state):** `LoopOrchestratorPort` +
+>   `TierZeroExecutionStage` (above). Until the agent-loop `DefaultExecutorPipeline` is wired
+>   as the production driver (or the engine `ExecutionLoop::run` retired), this stage work is
+>   exercised **only** in `brassclaw_agent_loop` tests — it does not affect production
+>   traffic, which is served by the Model-A mechanism. This mirrors the C2
+>   `PostgresSource`-dormant pattern. The switchover is a tracked prerequisite (adjacent to,
+>   not part of, the recipe-system scope).
+> - **LLM-call ownership (v3 target):** once the agent-loop is the driver, `ModelStage` owns
+>   the Tier 1+ LLM call and the Python `__llm_complete__` loop is retired (Python reduced to
+>   step-0 prior-knowledge + Tier-0 no-LLM execution). **During migration both mechanisms
+>   coexist:** Model A serves production (Tier 0 via `override_prompt_creation`); Model B/C
+>   stages are test-only until switchover. The earlier draft "rejected" the engine-side
+>   implementation — that was wrong: it would have left production with no Tier 0 until an
+>   indefinite switchover. The engine-side mechanism is retained and is the production path.
+
+> **Note:** All three ports (`LoopRetrievalPort`, `resolve_message_text` via
+> `LoopContextPort`, and `LoopOrchestratorPort`) are **Phase H prerequisites**, not Phase K
+> afterthoughts. They are additive `brassclaw_turns` traits with `NoRetrieval` /
+> `resolve_message_text`-returning-`None` / `NoOrchestrator` defaults, so existing host impls
+> (tests) keep compiling. They MUST be added in the same phase as the `RecipeStage` dispatch
+> body (item 3) and the `TierZeroExecutionStage` (item 4) — the dispatch pseudocode
+> (`result = retrieval_source.fetch_for_turn(...)`, `user_text = state.last_user_text`) and
+> the Tier 0 kick (`ctx.host.run_tier_zero(...)`) are unimplementable without them.
 
 #### Files to modify
 
 1. `crates/brassclaw_agent_loop/src/state.rs` — add to `LoopExecutionState`:
+   **Verified:** `LoopExecutionState` (lines 47–100) currently has NO `last_user_text`,
+   `recipe_rust_context`, or `recipe_hint` fields. All three must be added:
    ```rust
    /// Last user-visible input text; populated by InputStage on each drain.
    /// Required by RecipeStage for fetch_for_turn query. See recipe.rs module doc.
@@ -2715,7 +2957,10 @@ value alone.
    /// injects this before the UNION ALL scan. Cleared after use.
    #[serde(default)] pub recipe_hint: Option<serde_json::Value>,
    ```
-   All three fields are `#[serde(default)]` so existing checkpoint payloads deserialise correctly.
+   The struct currently ends with `pending_prose_conversion`, `content_cache`, and a
+   `skill_hint` or similar field. Append the three new fields **after** the last existing
+   field; the `#[serde(default)]` attribute ensures all existing checkpoint JSON payloads
+   that lack these fields still deserialise without error.
    > **Crate boundary constraint:** `brassclaw_agent_loop` depends on `brassclaw_turns` but NOT
    > on `brassclaw_engine`. `ComponentItem` is defined in `brassclaw_engine`. Therefore
    > `recipe_rust_context` and `recipe_hint` CANNOT be typed as `Vec<ComponentItem>` or
@@ -2853,6 +3098,31 @@ value alone.
          return RecipeStep::Continue { state }  // Tier 2 — unchanged
    ```
 
+3b. `crates/brassclaw_engine/src/executor/orchestrator.rs` — **engine-path Tier 0 wiring
+   (Model A, CURRENT PRODUCTION — see DRIVER-GAP / H5 MODEL SELECTION).** The agent-loop
+   `RecipeStage` (item 3) does not run in production today; production is the engine
+   `ExecutionLoop` where Python step-0 calls `__assemble_prior_knowledge__`. Phase H must
+   therefore ALSO wire Tier 0 on the engine path so production gets Tier 0 before any
+   agent-loop switchover:
+   - In `handle_assemble_prior_knowledge` (orchestrator.rs:2574+): when
+     `fetch_for_turn` returns `SplitResult { routing, .. }` with
+     `routing.llm_call_required == false`, emit `override_prompt_creation: true` in the
+     returned pkr (reuse the Solution-Override signal already produced by
+     `assemble_from_component_items` at orchestrator.rs:2683-2691) and surface the
+     `orchestrator_items` as `orchestrator_content`. This is the Tier-0 "no LLM" signal.
+   - In `default.py` step-0: the existing `override_prompt_creation: true` branch
+     (the `execute_action_procedure` deterministic path, `default.py:901`, "returns
+     without calling `__llm_complete__`") is generalised from class-16 Actions to
+     Tier-0 Recipes: when `pkr["override_prompt_creation"]` is true AND the matched
+     components are a recipe's orchestrator channel (skills + PythonCode), run them
+     deterministically against the pre-loaded rust execution context and return the
+     formatted reply — no `__llm_complete__` round-trip.
+   - **No new stage, no new "kick":** the kick IS `default.py` step-0, already live for
+     Actions. Phase H generalises the existing deterministic branch, it does not invent a
+     new execution entry point. This is the agent's Option A and it works today.
+   - Tier 1 on the engine path is unchanged: `override_prompt_creation: false`, Python
+     calls `__llm_complete__` guided by `orchestrator_content` (current behaviour).
+
 4. `crates/brassclaw_agent_loop/src/executor/canonical.rs` — **executor loop restructuring
    required**. The current dispatch at line 94 is:
    ```rust
@@ -2882,6 +3152,21 @@ value alone.
    > signals that `canonical.rs` needs for its dispatch decision are at most two booleans.
    > All richer metadata (variant_label, wilson_lower, step_link, matched_component_ids)
    > are already serialized into `state.recipe_hint` by `RecipeStage` before returning.
+   >
+   > **⚠️ CANONICAL-01 — The current exhaustive `RecipeStep` match in `canonical.rs` will
+   > not compile after Phase H adds `TierZero` and `ActionExecuted` variants:**
+   > Verified at `canonical.rs:94-96`: the current match is:
+   > ```rust
+   > state = match self.recipe.process(ctx, RecipeInput { state }).await? {
+   >     RecipeStep::Continue { state: next } => *next,
+   > };
+   > ```
+   > This is an exhaustive match over the single `Continue` variant. The compiler will
+   > emit an error the moment `TierZero` and `ActionExecuted` are added to `RecipeStep`.
+   > Phase H MUST restructure `canonical.rs` at this point — the intermediate
+   > `PostRecipeOutcome` enum described below is the correct approach. The `state = match`
+   > assignment pattern CANNOT be reused for a non-homogeneous return (some variants want
+   > to skip stages, not just produce a state). The restructuring is not optional.
 
    ```rust
    /// Produced by the RecipeStage dispatch inside canonical.rs.
@@ -2929,10 +3214,31 @@ value alone.
            // run PromptStage → InterceptorStage → ModelStage (unchanged)
        }
        PostRecipeOutcome::TierZero { state, .. } => {
-           // SKIP PromptStage, InterceptorStage, AND ModelStage entirely
-           // (no ForensicPacket opened; no model call made)
-           // CapabilityStage handles tool execution using pre-loaded rust context
-           // AssistantReplyStage emits the result
+           // SKIP PromptStage, InterceptorStage, ModelStage, AND CapabilityStage entirely
+           // (no ForensicPacket opened; no model call made; CapabilityStage is NOT bent —
+           //  it keeps its "react to model output" assumption and is simply not entered).
+           //
+           // TIER0-GAP resolution (Option 1, chosen — see §H.0 H5): the Python orchestrator
+           // is "kicked" by a dedicated TierZeroExecutionStage inserted here, NOT by
+           // CapabilityStage. CapabilityStage cannot kick Python — it has no model output to
+           // react to in Tier 0. The stage calls the LoopOrchestratorPort host port:
+           //
+           //   let reply = ctx.host.run_tier_zero(
+           //       context,
+           //       &state.recipe_hint,          // stashed orchestrator_items (consumed)
+           //       &state.recipe_rust_context,   // stashed rust_items (applied server-side)
+           //   ).await;
+           //   state.recipe_hint = None;          // one-shot consume
+           //   state.recipe_rust_context = vec![];
+           //   match reply {
+           //       Some(tier_zero_reply) => AssistantReplyStage::emit(tier_zero_reply.text),
+           //       None => /* NoOrchestrator host — degrade to Tier 2 */ NeedsPrompt(state),
+           //   }
+           //
+           // The composition host implements run_tier_zero by delegating to the engine
+           // orchestrator's no-LLM entry point (applies rust_context, runs the
+           // skill/PythonCode channel against the Rust executioner, returns formatted text).
+           // PromptStage/InterceptorStage/ModelStage/CapabilityStage are ALL skipped.
        }
        PostRecipeOutcome::ActionExecuted { state, .. } => {
            // SKIP PromptStage, InterceptorStage, AND ModelStage entirely
@@ -2978,6 +3284,16 @@ value alone.
    which does NOT depend on `brassclaw_engine`. Serialization to `serde_json::Value` happens
    at `RecipeStage` before storing in state. Deserialization from `Value` happens in
    `handle_assemble_prior_knowledge` (which is in `brassclaw_engine` and CAN use `ComponentItem`).
+
+   > **⚠️ DRIVER-GAP cross-reference (invocation, not just logic):** the protocol above
+   > describes the **server-side** stash/unstash logic inside
+   > `handle_assemble_prior_knowledge`. It does NOT describe how the agent-loop stages reach
+   > that engine handler — `brassclaw_agent_loop` cannot import `brassclaw_engine`. Under the
+   > v3 unified model (Phase H.0 §H5), the invocation goes through the `LoopOrchestratorPort`
+   > host port: Tier 1 step-0 is `ctx.host.run_step_zero(context, &state.recipe_hint)` (the
+   > composition host delegates to `handle_assemble_prior_knowledge`); Tier 0 is
+   > `ctx.host.run_tier_zero(...)` via the `TierZeroExecutionStage`. The stash/unstash logic
+   > itself is unchanged — only the call boundary is the port, not a direct engine import.
 
 6. **`PromptStage` / host `build_prompt_bundle`:** `PromptStage` calls
    `ctx.host.build_prompt_bundle(context_request)` — it does NOT call `fetch_for_consumer`
@@ -3292,16 +3608,19 @@ All inserted with `validation_status = 'pending'` — external MCP content must 
 - Remove step-0 shim comment block from `default.py` (the `# Pre-Phase-5 fallback`
   comment block around the dead `__retrieve_docs__(goal, 5)` call — Phase G already
   removes the call itself; Phase K removes the comment artefact).
-- Delete `crates/brassclaw_engine/src/memory/retrieval_dbless.rs`. Surviving helper
-  functions (`extract_keywords`, `keyword_match_score`) are moved to `retrieval_source.rs`
-  as private helpers.
-  > **✅ Review note (pre-v3 audit) — RESOLVED (obsolete, already done):** `doc_type_weight_by_class` was already deleted in
-  > `Goals_pre_v3_review.md` Step 12 (together with the filesystem fallback-content path),
-  > not here in Phase K — there is nothing left to move for it. The enum-keyed
-  > `doc_type_weight(DocType)` function was already removed in the same Step 12 pass. What
-  > remains for Phase K to delete from `retrieval_dbless.rs` is `extract_keywords` /
-  > `keyword_match_score` (move to `retrieval_source.rs`) plus the file itself, and the
-  > `RamSource` struct/tests in `retrieval_source.rs`.
+- Delete `crates/brassclaw_engine/src/memory/retrieval_dbless.rs`. The file still exists
+  and contains three functions: `extract_keywords`, `keyword_match_score`, and
+  `doc_type_weight(DocType)`. `extract_keywords` and `keyword_match_score` should be
+  **moved** to `retrieval_source.rs` as private helpers (they remain useful for any keyword
+  scoring on the `RamSource` path until Phase K.3 deletes `RamSource`). `doc_type_weight`
+  takes the deprecated `DocType` enum — it is **deleted outright** (do not move it); the
+  `DocType` enum is frozen and once `RamSource` is gone there is no caller.
+  > **⚠️ CORRECTION to prior review note:** The previous note stated "`doc_type_weight(DocType)`
+  > function was already removed in the same Step 12 pass." This is **WRONG** — verified by
+  > reading the file: `retrieval_dbless.rs` still exists and still contains `doc_type_weight(DocType)`
+  > (lines ~76–88) as of the current codebase. `doc_type_weight_by_class(i32)` (the i32-keyed
+  > variant the review note was about) does not exist — that is the correct claim. The enum-keyed
+  > `doc_type_weight(DocType)` is still present and must be deleted in Phase K.3.
 - Delete `RamSource` from `retrieval_source.rs` and remove it from `mod.rs` exports.
   `RamSource` is the DB-less fallback; it has no role in a Postgres-only deployment.
   All unit tests that construct a `RamSource` directly are replaced by integration tests
@@ -3842,11 +4161,26 @@ The SplitResult memo-cache in `PostgresSource` gains a `last_graduation_at` chec
 
 ```rust
 // On every cache hit, before returning the cached SplitResult:
-let cursor = sqlx::query_scalar!(
+// NOTE: Use tokio_postgres directly (the codebase does NOT use sqlx; pg_pool is
+// brassclaw_pg::PgPool backed by deadpool-postgres / tokio-postgres, NOT sqlx).
+// The sqlx::query_scalar! macro below is pseudocode only — replace with pool.get()
+// + client.query_opt() as used throughout retrieval_source.rs:
+let client = pool.get().await.map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
+let row = client.query_opt(
     "SELECT last_graduation_at FROM reborn_monty_vm_settings
      WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4",
-    scope.tenant_id, scope.user_id, scope.agent_id, scope.project_id
-).fetch_optional(pool).await?;
+    &[&scope.tenant_id, &scope.user_id, &scope.agent_id, &scope.project_id],
+).await.map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
+let cursor: Option<chrono::DateTime<chrono::Utc>> = row
+    .and_then(|r| r.get::<_, Option<chrono::DateTime<chrono::Utc>>>(0));
+// Replace the sqlx pseudocode below with the pattern above when implementing.
+//
+// ORIGINAL PSEUDOCODE (sqlx — DO NOT USE):
+// let cursor = sqlx::query_scalar!(
+//     "SELECT last_graduation_at FROM reborn_monty_vm_settings
+//      WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4",
+//     scope.tenant_id, scope.user_id, scope.agent_id, scope.project_id
+// ).fetch_optional(pool).await?;
 
 if let Some(Some(graduated_at)) = cursor {
     if graduated_at > cache_entry.cached_at {
@@ -3873,6 +4207,15 @@ Remove from all 13 component tables: `queue_code`, `review_attempts`, `review_fe
 >   `review_feedback: Option<String>`, `review_attempts: u32`, `rejected_at: Option<DateTime<Utc>>`.
 >   They do NOT have `queue_code` (queue_code is only in `PgRecipe`, not the domain type).
 >   Remove the four fields listed above.
+>
+> - **⚠️ SCHEMA-01 — `review_attempts` type inconsistency across tables:**
+>   Verified: `reborn_recipes` (V033) defines `review_attempts SMALLINT`, but `reborn_skills`
+>   (V027) defines it as `INT`. `PgRecipe.review_attempts` is `i16` (matching SMALLINT for
+>   recipes). This type inconsistency is pre-existing and affects V058's populate step:
+>   the `COALESCE(review_attempts, 0)` expression in the INSERT must produce an `INT` (the
+>   `reborn_validation_queue.counter INT` column uses INT, not SMALLINT). For `reborn_recipes`
+>   rows: `COALESCE(review_attempts::INT, 0)` — explicit cast needed. This is a minor V058
+>   migration detail but must be handled correctly to avoid runtime type errors.
 >
 > - **`PgRecipe` in `crates/brassclaw_reborn_composition/src/pg_recipe_store.rs`:**
 >   Confirmed by inspection — `RECIPE_SELECT` selects `queue_code`, `review_attempts`,
@@ -4091,7 +4434,7 @@ avoiding the DB round-trip entirely.
 | 11 | How does the Rust execution layer resolve a Tool DB UUID to its registered capability handler? | Via `capability_id` column (V056). On tool dispatch: look up Tool row by UUID → read `capability_id` → look up handler in `FirstPartyCapabilityRegistry` by `capability_id`. For user-authored tools without `capability_id`, fall back to existing name-based resolution. |
 | 12 | Should builtin Recipes also have `source = "system"` and bypass Q2? | Yes — same reasoning as Q8. Builtin Recipe StepDescriptions are hand-authored and IBS pre-flight-checked at seeder run time. Q2 bypass for `source = "system"` Recipes is consistent with Tools and ToolSkills. |
 | 13 | If `RecipeStage` already stashed the items (Tier 1), how does `handle_assemble_prior_knowledge` know not to call `fetch_for_turn` again? | **Resolved — stash/unstash protocol (Phase H §5).** `handle_assemble_prior_knowledge` checks `state.recipe_hint` before doing anything. If set, it skips `fetch_for_turn` entirely, deserializes the stashed `Vec<ComponentItem>` from `serde_json::Value`, clears the field (one-shot consume), and formats. If absent (Tier 2 / no-match), calls `fetch_for_turn` as before. No double-fetch, no second `resolve_intent`, no second IBS compilation. |
-| 14 | In Tier 0, `PromptStage` and `ModelStage` are skipped — but the Python script calls `__assemble_prior_knowledge__`. Where does Python execute in Tier 0? | The Python scripting engine is **not** the LLM call. `PromptStage` assembles the LLM input prompt; `ModelStage` sends it to the model. Both are skipped in Tier 0. `default.py` is invoked by `CapabilityStage` (or equivalent) independently. In Tier 0, Python runs step-0, calls `__assemble_prior_knowledge__` (gets the stash), and invokes skills/tools directly — no LLM round-trip in the middle. "Tier 0: no LLM" means no LLM call, not no Python execution. |
+| 14 | In Tier 0, `PromptStage` and `ModelStage` are skipped — but the Python script calls `__assemble_prior_knowledge__`. Where does Python execute in Tier 0? | The Python scripting engine is **not** the LLM call. `PromptStage` assembles the LLM input prompt; `ModelStage` sends it to the model. Both are skipped in Tier 0. `default.py` is invoked by a dedicated **`TierZeroExecutionStage`** (NOT `CapabilityStage` — see the resolution below). In Tier 0, Python runs step-0, calls `__assemble_prior_knowledge__` (gets the stash), and invokes skills/tools directly — no LLM round-trip in the middle. "Tier 0: no LLM" means no LLM call, not no Python execution. **✅ DESIGN GAP RESOLVED (Option 1 chosen — `TierZeroExecutionStage` + `LoopOrchestratorPort`):** In the normal pipeline `CapabilityStage` processes tool-call responses from the model, so it CANNOT kick Python in Tier 0 (there is no model output). The plan now specifies the mechanism: a new `TierZeroExecutionStage` inserted between `RecipeStage` and `AssistantReplyStage` in `canonical.rs` calls `ctx.host.run_tier_zero(context, &state.recipe_hint, &state.recipe_rust_context)` — a new `LoopOrchestratorPort` host port (15th `AgentLoopDriverHost` port, implemented by `brassclaw_reborn_composition`, the only crate depending on both `brassclaw_engine` and `brassclaw_agent_loop`). `CapabilityStage` is NOT bent and is simply skipped. Option 2 (synthetic signal into `LoopCapabilityPort`) is rejected — it would couple the capability port to Tier 0 routing. See Phase H.0 §H5 for the full port spec and §5 for the corrected Tier 0 turn-flow diagram. **⚠️ DRIVER-PREREQ:** this mechanism is exercised only in agent-loop tests until the agent-loop `DefaultExecutorPipeline` is wired as the production driver (today the engine `ExecutionLoop::run` drives turns with no stage pipeline); see DRIVER-GAP in the index. |
 | 15 | What happens if `build_instruction` returns an `IbsError` during the builtin seeder (Phase L)? `panic!` or return an error? | **Debug builds: `panic!`** — seeder content is hand-authored; an IbsError here is a compile-time bug. **Release builds:** `error!`-log, skip the Recipe row, continue. The seeder is idempotent — skipped rows do not block boot. CI must run the seeder in debug mode so IbsErrors become build failures before reaching production. |
 
 ### 3.1 Legacy DocPlan → v3 Component Translation
@@ -4157,6 +4500,17 @@ can be triggered by deleting system-sourced rows (operator action only).
 
 ### Tier 0 (intent match, no LLM)
 
+> **Two execution models (DRIVER-GAP / Phase H.0 §H5 MODEL SELECTION):** the diagram below
+> shows the **agent-loop path (Model B/C, target state)** — `RecipeStage` + `TierZeroExecutionStage`
+> + `LoopOrchestratorPort`. **Current production uses Model A (engine `ExecutionLoop`)**,
+> which has no `RecipeStage`/`InputStage`: Python step-0 calls `__assemble_prior_knowledge__`
+> → `fetch_for_turn` → `SplitResult`; when `llm_call_required == false` the handler returns
+> `override_prompt_creation: true` and Python skips `__llm_complete__`, running the
+> orchestrator channel deterministically (the `execute_action_procedure` pattern,
+> `default.py:901`). The two paths are functionally equivalent for Tier 0; the agent-loop
+> path is exercised only in tests until the switchover (DRIVER-PREREQ). See item 3b for the
+> engine-path wiring.
+
 ```
 User types: "show all files including hidden in /tmp"
 │
@@ -4192,8 +4546,15 @@ User types: "show all files including hidden in /tmp"
 │   "No LLM" means PromptStage (prompt assembly) + ModelStage (LLM call) are skipped.
 │   The Python engine is separate from the LLM call and is NOT skipped.
 │
-├─ [CapabilityStage / Python execution]
-│   Python runs default.py step 0:
+├─ [TierZeroExecutionStage — kicks Python via LoopOrchestratorPort (TIER0-GAP fix)]
+│   CapabilityStage is NOT used in Tier 0 — it reacts to model output, and there is
+│   none. A dedicated TierZeroExecutionStage calls the host port instead:
+│     reply = ctx.host.run_tier_zero(context, &state.recipe_hint,
+│                                    &state.recipe_rust_context)
+│   The composition host delegates to the engine orchestrator's no-LLM entry point
+│   (the same `__assemble_prior_knowledge__` + skill/PythonCode channel, but invoked
+│   through the LoopOrchestratorPort bridge since brassclaw_agent_loop cannot import
+│   brassclaw_engine). Server-side the orchestrator:
 │     pkr = __assemble_prior_knowledge__(goal, budget, "02")
 │     handler checks state.recipe_hint → SET → unstash, skip fetch_for_turn
 │     clears state.recipe_hint (consumed)
@@ -4210,8 +4571,20 @@ User types: "show all files including hidden in /tmp"
 │   → Rust reads ls-toolskill (pre-loaded in execution context), calls ls -la /tmp
 │   → Rust returns stdout to orchestrator
 │   → Orchestrator runs ls-result-handler PythonCode → formats output for chat
+│   state.recipe_hint = None; state.recipe_rust_context = vec![];   // one-shot consume
+│   If run_tier_zero returns None (NoOrchestrator host) → degrade to Tier 2 (NeedsPrompt).
 │
-├─ [InterceptorStage]  Saves composition plan. Sempai reviews if connected.
+│   NOTE: InterceptorStage position in Tier 0:
+│   Per COMP-07 (Phase H §4), InterceptorStage MUST be skipped in Tier 0 —
+│   it runs between PromptStage and ModelStage in canonical.rs and must not
+│   open a ForensicPacket for a turn that has no model call to close it.
+│   The InterceptorStage shown below is therefore NOT the same as the Tier 1/2
+│   InterceptorStage (which precedes the LLM call). The composition plan recording
+│   (Sempai telemetry) still happens, but through a separate lightweight mechanism
+│   that does NOT open a ForensicPacket.
+│
+├─ [InterceptorStage SKIPPED — no ForensicPacket opened in Tier 0]
+│   [Composition plan recorded via lightweight path if Sempai is connected]
 └─ [AssistantReplyStage]  Emits formatted directory listing. Wilson score updated.
 ```
 
@@ -4252,6 +4625,17 @@ User types: "edit main.rs and refactor the error handler"
 ├─ [InterceptorStage]  Sempai reviews outgoing prompt (recipe hint visible to Sempai)
 │
 ├─ [ModelStage]        LLM call with injected recipe context
+│
+│   ⚠️ DRIVER-GAP cross-reference (Tier 1 ordering): the block below is labelled
+│   "CapabilityStage / Python execution / Python runs default.py step 0", but per §0.3
+│   step-0 (prior-knowledge assembly) runs BEFORE the LLM call, and per Phase H.0 §H5
+│   it is invoked via `ctx.host.run_step_zero(context, &state.recipe_hint)` (the
+│   LoopOrchestratorPort bridge), NOT by CapabilityStage. The `pkr = __assemble_prior_
+│   knowledge__` detail below is the server-side step-0 logic (correct); its INVOCATION
+│   point is pre-`ModelStage` (the stash is read by `build_prompt_bundle` + step-0, then
+│   the LLM is called guided by it). The post-LLM block is capability/tool EXECUTION
+│   (steps 1+), not step-0. This diagram should be reordered so step-0 precedes
+│   PromptStage/ModelStage when Phase H is implemented; the logic is unchanged.
 │
 ├─ [CapabilityStage / Python execution]
 │   Python runs default.py step 0:

@@ -452,3 +452,53 @@ not auto-submitted to the queue — consistent. No §3 edits were needed.
 > All 18 notes are present in `./saved_plan_to_v3.md` as `> **Review note (pre-v3 audit):** …`
 > blocks. This document is the index; the plan is the authoritative location of each
 > finding's full text.
+
+---
+
+## 8. Second-Agent Review Verification + DRIVER-GAP Design Resolution
+
+A second, independent review of `./saved_plan_to_v3.md` reported ~13 more issues plus a
+flagged **🚨 TIER0-GAP** design gap. Per the user's instruction, each claim was re-verified
+against live code, the design gap was traced to its **root cause**, and a resolution was
+written into the plan. Summary below; authoritative text lives in `./saved_plan_to_v3.md`
+(index rows `TIER0-GAP`, `DRIVER-GAP`, and Phase H.0 §H5).
+
+### 8.1 Second-agent claims — verification verdicts
+
+| Tag | Verdict | Note |
+|-----|--------|------|
+| `ARCH-01` | ✅ Correct | `ExecutionLoop::with_retrieval_source` exists (`loop_engine.rs:219`) and is called at `manager.rs:400`. Work is adding the override field to `ThreadManager`. Already fixed in plan. |
+| `ARCH-02` | ✅ Correct | `ThreadManager` is in `brassclaw_engine/src/runtime/manager.rs`, NOT `crates/brassclaw_reborn_composition/src/runtime.rs`. Already warned in plan. |
+| `SQLX-01` | ✅ Correct | Repo uses `tokio-postgres`/`deadpool-postgres` only — no sqlx. N.3 already corrected in plan. |
+| `SCHEMA-01` | ⚠️ Correct but overstated | `review_attempts` is `INT` in only **3** tables (V027 skills, V029 actions, V030 tools) and `SMALLINT` in the other **10** (V032 extensions_unified, V033 recipes, V036 specs, V037 tool_skills, V038 plans, V039 summaries, V040 docus, V041 lessons, V042 issues, V043 notes). `validation_errors` (TEXT[]) and `rejected_at` (TIMESTAMPTZ) are uniform across all 13. So the V058 `COALESCE(review_attempts, 0)` cast is needed for the **10 SMALLINT tables only** (queue `counter` is `INT`). Plan note already says "for SMALLINT tables" — accurate; the 3 INT tables need no cast. |
+| `RETRIEVAL-01` | ✅ Correct, refined | `retrieval_dbless.rs` still exists with `doc_type_weight(DocType)` (line ~76) AND `extract_keywords`/`keyword_match_score`. Only `doc_type_weight_by_class(i32)` was removed (Goal-pre-v3 Step 12). Plan §0.11/K.3 already corrected. |
+| `PERF-03` | ✅ Correct | Verified 12 per-class sub-selects in `PostgresSource::fetch_for_consumer`; +classes 22/23 → 14. Already fixed in plan. |
+| `RECIPE-SELECT` | ✅ Correct | `RECIPE_SELECT` ends at index 30 (`updated_at`); append new columns at 31/32/33 to avoid re-indexing 31 `row.get(N)` calls. Already fixed in plan. |
+| `CANONICAL-01` | ✅ Correct | `canonical.rs:94-96` single-variant `RecipeStep::Continue` exhaustive match → compile error when `TierZero`/`ActionExecuted` added. Already noted (COMP-02). |
+
+All second-agent corrections were already applied to the plan in a prior session; this pass
+confirmed they are accurate against live code. No additional plan edits were needed for these
+eight (SCHEMA-01 precision is recorded here for completeness).
+
+### 8.2 The design gap — root cause (DRIVER-GAP) and resolution
+
+The second agent flagged **TIER0-GAP**: "how is Python kicked in Tier 0 when
+`CapabilityStage` reacts to model output and there is none?" Tracing this to its root cause
+surfaced a deeper, plan-wide gap now tagged **DRIVER-GAP**.
+
+**Root cause (verified against live code):**
+- The **production turn driver is the engine `ExecutionLoop::run`** (`./crates/brassclaw_engine/src/executor/loop_engine.rs:413`), which calls `execute_orchestrator` (Python `default.py`) directly with **no stage pipeline**.
+- The agent-loop **`DefaultExecutorPipeline::execute`** (`./crates/brassclaw_agent_loop/src/executor/canonical.rs`) — where `RecipeStage`/`PromptStage`/`ModelStage`/`CapabilityStage` live — is a **skeleton**: `DefaultExecutorPipeline`/`execute_family` appear **only** inside `brassclaw_agent_loop` (canonical.rs, pipeline.rs, tests). No product surface drives it.
+- `brassclaw_agent_loop` does **not** depend on `brassclaw_engine` (Cargo.toml), and `__assemble_prior_knowledge__` exists **only** in `brassclaw_engine`. So the plan's RecipeStage↔Python-step-0 stash/unstash (Phase H item 5) and the §5 Tier 0 diagram ("Python runs `default.py` step 0" inside the agent loop) both assume a RecipeStage-then-Python unification that **does not exist**.
+
+**Resolution (written into the plan, Phase H.0 §H5):**
+1. A third host-port prerequisite — **`LoopOrchestratorPort`** (15th `AgentLoopDriverHost` port, verified current list has 13 ending at `LoopInterceptorPort` at `host.rs:2198`; H4's `LoopRetrievalPort` is 14th). It exposes the engine Python orchestrator to agent-loop stages as `run_step_zero` (Tier 1 prior-knowledge) and `run_tier_zero` (Tier 0 no-LLM execution). It is implemented by **`brassclaw_reborn_composition`** — the only crate depending on both `brassclaw_engine` and `brassclaw_agent_loop` (Cargo.toml). `brassclaw_turns`-native payload types (`PriorKnowledgeBundle`, `TierZeroReply`) preserve the crate boundary; a `NoOrchestrator` default returns `None` (Tier 0 degrades to Tier 2).
+2. **TIER0-GAP kick mechanism — Option 1 chosen (agent-loop path):** a new **`TierZeroExecutionStage`** in `canonical.rs` (between `RecipeStage` and `AssistantReplyStage`), invoked only on `PostRecipeOutcome::TierZero`, calls `ctx.host.run_tier_zero(...)`. `CapabilityStage` is **not** bent (keeps its model-output assumption; simply skipped). Option 2 (synthetic signal into `LoopCapabilityPort`) is rejected — it would couple the capability port to Tier 0 routing.
+3. **MODEL SELECTION refinement (after a third agent correctly flagged the plan was still mixing runtimes):** the plan now names the two execution models explicitly and covers **both** during migration —
+   - **Model A — engine `ExecutionLoop` / Monty (CURRENT PRODUCTION).** Verified Python IS the outer loop and calls the LLM via `__llm_complete__` (`default.py:1103` → `handle_llm_complete`, `orchestrator.rs:563`), and the engine ALREADY has a deterministic no-LLM path: `execute_action_procedure` (`default.py:901`, "returns without calling `__llm_complete__`") gated by `override_prompt_creation: true` (`orchestrator.rs:2689`, from `assemble_from_component_items`). **Phase H item 3b wires production Tier 0 onto this existing signal** — `handle_assemble_prior_knowledge` emits `override_prompt_creation: true` when `SplitResult.llm_call_required == false`; Python step-0 skips `__llm_complete__` and runs the recipe's orchestrator channel deterministically. No new "kick" — the kick IS `default.py` step-0, already live. This gives production Tier 0 NOW, before any agent-loop switchover. (The earlier draft wrongly "rejected" the engine-side implementation, which would have left production with no Tier 0.)
+   - **Model B/C — agent-loop `DefaultExecutorPipeline` (target state, skeleton today).** `LoopOrchestratorPort` + `TierZeroExecutionStage` bridge to the engine orchestrator. Active only after the switchover (`DRIVER-PREREQ`); test-only until then.
+   - **LLM-call ownership (v3 target):** once the agent-loop is the driver, `ModelStage` owns the Tier 1+ LLM call and the Python `__llm_complete__` loop is retired. During migration both mechanisms coexist: Model A serves production, Model B/C stages are test-only.
+
+**Plan edits applied this pass:** index rows `TIER0-GAP` (marked ✅ RESOLVED) + new `DRIVER-GAP`; Phase H.0 §H5 (port spec + `TierZeroExecutionStage` + DRIVER-PREREQ + MODEL SELECTION naming A/B/C + engine-path Option A mechanism); Phase H item 3b (engine-path `orchestrator.rs`/`default.py` Tier 0 wiring via `override_prompt_creation`); Phase H §4 Tier 0 dispatch arm (explicit kick pseudocode); §5 Tier 0 turn-flow diagram (reframed from the wrong "CapabilityStage / Python execution" to "TierZeroExecutionStage — kicks Python via LoopOrchestratorPort", with a Model A/B/C header note); §0.3 Tier 0 flow (split into Model A vs Model B/C); Q14 (resolution recorded); §0.9 + item-5 DRIVER-GAP cross-references. This review doc's §1/§2 narrative is unchanged (the C2 dormancy theme now extends to the driver itself).
+
+**No Rust code was modified this pass** — DRIVER-GAP/TIER0-GAP are plan-design resolutions, not current-code bugs (the agent loop being a skeleton is by design / a separate migration; the engine `override_prompt_creation`/`execute_action_procedure` machinery already exists and is reused, not changed). The only code change across all sessions remains the H2 fix at `./crates/brassclaw_engine/src/executor/orchestrator.rs:2573-2591` (verified: clippy clean, 610 tests pass). No `git commit` was run (per the standing constraint).
