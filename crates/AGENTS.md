@@ -46,7 +46,7 @@ Keep lower layers neutral. Product and runtime composition flows downward throug
 common / host_api / prompt_envelope
   -> filesystem / memory / events / event_projections / event_streams / extensions / trust / resources
   -> secrets / network / outbound / run_state / authorization / approvals / runtime_policy / hooks
-  -> host_runtime (also hosts the script lane) / processes / dispatcher / runtime lanes (mcp, host_runtime::script_runtime)
+  -> host_runtime (capability host + dispatcher + sandboxed process executor) / processes / dispatcher / runtime lanes (mcp crate; first_party/system host-assigned)
   -> turns / threads / agent_loop / loop_support / capabilities
   -> reborn composition / product adapters / product workflow / product workflow storage / CLI
   -> engine / llm / gateway / webui_v2 / webui_ingress / tui / root product integration
@@ -108,7 +108,7 @@ Boundary rule: if you need an upstream crate in a low-level crate, stop and chec
 | --- | --- | --- | --- |
 | `brassclaw_turns` | `brassclaw_turns/AGENTS.md`, `brassclaw_turns/CLAUDE.md` | Host-layer turn coordination: requests/responses, coordinator, runner, run profiles, loop exit, memory/context handoff, turn store. | Product adapter rendering, raw runtime lanes, UI behavior. |
 | `brassclaw_threads` | `brassclaw_threads/AGENTS.md`, `brassclaw_threads/CLAUDE.md` | Canonical session thread/transcript service contracts, identifiers, tool-result references, db/in-memory stores. | Product delivery policy or model/provider behavior. |
-| `brassclaw_conversations` | `brassclaw_conversations/AGENTS.md`, `brassclaw_conversations/CLAUDE.md` | Conversation binding, session thread contracts, inbound/state store, libSQL/Postgres conversation persistence. | Capability runtime internals or UI transport. |
+| `brassclaw_conversations` | `brassclaw_conversations/AGENTS.md`, `brassclaw_conversations/CLAUDE.md` | Conversation binding, session thread contracts, inbound/state store, Postgres conversation persistence (libSQL is migration-only). | Capability runtime internals or UI transport. |
 | `brassclaw_agent_loop` | `brassclaw_agent_loop/AGENTS.md`, `brassclaw_agent_loop/CLAUDE.md` | Agent-loop framework state, planner/executor, strategy/family contracts, test support. | Product adapters, transport, concrete provider auth. |
 | `brassclaw_loop_support` | `brassclaw_loop_support/AGENTS.md`, `brassclaw_loop_support/CLAUDE.md` | Loop host support services: capability/input ports, allow sets, input queue, identity/skill context, cancellation. | Owning core loop strategy or runtime lane execution. |
 | `brassclaw_capabilities` | `brassclaw_capabilities/AGENTS.md`, `brassclaw_capabilities/CLAUDE.md` | Caller-facing `CapabilityHost` invoke/resume/spawn workflow, obligation seams, conformance helpers. | Process lifecycle APIs, direct concrete runtime dependencies. |
@@ -124,7 +124,7 @@ Boundary rule: if you need an upstream crate in a low-level crate, stop and chec
 | `brassclaw_first_party_extensions` | `brassclaw_first_party_extensions/AGENTS.md`, `Cargo.toml` | Concrete first-party userland extension implementations and deterministic tool behavior behind scoped handles. | Host runtime composition, loop-facing ports, ambient runtime authority, dispatcher/network/secrets handles. |
 | `brassclaw_first_party_extension_ports` | `brassclaw_first_party_extension_ports/AGENTS.md`, `Cargo.toml` | Loop-facing adapters for first-party extensions: skill activation/context/execution ports over loop-support and turn-run contracts. | Concrete tool behavior, host runtime composition, product workflow, raw host authority. |
 | `brassclaw_reborn_cli` | `brassclaw_reborn_cli/AGENTS.md` | Standalone Reborn CLI, command files, CLI context, shell completions, doctor/home/profile commands. | V1 runtime imports, root `brassclaw` deps, side effects in pure commands. |
-| `brassclaw_product_adapters` | `brassclaw_product_adapters/AGENTS.md`, `brassclaw_product_adapters/CLAUDE.md` | Product-adapter contracts: adapter trait, auth, egress, identity, workflow, external/projection/inbound, redaction, fakes. | Host runtime internals or specific WASM runner implementation. |
+| `brassclaw_product_adapters` | `brassclaw_product_adapters/AGENTS.md`, `brassclaw_product_adapters/CLAUDE.md` | Product-adapter contracts: adapter trait, auth, egress, identity, workflow, external/projection/inbound, redaction, fakes. | Host runtime internals. |
 | `brassclaw_product_adapter_registry` | `brassclaw_product_adapter_registry/AGENTS.md`, `brassclaw_product_adapter_registry/CLAUDE.md` | ProductAdapter host-api projection and installation registry. | Adapter execution or product workflow orchestration. |
 | `brassclaw_product_workflow` | `brassclaw_product_workflow/AGENTS.md`, `brassclaw_product_workflow/CLAUDE.md` | Product-facing workflow facade: inbound turns, bindings, ledger, workflow/errors, Reborn service bridges. | Low-level runtime lane internals or direct provider-specific transports. |
 | `brassclaw_product_workflow_storage` | `brassclaw_product_workflow_storage/AGENTS.md`, `Cargo.toml` | Durable PostgreSQL adapters for the product workflow idempotency ledger. | Workflow orchestration or direct dispatch. |
@@ -151,12 +151,12 @@ Boundary rule: if you need an upstream crate in a low-level crate, stop and chec
 - Events/projections/outbound: `brassclaw_events` for canonical redacted events; `brassclaw_event_projections` for projection model; `brassclaw_event_streams` for transport-neutral live/replay streams; `brassclaw_outbound` for metadata-only delivery/subscription policy; adapters for concrete delivery.
 - Trust/auth/approval: `brassclaw_trust` -> `brassclaw_authorization` -> `brassclaw_run_state`/`brassclaw_approvals` -> `brassclaw_capabilities` as needed.
 - Hooks and prompt context: `brassclaw_hooks` for hook registration/dispatch/failure policy; `brassclaw_prompt_envelope` for model-visible untrusted or trust-labeled snippet wrapping.
-- Runtime execution: lane crate (`mcp` or `script` execution via `host_runtime`'s script lane) first; `dispatcher` for routing; `host_runtime` for secrets/network/resources/redaction; `processes` for background lifecycle. The script lane lives inside `brassclaw_host_runtime` (no separate crate) to keep dispatcher composition private to the kernel.
+- Runtime execution: the only manifest-declarable lane crate is `mcp` (`brassclaw_mcp`); `first_party`/`system` are host-assigned runtime kinds inside `brassclaw_host_runtime` (no separate crate), keeping dispatcher composition private to the kernel. `dispatcher` for routing; `host_runtime` for secrets/network/resources/redaction; `processes` for background lifecycle. Sandboxable subprocess execution goes through `brassclaw_host_runtime`'s `services/process_executor` + `sandbox_process/` (backed by `brassclaw_process_sandbox`); the v1 `script_runtime` script lane was removed in Phase 4.
 - Turns/agent loop: `brassclaw_turns` for turn coordination; `brassclaw_agent_loop` for strategy/planner/executor contracts; `brassclaw_loop_support` for host support ports; `brassclaw_engine` for CodeAct/thread runtime.
 - Product adapter flow: `brassclaw_product_adapters` contracts -> `brassclaw_product_adapter_registry` installation/projection -> `brassclaw_product_workflow` orchestration -> concrete adapter crate.
 - Reborn binary/composition: `brassclaw_reborn_config` for boot config; `brassclaw_reborn_composition` for production wiring; `brassclaw_reborn_cli` for commands; `brassclaw_reborn` for standalone adapters/driver registry; `brassclaw_reborn_webui_ingress` for host-owned WebChat v2 listener lifecycle.
 - Model/provider behavior: `brassclaw_llm`; do not leak provider auth/cache/retry concerns into engine or product workflow.
-- UI presentation: `brassclaw_tui`, `brassclaw_gateway`, or `brassclaw_webui_v2`; backend API/web channel code remains under root `src/` unless the surface is the Reborn WebChat v2 route crate.
+- UI presentation: `brassclaw_tui`, `brassclaw_gateway`, or `brassclaw_webui_v2`. The v1 root `src/` tree was removed in Phase 6; root `src/main.rs` is now only a thin compat shim delegating to `brassclaw_reborn_cli` (it carries legacy `--no-onboard`/`--cli-only`/`--no-db`/`--auto-approve` flags for E2E fixtures). All real backend/channel code lives under `crates/`.
 
 ## Testing
 
