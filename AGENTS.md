@@ -40,7 +40,7 @@ New Reborn work belongs in `crates/`.
 | WebUI v2 server (React SPA) | `crates/brassclaw_webui_v2/`, `crates/brassclaw_webui_v2_static/` |
 | WebUI ingress / gateway adapter | `crates/brassclaw_reborn_webui_ingress/` |
 | Extensions lifecycle | `crates/brassclaw_extensions/` |
-| Host runtime shell access | `crates/brassclaw_host_runtime/` (hosts the in-kernel script lane via `services/script_runtime`) |
+| Host runtime shell access | `crates/brassclaw_host_runtime/` (in-kernel capability host + runtime dispatcher; sandboxed subprocess execution via `services/process_executor` and `sandbox_process/`; first-party tools under `first_party_tools/`) |
 | Embeddings | `crates/brassclaw_embeddings/` |
 | Recipe-Skill-Tool library | `crates/brassclaw_engine/src/memory/` (types, matcher, validator, similarity), `crates/brassclaw_reborn_composition/src/recipe_store.rs` + `recipe_library.rs` (REST store + loop adapter), `crates/brassclaw_turns/src/run_profile/recipe_lookup.rs` (trait) |
 | Component catalog (class codes 12–20) | `crates/brassclaw_engine/src/memory/retrieval_source.rs` (`PostgresSource`, `fetch_for_turn`, `FetchForTurnResult`), unified tables `reborn_specs/tool_skills/plans/summaries/lessons/issues/notes` (class codes 12–20) |
