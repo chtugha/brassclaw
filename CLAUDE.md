@@ -336,7 +336,7 @@ crates/
 │   └── brassclaw_host_runtime/     # Trusted laptop shell access, mount aliases
 │
 ├── Sandbox
-│   └── brassclaw_sandbox/          # Docker execution sandbox, network proxy, allowlist
+│   └── brassclaw_process_sandbox/  # Process sandbox: docker-image validator, capability-lease subprocess gating, scoped filesystems, endpoint allowlists
 │
 ├── MCP
 │   └── brassclaw_mcp/              # Model Context Protocol client and session management
