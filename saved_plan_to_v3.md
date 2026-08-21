@@ -1487,7 +1487,22 @@ Recipe Tier-0 mechanism (`llm_call_required: false`). They are separate paths.
 ### 0.13 KV-Cache / LMCache-Aware Design
 
 **Basic-prompt:** Pre-assembled `InstructionBundle` stored in `reborn_basic_prompt_store`
-(V055). Manual trigger only. Stale when any component passes Gate 2.
+(V056 — **was V055 before Decision 2**). Manual trigger only. Stale when any component passes Gate 2 (Q2 approval).
+
+**Compile flow (operator, via Phase K.1 Prefix Tab):**
+The operator opens Settings → Prefix Tab, sees the `base-prompt` prefix row (the only one today), and clicks **Generate / Regenerate**. This single action:
+1. Assembles the bundle from all validated components (`do_reassemble` logic: for each component table, `SELECT … WHERE validation_status='validated' AND NOT ('05:validator' = ANY(consumer_tags)) ORDER BY class_code, prompt_uid ASC LIMIT 1000`; rows rendered as `## {class_code}:{prompt_uid}  {label}  "{name}"\n\n{content}`; a literal Sempai Response Schema JSON block is appended).
+2. Stores the result in `reborn_basic_prompt_store` (per `(tenant_id, user_id, agent_id, project_id)` scope), computing `fingerprint = sha256(bundle_content)`, setting `is_stale = false`, `assembled_at = now()`.
+3. Ships the bundle to the Sempai LLM as a single `System` message via `HostManagedModelRequest` → `gateway.stream_model` (model profile `"sempai_model"`), warming its KV cache.
+4. Stores `prewarm_last_at` in the row on success.
+
+This replaces the two-button Reassemble + Pre-warm flow in the Interceptor tab (see Phase K.1 §UI migration).
+
+**Placeholder substitution at turn time (Phase K.1 wiring):**
+The per-turn prompt carries a single `base-prompt` placeholder line while being composed. The Sempai-Kohai system (see `09-sempai-kohai.md`, `10-prefix-base-prompt.md`) replaces that placeholder with the real base-prompt content **at the very end of prompt creation**. If the base prompt was not precompiled (absent from `reborn_basic_prompt_store` or `is_stale = true` and the scope has no fresh entry), the Sempai-Kohai system emits a **short minimal-context prompt-part** with only the most necessary information instead — because the LLM computes only ~200 new tokens/s while cached prefix tokens are free.
+
+**Staleness:**
+Any component Q2 graduation → `mark_stale(scope)` called on `PgBasicPromptStore` → the prefix row's `is_stale = true`. The Prefix Tab surfaces this as the **Regenerate** button lighting up. This is side effect 4 of Q2 approval (§0.15).
 
 **BuildInstruction patch rules:**
 - Must NOT repeat content already in the stored basic-prompt.
@@ -1525,10 +1540,11 @@ state 3, `counter` incremented, `review_feedback` populated.
 - Once the queue row is deleted (Q2 approval), the component is post-validation.
   Its `validation_status = 'validated'` is the sole retrieval gate.
 
-**Q2 approval drives three side effects:**
+**Q2 approval drives four side effects:**
 1. Queue row deleted → `last_graduation_at` bumped on scope cursor (via DB trigger).
 2. Component `validation_status` set to `'validated'`.
 3. SplitResult memo-cache for this scope evicted on next cache hit (via `last_graduation_at` check — §0.18).
+4. `PgBasicPromptStore::mark_stale(scope)` called — sets `is_stale = true` on the `reborn_basic_prompt_store` row for the scope, signalling the Prefix Tab to show the Regenerate button (§0.13, Phase K.1).
 
 ---
 
@@ -5853,11 +5869,19 @@ channels by `class_code` and merged into the corresponding `SplitResult` item li
 
 ---
 
-### Phase K — BasicPromptStore + MCP Translation + Cleanup
+### Phase K — BasicPromptStore + Prefix Tab + MCP Translation + Cleanup
 
 **Status:** [ ] Pending
 
-#### K.1 BasicPromptStore
+#### K.1 BasicPromptStore + Prefix Tab (UI migration from Interceptor tab)
+
+> **Grounded in:** `17-webui-prefix-tab.md`, `saved_plan_to_v3.md §0.13`, user item 8 (Prefix Tab),
+> item 5.1 (SKILL.md export). This phase delivers: the `reborn_basic_prompt_store` table,
+> `PgBasicPromptStore` facade, prefix-named routes, the Prefix Tab UI, migration of the
+> Reassemble+Pre-warm ControlCard out of the Interceptor tab, `mark_stale` on Q2 graduation,
+> the `base-prompt` placeholder substitution wiring, and the SKILL.md on-demand export endpoint.
+
+##### K.1.1 Database migration
 
 **Migration V056** (**was V055 before Decision 2**; file: `V056__reborn_basic_prompt_store.sql`).
 
@@ -5865,21 +5889,524 @@ channels by `class_code` and merged into the corresponding `SplitResult` item li
 CREATE TABLE reborn_basic_prompt_store (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id     TEXT NOT NULL,
+    -- user_id / agent_id / project_id are nullable (scoped to the authenticated caller;
+    -- NULL means "any user / any agent / any project" for a tenant-wide entry).
     user_id       TEXT,
     agent_id      TEXT,
     project_id    TEXT,
-    fingerprint   TEXT NOT NULL,   -- SHA-256 of bundle content
-    bundle_json   JSONB NOT NULL,
+    fingerprint   TEXT NOT NULL,   -- SHA-256 hex of bundle content
+    bundle_json   JSONB NOT NULL,  -- rendered bundle string stored as JSON string value
     is_stale      BOOLEAN NOT NULL DEFAULT false,
     assembled_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    prewarm_last_at TIMESTAMPTZ,
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(tenant_id, user_id, agent_id, project_id)
+    -- NULLS NOT DISTINCT requires Postgres 15+.  The codebase already requires
+    -- Postgres 14+ (embedded PG is bundled). If Postgres 15 is not guaranteed,
+    -- replace the nullable columns with NOT NULL DEFAULT '' and store empty string
+    -- for "absent" scope component (simpler upsert, no NULL distinctness issue).
+    -- Decision: use NOT NULL DEFAULT '' for all three scope columns to avoid
+    -- UNIQUE NULL semantics entirely — this is the correct approach for a
+    -- single-row-per-scope guarantee.
+    CONSTRAINT reborn_basic_prompt_store_scope_unique
+        UNIQUE (tenant_id, user_id, agent_id, project_id)
 );
+CREATE INDEX reborn_basic_prompt_store_scope_idx
+    ON reborn_basic_prompt_store (tenant_id, user_id, agent_id, project_id);
 ```
 
-New `PgBasicPromptStore` facade: `get_for_scope`, `store`, `mark_stale`, `delete`.  
-Wire into Interceptor to prepend stored bundle before LLM shipment.  
-On any component `validated` transition: call `mark_stale(scope)`.
+> **⚠️ DDL correction — nullable scope columns + UNIQUE constraint:** The original design above uses nullable `user_id`/`agent_id`/`project_id` with a `UNIQUE` constraint, but Postgres treats `NULL ≠ NULL` in unique constraints — two rows with `(tenant_1, NULL, NULL, NULL)` would both satisfy the constraint. **The correct DDL is to declare all scope columns `TEXT NOT NULL DEFAULT ''`** and store empty string when the caller's scope component is absent. This is the same pattern `PgMontyVmSettingsStore` uses (it receives `user_id: &str` and `project_id: &str` per-call with empty-string fallbacks). The constraint name `reborn_basic_prompt_store_scope_unique` is used in the `ON CONFLICT` clause of the `store()` upsert.
+>
+> **Corrected DDL:**
+> ```sql
+> CREATE TABLE reborn_basic_prompt_store (
+>     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+>     tenant_id       TEXT NOT NULL DEFAULT '',
+>     user_id         TEXT NOT NULL DEFAULT '',
+>     agent_id        TEXT NOT NULL DEFAULT '',
+>     project_id      TEXT NOT NULL DEFAULT '',
+>     fingerprint     TEXT NOT NULL,
+>     bundle_json     JSONB NOT NULL,
+>     is_stale        BOOLEAN NOT NULL DEFAULT false,
+>     assembled_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+>     prewarm_last_at TIMESTAMPTZ,
+>     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+>     CONSTRAINT reborn_basic_prompt_store_scope_unique
+>         UNIQUE (tenant_id, user_id, agent_id, project_id)
+> );
+> CREATE INDEX reborn_basic_prompt_store_scope_idx
+>     ON reborn_basic_prompt_store (tenant_id, user_id, agent_id, project_id);
+> ```
+> Use the corrected DDL in the migration file. The `PgBasicPromptStore` implementation passes `caller.user_id.as_str()`, `caller.agent_id.as_ref().map(|a| a.as_str()).unwrap_or("")`, and `caller.project_id.as_ref().map(|p| p.as_str()).unwrap_or("")` for the scope parameters.
+
+> **Note:** `prewarm_last_at` is added here (not in the existing `brassclaw_config` key), since the new store owns the full compile state. The `bundle_json` JSONB column stores the rendered bundle string as a JSON string value (not an object), matching the existing `do_reassemble` output type.
+
+##### K.1.2 `PgBasicPromptStore` facade
+
+**File:** `crates/brassclaw_reborn_composition/src/pg_basic_prompt_store.rs` (new)
+
+> **Pattern:** Follow `PgMontyVmSettingsStore` exactly: gated under `#[cfg(feature = "postgres")]`, constructed with fixed `tenant_id` + `agent_id` at composition time (not per-call), errors mapped through `thiserror` in `error.rs`, uses `brassclaw_pg::PgPool` + `deadpool_postgres` + `tokio_postgres` (not `sqlx`). `user_id` and `project_id` are passed as `&str` parameters per-call, consistent with how `PgMontyVmSettingsStore::get(user_id, project_id)` works.
+
+```rust
+/// A stored prefix entry.
+pub struct BasicPromptEntry {
+    pub id:              uuid::Uuid,
+    pub fingerprint:     String,       // SHA-256 hex of bundle string
+    pub bundle:          String,       // the rendered bundle string (stored in bundle_json JSONB)
+    pub is_stale:        bool,
+    pub assembled_at:    chrono::DateTime<chrono::Utc>,
+    pub prewarm_last_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub updated_at:      chrono::DateTime<chrono::Utc>,
+}
+
+/// Composition-side Postgres-backed store for the pre-assembled base-prompt bundle.
+/// One row per `(tenant_id, user_id, agent_id, project_id)` scope.
+pub(crate) struct PgBasicPromptStore {
+    pool:      Arc<PgPool>,
+    tenant_id: String,
+    agent_id:  String,
+}
+
+impl PgBasicPromptStore {
+    pub(crate) fn new(pool: Arc<PgPool>, tenant_id: impl Into<String>, agent_id: impl Into<String>) -> Self;
+
+    /// Return the stored entry for this scope, or `None` if no prefix has been compiled yet.
+    pub async fn get_for_scope(&self, user_id: &str, project_id: &str) -> Result<Option<BasicPromptEntry>, BasicPromptStoreError>;
+
+    /// Upsert the compiled bundle for this scope.
+    /// `fingerprint` = hex-encoded `sha256(bundle_bytes)` (computed before calling).
+    /// Sets `is_stale = false`, `assembled_at = now()`, `updated_at = now()`.
+    /// SQL: `INSERT INTO reborn_basic_prompt_store (...) VALUES (...) ON CONFLICT ON CONSTRAINT
+    ///   reborn_basic_prompt_store_scope_unique DO UPDATE SET bundle_json=EXCLUDED.bundle_json,
+    ///   fingerprint=EXCLUDED.fingerprint, is_stale=false, assembled_at=now(), updated_at=now()`
+    pub async fn store(&self, user_id: &str, project_id: &str, fingerprint: &str, bundle: &str) -> Result<BasicPromptEntry, BasicPromptStoreError>;
+
+    /// Set `is_stale = true`, `updated_at = now()` for the scope row.
+    /// No-op (returns `Ok(())`) if no row exists for the scope.
+    /// Called after every component Q2 graduation (side effect 4 of §0.15).
+    /// SQL: `UPDATE reborn_basic_prompt_store SET is_stale=true, updated_at=now()
+    ///       WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4`
+    pub async fn mark_stale(&self, user_id: &str, project_id: &str) -> Result<(), BasicPromptStoreError>;
+
+    /// Record that a prewarm succeeded: `UPDATE ... SET prewarm_last_at=now(), updated_at=now()`.
+    pub async fn record_prewarm(&self, user_id: &str, project_id: &str) -> Result<(), BasicPromptStoreError>;
+
+    /// Delete the stored entry for this scope.
+    pub async fn delete(&self, user_id: &str, project_id: &str) -> Result<(), BasicPromptStoreError>;
+}
+```
+
+**`BasicPromptStoreError`** (in `error.rs`):
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum BasicPromptStoreError {
+    #[error("db pool: {0}")]
+    Pool(#[from] deadpool_postgres::PoolError),
+    #[error("db query: {0}")]
+    Pg(#[from] tokio_postgres::Error),
+}
+```
+
+**Fingerprint computation:** `hex::encode(sha2::Sha256::digest(bundle.as_bytes()))`. Add `sha2` and `hex` as dependencies to `brassclaw_reborn_composition/Cargo.toml` if not already present (`sha2 = "0.10"`, `hex = "0.4"`).
+
+**Wiring into `RebornInterceptorConfigService`:** Add a `pg_basic_prompt_store: Option<Arc<PgBasicPromptStore>>` field to `RebornInterceptorConfigService` (alongside `sempai_gateway`), added via a `with_basic_prompt_store(store)` builder. The store is constructed in `crates/brassclaw_reborn_composition/src/webui.rs` alongside `RebornInterceptorConfigService` itself, then passed in via the builder. `webui.rs` is the composition file that assembles `RebornServices` from all sub-services and stores — it is the correct place to instantiate `PgBasicPromptStore` and wire it in.
+
+##### K.1.3 New prefix-named routes (Rust)
+
+> The existing `/interceptor/reassemble` and `/interceptor/prewarm` routes are **removed** and replaced by the prefix-named routes below. The Interceptor tab keeps `GET /interceptor/config` and `POST /interceptor/config` (mode + persona), but loses the compile actions.
+
+> **Pattern:** All descriptor builder functions follow the codebase pattern: private `fn X_descriptor() -> IngressRouteDescriptor` using the `descriptor(route_id, method, pattern, policy)` helper and the `mutation_policy(...)` / `read_policy(...)` helpers. Route IDs are `pub const WEBUI_V2_ROUTE_*: &str` constants. Route patterns use `{name}` curly-brace syntax (not Axum `:name` colon syntax) — e.g. `"/api/webchat/v2/prefixes/{name}/regenerate"`. All new route ID constants must be exported from `crates/brassclaw_webui_v2/src/lib.rs` alongside existing ones.
+
+**Files to modify:** `crates/brassclaw_webui_v2/src/descriptors.rs`, `crates/brassclaw_webui_v2/src/handlers.rs`, `crates/brassclaw_webui_v2/src/lib.rs`, `crates/brassclaw_webui_v2/src/router.rs`
+
+**New route ID constants and pattern constants** (add to `descriptors.rs` alongside existing ones):
+```rust
+pub const WEBUI_V2_ROUTE_LIST_PREFIXES:    &str = "webui.v2.list_prefixes";
+pub const WEBUI_V2_ROUTE_REGENERATE_PREFIX: &str = "webui.v2.regenerate_prefix";
+pub const WEBUI_V2_ROUTE_EXPORT_SKILL:     &str = "webui.v2.export_skill";
+
+pub const WEBUI_V2_PATTERN_LIST_PREFIXES:    &str = "/api/webchat/v2/prefixes";
+pub const WEBUI_V2_PATTERN_REGENERATE_PREFIX: &str = "/api/webchat/v2/prefixes/{name}/regenerate";
+pub const WEBUI_V2_PATTERN_EXPORT_SKILL:     &str = "/api/webchat/v2/skills/{id}/export";
+```
+
+**Descriptors to add** (`descriptors.rs`):
+```rust
+// Under "// Phase K.1 — Prefix cache routes." comment block.
+
+fn list_prefixes_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_LIST_PREFIXES,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_LIST_PREFIXES,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn regenerate_prefix_descriptor() -> IngressRouteDescriptor {
+    // 1/min per-caller rate limit enforced both at descriptor level and in the service.
+    descriptor(
+        WEBUI_V2_ROUTE_REGENERATE_PREFIX,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_REGENERATE_PREFIX,
+        mutation_policy(
+            BodyLimitPolicy::NoBody,
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+```
+
+Also add `export_skill_descriptor()` in K.1.7.
+
+**`webui_v2_routes()` in `descriptors.rs`:** Add `list_prefixes_descriptor()` and `regenerate_prefix_descriptor()` to the `vec![]` in `webui_v2_routes()`. Remove `reassemble_interceptor_descriptor()` and `prewarm_interceptor_descriptor()` from the vec.
+
+**Constants to remove** from `descriptors.rs` (both the `pub const` IDs and the `pub const` patterns and the private builder functions):
+- `WEBUI_V2_ROUTE_REASSEMBLE_INTERCEPTOR`, `WEBUI_V2_PATTERN_REASSEMBLE_INTERCEPTOR`, `reassemble_interceptor_descriptor`
+- `WEBUI_V2_ROUTE_PREWARM_INTERCEPTOR`, `WEBUI_V2_PATTERN_PREWARM_INTERCEPTOR`, `prewarm_interceptor_descriptor`
+
+**New route ID exports** (add to `crates/brassclaw_webui_v2/src/lib.rs`):
+```rust
+pub use descriptors::{
+    WEBUI_V2_ROUTE_LIST_PREFIXES, WEBUI_V2_ROUTE_REGENERATE_PREFIX, WEBUI_V2_ROUTE_EXPORT_SKILL,
+};
+// Remove: WEBUI_V2_ROUTE_REASSEMBLE_INTERCEPTOR, WEBUI_V2_ROUTE_PREWARM_INTERCEPTOR
+```
+
+**Handler routing** (`router.rs`): Mount `list_prefixes` and `regenerate_prefix` handlers at their patterns; remove `reassemble_interceptor` and `prewarm_interceptor` route entries.
+
+**Handlers to add** (`handlers.rs`):
+
+```rust
+/// `GET /api/webchat/v2/prefixes`
+///
+/// List prefix cache entries for the caller's scope.
+pub async fn list_prefixes(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+) -> Result<Json<brassclaw_product_workflow::PrefixListResponse>, WebUiV2HttpError> {
+    let response = state.services().list_prefix_entries(caller).await?;
+    Ok(Json(response))
+}
+
+/// Path params for `POST /api/webchat/v2/prefixes/{name}/regenerate`.
+#[derive(Debug, Deserialize)]
+pub struct RegeneratePrefixPath {
+    pub name: String,
+}
+
+/// `POST /api/webchat/v2/prefixes/{name}/regenerate`
+///
+/// Assemble + prewarm the named prefix. Rate-limited to 1/min per caller
+/// (enforced in the service via in-memory rate-limit map).
+pub async fn regenerate_prefix(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(RegeneratePrefixPath { name }): Path<RegeneratePrefixPath>,
+) -> Result<Json<brassclaw_product_workflow::PrefixRegenerateResponse>, WebUiV2HttpError> {
+    let response = state.services().regenerate_prefix(caller, name).await?;
+    Ok(Json(response))
+}
+```
+
+Remove handler functions `reassemble_interceptor` and `prewarm_interceptor`.
+
+**DTOs** (define in `crates/brassclaw_product_workflow/src/interceptor_config.rs` alongside `InterceptorConfigSnapshot` — this is where all interceptor/prefix service types live):
+
+```rust
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PrefixEntry {
+    pub name:              String,           // e.g. "base-prompt"
+    pub fingerprint:       Option<String>,   // SHA-256 hex, None if never assembled
+    pub assembled_at:      Option<String>,   // RFC3339, None if never assembled
+    pub prewarm_last_at:   Option<String>,   // RFC3339, None if never prewarmed
+    pub is_stale:          bool,
+    pub bundle_size_chars: Option<usize>,    // len of bundle string, None if never assembled
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PrefixListResponse {
+    pub prefixes: Vec<PrefixEntry>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PrefixRegenerateResponse {
+    pub name:           String,
+    pub fingerprint:    String,
+    pub assembled_at:   String,   // RFC3339
+    pub prewarm_last_at: String,  // RFC3339
+}
+```
+
+> **Note:** Timestamps are `Option<String>` (RFC3339) rather than `Option<DateTime<Utc>>` for the same reason existing `InterceptorConfigSnapshot` uses `Option<String>` for `base_prompt_assembled_at` and `prewarm_last_at` (they are stored as strings in the DB / KV store and forwarded directly). This is consistent with the existing pattern.
+
+`list_prefix_entries` returns a `PrefixListResponse` with today exactly one entry (`name = "base-prompt"`), synthesized from the `reborn_basic_prompt_store` row (or a zero-state entry with all `Option` fields `None` if no row exists yet). This design already supports future prefixes.
+
+**`RebornServicesApi` trait additions** (in `crates/brassclaw_product_workflow/src/reborn_services.rs`, under the interceptor config section `// ── Interceptor configuration (Phase 5.5) ─────`):
+
+```rust
+/// List prefix cache entries for the caller's scope (Phase K.1).
+async fn list_prefix_entries(
+    &self,
+    _caller: WebUiAuthenticatedCaller,
+) -> Result<PrefixListResponse, RebornServicesError> {
+    Err(interceptor_config::interceptor_config_unavailable())
+}
+
+/// Assemble + prewarm the named prefix (Phase K.1). Rate-limited to 1/min per caller.
+async fn regenerate_prefix(
+    &self,
+    _caller: WebUiAuthenticatedCaller,
+    _name: String,
+) -> Result<PrefixRegenerateResponse, RebornServicesError> {
+    Err(interceptor_config::interceptor_config_unavailable())
+}
+```
+
+Also **remove** `reassemble_interceptor_base_prompt` and `prewarm_interceptor` from the `RebornServicesApi` trait (and from the `RebornServices` struct implementation in `reborn_services.rs`).
+
+##### K.1.4 `regenerate_prefix` service method (backend)
+
+**File:** `crates/brassclaw_reborn_composition/src/interceptor_config_service.rs` (modify)
+
+> **Rate-limit pattern:** The existing `RebornInterceptorConfigService` uses an in-memory `Arc<Mutex<HashMap<String, Instant>>>` per operation (one for `reassemble`, one for `prewarm`). The new `regenerate_prefix` replaces both, so it uses a single new `regenerate_rate_limit: RateLimitState` field (added alongside `reassemble_rate_limit` and `prewarm_rate_limit`, which are then **removed**). The existing `check_rate_limit` helper is reused unchanged.
+
+The new `regenerate_prefix(caller, name)` method on `RebornInterceptorConfigService`:
+
+1. **Name guard:** `match name.as_str() { "base-prompt" => {} _ => return Err(PrefixNotFound { name }) }`. Add `PrefixNotFound { name: String }` variant to `InterceptorConfigServiceError` in `crates/brassclaw_product_workflow/src/interceptor_config.rs`.
+2. **Rate-limit check:** `self.check_rate_limit(&self.regenerate_rate_limit, &caller_id).await?` — same 60-second per-caller window as before.
+3. **Assemble:** call `self.do_reassemble().await?` — unchanged. The assembly is per-table `SELECT prompt_uid, name, COALESCE(content,'') FROM {table} WHERE validation_status='validated' AND NOT ('05:validator'=ANY(COALESCE(consumer_tags, ARRAY[]::text[]))) ORDER BY prompt_uid ASC LIMIT 1000` (one query per existing table), with cross-table sort `parts.sort_by(|a,b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)))` applied after collecting all rows. The per-table `ORDER BY prompt_uid ASC` and the post-query global sort by `(class_code, prompt_uid)` are both preserved exactly as today.
+4. **Fingerprint:** `let fingerprint = hex::encode(sha2::Sha256::digest(assembled.as_bytes()));`
+5. **Store:** Extract `let user_id = caller.user_id.as_str(); let project_id = caller.project_id.as_ref().map(|p| p.as_str()).unwrap_or(""); let agent_id = caller.agent_id.as_ref().map(|a| a.as_str()).unwrap_or("");` — note that `PgBasicPromptStore` has its own fixed `tenant_id` and `agent_id` from construction, but the `store(user_id, project_id, ...)` call uses the per-caller `user_id` and `project_id`. The `agent_id` dimension is fixed from construction (matching the interceptor service's own `tenant_id`). Call `pg_store.store(user_id, project_id, &fingerprint, &assembled).await`. This replaces the `save_config_key(...KEY_BASE_PROMPT...)` and `save_config_key(...KEY_BASE_PROMPT_ASSEMBLED_AT...)` calls — **remove both from the method and from the struct.**
+6. **Prewarm:** exact same logic as the existing `prewarm()` method — load `assembled` (now from the store rather than the KV, since we just stored it), call `gateway.stream_model(request)` with the same `HostManagedModelRequest` shape (a single `System` message with `content = assembled`). On success: `pg_store.record_prewarm(user_id, project_id).await` (using the same locals from step 5).
+7. Return `PrefixRegenerateResponse { name: "base-prompt".to_string(), fingerprint, assembled_at: entry.assembled_at.to_rfc3339(), prewarm_last_at: prewarm_at.to_rfc3339() }`.
+
+**Remove from `RebornInterceptorConfigService`:**
+- `reassemble_base_prompt` method
+- `prewarm` method
+- `reassemble_rate_limit` field
+- `prewarm_rate_limit` field
+- `KEY_BASE_PROMPT` and `KEY_BASE_PROMPT_ASSEMBLED_AT` and `KEY_PREWARM_LAST_AT` config key constants
+
+**Add to `RebornInterceptorConfigService`:**
+- `pg_basic_prompt_store: Option<Arc<PgBasicPromptStore>>` field
+- `regenerate_rate_limit: RateLimitState` field
+- `with_basic_prompt_store(store: Arc<PgBasicPromptStore>)` builder
+
+**`build_snapshot` / `InterceptorConfigSnapshot`** (in `crates/brassclaw_product_workflow/src/interceptor_config.rs`):
+Remove fields `base_prompt_assembled_at: Option<String>`, `base_prompt_size_chars: Option<usize>`, `components_since_rebuild: Option<u32>`, `prewarm_last_at: Option<String>` from `InterceptorConfigSnapshot`. After removal the struct has exactly: `mode: String`, `sempai_connected: bool`, `persona: String`. Also remove the corresponding `KEY_BASE_PROMPT` load from `build_snapshot` and `load_config`.
+
+**`mark_stale` wiring in Q2 approval:**
+The Q2 approve path goes through `update_component_validation_status` in `crates/brassclaw_reborn_composition` (the composition impl of the `RebornServicesApi` trait method). After the `validation_status = 'validated'` DB write, call `pg_basic_prompt_store.mark_stale(user_id, project_id).await` (log a `debug!` on error; do not propagate — stale marking is best-effort, a stale miss is safe, an error must not fail the graduation). This is side effect 4 of §0.15.
+
+**`list_prefix_entries` service method:**
+Add to `RebornInterceptorConfigService` a `list_prefix_entries(caller)` method (wired into the `InterceptorConfigService` trait or directly into `RebornServices`). It calls `pg_basic_prompt_store.get_for_scope(user_id, project_id)` and returns a `PrefixListResponse` with one `PrefixEntry` for `"base-prompt"`: either synthesized from the stored row or a zero-state entry when no row exists.
+
+##### K.1.5 Placeholder substitution wiring (Sempai-Kohai)
+
+**File:** the Sempai-Kohai prompt-assembly path — `crates/brassclaw_reborn_composition/src/interceptor_config_service.rs` or the module referenced in `09-sempai-kohai.md` and `10-prefix-base-prompt.md` as the prompt-creation endpoint.
+
+At the very end of prompt creation (after the full turn prompt is assembled), the Sempai-Kohai system performs:
+
+1. Call `pg_basic_prompt_store.get_for_scope(user_id, project_id)`.
+2. **If a non-stale entry exists** (`is_stale = false`): replace the single `base-prompt` placeholder line in the assembled prompt with the stored `bundle` string. The placeholder line is a literal marker line that the assembly step inserts; the exact format is defined in `10-prefix-base-prompt.md`.
+3. **If no entry exists or `is_stale = true`**: emit a **short minimal-context prompt-part** in place of the full bundle — a compact summary with only the most essential instruction headers, sufficient for the LLM to operate without the KV-cached content. The fallback does not error; it degrades gracefully.
+4. The per-turn patch must NOT repeat content already present in the full base-prompt bundle (`basic_prompt_section_refs` contains navigation pointers, not content).
+
+This wiring is the Phase K.1 completion of §0.13. No placeholder substitution code exists before K.1.
+
+##### K.1.6 WebUI SPA changes
+
+**Files to modify** (in `crates/brassclaw_webui_v2_static/static/js/`):
+
+**`pages/settings/lib/settings-schema.js`:**
+Add one entry to `SETTINGS_TABS` **after the `interceptor` entry** (between `interceptor` and `safety`):
+
+```js
+{ id: "prefix", labelKey: "settings.prefix", icon: "layers" },
+```
+
+> **Note:** The `labelKey` format in `settings-schema.js` is `"settings.{id}"` (e.g. `"settings.interceptor"`, `"settings.safety"`), NOT `"settings.tab.{id}"`. Match the existing format exactly. Total tabs after adding: 18.
+
+**`app/routes.js`:**
+Add a `prefix` entry to `SETTINGS_SUB_ROUTES` **after the `interceptor` entry** (between `interceptor` and `safety`). No `hidden: true` — its endpoints are real and land in K.1:
+
+```js
+{ id: "interceptor", labelKey: "settings.interceptor", icon: "spark" },
+{ id: "prefix",      labelKey: "settings.prefix",      icon: "layers" },
+{ id: "safety",      labelKey: "settings.safety",      icon: "shield" },
+```
+
+**`pages/settings/settings-page.js`:**
+Add `import { PrefixTab } from "./components/prefix-tab.js";` to imports.
+Add `prefix: html\`<${PrefixTab} />\`` to the `tabContent` object (after the `interceptor` entry).
+
+**`pages/settings/lib/settings-api.js`:**
+Add two new api functions after the existing interceptor functions. Remove `reassembleInterceptor()` and `prewarmInterceptor()` (their routes are gone):
+
+```js
+// Phase K.1 — Prefix cache routes.
+export function fetchPrefixes() {
+  return apiFetch("/api/webchat/v2/prefixes");
+}
+export function regeneratePrefix(name) {
+  return apiFetch(`/api/webchat/v2/prefixes/${encodeURIComponent(name)}/regenerate`, {
+    method: "POST",
+  });
+}
+```
+
+**`pages/settings/hooks/useInterceptor.js`:**
+Remove `handleReassemble`, `handlePrewarm`, and `actionStatus` (reassemble/prewarm tracking state) from the hook. Remove the calls to `reassembleInterceptor()` and `prewarmInterceptor()`. The hook only needs to fetch config and provide `handleUpdate`.
+
+**`pages/settings/components/interceptor-tab.js`:**
+Remove the `ControlCard` component and its usage. Remove the `ControlCard`-related destructured values from `useInterceptor()` (`handleReassemble`, `handlePrewarm`, `actionStatus`). Remove the `StatusCard` fields for `base_prompt_assembled_at`, `base_prompt_size_chars`, `components_since_rebuild`, and `prewarm_last_at` — the `StatusCard` renders only `mode` and `sempai_connected` after this change. Update `InterceptorSkeleton` to remove the third skeleton card (was the ControlCard). The Interceptor tab retains: `StatusCard` (mode + Sempai connected badge), `PersonaCard` (persona textarea + save button).
+
+**`pages/settings/components/prefix-tab.js`** (new file):
+
+The Prefix Tab renders a list of prefix entries (today: one row, `"base-prompt"`). For each entry:
+
+- **Name badge**: `entry.name` (e.g. `"base-prompt"`).
+- **Status row**: `assembled_at` timestamp (formatted with `toLocaleString()`), `prewarm_last_at` timestamp, `bundle_size_chars` chars, `fingerprint` (truncated to 12 hex chars for display).
+- **Stale indicator**: if `entry.is_stale === true`, show a warning badge `"Stale — components changed since last compile"`.
+- **Generate / Regenerate button**: label is `"Generate"` if `entry.assembled_at == null`, otherwise `"Regenerate"`. On click: call `regeneratePrefix(entry.name)`, then refresh via `refetch()`. On HTTP 429 response: show inline `"Rate limited — try again in 1 minute"` without throwing. On other errors: show inline error message.
+- **Loading state**: button shows spinner and is disabled while the request is in flight (prewarm can take several seconds).
+- **Empty state**: if `prefixes` is empty, show `"No prefix entries found."` (should not happen in K.1 since the response always includes the `"base-prompt"` synthetic entry).
+
+The component uses a `usePrefixes()` hook (`pages/settings/hooks/usePrefixes.js`, new file) backed by `fetchPrefixes()`. The hook fetches on mount and exposes `{ prefixes, isLoading, loadError, refetch }`.
+
+**`pages/settings/lib/i18n/` (or equivalent i18n file — locate the translation file used by `useT()`):**
+Add the `"settings.prefix"` translation key (value: `"Prefix Cache"`).
+
+##### K.1.7 SKILL.md on-demand export (item 5.1)
+
+> Classic Claude-style v3 skills are DB-stored parts (name, description, body, tool_name, param_schema, activation criteria) with **no physical `SKILL.md` file**. A `SKILL.md` can be exported via the WebUI on demand.
+
+**New route:** `GET /api/webchat/v2/skills/{id}/export`
+
+> **No `ContentType` field on `IngressRouteDescriptor`** — that API does not exist. The descriptor is a read route (bearer, ProjectionOnly). The response's `Content-Type: text/plain` and `Content-Disposition` headers are set directly in the handler.
+
+**Descriptor** (add `export_skill_descriptor()` to `descriptors.rs`, following the `read_policy` pattern):
+
+```rust
+fn export_skill_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_EXPORT_SKILL,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_EXPORT_SKILL,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
+            StreamingMode::None,
+        ),
+    )
+}
+```
+
+Add `export_skill_descriptor()` to `webui_v2_routes()`.
+
+**Handler** (`handlers.rs`):
+
+```rust
+/// Path params for `GET /api/webchat/v2/skills/{id}/export`.
+#[derive(Debug, Deserialize)]
+pub struct ExportSkillPath {
+    pub id: String,   // skill UUID as string; parse to Uuid in the handler
+}
+
+/// `GET /api/webchat/v2/skills/{id}/export`
+///
+/// Export a DB-stored v3 skill as an on-demand SKILL.md download.
+/// Returns `Content-Type: text/plain` with a `Content-Disposition: attachment` header.
+pub async fn export_skill(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(ExportSkillPath { id }): Path<ExportSkillPath>,
+) -> Result<axum::response::Response, WebUiV2HttpError> {
+    let skill_md = state.services().export_skill_as_skill_md(caller, id).await?;
+    let response = axum::response::Response::builder()
+        .status(axum::http::StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .header(
+            axum::http::header::CONTENT_DISPOSITION,
+            "attachment; filename=\"SKILL.md\"",
+        )
+        .body(axum::body::Body::from(skill_md))
+        .map_err(|e| WebUiV2HttpError::internal(format!("response build: {e}")))?;
+    Ok(response)
+}
+```
+
+> **No `.unwrap()` in production code.** The `Response::builder()` pattern above propagates the error through `WebUiV2HttpError::internal` instead. `WebUiV2HttpError::internal` must be added if it doesn't exist, or the appropriate existing error constructor used.
+
+**`RebornServicesApi` trait addition** (in `crates/brassclaw_product_workflow/src/reborn_services.rs`, under the skills section):
+
+```rust
+/// Export a v3 DB-stored skill as a SKILL.md formatted string (on-demand, item 5.1).
+async fn export_skill_as_skill_md(
+    &self,
+    _caller: WebUiAuthenticatedCaller,
+    _skill_id: String,
+) -> Result<String, RebornServicesError> {
+    Err(RebornServicesError::from_status(
+        RebornServicesErrorCode::InvalidRequest,
+        501,
+        false,
+    ))
+}
+```
+
+**Service method** (implement in `brassclaw_reborn_composition`):
+`export_skill_as_skill_md(caller, skill_id)` parses `skill_id` as UUID (`uuid::Uuid::parse_str(&skill_id).map_err(...)?`), fetches the DB-stored skill row by `(tenant_id, user_id, skill_id)` scope, and renders it into the standard Anthropic SKILL.md format:
+
+```
+---
+name: {skill.name}
+description: {skill.description}
+tool_name: {skill.tool_name}
+param_schema: {skill.param_schema_json}
+activation_criteria: {skill.activation_criteria}
+---
+
+{skill.body}
+```
+
+Returns `SkillNotFound` (mapped to HTTP 404 via `WebUiV2HttpError`) if the skill does not exist in scope. No file is written to disk.
+
+**WebUI**: add a "Download SKILL.md" button to the skill detail/edit page. On click: `window.location.assign('/api/webchat/v2/skills/' + encodeURIComponent(skill.id) + '/export')` — use `location.assign` rather than `window.open` to avoid a popup blocker.
+
+##### K.1.8 Tests
+
+**Unit tests** (in `crates/brassclaw_reborn_composition/src/pg_basic_prompt_store.rs` or a sibling test module):
+- `store(user_id, project_id, fingerprint, bundle)` → `get_for_scope` returns the entry, `is_stale = false`.
+- `mark_stale` on an existing row → `is_stale = true`.
+- `mark_stale` with no row → `Ok(())` (no error).
+- `record_prewarm` → `prewarm_last_at` is set.
+- Fingerprint is `sha256` hex — stable for identical bundles, different for changed bundles.
+
+**Integration tests** (require Postgres, gate under `#[cfg(feature = "integration")]`):
+- `regenerate_prefix(caller, "base-prompt")` → `reborn_basic_prompt_store` row written, `is_stale = false`, `fingerprint` correct, `prewarm_last_at` set.
+- `regenerate_prefix(caller, "unknown-name")` → `InterceptorConfigServiceError::PrefixNotFound`.
+- Q2 graduation (call `update_component_validation_status` → `validated`) → `pg_basic_prompt_store.mark_stale` called → row `is_stale = true` (verifies side effect 4 of §0.15).
+- `regenerate_prefix` after stale mark → row written, `is_stale = false`.
+- `list_prefix_entries` with no store row → `PrefixListResponse { prefixes: [PrefixEntry { name: "base-prompt", assembled_at: None, is_stale: false, ... }] }`.
+- `list_prefix_entries` with stored row → entry reflects stored values.
+- `regenerate_prefix` rate limit — second call within 60s → `InterceptorConfigServiceError::RateLimitExceeded`.
+- Handler contract (`crates/brassclaw_webui_v2/tests/webui_v2_handlers_contract.rs`): add stub `StubServices` method bodies for `list_prefix_entries`, `regenerate_prefix`, `export_skill_as_skill_md`; remove stubs for `reassemble_interceptor_base_prompt`, `prewarm_interceptor`.
+- Handler contract: `GET /api/webchat/v2/prefixes` → 200 `{ "prefixes": [...] }`.
+- Handler contract: `POST /api/webchat/v2/prefixes/base-prompt/regenerate` → 200.
+- Handler contract: `GET /api/webchat/v2/skills/{id}/export` → 200, `Content-Type: text/plain`, `Content-Disposition: attachment; filename="SKILL.md"`.
+- Descriptor contract (`crates/brassclaw_webui_v2/tests/webui_v2_descriptors_contract.rs`): add `Expected` entries for `WEBUI_V2_ROUTE_LIST_PREFIXES` (GET, `/api/webchat/v2/prefixes`, read rate limit 120/60, `ProjectionOnly`) and `WEBUI_V2_ROUTE_REGENERATE_PREFIX` (POST, `/api/webchat/v2/prefixes/{name}/regenerate`, mutation rate limit 60/60, `ProductWorkflow`) and `WEBUI_V2_ROUTE_EXPORT_SKILL` (GET, `/api/webchat/v2/skills/{id}/export`, read rate limit 120/60, `ProjectionOnly`); remove entries for `WEBUI_V2_ROUTE_REASSEMBLE_INTERCEPTOR` and `WEBUI_V2_ROUTE_PREWARM_INTERCEPTOR`; remove their `pub use` imports from the test's use block; update the count assertion if present.
+- Integration: `POST /api/webchat/v2/interceptor/reassemble` → 404 (route removed).
+- Integration: `POST /api/webchat/v2/interceptor/prewarm` → 404 (route removed).
+- Integration: `GET /api/webchat/v2/interceptor/config` → 200 `{ "mode": "...", "sempai_connected": ..., "persona": "..." }` — no prefix fields.
 
 #### K.2 MCP Translation Layer — External MCPs Only
 
