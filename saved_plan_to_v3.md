@@ -37,9 +37,23 @@
 
 ---
 
-## Codebase Audit Pass — Corrections Applied (Review Passes 2 + 3)
+## Codebase Audit Pass — Corrections Applied (Review Passes 2 + 3 + 5)
 
 The following issues were found by reading the live codebase and corrected directly in this plan. Each is tagged with a marker so implementers can grep for them.
+
+### Pass 5 findings (full source read — new issues found)
+
+| Tag | Severity | Location | Finding | Fix Applied |
+|-----|----------|----------|---------|-------------|
+| `FIND-P5-01` | **HIGH** | Phase B/C / FIND-20 | `recipe_store.rs:861` `class_label` function uses *completely different* display labels from what the plan assumes: `13 => "Guide"`, `14 => "Reference"`, `15 => "Note"`, `17 => "Template"`, `18 => "Snippet"`, `19 => "Config"`, `20 => "Workflow"` — these are user-facing display labels, not class-name labels. The plan says add `22 => "PythonCode".to_string()` and `23 => "Catalogue".to_string()` — these are consistent with the single-word entries (`"Tool"`, `"Action"`, `"Recipe"`) in that function, not the descriptive entries (`"Skill (Rusty)"`, `"Guide"`). Actual Phase B/C change is correct as stated but the test assertion wording in the plan ("title-case style") is imprecise. | Phase B/C test assertions confirmed correct. Note added in FIND-20 that `recipe_store.rs` is a display-label function and the values are per the existing pattern (some descriptive, some name-based). |
+| `FIND-P5-02` | **HIGH** | Phase E.0 / ARCH-02 | `ThreadManager::new` is called in 8 places: `manager.rs:1132/1160/1192` (test helpers/internal), `mission.rs:3916/4250`, `conversation.rs:856/925/1041`. Phase E.0 must add `pg_pool: Option<Arc<brassclaw_pg::PgPool>>` to the `ThreadManager` struct AND update all 8 construction sites to pass `None` (or the pool for the composition path). A `with_pg_pool` builder method is sufficient for the composition injection — the test construction sites pass `None` explicitly. The plan only mentions `mission.rs` and `conversation.rs` but misses the 3 `manager.rs` internal test-helper construction sites. | Phase E.0 "Files to modify" updated with all 8 `ThreadManager::new` call sites. |
+| `FIND-P5-03` | **HIGH** | Phase A / §0.3 | `RecipeVariant` struct is defined in two places in the plan: (1) in "Files to create" (instruction_builder.rs section) — NOT actually listed, only `VariablePattern` is mentioned; (2) in "Files to modify" (types/recipe.rs section) — two slightly different definitions appear: the first adds `step_link: Option<String>` with `name` field, the second adds `variant_key: String` with `label` field. These are inconsistent. The canonical definition must be the `types/recipe.rs` one (stored in DB). | Reconciled: `RecipeVariant` in `types/recipe.rs` uses `variant_key: String` (the v2/legacy human label), `step_link: Option<String>`, `intent_examples: Vec<String>`, `variable_patterns: Vec<VariablePattern>`. `VariablePattern` is in `instruction_builder.rs`. No `label` field — use `variant_key` only. Phase A "Files to modify" canonical definition retained; the earlier non-canonical definition in the `instruction_builder.rs` section removed. |
+| `FIND-P5-04` | **MEDIUM** | Phase H / FIND-18 | The `consume_drainable_inputs` return type (confirmed as `Result<(bool, Vec<LoopInputAckToken>, Option<LoopCancelledReasonKind>), AgentLoopExecutorError>`) would become `Result<(bool, Vec<LoopInputAckToken>, Option<LoopCancelledReasonKind>, Option<LoopMessageRef>), AgentLoopExecutorError>` under Option A. The plan's FIND-18 description is correct but never states the exact new return type signature. | Phase H item 2 "Option A" now shows the exact new return type. |
+| `FIND-P5-05` | **MEDIUM** | §5 / Tier 1 diagram | The Tier 1 turn-flow diagram in §5 carries a `⚠️ FIND-16 FIX` note saying "the diagram is in the wrong order" but keeps the wrong diagram "for backward reference." An implementation plan should not contain known-incorrect diagrams. An implementer who only reads the diagram (not the note) will implement the wrong execution order. | §5 Tier 1 diagram redrawn with the correct order (PromptStage calls run_step_zero → Python step-0 → pkr returned → LLM called). The old wrong diagram is removed. |
+| `FIND-P5-06` | **MEDIUM** | Phase E / `fetch_for_turn` | When `class_code == 16` (Action) match fires in Phase E, the current code (`retrieval_source.rs:516-525`) calls `fetch_component_by_id(pool, scope, component_id, 16)` and returns `Components([item])`. Phase E adds `ActionShortCircuit` but must detect class-16 BEFORE calling `fetch_component_by_id`. The plan implies this correctly but does not explicitly state the detection must happen at the `class_code` dispatch level immediately after `resolve_intent` returns, BEFORE the `fetch_component_by_id` call. | Phase E "Files to modify" now explicitly states: add class-16 detection IMMEDIATELY after `resolve_intent` returns `Match`, before the `fetch_component_by_id` call. The existing call that goes to `fetch_component_by_id` for class-16 must be replaced by `ActionShortCircuit` return. |
+| `FIND-P5-07` | **LOW** | Phase A / `RECIPE_SELECT` | The plan says `RECIPE_SELECT` currently selects 31 columns ending at `updated_at` (index 30). Confirmed: `decode_recipe_row` reads indices 0–30 (31 fields), with `created_at` at index 29 and `updated_at` at index 30. The three new columns appended at indices 31/32/33 are correct as stated. | Confirmed correct. No change needed. |
+| `FIND-P5-08` | **LOW** | Phase N.4 | The plan says `recipe_matcher.rs` "references `validation_errors` in some paths — audit required." Actual required fix: after N.4 column drops, `recipe_matcher.rs` must be checked at compile time — the compiler will catch any struct field references that no longer exist after the Rust struct fields are removed. The "audit required" is satisfied by compiling with zero warnings after the Phase N changes. | Phase N.4 updated to note that the compiler catches all Rust-struct-level references; the "audit required" is the `cargo check` step, not a manual audit. |
+
 
 ### Pass 3 findings (deep cross-check — verified against full source)
 
@@ -892,17 +906,39 @@ pub struct TurnRoutingSignals {
 #### Updated `IntentResolution::Match`
 
 ```rust
-// In intent_system.rs — add step_link field:
+// In intent_system.rs — add step_link AND component_name fields:
 Match {
-    component_id:        Uuid,
+    component_id:         Uuid,
     component_class_code: i32,
-    step_link:           Option<String>,  // None for legacy / non-variant intents
+    step_link:            Option<String>,  // None for legacy / non-variant intents
+    /// Component name, populated for class-16 Actions so ActionShortCircuit can
+    /// carry it without a second DB fetch. Empty string for non-Action matches.
+    /// See FIND-P5-06 — resolved by adding this field.
+    component_name:       String,
 }
 ```
 
+> **⚠️ FIND-P5-06 resolution — `component_name` in `IntentResolution::Match`:**
+> `ActionShortCircuit { component_id, name }` needs the Action's human-readable name.
+> The cleanest implementation avoids a second DB query by adding `component_name` to
+> the match result, populated via a subquery in `resolve_intent`:
+> ```sql
+> SELECT ii.id, ii.component_id, ii.component_class_code, ii.input_class, ii.score,
+>        COALESCE(a.name, '') AS component_name
+> FROM reborn_intent_inputs ii
+> LEFT JOIN reborn_actions a
+>        ON a.id = ii.component_id AND ii.component_class_code = 16
+>        AND a.tenant_id = $1 AND a.user_id = $2 AND a.agent_id = $3 AND a.project_id = $4
+> WHERE ...
+> ```
+> Non-action matches have `component_name: ""` (empty string — harmless; never accessed).
+> Phase D adds the field to `IntentResolution::Match`; Phase E consumes it in the
+> `ActionShortCircuit` return. All destructure sites that add `step_link` must also
+> add `component_name` (or bind it as `component_name: _` if unused at that site).
+
 Update all match sites in `retrieval_source.rs` and `orchestrator.rs` that destructure
-`IntentResolution::Match { component_id, component_class_code }` to also bind `step_link`.
-Non-IBS paths treat `None` as a legacy match and fall through to `fetch_component_by_id` unchanged.
+`IntentResolution::Match { component_id, component_class_code }` to also bind `step_link`
+and `component_name`. Non-IBS paths treat `None` step_link as a legacy match.
 
 #### Updated `fetch_for_turn` flow
 
@@ -2184,15 +2220,16 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   ```
   **`RecipeVariant` shape** (one entry per distinct intent — §0.3; stored in the
   `variants` JSONB column added by V050):
+  > **⚠️ FIND-P5-03 — canonical definition is in the "Files to modify" section below.**
+  > See the "RecipeVariant (canonical, persisted in `variants` JSONB)" block below the
+  > naming-collision note. The definition here is the same but uses the authoritative field
+  > names. The `name` field shown here equals `variant_key` in the canonical definition.
   ```rust
   use crate::memory::instruction_builder::VariablePattern;  // sole home is instruction_builder.rs
 
-  pub struct RecipeVariant {
-      pub name:              String,                  // variant id, e.g. "ls-la"
-      pub step_link:         Option<String>,          // points into step_descriptions (§0.3)
-      pub variable_patterns: Vec<VariablePattern>,   // §0.17.3; empty = positional slot names
-      pub intent_examples:   Vec<String>,             // authored; seeded to reborn_intent_inputs on save
-  }
+  // See canonical definition with variant_key / step_link / intent_examples / variable_patterns
+  // in the "Files to modify" block below (FIND-P5-03 canonical definition).
+  // DO NOT implement two different shapes — use the canonical definition only.
   ```
   Note: `dependency_registry` is also added to `ToolSkill`, `Skill`, `PythonCode`,
   and all other component types that participate in dependency traversal. Each component
@@ -2261,13 +2298,27 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   > naming collision: the IBS type is named `IbsRecipeStep` in `instruction_builder.rs`; the
   > existing v2 `RecipeStep` in `types/recipe.rs` is NOT renamed (backward compatibility).
 
-  `RecipeVariant`:
+  > **⚠️ FIND-P5-03 — `RecipeVariant` has two inconsistent definitions in this plan.**
+  > The earlier block (§0.3 "Intent Variants") shows a `name` field; the block immediately
+  > above shows both a `name` field AND a `step_link: Option<String>`. The canonical
+  > persisted struct must be consistent. Resolved: use the definition below. The `name`
+  > field from the §0.3 example is the same as `variant_key`. There is NO separate `label`
+  > field — `variant_key` is the only human-readable identifier. `step_link` is nullable
+  > (`Option<String>`) because legacy Recipe rows have no step_link until Phase D re-seeds
+  > their intent examples.
+
+  `RecipeVariant` (canonical, persisted in `variants` JSONB):
   ```rust
   pub struct RecipeVariant {
-      pub variant_key: String,       // human label only; IBS uses step_link, not this
-      pub label: String,
+      /// Human-readable variant identifier (e.g. "ls-la"). Used by WebUI only.
+      pub variant_key: String,
+      /// Direct IBS input — the step_link formula for this variant.
+      /// None for legacy variants not yet migrated to v3 intent inputs.
+      pub step_link: Option<String>,
+      /// Intent expressions for this variant — seeded into reborn_intent_inputs on save.
       pub intent_examples: Vec<String>,
-      pub step_link: String,         // direct IBS input
+      /// Optional post-extraction refinement for slot values (§0.17.3).
+      /// Empty = positional auto-extraction only.
       pub variable_patterns: Vec<VariablePattern>,
   }
   ```
@@ -2428,12 +2479,27 @@ Same engine files as Phase B, but for class 23:
   > |------|-------|-------------|-------------|
   > | `intent_system.rs:254` | lowercase snake_case | `22 => "python_code"` | `23 => "extension_catalogue"` |
   > | `interceptor_config_service.rs:65` | returns `&'static str`, mixed case | `22 => "PythonCode"` | `23 => "Catalogue"` |
-  > | `recipe_store.rs:861` | title-case `.to_string()` | `22 => "PythonCode".to_string()` | `23 => "Catalogue".to_string()` |
+  > | `recipe_store.rs:861` | display-label style `.to_string()` | `22 => "PythonCode".to_string()` | `23 => "Catalogue".to_string()` |
+  >
+  > **⚠️ FIND-P5-01 — `recipe_store.rs` uses user-facing DISPLAY labels, not class-name labels:**
+  > Verified `recipe_store.rs:861-882`: this function uses descriptive display labels —
+  > e.g. `13 => "Guide"` (not "ToolSkill"), `14 => "Reference"` (not "Plan"), `17 => "Template"`,
+  > `18 => "Snippet"`, `19 => "Config"`, `20 => "Workflow"`. However, it also uses single-word
+  > names: `0 => "Tool"`, `16 => "Action"`, `21 => "Recipe"`. The Phase B/C additions
+  > `22 => "PythonCode"` and `23 => "Catalogue"` fit the single-word pattern.
+  > These display labels are NOT the same as the `intent_system.rs` class labels and are used
+  > only for WebUI display. The test assertion `recipe_store::class_label(22) == "PythonCode"`
+  > is correct as stated.
   >
   > The `interceptor_config_service.rs` copy also has its return type annotated as `&'static str`
   > (not `String`), so the match arms must use string literals `"PythonCode"`, not
   > `.to_string()`. Keep the return type and style consistent with each copy.
   > The `recipe_store.rs` copy returns `String` via `.to_string()` — use `"PythonCode".to_string()` there.
+  >
+  > **Type note — `class_code` parameter:** Both `recipe_store.rs:861` and
+  > `interceptor_config_service.rs:65` take `u16` as the `class_code` parameter type.
+  > The new arms are just `22 =>` and `23 =>` (Rust infers `u16` from the match context).
+  > No cast or type annotation needed.
   > **✅ Review note (pre-v3 audit) — RESOLVED (obsolete, do not implement):** as with Phase B, the previously-planned `23 => 0.38`
   > arm on `doc_type_weight_by_class(i32)` in `retrieval_source.rs` is obsolete — that
   > function was already removed; see §0.11 review note. No weight arm to add.
@@ -2494,8 +2560,9 @@ Same engine files as Phase B, but for class 23:
 #### Files to modify
 
 - `crates/brassclaw_engine/src/memory/intent_system.rs`
-  Add `step_link: Option<String>` to `IntentResolution::Match`.
-  Update the resolution query to `SELECT ... step_link FROM reborn_intent_inputs`.
+  Add BOTH `step_link: Option<String>` AND `component_name: String` to `IntentResolution::Match`.
+  (See §0.8 / FIND-P5-06 — `component_name` is needed for `ActionShortCircuit` in Phase E.)
+  Update the resolution query to `SELECT ..., step_link, COALESCE(a.name, '') AS component_name FROM ...` with the LEFT JOIN shown in FIND-P5-06.
   Update `seed_intent_input` to accept and store `step_link`.
   > **⚠️ FIND-NEW-03 — `seed_intent_input` extension is fully specified here (verified
   > against `intent_system.rs:463-505`).** The live function has 7 params and an INSERT
@@ -2549,14 +2616,17 @@ Same engine files as Phase B, but for class 23:
   > Confirmed at `intent_system.rs:433–455`: `record_disambiguation_choice` takes
   > `(pool, scope, row_id, component_id, component_class_code)` as parameters (no `step_link`)
   > and returns `Ok(IntentResolution::Match { component_id, component_class_code })` at line 451.
-  > When `step_link: Option<String>` is added to the `Match` variant, this return statement must
-  > be updated to include `step_link: None`. This is the correct semantics: a user who clicked
-  > a disambiguation button confirmed a `component_id` — the caller then re-fetches the recipe
+  > When `step_link: Option<String>` and `component_name: String` are added to the `Match`
+  > variant, this return statement must be updated to include `step_link: None` AND
+  > `component_name: String::new()`. This is the correct semantics: a user who clicked a
+  > disambiguation button confirmed a `component_id` — the caller then re-fetches the recipe
   > row for its `step_link`. `step_link: None` here instructs the caller to use the legacy
   > `fetch_component_by_id` path, which for a Recipe match will fall through to the intent-less
   > retrieval path (acceptable post-disambiguation — the full IBS path with step_link is taken
-  > on the _next_ turn when the user's text directly matches the intent). Either way this is a
-  > **mandatory compile-time update site** — the compiler will catch it.
+  > on the _next_ turn when the user's text directly matches the intent).
+  > `component_name: String::new()` for disambiguation is acceptable — the disambiguation
+  > result is always a Recipe/Skill, never an Action (Actions are matched unambiguously).
+  > Either way this is a **mandatory compile-time update site** — the compiler will catch it.
 
 - All call sites that destructure `IntentResolution::Match { component_id, component_class_code }`:
   bind `step_link` as well. Non-IBS paths treat `None` as a legacy match (unchanged behaviour).
@@ -2603,8 +2673,11 @@ Same engine files as Phase B, but for class 23:
 
 #### Tests
 
-- Unit: intent row with `step_link` → `IntentResolution::Match { step_link: Some(...) }`
-- Unit: intent row without `step_link` → `IntentResolution::Match { step_link: None }` → existing path unchanged
+- Unit: intent row with `step_link` → `IntentResolution::Match { step_link: Some(...), component_name: "" }`
+- Unit: intent row without `step_link` → `IntentResolution::Match { step_link: None, component_name: "" }` → existing path unchanged
+- Unit: class-16 intent row → `IntentResolution::Match { component_class_code: 16, component_name: "daily-sync" }` — name populated from LEFT JOIN
+- Unit: class-21 intent row → `IntentResolution::Match { component_class_code: 21, component_name: "" }` — empty name for non-Action matches
+- Unit: `record_disambiguation_choice` → `IntentResolution::Match { step_link: None, component_name: "" }` — both new fields set correctly
 
 ---
 
@@ -2735,10 +2808,20 @@ production retrieval path breaks." E.0 is that wiring sub-task, pulled forward.
   Keep `RamSource` importable (Phase K.3 deletes it).
 
 - **Files to modify in the composition layer (FIND-02):**
-  - `crates/brassclaw_engine/src/runtime/manager.rs` — add pool/source override field + builder
-  - `crates/brassclaw_engine/src/runtime/mission.rs` — pass pool/source through to `ThreadManager::new`
-  - `crates/brassclaw_engine/src/runtime/conversation.rs` — same
-  - `crates/brassclaw_reborn_composition/src/factory.rs` — call the builder with `pg_pool` after constructing the engine runtime. The `pg_pool` is already available here.
+  - `crates/brassclaw_engine/src/runtime/manager.rs` — add pool/source override field + builder.
+    **⚠️ FIND-P5-02 — ALL 8 `ThreadManager::new` call sites must be updated:**
+    Verified by grep: `ThreadManager::new` is called at:
+    - `manager.rs:1132`, `manager.rs:1160`, `manager.rs:1192` — internal test-helper
+      factory functions. Add `pg_pool: None` here (no pool available in test helpers).
+    - `mission.rs:3916`, `mission.rs:4250` — `MissionManager` construction functions.
+      Thread the optional pool through the `MissionManager` builder/constructor too.
+    - `conversation.rs:856`, `conversation.rs:925`, `conversation.rs:1041` —
+      `ConversationManager` construction functions. Same: thread optional pool through.
+    Every call site must be updated atomically or the code will not compile
+    (`ThreadManager::new` arity changes). Do not miss the 3 `manager.rs` internal sites.
+  - `crates/brassclaw_engine/src/runtime/mission.rs` — pass pool/source through to `ThreadManager::new` (at lines 3916 and 4250)
+  - `crates/brassclaw_engine/src/runtime/conversation.rs` — same (at lines 856, 925, 1041)
+  - `crates/brassclaw_reborn_composition/src/factory.rs` — call the builder with `pg_pool` after constructing the engine runtime. The `pg_pool` is already available here (`services.pg_pool` at line ~257, set to `Some(Arc::clone(&pg_pool_arc))` at line ~577).
 
 #### Acceptance (must be verified live, not just unit-tested)
 
@@ -2789,6 +2872,21 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
   - Extend `FetchForTurnResult` with `ActionShortCircuit` and `SplitResult` variants (§0.8).
   - Extend `TurnRoutingSignals` struct.
   - Update `PostgresSource::fetch_for_turn`:
+    > **⚠️ FIND-P5-06 — class-16 detection must happen BEFORE `fetch_component_by_id`.** The
+    > current code at `retrieval_source.rs:516-525` calls `fetch_component_by_id(pool, scope,
+    > component_id, component_class_code)` for ALL match class codes, then returns
+    > `Components([item])`. Phase E must restructure the dispatch to detect `class_code == 16`
+    > IMMEDIATELY after `resolve_intent` returns, before ANY `fetch_component_by_id` call, and
+    > return `ActionShortCircuit { component_id, name }` directly. The `name` for the
+    > `ActionShortCircuit` must be fetched from the `reborn_actions` table (a separate
+    > single-column `SELECT name FROM reborn_actions WHERE id = $1` query), NOT by calling
+    > `fetch_component_by_id` (which returns the full component). Or alternatively, `resolve_intent`
+    > could be extended to return `name` alongside `component_id` for class-16 matches.
+    > The cleanest approach: add a `name: String` to `IntentResolution::Match` so the name
+    > is available from the intent-resolution result itself (it is already in `reborn_intent_inputs`
+    > via the component's `name` field — no separate fetch needed). Alternatively fetch it with
+    > a lightweight targeted query. **Do NOT call `fetch_component_by_id` for a class-16 match
+    > and then discard the result** — that is an unnecessary DB round-trip.
     1. After `resolve_intent` → `Match { class_code: 16 }`: return `ActionShortCircuit`.
     2. After `resolve_intent` → `Match { class_code: 21, step_link: Some(...) }`:
        - Fetch Recipe row's `step_descriptions` JSONB + `variable_patterns`.
@@ -3040,6 +3138,19 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
     `__fetch_component__(action_uuid, 16)` (UUID sourced from the BuildInstruction step).
   - `pkr["formatted_content"]` remains supported (backward compat alias) — code that checks
     it continues to work. New code uses `pkr["orchestrator_content"]`.
+  > **⚠️ NEW FUNCTION REQUIREMENT — `execute_action_by_id` helper:**
+  > §0.9 v3 step-0 pseudocode calls `execute_action_by_id(pkr["action_component_id"], goal, state)`.
+  > This function **does not exist today** in `default.py`. Phase G must implement it alongside
+  > `execute_recipe_orchestrator_channel` (the Tier-0 Recipe helper from Phase H). Both are new
+  > Python helpers in `default.py`. `execute_action_by_id`:
+  > 1. Fetches the Action component body via `__fetch_component__(uuid, 16)` (registered in Phase F).
+  > 2. Invokes the Action execution path — either delegates to `execute_action_procedure`
+  >    (if such a function exists and handles the action's `steps` JSONB) or mirrors its logic.
+  > 3. Returns a `complete_result` (same structure as `execute_action_procedure`).
+  > The exact shape depends on how the existing Action execution works in `default.py` — read
+  > the existing `execute_action_procedure` (line ~901) before implementing this helper.
+  > Phase G scope includes writing `execute_action_by_id` as part of the `action_short_circuit`
+  > branch.
 
 #### Tests
 
@@ -3361,8 +3472,20 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
    >   The caller (`InputStage::process`) then calls
    >   `ctx.host.resolve_message_text(context, &message_ref).await` and stores in
    >   `state.last_user_text`. This requires changing the return type of
-   >   `consume_drainable_inputs` from `(bool, Vec<...>, Option<...>)` to
-   >   `(bool, Vec<...>, Option<...>, Option<LoopMessageRef>)`.
+   >   `consume_drainable_inputs`.
+   >
+   >   **⚠️ FIND-P5-04 — exact confirmed return type change:**
+   >   Current return type (confirmed from `input.rs:158-163`):
+   >   ```rust
+   >   Result<(bool, Vec<LoopInputAckToken>, Option<LoopCancelledReasonKind>), AgentLoopExecutorError>
+   >   ```
+   >   New return type with Option A:
+   >   ```rust
+   >   Result<(bool, Vec<LoopInputAckToken>, Option<LoopCancelledReasonKind>, Option<LoopMessageRef>), AgentLoopExecutorError>
+   >   ```
+   >   The 4th tuple element is the last consumed user-facing `message_ref`.
+   >   All callers of `consume_drainable_inputs` (there is exactly one: `InputStage::drain`
+   >   in `input.rs`) must destructure the 4th element and call `resolve_message_text`.
    > - **Option B (parallel extraction in `InputStage::process`):** Before calling
    >   `consume_drainable_inputs`, scan the `batch.inputs` array in `InputStage::process`
    >   to find the last user-facing input ref, resolve it via the host, then call
@@ -4783,9 +4906,14 @@ Remove from all 13 component tables: `queue_code`, `review_attempts`, `review_fe
 >   Must be updated when the columns are dropped.
 >
 > - **`component_validator.rs`** — creates `Recipe` structs with `validation_errors`.
-> - **`recipe_matcher.rs`** — reads `wilson_lower` + `tier` (NOT dropped by V058),
->   but also references `validation_errors` in some paths — audit required.
-> - Any other caller that constructs or destructures these structs.
+> - **`recipe_matcher.rs`** — reads `wilson_lower` + `tier` (NOT dropped by V058).
+>   **⚠️ FIND-P5-08:** After removing `validation_errors` / `review_feedback` /
+>   `review_attempts` / `rejected_at` from the Rust structs, `cargo check` will catch
+>   ALL struct-field references that no longer exist. Run `cargo check --all` immediately
+>   after the struct changes and resolve every error before running V058. The "audit
+>   required" is the Rust compiler, not a manual inspection.
+> - Any other caller that constructs or destructures these structs: identified fully by
+>   `cargo check` after the struct fields are removed.
 >
 > **Two-phase deploy required (zero-downtime):**
 > V058 drops columns. If the old binary is still running when V058 runs (rolling deploy),
@@ -5149,6 +5277,21 @@ User types: "show all files including hidden in /tmp"
 
 ### Tier 1 (intent match, LLM-guided)
 
+> **⚠️ FIND-P5-05 — prior diagram had wrong execution order (FIND-16). Redrawn.**
+> Python step-0 (`__assemble_prior_knowledge__`) runs PRE-LLM inside PromptStage
+> (via `run_step_zero`). `CapabilityStage` handles POST-LLM tool execution (steps 1+).
+> The old wrong diagram is removed.
+
+> **FIND-15 — Tier 1 dual-path intent (DELIBERATE):** the recipe hint reaches the LLM
+> via TWO paths:
+> (1) PromptStage calls `build_prompt_bundle` → `request.recipe_hint` is set →
+>     host prepends orchestrator_items to the LLM prompt bundle (LLM sees it).
+> (2) Python step-0 (via `run_step_zero` in PromptStage) calls `__assemble_prior_knowledge__` →
+>     handler reads the stash → returns `pkr["orchestrator_content"]` (Python uses it to
+>     direct the Rust executioner after the LLM responds).
+> Both injections are INTENTIONAL and complementary: LLM path = pre-turn prompt guidance;
+> Python path = post-LLM execution direction.
+
 ```
 User types: "edit main.rs and refactor the error handler"
 (wilson_lower = 0.61 — confident match, but llm_call_required = true)
@@ -5170,53 +5313,40 @@ User types: "edit main.rs and refactor the error handler"
 │   routing.tier0_eligible = false (wilson_lower=0.61 < 0.70 or llm_call_required=true)
 │   serialize orchestrator_items → state.recipe_hint        (JSONB stash)
 │   serialize rust_items        → state.recipe_rust_context (JSONB stash)
-│   return PostRecipeOutcome::NeedsPrompt → (does NOT skip PromptStage/ModelStage)
-│
-│
-│   ⚠️ FIND-16 FIX — THIS DIAGRAM IS IN THE WRONG ORDER. Python step-0
-│   (`__assemble_prior_knowledge__`) runs BEFORE the LLM call. The correct order is:
-│   PromptStage invokes ctx.host.run_step_zero() → Python step-0 unstashes
-│   recipe_hint → pkr returned → prompt bundle assembled → LLM called guided by bundle.
-│   The "CapabilityStage" block BELOW is post-LLM capability EXECUTION (steps 1+),
-│   NOT step-0. The diagram is kept as-is for backward reference but implementers
-│   MUST follow the corrected flow described in Phase H item 6 / §H.0 §H5.
-│   (FIND-16 in the review findings — diagram should be redrawn before Phase H.)
-│
-│   ⚠️ FIND-15 NOTE — Tier 1 dual-path intent (DELIBERATE, document explicitly):
-│   For Tier 1, the recipe hint reaches the LLM via TWO paths:
-│   (1) PromptStage calls ctx.host.build_prompt_bundle() → request.recipe_hint is set →
-│       host prepends orchestrator_items to the LLM prompt bundle (LLM sees it).
-│   (2) Python step-0 calls __assemble_prior_knowledge__() → handler reads the stash →
-│       returns pkr["orchestrator_content"] (Python orchestrator sees it and uses it to
-│       direct the Rust executioner after the LLM responds).
-│   Both injections are INTENTIONAL: the LLM is guided by the prompt, and Python is
-│   informed about the loaded components to correctly dispatch tool calls post-LLM.
-│   These are complementary, not duplicate — the LLM path is pre-turn guidance, the
-│   Python path is post-turn execution direction.
+│   return PostRecipeOutcome::NeedsPrompt (does NOT skip PromptStage/ModelStage)
 │
 ├─ [PromptStage]
-│   NOTE: PromptStage calls ctx.host.build_prompt_bundle(context_request).
-│   FIND-11 FIX: PromptStage copies state.recipe_hint → request.recipe_hint field.
-│   Host reads request.recipe_hint and prepends orchestrator items to prompt bundle
-│   before the UNION ALL scan. PromptStage does NOT clear state.recipe_hint (COMP-03).
-│   ctx.host.run_step_zero() is also called here (pre-LLM) → Python step-0 unstashes
-│   recipe_hint → pkr returned → state.recipe_hint cleared (consumed — one-shot).
+│   rust_items applied to Rust execution context from state.recipe_rust_context (pre-LLM)
+│   PromptStage calls ctx.host.build_prompt_bundle(context_request).
+│   FIND-11: PromptStage copies state.recipe_hint → request.recipe_hint.
+│   Host reads request.recipe_hint, prepends orchestrator items to bundle (LLM sees it).
+│   PromptStage does NOT clear state.recipe_hint (COMP-03 — Python step-0 clears it).
 │
-├─ [InterceptorStage]  Sempai reviews outgoing prompt (recipe hint visible to Sempai)
+│   ctx.host.run_step_zero(context, &state.recipe_hint) called here (PRE-LLM):
+│     → Python step-0 starts
+│     → pkr = __assemble_prior_knowledge__(goal, budget, "02")
+│     → handler checks state.recipe_hint → SET → unstash (skips fetch_for_turn)
+│     → clears state.recipe_hint (consumed — one-shot)
+│     → pkr["orchestrator_content"]:
+│         ## [Skill: file-editing]
+│           <skill body>
+│         ## [PythonCode: patch-formatter]
+│           <pythoncode body>
+│     → pkr["matched_component_ids"]: [uuid-edit-skill, uuid-patch-formatter]
+│     → pkr["tier_zero"]: false, pkr["override_prompt_creation"]: false (Tier 1 uses LLM)
+│     → Python step-0 inserts orchestrator_content into working_messages
+│     → run_step_zero returns PriorKnowledgeBundle to host
+│   → prompt bundle assembled with orchestrator context
 │
-├─ [ModelStage]        LLM call with injected recipe context
+├─ [InterceptorStage]  Sempai reviews assembled prompt (recipe hint visible to Sempai)
 │
-├─ [CapabilityStage / Python execution]
-│   Post-LLM: Python steps 1+ execute tool calls from model response.
-│   (Step-0 already ran in PromptStage — see FIND-16 correction above.)
-│   pkr["orchestrator_content"] was returned by step-0 (pre-LLM):
-│       ## [Skill: file-editing]
-│         <skill body>
-│       ## [PythonCode: patch-formatter]
-│         <pythoncode body>
-│     pkr["override_prompt_creation"]: false (Tier 1 uses LLM)
-│   → LLM guided by skill bodies; capability calls execute via pre-loaded rust_context
-│   → rust_items applied from state.recipe_rust_context before Python starts
+├─ [ModelStage]        LLM call — guided by injected orchestrator_content
+│
+├─ [CapabilityStage / Python execution — POST-LLM, steps 1+]
+│   Python receives LLM response. Tool calls in the response are executed by
+│   the capability stage. Rust execution context already has rust_items applied
+│   (loaded from state.recipe_rust_context before Python started).
+│   → LLM-directed tool calls use pre-loaded skill bodies and ToolSkill bindings
 │
 └─ [AssistantReplyStage]  emit LLM response; Wilson score updated
 ```
