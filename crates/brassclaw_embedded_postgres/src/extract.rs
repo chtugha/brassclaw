@@ -218,7 +218,10 @@ fn extract_flat_tarball(bytes: &[u8], dest: &Path) -> Result<(), EmbeddedPostgre
     let gz = GzDecoder::new(bytes);
     let mut archive = tar::Archive::new(gz);
 
-    for entry in archive.entries().map_err(|e| EmbeddedPostgresError::InitDb(e.to_string()))? {
+    for entry in archive
+        .entries()
+        .map_err(|e| EmbeddedPostgresError::InitDb(e.to_string()))?
+    {
         let mut entry = entry.map_err(|e| EmbeddedPostgresError::InitDb(e.to_string()))?;
         let entry_path = entry
             .path()
@@ -245,12 +248,11 @@ fn extract_flat_tarball(bytes: &[u8], dest: &Path) -> Result<(), EmbeddedPostgre
         #[cfg(unix)]
         let mode = entry.header().mode().ok();
 
-        let mut out_file = std::fs::File::create(&out_path).map_err(|e| {
-            EmbeddedPostgresError::Io {
+        let mut out_file =
+            std::fs::File::create(&out_path).map_err(|e| EmbeddedPostgresError::Io {
                 path: out_path.display().to_string(),
                 reason: e.to_string(),
-            }
-        })?;
+            })?;
         std::io::copy(&mut entry, &mut out_file).map_err(|e| EmbeddedPostgresError::Io {
             path: out_path.display().to_string(),
             reason: e.to_string(),

@@ -18,8 +18,7 @@ use std::process::Command;
 const PG_VERSION: &str = "16.4.0";
 const PG_BASE_URL: &str = "https://github.com/theseus-rs/postgresql-binaries/releases/download";
 const PGVECTOR_VERSION: &str = "0.8.0";
-const PGVECTOR_URL: &str =
-    "https://github.com/pgvector/pgvector/archive/refs/tags/v0.8.0.tar.gz";
+const PGVECTOR_URL: &str = "https://github.com/pgvector/pgvector/archive/refs/tags/v0.8.0.tar.gz";
 
 // ── per-platform checksums (must stay in sync with checksums.rs) ──────────────
 fn expected_pg_sha256(target: &str) -> Option<&'static str> {
@@ -73,7 +72,10 @@ fn main() {
         if !pgvector_archive.exists() {
             std::fs::write(&pgvector_archive, b"").expect("write placeholder");
         }
-        println!("cargo:rustc-env=EMBEDDED_PG_ARCHIVE={}", pg_archive.display());
+        println!(
+            "cargo:rustc-env=EMBEDDED_PG_ARCHIVE={}",
+            pg_archive.display()
+        );
         println!(
             "cargo:rustc-env=EMBEDDED_PGVECTOR_ARCHIVE={}",
             pgvector_archive.display()
@@ -97,13 +99,18 @@ fn main() {
             pg_archive.display()
         );
     }
-    println!("cargo:rustc-env=EMBEDDED_PG_ARCHIVE={}", pg_archive.display());
+    println!(
+        "cargo:rustc-env=EMBEDDED_PG_ARCHIVE={}",
+        pg_archive.display()
+    );
 
     // ── Step 2: pgvector extension files ─────────────────────────────────────
     let pgvector_archive = out_dir.join("pgvector.tar.gz");
 
     if needs_pgvector_compile(&target) {
-        if !pgvector_archive.exists() || pgvector_archive.metadata().map(|m| m.len()).unwrap_or(0) < 1024 {
+        if !pgvector_archive.exists()
+            || pgvector_archive.metadata().map(|m| m.len()).unwrap_or(0) < 1024
+        {
             if !try_build_pgvector(&out_dir, &pg_archive, &pgvector_archive, &target) {
                 // Build failed (e.g. missing SDK on macOS dev machine). Write
                 // an empty placeholder so `include_bytes!` compiles; pgvector
@@ -115,7 +122,8 @@ fn main() {
                      warn at runtime unless pgvector is available globally)"
                 );
                 if !pgvector_archive.exists() {
-                    std::fs::write(&pgvector_archive, b"").expect("write empty pgvector placeholder");
+                    std::fs::write(&pgvector_archive, b"")
+                        .expect("write empty pgvector placeholder");
                 }
             }
         } else {
@@ -294,7 +302,10 @@ fn try_build_pgvector(
     //    the installation root layout expected by install_pgvector().
     //    We normalise the paths: anything under .../lib/ becomes lib/<name>,
     //    anything under .../extension/ becomes share/extension/<name>.
-    eprintln!("build.rs: packing pgvector extension files into {}", pgvector_archive.display());
+    eprintln!(
+        "build.rs: packing pgvector extension files into {}",
+        pgvector_archive.display()
+    );
     pack_pgvector_files(&files, &staging, pgvector_archive, target);
     eprintln!("build.rs: pgvector built and packed successfully");
     true
@@ -382,12 +393,7 @@ fn collect_recursive(dir: &Path, out: &mut Vec<PathBuf>) {
 ///   `lib/vector.so` (or `lib/vector.dylib` on macOS)
 ///   `share/extension/vector.control`
 ///   `share/extension/vector--*.sql`
-fn pack_pgvector_files(
-    files: &[PathBuf],
-    _staging: &Path,
-    dest: &Path,
-    target: &str,
-) {
+fn pack_pgvector_files(files: &[PathBuf], _staging: &Path, dest: &Path, target: &str) {
     let gz = flate2::write::GzEncoder::new(
         std::fs::File::create(dest).expect("create pgvector archive"),
         flate2::Compression::best(),
@@ -467,11 +473,7 @@ fn run_or_warn(cmd: &mut Command, label: &str) -> bool {
 }
 
 /// Verify SHA-256 of `path`. Returns true if matches expected, false on mismatch/missing.
-fn verify_sha256(
-    path: &Path,
-    target: &str,
-    expected_fn: fn(&str) -> Option<&'static str>,
-) -> bool {
+fn verify_sha256(path: &Path, target: &str, expected_fn: fn(&str) -> Option<&'static str>) -> bool {
     use sha2::Digest;
     use std::io::Read;
 

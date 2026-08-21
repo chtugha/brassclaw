@@ -90,9 +90,7 @@ fn pg_hba_entries(config: &EmbeddedPostgresConfig) -> String {
     // password. The embedded PG is only accessible from the local network
     // segment; production deployments should use BRASSCLAW_PG_URL instead.
     if listen_addresses != "127.0.0.1" && listen_addresses != "localhost" {
-        entries.push_str(&format!(
-            "host  {db}  {db}  0.0.0.0/0  trust\n"
-        ));
+        entries.push_str(&format!("host  {db}  {db}  0.0.0.0/0  trust\n"));
     }
     entries
 }
@@ -181,7 +179,10 @@ pub async fn run_initdb(
         .unwrap_or_default();
     let entries = pg_hba_entries(config);
     // Only append if the first (loopback) entry is not already there (idempotency guard).
-    let loopback_entry = format!("host  {}  {}  127.0.0.1/32  trust\n", config.database, config.database);
+    let loopback_entry = format!(
+        "host  {}  {}  127.0.0.1/32  trust\n",
+        config.database, config.database
+    );
     if !existing.contains(&loopback_entry) {
         let mut updated = existing;
         updated.push_str(&entries);

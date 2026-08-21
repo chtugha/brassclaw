@@ -269,10 +269,12 @@ pub fn parse_step_link(step_link: &str) -> Result<Vec<StepRange>, IbsError> {
                 reason: "empty segment in step_link".into(),
             });
         }
-        let (left, right) = segment.split_once('-').ok_or_else(|| IbsError::ParseError {
-            formula: formula.clone(),
-            reason: format!("segment {segment:?} missing '-' separator"),
-        })?;
+        let (left, right) = segment
+            .split_once('-')
+            .ok_or_else(|| IbsError::ParseError {
+                formula: formula.clone(),
+                reason: format!("segment {segment:?} missing '-' separator"),
+            })?;
         let (left_idx, start_str) =
             parse_bound_part(left).map_err(|reason| IbsError::ParseError {
                 formula: formula.clone(),
@@ -286,9 +288,7 @@ pub fn parse_step_link(step_link: &str) -> Result<Vec<StepRange>, IbsError> {
         if left_idx != right_idx {
             return Err(IbsError::ParseError {
                 formula,
-                reason: format!(
-                    "segment {segment:?} desc_idx mismatch: {left_idx} vs {right_idx}"
-                ),
+                reason: format!("segment {segment:?} desc_idx mismatch: {left_idx} vs {right_idx}"),
             });
         }
         let start: u32 = start_str.parse().map_err(|_| IbsError::ParseError {
@@ -427,9 +427,7 @@ impl<'a> DepParser<'a> {
                 match self.chars.next() {
                     Some(']') => Some(inner),
                     other => {
-                        return Err(format!(
-                            "expected ']' after sub-expression, got {other:?}"
-                        ))
+                        return Err(format!("expected ']' after sub-expression, got {other:?}"));
                     }
                 }
             }
@@ -513,12 +511,11 @@ pub fn build_instruction(
                 reason: format!("SD{}: {reason}", range.desc_idx),
             }
         })?;
-        let end_idx = resolve_end_index(&entry.steps, &range.end).map_err(|reason| {
-            IbsError::ParseError {
+        let end_idx =
+            resolve_end_index(&entry.steps, &range.end).map_err(|reason| IbsError::ParseError {
                 formula: step_link.to_string(),
                 reason: format!("SD{}: {reason}", range.desc_idx),
-            }
-        })?;
+            })?;
         if start_idx > end_idx {
             return Err(IbsError::ParseError {
                 formula: step_link.to_string(),
@@ -546,15 +543,16 @@ pub fn build_instruction(
         }
 
         // 6. parse dependencies if present.
-        let dependencies = match step.dependencies.as_deref().map(str::trim) {
-            Some(s) if !s.is_empty() => Some(
-                parse_dep_expr_inner(s).map_err(|reason| IbsError::InvalidDependencyExpr {
-                    step_id: step_id.clone(),
-                    reason,
-                })?,
-            ),
-            _ => None,
-        };
+        let dependencies =
+            match step.dependencies.as_deref().map(str::trim) {
+                Some(s) if !s.is_empty() => Some(parse_dep_expr_inner(s).map_err(|reason| {
+                    IbsError::InvalidDependencyExpr {
+                        step_id: step_id.clone(),
+                        reason,
+                    }
+                })?),
+                _ => None,
+            };
 
         let base = IbsRecipeStep {
             step_id,
@@ -836,13 +834,28 @@ mod tests {
         let sds = vec![sd(
             0,
             vec![
-                entry(1, StepOwner::Orchestrator, RecipeStepType::Text, vec![], vec![]),
-                entry(1, StepOwner::Orchestrator, RecipeStepType::Text, vec![], vec![]),
+                entry(
+                    1,
+                    StepOwner::Orchestrator,
+                    RecipeStepType::Text,
+                    vec![],
+                    vec![],
+                ),
+                entry(
+                    1,
+                    StepOwner::Orchestrator,
+                    RecipeStepType::Text,
+                    vec![],
+                    vec![],
+                ),
             ],
         )];
         assert!(matches!(
             build_instruction("0:0-0:E", &sds, &[], true),
-            Err(IbsError::StepOrderViolation { desc_idx: 0, stepnumber: 1 })
+            Err(IbsError::StepOrderViolation {
+                desc_idx: 0,
+                stepnumber: 1
+            })
         ));
     }
 
@@ -870,8 +883,20 @@ mod tests {
         let sds = vec![sd(
             0,
             vec![
-                entry(1, StepOwner::Rust, RecipeStepType::Component, vec![uuid(3)], vec![binding("ls")]),
-                entry(2, StepOwner::Orchestrator, RecipeStepType::Component, vec![uuid(4)], vec![]),
+                entry(
+                    1,
+                    StepOwner::Rust,
+                    RecipeStepType::Component,
+                    vec![uuid(3)],
+                    vec![binding("ls")],
+                ),
+                entry(
+                    2,
+                    StepOwner::Orchestrator,
+                    RecipeStepType::Component,
+                    vec![uuid(4)],
+                    vec![],
+                ),
             ],
         )];
         let bi = build_instruction("0:0-0:E", &sds, &[], true).unwrap();
@@ -961,13 +986,16 @@ mod tests {
 
     #[test]
     fn build_instruction_unknown_desc_idx_is_error() {
-        let sds = vec![sd(0, vec![entry(
-            1,
-            StepOwner::Orchestrator,
-            RecipeStepType::Component,
-            vec![uuid(4)],
-            vec![],
-        )])];
+        let sds = vec![sd(
+            0,
+            vec![entry(
+                1,
+                StepOwner::Orchestrator,
+                RecipeStepType::Component,
+                vec![uuid(4)],
+                vec![],
+            )],
+        )];
         assert!(matches!(
             build_instruction("5:0-5:E", &sds, &[], true),
             Err(IbsError::UnknownDescIdx { desc_idx: 5 })
@@ -976,13 +1004,16 @@ mod tests {
 
     #[test]
     fn build_instruction_passes_llm_call_required_through() {
-        let sds = vec![sd(0, vec![entry(
-            1,
-            StepOwner::Orchestrator,
-            RecipeStepType::Text,
-            vec![],
-            vec![],
-        )])];
+        let sds = vec![sd(
+            0,
+            vec![entry(
+                1,
+                StepOwner::Orchestrator,
+                RecipeStepType::Text,
+                vec![],
+                vec![],
+            )],
+        )];
         let bi_tier0 = build_instruction("0:0-0:E", &sds, &[], false).unwrap();
         assert!(!bi_tier0.llm_call_required);
         let bi_tier1 = build_instruction("0:0-0:E", &sds, &[], true).unwrap();
