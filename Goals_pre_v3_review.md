@@ -236,3 +236,181 @@ The README still references `BRASSCLAW_REBORN_PROFILE` in the env var table and 
 | 9 | intent_system.rs DbLessFallback | Code — Goal 2 | Medium |
 | 10 | runtime.rs remaining fallbacks | Code — Goal 2 | Medium |
 | 11 | README.md profiles section | Documentation | Low |
+
+---
+
+## Independent Re-Audit — Additional Goal 2 Findings (Steps 12–15)
+
+> **Context:** An independent re-audit of the codebase confirmed Steps 1–11 are genuinely
+> implemented in code (not just marked `[DONE]`). **Goal 1 is fully accomplished.**
+> **Goal 2 is only partially accomplished.** The first pass missed one literal Goal 2 target
+> (a filesystem-based fallback for a postgres-less design) and left two related
+> postgres-less paths undocumented. These are recorded here as Steps 12–15.
+>
+> **Key clarification discovered during re-audit:** In production `RamSource` is constructed
+> with the engine `Store` that is backed by `PgMemoryDocStore` (`pg_memory_doc_store.rs:176`
+> `impl Store for PgMemoryDocStore`, wired in `factory.rs`/`runtime.rs`). `PgMemoryDocStore` is
+> **postgres-backed**. Therefore `RamSource` in production is **keyword-retrieval OVER postgres**
+> — it is *not* a postgres-less backend. The only genuinely "filesystem-based fallback for a
+> postgres-less design" is the optional `BRASSCLAW_FALLBACK_CONTENT_FILE` JSONL file loaded by
+> `RamSource` for "fully offline / DB-less deployments" (`retrieval_source.rs:148,164-192`).
+> This is exactly what Goal 2 targets ("All filesystem based fallback solutions for a
+> postgres-less design should be annihilated").
+
+### Step 12 — Remove `BRASSCLAW_FALLBACK_CONTENT_FILE` filesystem fallback
+
+**Status:** [TODO — implementation next]
+
+**File:** `crates/brassclaw_engine/src/memory/retrieval_source.rs` (and `memory/mod.rs`)
+
+**Problem:** `RamSource` supports a static filesystem fallback-content file
+(`BRASSCLAW_FALLBACK_CONTENT_FILE` env var, JSONL format). Its own doc comment states this is
+"for fully offline / DB-less deployments." This is a **filesystem-based fallback for a
+postgres-less design** — the literal target of Goal 2. The env var is not set in any deploy
+file or doc, so it is dormant in practice, but the code path must be annihilated per Goal 2,
+not left dormant.
+
+**Fix:** Remove `FALLBACK_CONTENT_FILE_ENV`, `FallbackEntry`, `load_fallback_file`,
+`load_fallback_file_from_env`, `RamSource::new_with_fallback`, the `RamSource.fallback_entries`
+field, `search_fallback_entries`, the fallback branch in `fetch_for_consumer`, and the
+now-dead `doc_type_weight_by_class` (if unused after removal). Update `memory/mod.rs` exports.
+Remove the tests that exercise the fallback path. `RamSource` keeps its store-backed keyword
+retrieval (which is postgres-backed in production). Run `cargo fmt` +
+`cargo clippy -p brassclaw_engine --all-targets -- -D warnings`.
+
+---
+
+### Step 13 — Eliminate the postgres-less e2e/test runtime (`--no-default-features --features libsql`)
+
+**Status:** [OPEN — subplan written: `subplan_step13_of_Goals_pre_v3_review.md`]
+
+**Problem:** The e2e harness, canary scripts, and `Dockerfile.test` build the binary with
+`--no-default-features --features libsql`. This turns the `postgres` feature **OFF**, so the
+`#[cfg(not(feature = "postgres"))]` runtime blocks (27 in `runtime.rs`, across 8 files) compile
+and run with **in-memory stores** — a postgres-less runtime. This contradicts "Postgres is
+mandatory" / AGENTS.md ("In-memory backends are acceptable for unit tests only"; e2e are
+integration tests). Note: `libsql` is now just a backward-compat alias for `migrate-from-libsql`
+(a one-way migration read path, not a storage backend), so the e2e binary has no real storage
+backend in this build — it runs entirely in-memory.
+
+**Why deferred (not blindly executed):** The clean fix is to rework the e2e/canary/`Dockerfile.test`
+build to use the `postgres` feature (embedded PG / testcontainers) and then delete the
+`#[cfg(not(feature = "postgres"))]` in-memory runtime blocks. This is a large test-infra change
+that cannot be safely executed or validated without running the full e2e suite, which is out of
+scope for this review pass.
+
+**Action — file-by-file rework (for a future task with e2e execution capability):**
+
+A. Switch build commands from `--no-default-features --features libsql` to `--features postgres`
+   and set `DATABASE_BACKEND=postgres` (embedded PG / testcontainers are already dev-deps):
+
+   | File | Line(s) | Current | Target |
+   |------|---------|---------|--------|
+   | `Dockerfile.test` | 32 | `cargo build --release --no-default-features --features libsql --bin brassclaw` | `cargo build --release --features postgres --bin brassclaw` |
+   | `Dockerfile.test` | 54 | `DATABASE_BACKEND=libsql` | `DATABASE_BACKEND=postgres` |
+   | `tests/e2e/conftest.py` | ~323 | `["cargo","build","--no-default-features","--features","libsql"]` | `["cargo","build","--features","postgres"]` |
+   | `tests/e2e/CLAUDE.md` | 78 | doc `--no-default-features --features libsql` | `--features postgres` |
+   | `tests/e2e/README.md` | 24 | `--no-default-features --features libsql` | `--features postgres` |
+   | `scripts/live_canary/common.py` | 91 | `--no-default-features --features libsql` | `--features postgres` |
+   | `scripts/live-canary/upgrade-canary.sh` | 51,58 | `--no-default-features --features libsql` | `--features postgres` |
+   | `scripts/auth_canary/README.md` | 119 | `--no-default-features --features libsql` | `--features postgres` |
+   | `scripts/replay-snap.sh` | 51 | `--no-default-features ...` | `--features postgres` |
+   | `docs/reborn/harness/e2e.md` | 133 | `--no-default-features --features libsql` | `--features postgres` |
+
+   (Historical `docs/plans/2026-02-24-*.md` references are historical records — leave unchanged.)
+
+B. Ensure the e2e harness boots embedded Postgres when `DATABASE_BACKEND=postgres` (mirror
+   `deploy/brassclaw.service`'s embedded-PG usage; `BRASSCLAW_EMBEDDED_PG_PORT` is configurable).
+
+C. Delete the now-dead `#[cfg(not(feature = "postgres"))]` blocks (keep each paired
+   `#[cfg(feature = "postgres")]` body, dropping the cfg attribute): `runtime.rs` (~27, cluster
+   at 1800–1900), `factory.rs` (824, 953), `brassclaw_reborn_event_store/src/lib.rs`,
+   `brassclaw_reborn_event_store/tests/profile_contract.rs`,
+   `brassclaw_reborn_cli/src/commands/secrets.rs`, `brassclaw_reborn_cli/src/commands/serve.rs`.
+
+D. (Optional, defer if risky) Make `postgres` non-optional in root `Cargo.toml` — strongest
+   enforcement of "Postgres is mandatory." Verify the standalone `migrate-from-libsql` tool
+   still builds first.
+
+E. After the upgrade cycle, remove the `libsql`/`migrate-from-libsql` features (Step 15).
+
+**Validation:** `cargo build --features postgres` + `cargo clippy --all ... -- -D warnings` +
+`cargo test -p brassclaw_reborn_composition` + e2e/canary green with `DATABASE_BACKEND=postgres`.
+
+A local working copy of this subplan exists at `subplan_step13_of_Goals_pre_v3_review.md`
+(gitignored by project convention — `subplan_*.md`; the actionable detail above is committed
+here so future tasks can use it).
+
+---
+
+### Step 14 — `RamSource` / `retrieval_dbless.rs` are NOT postgres-less in production (deferred to v3 Phase K)
+
+**Status:** [DONE — documented; no pre-v3 code change required]
+
+**Finding:** `RamSource` (`retrieval_source.rs`) and `retrieval_dbless.rs` are the legacy
+keyword-retrieval path. In production they wrap `PgMemoryDocStore` (postgres-backed), so they
+are keyword-retrieval **over postgres** — not a postgres-less design. They do NOT use the
+intent system (`resolve_intent` / `PostgresSource`); that intent-driven path is the v3 work.
+`PostgresSource` is fully implemented (`#[cfg(feature = "skills-db")]`, UNION ALL query) but is
+**not wired** in production (`manager.rs:383` wires `RamSource`, with the `TODO(Phase K)` added
+in Step 8).
+
+**Why no pre-v3 code change:** Replacing `RamSource` with `PostgresSource` requires wiring
+`PostgresSource` into the composition/manager path, which is v3 **Phase K** work and depends on
+earlier v3 phases. Removing `RamSource` before `PostgresSource` is wired would break the
+production retrieval path. The correct, "adjacent-to-final-state" resolution is therefore the v3
+plan's Phase K (wire `PostgresSource`, then remove `RamSource` + `retrieval_dbless.rs`).
+**Ordering constraint:** Phase K must come AFTER the `PostgresSource` wiring sub-task; otherwise
+the production retrieval path breaks.
+
+---
+
+### Step 15 — Transitional `migrate-from-libsql` / `libsql` feature (scheduled removal)
+
+**Status:** [DONE — documented; removal scheduled for a future release]
+
+**Finding:** Root `Cargo.toml` defines `migrate-from-libsql` (gates the libSQL read path used by
+the data-migration module to migrate old `reborn-local-dev.db` data INTO postgres) and `libsql`
+(a backward-compat alias). The comment states this is "Removed in the release after the upgrade
+cycle completes." This is a **one-way migration read path, not a storage backend** — it does not
+violate "Postgres is mandatory" (it migrates data INTO postgres). It is intentionally
+transitional.
+
+**Action:** Track for removal in the release after the upgrade cycle. No pre-v3 change. (When
+Step 13's subplan removes the `--no-default-features --features libsql` build, the `libsql` alias
+becomes unused and can be removed together with `migrate-from-libsql`.)
+
+---
+
+## Updated Summary Table
+
+| Step | Area | Type | Severity |
+|------|------|------|----------|
+| 1 | deploy/brassclaw.service, deploy/dietpi-setup.sh | Deployment | High |
+| 2 | README.md, docs/ | Documentation | Medium |
+| 3 | runtime.rs SubagentGoalStore | Code — Goal 2 | High |
+| 4 | runtime.rs OutboundStore | Code — Goal 2 | High |
+| 5 | factory.rs SecretStore | Code — Goal 2 | Medium (verify scope first) |
+| 6 | webui.rs RecipeStore | Code — Goal 2 | High |
+| 7 | runtime.rs RecipeLibrary | Code — Goal 2 | High |
+| 8 | retrieval_source.rs RamSource | Code — Goal 2 | Medium (Phase K will delete; gate now) |
+| 9 | intent_system.rs DbLessFallback | Code — Goal 2 | Medium |
+| 10 | runtime.rs remaining fallbacks | Code — Goal 2 | Medium |
+| 11 | README.md profiles section | Documentation | Low |
+| 12 | retrieval_source.rs BRASSCLAW_FALLBACK_CONTENT_FILE filesystem fallback | Code — Goal 2 | High |
+| 13 | e2e/canary/Dockerfile.test `--no-default-features --features libsql` postgres-less build + `#[cfg(not(feature = "postgres"))]` blocks | Code/Infra — Goal 2 | High (subplan, deferred) |
+| 14 | RamSource/retrieval_dbless = keyword-over-postgres (not postgres-less); Phase K wiring | Code — v3 Phase K | Medium (documented; no pre-v3 change) |
+| 15 | transitional `migrate-from-libsql`/`libsql` feature | Code — transitional | Low (scheduled removal) |
+
+### Goal Accomplishment Verdict
+
+- **Goal 1 (no installation profiles):** **FULLY ACCOMPLISHED.** `RebornCompositionProfile`
+  removed; `BRASSCLAW_REBORN_PROFILE` is a hard startup error; deploy + docs use
+  `BRASSCLAW_RUNTIME_PROFILE` (the per-invocation capability policy, which is intentionally
+  retained and is NOT an installation profile).
+- **Goal 2 (no postgres-less design, postgres mandatory):** **PARTIALLY ACCOMPLISHED after
+  Step 12.** All silent in-memory production fallbacks removed (Steps 3,4,6,7,9); the
+  filesystem fallback annihilated (Step 12); production retrieval is postgres-backed
+  (`PgMemoryDocStore`). Remaining: the e2e/test postgres-less build (Step 13, subplan) and the
+  legacy keyword-vs-intent retrieval swap (Step 14, v3 Phase K). The transitional migration
+  feature (Step 15) is intentional and scheduled for removal.
