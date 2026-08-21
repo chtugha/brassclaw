@@ -8262,19 +8262,20 @@ validation_status: "validated"
 ### Step 20.3 — PythonCode: `pc-web-search-query-build` (class 22)
 
 > Utility helper: builds a URL-encoded search query string from a natural-language query.
+> Uses the same pure built-in percent-encoding logic as pc-url-encode — no imports.
 
 ```
 name:        "pc-web-search-query-build"
 class_code:  22
 description: "PythonCode helper: URL-encode a search query for embedding in an API URL.
-              Input: raw query string. Output: URL-encoded query string."
+              No imports — uses pure built-in percent-encoding (same as pc-url-encode).
+              Input: raw query string. Output: {encoded, raw}."
 content: |
-  # Pure orchestrator body — no imports. URL-encodes a query string for use in a search URL.
-  # Uses pc-url-encode (class 22) which is the canonical url-encoding helper.
-  # Alternatively: call __execute_action__("url_encode", ...) if a tool is wired.
-  # This helper calls pc-url-encode logic inline via __execute_action__ for portability.
-  _raw_query = "{{vars.slot0}}"
-  result = __execute_action__("url_encode", {"value": _raw_query.strip()})
+  # No imports — pure built-in percent-encoding (mirrors pc-url-encode logic).
+  _raw = "{{vars.slot0}}".strip()
+  _safe = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+  _encoded = "".join(c if c in _safe else "%" + format(ord(c), "02X") for c in _raw)
+  result = {"encoded": _encoded, "raw": _raw}
 consumer_tags: ["02:orchestrator"]
 source:        "system"
 validation_status: "validated"
@@ -9028,17 +9029,20 @@ validation_status: "validated"
 
 ### Step 4.x.4 — PythonCode: `pc-url-encode` (class 22)
 
-> Pure logic: URL-encodes a string. Placed near list_dir helpers for convenience;
+> Pure logic: URL-encodes a string. No `import` statements — uses only built-in Python
+> character-by-character percent-encoding. Placed near list_dir helpers for convenience;
 > used by HTTP and web-search recipes.
 
 ```
 name:        "pc-url-encode"
 description: "Pure-logic helper: URL-encodes a string (percent-encoding, spaces as %20).
+              No imports — uses pure built-in character-by-character encoding.
               Input: raw string. Output: {encoded, raw}."
 content: |
-  import urllib.parse as _up
-  _raw = "{{vars.slot0}}"
-  _encoded = _up.quote(_raw.strip(), safe="")
+  # No imports — pure built-in percent-encoding. Covers all non-unreserved chars.
+  _raw = "{{vars.slot0}}".strip()
+  _safe = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+  _encoded = "".join(c if c in _safe else "%" + format(ord(c), "02X") for c in _raw)
   result = {"encoded": _encoded, "raw": _raw}
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
@@ -9812,7 +9816,8 @@ child_component_ids: [
   "<uuid:skill-list-dir-dirs-only>",
   "<uuid:file-list>",
   "<uuid:file-list-recursive>",
-  "<uuid:file-list-files-only>"
+  "<uuid:file-list-files-only>",
+  "<uuid:file-list-dirs-only>"
 ]
 source: "system"
 validation_status: "validated"
@@ -10378,6 +10383,10 @@ child_component_ids: [
   "<uuid:pc-exec-shell-git-remote>",
   "<uuid:pc-exec-shell-git-show-stat>",
   "<uuid:pc-exec-shell-git-tag-list>",
+  "<uuid:pc-exec-shell-git-diff-name-only>",
+  "<uuid:pc-exec-shell-git-log-stat>",
+  "<uuid:pc-exec-shell-git-stash-show>",
+  "<uuid:pc-exec-shell-git-config-list>",
   "<uuid:pc-exec-shell-pwd>",
   "<uuid:pc-exec-shell-df>",
   "<uuid:pc-exec-shell-ps>",
@@ -10399,6 +10408,10 @@ child_component_ids: [
   "<uuid:skill-shell-git-remote>",
   "<uuid:skill-shell-git-show-stat>",
   "<uuid:skill-shell-git-tag-list>",
+  "<uuid:skill-shell-git-diff-name-only>",
+  "<uuid:skill-shell-git-log-stat>",
+  "<uuid:skill-shell-git-stash-show>",
+  "<uuid:skill-shell-git-config-list>",
   "<uuid:skill-shell-pwd>",
   "<uuid:skill-shell-df>",
   "<uuid:skill-shell-ps>",
@@ -10420,6 +10433,11 @@ child_component_ids: [
   "<uuid:shell-git-remote>",
   "<uuid:shell-git-show-stat>",
   "<uuid:shell-git-tag-list>",
+  "<uuid:shell-git-diff-name-only>",
+  "<uuid:shell-git-log-stat>",
+  "<uuid:shell-git-stash-show>",
+  "<uuid:shell-git-config-list>",
+  "<uuid:shell-git-fetch>",
   "<uuid:shell-pwd>",
   "<uuid:shell-df>",
   "<uuid:shell-ps>",
@@ -10437,7 +10455,22 @@ child_component_ids: [
   "<uuid:skill-shell-safe-check>",
   "<uuid:skill-shell>",
   "<uuid:shell-run>",
-  "<uuid:shell-script>"
+  "<uuid:shell-script>",
+
+  "<uuid:pc-exec-shell-git-add>",
+  "<uuid:pc-exec-shell-git-commit>",
+  "<uuid:pc-exec-shell-git-push>",
+  "<uuid:pc-exec-shell-git-pull>",
+  "<uuid:pc-exec-shell-git-fetch>",
+  "<uuid:skill-shell-git-add>",
+  "<uuid:skill-shell-git-commit>",
+  "<uuid:skill-shell-git-push>",
+  "<uuid:skill-shell-git-pull>",
+  "<uuid:skill-shell-git-fetch>",
+  "<uuid:shell-git-add>",
+  "<uuid:shell-git-commit>",
+  "<uuid:shell-git-push>",
+  "<uuid:shell-git-pull>"
 ]
 source: "system"
 validation_status: "validated"
@@ -10530,8 +10563,14 @@ child_component_ids: [
   "<uuid:trigger_list>",
   "<uuid:ts-trigger-list>",
   "<uuid:pc-exec-trigger-list>",
+  "<uuid:pc-exec-trigger-list-active>",
+  "<uuid:pc-exec-trigger-list-scheduled>",
   "<uuid:skill-trigger-list>",
+  "<uuid:skill-trigger-list-active>",
+  "<uuid:skill-trigger-list-scheduled>",
   "<uuid:trigger-list>",
+  "<uuid:trigger-list-active>",
+  "<uuid:trigger-list-scheduled>",
 
   "<uuid:trigger_create>",
   "<uuid:ts-trigger-create>",
@@ -11073,12 +11112,35 @@ child_component_ids: [
   "<uuid:shell-run>",
   "<uuid:shell-script>",
 
+  "<uuid:pc-exec-shell-git-add>",
+  "<uuid:pc-exec-shell-git-commit>",
+  "<uuid:pc-exec-shell-git-push>",
+  "<uuid:pc-exec-shell-git-pull>",
+  "<uuid:pc-exec-shell-git-fetch>",
+  "<uuid:skill-shell-git-add>",
+  "<uuid:skill-shell-git-commit>",
+  "<uuid:skill-shell-git-push>",
+  "<uuid:skill-shell-git-pull>",
+  "<uuid:skill-shell-git-fetch>",
+  "<uuid:shell-git-add>",
+  "<uuid:shell-git-commit>",
+  "<uuid:shell-git-push>",
+  "<uuid:shell-git-pull>",
+
   "<uuid:builtin.spawn_subagent>",
   "<uuid:ts-spawn-subagent>",
   "<uuid:skill-spawn-subagent>",
   "<uuid:skill-spawn-named-procedure>",
+  "<uuid:skill-spawn-research>",
+  "<uuid:skill-spawn-coding>",
+  "<uuid:skill-spawn-exploration>",
+  "<uuid:skill-spawn-query>",
   "<uuid:skill-subagent>",
   "<uuid:subagent-spawn>",
+  "<uuid:subagent-research>",
+  "<uuid:subagent-coding>",
+  "<uuid:subagent-exploration>",
+  "<uuid:subagent-query>",
 
   "<uuid:builtin.trigger_create>",
   "<uuid:ts-trigger-create>",
@@ -11088,8 +11150,14 @@ child_component_ids: [
   "<uuid:builtin.trigger_list>",
   "<uuid:ts-trigger-list>",
   "<uuid:pc-exec-trigger-list>",
+  "<uuid:pc-exec-trigger-list-active>",
+  "<uuid:pc-exec-trigger-list-scheduled>",
   "<uuid:skill-trigger-list>",
+  "<uuid:skill-trigger-list-active>",
+  "<uuid:skill-trigger-list-scheduled>",
   "<uuid:trigger-list>",
+  "<uuid:trigger-list-active>",
+  "<uuid:trigger-list-scheduled>",
 
   "<uuid:builtin.trigger_remove>",
   "<uuid:ts-trigger-remove>",
@@ -11183,17 +11251,25 @@ child_component_ids: [
   "<uuid:ts-time-now>",
   "<uuid:ts-time-parse>",
   "<uuid:ts-time-convert>",
+  "<uuid:ts-time-diff>",
+  "<uuid:ts-time-format>",
   "<uuid:pc-exec-time-now>",
   "<uuid:pc-exec-time-parse>",
   "<uuid:pc-exec-time-convert>",
+  "<uuid:pc-exec-time-diff>",
+  "<uuid:pc-exec-time-format>",
   "<uuid:skill-time-now>",
   "<uuid:skill-time-parse>",
   "<uuid:skill-time-convert>",
+  "<uuid:skill-time-diff>",
+  "<uuid:skill-time-format>",
   "<uuid:skill-time>",
   "<uuid:time-now>",
   "<uuid:time-now-tz>",
   "<uuid:time-parse>",
   "<uuid:time-convert>",
+  "<uuid:time-diff>",
+  "<uuid:time-format>",
 
   "<uuid:builtin.json>",
   "<uuid:ts-json-query>",
@@ -11223,12 +11299,99 @@ validation_status: "validated"
 
 ---
 
-## Step 1.x.18 — Git Write Operations (§shell-guard-custom, Tier 1) {
+## Step 1.x.18 — Git Write Operations (§shell-guard-custom, Tier 1)
 
-> Git write operations (commit, push, pull, fetch) involve user-supplied commit messages,
-> remote names, branch names, or credentials. They are **always Tier 1** (§shell-guard-custom).
-> The LLM composes the exact command string, validates safety, and gets user approval.
-> These operations are destructive or remote-modifying — the LLM MUST be in the loop.
+> Git write operations (add, commit, push, pull, fetch) involve user-supplied file paths,
+> commit messages, remote names, branch names, or credentials. They are **always Tier 1**
+> (§shell-guard-custom unless noted). The LLM composes the exact command string, validates
+> safety, and gets user approval. These operations are destructive or remote-modifying —
+> the LLM MUST be in the loop.
+
+### PythonCode: `pc-exec-shell-git-add` (class 22)
+
+> Tier 1 helper — file path(s) supplied by LLM/user.
+> §shell-guard-custom: command contains user-supplied paths → Tier 1 only.
+
+```
+name:        "pc-exec-shell-git-add"
+description: "Orchestrator executor: calls __execute_action__ to run 'git add <path>'.
+              Input: vars.slot0 = path(s) to stage. Use '.' to stage all changes.
+              §shell-guard-custom — path is user/LLM-supplied. Tier 1 only."
+content: |
+  # §shell-guard-custom — path is user/LLM-supplied. Tier 1 only.
+  _path = "{{vars.slot0}}" or "."
+  result = __execute_action__("shell", {"command": "git add " + _path})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Leaf Skill: `skill-shell-git-add` (class 1)
+
+```
+name:        "skill-shell-git-add"
+class_code:  1
+description: "Leaf skill: how to stage files for commit with git add."
+body: |
+  Use pc-exec-shell-git-add (via shell tool) to stage files.
+  §shell-guard-custom applies: always Tier 1.
+  Always run 'git status' (skill-shell-git-status) first to know which files are modified.
+  Pass '.' to stage all changes, or provide specific file paths. After staging, run
+  'git status' again to confirm the staged content before committing.
+  Never stage files the user has not confirmed — particularly .env, secrets, and
+  binary files should be explicitly confirmed before staging.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Tier-1 Recipe: `shell-git-add` (class 21)
+
+> **Tier:** 1 — §shell-guard-custom. File paths are user-supplied.
+> Routes here for "git add", "stage these files", "add changes to git".
+
+```
+name:        "shell-git-add"
+description: "Stage files for commit with git add (LLM confirms paths with user)."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-shell-git-add>", "<uuid:skill-shell-git-status>"],
+    "label":   "Load git-add + git-status leaf skills"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM checks git status, confirms which files to stage, dispatches git add"
+  }
+]
+intent_examples: [
+  {"input": "git add",                                "class": 1},
+  {"input": "stage my changes",                       "class": 1},
+  {"input": "add all files to git",                   "class": 1},
+  {"input": "stage this file for commit",             "class": 2},
+  {"input": "git add .",                              "class": 1},
+  {"input": "add these changes to git staging",       "class": 2},
+  {"input": "stage my modifications",                 "class": 2},
+  {"input": "mark these files for the next commit",   "class": 2},
+  {"input": "git add specific file",                  "class": 2},
+  {"input": "track and stage these changes",          "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
 
 ### PythonCode: `pc-exec-shell-git-commit` (class 22)
 
@@ -11538,11 +11701,9 @@ source: "system"
 validation_status: "validated"
 ```
 
-}
-
 ---
 
-## Step 2.x — Additional File-Read Tier-0 Recipes {
+## Step 2.x — Additional File-Read Tier-0 Recipes
 
 > Three additional Tier-0 file-read variants: reading the first N lines (head), reading the
 > last N lines (tail), and checking whether a file exists before reading. Each is a distinct
@@ -11768,11 +11929,9 @@ source: "system"
 validation_status: "validated"
 ```
 
-}
-
 ---
 
-## Step 11.x — Memory Write Append Variant {
+## Step 11.x — Memory Write Append Variant
 
 > `memory-write-append` is a Tier-1 variant for appending new content to an existing memory
 > document without replacing it. This is a common pattern for logs, running notes, and
@@ -11865,11 +12024,9 @@ source: "system"
 validation_status: "validated"
 ```
 
-}
-
 ---
 
-## Step 20.x.2 — Additional Pure-Logic PythonCode Helpers (path, number, regex) {
+## Step 20.x.2 — Additional Pure-Logic PythonCode Helpers (path, number, regex)
 
 > These helpers extend the string/list/dict/csv set from Step 20.x.
 > All are pure-logic, no I/O, no imports, no `__execute_action__` calls.
@@ -11988,11 +12145,9 @@ source:        "system"
 validation_status: "validated"
 ```
 
-}
-
 ---
 
-## Step 2.x.2 — Combined Workflow Recipes {
+## Step 2.x.2 — Combined Workflow Recipes
 
 > Orchestrator-first combined workflows that chain two Tier-0 operations without LLM.
 > These cover the most common two-step read+search patterns. Each recipe chains
@@ -12151,11 +12306,7 @@ source: "system"
 validation_status: "validated"
 ```
 
-}
-
 ---
-
-
 
 ## Final — Component Summary & Seeding Order
 
@@ -12165,13 +12316,13 @@ validation_status: "validated"
 |-------|------|-------|-----------------|
 | 0 | Tool | 23 | builtin.shell, read_file, write_file, list_dir, glob, grep, apply_patch, http, http.save, memory_search, memory_write, memory_read, memory_tree, time, json, skill_list, skill_install, skill_remove, trigger_create, trigger_list, trigger_remove, spawn_subagent, echo |
 | 13 | ToolSkill | 30 | ts-shell-run, ts-read-file, ts-write-file, ts-list-dir, ts-glob, ts-grep, ts-apply-patch, ts-http-fetch, ts-http-save, ts-memory-search, ts-memory-write, ts-memory-read, ts-memory-tree, ts-time-now, ts-time-parse, ts-time-convert, **ts-time-diff**, **ts-time-format**, ts-json-query, ts-json-stringify, ts-json-validate, ts-skill-list, ts-skill-install, ts-skill-remove, ts-trigger-create, ts-trigger-list, ts-trigger-remove, ts-spawn-subagent, ts-web-search, ts-echo |
-| 22 | PythonCode | 97 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-list-filter-by-type, pc-exec-glob, pc-exec-grep, pc-exec-grep-case-insensitive, pc-exec-grep-type-filtered, **pc-exec-grep-invert**, pc-exec-apply-patch, pc-exec-http-get, pc-exec-http-get-authenticated, pc-exec-http-post, pc-exec-http-head, pc-exec-http-put, pc-exec-http-patch, pc-exec-http-delete, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, **pc-exec-time-diff**, **pc-exec-time-format**, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, **pc-exec-trigger-list-active**, **pc-exec-trigger-list-scheduled**, **pc-exec-trigger-resolve-and-remove**, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-url-encode, pc-web-search-extract, pc-web-search-query-build, pc-exec-echo, pc-exec-shell-git-status, pc-exec-shell-git-log, pc-exec-shell-git-diff-stat, pc-exec-shell-git-branch, pc-exec-shell-git-stash-list, pc-exec-shell-git-log-n, pc-exec-shell-git-remote, pc-exec-shell-git-show-stat, pc-exec-shell-git-tag-list, **pc-exec-shell-git-diff-name-only**, **pc-exec-shell-git-log-stat**, **pc-exec-shell-git-stash-show**, **pc-exec-shell-git-config-list**, pc-exec-shell-pwd, pc-exec-shell-df, pc-exec-shell-ps, pc-exec-shell-env, pc-exec-shell-uname, pc-exec-shell-which, pc-exec-shell-date, pc-exec-shell-hostname, pc-exec-shell-whoami, pc-exec-shell-uptime, pc-exec-shell-free, pc-exec-shell-wc-l, **pc-string-split**, **pc-string-join**, **pc-string-strip**, **pc-string-replace**, **pc-string-contains**, **pc-list-filter-nonempty**, **pc-list-slice**, **pc-list-unique**, **pc-dict-pick**, **pc-dict-merge**, **pc-csv-parse-lines**, **pc-csv-rows-to-text** |
-| 1 | Leaf Skill | 104 | skill-shell-run, skill-shell-safe-check, skill-shell-git-status, skill-shell-git-log, skill-shell-git-diff-stat, skill-shell-git-branch, skill-shell-git-stash-list, skill-shell-pwd, skill-shell-df, skill-shell-ps, skill-shell-env, skill-shell-uname, skill-shell-which, skill-shell-git-remote, skill-shell-git-show-stat, skill-shell-git-tag-list, skill-shell-date, skill-shell-hostname, skill-shell-whoami, skill-shell-uptime, skill-shell-free, skill-shell-wc-l, **skill-shell-git-diff-name-only**, **skill-shell-git-log-stat**, **skill-shell-git-stash-show**, **skill-shell-git-config-list**, **skill-shell-git-commit**, **skill-shell-git-push**, **skill-shell-git-pull**, **skill-shell-git-fetch**, skill-read-file, skill-read-file-range, **skill-read-file-head**, **skill-read-file-tail**, **skill-file-exists**, skill-write-file-new, skill-write-file-replace, skill-write-file-template, skill-list-dir, skill-list-dir-recursive, skill-list-dir-files-only, skill-list-dir-dirs-only, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-grep-case-insensitive, skill-grep-type-filtered, **skill-grep-invert**, **skill-read-and-grep**, **skill-list-and-filter**, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-head, skill-http-put, skill-http-patch, skill-http-delete, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, **skill-memory-write-append**, skill-memory-read, skill-memory-tree, **skill-memory-search-and-read**, skill-time-now, skill-time-parse, skill-time-convert, **skill-time-diff**, **skill-time-format**, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, **skill-json-parse-and-query**, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, **skill-trigger-list-active**, **skill-trigger-list-scheduled**, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search, **skill-spawn-research**, **skill-spawn-coding**, **skill-spawn-exploration**, **skill-spawn-query** (104 total) |
+| 22 | PythonCode | 98 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-list-filter-by-type, pc-exec-glob, pc-exec-grep, pc-exec-grep-case-insensitive, pc-exec-grep-type-filtered, **pc-exec-grep-invert**, pc-exec-apply-patch, pc-exec-http-get, pc-exec-http-get-authenticated, pc-exec-http-post, pc-exec-http-head, pc-exec-http-put, pc-exec-http-patch, pc-exec-http-delete, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, **pc-exec-time-diff**, **pc-exec-time-format**, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, **pc-exec-trigger-list-active**, **pc-exec-trigger-list-scheduled**, **pc-exec-trigger-resolve-and-remove**, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-url-encode, pc-web-search-extract, pc-web-search-query-build, pc-exec-echo, pc-exec-shell-git-status, pc-exec-shell-git-log, pc-exec-shell-git-diff-stat, pc-exec-shell-git-branch, pc-exec-shell-git-stash-list, pc-exec-shell-git-log-n, pc-exec-shell-git-remote, pc-exec-shell-git-show-stat, pc-exec-shell-git-tag-list, **pc-exec-shell-git-diff-name-only**, **pc-exec-shell-git-log-stat**, **pc-exec-shell-git-stash-show**, **pc-exec-shell-git-config-list**, **pc-exec-shell-git-add**, pc-exec-shell-pwd, pc-exec-shell-df, pc-exec-shell-ps, pc-exec-shell-env, pc-exec-shell-uname, pc-exec-shell-which, pc-exec-shell-date, pc-exec-shell-hostname, pc-exec-shell-whoami, pc-exec-shell-uptime, pc-exec-shell-free, pc-exec-shell-wc-l, **pc-string-split**, **pc-string-join**, **pc-string-strip**, **pc-string-replace**, **pc-string-contains**, **pc-list-filter-nonempty**, **pc-list-slice**, **pc-list-unique**, **pc-dict-pick**, **pc-dict-merge**, **pc-csv-parse-lines**, **pc-csv-rows-to-text** |
+| 1 | Leaf Skill | 105 | skill-shell-run, skill-shell-safe-check, skill-shell-git-status, skill-shell-git-log, skill-shell-git-diff-stat, skill-shell-git-branch, skill-shell-git-stash-list, skill-shell-pwd, skill-shell-df, skill-shell-ps, skill-shell-env, skill-shell-uname, skill-shell-which, skill-shell-git-remote, skill-shell-git-show-stat, skill-shell-git-tag-list, skill-shell-date, skill-shell-hostname, skill-shell-whoami, skill-shell-uptime, skill-shell-free, skill-shell-wc-l, **skill-shell-git-diff-name-only**, **skill-shell-git-log-stat**, **skill-shell-git-stash-show**, **skill-shell-git-config-list**, **skill-shell-git-commit**, **skill-shell-git-push**, **skill-shell-git-pull**, **skill-shell-git-fetch**, skill-read-file, skill-read-file-range, **skill-read-file-head**, **skill-read-file-tail**, **skill-file-exists**, skill-write-file-new, skill-write-file-replace, skill-write-file-template, skill-list-dir, skill-list-dir-recursive, skill-list-dir-files-only, skill-list-dir-dirs-only, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-grep-case-insensitive, skill-grep-type-filtered, **skill-grep-invert**, **skill-read-and-grep**, **skill-list-and-filter**, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-head, skill-http-put, skill-http-patch, skill-http-delete, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, **skill-memory-write-append**, skill-memory-read, skill-memory-tree, **skill-memory-search-and-read**, skill-time-now, skill-time-parse, skill-time-convert, **skill-time-diff**, **skill-time-format**, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, **skill-json-parse-and-query**, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, **skill-trigger-list-active**, **skill-trigger-list-scheduled**, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search, **skill-spawn-research**, **skill-spawn-coding**, **skill-spawn-exploration**, **skill-spawn-query**, **skill-shell-git-add** (105 total) |
 | 2 | Domain Skill | 9 | skill-filesystem, skill-http, skill-memory, skill-shell, skill-skills, skill-triggers, skill-subagent, skill-time, skill-json |
-| 21 | Recipe | 117 | file-read, file-read-range, **file-read-head**, **file-read-tail**, **file-exists**, **file-read-and-grep**, **file-list-and-filter**, file-write, file-write-template, file-list, file-list-recursive, file-list-files-only, file-list-dirs-only, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-glob-recent, file-grep, file-grep-files, file-grep-content, file-grep-count, file-grep-case-insensitive, file-grep-type-filtered, **file-grep-invert**, file-patch, file-patch-replace-all, http-get, http-get-json, http-authenticated-get, http-head, http-post, http-post-json-webhook, http-put, http-patch, http-delete, http-save, http-save-large, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, **memory-write-append**, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, memory-tree-deep, **memory-search-and-read**, time-now, time-now-tz, time-parse, time-convert, **time-diff**, **time-format**, json-query, json-stringify, json-parse, json-validate, **json-parse-and-query**, skill-list, skill-list-user-only, skill-list-system-only, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, trigger-remove-by-name, **trigger-list-active**, **trigger-list-scheduled**, subagent-spawn, **subagent-research**, **subagent-coding**, **subagent-exploration**, **subagent-query**, web-search, echo-ping, shell-run, shell-script, **shell-git-fetch**, **shell-git-commit**, **shell-git-push**, **shell-git-pull**, shell-git-status, shell-git-log, shell-git-diff-stat, shell-git-branch, shell-git-stash-list, shell-git-remote, shell-git-show-stat, shell-git-tag-list, shell-pwd, shell-df, shell-ps, shell-env, shell-uname, shell-which, shell-date, shell-hostname, shell-whoami, shell-uptime, shell-free, shell-wc-l, **shell-git-diff-name-only**, **shell-git-log-stat**, **shell-git-stash-show**, **shell-git-config-list** |
+| 21 | Recipe | 118 | file-read, file-read-range, **file-read-head**, **file-read-tail**, **file-exists**, **file-read-and-grep**, **file-list-and-filter**, file-write, file-write-template, file-list, file-list-recursive, file-list-files-only, file-list-dirs-only, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-glob-recent, file-grep, file-grep-files, file-grep-content, file-grep-count, file-grep-case-insensitive, file-grep-type-filtered, **file-grep-invert**, file-patch, file-patch-replace-all, http-get, http-get-json, http-authenticated-get, http-head, http-post, http-post-json-webhook, http-put, http-patch, http-delete, http-save, http-save-large, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, **memory-write-append**, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, memory-tree-deep, **memory-search-and-read**, time-now, time-now-tz, time-parse, time-convert, **time-diff**, **time-format**, json-query, json-stringify, json-parse, json-validate, **json-parse-and-query**, skill-list, skill-list-user-only, skill-list-system-only, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, trigger-remove-by-name, **trigger-list-active**, **trigger-list-scheduled**, subagent-spawn, **subagent-research**, **subagent-coding**, **subagent-exploration**, **subagent-query**, web-search, echo-ping, shell-run, shell-script, **shell-git-fetch**, **shell-git-add**, **shell-git-commit**, **shell-git-push**, **shell-git-pull**, shell-git-status, shell-git-log, shell-git-diff-stat, shell-git-branch, shell-git-stash-list, shell-git-remote, shell-git-show-stat, shell-git-tag-list, shell-pwd, shell-df, shell-ps, shell-env, shell-uname, shell-which, shell-date, shell-hostname, shell-whoami, shell-uptime, shell-free, shell-wc-l, **shell-git-diff-name-only**, **shell-git-log-stat**, **shell-git-stash-show**, **shell-git-config-list** |
 | 23 | ExtensionCatalogue | 24 | builtin-filesystem, builtin-network, builtin-memory, builtin-process, builtin-management, ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch, ext-http, ext-http-save, ext-memory-search, ext-memory-write, ext-memory-read, ext-memory-tree, ext-time, ext-json, ext-shell, ext-skill-management, ext-trigger-management, ext-spawn-subagent, ext-web-search |
 
-> **Actual totals (v3-revised, all optimizations applied):** 23 Tools + 30 ToolSkills + 97 PythonCode + 104 Leaf Skills + 9 Domain Skills + 117 Recipes + 24 ExtensionCatalogues = **404 components**
+> **Actual totals (v3-final, all optimizations applied):** 23 Tools + 30 ToolSkills + 98 PythonCode + 105 Leaf Skills + 9 Domain Skills + 118 Recipes + 24 ExtensionCatalogues = **407 components**
 >
 > **Changes in this revision (v3-revised, since v3-base 368):**
 >
@@ -12191,9 +12342,9 @@ validation_status: "validated"
 > - Leaf Skills: 76 to 104 (+28)
 > - Recipes: 95 to 117 (+22)
 >
-> **Tier-0 recipe count: 88 out of 117** (75%).
+> **Tier-0 recipe count: 89 out of 118** (75%).
 > Orchestrator handles 75% of all built-in tasks completely autonomously.
-> LLM involvement required for 25% (shell-run/script, git-commit/push/pull, spawn variants, file-write, file-patch, memory-write*, memory-write-append, http-save-large, http-post-webhook, trigger-create, skill-install/remove, web-search, memory-search-and-read — all creative, write, spawn, or destructive operations).
+> LLM involvement required for 25% (shell-run/script, git-add, git-commit/push/pull, spawn variants, file-write, file-patch, memory-write*, memory-write-append, http-save-large, http-post-webhook, trigger-create, skill-install/remove, web-search, memory-search-and-read — all creative, write, spawn, or destructive operations).
 >
 > **Design invariants enforced (v3-revised):**
 > - All ToolSkill `tool_name:` use short names (no `builtin.` prefix) — matches Tool `name:` field and `__execute_action__()` calls
@@ -12228,10 +12379,10 @@ For each domain group:
 | 1 | filesystem | builtin-filesystem | ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch | 6 | 6 | 19 | 30 | 1 | 35 |
 | 2 | network | builtin-network | ext-http, ext-http-save, ext-web-search | 2 | 3 | 14 | 11 | 1 | 14 |
 | 3 | memory | builtin-memory | ext-memory-search, ext-memory-write, ext-memory-read, ext-memory-tree | 4 | 4 | 9 | 9 | 1 | 14 |
-| 4 | process | builtin-process | ext-shell, ext-spawn-subagent, ext-trigger-management | 5 | 1 | 41 | 42 | 3 | 40 |
+| 4 | process | builtin-process | ext-shell, ext-spawn-subagent, ext-trigger-management | 5 | 1 | 42 | 43 | 3 | 41 |
 | 5 | management | builtin-management | ext-skill-management, ext-time, ext-json | 6 | 9 | 9 | 15 | 3 | 14 |
 
-> *(Counts updated to reflect all additions in v3-revised. filesystem group gained +7 PythonCode (head/tail/exists/read-then-grep/list-then-grep + 2 path helpers), +8 Leaf Skills, +10 Recipes. memory group gained +2 PythonCode, +1 Leaf Skill, +2 Recipes. process/shell group gained +8 PythonCode (git-write + fetch), +4 Leaf Skills, +4 Recipes. Total: 404 components.)*
+> *(Counts updated to reflect all additions in v3-final. filesystem group gained +7 PythonCode (head/tail/exists/read-then-grep/list-then-grep + 2 path helpers), +8 Leaf Skills, +10 Recipes. memory group gained +2 PythonCode, +1 Leaf Skill, +2 Recipes. process/shell group gained +9 PythonCode (git-write + fetch + git-add), +5 Leaf Skills, +5 Recipes. Total: 407 components.)*
 
 ---
 
@@ -12272,6 +12423,6 @@ producing duplicate rows.
 
 ---
 
-*End of builtin_stuff_v3.md — all Steps + Final section complete. v3-revised: 404 components, 117 Recipes (88 Tier-0 = 75%), 24 ExtensionCatalogues (5 global domain + 19 per-tool), orchestrator-first design.*
+*End of builtin_stuff_v3.md — all Steps + Final section complete. v3-final: 407 components, 118 Recipes (89 Tier-0 = 75%), 24 ExtensionCatalogues (5 global domain + 19 per-tool), orchestrator-first design.*
 
-*Full builtin coverage: all 23 tools covered; tool_name prefix inconsistency fixed (no more `builtin.X` in ToolSkill tool_name fields); illegal PythonCode imports removed (pc-web-search-extract, pc-web-search-query-build); 4 git write recipes (commit/push/pull/fetch); 3 file-read variants (head/tail/exists); 2 combined workflow recipes (file-read-and-grep, file-list-and-filter); memory-write-append; 7 new pure-logic PythonCode helpers (path-join/basename/dirname, number-parse, regex-match, string-format, pc-exec-memory-append). Design principle section expanded with explicit two-channel model and orchestrator-first hierarchy. The orchestrator handles 75% of all built-in tasks autonomously — LLM involvement required for only 25% (creative, write, spawn, and destructive operations).*
+*Full builtin coverage: all 23 tools covered; tool_name prefix inconsistency fixed (no more `builtin.X` in ToolSkill tool_name fields); illegal PythonCode imports removed (pc-web-search-extract, pc-web-search-query-build); 5 git write recipes (add/commit/push/pull/fetch); 3 file-read variants (head/tail/exists); 2 combined workflow recipes (file-read-and-grep, file-list-and-filter); memory-write-append; 7 new pure-logic PythonCode helpers (path-join/basename/dirname, number-parse, regex-match, string-format, pc-exec-memory-append). Design principle section expanded with explicit two-channel model and orchestrator-first hierarchy. The orchestrator handles 75% of all built-in tasks autonomously — LLM involvement required for only 25% (creative, write, spawn, and destructive operations).*
