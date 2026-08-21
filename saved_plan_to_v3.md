@@ -43,9 +43,21 @@
 
 ---
 
-## Codebase Audit Pass — Corrections Applied (Review Passes 2 + 3 + 5 + 7 + 8 + 9; Pass 9 inline fixes applied)
+## Codebase Audit Pass — Corrections Applied (Review Passes 2 + 3 + 5 + 7 + 8 + 9 + 10; Pass 9 + Pass 10 inline fixes applied)
 
 The following issues were found by reading the live codebase and corrected directly in this plan. Each is tagged with a marker so implementers can grep for them.
+
+### Pass 10 findings (full plan + complete codebase re-read — new issues found)
+
+| Tag | Severity | Location | Finding | Fix Applied |
+|-----|----------|----------|---------|-------------|
+| `FIND-P10-01` | **CRITICAL** | Phase D / `resolve_intent` SELECT list | Phase D adds `step_link: Option<String>` and `component_name: String` to `IntentResolution::Match`. But the live `resolve_intent` query at `intent_system.rs:340-356` only selects **5 columns**: `id, component_id, component_class_code, input_class, score`. The Phase D SQL change is specified as adding `step_link` and `COALESCE(a.name,'') AS component_name` — this is correct in prose (§0.8) but the plan never gives the exact new column positions for the `row.get(N)` calls in `IntentResolution::Match` construction. With the LEFT JOIN and two extra columns, the `rows[0].get(N)` indices for `component_id`, `component_class_code`, `step_link`, and `component_name` must be specified exactly. Old layout: `row.get(1)=component_id, row.get(2)=component_class_code`. New layout: `row.get(1)=component_id, row.get(2)=component_class_code, row.get(5)=step_link` (after keeping id/component_id/class/input_class/score and appending step_link=5, component_name=6). Phase D must include this index table explicitly, or the implementer will guess wrong and produce a silent misread. | Phase D "Files to modify" updated with the exact new SELECT column positions and `row.get(N)` index for each new field. |
+| `FIND-P10-02` | **CRITICAL** | §3 Open Questions table / cache key formula | Open Question #2 in §3 says the memoisation cache key is `sha256(step_link + "\|" + sorted_include_uuids.join(","))`. This is the **OLD circular key** that was already corrected in DESIGN-02 / §0.7 to `sha256(step_link + "\|" + sha256(step_descriptions_json) + "\|" + sha256(variable_patterns_sorted_json))`. The §3 table still has the wrong formula, creating a contradiction with §0.7 and the Phase N.3 implementation. A future implementer reading §3 without §0.7 would implement the circular (broken) key. | §3 Open Question #2 answer updated to reference the corrected key formula from DESIGN-02 / §0.7. |
+| `FIND-P10-03` | **HIGH** | Phase I / `GenericComponent` vs `class_code` field conflict | Phase I says "class 22 validation must use `Generic(GenericComponent<'a>)` where `GenericComponent` carries `{ name, content, class_code }`" — but the live `GenericComponent` struct (confirmed: `component_validator.rs:62–67`) has exactly 3 fields: `{ name, description, content }` — NO `class_code`. Meanwhile Phase C COMP-04 proposes adding `extra: Option<serde_json::Value>` (not `class_code`). These two proposals are inconsistent. An implementer following Phase I would add `class_code: i32` to `GenericComponent`, but Phase C COMP-04 says to add `extra`. The correct resolution: **Phase C COMP-04 takes precedence** — add `extra: Option<serde_json::Value>` to `GenericComponent` for the task_groups extensibility needed by class 23. For class 22 (PythonCode), the validator only needs `name`, `description`, and `content` — the 3 existing fields suffice. The Phase I claim that `GenericComponent` needs `class_code` is wrong: the validator dispatch arm (`22 =>`) already knows it's class 22 because it's in the class-22 arm of the match. `class_code` is known from the dispatch, NOT needed in the payload. Remove `class_code` from the Phase I `GenericComponent` description. | Phase I description corrected: `GenericComponent` does NOT need `class_code` (it's implicit from the dispatch arm). Phase I uses the existing 3-field struct for class 22; the 4th field `extra: Option<serde_json::Value>` added by Phase C COMP-04 is used for class 23 (`task_groups`). The two are now consistent. |
+| `FIND-P10-04` | **HIGH** | Phase H / `LoopPromptBundleRequest` field count mismatch | Phase H item 6 / FIND-11 says the current `LoopPromptBundleRequest` struct has 7 fields and the test `support.rs:340` site must add `recipe_hint: None`. The confirmed struct (lines 978-1005) has exactly 7 fields: `mode, context_cursor, surface_version, capability_view, checkpoint_state_ref, max_messages, inline_messages`. Struct addition confirmed correct. No error. However, the plan's FIND-19 note includes a grep instruction that is correct and must be followed. ✅ Confirmed — no fix needed beyond the existing note. | No change needed. Confirmed correct. |
+| `FIND-P10-05` | **MEDIUM** | Phase D / `resolve_intent` Rust `Match` construction — `score` column position shifts | After Phase D adds the LEFT JOIN and two extra columns (`step_link`, `component_name`) to the SELECT, the `score` field moves from `row.get(4)` to still be at `row.get(4)` IF the two new columns are appended at the END of the SELECT (after score). But if they are inserted BEFORE score (e.g. after component_class_code), then `input_class` and `score` shift right. The safe approach: append `step_link` and `component_name` as columns 5 and 6 (zero-indexed), AFTER the existing 5 columns. Then `id=0, component_id=1, component_class_code=2, input_class=3, score=4, step_link=5, component_name=6`. The disambiguation and disambiguation-related paths also read columns by position — they must not shift. | Phase D "Files to modify" updated with the explicit column-append-last rule and the exact index assignments. |
+| `FIND-P10-06` | **MEDIUM** | Phase I / `GenericComponent` in `validate_by_class` dispatch — `description` field availability | When Phase I adds a class-22 arm to `validate_by_class`, it uses `Generic(GenericComponent { name, description, content })`. All three fields are present in the current struct. For PythonCode (class 22), `description` exists on `reborn_python_code` (same column shape as specs). For class 23, `description` exists and `overview_doc` maps to `content`. This is consistent. ✅ Confirmed — no issue. | No change needed. Confirmed consistent. |
+| `FIND-P10-07` | **LOW** | `class_label` in `intent_system.rs` — confirmed exact labels | Full confirmed label set (lines 254-265+): `0 => "tool"`, `1 => "skill_rusty"`, `2 => "skill_monty"`, `3 => "skill_llm"`, `4 => "extension_worker"`, `5 => "extension_cron"`, `6 => "extension_trigger"`, `7 => "extension_webhook"`, `8 => "extension_plan"`, `9 => "extension_revision"`. Phase B/C must add `22 => "python_code"` and `23 => "extension_catalogue"` — lower_snake_case consistent with all other entries. Confirmed correct. | No change. Confirmed accurate. |
 
 ### Pass 9 findings (full plan + codebase cross-read — new issues found)
 
@@ -856,17 +868,23 @@ Step 4 [orchestrator — python_code]:
 
 #### Memoisation
 
-- **Key:** `sha256(step_link + "|" + sorted_include_uuids.join(",") + "|" + sha256(variable_patterns_json))`
+- **Key:** `sha256(step_link + "|" + sha256(step_descriptions_json) + "|" + sha256(variable_patterns_sorted_json))`
 
-  > **⚠️ PERF-01 / COMP-06 — variable_patterns must be in the cache key:**
-  > `variable_patterns` are stored on the Recipe row (not derived from `step_link`). If an
-  > author changes a Recipe's `variable_patterns` (e.g. renames `{{vars.dir}}` to
-  > `{{vars.path}}`) without touching `step_link` or any `include` UUIDs, the old cache
-  > key still matches but the cached `BuildInstruction` has the stale substitution rules.
-  > The cache key MUST include a deterministic hash of the serialized `variable_patterns`
-  > array. Suggested: `sha256(serde_json::to_string(&variable_patterns_sorted).unwrap())`.
-  > Always sort `variable_patterns` by `name` before hashing to make the key stable under
-  > authoring order changes.
+  > **⚠️ DESIGN-02 — original key `sorted_include_uuids` was circular; replaced with `step_descriptions_hash`:**
+  > The original key formula was `sha256(step_link + "|" + sorted_include_uuids.join(",") + "|" + sha256(variable_patterns_json))`.
+  > This is circular: `sorted_include_uuids` requires the IBS to have already compiled the
+  > `BuildInstruction` to know which UUIDs it emitted — so the key can only be computed
+  > AFTER doing the work, not BEFORE checking the cache.
+  >
+  > **Correct key:** `sha256(step_link + "|" + sha256(serde_json::to_string(&step_descriptions).unwrap()) + "|" + sha256(serde_json::to_string(&sorted_variable_patterns).unwrap()))`.
+  > This is fully computable from the Recipe row BEFORE IBS compilation. It is correctly
+  > invalidated by any StepDescription change (the step_descriptions hash changes) or any
+  > variable_patterns change (the variable_patterns hash changes). The step_link embeds
+  > which steps are selected; the step_descriptions hash covers any step content changes.
+  > No UUID enumeration step is needed — the UUID set is implied by step_descriptions content.
+  >
+  > **PERF-01 / COMP-06 remain valid:** `variable_patterns` must still be in the key.
+  > Sort `variable_patterns` by `name` before hashing for stability under authoring order changes.
 
 - **Eviction triggers (all must be monitored):**
   1. Any `include`d component's `updated_at` changes (via `last_graduation_at` scope cursor — §0.18)
@@ -2428,7 +2446,17 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   - `RecipeValidationStatusUpdate` struct at **line ~170**: has `validation_errors`,
     `review_feedback`, `queue_code` — do NOT modify in Phase A (Phase N drops these).
   - The WebUI save path (create/update recipe) must pass `step_descriptions` through.
-  This makes the column writable + loadable from Phase A. Whether `RecipeMatchDto`
+ > **⚠️ FIND-NEW-17 — WebUI save path MUST also seed intent rows from `variants`:**
+ > When a Recipe is saved with `variants` populated, the save handler (the composition
+ > endpoint that calls `PgRecipeStore::insert` or `update`) MUST also iterate each
+ > `RecipeVariant.intent_examples` and call `seed_intent_input(pool, scope, example, class,
+ > recipe_id, 21, IntentSource::Seeded, variant.step_link.as_deref())` for each expression.
+ > Without this, intent rows are never written and `resolve_intent` will not match the recipe.
+ > This seeding step belongs in the **composition** WebUI-save handler (where the pool and
+ > scope are available), NOT in `PgRecipeStore` itself (which is a pure store layer).
+ > The same logic applies on update: re-seed all variants on every save (the ON CONFLICT
+ > DO UPDATE clause in `seed_intent_input` makes it idempotent).
+ This makes the column writable + loadable from Phase A. Whether `RecipeMatchDto`
   (line 799) exposes `step_descriptions` to the runtime `RecipeStage` is a **Phase H**
   decision (extend the DTO + `find_recipe` path, or route `RecipeStage` through
   `PostgresSource::fetch_for_turn`, which reads the column directly) — see the Phase H
@@ -2891,9 +2919,19 @@ Same engine files as Phase B, but for class 23:
   > Adding `extra: Option<serde_json::Value>` to `GenericComponent` (verified struct at
   > `component_validator.rs:62–67`: has exactly three fields `name`, `description`, `content`) will
   > require updating EVERY call site that constructs `GenericComponent { name, description, content }`
-  > to also pass `extra: None`. Before implementing, grep for all `GenericComponent {` construction
-  > sites and add `extra: None` to each. This is a mandatory breaking change to the struct — not just
+  > to also pass `extra: None`. This is a mandatory breaking change to the struct — not just
   > the validator dispatch. Option B avoids this structural change but adds a new payload type.
+  >
+  > **Known internal construction sites in `component_validator.rs` that MUST be updated:**
+  > - `validate_skill_generic(g, config)` — constructs `GenericComponent` inline
+  > - `validate_tool_generic(g, config)` — constructs `GenericComponent` inline
+  > - `validate_extension(g, config)` — constructs `GenericComponent` inline
+  > - `validate_generic(g, config)` — constructs `GenericComponent` inline
+  > - Every `ComponentPayload::Generic(g)` construction site in the composition layer
+  >
+  > Run `grep -rn "GenericComponent {" crates/` before implementing to find all sites.
+  > The Rust compiler will catch any missed site (struct update is non-exhaustive-safe since
+  > `GenericComponent` is not `#[non_exhaustive]`, so missing the field is a hard compile error).
 
 > **Do NOT modify `types/memory.rs` (DocType enum).** `DocType` is `#[deprecated]` and frozen.
 > No `DocType::ExtensionCatalogue`. See §0.11 note.
@@ -2931,6 +2969,53 @@ Same engine files as Phase B, but for class 23:
   (See §0.8 / FIND-P5-06 — `component_name` is needed for `ActionShortCircuit` in Phase E.)
   Update the resolution query to `SELECT ..., step_link, COALESCE(a.name, '') AS component_name FROM ...` with the LEFT JOIN shown in FIND-P5-06.
   Update `seed_intent_input` to accept and store `step_link`.
+
+  > **⚠️ FIND-P10-01 / FIND-P10-05 — exact new column positions for `resolve_intent` SELECT.**
+  > The live query (confirmed `intent_system.rs:340-356`) selects exactly 5 columns:
+  > `id(0), component_id(1), component_class_code(2), input_class(3), score(4)`.
+  > After Phase D adds the LEFT JOIN and two extra columns, append them at the END of the
+  > SELECT (after `score`) — never insert them in the middle, which would shift all
+  > existing `row.get(N)` calls. The new full SELECT column list and `row.get(N)` positions are:
+  >
+  > | Index | Column | Rust binding |
+  > |-------|--------|-------------|
+  > | 0 | `ii.id` | `row.get(0)` — row id (disambiguation key) |
+  > | 1 | `ii.component_id` | `row.get(1)` — `component_id: Uuid` |
+  > | 2 | `ii.component_class_code` | `row.get(2)` — `component_class_code: i32` |
+  > | 3 | `ii.input_class` | `row.get(3)` — `input_class: i16` |
+  > | 4 | `ii.score` | `row.get(4)` — `score: i32` |
+  > | 5 | `ii.step_link` | `row.get(5)` — `step_link: Option<String>` (NEW) |
+  > | 6 | `COALESCE(a.name, '')` | `row.get(6)` — `component_name: String` (NEW) |
+  >
+  > The disambiguation path (which also calls `row.get(0..4)`) is unaffected because the
+  > new columns are appended. The `Disambiguation` arm in `IntentResolution` construction
+  > does NOT read `step_link` or `component_name` — it uses only columns 0–4. Do NOT
+  > insert columns 5/6 before column 4 (score).
+  >
+  > **SQL change (replace the current SELECT line in `resolve_intent`):**
+  > ```sql
+  > SELECT ii.id, ii.component_id, ii.component_class_code, ii.input_class, ii.score,
+  >        ii.step_link,
+  >        COALESCE(a.name, '') AS component_name
+  > FROM reborn_intent_inputs ii
+  > LEFT JOIN reborn_actions a
+  >        ON a.id = ii.component_id
+  >       AND ii.component_class_code = 16
+  >       AND a.tenant_id  = $1
+  >       AND a.user_id    = $2
+  >       AND a.agent_id   = $3
+  >       AND a.project_id = $4
+  > WHERE ii.tenant_id = $1 AND ii.user_id = $2 AND ii.agent_id = $3 AND ii.project_id = $4
+  >   AND ii.input_text = $5
+  >   AND ii.input_class = ANY($6)
+  > ORDER BY
+  >   CASE ii.input_class WHEN $7 THEN 0 WHEN $8 THEN 1 WHEN $9 THEN 2 ELSE 3 END,
+  >   ii.score DESC
+  > LIMIT 30
+  > ```
+  > (Phase M will further extend this to add the template OR-paths, but Phase D is the
+  > first to add the LEFT JOIN + new columns. Phase M's extension must keep `step_link` at
+  > index 5 and `component_name` at index 6.)
   > **⚠️ FIND-NEW-03 — `seed_intent_input` extension is fully specified here (verified
   > against `intent_system.rs:463-505`).** The live function has 7 params and an INSERT
   > with 11 columns / 10 placeholders (`VALUES ($1..$8,1,$9,$10)` — `score` is the literal
@@ -3200,16 +3285,24 @@ production retrieval path breaks." E.0 is that wiring sub-task, pulled forward.
   > The spawn-path conditional that builds `PostgresSource` MUST be inside `#[cfg(feature = "skills-db")]`.
   > The exact spawn-path change is:
   > ```rust
-  > // manager.rs:382-383 — replace the unconditional RamSource with:
+  > // manager.rs:375-383 — replace the store_for_retrieval line + unconditional RamSource with:
+  > //
+  > // ⚠️ FIND-NEW-11: store_for_retrieval is MOVED into RamSource::new() at line 383 in the
+  > // original code. The conditional below has TWO branches that both need it.
+  > // Clone it BEFORE the conditional so both branches compile.
+  > let store_for_retrieval = Arc::clone(&self.store);
+  > let store_for_retrieval_clone = Arc::clone(&store_for_retrieval);  // for RamSource fallback
+  > let retrieval = crate::memory::RetrievalEngine::new(store_for_retrieval);
+  >
   > #[cfg(feature = "skills-db")]
   > let retrieval_source: Arc<dyn crate::memory::RetrievalSource> = if let Some(pool) = &self.pg_pool {
   >     Arc::new(crate::memory::PostgresSource::new(Arc::clone(pool)))
   > } else {
-  >     Arc::new(crate::memory::RamSource::new(Arc::clone(&store_for_retrieval)))
+  >     Arc::new(crate::memory::RamSource::new(store_for_retrieval_clone))
   > };
   > #[cfg(not(feature = "skills-db"))]
   > let retrieval_source: Arc<dyn crate::memory::RetrievalSource> =
-  >     Arc::new(crate::memory::RamSource::new(Arc::clone(&store_for_retrieval)));
+  >     Arc::new(crate::memory::RamSource::new(store_for_retrieval_clone));
   > ```
   > The `.with_retrieval_source(retrieval_source)` call at line 400 is **unchanged** — it
   > already exists. The only change is WHAT source is passed. Do NOT add a second
@@ -3349,15 +3442,24 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
     /// SECURITY: `table_name` and `content_expr` are ALWAYS `&'static str` literals from the
     /// class-code match arm — never user input. This is the same invariant as
     /// `fetch_component_by_id`. NEVER extend this function to accept user-supplied table names.
+    ///
+    /// ⚠️ FIND-NEW-10: Use tokio-postgres directly (pool.get() + client.query()).
+    /// This codebase does NOT use sqlx — PgPool is brassclaw_pg::PgPool backed by
+    /// deadpool-postgres / tokio-postgres. Do NOT use sqlx::query(), .bind(), ComponentItem::from_row().
+    /// Build ComponentItems field-by-field using row.get(N) exactly as fetch_component_by_id does.
+    #[cfg(feature = "skills-db")]
     async fn fetch_components_by_ids(
-        pool:        &PgPool,
+        pool:        &brassclaw_pg::PgPool,
         scope:       &ComponentScope,
-        ids_by_class: &[(Uuid, i32)],  // (component_id, class_code) pairs
+        ids_by_class: &[(uuid::Uuid, i32)],  // (component_id, class_code) pairs
     ) -> Result<Vec<ComponentItem>, RetrievalSourceError> {
+        use tokio_postgres::types::ToSql;
+
         // 1. Group by (table_name, content_expr) using the same match arm as fetch_component_by_id.
         //    Unknown class codes are silently skipped (same behaviour as fetch_component_by_id
         //    returning None — let the caller handle missing items via the returned Vec length).
-        let mut groups: HashMap<(&'static str, &'static str), Vec<Uuid>> = HashMap::new();
+        let mut groups: std::collections::HashMap<(&'static str, &'static str), Vec<uuid::Uuid>>
+            = std::collections::HashMap::new();
         for (id, class_code) in ids_by_class {
             if let Some((table, content_expr)) = class_code_to_table(*class_code) {
                 groups.entry((table, content_expr)).or_default().push(*id);
@@ -3367,26 +3469,47 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
         // 2. For each group: one SELECT with id = ANY($1) and all scope + validation filters.
         //    The WHERE clause replicates fetch_component_by_id's safety guarantees exactly:
         //    validation_status='validated' AND '05:validator' != ALL(consumer_tags).
+        let client = pool
+            .get()
+            .await
+            .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
+
         let mut results = Vec::new();
         for ((table, content_expr), ids) in &groups {
             let sql = format!(
-                "SELECT id, {content_expr} AS content, consumer_tags, class_code \
-                 FROM {table} \
-                 WHERE id = ANY($1) \
-                   AND tenant_id=$2 AND user_id=$3 AND agent_id=$4 AND project_id=$5 \
-                   AND validation_status='validated' \
-                   AND '05:validator' != ALL(consumer_tags)",
+                "SELECT id::text, class_code::int, prompt_uid::bigint,
+                        name, COALESCE(description,'') AS description,
+                        {content_expr} AS effective_content,
+                        override_prompt_creation
+                 FROM {table}
+                 WHERE id = ANY($1)
+                   AND tenant_id=$2 AND user_id=$3 AND agent_id=$4 AND project_id=$5
+                   AND validation_status='validated'
+                   AND '05:validator' != ALL(consumer_tags)"
             );
-            // ids is Vec<Uuid> — bind as $1 with sqlx's array binding.
-            let rows = sqlx::query(&sql)
-                .bind(ids.as_slice())
-                .bind(&scope.tenant_id)
-                .bind(&scope.user_id)
-                .bind(&scope.agent_id)
-                .bind(&scope.project_id)
-                .fetch_all(pool).await?;
+            let params: &[&(dyn ToSql + Sync)] = &[
+                ids,  // Vec<Uuid> implements ToSql for = ANY($1) in tokio-postgres
+                &scope.tenant_id,
+                &scope.user_id,
+                &scope.agent_id,
+                &scope.project_id,
+            ];
+            let rows = client
+                .query(&sql, params)
+                .await
+                .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
             for row in rows {
-                results.push(ComponentItem::from_row(&row)?);
+                let id_str: &str = row.get(0);
+                let id = id_str.parse::<uuid::Uuid>().unwrap_or_else(|_| uuid::Uuid::nil());
+                results.push(ComponentItem {
+                    id,
+                    class_code: row.get(1),
+                    prompt_uid: row.get(2),
+                    name: row.get::<_, &str>(3).to_string(),
+                    description: row.get::<_, &str>(4).to_string(),
+                    effective_content: row.get::<_, &str>(5).to_string(),
+                    override_prompt_creation: row.get(6),
+                });
             }
         }
         Ok(results)
@@ -4394,16 +4517,26 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
 
          for step in steps:
              if step["type"] == "python":
-                 # Execute the PythonCode body in a sandboxed local scope.
-                 # The scope includes: goal, state, pkr, __execute_action__, __fetch_component__.
-                 # The PythonCode body should assign its output to `result`.
+                 # ⚠️ DESIGN-01 SECURITY — DO NOT use bare exec() with empty globals.
+                 # exec("...", {}, locals) does NOT sandbox Python — code can still escape
+                 # via __builtins__. Q1 injection scan alone is not sufficient.
+                 #
+                 # REQUIRED: Execute PythonCode bodies through the existing Monty scripting
+                 # VM infrastructure (the same sandbox default.py already runs in).
+                 # PythonCode bodies are authored to use __execute_action__ etc. as
+                 # registered VM host functions — NOT as Python callables injected via locals.
+                 # Use the engine scripting engine's step-execution path, identical to how
+                 # execute_action_procedure runs Action steps (see default.py:901).
+                 #
+                 # The exec() below is a LOGICAL SKETCH showing intent only:
+                 # step["body"] is run, assigns output to `result`, returns it.
+                 # The actual implementation MUST use the Monty VM, not raw exec().
                  local_scope = {
                      "goal": goal, "state": state, "pkr": pkr,
-                     "__execute_action__": __execute_action__,
-                     "__fetch_component__": __fetch_component__,
+                     # NOTE: host functions are registered in the VM, not injected here
                  }
                  try:
-                     exec(step["body"], {}, local_scope)
+                     exec(step["body"], {}, local_scope)  # ← SKETCH ONLY — replace with VM invocation
                      step_result = local_scope.get("result", "")
                      result_parts.append(str(step_result))
                  except Exception as e:
@@ -4722,11 +4855,29 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
 > The existing `ComponentPayload` enum in `component_validator.rs` has only three variants:
 > `ToolSkill(&'a ToolSkill)`, `Recipe(&'a Recipe)`, and `Generic(GenericComponent<'a>)`.
 > Phase I must dispatch classes 22 and 23 through `ComponentPayload::Generic`, NOT through
-> a non-existent dedicated variant. The `GenericComponent` type must carry `{ name, content,
-> class_code }` (or equivalent) so the dispatch arm for `22 =>` and `23 =>` can extract the
-> fields it needs. If the `GenericComponent` shape does not yet carry all needed fields,
-> extend it — do NOT add a new `ComponentPayload` variant unless the extra validation logic
-> truly requires a richer typed shape that `Generic` cannot express.
+> a non-existent dedicated variant.
+>
+> **⚠️ FIND-P10-03 — `GenericComponent` struct shape clarification (corrects an inconsistency
+> between Phase I and Phase C COMP-04):**
+> The live `GenericComponent` struct (confirmed `component_validator.rs:62–67`) has exactly
+> **3 fields**: `{ name: &'a str, description: &'a str, content: &'a str }` — NO `class_code`.
+>
+> A prior version of Phase I implied that `GenericComponent` needs a `class_code` field for
+> the dispatcher to know which class it is handling. **This is wrong.** The validator dispatch
+> arm already knows the class because it matched `22 =>` in the dispatch. The class code is
+> implicit from the match arm — it does NOT need to be carried in the payload.
+>
+> **Resolution:** Phase I uses the existing 3-field `GenericComponent` for class 22 (PythonCode)
+> — `name`, `description`, and `content` are all that is needed. The only shape extension
+> to `GenericComponent` is the one mandated by Phase C COMP-04: add
+> `extra: Option<serde_json::Value>` as a 4th field (for class 23's `task_groups` JSONB).
+> That single 4th field is sufficient for all current and planned uses. Do NOT add `class_code`.
+>
+> Updated rule: the `GenericComponent` type carries `{ name, description, content, extra }`.
+> The `extra` field is `None` for classes 22 and all other classes that don't need it; it
+> is `Some(json!({ "task_groups": [...] }))` for class 23. If the `GenericComponent` shape
+> does not yet carry `extra` (i.e. Phase C has not run), extend it as part of Phase C.
+> Phase I validation arms rely on `extra` being present (added in Phase C before Phase I runs).
 
 New dispatch cases:
 
@@ -5739,7 +5890,10 @@ let cursor: Option<chrono::DateTime<chrono::Utc>> = row
 //     scope.tenant_id, scope.user_id, scope.agent_id, scope.project_id
 // ).fetch_optional(pool).await?;
 
-if let Some(Some(graduated_at)) = cursor {
+// ⚠️ FIND-NEW-16: cursor is already Option<DateTime<Utc>> (not Option<Option<...>>).
+// The double-Some pattern `if let Some(Some(...))` is WRONG here.
+// `row.and_then(|r| r.get::<_, Option<DateTime<Utc>>>(0))` returns Option<DateTime<Utc>>.
+if let Some(graduated_at) = cursor {
     if graduated_at > cache_entry.cached_at {
         cache.remove_scope(scope);
         // Recompute — fall through to full fetch_for_turn
@@ -6020,7 +6174,7 @@ avoiding the DB round-trip entirely.
 | # | Question | Recommendation |
 |---|----------|----------------|
 | 1 | Variable extraction: named capture groups vs. post-match LLM extraction? | **Resolved — see §0.17.** Intent expressions use `%` slot markers for matching (Phase M). Slot values are auto-extracted from template segments (positional names `slot0`, `slot1`, …). `variable_patterns` is optional post-extraction refinement for semantic naming and validation. LLM extraction remains a future opt-in via `llm_var_extraction_prompt` on `RecipeVariant` (out of scope). |
-| 2 | BuildInstruction memoisation: per-process or always recompute? | **Resolved — see §0.18 + Phase N.** Per-process SplitResult cache keyed on `sha256(step_link + "\|" + sorted_include_uuids.join(","))` per scope. Eviction is event-driven via `last_graduation_at` on the scope cursor (bumped by DB trigger when a component graduates from `reborn_validation_queue`). One sub-millisecond PK read per cache hit. No TTL required as primary mechanism. |
+| 2 | BuildInstruction memoisation: per-process or always recompute? | **Resolved — see §0.7 (DESIGN-02 / §0.18 + Phase N).** Per-process SplitResult cache keyed on `sha256(step_link + "\|" + sha256(step_descriptions_json) + "\|" + sha256(variable_patterns_sorted_json))` per scope. **⚠️ FIND-P10-02: the old key formula `sha256(step_link + sorted_include_uuids.join(","))` was circular (required IBS compilation to be already done) — corrected in DESIGN-02 / §0.7 to use `step_descriptions_hash` which is computable BEFORE IBS. Do NOT implement the old formula.** Eviction is event-driven via `last_graduation_at` on the scope cursor (bumped by DB trigger when a component graduates from `reborn_validation_queue`). One sub-millisecond PK read per cache hit. No TTL required as primary mechanism. See §0.7 for the full memoisation key specification. |
 | 3 | `required_skills` inclusion: always include vs. score against current query? | **Resolved — see §0.19.** `required_skills` does not exist. Dependencies are declared per-component in `dependency_registry` JSONB and referenced from StepDescription steps via typed traversal expressions (`1[all], 5[2,6], 17[3, 7[1,4]]`). Always resolved fully per the traversal expression — no scoring, no cap. KV-cache prefix absorbs token cost in steady state. |
 | 4 | `step_formatter_id` scope: per-recipe, per-variant, or per-step? | **Resolved — not needed.** `step_formatter_id` does not exist. Formatting is achieved by authoring PythonCode component bodies with the correct content and prose style. `type: "text"` steps are WebUI annotations only with no runtime emission. All three intent-match cases (Recipe match, near-miss, full fallback) have their formatting handled by PythonCode bodies, prepared prompt templates, and the KV-cache prefix respectively. |
 | 5 | StepDescription storage format: YAML files in git vs. JSONB in `reborn_recipes`? | **Resolved — JSONB (§0.5).** YAML files in git are structurally incompatible (no WebUI write path, no scope isolation, requires deploy cycle). JSONB column on `reborn_recipes` is the correct choice. Each JSONB element holds a dual representation: `yaml_source` (raw YAML, WebUI display) + `steps` (pre-parsed array, IBS reads). YAML is parsed once at WebUI save time — the IBS never parses YAML at runtime. |
@@ -6031,7 +6185,7 @@ avoiding the DB round-trip entirely.
 | 10 | What recipe variants should `builtin.shell` have? | Two: (a) known-safe commands (allowlist: `cargo build/test/fmt/clippy`, `git status/log/diff`, `npm install/build`) at Tier 1 high-confidence; (b) open-ended arbitrary command at Tier 1 always with explicit approval annotation. Both have `llm_call_required: true` — no shell is ever Tier 0. |
 | 11 | How does the Rust execution layer resolve a Tool DB UUID to its registered capability handler? | Via `capability_id` column (V057 — was V056 before Decision 2). On tool dispatch: look up Tool row by UUID → read `capability_id` → look up handler in `FirstPartyCapabilityRegistry` by `capability_id`. For user-authored tools without `capability_id`, fall back to existing name-based resolution. |
 | 12 | Should builtin Recipes also have `source = "system"` and bypass Q2? | Yes — same reasoning as Q8. Builtin Recipe StepDescriptions are hand-authored and IBS pre-flight-checked at seeder run time. Q2 bypass for `source = "system"` Recipes is consistent with Tools and ToolSkills. |
-| 13 | If `RecipeStage` already stashed the items (Tier 1), how does `handle_assemble_prior_knowledge` know not to call `fetch_for_turn` again? | **Resolved — stash/unstash protocol (Phase H §5).** `handle_assemble_prior_knowledge` checks `state.recipe_hint` before doing anything. If set, it skips `fetch_for_turn` entirely, deserializes the stashed `Vec<ComponentItem>` from `serde_json::Value`, clears the field (one-shot consume), and formats. If absent (Tier 2 / no-match), calls `fetch_for_turn` as before. No double-fetch, no second `resolve_intent`, no second IBS compilation. |
+| 13 | If `RecipeStage` already stashed the items (Tier 1), how does `handle_assemble_prior_knowledge` know not to call `fetch_for_turn` again? | **Resolved — stash/unstash protocol (Phase H §5, FIND-P9-15 corrected).** **⚠️ The handler does NOT read `state.recipe_hint` directly** — `brassclaw_engine` does not depend on `brassclaw_agent_loop` and cannot access `LoopExecutionState`. The correct flow: (1) `RecipeStage` (agent_loop) reads `state.recipe_hint` and passes it as a parameter to `ctx.host.run_step_zero(context, recipe_hint.as_ref())`; (2) the composition host receives it and passes it to `handle_assemble_prior_knowledge` as a function argument; (3) the handler receives `recipe_hint: Option<serde_json::Value>` as a parameter — if `Some(v)`, it uses the stashed orchestrator_items, skips `fetch_for_turn` entirely, deserializes `v` to `Vec<ComponentItem>`, and formats; if `None`, calls `fetch_for_turn` as before; (4) the STAGE clears `state.recipe_hint = None` AFTER `run_step_zero` returns. No double-fetch, no second `resolve_intent`, no second IBS compilation. |
 | 14 | In Tier 0, `PromptStage` and `ModelStage` are skipped — but the Python script calls `__assemble_prior_knowledge__`. Where does Python execute in Tier 0? | The Python scripting engine is **not** the LLM call. `PromptStage` assembles the LLM input prompt; `ModelStage` sends it to the model. Both are skipped in Tier 0. `default.py` is invoked by a dedicated **`TierZeroExecutionStage`** (NOT `CapabilityStage` — see the resolution below). In Tier 0, Python runs step-0, calls `__assemble_prior_knowledge__` (gets the stash), and invokes skills/tools directly — no LLM round-trip in the middle. "Tier 0: no LLM" means no LLM call, not no Python execution. **✅ DESIGN GAP RESOLVED (Option 1 chosen — `TierZeroExecutionStage` + `LoopOrchestratorPort`):** In the normal pipeline `CapabilityStage` processes tool-call responses from the model, so it CANNOT kick Python in Tier 0 (there is no model output). The plan now specifies the mechanism: a new `TierZeroExecutionStage` inserted between `RecipeStage` and `AssistantReplyStage` in `canonical.rs` calls `ctx.host.run_tier_zero(context, &state.recipe_hint, &state.recipe_rust_context)` — a new `LoopOrchestratorPort` host port (15th `AgentLoopDriverHost` port, implemented by `brassclaw_reborn_composition`, the only crate depending on both `brassclaw_engine` and `brassclaw_agent_loop`). `CapabilityStage` is NOT bent and is simply skipped. Option 2 (synthetic signal into `LoopCapabilityPort`) is rejected — it would couple the capability port to Tier 0 routing. See Phase H.0 §H5 for the full port spec and §5 for the corrected Tier 0 turn-flow diagram. **⚠️ DRIVER-PREREQ:** this mechanism is exercised only in agent-loop tests until the agent-loop `DefaultExecutorPipeline` is wired as the production driver (today the engine `ExecutionLoop::run` drives turns with no stage pipeline); see DRIVER-GAP in the index. |
 | 15 | What happens if `build_instruction` returns an `IbsError` during the builtin seeder (Phase L)? `panic!` or return an error? | **Debug builds: `panic!`** — seeder content is hand-authored; an IbsError here is a compile-time bug. **Release builds:** `error!`-log, skip the Recipe row, continue. The seeder is idempotent — skipped rows do not block boot. CI must run the seeder in debug mode so IbsErrors become build failures before reaching production. |
 
