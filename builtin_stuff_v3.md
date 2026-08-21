@@ -6715,6 +6715,108 @@ validation_status: "validated"
 
 ---
 
+## Step 17.x — Trigger Remove-by-Name Pattern
+
+> **Gap 10:** The existing `trigger-remove` is Tier 1 — LLM identifies the trigger by name.
+> But when the name is already known exactly (e.g. from a previous `trigger-list` call whose
+> result the orchestrator already holds), the LLM step is unnecessary.
+>
+> This section adds a `pc-exec-trigger-resolve-and-remove` PythonCode helper that:
+> 1. Lists all triggers via `__execute_action__(trigger_list, {})`.
+> 2. Finds the trigger whose name exactly matches the input.
+> 3. Removes it via `__execute_action__(trigger_remove, {trigger_name: name})`.
+>
+> This is still Tier 1 because `trigger_remove` has ExternalWrite effect and benefits from
+> user confirmation. However the LLM step is now ONLY for user confirmation — not for
+> name disambiguation. The PythonCode step does the list+resolve+remove deterministically.
+
+### Step 17.x.1 — PythonCode: `pc-exec-trigger-resolve-and-remove` (class 22)
+
+> Orchestrator helper: list triggers, find by exact name, then remove.
+> ExternalWrite — used inside a Tier-1 recipe where the LLM has already confirmed with
+> the user. The PythonCode does the mechanical list-then-remove; the LLM step only
+> confirms intent.
+
+```
+name:        "pc-exec-trigger-resolve-and-remove"
+class_code:  22
+description: "Orchestrator executor: lists all triggers, finds the one matching the given
+              name exactly, and removes it. Input: trigger_name (string). Output:
+              {removed: bool, trigger_name: string, error?: string}."
+content: |
+  # Orchestrator executor body. No I/O, no imports, no network.
+  # IBS bakes in slot values before execution.
+  _trigger_name = "{{vars.slot0}}"
+  _list_result  = __execute_action__("trigger_list", {})
+  _triggers     = _list_result.get("triggers", []) if isinstance(_list_result, dict) else []
+  _found        = next((t for t in _triggers if t.get("name") == _trigger_name), None)
+  if _found is None:
+      result = {"removed": False, "trigger_name": _trigger_name,
+                "error": f"No trigger named '{_trigger_name}' found"}
+  else:
+      _remove_result = __execute_action__("trigger_remove", {"trigger_name": _trigger_name})
+      result = {"removed": True, "trigger_name": _trigger_name, "remove_result": _remove_result}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 17.x.2 — Recipe: `trigger-remove-by-name` (class 21)
+
+> **Tier:** 1 — ExternalWrite effect; user confirmation by LLM before the PythonCode acts.
+> The split: LLM confirms intent with user (step-2), then PythonCode executes the
+> list-find-remove deterministically (step-3). No ambiguous name resolution by LLM.
+
+```
+name:        "trigger-remove-by-name"
+description: "Remove a trigger by exact name — LLM confirms intent, then PythonCode resolves and removes."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-trigger-remove>"],
+    "label":   "Load skill-trigger-remove leaf skill body (safety procedure)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM confirms trigger name with user and warns about irreversibility"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-trigger-list>", "<uuid:ts-trigger-remove>"],
+    "label":   "Pre-load list + remove ToolSkill bindings"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-trigger-resolve-and-remove>"],
+    "label":   "PythonCode: list triggers, find by exact name, remove — no LLM disambiguation"
+  }
+]
+intent_examples: [
+  {"input": "remove the trigger named X",                    "class": 1},
+  {"input": "delete trigger X",                              "class": 1},
+  {"input": "stop the trigger called X",                     "class": 1},
+  {"input": "cancel trigger by name",                        "class": 1},
+  {"input": "remove the scheduled trigger X",                "class": 2},
+  {"input": "disable and remove trigger named X",            "class": 2},
+  {"input": "delete this specific trigger by name",          "class": 1},
+  {"input": "trigger remove by name",                        "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
 ## Step 18 — `builtin.spawn_subagent` (Child Agent Delegation)
 
 > Spawns a child agent run delegated to a sub-goal. Always Tier 1 — §spawn_subagent-guard
@@ -6863,6 +6965,18 @@ body: |
   Choosing a delegation grain:
   - skill-spawn-subagent: general goal delegation — write a clear, self-contained goal
   - skill-spawn-named-procedure: procedure delegation — use an existing validated Recipe
+  - skill-spawn-research: research/info-gathering delegation — returns structured summary
+  - skill-spawn-coding: coding task delegation — file reads, patches, reports changes
+  - skill-spawn-exploration: read-only deep analysis — returns catalogue or report
+  - skill-spawn-query: focused single-question lookup — returns direct answer
+
+  Decision guide:
+  • Generic open-ended sub-goal → skill-spawn-subagent
+  • Run a known recipe in a child → skill-spawn-named-procedure
+  • Research / web lookups / memory searches → skill-spawn-research
+  • File editing, debugging, writing code → skill-spawn-coding
+  • Mapping codebase structure, tracing deps → skill-spawn-exploration
+  • Single factual question needing 1-2 tool calls → skill-spawn-query
 
   Critical safety invariants (§spawn_subagent-guard):
   - Any Recipe binding spawn_subagent MUST have llm_call_required=true (hard Q1 rule).
@@ -6918,6 +7032,296 @@ intent_examples: [
   {"input": "run this recipe in a child session",         "class": 2},
   {"input": "spawn subagent with this goal",              "class": 1},
   {"input": "delegate this to a parallel agent",          "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 18.x — Subagent Flavor-Specific Recipes
+
+> **§spawn_subagent-guard applies to all recipes below** — all are `llm_call_required: true`.
+> These recipes are NOT Tier-0. They specialise the generic `subagent-spawn` recipe by
+> pre-framing the goal type so the LLM knows which kind of delegation is requested.
+> One recipe per delegation flavour. The intent system routes here directly so the LLM
+> already knows "this is a research delegation" before it composes the goal string.
+
+### Step 18.x.1 — Leaf Skill: `skill-spawn-research` (class 1)
+
+> Grain: delegate a focused information-gathering task to a child.
+
+```
+name:        "skill-spawn-research"
+class_code:  1
+description: "Leaf skill: how to delegate a research or information-gathering sub-task."
+body: |
+  Use `ts-spawn-subagent` with a goal written as a focused research question. Research
+  delegation works best when:
+  - The question is self-contained and answerable from memory, files, or web search.
+  - You want the answer returned as a structured summary (not inline back-and-forth).
+  - The child will need to call multiple tools (memory_search, glob, grep, or http).
+
+  Frame the goal as a question: "Research and summarise X, focusing on Y. Return a
+  structured summary with: key findings, relevant files/sources, open questions."
+  Include all constraints in the context field — the child has no access to parent state.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+---
+
+### Step 18.x.2 — Leaf Skill: `skill-spawn-coding` (class 1)
+
+> Grain: delegate a focused code-reading, code-writing, or debugging task to a child.
+
+```
+name:        "skill-spawn-coding"
+class_code:  1
+description: "Leaf skill: how to delegate a focused coding sub-task to a child agent."
+body: |
+  Use `ts-spawn-subagent` with a goal written as a concrete code task. Coding delegation
+  works best when:
+  - The task is scoped to a specific file, function, or module.
+  - The child needs to read files, apply patches, and report a result.
+  - The task is too long to inline and benefits from isolated execution.
+
+  Frame the goal concretely: "Read /path/to/file, fix the bug described by X, write the
+  corrected version back. Return the diff of changes made."
+  Include all file paths and error descriptions in the context field.
+  Set budget_tokens appropriately — coding tasks can be token-heavy.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+---
+
+### Step 18.x.3 — Leaf Skill: `skill-spawn-exploration` (class 1)
+
+> Grain: delegate a deep read-only exploration of the codebase or workspace to a child.
+
+```
+name:        "skill-spawn-exploration"
+class_code:  1
+description: "Leaf skill: how to delegate a deep read-only workspace exploration task."
+body: |
+  Use `ts-spawn-subagent` with a goal written as a deep-analysis question. Exploration
+  delegation works best when:
+  - The task is read-only (no file writes, no shell execution with side effects).
+  - You want the child to map out a codebase area, trace a dependency, or catalogue
+    patterns across many files.
+  - The result is a structured report or inventory.
+
+  Frame the goal as an analysis assignment: "Explore all Rust files under crates/X/,
+  identify all public trait definitions, and return a structured inventory with trait
+  names, file paths, and method signatures."
+  Explicitly state "read-only — do not modify any files" in the goal if needed.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+---
+
+### Step 18.x.4 — Leaf Skill: `skill-spawn-query` (class 1)
+
+> Grain: delegate a focused single-question query that needs tool lookups to answer.
+
+```
+name:        "skill-spawn-query"
+class_code:  1
+description: "Leaf skill: how to delegate a focused lookup query to a child agent."
+body: |
+  Use `ts-spawn-subagent` when the user asks a specific factual question that requires
+  one or two tool lookups (memory_search, grep, glob, or a quick http fetch) to answer.
+  Query delegation avoids cluttering the parent context with intermediate tool results.
+
+  Frame the goal as a direct question with expected output shape: "Find the current
+  version of X in Cargo.toml and return it. Return only the version string."
+  Keep goals short and unambiguous — the child will return a text result, not continue
+  a conversation.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+---
+
+### Step 18.x.5 — Recipe: `subagent-research` (class 21)
+
+> **Tier:** 1 — §spawn_subagent-guard. LLM frames the research goal.
+
+```
+name:        "subagent-research"
+description: "Delegate a focused research or information-gathering task to a child agent."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-spawn-research>"],
+    "label":   "Load research delegation leaf skill body"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM frames focused research goal string, sets context, calls ts-spawn-subagent"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-spawn-subagent>"],
+    "label":   "Pre-load ts-spawn-subagent ToolSkill binding"
+  }
+]
+intent_examples: [
+  {"input": "research this topic using a child agent",      "class": 1},
+  {"input": "have a subagent look this up",                 "class": 1},
+  {"input": "delegate this research to a child",            "class": 1},
+  {"input": "spawn a researcher subagent",                  "class": 1},
+  {"input": "research X in a child session",                "class": 2},
+  {"input": "use a subagent to find information about X",   "class": 2},
+  {"input": "gather information on X via child agent",      "class": 2},
+  {"input": "let a subagent research this and report back", "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 18.x.6 — Recipe: `subagent-coding` (class 21)
+
+> **Tier:** 1 — §spawn_subagent-guard. LLM frames the coding task.
+
+```
+name:        "subagent-coding"
+description: "Delegate a focused code-reading, code-writing, or debugging task to a child agent."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-spawn-coding>"],
+    "label":   "Load coding delegation leaf skill body"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM scopes the code task, includes file paths + constraints in context, calls ts-spawn-subagent"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-spawn-subagent>"],
+    "label":   "Pre-load ts-spawn-subagent ToolSkill binding"
+  }
+]
+intent_examples: [
+  {"input": "have a child agent fix this bug",              "class": 1},
+  {"input": "delegate this coding task to a subagent",      "class": 1},
+  {"input": "spawn a coder subagent to handle this",        "class": 1},
+  {"input": "let a child agent write this code",            "class": 1},
+  {"input": "use a subagent to refactor this file",         "class": 2},
+  {"input": "have a child agent apply this patch",          "class": 2},
+  {"input": "delegate the code changes to a child session", "class": 2},
+  {"input": "subagent coding task",                         "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 18.x.7 — Recipe: `subagent-exploration` (class 21)
+
+> **Tier:** 1 — §spawn_subagent-guard. LLM frames the exploration scope.
+
+```
+name:        "subagent-exploration"
+description: "Delegate a deep read-only workspace or codebase exploration to a child agent."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-spawn-exploration>"],
+    "label":   "Load exploration delegation leaf skill body"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM defines exploration scope and output format, calls ts-spawn-subagent"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-spawn-subagent>"],
+    "label":   "Pre-load ts-spawn-subagent ToolSkill binding"
+  }
+]
+intent_examples: [
+  {"input": "have a subagent explore this codebase area",   "class": 1},
+  {"input": "spawn an explorer to map out the structure",   "class": 1},
+  {"input": "delegate a deep exploration to a child agent", "class": 1},
+  {"input": "have a child agent catalogue this directory",  "class": 2},
+  {"input": "explore the codebase with a subagent",         "class": 2},
+  {"input": "subagent explore",                             "class": 1},
+  {"input": "use a child agent to analyse code patterns",   "class": 2},
+  {"input": "have a child agent trace this dependency",     "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 18.x.8 — Recipe: `subagent-query` (class 21)
+
+> **Tier:** 1 — §spawn_subagent-guard. LLM frames the query.
+
+```
+name:        "subagent-query"
+description: "Delegate a focused single-question lookup to a child agent."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-spawn-query>"],
+    "label":   "Load query delegation leaf skill body"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM formulates focused single-question goal, expected output shape, calls ts-spawn-subagent"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-spawn-subagent>"],
+    "label":   "Pre-load ts-spawn-subagent ToolSkill binding"
+  }
+]
+intent_examples: [
+  {"input": "ask a child agent to look this up",            "class": 1},
+  {"input": "have a subagent answer this question",         "class": 1},
+  {"input": "delegate this lookup to a child session",      "class": 1},
+  {"input": "spawn a query subagent",                       "class": 1},
+  {"input": "use a child agent to find the answer to X",    "class": 2},
+  {"input": "subagent query",                               "class": 1},
+  {"input": "let a child agent fetch this information",     "class": 2},
+  {"input": "have a child agent check this value",          "class": 2}
 ]
 source: "system"
 validation_status: "validated"
@@ -7212,6 +7616,308 @@ intent_examples: [
   {"input": "find the official docs for X",       "class": 2}
 ]
 source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 20.x — Pure-Logic PythonCode Helpers (Gap 6: string, list, dict, CSV)
+
+> **Gap 6:** The plan was missing general-purpose pure-logic PythonCode helpers for
+> string processing, CSV parsing, and list/dict operations. These are class-22 components
+> with NO I/O, NO imports, NO network. They use only built-in Python operations and
+> IBS-injected slot variables. They are called from orchestrator-channel steps within
+> Tier-0 and Tier-1 recipes to process tool output without an LLM.
+>
+> Design rule: each PythonCode helper does ONE thing. If a recipe needs two operations,
+> chain two helpers — do not build a monolithic helper.
+
+### Step 20.x.1 — PythonCode: `pc-string-split` (class 22)
+
+```
+name:        "pc-string-split"
+class_code:  22
+description: "Pure-logic helper: split a string by a delimiter. Input: text (string),
+              delimiter (string, default newline). Output: {parts: [str], count: int}."
+content: |
+  # No I/O, no imports. IBS bakes in slot values before execution.
+  _text      = "{{vars.slot0}}"
+  _delimiter = "{{vars.slot1}}" if "{{vars.slot1}}" else "\n"
+  _parts     = _text.split(_delimiter) if _text else []
+  result = {"parts": _parts, "count": len(_parts)}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 20.x.2 — PythonCode: `pc-string-join` (class 22)
+
+```
+name:        "pc-string-join"
+class_code:  22
+description: "Pure-logic helper: join a list of strings with a delimiter. Input: parts
+              (list of strings), delimiter (string, default newline). Output: {text: str}."
+content: |
+  # No I/O, no imports. IBS bakes in slot values before execution.
+  _parts     = {{vars.slot0}}
+  _delimiter = "{{vars.slot1}}" if "{{vars.slot1}}" else "\n"
+  _joined    = _delimiter.join(str(p) for p in _parts) if isinstance(_parts, list) else str(_parts)
+  result = {"text": _joined}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 20.x.3 — PythonCode: `pc-string-strip` (class 22)
+
+```
+name:        "pc-string-strip"
+class_code:  22
+description: "Pure-logic helper: strip whitespace (or a custom char set) from both ends
+              of a string. Input: text (string), chars (optional string of chars to strip).
+              Output: {text: str, changed: bool}."
+content: |
+  # No I/O, no imports. IBS bakes in slot values before execution.
+  _text    = "{{vars.slot0}}"
+  _chars   = "{{vars.slot1}}" if "{{vars.slot1}}" else None
+  _stripped = _text.strip(_chars) if _chars else _text.strip()
+  result = {"text": _stripped, "changed": _stripped != _text}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 20.x.4 — PythonCode: `pc-string-replace` (class 22)
+
+```
+name:        "pc-string-replace"
+class_code:  22
+description: "Pure-logic helper: replace all occurrences of old_str with new_str in text.
+              Input: text (string), old_str (string), new_str (string).
+              Output: {text: str, count: int} — count is the number of replacements made."
+content: |
+  # No I/O, no imports. IBS bakes in slot values before execution.
+  _text    = "{{vars.slot0}}"
+  _old     = "{{vars.slot1}}"
+  _new     = "{{vars.slot2}}"
+  _count   = _text.count(_old)
+  _result  = _text.replace(_old, _new)
+  result = {"text": _result, "count": _count}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 20.x.5 — PythonCode: `pc-string-contains` (class 22)
+
+```
+name:        "pc-string-contains"
+class_code:  22
+description: "Pure-logic helper: check whether text contains a substring (case-sensitive
+              by default). Input: text (string), substring (string), case_insensitive
+              (bool, optional). Output: {found: bool, text: str, substring: str}."
+content: |
+  # No I/O, no imports. IBS bakes in slot values before execution.
+  _text            = "{{vars.slot0}}"
+  _sub             = "{{vars.slot1}}"
+  _case_insensitive = {{vars.slot2}} if "{{vars.slot2}}" not in ("", "False", "false") else False
+  if _case_insensitive:
+      _found = _sub.lower() in _text.lower()
+  else:
+      _found = _sub in _text
+  result = {"found": _found, "text": _text, "substring": _sub}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 20.x.6 — PythonCode: `pc-list-filter-nonempty` (class 22)
+
+```
+name:        "pc-list-filter-nonempty"
+class_code:  22
+description: "Pure-logic helper: remove empty strings and None values from a list.
+              Input: items (list). Output: {items: list, removed: int, count: int}."
+content: |
+  # No I/O, no imports. IBS bakes in slot values before execution.
+  _items  = {{vars.slot0}}
+  _before = len(_items) if isinstance(_items, list) else 0
+  _filtered = [x for x in _items if x is not None and x != ""] if isinstance(_items, list) else []
+  result = {"items": _filtered, "removed": _before - len(_filtered), "count": len(_filtered)}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 20.x.7 — PythonCode: `pc-list-slice` (class 22)
+
+```
+name:        "pc-list-slice"
+class_code:  22
+description: "Pure-logic helper: slice a list to at most max_items items starting from
+              offset. Input: items (list), max_items (int), offset (int, default 0).
+              Output: {items: list, total: int, offset: int, has_more: bool}."
+content: |
+  # No I/O, no imports. IBS bakes in slot values before execution.
+  _items     = {{vars.slot0}}
+  _max       = int({{vars.slot1}}) if {{vars.slot1}} else 10
+  _offset    = int({{vars.slot2}}) if {{vars.slot2}} else 0
+  _list      = _items if isinstance(_items, list) else []
+  _sliced    = _list[_offset:_offset + _max]
+  result = {"items": _sliced, "total": len(_list), "offset": _offset,
+            "has_more": (_offset + _max) < len(_list)}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 20.x.8 — PythonCode: `pc-list-unique` (class 22)
+
+```
+name:        "pc-list-unique"
+class_code:  22
+description: "Pure-logic helper: deduplicate a list preserving insertion order.
+              Input: items (list). Output: {items: list, removed: int}."
+content: |
+  # No I/O, no imports. IBS bakes in slot values before execution.
+  _items = {{vars.slot0}}
+  _list  = _items if isinstance(_items, list) else []
+  _seen  = set()
+  _dedup = []
+  for _item in _list:
+      _key = str(_item)
+      if _key not in _seen:
+          _seen.add(_key)
+          _dedup.append(_item)
+  result = {"items": _dedup, "removed": len(_list) - len(_dedup)}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 20.x.9 — PythonCode: `pc-dict-pick` (class 22)
+
+```
+name:        "pc-dict-pick"
+class_code:  22
+description: "Pure-logic helper: extract a subset of keys from a dict. Input: data (dict),
+              keys (comma-separated string of key names). Output: {data: dict, missing: [str]}."
+content: |
+  # No I/O, no imports. IBS bakes in slot values before execution.
+  _data     = {{vars.slot0}}
+  _keys_str = "{{vars.slot1}}"
+  _keys     = [k.strip() for k in _keys_str.split(",") if k.strip()]
+  _picked   = {}
+  _missing  = []
+  if isinstance(_data, dict):
+      for _k in _keys:
+          if _k in _data:
+              _picked[_k] = _data[_k]
+          else:
+              _missing.append(_k)
+  result = {"data": _picked, "missing": _missing}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 20.x.10 — PythonCode: `pc-dict-merge` (class 22)
+
+```
+name:        "pc-dict-merge"
+class_code:  22
+description: "Pure-logic helper: shallow-merge two dicts. Keys from dict_b overwrite
+              dict_a on collision. Input: dict_a (dict), dict_b (dict).
+              Output: {data: dict, overwritten_keys: [str]}."
+content: |
+  # No I/O, no imports. IBS bakes in slot values before execution.
+  _a    = {{vars.slot0}}
+  _b    = {{vars.slot1}}
+  _a    = _a if isinstance(_a, dict) else {}
+  _b    = _b if isinstance(_b, dict) else {}
+  _over = [k for k in _b if k in _a]
+  _merged = {**_a, **_b}
+  result = {"data": _merged, "overwritten_keys": _over}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 20.x.11 — PythonCode: `pc-csv-parse-lines` (class 22)
+
+```
+name:        "pc-csv-parse-lines"
+class_code:  22
+description: "Pure-logic helper: parse a CSV string into a list of row dicts. Uses the
+              first row as header. Input: csv_text (string), delimiter (string, default comma).
+              Output: {rows: [dict], headers: [str], count: int}."
+content: |
+  # No I/O, no imports needed — only builtin operations used.
+  # IBS bakes in slot values before execution.
+  _csv_text  = "{{vars.slot0}}"
+  _delimiter = "{{vars.slot1}}" if "{{vars.slot1}}" else ","
+  _lines     = [l for l in _csv_text.splitlines() if l.strip()]
+  if not _lines:
+      result = {"rows": [], "headers": [], "count": 0}
+  else:
+      _headers = [h.strip() for h in _lines[0].split(_delimiter)]
+      _rows    = []
+      for _line in _lines[1:]:
+          _vals = [v.strip() for v in _line.split(_delimiter)]
+          _row  = dict(zip(_headers, _vals))
+          _rows.append(_row)
+      result = {"rows": _rows, "headers": _headers, "count": len(_rows)}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 20.x.12 — PythonCode: `pc-csv-rows-to-text` (class 22)
+
+```
+name:        "pc-csv-rows-to-text"
+class_code:  22
+description: "Pure-logic helper: render a list of dicts (from pc-csv-parse-lines) as a
+              plain-text table. Input: rows (list of dicts), columns (optional comma-sep
+              string of keys to include, default all). Output: {text: str, row_count: int}."
+content: |
+  # No I/O, no imports. IBS bakes in slot values before execution.
+  _rows    = {{vars.slot0}}
+  _cols_str = "{{vars.slot1}}"
+  _rows    = _rows if isinstance(_rows, list) else []
+  if not _rows:
+      result = {"text": "", "row_count": 0}
+  else:
+      _all_keys = list(_rows[0].keys()) if _rows else []
+      _cols     = [c.strip() for c in _cols_str.split(",") if c.strip()] if _cols_str else _all_keys
+      _header   = " | ".join(_cols)
+      _sep      = "-" * len(_header)
+      _body     = "\n".join(" | ".join(str(row.get(c, "")) for c in _cols) for row in _rows)
+      result    = {"text": f"{_header}\n{_sep}\n{_body}", "row_count": len(_rows)}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
 validation_status: "validated"
 ```
 
@@ -8969,7 +9675,9 @@ overview_doc: |
   Approaches:
   - List all triggers: → trigger-list recipe (Tier 0)
   - Create a trigger: → trigger-create recipe (Tier 1)
-  - Remove a trigger: → trigger-remove recipe (Tier 1)
+  - Remove a trigger (generic): → trigger-remove recipe (Tier 1 — LLM resolves name)
+  - Remove a trigger by exact name: → trigger-remove-by-name recipe (Tier 1 — LLM confirms,
+    PythonCode resolves and removes — no LLM disambiguation of the name)
 
 task_groups:
   - group_name:  "trigger-list"
@@ -8978,6 +9686,8 @@ task_groups:
     description: "Schedule a new trigger"
   - group_name:  "trigger-remove"
     description: "Remove a scheduled trigger"
+  - group_name:  "trigger-remove-by-name"
+    description: "Remove by exact name — PythonCode does list+resolve, LLM only confirms"
 
 child_component_ids: [
   "<uuid:trigger_list>",
@@ -8995,6 +9705,9 @@ child_component_ids: [
   "<uuid:ts-trigger-remove>",
   "<uuid:skill-trigger-remove>",
   "<uuid:trigger-remove>",
+
+  "<uuid:pc-exec-trigger-resolve-and-remove>",
+  "<uuid:trigger-remove-by-name>",
 
   "<uuid:skill-triggers>"
 ]
@@ -9016,22 +9729,40 @@ overview_doc: |
   The LLM MUST frame the goal and confirm delegation. No Tier-0 spawn dispatch.
 
   Approaches:
-  - Goal delegation: write clear goal + context → subagent-spawn recipe (Tier 1)
+  - Generic goal delegation: write clear goal + context → subagent-spawn recipe (Tier 1)
   - Named procedure: specify recipe_name → subagent-spawn recipe (Tier 1)
+  - Research delegation: focused info-gathering → subagent-research recipe (Tier 1)
+  - Coding delegation: file read/write/patch task → subagent-coding recipe (Tier 1)
+  - Exploration delegation: deep read-only analysis → subagent-exploration recipe (Tier 1)
+  - Query delegation: focused single-question lookup → subagent-query recipe (Tier 1)
+
+  Choose the most specific recipe — the intent system routes the user's phrasing here
+  and the pre-loaded leaf skill body gives the LLM the right framing before it writes
+  the goal string.
 
 task_groups:
   - group_name:  "subagent-goal"
     description: "Delegate a self-contained sub-goal to a child agent"
   - group_name:  "subagent-procedure"
     description: "Run a named recipe as a child agent procedure"
+  - group_name:  "subagent-typed"
+    description: "Flavour-specific delegation: research, coding, exploration, query"
 
 child_component_ids: [
   "<uuid:spawn_subagent>",
   "<uuid:ts-spawn-subagent>",
   "<uuid:skill-spawn-subagent>",
   "<uuid:skill-spawn-named-procedure>",
+  "<uuid:skill-spawn-research>",
+  "<uuid:skill-spawn-coding>",
+  "<uuid:skill-spawn-exploration>",
+  "<uuid:skill-spawn-query>",
   "<uuid:skill-subagent>",
-  "<uuid:subagent-spawn>"
+  "<uuid:subagent-spawn>",
+  "<uuid:subagent-research>",
+  "<uuid:subagent-coding>",
+  "<uuid:subagent-exploration>",
+  "<uuid:subagent-query>"
 ]
 source: "system"
 validation_status: "validated"
@@ -9663,22 +10394,22 @@ validation_status: "validated"
 |-------|------|-------|-----------------|
 | 0 | Tool | 23 | builtin.shell, read_file, write_file, list_dir, glob, grep, apply_patch, http, http.save, memory_search, memory_write, memory_read, memory_tree, time, json, skill_list, skill_install, skill_remove, trigger_create, trigger_list, trigger_remove, spawn_subagent, echo |
 | 13 | ToolSkill | 30 | ts-shell-run, ts-read-file, ts-write-file, ts-list-dir, ts-glob, ts-grep, ts-apply-patch, ts-http-fetch, ts-http-save, ts-memory-search, ts-memory-write, ts-memory-read, ts-memory-tree, ts-time-now, ts-time-parse, ts-time-convert, **ts-time-diff**, **ts-time-format**, ts-json-query, ts-json-stringify, ts-json-validate, ts-skill-list, ts-skill-install, ts-skill-remove, ts-trigger-create, ts-trigger-list, ts-trigger-remove, ts-spawn-subagent, ts-web-search, ts-echo |
-| 22 | PythonCode | 62 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-list-filter-by-type, pc-exec-glob, pc-exec-grep, pc-exec-grep-case-insensitive, pc-exec-grep-type-filtered, pc-exec-apply-patch, pc-exec-http-get, pc-exec-http-get-authenticated, pc-exec-http-post, pc-exec-http-head, pc-exec-http-put, pc-exec-http-patch, pc-exec-http-delete, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, **pc-exec-time-diff**, **pc-exec-time-format**, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-url-encode, pc-web-search-extract, pc-web-search-query-build, pc-exec-echo, pc-exec-shell-git-status, pc-exec-shell-git-log, pc-exec-shell-git-diff-stat, pc-exec-shell-git-branch, pc-exec-shell-git-stash-list, pc-exec-shell-git-log-n, pc-exec-shell-git-remote, pc-exec-shell-git-show-stat, pc-exec-shell-git-tag-list, pc-exec-shell-pwd, pc-exec-shell-df, pc-exec-shell-ps, pc-exec-shell-env, pc-exec-shell-uname, pc-exec-shell-which, pc-exec-shell-date, pc-exec-shell-hostname, pc-exec-shell-whoami, pc-exec-shell-uptime, pc-exec-shell-free, pc-exec-shell-wc-l |
-| 1 | Leaf Skill | 76 | skill-shell-run, skill-shell-safe-check, skill-shell-git-status, skill-shell-git-log, skill-shell-git-diff-stat, skill-shell-git-branch, skill-shell-git-stash-list, skill-shell-pwd, skill-shell-df, skill-shell-ps, skill-shell-env, skill-shell-uname, skill-shell-which, skill-shell-git-remote, skill-shell-git-show-stat, skill-shell-git-tag-list, skill-shell-date, skill-shell-hostname, skill-shell-whoami, skill-shell-uptime, skill-shell-free, skill-shell-wc-l, skill-read-file, skill-read-file-range, skill-write-file-new, skill-write-file-replace, skill-write-file-template, skill-list-dir, skill-list-dir-recursive, skill-list-dir-files-only, skill-list-dir-dirs-only, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-grep-case-insensitive, skill-grep-type-filtered, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-head, skill-http-put, skill-http-patch, skill-http-delete, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, skill-memory-read, skill-memory-tree, skill-time-now, skill-time-parse, skill-time-convert, **skill-time-diff**, **skill-time-format**, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search (76 total) |
+| 22 | PythonCode | 75 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-list-filter-by-type, pc-exec-glob, pc-exec-grep, pc-exec-grep-case-insensitive, pc-exec-grep-type-filtered, pc-exec-apply-patch, pc-exec-http-get, pc-exec-http-get-authenticated, pc-exec-http-post, pc-exec-http-head, pc-exec-http-put, pc-exec-http-patch, pc-exec-http-delete, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, **pc-exec-time-diff**, **pc-exec-time-format**, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, **pc-exec-trigger-resolve-and-remove**, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-url-encode, pc-web-search-extract, pc-web-search-query-build, pc-exec-echo, pc-exec-shell-git-status, pc-exec-shell-git-log, pc-exec-shell-git-diff-stat, pc-exec-shell-git-branch, pc-exec-shell-git-stash-list, pc-exec-shell-git-log-n, pc-exec-shell-git-remote, pc-exec-shell-git-show-stat, pc-exec-shell-git-tag-list, pc-exec-shell-pwd, pc-exec-shell-df, pc-exec-shell-ps, pc-exec-shell-env, pc-exec-shell-uname, pc-exec-shell-which, pc-exec-shell-date, pc-exec-shell-hostname, pc-exec-shell-whoami, pc-exec-shell-uptime, pc-exec-shell-free, pc-exec-shell-wc-l, **pc-string-split**, **pc-string-join**, **pc-string-strip**, **pc-string-replace**, **pc-string-contains**, **pc-list-filter-nonempty**, **pc-list-slice**, **pc-list-unique**, **pc-dict-pick**, **pc-dict-merge**, **pc-csv-parse-lines**, **pc-csv-rows-to-text** |
+| 1 | Leaf Skill | 80 | skill-shell-run, skill-shell-safe-check, skill-shell-git-status, skill-shell-git-log, skill-shell-git-diff-stat, skill-shell-git-branch, skill-shell-git-stash-list, skill-shell-pwd, skill-shell-df, skill-shell-ps, skill-shell-env, skill-shell-uname, skill-shell-which, skill-shell-git-remote, skill-shell-git-show-stat, skill-shell-git-tag-list, skill-shell-date, skill-shell-hostname, skill-shell-whoami, skill-shell-uptime, skill-shell-free, skill-shell-wc-l, skill-read-file, skill-read-file-range, skill-write-file-new, skill-write-file-replace, skill-write-file-template, skill-list-dir, skill-list-dir-recursive, skill-list-dir-files-only, skill-list-dir-dirs-only, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-grep-case-insensitive, skill-grep-type-filtered, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-head, skill-http-put, skill-http-patch, skill-http-delete, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, skill-memory-read, skill-memory-tree, skill-time-now, skill-time-parse, skill-time-convert, **skill-time-diff**, **skill-time-format**, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search, **skill-spawn-research**, **skill-spawn-coding**, **skill-spawn-exploration**, **skill-spawn-query** (80 total) |
 | 2 | Domain Skill | 9 | skill-filesystem, skill-http, skill-memory, skill-shell, skill-skills, skill-triggers, skill-subagent, skill-time, skill-json |
-| 21 | Recipe | 95 | file-read, file-read-range, file-write, file-write-template, file-list, file-list-recursive, file-list-files-only, file-list-dirs-only, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-glob-recent, file-grep, file-grep-files, file-grep-content, file-grep-count, file-grep-case-insensitive, file-grep-type-filtered, file-patch, file-patch-replace-all, http-get, http-get-json, http-authenticated-get, http-head, http-post, http-post-json-webhook, http-put, http-patch, http-delete, http-save, http-save-large, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, memory-tree-deep, time-now, time-now-tz, time-parse, time-convert, **time-diff**, **time-format**, json-query, json-stringify, json-parse, json-validate, skill-list, skill-list-user-only, skill-list-system-only, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, subagent-spawn, web-search, echo-ping, shell-run, shell-script, shell-git-status, shell-git-log, shell-git-diff-stat, shell-git-branch, shell-git-stash-list, shell-git-remote, shell-git-show-stat, shell-git-tag-list, shell-pwd, shell-df, shell-ps, shell-env, shell-uname, shell-which, shell-date, shell-hostname, shell-whoami, shell-uptime, shell-free, shell-wc-l |
+| 21 | Recipe | 100 | file-read, file-read-range, file-write, file-write-template, file-list, file-list-recursive, file-list-files-only, file-list-dirs-only, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-glob-recent, file-grep, file-grep-files, file-grep-content, file-grep-count, file-grep-case-insensitive, file-grep-type-filtered, file-patch, file-patch-replace-all, http-get, http-get-json, http-authenticated-get, http-head, http-post, http-post-json-webhook, http-put, http-patch, http-delete, http-save, http-save-large, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, memory-tree-deep, time-now, time-now-tz, time-parse, time-convert, **time-diff**, **time-format**, json-query, json-stringify, json-parse, json-validate, skill-list, skill-list-user-only, skill-list-system-only, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, trigger-remove-by-name, subagent-spawn, **subagent-research**, **subagent-coding**, **subagent-exploration**, **subagent-query**, web-search, echo-ping, shell-run, shell-script, shell-git-status, shell-git-log, shell-git-diff-stat, shell-git-branch, shell-git-stash-list, shell-git-remote, shell-git-show-stat, shell-git-tag-list, shell-pwd, shell-df, shell-ps, shell-env, shell-uname, shell-which, shell-date, shell-hostname, shell-whoami, shell-uptime, shell-free, shell-wc-l |
 | 23 | ExtensionCatalogue | 24 | builtin-filesystem, builtin-network, builtin-memory, builtin-process, builtin-management, ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch, ext-http, ext-http-save, ext-memory-search, ext-memory-write, ext-memory-read, ext-memory-tree, ext-time, ext-json, ext-shell, ext-skill-management, ext-trigger-management, ext-spawn-subagent, ext-web-search |
 
-> **Actual totals (v3, fully optimized):** 23 Tools + 30 ToolSkills + 62 PythonCode + 76 Leaf Skills + 9 Domain Skills + 95 Recipes + 24 ExtensionCatalogues = **319 components**
+> **Actual totals (v3, fully optimized):** 23 Tools + 30 ToolSkills + 75 PythonCode + 80 Leaf Skills + 9 Domain Skills + 100 Recipes + 24 ExtensionCatalogues = **341 components**
 >
-> **New in this revision (diff + format):** +2 ToolSkills, +2 PythonCode, +2 Leaf Skills, +2 Recipes.
-> Both `time.diff` and `time.format` are implemented in Rust (`first_party_tools/time.rs`) and
-> were previously absent from the plan despite being fully functional.
+> **New in this revision (since 319):**
+> - +13 PythonCode: 1 trigger resolver (`pc-exec-trigger-resolve-and-remove`) + 12 pure-logic helpers (string/list/dict/csv transforms)
+> - +4 Leaf Skills: subagent flavor skills (`skill-spawn-research`, `-coding`, `-exploration`, `-query`)
+> - +5 Recipes: `trigger-remove-by-name` + 4 subagent flavor recipes (`subagent-research/coding/exploration/query`)
 >
-> **Tier-0 recipe count: 79 out of 95** (83%). The two new recipes (time-diff, time-format)
-> are both Tier 0 — fully deterministic Rust operations, no LLM involvement.
-> The orchestrator handles 83% of all built-in tasks completely autonomously —
-> LLM involvement is required for only 17%.
+> **Tier-0 recipe count: 81 out of 100** (81%).
+> Orchestrator handles 81% of all built-in tasks completely autonomously —
+> LLM involvement is required for only 19% (shell-run, shell-script, spawn variants, http-save-large).
 
 ---
 
@@ -9748,4 +10479,4 @@ producing duplicate rows.
 
 ---
 
-*End of builtin_stuff_v3.md — all Steps + Final section complete. v3 fully revised: 319 components, 95 Recipes (79 Tier-0 = 83%, §shell-safe-fixed + §shell-guard-custom), 24 ExtensionCatalogues (5 global domain + 19 per-tool), orchestrator-first design. Full builtin coverage: all 23 tools fully covered; HTTP PATCH added; echo-ping diagnostic recipe added; 9 new sysinfo/git shell Tier-0 recipes; file-list-dirs-only added; time.diff and time.format operations (implemented in Rust, previously missing from plan) added as Tier-0 recipes. The orchestrator handles 83% of all built-in tasks autonomously — LLM involvement required for only 17%.*
+*End of builtin_stuff_v3.md — all Steps + Final section complete. v3 fully revised: 341 components, 100 Recipes (81 Tier-0 = 81%, §shell-safe-fixed + §shell-guard-custom), 24 ExtensionCatalogues (5 global domain + 19 per-tool), orchestrator-first design. Full builtin coverage: all 23 tools fully covered; HTTP PATCH added; echo-ping diagnostic recipe added; 9 new sysinfo/git shell Tier-0 recipes; file-list-dirs-only added; time.diff and time.format (previously missing from plan) added as Tier-0 recipes; 4 subagent flavor recipes (research/coding/exploration/query) added; trigger-remove-by-name Tier-1 recipe added; 12 pure-logic PythonCode helpers (string/list/dict/csv) added. The orchestrator handles 81% of all built-in tasks autonomously — LLM involvement required for only 19%.*
