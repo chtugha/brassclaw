@@ -45,8 +45,8 @@ BrassClaw is a **secure, local-first AI assistant** built on the IronClaw Reborn
 - Two-layer execution model: a stable Rust kernel (infrastructure, safety, persistence) + a self-modifiable Python orchestrator via Monty VM
 - Multi-provider LLM support: vLLM, Ollama, OpenAI-compatible APIs, Anthropic
 - Skills system for deterministic knowledge injection (no LLM involvement in selection)
-- WASM sandbox for untrusted tool execution
-- Dual database backend: libSQL (local) and PostgreSQL (server)
+- Process sandbox (`brassclaw_process_sandbox`) for untrusted tool subprocess execution — replaces the v1 WebAssembly sandbox removed in Phase 4
+- PostgreSQL persistence (mandatory in production; the libSQL read path survives only as the upgrade-release migration gate)
 - WebUI v2 (React SPA) + TUI/REPL + future Slack/Telegram adapters
 
 ---
@@ -162,7 +162,7 @@ flowchart TD
     Runtime["brassclaw_reborn_composition::RebornRuntime\nproduct-facing handle"]
     Factory["build_reborn_runtime /\nbuild_reborn_services"]
     Coordinator["brassclaw_turns::TurnCoordinator\nadapter-safe turn API"]
-    Store["TurnStateStore + Checkpoint stores\nmemory/filesystem/libSQL/Postgres slices"]
+    Store["TurnStateStore + Checkpoint stores\nmemory/filesystem/Postgres slices"]
     Worker["brassclaw_reborn::TurnRunnerWorker\nclaim, heartbeat, invoke, apply"]
     Registry["DriverRegistry\nregistered loop drivers"]
     Planned["PlannedDriver\nAgentLoopDriver adapter"]
@@ -479,7 +479,7 @@ Extension discovery and management.
 
 **Owns:**
 - Manifest parsing (TOML/JSON)
-- Runtime kind detection: WASM, MCP, Script, FirstParty, System
+- Runtime kind detection: MCP, FirstParty, System (the WASM and Script lanes were removed in Phase 4)
 - Extension lifecycle management
 - Package/capability descriptor registry
 
@@ -716,7 +716,7 @@ flowchart LR
     CapHost["CapabilityHost"]
     Auth["authorization / approvals /\nresources / obligations"]
     Dispatch["RuntimeDispatcher"]
-    Lane["WASM / script / MCP /\nfirst-party adapter"]
+    Lane["MCP / first-party /\nsystem adapter"]
     Result["CapabilityOutcome\nrefs + safe summaries"]
 
     Model --> Exec
@@ -738,7 +738,7 @@ model tool call / loop capability candidate
       -> extension/capability lookup
       -> authorization, approval, leases, resources, network/secrets policy
       -> RuntimeDispatcher
-      -> WASM / script / MCP / first-party runtime adapter
+      -> MCP / first-party / system runtime adapter
   -> sanitized outcome refs and safe summaries
   -> executor state and transcript refs
 ```
@@ -973,11 +973,11 @@ ExtensionDiscovery / registry
 
 | Lane | Role | Boundary |
 |---|---|---|
-| **WASM** | Sandboxed extension/component execution | Uses host imports for filesystem, HTTP, credentials, and output mediation |
-| **Script/process** | Host or sandbox process-backed work | Process backend selected by runtime policy; brokered network/secrets are host-owned |
 | **MCP** | External MCP server/tool integration | HTTP/SSE egress must use host-mediated runtime HTTP where policy requires it |
 | **First-party** | Host-owned built-in handlers | Still dispatches through `CapabilityHost` and `RuntimeDispatcher`; manifests cannot self-assign first-party/system authority |
 | **System** | Deferred stricter host-only lane | Do not treat first-party as a shortcut to system authority |
+
+> **Phase 4 update:** the `WASM` lane (wasmtime host imports) and the `Script` lane were removed. Sandboxable subprocess work now goes through `brassclaw_process_sandbox` behind the `ProcessExecutor`; extension manifests may declare only `mcp`, and the host assigns `first_party`/`system` (both `#[serde(skip_deserializing)]` on `RuntimeKind` in `brassclaw_host_api::runtime`).
 
 ---
 
@@ -1091,12 +1091,14 @@ Turn records and events store **refs and metadata only**. Raw prompt text, raw a
 
 ### Database Backends
 
-| Backend | Profile | Use Case |
-|---|---|---|
-| libSQL | `local`, `local-dev` | Home use, single-user, no external DB required |
-| PostgreSQL | `server`, `server-multitenant` | Production server, multi-user |
+PostgreSQL is the only production backend (Goal 2; see `Goals_pre_v3_review.md`). An embedded Postgres is used for single-host local deployments when `BRASSCLAW_PG_URL` is absent; an external Postgres is required for all non-local `BRASSCLAW_RUNTIME_PROFILE` values.
 
-Both backends must maintain parity for all production-facing contract tests.
+| Backend | Status | Use Case |
+|---|---|---|
+| PostgreSQL | Mandatory production backend | All deployments (embedded or external) |
+| libSQL | Upgrade-release migration path only (`migrate-from-libsql` / `libsql` feature alias) | One-time data migration from legacy v1 installs; not a runtime backend |
+
+There is no libSQL/PostgreSQL runtime parity requirement — only PostgreSQL carries production-facing contract tests.
 
 ---
 
@@ -1112,28 +1114,27 @@ provider_id = "openai_compatible"
 model = "Qwen/Qwen2.5-7B-Instruct-AWQ"
 api_key_env = "BRASSCLAW_VLLM_KEY"
 
-[boot]
-profile = "local-dev"
-
 [webui]
 listen_host = "127.0.0.1"
 listen_port = 3000
 ```
 
-### Profiles
+> The `[boot]` section previously held `profile = "..."`; that field was removed in Phase 11 (`BootSection` is empty and `deny_unknown_fields` rejects the old key). Use the `BRASSCLAW_RUNTIME_PROFILE` env var for per-invocation capability policy instead.
 
-| Profile | Database | Sandbox | Use Case |
-|---|---|---|---|
-| `local-dev` (default) | libSQL | Disabled | Local development |
-| `local-dev-yolo` | libSQL | Disabled | Local dev with relaxed policy |
-| `local` | libSQL | Disabled | Home use |
-| `local-sandbox` | libSQL | Docker | Home + isolation |
-| `server` | PostgreSQL | Docker | Single-user server |
-| `server-multitenant` | PostgreSQL | Docker | Multi-user |
-| `production` | PostgreSQL | Docker | Production |
-| `migration-dry-run` | PostgreSQL | Docker | Compatibility validation |
+### Runtime profiles (capability policy only)
 
-Profile files live in `profiles/` at the repo root.
+The composition/installation profiles (`RebornCompositionProfile`) and the `profiles/` directory at the repo root have been removed (Goal 1; see `Goals_pre_v3_review.md`). There is no `local_dev` vs `hosted` composition split and no profile→database mapping — PostgreSQL is always the backend.
+
+The single surviving profile knob is the `BRASSCLAW_RUNTIME_PROFILE` env var, which controls **only the per-invocation capability/security resolver**, never the storage backend:
+
+| `BRASSCLAW_RUNTIME_PROFILE` | Capability policy |
+|---|---|
+| `local_dev` (default) | Relaxed local development |
+| `local_safe` | Local with sandbox/policy enforced |
+| `local_yolo` | Local with policy relaxed (yolo) |
+| `hosted_safe` | Hosted/server with sandbox enforced (requires `BRASSCLAW_PG_URL`) |
+
+Setting the old `BRASSCLAW_REBORN_PROFILE` (composition-profile name) is a hard startup error.
 
 ### Environment Variables
 
@@ -1300,7 +1301,7 @@ These invariants are architectural; violating them is not a bug, it is a securit
 | Add loop family | `brassclaw_agent_loop` family/planner/executor tests, then `brassclaw_reborn` driver registration/profile wiring | Checkpoint schema, run profile, loop-exit validation | Exposing strategy slots or host runtime handles to loops |
 | Add capability | Descriptor/extension registry, capability surface, host runtime/handler or runtime lane | Authorization, approvals, obligations, resource estimates, redaction, architecture tests | Calling dispatcher directly or treating visibility as authority |
 | Add runtime lane | Owning runtime crate + `RuntimeDispatcher` adapter + host-runtime policy handoffs | Network/secrets/resources/process/audit contracts | Direct network/secrets/filesystem access inside the lane |
-| Add persistence | Owning domain trait first, then libSQL/PostgreSQL parity where production-facing | Contract tests, migration/backfill, idempotency/recovery semantics | Backend-only behavior divergence |
+| Add persistence | Owning domain trait first, then PostgreSQL contract tests (libSQL is migration-only, not a runtime backend) | Contract tests, migration/backfill, idempotency/recovery semantics | Backend-only behavior divergence |
 | Add projection/event | Owning event/projection crate, then product read/stream surface | Redaction, replay cursors, delivery failure semantics | Raw runtime/user payloads in public streams |
 | Add security policy | Owning policy/host-runtime crate | Fail-closed behavior, audit, tests through caller side effects | Scattered product/loop conditionals |
 | Add skill | New `skills/<name>/SKILL.md` with correct frontmatter | Token budget (sum of all injected skills ≤ 2,048), activation scoring, gating prereqs | Calling external services directly from skill content (skills inject knowledge; tools execute) |
@@ -1343,11 +1344,6 @@ brassclaw/
 │   ├── web-browse/                 # Browser automation skill (320 tok)
 │   ├── github/                     # GitHub API skill
 │   └── ...                         # More skills
-├── profiles/                       # Runtime profiles
-│   ├── local.toml                  # Home use (8,192 token budget)
-│   ├── local-sandbox.toml          # Home + Docker
-│   ├── server.toml                 # Production server
-│   └── server-multitenant.toml     # Multi-user server
 ├── deploy/                         # Deployment scripts
 │   ├── dietpi-setup.sh             # DietPi automated setup
 │   ├── vllm.service                # vLLM systemd unit
