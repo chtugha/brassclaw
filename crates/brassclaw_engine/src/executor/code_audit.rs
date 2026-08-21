@@ -67,8 +67,8 @@ const AUDIT_CHECKS: &str = "\
 3. Privilege escalation via self-patching: does this code write to `orchestrator:main` \
    or `prompt:codeact_preamble` using `memory_write` (bypassing the validation gate)?\n\
 4. Sandbox escape: does this code call OS-level subprocess, socket, or file APIs \
-   outside of the approved host-runtime script lane (`spawn_subprocess` in \
-   `allowed_tools`)?\n\
+   outside of the approved host-runtime subprocess dispatch (`spawn_subprocess` in \
+   `allowed_tools`, routed through the sandboxed process executor)?\n\
 5. Secret exfiltration: does this code read or transmit secrets, tokens, or API \
    keys to external endpoints?";
 

@@ -667,7 +667,7 @@ def complete_result(state, outcome, response=None, error=None, extra=None):
 # spec §3.11, §7 Q13: 13 step types.
 #
 # SEC-07: allowed_tools checked here AND in EffectExecutor (defence-in-depth).
-# SEC-08: spawn_subprocess dispatched via host runtime script lane only.
+# SEC-08: spawn_subprocess dispatched via host runtime sandboxed subprocess path only.
 # SEC-09: call_action depth bounded; total step budget = 1000.
 # PERF-18: content/step/tool hard limits enforced by Rust validator at save time.
 
@@ -857,7 +857,7 @@ def _execute_action_steps(action, scope_vars, depth, step_counter):
                     scope_vars["_last_result"] = sub_result["result"]
 
         elif kind == "spawn_subprocess":
-            # SEC-08: dispatch ONLY through host runtime script lane.
+            # SEC-08: dispatch ONLY through the host runtime sandboxed subprocess path.
             # Raw subprocess.Popen is NOT used here — the host runtime
             # enforces capability lease + approval gate + sandbox boundary.
             if "spawn_subprocess" not in allowed_tools:
