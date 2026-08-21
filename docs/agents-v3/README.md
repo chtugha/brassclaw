@@ -26,13 +26,13 @@ documentation effort.
 
 | # | File | Subsystem / topic | Status |
 |---|------|-------------------|--------|
-| 01 | `01-architecture-overview.md` | Three-layer model (Products / Loops / Kernel); v3 target message flow; how the new subsystems fit | planned |
-| 02 | `02-intent-system.md` | Intent matching: `resolve_intent`, 4-class classifier, `reborn_intent_inputs` (V028), `step_link` (Phase D/V053), disambiguation | planned |
-| 03 | `03-recipe-system.md` | Recipes, `step_descriptions` JSONB (Phase A/V050), variants/steps, tiers 0/1/2, store round-trip | planned |
-| 04 | `04-ibs.md` | Instruction Builder System: `build_instruction`, `VariablePattern`/`ToolBinding`/`ErrorPolicy`, `SplitResult`, two-channel delivery | planned |
-| 05 | `05-skills-system.md` | Four skill kinds: Classic (Claude-style, DB-stored, `SKILL.md`-exportable), ToolSkills (Rust executor), Orchestrator Skills, ExtensionCatalogues (class 23) | planned |
-| 06 | `06-tools-system.md` | `reborn_tools`, `capability_id` (Phase L/V056), builtin bootstrap, tool approval/auth | planned |
-| 07 | `07-pythoncode-system.md` | `reborn_python_code` (Phase B/V051), snippet→component promotion, Q1/Q2 gate (Phase N), `UnpromotedSnippet` | planned |
+| 01 | `01-architecture-overview.md` | Three-layer model (Products / Loops / Kernel); v3 target message flow; how the new subsystems fit | done |
+| 02 | `02-intent-system.md` | Intent matching: `resolve_intent`, 4-class classifier, `reborn_intent_inputs` (V028), `step_link` (Phase D/V053), disambiguation | done |
+| 03 | `03-recipe-system.md` | Recipes, `step_descriptions` JSONB (Phase A/V050), variants/steps, tiers 0/1/2, store round-trip | done |
+| 04 | `04-ibs.md` | Instruction Builder System: `build_instruction`, `VariablePattern`/`ToolBinding`/`ErrorPolicy`, `SplitResult`, two-channel delivery | done |
+| 05 | `05-skills-system.md` | Four skill kinds: Classic (Claude-style, DB-stored, `SKILL.md`-exportable), ToolSkills (Rust executor), Orchestrator Skills, ExtensionCatalogues (class 23) | done |
+| 06 | `06-tools-system.md` | `reborn_tools`, `capability_id` (Phase L/V057), builtin bootstrap, tool approval/auth | done |
+| 07 | `07-pythoncode-system.md` | `reborn_python_code` (Phase B/V052), snippet→component promotion, Q1/Q2 gate (Phase N/V059), `UnpromotedSnippet`, shell-injection scan | done |
 | 08 | `08-actions-system.md` | Class-16 Actions, step-by-step orchestrator instructions, `override_prompt_creation`, `action_short_circuit`, dead `__retrieve_docs__` shim (Phase G) | planned |
 | 09 | `09-sempai-kohai.md` | Sempai-Kohai: prompt memorize/optimize/finalize; kohai always-on; sempai idle-time self-optimization + pre-send review | planned |
 | 10 | `10-prefix-base-prompt.md` | vLLM prefix caching, `base-prompt` placeholder substitution, `reborn_basic_prompt_store` (Phase K.1/V055), Prefix Tab | planned |
