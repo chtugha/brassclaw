@@ -542,6 +542,13 @@ impl RetrievalSource for PostgresSource {
             Ok(IntentResolution::Match {
                 component_id,
                 component_class_code,
+                // Phase D adds the bindings (FIND-23); Phase E dispatches on
+                // `step_link` for the SplitResult / ActionShortCircuit paths.
+                // Bound as `_` here so Phase D stays warning-free until that
+                // dispatch lands. `component_name` is consumed by Phase E's
+                // ActionShortCircuit; unused here.
+                step_link: _,
+                component_name: _,
             }) => {
                 // Score already incremented inside resolve_intent (PERF-03).
                 // Fetch the specific component from its class table (SEC-01 gate).

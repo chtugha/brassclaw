@@ -166,6 +166,11 @@ mod inner {
                 component_id,
                 req.component_class_code as i32,
                 IntentSource::Seeded,
+                // step_link: None — the generic WebUI intent-upsert path is not
+                // the Recipe-variant seeder. Recipe-variant step_link seeding
+                // lands at Phase N Q2-graduation (Q-D2). Non-Recipe seeders pass
+                // None per FIND-NEW-03.
+                None,
             )
             .await
             .map_err(|e| {

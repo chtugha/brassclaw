@@ -168,6 +168,17 @@ pub enum IntentResolution {
     Match {
         component_id: Uuid,
         component_class_code: i32,
+        /// `step_link` formula for the matched Recipe variant (§0.6). `None`
+        /// for legacy / non-variant intents — the caller uses the existing
+        /// `fetch_component_by_id` path. Populated for class-21 Recipe variant
+        /// intents so Phase E can run IBS `build_instruction(step_link, …)`
+        /// synchronously inside `fetch_for_turn`. Phase D (V054) adds the column.
+        step_link: Option<String>,
+        /// Component name, populated for class-16 Actions via the
+        /// `resolve_intent` LEFT JOIN on `reborn_actions` so `ActionShortCircuit`
+        /// (Phase E) can carry it without a second DB fetch. Empty string for
+        /// non-Action matches (FIND-P5-06).
+        component_name: String,
     },
     /// Multiple candidates within a 2-point score spread.  The WebUI must show
     /// a disambiguation message with clickable buttons (Q11).
@@ -339,22 +350,40 @@ pub async fn resolve_intent(
 
     let rows = client
         .query(
-            "SELECT id, component_id, component_class_code, input_class, score
-             FROM reborn_intent_inputs
-             WHERE tenant_id   = $1
-               AND user_id     = $2
-               AND agent_id    = $3
-               AND project_id  = $4
-               AND input_text  = $5
-               AND input_class = ANY($6)
+            // Phase D (FIND-P10-01/P10-05): append `step_link` (index 5) and
+            // `component_name` (index 6) AFTER the original 5 columns so every
+            // existing row.get(0..4) site is unaffected. The LEFT JOIN on
+            // reborn_actions populates component_name for class-16 matches only.
+            // FIND-P6-05 (security): the JOIN MUST carry all 4 scope filters or
+            // a component_id collision across tenants leaks another tenant's
+            // Action name. $1..$4 are reused for the JOIN scope; no new
+            // placeholders (bind slice unchanged).
+            "SELECT ii.id, ii.component_id, ii.component_class_code,
+                    ii.input_class, ii.score,
+                    ii.step_link,
+                    COALESCE(a.name, '') AS component_name
+             FROM reborn_intent_inputs ii
+             LEFT JOIN reborn_actions a
+                   ON a.id = ii.component_id
+                  AND ii.component_class_code = 16
+                  AND a.tenant_id  = $1
+                  AND a.user_id    = $2
+                  AND a.agent_id   = $3
+                  AND a.project_id = $4
+             WHERE ii.tenant_id   = $1
+               AND ii.user_id     = $2
+               AND ii.agent_id    = $3
+               AND ii.project_id  = $4
+               AND ii.input_text  = $5
+               AND ii.input_class = ANY($6)
              ORDER BY
-               CASE input_class
+               CASE ii.input_class
                  WHEN $7 THEN 0
                  WHEN $8 THEN 1
                  WHEN $9 THEN 2
                  ELSE 3
                END,
-               score DESC
+               ii.score DESC
              LIMIT 30",
             &[
                 &scope.tenant_id as &(dyn ToSql + Sync),
@@ -409,9 +438,15 @@ pub async fn resolve_intent(
             score = c.score,
             "intent: unambiguous match"
         );
+        // step_link (col 5) + component_name (col 6) come from the top row,
+        // appended after id/component_id/class/input_class/score (FIND-P10-01).
+        // `c` is candidates[0] which corresponds to rows[0] (highest score, first
+        // dedup-inserted), so rows[0] carries this match's step_link + name.
         return Ok(IntentResolution::Match {
             component_id: c.component_id,
             component_class_code: c.component_class_code,
+            step_link: rows[0].get::<_, Option<String>>(5),
+            component_name: rows[0].get::<_, String>(6),
         });
     }
 
@@ -450,9 +485,17 @@ pub async fn record_disambiguation_choice(
         component_id = %component_id,
         "intent: disambiguation choice recorded"
     );
+    // FINDING A: a disambiguation click confirms component_id only — the caller
+    // re-fetches the recipe row for its step_link, so step_link: None instructs
+    // the legacy fetch_component_by_id path (acceptable post-disambiguation; the
+    // full IBS path runs on the next turn when the user's text matches the
+    // intent directly). component_name: "" is fine — disambiguation results are
+    // Recipe/Skill, never an Action (Actions match unambiguously).
     Ok(IntentResolution::Match {
         component_id,
         component_class_code,
+        step_link: None,
+        component_name: String::new(),
     })
 }
 
@@ -461,6 +504,10 @@ pub async fn record_disambiguation_choice(
 ///
 /// Uses `INSERT … ON CONFLICT DO UPDATE` so re-seeding a component is idempotent.
 #[cfg(feature = "skills-db")]
+// 8 params: the `step_link` arg is plan-mandated by FIND-NEW-03 (Phase D) and
+// cannot be folded into a struct without deviating from the specified seeder
+// signature and rewriting every call site.
+#[allow(clippy::too_many_arguments)]
 pub async fn seed_intent_input(
     pool: &brassclaw_pg::PgPool,
     scope: &IntentScope,
@@ -469,6 +516,12 @@ pub async fn seed_intent_input(
     component_id: Uuid,
     component_class_code: i32,
     source: IntentSource,
+    // `step_link` formula for Recipe (class 21) variant intents; `None` for
+    // non-Recipe inputs (FIND-NEW-03). Stored in
+    // `reborn_intent_inputs.step_link` (V054) so `resolve_intent` can return
+    // it for the IBS `build_instruction` path (Phase E). NOT part of the
+    // conflict key; updated via `SET` on re-seed.
+    step_link: Option<&str>,
 ) -> Result<(), IntentSystemError> {
     let client = pool
         .get()
@@ -479,13 +532,14 @@ pub async fn seed_intent_input(
             "INSERT INTO reborn_intent_inputs
                  (tenant_id, user_id, agent_id, project_id,
                   input_text, input_class, component_id, component_class_code,
-                  score, source, needs_review)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$10)
+                  score, source, needs_review, step_link)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1,$9,$10,$11)
              ON CONFLICT (tenant_id, user_id, agent_id, project_id,
                           input_text, input_class, component_id)
              DO UPDATE SET
                  source       = EXCLUDED.source,
                  needs_review = EXCLUDED.needs_review,
+                 step_link    = EXCLUDED.step_link,
                  updated_at   = now()",
             &[
                 &scope.tenant_id,
@@ -498,6 +552,7 @@ pub async fn seed_intent_input(
                 &component_class_code,
                 &source.as_str(),
                 &source.needs_review(),
+                &step_link,
             ],
         )
         .await
