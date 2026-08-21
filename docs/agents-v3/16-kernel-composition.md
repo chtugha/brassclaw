@@ -59,7 +59,7 @@ The user's higher goals land here concretely:
 | `brassclaw_capabilities` | the single caller-facing `CapabilityHost` authority path: invoke/resume/spawn requests, the **obligation seam** (`CapabilityObligationHandler`), capability-profile conformance evaluation | parallel dispatch paths, dispatch *before* authorization/obligations/approval gates |
 | `brassclaw_authorization` / `brassclaw_auth` | bearer-token + OAuth + product-auth authorization | — |
 | `brassclaw_runtime_policy` | runtime-profile resolver + runtime selection policy (`EffectiveRuntimePolicy`, `RuntimeProfile`, `DeploymentMode`) | runtime process startup, action dispatch |
-| `brassclaw_process_sandbox` / `brassclaw_host_runtime` | sandboxing + host-runtime shell access (the in-kernel script lane via `services/script_runtime`) | — |
+| `brassclaw_process_sandbox` / `brassclaw_host_runtime` | sandboxing + host-runtime shell access (sandboxed subprocess path via `services/process_executor` + `sandbox_process/`; the v1 `services/script_runtime` lane was removed in Phase 4) | — |
 | `brassclaw_reborn_identity` | session identity | — |
 | `brassclaw_outbound` | outbound HTTP (treats external services as untrusted) | — |
 | `brassclaw_approvals` | approval gates | — |
@@ -274,7 +274,7 @@ linear-time matching), `brassclaw_capabilities` (the single
 `CapabilityHost` authority path; dispatch only after
 authorization+obligation+approval gates; no parallel paths),
 `brassclaw_runtime_policy` (profile resolver), `brassclaw_process_sandbox`/
-`brassclaw_host_runtime` (sandbox + script lane), `brassclaw_reborn_identity`
+`brassclaw_host_runtime` (sandbox + sandboxed subprocess path), `brassclaw_reborn_identity`
 (session identity), `brassclaw_outbound` (untrusted external HTTP),
 `brassclaw_approvals` (gates). Boundary rules: product adapters/first-party
 capabilities/host-runtime handlers use untrusted inbound requests and

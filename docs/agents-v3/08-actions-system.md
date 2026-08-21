@@ -93,9 +93,12 @@ not the capability surface).
 `parallel`, `call_action`, `spawn_subprocess`, `wait`, `emit_event`.
 
 Two carry extra safety invariants:
-- **`spawn_subprocess` (SEC-08):** dispatches **only** through the host-runtime script lane —
+- **`spawn_subprocess` (SEC-08):** dispatches **only** through the host-runtime sandboxed
+  subprocess path (`__execute_action__("spawn_subprocess")` → `brassclaw_host_runtime`
+  `services/process_executor` + `sandbox_process/`, backed by `brassclaw_process_sandbox`) —
   raw `subprocess.Popen` is never used; the host enforces capability lease + approval gate +
-  sandbox. `spawn_subprocess` must be in `allowed_tools`.
+  sandbox. `spawn_subprocess` must be in `allowed_tools`. (The v1 "script lane" this once
+  named was removed in Phase 4; the SEC-08 guarantee is unchanged.)
 - **`call_action` (SEC-09):** the depth/budget bounds above; references a nested Action.
 
 ## 4. Behavior / flow
@@ -217,7 +220,7 @@ Solution-Override LLM path). Both `action_short_circuit` and `tier_zero` return 
   to Tier-0 Recipes; both use the "return before `__llm_complete__`" shape.
 - **Tools** (`06`): `allowed_tools[]` gates every `tool_call`/`parallel`/`spawn_subprocess`
   step (SEC-07 defence-in-depth at `default.py` AND `EffectExecutor`); `spawn_subprocess`
-  dispatches only through the host-runtime script lane (SEC-08).
+  dispatches only through the host-runtime sandboxed subprocess path (SEC-08).
 - **PythonCode** (`07`): a `call_skill` step may reach Skills; Actions themselves are class 16,
   not orchestrator-channel bodies.
 - **Validation Queue** (`14`): authored Actions enter Q1/Q2; `source='system'` (Phase L)
@@ -262,7 +265,7 @@ ordered `steps` JSONB of 13 typed step types (`tool_call`/`conditional`/`loop`/`
 `spawn_subprocess`/…) run by `execute_action_procedure` (default.py:901), which returns before
 `__llm_complete__`. Hard limits (PERF-18): 256 KB / 500 steps / 50 `allowed_tools`; recursion
 bounds (SEC-09): `call_action` depth 5 / 1000-step budget; `spawn_subprocess` dispatches only
-via the host script lane (SEC-08); `allowed_tools` enforced at both `default.py` and
+via the host-runtime sandboxed subprocess path (SEC-08); `allowed_tools` enforced at both `default.py` and
 `EffectExecutor` (SEC-07). Actions default to Solution Override (`override_prompt_creation`
 DEFAULT true) — but that is an **LLM** path today (swaps `working_messages`, falls through to
 the LLM); the no-LLM path is the class-16 short-circuit, which is **dead** today (the step-0
