@@ -141,6 +141,11 @@ mod webui_route_match;
 mod webui_serve;
 mod webui_ws_origin;
 
+#[cfg(feature = "postgres")]
+pub mod q1_orchestrator;
+#[cfg(feature = "postgres")]
+pub mod validation_queue;
+
 pub use auth::{
     RebornAuthContinuationDispatcher, RebornAuthProductError, RebornCredentialLifecycleError,
     RebornManualTokenChallenge, RebornManualTokenError, RebornManualTokenSetupRequest,
