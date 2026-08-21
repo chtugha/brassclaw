@@ -43,7 +43,7 @@
 
 ---
 
-## Codebase Audit Pass — Corrections Applied (Review Passes 2 + 3 + 5 + 7 + 8 + 9 + 10; Pass 9 + Pass 10 inline fixes applied)
+## Codebase Audit Pass — Corrections Applied (Review Passes 2 + 3 + 5 + 7 + 8 + 9 + 10 + 12; Pass 9 + Pass 10 + Pass 12 inline fixes applied)
 
 The following issues were found by reading the live codebase and corrected directly in this plan. Each is tagged with a marker so implementers can grep for them.
 
@@ -54,10 +54,43 @@ The following issues were found by reading the live codebase and corrected direc
 | `FIND-P10-01` | **CRITICAL** | Phase D / `resolve_intent` SELECT list | Phase D adds `step_link: Option<String>` and `component_name: String` to `IntentResolution::Match`. But the live `resolve_intent` query at `intent_system.rs:340-356` only selects **5 columns**: `id, component_id, component_class_code, input_class, score`. The Phase D SQL change is specified as adding `step_link` and `COALESCE(a.name,'') AS component_name` — this is correct in prose (§0.8) but the plan never gives the exact new column positions for the `row.get(N)` calls in `IntentResolution::Match` construction. With the LEFT JOIN and two extra columns, the `rows[0].get(N)` indices for `component_id`, `component_class_code`, `step_link`, and `component_name` must be specified exactly. Old layout: `row.get(1)=component_id, row.get(2)=component_class_code`. New layout: `row.get(1)=component_id, row.get(2)=component_class_code, row.get(5)=step_link` (after keeping id/component_id/class/input_class/score and appending step_link=5, component_name=6). Phase D must include this index table explicitly, or the implementer will guess wrong and produce a silent misread. | Phase D "Files to modify" updated with the exact new SELECT column positions and `row.get(N)` index for each new field. |
 | `FIND-P10-02` | **CRITICAL** | §3 Open Questions table / cache key formula | Open Question #2 in §3 says the memoisation cache key is `sha256(step_link + "\|" + sorted_include_uuids.join(","))`. This is the **OLD circular key** that was already corrected in DESIGN-02 / §0.7 to `sha256(step_link + "\|" + sha256(step_descriptions_json) + "\|" + sha256(variable_patterns_sorted_json))`. The §3 table still has the wrong formula, creating a contradiction with §0.7 and the Phase N.3 implementation. A future implementer reading §3 without §0.7 would implement the circular (broken) key. | §3 Open Question #2 answer updated to reference the corrected key formula from DESIGN-02 / §0.7. |
 | `FIND-P10-03` | **HIGH** | Phase I / `GenericComponent` vs `class_code` field conflict | Phase I says "class 22 validation must use `Generic(GenericComponent<'a>)` where `GenericComponent` carries `{ name, content, class_code }`" — but the live `GenericComponent` struct (confirmed: `component_validator.rs:62–67`) has exactly 3 fields: `{ name, description, content }` — NO `class_code`. Meanwhile Phase C COMP-04 proposes adding `extra: Option<serde_json::Value>` (not `class_code`). These two proposals are inconsistent. An implementer following Phase I would add `class_code: i32` to `GenericComponent`, but Phase C COMP-04 says to add `extra`. The correct resolution: **Phase C COMP-04 takes precedence** — add `extra: Option<serde_json::Value>` to `GenericComponent` for the task_groups extensibility needed by class 23. For class 22 (PythonCode), the validator only needs `name`, `description`, and `content` — the 3 existing fields suffice. The Phase I claim that `GenericComponent` needs `class_code` is wrong: the validator dispatch arm (`22 =>`) already knows it's class 22 because it's in the class-22 arm of the match. `class_code` is known from the dispatch, NOT needed in the payload. Remove `class_code` from the Phase I `GenericComponent` description. | Phase I description corrected: `GenericComponent` does NOT need `class_code` (it's implicit from the dispatch arm). Phase I uses the existing 3-field struct for class 22; the 4th field `extra: Option<serde_json::Value>` added by Phase C COMP-04 is used for class 23 (`task_groups`). The two are now consistent. |
-| `FIND-P10-04` | **HIGH** | Phase H / `LoopPromptBundleRequest` field count mismatch | Phase H item 6 / FIND-11 says the current `LoopPromptBundleRequest` struct has 7 fields and the test `support.rs:340` site must add `recipe_hint: None`. The confirmed struct (lines 978-1005) has exactly 7 fields: `mode, context_cursor, surface_version, capability_view, checkpoint_state_ref, max_messages, inline_messages`. Struct addition confirmed correct. No error. However, the plan's FIND-19 note includes a grep instruction that is correct and must be followed. ✅ Confirmed — no fix needed beyond the existing note. | No change needed. Confirmed correct. |
+| `FIND-P10-04` | **HIGH** | Phase H / `LoopPromptBundleRequest` field count mismatch | Phase H item 6 / FIND-11 says the current `LoopPromptBundleRequest` struct has 7 fields and the test `support.rs:340` site must add `recipe_hint: None`. The confirmed struct (lines **986-996** of `host.rs`; an earlier cite "978-1005" was off) has exactly 7 fields: `mode, context_cursor, surface_version, capability_view, checkpoint_state_ref, max_messages, inline_messages`. Struct addition confirmed correct. No error. However, the plan's FIND-19 note includes a grep instruction that is correct and must be followed. ✅ Confirmed — no fix needed beyond the existing note. | Line cite corrected from "978-1005" to "986-996". Confirmed correct. |
 | `FIND-P10-05` | **MEDIUM** | Phase D / `resolve_intent` Rust `Match` construction — `score` column position shifts | After Phase D adds the LEFT JOIN and two extra columns (`step_link`, `component_name`) to the SELECT, the `score` field moves from `row.get(4)` to still be at `row.get(4)` IF the two new columns are appended at the END of the SELECT (after score). But if they are inserted BEFORE score (e.g. after component_class_code), then `input_class` and `score` shift right. The safe approach: append `step_link` and `component_name` as columns 5 and 6 (zero-indexed), AFTER the existing 5 columns. Then `id=0, component_id=1, component_class_code=2, input_class=3, score=4, step_link=5, component_name=6`. The disambiguation and disambiguation-related paths also read columns by position — they must not shift. | Phase D "Files to modify" updated with the explicit column-append-last rule and the exact index assignments. |
 | `FIND-P10-06` | **MEDIUM** | Phase I / `GenericComponent` in `validate_by_class` dispatch — `description` field availability | When Phase I adds a class-22 arm to `validate_by_class`, it uses `Generic(GenericComponent { name, description, content })`. All three fields are present in the current struct. For PythonCode (class 22), `description` exists on `reborn_python_code` (same column shape as specs). For class 23, `description` exists and `overview_doc` maps to `content`. This is consistent. ✅ Confirmed — no issue. | No change needed. Confirmed consistent. |
 | `FIND-P10-07` | **LOW** | `class_label` in `intent_system.rs` — confirmed exact labels | Full confirmed label set (lines 254-265+): `0 => "tool"`, `1 => "skill_rusty"`, `2 => "skill_monty"`, `3 => "skill_llm"`, `4 => "extension_worker"`, `5 => "extension_cron"`, `6 => "extension_trigger"`, `7 => "extension_webhook"`, `8 => "extension_plan"`, `9 => "extension_revision"`. Phase B/C must add `22 => "python_code"` and `23 => "extension_catalogue"` — lower_snake_case consistent with all other entries. Confirmed correct. | No change. Confirmed accurate. |
+
+### Pass 13 findings (final pass — remaining stubs, wording precision, and test coverage gaps)
+
+| Tag | Severity | Location | Finding | Fix Applied |
+|-----|----------|----------|---------|-------------|
+| `FIND-NEW-PASS13-01` | **MEDIUM** | Phase H Tests section (line ~5446) | The Phase H Tests section was **missing unit tests** for the two new `pub` library functions `assemble_prior_knowledge_with_hint` and `execute_tier_zero_channel` introduced by FIND-NEW-PASS12-01/02. Integration tests alone are insufficient: both functions have significant conditional branches (`recipe_hint: Some` vs `None`; empty vs valid `orchestrator_content`; PythonCode vs Skill body) that must be exercised at the unit level without a full integration stack. | Added 7 unit tests for the two new functions to the Phase H Tests section, covering: (1) `assemble_prior_knowledge_with_hint` with `recipe_hint: None` (fetch_for_turn path), (2) with `Some(stashed)` skipping fetch, (3) returning `tier_zero: true` when `llm_call_required: false`; (4) `execute_tier_zero_channel` happy-path, (5) empty `orchestrator_content` error guard, (6) Skill body error guard, (7) regression: `handle_assemble_prior_knowledge` dispatch arm still passes after refactor. |
+| `FIND-NEW-PASS13-02` | **LOW** | Phase H §4 / canonical.rs pseudocode block / comment at line ~5292 | The inline comment inside the `PostRecipeOutcome::TierZero` pseudocode block (line 5292) still said "delegating to the engine orchestrator's no-LLM entry point" — vague and inconsistent with FIND-NEW-PASS12-02 which named the concrete function `execute_tier_zero_channel`. An implementer reading only this block (without cross-referencing H5) would still not know what function to call. | Updated the comment to explicitly say "by calling `execute_tier_zero_channel(thread, orchestrator_content, rust_context, ...)`" with a cross-reference to FIND-NEW-PASS12-02 and a NOT note distinguishing it from the Python `execute_recipe_orchestrator_channel`. |
+| `FIND-NEW-PASS13-03` | **LOW** | §5 Tier 1 turn-flow diagram (line ~7002) | The Tier 1 diagram said "PromptStage does NOT clear state.recipe_hint (COMP-03 — Python step-0 clears it)". This is **wrong wording**: the STAGE clears it (after `run_step_zero` returns), NOT "Python step-0". The Python handler has no `&mut state` access (see FIND-P9-15). This is a documentation precision issue: a reader following only the §5 diagram would incorrectly believe that clearing is the handler's responsibility, defeating the stash/unstash protocol. | Fixed to: "PromptStage does NOT clear state.recipe_hint (COMP-03 — the STAGE clears it AFTER run_step_zero returns; Python step-0's handler has no &mut state access — see FIND-P9-15)." |
+| `FIND-NEW-PASS13-04` | **MEDIUM** | Phase H §4 / `execute_recipe_orchestrator_channel` PythonCode example (line ~5573) | The example PythonCode body used `vars["path"]` as if there is a runtime `vars` dict available in the Python scope. **This is wrong.** Per §0.20.2 (line 2301-2308): `No goal, pkr, context` — orchestrator-layer globals are NOT injected into step scope. Per §0.20.3 (line 2317-2334): `{{vars.slot0}}` substitution is done by the IBS at assembly time (before the body runs), not at runtime. A body that reads `vars["path"]` at runtime will get a `NameError`. The authored recipe template has `"{{vars.slot0}}"` as a literal placeholder; the IBS replaces it with the extracted value and the RUNTIME body sees the literal string. The example `vars["path"]` directly contradicts §0.20.3 and would mislead recipe authors. | Replaced the example with a comment block explaining: (1) there is NO runtime `vars` dict; (2) IBS substitution happens before the body runs; (3) the authored template uses `{{vars.slot0}}`; (4) at runtime, the body sees the literal value already baked in. Added `FIND-NEW-PASS13-04` marker to the fix. |
+
+### Pass 12 findings (full plan re-read + deep live source verification of Phase H engine boundary — new issues found)
+
+| Tag | Severity | Location | Finding | Fix Applied |
+|-----|----------|----------|---------|-------------|
+| `FIND-NEW-PASS12-01` | **CRITICAL** | Phase H §H.0 H5 / `LoopOrchestratorPort::run_step_zero` implementation | The plan says the composition host implements `run_step_zero` by "delegating to the engine orchestrator's `handle_assemble_prior_knowledge` path (orchestrator.rs:2574+)". This is **critically underspecified and cannot be implemented as stated.** Verified from live source: `handle_assemble_prior_knowledge` (orchestrator.rs:2552) is a **private `async fn`** — NOT `pub`, NOT callable outside `orchestrator.rs`. It takes `args: &[MontyObject]` (Monty VM argument array), NOT a `recipe_hint: Option<serde_json::Value>` parameter. The only externally-callable entry point into the engine's Python execution is `execute_orchestrator` (orchestrator.rs:444, `pub async fn`) — which takes 13+ parameters including `thread: &mut Thread`, `llm: &Arc<dyn LlmBackend>`, `effects`, `leases`, `policy`, `signal_rx`, etc., and runs the **entire Python orchestrator script from scratch** as a full VM execution. There is **no mechanism** today for the composition host to call "just the `__assemble_prior_knowledge__` handler" in isolation. The plan's stash/unstash protocol (Phase H §5) describes the correct LOGIC (what `handle_assemble_prior_knowledge` should do when `recipe_hint` is passed as a parameter), but gives no guidance on HOW the composition host invokes it. The **LoopOrchestratorPort** bridge is the right design — it simply needs a concrete implementation path specified. **Three options (ranked):** **(A — RECOMMENDED)** Create a new `pub` Rust function in `brassclaw_engine` — e.g. `pub async fn assemble_prior_knowledge_with_hint(pool, scope, goal, token_budget, sender_class_code, recipe_hint: Option<serde_json::Value>) -> Result<PkrAssemblyResult, EngineError>` — that is the pure Rust logic of `handle_assemble_prior_knowledge` without the Monty VM wrapper. The composition host calls this directly from its `run_step_zero` impl. The `handle_assemble_prior_knowledge` Python handler becomes a thin wrapper calling this new function. **(B)** Run a minimal Python VM for step-0: have `execute_orchestrator` accept a `step_zero_only: bool` flag that causes `default.py` to `return` after step 0. This couples the engine Python and the Rust port interface — fragile. **(C)** Have `ExecutionLoop` expose a `run_step_zero_only()` method that runs the full orchestrator but halts it after the step-0 block returns (via a signal or special pkr key). Also fragile. **Option A is cleanly correct and must be specified in Phase H.** | Phase H §H.0 H5 and Phase H §5 (stash/unstash) updated: add explicit note that the composition host's `run_step_zero` implementation calls a **new `pub` function** `brassclaw_engine::executor::orchestrator::assemble_prior_knowledge_with_hint(...)` (not `handle_assemble_prior_knowledge` directly). Phase H "Files to modify" gains a new entry: `crates/brassclaw_engine/src/executor/orchestrator.rs` — add `pub async fn assemble_prior_knowledge_with_hint(...)` as a library API, refactor `handle_assemble_prior_knowledge` to call it internally. Similarly, `run_tier_zero` must call a new `pub async fn execute_tier_zero_channel(...)` that embodies the `execute_recipe_orchestrator_channel` logic as a Rust library function (not a Python helper). The Python `execute_recipe_orchestrator_channel` helper in `default.py` is still needed for the Model A (engine path) production route — but the composition host's `LoopOrchestratorPort` impl uses the Rust library function directly. |
+| `FIND-NEW-PASS12-02` | **MEDIUM** | Phase H §H.0 H5 / `run_tier_zero` implementation | Same gap as FIND-NEW-PASS12-01, for `run_tier_zero`. The plan says the composition host implements `run_tier_zero` by calling "a new no-LLM entry point on the engine orchestrator that runs the skill/PythonCode channel against the pre-loaded rust execution context". No such entry point is specified. `execute_recipe_orchestrator_channel` is a Python function in `default.py` — the composition host cannot call it. Phase H must specify a new `pub async fn execute_tier_zero_channel(pool, scope, thread, orchestrator_items, rust_context, ...) -> Result<TierZeroChannelResult, EngineError>` in `brassclaw_engine::executor::orchestrator`. This function IS callable from composition and embodies the Tier-0 execution logic. | Phase H §H.0 H5 updated: add explicit `pub async fn execute_tier_zero_channel(...)` spec as the composition host entry point for `run_tier_zero`. The Python `execute_recipe_orchestrator_channel` remains on the engine path (Model A) but is NOT what the composition host calls. |
+| `FIND-NEW-PASS12-03` | **MEDIUM** | Phase H §3b / `execute_recipe_orchestrator_channel` Python helper spec | The `execute_recipe_orchestrator_channel` specification (Phase H item 3b) is correct for the **engine (Model A) path** — it is a Python helper in `default.py` that runs the orchestrator channel when `pkr["tier_zero"]` is true. This is the ONLY mechanism for Model A (current production). The plan correctly notes it. However, Phase H does NOT call out that this Python helper is NOT reachable from the composition host's `LoopOrchestratorPort` implementation — it is internal to the Python VM execution. The plan says "composition host implements `run_tier_zero` by ... driving the Rust executioner via the loaded skills" but never says HOW (no Rust function to call). With FIND-NEW-PASS12-01 resolved (add `assemble_prior_knowledge_with_hint` and `execute_tier_zero_channel`), this becomes consistent: Model A uses the Python helper, Model B/C (agent-loop) uses the new Rust library functions. ✅ Already fixed by FIND-NEW-PASS12-01 and FIND-NEW-PASS12-02. | No additional change needed — covered by FIND-NEW-PASS12-01/02. |
+| `FIND-NEW-PASS12-04` | **LOW** | Phase H §H.0 H3 / `LoopContextPort::resolve_message_text` default impl | Confirmed: `LoopContextPort` at `host.rs:778-784` has exactly ONE method: `load_loop_context`. FIND-28 requirement for a default `Err(Unimplemented)` body on `resolve_message_text` is confirmed as mandatory. ✅ Plan is correct. | No change needed. Confirmed accurate. |
+| `FIND-NEW-PASS12-05` | **LOW** | `AgentLoopDriverHost` supertrait count | Confirmed: `host.rs:2185-2201` lists exactly 13 ports: `LoopRunInfoPort, LoopContextPort, LoopPromptPort, LoopInputPort, LoopModelPort, LoopCapabilityPort, LoopTranscriptPort, LoopCheckpointPort, LoopProgressPort, LoopCompactionPort, LoopCancellationPort, LoopRecipePort, LoopInterceptorPort`. Phase H adds `LoopRetrievalPort` as the 14th and `LoopOrchestratorPort` as the 15th. The `AgentLoopDriverHost` blanket impl at `host.rs:2204-2220` must also be updated to add the two new trait bounds. The plan correctly specifies adding to the supertrait list but does NOT mention updating the blanket impl. Any host that already implements all 13 must also implement the 14th and 15th (with `NoRetrieval`/`NoOrchestrator` default bodies). The blanket impl at line 2204 MUST also add the two new bounds. | Phase H §H.0 (port addition steps for H4 and H5) updated with explicit note: the `impl<T> AgentLoopDriverHost for T where T: ... + Send + Sync {}` blanket impl at `host.rs:2204` must also have `+ LoopRetrievalPort + LoopOrchestratorPort` added to its `where` clause. |
+
+### Pass 11 findings (full plan + live codebase read of every referenced source file — new issues found)
+
+| Tag | Severity | Location | Finding | Fix Applied |
+|-----|----------|----------|---------|-------------|
+| `FIND-NEW-AUDIT-01` | **LOW** | Phase B/C / `intent_system.rs` tests | The plan describes `class_label` in `intent_system.rs` as returning a `String`. Confirmed at line 254: `pub fn class_label(class_code: i32) -> String`. Test assertions in Phase B/C must use `== "python_code".to_string()` not `== "python_code"` (a `&str` literal). Actually `"python_code"` compares fine against a `String` in Rust — no correction needed for the tests. But the return type being `String` (not `&'static str`) means the `class_label` calls at line 396 (`class_label: class_label(component_class_code)`) inside `IntentCandidate` construction allocate a new `String` per candidate. This is existing code, not a new issue. ✅ No fix needed. | No change — confirmed correct. |
+| `FIND-NEW-AUDIT-02` | **MEDIUM** | Phase B/C / FIND-P5-01 / `recipe_store.rs:861-882` full label map | Prior passes mentioned specific labels but never provided the complete live map. Full verified map (Pass 11): `0=>"Tool"`, `1=>"Skill (Rusty)"`, `2=>"Skill (Monty)"`, `3=>"Skill (LLM)"`, `4..=9=>format!("Extension (class {code})")`, `10=>"Orchestrator"`, **`12=>"Document"` (NOT "Spec")**, `13=>"Guide"`, `14=>"Reference"`, `15=>"Note"`, `16=>"Action"`, `17=>"Template"`, `18=>"Snippet"`, `19=>"Config"`, `20=>"Workflow"`, `21=>"Recipe"`, `50=>"Scaffold"`. Class 12's label in `recipe_store.rs` is `"Document"` — different from `interceptor_config_service.rs` which uses `"Spec"` for class 12. No test in the plan asserts class 12 for `recipe_store.rs`, so no test correction is needed, but the FIND-P5-01 description in Phase C has been updated to include the full verified arm mapping including the class 12 discrepancy. | FIND-P5-01 note in Phase C updated with the full verified arm map and the `12 => "Document"` clarification. |
+| `FIND-NEW-AUDIT-03` | **CRITICAL** | Phase E / `class_code_to_table` helper — missing `10 \| 50` arm | The proposed `class_code_to_table` helper in Phase E was MISSING the `10 \| 50` arm. Verified from live `fetch_component_by_id` (lines 573–627): `10 \| 50 => Some(("reborn_skills", "COALESCE(NULLIF(prior_knowledge_content,''), body)"))`. Classes 10 (Orchestrator) and 50 (Scaffold) resolve to `reborn_skills`. Extracting the helper without this arm would silently break retrieval for Orchestrator and Scaffold components after Phase E. **This is a silent regression.** | Phase E `class_code_to_table` helper specification updated to include the mandatory `10 \| 50` arm with inline comment. Tagged `FIND-NEW-AUDIT-06` in Phase E body. |
+| `FIND-NEW-AUDIT-04` | **HIGH** | Phase E / `fetch_for_consumer` UNION ALL — confirmed arm count | Full read of `fetch_for_consumer` (lines 283–441 of `retrieval_source.rs`) confirms: 12 sub-selects covering skills, extensions_unified, actions, specs, tool_skills, plans, summaries, docus, lessons, issues, notes, recipes. The plan's PERF-03 count (12 → 14 after adding classes 22/23) is exactly correct. No class 10/50/12 sub-selects exist in the UNION ALL (those classes route through `reborn_skills` in `fetch_component_by_id` but are NOT separate arms in the UNION ALL). The `ORDER BY class_code ASC, prompt_uid ASC` order is confirmed. ✅ Plan is correct. | No change needed. Confirmed accurate. |
+| `FIND-NEW-AUDIT-05` | **HIGH** | Phase G / `default.py` step-0 block — confirmed live code | Full read of `default.py` lines 994–1060 (Pass 11). The current step-0 block IS exactly: (1) `pkr = __assemble_prior_knowledge__(...)`, (2) `override_prompt_creation` / `formatted_content` branch, (3) `insert_volatile_context_at_n_minus_1`, (4) the dead `docs = __retrieve_docs__(goal, 5)` shim block with comment "Pre-Phase-5 fallback" (lines 1010–1028), (5) `all_skills = __list_skills__()` and `select_skills()` block (lines 1031–1060). The plan's Phase G description of what to remove is exactly correct. The `execute_action_procedure` at line 901 is confirmed present. The `__llm_complete__` call is at line 1103 (plan says 1103). ✅ No correction needed. | No change needed. Confirmed accurate. |
+| `FIND-NEW-AUDIT-06` | **MEDIUM** | Phase H / `LoopExecutionState` — confirmed last field line | `spawn_subagent_hint: Option<String>` is at line 102 of `state.rs` (confirmed). The struct has exactly the fields listed in the plan (lines 47–103). No `last_user_text`, `recipe_rust_context`, or `recipe_hint` fields exist. Phase H appends after line 102. ✅ No correction needed. | No change needed. Confirmed accurate. |
+| `FIND-NEW-AUDIT-07` | **MEDIUM** | Phase H / `canonical.rs` — confirmed exhaustive match | Lines 94-96 of `canonical.rs` confirm the single-variant exhaustive match: `state = match self.recipe.process(ctx, RecipeInput { state }).await? { RecipeStep::Continue { state: next } => *next, }`. Adding `TierZero` and `ActionExecuted` variants WILL cause a compile error until canonical.rs is restructured. Plan's CANONICAL-01 finding is correct. ✅ No correction needed. | No change needed. Confirmed accurate. |
+| `FIND-NEW-AUDIT-08` | **MEDIUM** | Phase E.0 / `manager.rs` spawn path — confirmed `TODO(Phase K)` at line 377 | Lines 377-383 confirm the `TODO(Phase K)` comment and `RamSource` usage. The `with_retrieval_source()` call is at line 400 (plan says this). The `ThreadManager` struct (lines 34-61) has NO `pg_pool` field — Phase E.0 adds it. Struct has `llm, effects, store, capabilities, leases, policy, lease_planner, tree, running, completed, event_tx, gate_controller, max_duration_secs` — 13 fields. No `retrieval_source_override` or `pg_pool` field exists yet. ✅ Plan is correct. | No change needed. Confirmed accurate. |
+| `FIND-NEW-AUDIT-09` | **LOW** | Migration sequence — confirmed current highest migration is V049 | Directory listing confirms highest migration is `V049__session_threads_version.sql`. Next migration is V050. Plan's "Next migration: V050" header is correct. ✅ Confirmed. | No change needed. |
 
 ### Pass 9 findings (full plan + codebase cross-read — new issues found)
 
@@ -3276,12 +3309,15 @@ Same engine files as Phase B, but for class 23:
   > | `interceptor_config_service.rs:65` | returns `&'static str`, mixed case | `22 => "PythonCode"` | `23 => "Catalogue"` |
   > | `recipe_store.rs:861` | display-label style `.to_string()` | `22 => "PythonCode".to_string()` | `23 => "Catalogue".to_string()` |
   >
-  > **⚠️ FIND-P5-01 — `recipe_store.rs` uses user-facing DISPLAY labels, not class-name labels:**
-  > Verified `recipe_store.rs:861-882`: this function uses descriptive display labels —
-  > e.g. `13 => "Guide"` (not "ToolSkill"), `14 => "Reference"` (not "Plan"), `17 => "Template"`,
-  > `18 => "Snippet"`, `19 => "Config"`, `20 => "Workflow"`. However, it also uses single-word
-  > names: `0 => "Tool"`, `16 => "Action"`, `21 => "Recipe"`. The Phase B/C additions
-  > `22 => "PythonCode"` and `23 => "Catalogue"` fit the single-word pattern.
+  > **⚠️ FIND-P5-01 + FIND-NEW-AUDIT-02 — `recipe_store.rs` uses user-facing DISPLAY labels, not class-name labels:**
+  > Verified `recipe_store.rs:861-882` (full read, Pass 11): this function uses descriptive display labels.
+  > The complete current arm mapping is:
+  > `0 => "Tool"`, `1 => "Skill (Rusty)"`, `2 => "Skill (Monty)"`, `3 => "Skill (LLM)"`,
+  > `4..=9 => format!("Extension (class {code})")`, `10 => "Orchestrator"`,
+  > `12 => "Document"` (**NOT "Spec"** — the label is "Document" here, distinct from `interceptor_config_service.rs` which returns `"Spec"`),
+  > `13 => "Guide"`, `14 => "Reference"`, `15 => "Note"`, `16 => "Action"`, `17 => "Template"`,
+  > `18 => "Snippet"`, `19 => "Config"`, `20 => "Workflow"`, `21 => "Recipe"`, `50 => "Scaffold"`.
+  > The Phase B/C additions `22 => "PythonCode"` and `23 => "Catalogue"` fit the single-word pattern.
   > These display labels are NOT the same as the `intent_system.rs` class labels and are used
   > only for WebUI display. The test assertion (inside `recipe_store.rs`'s own `#[cfg(test)] mod tests { use super::*; }`)
   > `assert_eq!(class_label(22), "PythonCode".to_string())` is correct. The function is private — cannot be called as `recipe_store::class_label` from outside. (DESIGN-ISSUE-02 resolved.)
@@ -3920,14 +3956,28 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
     from the existing match arm in `fetch_component_by_id` so both functions share the same
     mapping — no duplication of the literal table/column mapping.
 
-    > **⚠️ MISSING-ARM GUARD — add this comment immediately above the wildcard arm in
-    > `class_code_to_table`:**
+    > **⚠️ FIND-NEW-AUDIT-06 (CRITICAL) + MISSING-ARM GUARD — `class_code_to_table` MUST include `10 | 50` arm:**
+    >
+    > **Verified against live `fetch_component_by_id` (lines 573–627):** the existing function
+    > contains `10 | 50 => Some(("reborn_skills", "COALESCE(NULLIF(prior_knowledge_content,''), body)"))`.
+    > Classes 10 (Orchestrator) and 50 (Scaffold) are served from `reborn_skills`. An earlier
+    > draft of the `class_code_to_table` helper omitted these two arms — that would be a **silent
+    > regression**: after Phase E extracts the helper, classes 10 and 50 would return `None` where
+    > they previously returned results. The correct helper body MUST include the `10 | 50` arm,
+    > exactly as the live `fetch_component_by_id` does. Do NOT extract this helper without
+    > copying the `10 | 50` arm verbatim from the source function.
+    >
+    > **Add this comment immediately above the wildcard arm in `class_code_to_table`:**
     > ```rust
     > fn class_code_to_table(code: i32) -> Option<(&'static str, &'static str)> {
     >     match code {
-    >         0  => None, // Tool — no prompt text in component table
-    >         1..=3  => Some(("reborn_skills",              "COALESCE(NULLIF(prior_knowledge_content,''), body)")),
-    >         4..=9  => Some(("reborn_extensions_unified",  "COALESCE(prior_knowledge_content, description)")),
+    >         0     => None, // Tool — no prompt text in component table
+    >         1..=3 => Some(("reborn_skills",              "COALESCE(NULLIF(prior_knowledge_content,''), body)")),
+    >         4..=9 => Some(("reborn_extensions_unified",  "COALESCE(prior_knowledge_content, description)")),
+    >         // ⚠️ FIND-NEW-AUDIT-06: classes 10 (Orchestrator) and 50 (Scaffold) map to
+    >         // reborn_skills — confirmed from live fetch_component_by_id (line 582-585).
+    >         // MUST be present or Phase E silently loses retrieval for these classes.
+    >         10 | 50 => Some(("reborn_skills",            "COALESCE(NULLIF(prior_knowledge_content,''), body)")),
     >         12 => Some(("reborn_specs",                   "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
     >         13 => Some(("reborn_tool_skills",             "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
     >         14 => Some(("reborn_plans",                   "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
@@ -3948,10 +3998,9 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
     >     }
     > }
     > ```
-    > The full body is shown for clarity. The `⚠️` comment above `_ => None` is the **mandatory**
-    > part — do not omit it. Whenever a new class is added (Phase B/C added 22/23; future work
-    > may add more), this function is the single place to extend. The comment makes the omission
-    > visible in code review.
+    > The full body is shown for clarity. The `⚠️ FIND-NEW-AUDIT-06` arm and the `⚠️` comment above
+    > `_ => None` are both **mandatory** — do not omit either. When extracting the helper from the
+    > existing `fetch_component_by_id`, verify every arm matches the source function exactly.
 
   > **⚠️ FIND-08 correction — `FetchForTurnResult`, `TurnRoutingSignals`, `ActionShortCircuit`, and
   > `SplitResult` are NEW types that do NOT yet exist:** Verified `retrieval_source.rs:90–96` —
@@ -4407,7 +4456,10 @@ pattern (host.rs:2081–2093). Add both before the `RecipeStage` dispatch body:
   LoopCompactionPort, LoopCancellationPort, LoopRecipePort, LoopInterceptorPort**;
   add `LoopRetrievalPort` as the 14th entry in the `+ Sync` block after `LoopInterceptorPort`)
   and a `NoRetrieval` default impl returning `None`
-  (mirror `NoRecipeLookup`). `RecipeStage::process` calls
+  (mirror `NoRecipeLookup`).
+  > **⚠️ FIND-NEW-PASS12-05 — the `AgentLoopDriverHost` blanket `impl` MUST also be updated:**
+  > `host.rs:2204-2220` contains `impl<T> AgentLoopDriverHost for T where T: LoopRunInfoPort + ... + LoopInterceptorPort + Send + Sync {}`. When `LoopRetrievalPort` and `LoopOrchestratorPort` are added to the supertrait, the `where` clause of this blanket impl MUST also gain `+ LoopRetrievalPort + LoopOrchestratorPort`. Without this update the blanket impl no longer covers all `AgentLoopDriverHost` implementors (the compiler would not auto-derive the `AgentLoopDriverHost` impl for types that DO implement all 15 ports). Update BOTH: (1) the supertrait declaration at line 2185 and (2) the blanket `impl` where-clause at line 2204.
+  `RecipeStage::process` calls
   `ctx.host.fetch_for_turn(context, user_text, budget, "02")` — NOT a direct
   `PostgresSource` import. (The §0.3 pseudocode `retrieval_source.fetch_for_turn` is
   satisfied through this port.) This is the exact method H4 asked the plan to specify.
@@ -4506,11 +4558,101 @@ So a third host port is required — the **only** crate that can bridge the two 
   `RetrievalTurnResult` (H4) and `state.recipe_hint` (item 1). Add a `NoOrchestrator` default
   impl returning `None` (mirror `NoRetrieval` / `NoRecipeLookup`).
 - `crates/brassclaw_reborn_composition/src/...` — implement `LoopOrchestratorPort` by
-  delegating to the engine orchestrator: `run_step_zero` → the `handle_assemble_prior_knowledge`
-  path (orchestrator.rs:2574+) with the stash; `run_tier_zero` → a new no-LLM entry point on
-  the engine orchestrator that runs the skill/PythonCode channel against the pre-loaded rust
-  execution context and returns the formatted reply. (Requires the rust execution context to
-  be applied first — see item 4 / the `TierZeroExecutionStage` below.)
+  delegating to two **new `pub` library functions** in `brassclaw_engine`. See the "Files to
+  modify" entry below for their exact signatures.
+  > **⚠️ FIND-NEW-PASS12-01 + FIND-NEW-PASS12-02 — CRITICAL: the composition host CANNOT call
+  > `handle_assemble_prior_knowledge` or `execute_recipe_orchestrator_channel` directly.**
+  >
+  > `handle_assemble_prior_knowledge` (orchestrator.rs:2552) is a **private `async fn`** with
+  > signature `(args: &[MontyObject], thread: &Thread, ...)` — NOT `pub`, NOT externally
+  > callable, NOT parameterised with `recipe_hint`. It is an internal Monty VM dispatch handler.
+  > `execute_recipe_orchestrator_channel` is a Python function inside `default.py` — it is not
+  > reachable from Rust at all from outside the VM.
+  >
+  > The `execute_orchestrator` entry point (orchestrator.rs:444, `pub async fn`) runs the
+  > ENTIRE Python VM from scratch — it is not suitable for the focused step-0 or Tier-0
+  > channel invocations needed here.
+  >
+  > **Required: two new `pub` functions in `brassclaw_engine::executor::orchestrator`:**
+  >
+  > **For `run_step_zero` (`LoopOrchestratorPort` Tier 1):**
+  > ```rust
+  > /// Pure-Rust prior-knowledge assembly. Replaces the `__assemble_prior_knowledge__`
+  > /// Monty VM handler with a direct library call for the `LoopOrchestratorPort` bridge.
+  > /// When `recipe_hint` is Some(v): uses the stashed orchestrator_items from `RecipeStage`
+  > /// (no second `fetch_for_turn`). When None: calls `retrieval_source.fetch_for_turn`.
+  > pub async fn assemble_prior_knowledge_with_hint(
+  >     thread: &Thread,
+  >     goal: &str,
+  >     token_budget: usize,
+  >     sender_class_code: &str,
+  >     retrieval_source: Option<&Arc<dyn RetrievalSource>>,
+  >     recipe_hint: Option<serde_json::Value>,  // stashed orchestrator_items from RecipeStage
+  > ) -> Result<PkrAssemblyResult, EngineError>
+  > ```
+  > `PkrAssemblyResult` is a new `pub struct` in `brassclaw_engine`:
+  > ```rust
+  > pub struct PkrAssemblyResult {
+  >     pub orchestrator_content: String,    // formatted Skill + PythonCode bodies
+  >     pub matched_component_ids: Vec<String>,
+  >     pub override_prompt_creation: bool,
+  >     pub action_short_circuit: bool,
+  >     pub action_component_id: Option<String>,
+  >     pub action_name: Option<String>,
+  >     pub disambiguation: bool,
+  >     pub candidates: Vec<serde_json::Value>,
+  >     pub tier_zero: bool,                 // true when llm_call_required == false
+  > }
+  > ```
+  > The existing private `handle_assemble_prior_knowledge` becomes a thin wrapper:
+  > ```rust
+  > // Inside the `__assemble_prior_knowledge__` dispatch arm:
+  > let result = assemble_prior_knowledge_with_hint(thread, &goal, token_budget,
+  >     &sender_class_code, retrieval_source, None).await?;
+  > return json_to_monty(&serde_json::to_value(&result)?);
+  > ```
+  > Composition host's `run_step_zero` calls `assemble_prior_knowledge_with_hint` with the
+  > `recipe_hint` extracted from `state` by the stage.
+  >
+  > **For `run_tier_zero` (`LoopOrchestratorPort` Tier 0):**
+  > ```rust
+  > /// Run the Tier-0 orchestrator channel (PythonCode bodies + tool calls) without an LLM.
+  > /// Embodies the `execute_recipe_orchestrator_channel` logic as a Rust library function.
+  > /// The Python `execute_recipe_orchestrator_channel` helper in `default.py` is the
+  > /// Model A (engine path) counterpart — both implement the same logic, one in Python
+  > /// (for `ExecutionLoop`), one in Rust (for the `LoopOrchestratorPort` bridge).
+  > pub async fn execute_tier_zero_channel(
+  >     thread: &Thread,
+  >     orchestrator_content: &str,    // formatted PythonCode bodies (from recipe_hint)
+  >     rust_context: &serde_json::Value,  // pre-loaded ToolSkill bindings (from recipe_rust_context)
+  >     effects: &Arc<dyn EffectExecutor>,
+  >     leases: &Arc<LeaseManager>,
+  >     policy: &Arc<PolicyEngine>,
+  >     gate_controller: &Arc<dyn GateController>,
+  > ) -> Result<TierZeroChannelResult, EngineError>
+  >
+  > pub struct TierZeroChannelResult {
+  >     pub formatted_output: String,            // the final text to emit to the user
+  >     pub matched_component_ids: Vec<String>,  // for Wilson score recording
+  > }
+  > ```
+  > Composition host's `run_tier_zero` calls `execute_tier_zero_channel`. The Python helper
+  > `execute_recipe_orchestrator_channel` in `default.py` continues to be used by the engine
+  > path (Model A) when the full Python VM is running — the two implementations share the
+  > same logic but live in different layers. Code-share can be via calling `__execute_code_step__`
+  > (already a registered Monty host function) or by extracting a common Rust helper.
+  >
+  > **Files to modify (addition to Phase H "Files to modify"):**
+  > - `crates/brassclaw_engine/src/executor/orchestrator.rs` — add `assemble_prior_knowledge_with_hint`
+  >   and `execute_tier_zero_channel` as `pub async fn`s; refactor the private
+  >   `handle_assemble_prior_knowledge` dispatch handler to delegate to the former; add
+  >   `PkrAssemblyResult` and `TierZeroChannelResult` as `pub struct`s.
+  > - `crates/brassclaw_engine/src/executor/mod.rs` (or engine `lib.rs`) — re-export
+  >   `assemble_prior_knowledge_with_hint`, `execute_tier_zero_channel`, `PkrAssemblyResult`,
+  >   `TierZeroChannelResult` so `brassclaw_reborn_composition` can import them.
+  >
+  > (Requires the rust execution context to be applied first — see item 4 / the
+  > `TierZeroExecutionStage` below.)
 
 **TIER0-GAP resolution — the kick mechanism (Option 1, chosen):** add a new
 `TierZeroExecutionStage` to `canonical.rs`, inserted between `RecipeStage` and
@@ -5156,9 +5298,13 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
            //       None => /* NoOrchestrator host — degrade to Tier 2 */ NeedsPrompt(state),
            //   }
            //
-           // The composition host implements run_tier_zero by delegating to the engine
-           // orchestrator's no-LLM entry point (applies rust_context, runs the
-           // skill/PythonCode channel against the Rust executioner, returns formatted text).
+           // The composition host implements run_tier_zero by calling
+           // `execute_tier_zero_channel(thread, orchestrator_content, rust_context, ...)`
+           // — the NEW pub library function in brassclaw_engine::executor::orchestrator
+           // (see FIND-NEW-PASS12-02). It is NOT the Python helper
+           // `execute_recipe_orchestrator_channel` (that runs inside the Python VM on the
+           // engine/Model-A path only). execute_tier_zero_channel applies rust_context,
+           // runs the PythonCode channel via __execute_code_step__, and returns formatted text.
            // PromptStage/InterceptorStage/ModelStage/CapabilityStage are ALL skipped.
        }
        PostRecipeOutcome::ActionExecuted { state, .. } => {
@@ -5206,12 +5352,17 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
    - **Tier 1 path in the composition host's `run_step_zero`** (called via `LoopOrchestratorPort`):
      1. Receives `recipe_hint: Option<&serde_json::Value>` as a parameter (extracted from
         `state.recipe_hint` by the stage BEFORE the call).
-     2. Passes it to `handle_assemble_prior_knowledge(recipe_hint, ...)` as a function
-        argument.
-     3. The handler: if `recipe_hint` is `Some(v)` → use the stashed value, skip
-        `fetch_for_turn` entirely. Deserialize `v` back to `Vec<ComponentItem>` as
-        `orchestrator_items`. Format → `orchestrator_content`. Return extended pkr.
-     4. Returns `PriorKnowledgeBundle { orchestrator_content, matched_component_ids, .. }`.
+     2. Calls the NEW public library function `brassclaw_engine::executor::orchestrator::assemble_prior_knowledge_with_hint(thread, goal, token_budget, sender_class_code, retrieval_source, recipe_hint.cloned())`.
+        > **⚠️ FIND-NEW-PASS12-01 — DO NOT call `handle_assemble_prior_knowledge` directly:**
+        > it is `async fn` (private), takes `args: &[MontyObject]` (not `recipe_hint`), and
+        > is NOT callable from outside `orchestrator.rs`. The composition host calls
+        > `assemble_prior_knowledge_with_hint` — the new `pub` library function that
+        > `handle_assemble_prior_knowledge` is refactored to delegate to internally.
+     3. `assemble_prior_knowledge_with_hint`: if `recipe_hint` is `Some(v)` → use the stashed value,
+        skip `fetch_for_turn` entirely. Deserialize `v` back to `Vec<ComponentItem>` as
+        `orchestrator_items`. Format → `orchestrator_content`. Return `PkrAssemblyResult`.
+     4. Returns `PriorKnowledgeBundle { orchestrator_content, matched_component_ids, .. }`
+        (converted from `PkrAssemblyResult` by the composition host).
    - After `ctx.host.run_step_zero(...)` returns, the STAGE clears:
      ```rust
      state.recipe_hint = None;       // one-shot consume
@@ -5230,22 +5381,22 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
      just the PromptStage/ModelStage stages are absent).
 
    **Rust state type constraint (repeated for clarity):** `state.recipe_hint` and
-   `state.recipe_rust_context` are typed as `serde_json::Value` — NOT `Vec<ComponentItem>`.
-   `ComponentItem` is in `brassclaw_engine`; `LoopExecutionState` is in `brassclaw_agent_loop`
-   which does NOT depend on `brassclaw_engine`. Serialization to `serde_json::Value` happens
-   at `RecipeStage` before storing in state. Deserialization from `Value` happens in
-   `handle_assemble_prior_knowledge` (which is in `brassclaw_engine` and CAN use `ComponentItem`).
+  `state.recipe_rust_context` are typed as `serde_json::Value` — NOT `Vec<ComponentItem>`.
+  `ComponentItem` is in `brassclaw_engine`; `LoopExecutionState` is in `brassclaw_agent_loop`
+  which does NOT depend on `brassclaw_engine`. Serialization to `serde_json::Value` happens
+  at `RecipeStage` before storing in state. Deserialization from `Value` happens in
+  `assemble_prior_knowledge_with_hint` (which is in `brassclaw_engine` and CAN use `ComponentItem`).
 
-   > **⚠️ DRIVER-GAP cross-reference (invocation, not just logic):** the protocol above
-   > describes the **server-side** stash/unstash logic inside
-   > `handle_assemble_prior_knowledge`. It does NOT describe how the agent-loop stages reach
-   > that engine handler — `brassclaw_agent_loop` cannot import `brassclaw_engine`. Under the
-   > v3 unified model (Phase H.0 §H5), the invocation goes through the `LoopOrchestratorPort`
-   > host port: Tier 1 step-0 is `ctx.host.run_step_zero(context, state.recipe_hint.as_ref())`
-   > (the composition host delegates to `handle_assemble_prior_knowledge`, passing the hint
-   > as a parameter); Tier 0 is
-   > `ctx.host.run_tier_zero(...)` via the `TierZeroExecutionStage`. The stash/unstash logic
-   > itself is unchanged — only the call boundary is the port, not a direct engine import.
+  > **⚠️ DRIVER-GAP cross-reference (invocation — concrete via new `pub` library functions):**
+  > the protocol above describes the **server-side** stash/unstash logic. The invocation path
+  > goes through the `LoopOrchestratorPort` host port:
+  > - Tier 1 step-0: `ctx.host.run_step_zero(context, state.recipe_hint.as_ref())`
+  >   → composition host calls `assemble_prior_knowledge_with_hint(thread, goal, ..., recipe_hint.cloned())`
+  >   (**NOT** `handle_assemble_prior_knowledge` — see FIND-NEW-PASS12-01).
+  > - Tier 0: `ctx.host.run_tier_zero(context, &recipe_hint, &rust_context)` via the
+  >   `TierZeroExecutionStage` → composition host calls `execute_tier_zero_channel(thread, ...)`
+  >   (**NOT** `execute_recipe_orchestrator_channel` — that's a Python function — see FIND-NEW-PASS12-02).
+  > The stash/unstash logic itself is unchanged — only the call boundary is the port.
 
 6. **`PromptStage` / host `build_prompt_bundle`:** `PromptStage` calls
    `ctx.host.build_prompt_bundle(context_request)` — it does NOT call `fetch_for_consumer`
@@ -5284,22 +5435,25 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
    >   and prepend the stashed orchestrator items to the bundle before the UNION ALL scan.
    >
    > **COMP-03 remains valid:** `build_prompt_bundle` reads the hint but must NOT clear it.
-   > Only `handle_assemble_prior_knowledge` (Python handler) clears it. The hint must be
-   > set into the request from `state.recipe_hint` and NOT cleared from state by PromptStage.
+   > Only `assemble_prior_knowledge_with_hint` (called by the composition host in `run_step_zero`)
+   > is the one-shot consumer — the stage clears `state.recipe_hint` AFTER `run_step_zero` returns.
+   > The hint must be set into the request from `state.recipe_hint` and NOT cleared from state by PromptStage.
 
-   > **⚠️ COMP-03 — recipe_hint consumed by BOTH PromptStage host AND Python step-0:**
-   > `PromptStage` calls `build_prompt_bundle` which reads `state.recipe_hint` to inject
-   > the hint into the prompt. Then Python step-0 calls `__assemble_prior_knowledge__` which
-   > ALSO reads `state.recipe_hint` and clears it (one-shot consume). There are two readers:
+   > **⚠️ COMP-03 — recipe_hint consumed by BOTH PromptStage host AND the `run_step_zero` call:**
+   > `PromptStage` calls `build_prompt_bundle` which reads `state.recipe_hint` (from the request)
+   > to inject the hint into the LLM prompt. Then `PromptStage` calls `run_step_zero` which
+   > ALSO reads `state.recipe_hint` (passing it to `assemble_prior_knowledge_with_hint`) and the
+   > stage clears it (one-shot consume) after `run_step_zero` returns. There are two readers:
    >
-   > - **PromptStage (via host):** reads `recipe_hint` to inject into the LLM prompt.
-   >   Must NOT clear it — Python step-0 still needs it.
-   > - **Python step-0 (via handler):** reads `recipe_hint`, formats it, clears it.
+   > - **PromptStage (via `build_prompt_bundle`):** reads `recipe_hint` from the request. Must NOT
+   >   clear `state.recipe_hint` — `run_step_zero` still needs it.
+   > - **PromptStage (via `run_step_zero` → `assemble_prior_knowledge_with_hint`):** reads, uses,
+   >   and the STAGE clears `state.recipe_hint` AFTER `run_step_zero` returns.
    >
-   > The protocol requires that `build_prompt_bundle` reads but does NOT consume the hint.
-   > Only `handle_assemble_prior_knowledge` consumes (clears) it. This ordering constraint
-   > must be explicitly stated in Phase H implementation notes: "read in PromptStage, clear
-   > in Python step-0 handler only". If both clear it, Python gets `None` and falls through
+   > The protocol requires that `build_prompt_bundle` reads but does NOT consume the hint from state.
+   > Only the stage itself (after `run_step_zero` returns) clears `state.recipe_hint`. This ordering constraint
+   > must be explicitly stated in Phase H implementation notes: "read in PromptStage via request, clear
+   > in stage after run_step_zero only". If both clear it, `run_step_zero` gets `None` and falls through
    > to a second `fetch_for_turn` — defeating the stash/unstash protocol.
 
 #### Tests
@@ -5310,6 +5464,13 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
 - Integration: no match → falls through to full LLM (Tier 2 unchanged)
 - Integration: Tier 0 success → `record_recipe_outcome(recipe_id, true)` called → wilson_lower updated
 - Integration: Tier 0 failure → `record_recipe_outcome(recipe_id, false)` called → tier possibly downgraded
+- Unit: `assemble_prior_knowledge_with_hint(thread, goal, budget, sender_class_code, retrieval_source, recipe_hint: None)` → calls `fetch_for_turn`, returns `PkrAssemblyResult` (**FIND-NEW-PASS13-01 — new pub fn must be unit-tested directly**)
+- Unit: `assemble_prior_knowledge_with_hint(..., recipe_hint: Some(stashed_orchestrator_items))` → skips `fetch_for_turn`, deserialises stash, returns `PkrAssemblyResult { tier_zero: false, orchestrator_content: <formatted>, ... }`
+- Unit: `assemble_prior_knowledge_with_hint(..., recipe_hint: Some(stashed_items), routing.llm_call_required: false)` → returns `PkrAssemblyResult { tier_zero: true }`
+- Unit: `execute_tier_zero_channel(thread, orchestrator_content, rust_context, ...)` with valid PythonCode body → returns `TierZeroChannelResult { formatted_output: <text>, matched_component_ids: [...] }` (**FIND-NEW-PASS13-01**)
+- Unit: `execute_tier_zero_channel` with empty `orchestrator_content` → returns error result (Q1 Rule 2 bypass guard — same check as `execute_recipe_orchestrator_channel`)
+- Unit: `execute_tier_zero_channel` with Skill body in `orchestrator_content` → returns error (Tier-0 must be PythonCode only)
+- Unit: `handle_assemble_prior_knowledge` (Python dispatch arm) still works end-to-end after refactor to delegate to `assemble_prior_knowledge_with_hint` (regression — must pass existing tests)
 
 ---
 
@@ -5419,8 +5580,20 @@ It is not just "post-processing." It is the full supervisory step:
 Example — `builtin-read-file` (Tier 0):
 ```python
 # PythonCode body: "read-file-executor"
-# vars["path"] was extracted by the template mechanism (Phase M) from the user's message
-tool_output = __execute_action__("read_file", {"path": vars["path"]})
+#
+# ⚠️ FIND-NEW-PASS13-04 — There is NO runtime `vars` dict in the PythonCode body scope.
+# Template variable substitution (Phase M / §0.20.3) is done by the IBS BEFORE
+# execute_recipe_orchestrator_channel / execute_tier_zero_channel runs. The IBS replaces
+# {{vars.slot0}} with the literal extracted value in the body TEXT at assembly time.
+# By the time this body executes, the path is already baked in as a literal string.
+# (See §0.20.3 — a body that accesses a `vars` dict at runtime will get a NameError.)
+#
+# The AUTHORED recipe body template (before IBS substitution):
+#   tool_output = __execute_action__("read_file", {"path": "{{vars.slot0}}"})
+#   result = tool_output
+#
+# What the PythonCode body looks like AT RUNTIME (after IBS substitution):
+tool_output = __execute_action__("read_file", {"path": "/tmp/foo.txt"})  # literal, baked in by IBS
 result = tool_output  # raw file content, or format it as needed
 ```
 
@@ -6653,7 +6826,7 @@ avoiding the DB round-trip entirely.
 | 10 | What recipe variants should `builtin.shell` have? | Two: (a) known-safe commands (allowlist: `cargo build/test/fmt/clippy`, `git status/log/diff`, `npm install/build`) at Tier 1 high-confidence; (b) open-ended arbitrary command at Tier 1 always with explicit approval annotation. Both have `llm_call_required: true` — no shell is ever Tier 0. |
 | 11 | How does the Rust execution layer resolve a Tool DB UUID to its registered capability handler? | Via `capability_id` column (V057 — was V056 before Decision 2). On tool dispatch: look up Tool row by UUID → read `capability_id` → look up handler in `FirstPartyCapabilityRegistry` by `capability_id`. For user-authored tools without `capability_id`, fall back to existing name-based resolution. |
 | 12 | Should builtin Recipes also have `source = "system"` and bypass Q2? | Yes — same reasoning as Q8. Builtin Recipe StepDescriptions are hand-authored and IBS pre-flight-checked at seeder run time. Q2 bypass for `source = "system"` Recipes is consistent with Tools and ToolSkills. |
-| 13 | If `RecipeStage` already stashed the items (Tier 1), how does `handle_assemble_prior_knowledge` know not to call `fetch_for_turn` again? | **Resolved — stash/unstash protocol (Phase H §5, FIND-P9-15 corrected).** **⚠️ The handler does NOT read `state.recipe_hint` directly** — `brassclaw_engine` does not depend on `brassclaw_agent_loop` and cannot access `LoopExecutionState`. The correct flow: (1) `RecipeStage` (agent_loop) reads `state.recipe_hint` and passes it as a parameter to `ctx.host.run_step_zero(context, recipe_hint.as_ref())`; (2) the composition host receives it and passes it to `handle_assemble_prior_knowledge` as a function argument; (3) the handler receives `recipe_hint: Option<serde_json::Value>` as a parameter — if `Some(v)`, it uses the stashed orchestrator_items, skips `fetch_for_turn` entirely, deserializes `v` to `Vec<ComponentItem>`, and formats; if `None`, calls `fetch_for_turn` as before; (4) the STAGE clears `state.recipe_hint = None` AFTER `run_step_zero` returns. No double-fetch, no second `resolve_intent`, no second IBS compilation. |
+| 13 | If `RecipeStage` already stashed the items (Tier 1), how does `assemble_prior_knowledge_with_hint` know not to call `fetch_for_turn` again? | **Resolved — stash/unstash protocol (Phase H §5, FIND-P9-15 + FIND-NEW-PASS12-01 corrected).** The composition host calls the new `pub` function `assemble_prior_knowledge_with_hint(thread, goal, ..., recipe_hint: Option<serde_json::Value>)` (NOT `handle_assemble_prior_knowledge` directly — that is private and takes `args: &[MontyObject]`). The correct flow: (1) `RecipeStage` (agent_loop) reads `state.recipe_hint` and passes it as a parameter to `ctx.host.run_step_zero(context, recipe_hint.as_ref())`; (2) the composition host calls `assemble_prior_knowledge_with_hint(..., recipe_hint.cloned())`; (3) `assemble_prior_knowledge_with_hint`: if `recipe_hint` is `Some(v)` → use the stashed orchestrator_items, skip `fetch_for_turn` entirely, deserialize, format, return `PkrAssemblyResult`; if `None`, call `fetch_for_turn` as before; (4) the STAGE clears `state.recipe_hint = None` AFTER `run_step_zero` returns. No double-fetch, no second `resolve_intent`, no second IBS compilation. |
 | 14 | In Tier 0, `PromptStage` and `ModelStage` are skipped — but the Python script calls `__assemble_prior_knowledge__`. Where does Python execute in Tier 0? | The Python scripting engine is **not** the LLM call. `PromptStage` assembles the LLM input prompt; `ModelStage` sends it to the model. Both are skipped in Tier 0. `default.py` is invoked by a dedicated **`TierZeroExecutionStage`** (NOT `CapabilityStage` — see the resolution below). In Tier 0, Python runs step-0, calls `__assemble_prior_knowledge__` (gets the stash), and invokes skills/tools directly — no LLM round-trip in the middle. "Tier 0: no LLM" means no LLM call, not no Python execution. **✅ DESIGN GAP RESOLVED (Option 1 chosen — `TierZeroExecutionStage` + `LoopOrchestratorPort`):** In the normal pipeline `CapabilityStage` processes tool-call responses from the model, so it CANNOT kick Python in Tier 0 (there is no model output). The plan now specifies the mechanism: a new `TierZeroExecutionStage` inserted between `RecipeStage` and `AssistantReplyStage` in `canonical.rs` calls `ctx.host.run_tier_zero(context, &state.recipe_hint, &state.recipe_rust_context)` — a new `LoopOrchestratorPort` host port (15th `AgentLoopDriverHost` port, implemented by `brassclaw_reborn_composition`, the only crate depending on both `brassclaw_engine` and `brassclaw_agent_loop`). `CapabilityStage` is NOT bent and is simply skipped. Option 2 (synthetic signal into `LoopCapabilityPort`) is rejected — it would couple the capability port to Tier 0 routing. See Phase H.0 §H5 for the full port spec and §5 for the corrected Tier 0 turn-flow diagram. **⚠️ DRIVER-PREREQ:** this mechanism is exercised only in agent-loop tests until the agent-loop `DefaultExecutorPipeline` is wired as the production driver (today the engine `ExecutionLoop::run` drives turns with no stage pipeline); see DRIVER-GAP in the index. |
 | 15 | What happens if `build_instruction` returns an `IbsError` during the builtin seeder (Phase L)? `panic!` or return an error? | **Debug builds: `panic!`** — seeder content is hand-authored; an IbsError here is a compile-time bug. **Release builds:** `error!`-log, skip the Recipe row, continue. The seeder is idempotent — skipped rows do not block boot. CI must run the seeder in debug mode so IbsErrors become build failures before reaching production. |
 
@@ -6858,7 +7031,8 @@ User types: "edit main.rs and refactor the error handler"
 │   PromptStage calls ctx.host.build_prompt_bundle(context_request).
 │   FIND-11: PromptStage copies state.recipe_hint → request.recipe_hint.
 │   Host reads request.recipe_hint, prepends orchestrator items to bundle (LLM sees it).
-│   PromptStage does NOT clear state.recipe_hint (COMP-03 — Python step-0 clears it).
+│   PromptStage does NOT clear state.recipe_hint (COMP-03 — the STAGE clears it AFTER
+│   run_step_zero returns; Python step-0's handler has no &mut state access — see FIND-P9-15).
 │
 │   ctx.host.run_step_zero(context, state.recipe_hint.as_ref()) called here (PRE-LLM):
 │     # FIND-P9-15: stage passes recipe_hint as parameter; handler never reads LoopExecutionState
