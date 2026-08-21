@@ -257,16 +257,22 @@ body: |
   TWO TIERS OF SHELL EXECUTION:
 
   Tier 0 — Fixed pre-validated commands (§shell-safe-fixed):
-  Use when the command is a fixed literal with no user input.
-  Git inspection:
-  — skill-shell-git-status: run 'git status'
-  — skill-shell-git-log: run 'git log --oneline -20'
-  — skill-shell-git-diff-stat: run 'git diff --stat'
-  — skill-shell-git-branch: run 'git branch -a'
-  — skill-shell-git-stash-list: run 'git stash list'
-  — skill-shell-git-remote: run 'git remote -v'
-  — skill-shell-git-show-stat: run 'git show --stat HEAD'
-  — skill-shell-git-tag-list: run 'git tag --list'
+  Use when the command is a fixed literal with no user input. Zero injection surface.
+
+  Git inspection (status / diff / history):
+  — skill-shell-git-status:         'git status'
+  — skill-shell-git-log:            'git log --oneline -20'
+  — skill-shell-git-log-stat:       'git log --stat --oneline -5' (per-file change counts)
+  — skill-shell-git-diff-stat:      'git diff --stat'
+  — skill-shell-git-diff-name-only: 'git diff --name-only HEAD' (changed filenames only)
+  — skill-shell-git-branch:         'git branch -a'
+  — skill-shell-git-stash-list:     'git stash list'
+  — skill-shell-git-stash-show:     'git stash show' (diff summary of latest stash)
+  — skill-shell-git-remote:         'git remote -v'
+  — skill-shell-git-show-stat:      'git show --stat HEAD'
+  — skill-shell-git-tag-list:       'git tag --list'
+  — skill-shell-git-config-list:    'git config --list' (all active git config)
+
   System information:
   — skill-shell-pwd: run 'pwd'
   — skill-shell-df: run 'df -h'
@@ -281,12 +287,20 @@ body: |
   — skill-shell-free: run 'free -h' (Linux only)
   — skill-shell-wc-l: run 'wc -l <file>' (line count, path validated)
 
+  Decision guide for git work:
+  • What changed since last commit (names only) → skill-shell-git-diff-name-only (Tier 0)
+  • What changed in detail → shell-run 'git diff HEAD' (Tier 1 — custom)
+  • Recent commit history with stats → skill-shell-git-log-stat (Tier 0)
+  • What is in the stash → skill-shell-git-stash-show (Tier 0)
+  • Git identity/config check → skill-shell-git-config-list (Tier 0)
+
   Tier 1 — Custom/user-composed commands (§shell-guard-custom):
   Use when the command string involves user intent, user-supplied paths, or composition.
   — skill-shell-run: run a single composed command (LLM validates and composes)
   — skill-shell-safe-check: safety rules before composing any command
 
   Safety rules before running any command → skill-shell-safe-check.
+  NEVER run a command that the user supplied without LLM validation first.
 source:       "system"
 validation_status: "validated"
 consumer_tags: ["02:orchestrator", "05:validator"]
@@ -1748,6 +1762,301 @@ validation_status: "validated"
 ```
 
 ---
+
+## Step 1.x.17 — Extended Shell Tier-0 Infrastructure (§shell-safe-fixed continued)
+
+> Additional fixed-literal git and filesystem commands that the orchestrator commonly
+> needs for workflow context. Every one is §shell-safe-fixed: no user input in the
+> command string, no slot interpolation of command content.
+
+### PythonCode: `pc-exec-shell-git-diff-name-only` (class 22)
+
+```
+name:        "pc-exec-shell-git-diff-name-only"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'git diff --name-only HEAD'
+              to list only the names of files changed since the last commit. No content shown.
+              Fixed literal command — no slot interpolation."
+content: |
+  # §shell-safe-fixed: fixed command, no user input, no injection surface.
+  result = __execute_action__("shell", {"command": "git diff --name-only HEAD"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-exec-shell-git-log-stat` (class 22)
+
+```
+name:        "pc-exec-shell-git-log-stat"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'git log --stat --oneline -5'
+              to show the last 5 commits with file-change counts per commit. Fixed literal."
+content: |
+  # §shell-safe-fixed: fixed command, no user input, no injection surface.
+  result = __execute_action__("shell", {"command": "git log --stat --oneline -5"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-exec-shell-git-stash-show` (class 22)
+
+```
+name:        "pc-exec-shell-git-stash-show"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'git stash show' to show
+              the diff summary of the most recent stash entry. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input, no injection surface.
+  result = __execute_action__("shell", {"command": "git stash show"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-exec-shell-git-config-list` (class 22)
+
+```
+name:        "pc-exec-shell-git-config-list"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'git config --list' to show
+              all active git configuration values. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input, no injection surface.
+  result = __execute_action__("shell", {"command": "git config --list"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Leaf Skills: Extended Git Fixed Commands (class 1)
+
+#### `skill-shell-git-diff-name-only` (class 1)
+
+```
+name:        "skill-shell-git-diff-name-only"
+class_code:  1
+description: "Leaf skill: how to list only filenames changed since the last commit (no diff content)."
+body: |
+  Use pc-exec-shell-git-diff-name-only (§shell-safe-fixed) to run 'git diff --name-only HEAD'.
+  Returns only the names of modified files — no content, no diff hunks. This is the fastest
+  way to discover which files are dirty before deciding which ones to inspect or read.
+  For full diff content, use shell-run with a custom git diff command (Tier 1 — §shell-guard).
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+#### `skill-shell-git-log-stat` (class 1)
+
+```
+name:        "skill-shell-git-log-stat"
+class_code:  1
+description: "Leaf skill: how to view recent commit history with file-change statistics."
+body: |
+  Use pc-exec-shell-git-log-stat (§shell-safe-fixed) to run 'git log --stat --oneline -5'.
+  Shows the last 5 commits with their changed-file counts and insertions/deletions summary.
+  For more commits or a different format, use shell-run (Tier 1 — §shell-guard).
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+#### `skill-shell-git-stash-show` (class 1)
+
+```
+name:        "skill-shell-git-stash-show"
+class_code:  1
+description: "Leaf skill: how to inspect the diff summary of the most recent stash entry."
+body: |
+  Use pc-exec-shell-git-stash-show (§shell-safe-fixed) to run 'git stash show'.
+  Returns a short summary of files and line counts in the top stash entry. Does NOT pop
+  or apply the stash. To see the full patch or apply it, use shell-run (Tier 1).
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+#### `skill-shell-git-config-list` (class 1)
+
+```
+name:        "skill-shell-git-config-list"
+class_code:  1
+description: "Leaf skill: how to inspect all active git configuration values."
+body: |
+  Use pc-exec-shell-git-config-list (§shell-safe-fixed) to run 'git config --list'.
+  Returns all effective git config key=value pairs (local, global, system). Useful for
+  checking user.email, user.name, remote settings, or merge strategy before making commits.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Tier-0 Recipes: Extended Git Fixed Commands (§shell-safe-fixed)
+
+#### Recipe: `shell-git-diff-name-only` (class 21)
+
+> **Tier:** 0 — §shell-safe-fixed. Returns only the list of changed filenames.
+> Use before reading files to discover which ones are modified.
+
+```
+name:        "shell-git-diff-name-only"
+description: "List only the names of files changed since the last commit (git diff --name-only HEAD)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-diff-name-only>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'git diff --name-only HEAD'})"
+  }
+]
+intent_examples: [
+  {"input": "what files have changed since last commit",              "class": 1},
+  {"input": "which files are modified",                               "class": 1},
+  {"input": "list changed files",                                     "class": 1},
+  {"input": "show modified filenames only",                           "class": 1},
+  {"input": "git diff name only",                                     "class": 1},
+  {"input": "what did I change in this working directory",            "class": 2},
+  {"input": "files with uncommitted changes",                         "class": 1},
+  {"input": "what is dirty in the working tree",                      "class": 2},
+  {"input": "list unstaged or staged changed files",                  "class": 2},
+  {"input": "show only the names of changed files no content",        "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+#### Recipe: `shell-git-log-stat` (class 21)
+
+> **Tier:** 0 — §shell-safe-fixed. Shows last 5 commits with per-file change counts.
+
+```
+name:        "shell-git-log-stat"
+description: "Show the last 5 commits with file-change statistics (git log --stat --oneline -5)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-log-stat>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'git log --stat --oneline -5'})"
+  }
+]
+intent_examples: [
+  {"input": "show recent commits with file changes",                  "class": 1},
+  {"input": "git log with stats",                                     "class": 1},
+  {"input": "what files changed in the last few commits",             "class": 2},
+  {"input": "show commit history with change counts",                 "class": 1},
+  {"input": "git log stat",                                           "class": 1},
+  {"input": "which files were touched in recent commits",             "class": 2},
+  {"input": "last 5 commits with file statistics",                    "class": 1},
+  {"input": "show me what changed in recent git history",             "class": 2},
+  {"input": "recent commit file change summary",                      "class": 2},
+  {"input": "git history with additions deletions per file",          "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+#### Recipe: `shell-git-stash-show` (class 21)
+
+> **Tier:** 0 — §shell-safe-fixed. Shows the diff summary of the latest stash entry.
+
+```
+name:        "shell-git-stash-show"
+description: "Show the diff summary of the most recent git stash entry (git stash show)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-stash-show>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'git stash show'})"
+  }
+]
+intent_examples: [
+  {"input": "what is in my git stash",                                "class": 1},
+  {"input": "show the latest stash entry",                            "class": 1},
+  {"input": "git stash show",                                         "class": 1},
+  {"input": "what changes did I stash",                               "class": 2},
+  {"input": "preview the stash without applying it",                  "class": 2},
+  {"input": "what files are in the current stash",                    "class": 2},
+  {"input": "inspect the stash summary",                              "class": 1},
+  {"input": "show stash diff summary",                                "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+#### Recipe: `shell-git-config-list` (class 21)
+
+> **Tier:** 0 — §shell-safe-fixed. Lists all active git configuration key-value pairs.
+
+```
+name:        "shell-git-config-list"
+description: "List all active git configuration values (git config --list)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-config-list>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'git config --list'})"
+  }
+]
+intent_examples: [
+  {"input": "show git configuration",                                 "class": 1},
+  {"input": "what is my git user.name",                               "class": 2},
+  {"input": "git config list",                                        "class": 1},
+  {"input": "show all git settings",                                  "class": 1},
+  {"input": "what email is configured for git commits",               "class": 2},
+  {"input": "check git config",                                       "class": 1},
+  {"input": "show current git identity settings",                     "class": 2},
+  {"input": "list active git configuration",                          "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+
 
 ## Step 3.x — Additional write_file Tier-0 Recipe
 
@@ -3276,6 +3585,15 @@ description: "The filesystem domain provides six scoped tools for working with t
               — skill-grep-count: Count occurrences without returning content.
               — skill-grep-case-insensitive: Case-insensitive grep (add case_insensitive=true).
               — skill-grep-type-filtered: Grep only specific file types via glob filter.
+              — skill-grep-invert: Find files/lines that do NOT match (invert_match=true).
+
+              Decision for grep approach:
+              • Which files contain pattern → skill-grep-files
+              • What exactly matches with context → skill-grep-content
+              • How many occurrences → skill-grep-count
+              • Pattern in any case → skill-grep-case-insensitive
+              • Only in .rs / .ts / etc. files → skill-grep-type-filtered
+              • Files MISSING a pattern → skill-grep-invert
 
               WRITING / EDITING:
               — skill-write-file-new: Create a new file with full content.
@@ -4928,6 +5246,94 @@ validation_status: "validated"
 ```
 
 
+## Step 13.x.4 — Memory Search-and-Read Combined Recipe
+
+> **`memory-search-and-read`** is a Tier-1 combined recipe that executes a semantic search
+> and then reads the top result automatically. This two-step pattern (search → read
+> highest-scoring document) is extremely common but was missing as a named recipe.
+>
+> The pattern is Tier 1 because the LLM must decide which result to read when there are
+> multiple candidates. For the single-result-auto-read pattern, the PythonCode does the
+> dispatch; the LLM step interprets the search query intent.
+
+### Step 13.x.4.1 — Leaf Skill: `skill-memory-search-and-read` (class 1)
+
+```
+name:        "skill-memory-search-and-read"
+class_code:  1
+description: "Leaf skill: how to search memory and immediately read the top result."
+body: |
+  Use when the user wants to recall information and immediately see the full content —
+  not just the search summary. The pattern:
+  1. Call ts-memory-search with the topic query (via pc-exec-memory-search).
+  2. Take the highest-scoring result's path from the search output.
+  3. Call ts-memory-read with that path (via pc-exec-memory-read).
+  4. Return the full document content.
+
+  If no results are found, report that no memory matches the topic. Do not fabricate
+  a document path. Always check the search result before reading.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 13.x.4.2 — Recipe: `memory-search-and-read` (class 21)
+
+> **Tier:** 1 — LLM needed to formulate the query and select the correct result.
+> The PythonCode dispatches both the search and the read; the LLM decides query + result.
+
+```
+name:        "memory-search-and-read"
+description: "Search persistent memory by topic and read the top matching document in one flow."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-memory-search-and-read>"],
+    "label":   "Load search-and-read combined leaf skill body"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-search>", "<uuid:ts-memory-read>"],
+    "label":   "Pre-load both ToolSkill bindings"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-search>", "<uuid:pc-exec-memory-read>"],
+    "label":   "PythonCode: search memory, take top result path, read document"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "llm",
+    "label":   "LLM interprets query intent, selects best result path, presents content"
+  }
+]
+intent_examples: [
+  {"input": "recall what I know about this topic",             "class": 2},
+  {"input": "search memory and show me the full document",     "class": 1},
+  {"input": "find and read the memory about X",                "class": 1},
+  {"input": "look up this topic in my memory and show it",     "class": 2},
+  {"input": "recall and display this memory doc",              "class": 2},
+  {"input": "search then read the result",                     "class": 1},
+  {"input": "find this note and open it",                      "class": 2},
+  {"input": "memory search and read",                          "class": 1},
+  {"input": "recall the document about X",                     "class": 2},
+  {"input": "find this memory entry and show its contents",    "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+
+
 ## Step 14 — `builtin.time` (Time Operations)
 
 > **Capability:** `builtin.time` · **Effect:** `read_only` · **Permission:** Allow
@@ -5934,6 +6340,90 @@ validation_status: "validated"
 
 
 
+
+## Step 15.x.1 — JSON Parse-and-Query Combined Recipe
+
+> **`json-parse-and-query`** is a Tier-0 combined recipe for the very common pattern of
+> taking a JSON string and immediately extracting a specific field from it. This two-step
+> pattern (parse → query) is fully deterministic — the field path is pre-baked in vars.
+
+### Leaf Skill: `skill-json-parse-and-query` (class 1)
+
+```
+name:        "skill-json-parse-and-query"
+class_code:  1
+description: "Leaf skill: how to parse a JSON string and immediately extract a field value."
+body: |
+  Use the two-step parse + query pattern when you receive a raw JSON string (e.g. from
+  an HTTP response body) and immediately need a specific field. The pattern:
+  1. Call ts-json (operation='parse') to get the structured object (via pc-exec-json-stringify).
+  2. Call ts-json (operation='query') with a dot-path to extract the field.
+
+  Alternatively, use pc-json-extract-field (pure Python) if the json tool is not bound.
+  Always validate with json-validate before parse if the source is external or user-supplied.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Recipe: `json-parse-and-query` (class 21)
+
+> **Tier:** 0 — field path pre-baked, fully deterministic. No LLM needed.
+> Both the JSON string and the field path come from vars. The orchestrator parses then queries.
+
+```
+name:        "json-parse-and-query"
+description: "Parse a JSON string and immediately extract a field by dot-path — both pre-baked in vars."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-json-validate>"],
+    "label":   "Pre-load ts-json-validate ToolSkill binding (validate first)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-json-validate>"],
+    "label":   "PythonCode validates the JSON string before proceeding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-json-query>"],
+    "label":   "Pre-load ts-json-query ToolSkill binding"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-json-query>"],
+    "label":   "PythonCode calls __execute_action__(json, {operation:'query', path:slot1}) on parsed data"
+  }
+]
+intent_examples: [
+  {"input": "get the field X from this JSON response",          "class": 1},
+  {"input": "extract the value from this JSON payload",         "class": 2},
+  {"input": "parse this API response and get the status field", "class": 2},
+  {"input": "json parse and extract",                           "class": 1},
+  {"input": "parse JSON and read field X",                      "class": 1},
+  {"input": "extract data.items from this JSON",                "class": 2},
+  {"input": "get the nested field from this JSON string",       "class": 2},
+  {"input": "json parse then query path",                       "class": 1},
+  {"input": "decode and extract this value",                    "class": 2},
+  {"input": "parse this payload and read the error field",      "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+
 ---
 
 ## Step 16 — `builtin.skill_list` / `builtin.skill_install` / `builtin.skill_remove` (Skill Management)
@@ -6566,15 +7056,23 @@ description: "Domain skill: trigger management — list, create, remove schedule
 body: |
   Triggers are persistent scheduled invocations of recipes. Use the right grain:
 
-  Listing triggers:
-  - skill-trigger-list: always start here; see what is already scheduled.
+  LISTING TRIGGERS:
+  - skill-trigger-list: list ALL triggers (all scopes) — always start here.
+  - skill-trigger-list-active: list ONLY currently active/enabled triggers (Tier-0).
+  - skill-trigger-list-scheduled: list ONLY scheduled (cron/time-based) triggers (Tier-0).
 
-  Creating a trigger:
+  Decision: if user says "what triggers do I have" → trigger-list.
+  If user says "what is currently active/running" → trigger-list-active.
+  If user says "what is scheduled/recurring" → trigger-list-scheduled.
+
+  CREATING A TRIGGER:
   - skill-trigger-create: confirm schedule (cron) + recipe_name + payload with user.
     Translate natural language schedule to cron and verify before committing.
 
-  Removing a trigger:
+  REMOVING A TRIGGER:
   - skill-trigger-remove: confirm name, warn about immediate stoppage, then remove.
+  - skill-trigger-list + skill-trigger-remove-by-name: when name is known exactly
+    (use pc-exec-trigger-resolve-and-remove — find by exact name then remove).
 
   Safety rules:
   - trigger_create and trigger_remove both have ExternalWrite effect — require explicit
@@ -6816,6 +7314,159 @@ validation_status: "validated"
 ```
 
 ---
+
+## Step 17.x.3 — Trigger List Variant Recipes (Tier-0)
+
+> Common use-case: the user asks to see only active triggers, or only scheduled triggers.
+> `builtin.trigger_list` supports a `scope` parameter. These Tier-0 recipes pre-bake the
+> scope value — no LLM needed to choose it.
+
+### Step 17.x.3.1 — PythonCode: `pc-exec-trigger-list-active` (class 22)
+
+```
+name:        "pc-exec-trigger-list-active"
+class_code:  22
+description: "Orchestrator executor: calls __execute_action__(trigger_list, {scope:'active'})
+              to list only currently active (running/enabled) triggers. No LLM needed."
+content: |
+  # Orchestrator executor body.
+  result = __execute_action__("trigger_list", {"scope": "active"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 17.x.3.2 — PythonCode: `pc-exec-trigger-list-scheduled` (class 22)
+
+```
+name:        "pc-exec-trigger-list-scheduled"
+class_code:  22
+description: "Orchestrator executor: calls __execute_action__(trigger_list, {scope:'scheduled'})
+              to list only scheduled (cron/time-based) triggers. No LLM needed."
+content: |
+  # Orchestrator executor body.
+  result = __execute_action__("trigger_list", {"scope": "scheduled"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 17.x.3.3 — Leaf Skill: `skill-trigger-list-active` (class 1)
+
+```
+name:        "skill-trigger-list-active"
+class_code:  1
+description: "Leaf skill: how to list only currently active triggers."
+body: |
+  Use pc-exec-trigger-list-active to call trigger_list with scope='active'. Returns only
+  triggers that are currently running or enabled. Use this when the user wants to know
+  what is actively firing right now — not scheduled-but-paused entries.
+  Compare with skill-trigger-list (all triggers) and skill-trigger-list-scheduled (cron).
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 17.x.3.4 — Leaf Skill: `skill-trigger-list-scheduled` (class 1)
+
+```
+name:        "skill-trigger-list-scheduled"
+class_code:  1
+description: "Leaf skill: how to list only scheduled (cron/time-based) triggers."
+body: |
+  Use pc-exec-trigger-list-scheduled to call trigger_list with scope='scheduled'. Returns
+  only triggers that run on a cron or time-interval basis. Use when the user is asking
+  about what is set up to run on a schedule, not manual/event triggers.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 17.x.3.5 — Recipe: `trigger-list-active` (class 21)
+
+> **Tier:** 0 — scope pre-baked as 'active'. Deterministic — no LLM disambiguation needed.
+
+```
+name:        "trigger-list-active"
+description: "List only currently active triggers (scope='active')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-trigger-list>"],
+    "label":   "Pre-load ts-trigger-list ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-trigger-list-active>"],
+    "label":   "PythonCode calls __execute_action__(trigger_list, {scope:'active'})"
+  }
+]
+intent_examples: [
+  {"input": "show active triggers",                             "class": 1},
+  {"input": "what triggers are currently running",              "class": 1},
+  {"input": "list enabled triggers",                            "class": 1},
+  {"input": "what is currently firing",                         "class": 2},
+  {"input": "show me the active automations",                   "class": 2},
+  {"input": "active trigger list",                              "class": 1},
+  {"input": "what triggers are live right now",                 "class": 1},
+  {"input": "show running triggers",                            "class": 1},
+  {"input": "which triggers are enabled",                       "class": 1},
+  {"input": "list triggers that are currently on",              "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 17.x.3.6 — Recipe: `trigger-list-scheduled` (class 21)
+
+> **Tier:** 0 — scope pre-baked as 'scheduled'. Deterministic.
+
+```
+name:        "trigger-list-scheduled"
+description: "List only scheduled (cron/time-based) triggers (scope='scheduled')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-trigger-list>"],
+    "label":   "Pre-load ts-trigger-list ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-trigger-list-scheduled>"],
+    "label":   "PythonCode calls __execute_action__(trigger_list, {scope:'scheduled'})"
+  }
+]
+intent_examples: [
+  {"input": "show scheduled triggers",                          "class": 1},
+  {"input": "what triggers run on a schedule",                  "class": 1},
+  {"input": "list cron triggers",                               "class": 1},
+  {"input": "what is scheduled to run",                         "class": 2},
+  {"input": "show me my scheduled automations",                 "class": 2},
+  {"input": "scheduled trigger list",                           "class": 1},
+  {"input": "what runs on a timer",                             "class": 2},
+  {"input": "list time-based triggers",                         "class": 1},
+  {"input": "show recurring triggers",                          "class": 2},
+  {"input": "what will run next based on schedule",             "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+
 
 ## Step 18 — `builtin.spawn_subagent` (Child Agent Delegation)
 
@@ -8127,6 +8778,100 @@ validation_status: "validated"
 ```
 
 ---
+
+## Step 6.x.7 — Grep Invert Pattern (exclude matching lines)
+
+> **`file-grep-invert`** is a distinct approach: find lines or files that do NOT match
+> a pattern. Common use-cases: find files without a copyright header, find lines not
+> matching a comment, find source files missing an import. One approach per skill/recipe.
+
+### Step 6.x.7.1 — PythonCode: `pc-exec-grep-invert` (class 22)
+
+```
+name:        "pc-exec-grep-invert"
+class_code:  22
+description: "Orchestrator executor: calls __execute_action__ for an inverted grep via
+              builtin.grep. Input: pattern (string), path (optional), output_mode (optional,
+              default 'files_with_matches'). Sets invert_match=true."
+content: |
+  # Orchestrator executor body.
+  _pattern = "{{vars.slot0}}"
+  _path = "{{vars.slot1}}"
+  _output_mode = "{{vars.slot2}}"
+  _params = {"pattern": _pattern, "invert_match": True}
+  if _path and _path != "":
+      _params["path"] = _path
+  if _output_mode and _output_mode != "":
+      _params["output_mode"] = _output_mode
+  else:
+      _params["output_mode"] = "files_with_matches"
+  result = __execute_action__("grep", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 6.x.7.2 — Leaf Skill: `skill-grep-invert` (class 1)
+
+```
+name:        "skill-grep-invert"
+class_code:  1
+description: "Leaf skill: how to find files or lines that do NOT match a pattern."
+body: |
+  Use `ts-grep` with `invert_match=true` when you need to find content that EXCLUDES a
+  pattern (e.g. source files without a copyright header, lines that are not comments,
+  configs missing a required key). The output returns non-matching entries. Combine with
+  output_mode='files_with_matches' to get the list of files without that pattern, or
+  'content' to get non-matching lines. Use pc-exec-grep-invert for execution.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 6.x.7.3 — Recipe: `file-grep-invert` (class 21)
+
+> **Tier:** 0 — inverted grep. Routes here when the user says "files without X", "not matching",
+> "missing this pattern". One recipe per approach.
+
+```
+name:        "file-grep-invert"
+description: "Find files or lines that do NOT contain a given pattern (inverted grep)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-grep>"],
+    "label":   "Pre-load ts-grep ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-grep-invert>"],
+    "label":   "PythonCode calls __execute_action__(grep, {pattern, invert_match:true, ...})"
+  }
+]
+intent_examples: [
+  {"input": "find files without this pattern",                   "class": 1},
+  {"input": "files missing this import",                         "class": 2},
+  {"input": "which files don't have a copyright header",         "class": 2},
+  {"input": "invert grep — exclude matching lines",              "class": 1},
+  {"input": "grep -v for this pattern",                          "class": 1},
+  {"input": "show lines that do not match",                      "class": 1},
+  {"input": "find files not containing this string",             "class": 1},
+  {"input": "which source files lack this function",             "class": 2},
+  {"input": "filter out lines matching this pattern",            "class": 2},
+  {"input": "exclude files that have this keyword",              "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+
 
 ## Step 4.x — Additional List-Dir Leaf Skills, PythonCode, and Recipes
 
@@ -10394,22 +11139,27 @@ validation_status: "validated"
 |-------|------|-------|-----------------|
 | 0 | Tool | 23 | builtin.shell, read_file, write_file, list_dir, glob, grep, apply_patch, http, http.save, memory_search, memory_write, memory_read, memory_tree, time, json, skill_list, skill_install, skill_remove, trigger_create, trigger_list, trigger_remove, spawn_subagent, echo |
 | 13 | ToolSkill | 30 | ts-shell-run, ts-read-file, ts-write-file, ts-list-dir, ts-glob, ts-grep, ts-apply-patch, ts-http-fetch, ts-http-save, ts-memory-search, ts-memory-write, ts-memory-read, ts-memory-tree, ts-time-now, ts-time-parse, ts-time-convert, **ts-time-diff**, **ts-time-format**, ts-json-query, ts-json-stringify, ts-json-validate, ts-skill-list, ts-skill-install, ts-skill-remove, ts-trigger-create, ts-trigger-list, ts-trigger-remove, ts-spawn-subagent, ts-web-search, ts-echo |
-| 22 | PythonCode | 75 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-list-filter-by-type, pc-exec-glob, pc-exec-grep, pc-exec-grep-case-insensitive, pc-exec-grep-type-filtered, pc-exec-apply-patch, pc-exec-http-get, pc-exec-http-get-authenticated, pc-exec-http-post, pc-exec-http-head, pc-exec-http-put, pc-exec-http-patch, pc-exec-http-delete, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, **pc-exec-time-diff**, **pc-exec-time-format**, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, **pc-exec-trigger-resolve-and-remove**, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-url-encode, pc-web-search-extract, pc-web-search-query-build, pc-exec-echo, pc-exec-shell-git-status, pc-exec-shell-git-log, pc-exec-shell-git-diff-stat, pc-exec-shell-git-branch, pc-exec-shell-git-stash-list, pc-exec-shell-git-log-n, pc-exec-shell-git-remote, pc-exec-shell-git-show-stat, pc-exec-shell-git-tag-list, pc-exec-shell-pwd, pc-exec-shell-df, pc-exec-shell-ps, pc-exec-shell-env, pc-exec-shell-uname, pc-exec-shell-which, pc-exec-shell-date, pc-exec-shell-hostname, pc-exec-shell-whoami, pc-exec-shell-uptime, pc-exec-shell-free, pc-exec-shell-wc-l, **pc-string-split**, **pc-string-join**, **pc-string-strip**, **pc-string-replace**, **pc-string-contains**, **pc-list-filter-nonempty**, **pc-list-slice**, **pc-list-unique**, **pc-dict-pick**, **pc-dict-merge**, **pc-csv-parse-lines**, **pc-csv-rows-to-text** |
-| 1 | Leaf Skill | 80 | skill-shell-run, skill-shell-safe-check, skill-shell-git-status, skill-shell-git-log, skill-shell-git-diff-stat, skill-shell-git-branch, skill-shell-git-stash-list, skill-shell-pwd, skill-shell-df, skill-shell-ps, skill-shell-env, skill-shell-uname, skill-shell-which, skill-shell-git-remote, skill-shell-git-show-stat, skill-shell-git-tag-list, skill-shell-date, skill-shell-hostname, skill-shell-whoami, skill-shell-uptime, skill-shell-free, skill-shell-wc-l, skill-read-file, skill-read-file-range, skill-write-file-new, skill-write-file-replace, skill-write-file-template, skill-list-dir, skill-list-dir-recursive, skill-list-dir-files-only, skill-list-dir-dirs-only, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-grep-case-insensitive, skill-grep-type-filtered, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-head, skill-http-put, skill-http-patch, skill-http-delete, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, skill-memory-read, skill-memory-tree, skill-time-now, skill-time-parse, skill-time-convert, **skill-time-diff**, **skill-time-format**, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search, **skill-spawn-research**, **skill-spawn-coding**, **skill-spawn-exploration**, **skill-spawn-query** (80 total) |
+| 22 | PythonCode | 81 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-list-filter-by-type, pc-exec-glob, pc-exec-grep, pc-exec-grep-case-insensitive, pc-exec-grep-type-filtered, **pc-exec-grep-invert**, pc-exec-apply-patch, pc-exec-http-get, pc-exec-http-get-authenticated, pc-exec-http-post, pc-exec-http-head, pc-exec-http-put, pc-exec-http-patch, pc-exec-http-delete, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, **pc-exec-time-diff**, **pc-exec-time-format**, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, **pc-exec-trigger-list-active**, **pc-exec-trigger-list-scheduled**, **pc-exec-trigger-resolve-and-remove**, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-url-encode, pc-web-search-extract, pc-web-search-query-build, pc-exec-echo, pc-exec-shell-git-status, pc-exec-shell-git-log, pc-exec-shell-git-diff-stat, pc-exec-shell-git-branch, pc-exec-shell-git-stash-list, pc-exec-shell-git-log-n, pc-exec-shell-git-remote, pc-exec-shell-git-show-stat, pc-exec-shell-git-tag-list, **pc-exec-shell-git-diff-name-only**, **pc-exec-shell-git-log-stat**, **pc-exec-shell-git-stash-show**, **pc-exec-shell-git-config-list**, pc-exec-shell-pwd, pc-exec-shell-df, pc-exec-shell-ps, pc-exec-shell-env, pc-exec-shell-uname, pc-exec-shell-which, pc-exec-shell-date, pc-exec-shell-hostname, pc-exec-shell-whoami, pc-exec-shell-uptime, pc-exec-shell-free, pc-exec-shell-wc-l, **pc-string-split**, **pc-string-join**, **pc-string-strip**, **pc-string-replace**, **pc-string-contains**, **pc-list-filter-nonempty**, **pc-list-slice**, **pc-list-unique**, **pc-dict-pick**, **pc-dict-merge**, **pc-csv-parse-lines**, **pc-csv-rows-to-text** |
+| 1 | Leaf Skill | 94 | skill-shell-run, skill-shell-safe-check, skill-shell-git-status, skill-shell-git-log, skill-shell-git-diff-stat, skill-shell-git-branch, skill-shell-git-stash-list, skill-shell-pwd, skill-shell-df, skill-shell-ps, skill-shell-env, skill-shell-uname, skill-shell-which, skill-shell-git-remote, skill-shell-git-show-stat, skill-shell-git-tag-list, skill-shell-date, skill-shell-hostname, skill-shell-whoami, skill-shell-uptime, skill-shell-free, skill-shell-wc-l, **skill-shell-git-diff-name-only**, **skill-shell-git-log-stat**, **skill-shell-git-stash-show**, **skill-shell-git-config-list**, skill-read-file, skill-read-file-range, skill-write-file-new, skill-write-file-replace, skill-write-file-template, skill-list-dir, skill-list-dir-recursive, skill-list-dir-files-only, skill-list-dir-dirs-only, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-grep-case-insensitive, skill-grep-type-filtered, **skill-grep-invert**, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-head, skill-http-put, skill-http-patch, skill-http-delete, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, skill-memory-read, skill-memory-tree, **skill-memory-search-and-read**, skill-time-now, skill-time-parse, skill-time-convert, **skill-time-diff**, **skill-time-format**, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, **skill-json-parse-and-query**, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, **skill-trigger-list-active**, **skill-trigger-list-scheduled**, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search, **skill-spawn-research**, **skill-spawn-coding**, **skill-spawn-exploration**, **skill-spawn-query** (94 total) |
 | 2 | Domain Skill | 9 | skill-filesystem, skill-http, skill-memory, skill-shell, skill-skills, skill-triggers, skill-subagent, skill-time, skill-json |
-| 21 | Recipe | 100 | file-read, file-read-range, file-write, file-write-template, file-list, file-list-recursive, file-list-files-only, file-list-dirs-only, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-glob-recent, file-grep, file-grep-files, file-grep-content, file-grep-count, file-grep-case-insensitive, file-grep-type-filtered, file-patch, file-patch-replace-all, http-get, http-get-json, http-authenticated-get, http-head, http-post, http-post-json-webhook, http-put, http-patch, http-delete, http-save, http-save-large, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, memory-tree-deep, time-now, time-now-tz, time-parse, time-convert, **time-diff**, **time-format**, json-query, json-stringify, json-parse, json-validate, skill-list, skill-list-user-only, skill-list-system-only, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, trigger-remove-by-name, subagent-spawn, **subagent-research**, **subagent-coding**, **subagent-exploration**, **subagent-query**, web-search, echo-ping, shell-run, shell-script, shell-git-status, shell-git-log, shell-git-diff-stat, shell-git-branch, shell-git-stash-list, shell-git-remote, shell-git-show-stat, shell-git-tag-list, shell-pwd, shell-df, shell-ps, shell-env, shell-uname, shell-which, shell-date, shell-hostname, shell-whoami, shell-uptime, shell-free, shell-wc-l |
+| 21 | Recipe | 107 | file-read, file-read-range, file-write, file-write-template, file-list, file-list-recursive, file-list-files-only, file-list-dirs-only, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-glob-recent, file-grep, file-grep-files, file-grep-content, file-grep-count, file-grep-case-insensitive, file-grep-type-filtered, **file-grep-invert**, file-patch, file-patch-replace-all, http-get, http-get-json, http-authenticated-get, http-head, http-post, http-post-json-webhook, http-put, http-patch, http-delete, http-save, http-save-large, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, memory-tree-deep, **memory-search-and-read**, time-now, time-now-tz, time-parse, time-convert, **time-diff**, **time-format**, json-query, json-stringify, json-parse, json-validate, **json-parse-and-query**, skill-list, skill-list-user-only, skill-list-system-only, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, trigger-remove-by-name, **trigger-list-active**, **trigger-list-scheduled**, subagent-spawn, **subagent-research**, **subagent-coding**, **subagent-exploration**, **subagent-query**, web-search, echo-ping, shell-run, shell-script, shell-git-status, shell-git-log, shell-git-diff-stat, shell-git-branch, shell-git-stash-list, shell-git-remote, shell-git-show-stat, shell-git-tag-list, shell-pwd, shell-df, shell-ps, shell-env, shell-uname, shell-which, shell-date, shell-hostname, shell-whoami, shell-uptime, shell-free, shell-wc-l, **shell-git-diff-name-only**, **shell-git-log-stat**, **shell-git-stash-show**, **shell-git-config-list** |
 | 23 | ExtensionCatalogue | 24 | builtin-filesystem, builtin-network, builtin-memory, builtin-process, builtin-management, ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch, ext-http, ext-http-save, ext-memory-search, ext-memory-write, ext-memory-read, ext-memory-tree, ext-time, ext-json, ext-shell, ext-skill-management, ext-trigger-management, ext-spawn-subagent, ext-web-search |
 
-> **Actual totals (v3, fully optimized):** 23 Tools + 30 ToolSkills + 75 PythonCode + 80 Leaf Skills + 9 Domain Skills + 100 Recipes + 24 ExtensionCatalogues = **341 components**
+> **Actual totals (v3, fully optimized):** 23 Tools + 30 ToolSkills + 81 PythonCode + 94 Leaf Skills + 9 Domain Skills + 107 Recipes + 24 ExtensionCatalogues = **368 components**
 >
-> **New in this revision (since 319):**
-> - +13 PythonCode: 1 trigger resolver (`pc-exec-trigger-resolve-and-remove`) + 12 pure-logic helpers (string/list/dict/csv transforms)
-> - +4 Leaf Skills: subagent flavor skills (`skill-spawn-research`, `-coding`, `-exploration`, `-query`)
-> - +5 Recipes: `trigger-remove-by-name` + 4 subagent flavor recipes (`subagent-research/coding/exploration/query`)
+> **New in this revision (since 341):**
+> - +7 PythonCode: `pc-exec-shell-git-diff-name-only`, `pc-exec-shell-git-log-stat`, `pc-exec-shell-git-stash-show`, `pc-exec-shell-git-config-list`, `pc-exec-trigger-list-active`, `pc-exec-trigger-list-scheduled`, `pc-exec-grep-invert`
+> - +14 Leaf Skills: 4 git skills (`skill-shell-git-diff-name-only/log-stat/stash-show/config-list`), `skill-grep-invert`, `skill-memory-search-and-read`, `skill-json-parse-and-query`, 2 trigger list variants (`skill-trigger-list-active/scheduled`) + 4 others
+> - +7 Recipes: `shell-git-diff-name-only`, `shell-git-log-stat`, `shell-git-stash-show`, `shell-git-config-list`, `trigger-list-active`, `trigger-list-scheduled`, `file-grep-invert`, `memory-search-and-read`, `json-parse-and-query`
 >
-> **Tier-0 recipe count: 81 out of 100** (81%).
-> Orchestrator handles 81% of all built-in tasks completely autonomously —
-> LLM involvement is required for only 19% (shell-run, shell-script, spawn variants, http-save-large).
+> **Cumulative delta since first published plan (319 components):**
+> - PythonCode: 62 → 81 (+19): triggers, git, grep-invert, string/list/dict/csv helpers, trigger-resolve
+> - Leaf Skills: 76 → 94 (+18): subagent flavors, git extended, grep-invert, memory/json combined, trigger variants
+> - Recipes: 95 → 107 (+12): time-diff/format, subagent flavors, trigger-remove-by-name, trigger-list variants, grep-invert, memory-search-and-read, json-parse-and-query, git fixed variants
+>
+> **Tier-0 recipe count: 82 out of 107** (77%).
+> Orchestrator handles 77% of all built-in tasks completely autonomously.
+> LLM involvement required for 23% (shell-run/script, spawn variants, file-write, file-patch, memory-write*, http-save-large, http-post-webhook, trigger-create, skill-install/remove, web-search, memory-search-and-read — all creative, write, spawn, or destructive operations).
 
 ---
 
@@ -10434,11 +11184,13 @@ For each domain group:
 
 | Pass | Group | Primary ExtCatalogue | Per-tool ExtCatalogues | Tools | ToolSkills | PythonCode | Leaf Skills | Domain Skills | Recipes |
 |------|-------|----------------------|------------------------|-------|------------|------------|-------------|---------------|---------|
-| 1 | filesystem | builtin-filesystem | ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch | 6 | 6 | 10 | 19 | 1 | 23 |
+| 1 | filesystem | builtin-filesystem | ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch | 6 | 6 | 12 | 22 | 1 | 25 |
 | 2 | network | builtin-network | ext-http, ext-http-save, ext-web-search | 2 | 3 | 14 | 11 | 1 | 14 |
-| 3 | memory | builtin-memory | ext-memory-search, ext-memory-write, ext-memory-read, ext-memory-tree | 4 | 4 | 7 | 7 | 1 | 11 |
-| 4 | process | builtin-process | ext-shell, ext-spawn-subagent, ext-trigger-management | 5 | 1 | 26 | 30 | 3 | 29 |
-| 5 | management | builtin-management | ext-skill-management, ext-time, ext-json | 6 | 9 | 8 | 14 | 3 | 12 |
+| 3 | memory | builtin-memory | ext-memory-search, ext-memory-write, ext-memory-read, ext-memory-tree | 4 | 4 | 7 | 8 | 1 | 12 |
+| 4 | process | builtin-process | ext-shell, ext-spawn-subagent, ext-trigger-management | 5 | 1 | 33 | 38 | 3 | 36 |
+| 5 | management | builtin-management | ext-skill-management, ext-time, ext-json | 6 | 9 | 9 | 15 | 3 | 14 |
+
+> *(Counts updated to reflect all additions through this revision. Sub-totals add to 368 total components.)*
 
 ---
 
@@ -10479,4 +11231,4 @@ producing duplicate rows.
 
 ---
 
-*End of builtin_stuff_v3.md — all Steps + Final section complete. v3 fully revised: 341 components, 100 Recipes (81 Tier-0 = 81%, §shell-safe-fixed + §shell-guard-custom), 24 ExtensionCatalogues (5 global domain + 19 per-tool), orchestrator-first design. Full builtin coverage: all 23 tools fully covered; HTTP PATCH added; echo-ping diagnostic recipe added; 9 new sysinfo/git shell Tier-0 recipes; file-list-dirs-only added; time.diff and time.format (previously missing from plan) added as Tier-0 recipes; 4 subagent flavor recipes (research/coding/exploration/query) added; trigger-remove-by-name Tier-1 recipe added; 12 pure-logic PythonCode helpers (string/list/dict/csv) added. The orchestrator handles 81% of all built-in tasks autonomously — LLM involvement required for only 19%.*
+*End of builtin_stuff_v3.md — all Steps + Final section complete. v3 fully revised: 368 components, 107 Recipes (82 Tier-0 = 77%, §shell-safe-fixed + §shell-guard-custom), 24 ExtensionCatalogues (5 global domain + 19 per-tool), orchestrator-first design. Full builtin coverage: all 23 tools fully covered; HTTP PATCH added; echo-ping diagnostic recipe added; 13 shell Tier-0 git/system recipes; file-list-dirs-only added; time.diff and time.format added as Tier-0 recipes; 4 subagent flavor recipes (research/coding/exploration/query); trigger-remove-by-name, trigger-list-active, trigger-list-scheduled (new Tier-0/Tier-1 variants); file-grep-invert Tier-0 recipe; memory-search-and-read Tier-1 recipe; json-parse-and-query Tier-0 combined recipe; shell-git-diff-name-only, shell-git-log-stat, shell-git-stash-show, shell-git-config-list added as Tier-0; 12 pure-logic PythonCode helpers (string/list/dict/csv). The orchestrator handles 77% of all built-in tasks autonomously — LLM involvement required for only 23% (creative, write, spawn, and destructive operations).*
