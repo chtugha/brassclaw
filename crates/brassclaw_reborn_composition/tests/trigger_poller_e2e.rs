@@ -7,6 +7,10 @@
 
 #![cfg(feature = "test-support")]
 
+mod common;
+
+use common::{PgRig, pg_rig};
+
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -29,8 +33,8 @@ use brassclaw_loop_support::{
     HostManagedModelResponse,
 };
 use brassclaw_reborn_composition::{
-    RebornBuildInput, RebornRuntime, RebornRuntimeIdentity, RebornRuntimeInput,
-    TriggerPollerSettings, build_reborn_runtime,
+    RebornRuntime, RebornRuntimeIdentity, RebornRuntimeInput, TriggerPollerSettings,
+    build_reborn_runtime,
 };
 use brassclaw_triggers::{
     TRIGGER_TRUSTED_ADAPTER_INSTALLATION_ID, TRIGGER_TRUSTED_ADAPTER_KIND,
@@ -131,13 +135,14 @@ where
 /// Shared runtime builder. Every test passes the `TriggerPollerSettings` it
 /// wants; identity, runtime policy, and model-gateway override are shared.
 async fn build_runtime_with(
+    rig: &PgRig,
     root: &tempfile::TempDir,
     recording_gateway: Arc<RecordingGateway>,
     trigger_poller: TriggerPollerSettings,
 ) -> RebornRuntime {
     let input =
         RebornRuntimeInput::from_services(
-            RebornBuildInput::local_dev(USER, root.path().join("local-dev"))
+            rig.build_input(USER, root.path())
                 .with_runtime_policy(local_dev_runtime_policy()),
         )
         .with_identity(RebornRuntimeIdentity {
@@ -232,12 +237,17 @@ fn trigger_management_trust_decision() -> TrustDecision {
 
 #[tokio::test]
 async fn trigger_poller_drives_trusted_ingress_for_due_scheduled_trigger() {
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().expect("tempdir");
     let recording_gateway = Arc::new(RecordingGateway {
         requests: Arc::new(TokioMutex::new(Vec::new())),
     });
 
     let runtime = build_runtime_with(
+        &rig,
         &root,
         Arc::clone(&recording_gateway),
         TriggerPollerSettings::enabled_with_tenant_scoped_authorizer_for_test().with_worker_config(
@@ -390,12 +400,17 @@ async fn trigger_poller_drives_trusted_ingress_for_due_scheduled_trigger() {
 
 #[tokio::test]
 async fn builtin_trigger_create_pairs_creator_and_poller_submits_turn() {
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().expect("tempdir");
     let recording_gateway = Arc::new(RecordingGateway {
         requests: Arc::new(TokioMutex::new(Vec::new())),
     });
 
     let runtime = build_runtime_with(
+        &rig,
         &root,
         Arc::clone(&recording_gateway),
         TriggerPollerSettings::enabled_with_tenant_scoped_authorizer_for_test().with_worker_config(
@@ -514,6 +529,10 @@ async fn builtin_trigger_create_pairs_creator_and_poller_submits_turn() {
 
 #[tokio::test]
 async fn trigger_conversation_pairing_returns_none_when_poller_disabled() {
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().expect("tempdir");
     let recording_gateway = Arc::new(RecordingGateway {
         requests: Arc::new(TokioMutex::new(Vec::new())),
@@ -522,6 +541,7 @@ async fn trigger_conversation_pairing_returns_none_when_poller_disabled() {
     // Use the default settings (enabled: false) — do NOT call
     // with_trigger_poller_settings with enabled: true.
     let runtime = build_runtime_with(
+        &rig,
         &root,
         Arc::clone(&recording_gateway),
         TriggerPollerSettings::default(),
@@ -545,12 +565,17 @@ async fn trigger_conversation_pairing_returns_none_when_poller_disabled() {
 
 #[tokio::test]
 async fn trigger_poller_does_not_fire_trigger_with_future_next_run_at() {
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().expect("tempdir");
     let recording_gateway = Arc::new(RecordingGateway {
         requests: Arc::new(TokioMutex::new(Vec::new())),
     });
 
     let runtime = build_runtime_with(
+        &rig,
         &root,
         Arc::clone(&recording_gateway),
         TriggerPollerSettings::enabled_with_tenant_scoped_authorizer_for_test().with_worker_config(
@@ -666,12 +691,17 @@ async fn trigger_poller_does_not_fire_trigger_with_future_next_run_at() {
 
 #[tokio::test]
 async fn trigger_poller_does_not_submit_turn_for_unpaired_actor() {
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().expect("tempdir");
     let recording_gateway = Arc::new(RecordingGateway {
         requests: Arc::new(TokioMutex::new(Vec::new())),
     });
 
     let runtime = build_runtime_with(
+        &rig,
         &root,
         Arc::clone(&recording_gateway),
         TriggerPollerSettings::enabled_with_tenant_scoped_authorizer_for_test().with_worker_config(
@@ -759,12 +789,17 @@ async fn trigger_poller_does_not_submit_turn_for_unpaired_actor() {
 
 #[tokio::test]
 async fn trigger_poller_fires_recurring_trigger_and_leaves_it_scheduled() {
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().expect("tempdir");
     let recording_gateway = Arc::new(RecordingGateway {
         requests: Arc::new(TokioMutex::new(Vec::new())),
     });
 
     let runtime = build_runtime_with(
+        &rig,
         &root,
         Arc::clone(&recording_gateway),
         TriggerPollerSettings::enabled_with_tenant_scoped_authorizer_for_test().with_worker_config(

@@ -14,6 +14,10 @@
 //! `build_reborn_runtime` (local-dev composition); tests exercise the
 //! flow without standing up a separate gate-handler service.
 
+mod common;
+
+use common::{PgRig, pg_rig};
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -25,8 +29,7 @@ use brassclaw_host_api::runtime_policy::{
 use brassclaw_loop_support::{ModelCost, ModelCostTable, StaticModelCostTable};
 use brassclaw_reborn_composition::test_support::BudgetTestGateway;
 use brassclaw_reborn_composition::{
-    PollSettings, RebornBuildInput, RebornRuntime, RebornRuntimeIdentity, RebornRuntimeInput,
-    build_reborn_runtime,
+    PollSettings, RebornRuntime, RebornRuntimeIdentity, RebornRuntimeInput, build_reborn_runtime,
 };
 use brassclaw_resources::{
     BudgetGateOutcome, BudgetGateStatus, BudgetPeriod, BudgetThresholds, ResourceAccount,
@@ -70,12 +73,13 @@ fn pause_inducing_cost_table() -> Arc<dyn ModelCostTable> {
 }
 
 async fn build_runtime_with_pause_inducing_setup(
+    rig: &PgRig,
     tag: &str,
     root: std::path::PathBuf,
 ) -> (RebornRuntime, Arc<BudgetTestGateway>) {
     let gateway = Arc::new(BudgetTestGateway::with_constant("ok", 5, 5));
     let input = RebornRuntimeInput::from_services(
-        RebornBuildInput::local_dev(format!("{tag}-owner"), root)
+        rig.build_input(&format!("{tag}-owner"), &root)
             .with_runtime_policy(local_dev_runtime_policy()),
     )
     .with_identity(RebornRuntimeIdentity {
@@ -152,9 +156,13 @@ async fn pump_until_pending_gate(
 /// F3: pause → user approves with an increased limit → retry succeeds.
 #[tokio::test]
 async fn f3_approval_with_increased_limit_unblocks_retry() {
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let (runtime, gateway) =
-        build_runtime_with_pause_inducing_setup("f3", root.path().to_path_buf()).await;
+        build_runtime_with_pause_inducing_setup(&rig, "f3", root.path().to_path_buf()).await;
 
     let gate_id = pump_until_pending_gate(&runtime, &gateway).await;
 
@@ -212,9 +220,13 @@ async fn f3_approval_with_increased_limit_unblocks_retry() {
 /// F4: pause → user cancels → retry still fails the same way.
 #[tokio::test]
 async fn f4_cancel_keeps_budget_blocked_on_retry() {
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let (runtime, gateway) =
-        build_runtime_with_pause_inducing_setup("f4", root.path().to_path_buf()).await;
+        build_runtime_with_pause_inducing_setup(&rig, "f4", root.path().to_path_buf()).await;
     let gate_id = pump_until_pending_gate(&runtime, &gateway).await;
 
     let store = runtime.budget_gate_store().expect("gate store");
@@ -259,9 +271,13 @@ async fn f4_cancel_keeps_budget_blocked_on_retry() {
 /// state is `Expired`; retry remains blocked exactly like F4.
 #[tokio::test]
 async fn f5_expiry_marks_gate_terminal_and_keeps_budget_blocked() {
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let (runtime, gateway) =
-        build_runtime_with_pause_inducing_setup("f5", root.path().to_path_buf()).await;
+        build_runtime_with_pause_inducing_setup(&rig, "f5", root.path().to_path_buf()).await;
     let gate_id = pump_until_pending_gate(&runtime, &gateway).await;
 
     let store = runtime.budget_gate_store().expect("gate store");
@@ -314,9 +330,13 @@ async fn f5_expiry_marks_gate_terminal_and_keeps_budget_blocked() {
 /// notified about.
 #[tokio::test]
 async fn gate_opened_event_carries_id_that_matches_persisted_gate() {
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let (runtime, gateway) =
-        build_runtime_with_pause_inducing_setup("gate-id", root.path().to_path_buf()).await;
+        build_runtime_with_pause_inducing_setup(&rig, "gate-id", root.path().to_path_buf()).await;
 
     // Subscribe BEFORE the send so we don't miss the GateOpened event.
     let broadcast = runtime
@@ -365,9 +385,13 @@ async fn gate_opened_event_carries_id_that_matches_persisted_gate() {
 /// approval decision.
 #[tokio::test]
 async fn pause_in_distinct_runs_produces_distinct_pending_gates() {
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let (runtime, gateway) =
-        build_runtime_with_pause_inducing_setup("dup", root.path().to_path_buf()).await;
+        build_runtime_with_pause_inducing_setup(&rig, "dup", root.path().to_path_buf()).await;
 
     // First send → first gate.
     let _gate_a = pump_until_pending_gate(&runtime, &gateway).await;

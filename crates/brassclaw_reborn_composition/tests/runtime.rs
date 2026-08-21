@@ -1,3 +1,7 @@
+mod common;
+
+use common::pg_rig;
+
 use std::time::Duration;
 
 use brassclaw_host_api::runtime_policy::{
@@ -56,9 +60,13 @@ async fn runtime_requires_resolved_runtime_policy_for_local_dev() {
 
 #[tokio::test]
 async fn stub_gateway_send_cancels_recovery_required_and_releases_conversation() {
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let input = RebornRuntimeInput::from_services(
-        RebornBuildInput::local_dev("runtime-test-owner", root.path().join("local-dev"))
+        rig.build_input("runtime-test-owner", root.path())
             .with_runtime_policy(local_dev_runtime_policy()),
     )
     .with_identity(RebornRuntimeIdentity {
@@ -106,9 +114,13 @@ async fn stub_gateway_send_cancels_recovery_required_and_releases_conversation()
 
 #[tokio::test]
 async fn send_user_message_with_cancellation_cancels_submitted_run() {
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
     let input = RebornRuntimeInput::from_services(
-        RebornBuildInput::local_dev("runtime-cancel-owner", root.path().join("local-dev"))
+        rig.build_input("runtime-cancel-owner", root.path())
             .with_runtime_policy(local_dev_runtime_policy()),
     )
     .with_identity(RebornRuntimeIdentity {
@@ -146,8 +158,12 @@ async fn send_user_message_with_cancellation_cancels_submitted_run() {
 
 #[tokio::test]
 async fn skill_execution_adapter_prepares_filesystem_bundles_end_to_end() {
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
-    let storage_root = root.path().join("local-dev");
+    let storage_root = root.path().join("db");
     std::fs::create_dir_all(storage_root.join("skills/filesystem-review/references")).unwrap();
     std::fs::write(
         storage_root.join("skills/filesystem-review/SKILL.md"),
@@ -164,7 +180,7 @@ async fn skill_execution_adapter_prepares_filesystem_bundles_end_to_end() {
     )
     .unwrap();
     let input = RebornRuntimeInput::from_services(
-        RebornBuildInput::local_dev("runtime-skill-execution-owner", storage_root)
+        rig.build_input("runtime-skill-execution-owner", root.path())
             .with_runtime_policy(local_dev_runtime_policy()),
     )
     .with_identity(RebornRuntimeIdentity {
@@ -229,8 +245,12 @@ async fn skill_execution_adapter_prepares_filesystem_bundles_end_to_end() {
 /// uncovered.
 #[tokio::test]
 async fn build_reborn_runtime_wires_third_party_hooks_when_enabled() {
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
     let root = tempfile::tempdir().unwrap();
-    let storage_root = root.path().join("local-dev");
+    let storage_root = root.path().join("db");
 
     // Plant a discoverable third-party extension carrying a `[[hooks]]` block at
     // the per-owner `/system/extensions` discovery root that local-dev mounts.
@@ -246,7 +266,7 @@ async fn build_reborn_runtime_wires_third_party_hooks_when_enabled() {
     .unwrap();
 
     let input = RebornRuntimeInput::from_services(
-        RebornBuildInput::local_dev("runtime-hooks-owner", storage_root)
+        rig.build_input("runtime-hooks-owner", root.path())
             .with_runtime_policy(local_dev_runtime_policy()),
     )
     .with_identity(RebornRuntimeIdentity {

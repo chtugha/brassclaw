@@ -25,6 +25,10 @@
 
 #![cfg(feature = "test-support")]
 
+mod common;
+
+use common::{PgRig, pg_rig};
+
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 
@@ -47,8 +51,8 @@ use brassclaw_loop_support::{
     HostManagedModelMessageRole, HostManagedModelRequest, HostManagedModelResponse,
 };
 use brassclaw_reborn_composition::{
-    PollSettings, RebornBuildInput, RebornRuntime, RebornRuntimeIdentity, RebornRuntimeInput,
-    WebuiAuthenticator, WebuiServeConfig, build_reborn_runtime, build_webui_services, webui_v2_app,
+    PollSettings, RebornRuntime, RebornRuntimeIdentity, RebornRuntimeInput, WebuiAuthenticator,
+    WebuiServeConfig, build_reborn_runtime, build_webui_services, webui_v2_app,
 };
 use brassclaw_turns::run_profile::{LoopCapabilityPort, ProviderToolCall};
 use serde_json::{Value, json};
@@ -207,11 +211,11 @@ struct Harness {
     _root: tempfile::TempDir,
 }
 
-async fn build_harness() -> Harness {
+async fn build_harness(rig: &PgRig) -> Harness {
     let root = tempfile::tempdir().expect("tempdir");
     let gateway = Arc::new(ToolCallingGateway::default());
     let input = RebornRuntimeInput::from_services(
-        RebornBuildInput::local_dev(USER, root.path().join("local-dev"))
+        rig.build_input(USER, root.path())
             .with_runtime_policy(local_dev_effective_policy()),
     )
     .with_identity(RebornRuntimeIdentity {
@@ -297,7 +301,11 @@ fn webui_extension_setup_scope(extension_id: &str) -> AuthProductScope {
 
 #[tokio::test]
 async fn webui_v2_http_list_automations_uses_composed_runtime_facade() {
-    let harness = build_harness().await;
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
+    let harness = build_harness(&rig).await;
 
     let response = harness
         .router
@@ -342,7 +350,11 @@ async fn webui_v2_http_list_automations_uses_composed_runtime_facade() {
 ///     this test additionally proves the same path *works* end-to-end.
 #[tokio::test]
 async fn webui_v2_http_happy_path_with_builtin_tool_call() {
-    let harness = build_harness().await;
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
+    let harness = build_harness(&rig).await;
 
     // 1. Create a thread over HTTP.
     let create = harness
@@ -453,7 +465,11 @@ async fn webui_v2_http_happy_path_with_builtin_tool_call() {
 
 #[tokio::test]
 async fn webui_v2_gmail_oauth_setup_complete_allows_activation() {
-    let harness = build_harness().await;
+    let Some(rig) = pg_rig().await else {
+        return;
+    };
+    let _db_guard = rig.lock_db().await;
+    let harness = build_harness(&rig).await;
     let product_auth = harness
         .runtime
         .services()
