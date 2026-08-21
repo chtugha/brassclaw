@@ -6018,6 +6018,44 @@ pub enum BasicPromptStoreError {
 
 **Files to modify:** `crates/brassclaw_webui_v2/src/descriptors.rs`, `crates/brassclaw_webui_v2/src/handlers.rs`, `crates/brassclaw_webui_v2/src/lib.rs`, `crates/brassclaw_webui_v2/src/router.rs`
 
+**`InterceptorConfigService` trait** (`crates/brassclaw_product_workflow/src/reborn_services/interceptor_config.rs`):
+- **Remove** `reassemble_base_prompt` and `prewarm` methods from the trait.
+- **Add** `list_prefix_entries` and `regenerate_prefix` methods to the trait:
+
+```rust
+/// List prefix cache entries for the caller's scope (Phase K.1).
+async fn list_prefix_entries(
+    &self,
+    caller: WebUiAuthenticatedCaller,
+) -> Result<PrefixListResponse, InterceptorConfigServiceError>;
+
+/// Assemble + prewarm the named prefix (Phase K.1). Rate-limited to 1/min per caller.
+async fn regenerate_prefix(
+    &self,
+    caller: WebUiAuthenticatedCaller,
+    name: String,
+) -> Result<PrefixRegenerateResponse, InterceptorConfigServiceError>;
+```
+
+**`InterceptorConfigServiceError`** — add `PrefixNotFound` variant (in `interceptor_config.rs`):
+```rust
+#[error("interceptor: prefix not found: {name}")]
+PrefixNotFound { name: String },
+```
+
+**`map_interceptor_config_error`** — add a `PrefixNotFound` arm (maps to HTTP 404):
+```rust
+InterceptorConfigServiceError::PrefixNotFound { .. } => {
+    crate::RebornServicesError::from_status(
+        crate::RebornServicesErrorCode::NotFound,
+        404,
+        false,
+    )
+}
+```
+
+**New DTO `pub use` additions** in `crates/brassclaw_product_workflow/src/reborn_services.rs`, in the `pub use interceptor_config::{...}` block (currently at ~line 105–108): add `PrefixEntry`, `PrefixListResponse`, `PrefixRegenerateResponse` to the exported set.
+
 **New route ID constants and pattern constants** (add to `descriptors.rs` alongside existing ones):
 ```rust
 pub const WEBUI_V2_ROUTE_LIST_PREFIXES:    &str = "webui.v2.list_prefixes";
@@ -6071,15 +6109,69 @@ Also add `export_skill_descriptor()` in K.1.7.
 - `WEBUI_V2_ROUTE_REASSEMBLE_INTERCEPTOR`, `WEBUI_V2_PATTERN_REASSEMBLE_INTERCEPTOR`, `reassemble_interceptor_descriptor`
 - `WEBUI_V2_ROUTE_PREWARM_INTERCEPTOR`, `WEBUI_V2_PATTERN_PREWARM_INTERCEPTOR`, `prewarm_interceptor_descriptor`
 
-**New route ID exports** (add to `crates/brassclaw_webui_v2/src/lib.rs`):
+**New route ID exports** (`crates/brassclaw_webui_v2/src/lib.rs`):
+The existing `pub use descriptors::{...}` block in `lib.rs` contains `WEBUI_V2_ROUTE_PREWARM_INTERCEPTOR` and `WEBUI_V2_ROUTE_REASSEMBLE_INTERCEPTOR` (currently on lines 68–70 of that file, among many other exports). Remove both of those identifiers from the block and add the three new constants:
 ```rust
-pub use descriptors::{
-    WEBUI_V2_ROUTE_LIST_PREFIXES, WEBUI_V2_ROUTE_REGENERATE_PREFIX, WEBUI_V2_ROUTE_EXPORT_SKILL,
-};
-// Remove: WEBUI_V2_ROUTE_REASSEMBLE_INTERCEPTOR, WEBUI_V2_ROUTE_PREWARM_INTERCEPTOR
+// Add to the pub use descriptors::{...} block:
+WEBUI_V2_ROUTE_EXPORT_SKILL,
+WEBUI_V2_ROUTE_LIST_PREFIXES,
+WEBUI_V2_ROUTE_REGENERATE_PREFIX,
+// Remove from the pub use descriptors::{...} block:
+// WEBUI_V2_ROUTE_PREWARM_INTERCEPTOR    (line ~68)
+// WEBUI_V2_ROUTE_REASSEMBLE_INTERCEPTOR  (line ~70)
 ```
+The `is_webui_v2_llm_config_route_id` function export and all other exports in `lib.rs` are unchanged.
 
-**Handler routing** (`router.rs`): Mount `list_prefixes` and `regenerate_prefix` handlers at their patterns; remove `reassemble_interceptor` and `prewarm_interceptor` route entries.
+**`WebUiV2HttpError::internal`** (`crates/brassclaw_webui_v2/src/error.rs`): This method does **not** currently exist. Add it as a convenience constructor so the `export_skill` handler can propagate a `Response::builder()` error without `.unwrap()`:
+```rust
+impl WebUiV2HttpError {
+    /// Construct an internal-server-error [`WebUiV2HttpError`] from a free-form
+    /// message. Used only where the `From<RebornServicesError>` path is unavailable
+    /// (e.g., response-builder failures).
+    pub fn internal(msg: impl std::fmt::Display) -> Self {
+        use brassclaw_product_workflow::{RebornServicesError, RebornServicesErrorCode};
+        Self(RebornServicesError::from_status(
+            RebornServicesErrorCode::InternalError,
+            500,
+            false,
+        ))
+    }
+}
+```
+> **Note:** the `msg` parameter is intentionally discarded — `RebornServicesError` carries only the structured error code + HTTP status, not a free-form string. If the error type is later extended to carry a message, update accordingly.
+
+**Handler routing** (`router.rs`): In `webui_v2_router_with_options`, in the `use crate::descriptors::{...}` import block at the top of `router.rs`:
+- **Remove** from imports: `WEBUI_V2_PATTERN_PREWARM_INTERCEPTOR`, `WEBUI_V2_PATTERN_REASSEMBLE_INTERCEPTOR`
+- **Add** to imports: `WEBUI_V2_PATTERN_LIST_PREFIXES`, `WEBUI_V2_PATTERN_REGENERATE_PREFIX`, `WEBUI_V2_PATTERN_EXPORT_SKILL`
+
+In the route list, remove the two existing routes (currently around lines 284–291 of `router.rs`):
+```rust
+// REMOVE these two:
+.route(
+    WEBUI_V2_PATTERN_REASSEMBLE_INTERCEPTOR,
+    post(handlers::reassemble_interceptor),
+)
+.route(
+    WEBUI_V2_PATTERN_PREWARM_INTERCEPTOR,
+    post(handlers::prewarm_interceptor),
+)
+```
+Replace the removed block with the three new prefix + export routes, placed in the same "Phase 5.5" comment block location:
+```rust
+// Phase K.1 — Prefix cache routes (replaces reassemble + prewarm).
+.route(
+    WEBUI_V2_PATTERN_LIST_PREFIXES,
+    get(handlers::list_prefixes),
+)
+.route(
+    WEBUI_V2_PATTERN_REGENERATE_PREFIX,
+    post(handlers::regenerate_prefix),
+)
+.route(
+    WEBUI_V2_PATTERN_EXPORT_SKILL,
+    get(handlers::export_skill),
+)
+```
 
 **Handlers to add** (`handlers.rs`):
 
@@ -6169,7 +6261,11 @@ async fn regenerate_prefix(
 }
 ```
 
-Also **remove** `reassemble_interceptor_base_prompt` and `prewarm_interceptor` from the `RebornServicesApi` trait (and from the `RebornServices` struct implementation in `reborn_services.rs`).
+Also **remove** `reassemble_interceptor_base_prompt` and `prewarm_interceptor` from the `RebornServicesApi` trait (and from the `RebornServices` struct implementation in `reborn_services.rs`). There are **two** removal sites:
+1. **Trait default methods** in the `RebornServicesApi` trait body — the `async fn reassemble_interceptor_base_prompt(...)` and `async fn prewarm_interceptor(...)` default-`Err` methods currently at ~lines 1195–1208 of `reborn_services.rs`.
+2. **Concrete forwarding impls** on `RebornServices` — the `reassemble_interceptor_base_prompt` and `prewarm_interceptor` forwarding bodies that call `self.interceptor_config.as_ref().ok_or_else(...)?.<method>(caller).await`, currently at ~lines 3653–3675 of `reborn_services.rs`.
+
+Both sites must be removed for the codebase to compile cleanly (the `InterceptorConfigService` trait will no longer define those methods).
 
 ##### K.1.4 `regenerate_prefix` service method (backend)
 
@@ -6234,14 +6330,16 @@ Add one entry to `SETTINGS_TABS` **after the `interceptor` entry** (between `int
 
 > **Note:** The `labelKey` format in `settings-schema.js` is `"settings.{id}"` (e.g. `"settings.interceptor"`, `"settings.safety"`), NOT `"settings.tab.{id}"`. Match the existing format exactly. Total tabs after adding: 18.
 
-**`app/routes.js`:**
-Add a `prefix` entry to `SETTINGS_SUB_ROUTES` **after the `interceptor` entry** (between `interceptor` and `safety`). No `hidden: true` — its endpoints are real and land in K.1:
+**`app/routes.js`** (`crates/brassclaw_webui_v2_static/static/js/app/routes.js`):
+Add a `prefix` entry to `SETTINGS_SUB_ROUTES` **after the `interceptor` entry**. In the current file (line 50), the `interceptor` entry immediately precedes the `safety` entry (line 51). Insert `prefix` between them so the order is:
 
 ```js
 { id: "interceptor", labelKey: "settings.interceptor", icon: "spark" },
 { id: "prefix",      labelKey: "settings.prefix",      icon: "layers" },
 { id: "safety",      labelKey: "settings.safety",      icon: "shield" },
 ```
+
+No `hidden: true` — the prefix tab endpoints are real routes that land in K.1.
 
 **`pages/settings/settings-page.js`:**
 Add `import { PrefixTab } from "./components/prefix-tab.js";` to imports.
@@ -6281,8 +6379,13 @@ The Prefix Tab renders a list of prefix entries (today: one row, `"base-prompt"`
 
 The component uses a `usePrefixes()` hook (`pages/settings/hooks/usePrefixes.js`, new file) backed by `fetchPrefixes()`. The hook fetches on mount and exposes `{ prefixes, isLoading, loadError, refetch }`.
 
-**`pages/settings/lib/i18n/` (or equivalent i18n file — locate the translation file used by `useT()`):**
-Add the `"settings.prefix"` translation key (value: `"Prefix Cache"`).
+**`i18n/en.js`** (`crates/brassclaw_webui_v2_static/static/js/i18n/en.js`):
+The file uses `registerPack("en", { ... })`. The `"settings.interceptor": "Interceptor"` key is currently at line 185. Add the `"settings.prefix"` key on the line immediately after `"settings.interceptor"`:
+```js
+  "settings.interceptor": "Interceptor",
+  "settings.prefix": "Prefix Cache",
+```
+**Other language packs** (`i18n/es.js`, `i18n/de.js`, `i18n/fr.js`, `i18n/ja.js`, `i18n/ko.js`, `i18n/zh-CN.js`, `i18n/pt-BR.js`, `i18n/hi.js`, `i18n/ar.js`, `i18n/uk.js`): Add `"settings.prefix"` with the locale-appropriate translation (or copy the English value `"Prefix Cache"` as a placeholder when no translation is available). Missing keys fall back to the key string itself, so this is not blocking, but all packs should be updated for completeness.
 
 ##### K.1.7 SKILL.md on-demand export (item 5.1)
 
@@ -6399,7 +6502,47 @@ Returns `SkillNotFound` (mapped to HTTP 404 via `WebUiV2HttpError`) if the skill
 - `list_prefix_entries` with no store row → `PrefixListResponse { prefixes: [PrefixEntry { name: "base-prompt", assembled_at: None, is_stale: false, ... }] }`.
 - `list_prefix_entries` with stored row → entry reflects stored values.
 - `regenerate_prefix` rate limit — second call within 60s → `InterceptorConfigServiceError::RateLimitExceeded`.
-- Handler contract (`crates/brassclaw_webui_v2/tests/webui_v2_handlers_contract.rs`): add stub `StubServices` method bodies for `list_prefix_entries`, `regenerate_prefix`, `export_skill_as_skill_md`; remove stubs for `reassemble_interceptor_base_prompt`, `prewarm_interceptor`.
+- Handler contract (`crates/brassclaw_webui_v2/tests/webui_v2_handlers_contract.rs`): the `StubServices` struct at ~lines 897–1092 implements `RebornServicesApi`. Make these changes:
+  - **Remove** the `reassemble_interceptor_base_prompt` stub (currently ~lines 1063–1076) and the `prewarm_interceptor` stub (currently ~lines 1078–1091) entirely.
+  - **Update** the `get_interceptor_config` stub (~line 1032) and `update_interceptor_config` stub (~line 1047) to use the trimmed `InterceptorConfigSnapshot` — remove the now-deleted fields `base_prompt_assembled_at`, `base_prompt_size_chars`, `prewarm_last_at`, `components_since_rebuild`:
+    ```rust
+    Ok(InterceptorConfigSnapshot {
+        sempai_connected: false,
+        mode: "routing".to_string(),
+        persona: String::new(),
+    })
+    ```
+  - **Add** three new stub methods:
+    ```rust
+    async fn list_prefix_entries(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+    ) -> Result<PrefixListResponse, RebornServicesError> {
+        Ok(PrefixListResponse { prefixes: vec![] })
+    }
+
+    async fn regenerate_prefix(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _name: String,
+    ) -> Result<PrefixRegenerateResponse, RebornServicesError> {
+        Ok(PrefixRegenerateResponse {
+            name: "base-prompt".to_string(),
+            fingerprint: "abc123".to_string(),
+            assembled_at: "2024-01-01T00:00:00Z".to_string(),
+            prewarm_last_at: "2024-01-01T00:00:00Z".to_string(),
+        })
+    }
+
+    async fn export_skill_as_skill_md(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _skill_id: String,
+    ) -> Result<String, RebornServicesError> {
+        Ok("---\nname: stub-skill\n---\n\nStub body.".to_string())
+    }
+    ```
+  - **Add** `PrefixListResponse`, `PrefixRegenerateResponse` to the `use brassclaw_product_workflow::{...}` import block at the top of the test file (alongside the existing `InterceptorConfigSnapshot`, `UpdateInterceptorConfigRequest` imports).
 - Handler contract: `GET /api/webchat/v2/prefixes` → 200 `{ "prefixes": [...] }`.
 - Handler contract: `POST /api/webchat/v2/prefixes/base-prompt/regenerate` → 200.
 - Handler contract: `GET /api/webchat/v2/skills/{id}/export` → 200, `Content-Type: text/plain`, `Content-Disposition: attachment; filename="SKILL.md"`.
