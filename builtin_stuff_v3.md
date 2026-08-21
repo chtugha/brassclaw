@@ -2424,14 +2424,16 @@ step_descriptions: [
   }
 ]
 intent_examples: [
-  {"input": "read lines 10 to 50 of main.rs",          "class": 1},
-  {"input": "show me line 100 to 200 of this file",    "class": 1},
-  {"input": "read the first 30 lines",                 "class": 1},
-  {"input": "read lines 500 to 600 of the log",        "class": 1},
-  {"input": "show only the top 20 lines",              "class": 2},
-  {"input": "read the middle section of this file",    "class": 2},
-  {"input": "show lines starting from 150",            "class": 2},
-  {"input": "paginate through a large file",           "class": 2}
+  {"input": "read lines 10 to 50 of main.rs",                "class": 1},
+  {"input": "show me line 100 to 200 of this file",          "class": 1},
+  {"input": "read the first 30 lines",                       "class": 1},
+  {"input": "read lines 500 to 600 of the log",              "class": 1},
+  {"input": "show only the top 20 lines",                    "class": 2},
+  {"input": "read the middle section of this file",          "class": 2},
+  {"input": "show lines starting from 150",                  "class": 2},
+  {"input": "paginate through a large file",                 "class": 2},
+  {"input": "read just this specific section of the file",   "class": 2},
+  {"input": "show me the function body starting at line 80", "class": 2}
 ]
 source: "system"
 validation_status: "validated"
@@ -3001,14 +3003,16 @@ step_descriptions: [
   }
 ]
 intent_examples: [
-  {"input": "find all Rust files",                    "class": 1},
-  {"input": "list all .ts files",                     "class": 1},
-  {"input": "show me all Python files",               "class": 1},
-  {"input": "find every .json config",                "class": 1},
-  {"input": "find all TypeScript files in the project","class": 1},
-  {"input": "list .rs files",                         "class": 1},
-  {"input": "which .md files exist",                  "class": 1},
-  {"input": "find all test files by extension",       "class": 2}
+  {"input": "find all Rust files",                           "class": 1},
+  {"input": "list all .ts files",                            "class": 1},
+  {"input": "show me all Python files",                      "class": 1},
+  {"input": "find every .json config",                       "class": 1},
+  {"input": "find all TypeScript files in the project",      "class": 1},
+  {"input": "list .rs files",                                "class": 1},
+  {"input": "which .md files exist",                         "class": 1},
+  {"input": "find all test files by extension",              "class": 2},
+  {"input": "list every .toml file in the project",          "class": 1},
+  {"input": "show me all YAML files",                        "class": 1}
 ]
 source: "system"
 validation_status: "validated"
@@ -3039,14 +3043,16 @@ step_descriptions: [
   }
 ]
 intent_examples: [
-  {"input": "find the Makefile",                      "class": 1},
-  {"input": "find all README files",                  "class": 1},
-  {"input": "locate the config files",                "class": 1},
-  {"input": "find files named settings*",             "class": 1},
-  {"input": "where is the docker-compose file",       "class": 2},
-  {"input": "find all files starting with test_",     "class": 1},
-  {"input": "locate any .env files",                  "class": 2},
-  {"input": "find files by name pattern",             "class": 1}
+  {"input": "find the Makefile",                              "class": 1},
+  {"input": "find all README files",                          "class": 1},
+  {"input": "locate the config files",                        "class": 1},
+  {"input": "find files named settings*",                     "class": 1},
+  {"input": "where is the docker-compose file",               "class": 2},
+  {"input": "find all files starting with test_",             "class": 1},
+  {"input": "locate any .env files",                          "class": 2},
+  {"input": "find files by name pattern",                     "class": 1},
+  {"input": "where is the package.json",                      "class": 2},
+  {"input": "find all files that start with index",           "class": 1}
 ]
 source: "system"
 validation_status: "validated"
@@ -3077,11 +3083,16 @@ step_descriptions: [
   }
 ]
 intent_examples: [
-  {"input": "find all test files in the src folder",     "class": 1},
-  {"input": "list .ts files in the components directory","class": 1},
-  {"input": "search for config files in crates/",        "class": 2},
-  {"input": "find .rs files only in the migrations dir", "class": 2},
-  {"input": "glob in a subdirectory",                    "class": 1}
+  {"input": "find all test files in the src folder",              "class": 1},
+  {"input": "list .ts files in the components directory",          "class": 1},
+  {"input": "search for config files in crates/",                  "class": 2},
+  {"input": "find .rs files only in the migrations dir",           "class": 2},
+  {"input": "glob in a subdirectory",                              "class": 1},
+  {"input": "show all Python files under the lib folder",          "class": 2},
+  {"input": "find all markdown docs inside the docs directory",    "class": 2},
+  {"input": "list all .json files under the config subfolder",     "class": 1},
+  {"input": "restrict file search to the tests subdirectory",      "class": 2},
+  {"input": "find every YAML file in the deployment directory",    "class": 2}
 ]
 source: "system"
 validation_status: "validated"
@@ -3314,14 +3325,16 @@ step_descriptions: [
   }
 ]
 intent_examples: [
-  {"input": "which files use this function",              "class": 1},
-  {"input": "which files import this module",             "class": 1},
-  {"input": "find files containing this string",          "class": 1},
-  {"input": "which files have TODO",                      "class": 1},
-  {"input": "what files reference this constant",         "class": 1},
-  {"input": "show me files with this error pattern",      "class": 2},
-  {"input": "which .rs files contain async",              "class": 2},
-  {"input": "find files matching this regex",             "class": 1}
+  {"input": "which files use this function",                  "class": 1},
+  {"input": "which files import this module",                 "class": 1},
+  {"input": "find files containing this string",              "class": 1},
+  {"input": "which files have TODO",                          "class": 1},
+  {"input": "what files reference this constant",             "class": 1},
+  {"input": "show me files with this error pattern",          "class": 2},
+  {"input": "which .rs files contain async",                  "class": 2},
+  {"input": "find files matching this regex",                 "class": 1},
+  {"input": "list every file that has this keyword",          "class": 1},
+  {"input": "show me all files that define this class",       "class": 2}
 ]
 source: "system"
 validation_status: "validated"
@@ -3353,13 +3366,16 @@ step_descriptions: [
   }
 ]
 intent_examples: [
-  {"input": "show me the lines that contain this error",   "class": 1},
-  {"input": "find all uses of this function with context", "class": 1},
-  {"input": "search for this pattern and show surrounding code","class": 1},
-  {"input": "grep with context lines",                     "class": 1},
-  {"input": "find this variable declaration",              "class": 2},
-  {"input": "show matching lines in the source files",     "class": 1},
-  {"input": "grep content mode",                           "class": 1}
+  {"input": "show me the lines that contain this error",          "class": 1},
+  {"input": "find all uses of this function with context",        "class": 1},
+  {"input": "search for this pattern and show surrounding code",  "class": 1},
+  {"input": "grep with context lines",                            "class": 1},
+  {"input": "find this variable declaration",                     "class": 2},
+  {"input": "show matching lines in the source files",            "class": 1},
+  {"input": "grep content mode",                                  "class": 1},
+  {"input": "see the code around each match",                     "class": 2},
+  {"input": "show 3 lines before and after each match",           "class": 2},
+  {"input": "grep and show surrounding context",                  "class": 1}
 ]
 source: "system"
 validation_status: "validated"
@@ -3391,12 +3407,16 @@ step_descriptions: [
   }
 ]
 intent_examples: [
-  {"input": "how many TODO comments are there",       "class": 1},
-  {"input": "count occurrences of this pattern",      "class": 1},
-  {"input": "how many times does this appear",        "class": 1},
-  {"input": "count all uses of this function",        "class": 2},
-  {"input": "how many errors in these log files",     "class": 2},
-  {"input": "count grep matches",                     "class": 1}
+  {"input": "how many TODO comments are there",               "class": 1},
+  {"input": "count occurrences of this pattern",              "class": 1},
+  {"input": "how many times does this appear",                "class": 1},
+  {"input": "count all uses of this function",                "class": 2},
+  {"input": "how many errors in these log files",             "class": 2},
+  {"input": "count grep matches",                             "class": 1},
+  {"input": "how many files contain this string",             "class": 2},
+  {"input": "give me a count not the lines themselves",       "class": 1},
+  {"input": "how many FIXME markers in the codebase",        "class": 2},
+  {"input": "count how many times this import appears",      "class": 2}
 ]
 source: "system"
 validation_status: "validated"
@@ -4473,14 +4493,16 @@ step_descriptions: [
   }
 ]
 intent_examples: [
-  {"input": "recall everything you know about this project",  "class": 2},
-  {"input": "broad memory recall for this topic",             "class": 2},
-  {"input": "search all my memory about this feature",        "class": 2},
-  {"input": "full memory recall at session start",            "class": 2},
-  {"input": "memory broad search",                            "class": 1},
-  {"input": "find all notes I have on this",                  "class": 2},
-  {"input": "recall all prior decisions about this system",   "class": 2},
-  {"input": "wide memory search for onboarding context",      "class": 2}
+  {"input": "recall everything you know about this project",   "class": 2},
+  {"input": "broad memory recall for this topic",              "class": 2},
+  {"input": "search all my memory about this feature",         "class": 2},
+  {"input": "full memory recall at session start",             "class": 2},
+  {"input": "memory broad search",                             "class": 1},
+  {"input": "find all notes I have on this",                   "class": 2},
+  {"input": "recall all prior decisions about this system",    "class": 2},
+  {"input": "wide memory search for onboarding context",       "class": 2},
+  {"input": "deep recall across all memory docs",              "class": 2},
+  {"input": "start-of-session full memory restore",            "class": 2}
 ]
 source: "system"
 validation_status: "validated"
@@ -4722,14 +4744,16 @@ step_descriptions: [
   }
 ]
 intent_examples: [
-  {"input": "log this progress note",                    "class": 1},
-  {"input": "add to my daily log",                       "class": 1},
-  {"input": "append a note to today's log",              "class": 1},
-  {"input": "write a progress update to the daily log",  "class": 1},
-  {"input": "daily log entry",                           "class": 1},
-  {"input": "record this in the daily log",              "class": 1},
-  {"input": "log what I did today",                      "class": 2},
-  {"input": "log session progress",                      "class": 1}
+  {"input": "log this progress note",                     "class": 1},
+  {"input": "add to my daily log",                        "class": 1},
+  {"input": "append a note to today's log",               "class": 1},
+  {"input": "write a progress update to the daily log",   "class": 1},
+  {"input": "daily log entry",                            "class": 1},
+  {"input": "record this in the daily log",               "class": 1},
+  {"input": "log what I did today",                       "class": 2},
+  {"input": "log session progress",                       "class": 1},
+  {"input": "note this down in my activity log",          "class": 2},
+  {"input": "add this to today's memory log",             "class": 2}
 ]
 source: "system"
 validation_status: "validated"
@@ -4972,14 +4996,16 @@ step_descriptions: [
   }
 ]
 intent_examples: [
-  {"input": "read MEMORY.md",                       "class": 1},
-  {"input": "show me MEMORY.md",                    "class": 1},
-  {"input": "open the main memory document",        "class": 1},
-  {"input": "read my persistent memory",            "class": 2},
-  {"input": "what is in MEMORY.md",                 "class": 1},
-  {"input": "show me the contents of memory",       "class": 2},
-  {"input": "display MEMORY.md",                    "class": 1},
-  {"input": "read main memory file",                "class": 1}
+  {"input": "read MEMORY.md",                            "class": 1},
+  {"input": "show me MEMORY.md",                         "class": 1},
+  {"input": "open the main memory document",             "class": 1},
+  {"input": "read my persistent memory",                 "class": 2},
+  {"input": "what is in MEMORY.md",                      "class": 1},
+  {"input": "show me the contents of memory",            "class": 2},
+  {"input": "display MEMORY.md",                         "class": 1},
+  {"input": "read main memory file",                     "class": 1},
+  {"input": "show me my durable context document",       "class": 2},
+  {"input": "read the primary memory doc at session start", "class": 2}
 ]
 source: "system"
 validation_status: "validated"
@@ -5014,14 +5040,16 @@ step_descriptions: [
   }
 ]
 intent_examples: [
-  {"input": "read HEARTBEAT.md",                  "class": 1},
-  {"input": "show me the heartbeat document",     "class": 1},
-  {"input": "what is in HEARTBEAT.md",            "class": 1},
-  {"input": "read the agent heartbeat status",    "class": 2},
-  {"input": "show me the current heartbeat",      "class": 2},
-  {"input": "display HEARTBEAT.md",               "class": 1},
-  {"input": "read heartbeat",                     "class": 1},
-  {"input": "open the heartbeat memory file",     "class": 1}
+  {"input": "read HEARTBEAT.md",                         "class": 1},
+  {"input": "show me the heartbeat document",            "class": 1},
+  {"input": "what is in HEARTBEAT.md",                   "class": 1},
+  {"input": "read the agent heartbeat status",           "class": 2},
+  {"input": "show me the current heartbeat",             "class": 2},
+  {"input": "display HEARTBEAT.md",                      "class": 1},
+  {"input": "read heartbeat",                            "class": 1},
+  {"input": "open the heartbeat memory file",            "class": 1},
+  {"input": "show the latest heartbeat checkpoint",      "class": 2},
+  {"input": "what does my heartbeat status say",         "class": 2}
 ]
 source: "system"
 validation_status: "validated"
@@ -7155,14 +7183,16 @@ step_descriptions: [
   }
 ]
 intent_examples: [
-  {"input": "create a trigger to run X every morning",    "class": 1},
-  {"input": "schedule recipe X every Monday",             "class": 1},
-  {"input": "set up a daily trigger",                     "class": 1},
-  {"input": "run this recipe every hour",                 "class": 2},
-  {"input": "trigger create",                             "class": 1},
-  {"input": "schedule this recipe every 15 minutes",      "class": 2},
-  {"input": "create a cron trigger for this recipe",      "class": 1},
-  {"input": "set up an hourly trigger for X",             "class": 1}
+  {"input": "create a trigger to run X every morning",        "class": 1},
+  {"input": "schedule recipe X every Monday",                 "class": 1},
+  {"input": "set up a daily trigger",                         "class": 1},
+  {"input": "run this recipe every hour",                     "class": 2},
+  {"input": "trigger create",                                 "class": 1},
+  {"input": "schedule this recipe every 15 minutes",          "class": 2},
+  {"input": "create a cron trigger for this recipe",          "class": 1},
+  {"input": "set up an hourly trigger for X",                 "class": 1},
+  {"input": "automate this task to run weekly",               "class": 2},
+  {"input": "schedule a recurring execution for this recipe", "class": 2}
 ]
 source: "system"
 validation_status: "validated"
@@ -7198,14 +7228,16 @@ step_descriptions: [
   }
 ]
 intent_examples: [
-  {"input": "remove trigger X",                  "class": 1},
-  {"input": "delete this scheduled task",        "class": 1},
-  {"input": "stop running recipe X",             "class": 1},
-  {"input": "cancel the daily trigger",          "class": 2},
-  {"input": "trigger remove",                    "class": 1},
-  {"input": "disable this scheduled trigger",    "class": 2},
-  {"input": "stop the hourly trigger",           "class": 1},
-  {"input": "delete the trigger named X",        "class": 1}
+  {"input": "remove trigger X",                       "class": 1},
+  {"input": "delete this scheduled task",             "class": 1},
+  {"input": "stop running recipe X",                  "class": 1},
+  {"input": "cancel the daily trigger",               "class": 2},
+  {"input": "trigger remove",                         "class": 1},
+  {"input": "disable this scheduled trigger",         "class": 2},
+  {"input": "stop the hourly trigger",                "class": 1},
+  {"input": "delete the trigger named X",             "class": 1},
+  {"input": "unschedule this recurring recipe",       "class": 2},
+  {"input": "deactivate and remove this trigger",     "class": 2}
 ]
 source: "system"
 validation_status: "validated"
