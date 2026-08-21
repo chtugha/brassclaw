@@ -377,8 +377,11 @@ mod inner {
     // -----------------------------------------------------------------------
 
     fn infer_compatibility(manifest: &brassclaw_skills::SkillManifest) -> String {
-        // If the skill declares a compatibility field (via free-form types), use it.
-        // Otherwise default to llm-class.
+        // A skill available in the Agent (Monty VM) context is monty-class;
+        // otherwise llm-class. Note `SkillManifest::types` defaults to
+        // `[llm, kohai, agent]` (includes Agent — see `brassclaw_skills::
+        // types::SkillManifest`), so a manifest that does not override `types`
+        // infers monty-class, not llm-class.
         use brassclaw_skills::component_type::ComponentType;
         if manifest
             .types
@@ -550,9 +553,11 @@ mod inner {
         }
 
         #[test]
-        fn infer_compatibility_defaults_to_llm() {
+        fn infer_compatibility_defaults_to_monty() {
+            // SkillManifest::types defaults to [llm, kohai, agent] (includes
+            // Agent), so a default manifest infers monty-class (Agent context).
             let m = manifest_with_keywords(vec![], vec![]);
-            assert_eq!(infer_compatibility(&m), "brassclaw-class:llm");
+            assert_eq!(infer_compatibility(&m), "brassclaw-class:monty");
         }
     }
 } // mod inner
