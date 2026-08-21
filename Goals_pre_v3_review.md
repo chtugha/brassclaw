@@ -259,7 +259,7 @@ The README still references `BRASSCLAW_REBORN_PROFILE` in the env var table and 
 
 ### Step 12 — Remove `BRASSCLAW_FALLBACK_CONTENT_FILE` filesystem fallback
 
-**Status:** [TODO — implementation next]
+**Status:** [DONE — implemented]
 
 **File:** `crates/brassclaw_engine/src/memory/retrieval_source.rs` (and `memory/mod.rs`)
 
@@ -277,6 +277,29 @@ now-dead `doc_type_weight_by_class` (if unused after removal). Update `memory/mo
 Remove the tests that exercise the fallback path. `RamSource` keeps its store-backed keyword
 retrieval (which is postgres-backed in production). Run `cargo fmt` +
 `cargo clippy -p brassclaw_engine --all-targets -- -D warnings`.
+
+**Implementation (done):** Removed from `retrieval_source.rs`: `FALLBACK_CONTENT_FILE_ENV`,
+`FallbackEntry`, `load_fallback_file`, `load_fallback_file_from_env`, `search_fallback_entries`,
+`RamSource::new_with_fallback`, the `RamSource.fallback_entries` field, and the fallback branch
+in `fetch_for_consumer` (the store-empty branch now returns `Ok(vec![])`). Removed the now-dead
+`doc_type_weight_by_class` from `retrieval_dbless.rs` — its only caller was `search_fallback_entries`
+and no test covered it, so leaving it would trip `dead_code` under `-D warnings`. Updated
+`memory/mod.rs` exports to drop the removed items. Removed the four fallback tests
+(`ram_source_falls_back_to_file_when_store_empty`, `ram_source_prefers_live_store_over_fallback`,
+`load_fallback_file_parses_jsonl`, `load_fallback_file_returns_empty_for_missing_path`) and the
+`fallback_entries()` test helper. Updated doc comments in `retrieval_source.rs` and
+`retrieval_dbless.rs` to record that the filesystem DB-less fallback is gone (Postgres mandatory)
+and that the remaining keyword helpers are deferred to v3 Phase K together with
+`RamSource`/`retrieval_dbless.rs`. `RamSource::new(store)` — the postgres-backed keyword path via
+`RetrievalEngine::retrieve_context` — is unchanged and remains the production retrieval backend
+until Phase K wires `PostgresSource`. Cross-impact noted for Task 2: `saved_plan_to_v3.md`
+instructs adding class-code weight arms (`22 => 0.42`, `23 => 0.38`) to `doc_type_weight_by_class`;
+those plan steps are now obsolete because the function is removed — the intent-driven
+`PostgresSource` orders by `(class_code ASC, prompt_uid ASC)` and does not use these weights.
+This is recorded for the Task 2 plan review.
+**Validation:** `cargo fmt -p brassclaw_engine`; `cargo clippy -p brassclaw_engine --all-targets
+-- -D warnings` (clean, 0 warnings); `cargo test -p brassclaw_engine --lib memory::` (84 passed,
+0 failed). No other crate referenced the removed exports (self-contained to `brassclaw_engine`).
 
 ---
 
@@ -397,7 +420,7 @@ becomes unused and can be removed together with `migrate-from-libsql`.)
 | 9 | intent_system.rs DbLessFallback | Code — Goal 2 | Medium |
 | 10 | runtime.rs remaining fallbacks | Code — Goal 2 | Medium |
 | 11 | README.md profiles section | Documentation | Low |
-| 12 | retrieval_source.rs BRASSCLAW_FALLBACK_CONTENT_FILE filesystem fallback | Code — Goal 2 | High |
+| 12 | retrieval_source.rs BRASSCLAW_FALLBACK_CONTENT_FILE filesystem fallback | Code — Goal 2 | High — **DONE** |
 | 13 | e2e/canary/Dockerfile.test `--no-default-features --features libsql` postgres-less build + `#[cfg(not(feature = "postgres"))]` blocks | Code/Infra — Goal 2 | High (subplan, deferred) |
 | 14 | RamSource/retrieval_dbless = keyword-over-postgres (not postgres-less); Phase K wiring | Code — v3 Phase K | Medium (documented; no pre-v3 change) |
 | 15 | transitional `migrate-from-libsql`/`libsql` feature | Code — transitional | Low (scheduled removal) |
@@ -408,9 +431,10 @@ becomes unused and can be removed together with `migrate-from-libsql`.)
   removed; `BRASSCLAW_REBORN_PROFILE` is a hard startup error; deploy + docs use
   `BRASSCLAW_RUNTIME_PROFILE` (the per-invocation capability policy, which is intentionally
   retained and is NOT an installation profile).
-- **Goal 2 (no postgres-less design, postgres mandatory):** **PARTIALLY ACCOMPLISHED after
-  Step 12.** All silent in-memory production fallbacks removed (Steps 3,4,6,7,9); the
-  filesystem fallback annihilated (Step 12); production retrieval is postgres-backed
-  (`PgMemoryDocStore`). Remaining: the e2e/test postgres-less build (Step 13, subplan) and the
-  legacy keyword-vs-intent retrieval swap (Step 14, v3 Phase K). The transitional migration
-  feature (Step 15) is intentional and scheduled for removal.
+- **Goal 2 (no postgres-less design, postgres mandatory):** **PARTIALLY ACCOMPLISHED
+  (Steps 3,4,6,7,9,12 done).** All silent in-memory production fallbacks removed
+  (Steps 3,4,6,7,9); the filesystem fallback annihilated (Step 12, implemented + validated);
+  production retrieval is postgres-backed (`PgMemoryDocStore`). Remaining: the e2e/test
+  postgres-less build (Step 13, subplan, deferred — requires e2e execution) and the legacy
+  keyword-vs-intent retrieval swap (Step 14, v3 Phase K). The transitional migration feature
+  (Step 15) is intentional and scheduled for removal.

@@ -31,8 +31,8 @@ pub use retrieval::RetrievalEngine;
 #[cfg(feature = "skills-db")]
 pub use retrieval_source::PostgresSource;
 pub use retrieval_source::{
-    ComponentItem, ComponentScope, FALLBACK_CONTENT_FILE_ENV, FallbackEntry, FetchForTurnResult,
-    RamSource, RetrievalSource, RetrievalSourceError, load_fallback_file,
+    ComponentItem, ComponentScope, FetchForTurnResult, RamSource, RetrievalSource,
+    RetrievalSourceError,
 };
 pub use similarity_checker::{SimilarityChecker, SimilarityMatch};
 pub use skill_tracker::SkillTracker;
