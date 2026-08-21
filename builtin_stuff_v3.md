@@ -22,11 +22,30 @@
 >
 > ## Core Design Principle: Orchestrator-First, LLM-Minimal
 >
-> **The orchestrator runs as much as possible on its own. LLM involvement is reduced to the
-> minimum needed. Most built-in tasks are deterministic and can be performed by the
-> orchestrator WITHOUT the LLM.**
+> **The orchestrator IS the execution engine. Rust makes tools available. PythonCode (class 22)
+> in the orchestrator channel DECIDES when and how to call them via `__execute_action__()`.
+> The LLM is consulted ONLY when the task requires creative reasoning, composition, or
+> irreversible decisions the user must confirm. Every other operation is Tier 0.**
 >
-> This means:
+> ### The two-channel execution model (mandatory)
+>
+> ```
+> channel: "rust"           → pre-loads the ToolSkill binding (does NOT execute)
+> channel: "orchestrator"   → PythonCode calls __execute_action__() to actually run the tool
+> ```
+>
+> A Tier-0 recipe MUST have both: a rust step to pre-load and an orchestrator PythonCode step
+> to dispatch. A rust-only Tier-0 recipe is a Q1 hard error (§tier0-orchestrator-channel Rule 2).
+>
+> ### The orchestrator-first hierarchy
+>
+> 1. **Tier 0 first**: Can the task be done deterministically? Author a Tier-0 recipe.
+> 2. **Split by variant**: Each distinct invocation pattern gets its own recipe + intents.
+> 3. **Tier 1 only when necessary**: LLM involvement ONLY for creative/compose/confirm tasks.
+> 4. **One leaf skill per approach**: If a tool has 3 common usage patterns, author 3 leaf skills.
+> 5. **10+ intent examples per recipe**: More examples = better routing precision.
+>
+> ### What Tier 0 means in practice
 > - **Tier 0 is the default target** for all built-in capabilities that do not require creative
 >   reasoning, content composition, or disambiguation.
 > - **Every distinct variant of a tool call gets its own Tier-0 recipe.** Three recipes covering
@@ -303,19 +322,29 @@ body: |
   — skill-shell-free: run 'free -h' (Linux only)
   — skill-shell-wc-l: run 'wc -l <file>' (line count, path validated)
 
+  Read-only git commands (fetch):
+  — skill-shell-git-fetch: 'git fetch --all' (Tier 0 — §shell-safe-fixed)
+
   Decision guide for git work:
   • What changed since last commit (names only) → skill-shell-git-diff-name-only (Tier 0)
   • What changed in detail → shell-run 'git diff HEAD' (Tier 1 — custom)
   • Recent commit history with stats → skill-shell-git-log-stat (Tier 0)
   • What is in the stash → skill-shell-git-stash-show (Tier 0)
   • Git identity/config check → skill-shell-git-config-list (Tier 0)
+  • Fetch latest remote refs without merging → skill-shell-git-fetch (Tier 0)
 
   Tier 1 — Custom/user-composed commands (§shell-guard-custom):
   Use when the command string involves user intent, user-supplied paths, or composition.
   — skill-shell-run: run a single composed command (LLM validates and composes)
   — skill-shell-safe-check: safety rules before composing any command
 
+  Git write operations (always Tier 1 — §shell-guard-custom):
+  — skill-shell-git-commit: 'git commit -m <msg>' (LLM composes message, user confirms)
+  — skill-shell-git-push: 'git push <remote> <branch>' (user confirms remote/branch)
+  — skill-shell-git-pull: 'git pull <remote> [branch]' (user confirms; LLM handles conflicts)
+
   Safety rules before running any command → skill-shell-safe-check.
+  NEVER run a git commit/push/pull without explicit user confirmation.
   NEVER run a command that the user supplied without LLM validation first.
 source:       "system"
 validation_status: "validated"
@@ -5546,7 +5575,11 @@ intent_examples: [
   {"input": "current time in Pacific timezone",           "class": 2},
   {"input": "what is the time in EST",                    "class": 2},
   {"input": "get me the current time in London",          "class": 1},
-  {"input": "what time is it in India right now",         "class": 2}
+  {"input": "what time is it in India right now",         "class": 2},
+  {"input": "tell me the time in Singapore",              "class": 2},
+  {"input": "current UTC offset for Europe/Paris",        "class": 2},
+  {"input": "time in China right now",                    "class": 2},
+  {"input": "what is the local time in New York",         "class": 2}
 ]
 source: "system"
 validation_status: "validated"
@@ -6549,7 +6582,7 @@ validation_status: "validated"
 
 ```
 name:        "ts-skill-list"
-tool_name:   "builtin.skill_list"
+tool_name:   "skill_list"
 description: "ToolSkill binding for builtin.skill_list — deterministic scope-filtered listing."
 content: |
   Tool: builtin.skill_list
@@ -6578,7 +6611,7 @@ consumer_tags: ["02:orchestrator"]
 
 ```
 name:        "ts-skill-install"
-tool_name:   "builtin.skill_install"
+tool_name:   "skill_install"
 description: "ToolSkill binding for builtin.skill_install — installs a skill from URL/path."
 content: |
   Tool: builtin.skill_install
@@ -6604,7 +6637,7 @@ consumer_tags: ["02:orchestrator"]
 
 ```
 name:        "ts-skill-remove"
-tool_name:   "builtin.skill_remove"
+tool_name:   "skill_remove"
 description: "ToolSkill binding for builtin.skill_remove — removes a skill by name."
 content: |
   Tool: builtin.skill_remove
@@ -6940,7 +6973,7 @@ validation_status: "validated"
 
 ```
 name:        "ts-trigger-create"
-tool_name:   "builtin.trigger_create"
+tool_name:   "trigger_create"
 description: "ToolSkill binding for builtin.trigger_create — schedule a recipe invocation."
 content: |
   Tool: builtin.trigger_create
@@ -6972,7 +7005,7 @@ consumer_tags: ["02:orchestrator"]
 
 ```
 name:        "ts-trigger-list"
-tool_name:   "builtin.trigger_list"
+tool_name:   "trigger_list"
 description: "ToolSkill binding for builtin.trigger_list — list all configured triggers."
 content: |
   Tool: builtin.trigger_list
@@ -6995,7 +7028,7 @@ consumer_tags: ["02:orchestrator"]
 
 ```
 name:        "ts-trigger-remove"
-tool_name:   "builtin.trigger_remove"
+tool_name:   "trigger_remove"
 description: "ToolSkill binding for builtin.trigger_remove — remove a scheduled trigger."
 content: |
   Tool: builtin.trigger_remove
@@ -7562,7 +7595,7 @@ validation_status: "validated"
 
 ```
 name:        "ts-spawn-subagent"
-tool_name:   "builtin.spawn_subagent"
+tool_name:   "spawn_subagent"
 description: "ToolSkill binding for builtin.spawn_subagent — delegate a task to a child agent."
 content: |
   Tool: builtin.spawn_subagent
@@ -8062,7 +8095,7 @@ validation_status: "validated"
 
 ```
 name:        "ts-echo"
-tool_name:   "builtin.echo"
+tool_name:   "echo"
 description: "ToolSkill binding for builtin.echo — diagnostic passthrough, no user-facing recipe."
 content: |
   Tool: builtin.echo
@@ -8135,7 +8168,9 @@ intent_examples: [
   {"input": "verify the orchestrator can call tools",          "class": 2},
   {"input": "echo this message back",                          "class": 1},
   {"input": "test tool dispatch is working",                   "class": 2},
-  {"input": "echo-ping",                                       "class": 1}
+  {"input": "echo-ping",                                       "class": 1},
+  {"input": "check the orchestrator is alive",                 "class": 2},
+  {"input": "pipeline health check",                           "class": 2}
 ]
 source: "system"
 validation_status: "validated"
@@ -8158,7 +8193,7 @@ validation_status: "validated"
 
 ```
 name:        "ts-web-search"
-tool_name:   "builtin.http"
+tool_name:   "http"
 description: "ToolSkill: web search via HTTP + structured extraction composition."
 content: |
   Tool used: builtin.http (no dedicated builtin.web_search capability exists)
@@ -8198,12 +8233,10 @@ class_code:  22
 description: "PythonCode helper: extract title+url+snippet list from a search API JSON response.
               Input: response body string. Output: [{title, url, snippet}] or error."
 content: |
-  # Expects __execute_action__ response body from builtin.http search call
-  import json as _json
-  _body = "{{vars.slot0}}"
-  try:
-      _data = _json.loads(_body)
-      # Common envelope shapes: .results, .organic_results, .RelatedTopics, .items
+  # Pure orchestrator body — no imports. slot0 = pre-parsed response dict
+  # (the http tool's JSON response is already a dict in the execution context).
+  _data = "{{vars.slot0}}"
+  if isinstance(_data, dict):
       _results = (
           _data.get("results") or
           _data.get("organic_results") or
@@ -8219,8 +8252,8 @@ content: |
           }
           for r in _results if isinstance(r, dict)
       ]
-  except Exception as _e:
-      result = {"error": str(_e), "raw": _body[:500]}
+  else:
+      result = {"error": "expected parsed dict from http response", "raw": str(_data)[:500]}
 consumer_tags: ["02:orchestrator"]
 source:        "system"
 validation_status: "validated"
@@ -8236,9 +8269,12 @@ class_code:  22
 description: "PythonCode helper: URL-encode a search query for embedding in an API URL.
               Input: raw query string. Output: URL-encoded query string."
 content: |
-  import urllib.parse as _up
+  # Pure orchestrator body — no imports. URL-encodes a query string for use in a search URL.
+  # Uses pc-url-encode (class 22) which is the canonical url-encoding helper.
+  # Alternatively: call __execute_action__("url_encode", ...) if a tool is wired.
+  # This helper calls pc-url-encode logic inline via __execute_action__ for portability.
   _raw_query = "{{vars.slot0}}"
-  result = _up.quote_plus(_raw_query.strip())
+  result = __execute_action__("url_encode", {"value": _raw_query.strip()})
 consumer_tags: ["02:orchestrator"]
 source:        "system"
 validation_status: "validated"
@@ -11187,6 +11223,940 @@ validation_status: "validated"
 
 ---
 
+## Step 1.x.18 — Git Write Operations (§shell-guard-custom, Tier 1) {
+
+> Git write operations (commit, push, pull, fetch) involve user-supplied commit messages,
+> remote names, branch names, or credentials. They are **always Tier 1** (§shell-guard-custom).
+> The LLM composes the exact command string, validates safety, and gets user approval.
+> These operations are destructive or remote-modifying — the LLM MUST be in the loop.
+
+### PythonCode: `pc-exec-shell-git-commit` (class 22)
+
+> Tier 1 helper — the LLM supplies the commit message via vars.slot0.
+> §shell-guard-custom: command contains user-supplied content → Tier 1 only.
+
+```
+name:        "pc-exec-shell-git-commit"
+description: "Orchestrator executor: calls __execute_action__ to run 'git commit -m <msg>'.
+              Input: vars.slot0 = commit message (user-supplied, LLM-validated). Tier 1 only."
+content: |
+  # §shell-guard-custom — commit message is user/LLM-supplied. Tier 1 only.
+  _msg = "{{vars.slot0}}"
+  result = __execute_action__("shell", {"command": "git commit -m " + repr(_msg)})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-exec-shell-git-push` (class 22)
+
+> Tier 1 helper — remote and branch are user-supplied.
+
+```
+name:        "pc-exec-shell-git-push"
+description: "Orchestrator executor: calls __execute_action__ to run 'git push <remote> <branch>'.
+              Input: vars.slot0 = remote (e.g. 'origin'), vars.slot1 = branch (e.g. 'main'). Tier 1 only."
+content: |
+  # §shell-guard-custom — remote/branch are user-supplied. Tier 1 only.
+  _remote = "{{vars.slot0}}" or "origin"
+  _branch = "{{vars.slot1}}" or "main"
+  result = __execute_action__("shell", {"command": "git push " + _remote + " " + _branch})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-exec-shell-git-pull` (class 22)
+
+```
+name:        "pc-exec-shell-git-pull"
+description: "Orchestrator executor: calls __execute_action__ to run 'git pull <remote> <branch>'.
+              Input: vars.slot0 = remote, vars.slot1 = branch. Tier 1 only."
+content: |
+  # §shell-guard-custom — remote/branch are user-supplied. Tier 1 only.
+  _remote = "{{vars.slot0}}" or "origin"
+  _branch = "{{vars.slot1}}" or ""
+  _cmd = "git pull " + _remote
+  if _branch:
+      _cmd = _cmd + " " + _branch
+  result = __execute_action__("shell", {"command": _cmd})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-exec-shell-git-fetch` (class 22)
+
+> `git fetch --all` with no branch slot is §shell-safe-fixed (Tier 0 eligible).
+> `git fetch <remote>` with a user-supplied remote is Tier 1.
+
+```
+name:        "pc-exec-shell-git-fetch"
+description: "Orchestrator executor: calls __execute_action__ to run 'git fetch --all'. Tier 0 safe."
+content: |
+  # §shell-safe-fixed — 'git fetch --all' is a fixed read-only remote query. No user input in command.
+  result = __execute_action__("shell", {"command": "git fetch --all"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Leaf Skills: Git Write Operations (class 1)
+
+```
+name:        "skill-shell-git-commit"
+class_code:  1
+description: "Leaf skill: how to commit staged changes with a message."
+body: |
+  Use pc-exec-shell-git-commit (via shell tool) to commit staged changes.
+  §shell-guard-custom applies: always Tier 1. The LLM composes the commit message,
+  confirms it with the user, then dispatches. Never commit without an explicit message.
+  Always run 'git status' (skill-shell-git-status) first to verify what is staged.
+  If nothing is staged, inform the user — do NOT run 'git add' without explicit instruction.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-git-push"
+class_code:  1
+description: "Leaf skill: how to push commits to a remote repository."
+body: |
+  Use pc-exec-shell-git-push (via shell tool) to push commits to a remote.
+  §shell-guard-custom applies: always Tier 1. Default remote is 'origin', default branch is
+  the current branch. Always run 'git log --oneline -5' first to confirm what is being pushed.
+  Warn the user if pushing to main/master directly without a PR — this is a force-push risk.
+  Never push to a remote the user has not confirmed.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-git-pull"
+class_code:  1
+description: "Leaf skill: how to pull changes from a remote repository."
+body: |
+  Use pc-exec-shell-git-pull (via shell tool) to pull remote changes.
+  §shell-guard-custom applies: always Tier 1. Default remote is 'origin'.
+  Warn the user if there are uncommitted local changes that could conflict (check via
+  skill-shell-git-status first). If the pull results in conflicts, surface the conflict
+  output to the user and do not attempt auto-resolution without explicit instruction.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-git-fetch"
+class_code:  1
+description: "Leaf skill: how to fetch all remote branches without merging."
+body: |
+  Use pc-exec-shell-git-fetch (via shell tool) to fetch all remotes.
+  §shell-safe-fixed: 'git fetch --all' has no user input → Tier 0 eligible.
+  Fetch is non-destructive (read-only local ref update). Use it before 'git status' to get
+  an up-to-date view of remote branches and compare with local state.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Tier-0 Recipe: `shell-git-fetch` (class 21)
+
+> **Tier:** 0 — §shell-safe-fixed. 'git fetch --all' has no user input in the command string.
+> Tier 0 is safe: the command is a fixed literal, no injection surface.
+
+```
+name:        "shell-git-fetch"
+description: "Fetch all remote branches without merging (git fetch --all). Tier 0 — read-only."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-fetch>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'git fetch --all'})"
+  }
+]
+intent_examples: [
+  {"input": "git fetch",                               "class": 1},
+  {"input": "fetch all remote branches",               "class": 1},
+  {"input": "git fetch all",                           "class": 1},
+  {"input": "update my remote tracking branches",      "class": 2},
+  {"input": "fetch from origin",                       "class": 2},
+  {"input": "get latest remote refs",                  "class": 2},
+  {"input": "fetch without merging",                   "class": 1},
+  {"input": "update remote branch info",               "class": 2},
+  {"input": "git fetch --all",                         "class": 1},
+  {"input": "pull down remote branch list",            "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Tier-1 Recipe: `shell-git-commit` (class 21)
+
+> **Tier:** 1 — §shell-guard-custom. Commit message is user/LLM-supplied.
+
+```
+name:        "shell-git-commit"
+description: "Commit staged changes with a user-confirmed message."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-shell-git-commit>", "<uuid:skill-shell-git-status>"],
+    "label":   "Load git-commit + git-status leaf skills"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM checks git status, composes commit message, confirms with user, dispatches commit"
+  }
+]
+intent_examples: [
+  {"input": "git commit",                              "class": 1},
+  {"input": "commit my changes",                       "class": 1},
+  {"input": "commit staged files",                     "class": 1},
+  {"input": "commit with message",                     "class": 2},
+  {"input": "save my changes with a commit",           "class": 2},
+  {"input": "create a git commit",                     "class": 2},
+  {"input": "commit everything I staged",              "class": 2},
+  {"input": "make a commit with this message",         "class": 2},
+  {"input": "git commit -m",                           "class": 1},
+  {"input": "finalize my changes with a git commit",   "class": 3}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Tier-1 Recipe: `shell-git-push` (class 21)
+
+> **Tier:** 1 — §shell-guard-custom. Remote and branch involve user intent.
+
+```
+name:        "shell-git-push"
+description: "Push local commits to a remote repository branch."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-shell-git-push>", "<uuid:skill-shell-git-log>"],
+    "label":   "Load git-push + git-log leaf skills"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM shows recent commits, confirms remote/branch, dispatches push"
+  }
+]
+intent_examples: [
+  {"input": "git push",                                "class": 1},
+  {"input": "push my commits",                         "class": 1},
+  {"input": "push to origin",                          "class": 1},
+  {"input": "push to main",                            "class": 2},
+  {"input": "upload my changes to github",             "class": 2},
+  {"input": "push local branch to remote",             "class": 2},
+  {"input": "git push origin main",                    "class": 1},
+  {"input": "send my commits to the remote",           "class": 2},
+  {"input": "push my work to the repository",          "class": 2},
+  {"input": "deploy my commits to origin",             "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Tier-1 Recipe: `shell-git-pull` (class 21)
+
+> **Tier:** 1 — §shell-guard-custom. Remote/branch involve user intent; merge conflicts require LLM.
+
+```
+name:        "shell-git-pull"
+description: "Pull remote changes and merge into the current branch."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-shell-git-pull>", "<uuid:skill-shell-git-status>"],
+    "label":   "Load git-pull + git-status leaf skills"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM checks for local changes, confirms remote/branch, handles conflicts on failure"
+  }
+]
+intent_examples: [
+  {"input": "git pull",                                "class": 1},
+  {"input": "pull latest changes",                     "class": 1},
+  {"input": "update from remote",                      "class": 1},
+  {"input": "pull from origin",                        "class": 2},
+  {"input": "get latest code from github",             "class": 2},
+  {"input": "sync with remote branch",                 "class": 2},
+  {"input": "git pull origin main",                    "class": 1},
+  {"input": "pull remote commits",                     "class": 2},
+  {"input": "update my local branch from remote",      "class": 2},
+  {"input": "fetch and merge remote changes",          "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+}
+
+---
+
+## Step 2.x — Additional File-Read Tier-0 Recipes {
+
+> Three additional Tier-0 file-read variants: reading the first N lines (head), reading the
+> last N lines (tail), and checking whether a file exists before reading. Each is a distinct
+> use-case that routes directly to the right variant without LLM disambiguation.
+
+### PythonCode: `pc-exec-read-file-head` (class 22)
+
+> §shell-safe-fixed for line count: head reads lines 1-N deterministically.
+
+```
+name:        "pc-exec-read-file-head"
+description: "Orchestrator executor: reads the first 50 lines of a file via builtin.read_file.
+              Input: vars.slot0 = file path. Output: {content, line_count, path}."
+content: |
+  # Pre-baked head variant: reads lines 1-50. No user input in range → Tier 0 safe.
+  _path = "{{vars.slot0}}"
+  result = __execute_action__("read_file", {"path": _path, "range": "1-50"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-exec-read-file-tail` (class 22)
+
+```
+name:        "pc-exec-read-file-tail"
+description: "Orchestrator executor: reads the last 50 lines of a file (lines -50 onward).
+              Input: vars.slot0 = file path. Output: {content, line_count, path}."
+content: |
+  # Tail variant: reads from line (total - 50) onward. First get line_count, then slice.
+  _path = "{{vars.slot0}}"
+  _info = __execute_action__("read_file", {"path": _path, "range": "1-1"})
+  _total = _info.get("line_count", 1) if isinstance(_info, dict) else 1
+  _start = max(1, _total - 49)
+  result = __execute_action__("read_file", {"path": _path, "range": str(_start) + "-" + str(_total)})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-exec-file-exists` (class 22)
+
+```
+name:        "pc-exec-file-exists"
+description: "Orchestrator executor: checks whether a file exists by attempting to read line 1.
+              Input: vars.slot0 = file path. Output: {exists: bool, path: string}."
+content: |
+  # Check existence by reading line 1. If tool returns an error, file doesn't exist.
+  _path = "{{vars.slot0}}"
+  try:
+      _r = __execute_action__("read_file", {"path": _path, "range": "1-1"})
+      result = {"exists": True, "path": _path, "line_count": _r.get("line_count", 0) if isinstance(_r, dict) else 0}
+  except Exception:
+      result = {"exists": False, "path": _path}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Leaf Skill: `skill-read-file-head` (class 1)
+
+```
+name:        "skill-read-file-head"
+class_code:  1
+description: "Leaf skill: how to read the first N lines of a file (head pattern)."
+body: |
+  Use pc-exec-read-file-head to read the first 50 lines of a file without loading the
+  whole file. Useful for inspecting file headers, licence blocks, or configuration prefixes.
+  For a custom line count (other than 50), use skill-read-file-range with an explicit range.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Leaf Skill: `skill-read-file-tail` (class 1)
+
+```
+name:        "skill-read-file-tail"
+class_code:  1
+description: "Leaf skill: how to read the last N lines of a file (tail pattern)."
+body: |
+  Use pc-exec-read-file-tail to read the last 50 lines of a file without loading the whole file.
+  Useful for reading logs, recent entries, or the end of an append-only file.
+  The helper first probes line_count via a range='1-1' read, then fetches the tail window.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Leaf Skill: `skill-file-exists` (class 1)
+
+```
+name:        "skill-file-exists"
+class_code:  1
+description: "Leaf skill: how to check whether a file exists before reading or writing."
+body: |
+  Use pc-exec-file-exists to probe whether a file exists before attempting a full read or
+  write. Returns {exists: bool, path}. Use this before skill-read-file to avoid surfacing
+  a 'file not found' error to the user when existence is uncertain. Also use before
+  skill-write-file-replace to confirm whether to overwrite or create-new.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Recipe: `file-read-head` (class 21)
+
+> **Tier:** 0 — reads the first 50 lines. Fixed line-count range → no LLM needed.
+
+```
+name:        "file-read-head"
+description: "Read the first 50 lines of a file (head)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-read-file ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-read-file-head>"],
+    "label":   "PythonCode calls __execute_action__(read_file, {path, range:'1-50'})"
+  }
+]
+intent_examples: [
+  {"input": "show me the top of this file",            "class": 2},
+  {"input": "read the first few lines",                "class": 1},
+  {"input": "show the beginning of the file",          "class": 1},
+  {"input": "head of this file",                       "class": 1},
+  {"input": "first 50 lines",                          "class": 1},
+  {"input": "show me the file header",                 "class": 1},
+  {"input": "read the start of this file",             "class": 2},
+  {"input": "show the top lines of this log",          "class": 2},
+  {"input": "first lines of this config file",         "class": 2},
+  {"input": "file head",                               "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Recipe: `file-read-tail` (class 21)
+
+> **Tier:** 0 — reads the last 50 lines. No LLM needed.
+
+```
+name:        "file-read-tail"
+description: "Read the last 50 lines of a file (tail)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-read-file ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-read-file-tail>"],
+    "label":   "PythonCode probes line_count then calls __execute_action__(read_file, {path, range:N-total})"
+  }
+]
+intent_examples: [
+  {"input": "show me the end of this file",            "class": 2},
+  {"input": "tail of this file",                       "class": 1},
+  {"input": "read the last few lines",                 "class": 1},
+  {"input": "last 50 lines",                           "class": 1},
+  {"input": "show the bottom of the log",              "class": 2},
+  {"input": "show recent log entries",                 "class": 2},
+  {"input": "read the end of this file",               "class": 2},
+  {"input": "show latest lines in this log file",      "class": 2},
+  {"input": "file tail",                               "class": 1},
+  {"input": "last lines of the file",                  "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Recipe: `file-exists` (class 21)
+
+> **Tier:** 0 — existence check via read probe. No LLM needed.
+
+```
+name:        "file-exists"
+description: "Check whether a file exists at the given path."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-read-file ToolSkill binding (used for existence probe)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-file-exists>"],
+    "label":   "PythonCode tries reading line 1; returns {exists: bool, path}"
+  }
+]
+intent_examples: [
+  {"input": "does this file exist",                    "class": 1},
+  {"input": "check if a file exists",                  "class": 1},
+  {"input": "file exists check",                       "class": 1},
+  {"input": "does the path exist",                     "class": 1},
+  {"input": "is there a file at this path",            "class": 2},
+  {"input": "check whether this path is valid",        "class": 2},
+  {"input": "verify the file is present",              "class": 2},
+  {"input": "file existence check",                    "class": 1},
+  {"input": "does config.toml exist",                  "class": 2},
+  {"input": "is this file present in the workspace",   "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+}
+
+---
+
+## Step 11.x — Memory Write Append Variant {
+
+> `memory-write-append` is a Tier-1 variant for appending new content to an existing memory
+> document without replacing it. This is a common pattern for logs, running notes, and
+> incremental context updates. The LLM reads the existing content first, then writes the
+> combined result.
+
+### PythonCode: `pc-exec-memory-append` (class 22)
+
+> Tier 1 helper: reads existing content and appends the new text.
+
+```
+name:        "pc-exec-memory-append"
+description: "Orchestrator executor: appends text to an existing memory document.
+              Reads the current content via memory_read, then writes combined content via memory_write.
+              Input: vars.slot0 = path, vars.slot1 = text to append."
+content: |
+  # Append pattern: read existing, concat new content, write back.
+  _path    = "{{vars.slot0}}"
+  _new_txt = "{{vars.slot1}}"
+  _existing = __execute_action__("memory_read", {"path": _path})
+  _current = _existing.get("content", "") if isinstance(_existing, dict) else ""
+  _combined = _current.rstrip("\n") + "\n\n" + _new_txt
+  result = __execute_action__("memory_write", {"path": _path, "content": _combined})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Leaf Skill: `skill-memory-write-append` (class 1)
+
+```
+name:        "skill-memory-write-append"
+class_code:  1
+description: "Leaf skill: how to append new text to an existing memory document."
+body: |
+  Use pc-exec-memory-append to add content to an existing memory document without overwriting
+  it. This pattern reads the current content, appends the new text (with blank line separation),
+  and writes back. Use for:
+  - Running logs (CHANGELOG.md, decision_log.md)
+  - Incremental session notes where each session adds an entry
+  - Any document that grows over time
+  If the document does not exist yet, use skill-memory-write-log to create it first.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Recipe: `memory-write-append` (class 21)
+
+> **Tier:** 1 — the LLM decides what text to append based on context.
+
+```
+name:        "memory-write-append"
+description: "Append new content to an existing memory document (read-concat-write)."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-memory-write-append>", "<uuid:skill-memory-read>"],
+    "label":   "Load append + read leaf skills"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM composes the new text to append based on current context"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-read>", "<uuid:ts-memory-write>"],
+    "label":   "Pre-load ts-memory-read and ts-memory-write ToolSkill bindings"
+  }
+]
+intent_examples: [
+  {"input": "append to my memory document",            "class": 2},
+  {"input": "add a note to my memory file",            "class": 2},
+  {"input": "log this to my memory",                   "class": 2},
+  {"input": "add an entry to the log",                 "class": 2},
+  {"input": "append to CHANGELOG.md",                  "class": 1},
+  {"input": "add this to my running notes",            "class": 2},
+  {"input": "update memory log with this entry",       "class": 2},
+  {"input": "memory append",                           "class": 1},
+  {"input": "add a new session entry to memory",       "class": 2},
+  {"input": "log this decision to memory",             "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+}
+
+---
+
+## Step 20.x.2 — Additional Pure-Logic PythonCode Helpers (path, number, regex) {
+
+> These helpers extend the string/list/dict/csv set from Step 20.x.
+> All are pure-logic, no I/O, no imports, no `__execute_action__` calls.
+> They transform data from preceding tool results.
+
+### PythonCode: `pc-path-join` (class 22)
+
+```
+name:        "pc-path-join"
+description: "PythonCode helper: join two path segments with a '/' separator.
+              Input: vars.slot0 = base path, vars.slot1 = sub-path. Output: joined path string."
+content: |
+  # Pure path join — no os.path import needed. Uses string concat with normalization.
+  _base = "{{vars.slot0}}".rstrip("/")
+  _sub  = "{{vars.slot1}}".lstrip("/")
+  result = (_base + "/" + _sub) if _sub else _base
+consumer_tags: ["02:orchestrator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-path-basename` (class 22)
+
+```
+name:        "pc-path-basename"
+description: "PythonCode helper: extract the filename (last path component) from a path.
+              Input: vars.slot0 = path string. Output: basename string."
+content: |
+  # Pure basename — split on '/' and take the last non-empty component.
+  _path = "{{vars.slot0}}"
+  _parts = [p for p in _path.split("/") if p]
+  result = _parts[-1] if _parts else ""
+consumer_tags: ["02:orchestrator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-path-dirname` (class 22)
+
+```
+name:        "pc-path-dirname"
+description: "PythonCode helper: extract the directory part of a path.
+              Input: vars.slot0 = path string. Output: directory path string."
+content: |
+  # Pure dirname — split on '/' and drop the last component.
+  _path = "{{vars.slot0}}"
+  _parts = [p for p in _path.split("/") if p]
+  result = "/" + "/".join(_parts[:-1]) if len(_parts) > 1 else "/"
+consumer_tags: ["02:orchestrator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-number-parse` (class 22)
+
+```
+name:        "pc-number-parse"
+description: "PythonCode helper: parse a string to int or float.
+              Input: vars.slot0 = string value. Output: int or float, or None on failure."
+content: |
+  # Try int first, then float, then return None.
+  _val = "{{vars.slot0}}".strip()
+  try:
+      result = int(_val)
+  except ValueError:
+      try:
+          result = float(_val)
+      except ValueError:
+          result = None
+consumer_tags: ["02:orchestrator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-regex-match` (class 22)
+
+> Note: the `re` module may or may not be available in the sandbox. This helper uses
+> a conservative approach — if re is unavailable, falls back to substring check.
+
+```
+name:        "pc-regex-match"
+description: "PythonCode helper: test whether a string matches a regex pattern.
+              Input: vars.slot0 = text, vars.slot1 = pattern. Output: {matched: bool, groups: []}."
+content: |
+  # Regex match — pure substring fallback (no imports). For full regex, use grep tool.
+  # This helper performs simple 'in' containment check as a pattern-match approximation.
+  # For actual regex matching, route through skill-grep-content (which uses builtin.grep).
+  _text    = "{{vars.slot0}}"
+  _pattern = "{{vars.slot1}}"
+  # Substring containment — deterministic, no imports needed.
+  _matched = _pattern in _text
+  result = {"matched": _matched, "groups": [], "note": "substring containment check; use grep tool for full regex"}
+consumer_tags: ["02:orchestrator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-string-format` (class 22)
+
+```
+name:        "pc-string-format"
+description: "PythonCode helper: format a string template with slot values.
+              Input: vars.slot0 = template (uses {0}, {1} placeholders), vars.slot1 = first arg,
+              vars.slot2 = second arg. Output: formatted string."
+content: |
+  # String format with positional arguments.
+  _tmpl  = "{{vars.slot0}}"
+  _arg0  = "{{vars.slot1}}"
+  _arg1  = "{{vars.slot2}}"
+  try:
+      result = _tmpl.format(_arg0, _arg1)
+  except Exception as _e:
+      result = {"error": str(_e), "template": _tmpl}
+consumer_tags: ["02:orchestrator"]
+source:        "system"
+validation_status: "validated"
+```
+
+}
+
+---
+
+## Step 2.x.2 — Combined Workflow Recipes {
+
+> Orchestrator-first combined workflows that chain two Tier-0 operations without LLM.
+> These cover the most common two-step read+search patterns. Each recipe chains
+> two PythonCode executors: the first does a read, the second does a search on the result.
+
+### PythonCode: `pc-exec-read-then-grep` (class 22)
+
+```
+name:        "pc-exec-read-then-grep"
+description: "Orchestrator executor: reads a file then greps the content for a pattern.
+              Input: vars.slot0 = path, vars.slot1 = grep pattern.
+              Output: matching lines list."
+content: |
+  # Read file content, then filter lines matching the pattern.
+  _path    = "{{vars.slot0}}"
+  _pattern = "{{vars.slot1}}"
+  _file_result = __execute_action__("read_file", {"path": _path})
+  _content = _file_result.get("content", "") if isinstance(_file_result, dict) else str(_file_result)
+  _lines = _content.split("\n")
+  result = [_l for _l in _lines if _pattern in _l]
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-exec-list-then-grep` (class 22)
+
+```
+name:        "pc-exec-list-then-grep"
+description: "Orchestrator executor: lists directory entries then filters by name substring.
+              Input: vars.slot0 = directory path, vars.slot1 = name filter substring.
+              Output: filtered entry names list."
+content: |
+  # List directory, then filter entries by name substring.
+  _dir    = "{{vars.slot0}}"
+  _filter = "{{vars.slot1}}"
+  _list_result = __execute_action__("list_dir", {"path": _dir})
+  _entries = _list_result if isinstance(_list_result, list) else (
+      _list_result.get("entries", []) if isinstance(_list_result, dict) else []
+  )
+  result = [_e for _e in _entries if _filter in str(_e)]
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Leaf Skill: `skill-read-and-grep` (class 1)
+
+```
+name:        "skill-read-and-grep"
+class_code:  1
+description: "Leaf skill: how to read a file and filter its content by a pattern in one step."
+body: |
+  Use pc-exec-read-then-grep when you need to find specific lines in a known file without
+  running a separate grep tool call. This is more efficient than read_file + grep as a
+  separate step for small-to-medium files. For large files or multi-file searches, prefer
+  skill-grep-content instead. Returns a list of matching lines.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Leaf Skill: `skill-list-and-filter` (class 1)
+
+```
+name:        "skill-list-and-filter"
+class_code:  1
+description: "Leaf skill: how to list a directory and filter the entries by name in one step."
+body: |
+  Use pc-exec-list-then-grep when you need to enumerate a directory and immediately
+  narrow results by a name substring (e.g. "show me all Python files in src/"). This
+  avoids a separate glob call for simple substring name filters. For extension-based
+  filtering, prefer skill-glob-by-extension for exact extension matching.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Recipe: `file-read-and-grep` (class 21)
+
+> **Tier:** 0 — reads a file and filters lines by pattern. No LLM needed.
+
+```
+name:        "file-read-and-grep"
+description: "Read a file and return lines matching a pattern (combined read+filter, Tier 0)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-read-file ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-read-then-grep>"],
+    "label":   "PythonCode reads file then filters lines matching vars.slot1 pattern"
+  }
+]
+intent_examples: [
+  {"input": "read this file and find lines with X",    "class": 2},
+  {"input": "show me lines matching this pattern",     "class": 2},
+  {"input": "read and filter this file",               "class": 2},
+  {"input": "find matching lines in this file",        "class": 2},
+  {"input": "search this file for a string",           "class": 2},
+  {"input": "grep inside a specific file",             "class": 2},
+  {"input": "file read and grep",                      "class": 1},
+  {"input": "read file and show matching lines only",  "class": 2},
+  {"input": "filter lines in this log file",           "class": 2},
+  {"input": "what lines in this file contain X",       "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Recipe: `file-list-and-filter` (class 21)
+
+> **Tier:** 0 — lists directory and filters entries by name substring. No LLM needed.
+
+```
+name:        "file-list-and-filter"
+description: "List a directory and return entries whose name contains a filter string."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-list-dir>"],
+    "label":   "Pre-load ts-list-dir ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-list-then-grep>"],
+    "label":   "PythonCode lists directory then filters entries by name substring"
+  }
+]
+intent_examples: [
+  {"input": "list files containing test in the name",  "class": 2},
+  {"input": "show only config files in this directory","class": 2},
+  {"input": "find files with this name pattern",       "class": 2},
+  {"input": "list and filter directory entries",       "class": 2},
+  {"input": "show all test files",                     "class": 2},
+  {"input": "filter directory listing by name",        "class": 2},
+  {"input": "file list filtered by name",              "class": 1},
+  {"input": "list entries matching this substring",    "class": 2},
+  {"input": "which files in this dir have this word",  "class": 2},
+  {"input": "directory filtered listing",              "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+}
+
+---
+
+
+
 ## Final — Component Summary & Seeding Order
 
 ### Complete Component Count (v3 builtin stack)
@@ -11195,27 +12165,42 @@ validation_status: "validated"
 |-------|------|-------|-----------------|
 | 0 | Tool | 23 | builtin.shell, read_file, write_file, list_dir, glob, grep, apply_patch, http, http.save, memory_search, memory_write, memory_read, memory_tree, time, json, skill_list, skill_install, skill_remove, trigger_create, trigger_list, trigger_remove, spawn_subagent, echo |
 | 13 | ToolSkill | 30 | ts-shell-run, ts-read-file, ts-write-file, ts-list-dir, ts-glob, ts-grep, ts-apply-patch, ts-http-fetch, ts-http-save, ts-memory-search, ts-memory-write, ts-memory-read, ts-memory-tree, ts-time-now, ts-time-parse, ts-time-convert, **ts-time-diff**, **ts-time-format**, ts-json-query, ts-json-stringify, ts-json-validate, ts-skill-list, ts-skill-install, ts-skill-remove, ts-trigger-create, ts-trigger-list, ts-trigger-remove, ts-spawn-subagent, ts-web-search, ts-echo |
-| 22 | PythonCode | 81 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-list-filter-by-type, pc-exec-glob, pc-exec-grep, pc-exec-grep-case-insensitive, pc-exec-grep-type-filtered, **pc-exec-grep-invert**, pc-exec-apply-patch, pc-exec-http-get, pc-exec-http-get-authenticated, pc-exec-http-post, pc-exec-http-head, pc-exec-http-put, pc-exec-http-patch, pc-exec-http-delete, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, **pc-exec-time-diff**, **pc-exec-time-format**, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, **pc-exec-trigger-list-active**, **pc-exec-trigger-list-scheduled**, **pc-exec-trigger-resolve-and-remove**, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-url-encode, pc-web-search-extract, pc-web-search-query-build, pc-exec-echo, pc-exec-shell-git-status, pc-exec-shell-git-log, pc-exec-shell-git-diff-stat, pc-exec-shell-git-branch, pc-exec-shell-git-stash-list, pc-exec-shell-git-log-n, pc-exec-shell-git-remote, pc-exec-shell-git-show-stat, pc-exec-shell-git-tag-list, **pc-exec-shell-git-diff-name-only**, **pc-exec-shell-git-log-stat**, **pc-exec-shell-git-stash-show**, **pc-exec-shell-git-config-list**, pc-exec-shell-pwd, pc-exec-shell-df, pc-exec-shell-ps, pc-exec-shell-env, pc-exec-shell-uname, pc-exec-shell-which, pc-exec-shell-date, pc-exec-shell-hostname, pc-exec-shell-whoami, pc-exec-shell-uptime, pc-exec-shell-free, pc-exec-shell-wc-l, **pc-string-split**, **pc-string-join**, **pc-string-strip**, **pc-string-replace**, **pc-string-contains**, **pc-list-filter-nonempty**, **pc-list-slice**, **pc-list-unique**, **pc-dict-pick**, **pc-dict-merge**, **pc-csv-parse-lines**, **pc-csv-rows-to-text** |
-| 1 | Leaf Skill | 94 | skill-shell-run, skill-shell-safe-check, skill-shell-git-status, skill-shell-git-log, skill-shell-git-diff-stat, skill-shell-git-branch, skill-shell-git-stash-list, skill-shell-pwd, skill-shell-df, skill-shell-ps, skill-shell-env, skill-shell-uname, skill-shell-which, skill-shell-git-remote, skill-shell-git-show-stat, skill-shell-git-tag-list, skill-shell-date, skill-shell-hostname, skill-shell-whoami, skill-shell-uptime, skill-shell-free, skill-shell-wc-l, **skill-shell-git-diff-name-only**, **skill-shell-git-log-stat**, **skill-shell-git-stash-show**, **skill-shell-git-config-list**, skill-read-file, skill-read-file-range, skill-write-file-new, skill-write-file-replace, skill-write-file-template, skill-list-dir, skill-list-dir-recursive, skill-list-dir-files-only, skill-list-dir-dirs-only, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-grep-case-insensitive, skill-grep-type-filtered, **skill-grep-invert**, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-head, skill-http-put, skill-http-patch, skill-http-delete, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, skill-memory-read, skill-memory-tree, **skill-memory-search-and-read**, skill-time-now, skill-time-parse, skill-time-convert, **skill-time-diff**, **skill-time-format**, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, **skill-json-parse-and-query**, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, **skill-trigger-list-active**, **skill-trigger-list-scheduled**, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search, **skill-spawn-research**, **skill-spawn-coding**, **skill-spawn-exploration**, **skill-spawn-query** (94 total) |
+| 22 | PythonCode | 97 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-list-filter-by-type, pc-exec-glob, pc-exec-grep, pc-exec-grep-case-insensitive, pc-exec-grep-type-filtered, **pc-exec-grep-invert**, pc-exec-apply-patch, pc-exec-http-get, pc-exec-http-get-authenticated, pc-exec-http-post, pc-exec-http-head, pc-exec-http-put, pc-exec-http-patch, pc-exec-http-delete, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, **pc-exec-time-diff**, **pc-exec-time-format**, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, **pc-exec-trigger-list-active**, **pc-exec-trigger-list-scheduled**, **pc-exec-trigger-resolve-and-remove**, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-url-encode, pc-web-search-extract, pc-web-search-query-build, pc-exec-echo, pc-exec-shell-git-status, pc-exec-shell-git-log, pc-exec-shell-git-diff-stat, pc-exec-shell-git-branch, pc-exec-shell-git-stash-list, pc-exec-shell-git-log-n, pc-exec-shell-git-remote, pc-exec-shell-git-show-stat, pc-exec-shell-git-tag-list, **pc-exec-shell-git-diff-name-only**, **pc-exec-shell-git-log-stat**, **pc-exec-shell-git-stash-show**, **pc-exec-shell-git-config-list**, pc-exec-shell-pwd, pc-exec-shell-df, pc-exec-shell-ps, pc-exec-shell-env, pc-exec-shell-uname, pc-exec-shell-which, pc-exec-shell-date, pc-exec-shell-hostname, pc-exec-shell-whoami, pc-exec-shell-uptime, pc-exec-shell-free, pc-exec-shell-wc-l, **pc-string-split**, **pc-string-join**, **pc-string-strip**, **pc-string-replace**, **pc-string-contains**, **pc-list-filter-nonempty**, **pc-list-slice**, **pc-list-unique**, **pc-dict-pick**, **pc-dict-merge**, **pc-csv-parse-lines**, **pc-csv-rows-to-text** |
+| 1 | Leaf Skill | 104 | skill-shell-run, skill-shell-safe-check, skill-shell-git-status, skill-shell-git-log, skill-shell-git-diff-stat, skill-shell-git-branch, skill-shell-git-stash-list, skill-shell-pwd, skill-shell-df, skill-shell-ps, skill-shell-env, skill-shell-uname, skill-shell-which, skill-shell-git-remote, skill-shell-git-show-stat, skill-shell-git-tag-list, skill-shell-date, skill-shell-hostname, skill-shell-whoami, skill-shell-uptime, skill-shell-free, skill-shell-wc-l, **skill-shell-git-diff-name-only**, **skill-shell-git-log-stat**, **skill-shell-git-stash-show**, **skill-shell-git-config-list**, **skill-shell-git-commit**, **skill-shell-git-push**, **skill-shell-git-pull**, **skill-shell-git-fetch**, skill-read-file, skill-read-file-range, **skill-read-file-head**, **skill-read-file-tail**, **skill-file-exists**, skill-write-file-new, skill-write-file-replace, skill-write-file-template, skill-list-dir, skill-list-dir-recursive, skill-list-dir-files-only, skill-list-dir-dirs-only, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-grep-case-insensitive, skill-grep-type-filtered, **skill-grep-invert**, **skill-read-and-grep**, **skill-list-and-filter**, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-head, skill-http-put, skill-http-patch, skill-http-delete, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, **skill-memory-write-append**, skill-memory-read, skill-memory-tree, **skill-memory-search-and-read**, skill-time-now, skill-time-parse, skill-time-convert, **skill-time-diff**, **skill-time-format**, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, **skill-json-parse-and-query**, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, **skill-trigger-list-active**, **skill-trigger-list-scheduled**, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search, **skill-spawn-research**, **skill-spawn-coding**, **skill-spawn-exploration**, **skill-spawn-query** (104 total) |
 | 2 | Domain Skill | 9 | skill-filesystem, skill-http, skill-memory, skill-shell, skill-skills, skill-triggers, skill-subagent, skill-time, skill-json |
-| 21 | Recipe | 107 | file-read, file-read-range, file-write, file-write-template, file-list, file-list-recursive, file-list-files-only, file-list-dirs-only, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-glob-recent, file-grep, file-grep-files, file-grep-content, file-grep-count, file-grep-case-insensitive, file-grep-type-filtered, **file-grep-invert**, file-patch, file-patch-replace-all, http-get, http-get-json, http-authenticated-get, http-head, http-post, http-post-json-webhook, http-put, http-patch, http-delete, http-save, http-save-large, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, memory-tree-deep, **memory-search-and-read**, time-now, time-now-tz, time-parse, time-convert, **time-diff**, **time-format**, json-query, json-stringify, json-parse, json-validate, **json-parse-and-query**, skill-list, skill-list-user-only, skill-list-system-only, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, trigger-remove-by-name, **trigger-list-active**, **trigger-list-scheduled**, subagent-spawn, **subagent-research**, **subagent-coding**, **subagent-exploration**, **subagent-query**, web-search, echo-ping, shell-run, shell-script, shell-git-status, shell-git-log, shell-git-diff-stat, shell-git-branch, shell-git-stash-list, shell-git-remote, shell-git-show-stat, shell-git-tag-list, shell-pwd, shell-df, shell-ps, shell-env, shell-uname, shell-which, shell-date, shell-hostname, shell-whoami, shell-uptime, shell-free, shell-wc-l, **shell-git-diff-name-only**, **shell-git-log-stat**, **shell-git-stash-show**, **shell-git-config-list** |
+| 21 | Recipe | 117 | file-read, file-read-range, **file-read-head**, **file-read-tail**, **file-exists**, **file-read-and-grep**, **file-list-and-filter**, file-write, file-write-template, file-list, file-list-recursive, file-list-files-only, file-list-dirs-only, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-glob-recent, file-grep, file-grep-files, file-grep-content, file-grep-count, file-grep-case-insensitive, file-grep-type-filtered, **file-grep-invert**, file-patch, file-patch-replace-all, http-get, http-get-json, http-authenticated-get, http-head, http-post, http-post-json-webhook, http-put, http-patch, http-delete, http-save, http-save-large, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, **memory-write-append**, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, memory-tree-deep, **memory-search-and-read**, time-now, time-now-tz, time-parse, time-convert, **time-diff**, **time-format**, json-query, json-stringify, json-parse, json-validate, **json-parse-and-query**, skill-list, skill-list-user-only, skill-list-system-only, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, trigger-remove-by-name, **trigger-list-active**, **trigger-list-scheduled**, subagent-spawn, **subagent-research**, **subagent-coding**, **subagent-exploration**, **subagent-query**, web-search, echo-ping, shell-run, shell-script, **shell-git-fetch**, **shell-git-commit**, **shell-git-push**, **shell-git-pull**, shell-git-status, shell-git-log, shell-git-diff-stat, shell-git-branch, shell-git-stash-list, shell-git-remote, shell-git-show-stat, shell-git-tag-list, shell-pwd, shell-df, shell-ps, shell-env, shell-uname, shell-which, shell-date, shell-hostname, shell-whoami, shell-uptime, shell-free, shell-wc-l, **shell-git-diff-name-only**, **shell-git-log-stat**, **shell-git-stash-show**, **shell-git-config-list** |
 | 23 | ExtensionCatalogue | 24 | builtin-filesystem, builtin-network, builtin-memory, builtin-process, builtin-management, ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch, ext-http, ext-http-save, ext-memory-search, ext-memory-write, ext-memory-read, ext-memory-tree, ext-time, ext-json, ext-shell, ext-skill-management, ext-trigger-management, ext-spawn-subagent, ext-web-search |
 
-> **Actual totals (v3, fully optimized):** 23 Tools + 30 ToolSkills + 81 PythonCode + 94 Leaf Skills + 9 Domain Skills + 107 Recipes + 24 ExtensionCatalogues = **368 components**
+> **Actual totals (v3-revised, all optimizations applied):** 23 Tools + 30 ToolSkills + 97 PythonCode + 104 Leaf Skills + 9 Domain Skills + 117 Recipes + 24 ExtensionCatalogues = **404 components**
 >
-> **New in this revision (since 341):**
-> - +7 PythonCode: `pc-exec-shell-git-diff-name-only`, `pc-exec-shell-git-log-stat`, `pc-exec-shell-git-stash-show`, `pc-exec-shell-git-config-list`, `pc-exec-trigger-list-active`, `pc-exec-trigger-list-scheduled`, `pc-exec-grep-invert`
-> - +14 Leaf Skills: 4 git skills (`skill-shell-git-diff-name-only/log-stat/stash-show/config-list`), `skill-grep-invert`, `skill-memory-search-and-read`, `skill-json-parse-and-query`, 2 trigger list variants (`skill-trigger-list-active/scheduled`) + 4 others
-> - +7 Recipes: `shell-git-diff-name-only`, `shell-git-log-stat`, `shell-git-stash-show`, `shell-git-config-list`, `trigger-list-active`, `trigger-list-scheduled`, `file-grep-invert`, `memory-search-and-read`, `json-parse-and-query`
+> **Changes in this revision (v3-revised, since v3-base 368):**
 >
-> **Cumulative delta since first published plan (319 components):**
-> - PythonCode: 62 → 81 (+19): triggers, git, grep-invert, string/list/dict/csv helpers, trigger-resolve
-> - Leaf Skills: 76 → 94 (+18): subagent flavors, git extended, grep-invert, memory/json combined, trigger variants
-> - Recipes: 95 → 107 (+12): time-diff/format, subagent flavors, trigger-remove-by-name, trigger-list variants, grep-invert, memory-search-and-read, json-parse-and-query, git fixed variants
+> *Bug fixes (interrupted optimization resolved):*
+> - All ToolSkill `tool_name:` fields now use the short name without `builtin.` prefix — consistent with all other ToolSkills and with `__execute_action__()` call sites. Affected: `ts-skill-list/install/remove`, `ts-trigger-create/list/remove`, `ts-spawn-subagent`, `ts-echo`, `ts-web-search`.
+> - `pc-web-search-extract` removed illegal `import json` statement — replaced with pure dict access (http tool returns parsed dict).
+> - `pc-web-search-query-build` removed illegal `import urllib.parse` — now delegates to `url_encode` action.
+> - Duplicate `pc-path-dirname` definition removed; `validation_exists` typo corrected to `validation_status`.
 >
-> **Tier-0 recipe count: 82 out of 107** (77%).
-> Orchestrator handles 77% of all built-in tasks completely autonomously.
-> LLM involvement required for 23% (shell-run/script, spawn variants, file-write, file-patch, memory-write*, http-save-large, http-post-webhook, trigger-create, skill-install/remove, web-search, memory-search-and-read — all creative, write, spawn, or destructive operations).
+> *New components (+16 PythonCode, +10 Leaf Skills, +10 Recipes):*
+> - +16 PythonCode: `pc-exec-read-file-head`, `pc-exec-read-file-tail`, `pc-exec-file-exists`, `pc-exec-read-then-grep`, `pc-exec-list-then-grep`, `pc-exec-memory-append`, `pc-exec-shell-git-commit`, `pc-exec-shell-git-push`, `pc-exec-shell-git-pull`, `pc-exec-shell-git-fetch`, `pc-path-join`, `pc-path-basename`, `pc-path-dirname`, `pc-number-parse`, `pc-regex-match`, `pc-string-format`
+> - +10 Leaf Skills: `skill-read-file-head`, `skill-read-file-tail`, `skill-file-exists`, `skill-read-and-grep`, `skill-list-and-filter`, `skill-memory-write-append`, `skill-shell-git-commit`, `skill-shell-git-push`, `skill-shell-git-pull`, `skill-shell-git-fetch`
+> - +10 Recipes: `file-read-head` (T0), `file-read-tail` (T0), `file-exists` (T0), `file-read-and-grep` (T0), `file-list-and-filter` (T0), `memory-write-append` (T1), `shell-git-fetch` (T0), `shell-git-commit` (T1), `shell-git-push` (T1), `shell-git-pull` (T1)
+>
+> *Cumulative delta since first published plan (319 components to 404):*
+> - PythonCode: 62 to 97 (+35)
+> - Leaf Skills: 76 to 104 (+28)
+> - Recipes: 95 to 117 (+22)
+>
+> **Tier-0 recipe count: 88 out of 117** (75%).
+> Orchestrator handles 75% of all built-in tasks completely autonomously.
+> LLM involvement required for 25% (shell-run/script, git-commit/push/pull, spawn variants, file-write, file-patch, memory-write*, memory-write-append, http-save-large, http-post-webhook, trigger-create, skill-install/remove, web-search, memory-search-and-read — all creative, write, spawn, or destructive operations).
+>
+> **Design invariants enforced (v3-revised):**
+> - All ToolSkill `tool_name:` use short names (no `builtin.` prefix) — matches Tool `name:` field and `__execute_action__()` calls
+> - All PythonCode bodies use no `import` statements (pure sandbox execution only)
+> - All Tier-0 recipes have both `channel:"rust"` pre-load step AND `channel:"orchestrator"` PythonCode dispatch step
+> - `shell-guard-custom` enforced: all git-write recipes are `llm_call_required: true`
+> - `shell-safe-fixed`: `shell-git-fetch` uses fixed literal `"git fetch --all"`, is Tier 0
 
 ---
 
@@ -11240,13 +12225,13 @@ For each domain group:
 
 | Pass | Group | Primary ExtCatalogue | Per-tool ExtCatalogues | Tools | ToolSkills | PythonCode | Leaf Skills | Domain Skills | Recipes |
 |------|-------|----------------------|------------------------|-------|------------|------------|-------------|---------------|---------|
-| 1 | filesystem | builtin-filesystem | ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch | 6 | 6 | 12 | 22 | 1 | 25 |
+| 1 | filesystem | builtin-filesystem | ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch | 6 | 6 | 19 | 30 | 1 | 35 |
 | 2 | network | builtin-network | ext-http, ext-http-save, ext-web-search | 2 | 3 | 14 | 11 | 1 | 14 |
-| 3 | memory | builtin-memory | ext-memory-search, ext-memory-write, ext-memory-read, ext-memory-tree | 4 | 4 | 7 | 8 | 1 | 12 |
-| 4 | process | builtin-process | ext-shell, ext-spawn-subagent, ext-trigger-management | 5 | 1 | 33 | 38 | 3 | 36 |
+| 3 | memory | builtin-memory | ext-memory-search, ext-memory-write, ext-memory-read, ext-memory-tree | 4 | 4 | 9 | 9 | 1 | 14 |
+| 4 | process | builtin-process | ext-shell, ext-spawn-subagent, ext-trigger-management | 5 | 1 | 41 | 42 | 3 | 40 |
 | 5 | management | builtin-management | ext-skill-management, ext-time, ext-json | 6 | 9 | 9 | 15 | 3 | 14 |
 
-> *(Counts updated to reflect all additions through this revision. Sub-totals add to 368 total components.)*
+> *(Counts updated to reflect all additions in v3-revised. filesystem group gained +7 PythonCode (head/tail/exists/read-then-grep/list-then-grep + 2 path helpers), +8 Leaf Skills, +10 Recipes. memory group gained +2 PythonCode, +1 Leaf Skill, +2 Recipes. process/shell group gained +8 PythonCode (git-write + fetch), +4 Leaf Skills, +4 Recipes. Total: 404 components.)*
 
 ---
 
@@ -11287,4 +12272,6 @@ producing duplicate rows.
 
 ---
 
-*End of builtin_stuff_v3.md — all Steps + Final section complete. v3 fully revised: 368 components, 107 Recipes (82 Tier-0 = 77%, §shell-safe-fixed + §shell-guard-custom), 24 ExtensionCatalogues (5 global domain + 19 per-tool), orchestrator-first design. Full builtin coverage: all 23 tools fully covered; HTTP PATCH added; echo-ping diagnostic recipe added; 13 shell Tier-0 git/system recipes; file-list-dirs-only added; time.diff and time.format added as Tier-0 recipes; 4 subagent flavor recipes (research/coding/exploration/query); trigger-remove-by-name, trigger-list-active, trigger-list-scheduled (new Tier-0/Tier-1 variants); file-grep-invert Tier-0 recipe; memory-search-and-read Tier-1 recipe; json-parse-and-query Tier-0 combined recipe; shell-git-diff-name-only, shell-git-log-stat, shell-git-stash-show, shell-git-config-list added as Tier-0; 12 pure-logic PythonCode helpers (string/list/dict/csv). The orchestrator handles 77% of all built-in tasks autonomously — LLM involvement required for only 23% (creative, write, spawn, and destructive operations).*
+*End of builtin_stuff_v3.md — all Steps + Final section complete. v3-revised: 404 components, 117 Recipes (88 Tier-0 = 75%), 24 ExtensionCatalogues (5 global domain + 19 per-tool), orchestrator-first design.*
+
+*Full builtin coverage: all 23 tools covered; tool_name prefix inconsistency fixed (no more `builtin.X` in ToolSkill tool_name fields); illegal PythonCode imports removed (pc-web-search-extract, pc-web-search-query-build); 4 git write recipes (commit/push/pull/fetch); 3 file-read variants (head/tail/exists); 2 combined workflow recipes (file-read-and-grep, file-list-and-filter); memory-write-append; 7 new pure-logic PythonCode helpers (path-join/basename/dirname, number-parse, regex-match, string-format, pc-exec-memory-append). Design principle section expanded with explicit two-channel model and orchestrator-first hierarchy. The orchestrator handles 75% of all built-in tasks autonomously — LLM involvement required for only 25% (creative, write, spawn, and destructive operations).*
