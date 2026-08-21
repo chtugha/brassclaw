@@ -195,12 +195,12 @@ impl ComponentValidator {
                     validate_python_code_body(g.content, &mut result);
                     result
                 }
-                ComponentPayload::ToolSkill(_) => ValidationResult::from_error(
-                    "PythonCode class requires a Generic payload",
-                ),
-                ComponentPayload::Recipe(_) => ValidationResult::from_error(
-                    "PythonCode class requires a Generic payload",
-                ),
+                ComponentPayload::ToolSkill(_) => {
+                    ValidationResult::from_error("PythonCode class requires a Generic payload")
+                }
+                ComponentPayload::Recipe(_) => {
+                    ValidationResult::from_error("PythonCode class requires a Generic payload")
+                }
             },
             // Notes class (15): soft 2000 budget
             15 => {
@@ -351,7 +351,8 @@ fn validate_python_code_body(content: &str, result: &mut ValidationResult) {
     // Warnings (Q1 soft — flag, do not block).
     if content.contains("print(") {
         result.warnings.push(
-            "PythonCode body uses print() (stdout is VM-captured, not the host terminal)".to_string(),
+            "PythonCode body uses print() (stdout is VM-captured, not the host terminal)"
+                .to_string(),
         );
     }
     if content.contains("input(") {

@@ -172,7 +172,9 @@ const PYTHON_CODE_SELECT: &str = "
     dependency_registry, created_at, updated_at
 ";
 
-fn decode_python_code_row(row: &tokio_postgres::Row) -> Result<PgPythonCode, PgPythonCodeStoreError> {
+fn decode_python_code_row(
+    row: &tokio_postgres::Row,
+) -> Result<PgPythonCode, PgPythonCodeStoreError> {
     Ok(PgPythonCode {
         id: row.get(0),
         tenant_id: row.get(1),
@@ -490,5 +492,207 @@ mod tests {
     #[test]
     fn validator_consumer_tag_is_stable() {
         assert_eq!(VALIDATOR_CONSUMER_TAG, "05:validator");
+    }
+
+    // ── Postgres integration tests (skip when docker is unavailable) ──────
+    //
+    // Mirrors the `validation_queue.rs` harness: each test starts an isolated
+    // Postgres-16 testcontainer, runs the full migration set (V000–V052, so
+    // `reborn_python_code` and `reborn_validation_queue` both exist), and
+    // returns early (pass) when docker/testcontainers is unavailable. They
+    // run under the default `postgres` feature and add no failures in a
+    // docker-less `cargo test -p brassclaw_reborn_composition` run.
+
+    mod pg {
+        use super::*;
+        use crate::validation_queue::{STATE_Q1_PENDING, ValidationQueueStore};
+        use brassclaw_engine::memory::retrieval_source::ComponentScope;
+        use brassclaw_pg::PgPool;
+
+        struct PgRig {
+            // Held for the test's lifetime so the container stays up.
+            _container: testcontainers_modules::testcontainers::ContainerAsync<
+                testcontainers_modules::postgres::Postgres,
+            >,
+            pool: Arc<PgPool>,
+        }
+
+        /// Start an isolated Postgres-16 testcontainer, build a pool, and run
+        /// every migration (V000–V052). Returns `None` (skip) when docker is
+        /// unavailable.
+        async fn pg_rig_or_skip() -> Option<PgRig> {
+            use deadpool_postgres::{Manager, Pool};
+            use testcontainers_modules::testcontainers::{ImageExt, runners::AsyncRunner};
+
+            let image = testcontainers_modules::postgres::Postgres::default()
+                .with_db_name("brassclaw_test")
+                .with_user("postgres")
+                .with_password("postgres")
+                .with_tag("16-alpine");
+            let container = match image.start().await {
+                Ok(c) => c,
+                Err(error) => {
+                    eprintln!(
+                        "skipping pg_python_code_store pg tests: docker/testcontainers unavailable ({error})"
+                    );
+                    return None;
+                }
+            };
+            let host = match container.get_host().await {
+                Ok(h) => h,
+                Err(error) => {
+                    eprintln!("skipping pg_python_code_store pg tests: no host ({error})");
+                    return None;
+                }
+            };
+            let port = match container.get_host_port_ipv4(5432).await {
+                Ok(p) => p,
+                Err(error) => {
+                    eprintln!("skipping pg_python_code_store pg tests: no port ({error})");
+                    return None;
+                }
+            };
+            let url = format!("postgres://postgres:postgres@{host}:{port}/brassclaw_test");
+            let cfg: tokio_postgres::Config = url.parse().expect("testcontainer url parses");
+            let manager = Manager::new(cfg, tokio_postgres::NoTls);
+            let pool = Pool::builder(manager)
+                .max_size(4)
+                .build()
+                .expect("Postgres pool must build");
+            brassclaw_pg::migrations::run_migrations(&pool)
+                .await
+                .expect("migrations must apply");
+            Some(PgRig {
+                _container: container,
+                pool: Arc::new(pool),
+            })
+        }
+
+        fn test_scope() -> ComponentScope {
+            ComponentScope {
+                tenant_id: "t".into(),
+                user_id: "u".into(),
+                agent_id: "a".into(),
+                project_id: "p".into(),
+            }
+        }
+
+        /// Build a `NewPgPythonCode` for `scope` with a UUID-derived `name`
+        /// (so parallel tests never hit `UNIQUE(scope, name)`) and the
+        /// canonical new-row consumer tags `{02:orchestrator, 05:validator}`.
+        fn new_row(scope: &ComponentScope) -> NewPgPythonCode {
+            NewPgPythonCode {
+                tenant_id: scope.tenant_id.clone(),
+                user_id: scope.user_id.clone(),
+                agent_id: scope.agent_id.clone(),
+                project_id: scope.project_id.clone(),
+                name: format!("py-leaf-{}", Uuid::new_v4()),
+                description: "Reads a file via the host read_file action".into(),
+                content:
+                    "result = __execute_action__(\"read_file\", {\"path\": path})\nreturn result"
+                        .into(),
+                prior_knowledge_content: None,
+                override_prompt_creation: false,
+                consumer_tags: vec!["02:orchestrator".into(), "05:validator".into()],
+                intent_examples: None,
+                source: "authored".into(),
+                dependency_registry: None,
+            }
+        }
+
+        #[tokio::test]
+        async fn python_code_store_round_trip() {
+            let Some(rig) = pg_rig_or_skip().await else {
+                return;
+            };
+            let scope = test_scope();
+            let store = PgPythonCodeStore::new(rig.pool.clone());
+            let row = new_row(&scope);
+            let expected_name = row.name.clone();
+            let expected_content = row.content.clone();
+
+            let id = store.insert(row).await.expect("insert");
+            let fetched = store
+                .get(
+                    &scope.tenant_id,
+                    &scope.user_id,
+                    &scope.agent_id,
+                    &scope.project_id,
+                    id,
+                )
+                .await
+                .expect("get")
+                .expect("row present after insert");
+
+            assert_eq!(fetched.id, id);
+            assert_eq!(fetched.name, expected_name);
+            assert_eq!(fetched.content, expected_content);
+            assert_eq!(fetched.class_code, 22);
+            assert_eq!(fetched.validation_status, "pending");
+            assert_eq!(fetched.source, "authored");
+            assert!(!fetched.override_prompt_creation);
+            assert_eq!(fetched.audit_failure_count, 0);
+            assert!(fetched.prompt_uid > 0);
+            assert!(
+                fetched
+                    .consumer_tags
+                    .contains(&"02:orchestrator".to_string())
+            );
+            assert!(fetched.consumer_tags.contains(&"05:validator".to_string()));
+        }
+
+        #[tokio::test]
+        async fn python_code_create_and_submit_enqueues() {
+            let Some(rig) = pg_rig_or_skip().await else {
+                return;
+            };
+            let scope = test_scope();
+            let store = PgPythonCodeStore::new(rig.pool.clone());
+            let queue = ValidationQueueStore::new(rig.pool.clone());
+
+            // `create_and_submit` inserts the component AND enqueues a Q1 row.
+            let id = store
+                .create_and_submit(new_row(&scope), &queue)
+                .await
+                .expect("create_and_submit");
+
+            // The component row exists at 'pending'.
+            let fetched = store
+                .get(
+                    &scope.tenant_id,
+                    &scope.user_id,
+                    &scope.agent_id,
+                    &scope.project_id,
+                    id,
+                )
+                .await
+                .expect("get")
+                .expect("row present");
+            assert_eq!(fetched.validation_status, "pending");
+
+            // A reborn_validation_queue row exists for this component at
+            // state 1 (Q1_pending) with component_class 22 (§0.23.5).
+            let client = rig.pool.get().await.expect("pool client");
+            let qrow = client
+                .query_one(
+                    "SELECT state, component_class FROM reborn_validation_queue
+                     WHERE component_id = $1
+                       AND tenant_id = $2 AND user_id = $3
+                       AND agent_id  = $4 AND project_id = $5",
+                    &[
+                        &id,
+                        &scope.tenant_id,
+                        &scope.user_id,
+                        &scope.agent_id,
+                        &scope.project_id,
+                    ],
+                )
+                .await
+                .expect("queue row exists for the new python_code");
+            let state: i16 = qrow.get(0);
+            let class: i16 = qrow.get(1);
+            assert_eq!(state, STATE_Q1_PENDING);
+            assert_eq!(class, 22);
+        }
     }
 }

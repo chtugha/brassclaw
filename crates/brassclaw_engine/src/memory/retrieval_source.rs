@@ -570,7 +570,7 @@ fn estimate_tokens(byte_len: usize) -> usize {
 /// Returns an empty vec if the component is not found or fails the gate (e.g.
 /// it was demoted to pending/rejected between the intent lookup and this fetch).
 #[cfg(feature = "skills-db")]
-async fn fetch_component_by_id(
+pub async fn fetch_component_by_id(
     pool: &brassclaw_pg::PgPool,
     scope: &ComponentScope,
     component_id: uuid::Uuid,
