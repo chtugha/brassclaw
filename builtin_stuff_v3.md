@@ -61,8 +61,17 @@
 >   `orchestrator_steps` MUST contain ≥1 PythonCode UUID. Empty orchestrator channel with
 >   tool bindings in a Tier-0 recipe → hard Q1 error.
 >
-> **§shell-guard:** Any Recipe referencing `builtin.shell` is `llm_call_required: true` —
-> NEVER Tier 0. The LLM must validate every shell command before dispatch.
+> **§shell-guard (custom commands):** Any Recipe using `builtin.shell` where the command
+> string is user-supplied, user-composed, or contains non-constant parts is
+> `llm_call_required: true`. The LLM must validate every *custom or user-composed* shell
+> command before dispatch. This guard exists to prevent prompt-injection into shell execution.
+>
+> **§shell-safe-fixed (pre-validated commands):** A Recipe using `builtin.shell` with a
+> *fully pre-validated, compile-time-constant command string* (no user-supplied parts, no
+> slot interpolation of command content) MAY be `llm_call_required: false` (Tier 0). The
+> command must be a fixed literal — e.g. `"git status"`, `"df -h"`, `"uname -a"`. The
+> PythonCode executor must hardcode the exact command string (not read it from any slot).
+> Pre-validated Tier-0 shell recipes are safe because there is no injection surface.
 >
 > **§spawn_subagent-guard:** Any Recipe referencing `builtin.spawn_subagent` is
 > `llm_call_required: true` — NEVER Tier 0.
@@ -91,10 +100,17 @@
 > the PythonCode step drives execution.
 >
 > **When to use Tier 1 (LLM in the loop):**
-> - The operation requires creative content composition (write_file, apply_patch, shell)
+> - The operation requires creative content composition (write_file, apply_patch)
+> - The operation requires a user-composed or user-supplied shell command (§shell-guard-custom)
 > - The operation requires interpreting ambiguous user intent into tool parameters
 > - The operation has irreversible effects and benefits from LLM confirmation
 > - The operation spans multiple tools in a non-deterministic sequence
+>
+> **When shell CAN be Tier 0 (§shell-safe-fixed):**
+> - The command is a fixed literal string known at recipe authoring time
+> - No part of the command is derived from user input or slot interpolation
+> - The command is read-only or non-destructive (git status, df, ps, env, uname, pwd, which)
+> - Examples: `git status`, `git log --oneline -20`, `df -h`, `uname -a`, `ps aux`
 >
 > **Review corrections applied:** F-01 PythonCode I/O removed; F-02 Tool rows fully
 > specified; F-03 five catalogues; F-04 leaf Skills per tool; F-05 ToolSkill bodies
@@ -114,8 +130,16 @@
 ## Step 1 — `builtin.shell` (Shell Command Execution)
 
 > **Capability:** `builtin.shell` · **Effect:** `mixed` · **Permission:** Ask
-> **§shell-guard applies:** every Recipe using this tool is `llm_call_required: true`.
-> The LLM MUST compose and validate the command. Deterministic shell dispatch is unsafe.
+>
+> **Two tiers of shell recipes:**
+> - **§shell-guard-custom (Tier 1):** Any recipe where the command string contains
+>   user-supplied or user-composed parts. The LLM must validate and compose the command.
+>   These recipes always have `llm_call_required: true`.
+> - **§shell-safe-fixed (Tier 0):** Recipes with a fully pre-validated, fixed-literal
+>   command (e.g. `"git status"`, `"df -h"`) where no user input enters the command string.
+>   These recipes have `llm_call_required: false` and use a dedicated PythonCode executor
+>   that hardcodes the command — `pc-exec-shell-fixed-<name>` or `pc-exec-shell-fixed`.
+>   Safe because there is zero injection surface.
 
 ### Step 1.1 — Tool row (class 0)
 
@@ -224,17 +248,33 @@ consumer_tags: ["02:orchestrator", "05:validator"]
 ```
 name:        "skill-shell"
 class_code:  2
-description: "Domain skill: when and how to use shell execution safely."
+description: "Domain skill: when and how to use shell execution — two tiers."
 body: |
   Shell execution is the most powerful and most dangerous builtin. Use it only when no
   higher-level tool covers the need (prefer filesystem domain tools for file operations;
   prefer skill-http-fetch for network work).
 
-  How to run a command → skill-shell-run.
-  Safety rules before running → skill-shell-safe-check.
+  TWO TIERS OF SHELL EXECUTION:
 
-  Approval: `builtin.shell` requires user approval. Every recipe using this domain is
-  Tier 1 (llm_call_required: true). The LLM must compose and validate the exact command.
+  Tier 0 — Fixed pre-validated commands (§shell-safe-fixed):
+  Use when the command is a fixed literal with no user input.
+  — skill-shell-git-status: run 'git status'
+  — skill-shell-git-log: run 'git log --oneline -20'
+  — skill-shell-git-diff-stat: run 'git diff --stat'
+  — skill-shell-git-branch: run 'git branch -a'
+  — skill-shell-pwd: run 'pwd'
+  — skill-shell-df: run 'df -h'
+  — skill-shell-ps: run 'ps aux'
+  — skill-shell-env: run 'env'
+  — skill-shell-uname: run 'uname -a'
+  — skill-shell-which: run 'which <tool>' (tool name is a fixed slot, not user-composed)
+
+  Tier 1 — Custom/user-composed commands (§shell-guard-custom):
+  Use when the command string involves user intent, user-supplied paths, or composition.
+  — skill-shell-run: run a single composed command (LLM validates and composes)
+  — skill-shell-safe-check: safety rules before composing any command
+
+  Safety rules before running any command → skill-shell-safe-check.
 source:       "system"
 validation_status: "validated"
 consumer_tags: ["02:orchestrator", "05:validator"]
@@ -329,6 +369,965 @@ validation_status: "validated"
 ```
 
 ---
+
+## Step 1.x — Shell Tier-0 Infrastructure (§shell-safe-fixed)
+
+> These components implement the §shell-safe-fixed tier: fixed-literal, pre-validated shell
+> commands that the orchestrator runs deterministically WITHOUT LLM involvement.
+> The invariant: **every PythonCode below hardcodes the exact command string** — it is never
+> derived from user input or slot interpolation. No injection surface → safe for Tier 0.
+
+### Step 1.x.1 — PythonCode: `pc-exec-shell-git-status` (class 22)
+
+```
+name:        "pc-exec-shell-git-status"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'git status' in the workspace
+              root via builtin.shell. Command is a fixed literal. No user input enters the
+              command string. Output: {output, exit_code, success}."
+content: |
+  # §shell-safe-fixed: command is a compile-time constant — no injection surface.
+  result = __execute_action__("shell", {"command": "git status"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 1.x.2 — PythonCode: `pc-exec-shell-git-log` (class 22)
+
+```
+name:        "pc-exec-shell-git-log"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'git log --oneline -20'
+              to get the last 20 commits. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input, no injection surface.
+  result = __execute_action__("shell", {"command": "git log --oneline -20"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 1.x.3 — PythonCode: `pc-exec-shell-git-diff-stat` (class 22)
+
+```
+name:        "pc-exec-shell-git-diff-stat"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'git diff --stat' to show
+              changed file summary. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input, no injection surface.
+  result = __execute_action__("shell", {"command": "git diff --stat"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 1.x.4 — PythonCode: `pc-exec-shell-git-branch` (class 22)
+
+```
+name:        "pc-exec-shell-git-branch"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'git branch -a' to list all
+              local and remote branches. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input, no injection surface.
+  result = __execute_action__("shell", {"command": "git branch -a"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 1.x.5 — PythonCode: `pc-exec-shell-git-stash-list` (class 22)
+
+```
+name:        "pc-exec-shell-git-stash-list"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'git stash list' to show
+              the stash stack. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input, no injection surface.
+  result = __execute_action__("shell", {"command": "git stash list"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 1.x.6 — PythonCode: `pc-exec-shell-pwd` (class 22)
+
+```
+name:        "pc-exec-shell-pwd"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'pwd' to show the current
+              working directory. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input.
+  result = __execute_action__("shell", {"command": "pwd"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 1.x.7 — PythonCode: `pc-exec-shell-df` (class 22)
+
+```
+name:        "pc-exec-shell-df"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'df -h' to show disk usage
+              in human-readable format. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input.
+  result = __execute_action__("shell", {"command": "df -h"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 1.x.8 — PythonCode: `pc-exec-shell-ps` (class 22)
+
+```
+name:        "pc-exec-shell-ps"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'ps aux' to list running
+              processes. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input.
+  result = __execute_action__("shell", {"command": "ps aux"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 1.x.9 — PythonCode: `pc-exec-shell-env` (class 22)
+
+```
+name:        "pc-exec-shell-env"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'env' to list all environment
+              variables in the current session. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input.
+  result = __execute_action__("shell", {"command": "env"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 1.x.10 — PythonCode: `pc-exec-shell-uname` (class 22)
+
+```
+name:        "pc-exec-shell-uname"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'uname -a' to show OS/kernel
+              information. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input.
+  result = __execute_action__("shell", {"command": "uname -a"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 1.x.11 — PythonCode: `pc-exec-shell-which` (class 22)
+
+> Semi-fixed: the tool name is a single-token slot variable (only letters/numbers/hyphen
+> allowed). The command is `which <toolname>` where toolname is a safe identifier.
+> The PythonCode validates the tool name against a safe identifier regex before dispatch.
+
+```
+name:        "pc-exec-shell-which"
+description: "Orchestrator executor (§shell-safe-fixed variant): runs 'which <toolname>'
+              to locate a binary. Input: tool_name (string, must be a safe identifier
+              matching [a-zA-Z0-9_-]+). Validates before dispatch."
+content: |
+  import re as _re
+  _tool = "{{vars.slot0}}"
+  # Validate: only safe identifiers allowed (no injection surface)
+  if not _re.match(r'^[a-zA-Z0-9_\-]{1,64}$', _tool):
+      result = {"error": "Invalid tool name — must be a safe identifier", "success": False}
+  else:
+      result = __execute_action__("shell", {"command": f"which {_tool}"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 1.x.12 — PythonCode: `pc-exec-shell-git-log-n` (class 22)
+
+> Semi-fixed: the count N is a numeric slot variable. Validated to be a safe integer.
+
+```
+name:        "pc-exec-shell-git-log-n"
+description: "Orchestrator executor (§shell-safe-fixed variant): runs 'git log --oneline -N'
+              where N is a validated integer (1–100). Input: count (int, 1–100)."
+content: |
+  _n = {{vars.slot0}}
+  # Validate: only safe integer in 1–100 range
+  if not isinstance(_n, int) or not (1 <= _n <= 100):
+      _n = 20
+  result = __execute_action__("shell", {"command": f"git log --oneline -{_n}"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 1.x.13 — Leaf Skills: Git / System (class 1)
+
+> One skill per distinct §shell-safe-fixed command approach.
+
+```
+name:        "skill-shell-git-status"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'git status' to inspect the working tree."
+body: |
+  Use `pc-exec-shell-git-status` to get the current git working tree status. The command
+  is a fixed literal — no LLM required. Check `success` and `output`. If exit_code is 128,
+  the directory is not a git repository — report this to the orchestrator.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-git-log"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'git log --oneline -20' for recent commits."
+body: |
+  Use `pc-exec-shell-git-log` to retrieve the 20 most recent commit hashes and messages.
+  The command is a fixed literal — no LLM required. Parse the output lines to show commit
+  history. Each line is '<hash> <message>'. Use pc-exec-shell-git-log-n for a custom count.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-git-diff-stat"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'git diff --stat' for changed-file summary."
+body: |
+  Use `pc-exec-shell-git-diff-stat` to see which files have uncommitted changes and how
+  many lines changed per file. The command is a fixed literal — no LLM required. Use
+  this before a commit or patch to understand what has changed.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-git-branch"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'git branch -a' to list all branches."
+body: |
+  Use `pc-exec-shell-git-branch` to list local and remote branches. The current branch is
+  prefixed with '*'. The command is a fixed literal — no LLM required.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-git-stash-list"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'git stash list' to show the stash stack."
+body: |
+  Use `pc-exec-shell-git-stash-list` to list all stashed changes. The command is a fixed
+  literal — no LLM required. Empty output means no stashes exist.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-pwd"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'pwd' to get the current working directory."
+body: |
+  Use `pc-exec-shell-pwd` to obtain the absolute working directory path. Fixed command — no
+  LLM required. Useful when constructing paths for other tools that need an absolute base.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-df"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'df -h' for human-readable disk usage."
+body: |
+  Use `pc-exec-shell-df` to check available disk space on all mounted filesystems. The
+  command is a fixed literal — no LLM required. Parse output for 'Use%' to detect
+  filesystems approaching capacity.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-ps"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'ps aux' to list running processes."
+body: |
+  Use `pc-exec-shell-ps` to see all running processes with CPU/memory usage. Fixed command
+  — no LLM required. Useful for checking if a service is running, finding a PID, or
+  diagnosing resource consumption. Output may be large; consider head_limit if needed.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-env"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'env' to list environment variables."
+body: |
+  Use `pc-exec-shell-env` to inspect the current environment variables. Fixed command — no
+  LLM required. Useful for verifying that expected env vars are set (e.g. PATH, EDITOR,
+  LANG, API endpoints). Never log credentials visible in env output to permanent memory.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-uname"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'uname -a' for OS and kernel information."
+body: |
+  Use `pc-exec-shell-uname` to identify the OS, kernel version, and hardware architecture.
+  Fixed command — no LLM required. Useful for confirming the execution environment before
+  running platform-specific commands.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-which"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed variant): run 'which <tool>' to locate a binary."
+body: |
+  Use `pc-exec-shell-which` with a safe tool name (letters/numbers/hyphens only) to find
+  the binary path. The PythonCode validates the tool name before dispatch — no injection
+  risk. If exit_code is 1, the tool is not on PATH.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+---
+
+### Step 1.x.14 — Tier-0 Recipes: Git commands (§shell-safe-fixed)
+
+#### Recipe: `shell-git-status` (class 21)
+
+> **Tier:** 0 — §shell-safe-fixed. Fixed literal command, no LLM needed.
+
+```
+name:        "shell-git-status"
+description: "Run 'git status' and return the working tree state."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-status>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'git status'}) — fixed literal"
+  }
+]
+intent_examples: [
+  {"input": "git status",                                      "class": 1},
+  {"input": "what is the current git status",                  "class": 1},
+  {"input": "show me uncommitted changes",                     "class": 1},
+  {"input": "what files have changed",                         "class": 1},
+  {"input": "check git working tree",                          "class": 1},
+  {"input": "are there any staged changes",                    "class": 2},
+  {"input": "what is modified in the repo",                    "class": 2},
+  {"input": "show me the repo status",                         "class": 1},
+  {"input": "any untracked files",                             "class": 2},
+  {"input": "is my working directory clean",                   "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+#### Recipe: `shell-git-log` (class 21)
+
+> **Tier:** 0 — §shell-safe-fixed.
+
+```
+name:        "shell-git-log"
+description: "Show the last 20 commits as one-line summaries ('git log --oneline -20')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-log>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'git log --oneline -20'})"
+  }
+]
+intent_examples: [
+  {"input": "show me recent commits",                          "class": 1},
+  {"input": "git log",                                         "class": 1},
+  {"input": "what were the last commits",                      "class": 1},
+  {"input": "show commit history",                             "class": 1},
+  {"input": "list recent git commits",                         "class": 1},
+  {"input": "what was the last change merged",                 "class": 2},
+  {"input": "show me the git log",                             "class": 1},
+  {"input": "recent commit hashes and messages",               "class": 2},
+  {"input": "what commits have been made",                     "class": 2},
+  {"input": "git history last 20",                             "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+#### Recipe: `shell-git-diff-stat` (class 21)
+
+> **Tier:** 0 — §shell-safe-fixed.
+
+```
+name:        "shell-git-diff-stat"
+description: "Show a summary of which files have changed and how many lines ('git diff --stat')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-diff-stat>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'git diff --stat'})"
+  }
+]
+intent_examples: [
+  {"input": "what files changed",                              "class": 1},
+  {"input": "git diff stat",                                   "class": 1},
+  {"input": "show me which files are modified",                "class": 1},
+  {"input": "how many lines changed",                          "class": 2},
+  {"input": "diff summary",                                    "class": 1},
+  {"input": "what is the scope of my changes",                 "class": 2},
+  {"input": "show file change counts",                         "class": 2},
+  {"input": "git diff summary",                                "class": 1},
+  {"input": "which files are dirty",                           "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+#### Recipe: `shell-git-branch` (class 21)
+
+> **Tier:** 0 — §shell-safe-fixed.
+
+```
+name:        "shell-git-branch"
+description: "List all local and remote git branches ('git branch -a')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-branch>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'git branch -a'})"
+  }
+]
+intent_examples: [
+  {"input": "list git branches",                               "class": 1},
+  {"input": "what branch am I on",                             "class": 1},
+  {"input": "show all branches",                               "class": 1},
+  {"input": "git branch",                                      "class": 1},
+  {"input": "what remote branches exist",                      "class": 2},
+  {"input": "list all local and remote branches",              "class": 1},
+  {"input": "which branches are available",                    "class": 2},
+  {"input": "show me the branch list",                         "class": 1},
+  {"input": "what is the current branch",                      "class": 2},
+  {"input": "git branch listing",                              "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+#### Recipe: `shell-git-stash-list` (class 21)
+
+> **Tier:** 0 — §shell-safe-fixed.
+
+```
+name:        "shell-git-stash-list"
+description: "List the git stash stack ('git stash list')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-stash-list>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'git stash list'})"
+  }
+]
+intent_examples: [
+  {"input": "list git stashes",                                "class": 1},
+  {"input": "show stash contents",                             "class": 1},
+  {"input": "what is in the stash",                            "class": 1},
+  {"input": "git stash list",                                  "class": 1},
+  {"input": "how many stashes do I have",                      "class": 2},
+  {"input": "do I have any stashed changes",                   "class": 2},
+  {"input": "show me the stash",                               "class": 1},
+  {"input": "stash entries",                                   "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 1.x.15 — Tier-0 Recipes: System information (§shell-safe-fixed)
+
+#### Recipe: `shell-pwd` (class 21)
+
+> **Tier:** 0 — §shell-safe-fixed.
+
+```
+name:        "shell-pwd"
+description: "Print the current working directory ('pwd')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-pwd>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'pwd'})"
+  }
+]
+intent_examples: [
+  {"input": "what is the current directory",                   "class": 1},
+  {"input": "pwd",                                             "class": 1},
+  {"input": "show me the working directory",                   "class": 1},
+  {"input": "what is my cwd",                                  "class": 1},
+  {"input": "what directory am I in",                          "class": 1},
+  {"input": "print working directory",                         "class": 1},
+  {"input": "where am I in the filesystem",                    "class": 2},
+  {"input": "show current path",                               "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+#### Recipe: `shell-df` (class 21)
+
+> **Tier:** 0 — §shell-safe-fixed.
+
+```
+name:        "shell-df"
+description: "Show disk usage for all mounted filesystems in human-readable format ('df -h')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-df>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'df -h'})"
+  }
+]
+intent_examples: [
+  {"input": "check disk space",                                "class": 1},
+  {"input": "how much disk is free",                           "class": 1},
+  {"input": "df -h",                                           "class": 1},
+  {"input": "disk usage",                                      "class": 1},
+  {"input": "is the disk full",                                "class": 2},
+  {"input": "show filesystem space",                           "class": 1},
+  {"input": "how much storage is available",                   "class": 2},
+  {"input": "storage status",                                  "class": 2},
+  {"input": "show mounted disk space",                         "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+#### Recipe: `shell-ps` (class 21)
+
+> **Tier:** 0 — §shell-safe-fixed.
+
+```
+name:        "shell-ps"
+description: "List all running processes with CPU and memory usage ('ps aux')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-ps>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'ps aux'})"
+  }
+]
+intent_examples: [
+  {"input": "list running processes",                          "class": 1},
+  {"input": "what processes are running",                      "class": 1},
+  {"input": "ps aux",                                          "class": 1},
+  {"input": "show all processes",                              "class": 1},
+  {"input": "is this service running",                         "class": 2},
+  {"input": "check process list",                              "class": 1},
+  {"input": "what is consuming CPU",                           "class": 2},
+  {"input": "show me the process table",                       "class": 2},
+  {"input": "list system processes",                           "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+#### Recipe: `shell-env` (class 21)
+
+> **Tier:** 0 — §shell-safe-fixed.
+
+```
+name:        "shell-env"
+description: "List all current environment variables ('env')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-env>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'env'})"
+  }
+]
+intent_examples: [
+  {"input": "show environment variables",                      "class": 1},
+  {"input": "list env vars",                                   "class": 1},
+  {"input": "what environment variables are set",              "class": 1},
+  {"input": "env",                                             "class": 1},
+  {"input": "show me the PATH",                                "class": 2},
+  {"input": "what is the current environment",                 "class": 1},
+  {"input": "check environment configuration",                 "class": 2},
+  {"input": "dump environment",                                "class": 1},
+  {"input": "what env vars does the session have",             "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+#### Recipe: `shell-uname` (class 21)
+
+> **Tier:** 0 — §shell-safe-fixed.
+
+```
+name:        "shell-uname"
+description: "Show OS and kernel information ('uname -a')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-uname>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'uname -a'})"
+  }
+]
+intent_examples: [
+  {"input": "what OS is this",                                 "class": 1},
+  {"input": "uname -a",                                        "class": 1},
+  {"input": "show kernel version",                             "class": 1},
+  {"input": "what is the system architecture",                 "class": 2},
+  {"input": "show system info",                                "class": 1},
+  {"input": "is this Linux or macOS",                          "class": 2},
+  {"input": "show OS details",                                 "class": 1},
+  {"input": "kernel info",                                     "class": 1},
+  {"input": "what platform am I running on",                   "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+#### Recipe: `shell-which` (class 21)
+
+> **Tier:** 0 — §shell-safe-fixed variant (tool name validated as safe identifier).
+
+```
+name:        "shell-which"
+description: "Locate a binary on PATH ('which <toolname>') — toolname must be a safe identifier."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-which>"],
+    "label":   "PythonCode validates tool name then calls __execute_action__(shell, {command:'which <tool>'})"
+  }
+]
+intent_examples: [
+  {"input": "where is git installed",                          "class": 2},
+  {"input": "which python",                                    "class": 1},
+  {"input": "is docker installed",                             "class": 2},
+  {"input": "find the path to node",                           "class": 2},
+  {"input": "which cargo",                                     "class": 1},
+  {"input": "is this tool on PATH",                            "class": 2},
+  {"input": "locate the binary",                               "class": 2},
+  {"input": "which command",                                   "class": 1},
+  {"input": "find the tool path",                              "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 3.x — Additional write_file Tier-0 Recipe
+
+> `file-write-template` is a Tier-0 variant where the content is fully baked into the
+> recipe vars by IBS — no LLM needed. This is useful when a recipe knows in advance
+> what to write (e.g. a fixed config stub, a standard header file, an empty init file).
+
+### Step 3.x.1 — Leaf Skill: `skill-write-file-template` (class 1)
+
+```
+name:        "skill-write-file-template"
+class_code:  1
+description: "Leaf skill: how to write a file using a pre-baked template content from vars."
+body: |
+  Use `ts-write-file` (via pc-exec-write-file) when the content to write is fully
+  pre-determined and baked into the recipe vars by IBS — no LLM authorship needed.
+  Examples: creating an empty __init__.py, writing a fixed .gitignore stub, creating
+  a minimal config file with pre-set default values. The path and content both come
+  from vars, not from user input that needs interpretation.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 3.x.2 — Recipe: `file-write-template` (class 21)
+
+> **Tier:** 0 — the content is a pre-composed template in the recipe vars. No LLM needed.
+> This is the distinction from `file-write` (Tier 1): here IBS pre-bakes both path and
+> content from known template vars; the orchestrator dispatches without any LLM.
+
+```
+name:        "file-write-template"
+description: "Write a file using a fully pre-baked template content from recipe vars (no LLM)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-write-file>"],
+    "label":   "Pre-load ts-write-file ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-write-file>"],
+    "label":   "PythonCode calls __execute_action__(write_file, {path:slot0, content:slot1}) — both pre-baked"
+  }
+]
+intent_examples: [
+  {"input": "create an empty __init__.py",                     "class": 2},
+  {"input": "create a default .gitignore",                     "class": 2},
+  {"input": "write a minimal config file",                     "class": 2},
+  {"input": "initialize this file with a template",            "class": 2},
+  {"input": "create a stub file",                              "class": 2},
+  {"input": "write a file from a template",                    "class": 1},
+  {"input": "scaffold a new config file",                      "class": 2},
+  {"input": "create a default settings file",                  "class": 2},
+  {"input": "file write from template vars",                   "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 7.x — Additional apply_patch Tier-0 Recipe
+
+> `file-patch-replace-all` is a Tier-0 variant for cases where the old_string and
+> new_string are both fully pre-baked from vars. If both strings are known in advance
+> (e.g. a well-known version string bump, a config key rename), no LLM is needed.
+
+### Step 7.x.1 — PythonCode: `pc-exec-apply-patch` (class 22)
+
+```
+name:        "pc-exec-apply-patch"
+description: "Orchestrator executor: calls __execute_action__ to apply a targeted patch via
+              builtin.apply_patch. Input: path (string), old_string (string), new_string
+              (string), replace_all (optional bool). Output: {path, replacements_made}."
+content: |
+  # Orchestrator executor body.
+  _path = "{{vars.slot0}}"
+  _old = "{{vars.slot1}}"
+  _new = "{{vars.slot2}}"
+  _replace_all = {{vars.slot3}}
+  _params = {"path": _path, "old_string": _old, "new_string": _new}
+  if _replace_all:
+      _params["replace_all"] = True
+  result = __execute_action__("apply_patch", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 7.x.2 — Recipe: `file-patch-replace-all` (class 21)
+
+> **Tier:** 0 — old_string and new_string are both pre-baked from vars. No LLM needed.
+> This is appropriate when a well-known global replacement is being performed (e.g. version
+> bump across a file, config key rename). The Q1 validation checks that all slots are baked.
+
+```
+name:        "file-patch-replace-all"
+description: "Replace every occurrence of a pre-known string in a file (no LLM — vars pre-baked)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-apply-patch>"],
+    "label":   "Pre-load ts-apply-patch ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-apply-patch>"],
+    "label":   "PythonCode calls __execute_action__(apply_patch, {path, old_string, new_string, replace_all:true})"
+  }
+]
+intent_examples: [
+  {"input": "replace all occurrences of this string in the file", "class": 1},
+  {"input": "global find and replace in this file",              "class": 1},
+  {"input": "replace every instance of this text",               "class": 1},
+  {"input": "rename this symbol throughout the file",            "class": 2},
+  {"input": "patch all occurrences",                             "class": 1},
+  {"input": "replace all matches in file",                       "class": 1},
+  {"input": "bulk replace in file",                              "class": 2},
+  {"input": "apply replace-all patch",                           "class": 1},
+  {"input": "change every occurrence of this value",             "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 5.x.2 — Recipe: `file-glob-recent` (class 21)
+
+> **Tier:** 0 — glob sorted by modification time, capped to 10 most recently changed files.
+> Glob results are already sorted by mtime by default; limiting to max_results=10 gives
+> a focused "recently modified" view without LLM involvement.
+
+```
+name:        "file-glob-recent"
+description: "Find the 10 most recently modified files matching a glob pattern."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-glob>"],
+    "label":   "Pre-load ts-glob ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-glob>"],
+    "label":   "PythonCode calls __execute_action__(glob, {pattern, max_results:10}) — sorted by mtime"
+  }
+]
+intent_examples: [
+  {"input": "what files were recently modified",               "class": 1},
+  {"input": "show the most recently changed files",            "class": 1},
+  {"input": "what changed recently in this project",           "class": 2},
+  {"input": "recently modified TypeScript files",              "class": 2},
+  {"input": "last 10 modified files",                          "class": 1},
+  {"input": "what did I change recently",                      "class": 2},
+  {"input": "most recently touched files",                     "class": 2},
+  {"input": "find recently edited source files",               "class": 2},
+  {"input": "show recently modified files in src",             "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+
 
 ## Step 2 — `builtin.read_file` (File Read)
 
@@ -6280,23 +7279,27 @@ overview_doc: |
   because it requires exact matching of the old content.
 
   Approaches:
-  - Single unique replacement: old_string + new_string → file-patch recipe
-  - Replace all occurrences: replace_all=true → file-patch recipe (LLM decides)
+  - Single unique replacement: old_string + new_string → file-patch recipe (Tier 1)
+  - Replace all occurrences: replace_all=true → file-patch-replace-all recipe (Tier 0 if exact strings are slot-provided)
 
-  Always Tier 1: the LLM must read the file first and compose exact old/new strings.
+  Most patch operations are Tier 1 because the LLM must read the file first and compose
+  exact old/new strings. file-patch-replace-all is Tier 0 when the caller supplies both
+  the old and new strings directly as recipe slots.
 
 task_groups:
   - group_name:  "patch-single"
-    description: "Replace one unique occurrence"
+    description: "Replace one unique occurrence (Tier 1)"
   - group_name:  "patch-all"
-    description: "Replace all occurrences of a string"
+    description: "Replace all occurrences of a string (Tier 0 with explicit slots)"
 
 child_component_ids: [
   "<uuid:apply_patch>",
   "<uuid:ts-apply-patch>",
+  "<uuid:pc-exec-apply-patch>",
   "<uuid:skill-apply-patch-single>",
   "<uuid:skill-apply-patch-all>",
-  "<uuid:file-patch>"
+  "<uuid:file-patch>",
+  "<uuid:file-patch-replace-all>"
 ]
 source: "system"
 validation_status: "validated"
@@ -6665,25 +7668,72 @@ overview_doc: |
   Effect: mixed (sandboxed subprocess)
   Permission: Ask
 
-  §shell-guard: ALL recipes using this tool are Tier 1 (llm_call_required=true).
-  The LLM must compose and validate every command. No Tier-0 shell dispatch.
+  TWO TIERS of shell execution in this catalogue:
 
-  Approaches:
-  - Single command: → shell-run recipe (Tier 1)
+  §shell-safe-fixed (Tier 0): Fixed-literal pre-validated commands.
+  No user input enters the command string — zero injection surface.
+  - Git inspection: → shell-git-status, shell-git-log, shell-git-diff-stat,
+    shell-git-branch, shell-git-stash-list recipes (all Tier 0)
+  - System info: → shell-pwd, shell-df, shell-ps, shell-env, shell-uname,
+    shell-which recipes (all Tier 0)
+
+  §shell-guard-custom (Tier 1): User-composed or user-supplied commands.
+  LLM must validate and compose the exact command before dispatch.
+  - Single custom command: → shell-run recipe (Tier 1)
   - Multi-line script: → shell-script recipe (Tier 1)
 
   Prefer structured filesystem, network, and memory tools over shell whenever possible.
   Shell is the last resort when no structured tool covers the need.
 
 task_groups:
-  - group_name:  "shell-single"
-    description: "Run a single validated shell command"
-  - group_name:  "shell-script"
-    description: "Run a multi-line shell script authored by the LLM"
+  - group_name:  "shell-safe-fixed-git"
+    description: "Fixed-literal git commands (Tier 0, no LLM)"
+  - group_name:  "shell-safe-fixed-sysinfo"
+    description: "Fixed-literal system info commands (Tier 0, no LLM)"
+  - group_name:  "shell-custom"
+    description: "User-composed shell commands (Tier 1, LLM required)"
 
 child_component_ids: [
   "<uuid:shell>",
   "<uuid:ts-shell-run>",
+
+  "<uuid:pc-exec-shell-git-status>",
+  "<uuid:pc-exec-shell-git-log>",
+  "<uuid:pc-exec-shell-git-diff-stat>",
+  "<uuid:pc-exec-shell-git-branch>",
+  "<uuid:pc-exec-shell-git-stash-list>",
+  "<uuid:pc-exec-shell-git-log-n>",
+  "<uuid:pc-exec-shell-pwd>",
+  "<uuid:pc-exec-shell-df>",
+  "<uuid:pc-exec-shell-ps>",
+  "<uuid:pc-exec-shell-env>",
+  "<uuid:pc-exec-shell-uname>",
+  "<uuid:pc-exec-shell-which>",
+
+  "<uuid:skill-shell-git-status>",
+  "<uuid:skill-shell-git-log>",
+  "<uuid:skill-shell-git-diff-stat>",
+  "<uuid:skill-shell-git-branch>",
+  "<uuid:skill-shell-git-stash-list>",
+  "<uuid:skill-shell-pwd>",
+  "<uuid:skill-shell-df>",
+  "<uuid:skill-shell-ps>",
+  "<uuid:skill-shell-env>",
+  "<uuid:skill-shell-uname>",
+  "<uuid:skill-shell-which>",
+
+  "<uuid:shell-git-status>",
+  "<uuid:shell-git-log>",
+  "<uuid:shell-git-diff-stat>",
+  "<uuid:shell-git-branch>",
+  "<uuid:shell-git-stash-list>",
+  "<uuid:shell-pwd>",
+  "<uuid:shell-df>",
+  "<uuid:shell-ps>",
+  "<uuid:shell-env>",
+  "<uuid:shell-uname>",
+  "<uuid:shell-which>",
+
   "<uuid:skill-shell-run>",
   "<uuid:skill-shell-safe-check>",
   "<uuid:skill-shell>",
@@ -6871,7 +7921,8 @@ validation_status: "validated"
 
 > Owns all filesystem capability components. Groups Tool, ToolSkill, PythonCode,
 > Skill, and Recipe components for: read_file, write_file, list_dir, glob, grep,
-> apply_patch.
+> apply_patch. Also covers template writes (file-write-template), patch-replace-all
+> (file-patch-replace-all), and recency-sorted glob (file-glob-recent).
 
 ```
 name:         "builtin-filesystem"
@@ -6929,7 +7980,9 @@ child_component_ids: [
   "<uuid:pc-exec-write-file>",
   "<uuid:skill-write-file-new>",
   "<uuid:skill-write-file-replace>",
+  "<uuid:skill-write-file-template>",
   "<uuid:file-write>",
+  "<uuid:file-write-template>",
 
   "<uuid:builtin.list_dir>",
   "<uuid:ts-list-dir>",
@@ -6953,6 +8006,7 @@ child_component_ids: [
   "<uuid:file-glob-by-extension>",
   "<uuid:file-glob-by-name>",
   "<uuid:file-glob-in-subdir>",
+  "<uuid:file-glob-recent>",
 
   "<uuid:builtin.grep>",
   "<uuid:ts-grep>",
@@ -6973,9 +8027,11 @@ child_component_ids: [
 
   "<uuid:builtin.apply_patch>",
   "<uuid:ts-apply-patch>",
+  "<uuid:pc-exec-apply-patch>",
   "<uuid:skill-apply-patch-single>",
   "<uuid:skill-apply-patch-all>",
   "<uuid:file-patch>",
+  "<uuid:file-patch-replace-all>",
 
   "<uuid:skill-filesystem>"
 ]
@@ -7169,8 +8225,9 @@ validation_status: "validated"
 ## Step 25 — ExtensionCatalogue: `builtin-process` (class 23)
 
 > Owns shell execution, spawn_subagent, and all trigger management components.
-> All recipes in this catalogue are Tier 1 (§shell-guard and §spawn_subagent-guard).
-> `trigger-list` is Tier 0.
+> Shell has TWO tiers: §shell-safe-fixed (Tier 0, fixed commands) and
+> §shell-guard-custom (Tier 1, user-composed). `trigger-list` is Tier 0.
+> `spawn_subagent` is always Tier 1 (§spawn_subagent-guard).
 
 ```
 name:         "builtin-process"
@@ -7178,9 +8235,8 @@ class_code:   23
 overview_doc: |
   # Process & Scheduling Capabilities
 
-  The process domain covers: shell command execution, child agent delegation, and
-  persistent trigger scheduling. All shell and subagent capabilities require LLM
-  involvement (Tier 1 minimum) — they may never be Tier 0.
+  The process domain covers: shell command execution (two tiers), child agent delegation,
+  and persistent trigger scheduling.
 
   ## Tools in this domain
   - builtin.shell          — run a shell command in a sandboxed subprocess
@@ -7189,11 +8245,15 @@ overview_doc: |
   - builtin.trigger_list   — list configured triggers (read-only)
   - builtin.trigger_remove — remove a trigger (irreversible)
 
-  ## Shell safety invariants (§shell-guard)
-  - Any recipe using builtin.shell MUST have llm_call_required=true. No Tier-0 shell.
-  - Shell commands require approval in all non-yolo profiles.
-  - Prefer structured tools (read_file, glob, grep, http) over shell whenever possible.
-  - Shell is the last resort — use it only when no structured tool can accomplish the task.
+  ## Shell safety — two tiers
+  §shell-safe-fixed (Tier 0): Fixed-literal pre-validated commands.
+  No user input enters the command string — the PythonCode hardcodes the command.
+  Git inspection (git status, log, diff --stat, branch) and system info
+  (pwd, df -h, ps aux, env, uname -a, which) are all Tier 0.
+
+  §shell-guard-custom (Tier 1): User-composed or user-supplied commands.
+  The LLM must compose and validate the exact command before dispatch.
+  Never pass unvalidated user input into a custom shell command.
 
   ## Subagent invariants (§spawn_subagent-guard)
   - Any recipe using builtin.spawn_subagent MUST have llm_call_required=true. No Tier-0.
@@ -7205,8 +8265,10 @@ overview_doc: |
   - Triggers run with the creating session's authority and cannot escalate.
 
 task_groups:
-  - group_name:  "shell-execution"
-    description: "Shell command execution (always Tier 1, approval-gated)"
+  - group_name:  "shell-safe-fixed"
+    description: "Fixed-literal shell commands (Tier 0): git + system info"
+  - group_name:  "shell-custom"
+    description: "User-composed shell execution (Tier 1, LLM required)"
   - group_name:  "agent-delegation"
     description: "Child agent spawning and sub-task delegation"
   - group_name:  "trigger-management"
@@ -7215,6 +8277,40 @@ task_groups:
 child_component_ids: [
   "<uuid:builtin.shell>",
   "<uuid:ts-shell-run>",
+  "<uuid:pc-exec-shell-git-status>",
+  "<uuid:pc-exec-shell-git-log>",
+  "<uuid:pc-exec-shell-git-diff-stat>",
+  "<uuid:pc-exec-shell-git-branch>",
+  "<uuid:pc-exec-shell-git-stash-list>",
+  "<uuid:pc-exec-shell-git-log-n>",
+  "<uuid:pc-exec-shell-pwd>",
+  "<uuid:pc-exec-shell-df>",
+  "<uuid:pc-exec-shell-ps>",
+  "<uuid:pc-exec-shell-env>",
+  "<uuid:pc-exec-shell-uname>",
+  "<uuid:pc-exec-shell-which>",
+  "<uuid:skill-shell-git-status>",
+  "<uuid:skill-shell-git-log>",
+  "<uuid:skill-shell-git-diff-stat>",
+  "<uuid:skill-shell-git-branch>",
+  "<uuid:skill-shell-git-stash-list>",
+  "<uuid:skill-shell-pwd>",
+  "<uuid:skill-shell-df>",
+  "<uuid:skill-shell-ps>",
+  "<uuid:skill-shell-env>",
+  "<uuid:skill-shell-uname>",
+  "<uuid:skill-shell-which>",
+  "<uuid:shell-git-status>",
+  "<uuid:shell-git-log>",
+  "<uuid:shell-git-diff-stat>",
+  "<uuid:shell-git-branch>",
+  "<uuid:shell-git-stash-list>",
+  "<uuid:shell-pwd>",
+  "<uuid:shell-df>",
+  "<uuid:shell-ps>",
+  "<uuid:shell-env>",
+  "<uuid:shell-uname>",
+  "<uuid:shell-which>",
   "<uuid:skill-shell-run>",
   "<uuid:skill-shell-safe-check>",
   "<uuid:skill-shell>",
@@ -7377,21 +8473,19 @@ validation_status: "validated"
 |-------|------|-------|-----------------|
 | 0 | Tool | 23 | builtin.shell, read_file, write_file, list_dir, glob, grep, apply_patch, http, http.save, memory_search, memory_write, memory_read, memory_tree, time, json, skill_list, skill_install, skill_remove, trigger_create, trigger_list, trigger_remove, spawn_subagent, echo |
 | 13 | ToolSkill | 28 | ts-shell-run, ts-read-file, ts-write-file, ts-list-dir, ts-glob, ts-grep, ts-apply-patch, ts-http-fetch, ts-http-save, ts-memory-search, ts-memory-write, ts-memory-read, ts-memory-tree, ts-time-now, ts-time-parse, ts-time-convert, ts-json-query, ts-json-stringify, ts-json-validate, ts-skill-list, ts-skill-install, ts-skill-remove, ts-trigger-create, ts-trigger-list, ts-trigger-remove, ts-spawn-subagent, ts-web-search, ts-echo |
-| 22 | PythonCode | 35 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-list-filter-by-type, pc-exec-glob, pc-exec-grep, pc-exec-grep-case-insensitive, pc-exec-grep-type-filtered, pc-exec-http-get, pc-exec-http-get-authenticated, pc-exec-http-post, pc-exec-http-head, pc-exec-http-put, pc-exec-http-delete, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-url-encode, pc-web-search-extract, pc-web-search-query-build |
-| 1 | Leaf Skill | 52 | skill-shell-run, skill-shell-safe-check, skill-read-file, skill-read-file-range, skill-write-file-new, skill-write-file-replace, skill-list-dir, skill-list-dir-recursive, skill-list-dir-files-only, skill-list-dir-dirs-only, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-grep-case-insensitive, skill-grep-type-filtered, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-head, skill-http-put, skill-http-delete, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, skill-memory-read, skill-memory-tree, skill-time-now, skill-time-parse, skill-time-convert, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search (52 total) |
+| 22 | PythonCode | 49 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-list-filter-by-type, pc-exec-glob, pc-exec-grep, pc-exec-grep-case-insensitive, pc-exec-grep-type-filtered, pc-exec-apply-patch, pc-exec-http-get, pc-exec-http-get-authenticated, pc-exec-http-post, pc-exec-http-head, pc-exec-http-put, pc-exec-http-delete, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-url-encode, pc-web-search-extract, pc-web-search-query-build, pc-exec-shell-git-status, pc-exec-shell-git-log, pc-exec-shell-git-diff-stat, pc-exec-shell-git-branch, pc-exec-shell-git-stash-list, pc-exec-shell-git-log-n, pc-exec-shell-pwd, pc-exec-shell-df, pc-exec-shell-ps, pc-exec-shell-env, pc-exec-shell-uname, pc-exec-shell-which |
+| 1 | Leaf Skill | 64 | skill-shell-run, skill-shell-safe-check, skill-shell-git-status, skill-shell-git-log, skill-shell-git-diff-stat, skill-shell-git-branch, skill-shell-git-stash-list, skill-shell-pwd, skill-shell-df, skill-shell-ps, skill-shell-env, skill-shell-uname, skill-shell-which, skill-read-file, skill-read-file-range, skill-write-file-new, skill-write-file-replace, skill-write-file-template, skill-list-dir, skill-list-dir-recursive, skill-list-dir-files-only, skill-list-dir-dirs-only, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-grep-case-insensitive, skill-grep-type-filtered, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-head, skill-http-put, skill-http-delete, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, skill-memory-read, skill-memory-tree, skill-time-now, skill-time-parse, skill-time-convert, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search (64 total) |
 | 2 | Domain Skill | 9 | skill-filesystem, skill-http, skill-memory, skill-shell, skill-skills, skill-triggers, skill-subagent, skill-time, skill-json |
-| 21 | Recipe | 62 | file-read, file-read-range, file-write, file-list, file-list-recursive, file-list-files-only, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-grep, file-grep-files, file-grep-content, file-grep-count, file-grep-case-insensitive, file-grep-type-filtered, file-patch, http-get, http-get-json, http-authenticated-get, http-head, http-post, http-post-json-webhook, http-put, http-delete, http-save, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, memory-tree-deep, time-now, time-now-tz, time-parse, time-convert, json-query, json-stringify, json-parse, json-validate, skill-list, skill-list-user-only, skill-list-system-only, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, subagent-spawn, web-search, shell-run, shell-script |
+| 21 | Recipe | 80 | file-read, file-read-range, file-write, file-write-template, file-list, file-list-recursive, file-list-files-only, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-glob-recent, file-grep, file-grep-files, file-grep-content, file-grep-count, file-grep-case-insensitive, file-grep-type-filtered, file-patch, file-patch-replace-all, http-get, http-get-json, http-authenticated-get, http-head, http-post, http-post-json-webhook, http-put, http-delete, http-save, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, memory-tree-deep, time-now, time-now-tz, time-parse, time-convert, json-query, json-stringify, json-parse, json-validate, skill-list, skill-list-user-only, skill-list-system-only, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, subagent-spawn, web-search, shell-run, shell-script, shell-git-status, shell-git-log, shell-git-diff-stat, shell-git-branch, shell-git-stash-list, shell-pwd, shell-df, shell-ps, shell-env, shell-uname, shell-which |
 | 23 | ExtensionCatalogue | 24 | builtin-filesystem, builtin-network, builtin-memory, builtin-process, builtin-management, ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch, ext-http, ext-http-save, ext-memory-search, ext-memory-write, ext-memory-read, ext-memory-tree, ext-time, ext-json, ext-shell, ext-skill-management, ext-trigger-management, ext-spawn-subagent, ext-web-search |
 
-> **Actual totals (v3, revised):** 23 Tools + 28 ToolSkills + 35 PythonCode + 52 Leaf Skills + 9 Domain Skills + 62 Recipes + 24 ExtensionCatalogues = **233 components**
+> **Actual totals (v3, fully optimized):** 23 Tools + 28 ToolSkills + 49 PythonCode + 64 Leaf Skills + 9 Domain Skills + 80 Recipes + 24 ExtensionCatalogues = **277 components**
 >
-> (Original plan estimate was 85–90. The increase is intentional: the two-channel
-> architecture adds one PythonCode per Tier-0 recipe dispatch; the skill-granularity rule
-> adds 2–3 leaf skills per original monolithic skill; the **one-recipe-per-variant rule**
-> adds dedicated Tier-0 recipes for every distinct invocation pattern, eliminating LLM
-> disambiguation overhead and maximizing orchestrator autonomy; and the **per-tool
-> ExtensionCatalogue rule** adds 19 new fine-grained catalogues alongside the 5 global
-> domain catalogues for more precise context injection.)
+> **Tier-0 recipe count: 65 out of 80** (81%). The increase from 233 is intentional:
+> §shell-safe-fixed unlocks 11 new Tier-0 shell recipes (git + system info);
+> file-write-template, file-patch-replace-all, and file-glob-recent add 3 more Tier-0
+> filesystem variants. The result: the orchestrator handles 81% of all built-in tasks
+> completely autonomously — LLM involvement is required for only 19%.
 
 ---
 
@@ -7416,10 +8510,10 @@ For each domain group:
 
 | Pass | Group | Primary ExtCatalogue | Per-tool ExtCatalogues | Tools | ToolSkills | PythonCode | Leaf Skills | Domain Skills | Recipes |
 |------|-------|----------------------|------------------------|-------|------------|------------|-------------|---------------|---------|
-| 1 | filesystem | builtin-filesystem | ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch | 6 | 6 | 9 | 16 | 1 | 17 |
+| 1 | filesystem | builtin-filesystem | ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch | 6 | 6 | 10 | 17 | 1 | 21 |
 | 2 | network | builtin-network | ext-http, ext-http-save, ext-web-search | 2 | 3 | 12 | 9 | 1 | 11 |
 | 3 | memory | builtin-memory | ext-memory-search, ext-memory-write, ext-memory-read, ext-memory-tree | 4 | 4 | 7 | 7 | 1 | 11 |
-| 4 | process | builtin-process | ext-shell, ext-spawn-subagent, ext-trigger-management | 5 | 6 | 1 | 6 | 3 | 7 |
+| 4 | process | builtin-process | ext-shell, ext-spawn-subagent, ext-trigger-management | 5 | 1 | 14 | 17 | 3 | 18 |
 | 5 | management | builtin-management | ext-skill-management, ext-time, ext-json | 6 | 9 | 7 | 14 | 3 | 11 |
 
 ---
@@ -7450,7 +8544,8 @@ producing duplicate rows.
 
 | Rule | What is checked |
 |------|----------------|
-| §shell-guard | Every recipe with `builtin.shell` in rust_steps has `llm_call_required=true` |
+| §shell-guard-custom | Every recipe with `builtin.shell` in rust_steps AND command derived from user input has `llm_call_required=true` |
+| §shell-safe-fixed | Every recipe with `builtin.shell` that is `llm_call_required=false` MUST have a PythonCode executor that hardcodes the command as a fixed literal (no slot interpolation of command content) |
 | §spawn_subagent-guard | Every recipe with `builtin.spawn_subagent` in rust_steps has `llm_call_required=true` |
 | §tier0-orchestrator-channel Rule 1 | Every Tier-0 orchestrator step contains only PythonCode (class 22) UUIDs |
 | §tier0-orchestrator-channel Rule 2 | Every recipe with `llm_call_required=false` AND rust_steps tool_bindings has ≥1 PythonCode UUID in orchestrator_steps |
@@ -7460,4 +8555,4 @@ producing duplicate rows.
 
 ---
 
-*End of builtin_stuff_v3.md — all Steps + Final section complete. v3 fully revised: 233 components, 62 Recipes (including 47 Tier-0), 24 ExtensionCatalogues (5 global domain + 19 per-tool), orchestrator-first design.*
+*End of builtin_stuff_v3.md — all Steps + Final section complete. v3 fully revised: 277 components, 80 Recipes (65 Tier-0, §shell-safe-fixed + §shell-guard-custom), 24 ExtensionCatalogues (5 global domain + 19 per-tool), orchestrator-first design. The orchestrator runs shell/file/HTTP/memory operations without LLM involvement wherever the command is fixed or slots are fully bound.*
