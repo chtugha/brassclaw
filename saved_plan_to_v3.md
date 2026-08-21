@@ -3111,6 +3111,48 @@ component references** (§0.23.7), not a new class.
 > FIND-NEW-17 revision (intent seeding moves to graduation / Phase N; Phase A still
 > round-trips `variants` in the store so the data is preserved).
 
+#### 0.23.12 Session summarization — considered and rejected (design decision)
+
+**Background.** A prior design pass (the "Step 13" / Answer 3 idea) proposed an
+automatic **session-summarize recipe** that would run on session completion: two
+PythonCode leaves (LLM-assisted fact extractor + formatter) + a `memory_write`
+ToolSkill, appending a durable summary to the daily memory log so future turns
+could `memory_search` for prior context. The identified gap was real: the Kohai
+packet store (`crates/brassclaw_interceptor/`) holds prompts + chat history as a
+**forensic audit store** (and, after §0.23.7, as self-improvement evidence held by
+component-UUID reference), but it is **not agent-queryable** via `memory_search` —
+so there was no automatic mechanism writing durable, agent-retrievable session
+records.
+
+**Decision (collaborative Q&A): do NOT auto-produce a durable session record.**
+Rely solely on the **agent's own `memory_write`** during the session for durable,
+agent-queryable context. Rationale:
+
+- An LLM-generated **prose summary** is lossy — it can drop or hallucinate detail.
+  Auto-writing a lossy record into the workspace memory system risks corrupting the
+  agent's recall with low-confidence content.
+- The trusted path is the agent **deliberately** writing durable notes (decisions,
+  facts, outcomes) via `memory_write` as it works — the same mechanism that already
+  exists. The agent is in the best position to judge what is worth persisting.
+- The Kohai packet store stays **forensic + self-improvement evidence**, intentionally
+  **separate** from the memory system (Answer 3 invariant preserved). No store merge.
+
+**No plan step is added for session summarization.** This subsection exists to
+record the decision so a future pass does not re-propose the "Step 13" recipe as a
+forgotten gap.
+
+> **Reversal path (recorded preference, NOT to be implemented unless this decision
+> is explicitly revisited).** If session summarization is ever brought back in, the
+> agreed shape is: a **structured record** (decisions, files touched, outcomes, open
+> questions) — **not** a lossy prose summary — **owned by the Kohai** (reusing its
+> already-captured prompt+chat history by component-UUID reference per §0.23.7, so
+> there is no double-capture), **writing to the memory system** via `memory_write`
+> (the Kohai packet store stays separate), triggered **on session completion**, and
+> landing in **Phase K** alongside the idle self-improvement sweep. It would be a
+> builtin `source='system'` component graduating via the automated-auditable Q2
+> (Phase P.0). This reversal path is documented only; it is out of scope for the
+> current plan.
+
 ---
 
 ## 1. Implementation Phases
