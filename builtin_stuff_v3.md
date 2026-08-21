@@ -32,11 +32,19 @@
 > - **Every distinct variant of a tool call gets its own Tier-0 recipe.** Three recipes covering
 >   `glob` by extension, by name, and in a subdir are better than one Tier-1 recipe that asks the
 >   LLM to figure out which pattern to use.
-> - **More intent examples = better routing.** Each recipe should have 6–10 intent examples
->   covering the full natural-language range a user would express for that task.
+> - **More intent examples = better routing.** Each recipe should have 10+ intent examples
+>   covering the full natural-language range a user would express for that task. Include exact
+>   command-line-style inputs (e.g. `"git status"`, `"ls -l"`) as well as natural language.
 > - **One function per leaf skill.** A leaf skill describes exactly one approach to one tool.
 >   If a tool has three common usage patterns, author three leaf skills — not one monolithic skill
 >   that covers all patterns.
+> - **The orchestrator NEVER calls Rust directly.** Rust is not an agent. The orchestrator
+>   (PythonCode in the orchestrator channel) calls Rust tools via `__execute_action__()`.
+>   The `channel: "rust"` recipe step only pre-loads the ToolSkill binding — it does NOT execute.
+> - **Combine what must be combined; split what can be split.** A combined recipe like
+>   `json-parse-and-query` or `memory-search-and-read` is valid when both steps always happen
+>   together. But a recipe that conditionally does one thing OR another needs an LLM to decide —
+>   and is better split into two Tier-0 recipes with their own intents.
 >
 > ---
 >
@@ -110,7 +118,15 @@
 > - The command is a fixed literal string known at recipe authoring time
 > - No part of the command is derived from user input or slot interpolation
 > - The command is read-only or non-destructive (git status, df, ps, env, uname, pwd, which)
-> - Examples: `git status`, `git log --oneline -20`, `df -h`, `uname -a`, `ps aux`
+> - Examples: `git status`, `git log --oneline -20`, `git diff --name-only HEAD`, `df -h`, `uname -a`, `ps aux`, `git config --list`
+>
+> **The pure-logic PythonCode helper pattern:**
+> PythonCode helpers (class 22) that do NOT call `__execute_action__()` are pure-logic
+> post-processors (string split, CSV parse, list filter, dict pick, etc.). They use only
+> built-in Python operations, no imports, no I/O, no network. They transform data that
+> a preceding tool call returned. Name them `pc-<operation>-<noun>` (e.g. `pc-string-split`,
+> `pc-list-unique`). A recipe that needs two pure-logic steps chains two helpers — it never
+> builds a monolithic helper.
 >
 > **Review corrections applied:** F-01 PythonCode I/O removed; F-02 Tool rows fully
 > specified; F-03 five catalogues; F-04 leaf Skills per tool; F-05 ToolSkill bodies
@@ -5252,6 +5268,7 @@ description: "The memory domain provides four tools for the agent's persistent m
               READING / DISCOVERING:
               — skill-memory-search: Semantic search by topic — use when path is unknown.
               — skill-memory-search-broad: Wide recall with limit=20 for session start.
+              — skill-memory-search-and-read: Search + immediately read the top result.
               — skill-memory-read: Read a specific document by exact path.
               — skill-memory-tree: Browse the directory structure.
 
@@ -5261,13 +5278,17 @@ description: "The memory domain provides four tools for the agent's persistent m
               — skill-memory-write-patch: Targeted patch of an existing memory document.
 
               Decision guide:
-              • Recalling by topic → skill-memory-search
+              • Recalling by topic (summary list) → skill-memory-search
+              • Recalling + reading the top result in one step → skill-memory-search-and-read
               • Session start full recall → skill-memory-search-broad
               • Reading a known file → skill-memory-read
               • Logging progress → skill-memory-write-log
               • Updating permanent context → skill-memory-write-main
               • Patching a section → skill-memory-write-patch
-              • Discovering what files exist → skill-memory-tree"
+              • Discovering what files exist → skill-memory-tree
+
+              Orchestrator note: NEVER use datetime.now() in PythonCode. Always call
+              skill-time-now first to get a timestamp, then pass it to pc-memory-format-entry."
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -9603,6 +9624,8 @@ description: "The JSON domain provides one tool for four JSON operations:
 
               EXTRACTING:
               — skill-json-query: Extract a value by dot/bracket path from a JSON structure.
+              — skill-json-parse-and-query: Parse a JSON string AND immediately extract a field
+                (combined two-step pattern — Tier-0, both pre-baked in vars).
 
               SERIALIZING:
               — skill-json-stringify: Convert a structured value to a pretty-printed JSON string.
@@ -9614,7 +9637,8 @@ description: "The JSON domain provides one tool for four JSON operations:
               — skill-json-validate: Check whether a string is valid JSON (returns {valid, error}).
 
               Decision guide:
-              • Need a field from a JSON response → skill-json-query
+              • Have a structured value, need a field → skill-json-query
+              • Have a JSON string, need a specific field → skill-json-parse-and-query (Tier-0)
               • Need to write JSON to a file or display it → skill-json-stringify
               • Have a raw JSON string, need a dict/list → skill-json-parse
               • Unsure if a string is valid JSON before parsing → skill-json-validate first
