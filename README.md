@@ -33,7 +33,7 @@ BrassClaw is built on a simple principle: **your AI assistant should work for yo
 - **100% local operation** — runs on your own hardware with vLLM, Ollama, or any OpenAI-compatible server; no cloud account required
 - **Your data stays yours** — all information stored locally, encrypted, never leaves your control
 - **Fits consumer hardware** — tuned to work within an 8,192-token context window; 7B models work well with 4 GB VRAM
-- **Defense in depth** — WASM sandbox, capability leases, prompt injection defense, and endpoint allowlisting
+- **Defense in depth** — process sandbox, capability leases, prompt injection defense, and endpoint allowlisting
 - **Open source** — fully auditable, no telemetry or data harvesting
 - **Self learning mechanism** — the design aims to leave more and more tasks to the agent, and to reduce the involvement of an llm
 
@@ -46,12 +46,12 @@ BrassClaw is built on a simple principle: **your AI assistant should work for yo
 ### Home-Use Optimised
 
 - **Token-aware engine** — hard budget of 8,192 total prompt tokens; automatically trims skill context, memory docs, and history to fit any local model
-- **Knowledge-driven tools** — Skills (markdown files) teach the LLM how to use APIs via the `http` tool; no WASM compilation needed for new integrations
+- **Knowledge-driven tools** — Skills (markdown files) teach the LLM how to use APIs via the `http` tool; no compilation needed for new integrations
 - **Skill budgets** — each skill declares its token cost; the selector fits within the 2,048-token skill budget
 
 ### Security First
 
-- **WASM Sandbox** — untrusted tools run in isolated WebAssembly containers with capability-based permissions
+- **Process Sandbox** — untrusted tool subprocesses (shell, docker-exec, git) run in `brassclaw_process_sandbox` with capability leases, scoped filesystems, and endpoint allowlists (replaces the v1 WebAssembly sandbox removed in Phase 4)
 - **Capability Leases** — fine-grained, revocable authority grants for every tool call
 - **Credential Protection** — secrets never exposed to tools; injected at the host boundary with leak detection
 - **Prompt Injection Defense** — pattern detection, content sanitisation, and policy enforcement
@@ -352,11 +352,11 @@ graph TD
     subgraph Kernel["Kernel Boundary (authority, recovery, side-effects)"]
         LLM["LLM Dispatch\nvLLM · Ollama · OpenAI-compat"]
         Tools["Tool Executor"]
-        Sec["Security Layer\nWASM · Capability Leases · Allowlist"]
+        Sec["Security Layer\nProcess Sandbox · Capability Leases · Allowlist"]
     end
 
     subgraph Substrates["Substrates (durable primitives)"]
-        DB["Database\nPostgreSQL · libSQL"]
+        DB["Database\nPostgreSQL"]
         Mem["Memory\nFull-text + Vector + RRF"]
         Skills["Skills\n35+ SKILL.md files"]
         MCP["MCP Servers"]
@@ -374,7 +374,7 @@ graph TD
 
 - **Products** — own the user experience: CLI renders output, WebUI serves the React SPA, Slack/Telegram handle messaging channels
 - **Agent loops** — own behavior: the step loop, tool dispatch, Token Guard trimming, and skill selection
-- **Kernel boundary** — owns authority: LLM provider abstraction, WASM sandboxed tool execution, credential injection, and security policy enforcement
+- **Kernel boundary** — owns authority: LLM provider abstraction, sandboxed subprocess execution (`brassclaw_process_sandbox`), credential injection, and security policy enforcement
 - **Substrates** — own durable primitives: database persistence, hybrid memory search, skill knowledge files, and MCP server connections
 
 ---
@@ -387,7 +387,7 @@ BrassClaw is a fork of [IronClaw](https://github.com/nearai/ironclaw), optimised
 |---|---|---|
 | **Context window** | 128K tokens | 8,192 tokens |
 | **Primary deployment** | Cloud / high-end GPU | vLLM on consumer hardware |
-| **Tool extensions** | WASM-only | Knowledge-driven Skills + WASM |
+| **Tool extensions** | WASM-only | Knowledge-driven Skills + process sandbox |
 | **Server deployment** | Manual | DietPi automated setup |
 | **Recommended model** | Large frontier models | Qwen2.5-7B-Instruct-AWQ (4 GB VRAM) |
 
