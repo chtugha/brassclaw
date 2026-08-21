@@ -695,6 +695,9 @@ mod tests {
             replaces_id: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            variants: Vec::new(),
+            step_descriptions: serde_json::Value::Null,
+            dependency_registry: serde_json::Value::Null,
         };
         let result = ComponentValidator::validate_by_class(
             5,

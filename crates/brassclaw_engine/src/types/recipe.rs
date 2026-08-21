@@ -18,6 +18,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::project::ProjectId;
+use crate::types::ibs::VariablePattern;
 
 /// How a Recipe was sourced.
 ///
@@ -139,6 +140,30 @@ pub struct RecipeStep {
     pub description: String,
 }
 
+/// One variant of a Recipe — a distinct intent the recipe serves (§0.3, §0.16.1).
+///
+/// Persisted in the `variants` JSONB column of `reborn_recipes` (V050). The
+/// canonical authoring model (FIND-P5-03): `variant_key` is the only
+/// human-readable identifier; `step_link` is nullable because legacy Recipe
+/// rows have no step_link until Phase D re-seeds their intent examples.
+/// `variable_patterns` is empty = positional auto-extraction only (§0.17.3).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RecipeVariant {
+    /// Human-readable variant identifier (e.g. "ls-la"). Used by WebUI only.
+    pub variant_key: String,
+    /// Direct IBS input — the step_link formula for this variant.
+    /// `None` for legacy variants not yet migrated to v3 intent inputs.
+    pub step_link: Option<String>,
+    /// Intent expressions for this variant — seeded into `reborn_intent_inputs`
+    /// at Q2 graduation (Phase N, §0.23.5), not on save (FIND-NEW-17).
+    #[serde(default)]
+    pub intent_examples: Vec<String>,
+    /// Optional post-extraction refinement for slot values (§0.17.3).
+    /// Empty = positional auto-extraction only.
+    #[serde(default)]
+    pub variable_patterns: Vec<VariablePattern>,
+}
+
 /// Recipe: ordered sequence of ToolSkill invocations plus a trigger.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Recipe {
@@ -175,6 +200,22 @@ pub struct Recipe {
     pub replaces_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+
+    // v3 authoring model (Phase A). All `#[serde(default)]` so legacy rows
+    // stored as `MemoryDoc.metadata` (StoreBackedRecipeStore path) deserialise
+    // unchanged (FIND-P6-10). `step_descriptions` + `dependency_registry` are
+    // raw JSONB — `fetch_for_turn` parses `step_descriptions` into
+    // `Vec<StepDescriptionEntry>` before calling `build_instruction` (Phase E).
+    /// `Vec<RecipeVariant>` — the variant table for this recipe (§0.16.1).
+    #[serde(default)]
+    pub variants: Vec<RecipeVariant>,
+    /// Authored StepDescription array (§0.4.1) — the IBS authoring model.
+    #[serde(default)]
+    pub step_descriptions: serde_json::Value,
+    /// Per-component flat dependency graph (§0.19). Also on the other 12
+    /// component tables from V055 (Phase J.2); on `reborn_recipes` from V050.
+    #[serde(default)]
+    pub dependency_registry: serde_json::Value,
 }
 
 impl Recipe {
@@ -426,6 +467,9 @@ mod tests {
             replaces_id: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            variants: Vec::new(),
+            step_descriptions: serde_json::Value::Null,
+            dependency_registry: serde_json::Value::Null,
         }
     }
 

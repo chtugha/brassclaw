@@ -1282,6 +1282,9 @@ mod tests {
             replaces_id: None,
             created_at: now,
             updated_at: now,
+            variants: Vec::new(),
+            step_descriptions: serde_json::Value::Null,
+            dependency_registry: serde_json::Value::Null,
         }
     }
 
