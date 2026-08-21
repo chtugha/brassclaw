@@ -1769,11 +1769,7 @@ mod tests {
     /// time), so this static assertion is the narrowest regression guard.
     #[test]
     fn recipe_select_round_trips_v3_authoring_columns() {
-        let cols: Vec<&str> = RECIPE_SELECT
-            .trim()
-            .split(',')
-            .map(|c| c.trim())
-            .collect();
+        let cols: Vec<&str> = RECIPE_SELECT.trim().split(',').map(|c| c.trim()).collect();
         assert_eq!(cols.len(), 34, "RECIPE_SELECT must select 34 columns");
         assert_eq!(cols[0], "id");
         assert_eq!(cols[30], "updated_at");
@@ -1861,7 +1857,13 @@ mod tests {
 
     #[test]
     fn tier0_blocked_when_not_validated() {
-        for status in ["pending", "rejected", "auto_failed", "garbage", "upgrade_queued"] {
+        for status in [
+            "pending",
+            "rejected",
+            "auto_failed",
+            "garbage",
+            "upgrade_queued",
+        ] {
             let mut r = base_recipe();
             r.validation_status = status.to_string();
             assert!(

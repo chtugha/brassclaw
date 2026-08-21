@@ -216,9 +216,10 @@ pub(crate) async fn build_webui_services_with_connectable_channels(
             tenant_id,
             "default",
         );
-        api = api.with_recipe_store(
-            Arc::new(facade) as Arc<dyn brassclaw_product_workflow::RecipeStore>
-        );
+        api =
+            api.with_recipe_store(
+                Arc::new(facade) as Arc<dyn brassclaw_product_workflow::RecipeStore>
+            );
         tracing::debug!("RecipeStore wired through PgRecipeStoreFacade (reborn_recipes)");
     }
 
