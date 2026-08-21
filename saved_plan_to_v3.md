@@ -424,19 +424,42 @@ Serialized into `orchestrator_content` by the v3 `handle_assemble_prior_knowledg
 #### 0.4.1 ToolBinding + ErrorPolicy
 
 ```rust
+/// Binding from a rust-channel IBS step to a specific tool invocation.
+/// Persisted in the `step_descriptions` JSONB column (inside rust-channel IbsRecipeStep).
+/// `tool_id` is the UUID of the Tool (class 0) row; `tool_name` is denormalized for
+/// runtime __execute_action__ calls without a DB round-trip. `params` carries the
+/// parameter values with {{vars.name}} substitution placeholders.
+///
+/// ⚠️ FIND-AUDIT-10: This is the canonical ToolBinding definition. The `types/ibs.rs`
+/// "Files to create" block in Phase A MUST match this exactly (tool_id + tool_name + params
+/// + error_policy). An earlier draft of types/ibs.rs omitted tool_name and params — that
+/// was wrong; both are required for runtime dispatch.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ToolBinding {
+    /// UUID of the Tool (class 0) row — used by the Rust execution layer for capability dispatch.
+    pub tool_id: uuid::Uuid,
+    /// Denormalized tool name (e.g. "read_file"). Needed for __execute_action__ calls
+    /// without an extra DB fetch. Must match the registered capability name.
     pub tool_name: String,
-    pub params: serde_json::Value,   // {{vars.name}} substitution applied
+    /// Parameter values for this tool call. {{vars.name}} substitution applied before use.
+    pub params: serde_json::Value,
     pub error_policy: ErrorPolicy,
 }
 
+/// ⚠️ FIND-AUDIT-11: This is the canonical ErrorPolicy definition.
+/// The `types/ibs.rs` "Files to create" block in Phase A MUST match this exactly.
+/// An earlier draft of types/ibs.rs used { Propagate, Retry { max_attempts: u8 },
+/// Fallback { message: String } } — that variant set is wrong; use the definitions below.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "policy", rename_all = "snake_case")]
 pub enum ErrorPolicy {
+    /// Fail the turn immediately — hard error, no retry.
     Fail,
+    /// Ignore the error and continue — the orchestrator receives an empty result.
     Ignore,
+    /// Retry up to max_attempts times before falling through to Fail.
     Retry { max_attempts: u32 },
+    /// On error, jump to the step with id step_id within the same BuildInstruction.
     Fallback { step_id: String },
 }
 
@@ -2210,6 +2233,96 @@ Phase J is replaced by the dependency registry implementation (see revised Phase
 
 ---
 
+### §0.20 Recipe Authoring Rules (`§recipe-authoring-rules`)
+
+These rules govern how Recipes and their PythonCode components must be written. They are
+enforced at Q1 validation time (Phase I) and documented here so authors understand the
+architectural constraints before authoring.
+
+#### §0.20.1 Step isolation invariant (DESIGN-DECISION-01)
+
+**PythonCode steps in `orchestrator_steps` are isolated execution units.**
+
+Each PythonCode body is executed by `execute_recipe_orchestrator_channel` with a **fresh
+empty state dict `{}`**. A step does NOT see any state mutations from previous steps.
+
+**Why:** The orchestrator is the information broker. If step 2 needs data produced by step 1,
+the recipe must be designed so that:
+1. The orchestrator reads the recipe's `step_descriptions` and knows what each step produces.
+2. Step 2's PythonCode body calls `__execute_action__` directly to obtain the data it needs
+   — it does not read a shared `state` key set by step 1.
+3. If the orchestrator itself needs to pass context between steps (e.g. step 1 extracts a
+   path, step 2 uses that path), this must be modelled in the recipe as a step that the
+   **orchestrator** executes (an Action or a pkr-level variable), not a state side-effect.
+
+**Consequence for recipe design:**
+
+| Anti-pattern (WRONG) | Correct pattern |
+|----------------------|-----------------|
+| Step 1 sets `state["extracted_path"] = result`; Step 2 reads `state["extracted_path"]` | Both steps are self-contained; the orchestrator assembles pkr with `{{vars.path}}` from the template match, which is available to every step as a template variable |
+| Step 1 calls `__execute_action__("read_file", ...)` and stores result; Step 2 post-processes it | Combine both operations into a single PythonCode step body that calls read_file and formats the result in one atomic step |
+| Step 2 depends on Step 1 having run a particular tool | Model as a single PythonCode body that runs both tool calls in sequence and formats the combined result |
+
+**Single-step is preferred for Tier-0 recipes.** Most Tier-0 recipes should have exactly
+ONE PythonCode step in `orchestrator_steps` that: (1) calls `__execute_action__`, (2) handles
+the result, (3) formats and assigns `result`. Multi-step is only needed when two genuinely
+independent capabilities (different tools, different result shapes) must both contribute to
+the output. In that case each step is self-contained per the isolation invariant.
+
+#### §0.20.2 PythonCode body contract
+
+A PythonCode body is a Python code string executed by `__execute_code_step__` in the Monty VM.
+It has access to:
+
+| Symbol | Source | Notes |
+|--------|--------|-------|
+| `__execute_action__(name, params)` | VM host function | Call a registered tool/capability |
+| `__execute_actions_parallel__(calls)` | VM host function | Parallel tool calls (list of `{name, params}`) |
+| `__check_budget__()` | VM host function | Check remaining time/token budget |
+| `__emit_event__(kind, **data)` | VM host function | Emit a structured event |
+| No `state` from previous steps | — | See isolation invariant above |
+| No `goal`, `pkr`, `context` | — | These are orchestrator-layer globals; NOT injected into step scope |
+
+**Required:** The body must assign `result = <some value>` before returning. The caller
+reads `vm_result["return_value"]` as the step output. A body that never assigns `result`
+produces an empty string in `result_parts`.
+
+**Forbidden:** All patterns listed in the shell-injection scan (FIND-AUDIT-12 / Phase B):
+`import os`, `import subprocess`, `exec(`, `eval(`, `open(`, etc.
+
+#### §0.20.3 Template variable availability
+
+Template variables (`{{vars.name}}`, extracted by `extract_template_slots` in Phase M) are
+substituted into `orchestrator_content` by the IBS **before** `execute_recipe_orchestrator_channel`
+is called. By the time any PythonCode step body runs, variables have already been baked into
+the step body text (the IBS applies `{{vars.name}}` → literal value substitution when
+formatting `orchestrator_content`). The PythonCode body therefore sees literal values, not
+template placeholders.
+
+**Example** — a recipe with `step_link = "0:0-0:E"` and intent `"read the file at %"`:
+- User says: `"read the file at /tmp/foo.txt"`
+- Template match extracts `slot0 = "/tmp/foo.txt"`
+- IBS substitutes `{{vars.slot0}}` → `"/tmp/foo.txt"` in the PythonCode body text
+- The PythonCode body sees: `tool_output = __execute_action__("read_file", {"path": "/tmp/foo.txt"})`
+- Not: `tool_output = __execute_action__("read_file", {"path": "{{vars.slot0}}"})`
+
+This means the PythonCode body does NOT need to parse template variables at runtime — they
+are already resolved.
+
+#### §0.20.4 Q1-enforced recipe design rules
+
+| Rule | Condition | Source |
+|------|-----------|--------|
+| No Skill in `orchestrator_steps` for Tier-0 | `llm_call_required: false` + Skill UUID in `orchestrator_steps` | Phase I §tier0-orchestrator-channel Rule 1 |
+| PythonCode required when tool_bindings present | `llm_call_required: false` + non-empty `tool_bindings` + empty `orchestrator_steps` | Phase I §tier0-orchestrator-channel Rule 2 |
+| Shell/spawn tools require Tier 1 | `builtin.shell` or `builtin.spawn_subagent` in `rust_steps` + `llm_call_required: false` | Phase I §shell-guard |
+| PythonCode body scan | `import os`, `exec(`, `open(`, etc. in body content | Phase I + FIND-AUDIT-12 |
+| All step `include` UUIDs must be valid UUID v4 | Non-parseable UUID string | Phase I |
+| No `snippet`-type steps | Step type = `snippet` in step_descriptions | Phase I |
+| Each PythonCode step is self-contained | Steps must not read state from other steps | Architecture (§0.20.1) — not mechanically Q1 checkable, enforced by documentation |
+
+---
+
 ## 1. Implementation Phases
 
 ### Phase A — StepDescription Schema + IBS Core
@@ -2263,12 +2376,22 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   The direction is cleanly `memory → types` throughout.
 
   Types to define here:
+
+  > **⚠️ FIND-AUDIT-10 + FIND-AUDIT-11 — these types MUST match the canonical definitions
+  > in §0.4.1 exactly. The earlier draft of this section had TWO WRONG definitions:**
+  > 1. `ToolBinding` was missing `tool_name: String` and `params: serde_json::Value` — both
+  >    are required for runtime `__execute_action__` dispatch and `{{vars.name}}` substitution.
+  > 2. `ErrorPolicy` used `{ Propagate, Retry { max_attempts: u8 }, Fallback { message: String } }`
+  >    which is inconsistent with the §0.4.1 canonical definition
+  >    `{ Fail, Ignore, Retry { max_attempts: u32 }, Fallback { step_id: String } }`.
+  > **Use the definitions below (corrected to match §0.4.1).**
+
   ```rust
   use serde::{Deserialize, Serialize};
 
   /// Slot-variable refinement rule stored on a RecipeVariant.
   /// Persisted in the `variants` JSONB column of `reborn_recipes`.
-  #[derive(Debug, Clone, Serialize, Deserialize)]
+  #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
   pub struct VariablePattern {
       /// Slot name — e.g. "dir", "filename". Matches {{vars.NAME}} expressions.
       pub name: String,
@@ -2279,23 +2402,41 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   }
 
   /// Error-handling policy for a single ToolBinding.
-  /// Persisted nested inside ToolBinding in `IbsRecipeStep.tool_bindings` JSONB.
-  #[derive(Debug, Clone, Serialize, Deserialize)]
+  /// Persisted nested inside ToolBinding in rust-channel IbsRecipeStep tool_bindings.
+  ///
+  /// ⚠️ FIND-AUDIT-11: canonical definition — matches §0.4.1 exactly.
+  /// Do NOT use Propagate/Retry{u8}/Fallback{message} — that was an earlier wrong draft.
+  #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+  #[serde(tag = "policy", rename_all = "snake_case")]
   pub enum ErrorPolicy {
-      /// Return error to orchestrator verbatim; let it decide.
-      Propagate,
-      /// Retry up to N times before propagating.
-      Retry { max_attempts: u8 },
-      /// Emit a fallback literal string and continue.
-      Fallback { message: String },
+      /// Fail the turn immediately — hard error, no retry.
+      Fail,
+      /// Ignore the error and continue — orchestrator receives an empty result.
+      Ignore,
+      /// Retry up to max_attempts times before falling through to Fail.
+      Retry { max_attempts: u32 },
+      /// On error, jump to the step with id step_id within the same BuildInstruction.
+      Fallback { step_id: String },
   }
 
-  /// Binding from a Rust-channel IBS step to a specific tool call.
-  /// Persisted nested inside IbsRecipeStep in `step_descriptions` JSONB.
-  #[derive(Debug, Clone, Serialize, Deserialize)]
+  impl Default for ErrorPolicy {
+      fn default() -> Self { ErrorPolicy::Fail }
+  }
+
+  /// Binding from a Rust-channel IBS step to a specific tool invocation.
+  /// Persisted nested inside rust-channel IbsRecipeStep `tool_bindings`.
+  ///
+  /// ⚠️ FIND-AUDIT-10: canonical definition — matches §0.4.1 exactly.
+  /// Do NOT use { tool_id, error_policy } only — tool_name and params are required.
+  #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
   pub struct ToolBinding {
-      /// UUID of the Tool (class 0) to invoke.
+      /// UUID of the Tool (class 0) row — used by the Rust layer for capability dispatch.
       pub tool_id: uuid::Uuid,
+      /// Denormalized tool name (e.g. "read_file"). Needed for __execute_action__ calls.
+      /// Must match the registered capability name in FirstPartyCapabilityRegistry.
+      pub tool_name: String,
+      /// Parameter values for this tool call. {{vars.name}} substitution applied before use.
+      pub params: serde_json::Value,
       /// How to handle a tool invocation error.
       pub error_policy: ErrorPolicy,
   }
@@ -2756,8 +2897,7 @@ not just after Phase N.
 #### Files to create
 
 - `crates/brassclaw_pg/migrations/V052__reborn_python_code.sql` (**was V051 before Decision 2**)
-  Same column shape as `V036__reborn_specs.sql`. `class_code = 22`.
-  Default consumer tags: `{02:orchestrator, 05:validator}`.
+  `class_code = 22`. Default consumer tags: `{02:orchestrator, 05:validator}`.
   **Do NOT include** `queue_code`, `review_attempts`, `review_feedback`, `rejected_at`,
   or `validation_errors` columns — those five are centralised on `reborn_validation_queue`
   (§0.18 / V051). The table DOES carry `validation_status` (the post-validation
@@ -2767,6 +2907,116 @@ not just after Phase N.
   `ValidationQueueStore::submit(scope, component_id, 22)` on component creation.
   The §0.5 snippet→Q1→Q2 promotion flow completes at Phase N (V059 + gate logic), but
   the queue row is created here from day one.
+
+  > **⚠️ FIND-AUDIT-15 — The plan previously said "same column shape as V036__reborn_specs.sql"
+  > without providing the actual DDL. This is dangerous: V036 was created in an earlier
+  > migration pass and retrofitted by V046 to add `prior_knowledge_content` /
+  > `override_prompt_creation`. V052 must be the FINAL authoritative shape — with ALL
+  > solution-override columns already present at creation time (no V046-style retrofit needed),
+  > WITHOUT the 5 queue-tracking columns (per §0.18), and WITH `prompt_uid` (required for
+  > the `fetch_for_consumer` UNION ALL sub-select which casts `prompt_uid::bigint` for
+  > every table arm). Missing `prompt_uid` would make the UNION ALL fail at runtime.
+  > The complete canonical DDL for V052 is below.**
+
+  ```sql
+  -- V052__reborn_python_code.sql
+  -- PythonCode component table for BrassClaw Reborn (Phase B, class 22).
+  --
+  -- Executable Python bodies for Tier-0 recipe orchestration.
+  -- Source: 'authored' (user) or 'system' (seeded by builtin_bootstrap.rs).
+  -- consumer_tags default: {02:orchestrator, 05:validator} until validated.
+  --
+  -- DESIGN NOTE (§0.18): Queue-tracking columns (queue_code, review_attempts,
+  -- review_feedback, rejected_at, validation_errors) are NOT on this table —
+  -- they are centralised on reborn_validation_queue (V051). This table carries
+  -- validation_status only (the post-validation gate that STAYS on the component).
+  -- dependency_registry is included here at creation (V055 retroactively adds it
+  -- to the 13 older tables; new tables include it from day one — Phase J.2).
+
+  CREATE SEQUENCE IF NOT EXISTS reborn_python_code_prompt_uid_seq;
+
+  CREATE TABLE IF NOT EXISTS reborn_python_code (
+      id                      UUID        NOT NULL DEFAULT gen_random_uuid(),
+
+      tenant_id               TEXT        NOT NULL,
+      user_id                 TEXT        NOT NULL,
+      agent_id                TEXT        NOT NULL,
+      project_id              TEXT        NOT NULL,
+
+      name                    TEXT        NOT NULL
+          CHECK (length(name) BETWEEN 1 AND 256),
+      description             TEXT        NOT NULL DEFAULT ''
+          CHECK (length(description) <= 1024),
+      content                 TEXT        NOT NULL DEFAULT '',
+
+      -- Solution-override columns (§3.13/§3.14 — SCH-02).
+      -- Already present at creation (no retrofit migration needed).
+      prior_knowledge_content TEXT,
+      override_prompt_creation BOOLEAN    NOT NULL DEFAULT false,
+
+      -- class_code = 22 (PythonCode)
+      class_code              SMALLINT    NOT NULL DEFAULT 22
+          CHECK (class_code = 22),
+      prompt_uid              BIGINT      NOT NULL DEFAULT nextval('reborn_python_code_prompt_uid_seq'),
+
+      consumer_tags           TEXT[]      NOT NULL DEFAULT '{}',
+
+      intent_examples         JSONB,
+
+      -- Post-validation gate (STAYS on component table — see §0.18 / FIND-AUDIT-15).
+      -- Queue-tracking columns (queue_code, review_attempts, review_feedback,
+      -- rejected_at, validation_errors) are NOT here — centralised on
+      -- reborn_validation_queue (V051).
+      validation_status       TEXT        NOT NULL DEFAULT 'pending'
+          CHECK (validation_status IN (
+              'pending', 'auto_passed', 'auto_failed', 'validated',
+              'review_requested', 'rejected', 'garbage', 'upgrade_queued'
+          )),
+
+      -- See FIND-P6-02 / FIND-AUDIT-15: 'system' must be allowed from day one
+      -- (Phase L seeds rows with source = 'system'; V057 only alters older tables).
+      source                  TEXT        NOT NULL DEFAULT 'authored'
+          CHECK (source IN ('authored', 'extracted', 'migrated', 'imported', 'system')),
+      content_hash            TEXT,
+      similarity_parent_id    UUID,
+      replaces_id             UUID,
+      parent_version          TEXT,
+      last_audit_at           TIMESTAMPTZ,
+      audit_failure_count     SMALLINT    NOT NULL DEFAULT 0,
+      parent_mission_id       UUID,
+
+      -- Dependency registry (§0.19 / Phase J.2). New tables include it at creation.
+      dependency_registry     JSONB,
+
+      created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+      CONSTRAINT reborn_python_code_pk PRIMARY KEY (id),
+      CONSTRAINT reborn_python_code_scope_name_unique
+          UNIQUE (tenant_id, user_id, agent_id, project_id, name)
+  );
+
+  -- Required indexes (PERF-03 / FIND-AUDIT-15):
+  -- Without these, the UNION ALL sub-select in fetch_for_consumer degrades to seq-scan.
+  CREATE INDEX IF NOT EXISTS reborn_python_code_scope_idx
+      ON reborn_python_code (tenant_id, user_id, agent_id, project_id);
+  CREATE INDEX IF NOT EXISTS reborn_python_code_scope_status_idx
+      ON reborn_python_code (tenant_id, user_id, agent_id, project_id, validation_status);
+  CREATE INDEX IF NOT EXISTS reborn_python_code_scope_uid_idx
+      ON reborn_python_code (tenant_id, user_id, agent_id, project_id, prompt_uid);
+  CREATE INDEX IF NOT EXISTS reborn_python_code_consumer_tags_gin_idx
+      ON reborn_python_code USING GIN (consumer_tags);
+  CREATE INDEX IF NOT EXISTS reborn_python_code_similarity_parent_idx
+      ON reborn_python_code (similarity_parent_id)
+      WHERE similarity_parent_id IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS reborn_python_code_replaces_idx
+      ON reborn_python_code (replaces_id)
+      WHERE replaces_id IS NOT NULL;
+
+  CREATE TRIGGER reborn_python_code_updated_at
+      BEFORE UPDATE ON reborn_python_code
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  ```
 
 - `crates/brassclaw_reborn_composition/src/pg_python_code_store.rs` — new store
 
@@ -2781,6 +3031,9 @@ not just after Phase N.
   > Phase B adds both arms.
 - `crates/brassclaw_engine/src/memory/intent_system.rs` — add `22 => "python_code"` to `class_label`
   (lowercase snake_case — consistent with `intent_system.rs` style: e.g. `21 => "recipe"`)
+  > Also update the doc-comment at `intent_system.rs:250–253` to include `22=python_code` in the
+  > class-code legend (the comment lists 0–21 and 50 but stops at 21). Phase C adds the `23`
+  > update to the same doc-comment.
   > **✅ Review note (pre-v3 audit) — RESOLVED (obsolete, do not implement):** the plan previously also instructed adding a
   > `22 => 0.42` arm to `doc_type_weight_by_class(i32)` in `retrieval_source.rs`. That
   > function no longer exists (removed in `Goals_pre_v3_review.md` Step 12) — both retrieval
@@ -2788,14 +3041,51 @@ not just after Phase N.
   > §0.11 review note.
 - `crates/brassclaw_engine/src/memory/component_validator.rs` — class 22 dispatch:
   name format, non-empty content, soft 10k token budget, shell-injection scan.
+  > **⚠️ FIND-AUDIT-12 — "shell-injection scan" was unspecified in all prior plan drafts.**
+  > An implementer cannot invent security rules from scratch. The CONCRETE rules are:
+  >
+  > **Hard errors (Q1 fail):**
+  > - `import os` — direct OS module import (use `__execute_action__` instead)
+  > - `import subprocess` — subprocess invocation (bypasses capability dispatch)
+  > - `import sys` — sys-module access (interpreter manipulation risk)
+  > - `import socket` — direct network socket access (bypasses host network controls)
+  > - `import ctypes` — C foreign-function interface (native escape)
+  > - `import importlib` — dynamic module loading (import whitelist bypass)
+  > - `__import__(` — built-in dynamic import call (same risk as importlib)
+  > - `exec(` — raw code execution inside PythonCode body (nested unsandboxed exec)
+  > - `eval(` — unsafe expression evaluation (injection risk)
+  > - `open(` — direct filesystem access (bypasses host file-access controls — use `__execute_action__("read_file", ...)` etc.)
+  > - `compile(` — Python code compilation (code-object injection path)
+  > - `__builtins__` — builtins manipulation attempt
+  > - `globals()` or `locals()` — scope inspection for injection
+  >
+  > **Warnings (Q1 soft — flag, do not block):**
+  > - `print(` — stdout writes (allowed but the VM captures stdout, not the host terminal; may be intentional for debug output)
+  > - `input(` — interactive prompt (will hang in VM; likely a copy-paste error)
+  >
+  > **Implementation note:** Scan the raw `content` string before execution using simple substring
+  > search (no AST required). False-positive rate is low because PythonCode bodies are authored
+  > to call host functions (`__execute_action__`, `__check_budget__`, etc.), NOT OS/subprocess.
+  > The scan is additive to Q1 checks — it does NOT replace them.
+  >
+  > **Test coverage (add to Phase I §shell-injection tests — see Phase I Tests section):**
+  > - `import os` in content → Q1 hard error
+  > - `import subprocess` in content → Q1 hard error
+  > - `exec(` in content → Q1 hard error
+  > - `open(` in content → Q1 hard error
+  > - `__builtins__` in content → Q1 hard error
+  > - `__execute_action__("read_file", {"path": path})` in content → Q1 pass (correct usage)
+  > - `print("debug")` in content → Q1 warning only, not a hard error
+
   > **⚠️ FINDING E — `ComponentPayload` for class 22:** The existing `ComponentPayload` enum has
   > `ToolSkill(&'a ToolSkill)`, `Recipe(&'a Recipe)`, and `Generic(GenericComponent<'a>)`.
   > There is NO `PythonCode` variant. Class 22 validation must use `Generic(GenericComponent<'a>)`
-  > where `GenericComponent` carries `{ name, content, class_code }`. The `validate_by_class`
-  > dispatch adds a `22 =>` arm that reads from the `Generic` payload. A new dedicated
-  > `ComponentPayload::PythonCode` variant may be added if richer validation is needed, but
-  > the simpler path is to use `Generic`. The plan must not assume a `PythonCode` variant
-  > exists — it does not yet.
+  > where `GenericComponent` carries `{ name, description, content }` (confirmed 3-field shape —
+  > FIND-P10-03). The `validate_by_class` dispatch adds a `22 =>` arm that reads from the
+  > `Generic` payload. The `class_code` is implicit from the match arm; do NOT add it to the struct.
+  > A new dedicated `ComponentPayload::PythonCode` variant may be added if richer validation is
+  > needed, but the simpler path is to use `Generic`. The plan must not assume a `PythonCode`
+  > variant exists — it does not yet.
 
 > **⚠️ FIND-P6-07 — `interceptor_config_service.rs::class_label` is a pre-existing incomplete stub.**
 > The function at `interceptor_config_service.rs:65` covers only classes 0, 1, 9, 10, 12, 13, 14,
@@ -2824,8 +3114,8 @@ not just after Phase N.
 #### Tests
 
 - Unit: `class_label(22) == "python_code"` (in `intent_system.rs` test — add to existing `class_label_known_codes` test fn)
-- Unit: `interceptor_config_service::class_label(22) == "PythonCode"` (local copy — `&'static str` style, NOT snake_case — FIND-20)
-- Unit: `recipe_store::class_label(22) == "PythonCode"` (local copy — `String` + title-case style — FIND-20)
+- Unit: `interceptor_config_service::class_label(22) == "PythonCode"` (local copy — `&'static str` style, NOT snake_case — FIND-20; `class_label` there is private so the test lives in `#[cfg(test)] mod tests { use super::*; }` inside `interceptor_config_service.rs`)
+- Unit: `class_label(22) == "PythonCode".to_string()` (in `recipe_store.rs` `#[cfg(test)] mod tests { use super::*; }` — `class_label` is a private `fn`, NOT `pub fn`; the test CANNOT be called as `recipe_store::class_label(22)` from outside the module. Place the assertion inside `recipe_store.rs` tests using `use super::*`. — DESIGN-ISSUE-02 / FIND-20)
 - ~~Unit: `doc_type_weight_by_class(22) == 0.42`~~ — **removed**: function no longer exists (§0.11 review note)
 - Integration: PythonCode row retrieved via `fetch_for_consumer` with consumer tag `02:orchestrator`
 - Integration: PythonCode row retrieved via `fetch_component_by_id(uuid, 22)` (UUID lookup path)
@@ -2841,10 +3131,7 @@ not just after Phase N.
 #### Files to create
 
 - `crates/brassclaw_pg/migrations/V053__reborn_extension_catalogues.sql` (**was V052 before Decision 2**)
-  Columns: scope tuple + `name`, `description`, `version`, `overview_doc TEXT`,
-  `task_groups JSONB`, `child_component_ids UUID[]`, `intent_index JSONB` (audit-only),
-  `validation_status TEXT` (post-validation gate only), `updated_at`, `created_at`,
-  `class_code SMALLINT DEFAULT 23`.
+  `class_code = 23`. Default consumer tags: `{02:orchestrator, 05:validator}`.
   **Do NOT include** `queue_code`, `review_attempts`, `review_feedback`, `rejected_at`,
   or `validation_errors` columns — those five are centralised on `reborn_validation_queue`
   (§0.18 / V051). The table carries `validation_status` only (which STAYS).
@@ -2853,6 +3140,117 @@ not just after Phase N.
   path MUST call `ValidationQueueStore::submit(scope, component_id, 23)` on component
   creation. The Q1/Q2 gate logic completing at Phase N (V059) is required before
   snippet→component promotion can run, but the queue row is created from day one.
+
+  > **⚠️ FIND-AUDIT-16 — The plan previously listed only column names without providing actual DDL.
+  > This is insufficient: ExtensionCatalogue has a DIFFERENT content layout from PythonCode
+  > (no plain `content` column — `overview_doc` is the primary text field, `task_groups` and
+  > `child_component_ids` are JSONB/UUID-array extras). It also requires `prompt_uid` (for
+  > `fetch_for_consumer` UNION ALL which casts `prompt_uid::bigint` for every table arm), and
+  > all solution-override columns at creation time (no retrofit needed), and `dependency_registry`
+  > from day one (same as V052). The complete canonical DDL for V053 is below.**
+
+  ```sql
+  -- V053__reborn_extension_catalogues.sql
+  -- ExtensionCatalogue component table for BrassClaw Reborn (Phase C, class 23).
+  --
+  -- Documentation-container that organises a capability domain.
+  -- Primary text field: overview_doc (maps to effective_content in UNION ALL).
+  -- Source: 'authored' (user) or 'system' (seeded by builtin_bootstrap.rs).
+  -- consumer_tags default: {02:orchestrator, 05:validator} until validated.
+  --
+  -- DESIGN NOTE (§0.18): Queue-tracking columns are NOT on this table.
+  -- dependency_registry is included here at creation (V055 retroactively adds it
+  -- to the 13 older tables; new tables include it from day one — Phase J.2).
+
+  CREATE SEQUENCE IF NOT EXISTS reborn_extension_catalogues_prompt_uid_seq;
+
+  CREATE TABLE IF NOT EXISTS reborn_extension_catalogues (
+      id                      UUID        NOT NULL DEFAULT gen_random_uuid(),
+
+      tenant_id               TEXT        NOT NULL,
+      user_id                 TEXT        NOT NULL,
+      agent_id                TEXT        NOT NULL,
+      project_id              TEXT        NOT NULL,
+
+      name                    TEXT        NOT NULL
+          CHECK (length(name) BETWEEN 1 AND 256),
+      description             TEXT        NOT NULL DEFAULT ''
+          CHECK (length(description) <= 1024),
+      version                 TEXT        NOT NULL DEFAULT '1.0',
+
+      -- Primary text content (maps to effective_content in UNION ALL via COALESCE):
+      --   COALESCE(NULLIF(prior_knowledge_content,''), overview_doc)
+      overview_doc            TEXT        NOT NULL DEFAULT '',
+
+      -- Structured extras (Phase C — accessed in validator via GenericComponent.extra).
+      task_groups             JSONB       NOT NULL DEFAULT '[]',
+      child_component_ids     UUID[]      NOT NULL DEFAULT '{}',
+      intent_index            JSONB,                           -- audit-only, NOT indexed
+
+      -- Solution-override columns (§3.13/§3.14 — SCH-02).
+      -- Already present at creation (no retrofit migration needed).
+      prior_knowledge_content TEXT,
+      override_prompt_creation BOOLEAN    NOT NULL DEFAULT false,
+
+      -- class_code = 23 (ExtensionCatalogue)
+      class_code              SMALLINT    NOT NULL DEFAULT 23
+          CHECK (class_code = 23),
+      prompt_uid              BIGINT      NOT NULL DEFAULT nextval('reborn_extension_catalogues_prompt_uid_seq'),
+
+      consumer_tags           TEXT[]      NOT NULL DEFAULT '{}',
+
+      intent_examples         JSONB,
+
+      -- Post-validation gate only (see §0.18 / FIND-AUDIT-16).
+      validation_status       TEXT        NOT NULL DEFAULT 'pending'
+          CHECK (validation_status IN (
+              'pending', 'auto_passed', 'auto_failed', 'validated',
+              'review_requested', 'rejected', 'garbage', 'upgrade_queued'
+          )),
+
+      -- See FIND-P6-02 / FIND-AUDIT-16: 'system' must be allowed from day one.
+      source                  TEXT        NOT NULL DEFAULT 'authored'
+          CHECK (source IN ('authored', 'extracted', 'migrated', 'imported', 'system')),
+      content_hash            TEXT,
+      similarity_parent_id    UUID,
+      replaces_id             UUID,
+      parent_version          TEXT,
+      last_audit_at           TIMESTAMPTZ,
+      audit_failure_count     SMALLINT    NOT NULL DEFAULT 0,
+      parent_mission_id       UUID,
+
+      -- Dependency registry (§0.19 / Phase J.2). New tables include it at creation.
+      dependency_registry     JSONB,
+
+      created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+      CONSTRAINT reborn_extension_catalogues_pk PRIMARY KEY (id),
+      CONSTRAINT reborn_extension_catalogues_scope_name_unique
+          UNIQUE (tenant_id, user_id, agent_id, project_id, name)
+  );
+
+  -- Required indexes (PERF-03 / FIND-AUDIT-16):
+  -- Without these, the UNION ALL sub-select in fetch_for_consumer degrades to seq-scan.
+  CREATE INDEX IF NOT EXISTS reborn_extension_catalogues_scope_idx
+      ON reborn_extension_catalogues (tenant_id, user_id, agent_id, project_id);
+  CREATE INDEX IF NOT EXISTS reborn_extension_catalogues_scope_status_idx
+      ON reborn_extension_catalogues (tenant_id, user_id, agent_id, project_id, validation_status);
+  CREATE INDEX IF NOT EXISTS reborn_extension_catalogues_scope_uid_idx
+      ON reborn_extension_catalogues (tenant_id, user_id, agent_id, project_id, prompt_uid);
+  CREATE INDEX IF NOT EXISTS reborn_extension_catalogues_consumer_tags_gin_idx
+      ON reborn_extension_catalogues USING GIN (consumer_tags);
+  CREATE INDEX IF NOT EXISTS reborn_extension_catalogues_similarity_parent_idx
+      ON reborn_extension_catalogues (similarity_parent_id)
+      WHERE similarity_parent_id IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS reborn_extension_catalogues_replaces_idx
+      ON reborn_extension_catalogues (replaces_id)
+      WHERE replaces_id IS NOT NULL;
+
+  CREATE TRIGGER reborn_extension_catalogues_updated_at
+      BEFORE UPDATE ON reborn_extension_catalogues
+      FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  ```
 
 - `crates/brassclaw_reborn_composition/src/pg_extension_catalogue_store.rs` — new store
 
@@ -2866,6 +3264,8 @@ Same engine files as Phase B, but for class 23:
   > need a class 23 arm. Neither has one today.
 - `intent_system.rs` — `23 => "extension_catalogue"` in `class_label` (lowercase snake_case —
   consistent with `intent_system.rs` style; e.g. `21 => "recipe"`)
+  > Also update the doc-comment at `intent_system.rs:250–253` to add `23=extension_catalogue`
+  > to the class-code legend (Phase B added `22=python_code` to the same comment).
 
   > **⚠️ FIND-20 — THREE `class_label` copies have DIFFERENT label styles. Use the correct style
   > for each copy:**
@@ -2883,8 +3283,8 @@ Same engine files as Phase B, but for class 23:
   > names: `0 => "Tool"`, `16 => "Action"`, `21 => "Recipe"`. The Phase B/C additions
   > `22 => "PythonCode"` and `23 => "Catalogue"` fit the single-word pattern.
   > These display labels are NOT the same as the `intent_system.rs` class labels and are used
-  > only for WebUI display. The test assertion `recipe_store::class_label(22) == "PythonCode"`
-  > is correct as stated.
+  > only for WebUI display. The test assertion (inside `recipe_store.rs`'s own `#[cfg(test)] mod tests { use super::*; }`)
+  > `assert_eq!(class_label(22), "PythonCode".to_string())` is correct. The function is private — cannot be called as `recipe_store::class_label` from outside. (DESIGN-ISSUE-02 resolved.)
   >
   > The `interceptor_config_service.rs` copy also has its return type annotated as `&'static str`
   > (not `String`), so the match arms must use string literals `"PythonCode"`, not
@@ -2939,8 +3339,8 @@ Same engine files as Phase B, but for class 23:
 #### Tests
 
 - Unit: `class_label(23) == "extension_catalogue"` (in `intent_system.rs` test — add to existing `class_label_known_codes` test fn)
-- Unit: `interceptor_config_service::class_label(23) == "Catalogue"` (local copy — `&'static str` style — FIND-20)
-- Unit: `recipe_store::class_label(23) == "Catalogue"` (local copy — `String` + title-case style — FIND-20)
+- Unit: `interceptor_config_service::class_label(23) == "Catalogue"` (local copy — `&'static str` style — FIND-20; placed inside `#[cfg(test)] mod tests { use super::*; }` within `interceptor_config_service.rs`)
+- Unit: `class_label(23) == "Catalogue".to_string()` (in `recipe_store.rs` `#[cfg(test)] mod tests { use super::*; }` — same visibility note as class 22 above — DESIGN-ISSUE-02 / FIND-20)
 - ~~Unit: `doc_type_weight_by_class(23) == 0.38`~~ — **removed**: function no longer exists (§0.11 review note)
 - Integration: Catalogue with `task_groups` → retrieved with `overview_doc` as `effective_content` via `fetch_for_consumer`
 - Integration: Catalogue retrieved via `fetch_component_by_id(uuid, 23)` (direct UUID lookup)
@@ -3519,6 +3919,39 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
     Extract the `class_code_to_table(code: i32) -> Option<(&'static str, &'static str)>` helper
     from the existing match arm in `fetch_component_by_id` so both functions share the same
     mapping — no duplication of the literal table/column mapping.
+
+    > **⚠️ MISSING-ARM GUARD — add this comment immediately above the wildcard arm in
+    > `class_code_to_table`:**
+    > ```rust
+    > fn class_code_to_table(code: i32) -> Option<(&'static str, &'static str)> {
+    >     match code {
+    >         0  => None, // Tool — no prompt text in component table
+    >         1..=3  => Some(("reborn_skills",              "COALESCE(NULLIF(prior_knowledge_content,''), body)")),
+    >         4..=9  => Some(("reborn_extensions_unified",  "COALESCE(prior_knowledge_content, description)")),
+    >         12 => Some(("reborn_specs",                   "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+    >         13 => Some(("reborn_tool_skills",             "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+    >         14 => Some(("reborn_plans",                   "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+    >         15 => Some(("reborn_summaries",               "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+    >         16 => Some(("reborn_actions",                 "COALESCE(prior_knowledge_content, description)")),
+    >         17 => Some(("reborn_docus",                   "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+    >         18 => Some(("reborn_lessons",                 "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+    >         19 => Some(("reborn_issues",                  "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+    >         20 => Some(("reborn_notes",                   "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+    >         21 => Some(("reborn_recipes",                 "COALESCE(NULLIF(prior_knowledge_content,''), '')")),
+    >         22 => Some(("reborn_python_code",             "COALESCE(NULLIF(prior_knowledge_content,''), content)")),
+    >         23 => Some(("reborn_extension_catalogues",    "COALESCE(NULLIF(prior_knowledge_content,''), overview_doc)")),
+    >         // ⚠️ WHEN ADDING A NEW CLASS CODE: ADD A MATCH ARM HERE.
+    >         // A missing arm silently returns None → fetch_for_turn produces an empty
+    >         // SplitResult item list → the recipe executes without the component.
+    >         // There is NO compile-time enforcement. Always add the arm AND a test.
+    >         _ => None,
+    >     }
+    > }
+    > ```
+    > The full body is shown for clarity. The `⚠️` comment above `_ => None` is the **mandatory**
+    > part — do not omit it. Whenever a new class is added (Phase B/C added 22/23; future work
+    > may add more), this function is the single place to extend. The comment makes the omission
+    > visible in code review.
 
   > **⚠️ FIND-08 correction — `FetchForTurnResult`, `TurnRoutingSignals`, `ActionShortCircuit`, and
   > `SplitResult` are NEW types that do NOT yet exist:** Verified `retrieval_source.rs:90–96` —
@@ -4517,27 +4950,62 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
 
          for step in steps:
              if step["type"] == "python":
-                 # ⚠️ DESIGN-01 SECURITY — DO NOT use bare exec() with empty globals.
-                 # exec("...", {}, locals) does NOT sandbox Python — code can still escape
-                 # via __builtins__. Q1 injection scan alone is not sufficient.
+                 # ⚠️ FIND-AUDIT-07 / DESIGN-01 SECURITY — MUST use __execute_code_step__, NOT exec().
                  #
-                 # REQUIRED: Execute PythonCode bodies through the existing Monty scripting
-                 # VM infrastructure (the same sandbox default.py already runs in).
-                 # PythonCode bodies are authored to use __execute_action__ etc. as
-                 # registered VM host functions — NOT as Python callables injected via locals.
-                 # Use the engine scripting engine's step-execution path, identical to how
-                 # execute_action_procedure runs Action steps (see default.py:901).
+                 # `exec("...", {}, locals)` does NOT sandbox Python — code can escape via __builtins__.
+                 # Q1 injection scan alone is not sufficient to make raw exec() safe.
                  #
-                 # The exec() below is a LOGICAL SKETCH showing intent only:
-                 # step["body"] is run, assigns output to `result`, returns it.
-                 # The actual implementation MUST use the Monty VM, not raw exec().
-                 local_scope = {
-                     "goal": goal, "state": state, "pkr": pkr,
-                     # NOTE: host functions are registered in the VM, not injected here
-                 }
+                 # The CORRECT invocation is `__execute_code_step__(code, {})` — the existing
+                 # Monty VM host function (default.py:9, registered at orchestrator.rs:580–582).
+                 # This is the same sandbox that default.py itself runs in. The PythonCode body
+                 # uses `__execute_action__` and other registered host functions — they are already
+                 # available in the VM context without injection. This is identical in spirit to
+                 # how execute_action_procedure runs Action steps, but uses the code-execution VM
+                 # path instead of the JSONB step-dispatch path.
+                 #
+                 # ⚠️ ISOLATION INVARIANT (DESIGN-DECISION-01): Each PythonCode step receives a
+                 # FRESH EMPTY state dict `{}`, NOT the shared orchestrator `state`.
+                 #
+                 # Rationale: Steps are executed by the orchestrator one at a time. If a step needs
+                 # output from a previous step, that information must be explicitly provided by the
+                 # ORCHESTRATOR (which reads recipe instructions and caches results accordingly) — it
+                 # is NOT automatically available to the next PythonCode body. This is an architectural
+                 # invariant: the recipe + orchestrator defines the data flow; PythonCode bodies are
+                 # isolated execution units that communicate only through __execute_action__ results
+                 # and their explicit return_value.
+                 #
+                 # Consequences for recipe authors:
+                 #   - A PythonCode body CANNOT read state["last_result"] from a previous step.
+                 #   - All inputs to a step must come from: (a) __execute_action__ calls inside the
+                 #     body, or (b) params passed via pkr["orchestrator_content"] (assembled by IBS
+                 #     from the recipe's component descriptions + template vars).
+                 #   - If step 2 needs the output of step 1's tool call, the RECIPE must be authored
+                 #     so that step 2's PythonCode body itself calls __execute_action__ with the
+                 #     appropriate params — NOT reads from a shared state key.
+                 #   - This matches the Recipe authoring model: each orchestrator_step is a
+                 #     self-contained capability. Chaining is done by the orchestrator reading the
+                 #     recipe's step_descriptions and constructing appropriate pkr content per step.
+                 #
+                 # See §recipe-authoring-rules for the full recipe design constraints.
+                 #
+                 # `__execute_code_step__` takes (code: str, state: dict) and returns a result dict:
+                 #   {
+                 #     "return_value": <the last expression value or None>,
+                 #     "stdout": <captured stdout>,
+                 #     "action_results": [ {action_name, output}, ... ],
+                 #     "final_answer": <FINAL() content or None>,
+                 #     "error": <error message or None>,
+                 #   }
+                 # The PythonCode body should `result = ...` assign its output. The caller reads
+                 # result_dict["return_value"] (the assigned `result`) as the step output.
+                 # If the body calls __execute_action__, those results appear in action_results.
                  try:
-                     exec(step["body"], {}, local_scope)  # ← SKETCH ONLY — replace with VM invocation
-                     step_result = local_scope.get("result", "")
+                     vm_result = __execute_code_step__(step["body"], {})  # fresh state per step — see ISOLATION INVARIANT above
+                     if vm_result.get("error"):
+                         return {"outcome": "error",
+                                 "message": f"PythonCode step '{step['name']}' failed: {vm_result['error']}"}
+                     # Prefer explicit return_value; fall back to concatenated stdout.
+                     step_result = vm_result.get("return_value") or vm_result.get("stdout") or ""
                      result_parts.append(str(step_result))
                  except Exception as e:
                      return {"outcome": "error", "message": f"PythonCode step '{step['name']}' failed: {e}"}
@@ -4883,7 +5351,7 @@ New dispatch cases:
 
 | Class | Rules |
 |-------|-------|
-| 22 PythonCode | name format, non-empty content, soft 10k token budget, shell-injection scan — dispatched via `ComponentPayload::Generic` |
+| 22 PythonCode | name format, non-empty content, soft 10k token budget, shell-injection scan (see FIND-AUDIT-12 in Phase B for concrete blocked patterns: `import os/subprocess/sys/socket/ctypes/importlib`, `__import__(`, `exec(`, `eval(`, `open(`, `compile(`, `__builtins__`, `globals()`, `locals()`) — dispatched via `ComponentPayload::Generic` |
 | 23 ExtensionCatalogue | name format, non-empty `overview_doc`, ≥1 `task_group`, valid UUID syntax in `child_component_ids` — requires extended `GenericComponent` with `extra` field (see COMP-04 in Phase C) |
 | 21 Recipe (StepDescriptions) | call `instruction_builder::build_instruction` as pre-flight; reject on any `IbsError` with the parse message; all `include` UUIDs parse as UUID v4; no `snippet`-type steps; step numbers monotonically increasing; S7 guard |
 | 1–3 Skills | `intent_examples` entries ≤ 512 chars, capped at 20; `dependency_registry` entries must have valid UUID syntax and non-empty `label` |
