@@ -175,6 +175,33 @@ impl ComponentValidator {
                     ValidationResult::from_error("Recipe class requires a Recipe payload")
                 }
             },
+            // PythonCode (22): executable Python body — structural + soft 10k
+            // budget + shell-injection scan (FIND-AUDIT-12). Uses the Generic
+            // payload (FINDING E — no dedicated ComponentPayload::PythonCode
+            // variant). Tier-0 cross-reference hard errors (unresolvable refs,
+            // S7, step-order) land in Phase I/N (require a pool); Q1 here is
+            // structural-only, consistent with q1_orchestrator's "Q1
+            // structural-only" scope.
+            22 => match &component {
+                ComponentPayload::Generic(g) => {
+                    let mut result = validate_soft_budget_named(
+                        g.name,
+                        g.description,
+                        g.content,
+                        config,
+                        BUDGET_STANDARD,
+                        false,
+                    );
+                    validate_python_code_body(g.content, &mut result);
+                    result
+                }
+                ComponentPayload::ToolSkill(_) => ValidationResult::from_error(
+                    "PythonCode class requires a Generic payload",
+                ),
+                ComponentPayload::Recipe(_) => ValidationResult::from_error(
+                    "PythonCode class requires a Generic payload",
+                ),
+            },
             // Notes class (15): soft 2000 budget
             15 => {
                 let (name, desc, content) = match &component {
@@ -283,6 +310,56 @@ fn validate_no_budget(name: &str, description: &str, content: &str) -> Validatio
             .push("Component content is empty".to_string());
     }
     result
+}
+
+/// Scan a PythonCode body for shell-injection / sandbox-escape patterns
+/// (FIND-AUDIT-12). Hard errors fail Q1; warnings flag but do not block.
+///
+/// The scan is a simple substring search over the raw `content` — no AST
+/// parsing is required. False-positive rate is low because PythonCode bodies
+/// are authored to call host functions (`__execute_action__`,
+/// `__check_budget__`, ...) rather than import OS/subprocess/socket modules
+/// directly. The full 7-case test matrix lands in Phase I; Phase B exercises
+/// only the narrow smoke cases (valid body passes; `import os` hard-errors;
+/// `print(` warns only).
+fn validate_python_code_body(content: &str, result: &mut ValidationResult) {
+    // Hard errors (Q1 fail) — direct OS / subprocess / interpreter escape.
+    const HARD_ERRORS: &[&str] = &[
+        "import os",
+        "import subprocess",
+        "import sys",
+        "import socket",
+        "import ctypes",
+        "import importlib",
+        "__import__(",
+        "exec(",
+        "eval(",
+        "open(",
+        "compile(",
+        "__builtins__",
+        "globals()",
+        "locals()",
+    ];
+    for needle in HARD_ERRORS {
+        if content.contains(needle) {
+            result.errors.push(format!(
+                "PythonCode body contains forbidden construct `{needle}` \
+                 (use __execute_action__ for host access instead)"
+            ));
+        }
+    }
+    // Warnings (Q1 soft — flag, do not block).
+    if content.contains("print(") {
+        result.warnings.push(
+            "PythonCode body uses print() (stdout is VM-captured, not the host terminal)".to_string(),
+        );
+    }
+    if content.contains("input(") {
+        result.warnings.push(
+            "PythonCode body uses input() (will hang in the VM — likely a copy-paste error)"
+                .to_string(),
+        );
+    }
 }
 
 /// Full agentskills.io name/description/budget validation for a Generic skill payload.
@@ -558,6 +635,78 @@ mod tests {
         assert!(
             result.warnings.iter().any(|w| w.contains("token")),
             "expected soft token-budget warning, got {:?}",
+            result.warnings
+        );
+    }
+
+    #[test]
+    fn class22_python_code_valid_body_passes() {
+        // A body that calls host functions and avoids forbidden constructs.
+        let body = "result = __execute_action__(\"read_file\", {\"path\": path})\nreturn result";
+        let g = GenericComponent {
+            name: "read-file-leaf",
+            description: "Reads a file via the host read_file action",
+            content: body,
+        };
+        let result = ComponentValidator::validate_by_class(
+            22,
+            ComponentPayload::Generic(g),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result.errors.is_empty(),
+            "expected no hard errors for a valid PythonCode body, got {:?}",
+            result.errors
+        );
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn class22_python_code_import_os_is_hard_error() {
+        let g = GenericComponent {
+            name: "bad-leaf",
+            description: "Tries to import the OS module directly",
+            content: "import os\nos.getcwd()",
+        };
+        let result = ComponentValidator::validate_by_class(
+            22,
+            ComponentPayload::Generic(g),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result.errors.iter().any(|e| e.contains("import os")),
+            "expected a hard error for `import os`, got {:?}",
+            result.errors
+        );
+        assert!(!result.is_ok());
+    }
+
+    #[test]
+    fn class22_python_code_print_is_warning_only() {
+        let g = GenericComponent {
+            name: "debug-leaf",
+            description: "Emits debug stdout",
+            content: "print(\"debug\")\nreturn 0",
+        };
+        let result = ComponentValidator::validate_by_class(
+            22,
+            ComponentPayload::Generic(g),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result.errors.is_empty(),
+            "print() must be a warning only, not a hard error; got {:?}",
+            result.errors
+        );
+        assert!(
+            result.warnings.iter().any(|w| w.contains("print()")),
+            "expected a print() warning, got {:?}",
             result.warnings
         );
     }

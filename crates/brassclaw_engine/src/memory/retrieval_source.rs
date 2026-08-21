@@ -437,6 +437,19 @@ impl RetrievalSource for PostgresSource {
                   AND validation_status = 'validated'
                   AND '05:validator' != ALL(consumer_tags)
                   AND $5 = ANY(consumer_tags)
+
+                UNION ALL
+
+                -- reborn_python_code (class 22)
+                SELECT id::text, class_code::int, prompt_uid::bigint,
+                       name, '' AS description,
+                       COALESCE(NULLIF(prior_knowledge_content, ''), content) AS effective_content,
+                       override_prompt_creation
+                FROM reborn_python_code
+                WHERE tenant_id = $1 AND user_id = $2 AND agent_id = $3 AND project_id = $4
+                  AND validation_status = 'validated'
+                  AND '05:validator' != ALL(consumer_tags)
+                  AND $5 = ANY(consumer_tags)
             ) AS components
             ORDER BY class_code ASC, prompt_uid ASC
         ";
@@ -622,6 +635,10 @@ async fn fetch_component_by_id(
         21 => Some((
             "reborn_recipes",
             "COALESCE(NULLIF(prior_knowledge_content,''), '')",
+        )),
+        22 => Some((
+            "reborn_python_code",
+            "COALESCE(NULLIF(prior_knowledge_content,''), content)",
         )),
         _ => None,
     };

@@ -250,7 +250,7 @@ pub fn match_order(query_class: InputClass) -> [i16; 3] {
 ///   0=tool, 1=skill_rusty, 2=skill_monty, 3=skill_llm, 4-9=extensions,
 ///   10=orchestrator, 11=reserved, 12=spec, 13=tool_skill, 14=plan,
 ///   15=summary, 16=action, 17=docu, 18=lesson, 19=issue, 20=note,
-///   21=recipe, 50=scaffold.
+///   21=recipe, 22=python_code, 50=scaffold.
 pub fn class_label(class_code: i32) -> String {
     match class_code {
         0 => "tool",
@@ -275,6 +275,7 @@ pub fn class_label(class_code: i32) -> String {
         19 => "issue",
         20 => "note",
         21 => "recipe",
+        22 => "python_code",
         50 => "scaffold",
         _ => "component",
     }
@@ -775,6 +776,7 @@ mod tests {
         assert_eq!(class_label(19), "issue");
         assert_eq!(class_label(20), "note");
         assert_eq!(class_label(21), "recipe");
+        assert_eq!(class_label(22), "python_code");
         assert_eq!(class_label(50), "scaffold");
         assert_eq!(class_label(99), "component"); // unknown → generic
     }

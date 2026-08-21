@@ -7462,7 +7462,7 @@ Returns `SkillNotFound` (mapped to HTTP 404 via `WebUiV2HttpError`) if the skill
 
 > **Scope:** This translator handles **external third-party MCP servers only**.
 > Builtin first-party tools (`builtin.*`) are seeded by the separate `builtin_bootstrap.rs`
-> in Phase L — with hand-authored content and system-level validation bypass.
+> in Phase L — with hand-authored content through automated-but-auditable Q2 (Phase P.0).
 > Do NOT run the MCP translator against builtin tools.
 
 For each external MCP tool: generate Tool (class 0), ToolSkill (class 13), Skill (class 1), and
@@ -7575,8 +7575,9 @@ All inserted with `validation_status = 'pending'` — external MCP content must 
 **Goal:** Seed the full v3 component stack for all 23 builtin tools at first boot.
 This is a separate concern from the Phase K MCP translator. The MCP translator targets
 external third-party MCP servers (unknown shape, must enter Q1/Q2). The builtin bootstrap
-targets the 23 first-party tools: content is hand-authored, quality is guaranteed at
-compile time, and Q2 manual review is bypassed (`source = "system"`, `validation_status = "validated"`).
+targets the 23 first-party tools: content is hand-authored and quality-checked at
+author time; all components go through Q1 + **automated-but-auditable Q2** (Phase P.0 —
+the seeder is the recorded Q2 actor; no silent bypass). See §0.23.3 fold-in note above.
 
 #### L.1 New migration: V057 (**was V056 before Decision 2**)
 
@@ -7617,6 +7618,59 @@ ALTER TABLE reborn_recipes
 (`"builtin.read_file"`, etc.) without fragile name-search. The Rust execution layer
 uses this when resolving a Tool UUID to the registered handler.
 
+#### L.0 Live capability layer — what already exists
+
+The 23 `BuiltinFirstPartyTools` Rust capability handlers are **already fully
+implemented** in `crates/brassclaw_host_runtime/src/first_party_tools/`. The
+`capability_id` string constants are also already exported (e.g.
+[`READ_FILE_CAPABILITY_ID`](crates/brassclaw_host_runtime/src/first_party_tools/mod.rs:68),
+[`SHELL_CAPABILITY_ID`](crates/brassclaw_host_runtime/src/first_party_tools/shell.rs), etc.).
+
+Phase L adds **zero new Rust capability logic**. It adds only the DB rows that
+make these capabilities visible to the v3 orchestrator stack. Every
+`capability_id` value in the Tool row seeder must be taken directly from the
+live `*_CAPABILITY_ID` constant in `first_party_tools/` — never hard-coded as
+a string literal — to stay in sync with the handler registry.
+
+**Live capability-ID constants to use in the seeder:**
+
+| `capability_id` value | Rust constant source |
+|-----------------------|----------------------|
+| `"builtin.read_file"` | `mod.rs::READ_FILE_CAPABILITY_ID` |
+| `"builtin.write_file"` | `mod.rs::WRITE_FILE_CAPABILITY_ID` |
+| `"builtin.list_dir"` | `mod.rs::LIST_DIR_CAPABILITY_ID` |
+| `"builtin.glob"` | `mod.rs::GLOB_CAPABILITY_ID` |
+| `"builtin.grep"` | `mod.rs::GREP_CAPABILITY_ID` |
+| `"builtin.apply_patch"` | `mod.rs::APPLY_PATCH_CAPABILITY_ID` |
+| `"builtin.shell"` | `shell.rs::SHELL_CAPABILITY_ID` |
+| `"builtin.http"` | `http.rs::HTTP_CAPABILITY_ID` |
+| `"builtin.http.save"` | `http.rs::HTTP_SAVE_CAPABILITY_ID` |
+| `"builtin.json"` | `json.rs::JSON_CAPABILITY_ID` |
+| `"builtin.time"` | `time.rs::TIME_CAPABILITY_ID` |
+| `"builtin.echo"` | `echo.rs::ECHO_CAPABILITY_ID` |
+| `"builtin.memory_search"` | `memory.rs::MEMORY_SEARCH_CAPABILITY_ID` |
+| `"builtin.memory_write"` | `memory.rs::MEMORY_WRITE_CAPABILITY_ID` |
+| `"builtin.memory_read"` | `memory.rs::MEMORY_READ_CAPABILITY_ID` |
+| `"builtin.memory_tree"` | `memory.rs::MEMORY_TREE_CAPABILITY_ID` |
+| `"builtin.skill_list"` | `skill_management.rs::SKILL_LIST_CAPABILITY_ID` |
+| `"builtin.skill_install"` | `skill_management.rs::SKILL_INSTALL_CAPABILITY_ID` |
+| `"builtin.skill_remove"` | `skill_management.rs::SKILL_REMOVE_CAPABILITY_ID` |
+| `"builtin.trigger_create"` | `trigger_management.rs::TRIGGER_CREATE_CAPABILITY_ID` |
+| `"builtin.trigger_list"` | `trigger_management.rs::TRIGGER_LIST_CAPABILITY_ID` |
+| `"builtin.trigger_remove"` | `trigger_management.rs::TRIGGER_REMOVE_CAPABILITY_ID` |
+| `"builtin.spawn_subagent"` | `spawn_subagent.rs::SPAWN_SUBAGENT_CAPABILITY_ID` |
+
+**Content source for all 178 component bodies:** `builtin_stuff_v3.md` (Steps 1–26).
+Every ToolSkill body, Leaf/Domain Skill body, PythonCode body, ExtensionCatalogue
+`overview_doc`, and Recipe `step_descriptions` JSON is fully specified there. The
+implementer transcribes each body into the corresponding `const &str` in
+`builtin_bootstrap.rs` — no file I/O, no `include_str!()`, no external files.
+
+**Current DB state:** migrations end at `V051`. Zero `reborn_tools`,
+`reborn_tool_skills`, `reborn_python_code`, or `reborn_extension_catalogues` rows
+exist for builtins. Phase L is gated on V052 (Phase B), V053 (Phase C), V055
+(Phase J.2), V056 (Phase K), and V057 (Phase L.1) being applied first.
+
 #### L.2 New file: `crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs`
 
 Seeder function: `pub async fn seed_builtin_components(pool: &PgPool, scope: &ComponentScope)`
@@ -7643,58 +7697,85 @@ seed_builtin_components(pool, scope):
          Insert Recipe row (source=system, validated)
 ```
 
-**Hand-authored content** lives as `include_str!()` markdown files in
-`crates/brassclaw_engine/prompts/builtin/` — one file per component body (ToolSkill,
-Skill, PythonCode, ExtensionCatalogue overview_doc). This keeps them out of Rust source
-and editable without recompiling.
+**Hand-authored content** lives as named `const &str` literals **inline in
+`builtin_bootstrap.rs`** — one constant per component body (ToolSkill, Skill,
+PythonCode, ExtensionCatalogue `overview_doc`, Recipe `step_descriptions` JSON). The
+full body text for all 178 components is already specified in `builtin_stuff_v3.md`
+and is transcribed into these constants at implementation time.
+
+**No `include_str!()` and no `prompts/builtin/` directory.** The `include_str!()` +
+on-disk file pattern was the pre-v3 filesystem-skill approach (see Phase P.1 Step A —
+now being deleted). Recreating it here for builtins would contradict the v3 principle
+that **the DB is the sole runtime source of truth for all component content**. The
+seeder writes to the DB once at first boot; the DB row is the live record from that
+point on. The WebUI export button (Phase K.1 §K.1.7) produces a `SKILL.md`-formatted
+file on demand from the DB row — that is the only "file" that ever needs to exist.
+
+**Rust constant naming convention** (for readability inside the seeder file):
+
+```rust
+const TS_READ_FILE: &str = "...ToolSkill body for builtin.read_file...";
+const TS_WRITE_FILE: &str = "...";
+const SKILL_FILESYSTEM: &str = "...Domain Skill body...";
+const CAT_FILESYSTEM_OVERVIEW: &str = "...ExtensionCatalogue overview_doc...";
+// etc. — one const per component body, grouped by domain
+```
 
 **Called from** composition boot sequence, analogous to `component_import.rs`.
 
-#### L.3 Content files to create
+#### L.3 Content source
 
-| Path | Component |
-|------|-----------|
-| `prompts/builtin/toolskill_read_file.md` | ToolSkill: annotated param schema, path rules, output size limits |
-| `prompts/builtin/toolskill_write_file.md` | ToolSkill: write modes, max 6 MiB, overwrite vs create |
-| `prompts/builtin/toolskill_list_dir.md` | ToolSkill: output format, scope boundary |
-| `prompts/builtin/toolskill_glob.md` | ToolSkill: v1 glob syntax, result ordering, scope |
-| `prompts/builtin/toolskill_grep.md` | ToolSkill: regex syntax, output modes, scope |
-| `prompts/builtin/toolskill_apply_patch.md` | ToolSkill: exact vs fuzzy match, retry semantics, error codes |
-| `prompts/builtin/toolskill_shell.md` | ToolSkill: **approval required**, 120s limit, quoting rules, when to prefer structured tools |
-| `prompts/builtin/toolskill_http.md` | ToolSkill: 15 MiB cap, 10s/30s timeout, redirect handling |
-| `prompts/builtin/toolskill_http_save.md` | ToolSkill: same as http + filesystem write scope |
-| `prompts/builtin/toolskill_memory_search.md` | ToolSkill: query format, score interpretation, budget |
-| `prompts/builtin/toolskill_memory_write.md` | ToolSkill: key format, TTL, scope |
-| `prompts/builtin/toolskill_memory_read.md` | ToolSkill: exact key lookup vs semantic search |
-| `prompts/builtin/toolskill_memory_tree.md` | ToolSkill: output format, traversal depth |
-| `prompts/builtin/toolskill_skill_list.md` | ToolSkill: output format, scope isolation |
-| `prompts/builtin/toolskill_skill_install.md` | ToolSkill: URL format, enters pending → Q1 → Q2 |
-| `prompts/builtin/toolskill_skill_remove.md` | ToolSkill: irreversible, scope isolation |
-| `prompts/builtin/toolskill_trigger_create.md` | ToolSkill: cron/interval format, ExternalWrite effect |
-| `prompts/builtin/toolskill_trigger_list.md` | ToolSkill: scope filtering |
-| `prompts/builtin/toolskill_trigger_remove.md` | ToolSkill: ExternalWrite, irreversibility |
-| `prompts/builtin/toolskill_spawn_subagent.md` | ToolSkill: **scope isolation**, budget inheritance, auth model |
-| `prompts/builtin/toolskill_echo.md` | ToolSkill: trivial passthrough |
-| `prompts/builtin/toolskill_time.md` | ToolSkill: operations list, ISO 8601 format |
-| `prompts/builtin/toolskill_json.md` | ToolSkill: parse/stringify/query/validate, jq-style queries |
-| `prompts/builtin/skill_filesystem.md` | Skill: when to use read_file vs glob vs grep; task patterns |
-| `prompts/builtin/skill_file_editing.md` | Skill: read → patch → verify flow; when to use exact vs fuzzy |
-| `prompts/builtin/skill_file_search.md` | Skill: combined glob + grep patterns for code search tasks |
-| `prompts/builtin/skill_http.md` | Skill: fetch vs download; API vs page; sanitize response |
-| `prompts/builtin/skill_memory.md` | Skill: when to search vs read vs tree; write-back rules |
-| `prompts/builtin/skill_memory_navigation.md` | Skill: how to use tree before diving into memory |
-| `prompts/builtin/skill_shell.md` | Skill: prefer structured tools; only use shell when unavoidable; always confirm destructive commands |
-| `prompts/builtin/skill_subagent.md` | Skill: when to delegate; how to frame child goal; handle child result |
-| `prompts/builtin/skill_skill_management.md` | Skill: install/remove semantics; user confirmation required; lifecycle |
-| `prompts/builtin/skill_trigger_management.md` | Skill: schedule vs ask; cron syntax; scope model |
-| `prompts/builtin/pythoncode_json_helper.md` | PythonCode: chain json.query + json.stringify patterns |
-| `prompts/builtin/pythoncode_time_helper.md` | PythonCode: common time format/diff patterns |
-| `prompts/builtin/pythoncode_patch_formatter.md` | PythonCode: format LLM edit intent into search-replace patch object |
-| `prompts/builtin/cat_filesystem.md` | ExtensionCatalogue overview_doc for builtin-filesystem |
-| `prompts/builtin/cat_network.md` | ExtensionCatalogue overview_doc for builtin-network |
-| `prompts/builtin/cat_memory.md` | ExtensionCatalogue overview_doc for builtin-memory |
-| `prompts/builtin/cat_process.md` | ExtensionCatalogue overview_doc for builtin-process |
-| `prompts/builtin/cat_management.md` | ExtensionCatalogue overview_doc for builtin-management |
+**No content files to create.** All 178 component bodies (28 ToolSkills, 27 PythonCode
+bodies, 44 Leaf Skills, 7 Domain Skills, 46 Recipes with `step_descriptions` JSONB,
+5 ExtensionCatalogue `overview_doc` strings, 23 Tool rows) are fully specified in
+`builtin_stuff_v3.md` (Steps 1–26 + Final section). The implementer transcribes each
+body from that document into the corresponding `const &str` in `builtin_bootstrap.rs`.
+
+**Content registry** (inline `const &str` constants — all live in `builtin_bootstrap.rs`,
+grouped by domain group matching the seeder insertion order):
+
+| Constant name | Component | Source in builtin_stuff_v3.md |
+|---------------|-----------|-------------------------------|
+| `TS_SHELL_RUN` | ToolSkill `ts-shell-run` | Step 1.2 |
+| `TS_READ_FILE` | ToolSkill `ts-read-file` | Step 2.2 |
+| `TS_WRITE_FILE` | ToolSkill `ts-write-file` | Step 3.2 |
+| `TS_LIST_DIR` | ToolSkill `ts-list-dir` | Step 4.2 |
+| `TS_GLOB` | ToolSkill `ts-glob` | Step 5.2 |
+| `TS_GREP` | ToolSkill `ts-grep` | Step 6.2 |
+| `TS_APPLY_PATCH` | ToolSkill `ts-apply-patch` | Step 7.2 |
+| `TS_HTTP_FETCH` | ToolSkill `ts-http-fetch` | Step 8.2 |
+| `TS_HTTP_SAVE` | ToolSkill `ts-http-save` | Step 9.2 |
+| `TS_MEMORY_SEARCH` | ToolSkill `ts-memory-search` | Step 10.2 |
+| `TS_MEMORY_WRITE` | ToolSkill `ts-memory-write` | Step 11.2 |
+| `TS_MEMORY_READ` | ToolSkill `ts-memory-read` | Step 12.2 |
+| `TS_MEMORY_TREE` | ToolSkill `ts-memory-tree` | Step 13.2 |
+| `TS_TIME_NOW` | ToolSkill `ts-time-now` | Step 14.2 |
+| `TS_TIME_PARSE` | ToolSkill `ts-time-parse` | Step 14.6 |
+| `TS_TIME_CONVERT` | ToolSkill `ts-time-convert` | Step 14.10 |
+| `TS_JSON_QUERY` | ToolSkill `ts-json-query` | Step 15.2 |
+| `TS_JSON_STRINGIFY` | ToolSkill `ts-json-stringify` | Step 15.6 |
+| `TS_JSON_VALIDATE` | ToolSkill `ts-json-validate` | Step 15.7 |
+| `TS_SKILL_LIST` | ToolSkill `ts-skill-list` | Step 16.4 |
+| `TS_SKILL_INSTALL` | ToolSkill `ts-skill-install` | Step 16.5 |
+| `TS_SKILL_REMOVE` | ToolSkill `ts-skill-remove` | Step 16.6 |
+| `TS_TRIGGER_CREATE` | ToolSkill `ts-trigger-create` | Step 17.4 |
+| `TS_TRIGGER_LIST` | ToolSkill `ts-trigger-list` | Step 17.5 |
+| `TS_TRIGGER_REMOVE` | ToolSkill `ts-trigger-remove` | Step 17.6 |
+| `TS_SPAWN_SUBAGENT` | ToolSkill `ts-spawn-subagent` | Step 18.2 |
+| `TS_WEB_SEARCH` | ToolSkill `ts-web-search` | Step 20.1 |
+| `TS_ECHO` | ToolSkill `ts-echo` | Step 19.2 |
+| `SKILL_SHELL_RUN` … `SKILL_WEB_SEARCH` | 44 Leaf Skills (class 1) | Steps 1.3–20.4 |
+| `SKILL_SHELL` … `SKILL_SUBAGENT` | 7 Domain Skills (class 2) | Steps 1.5, 7.x, 9.x.1, 13.x.3, 16.11, 17.11, 18.5 |
+| `PC_EXEC_READ_FILE` … `PC_WEB_SEARCH_QUERY_BUILD` | 27 PythonCode bodies (class 22) | Steps 2.3–20.3 |
+| `CAT_FILESYSTEM_OVERVIEW` … `CAT_MANAGEMENT_OVERVIEW` | 5 ExtensionCatalogue `overview_doc` strings | Steps 22–26 |
+| Recipe `step_descriptions` JSONB | 46 Recipes (inline `serde_json::json!{}` literals) | Steps 1.6–20.5 |
+
+> **Note:** Recipe `step_descriptions` are inline `serde_json::json!{}` macro
+> literals in the seeder function body rather than `const &str` — they reference
+> the UUID variables of already-inserted sibling components, which are local to
+> the insertion scope. See `builtin_stuff_v3.md` §Final for the correct seeding
+> order (ExtensionCatalogue → Tools → ToolSkills → PythonCode → Leaf Skills →
+> Domain Skills → Recipes).
 
 #### Tests
 
@@ -8503,13 +8584,57 @@ method), and the WebUI validation-queue tab (surface auto vs human Q2 actor).
 
 **Status:** [ ] Pending
 
-**Goal:** Remove the `SYSTEM_SKILLS_ROOT` / `SkillSource::System` bypass
-(validation-bypass audit finding 1): on-disk `SKILL.md` system skills become
-`reborn_skills` DB rows that pass Q1+Q2 (via Phase P.0). Also satisfies v3
-goal 5.1 (skills are DB-stored; no physical `SKILL.md` — exportable on demand
-via the WebUI, Phase K.1 §K.1.7).
+**Goal:** Remove **both** pre-v3 filesystem-skill mechanisms (validation-bypass
+audit finding 1): on-disk `SKILL.md` system skills become `reborn_skills` DB
+rows that pass Q1+Q2 (via Phase P.0). Also satisfies v3 goal 5.1 (skills are
+DB-stored; no physical `SKILL.md` — exportable on demand via the WebUI,
+Phase K.1 §K.1.7).
 
-**What changes.** The on-disk system skills loaded at
+**Background — two separate mechanisms, not one.** There are two independent
+pre-v3 filesystem-skill paths that both need removal:
+
+1. **`bundled_skills.rs`** (`crates/brassclaw_reborn_composition/src/bundled_skills.rs`) —
+   a *composition-layer* boot installer. At build time,
+   `crates/brassclaw_reborn_composition/build.rs` (`embed_reborn_skills()`) walks
+   the `skills/` source tree and compiles each skill bundle into two `include_str!()`
+   JSON blobs (`embedded_reborn_skill_summaries.json`,
+   `embedded_reborn_skill_bundles.json`). At runtime,
+   `ensure_bundled_reborn_skills_installed()` installs those blobs onto the virtual
+   filesystem under `/projects/system/skills/` with a content-hash marker file for
+   idempotent re-install and stale-removal. **This path is already inert:** the
+   `skills/` source tree was deleted in Phase 6 and `archive/skills-v1/` is absent,
+   so `build.rs` emits empty JSON arrays (`[]`) today. The entire path is also gated
+   by the `skills-db` Cargo feature (`brassclaw_reborn_composition/Cargo.toml`) —
+   when that feature is active the build emits empty arrays and the module is
+   cfg-gated out. Phase P.1 **deletes** `embed_reborn_skills()` from `build.rs`,
+   the two `include_str!()` blobs, and `ensure_bundled_reborn_skills_installed()` /
+   its callers (or reduces them to a no-op stub while unwinding call sites
+   separately). **Do this first** since it is already a no-op and removal is safe.
+
+2. **`management.rs` `SkillSource::System`** (`crates/brassclaw_skills/src/management.rs`) —
+   a *skills-subsystem* loader. `SYSTEM_SKILLS_ROOT="/system/skills"` (`:34`) is
+   read at `:243`/`:263` and loaded as `SkillSource::System` via `parse_skill_md`
+   — without ever becoming `reborn_skills` DB rows, so Q1+Q2 never run. This is
+   the **active** validation bypass. Remove this second, after the skills are
+   migrated to DB rows via the Phase P.0 path.
+
+**Pre-flight check.** Before deleting `bundled_skills.rs`, confirm
+`embed_reborn_skills()` already emits `[]` (grep for `skills/` directory
+absence; run `cargo build -p brassclaw_reborn_composition` and inspect
+`$OUT_DIR/embedded_reborn_skill_bundles.json`). The `skills-db` feature can
+be used as an immediate kill-switch without code deletion if needed.
+
+**What changes.**
+
+*Step A — `bundled_skills.rs` removal (already inert):*
+Remove `embed_reborn_skills()` and the `println!("cargo:rerun-if-changed=…")`
+for `skills_dir`/`archive_skills_dir` from `build.rs`. Delete
+`crates/brassclaw_reborn_composition/src/bundled_skills.rs` and its
+`mod bundled_skills` declaration in `lib.rs`. Remove all call sites of
+`ensure_bundled_reborn_skills_installed()` and `bundled_reborn_skill_summaries()`.
+
+*Step B — `management.rs` `SkillSource::System` removal (active bypass):*
+The on-disk system skills loaded at
 `crates/brassclaw_skills/src/management.rs:243`/`:263`
 (`SYSTEM_SKILLS_ROOT="/system/skills"`, `:34`) as `SkillSource::System` via
 `parse_skill_md` — without becoming `reborn_skills` DB rows, so Q1+Q2 never
@@ -8522,21 +8647,30 @@ which call `DbSkillStore::fetch_for_consumer` — the actual
 `crates/brassclaw_skills/src/db_store.rs:554`) then loads them as
 first-class DB skills.
 
-**Files (indicative):** `crates/brassclaw_skills/src/management.rs`
-(`SYSTEM_SKILLS_ROOT`, the `:243`/`:263` load sites, `parse_skill_md`), the
-seeder, `crates/brassclaw_engine/src/executor/db_skill_loader.rs`
-(`:67`/`:83` runtime load site calling `fetch_for_consumer`), and
-`crates/brassclaw_skills/src/db_store.rs` (`:554` validated filter inside
-`fetch_for_consumer`).
+**Files (indicative):**
+- Step A: `crates/brassclaw_reborn_composition/build.rs` (`embed_reborn_skills()`),
+  `crates/brassclaw_reborn_composition/src/bundled_skills.rs` (delete file),
+  `crates/brassclaw_reborn_composition/src/lib.rs` (`mod bundled_skills`),
+  all call sites of `ensure_bundled_reborn_skills_installed()` /
+  `bundled_reborn_skill_summaries()`.
+- Step B: `crates/brassclaw_skills/src/management.rs`
+  (`SYSTEM_SKILLS_ROOT`, the `:243`/`:263` load sites, `parse_skill_md`), the
+  seeder, `crates/brassclaw_engine/src/executor/db_skill_loader.rs`
+  (`:67`/`:83` runtime load site calling `fetch_for_consumer`), and
+  `crates/brassclaw_skills/src/db_store.rs` (`:554` validated filter inside
+  `fetch_for_consumer`).
 
-**Depends on:** Phase P.0.
+**Depends on:** Phase P.0 (Step B only; Step A has no dependencies).
 
 **Tests:**
-- Integration: a system skill seeded → appears as a `reborn_skills` row →
-  passes Q1+Q2 → `validated` → loaded by `brassclaw_engine`'s `db_skill_loader`
-  (`fetch_llm_skills_as_json`).
-- Regression: no `SkillSource::System` disk load remains for migrated skills
-  (grep-enforced).
+- Step A: confirm `cargo build -p brassclaw_reborn_composition` succeeds
+  after deletion; grep-enforced absence of `bundled_skills`, `SYSTEM_SKILLS_ROOT`
+  in `brassclaw_reborn_composition`.
+- Step B / Integration: a system skill seeded → appears as a `reborn_skills`
+  row → passes Q1+Q2 → `validated` → loaded by `brassclaw_engine`'s
+  `db_skill_loader` (`fetch_llm_skills_as_json`).
+- Step B / Regression: no `SkillSource::System` disk load remains for
+  migrated skills (grep-enforced).
 
 ### Phase P — Doc-Conversion Mechanism (§0.22; user repeat item 4)
 

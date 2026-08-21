@@ -77,6 +77,7 @@ fn class_label(class_code: u16) -> &'static str {
         19 => "Issue",
         20 => "Note",
         21 => "Recipe",
+        22 => "PythonCode",
         50 => "Scaffold",
         _ => "Component",
     }
@@ -463,5 +464,19 @@ impl InterceptorConfigService for RebornInterceptorConfigService {
 
         let kv = self.load_config().await;
         Ok(self.build_snapshot(&kv))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Phase B: class 22 (PythonCode) gets a title-case display label, matching
+    /// the single-word entries (`"Tool"`, `"Action"`, `"Recipe"`) in this
+    /// function. FIND-P6-07 / FIND-P7-06. `class_label` is private, so the
+    /// assertion lives inside the module via `use super::*`.
+    #[test]
+    fn class_label_22_is_python_code() {
+        assert_eq!(class_label(22), "PythonCode");
     }
 }

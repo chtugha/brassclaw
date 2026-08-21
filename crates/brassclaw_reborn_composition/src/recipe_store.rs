@@ -876,6 +876,7 @@ fn class_label(code: u16) -> String {
         19 => "Config".to_string(),
         20 => "Workflow".to_string(),
         21 => "Recipe".to_string(),
+        22 => "PythonCode".to_string(),
         50 => "Scaffold".to_string(),
         other => format!("Component ({other})"),
     }
@@ -1105,6 +1106,14 @@ mod tests {
     };
     use brassclaw_engine::types::step::Step;
     use brassclaw_engine::types::thread::{Thread, ThreadId, ThreadState};
+
+    /// Phase B: class 22 (PythonCode) display label. FIND-P9-13 / FIND-P7-07.
+    /// `class_label` is a private `fn`, so the assertion lives inside the
+    /// module via `use super::*` (DESIGN-ISSUE-02 / FIND-20).
+    #[test]
+    fn class_label_22_is_python_code() {
+        assert_eq!(class_label(22), "PythonCode");
+    }
 
     /// Minimal `Store` impl used only by these tests. Implements the
     /// `MemoryDoc` + thread/step/mission surfaces the recipe composite
