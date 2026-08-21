@@ -43,9 +43,36 @@
 
 ---
 
-## Codebase Audit Pass — Corrections Applied (Review Passes 2 + 3 + 5)
+## Codebase Audit Pass — Corrections Applied (Review Passes 2 + 3 + 5 + 7 + 8)
 
 The following issues were found by reading the live codebase and corrected directly in this plan. Each is tagged with a marker so implementers can grep for them.
+
+### Pass 8 findings (full `Thread` struct read — new critical issue)
+
+| Tag | Severity | Location | Finding | Fix Applied |
+|-----|----------|----------|---------|-------------|
+| `FIND-P8-01` | **CRITICAL** | Phase F / `Thread` struct | See full entry in Pass 7 findings table (added in line order). Summary: `Thread` has no `tenant_id` or `agent_id` field. Two stubs at `orchestrator.rs:2586-2590` and `3142-3145` must both be fixed. Phase F adds the fields via a builder method `with_tenant_agent`, greps all `Thread::new` sites, and fixes both scope construction stubs. | Phase F security fix section updated with confirmed field absence, second stub location, and exact implementation steps using builder pattern. |
+
+### Pass 7 findings (deep live-source re-read — new issues found, not in any prior pass)
+
+| Tag | Severity | Location | Finding | Fix Applied |
+|-----|----------|----------|---------|-------------|
+| `FIND-P7-01` | **CRITICAL** | Phase G / Phase H / §0.9 / entire plan | `default.py` is referenced throughout the plan as `crates/brassclaw_engine/src/executor/default.py`. This path **does not exist**. The actual path is `crates/brassclaw_engine/orchestrator/default.py`. The file is embedded in Rust via `include_str!("../../orchestrator/default.py")` at `orchestrator.rs:55`. Every plan reference to `crates/brassclaw_engine/src/executor/default.py` must be `crates/brassclaw_engine/orchestrator/default.py`. | All Phase G and Phase H "Files to modify" references to `default.py` corrected to the real path. |
+| `FIND-P7-02` | **CRITICAL** | Phase G / `execute_action_by_id` | The plan says Phase G must implement a **new** `execute_action_by_id` helper in `default.py`. This is WRONG: `execute_action_procedure(action_doc, goal, state)` already exists at `orchestrator/default.py:901` and does exactly this job — it executes an Action document deterministically without an LLM call. The `action_short_circuit` branch (Phase G step-0 new code) must call `execute_action_procedure`, NOT a new function with a different name. The difference: the Phase G branch receives `pkr["action_component_id"]` (a UUID) and `pkr["action_name"]`, so it first needs to call `__fetch_component__(uuid, 16)` to get the action doc, THEN pass it to `execute_action_procedure`. The plan's pseudocode is semantically correct but incorrectly names this step "implement `execute_action_by_id`" when what is needed is a thin wrapper that fetches by UUID and delegates to the existing `execute_action_procedure`. | Phase G "NEW FUNCTION REQUIREMENT" note updated: do NOT create a new `execute_action_by_id` function. The new Phase G step-0 branch does: `(1) action_doc = __fetch_component__(pkr["action_component_id"], 16); (2) return execute_action_procedure(action_doc, goal, state)`. The existing `execute_action_procedure` handles everything including the deterministic no-LLM execution. |
+| `FIND-P7-03` | **CRITICAL** | Phase F / `handle_assemble_prior_knowledge` scope fix | The plan marks the `tenant_id`/`agent_id` scope fix as "[resolved pre-v3]". But reading the LIVE code at `orchestrator.rs:2586-2590`, the fix applied was: `tenant_id: thread.user_id.clone()` and `agent_id: "default".to_string()` — both are still stubs. The code comment says "Phase 1 stub" and "v3 Phase F will tighten this". The plan's "Review note" saying this was resolved and the deeper `Thread` struct work deferred to Phase F is **correct** — but the note then says "aligned with the documented sibling convention" giving the impression the fix is complete. It is NOT: `tenant_id` is still set to `thread.user_id` (not a real tenant_id), and `agent_id` is `"default"`. Phase F MUST fix this for multi-tenant correctness when `PostgresSource` is live. **The `Thread` struct (`types/thread.rs`) must be verified to confirm whether `tenant_id` and `agent_id` fields exist before Phase F can source real values.** | Phase F "Files to modify" updated: add explicit note that the pre-v3 fix only replaced `"default"` tenant_id with `thread.user_id` (still wrong for multi-tenant) and `agent_id` is still `"default"`. Phase F must either (a) add `tenant_id` and `agent_id` to `Thread` or (b) pass them through the call chain. The `Thread` struct must be read in Phase F before implementing. |
+| `FIND-P7-04` | **HIGH** | Phase A / `RECIPE_SELECT` and `decode_recipe_row` | The plan's `FIND-P6-04` re-index table is **confirmed correct** against live code. `RECIPE_SELECT` at `pg_recipe_store.rs:208-217` selects exactly 31 columns (indices 0-30). `decode_recipe_row` at `pg_recipe_store.rs:219-252` uses positional `row.get(0)` through `row.get(30)` exactly as the plan describes. `id` is at 0, `updated_at` is at 30. Phase A appends at 31/32/33. Phase N re-index table is fully accurate. No correction needed — confirmed. |  Confirmed accurate. No change. |
+| `FIND-P7-05` | **HIGH** | Phase A / `NewPgRecipe` INSERT | The plan says the Phase A INSERT will grow from 13 to 16 columns. Live code at `pg_recipe_store.rs:261-283` confirms: INSERT currently lists 13 columns (`tenant_id, user_id, agent_id, project_id, name, description, trigger, steps, prior_knowledge_content, override_prompt_creation, consumer_tags, intent_examples, source`) with `VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`. After Phase A adds `step_descriptions`, `variants`, `dependency_registry`, it becomes 16 columns with `$14`, `$15`, `$16`. This confirms FIND-21. The `NewPgRecipe` struct at `pg_recipe_store.rs:147-162` also lacks these three fields — must be added. | Confirmed accurate. FIND-07 / FIND-21 are correct. No change. |
+| `FIND-P7-06` | **HIGH** | Phase B / `interceptor_config_service.rs::class_label` actual values | The plan says `1 => "Skill"` — confirmed from live code at `interceptor_config_service.rs:67`. NOT `"Skill (Rusty)"` (that is `recipe_store.rs`'s version). The plan's FIND-20 table for `interceptor_config_service.rs` shows `"Skill"` for class 1 — CORRECT. But the existing code does NOT have arms for classes 2, 3, 4–8 (all fall to `_ => "Component"`) — confirmed. Phase B/C must add `22 => "PythonCode"` and `23 => "Catalogue"` only. | Confirmed accurate. |
+| `FIND-P7-07` | **HIGH** | Phase B/C / `recipe_store.rs::class_label` live labels | Live code at `recipe_store.rs:861-882` confirms: `13 => "Guide"`, `14 => "Reference"`, `15 => "Note"`, `17 => "Template"`, `18 => "Snippet"`, `19 => "Config"`, `20 => "Workflow"`, `21 => "Recipe"`, `50 => "Scaffold"`. Also `4..=9 => format!("Extension (class {code})")`. The plan's description is correct. Phase B/C add `22 => "PythonCode".to_string()` and `23 => "Catalogue".to_string()` which fits the single-word pattern (like `"Tool"`, `"Action"`, `"Recipe"`). | Confirmed accurate. |
+| `FIND-P7-08` | **HIGH** | Phase E / `fetch_for_consumer` sub-select count | The plan says the UNION ALL has 12 sub-selects (PERF-03 corrected count). Live code at `retrieval_source.rs:283-441` confirms: skills, extensions_unified, actions, specs, tool_skills, plans, summaries, docus, lessons, issues, notes, recipes = **12**. Plan is correct. Adding classes 22 and 23 brings it to 14. | Confirmed accurate. |
+| `FIND-P7-09` | **MEDIUM** | Phase H / `LoopExecutionState` last field | The plan says `spawn_subagent_hint: Option<String>` at line 102 is the last field. Live code at `state.rs:102` confirms this. Phase H appends the three new fields after `spawn_subagent_hint`. | Confirmed accurate. |
+| `FIND-P7-10` | **MEDIUM** | Phase D / `seed_intent_input` current signature | Live `intent_system.rs:462-505` confirms: current 7-param signature with INSERT that uses 11 columns / 10 placeholders (`VALUES ($1..$8,1,$9,$10)` where score=1 literal). The plan's FIND-NEW-03 spec is **exactly correct**. `step_link` is the 8th param, INSERT becomes 12 columns / 11 placeholders, ON CONFLICT gains `step_link = EXCLUDED.step_link`. | Confirmed accurate. |
+| `FIND-P7-11` | **MEDIUM** | Phase H / `PgRecipe::is_tier0_eligible()` incomplete check | Live code at `pg_recipe_store.rs:140-142` confirms: only checks `is_deliverable() && matches!(self.tier.as_str(), "mature" \| "candidate")`. The `wilson_lower >= 0.70` guard is MISSING. FIND-05 is **correct** and the fix must land in Phase A (not Phase E) as specified. The one-line fix: `self.is_deliverable() && matches!(self.tier.as_str(), "mature" \| "candidate") && self.wilson_lower >= 0.70`. | Confirmed accurate. Fix should be in Phase A as plan directs. |
+| `FIND-P7-12` | **MEDIUM** | Phase N / `V027` skills `source` CHECK | `V027__reborn_skills.sql:91` confirms `CHECK (source IN ('authored', 'extracted', 'migrated', 'imported'))` — no `'system'`. V057 MUST add `'system'` to this constraint. Also confirmed: `V033__reborn_recipes.sql:113` has `source TEXT NOT NULL DEFAULT 'authored'` with **no CHECK constraint** at all — FIND-P6-02 is correct that V057 must add one. | Confirmed accurate. |
+| `FIND-P7-13` | **MEDIUM** | Phase G / `call_action` uses `__retrieve_docs__` | Live code at `orchestrator/default.py:844` confirms: `nested_docs = __retrieve_docs__(nested_name, 1)`. Phase G must replace this with `__fetch_component__(action_uuid, 16)`. However — the `call_action` step receives the nested action by **name** (`step_def.get("action", "")`), not by UUID. The replacement requires knowing the UUID of the nested action. This is a genuine design gap: `call_action` in the existing Action steps schema references actions by name. **Phase G must specify how `call_action` gets the UUID** — either (a) during Action seeding/authoring, all `call_action` steps must have UUIDs pre-resolved and stored as `action_id` alongside `action`, or (b) Phase G adds a `__resolve_component_by_name__(name, class_code)` host function. Option (a) is cleaner (data migration of existing Action steps) but requires touching the Action schema. Option (b) is a targeted stop-gap. The plan's current statement "UUID sourced from the BuildInstruction step" is wrong for `call_action` which is inside Action steps, NOT in a BuildInstruction. | Phase G "Files to modify" updated: the `call_action` nested lookup replacement is MORE COMPLEX than the plan states. `call_action` step defs reference actions by name. Phase G must either (a) require action authors to add `action_id: UUID` to `call_action` step defs (data migration of V029 Action rows at Phase G deploy) and then use `__fetch_component__(action_id, 16)`, or (b) add `__resolve_component_by_name__(name, 16)` as a host bridge. Option (a) is recommended. Phase G must include the data migration of existing `call_action` steps to add UUID references alongside the name. The plan's "UUID sourced from the BuildInstruction step" comment is incorrect for `call_action` — these are inside Action steps (class 16), not Recipe BuildInstructions. |
+| `FIND-P7-14` | **LOW** | Phase F / `assemble_from_component_items` shape | Live code at `orchestrator.rs:2680-2721` confirms: the override branch (line 2686-2691) returns `formatted_content` as a **prose string** (`item.effective_content`). The normal assembly branch (line 2717-2721) returns `formatted_content` as a **JSON string** `{"prior_knowledge": [...], "matched_components": [...]}`. The plan's FINDING F description is confirmed accurate. Phase F must change normal assembly to also produce a prose string. | Confirmed accurate. FINDING F is correct. |
+| `FIND-P7-15` | **LOW** | §0.9 / `default.py` `__assemble_prior_knowledge__` return shape | The existing `default.py:24-28` comment (registered host functions list) shows `__assemble_prior_knowledge__` currently returns `{content, formatted_content, override_prompt_creation, matched_component_ids}` — exactly 4 fields. The v3 plan extends this to also carry `action_short_circuit`, `tier_zero`, etc. This is documented correctly. | Confirmed accurate. |
+| `FIND-P8-01` | **CRITICAL** | Phase F / `Thread` struct has NO `tenant_id` or `agent_id` fields | Reading the live `crates/brassclaw_engine/src/types/thread.rs` (245 lines, full file): the `Thread` struct (line 212) has `id`, `goal`, `title`, `thread_type`, `state`, `project_id`, `user_id`, `parent_id`, `config`, `messages`, `internal_messages`, `events`, `capability_leases`, `metadata`, `created_at`, `updated_at`, `completed_at`, `step_count`, `total_tokens_used`, `total_cost_usd` — **NO `tenant_id` field, NO `agent_id` field**. The code comment at `orchestrator.rs:2575-2579` already says "Phase 2+ / v3 Phase F will tighten this once the full 4-tuple is threaded through `Thread`". So the plan's Phase F instruction to "add `tenant_id` and `agent_id` to `Thread`" is confirmed as the right path — and it is non-trivial: `Thread::new` signature must change (adds 2 required params or uses builder pattern), **every `Thread::new` call site in the codebase** must be updated, and `#[serde(default)]` is required on both fields for checkpoint compatibility. A second stub is also present at `orchestrator.rs:3142-3145` (the `__list_skills__` / `scope_from_thread_ids` helper) — Phase F must fix BOTH stubs, not just the `handle_assemble_prior_knowledge` one. | Phase F section updated: (1) confirmed `Thread` has no `tenant_id`/`agent_id` — this is the primary work of Phase F; (2) documented the SECOND stub at `orchestrator.rs:3142-3145` that must also be fixed; (3) added explicit note that `Thread::new` signature change requires a codebase-wide grep for all construction sites. |
 
 ### Pass 6 findings (full codebase re-read — new issues found, not in any prior pass)
 
@@ -1067,7 +1094,12 @@ if step == 0:
         if pkr.get("action_short_circuit"):
             __emit_event__("action_started", action_name=pkr.get("action_name", ""))
             __transition_to__("running", "action execution")
-            action_result = execute_action_by_id(pkr["action_component_id"], goal, state)
+            # FIND-P7-02: do NOT call a new execute_action_by_id function — it doesn't
+            # exist and must NOT be created. Use the existing execute_action_procedure
+            # (default.py:901) which already executes an Action doc without an LLM call.
+            # First fetch the action document by UUID, then pass it to the existing executor.
+            action_doc = __fetch_component__(pkr["action_component_id"], 16)
+            action_result = execute_action_procedure(action_doc, goal, state)
             __transition_to__("completed", "action completed")
             return action_result
 
@@ -1331,7 +1363,10 @@ without going through the IBS**. The IBS applies to Recipes (class 21) only.
 In v3, an Action intent match returns `FetchForTurnResult::ActionShortCircuit` — no
 BuildInstruction, no IBS compilation, no prior-knowledge assembly. The `__assemble_prior_knowledge__`
 return dict carries `action_short_circuit: true` + `action_component_id`. The Python
-step-0 block calls `execute_action_by_id` and returns immediately.
+step-0 block fetches the action document via `__fetch_component__(action_component_id, 16)`,
+then calls `execute_action_procedure(action_doc, goal, state)` and returns immediately.
+(`execute_action_procedure` already exists at `default.py:901` — do NOT create a new
+`execute_action_by_id` function. See FIND-P7-02.)
 
 Do not confuse the Action override mechanism (`override_prompt_creation`) with the
 Recipe Tier-0 mechanism (`llm_call_required: false`). They are separate paths.
@@ -2284,6 +2319,36 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   ```
 
 #### Files to modify
+
+> **⚠️ FIND-P7-11 / FIND-05 — FIRST SUB-TASK of Phase A: fix `PgRecipe::is_tier0_eligible()`**
+> This is a single-line bug fix with NO dependencies on any other Phase A work. Do it first,
+> before adding columns or types, so it is never deferred.
+>
+> **File:** `crates/brassclaw_reborn_composition/src/pg_recipe_store.rs` at **line ~140**
+>
+> **Current code (WRONG — confirmed by live read, Pass 7):**
+> ```rust
+> pub(crate) fn is_tier0_eligible(&self) -> bool {
+>     self.is_deliverable() && matches!(self.tier.as_str(), "mature" | "candidate")
+> }
+> ```
+> **Fix:**
+> ```rust
+> pub(crate) fn is_tier0_eligible(&self) -> bool {
+>     self.is_deliverable()
+>         && matches!(self.tier.as_str(), "mature" | "candidate")
+>         && self.wilson_lower >= 0.70
+> }
+> ```
+> **Why:** Without the `wilson_lower >= 0.70` guard, any Recipe marked `"mature"` or
+> `"candidate"` with ANY wilson score (including 0.0 — never used) would be silently
+> eligible for Tier 0. The `PgRecipe` struct carries `wilson_lower: f64` at line ~114 — the
+> check is one line. This is a dangerous silent escalation bug. Fix now; it is the exact
+> same guard that `Recipe::is_tier0_eligible()` in `types/recipe.rs` correctly applies.
+> After fixing, `PgRecipeLibrary::find_recipe` (line ~790) will set `tier0_eligible` correctly
+> on `RecipeMatchDto`. See FINDING G in Phase H for why the v3 `RecipeStage` dispatch should
+> use `TurnRoutingSignals` (from `fetch_for_turn`) rather than `RecipeMatchDto.tier0_eligible`,
+> but this fix prevents the wrong value from propagating into ANY code that reads that field.
 
 - `crates/brassclaw_engine/src/types/recipe.rs` — add the `RecipeVariant` authoring type
   and three new `Recipe` struct fields. **Do NOT add `BuildInstruction` /
@@ -3276,13 +3341,13 @@ Fix the hardcoded `tenant_id: "default"` scope bug (see §below).
 
 #### Phase F security fix — hardcoded `tenant_id: "default"` in scope
 
-> **Bug found (orchestrator.rs line 2581):** `handle_assemble_prior_knowledge` currently
-> constructs `ComponentScope` as:
+> **Bug found (orchestrator.rs lines 2586–2590):** `handle_assemble_prior_knowledge`
+> constructs `ComponentScope` with stubs (live code verified by Pass 7):
 > ```rust
 > ComponentScope {
->     tenant_id: "default".to_string(),   // ← HARDCODED — wrong for multi-tenant
+>     tenant_id: thread.user_id.clone(), // ← STUB — user_id used as tenant_id (Phase 1)
 >     user_id: thread.user_id.clone(),
->     agent_id: String::new(),            // ← EMPTY — wrong for agent scoping
+>     agent_id: "default".to_string(),   // ← STUB — fixed string, not the real agent_id
 >     project_id: thread.project_id.to_string(),
 > }
 > ```
@@ -3293,17 +3358,71 @@ Fix the hardcoded `tenant_id: "default"` scope bug (see §below).
 > and `agent_id` (verify if they already exist; if not, they must be added).
 > This is a **correctness and isolation bug** — fix it as part of Phase F, not deferred.
 >
-> **✅ Review note (pre-v3 audit) — bug location and `Thread` field gap verified — RESOLVED
-> (pre-v3 code fix applied):** the hardcoded scope at `orchestrator.rs:2575–2580` was fixed
-> in code (this audit pass): `tenant_id = thread.user_id.clone()`, `agent_id = "default"`
-> — aligned with the documented sibling convention at `orchestrator.rs:3126–3136`
-> (`__list_skills__` / `scope_from_thread_ids`), with a code comment noting the Phase-1 stub
-> and that the deeper 4-tuple threading is a "Phase 2+ / v3 Phase F" follow-up. Verified the
-> production `RamSource` backend ignores `tenant_id`/`agent_id` (`fetch_for_consumer` uses
-> only `project_id`+`user_id`), so the fix is behavior-preserving today and only becomes
-> load-bearing when `PostgresSource` is wired (E.0). The broader `Thread`-carries-`tenant_id`
-> /`agent_id` work (option a) remains a v3 Phase F item, not a pre-v3 change. Original audit
-> detail retained below:
+> **⚠️ FIND-P7-03 — LIVE CODE CONFIRMED: scope fix is a REAL Phase F task, NOT pre-v3 done.**
+> Reading `orchestrator.rs:2586-2590` in the live codebase:
+> ```rust
+> let scope = ComponentScope {
+>     tenant_id: thread.user_id.clone(), // tenant_id stub (Phase 1)
+>     user_id: thread.user_id.clone(),
+>     agent_id: "default".to_string(),   // agent_id stub (Phase 1)
+>     project_id: thread.project_id.to_string(),
+> };
+> ```
+> The "pre-v3 code fix" referenced above only changed `tenant_id` from the literal `"default"`
+> to `thread.user_id.clone()` — still wrong for multi-tenant (the user_id is not the tenant_id).
+> `agent_id` is still `"default"`. Both are still stubs with a code comment saying Phase F
+> will fix them. The `RamSource` ignores these so the stub is behavior-preserving today, but
+> once Phase E.0 wires `PostgresSource` these values drive the real scope filter and will
+> cause cross-user intent leakage if not corrected. Phase F MUST fix this.
+>
+> **Phase F implementation requirement:** Before implementing, read `Thread` struct in
+> `crates/brassclaw_engine/src/types/thread.rs` to confirm whether `tenant_id`/`agent_id`
+> fields exist. If they do not exist (likely — the pre-v3 audit noted they were absent):
+> option (a) add them to `Thread` with `#[serde(default)]` for checkpoint compatibility, or
+> (b) source them from the engine execution context. Whichever path is chosen must provide
+> real, per-user values — NOT `user_id` as tenant_id, NOT `"default"` as agent_id.
+>
+> **⚠️ FIND-P8-01 — `Thread` struct confirmed to have NO `tenant_id` and NO `agent_id`.**
+> Full read of `crates/brassclaw_engine/src/types/thread.rs:212–245` (Pass 8):
+> The `Thread` struct has `user_id: String`, `project_id: ProjectId`, and 18 other fields —
+> but **NO `tenant_id` field and NO `agent_id` field**. The code comment at
+> `orchestrator.rs:2575–2579` already says "Phase 2+ / v3 Phase F will tighten this once
+> the full 4-tuple is threaded through `Thread`". This is the primary work of Phase F.
+>
+> **SECOND STUB identified (FIND-P8-01 addendum):** `orchestrator.rs:3142-3145` —
+> the `__list_skills__` handler ALSO builds a scope with stub values via
+> `scope_from_thread_ids(&thread.user_id, &thread.user_id, "default", ...)`.
+> Phase F MUST fix BOTH stubs:
+> - `handle_assemble_prior_knowledge` at `orchestrator.rs:2586–2590`
+> - `__list_skills__` / `scope_from_thread_ids` at `orchestrator.rs:3142–3145`
+>
+> **Exact Phase F implementation (Option A — recommended, confirmed correct path):**
+> 1. Add to `Thread` in `types/thread.rs`:
+>    ```rust
+>    /// Tenant identifier. Added v3 Phase F. `#[serde(default)]` = "" for legacy threads.
+>    #[serde(default)]
+>    pub tenant_id: String,
+>    /// Agent context identifier. Added v3 Phase F.
+>    #[serde(default)]
+>    pub agent_id: String,
+>    ```
+> 2. Use a **builder method** `with_tenant_agent(tenant_id, agent_id) -> Self` rather
+>    than adding params to `Thread::new` — builder avoids breaking every call site at once.
+>    Callers that do not set it get empty strings (correct default for legacy/test threads).
+> 3. **Grep all call sites first:** `grep -rn "Thread::new" crates/` — update every
+>    construction site in the composition path (where real tenant/agent are known) to call
+>    `.with_tenant_agent(tenant_id, agent_id)`.
+> 4. After the fields exist, fix BOTH stubs to use `thread.tenant_id` and `thread.agent_id`:
+>    ```rust
+>    let scope = ComponentScope {
+>        tenant_id:  thread.tenant_id.clone(), // real (Phase F)
+>        user_id:    thread.user_id.clone(),
+>        agent_id:   thread.agent_id.clone(),  // real (Phase F)
+>        project_id: thread.project_id.to_string(),
+>    };
+>    ```
+>
+> **Review note (pre-v3 audit) — original detail retained for traceability:**
 > The hardcoded scope is at `orchestrator.rs:2575–2580` (the plan cites "line 2581"; the
 > `ComponentScope { … }` literal spans 2575–2580, with `tenant_id: "default"` at 2576 and
 > `agent_id: String::new()` at 2578). More importantly, the `Thread` struct
@@ -3313,9 +3432,10 @@ Fix the hardcoded `tenant_id: "default"` scope bug (see §below).
 > either (a) add `tenant_id` and `agent_id` to `Thread` (touching `Thread::new`, every thread
 > creator, and checkpoint serde via `#[serde(default)]`), or (b) source them from the
 > turn/loop context that reaches this handler (verify what identity is available on the
-> engine execution context at call time). Option (b) is likely cheaper but must be confirmed
-> against the actual call site; option (a) is the broader, more durable fix. Either way this
-> is larger than "construct the scope from the thread" implies, and must be scoped in Phase F.
+> engine execution context at call time). Option (a) is the correct path per FIND-P8-01.
+> Option (b) is now moot: `thread.tenant_id` / `thread.agent_id` are added by this phase.
+> Either way this is larger than "construct the scope from the thread" implies,
+> and is scoped in Phase F.
 >
 > **✅ Review note (pre-v3 audit) — the legacy `retrieve_context` fallback must survive Phase F — RESOLVED:** E.0 wires `PostgresSource` first (so the fallback is no longer the *primary* production path after E.0), and the Phase F "Clarification" + body above now explicitly instruct "preserve the `retrieve_context` fallback (`orchestrator.rs:2620–2637`) unchanged in Phase F; removal is a Phase K.3 action." Phase K.3 (see the C4 resolution below) is updated to explicitly delete this block (plus `handle_retrieve_docs` +, if no remaining callers, `retrieve_context` itself). Original audit detail retained below:
 > The plan's §0.9 / Q7 framing (line ~2298, ~3682) says `handle_assemble_prior_knowledge`
@@ -3385,27 +3505,42 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
     v3 fields: `action_short_circuit`, `disambiguation`, `orchestrator_content` (as described in §0.9).
   - Add `_set_active_skills_from_matched_ids(pkr.get("matched_component_ids", []), state)` helper.
   - Replace `call_action` `__retrieve_docs__(nested_name, 1)` at line ~844 with
-    `__fetch_component__(action_uuid, 16)` (UUID sourced from the BuildInstruction step).
+    `__fetch_component__(action_uuid, 16)`.
+    > **⚠️ FIND-P7-13 — `call_action` references actions BY NAME, not by UUID.**
+    > `default.py:844` does `nested_docs = __retrieve_docs__(nested_name, 1)` where `nested_name`
+    > is a string action name from the step def. Replacing this with `__fetch_component__(uuid, 16)`
+    > requires knowing the UUID. Phase G must pick one of two strategies:
+    > - **Option A (recommended):** Require authors to add `action_id: UUID` to `call_action`
+    >   step defs. At Phase G deploy, run a data migration that for each `call_action` step in
+    >   all V029 Action rows, resolves the action name to its UUID and writes `action_id` into
+    >   the step dict. Then at runtime: `action_doc = __fetch_component__(step_def["action_id"], 16)`.
+    > - **Option B (stop-gap):** Register a new host function `__resolve_component_by_name__(name, 16)`
+    >   that performs a name lookup. Keeps the existing `action` string field working.
+    > The original plan statement "UUID sourced from the BuildInstruction step" is WRONG for
+    > `call_action` — these are Action steps (class 16 internal steps), not BuildInstruction steps.
   - `pkr["formatted_content"]` remains supported (backward compat alias) — code that checks
     it continues to work. New code uses `pkr["orchestrator_content"]`.
-  > **⚠️ NEW FUNCTION REQUIREMENT — `execute_action_by_id` helper:**
-  > §0.9 v3 step-0 pseudocode calls `execute_action_by_id(pkr["action_component_id"], goal, state)`.
-  > This function **does not exist today** in `default.py`. Phase G must implement it alongside
-  > `execute_recipe_orchestrator_channel` (the Tier-0 Recipe helper from Phase H). Both are new
-  > Python helpers in `default.py`. `execute_action_by_id`:
-  > 1. Fetches the Action component body via `__fetch_component__(uuid, 16)` (registered in Phase F).
-  > 2. Invokes the Action execution path — either delegates to `execute_action_procedure`
-  >    (if such a function exists and handles the action's `steps` JSONB) or mirrors its logic.
-  > 3. Returns a `complete_result` (same structure as `execute_action_procedure`).
-  > The exact shape depends on how the existing Action execution works in `default.py` — read
-  > the existing `execute_action_procedure` (line ~901) before implementing this helper.
-  > Phase G scope includes writing `execute_action_by_id` as part of the `action_short_circuit`
-  > branch.
+  > **⚠️ FIND-P7-02 — `execute_action_by_id` does NOT need to be a new function.**
+  > `execute_action_procedure(action_doc, goal, state)` already exists at
+  > `orchestrator/default.py:901` and executes an Action document deterministically
+  > without an LLM call. The Phase G `action_short_circuit` branch should:
+  >
+  > ```python
+  > action_doc = __fetch_component__(pkr["action_component_id"], 16)
+  > return execute_action_procedure(action_doc, goal, state)
+  > ```
+  >
+  > Do NOT create a new `execute_action_by_id` function. The existing
+  > `execute_action_procedure` is the correct execution path. Phase G only needs:
+  > (1) the `__fetch_component__` host function registered in Phase F, and
+  > (2) the `action_short_circuit` branch in step-0 to call the existing procedure.
+  > The §0.9 pseudocode reference to `execute_action_by_id` must be read as calling
+  > `execute_action_procedure` with the fetched doc.
 
 #### Tests
 
 - Unit: step-0 with upgraded pkr → `orchestrator_content` injected; `__list_skills__` NOT called; `__retrieve_docs__` shim NOT called
-- Unit: pkr has `action_short_circuit: true` → `execute_action_by_id` called, no LLM
+- Unit: pkr has `action_short_circuit: true` → `execute_action_procedure` called via UUID fetch, no LLM
 - Unit: pkr has `disambiguation: true` → `handle_disambiguation` called
 - Unit: no-match path → UNION ALL `orchestrator_content` injected (baseline preserved)
 - Integration: `call_action` using `__fetch_component__` → correct Action fetched by UUID
@@ -3846,20 +3981,19 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
    > If `PgRecipeLibrary.find_recipe` is called anywhere for non-outcome-recording purposes
    > in Phase H, do not use its `tier0_eligible` result for Tier 0 routing.
    >
-   > **⚠️ FIND-05 + NEW: Fix `PgRecipe::is_tier0_eligible()` to prevent silent Tier-0 escalation.**
-   > The stripped method at `pg_recipe_store.rs:140–142` will continue to be callable by
-   > future code and will silently return `true` for low-confidence recipes (wilson < 0.70).
-   > This must be fixed: either (a) fix the method to also check `self.wilson_lower >= 0.70`
-   > (the `PgRecipe` struct already carries `wilson_lower: f64` at line ~114, so the check
-   > is one line), or (b) deprecate the method with a doc comment "Use `TurnRoutingSignals`
-   > from `fetch_for_turn` for Tier 0 decisions — this method's check is incomplete."
-   > Option (a) is strongly preferred.
+   > **⚠️ FIND-05 + NEW + FIND-P7-11: Fix `PgRecipe::is_tier0_eligible()` to prevent silent Tier-0 escalation.**
+   > **Confirmed by live code read (Pass 7):** `pg_recipe_store.rs:140-142` currently is:
+   > ```rust
+   > pub(crate) fn is_tier0_eligible(&self) -> bool {
+   >     self.is_deliverable() && matches!(self.tier.as_str(), "mature" | "candidate")
+   > }
+   > ```
+   > The `wilson_lower >= 0.70` guard is MISSING. This is a dangerous bug — a recipe that
+   > has never been used (wilson_lower = 0.0, tier = "mature" via some other path) would
+   > be silently eligible for Tier 0. Fix: `self.is_deliverable() && matches!(self.tier.as_str(), "mature" | "candidate") && self.wilson_lower >= 0.70`. The `PgRecipe` struct carries `wilson_lower: f64` at line 114, so the check is one line.
    >
-   > **⚠️ ORDERING CHANGE:** This fix was previously assigned to Phase E. It is a pure
-   > single-line bug fix with no dependencies. It MUST be moved to **Phase A** — adding the
-   > `wilson_lower >= 0.70` check does not require any new types or phases to be complete.
-   > If left until Phase E, the incorrect `is_tier0_eligible()` is callable and dangerous for
-   > the duration of Phases A through D (potentially many commits). Fix in Phase A.
+   > **⚠️ ORDERING: This fix belongs in Phase A** — single-line, no dependencies.
+   > Do NOT defer to Phase E or later. Fix as the first sub-task of Phase A.
    >
    > **rust_items application:** `RecipeStage` runs at the agent loop level (above the
    > Python scripting engine) so it CAN apply rust_items to the Rust execution context
@@ -3920,7 +4054,7 @@ simply skipped in Tier 0. This is cleaner than Option 2 (synthetic signal into
          return RecipeStep::Continue { state }  // Tier 2 — unchanged
    ```
 
-3b. `crates/brassclaw_engine/src/executor/orchestrator.rs` + `default.py` — **engine-path
+3b. `crates/brassclaw_engine/src/executor/orchestrator.rs` + `crates/brassclaw_engine/orchestrator/default.py` — **engine-path
    Tier 0 wiring (Model A, CURRENT PRODUCTION — see DRIVER-GAP / H5 MODEL SELECTION).** The
    agent-loop `RecipeStage` (item 3) does not run in production today; production is the
    engine `ExecutionLoop` where Python step-0 calls `__assemble_prior_knowledge__`. Phase H
@@ -5679,6 +5813,7 @@ User types: "run the daily-sync action"
 ├─ [PromptStage skipped]
 ├─ [ModelStage  skipped]
 │   Orchestrator receives: pkr["action_short_circuit"]: true
-│   → execute_action_by_id(action_component_id, goal, state)
+│   → action_doc = __fetch_component__(action_component_id, 16)
+│   → execute_action_procedure(action_doc, goal, state)  [FIND-P7-02: existing fn, no new fn]
 └─ [AssistantReplyStage]  Emits action result.
 ```
