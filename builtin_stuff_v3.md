@@ -1,0 +1,5743 @@
+# Built-in Functionality — v3 Artifact Plan (Revised)
+
+> **Purpose:** For every built-in first-party capability this document defines the exact v3
+> artifacts: class-0 Tools (full DB row spec), class-13 ToolSkills (executor-facing only),
+> class-22 PythonCode (pure logic + orchestrator executor bodies), class-1–3 Skills (leaf +
+> domain, orchestrator-facing narrative), class-21 Recipes (with `step_descriptions` JSONB +
+> intent examples), class-16 Actions (deterministic no-LLM procedures), and class-23
+> ExtensionCatalogues (five, one per domain).
+>
+> ---
+>
+> ## Core Design Principle: Orchestrator-First, LLM-Minimal
+>
+> **The orchestrator runs as much as possible on its own. LLM involvement is reduced to the
+> minimum needed. Most built-in tasks are deterministic and can be performed by the
+> orchestrator WITHOUT the LLM.**
+>
+> This means:
+> - **Tier 0 is the default target** for all built-in capabilities that do not require creative
+>   reasoning, content composition, or disambiguation.
+> - **Every distinct variant of a tool call gets its own Tier-0 recipe.** Three recipes covering
+>   `glob` by extension, by name, and in a subdir are better than one Tier-1 recipe that asks the
+>   LLM to figure out which pattern to use.
+> - **More intent examples = better routing.** Each recipe should have 6–10 intent examples
+>   covering the full natural-language range a user would express for that task.
+> - **One function per leaf skill.** A leaf skill describes exactly one approach to one tool.
+>   If a tool has three common usage patterns, author three leaf skills — not one monolithic skill
+>   that covers all patterns.
+>
+> ---
+>
+> **Architectural principle — Orchestrator drives Rust, always:**
+> The orchestrator is ALWAYS the supervisory layer. Rust makes tools *available* via the
+> rust channel; PythonCode in the orchestrator channel DECIDES when and how to call them.
+> This applies to every Tier-0 recipe: the `channel: "rust"` step pre-loads a ToolSkill
+> binding, and the `channel: "orchestrator"` PythonCode step calls `__execute_action__()`
+> to actually dispatch it. A Tier-0 recipe with a rust step but no orchestrator PythonCode
+> step **fails Q1 §tier0-orchestrator-channel Rule 2** and is rejected.
+>
+> The `channel: "rust"` step does NOT execute the tool — it pre-loads the ToolSkill binding
+> into the thread execution context so the executor knows which tool is available. The actual
+> tool invocation happens ONLY in the `channel: "orchestrator"` PythonCode step via
+> `__execute_action__()`. This two-channel separation is mandatory and enforced at Q1.
+>
+> **Q1 §tier0-orchestrator-channel rules (hard errors):**
+> - Rule 1: Tier-0 `orchestrator_steps` may ONLY contain PythonCode (class 22). Skill
+>   bodies are LLM prose — unexecutable without an LLM. Found Skill in Tier-0 orchestrator
+>   channel → promote to Tier 1 or replace with PythonCode.
+> - Rule 2: If `llm_call_required == false` AND `rust_steps` has tool_bindings, then
+>   `orchestrator_steps` MUST contain ≥1 PythonCode UUID. Empty orchestrator channel with
+>   tool bindings in a Tier-0 recipe → hard Q1 error.
+>
+> **§shell-guard:** Any Recipe referencing `builtin.shell` is `llm_call_required: true` —
+> NEVER Tier 0. The LLM must validate every shell command before dispatch.
+>
+> **§spawn_subagent-guard:** Any Recipe referencing `builtin.spawn_subagent` is
+> `llm_call_required: true` — NEVER Tier 0.
+>
+> **Skill granularity rule (one approach per skill):**
+> Author ONE leaf skill per *approach* to a tool, not one skill per tool. Three skills
+> covering three use-case approaches to `grep` (by file list, by content, by count) are
+> better than one monolithic grep skill. Domain skills reference leaves by name — they
+> never duplicate content. When in doubt: split.
+>
+> **Recipe variant rule (one recipe per variant):**
+> Author ONE recipe per distinct invocation pattern. A `file-list-recursive` recipe is
+> better than a `file-list` recipe with an LLM deciding whether to recurse. The intent
+> system routes to the right recipe; the recipe executes deterministically at Tier 0.
+> Target: 3–5 Tier-0 recipes per tool, each covering a distinct common use case.
+>
+> **PythonCode executor pattern (the canonical Tier-0 body):**
+> ```python
+> # Channel: orchestrator | Class: 22 | No I/O, no imports, no network, no DB.
+> # IBS bakes in {{vars.slotN}} values before execution.
+> # __execute_action__ is provided by the runtime sandbox — not imported.
+> result = __execute_action__("tool_name", {"param": "{{vars.slot0}}"})
+> ```
+> The PythonCode body calls `__execute_action__` — this is the ONLY way a Tier-0 recipe
+> actually dispatches a Rust tool. The rust channel step pre-loads the ToolSkill binding;
+> the PythonCode step drives execution.
+>
+> **When to use Tier 1 (LLM in the loop):**
+> - The operation requires creative content composition (write_file, apply_patch, shell)
+> - The operation requires interpreting ambiguous user intent into tool parameters
+> - The operation has irreversible effects and benefits from LLM confirmation
+> - The operation spans multiple tools in a non-deterministic sequence
+>
+> **Review corrections applied:** F-01 PythonCode I/O removed; F-02 Tool rows fully
+> specified; F-03 five catalogues; F-04 leaf Skills per tool; F-05 ToolSkill bodies
+> executor-only; F-07 shell/subagent Tier-1 enforced; F-08 step_descriptions JSONB per
+> recipe; F-09 tool_name = Tool row name not capability ID; F-10 Q1/Q2 bypass corrected;
+> F-11 LLM call as type:llm step; F-12 Action artifacts added; F-13 intent_examples on all
+> recipes; **F-14 CRITICAL: all Tier-0 recipes now have PythonCode executor steps (channel:
+> orchestrator) — no bare rust-only Tier-0 recipes; F-15 skill granularity: overly broad
+> skills split into per-approach leaf skills; F-16 Orchestrator-first: maximum Tier-0
+> coverage, one recipe per variant, 6–10 intent examples each.**
+>
+> **Prerequisite phases:** A–C (V050–V053), L (V057 adds `source='system'`).
+> `reborn_python_code` (V052) and `reborn_extension_catalogues` (V053) must exist.
+
+---
+
+## Step 1 — `builtin.shell` (Shell Command Execution)
+
+> **Capability:** `builtin.shell` · **Effect:** `mixed` · **Permission:** Ask
+> **§shell-guard applies:** every Recipe using this tool is `llm_call_required: true`.
+> The LLM MUST compose and validate the command. Deterministic shell dispatch is unsafe.
+
+### Step 1.1 — Tool row (class 0)
+
+```
+name:            "shell"
+description:     "Execute a shell command or script in the sandboxed process executor.
+                  Returns {output, exit_code, success, sandboxed}. When stdout+stderr
+                  exceeds the inline cap, the full output is saved to a scoped workspace
+                  file and the response body contains the saved path."
+capability_id:   "builtin.shell"
+effect_type:     "mixed"
+param_schema: {
+  "type": "object",
+  "properties": {
+    "command":      {"type": "string", "description": "Shell command or multi-line script body"},
+    "workdir":      {"type": "string", "description": "Working directory (must be a backed scoped path)"},
+    "timeout_secs": {"type": "number", "description": "Wall-clock timeout, max 120"},
+    "extra_env":    {"type": "object", "description": "Additional environment variables"}
+  },
+  "required": ["command"]
+}
+param_template:  {"command": ""}
+preconditions:   ""
+error_handling:  ""
+consumer_tags:   ["00:rusty", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 1.2 — ToolSkill: `ts-shell-run` (class 13)
+
+> Executor-facing only. The orchestrator never reads this body.
+
+```
+name:          "ts-shell-run"
+tool_name:     "shell"
+description:   "Run a shell command via builtin.shell. Accepts command (required), optional
+                workdir (must be a backed scoped path), optional timeout_secs (1–120).
+                Returns {output, exit_code, success, sandboxed}. When output exceeds the
+                inline cap, a saved_file path is returned — call read_file to retrieve it."
+param_schema:  [
+  {name: "command",      param_type: "string",  required: true,
+   description: "Shell command or multi-line script"},
+  {name: "workdir",      param_type: "string",  required: false,
+   description: "Backed scoped working directory path"},
+  {name: "timeout_secs", param_type: "number",  required: false,
+   description: "Timeout in seconds, max 120"}
+]
+param_template: {"command": "{{command}}"}
+preconditions:  "No interactive TTY. workdir must be a mount-backed path with execute
+                 permission. Unbacked scoped paths are rejected."
+error_handling: "exit_code != 0: surface to orchestrator for decision.
+                 output contains saved_file path: orchestrator must call read_file.
+                 RuntimeDispatchErrorKind::Resource: timeout exceeded."
+category:       "process"
+source:         "system"
+validation_status: "validated"
+```
+
+### Step 1.3 — Leaf Skill: `skill-shell-run` (class 1)
+
+> Orchestrator narrative. One tool, one concern: how to run a shell command.
+
+```
+name:        "skill-shell-run"
+class_code:  1
+description: "Leaf skill: how to drive the executor to run a single shell command."
+body: |
+  Use `ts-shell-run` when you need to execute one shell command. Pass the command
+  string verbatim; do NOT construct it from unvalidated user input without escaping.
+  Check `success` in the result; a false value means the command returned a non-zero
+  exit code — inspect `output` for details and decide whether to retry, report, or
+  continue. When the result contains a `saved_file` path (large output was saved),
+  call `skill-read-file` on that path to retrieve the full content before proceeding.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 1.4 — Leaf Skill: `skill-shell-safe-check` (class 1)
+
+> Separate grain: how to decide whether a command is safe to run.
+
+```
+name:        "skill-shell-safe-check"
+class_code:  1
+description: "Leaf skill: safety rules for shell command execution."
+body: |
+  Before dispatching any command via `ts-shell-run`, apply these rules:
+  - Never pass user-supplied strings directly into the command without escaping.
+  - Never run a command that modifies security-critical system files (/etc, /bin, etc.).
+  - Prefer scoped filesystem tools (skill-read-file, skill-list-dir, skill-grep) over
+    shell equivalents (cat, ls, grep) when the structured tool covers the need.
+  - When output may exceed 1 MiB, add output-limiting flags (e.g. `head -n 200`).
+  - `builtin.shell` requires user approval (PermissionMode::Ask) — the LLM must present
+    the command to the user and wait for confirmation before dispatch.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 1.5 — Domain Skill: `skill-shell` (class 2)
+
+> References leaf skills. No duplication of content.
+
+```
+name:        "skill-shell"
+class_code:  2
+description: "Domain skill: when and how to use shell execution safely."
+body: |
+  Shell execution is the most powerful and most dangerous builtin. Use it only when no
+  higher-level tool covers the need (prefer filesystem domain tools for file operations;
+  prefer skill-http-fetch for network work).
+
+  How to run a command → skill-shell-run.
+  Safety rules before running → skill-shell-safe-check.
+
+  Approval: `builtin.shell` requires user approval. Every recipe using this domain is
+  Tier 1 (llm_call_required: true). The LLM must compose and validate the exact command.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 1.6 — Recipe: `shell-run` (class 21)
+
+> **Tier:** 1 (`llm_call_required: true`) — §shell-guard hard rule. Never Tier 0.
+
+```
+name:        "shell-run"
+description: "Run a single shell command and return its output."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-shell>", "<uuid:skill-shell-run>", "<uuid:skill-shell-safe-check>"],
+    "label":   "Load shell domain + run + safety-check leaf skills"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM validates safety, composes the exact command, gets user approval"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Executor pre-loads ts-shell-run binding"
+  }
+]
+intent_examples: [
+  {"input": "run a command",                        "class": 2},
+  {"input": "execute a shell command",              "class": 2},
+  {"input": "run ls in the project dir",            "class": 3},
+  {"input": "check git status",                     "class": 3},
+  {"input": "shell",                                "class": 1},
+  {"input": "run this command in the project root", "class": 3},
+  {"input": "execute git pull",                     "class": 3},
+  {"input": "run a quick system command",           "class": 2},
+  {"input": "shell execute this",                   "class": 1},
+  {"input": "run this CLI command",                 "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 1.7 — Recipe: `shell-script` (class 21)
+
+> **Tier:** 1 — same §shell-guard applies.
+
+```
+name:        "shell-script"
+description: "Execute a multi-line shell script authored by the LLM."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-shell>", "<uuid:skill-shell-safe-check>"],
+    "label":   "Load shell domain + safety-check context"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM writes the full script body, validates safety, gets user approval"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Executor pre-loads ts-shell-run binding"
+  }
+]
+intent_examples: [
+  {"input": "run a bash script",                                    "class": 2},
+  {"input": "execute a script",                                     "class": 2},
+  {"input": "write and run a shell script that backs up my files",  "class": 3},
+  {"input": "bash script",                                          "class": 1},
+  {"input": "create and run a multi-step shell script",             "class": 2},
+  {"input": "write a script to process these log files",            "class": 3},
+  {"input": "run a shell script with these steps",                  "class": 2},
+  {"input": "execute a batch script",                               "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 2 — `builtin.read_file` (File Read)
+
+> **Capability:** `builtin.read_file` · **Effect:** `read` · **Permission:** Allow
+
+### Step 2.1 — Tool row (class 0)
+
+```
+name:            "read_file"
+description:     "Read the full contents of a scoped-workspace file. Supports an optional
+                  line-range selector (start-end, 1-based inclusive). Returns {content,
+                  line_count, path}."
+capability_id:   "builtin.read_file"
+effect_type:     "read"
+param_schema: {
+  "type": "object",
+  "properties": {
+    "path":  {"type": "string", "description": "Scoped workspace path to the file"},
+    "range": {"type": "string", "description": "Optional line range, format: start-end (1-based)"}
+  },
+  "required": ["path"]
+}
+param_template:  {"path": "{{path}}"}
+preconditions:   "Path must resolve within a scoped mount with read permission."
+error_handling:  "FilesystemDenied: path outside mounts. File not found: surface to user."
+consumer_tags:   ["00:rusty", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 2.2 — ToolSkill: `ts-read-file` (class 13)
+
+```
+name:          "ts-read-file"
+tool_name:     "read_file"
+description:   "Read a file from the scoped workspace via builtin.read_file. Optional range
+                narrows to specific lines (format: start-end, e.g. '10-50')."
+param_schema:  [
+  {name: "path",  param_type: "string", required: true,
+   description: "Workspace-relative scoped path"},
+  {name: "range", param_type: "string", required: false,
+   description: "Line range start-end, e.g. '10-50'"}
+]
+param_template: {"path": "{{path}}"}
+preconditions:  "Path must resolve within a scoped mount with read permission.
+                 Absolute host paths and traversal sequences (..) are rejected."
+error_handling: "FilesystemDenied: path outside mounts — report to orchestrator.
+                 File not found: surface path to user for confirmation."
+category:       "filesystem"
+source:         "system"
+validation_status: "validated"
+```
+
+### Step 2.3 — PythonCode: `pc-exec-read-file` (class 22)
+
+> **Orchestrator executor pattern.** This PythonCode calls `__execute_action__` to dispatch
+> the read_file tool. It is the body that actually drives execution in every Tier-0 recipe
+> that reads a file.
+
+```
+name:        "pc-exec-read-file"
+description: "Orchestrator executor: calls __execute_action__ to read a file via
+              builtin.read_file. Input: path (string), range (optional string, e.g. '1-50').
+              Output: tool result dict {content, line_count, path}."
+content: |
+  # Orchestrator executor body. __execute_action__ is provided by the runtime sandbox.
+  # IBS bakes in path and range values as {{vars.slot0}} / {{vars.slot1}} before execution.
+  # No I/O, no imports — pure orchestrator dispatch.
+  _path = "{{vars.slot0}}"
+  _range = "{{vars.slot1}}"
+  _params = {"path": _path}
+  if _range and _range != "":
+      _params["range"] = _range
+  result = __execute_action__("read_file", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 2.4 — Leaf Skill: `skill-read-file` (class 1)
+
+```
+name:        "skill-read-file"
+class_code:  1
+description: "Leaf skill: how to read a file from the workspace."
+body: |
+  Use `ts-read-file` (via pc-exec-read-file) when you need to inspect a file's content.
+  Always read a file before editing it — never overwrite blindly.
+  For large files, use the `range` parameter (e.g. '1-100') to read specific line spans
+  rather than loading the entire file at once.
+  If the path is unknown, call skill-list-dir or skill-glob first to discover valid paths.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 2.5 — Leaf Skill: `skill-read-file-range` (class 1)
+
+> Separate grain: paginated reading via line-range selector.
+
+```
+name:        "skill-read-file-range"
+class_code:  1
+description: "Leaf skill: how to read a specific line range from a large file."
+body: |
+  When a file is too large to read in full, use the `range` parameter of `ts-read-file`
+  (e.g. range='100-200') to read only the needed lines. Check `line_count` in the first
+  read result to know the file length, then paginate through sections. Each range call
+  returns only those lines. Use this pattern to avoid the 1 MiB output cap.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 2.6 — Recipe: `file-read` (class 21)
+
+> **Tier:** 0 — orchestrator reads the file deterministically via PythonCode executor.
+> **Corrected from previous version:** orchestrator step now uses PythonCode (pc-exec-read-file),
+> NOT a Skill body (which would be LLM prose, violating §tier0-orchestrator-channel Rule 1).
+
+```
+name:        "file-read"
+description: "Read a file from the workspace and return its contents."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-read-file ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-read-file>"],
+    "label":   "PythonCode calls __execute_action__(read_file, {path, range}) and returns result"
+  }
+]
+intent_examples: [
+  {"input": "read a file",                          "class": 1},
+  {"input": "show me the contents of",              "class": 1},
+  {"input": "open file",                            "class": 1},
+  {"input": "what is in config.toml",               "class": 2},
+  {"input": "read the file at this path",           "class": 1},
+  {"input": "show me this file",                    "class": 1},
+  {"input": "load file contents",                   "class": 1},
+  {"input": "display the file",                     "class": 1},
+  {"input": "cat this file",                        "class": 2},
+  {"input": "inspect the configuration file",       "class": 2},
+  {"input": "file read",                            "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 2.7 — Recipe: `file-read-range` (class 21)
+
+> **Tier:** 0 — deterministic ranged read. Variant for large files where only a line span is needed.
+> One recipe per variant: the intent system routes here when the user specifies a line range.
+
+```
+name:        "file-read-range"
+description: "Read a specific line range from a file (for large files or targeted inspection)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-read-file ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-read-file>"],
+    "label":   "PythonCode calls __execute_action__(read_file, {path, range}) — range slot is required"
+  }
+]
+intent_examples: [
+  {"input": "read lines 10 to 50 of main.rs",          "class": 1},
+  {"input": "show me line 100 to 200 of this file",    "class": 1},
+  {"input": "read the first 30 lines",                 "class": 1},
+  {"input": "read lines 500 to 600 of the log",        "class": 1},
+  {"input": "show only the top 20 lines",              "class": 2},
+  {"input": "read the middle section of this file",    "class": 2},
+  {"input": "show lines starting from 150",            "class": 2},
+  {"input": "paginate through a large file",           "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+
+## Step 3 — `builtin.write_file` (File Write)
+
+> **Capability:** `builtin.write_file` · **Effect:** `write` · **Permission:** Allow
+> Content size limit: 6 MiB. Overwrites the entire file.
+
+### Step 3.1 — Tool row (class 0)
+
+```
+name:            "write_file"
+description:     "Write or overwrite a file in the scoped workspace. The entire content is
+                  replaced. Returns {path, bytes_written}. For targeted edits prefer
+                  apply_patch — it is safer and does not require a full read-back."
+capability_id:   "builtin.write_file"
+effect_type:     "write"
+param_schema: {
+  "type": "object",
+  "properties": {
+    "path":    {"type": "string", "description": "Scoped workspace path"},
+    "content": {"type": "string", "description": "Full file content to write"}
+  },
+  "required": ["path", "content"]
+}
+param_template:  {"path": "{{path}}", "content": "{{content}}"}
+preconditions:   "Path must resolve within a scoped mount with write permission. Content ≤ 6 MiB."
+error_handling:  "FilesystemDenied: path outside mounts. Resource limit: content too large."
+consumer_tags:   ["00:rusty", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 3.2 — ToolSkill: `ts-write-file` (class 13)
+
+```
+name:          "ts-write-file"
+tool_name:     "write_file"
+description:   "Write or overwrite a file via builtin.write_file. Replaces the entire file
+                content. Content limit: 6 MiB. Returns {path, bytes_written}."
+param_schema:  [
+  {name: "path",    param_type: "string", required: true,
+   description: "Workspace-relative scoped path"},
+  {name: "content", param_type: "string", required: true,
+   description: "Complete new file content"}
+]
+param_template: {"path": "{{path}}", "content": "{{content}}"}
+preconditions:  "Path must resolve within a scoped mount with write permission. Content ≤ 6 MiB."
+error_handling: "FilesystemDenied: path outside mounts — report to orchestrator.
+                 Resource limit: content too large — split or compress."
+category:       "filesystem"
+source:         "system"
+validation_status: "validated"
+```
+
+### Step 3.3 — PythonCode: `pc-exec-write-file` (class 22)
+
+> Orchestrator executor: writes a file via `__execute_action__`. Used in Tier-1 recipes
+> after the LLM has determined the content; may also be used standalone in automation.
+
+```
+name:        "pc-exec-write-file"
+description: "Orchestrator executor: calls __execute_action__ to write a file via
+              builtin.write_file. Input: path (string), content (string). Output: tool
+              result dict {path, bytes_written}."
+content: |
+  # Orchestrator executor body. __execute_action__ is provided by the runtime sandbox.
+  # IBS bakes in path and content as {{vars.slot0}} / {{vars.slot1}} before execution.
+  # No I/O, no imports — pure orchestrator dispatch.
+  _path = "{{vars.slot0}}"
+  _content = "{{vars.slot1}}"
+  result = __execute_action__("write_file", {"path": _path, "content": _content})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 3.4 — Leaf Skill: `skill-write-file-new` (class 1)
+
+> One grain: creating a new file.
+
+```
+name:        "skill-write-file-new"
+class_code:  1
+description: "Leaf skill: how to create a new file in the workspace."
+body: |
+  Use `ts-write-file` (via pc-exec-write-file) when creating a file that does not yet
+  exist. Provide the full intended content. The path must be within the scoped workspace
+  mount. The file is created immediately — there is no confirmation step unless the
+  orchestrator adds one.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 3.5 — Leaf Skill: `skill-write-file-replace` (class 1)
+
+> Separate grain: replacing an existing file's full content.
+
+```
+name:        "skill-write-file-replace"
+class_code:  1
+description: "Leaf skill: how to fully replace an existing file's content."
+body: |
+  Use `ts-write-file` to completely replace a file's content when the entire file must
+  be rewritten. IMPORTANT: read the file first with skill-read-file before overwriting —
+  never discard existing content without seeing it. For small, targeted edits (a few lines),
+  prefer skill-apply-patch — it is safer because it requires matching the current content.
+  Use write_file only when you genuinely intend to replace the full content.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 3.6 — Recipe: `file-write` (class 21)
+
+> **Tier:** 1 — the LLM must compose the content to write.
+
+```
+name:        "file-write"
+description: "Read current file content (if it exists), then write new content authored by LLM."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-read-file>", "<uuid:skill-write-file-replace>", "<uuid:skill-write-file-new>"],
+    "label":   "Load read + write leaf skill context"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-read-file binding (for optional pre-read)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM optionally reads current content, then composes new file content"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-write-file>"],
+    "label":   "Pre-load ts-write-file binding"
+  }
+]
+intent_examples: [
+  {"input": "write a file",                           "class": 1},
+  {"input": "create a file",                          "class": 1},
+  {"input": "save content to a file",                 "class": 1},
+  {"input": "write a README for this project",        "class": 2},
+  {"input": "create config.toml with these values",   "class": 2},
+  {"input": "make a new file with this content",      "class": 1},
+  {"input": "create a new document",                  "class": 1},
+  {"input": "write this content to disk",             "class": 1},
+  {"input": "overwrite this file with new content",   "class": 2},
+  {"input": "file write",                             "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 4 — `builtin.list_dir` (Directory Listing)
+
+> **Capability:** `builtin.list_dir` · **Effect:** `read_filesystem` · **Permission:** Allow
+
+### Step 4.1 — Tool row (class 0)
+
+```
+name:            "list_dir"
+description:     "List the contents of a directory through scoped mounts. Returns entry names,
+                  types, and sizes. Supports optional recursive listing with a depth cap."
+capability_id:   "builtin.list_dir"
+effect_type:     "read_filesystem"
+param_schema: {
+  "type": "object",
+  "properties": {
+    "path":      {"type": "string",  "description": "Scoped directory path. Defaults to workspace root."},
+    "recursive": {"type": "boolean", "description": "Whether to list recursively"},
+    "max_depth": {"type": "integer", "minimum": 0, "description": "Maximum recursive depth"}
+  },
+  "additionalProperties": false
+}
+param_template:  {"path": "{{path}}"}
+preconditions:   "path must be within the active workspace mount"
+error_handling:  "path-not-found or permission denied → tool error; output capped at 1 MiB"
+consumer_tags:   ["00:rusty", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 4.2 — ToolSkill: `ts-list-dir` (class 13)
+
+```
+name:        "ts-list-dir"
+tool_name:   "list_dir"
+description: "Executor binding for list_dir. Lists directory contents through scoped mounts.
+              Optional recursive flag and max_depth limit. path defaults to workspace root."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "path":      {"type": "string",  "description": "Scoped directory path (omit for workspace root)"},
+    "recursive": {"type": "boolean", "description": "Recurse into subdirectories"},
+    "max_depth": {"type": "integer", "minimum": 0, "description": "Depth cap for recursive listing"}
+  },
+  "additionalProperties": false
+}
+param_template:  {"path": "{{path}}"}
+preconditions:   "path within workspace mount scope"
+error_handling:  "path-not-found → tool error; permission denied → tool error; output truncated at 1 MiB"
+category:        "filesystem"
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 4.3 — PythonCode: `pc-exec-list-dir` (class 22)
+
+```
+name:        "pc-exec-list-dir"
+description: "Orchestrator executor: calls __execute_action__ to list a directory via
+              builtin.list_dir. Input: path (string, omit for workspace root), recursive
+              (bool, default false), max_depth (int, optional)."
+content: |
+  # Orchestrator executor body. __execute_action__ provided by runtime sandbox.
+  # IBS bakes in path/recursive/max_depth as slot0/slot1/slot2.
+  _path = "{{vars.slot0}}"
+  _recursive = {{vars.slot1}}
+  _max_depth = {{vars.slot2}}
+  _params = {}
+  if _path and _path != "":
+      _params["path"] = _path
+  if _recursive:
+      _params["recursive"] = True
+  if _max_depth and _max_depth > 0:
+      _params["max_depth"] = _max_depth
+  result = __execute_action__("list_dir", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 4.4 — Leaf Skill: `skill-list-dir` (class 1)
+
+> One grain: listing a single directory level.
+
+```
+name:        "skill-list-dir"
+class_code:  1
+description: "Leaf skill: how to list the contents of a single directory."
+body: |
+  Use `ts-list-dir` (via pc-exec-list-dir) to enumerate the files and folders in a
+  directory. Provide the scoped path; omit it to default to the workspace root. The
+  result includes entry names, types (file/directory), and sizes. Interpret and present
+  the entries relevant to the task. If the listing is large, summarise by grouping.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 4.5 — Leaf Skill: `skill-list-dir-recursive` (class 1)
+
+> Separate grain: recursive directory scan.
+
+```
+name:        "skill-list-dir-recursive"
+class_code:  1
+description: "Leaf skill: how to recursively scan a directory tree."
+body: |
+  Use `ts-list-dir` with `recursive=true` and a `max_depth` limit when you need to see
+  the full subtree of a directory. Keep max_depth at 3 or less for large projects to
+  avoid output truncation. If the root listing is too large, narrow the path first.
+  For pattern-based searching, skill-glob is more precise.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 4.6 — Recipe: `file-list` (class 21)
+
+> **Tier:** 0 — deterministic, no LLM needed. PythonCode drives the dispatch.
+
+```
+name:        "file-list"
+description: "List the contents of a directory."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-list-dir>"],
+    "label":   "Pre-load ts-list-dir ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-list-dir>"],
+    "label":   "PythonCode calls __execute_action__(list_dir, {path, recursive, max_depth})"
+  }
+]
+intent_examples: [
+  {"input": "list files in this directory",         "class": 1},
+  {"input": "show directory contents",              "class": 1},
+  {"input": "what files are in the project root",   "class": 1},
+  {"input": "show me what is in this folder",       "class": 1},
+  {"input": "ls",                                   "class": 1},
+  {"input": "what is in the src directory",         "class": 2},
+  {"input": "explore this folder",                  "class": 2},
+  {"input": "directory listing",                    "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4.7 — Recipe: `file-list-recursive` (class 21)
+
+> **Tier:** 0 — deterministic recursive directory scan. One recipe per variant.
+> Recursive listing is a different dispatch pattern from shallow listing — the
+> orchestrator can route here directly when the intent includes "all files" or "tree".
+
+```
+name:        "file-list-recursive"
+description: "Recursively list all files and directories under a path."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-list-dir>"],
+    "label":   "Pre-load ts-list-dir ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-list-dir>"],
+    "label":   "PythonCode calls __execute_action__(list_dir, {path, recursive:true, max_depth:3})"
+  }
+]
+intent_examples: [
+  {"input": "list all files recursively",              "class": 1},
+  {"input": "show me the full directory tree",         "class": 1},
+  {"input": "list all files in this project",          "class": 1},
+  {"input": "recursive directory listing",             "class": 1},
+  {"input": "show all files and folders",              "class": 1},
+  {"input": "tree view of this directory",             "class": 2},
+  {"input": "list every file under this path",         "class": 1},
+  {"input": "what files exist in this whole project",  "class": 2},
+  {"input": "ls -r",                                   "class": 1},
+  {"input": "recursive ls",                            "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+
+
+## Step 5 — `builtin.glob` (Glob File Search)
+
+> **Capability:** `builtin.glob` · **Effect:** `read_filesystem` · **Permission:** Allow
+
+### Step 5.1 — Tool row (class 0)
+
+```
+name:            "glob"
+description:     "Find files matching a glob pattern under a scoped root. Returns matching
+                  file paths sorted by modification time, capped at max_results."
+capability_id:   "builtin.glob"
+effect_type:     "read_filesystem"
+param_schema: {
+  "type": "object",
+  "properties": {
+    "pattern":     {"type": "string",  "description": "Glob pattern relative to path"},
+    "path":        {"type": "string",  "description": "Scoped root path. Defaults to workspace root."},
+    "max_results": {"type": "integer", "minimum": 0, "description": "Maximum number of results"}
+  },
+  "required": ["pattern"],
+  "additionalProperties": false
+}
+param_template:  {"pattern": "{{pattern}}"}
+preconditions:   "pattern required; path must be within the active workspace mount"
+error_handling:  "invalid pattern or path outside mount → tool error; empty match → empty list"
+consumer_tags:   ["00:rusty", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 5.2 — ToolSkill: `ts-glob` (class 13)
+
+```
+name:        "ts-glob"
+tool_name:   "glob"
+description: "Executor binding for glob. Required: pattern (glob expression e.g. '**/*.rs').
+              Optional: path (scoped root, defaults to workspace root), max_results (cap on
+              returned paths). Returns a list of matching paths sorted by modification time."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "pattern":     {"type": "string"},
+    "path":        {"type": "string"},
+    "max_results": {"type": "integer", "minimum": 0}
+  },
+  "required": ["pattern"],
+  "additionalProperties": false
+}
+param_template:  {"pattern": "{{pattern}}"}
+preconditions:   "pattern must not be empty"
+error_handling:  "invalid pattern → tool error; empty result → empty list (not an error)"
+category:        "filesystem"
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 5.3 — PythonCode: `pc-exec-glob` (class 22)
+
+```
+name:        "pc-exec-glob"
+description: "Orchestrator executor: calls __execute_action__ to find files via builtin.glob.
+              Input: pattern (string), path (optional string), max_results (optional int).
+              Output: tool result with list of matching paths."
+content: |
+  # Orchestrator executor body.
+  _pattern = "{{vars.slot0}}"
+  _path = "{{vars.slot1}}"
+  _max_results = {{vars.slot2}}
+  _params = {"pattern": _pattern}
+  if _path and _path != "":
+      _params["path"] = _path
+  if _max_results and _max_results > 0:
+      _params["max_results"] = _max_results
+  result = __execute_action__("glob", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 5.4 — Leaf Skill: `skill-glob-by-extension` (class 1)
+
+> One grain: find all files of a specific extension.
+
+```
+name:        "skill-glob-by-extension"
+class_code:  1
+description: "Leaf skill: how to find all files of a specific file extension."
+body: |
+  Use `ts-glob` with a pattern like `**/*.rs` or `**/*.ts` to find all files of a given
+  extension across the workspace. The `**` prefix searches recursively into all
+  subdirectories. Use `path` to restrict the search to a specific subdirectory. Use
+  `max_results` when you only need a sample.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 5.5 — Leaf Skill: `skill-glob-by-name` (class 1)
+
+> Separate grain: find files by name pattern.
+
+```
+name:        "skill-glob-by-name"
+class_code:  1
+description: "Leaf skill: how to find files by name pattern (not extension)."
+body: |
+  Use `ts-glob` with a pattern like `**/config*.toml` or `**/README*` to find files
+  whose names match a specific pattern. Combine `*` (any chars in one directory level)
+  and `**` (any number of directory levels) to build the right pattern. The results
+  are sorted by modification time — most recently changed first.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 5.6 — Leaf Skill: `skill-glob-in-subdir` (class 1)
+
+> Separate grain: restrict a glob search to a subdirectory.
+
+```
+name:        "skill-glob-in-subdir"
+class_code:  1
+description: "Leaf skill: how to restrict a glob search to a specific subdirectory."
+body: |
+  Use `ts-glob` with the `path` parameter set to a specific subdirectory to restrict the
+  search scope (e.g. path='src/', pattern='**/*.test.ts'). This is faster and more
+  precise than a workspace-root glob when the files of interest are in a known subtree.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 5.7 — Recipe: `file-glob` (class 21)
+
+> **Tier:** 0 — deterministic pattern search, PythonCode drives dispatch.
+
+```
+name:        "file-glob"
+description: "Find files matching a glob pattern."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-glob>"],
+    "label":   "Pre-load ts-glob ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-glob>"],
+    "label":   "PythonCode calls __execute_action__(glob, {pattern, path, max_results})"
+  }
+]
+intent_examples: [
+  {"input": "find all TypeScript files",              "class": 1},
+  {"input": "find files matching *.rs",               "class": 1},
+  {"input": "search for test files in src",           "class": 2},
+  {"input": "glob pattern **/*.json",                 "class": 1},
+  {"input": "find all config files in this repo",     "class": 2},
+  {"input": "find all files with this extension",     "class": 1},
+  {"input": "list all .py files in the project",      "class": 1},
+  {"input": "find files by name pattern",             "class": 2},
+  {"input": "glob search",                            "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 5.8 — Recipe: `file-glob-by-extension` (class 21)
+
+> **Tier:** 0 — find all files of a given extension. One recipe per variant: extension-based
+> search is the most common glob use case and deserves its own dedicated recipe.
+
+```
+name:        "file-glob-by-extension"
+description: "Find all files of a specific file extension (e.g. all .rs or .ts files)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-glob>"],
+    "label":   "Pre-load ts-glob ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-glob>"],
+    "label":   "PythonCode calls __execute_action__(glob, {pattern: '**/*.ext'})"
+  }
+]
+intent_examples: [
+  {"input": "find all Rust files",                    "class": 1},
+  {"input": "list all .ts files",                     "class": 1},
+  {"input": "show me all Python files",               "class": 1},
+  {"input": "find every .json config",                "class": 1},
+  {"input": "find all TypeScript files in the project","class": 1},
+  {"input": "list .rs files",                         "class": 1},
+  {"input": "which .md files exist",                  "class": 1},
+  {"input": "find all test files by extension",       "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 5.9 — Recipe: `file-glob-by-name` (class 21)
+
+> **Tier:** 0 — find files whose names match a pattern. Variant for name-pattern searches.
+
+```
+name:        "file-glob-by-name"
+description: "Find files whose names match a glob pattern (e.g. config*.toml, README*)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-glob>"],
+    "label":   "Pre-load ts-glob ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-glob>"],
+    "label":   "PythonCode calls __execute_action__(glob, {pattern: '**/name-pattern'})"
+  }
+]
+intent_examples: [
+  {"input": "find the Makefile",                      "class": 1},
+  {"input": "find all README files",                  "class": 1},
+  {"input": "locate the config files",                "class": 1},
+  {"input": "find files named settings*",             "class": 1},
+  {"input": "where is the docker-compose file",       "class": 2},
+  {"input": "find all files starting with test_",     "class": 1},
+  {"input": "locate any .env files",                  "class": 2},
+  {"input": "find files by name pattern",             "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 5.10 — Recipe: `file-glob-in-subdir` (class 21)
+
+> **Tier:** 0 — restrict glob to a specific subdirectory. Variant for scoped searches.
+
+```
+name:        "file-glob-in-subdir"
+description: "Find files matching a pattern within a specific subdirectory."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-glob>"],
+    "label":   "Pre-load ts-glob ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-glob>"],
+    "label":   "PythonCode calls __execute_action__(glob, {pattern, path: subdir})"
+  }
+]
+intent_examples: [
+  {"input": "find all test files in the src folder",     "class": 1},
+  {"input": "list .ts files in the components directory","class": 1},
+  {"input": "search for config files in crates/",        "class": 2},
+  {"input": "find .rs files only in the migrations dir", "class": 2},
+  {"input": "glob in a subdirectory",                    "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 6 — `builtin.grep` (Content Search)
+
+> **Capability:** `builtin.grep` · **Effect:** `read_filesystem` · **Permission:** Allow
+
+### Step 6.1 — Tool row (class 0)
+
+```
+name:            "grep"
+description:     "Search file contents using a regular expression within scoped mounts.
+                  Supports content, files_with_matches, and count output modes. Optional
+                  glob filter, context lines, case-insensitive matching, and result pagination."
+capability_id:   "builtin.grep"
+effect_type:     "read_filesystem"
+param_schema: {
+  "type": "object",
+  "properties": {
+    "pattern":         {"type": "string",  "description": "Regular expression to search for"},
+    "path":            {"type": "string",  "description": "Scoped file or directory path. Defaults to workspace root."},
+    "glob":            {"type": "string",  "description": "Optional glob filter relative to path"},
+    "output_mode":     {"type": "string",  "enum": ["content","files_with_matches","count"],
+                        "description": "Output mode. Defaults to files_with_matches."},
+    "case_insensitive":{"type": "boolean"},
+    "multiline":       {"type": "boolean"},
+    "context":         {"type": "integer", "minimum": 0},
+    "before_context":  {"type": "integer", "minimum": 0},
+    "after_context":   {"type": "integer", "minimum": 0},
+    "head_limit":      {"type": "integer", "minimum": 0},
+    "offset":          {"type": "integer", "minimum": 0}
+  },
+  "required": ["pattern"],
+  "additionalProperties": false
+}
+param_template:  {"pattern": "{{pattern}}"}
+preconditions:   "pattern required; path must be within the active workspace mount"
+error_handling:  "invalid regex → tool error; empty results → empty list; output truncated at 1 MiB"
+consumer_tags:   ["00:rusty", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 6.2 — ToolSkill: `ts-grep` (class 13)
+
+```
+name:        "ts-grep"
+tool_name:   "grep"
+description: "Executor binding for grep. Required: pattern (regex). Optional: path (scoped
+              file or directory, defaults to workspace root), glob (file filter), output_mode
+              (content | files_with_matches | count, default files_with_matches),
+              case_insensitive, context/before_context/after_context (lines of context),
+              head_limit (cap results), offset (pagination start)."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "pattern":         {"type": "string"},
+    "path":            {"type": "string"},
+    "glob":            {"type": "string"},
+    "output_mode":     {"type": "string", "enum": ["content","files_with_matches","count"]},
+    "case_insensitive":{"type": "boolean"},
+    "multiline":       {"type": "boolean"},
+    "context":         {"type": "integer", "minimum": 0},
+    "before_context":  {"type": "integer", "minimum": 0},
+    "after_context":   {"type": "integer", "minimum": 0},
+    "head_limit":      {"type": "integer", "minimum": 0},
+    "offset":          {"type": "integer", "minimum": 0}
+  },
+  "required": ["pattern"],
+  "additionalProperties": false
+}
+param_template:  {"pattern": "{{pattern}}"}
+preconditions:   "pattern must be a valid regex"
+error_handling:  "invalid regex → tool error; no matches → empty result; output capped at 1 MiB"
+category:        "filesystem"
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 6.3 — PythonCode: `pc-exec-grep` (class 22)
+
+```
+name:        "pc-exec-grep"
+description: "Orchestrator executor: calls __execute_action__ to search content via
+              builtin.grep. Input: pattern (string), path (optional), output_mode (optional,
+              default files_with_matches), glob (optional), case_insensitive (optional bool)."
+content: |
+  # Orchestrator executor body.
+  _pattern = "{{vars.slot0}}"
+  _path = "{{vars.slot1}}"
+  _output_mode = "{{vars.slot2}}"
+  _glob = "{{vars.slot3}}"
+  _case_insensitive = {{vars.slot4}}
+  _params = {"pattern": _pattern}
+  if _path and _path != "":
+      _params["path"] = _path
+  if _output_mode and _output_mode != "":
+      _params["output_mode"] = _output_mode
+  if _glob and _glob != "":
+      _params["glob"] = _glob
+  if _case_insensitive:
+      _params["case_insensitive"] = True
+  result = __execute_action__("grep", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 6.4 — Leaf Skill: `skill-grep-files` (class 1)
+
+> One grain: find which files contain a pattern (files_with_matches mode).
+
+```
+name:        "skill-grep-files"
+class_code:  1
+description: "Leaf skill: how to find which files contain a regex pattern."
+body: |
+  Use `ts-grep` with `output_mode='files_with_matches'` when you only need to know
+  WHICH files contain the pattern — not the matching lines. This is the fastest mode
+  and produces compact output. Use `glob` to restrict the file types searched (e.g.
+  glob='*.rs' to search only Rust files). Use `case_insensitive=true` when the match
+  should be case-independent.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 6.5 — Leaf Skill: `skill-grep-content` (class 1)
+
+> Separate grain: find matching lines with context (content mode).
+
+```
+name:        "skill-grep-content"
+class_code:  1
+description: "Leaf skill: how to retrieve matching lines (with context) from files."
+body: |
+  Use `ts-grep` with `output_mode='content'` when you need the actual matching lines,
+  not just which files match. Add `context` (symmetric) or `before_context`/`after_context`
+  (asymmetric) to include surrounding lines — useful when the surrounding code helps
+  understand the match. Use `head_limit` to cap the number of results when the pattern
+  appears frequently. Use `offset` to paginate through large result sets.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 6.6 — Leaf Skill: `skill-grep-count` (class 1)
+
+> Separate grain: count occurrences without returning content.
+
+```
+name:        "skill-grep-count"
+class_code:  1
+description: "Leaf skill: how to count pattern occurrences without returning the matching lines."
+body: |
+  Use `ts-grep` with `output_mode='count'` when you only need to know how many times
+  a pattern appears, not the actual lines. This is efficient for large codebases where
+  you want a frequency signal (e.g. how many TODO comments exist) without reading all
+  the matching content. The result contains per-file counts.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 6.7 — Recipe: `file-grep` (class 21)
+
+> **Tier:** 0 — deterministic content search, PythonCode drives dispatch.
+
+```
+name:        "file-grep"
+description: "Search file contents using a regular expression."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-grep>"],
+    "label":   "Pre-load ts-grep ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-grep>"],
+    "label":   "PythonCode calls __execute_action__(grep, {pattern, path, output_mode, ...})"
+  }
+]
+intent_examples: [
+  {"input": "find all uses of function foo",          "class": 1},
+  {"input": "search for TODO comments in src",        "class": 1},
+  {"input": "which files import React",               "class": 1},
+  {"input": "find all occurrences of FIXME",          "class": 1},
+  {"input": "grep this pattern",                      "class": 1},
+  {"input": "search for this string in the codebase", "class": 1},
+  {"input": "find files containing this text",        "class": 1},
+  {"input": "how many places use this function",      "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 6.8 — Recipe: `file-grep-files` (class 21)
+
+> **Tier:** 0 — find WHICH files contain a pattern. One recipe per output mode.
+> `files_with_matches` mode: compact, fast, returns only file paths.
+
+```
+name:        "file-grep-files"
+description: "Find which files contain a regex pattern (returns file paths only, no line content)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-grep>"],
+    "label":   "Pre-load ts-grep ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-grep>"],
+    "label":   "PythonCode calls __execute_action__(grep, {pattern, output_mode: 'files_with_matches'})"
+  }
+]
+intent_examples: [
+  {"input": "which files use this function",              "class": 1},
+  {"input": "which files import this module",             "class": 1},
+  {"input": "find files containing this string",          "class": 1},
+  {"input": "which files have TODO",                      "class": 1},
+  {"input": "what files reference this constant",         "class": 1},
+  {"input": "show me files with this error pattern",      "class": 2},
+  {"input": "which .rs files contain async",              "class": 2},
+  {"input": "find files matching this regex",             "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 6.9 — Recipe: `file-grep-content` (class 21)
+
+> **Tier:** 0 — find matching LINES with context. One recipe per output mode.
+> `content` mode: returns actual matching lines + surrounding context lines.
+
+```
+name:        "file-grep-content"
+description: "Search file contents and return matching lines with surrounding context."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-grep>"],
+    "label":   "Pre-load ts-grep ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-grep>"],
+    "label":   "PythonCode calls __execute_action__(grep, {pattern, output_mode: 'content', context})"
+  }
+]
+intent_examples: [
+  {"input": "show me the lines that contain this error",   "class": 1},
+  {"input": "find all uses of this function with context", "class": 1},
+  {"input": "search for this pattern and show surrounding code","class": 1},
+  {"input": "grep with context lines",                     "class": 1},
+  {"input": "find this variable declaration",              "class": 2},
+  {"input": "show matching lines in the source files",     "class": 1},
+  {"input": "grep content mode",                           "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 6.10 — Recipe: `file-grep-count` (class 21)
+
+> **Tier:** 0 — count occurrences only. One recipe per output mode.
+> `count` mode: compact per-file occurrence counts, no line content returned.
+
+```
+name:        "file-grep-count"
+description: "Count occurrences of a pattern across files without returning the matching lines."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-grep>"],
+    "label":   "Pre-load ts-grep ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-grep>"],
+    "label":   "PythonCode calls __execute_action__(grep, {pattern, output_mode: 'count'})"
+  }
+]
+intent_examples: [
+  {"input": "how many TODO comments are there",       "class": 1},
+  {"input": "count occurrences of this pattern",      "class": 1},
+  {"input": "how many times does this appear",        "class": 1},
+  {"input": "count all uses of this function",        "class": 2},
+  {"input": "how many errors in these log files",     "class": 2},
+  {"input": "count grep matches",                     "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 7 — `builtin.apply_patch` (Targeted File Edit)
+
+> **Capability:** `builtin.apply_patch` · **Effect:** `mixed` · **Permission:** Ask
+> Input cap: 21 MiB. Tier 1 always — the LLM must compose old_string and new_string.
+
+### Step 7.1 — Tool row (class 0)
+
+```
+name:            "apply_patch"
+description:     "Apply a targeted search-replace edit to a scoped file. Finds old_string
+                  in the file and replaces it with new_string. Exact match required by default;
+                  replace_all replaces every occurrence. Reads and writes through scoped mounts."
+capability_id:   "builtin.apply_patch"
+effect_type:     "mixed"
+param_schema: {
+  "type": "object",
+  "properties": {
+    "path":        {"type": "string",  "description": "Scoped file path to patch"},
+    "old_string":  {"type": "string",  "description": "Exact text to replace"},
+    "new_string":  {"type": "string",  "description": "Replacement text"},
+    "replace_all": {"type": "boolean", "description": "Replace every match instead of exactly one"}
+  },
+  "required": ["path", "old_string", "new_string"],
+  "additionalProperties": false
+}
+param_template:  {"path": "{{path}}", "old_string": "{{old_string}}", "new_string": "{{new_string}}"}
+preconditions:   "path within workspace mount scope; old_string must appear exactly once unless replace_all"
+error_handling:  "old_string not found → tool error; multiple matches without replace_all → tool error"
+consumer_tags:   ["00:rusty", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 7.2 — ToolSkill: `ts-apply-patch` (class 13)
+
+```
+name:        "ts-apply-patch"
+tool_name:   "apply_patch"
+description: "Executor binding for apply_patch. Required: path (scoped file), old_string
+              (exact text to replace), new_string (replacement). Optional: replace_all
+              (replaces every occurrence; default: exactly one match, error if multiple).
+              old_string must include enough surrounding context to be unique in the file."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "path":        {"type": "string"},
+    "old_string":  {"type": "string"},
+    "new_string":  {"type": "string"},
+    "replace_all": {"type": "boolean"}
+  },
+  "required": ["path", "old_string", "new_string"],
+  "additionalProperties": false
+}
+param_template:  {"path": "{{path}}", "old_string": "{{old_string}}", "new_string": "{{new_string}}"}
+preconditions:   "old_string must be unique in file unless replace_all is set; path within mount scope"
+error_handling:  "not-found → tool error; ambiguous match without replace_all → tool error"
+category:        "filesystem"
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 7.3 — Leaf Skill: `skill-apply-patch-single` (class 1)
+
+> One grain: replace exactly one unique occurrence.
+
+```
+name:        "skill-apply-patch-single"
+class_code:  1
+description: "Leaf skill: how to replace a single unique occurrence in a file."
+body: |
+  Use `ts-apply-patch` with a unique `old_string` to replace exactly one occurrence of
+  text in a file. old_string must include enough surrounding lines (3–5) to be unambiguous.
+  If the string appears more than once, the tool will error — use skill-apply-patch-all
+  instead, or narrow old_string to include unique context. Always read the file first with
+  skill-read-file when uncertain of the exact current text.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 7.4 — Leaf Skill: `skill-apply-patch-all` (class 1)
+
+> Separate grain: replace all occurrences.
+
+```
+name:        "skill-apply-patch-all"
+class_code:  1
+description: "Leaf skill: how to replace every occurrence of a string in a file."
+body: |
+  Use `ts-apply-patch` with `replace_all=true` when the same string appears multiple
+  times and ALL occurrences should be changed (e.g. renaming a symbol throughout a file).
+  Verify the replacement is correct for ALL occurrences before dispatching — this is
+  irreversible without re-reading and re-patching.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 7.5 — Recipe: `file-patch` (class 21)
+
+> **Tier:** 1 — LLM must compose old_string and new_string from file content.
+
+```
+name:        "file-patch"
+description: "Apply a targeted search-replace edit to a file."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-read-file>", "<uuid:skill-apply-patch-single>"],
+    "label":   "Load read + patch leaf skill context"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-read-file>"],
+    "label":   "Pre-load ts-read-file binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM reads file, determines exact old_string and new_string for the change"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-apply-patch>"],
+    "label":   "Pre-load ts-apply-patch binding"
+  }
+]
+intent_examples: [
+  {"input": "fix this bug in the function",              "class": 3},
+  {"input": "rename variable foo to bar in utils",       "class": 3},
+  {"input": "update the default timeout value",          "class": 2},
+  {"input": "replace the old error message",             "class": 2},
+  {"input": "apply patch to file",                       "class": 2},
+  {"input": "edit this line in the file",                "class": 2},
+  {"input": "change this string to something else",      "class": 2},
+  {"input": "search and replace in this file",           "class": 2},
+  {"input": "patch this specific section of the file",   "class": 2},
+  {"input": "make a targeted edit to this file",         "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 7.x — Domain Skill `skill-filesystem` (class 2)
+
+> References all filesystem leaf skills by name. No duplicated content.
+
+```
+name:        "skill-filesystem"
+class_code:  2
+description: "The filesystem domain provides six scoped tools for working with the workspace.
+              Decision guide — use the right skill for each approach:
+
+              READING:
+              — skill-read-file: Read a file's full content.
+              — skill-read-file-range: Read a specific line range from a large file.
+
+              LISTING / FINDING:
+              — skill-list-dir: List contents of a single directory level.
+              — skill-list-dir-recursive: Recursively scan a directory tree.
+              — skill-glob-by-extension: Find all files of a given extension.
+              — skill-glob-by-name: Find files whose names match a pattern.
+              — skill-glob-in-subdir: Restrict a glob to a specific subdirectory.
+
+              SEARCHING CONTENT:
+              — skill-grep-files: Find which files contain a pattern (fast, compact output).
+              — skill-grep-content: Retrieve matching lines with surrounding context.
+              — skill-grep-count: Count occurrences without returning content.
+
+              WRITING / EDITING:
+              — skill-write-file-new: Create a new file with full content.
+              — skill-write-file-replace: Replace an existing file's entire content.
+              — skill-apply-patch-single: Replace one unique occurrence in a file.
+              — skill-apply-patch-all: Replace every occurrence of a string in a file.
+
+              All paths are scoped to the workspace mount. Output is capped at 1 MiB per call."
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+
+## Step 8 — `builtin.http` (HTTP Request, Inline Response)
+
+> **Capability:** `builtin.http` · **Effect:** `network_egress` · **Permission:** Ask
+> Timeout: 30 s · Response body cap: 256 KiB inline.
+
+### Step 8.1 — Tool row (class 0)
+
+```
+name:            "http"
+description:     "Perform an HTTP or HTTPS request and return the response inline. Supports
+                  GET, POST, PUT, PATCH, DELETE, HEAD. Response body capped at 256 KiB inline;
+                  larger responses should use builtin.http.save."
+capability_id:   "builtin.http"
+effect_type:     "network_egress"
+param_schema: {
+  "type": "object",
+  "properties": {
+    "url":                 {"type": "string",  "description": "Absolute HTTP or HTTPS URL"},
+    "method":              {"type": "string",  "enum": ["get","post","put","patch","delete","head"],
+                            "description": "HTTP method. Defaults to get."},
+    "headers":             {"description": "HTTP headers as an object or [{name,value}] array"},
+    "body":                {"description": "String or JSON request body"},
+    "body_base64":         {"type": "string",  "description": "Base64-encoded request body"},
+    "response_body_limit": {"type": "integer", "minimum": 1, "maximum": 262144,
+                            "description": "Max inline response bytes, capped at 256 KiB."},
+    "timeout_ms":          {"type": "integer", "minimum": 1, "maximum": 30000, "default": 10000}
+  },
+  "required": ["url"],
+  "additionalProperties": false
+}
+param_template:  {"url": "{{url}}"}
+preconditions:   "url must be absolute http/https; network egress must be permitted by policy"
+error_handling:  "connection failure → tool error; body over limit → truncated with guidance; non-2xx → in output (not a tool error)"
+consumer_tags:   ["00:rusty", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 8.2 — ToolSkill: `ts-http-fetch` (class 13)
+
+```
+name:        "ts-http-fetch"
+tool_name:   "http"
+description: "Executor binding for builtin.http. Required: url. Optional: method (default
+              get), headers, body, body_base64, response_body_limit (max 256 KiB),
+              timeout_ms (max 30 000). Non-2xx status codes are returned in output — not errors."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "url":                 {"type": "string"},
+    "method":              {"type": "string", "enum": ["get","post","put","patch","delete","head"]},
+    "headers":             {},
+    "body":                {},
+    "body_base64":         {"type": "string"},
+    "response_body_limit": {"type": "integer", "minimum": 1, "maximum": 262144},
+    "timeout_ms":          {"type": "integer", "minimum": 1, "maximum": 30000}
+  },
+  "required": ["url"],
+  "additionalProperties": false
+}
+param_template:  {"url": "{{url}}"}
+preconditions:   "url must begin with http:// or https://"
+error_handling:  "network failure → tool error; body truncation → status field in output; timeout_ms capped at 30 000"
+category:        "network"
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 8.3 — PythonCode: `pc-exec-http-get` (class 22)
+
+> Orchestrator executor for simple GET requests. The most common HTTP use case.
+
+```
+name:        "pc-exec-http-get"
+description: "Orchestrator executor: calls __execute_action__ for an HTTP GET request via
+              builtin.http. Input: url (string), response_body_limit (optional int).
+              Output: tool result with status, headers, body."
+content: |
+  # Orchestrator executor body.
+  _url = "{{vars.slot0}}"
+  _limit = {{vars.slot1}}
+  _params = {"url": _url, "method": "get"}
+  if _limit and _limit > 0:
+      _params["response_body_limit"] = _limit
+  result = __execute_action__("http", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 8.4 — PythonCode: `pc-exec-http-post` (class 22)
+
+> Orchestrator executor for POST requests with a JSON body.
+
+```
+name:        "pc-exec-http-post"
+description: "Orchestrator executor: calls __execute_action__ for an HTTP POST request via
+              builtin.http. Input: url (string), body (JSON value), headers (optional dict).
+              Output: tool result with status, headers, body."
+content: |
+  # Orchestrator executor body.
+  _url = "{{vars.slot0}}"
+  _body = {{vars.slot1}}
+  _headers = {{vars.slot2}}
+  _params = {"url": _url, "method": "post", "body": _body}
+  if _headers:
+      _params["headers"] = _headers
+  result = __execute_action__("http", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 8.5 — Leaf Skill: `skill-http-get` (class 1)
+
+> One grain: fetch a URL via GET.
+
+```
+name:        "skill-http-get"
+class_code:  1
+description: "Leaf skill: how to fetch a URL via HTTP GET and receive the response inline."
+body: |
+  Use `ts-http-fetch` with method='get' (via pc-exec-http-get) to fetch a URL and receive
+  the response body inline. The body is capped at 256 KiB. If a larger response is needed,
+  use skill-http-save instead. Non-2xx status codes appear in the result's status field —
+  they are not tool errors. Always inspect the status code after the call.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 8.6 — Leaf Skill: `skill-http-post` (class 1)
+
+> Separate grain: POST with a body.
+
+```
+name:        "skill-http-post"
+class_code:  1
+description: "Leaf skill: how to make an HTTP POST request with a body."
+body: |
+  Use `ts-http-fetch` with method='post' and a `body` (string or JSON) to submit data
+  to an API or webhook. Add an `Authorization` or `Content-Type` header when required.
+  For JSON bodies the server typically expects `Content-Type: application/json`. Non-2xx
+  responses are not tool errors — check the status field and handle error responses.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 8.7 — Leaf Skill: `skill-http-authenticated` (class 1)
+
+> Separate grain: authenticated requests with bearer tokens or API keys.
+
+```
+name:        "skill-http-authenticated"
+class_code:  1
+description: "Leaf skill: how to make an authenticated HTTP request."
+body: |
+  Use `ts-http-fetch` with a `headers` parameter to attach authentication. Common patterns:
+  - Bearer token: headers={'Authorization': 'Bearer <token>'}
+  - API key: headers={'X-Api-Key': '<key>'}
+  - Basic auth: headers={'Authorization': 'Basic <base64(user:pass)>'}
+  Never hardcode credentials in the skill body — always receive them from the session
+  context or memory. Use skill-http-get or skill-http-post as the base dispatch pattern.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 8.8 — Recipe: `http-get` (class 21)
+
+> **Tier:** 0 — deterministic GET dispatch, PythonCode drives execution.
+
+```
+name:        "http-get"
+description: "Fetch a URL via HTTP GET and return the response."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-http-get>"],
+    "label":   "PythonCode calls __execute_action__(http, {url, method:get})"
+  }
+]
+intent_examples: [
+  {"input": "fetch this URL",                         "class": 1},
+  {"input": "GET https://api.example.com/data",       "class": 1},
+  {"input": "download the JSON from this endpoint",   "class": 1},
+  {"input": "make an HTTP GET request",               "class": 1},
+  {"input": "check if this URL is reachable",         "class": 1},
+  {"input": "fetch the contents of this page",        "class": 1},
+  {"input": "HTTP GET this endpoint",                 "class": 1},
+  {"input": "call this REST API endpoint",            "class": 2},
+  {"input": "retrieve data from this URL",            "class": 1},
+  {"input": "ping this endpoint",                     "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 8.9 — Recipe: `http-get-json` (class 21)
+
+> **Tier:** 0 — deterministic JSON GET with correct Accept header. Variant for API calls
+> that specifically return JSON. The intent pattern "call a JSON API" is distinct from
+> generic "fetch a URL" and warrants its own recipe with the right header preset.
+
+```
+name:        "http-get-json"
+description: "Fetch a JSON API endpoint via HTTP GET with Accept: application/json header."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-http-get>"],
+    "label":   "PythonCode calls __execute_action__(http, {url, method:get, headers:{Accept:application/json}})"
+  }
+]
+intent_examples: [
+  {"input": "call this JSON API",                     "class": 1},
+  {"input": "fetch JSON from this endpoint",          "class": 1},
+  {"input": "GET this REST API and parse JSON",        "class": 1},
+  {"input": "retrieve JSON data from this URL",        "class": 1},
+  {"input": "call the GitHub API",                     "class": 2},
+  {"input": "fetch the OpenAPI spec",                  "class": 2},
+  {"input": "GET this webhook URL and parse result",   "class": 2},
+  {"input": "HTTP GET with JSON accept header",        "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 8.10 — Recipe: `http-post` (class 21)
+
+> **Tier:** 1 — LLM must compose the POST URL, headers, and body from user intent.
+> POST requests are inherently variable: body content, URL, and headers all need
+> to be constructed from user instructions — this cannot be Tier 0 for open-ended calls.
+
+```
+name:        "http-post"
+description: "Send an HTTP POST request with a JSON body."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-http-post>", "<uuid:skill-http-authenticated>"],
+    "label":   "Load http-post + auth leaf skill context"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM constructs the POST URL, headers, and body from user instructions"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch binding"
+  }
+]
+intent_examples: [
+  {"input": "POST this data to the API",           "class": 1},
+  {"input": "send a webhook notification",         "class": 1},
+  {"input": "submit a form to this endpoint",      "class": 2},
+  {"input": "call this API with a JSON body",      "class": 2},
+  {"input": "create a GitHub issue via API",       "class": 2},
+  {"input": "HTTP POST to this endpoint",          "class": 1},
+  {"input": "send JSON payload to webhook",        "class": 1},
+  {"input": "POST request with body",              "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 9 — `builtin.http.save` (HTTP Request, Response Saved to File)
+
+> **Capability:** `builtin.http.save` · **Effect:** `network_egress` + `write_filesystem` · **Permission:** Ask
+> Timeout: 30 s · Response body cap: 10 MiB saved.
+
+### Step 9.1 — Tool row (class 0)
+
+```
+name:            "http.save"
+description:     "Perform an HTTP or HTTPS request and save the sanitized response body to a
+                  scoped file path. Accepts up to 10 MiB of response body. Used when the
+                  response is too large for inline delivery or must be persisted."
+capability_id:   "builtin.http.save"
+effect_type:     "mixed"
+param_schema: {
+  "type": "object",
+  "properties": {
+    "url":                 {"type": "string",  "description": "Absolute HTTP or HTTPS URL"},
+    "save_to":             {"type": "string",  "description": "Scoped path to save the response body"},
+    "method":              {"type": "string",  "enum": ["get","post","put","patch","delete","head"]},
+    "headers":             {"description": "HTTP headers as an object or [{name,value}] array"},
+    "body":                {"description": "String or JSON request body"},
+    "body_base64":         {"type": "string"},
+    "response_body_limit": {"type": "integer", "minimum": 1, "maximum": 10485760,
+                            "description": "Max response body bytes to save. Default 10 MiB."},
+    "timeout_ms":          {"type": "integer", "minimum": 1, "maximum": 30000, "default": 10000}
+  },
+  "required": ["url", "save_to"],
+  "additionalProperties": false
+}
+param_template:  {"url": "{{url}}", "save_to": "{{save_to}}"}
+preconditions:   "url must be absolute http/https; save_to must be within workspace mount"
+error_handling:  "connection failure → tool error; save_to outside mount → tool error"
+consumer_tags:   ["00:rusty", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 9.2 — ToolSkill: `ts-http-save` (class 13)
+
+```
+name:        "ts-http-save"
+tool_name:   "http.save"
+description: "Executor binding for builtin.http.save. Required: url, save_to (scoped path).
+              Optional: method, headers, body, body_base64, response_body_limit (default and
+              max 10 MiB), timeout_ms (max 30 000). Returns metadata (status, bytes_saved)."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "url":                 {"type": "string"},
+    "save_to":             {"type": "string"},
+    "method":              {"type": "string", "enum": ["get","post","put","patch","delete","head"]},
+    "headers":             {},
+    "body":                {},
+    "body_base64":         {"type": "string"},
+    "response_body_limit": {"type": "integer", "minimum": 1, "maximum": 10485760},
+    "timeout_ms":          {"type": "integer", "minimum": 1, "maximum": 30000}
+  },
+  "required": ["url", "save_to"],
+  "additionalProperties": false
+}
+param_template:  {"url": "{{url}}", "save_to": "{{save_to}}"}
+preconditions:   "save_to within workspace mount scope"
+error_handling:  "network failure → tool error; save_to outside mount → tool error"
+category:        "network"
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 9.3 — PythonCode: `pc-exec-http-save` (class 22)
+
+```
+name:        "pc-exec-http-save"
+description: "Orchestrator executor: calls __execute_action__ for builtin.http.save.
+              Input: url (string), save_to (string — scoped path). Output: metadata dict
+              with status code and bytes_saved."
+content: |
+  # Orchestrator executor body.
+  _url = "{{vars.slot0}}"
+  _save_to = "{{vars.slot1}}"
+  result = __execute_action__("http.save", {"url": _url, "save_to": _save_to})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 9.4 — Leaf Skill: `skill-http-save-download` (class 1)
+
+> One grain: download and save a URL response to a file.
+
+```
+name:        "skill-http-save-download"
+class_code:  1
+description: "Leaf skill: how to download an HTTP response and save it to a file."
+body: |
+  Use `ts-http-save` (via pc-exec-http-save) when the expected response exceeds 256 KiB
+  or when the content must be persisted to disk. Provide the url and a scoped save_to
+  path. After the call, use skill-read-file to inspect the saved content or report the
+  file path to the user. The response is saved without decoding binary content.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 9.5 — Leaf Skill: `skill-http-save-api` (class 1)
+
+> Separate grain: save a large API response for later processing.
+
+```
+name:        "skill-http-save-api"
+class_code:  1
+description: "Leaf skill: how to save a large API response for subsequent parsing."
+body: |
+  When an API returns more data than can be processed inline (>256 KiB), use
+  `ts-http-save` to write the full response to a temp file, then use skill-read-file
+  or pc-json-extract-field to extract the needed fields from the saved file. This is
+  the recommended pattern for paginated or bulk API responses.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 9.6 — Recipe: `http-save` (class 21)
+
+> **Tier:** 0 — deterministic save dispatch, PythonCode drives execution.
+
+```
+name:        "http-save"
+description: "Fetch a URL and save the response body to a file."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-save>"],
+    "label":   "Pre-load ts-http-save ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-http-save>"],
+    "label":   "PythonCode calls __execute_action__(http.save, {url, save_to})"
+  }
+]
+intent_examples: [
+  {"input": "download this file and save it",            "class": 1},
+  {"input": "fetch the API response and write to disk",  "class": 1},
+  {"input": "save the download to workspace",            "class": 1},
+  {"input": "GET this URL and save the result",          "class": 1},
+  {"input": "download a large JSON response",            "class": 1},
+  {"input": "save this URL response to a file",          "class": 1},
+  {"input": "download the binary and store it",          "class": 2},
+  {"input": "fetch and persist this large response",     "class": 1},
+  {"input": "save API result to workspace file",         "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 9.x — HTTP Domain Skill + PythonCode Helpers
+
+### Step 9.x.1 — Domain Skill `skill-http` (class 2)
+
+```
+name:        "skill-http"
+class_code:  2
+description: "The HTTP domain provides two tools for outbound HTTP requests:
+
+              INLINE RESPONSE (≤256 KiB):
+              — skill-http-get: GET request, response inline.
+              — skill-http-post: POST request with body, response inline.
+              — skill-http-authenticated: Any method with auth headers.
+
+              SAVED RESPONSE (>256 KiB or must persist):
+              — skill-http-save-download: Download and save to a workspace file.
+              — skill-http-save-api: Save a large API response for later parsing.
+
+              Decision guide:
+              • Small response needed immediately → skill-http-get
+              • POST/PUT/PATCH with body → skill-http-post
+              • Authenticated request → skill-http-authenticated (combine with above)
+              • Response >256 KiB or must be saved → skill-http-save-download
+              • Large API response for later parsing → skill-http-save-api
+
+              Non-2xx HTTP responses are NOT tool errors. Always inspect the status field.
+              Use pc-http-status-check to test success programmatically."
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 9.x.2 — PythonCode `pc-http-status-check` (class 22)
+
+> Pure logic: takes a status code, returns a success boolean.
+
+```
+name:        "pc-http-status-check"
+description: "Pure-logic helper: returns True when the HTTP status code indicates success
+              (2xx range), False otherwise. Input: status_code (integer). Output: {is_success,
+              status_code}."
+content: |
+  # No I/O, no imports. IBS bakes in status_code as {{vars.slot0}} before execution.
+  status_code = {{vars.slot0}}
+  is_success = 200 <= status_code < 300
+  result = {"is_success": is_success, "status_code": status_code}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 9.x.3 — PythonCode `pc-json-extract-field` (class 22)
+
+> Pure logic: dot-path field extractor. No I/O, no imports.
+
+```
+name:        "pc-json-extract-field"
+description: "Pure-logic helper: extracts a value from a JSON object by dot-separated path.
+              Input: data (dict), path (dot-separated string e.g. 'result.items.0').
+              Output: {value, path, found}."
+content: |
+  # No I/O, no imports. IBS bakes in 'data' and 'path' before execution.
+  data = {{vars.slot0}}
+  path = "{{vars.slot1}}"
+  parts = path.split(".")
+  current = data
+  for part in parts:
+      if isinstance(current, dict) and part in current:
+          current = current[part]
+      elif isinstance(current, list):
+          try:
+              current = current[int(part)]
+          except (ValueError, IndexError):
+              current = None
+              break
+      else:
+          current = None
+          break
+  result = {"value": current, "path": path, "found": current is not None}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+
+## Step 10 — `builtin.memory_search` (Persistent Memory Search)
+
+> **Capability:** `builtin.memory_search` · **Effect:** `read_memory` · **Permission:** Allow
+
+### Step 10.1 — Tool row (class 0)
+
+```
+name:            "memory_search"
+description:     "Search the agent's persistent memory store using a natural language query.
+                  Returns the most relevant memory documents ranked by semantic similarity.
+                  Limit defaults to 5; maximum is 20."
+capability_id:   "builtin.memory_search"
+effect_type:     "read_memory"
+param_schema: {
+  "type": "object",
+  "properties": {
+    "query": {"type": "string", "description": "Natural language search query"},
+    "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5}
+  },
+  "required": ["query"],
+  "additionalProperties": false
+}
+param_template:  {"query": "{{query}}"}
+preconditions:   "query must not be empty"
+error_handling:  "empty result is not an error; memory backend unavailable → tool error"
+consumer_tags:   ["00:rusty", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 10.2 — ToolSkill: `ts-memory-search` (class 13)
+
+```
+name:        "ts-memory-search"
+tool_name:   "memory_search"
+description: "Executor binding for memory_search. Required: query (natural language).
+              Optional: limit (1–20, default 5). Returns ranked memory documents with
+              content and relevance scores."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "query": {"type": "string"},
+    "limit": {"type": "integer", "minimum": 1, "maximum": 20}
+  },
+  "required": ["query"],
+  "additionalProperties": false
+}
+param_template:  {"query": "{{query}}"}
+preconditions:   "query must not be empty"
+error_handling:  "no results → empty list (not an error)"
+category:        "memory"
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 10.3 — PythonCode: `pc-exec-memory-search` (class 22)
+
+```
+name:        "pc-exec-memory-search"
+description: "Orchestrator executor: calls __execute_action__ to search persistent memory
+              via builtin.memory_search. Input: query (string), limit (optional int 1–20)."
+content: |
+  # Orchestrator executor body.
+  _query = "{{vars.slot0}}"
+  _limit = {{vars.slot1}}
+  _params = {"query": _query}
+  if _limit and _limit > 0:
+      _params["limit"] = _limit
+  result = __execute_action__("memory_search", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 10.4 — Leaf Skill: `skill-memory-search` (class 1)
+
+> One grain: semantic search across memory.
+
+```
+name:        "skill-memory-search"
+class_code:  1
+description: "Leaf skill: how to retrieve relevant information from the agent's persistent memory."
+body: |
+  Use `ts-memory-search` (via pc-exec-memory-search) when you need to recall past work,
+  find saved notes, or check whether something was previously recorded. Provide a natural
+  language query that describes what you are looking for. Set limit higher (up to 20)
+  when broader recall coverage is needed. Review the returned documents and surface only
+  those relevant to the current context.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 10.5 — Leaf Skill: `skill-memory-search-broad` (class 1)
+
+> Separate grain: wide recall with higher limit.
+
+```
+name:        "skill-memory-search-broad"
+class_code:  1
+description: "Leaf skill: how to perform a broad memory recall across many documents."
+body: |
+  When a topic may span multiple memory documents, use `ts-memory-search` with
+  `limit=20` to cast a wider net. Review all returned documents before deciding
+  which are relevant. This is useful for session start — recovering full context about
+  a project or topic before beginning work.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 10.6 — Recipe: `memory-search` (class 21)
+
+> **Tier:** 0 — deterministic semantic search dispatch.
+
+```
+name:        "memory-search"
+description: "Search the agent's persistent memory."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-search>"],
+    "label":   "Pre-load ts-memory-search ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-search>"],
+    "label":   "PythonCode calls __execute_action__(memory_search, {query, limit})"
+  }
+]
+intent_examples: [
+  {"input": "what do you remember about this project",        "class": 2},
+  {"input": "search memory for authentication notes",         "class": 2},
+  {"input": "find any saved notes about this topic",          "class": 2},
+  {"input": "recall what we discussed last time",             "class": 2},
+  {"input": "memory search",                                  "class": 1},
+  {"input": "do you have notes on this",                      "class": 2},
+  {"input": "search my memory for database setup",            "class": 2},
+  {"input": "recall my earlier decisions about this module",  "class": 2},
+  {"input": "find memory entries about this feature",         "class": 2},
+  {"input": "memory recall",                                  "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 10.7 — Recipe: `memory-search-broad` (class 21)
+
+> **Tier:** 0 — wide recall with limit=20. Separate recipe because the broad-recall use case
+> (session start, "what do I know about this topic") is distinct from a focused search.
+
+```
+name:        "memory-search-broad"
+description: "Search the agent's persistent memory with a wide recall (limit=20)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-search>"],
+    "label":   "Pre-load ts-memory-search ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-search>"],
+    "label":   "PythonCode calls __execute_action__(memory_search, {query, limit:20})"
+  }
+]
+intent_examples: [
+  {"input": "recall everything you know about this project",  "class": 2},
+  {"input": "broad memory recall for this topic",             "class": 2},
+  {"input": "search all my memory about this feature",        "class": 2},
+  {"input": "full memory recall at session start",            "class": 2},
+  {"input": "memory broad search",                            "class": 1},
+  {"input": "find all notes I have on this",                  "class": 2},
+  {"input": "recall all prior decisions about this system",   "class": 2},
+  {"input": "wide memory search for onboarding context",      "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 11 — `builtin.memory_write` (Persistent Memory Write)
+
+> **Capability:** `builtin.memory_write` · **Effect:** `write_memory` · **Permission:** Allow
+
+### Step 11.1 — Tool row (class 0)
+
+```
+name:            "memory_write"
+description:     "Write or append content to the agent's persistent memory. Default target is
+                  'daily_log' (today's dated log). Other targets: 'memory' (MEMORY.md),
+                  'heartbeat' (HEARTBEAT.md), 'bootstrap' (clears BOOTSTRAP.md), or any
+                  relative memory document path. Supports patch mode (old_string/new_string)."
+capability_id:   "builtin.memory_write"
+effect_type:     "write_memory"
+param_schema: {
+  "type": "object",
+  "properties": {
+    "content":     {"type": "string",  "description": "Content to write or append"},
+    "target":      {"type": "string",  "description": "Destination: 'memory', 'daily_log' (default), 'heartbeat', 'bootstrap', or relative path"},
+    "append":      {"type": "boolean", "description": "Append when true; replace when false", "default": true},
+    "metadata":    {"type": "object",  "description": "Optional document metadata"},
+    "old_string":  {"type": "string",  "description": "Exact text to replace (patch mode)"},
+    "new_string":  {"type": "string",  "description": "Replacement text (patch mode)"},
+    "replace_all": {"type": "boolean", "description": "Replace every old_string occurrence"},
+    "timezone":    {"type": "string",  "description": "IANA timezone for daily_log date resolution"}
+  },
+  "additionalProperties": false
+}
+param_template:  {"content": "{{content}}"}
+preconditions:   "content required unless using bootstrap target"
+error_handling:  "old_string not found in patch mode → tool error; write failure → tool error"
+consumer_tags:   ["00:rusty", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 11.2 — ToolSkill: `ts-memory-write` (class 13)
+
+```
+name:        "ts-memory-write"
+tool_name:   "memory_write"
+description: "Executor binding for memory_write. Default writes to 'daily_log' (append mode).
+              Use target='memory' for MEMORY.md. Patch mode: supply old_string + new_string.
+              Setting append=false replaces the full document."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "content":     {"type": "string"},
+    "target":      {"type": "string"},
+    "append":      {"type": "boolean"},
+    "old_string":  {"type": "string"},
+    "new_string":  {"type": "string"},
+    "replace_all": {"type": "boolean"},
+    "timezone":    {"type": "string"}
+  },
+  "additionalProperties": false
+}
+param_template:  {"content": "{{content}}"}
+preconditions:   "patch mode requires both old_string and new_string"
+error_handling:  "patch not found → tool error with safe summary"
+category:        "memory"
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 11.3 — PythonCode: `pc-exec-memory-write` (class 22)
+
+```
+name:        "pc-exec-memory-write"
+description: "Orchestrator executor: calls __execute_action__ to write to persistent memory
+              via builtin.memory_write. Input: content (string), target (optional string,
+              default 'daily_log'), append (optional bool, default true)."
+content: |
+  # Orchestrator executor body.
+  _content = "{{vars.slot0}}"
+  _target = "{{vars.slot1}}"
+  _append = {{vars.slot2}}
+  _params = {"content": _content}
+  if _target and _target != "":
+      _params["target"] = _target
+  if _append is not None:
+      _params["append"] = _append
+  result = __execute_action__("memory_write", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 11.4 — PythonCode: `pc-exec-memory-patch` (class 22)
+
+> Separate executor for patch-mode writes (old_string → new_string).
+
+```
+name:        "pc-exec-memory-patch"
+description: "Orchestrator executor: calls __execute_action__ for a targeted patch to a memory
+              document via builtin.memory_write patch mode. Input: target (string), old_string
+              (string), new_string (string), replace_all (optional bool)."
+content: |
+  # Orchestrator executor body.
+  _target = "{{vars.slot0}}"
+  _old = "{{vars.slot1}}"
+  _new = "{{vars.slot2}}"
+  _replace_all = {{vars.slot3}}
+  _params = {"target": _target, "old_string": _old, "new_string": _new}
+  if _replace_all:
+      _params["replace_all"] = True
+  result = __execute_action__("memory_write", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 11.5 — Leaf Skill: `skill-memory-write-log` (class 1)
+
+> One grain: appending to the daily log.
+
+```
+name:        "skill-memory-write-log"
+class_code:  1
+description: "Leaf skill: how to log a note or progress update to today's daily log."
+body: |
+  Use `ts-memory-write` (via pc-exec-memory-write) with the default target='daily_log'
+  and append=true to add timestamped progress notes, decisions, or session context to
+  today's dated log. This is the lightest-weight memory write — use it frequently to
+  maintain a running record of work within a session.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 11.6 — Leaf Skill: `skill-memory-write-main` (class 1)
+
+> Separate grain: writing to the main MEMORY.md document.
+
+```
+name:        "skill-memory-write-main"
+class_code:  1
+description: "Leaf skill: how to update the main MEMORY.md document."
+body: |
+  Use `ts-memory-write` with target='memory' to update the primary MEMORY.md document.
+  With append=true, content is added to the end. With append=false, the entire document
+  is replaced — use this only when intentionally rebuilding the memory from scratch.
+  For targeted updates (patch a section), use skill-memory-write-patch instead.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 11.7 — Leaf Skill: `skill-memory-write-patch` (class 1)
+
+> Separate grain: targeted patch of an existing memory document.
+
+```
+name:        "skill-memory-write-patch"
+class_code:  1
+description: "Leaf skill: how to make a targeted edit to an existing memory document."
+body: |
+  Use `ts-memory-write` in patch mode (old_string + new_string) to replace a specific
+  section of a memory document without rewriting the whole file. Read the document first
+  with skill-memory-read to find the exact text to replace. Use replace_all=true when
+  the same string appears multiple times and all occurrences should change.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 11.8 — Recipe: `memory-write` (class 21)
+
+> **Tier:** 0 — deterministic write dispatch to daily_log.
+
+```
+name:        "memory-write"
+description: "Write or append content to the agent's persistent memory."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-write>"],
+    "label":   "Pre-load ts-memory-write ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-write>"],
+    "label":   "PythonCode calls __execute_action__(memory_write, {content, target, append})"
+  }
+]
+intent_examples: [
+  {"input": "save this to memory",                  "class": 2},
+  {"input": "remember this for later",              "class": 2},
+  {"input": "log this progress note",               "class": 2},
+  {"input": "update MEMORY.md with this decision",  "class": 2},
+  {"input": "add this to my daily log",             "class": 1},
+  {"input": "write a note to memory",               "class": 2},
+  {"input": "store this for later",                 "class": 2},
+  {"input": "persist this outcome to memory",       "class": 2},
+  {"input": "memory write",                         "class": 1},
+  {"input": "append this to the daily log",         "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 11.9 — Recipe: `memory-write-log` (class 21)
+
+> **Tier:** 0 — deterministic append to daily_log. One recipe per target variant.
+> The daily_log is the most common write target — its own recipe improves routing accuracy.
+
+```
+name:        "memory-write-log"
+description: "Append a note or progress entry to today's daily log in persistent memory."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-write>"],
+    "label":   "Pre-load ts-memory-write ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-write>"],
+    "label":   "PythonCode calls __execute_action__(memory_write, {content, target:'daily_log', append:true})"
+  }
+]
+intent_examples: [
+  {"input": "log this progress note",                    "class": 1},
+  {"input": "add to my daily log",                       "class": 1},
+  {"input": "append a note to today's log",              "class": 1},
+  {"input": "write a progress update to the daily log",  "class": 1},
+  {"input": "daily log entry",                           "class": 1},
+  {"input": "record this in the daily log",              "class": 1},
+  {"input": "log what I did today",                      "class": 2},
+  {"input": "log session progress",                      "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 11.10 — Recipe: `memory-write-main` (class 21)
+
+> **Tier:** 0 — deterministic write to MEMORY.md. One recipe per target variant.
+> Writing to the main MEMORY.md is a deliberate, structured action — its own recipe
+> distinguishes it from daily logging.
+
+```
+name:        "memory-write-main"
+description: "Append content to the main MEMORY.md document in persistent memory."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-write>"],
+    "label":   "Pre-load ts-memory-write ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-write>"],
+    "label":   "PythonCode calls __execute_action__(memory_write, {content, target:'memory', append:true})"
+  }
+]
+intent_examples: [
+  {"input": "update MEMORY.md with this",                 "class": 1},
+  {"input": "add this decision to MEMORY.md",             "class": 1},
+  {"input": "write this to the main memory document",     "class": 1},
+  {"input": "append to MEMORY.md",                        "class": 1},
+  {"input": "update my main memory",                      "class": 1},
+  {"input": "save this finding to MEMORY.md",             "class": 1},
+  {"input": "add a permanent note to memory",             "class": 2},
+  {"input": "write to the memory document",               "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 11.11 — Recipe: `memory-write-patch` (class 21)
+
+> **Tier:** 0 — deterministic patch of an existing memory document. One recipe per mode.
+> Patch mode (old_string → new_string) is structurally different from append mode and
+> warrants its own recipe for correct routing.
+
+```
+name:        "memory-write-patch"
+description: "Patch a specific section of an existing memory document using search-replace."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-write>"],
+    "label":   "Pre-load ts-memory-write ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-patch>"],
+    "label":   "PythonCode calls __execute_action__(memory_write, {target, old_string, new_string})"
+  }
+]
+intent_examples: [
+  {"input": "patch a section in MEMORY.md",                 "class": 1},
+  {"input": "replace this text in my memory document",      "class": 1},
+  {"input": "update a specific section of a memory file",   "class": 1},
+  {"input": "memory write patch mode",                      "class": 1},
+  {"input": "fix a section in HEARTBEAT.md",                "class": 2},
+  {"input": "search and replace in a memory document",      "class": 2},
+  {"input": "targeted edit to a memory file",               "class": 1},
+  {"input": "update one section without replacing the file","class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 12 — `builtin.memory_read` (Persistent Memory Read by Path)
+
+> **Capability:** `builtin.memory_read` · **Effect:** `read_memory` · **Permission:** Allow
+
+### Step 12.1 — Tool row (class 0)
+
+```
+name:            "memory_read"
+description:     "Read a specific memory document by its relative path. Returns the full
+                  document content. Use memory_search for semantic discovery; use memory_read
+                  when you know the exact path."
+capability_id:   "builtin.memory_read"
+effect_type:     "read_memory"
+param_schema: {
+  "type": "object",
+  "properties": {
+    "path": {"type": "string", "description": "Relative memory document path to read"}
+  },
+  "required": ["path"],
+  "additionalProperties": false
+}
+param_template:  {"path": "{{path}}"}
+preconditions:   "path must not be empty"
+error_handling:  "document not found → tool error"
+consumer_tags:   ["00:rusty", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 12.2 — ToolSkill: `ts-memory-read` (class 13)
+
+```
+name:        "ts-memory-read"
+tool_name:   "memory_read"
+description: "Executor binding for memory_read. Required: path (relative memory document path).
+              Returns the full document content. Use for known paths; use ts-memory-search
+              for semantic discovery."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "path": {"type": "string"}
+  },
+  "required": ["path"],
+  "additionalProperties": false
+}
+param_template:  {"path": "{{path}}"}
+preconditions:   "path must not be empty"
+error_handling:  "not found → tool error"
+category:        "memory"
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 12.3 — PythonCode: `pc-exec-memory-read` (class 22)
+
+```
+name:        "pc-exec-memory-read"
+description: "Orchestrator executor: calls __execute_action__ to read a memory document by
+              path via builtin.memory_read. Input: path (string). Output: full document content."
+content: |
+  # Orchestrator executor body.
+  _path = "{{vars.slot0}}"
+  result = __execute_action__("memory_read", {"path": _path})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 12.4 — Leaf Skill: `skill-memory-read` (class 1)
+
+```
+name:        "skill-memory-read"
+class_code:  1
+description: "Leaf skill: how to read a specific memory document by its exact path."
+body: |
+  Use `ts-memory-read` (via pc-exec-memory-read) when you know the exact path of a memory
+  document (e.g. MEMORY.md, HEARTBEAT.md, or a specific note file). Returns the full
+  content of the document. If you do not know the exact path, use skill-memory-search to
+  discover it first, or use skill-memory-tree to browse the directory structure.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 12.5 — Recipe: `memory-read` (class 21)
+
+> **Tier:** 0 — deterministic read by known path.
+
+```
+name:        "memory-read"
+description: "Read a specific memory document by path."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-read>"],
+    "label":   "Pre-load ts-memory-read ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-read>"],
+    "label":   "PythonCode calls __execute_action__(memory_read, {path})"
+  }
+]
+intent_examples: [
+  {"input": "read MEMORY.md",                         "class": 1},
+  {"input": "show me the contents of HEARTBEAT.md",   "class": 1},
+  {"input": "read my memory document",                "class": 2},
+  {"input": "open this memory file",                  "class": 2},
+  {"input": "show memory at this path",               "class": 1},
+  {"input": "read the file at this memory path",      "class": 1},
+  {"input": "memory read",                            "class": 1},
+  {"input": "open the notes at this memory location", "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 12.6 — Recipe: `memory-read-main` (class 21)
+
+> **Tier:** 0 — read MEMORY.md by well-known path. One recipe per common known path.
+> The MEMORY.md document is the primary durable context file — routing to it directly
+> avoids the overhead of path lookup or search.
+
+```
+name:        "memory-read-main"
+description: "Read the main MEMORY.md document from persistent memory."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-read>"],
+    "label":   "Pre-load ts-memory-read ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-read>"],
+    "label":   "PythonCode calls __execute_action__(memory_read, {path:'MEMORY.md'})"
+  }
+]
+intent_examples: [
+  {"input": "read MEMORY.md",                       "class": 1},
+  {"input": "show me MEMORY.md",                    "class": 1},
+  {"input": "open the main memory document",        "class": 1},
+  {"input": "read my persistent memory",            "class": 2},
+  {"input": "what is in MEMORY.md",                 "class": 1},
+  {"input": "show me the contents of memory",       "class": 2},
+  {"input": "display MEMORY.md",                    "class": 1},
+  {"input": "read main memory file",                "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 12.7 — Recipe: `memory-read-heartbeat` (class 21)
+
+> **Tier:** 0 — read HEARTBEAT.md by well-known path. One recipe per common known path.
+> HEARTBEAT.md is a regularly updated status/context file — the orchestrator can
+> route directly to it without path ambiguity.
+
+```
+name:        "memory-read-heartbeat"
+description: "Read the HEARTBEAT.md status document from persistent memory."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-read>"],
+    "label":   "Pre-load ts-memory-read ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-read>"],
+    "label":   "PythonCode calls __execute_action__(memory_read, {path:'HEARTBEAT.md'})"
+  }
+]
+intent_examples: [
+  {"input": "read HEARTBEAT.md",                  "class": 1},
+  {"input": "show me the heartbeat document",     "class": 1},
+  {"input": "what is in HEARTBEAT.md",            "class": 1},
+  {"input": "read the agent heartbeat status",    "class": 2},
+  {"input": "show me the current heartbeat",      "class": 2},
+  {"input": "display HEARTBEAT.md",               "class": 1},
+  {"input": "read heartbeat",                     "class": 1},
+  {"input": "open the heartbeat memory file",     "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+
+
+## Step 13 — `builtin.memory_tree` (Memory Directory Tree)
+
+> **Capability:** `builtin.memory_tree` · **Effect:** `read_memory` · **Permission:** Allow
+
+### Step 13.1 — Tool row (class 0)
+
+```
+name:            "memory_tree"
+description:     "List the directory tree of the agent's persistent memory. Returns entry names
+                  and types up to the specified depth. Used to discover memory structure before
+                  targeted reads."
+capability_id:   "builtin.memory_tree"
+effect_type:     "read_memory"
+param_schema: {
+  "type": "object",
+  "properties": {
+    "path":  {"type": "string",  "description": "Relative memory directory path (omit for root)"},
+    "depth": {"type": "integer", "minimum": 1, "maximum": 10, "default": 1}
+  },
+  "additionalProperties": false
+}
+param_template:  {}
+preconditions:   []
+error_handling:  "path not found in memory → tool error"
+consumer_tags:   ["00:rusty", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 13.2 — ToolSkill: `ts-memory-tree` (class 13)
+
+```
+name:        "ts-memory-tree"
+tool_name:   "memory_tree"
+description: "Executor binding for memory_tree. Optional: path (relative memory dir, defaults
+              to root), depth (1–10, default 1). Returns the directory tree of persistent memory."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "path":  {"type": "string"},
+    "depth": {"type": "integer", "minimum": 1, "maximum": 10}
+  },
+  "additionalProperties": false
+}
+param_template:  {}
+preconditions:   []
+error_handling:  "path not found → tool error"
+category:        "memory"
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 13.3 — PythonCode: `pc-exec-memory-tree` (class 22)
+
+```
+name:        "pc-exec-memory-tree"
+description: "Orchestrator executor: calls __execute_action__ to list the memory directory
+              tree via builtin.memory_tree. Input: path (optional string), depth (optional int)."
+content: |
+  # Orchestrator executor body.
+  _path = "{{vars.slot0}}"
+  _depth = {{vars.slot1}}
+  _params = {}
+  if _path and _path != "":
+      _params["path"] = _path
+  if _depth and _depth > 0:
+      _params["depth"] = _depth
+  result = __execute_action__("memory_tree", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 13.4 — Leaf Skill: `skill-memory-tree` (class 1)
+
+```
+name:        "skill-memory-tree"
+class_code:  1
+description: "Leaf skill: how to browse the structure of the agent's persistent memory."
+body: |
+  Use `ts-memory-tree` (via pc-exec-memory-tree) to discover what memory documents exist.
+  Call with no parameters to get the root structure at depth=1. Increase depth to see
+  deeper levels. Use the returned structure to decide which documents to read with
+  skill-memory-read or to inform a skill-memory-search query.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 13.5 — Recipe: `memory-tree` (class 21)
+
+> **Tier:** 0 — deterministic tree listing.
+
+```
+name:        "memory-tree"
+description: "List the directory structure of the agent's persistent memory."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-memory-tree>"],
+    "label":   "Pre-load ts-memory-tree ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-memory-tree>"],
+    "label":   "PythonCode calls __execute_action__(memory_tree, {path, depth})"
+  }
+]
+intent_examples: [
+  {"input": "what files are in my memory",             "class": 2},
+  {"input": "show me the memory directory structure",  "class": 2},
+  {"input": "list all memory documents",               "class": 1},
+  {"input": "browse my memory files",                  "class": 2},
+  {"input": "memory tree",                             "class": 1},
+  {"input": "what memory documents exist",             "class": 2},
+  {"input": "show me the memory hierarchy",            "class": 2},
+  {"input": "memory directory listing",                "class": 1},
+  {"input": "what notes do I have stored",             "class": 2},
+  {"input": "explore my memory structure",             "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 13.x — Memory PythonCode Helpers + Domain Skill
+
+### Step 13.x.1 — PythonCode `pc-memory-extract-section` (class 22)
+
+> Pure logic: extracts a named Markdown section. No I/O, no imports.
+
+```
+name:        "pc-memory-extract-section"
+description: "Pure-logic helper: extracts a named section from a Markdown document using
+              heading matching. Input: content (string), heading (string — heading text
+              without # prefix). Output: {section_content, heading, found}."
+content: |
+  # No I/O, no imports. IBS bakes in content and heading before execution.
+  content = "{{vars.slot0}}"
+  heading = "{{vars.slot1}}"
+  lines = content.split("\n")
+  in_section = False
+  section_lines = []
+  for line in lines:
+      stripped = line.lstrip("#").strip()
+      if stripped == heading and line.startswith("#"):
+          in_section = True
+          continue
+      if in_section:
+          if line.startswith("#"):
+              break
+          section_lines.append(line)
+  section_content = "\n".join(section_lines).strip() if section_lines else None
+  result = {"section_content": section_content, "heading": heading, "found": section_content is not None}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 13.x.2 — PythonCode `pc-memory-format-entry` (class 22)
+
+> Pure logic: formats a memory entry for appending. Timestamp supplied as string param.
+
+```
+name:        "pc-memory-format-entry"
+description: "Pure-logic helper: formats a memory entry string ready for appending to a
+              memory document. Input: text (string), timestamp_str (string — caller supplies
+              pre-fetched timestamp). Output: {formatted_entry}."
+content: |
+  # No I/O, no imports, no datetime. Caller must supply timestamp_str.
+  text = "{{vars.slot0}}"
+  timestamp_str = "{{vars.slot1}}"
+  formatted_entry = f"### {timestamp_str}\n\n{text}\n"
+  result = {"formatted_entry": formatted_entry}
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 13.x.3 — Domain Skill `skill-memory` (class 2)
+
+```
+name:        "skill-memory"
+class_code:  2
+description: "The memory domain provides four tools for the agent's persistent memory store:
+
+              READING / DISCOVERING:
+              — skill-memory-search: Semantic search by topic — use when path is unknown.
+              — skill-memory-search-broad: Wide recall with limit=20 for session start.
+              — skill-memory-read: Read a specific document by exact path.
+              — skill-memory-tree: Browse the directory structure.
+
+              WRITING:
+              — skill-memory-write-log: Append a note to today's daily_log (default).
+              — skill-memory-write-main: Update the main MEMORY.md document.
+              — skill-memory-write-patch: Targeted patch of an existing memory document.
+
+              Decision guide:
+              • Recalling by topic → skill-memory-search
+              • Session start full recall → skill-memory-search-broad
+              • Reading a known file → skill-memory-read
+              • Logging progress → skill-memory-write-log
+              • Updating permanent context → skill-memory-write-main
+              • Patching a section → skill-memory-write-patch
+              • Discovering what files exist → skill-memory-tree"
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+
+## Step 14 — `builtin.time` (Time Operations)
+
+> **Capability:** `builtin.time` · **Effect:** `read_only` · **Permission:** Allow
+> Operations: now, parse, convert — routed through one Tool, three ToolSkills.
+
+### Step 14.1 — Tool row (class 0)
+
+```
+name:            "time"
+description:     "Perform time and timezone operations: get the current time (now), parse a
+                  timestamp string (parse), convert between timezones (convert)."
+capability_id:   "builtin.time"
+effect_type:     "read_only"
+param_schema: {
+  "type": "object",
+  "properties": {
+    "operation":    {"type": "string", "enum": ["now","parse","convert"],
+                     "description": "Time operation. Defaults to now."},
+    "input":        {"type": "string", "description": "Timestamp for parse/convert"},
+    "timezone":     {"type": "string", "description": "IANA timezone name"},
+    "from_timezone":{"type": "string", "description": "IANA timezone for input interpretation"},
+    "to_timezone":  {"type": "string", "description": "IANA timezone for conversion output"}
+  },
+  "additionalProperties": false
+}
+param_template:  {"operation": "now"}
+preconditions:   []
+error_handling:  "invalid timezone → tool error; invalid timestamp format → tool error"
+consumer_tags:   ["00:rusty", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 14.2 — ToolSkill: `ts-time-now` (class 13)
+
+```
+name:        "ts-time-now"
+tool_name:   "time"
+description: "Executor binding: get the current UTC timestamp (operation='now'). Optional:
+              timezone (IANA name) to return current time in a specific timezone."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "operation": {"type": "string", "enum": ["now"], "default": "now"},
+    "timezone":  {"type": "string"}
+  },
+  "additionalProperties": false
+}
+param_template:  {"operation": "now"}
+preconditions:   []
+error_handling:  "invalid timezone → tool error"
+category:        "time"
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 14.3 — PythonCode: `pc-exec-time-now` (class 22)
+
+```
+name:        "pc-exec-time-now"
+description: "Orchestrator executor: calls __execute_action__ to get the current timestamp
+              via builtin.time operation='now'. Input: timezone (optional IANA string)."
+content: |
+  # Orchestrator executor body.
+  _timezone = "{{vars.slot0}}"
+  _params = {"operation": "now"}
+  if _timezone and _timezone != "":
+      _params["timezone"] = _timezone
+  result = __execute_action__("time", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 14.4 — Leaf Skill: `skill-time-now` (class 1)
+
+```
+name:        "skill-time-now"
+class_code:  1
+description: "Leaf skill: how to get the current date and time."
+body: |
+  Use `ts-time-now` (via pc-exec-time-now) to get the current UTC timestamp. Provide a
+  timezone parameter if the user specified a locale (e.g. 'America/New_York'). The returned
+  timestamp can be used as input to other time operations or to stamp memory entries.
+  PythonCode that needs the current time must always call this first — never use datetime.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 14.5 — Recipe: `time-now` (class 21)
+
+> **Tier:** 0 — deterministic timestamp fetch.
+
+```
+name:        "time-now"
+description: "Get the current date and time."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-time-now>"],
+    "label":   "Pre-load ts-time-now ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-time-now>"],
+    "label":   "PythonCode calls __execute_action__(time, {operation:now})"
+  }
+]
+intent_examples: [
+  {"input": "what time is it",                "class": 1},
+  {"input": "what is today's date",           "class": 1},
+  {"input": "current time in Tokyo",          "class": 2},
+  {"input": "get the current UTC timestamp",  "class": 1},
+  {"input": "what day is it",                 "class": 1},
+  {"input": "what time is it now",            "class": 1},
+  {"input": "what is the current time",       "class": 1},
+  {"input": "time now",                       "class": 1},
+  {"input": "give me a timestamp",            "class": 1},
+  {"input": "what time is it in Berlin",      "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 14.5b — Recipe: `time-now-tz` (class 21)
+
+> **Tier:** 0 — deterministic timestamp fetch in a specified timezone. One recipe per variant.
+> When the user specifies a timezone, this variant routes more accurately than `time-now`.
+
+```
+name:        "time-now-tz"
+description: "Get the current date and time in a specific IANA timezone."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-time-now>"],
+    "label":   "Pre-load ts-time-now ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-time-now>"],
+    "label":   "PythonCode calls __execute_action__(time, {operation:now, timezone:<tz>})"
+  }
+]
+intent_examples: [
+  {"input": "what time is it in Tokyo",                   "class": 1},
+  {"input": "current time in America/New_York",           "class": 1},
+  {"input": "what time is it in Europe/Berlin",           "class": 1},
+  {"input": "time now in Australia/Sydney",               "class": 1},
+  {"input": "current time in Pacific timezone",           "class": 2},
+  {"input": "what is the time in EST",                    "class": 2},
+  {"input": "get me the current time in London",          "class": 1},
+  {"input": "what time is it in India right now",         "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+
+
+### Step 14.6 — ToolSkill: `ts-time-parse` (class 13)
+
+```
+name:        "ts-time-parse"
+tool_name:   "time"
+description: "Executor binding: parse a timestamp string (operation='parse'). Required: input
+              (timestamp string). Optional: timezone (IANA, for interpreting the input)."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "operation": {"type": "string", "enum": ["parse"]},
+    "input":     {"type": "string"},
+    "timezone":  {"type": "string"}
+  },
+  "required": ["operation", "input"],
+  "additionalProperties": false
+}
+param_template:  {"operation": "parse", "input": "{{input}}"}
+preconditions:   "input must be a recognisable timestamp string"
+error_handling:  "unrecognised format → tool error"
+category:        "time"
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 14.7 — PythonCode: `pc-exec-time-parse` (class 22)
+
+```
+name:        "pc-exec-time-parse"
+description: "Orchestrator executor: calls __execute_action__ to parse a timestamp string
+              via builtin.time operation='parse'. Input: input (string), timezone (optional)."
+content: |
+  # Orchestrator executor body.
+  _input = "{{vars.slot0}}"
+  _timezone = "{{vars.slot1}}"
+  _params = {"operation": "parse", "input": _input}
+  if _timezone and _timezone != "":
+      _params["timezone"] = _timezone
+  result = __execute_action__("time", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 14.8 — Leaf Skill: `skill-time-parse` (class 1)
+
+```
+name:        "skill-time-parse"
+class_code:  1
+description: "Leaf skill: how to parse a timestamp string into a structured time value."
+body: |
+  Use `ts-time-parse` (via pc-exec-time-parse) to interpret a date or time in text form.
+  Supports ISO 8601, RFC 2822, and common human-readable formats. Provide timezone when
+  the input is ambiguous about its timezone context.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 14.9 — Recipe: `time-parse` (class 21)
+
+> **Tier:** 0 — deterministic parse.
+
+```
+name:        "time-parse"
+description: "Parse a timestamp string into a structured time value."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-time-parse>"],
+    "label":   "Pre-load ts-time-parse ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-time-parse>"],
+    "label":   "PythonCode calls __execute_action__(time, {operation:parse, input})"
+  }
+]
+intent_examples: [
+  {"input": "parse this date string",              "class": 1},
+  {"input": "what timestamp is 2024-01-15T10:30",  "class": 1},
+  {"input": "interpret this date format",          "class": 2},
+  {"input": "parse the timestamp from this log",   "class": 2},
+  {"input": "what does this date mean",            "class": 2},
+  {"input": "parse this ISO timestamp",            "class": 1},
+  {"input": "read this date string",               "class": 2},
+  {"input": "time parse",                          "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 14.10 — ToolSkill: `ts-time-convert` (class 13)
+
+```
+name:        "ts-time-convert"
+tool_name:   "time"
+description: "Executor binding: convert a timestamp between timezones (operation='convert').
+              Required: input (timestamp string). Optional: from_timezone (IANA, default UTC),
+              to_timezone (IANA, default UTC)."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "operation":    {"type": "string", "enum": ["convert"]},
+    "input":        {"type": "string"},
+    "from_timezone":{"type": "string"},
+    "to_timezone":  {"type": "string"}
+  },
+  "required": ["operation", "input"],
+  "additionalProperties": false
+}
+param_template:  {"operation": "convert", "input": "{{input}}"}
+preconditions:   "input must be a recognisable timestamp"
+error_handling:  "invalid timezone → tool error"
+category:        "time"
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 14.11 — PythonCode: `pc-exec-time-convert` (class 22)
+
+```
+name:        "pc-exec-time-convert"
+description: "Orchestrator executor: calls __execute_action__ to convert a timestamp between
+              timezones via builtin.time operation='convert'. Input: input (string),
+              from_timezone (optional), to_timezone (optional IANA string)."
+content: |
+  # Orchestrator executor body.
+  _input = "{{vars.slot0}}"
+  _from_tz = "{{vars.slot1}}"
+  _to_tz = "{{vars.slot2}}"
+  _params = {"operation": "convert", "input": _input}
+  if _from_tz and _from_tz != "":
+      _params["from_timezone"] = _from_tz
+  if _to_tz and _to_tz != "":
+      _params["to_timezone"] = _to_tz
+  result = __execute_action__("time", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 14.12 — Leaf Skill: `skill-time-convert` (class 1)
+
+```
+name:        "skill-time-convert"
+class_code:  1
+description: "Leaf skill: how to convert a timestamp to a different timezone."
+body: |
+  Use `ts-time-convert` (via pc-exec-time-convert) to express a timestamp in a different
+  timezone. Provide the input timestamp and the target `to_timezone` (IANA name, e.g.
+  'America/New_York', 'Europe/Berlin', 'Asia/Tokyo'). Optionally specify `from_timezone`
+  if the input's timezone is ambiguous.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 14.13 — Recipe: `time-convert` (class 21)
+
+> **Tier:** 0 — deterministic timezone conversion.
+
+```
+name:        "time-convert"
+description: "Convert a timestamp to a different timezone."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-time-convert>"],
+    "label":   "Pre-load ts-time-convert ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-time-convert>"],
+    "label":   "PythonCode calls __execute_action__(time, {operation:convert, input, to_timezone})"
+  }
+]
+intent_examples: [
+  {"input": "convert this time to New York timezone",   "class": 2},
+  {"input": "what is 3pm UTC in Tokyo",                 "class": 2},
+  {"input": "timezone conversion for this timestamp",   "class": 2},
+  {"input": "what time is this in EST",                 "class": 2},
+  {"input": "convert this UTC time to local time",      "class": 2},
+  {"input": "what is this time in Europe/Berlin",       "class": 2},
+  {"input": "time convert to Asia/Tokyo",               "class": 1},
+  {"input": "express this timestamp in Pacific time",   "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 15 — `builtin.json` (JSON Operations)
+
+> **Capability:** `builtin.json` · **Effect:** `read_only` · **Permission:** Allow
+> Operations: parse, stringify, query, validate.
+
+### Step 15.1 — Tool row (class 0)
+
+```
+name:            "json"
+description:     "Perform JSON operations: parse a JSON string (parse), serialize a value to
+                  a JSON string (stringify), extract a value by dot/bracket path (query), or
+                  validate whether a string is valid JSON (validate)."
+capability_id:   "builtin.json"
+effect_type:     "read_only"
+param_schema: {
+  "type": "object",
+  "properties": {
+    "operation": {"type": "string", "enum": ["parse","stringify","query","validate"]},
+    "data":      {"description": "JSON string or JSON value to process"},
+    "path":      {"type": "string", "description": "Dot/bracket path for query operation"}
+  },
+  "required": ["operation", "data"],
+  "additionalProperties": false
+}
+param_template:  {"operation": "{{operation}}", "data": "{{data}}"}
+preconditions:   "operation required; data required"
+error_handling:  "invalid JSON for parse/query → tool error; path not found in query → null"
+consumer_tags:   ["00:rusty", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 15.2 — ToolSkill: `ts-json-query` (class 13)
+
+```
+name:        "ts-json-query"
+tool_name:   "json"
+description: "Executor binding for json query operation. Required: operation='query', data
+              (JSON string or value), path (dot/bracket path). Returns value at path or null."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "operation": {"type": "string", "enum": ["query"]},
+    "data":      {},
+    "path":      {"type": "string"}
+  },
+  "required": ["operation", "data", "path"],
+  "additionalProperties": false
+}
+param_template:  {"operation": "query", "data": "{{data}}", "path": "{{path}}"}
+preconditions:   "data must be valid JSON; path must not be empty"
+error_handling:  "invalid JSON → tool error; path not found → null (not a tool error)"
+category:        "data"
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 15.3 — PythonCode: `pc-exec-json-query` (class 22)
+
+```
+name:        "pc-exec-json-query"
+description: "Orchestrator executor: calls __execute_action__ for json query operation.
+              Input: data (JSON value or string), path (dot-separated path string)."
+content: |
+  # Orchestrator executor body.
+  _data = {{vars.slot0}}
+  _path = "{{vars.slot1}}"
+  result = __execute_action__("json", {"operation": "query", "data": _data, "path": _path})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 15.4 — Leaf Skill: `skill-json-query` (class 1)
+
+```
+name:        "skill-json-query"
+class_code:  1
+description: "Leaf skill: how to extract a value from a JSON structure by path."
+body: |
+  Use `ts-json-query` (via pc-exec-json-query) to extract a specific field from a JSON
+  structure. Provide the data and a dot-separated path (e.g. 'user.address.city' or
+  'items.0.name'). Returns null if the path does not exist. For multi-field extraction,
+  use pc-json-extract-field PythonCode instead.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 15.5 — Recipe: `json-query` (class 21)
+
+> **Tier:** 0 — deterministic path extraction.
+
+```
+name:        "json-query"
+description: "Extract a value from a JSON structure by path."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-json-query>"],
+    "label":   "Pre-load ts-json-query ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-json-query>"],
+    "label":   "PythonCode calls __execute_action__(json, {operation:query, data, path})"
+  }
+]
+intent_examples: [
+  {"input": "extract the user name from this JSON",         "class": 2},
+  {"input": "get the value at this JSON path",              "class": 1},
+  {"input": "query this JSON for the id field",             "class": 2},
+  {"input": "json query items.0.name",                      "class": 1},
+  {"input": "extract nested field from API response",       "class": 2},
+  {"input": "get value at json path user.email",            "class": 1},
+  {"input": "extract the status field from this response",  "class": 2},
+  {"input": "json path extraction",                         "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 15.6 — ToolSkill: `ts-json-stringify` (class 13)
+
+```
+name:        "ts-json-stringify"
+tool_name:   "json"
+description: "Executor binding for json stringify and parse operations. Required: operation
+              ('stringify' or 'parse'), data. Stringify → formatted JSON string; parse →
+              structured value from JSON string."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "operation": {"type": "string", "enum": ["stringify","parse"]},
+    "data":      {}
+  },
+  "required": ["operation", "data"],
+  "additionalProperties": false
+}
+param_template:  {"operation": "{{operation}}", "data": "{{data}}"}
+preconditions:   "data must be valid for the selected operation"
+error_handling:  "invalid JSON string for parse → tool error"
+category:        "data"
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 15.7 — ToolSkill: `ts-json-validate` (class 13)
+
+> Separate ToolSkill for validation only.
+
+```
+name:        "ts-json-validate"
+tool_name:   "json"
+description: "Executor binding for json validate operation. Required: operation='validate',
+              data (string to check). Returns {valid: bool, error: string|null}."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "operation": {"type": "string", "enum": ["validate"]},
+    "data":      {"type": "string"}
+  },
+  "required": ["operation", "data"],
+  "additionalProperties": false
+}
+param_template:  {"operation": "validate", "data": "{{data}}"}
+preconditions:   []
+error_handling:  "returns {valid: false, error: ...} for invalid JSON — never a tool error"
+category:        "data"
+source:          "system"
+validation_status: "validated"
+```
+
+### Step 15.8 — PythonCode: `pc-exec-json-stringify` (class 22)
+
+```
+name:        "pc-exec-json-stringify"
+description: "Orchestrator executor: calls __execute_action__ for json stringify or parse.
+              Input: operation ('stringify' or 'parse'), data."
+content: |
+  # Orchestrator executor body.
+  _operation = "{{vars.slot0}}"
+  _data = {{vars.slot1}}
+  result = __execute_action__("json", {"operation": _operation, "data": _data})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 15.9 — PythonCode: `pc-exec-json-validate` (class 22)
+
+```
+name:        "pc-exec-json-validate"
+description: "Orchestrator executor: calls __execute_action__ to validate a JSON string.
+              Input: data (string). Output: {valid, error}."
+content: |
+  # Orchestrator executor body.
+  _data = "{{vars.slot0}}"
+  result = __execute_action__("json", {"operation": "validate", "data": _data})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 15.10 — Leaf Skill: `skill-json-stringify` (class 1)
+
+> One grain: serialize a value to a JSON string.
+
+```
+name:        "skill-json-stringify"
+class_code:  1
+description: "Leaf skill: how to convert a value to a formatted JSON string."
+body: |
+  Use `ts-json-stringify` with operation='stringify' (via pc-exec-json-stringify) to
+  format a structured value as a human-readable JSON string for display or for writing
+  to a file. The result is pretty-printed.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 15.11 — Leaf Skill: `skill-json-parse` (class 1)
+
+> Separate grain: parse a JSON string to a structured value.
+
+```
+name:        "skill-json-parse"
+class_code:  1
+description: "Leaf skill: how to parse a JSON string into a structured value."
+body: |
+  Use `ts-json-stringify` with operation='parse' (via pc-exec-json-stringify) when you
+  have a raw JSON string (e.g. from a tool response body) and need to work with it as
+  a structured value. The result can then be queried with ts-json-query or
+  pc-json-extract-field.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 15.12 — Leaf Skill: `skill-json-validate` (class 1)
+
+> Separate grain: check if a string is valid JSON.
+
+```
+name:        "skill-json-validate"
+class_code:  1
+description: "Leaf skill: how to check whether a string is valid JSON."
+body: |
+  Use `ts-json-validate` (via pc-exec-json-validate) to check whether a string is
+  syntactically valid JSON before attempting to parse or process it. Returns {valid: bool,
+  error: string|null}. Useful as a guard before running json-query or json-parse.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+### Step 15.13 — Recipe: `json-stringify` (class 21)
+
+> **Tier:** 0 — deterministic stringify/parse.
+
+```
+name:        "json-stringify"
+description: "Stringify or parse a JSON value."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-json-stringify>"],
+    "label":   "Pre-load ts-json-stringify ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-json-stringify>"],
+    "label":   "PythonCode calls __execute_action__(json, {operation, data})"
+  }
+]
+intent_examples: [
+  {"input": "format this as JSON",              "class": 1},
+  {"input": "stringify this object",            "class": 1},
+  {"input": "parse this JSON string",           "class": 1},
+  {"input": "pretty print this JSON",           "class": 1},
+  {"input": "convert this to a JSON string",    "class": 2},
+  {"input": "json stringify",                   "class": 1},
+  {"input": "serialize this to JSON",           "class": 1},
+  {"input": "format this JSON structure",       "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+
+### Step 15.14 — Recipe: `json-parse` (class 21)
+
+> **Tier:** 0 — deterministic JSON string parse. One recipe per operation variant.
+> Parsing a JSON string is the inverse of stringify and a very common distinct use case.
+
+```
+name:        "json-parse"
+description: "Parse a JSON string into a structured value."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-json-stringify>"],
+    "label":   "Pre-load ts-json-stringify ToolSkill binding (handles parse operation)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-json-stringify>"],
+    "label":   "PythonCode calls __execute_action__(json, {operation:'parse', data})"
+  }
+]
+intent_examples: [
+  {"input": "parse this JSON",                     "class": 1},
+  {"input": "decode this JSON",                    "class": 1},
+  {"input": "convert this JSON string to a value", "class": 1},
+  {"input": "json parse",                          "class": 1},
+  {"input": "deserialize this JSON response",      "class": 2},
+  {"input": "interpret this JSON payload",         "class": 2},
+  {"input": "turn this JSON text into an object",  "class": 2},
+  {"input": "parse the API response body as JSON", "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 15.15 — Recipe: `json-validate` (class 21)
+
+> **Tier:** 0 — deterministic JSON validation. One recipe per operation variant.
+
+```
+name:        "json-validate"
+description: "Validate whether a string is valid JSON."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-json-validate>"],
+    "label":   "Pre-load ts-json-validate ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-json-validate>"],
+    "label":   "PythonCode calls __execute_action__(json, {operation:'validate', data})"
+  }
+]
+intent_examples: [
+  {"input": "is this valid JSON",                "class": 1},
+  {"input": "validate this JSON string",         "class": 1},
+  {"input": "check if this is valid JSON",       "class": 1},
+  {"input": "json validate",                     "class": 1},
+  {"input": "is this JSON correct",              "class": 1},
+  {"input": "verify this JSON syntax",           "class": 1},
+  {"input": "check this JSON before using it",   "class": 2},
+  {"input": "is this a valid JSON payload",      "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+
+
+---
+
+## Step 16 — `builtin.skill_list` / `builtin.skill_install` / `builtin.skill_remove` (Skill Management)
+
+> Three related tools that let the agent inspect and manage the installed skill library.
+> `skill_list` is Tier 0 (deterministic listing). `skill_install` and `skill_remove` require
+> LLM confirmation (Tier 1) — irreversible side effects.
+
+---
+
+### Step 16.1 — Tool: `builtin.skill_list` (class 0)
+
+```
+capability_id: "builtin.skill_list"
+name:          "skill_list"
+description:   "List all skills currently installed in the active scope."
+effect_type:   "Read"
+param_schema:
+  type: object
+  properties:
+    scope:
+      type: string
+      description: "Scope filter: 'all' | 'user' | 'system'. Defaults to 'all'."
+  required: []
+source: "system"
+validation_status: "validated"
+```
+
+### Step 16.2 — Tool: `builtin.skill_install` (class 0)
+
+```
+capability_id: "builtin.skill_install"
+name:          "skill_install"
+description:   "Install a new skill from a URL or local path, entering the Q1/Q2 pipeline."
+effect_type:   "Write"
+param_schema:
+  type: object
+  properties:
+    source_url:
+      type: string
+      description: "URL or local file path pointing to the skill manifest."
+    scope:
+      type: string
+      description: "Target scope: 'user' (default) or 'system'."
+  required: ["source_url"]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 16.3 — Tool: `builtin.skill_remove` (class 0)
+
+```
+capability_id: "builtin.skill_remove"
+name:          "skill_remove"
+description:   "Remove an installed skill by name. Irreversible."
+effect_type:   "Write"
+param_schema:
+  type: object
+  properties:
+    skill_name:
+      type: string
+      description: "Name of the skill to remove."
+    scope:
+      type: string
+      description: "Scope the skill belongs to: 'user' | 'system'. Defaults to 'user'."
+  required: ["skill_name"]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 16.4 — ToolSkill: `ts-skill-list` (class 13)
+
+```
+name:        "ts-skill-list"
+tool_name:   "builtin.skill_list"
+description: "ToolSkill binding for builtin.skill_list — deterministic scope-filtered listing."
+content: |
+  Tool: builtin.skill_list
+  Effect: Read — returns a JSON array of installed skills.
+
+  Parameters:
+  - scope (string, optional): 'all' (default) | 'user' | 'system'. Use 'user' when the user
+    wants to see what they have installed. Use 'system' to inspect system-provided builtins.
+
+  Output format:
+    [{name, class_code, description, source, validation_status, installed_at}]
+
+  Scope isolation: a 'user' scope call never returns system-only components. The agent
+  cannot modify system-scope skills without elevated authority.
+
+  When to use:
+  - Before installing a skill, list first to check whether it already exists.
+  - When the user asks "what skills do I have?"
+  - As the first step in any skill management recipe.
+source: "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+### Step 16.5 — ToolSkill: `ts-skill-install` (class 13)
+
+```
+name:        "ts-skill-install"
+tool_name:   "builtin.skill_install"
+description: "ToolSkill binding for builtin.skill_install — installs a skill from URL/path."
+content: |
+  Tool: builtin.skill_install
+  Effect: Write — installs a skill, creating a pending component that enters Q1 → Q2.
+
+  Parameters:
+  - source_url (string, required): URL (https://) or absolute local path to a skill manifest
+    YAML/JSON. Remote URLs are fetched; the response must be a valid component manifest.
+  - scope (string, optional): 'user' (default) | 'system'.
+
+  Post-install state: the skill enters validation_status='pending' and goes through Q1.
+  If Q1 fails, the install is rejected and logged. Q2 graduation is required before the
+  skill is usable by the agent.
+
+  Safety note: always confirm with the user before installing from an unknown source URL.
+  Skills can contain PythonCode bodies that will execute in the orchestrator sandbox.
+source: "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+### Step 16.6 — ToolSkill: `ts-skill-remove` (class 13)
+
+```
+name:        "ts-skill-remove"
+tool_name:   "builtin.skill_remove"
+description: "ToolSkill binding for builtin.skill_remove — removes a skill by name."
+content: |
+  Tool: builtin.skill_remove
+  Effect: Write — permanently removes a skill from the scope. Irreversible.
+
+  Parameters:
+  - skill_name (string, required): exact name of the skill to remove.
+  - scope (string, optional): 'user' (default) | 'system'.
+
+  Safety invariants:
+  - System-scope skills cannot be removed by user-scope calls.
+  - Removal of a skill that is referenced by an active recipe will fail with an error
+    listing the dependent recipes. Resolve dependencies first.
+  - Always confirm with the user before removal — this cannot be undone without
+    reinstalling.
+source: "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+---
+
+### Step 16.7 — PythonCode: `pc-exec-skill-list` (class 22)
+
+> Orchestrator executor for `builtin.skill_list`. Dispatches the tool deterministically —
+> the only actor that calls `__execute_action__` for a Tier-0 skill-list recipe.
+
+```
+name:        "pc-exec-skill-list"
+class_code:  22
+description: "Orchestrator executor: calls __execute_action__ to list installed skills.
+              Input: scope (string). Output: [{name, class_code, …}]."
+content: |
+  # Orchestrator executor body.
+  _scope = "{{vars.slot0}}" if "{{vars.slot0}}" else "all"
+  result = __execute_action__("skill_list", {"scope": _scope})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 16.8 — Leaf Skill: `skill-skill-list` (class 1)
+
+> Grain: enumerate installed skills, optionally filtered by scope.
+
+```
+name:        "skill-skill-list"
+class_code:  1
+description: "Leaf skill: how to list installed skills in the active scope."
+body: |
+  Use `ts-skill-list` (via pc-exec-skill-list) to retrieve a JSON array of all installed
+  skills. Pass scope='user' to see only user-installed skills. Pass scope='system' to
+  inspect system builtins. Omit scope (or pass 'all') to see everything.
+  Check the returned array before deciding to install a skill — avoid duplicates.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+### Step 16.9 — Leaf Skill: `skill-skill-install` (class 1)
+
+> Grain: install a new skill from a URL, respecting the Q1/Q2 pipeline.
+
+```
+name:        "skill-skill-install"
+class_code:  1
+description: "Leaf skill: how to install a new skill from a URL or local path."
+body: |
+  Use `ts-skill-install` to fetch and register a skill manifest. Always:
+  1. Run `ts-skill-list` first to confirm the skill does not already exist.
+  2. Confirm the source URL with the user before proceeding.
+  3. After install, inform the user the skill enters validation_status='pending' and
+     cannot be used until Q1 and Q2 pass. Do not promise immediate availability.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+### Step 16.10 — Leaf Skill: `skill-skill-remove` (class 1)
+
+> Grain: remove an installed skill, confirming irreversibility.
+
+```
+name:        "skill-skill-remove"
+class_code:  1
+description: "Leaf skill: how to safely remove an installed skill."
+body: |
+  Use `ts-skill-remove` to permanently remove a skill by name. Always:
+  1. Run `ts-skill-list` first to confirm the skill exists and note its scope.
+  2. Confirm with the user that removal is intended and irreversible.
+  3. If the tool returns a dependency error (recipes reference this skill), resolve those
+     first or inform the user of the blocker.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+---
+
+### Step 16.11 — Domain Skill: `skill-skills` (class 2)
+
+```
+name:        "skill-skills"
+class_code:  2
+description: "Domain skill: skill management — list, install, remove."
+body: |
+  Skill management gives the agent and user visibility and control over the installed
+  skill library. Use the right grain for each task:
+
+  Listing skills:
+  - skill-skill-list: enumerate the installed skill library (always start here)
+
+  Installing a skill:
+  - skill-skill-install: fetch a manifest from URL/path, confirm with user, enter Q1/Q2
+
+  Removing a skill:
+  - skill-skill-remove: confirm with user, check for dependent recipes, then remove
+
+  Safety rules:
+  - Never install from an untrusted URL without explicit user confirmation.
+  - Never remove without explicit user confirmation — removal is irreversible.
+  - System-scope skills cannot be modified from user-scope authority.
+  - After install, the skill is 'pending' — not usable until Q2 graduates it.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+---
+
+### Step 16.12 — Recipe: `skill-list` (class 21)
+
+> **Tier:** 0 — deterministic listing, no LLM needed.
+
+```
+name:        "skill-list"
+description: "List all installed skills, optionally filtered by scope."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-skill-list>"],
+    "label":   "Pre-load ts-skill-list ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-skill-list>"],
+    "label":   "PythonCode calls __execute_action__(skill_list, {scope})"
+  }
+]
+intent_examples: [
+  {"input": "list my skills",                "class": 1},
+  {"input": "what skills are installed",     "class": 1},
+  {"input": "show me available skills",      "class": 1},
+  {"input": "which skills do I have",        "class": 1},
+  {"input": "list system skills",            "class": 2},
+  {"input": "skill list",                    "class": 1},
+  {"input": "show all installed skills",     "class": 1},
+  {"input": "what capabilities are loaded",  "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 16.13 — Recipe: `skill-install` (class 21)
+
+> **Tier:** 1 — LLM confirms source URL and communicates Q1/Q2 pipeline to user.
+
+```
+name:        "skill-install"
+description: "Install a new skill from a URL, with user confirmation."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-skill-install>"],
+    "label":   "Load skill-skill-install leaf skill body (install procedure)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM confirms URL with user, explains pending state, calls ts-skill-install"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-skill-list>", "<uuid:ts-skill-install>"],
+    "label":   "Pre-load ToolSkill bindings for list (pre-check) and install"
+  }
+]
+intent_examples: [
+  {"input": "install a skill from this URL",       "class": 1},
+  {"input": "add a new skill",                     "class": 1},
+  {"input": "install skill from https://...",      "class": 1},
+  {"input": "load skill from local path",          "class": 2},
+  {"input": "install this skill",                  "class": 1},
+  {"input": "add skill from this path",            "class": 2},
+  {"input": "skill install",                       "class": 1},
+  {"input": "set up this new skill",               "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 16.14 — Recipe: `skill-remove` (class 21)
+
+> **Tier:** 1 — LLM confirms name and scope, explains irreversibility.
+
+```
+name:        "skill-remove"
+description: "Remove an installed skill by name, with user confirmation."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-skill-remove>"],
+    "label":   "Load skill-skill-remove leaf skill body (removal procedure)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM confirms skill name, warns about irreversibility, calls ts-skill-remove"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-skill-list>", "<uuid:ts-skill-remove>"],
+    "label":   "Pre-load ToolSkill bindings for list (pre-check) and remove"
+  }
+]
+intent_examples: [
+  {"input": "remove skill X",                    "class": 1},
+  {"input": "uninstall skill",                   "class": 1},
+  {"input": "delete this skill",                 "class": 1},
+  {"input": "remove my custom skill",            "class": 2},
+  {"input": "skill remove",                      "class": 1},
+  {"input": "uninstall this skill from my agent","class": 2},
+  {"input": "delete skill by name",              "class": 1},
+  {"input": "remove the skill named X",          "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 17 — `builtin.trigger_create` / `builtin.trigger_list` / `builtin.trigger_remove` (Trigger Management)
+
+> Triggers are scheduled or event-driven run requests. `trigger_list` is Tier 0
+> (deterministic). `trigger_create` and `trigger_remove` are Tier 1 — both have
+> ExternalWrite effects and require user confirmation.
+
+---
+
+### Step 17.1 — Tool: `builtin.trigger_create` (class 0)
+
+```
+capability_id: "builtin.trigger_create"
+name:          "trigger_create"
+description:   "Create a new scheduled or event-driven trigger for a recipe or task."
+effect_type:   "ExternalWrite"
+param_schema:
+  type: object
+  properties:
+    name:
+      type: string
+      description: "Human-readable trigger name."
+    schedule:
+      type: string
+      description: "Cron expression ('0 9 * * 1') or interval ('every 1h', 'every 30m')."
+    recipe_name:
+      type: string
+      description: "Name of the recipe to invoke on trigger."
+    payload:
+      type: object
+      description: "Optional input vars to pass to the recipe at trigger time."
+  required: ["name", "schedule", "recipe_name"]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 17.2 — Tool: `builtin.trigger_list` (class 0)
+
+```
+capability_id: "builtin.trigger_list"
+name:          "trigger_list"
+description:   "List all configured triggers in the active scope."
+effect_type:   "Read"
+param_schema:
+  type: object
+  properties:
+    scope:
+      type: string
+      description: "Scope filter: 'all' (default) | 'user' | 'system'."
+  required: []
+source: "system"
+validation_status: "validated"
+```
+
+### Step 17.3 — Tool: `builtin.trigger_remove` (class 0)
+
+```
+capability_id: "builtin.trigger_remove"
+name:          "trigger_remove"
+description:   "Remove a trigger by name. Irreversible — the scheduled task stops immediately."
+effect_type:   "ExternalWrite"
+param_schema:
+  type: object
+  properties:
+    trigger_name:
+      type: string
+      description: "Name of the trigger to remove."
+  required: ["trigger_name"]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 17.4 — ToolSkill: `ts-trigger-create` (class 13)
+
+```
+name:        "ts-trigger-create"
+tool_name:   "builtin.trigger_create"
+description: "ToolSkill binding for builtin.trigger_create — schedule a recipe invocation."
+content: |
+  Tool: builtin.trigger_create
+  Effect: ExternalWrite — registers a persistent scheduled run request.
+
+  Parameters:
+  - name (string, required): human-readable trigger name. Must be unique in scope.
+  - schedule (string, required): either a 5-field cron expression ('0 9 * * 1' = every
+    Monday 9am) or a plain-English interval ('every 1h', 'every 30m', 'every day at 9am').
+    The runtime normalizes interval syntax to cron internally.
+  - recipe_name (string, required): the Recipe to invoke. Must be installed and
+    validation_status='validated'.
+  - payload (object, optional): key-value vars passed as input slots to the recipe.
+
+  Cron field order: minute hour day-of-month month day-of-week.
+  Examples:
+    '0 9 * * 1'    → every Monday at 09:00
+    '*/15 * * * *' → every 15 minutes
+    'every 1h'     → every hour on the hour
+
+  Safety: triggers run with the authority of the creating session's scope. They cannot
+  escalate privilege beyond the scope in which they were created.
+source: "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+### Step 17.5 — ToolSkill: `ts-trigger-list` (class 13)
+
+```
+name:        "ts-trigger-list"
+tool_name:   "builtin.trigger_list"
+description: "ToolSkill binding for builtin.trigger_list — list all configured triggers."
+content: |
+  Tool: builtin.trigger_list
+  Effect: Read — returns all triggers in scope as a JSON array.
+
+  Parameters:
+  - scope (string, optional): 'all' | 'user' | 'system'. Defaults to 'all'.
+
+  Output format:
+    [{name, schedule, recipe_name, payload, created_at, last_fired_at, next_fire_at}]
+
+  Scope isolation: user-scope triggers are isolated from system-scope ones.
+  Always list before creating to avoid duplicate trigger names.
+source: "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+### Step 17.6 — ToolSkill: `ts-trigger-remove` (class 13)
+
+```
+name:        "ts-trigger-remove"
+tool_name:   "builtin.trigger_remove"
+description: "ToolSkill binding for builtin.trigger_remove — remove a scheduled trigger."
+content: |
+  Tool: builtin.trigger_remove
+  Effect: ExternalWrite — permanently removes the trigger. Stops immediately; any
+  pending next-fire for this trigger is discarded.
+
+  Parameters:
+  - trigger_name (string, required): exact name of the trigger to remove.
+
+  Safety:
+  - Always confirm with the user before removing a trigger — the scheduled task will
+    stop and cannot be recovered (only re-created from scratch).
+  - Removing a trigger does not remove the recipe it pointed to.
+source: "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+---
+
+### Step 17.7 — PythonCode: `pc-exec-trigger-list` (class 22)
+
+> Orchestrator executor for `builtin.trigger_list`. Tier-0 dispatch.
+
+```
+name:        "pc-exec-trigger-list"
+class_code:  22
+description: "Orchestrator executor: calls __execute_action__ to list configured triggers.
+              Input: scope (string). Output: [{name, schedule, recipe_name, …}]."
+content: |
+  # Orchestrator executor body.
+  _scope = "{{vars.slot0}}" if "{{vars.slot0}}" else "all"
+  result = __execute_action__("trigger_list", {"scope": _scope})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 17.8 — Leaf Skill: `skill-trigger-list` (class 1)
+
+> Grain: enumerate configured triggers.
+
+```
+name:        "skill-trigger-list"
+class_code:  1
+description: "Leaf skill: how to list all configured triggers in the active scope."
+body: |
+  Use `ts-trigger-list` (via pc-exec-trigger-list) to retrieve a JSON array of all
+  configured triggers. Inspect schedule, recipe_name, last_fired_at, and next_fire_at
+  to give the user a clear picture of what is scheduled. Always list before creating
+  to avoid name collisions.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+### Step 17.9 — Leaf Skill: `skill-trigger-create` (class 1)
+
+> Grain: schedule a new trigger for a recipe, confirming cron syntax.
+
+```
+name:        "skill-trigger-create"
+class_code:  1
+description: "Leaf skill: how to create a scheduled trigger for a recipe."
+body: |
+  Use `ts-trigger-create` to register a recurring or one-off trigger. Always:
+  1. List existing triggers first (ts-trigger-list) to check for name conflicts.
+  2. Confirm the schedule with the user — translate their natural-language request
+     ('every Monday morning') into a cron expression ('0 9 * * 1') and confirm it.
+  3. Confirm the recipe_name exists and is validation_status='validated'.
+  4. Optionally confirm any payload vars with the user before creating.
+  Triggers have ExternalWrite effect — the user should explicitly approve creation.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+### Step 17.10 — Leaf Skill: `skill-trigger-remove` (class 1)
+
+> Grain: remove a trigger safely, confirming irreversibility.
+
+```
+name:        "skill-trigger-remove"
+class_code:  1
+description: "Leaf skill: how to remove a configured trigger."
+body: |
+  Use `ts-trigger-remove` to permanently remove a scheduled trigger by name. Always:
+  1. List triggers first to confirm the trigger exists and show the user its schedule.
+  2. Confirm with the user that removal is intended — the trigger stops immediately
+     and cannot be recovered without re-creating it from scratch.
+  Triggers have ExternalWrite effect — explicit user approval is required.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+---
+
+### Step 17.11 — Domain Skill: `skill-triggers` (class 2)
+
+```
+name:        "skill-triggers"
+class_code:  2
+description: "Domain skill: trigger management — list, create, remove scheduled runs."
+body: |
+  Triggers are persistent scheduled invocations of recipes. Use the right grain:
+
+  Listing triggers:
+  - skill-trigger-list: always start here; see what is already scheduled.
+
+  Creating a trigger:
+  - skill-trigger-create: confirm schedule (cron) + recipe_name + payload with user.
+    Translate natural language schedule to cron and verify before committing.
+
+  Removing a trigger:
+  - skill-trigger-remove: confirm name, warn about immediate stoppage, then remove.
+
+  Safety rules:
+  - trigger_create and trigger_remove both have ExternalWrite effect — require explicit
+    user confirmation for each.
+  - Triggers run with the creating session's authority; they cannot escalate privilege.
+  - A trigger referencing a recipe that is later removed will fail at fire time —
+    inform the user of this risk when removing recipes.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+---
+
+### Step 17.12 — Recipe: `trigger-list` (class 21)
+
+> **Tier:** 0 — deterministic listing, no LLM needed.
+
+```
+name:        "trigger-list"
+description: "List all configured triggers in the active scope."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-trigger-list>"],
+    "label":   "Pre-load ts-trigger-list ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-trigger-list>"],
+    "label":   "PythonCode calls __execute_action__(trigger_list, {scope})"
+  }
+]
+intent_examples: [
+  {"input": "list my triggers",                  "class": 1},
+  {"input": "what triggers are configured",      "class": 1},
+  {"input": "show scheduled tasks",              "class": 1},
+  {"input": "what is scheduled",                 "class": 1},
+  {"input": "list system triggers",              "class": 2},
+  {"input": "trigger list",                      "class": 1},
+  {"input": "show me all my scheduled runs",     "class": 2},
+  {"input": "what recipes are scheduled to run", "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 17.13 — Recipe: `trigger-create` (class 21)
+
+> **Tier:** 1 — LLM translates schedule, confirms with user, ExternalWrite effect.
+
+```
+name:        "trigger-create"
+description: "Create a scheduled trigger for a recipe, with user confirmation."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-trigger-create>"],
+    "label":   "Load skill-trigger-create leaf skill body (creation procedure)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM translates schedule to cron, confirms with user, calls ts-trigger-create"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-trigger-list>", "<uuid:ts-trigger-create>"],
+    "label":   "Pre-load ToolSkill bindings for list (pre-check) and create"
+  }
+]
+intent_examples: [
+  {"input": "create a trigger to run X every morning",    "class": 1},
+  {"input": "schedule recipe X every Monday",             "class": 1},
+  {"input": "set up a daily trigger",                     "class": 1},
+  {"input": "run this recipe every hour",                 "class": 2},
+  {"input": "trigger create",                             "class": 1},
+  {"input": "schedule this recipe every 15 minutes",      "class": 2},
+  {"input": "create a cron trigger for this recipe",      "class": 1},
+  {"input": "set up an hourly trigger for X",             "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 17.14 — Recipe: `trigger-remove` (class 21)
+
+> **Tier:** 1 — LLM confirms trigger name and warns user.
+
+```
+name:        "trigger-remove"
+description: "Remove a configured trigger by name, with user confirmation."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-trigger-remove>"],
+    "label":   "Load skill-trigger-remove leaf skill body (removal procedure)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM confirms trigger name with user, warns about stoppage, calls ts-trigger-remove"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-trigger-list>", "<uuid:ts-trigger-remove>"],
+    "label":   "Pre-load ToolSkill bindings for list (pre-check) and remove"
+  }
+]
+intent_examples: [
+  {"input": "remove trigger X",                  "class": 1},
+  {"input": "delete this scheduled task",        "class": 1},
+  {"input": "stop running recipe X",             "class": 1},
+  {"input": "cancel the daily trigger",          "class": 2},
+  {"input": "trigger remove",                    "class": 1},
+  {"input": "disable this scheduled trigger",    "class": 2},
+  {"input": "stop the hourly trigger",           "class": 1},
+  {"input": "delete the trigger named X",        "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 18 — `builtin.spawn_subagent` (Child Agent Delegation)
+
+> Spawns a child agent run delegated to a sub-goal. Always Tier 1 — §spawn_subagent-guard
+> is a hard Q1 constraint: `llm_call_required` MUST be `true` for any recipe that
+> references `builtin.spawn_subagent`.
+
+---
+
+### Step 18.1 — Tool: `builtin.spawn_subagent` (class 0)
+
+```
+capability_id: "builtin.spawn_subagent"
+name:          "spawn_subagent"
+description:   "Spawn a child agent run to handle a sub-goal or delegated procedure."
+effect_type:   "ExternalWrite"
+param_schema:
+  type: object
+  properties:
+    goal:
+      type: string
+      description: "The task description or goal for the child agent."
+    context:
+      type: string
+      description: "Optional additional context to pass to the child. Plain text."
+    recipe_name:
+      type: string
+      description: "Optional: name of a recipe to seed the child's execution with."
+    budget_tokens:
+      type: integer
+      description: "Optional token budget cap for the child run. Inherits parent default if absent."
+  required: ["goal"]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 18.2 — ToolSkill: `ts-spawn-subagent` (class 13)
+
+```
+name:        "ts-spawn-subagent"
+tool_name:   "builtin.spawn_subagent"
+description: "ToolSkill binding for builtin.spawn_subagent — delegate a task to a child agent."
+content: |
+  Tool: builtin.spawn_subagent
+  Effect: ExternalWrite — creates a child agent run.
+
+  Parameters:
+  - goal (string, required): the sub-goal for the child. Be precise — the child has no
+    access to parent conversation history unless you include it in 'context'.
+  - context (string, optional): additional background text passed to the child. Include
+    any file paths, decisions, or constraints the child needs.
+  - recipe_name (string, optional): if you want the child to start from a known recipe
+    path, pass its name here. The recipe must be validation_status='validated'.
+  - budget_tokens (integer, optional): cap the child's token budget. Cannot exceed the
+    parent's remaining budget.
+
+  Scope isolation invariants:
+  - The child runs in the same scope as the parent but cannot access parent-private
+    session state or conversation history unless explicitly passed.
+  - The child cannot escalate authority beyond the parent's capability grants.
+  - Budget inheritance: if budget_tokens is omitted, the child inherits the parent
+    session's default budget, not the parent's remaining balance.
+  - The child's tool approvals are independent — the user may need to re-approve the
+    same tool in the child's context.
+
+  When to delegate:
+  - The sub-task is self-contained and would not benefit from the parent's ongoing context.
+  - The sub-task is long-running and you want to continue parent work in parallel.
+  - You are implementing a named procedure that has a stable recipe shape.
+
+  When NOT to delegate:
+  - When the task requires back-and-forth with the parent's current state.
+  - For trivial operations that take one or two tool calls.
+source: "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+---
+
+### Step 18.3 — Leaf Skill: `skill-spawn-subagent` (class 1)
+
+> Grain: delegate a self-contained sub-goal to a child agent run.
+
+```
+name:        "skill-spawn-subagent"
+class_code:  1
+description: "Leaf skill: how to spawn a child agent run for a delegated sub-task."
+body: |
+  Use `ts-spawn-subagent` to create a child agent run for a self-contained sub-goal.
+
+  Before spawning:
+  1. Ensure the goal is truly self-contained — include all necessary context in the
+     'context' field since the child cannot see the parent conversation.
+  2. Confirm with the user if the sub-task has any destructive or external effects.
+  3. Set budget_tokens if the sub-task should be bounded.
+
+  After spawning:
+  - The child result is returned as a structured object. Check result.status for
+    'completed' | 'failed' | 'budget_exceeded'.
+  - If the child fails, report the failure reason to the user and decide whether to
+    retry, rephrase the goal, or handle the sub-task in the parent context instead.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+### Step 18.4 — Leaf Skill: `skill-spawn-named-procedure` (class 1)
+
+> Grain: use spawn_subagent to execute a named procedure/recipe in a child.
+
+```
+name:        "skill-spawn-named-procedure"
+class_code:  1
+description: "Leaf skill: how to run a named recipe as a child agent procedure."
+body: |
+  Use `ts-spawn-subagent` with recipe_name set to invoke a known, stable procedure.
+
+  Use this when:
+  - You have a validated Recipe that encodes a complete procedure (e.g. 'file-patch',
+    'memory-write', a user-installed skill recipe).
+  - You want the child to follow that procedure's recipe structure exactly rather than
+    improvise from a goal description.
+
+  Pass relevant slot variables in 'context' as a structured key-value description:
+    "vars: {slot0: '/path/to/file', slot1: 'search term'}"
+  The child's recipe loader will extract these into its vars map.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+---
+
+### Step 18.5 — Domain Skill: `skill-subagent` (class 2)
+
+```
+name:        "skill-subagent"
+class_code:  2
+description: "Domain skill: child agent delegation via spawn_subagent."
+body: |
+  Delegation gives the parent agent a way to hand off a well-scoped sub-task to a
+  child run with full tool access and its own budget.
+
+  Choosing a delegation grain:
+  - skill-spawn-subagent: general goal delegation — write a clear, self-contained goal
+  - skill-spawn-named-procedure: procedure delegation — use an existing validated Recipe
+
+  Critical safety invariants (§spawn_subagent-guard):
+  - Any Recipe binding spawn_subagent MUST have llm_call_required=true (hard Q1 rule).
+    There is NO Tier-0 spawn recipe — the LLM must always be in the loop to frame
+    the goal and confirm delegation.
+  - Child cannot exceed parent scope or authority.
+  - Budget inheritance is from the session default, not parent remaining balance.
+  - Include all needed context explicitly — child has no parent conversation access.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+---
+
+### Step 18.6 — Recipe: `subagent-spawn` (class 21)
+
+> **Tier:** 1 — §spawn_subagent-guard enforced. LLM MUST be in the loop.
+
+```
+name:        "subagent-spawn"
+description: "Spawn a child agent for a delegated sub-task or named procedure."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-spawn-subagent>", "<uuid:skill-spawn-named-procedure>"],
+    "label":   "Load spawn leaf skills (goal delegation + named procedure patterns)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "llm",
+    "label":   "LLM frames the goal, decides generic-vs-recipe delegation, confirms with user, calls ts-spawn-subagent"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-spawn-subagent>"],
+    "label":   "Pre-load ts-spawn-subagent ToolSkill binding"
+  }
+]
+intent_examples: [
+  {"input": "spawn a child agent to do X",                "class": 1},
+  {"input": "delegate this task to a subagent",           "class": 1},
+  {"input": "run procedure Y in a child session",         "class": 1},
+  {"input": "create a child agent for this sub-task",     "class": 1},
+  {"input": "use a subagent for this long-running task",  "class": 2},
+  {"input": "subagent spawn",                             "class": 1},
+  {"input": "hand off this work to a child agent",        "class": 2},
+  {"input": "run this recipe in a child session",         "class": 2},
+  {"input": "spawn subagent with this goal",              "class": 1},
+  {"input": "delegate this to a parallel agent",          "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 19 — `builtin.echo` (Diagnostic Passthrough)
+
+> `builtin.echo` is a diagnostic passthrough — it returns its input unchanged. It is
+> used in tests and as a no-op stub during development. It has no user-facing Recipes.
+
+---
+
+### Step 19.1 — Tool: `builtin.echo` (class 0)
+
+```
+capability_id: "builtin.echo"
+name:          "echo"
+description:   "Diagnostic passthrough: returns input unchanged. For testing and stubs."
+effect_type:   "Read"
+param_schema:
+  type: object
+  properties:
+    message:
+      type: string
+      description: "Any string. Returned verbatim in the tool response."
+  required: ["message"]
+source: "system"
+validation_status: "validated"
+```
+
+### Step 19.2 — ToolSkill: `ts-echo` (class 13)
+
+```
+name:        "ts-echo"
+tool_name:   "builtin.echo"
+description: "ToolSkill binding for builtin.echo — diagnostic passthrough, no user-facing recipe."
+content: |
+  Tool: builtin.echo
+  Effect: Read — returns the input message unchanged.
+
+  Parameters:
+  - message (string, required): any string value.
+
+  Use cases (diagnostic / development only):
+  - Confirm that the orchestrator's tool dispatch pipeline is functional.
+  - Stub out a tool call during recipe development before the real tool is wired.
+  - Verify that slot variable interpolation is working in a PythonCode executor.
+
+  No user-facing recipe is defined for echo. Do not use echo in production recipe flows.
+  If you find yourself routing user requests through echo, use the correct tool instead.
+source: "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+> **Note:** No Recipe is defined for `builtin.echo`. It is a development/test utility
+> only. There are no leaf skills or domain skills for echo — it does not represent a
+> user-visible capability.
+
+---
+
+## Step 20 — Web Search Composition
+
+> Web search is not a single raw tool — it is a composed capability built from
+> `builtin.http` + PythonCode result extraction. There is no `builtin.web_search`
+> capability ID. Instead, the `ts-web-search` ToolSkill describes the composition
+> pattern, and `skill-web-search` guides the LLM on how to use it.
+
+---
+
+### Step 20.1 — ToolSkill: `ts-web-search` (class 13)
+
+> Describes the composition of http + structured extraction for web search tasks.
+
+```
+name:        "ts-web-search"
+tool_name:   "builtin.http"
+description: "ToolSkill: web search via HTTP + structured extraction composition."
+content: |
+  Tool used: builtin.http (no dedicated builtin.web_search capability exists)
+  Effect: Read — issues an HTTP GET to a search API endpoint, extracts results.
+
+  Composition pattern:
+  1. Use builtin.http to GET a search API endpoint (e.g. DuckDuckGo Instant Answer API,
+     SerpAPI, a configured search provider endpoint).
+  2. The response body is JSON. Use pc-json-extract-field (or a local PythonCode step)
+     to extract the relevant results array from the response.
+  3. Filter, rank, or summarize the results as needed.
+
+  Parameter guidance:
+  - url: the search API endpoint, with the query embedded as a URL param.
+  - headers: include 'Accept: application/json' and any required API key header.
+  - method: always GET for search.
+
+  Constraints:
+  - The agent has no built-in search engine — it must use a configured search API.
+    If no search API is configured in the current scope, inform the user.
+  - Respect the 15 MiB response cap from builtin.http.
+  - Do not embed raw user PII in search queries without consent.
+source: "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+---
+
+### Step 20.2 — PythonCode: `pc-web-search-extract` (class 22)
+
+> Utility helper: extracts a usable results list from a generic search API JSON response.
+
+```
+name:        "pc-web-search-extract"
+class_code:  22
+description: "PythonCode helper: extract title+url+snippet list from a search API JSON response.
+              Input: response body string. Output: [{title, url, snippet}] or error."
+content: |
+  # Expects __execute_action__ response body from builtin.http search call
+  import json as _json
+  _body = "{{vars.slot0}}"
+  try:
+      _data = _json.loads(_body)
+      # Common envelope shapes: .results, .organic_results, .RelatedTopics, .items
+      _results = (
+          _data.get("results") or
+          _data.get("organic_results") or
+          _data.get("items") or
+          _data.get("RelatedTopics") or
+          []
+      )
+      result = [
+          {
+              "title":   r.get("title") or r.get("Text", ""),
+              "url":     r.get("url") or r.get("link") or r.get("FirstURL", ""),
+              "snippet": r.get("snippet") or r.get("description") or ""
+          }
+          for r in _results if isinstance(r, dict)
+      ]
+  except Exception as _e:
+      result = {"error": str(_e), "raw": _body[:500]}
+consumer_tags: ["02:orchestrator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 20.3 — PythonCode: `pc-web-search-query-build` (class 22)
+
+> Utility helper: builds a URL-encoded search query string from a natural-language query.
+
+```
+name:        "pc-web-search-query-build"
+class_code:  22
+description: "PythonCode helper: URL-encode a search query for embedding in an API URL.
+              Input: raw query string. Output: URL-encoded query string."
+content: |
+  import urllib.parse as _up
+  _raw_query = "{{vars.slot0}}"
+  result = _up.quote_plus(_raw_query.strip())
+consumer_tags: ["02:orchestrator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 20.4 — Leaf Skill: `skill-web-search` (class 1)
+
+```
+name:        "skill-web-search"
+class_code:  1
+description: "Leaf skill: how to perform a web search using builtin.http + JSON extraction."
+body: |
+  Web search is a composition, not a single tool. The pattern:
+  1. Build the search URL: encode the user's query via pc-web-search-query-build and
+     append it to the configured search API base URL.
+  2. Issue an HTTP GET via ts-http-get (or directly via builtin.http) with
+     Accept: application/json header and any required API key header.
+  3. Parse and extract results from the response JSON using pc-web-search-extract.
+  4. Present the top N results (title, URL, snippet) to the user. Ask if they want
+     to fetch any result's full page via builtin.http for deeper reading.
+
+  If no search API is configured, inform the user and ask them to configure one
+  (endpoint URL + API key) before proceeding.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator"]
+```
+
+---
+
+### Step 20.5 — Recipe: `web-search` (class 21)
+
+> **Tier:** 1 — LLM formulates query, interprets results, decides follow-up fetches.
+
+```
+name:        "web-search"
+description: "Search the web via a configured HTTP search API."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-web-search>"],
+    "label":   "Load skill-web-search leaf skill body (composition pattern)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-web-search-query-build>", "<uuid:pc-web-search-extract>"],
+    "label":   "Load PythonCode helpers for query encoding and result extraction"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "llm",
+    "label":   "LLM formulates query, calls ts-http-get, extracts results, presents to user"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch ToolSkill binding (used for both search and follow-up fetches)"
+  }
+]
+intent_examples: [
+  {"input": "search the web for X",               "class": 1},
+  {"input": "look up X online",                   "class": 1},
+  {"input": "find information about X",           "class": 1},
+  {"input": "what is the latest news on X",       "class": 1},
+  {"input": "google X for me",                    "class": 2},
+  {"input": "web search",                         "class": 1},
+  {"input": "search online for this topic",       "class": 1},
+  {"input": "find recent articles about X",       "class": 2},
+  {"input": "internet search for X",              "class": 1},
+  {"input": "find the official docs for X",       "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 21 — Session Memory (Design Decision: No Builtin Recipe)
+
+> **§0.23.12 Decision (preserved here):** An automatic `session-summarize` recipe that
+> writes a durable session record to memory at session completion was **considered and
+> rejected**. See saved_plan_to_v3.md §0.23.12 for full rationale.
+>
+> Summary of decision:
+> - A lossy LLM-generated prose summary risks corrupting the agent's recall.
+> - The trusted path is the agent deliberately writing durable notes via `memory_write`
+>   as it works — the agent is best placed to judge what to persist.
+> - The Kohai packet store remains forensic + self-improvement evidence, intentionally
+>   separate from the memory system.
+>
+> **No builtin session-summarize recipe is defined.** This step exists only to record
+> the decision so it is not re-proposed as a forgotten gap.
+>
+> If this decision is ever revisited, the agreed reversal shape is: a structured record
+> (decisions, files touched, outcomes, open questions), owned by the Kohai, writing to
+> memory_write, triggered on session completion, landing in Phase K. See §0.23.12 for
+> the full reversal path. **This reversal is out of scope for the current plan.**
+
+---
+
+## Step 22 — ExtensionCatalogue: `builtin-filesystem` (class 23)
+
+> Owns all filesystem capability components. Groups Tool, ToolSkill, PythonCode,
+> Skill, and Recipe components for: read_file, write_file, list_dir, glob, grep,
+> apply_patch.
+
+```
+name:         "builtin-filesystem"
+class_code:   23
+overview_doc: |
+  # Filesystem Capabilities
+
+  The filesystem domain gives the agent structured, sandboxed access to the host
+  file system. All operations are scoped to the session's working directory or an
+  explicitly granted path scope — the agent cannot read or write outside its allowed
+  paths.
+
+  ## Tools in this domain
+  - builtin.read_file — read a file or range of lines from a file
+  - builtin.write_file — create or overwrite a file
+  - builtin.list_dir — list directory contents (shallow or recursive)
+  - builtin.glob — find files by name/extension pattern
+  - builtin.grep — search file contents by regex or literal
+  - builtin.apply_patch — make targeted edits to a file (search-and-replace)
+
+  ## When to use which tool
+  - Locate files: glob (by name/extension) or grep (by content)
+  - Read content: read_file (full file or line range)
+  - Create/replace: write_file
+  - Targeted edits: apply_patch (preferred over read+write for partial changes)
+  - Explore structure: list_dir
+
+  ## Scope and safety
+  - All paths are resolved relative to the session root. Absolute paths outside
+    the granted scope will be rejected.
+  - write_file and apply_patch require approval in restricted profiles.
+  - apply_patch uses exact string matching by default — provide exact whitespace.
+
+task_groups:
+  - group_name:  "file-read"
+    description: "Reading files: range reads, full reads, grep-then-read workflows"
+  - group_name:  "file-write"
+    description: "Writing and patching files: create, overwrite, targeted edit"
+  - group_name:  "file-search"
+    description: "Finding files and content: glob by pattern, grep by content"
+  - group_name:  "file-explore"
+    description: "Directory listing and workspace navigation"
+
+child_component_ids: [
+  "<uuid:builtin.read_file>",
+  "<uuid:ts-read-file>",
+  "<uuid:pc-exec-read-file>",
+  "<uuid:skill-read-file>",
+  "<uuid:skill-read-file-range>",
+  "<uuid:file-read>",
+  "<uuid:file-read-range>",
+
+  "<uuid:builtin.write_file>",
+  "<uuid:ts-write-file>",
+  "<uuid:pc-exec-write-file>",
+  "<uuid:skill-write-file-new>",
+  "<uuid:skill-write-file-replace>",
+  "<uuid:file-write>",
+
+  "<uuid:builtin.list_dir>",
+  "<uuid:ts-list-dir>",
+  "<uuid:pc-exec-list-dir>",
+  "<uuid:skill-list-dir>",
+  "<uuid:skill-list-dir-recursive>",
+  "<uuid:file-list>",
+  "<uuid:file-list-recursive>",
+
+  "<uuid:builtin.glob>",
+  "<uuid:ts-glob>",
+  "<uuid:pc-exec-glob>",
+  "<uuid:skill-glob-by-extension>",
+  "<uuid:skill-glob-by-name>",
+  "<uuid:skill-glob-in-subdir>",
+  "<uuid:file-glob>",
+  "<uuid:file-glob-by-extension>",
+  "<uuid:file-glob-by-name>",
+  "<uuid:file-glob-in-subdir>",
+
+  "<uuid:builtin.grep>",
+  "<uuid:ts-grep>",
+  "<uuid:pc-exec-grep>",
+  "<uuid:skill-grep-files>",
+  "<uuid:skill-grep-content>",
+  "<uuid:skill-grep-count>",
+  "<uuid:file-grep>",
+  "<uuid:file-grep-files>",
+  "<uuid:file-grep-content>",
+  "<uuid:file-grep-count>",
+
+  "<uuid:builtin.apply_patch>",
+  "<uuid:ts-apply-patch>",
+  "<uuid:skill-apply-patch-single>",
+  "<uuid:skill-apply-patch-all>",
+  "<uuid:file-patch>",
+
+  "<uuid:skill-filesystem>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 23 — ExtensionCatalogue: `builtin-network` (class 23)
+
+> Owns all HTTP/network capability components. Groups Tool, ToolSkill, PythonCode,
+> Skill, and Recipe components for: http, http.save, and the web search composition.
+
+```
+name:         "builtin-network"
+class_code:   23
+overview_doc: |
+  # Network Capabilities
+
+  The network domain gives the agent structured HTTP access to external services.
+  All HTTP calls are subject to the session's outbound allowlist. Raw socket access
+  is not available — only HTTP(S) via the http and http.save tools.
+
+  ## Tools in this domain
+  - builtin.http — issue an HTTP request and receive the response body inline
+  - builtin.http.save — issue an HTTP request and save the response body to a file
+
+  ## Web search (composition)
+  Web search is not a separate tool — it is a composition of builtin.http + structured
+  JSON extraction (pc-web-search-extract). A search API endpoint must be configured
+  in the session scope before web search can be used.
+
+  ## Constraints
+  - Response body cap: 15 MiB (builtin.http); same for http.save
+  - Default timeout: 10 s (connect) / 30 s (read)
+  - Redirect following: up to 5 hops
+  - Headers: set Accept and Content-Type explicitly for JSON APIs
+
+  ## Scope and safety
+  - Outbound URLs are validated against the session's allowed-hosts list.
+  - POST requests with user-controlled bodies must be confirmed before sending.
+  - API keys in headers are resolved from the secrets layer — never hardcode them
+    in recipe vars or PythonCode bodies.
+
+task_groups:
+  - group_name:  "http-fetch"
+    description: "GET and POST requests with inline response body"
+  - group_name:  "http-download"
+    description: "Requests that save the response body to a file"
+  - group_name:  "web-search"
+    description: "Search API composition (http + JSON extraction)"
+
+child_component_ids: [
+  "<uuid:builtin.http>",
+  "<uuid:ts-http-fetch>",
+  "<uuid:pc-exec-http-get>",
+  "<uuid:pc-exec-http-post>",
+  "<uuid:pc-http-status-check>",
+  "<uuid:pc-json-extract-field>",
+  "<uuid:skill-http-get>",
+  "<uuid:skill-http-post>",
+  "<uuid:skill-http-authenticated>",
+  "<uuid:http-get>",
+  "<uuid:http-get-json>",
+  "<uuid:http-post>",
+
+  "<uuid:builtin.http.save>",
+  "<uuid:ts-http-save>",
+  "<uuid:pc-exec-http-save>",
+  "<uuid:skill-http-save-download>",
+  "<uuid:skill-http-save-api>",
+  "<uuid:http-save>",
+
+  "<uuid:skill-http>",
+
+  "<uuid:ts-web-search>",
+  "<uuid:pc-web-search-extract>",
+  "<uuid:pc-web-search-query-build>",
+  "<uuid:skill-web-search>",
+  "<uuid:web-search>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 24 — ExtensionCatalogue: `builtin-memory` (class 23)
+
+> Owns all persistent memory capability components. Groups Tool, ToolSkill,
+> PythonCode, Skill, and Recipe components for: memory_search, memory_write,
+> memory_read, memory_tree.
+
+```
+name:         "builtin-memory"
+class_code:   23
+overview_doc: |
+  # Memory Capabilities
+
+  The memory domain gives the agent a persistent, structured workspace for storing
+  and retrieving durable information across sessions. Memory is organized as a
+  hierarchical key-space (path-based) with semantic search support.
+
+  ## Tools in this domain
+  - builtin.memory_search — semantic or keyword search across stored entries
+  - builtin.memory_write  — create or update a memory entry at a path
+  - builtin.memory_read   — retrieve a specific entry by exact path
+  - builtin.memory_tree   — list the memory path hierarchy (directory-tree style)
+
+  ## Navigation pattern
+  Before searching or reading, run memory_tree to understand the structure. Then use
+  memory_search for broad queries and memory_read for specific known paths.
+
+  ## Write-back discipline
+  The agent should write durable notes, decisions, and outcomes to memory as it works.
+  This is the ONLY mechanism for cross-session persistence — there is no automatic
+  session summarization. What the agent does not explicitly write is not remembered.
+
+  ## Scope
+  Each session scope has an isolated memory namespace. Cross-scope reads are not
+  permitted unless explicitly granted.
+
+task_groups:
+  - group_name:  "memory-recall"
+    description: "Searching and reading stored memory entries"
+  - group_name:  "memory-persist"
+    description: "Writing and updating memory entries"
+  - group_name:  "memory-navigate"
+    description: "Exploring the memory hierarchy via tree"
+
+child_component_ids: [
+  "<uuid:builtin.memory_search>",
+  "<uuid:ts-memory-search>",
+  "<uuid:pc-exec-memory-search>",
+  "<uuid:skill-memory-search>",
+  "<uuid:skill-memory-search-broad>",
+  "<uuid:memory-search>",
+  "<uuid:memory-search-broad>",
+
+  "<uuid:builtin.memory_write>",
+  "<uuid:ts-memory-write>",
+  "<uuid:pc-exec-memory-write>",
+  "<uuid:pc-exec-memory-patch>",
+  "<uuid:skill-memory-write-log>",
+  "<uuid:skill-memory-write-main>",
+  "<uuid:skill-memory-write-patch>",
+  "<uuid:memory-write>",
+  "<uuid:memory-write-log>",
+  "<uuid:memory-write-main>",
+  "<uuid:memory-write-patch>",
+
+  "<uuid:builtin.memory_read>",
+  "<uuid:ts-memory-read>",
+  "<uuid:pc-exec-memory-read>",
+  "<uuid:skill-memory-read>",
+  "<uuid:memory-read>",
+  "<uuid:memory-read-main>",
+  "<uuid:memory-read-heartbeat>",
+
+  "<uuid:builtin.memory_tree>",
+  "<uuid:ts-memory-tree>",
+  "<uuid:pc-exec-memory-tree>",
+  "<uuid:skill-memory-tree>",
+  "<uuid:memory-tree>",
+
+  "<uuid:pc-memory-extract-section>",
+  "<uuid:pc-memory-format-entry>",
+  "<uuid:skill-memory>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 25 — ExtensionCatalogue: `builtin-process` (class 23)
+
+> Owns shell execution, spawn_subagent, and all trigger management components.
+> All recipes in this catalogue are Tier 1 (§shell-guard and §spawn_subagent-guard).
+> `trigger-list` is Tier 0.
+
+```
+name:         "builtin-process"
+class_code:   23
+overview_doc: |
+  # Process & Scheduling Capabilities
+
+  The process domain covers: shell command execution, child agent delegation, and
+  persistent trigger scheduling. All shell and subagent capabilities require LLM
+  involvement (Tier 1 minimum) — they may never be Tier 0.
+
+  ## Tools in this domain
+  - builtin.shell          — run a shell command in a sandboxed subprocess
+  - builtin.spawn_subagent — delegate a sub-goal to a child agent run
+  - builtin.trigger_create — create a scheduled or event-driven trigger
+  - builtin.trigger_list   — list configured triggers (read-only)
+  - builtin.trigger_remove — remove a trigger (irreversible)
+
+  ## Shell safety invariants (§shell-guard)
+  - Any recipe using builtin.shell MUST have llm_call_required=true. No Tier-0 shell.
+  - Shell commands require approval in all non-yolo profiles.
+  - Prefer structured tools (read_file, glob, grep, http) over shell whenever possible.
+  - Shell is the last resort — use it only when no structured tool can accomplish the task.
+
+  ## Subagent invariants (§spawn_subagent-guard)
+  - Any recipe using builtin.spawn_subagent MUST have llm_call_required=true. No Tier-0.
+  - Child cannot exceed parent scope or authority.
+  - Include all needed context explicitly — child has no parent conversation access.
+
+  ## Trigger safety
+  - trigger_create and trigger_remove have ExternalWrite effect — require user confirmation.
+  - Triggers run with the creating session's authority and cannot escalate.
+
+task_groups:
+  - group_name:  "shell-execution"
+    description: "Shell command execution (always Tier 1, approval-gated)"
+  - group_name:  "agent-delegation"
+    description: "Child agent spawning and sub-task delegation"
+  - group_name:  "trigger-management"
+    description: "Scheduled trigger lifecycle: list, create, remove"
+
+child_component_ids: [
+  "<uuid:builtin.shell>",
+  "<uuid:ts-shell-run>",
+  "<uuid:skill-shell-run>",
+  "<uuid:skill-shell-safe-check>",
+  "<uuid:skill-shell>",
+  "<uuid:shell-run>",
+  "<uuid:shell-script>",
+
+  "<uuid:builtin.spawn_subagent>",
+  "<uuid:ts-spawn-subagent>",
+  "<uuid:skill-spawn-subagent>",
+  "<uuid:skill-spawn-named-procedure>",
+  "<uuid:skill-subagent>",
+  "<uuid:subagent-spawn>",
+
+  "<uuid:builtin.trigger_create>",
+  "<uuid:ts-trigger-create>",
+  "<uuid:skill-trigger-create>",
+  "<uuid:trigger-create>",
+
+  "<uuid:builtin.trigger_list>",
+  "<uuid:ts-trigger-list>",
+  "<uuid:pc-exec-trigger-list>",
+  "<uuid:skill-trigger-list>",
+  "<uuid:trigger-list>",
+
+  "<uuid:builtin.trigger_remove>",
+  "<uuid:ts-trigger-remove>",
+  "<uuid:skill-trigger-remove>",
+  "<uuid:trigger-remove>",
+
+  "<uuid:skill-triggers>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 26 — ExtensionCatalogue: `builtin-management` (class 23)
+
+> Owns skill management, echo (diagnostic), time, and JSON components. This is the
+> "utilities" domain — tools that manage the agent's own capability state (skills),
+> plus the time and JSON utility toolchains.
+
+```
+name:         "builtin-management"
+class_code:   23
+overview_doc: |
+  # Management & Utility Capabilities
+
+  The management domain covers: skill lifecycle management, time operations, JSON
+  manipulation, and the diagnostic echo passthrough.
+
+  ## Tools in this domain
+  - builtin.skill_list    — list installed skills
+  - builtin.skill_install — install a skill from URL/path (enters Q1/Q2)
+  - builtin.skill_remove  — remove an installed skill (irreversible)
+  - builtin.time          — time queries: now, parse, convert
+  - builtin.json          — JSON operations: query, stringify, parse, validate
+  - builtin.echo          — diagnostic passthrough (no user-facing recipe)
+
+  ## Skill management
+  - Always list before installing (avoid duplicates).
+  - Always confirm with user before installing from external URLs or removing.
+  - After install, the skill is 'pending' — not usable until Q2 graduates it.
+  - System-scope skills cannot be modified from user-scope authority.
+
+  ## Time utilities
+  - time/now: current UTC and local time in ISO 8601
+  - time/parse: parse a datetime string into components
+  - time/convert: convert between timezones or formats
+
+  ## JSON utilities
+  - json/query: extract a value from a JSON structure via jq-style path
+  - json/stringify: serialize a value to a JSON string (pretty-printed)
+  - json/parse: parse a JSON string to a structured value
+  - json/validate: check whether a string is valid JSON
+
+  ## Echo
+  Echo is a diagnostic-only passthrough. It has no user-facing recipe. Use it only
+  in tests and during recipe development.
+
+task_groups:
+  - group_name:  "skill-management"
+    description: "Skill lifecycle: list, install, remove"
+  - group_name:  "time-utilities"
+    description: "Time queries, parsing, and conversion"
+  - group_name:  "json-utilities"
+    description: "JSON query, stringify, parse, validate"
+  - group_name:  "diagnostics"
+    description: "Echo passthrough (development/testing only)"
+
+child_component_ids: [
+  "<uuid:builtin.skill_list>",
+  "<uuid:ts-skill-list>",
+  "<uuid:pc-exec-skill-list>",
+  "<uuid:skill-skill-list>",
+  "<uuid:skill-list>",
+
+  "<uuid:builtin.skill_install>",
+  "<uuid:ts-skill-install>",
+  "<uuid:skill-skill-install>",
+  "<uuid:skill-install>",
+
+  "<uuid:builtin.skill_remove>",
+  "<uuid:ts-skill-remove>",
+  "<uuid:skill-skill-remove>",
+  "<uuid:skill-remove>",
+
+  "<uuid:skill-skills>",
+
+  "<uuid:builtin.time>",
+  "<uuid:ts-time-now>",
+  "<uuid:ts-time-parse>",
+  "<uuid:ts-time-convert>",
+  "<uuid:pc-exec-time-now>",
+  "<uuid:pc-exec-time-parse>",
+  "<uuid:pc-exec-time-convert>",
+  "<uuid:skill-time-now>",
+  "<uuid:skill-time-parse>",
+  "<uuid:skill-time-convert>",
+  "<uuid:time-now>",
+  "<uuid:time-now-tz>",
+  "<uuid:time-parse>",
+  "<uuid:time-convert>",
+
+  "<uuid:builtin.json>",
+  "<uuid:ts-json-query>",
+  "<uuid:ts-json-stringify>",
+  "<uuid:ts-json-validate>",
+  "<uuid:pc-exec-json-query>",
+  "<uuid:pc-exec-json-stringify>",
+  "<uuid:pc-exec-json-validate>",
+  "<uuid:skill-json-query>",
+  "<uuid:skill-json-stringify>",
+  "<uuid:skill-json-parse>",
+  "<uuid:skill-json-validate>",
+  "<uuid:json-query>",
+  "<uuid:json-stringify>",
+  "<uuid:json-parse>",
+  "<uuid:json-validate>",
+
+  "<uuid:builtin.echo>",
+  "<uuid:ts-echo>"
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Final — Component Summary & Seeding Order
+
+### Complete Component Count (v3 builtin stack)
+
+| Class | Type | Count | Component names |
+|-------|------|-------|-----------------|
+| 0 | Tool | 23 | builtin.shell, read_file, write_file, list_dir, glob, grep, apply_patch, http, http.save, memory_search, memory_write, memory_read, memory_tree, time, json, skill_list, skill_install, skill_remove, trigger_create, trigger_list, trigger_remove, spawn_subagent, echo |
+| 13 | ToolSkill | 28 | ts-shell-run, ts-read-file, ts-write-file, ts-list-dir, ts-glob, ts-grep, ts-apply-patch, ts-http-fetch, ts-http-save, ts-memory-search, ts-memory-write, ts-memory-read, ts-memory-tree, ts-time-now, ts-time-parse, ts-time-convert, ts-json-query, ts-json-stringify, ts-json-validate, ts-skill-list, ts-skill-install, ts-skill-remove, ts-trigger-create, ts-trigger-list, ts-trigger-remove, ts-spawn-subagent, ts-web-search, ts-echo |
+| 22 | PythonCode | 27 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-glob, pc-exec-grep, pc-exec-http-get, pc-exec-http-post, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-web-search-extract, pc-web-search-query-build |
+| 1 | Leaf Skill | 44 | skill-shell-run, skill-shell-safe-check, skill-read-file, skill-read-file-range, skill-write-file-new, skill-write-file-replace, skill-list-dir, skill-list-dir-recursive, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, skill-memory-read, skill-memory-tree, skill-time-now, skill-time-parse, skill-time-convert, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search |
+| 2 | Domain Skill | 7 | skill-filesystem, skill-http, skill-memory, skill-shell, skill-skills, skill-triggers, skill-subagent |
+| 21 | Recipe | 46 | file-read, file-read-range, file-write, file-list, file-list-recursive, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-grep, file-grep-files, file-grep-content, file-grep-count, file-patch, http-get, http-get-json, http-post, http-save, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, time-now, time-now-tz, time-parse, time-convert, json-query, json-stringify, json-parse, json-validate, skill-list, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, subagent-spawn, web-search, shell-run, shell-script |
+| 23 | ExtensionCatalogue | 5 | builtin-filesystem, builtin-network, builtin-memory, builtin-process, builtin-management |
+
+> **Actual totals (v3):** 23 Tools + 28 ToolSkills + 27 PythonCode + 44 Leaf Skills + 7 Domain Skills + 44 Recipes + 5 ExtensionCatalogues = **178 components**
+>
+> (Original plan estimate was 85–90. The increase is intentional: the two-channel
+> architecture adds one PythonCode per Tier-0 recipe dispatch; the skill-granularity rule
+> adds 2–3 leaf skills per original monolithic skill; and the **one-recipe-per-variant rule**
+> adds dedicated Tier-0 recipes for every distinct invocation pattern, eliminating LLM
+> disambiguation overhead and maximizing orchestrator autonomy.)
+
+---
+
+### Seeding Order (builtin_bootstrap.rs per group)
+
+Each group follows this invariant insertion order to satisfy FK references:
+
+```
+For each domain group:
+  1. ExtensionCatalogue row  (class 23 — owns all children by UUID ref)
+  2. Tool rows               (class  0 — capability_id = "builtin.X")
+  3. ToolSkill rows          (class 13 — references tool_name)
+  4. PythonCode rows         (class 22 — standalone, no FK deps)
+  5. Leaf Skill rows         (class  1 — reference ToolSkill names in body text)
+  6. Domain Skill rows       (class  2 — reference leaf skill names in body text)
+  7. Recipe rows             (class 21 — step_descriptions reference UUIDs of all above)
+     → for each Recipe: run IBS build_instruction pre-flight before insert
+     → seed intent_examples into reborn_intent_inputs
+```
+
+#### Group insertion order
+
+| Pass | Group | ExtensionCatalogue | Tools | ToolSkills | PythonCode | Leaf Skills | Domain Skills | Recipes |
+|------|-------|--------------------|-------|------------|------------|-------------|---------------|---------|
+| 1 | filesystem | builtin-filesystem | 6 | 6 | 7 | 12 | 1 | 14 |
+| 2 | network | builtin-network | 2 | 3 | 6 | 5 | 1 | 4 |
+| 3 | memory | builtin-memory | 4 | 4 | 7 | 7 | 1 | 10 |
+| 4 | process | builtin-process | 5 | 6 | 1 | 6 | 3 | 7 |
+| 5 | management | builtin-management | 6 | 9 | 7 | 14 | 1 | 9 |
+
+---
+
+### Idempotency Guard
+
+The seeder checks for existing builtin components before any insert:
+
+```rust
+// Before inserting any group:
+let existing = sqlx::query_scalar!(
+    "SELECT COUNT(*) FROM reborn_components WHERE source = 'system'"
+)
+.fetch_one(pool)
+.await?;
+
+if existing > 0 {
+    return Ok(()); // Already seeded — skip
+}
+```
+
+This ensures the seeder is safe to call on every composition boot without
+producing duplicate rows.
+
+---
+
+### Q1 Pre-flight Invariants (checked inside seeder, panic in debug builds on failure)
+
+| Rule | What is checked |
+|------|----------------|
+| §shell-guard | Every recipe with `builtin.shell` in rust_steps has `llm_call_required=true` |
+| §spawn_subagent-guard | Every recipe with `builtin.spawn_subagent` in rust_steps has `llm_call_required=true` |
+| §tier0-orchestrator-channel Rule 1 | Every Tier-0 orchestrator step contains only PythonCode (class 22) UUIDs |
+| §tier0-orchestrator-channel Rule 2 | Every recipe with `llm_call_required=false` AND rust_steps tool_bindings has ≥1 PythonCode UUID in orchestrator_steps |
+| §capability-id | Every Tool row's capability_id matches a known `BuiltinFirstPartyTools` variant |
+| §non-empty-overview | Every ExtensionCatalogue has non-empty `overview_doc` |
+| §non-empty-body | Every ToolSkill, Leaf Skill, Domain Skill has non-empty body/content |
+
+---
+
+*End of builtin_stuff_v3.md — all Steps + Final section complete. v3 revised: 180 components, 46 Tier-0 recipes, orchestrator-first design.*
