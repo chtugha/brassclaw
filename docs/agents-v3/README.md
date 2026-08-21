@@ -34,7 +34,7 @@ documentation effort.
 | 06 | `06-tools-system.md` | `reborn_tools`, `capability_id` (Phase L/V057), builtin bootstrap, tool approval/auth | done |
 | 07 | `07-pythoncode-system.md` | `reborn_python_code` (Phase B/V052), snippet→component promotion, Q1/Q2 gate (Phase N/V059), `UnpromotedSnippet`, shell-injection scan | done |
 | 08 | `08-actions-system.md` | Class-16 Actions, 13 step types, `execute_action_procedure` (no-LLM), `override_prompt_creation` (Solution Override, LLM path), `action_short_circuit` (Phase E/G), dead `__retrieve_docs__` shim (§0.9), `call_action` by-name→UUID migration (Phase G) | done |
-| 09 | `09-sempai-kohai.md` | Sempai-Kohai: prompt memorize/optimize/finalize; kohai always-on; sempai idle-time self-optimization + pre-send review | planned |
+| 09 | `09-sempai-kohai.md` | Sempai-Kohai interceptor: routing (Kohai always-on) vs rerouting (Sempai pre-send review); `SempaiReviewOutcome` → adjusted prompt + Q1 proposals (`SempaiProposalSink`); base-prompt config keys; `base-prompt` substitution is Phase K.1 | done |
 | 10 | `10-prefix-base-prompt.md` | vLLM prefix caching, `base-prompt` placeholder substitution, `reborn_basic_prompt_store` (Phase K.1/V055), Prefix Tab | planned |
 | 11 | `11-retrieval-system.md` | `RamSource` (current prod, keyword-over-postgres), `PostgresSource` (intent-driven, not wired), `fetch_for_turn` vs `fetch_for_consumer`, E.0/K.3 ordering | planned |
 | 12 | `12-agent-loop.md` | Turn pipeline stages, `RecipeStep::Continue`, `TierZeroExecutionStage` (Phase H.0), host ports, DRIVER-GAP | planned |
