@@ -282,6 +282,9 @@ impl<F: RootFilesystem + ?Sized + 'static> DocPlanDissector<F> {
             consumer_tags: recipe_tags,
             intent_examples: None,
             source: "plan_library".to_string(),
+            step_descriptions: None,
+            variants: None,
+            dependency_registry: None,
         };
         self.recipe_store
             .upsert(new_recipe, &hash)

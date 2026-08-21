@@ -122,6 +122,15 @@ pub(crate) struct PgRecipe {
     pub(crate) content_hash: Option<String>,
     pub(crate) created_at: chrono::DateTime<chrono::Utc>,
     pub(crate) updated_at: chrono::DateTime<chrono::Utc>,
+
+    // v3 authoring model (Phase A / V050). NULLable JSONB → Option so legacy
+    // rows (NULL) decode without a runtime NULL-into-non-Option panic
+    // (FIND-IBS-07: the plan's "Files to modify" text said non-Option
+    // `serde_json::Value`, but V050's columns are NULLable, so Option is
+    // required for correctness).
+    pub(crate) step_descriptions: Option<Value>,
+    pub(crate) variants: Option<Value>,
+    pub(crate) dependency_registry: Option<Value>,
 }
 
 impl PgRecipe {
@@ -166,6 +175,10 @@ pub(crate) struct NewPgRecipe {
     pub(crate) consumer_tags: Vec<String>,
     pub(crate) intent_examples: Option<Value>,
     pub(crate) source: String,
+    // v3 authoring model (Phase A / V050). None = leave column NULL.
+    pub(crate) step_descriptions: Option<Value>,
+    pub(crate) variants: Option<Value>,
+    pub(crate) dependency_registry: Option<Value>,
 }
 
 // ---------------------------------------------------------------------------
@@ -220,7 +233,8 @@ const RECIPE_SELECT: &str = "
     tier, usage_count, success_count, failure_count, wilson_lower,
     validation_status, validation_errors, review_feedback,
     review_attempts, rejected_at, queue_code, source, content_hash,
-    created_at, updated_at
+    created_at, updated_at,
+    step_descriptions, variants, dependency_registry
 ";
 
 fn decode_recipe_row(row: &tokio_postgres::Row) -> Result<PgRecipe, PgRecipeStoreError> {
@@ -256,6 +270,9 @@ fn decode_recipe_row(row: &tokio_postgres::Row) -> Result<PgRecipe, PgRecipeStor
         content_hash: row.get(28),
         created_at: row.get(29),
         updated_at: row.get(30),
+        step_descriptions: row.get(31),
+        variants: row.get(32),
+        dependency_registry: row.get(33),
     })
 }
 
@@ -269,8 +286,9 @@ impl PgRecipeStore {
                     (tenant_id, user_id, agent_id, project_id,
                      name, description, trigger, steps,
                      prior_knowledge_content, override_prompt_creation,
-                     consumer_tags, intent_examples, source)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                     consumer_tags, intent_examples, source,
+                     step_descriptions, variants, dependency_registry)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
                  RETURNING id",
                 &[
                     &row.tenant_id,
@@ -286,6 +304,9 @@ impl PgRecipeStore {
                     &row.consumer_tags,
                     &row.intent_examples,
                     &row.source,
+                    &row.step_descriptions,
+                    &row.variants,
+                    &row.dependency_registry,
                 ],
             )
             .await
@@ -574,8 +595,9 @@ impl PgRecipeStore {
                      name, description, trigger, steps,
                      prior_knowledge_content, override_prompt_creation,
                      consumer_tags, intent_examples, source, content_hash,
+                     step_descriptions, variants, dependency_registry,
                      validation_status)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'pending')
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'pending')
                  ON CONFLICT ON CONSTRAINT reborn_recipes_scope_name_unique DO UPDATE
                      SET description             = EXCLUDED.description,
                          trigger                 = EXCLUDED.trigger,
@@ -589,6 +611,9 @@ impl PgRecipeStore {
                          intent_examples         = EXCLUDED.intent_examples,
                          source                  = EXCLUDED.source,
                          content_hash            = EXCLUDED.content_hash,
+                         step_descriptions       = EXCLUDED.step_descriptions,
+                         variants                = EXCLUDED.variants,
+                         dependency_registry     = EXCLUDED.dependency_registry,
                          validation_status       = CASE
                              WHEN reborn_recipes.content_hash = $14 THEN reborn_recipes.validation_status
                              ELSE 'pending'
@@ -609,6 +634,9 @@ impl PgRecipeStore {
                     &row.intent_examples,
                     &row.source,
                     &content_hash,
+                    &row.step_descriptions,
+                    &row.variants,
+                    &row.dependency_registry,
                 ],
             )
             .await
@@ -1732,6 +1760,28 @@ mod tests {
     use super::*;
     use chrono::Utc;
 
+    /// Phase A p7: `RECIPE_SELECT` must end with the three v3 authoring
+    /// columns at indices 31/32/33, matching `decode_recipe_row`'s
+    /// `row.get(31..=33)`. This catches the most error-prone p7 hazard — a
+    /// column inserted in the middle of the SELECT would silently shift every
+    /// downstream `row.get(N)` index, and a missing new column would orphan
+    /// the round-trip. tokio-postgres checks these at runtime (not compile
+    /// time), so this static assertion is the narrowest regression guard.
+    #[test]
+    fn recipe_select_round_trips_v3_authoring_columns() {
+        let cols: Vec<&str> = RECIPE_SELECT
+            .trim()
+            .split(',')
+            .map(|c| c.trim())
+            .collect();
+        assert_eq!(cols.len(), 34, "RECIPE_SELECT must select 34 columns");
+        assert_eq!(cols[0], "id");
+        assert_eq!(cols[30], "updated_at");
+        assert_eq!(cols[31], "step_descriptions");
+        assert_eq!(cols[32], "variants");
+        assert_eq!(cols[33], "dependency_registry");
+    }
+
     /// Build a `PgRecipe` that is Tier-0 eligible by default: validated, no
     /// `05:validator` tag, `tier = "mature"`, `wilson_lower = 0.80`. Each test
     /// mutates one field to confirm that single guard blocks eligibility.
@@ -1768,6 +1818,9 @@ mod tests {
             content_hash: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            step_descriptions: None,
+            variants: None,
+            dependency_registry: None,
         }
     }
 

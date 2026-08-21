@@ -3535,6 +3535,22 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   > Failure to update the INSERT/UPDATE means the Phase A column is SELECT-able but never written —
   > it will always be NULL until the SQL is fixed, silently defeating the round-trip goal.
 
+  > **⚠️ FIND-IBS-07 — `PgRecipe`/`NewPgRecipe` v3 fields are `Option<Value>`, NOT non-Option.**
+  > The "Files to modify" text above says "Add `step_descriptions: serde_json::Value`,
+  > `variants: serde_json::Value`, `dependency_registry: serde_json::Value` fields" (non-Option).
+  > That is imprecise: V050 creates the columns with `ADD COLUMN IF NOT EXISTS ... JSONB` —
+  > **NULLable, no default**. Existing (pre-V050) rows backfill to NULL. tokio-postgres rejects
+  > decoding a NULL column into a non-Option `serde_json::Value` at runtime
+  > ("a column was NULL but the Rust type is not Option"), which would break every
+  > `get`/`list_all`/`fetch_validated` call on a legacy row. Resolution (implemented): the three
+  > fields are `Option<serde_json::Value>` on **both** `PgRecipe` (read) and `NewPgRecipe` (write,
+  > `None` = leave column NULL). This matches the existing pattern for the other NULLable JSONB
+  > columns `trigger` and `intent_examples` (both `Option<Value>`); the non-Option `steps: Value`
+  > is NOT NULL by schema. The engine `Recipe` struct fields stay non-Option `serde_json::Value`
+  > with `#[serde(default)]` (NULL → `Value::Null` is a valid `Value`, no panic) — the store layer
+  > maps `None` ↔ `Value::Null` at the conversion boundary (Phase H owns that conversion). This is
+  > a forced correctness constraint from the NULLable migration, not a design preference.
+
   > **Naming note:** The existing `types/recipe.rs` already defines `RecipeStep { skill, tool,
   > params, description }` — a name-based v2 type. The IBS module introduces a **different**
   > `RecipeStep` type in `instruction_builder.rs` that uses UUIDs and channels. To avoid a

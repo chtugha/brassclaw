@@ -115,6 +115,9 @@ mod inner {
                     consumer_tags: vec!["05:validator".to_string()],
                     intent_examples,
                     source: "sempai_proposal".to_string(),
+                    step_descriptions: None,
+                    variants: None,
+                    dependency_registry: None,
                 };
 
                 match self.store.insert(row).await {
@@ -161,6 +164,9 @@ mod inner {
                     consumer_tags: vec!["05:validator".to_string()],
                     intent_examples: Some(serde_json::json!([blob])),
                     source: "sempai_intent_proposal".to_string(),
+                    step_descriptions: None,
+                    variants: None,
+                    dependency_registry: None,
                 };
 
                 match self.store.insert(row).await {
