@@ -136,6 +136,27 @@ Intent match (runtime):
   5. LLM is called; guided by the orchestrator_content recipe hint.
 ```
 
+> **✅ Review note (pre-v3 audit) — intent-driven retrieval is dormant in production today —
+> RESOLVED by Phase E.0:** the dormancy described below is exactly what Phase E.0 (the
+> zeroth E-family step) closes — it wires `PostgresSource` into the composition path
+> (`ThreadManager::with_retrieval_source`) before any phase consumes `fetch_for_turn`'s new
+> variants, so the "must happen before or during Phase H" recommendation below is satisfied
+> (pulled forward to E.0, before Phase E). The "deferred to Phase K" framing is now stale:
+> Phase K.3 is pure deletion (E.0 already wired the backend). Original detail retained:
+> The flow above assumes `PostgresSource::fetch_for_turn` is the live retrieval backend. It is
+> **not**. In production the engine wires `RamSource` (`crates/brassclaw_engine/src/runtime/manager.rs:383`,
+> with a `TODO(Phase K)` comment added by `Goals_pre_v3_review.md` Step 8). `PostgresSource` exists and
+> is correct (`#[cfg(feature = "skills-db")]`, UNION ALL query in `retrieval_source.rs`), but it is only
+> exercised in tests — the composition layer never calls `with_retrieval_source(PostgresSource)`. As a
+> result `resolve_intent` / `record_disambiguation_choice` / `SplitResult` are **never reached** in a
+> live turn until Phase K swaps `RamSource` out. Phases A–H can land the types and the IBS, but no turn
+> will actually take the Recipe/Tier-0/Tier-1 path until `PostgresSource` is wired. **Ordering
+> consequence:** wiring `PostgresSource` into `manager.rs` (composition) is a prerequisite for the
+> Phase H runtime behaviour to be observable, and must happen **before or during Phase H**, not be
+> deferred to Phase K. Phase K's "remove `RamSource`" step must be ordered *after* the
+> `PostgresSource` wiring sub-task, or the production retrieval path breaks (also recorded under
+> `Goals_pre_v3_review.md` Step 14).
+
 #### Mandatory shape
 
 | Field | Content |
@@ -329,7 +350,7 @@ It serves two audiences simultaneously:
   StepDescriptions directly — no intermediate format.
 
 StepDescriptions are stored as a JSONB column `step_descriptions` on `reborn_recipes`
-(added in V047). Each element of the JSONB array holds **two representations** of the
+(added in V050). Each element of the JSONB array holds **two representations** of the
 same StepDescription, kept in sync on every WebUI save:
 
 ```json
@@ -380,7 +401,7 @@ inline in the WebUI. The `steps` array is therefore always consistent with `yaml
 |-------|------|---------|
 | `info` | text | Human-readable documentation about what this step does. Visible in the WebUI component page to help the author understand the step's purpose. **Not emitted to the orchestrator at runtime.** Orchestrator instructions are delivered by `type: "component"` steps — the body of the referenced component (Skill, PythonCode, or any other orchestrator-channel class) is what the orchestrator receives. |
 | `include` | UUID[] | Component UUIDs needed at this step. IBS emits a fetch for each UUID. |
-| `codesnippet` | text | Inline Python code. On WebUI save: creates a PythonCode component (class 22), enters Q1 queue. Step greyed out until Q1+Q2 pass; promoted to `type: "component"` with the new UUID on Q2 pass. |
+| `codesnippet` | text | Inline Python code. On WebUI save: creates a PythonCode component (class 22) with `validation_status='pending'` and enters the Q1 queue. Step greyed out until Q1+Q2 pass; promoted to `type: "component"` with the new UUID on Q2 pass. **(Phase N capability)** — requires `reborn_validation_queue` + the Q1/Q2 gate logic (Phase N / V058). Until Phase N lands, a WebUI-authored PythonCode is `validation_status='pending'` with no queue row; the snippet→Q1→Q2 promotion flow cannot run. Pre-Phase-N, only system-seeded (Phase L) or operator-validated PythonCode is usable in `type:"component"` steps; the V058 boot-integrity check auto-submits any pending rows when Phase N lands. |
 | `dependencies` | string | Traversal expression into this step's component's `dependency_registry` (see §0.19). E.g. `"1[all], 5[2,6], 17[3, 7[1,4]]"`. Resolved at fetch time by `fetch_for_turn`. Absent or empty string = no dependencies. |
 
 #### Step types
@@ -557,9 +578,9 @@ step_link = "{desc_idx}:{start}-{desc_idx}:{end}" [+ "+" more segments]
 
 #### Storage
 
-**Migration V050:** `ADD COLUMN step_link TEXT CHECK (length(step_link) <= 4096)` to `reborn_intent_inputs`.
+**Migration V053:** `ADD COLUMN step_link TEXT CHECK (length(step_link) <= 4096)` to `reborn_intent_inputs`.
 
-**`step_link` is nullable.** Existing rows after V050 have `step_link IS NULL`. The IBS
+**`step_link` is nullable.** Existing rows after V053 have `step_link IS NULL`. The IBS
 treats a NULL `step_link` as a legacy intent — it skips IBS compilation and falls through
 to the existing `fetch_component_by_id` path unchanged. Only rows seeded after Phase D
 carry a non-NULL `step_link`.
@@ -719,6 +740,21 @@ No trait, no async. Called synchronously inside `fetch_for_turn`.
 `IntentResolution::Match` currently has only `{ component_id: Uuid, component_class_code: i32 }`.
 `FetchForTurnResult` currently has only `Components(Vec<ComponentItem>)` and
 `Disambiguation(Vec<IntentCandidate>)`.
+
+> **✅ Review note (pre-v3 audit) — `PostgresSource` is correct but not the live backend —
+> RESOLVED by Phase E.0:** the "not wired" state below is closed by Phase E.0, which wires
+> `PostgresSource` into the composition path before Phase E. The "see … Phase K" reference
+> below is now stale — wiring was pulled forward to E.0 (Phase K.3 is pure deletion).
+> `IntentResolution::Match`'s lack of `step_link` (greenfield for Phase D) is unaffected.
+> Original detail retained:
+> The "Current state" above is accurate, but note that `PostgresSource` is **not wired** in the
+> production engine — `manager.rs:383` constructs `RamSource` (keyword retrieval over
+> `PgMemoryDocStore`, postgres-backed but non-intent). So although the `fetch_for_turn` extension
+> described here is implemented against `PostgresSource`, nothing calls it in a live turn today.
+> `ActionShortCircuit` and `SplitResult` therefore do not exist *and* cannot be reached until
+> `PostgresSource` is wired (see §0.3 review note and Phase K). `IntentResolution::Match` today has
+> exactly `{ component_id, component_class_code }` (verified `intent_system.rs` — no `step_link`),
+> confirming Phase D's addition is greenfield.
 
 #### Extended `FetchForTurnResult`
 
@@ -934,6 +970,19 @@ fields are preserved for backward compatibility with custom orchestrators.
 > Any code that does `json.loads(pkr["formatted_content"])` will break — it must be
 > updated to use `pkr["orchestrator_content"]` or `pkr["formatted_content"]` as a string.
 > Document this in the Phase F change notes and the public changelog.
+>
+> **✅ Review note (pre-v3 audit) — FINDING F verified against current code — RESOLVED:**
+> the imprecise "2674" line cite is corrected below (the JSON `.to_string()` is at ~2710; the
+> prose override at ~2677), and Phase F is instructed to reference both branches when
+> documenting the shape change. This is a documentation-precision fix — no code change needed.
+> Original detail retained:
+> Confirmed in `orchestrator.rs`: the normal-assembly branch builds
+> `serde_json::json!({"prior_knowledge": entries, "matched_components": matched_ids}).to_string()`
+> (the JSON string, ~line 2706–2710), while the single-override/Action branch sets
+> `formatted_content` to the **prose** `item.effective_content` (~line 2677). So `formatted_content`
+> is shape-polymorphic today: JSON for multi-component, prose for the override path. The plan's
+> line cite "orchestrator.rs:2674" is within the function but the JSON `.to_string()` is at ~2710;
+> Phase F should reference both branches when documenting the shape change.
 
 ```python
 {
@@ -1039,9 +1088,28 @@ The legacy `__retrieve_docs__` (MemoryDoc path) is NOT called in v3 step-0.
 | 15 | Summary | 0.10 |
 | 20 | Note | 0.05 |
 
-Bold rows are new additions for v3. These weights are added to the `doc_type_weight_by_class`
-function in `retrieval_dbless.rs` (the integer class-code → weight dispatch, shared by both
-`RamSource` unit tests and the `PostgresSource` UNION ALL path via `retrieval_source.rs`).
+Bold rows are new additions for v3.
+
+> **✅ Review note (pre-v3 audit) — `doc_type_weight_by_class` no longer exists — RESOLVED (obsolete, do not implement):**
+> the function is gone (commit `e0e7d164`); the weight table below is historical/authoring-intent
+> only — no match arm exists to add for classes 22/23 (both backends now order by
+> `(class_code ASC, prompt_uid ASC)`). Original detail retained:
+> `Goals_pre_v3_review.md` Step 12 (already implemented, commit `e0e7d164`) removed
+> `doc_type_weight_by_class` from `retrieval_dbless.rs` entirely, together with the
+> filesystem fallback-content path it served. **Verified by grep: the function does not
+> exist anywhere in `crates/` today.** Both `RamSource::fetch_for_consumer` and
+> `PostgresSource::fetch_for_consumer` now return components ordered by
+> `(class_code ASC, prompt_uid ASC)` (confirmed in `retrieval_source.rs` — doc comments at
+> lines 21/100/111/239 and the `ORDER BY class_code ASC, prompt_uid ASC` SQL at line 441).
+> There is no keyword/weight scoring step left to extend for classes 22/23.
+>
+> The weight table above is retained here **for historical/authoring intent only** (it shows
+> the *relative priority* the original design wanted new classes to have). It must NOT be
+> read as an instruction to add match arms to `doc_type_weight_by_class` — doing so is
+> impossible because the function is gone. Phases B and C below have been corrected to drop
+> the "add weight arm" sub-steps; classes 22/23 only need a `class_label` arm (§0.11 FINDING B
+> below) and the `fetch_for_consumer` / `fetch_component_by_id` arms — ordering is automatic
+> via `class_code ASC`.
 
 > **⚠️ FINDING B — `DocType` is `#[deprecated]` — DO NOT add new variants:**
 > The `DocType` enum in `crates/brassclaw_engine/src/types/memory.rs` is annotated
@@ -1051,11 +1119,15 @@ function in `retrieval_dbless.rs` (the integer class-code → weight dispatch, s
 > **Phase B/C action:** Adding classes 22 and 23 requires:
 > 1. **Do NOT add `DocType::PythonCode` or `DocType::ExtensionCatalogue`** to `types/memory.rs`.
 >    The `DocType` enum is frozen. All new class-code dispatch uses integers only.
-> 2. Adding integer match arm `22 => 0.42` in `doc_type_weight_by_class(i32)` in `retrieval_dbless.rs`.
-> 3. Adding integer match arm `23 => 0.38` in `doc_type_weight_by_class(i32)`.
->    The legacy `doc_type_weight(DocType)` function (enum-keyed) is **not updated** — it is
->    deleted in Phase K along with the rest of `retrieval_dbless.rs`.
-> Missing the integer arm leaves the new class codes returning 0.0 on the UNION ALL path.
+> 2. ~~Adding integer match arm `22 => 0.42` in `doc_type_weight_by_class(i32)`~~ — **OBSOLETE**:
+>    `doc_type_weight_by_class` was deleted in the pre-v3 Step 12 cleanup, not Phase K. No weight
+>    arm exists to add. Skip this sub-step entirely.
+> 3. ~~Adding integer match arm `23 => 0.38`~~ — **OBSOLETE**, same reason.
+>    `retrieval_dbless.rs` and the enum-keyed `doc_type_weight(DocType)` function are still
+>    scheduled for full deletion in Phase K (§K.3) together with `RamSource`, but the weight
+>    dispatch function itself is already gone.
+> No action is needed to make classes 22/23 sort correctly — `ORDER BY class_code ASC,
+> prompt_uid ASC` already places them deterministically once rows exist in their tables.
 
 ---
 
@@ -1078,7 +1150,7 @@ Recipe Tier-0 mechanism (`llm_call_required: false`). They are separate paths.
 ### 0.13 KV-Cache / LMCache-Aware Design
 
 **Basic-prompt:** Pre-assembled `InstructionBundle` stored in `reborn_basic_prompt_store`
-(V052). Manual trigger only. Stale when any component passes Gate 2.
+(V055). Manual trigger only. Stale when any component passes Gate 2.
 
 **BuildInstruction patch rules:**
 - Must NOT repeat content already in the stored basic-prompt.
@@ -1136,7 +1208,7 @@ orchestrator receives no authored prior knowledge about when to use `grep` vs `r
 what memory_search expects, or when shell requires approval.
 
 `reborn_tools` currently has no column linking a DB row back to its registered capability ID
-(`"builtin.read_file"`). A `capability_id TEXT` column is needed (V053) to avoid fragile
+(`"builtin.read_file"`). A `capability_id TEXT` column is needed (V056) to avoid fragile
 name-search lookups when the Rust execution layer needs to resolve a Tool row to its handler.
 
 #### What gets generated
@@ -1190,7 +1262,7 @@ runs internally inside the seeder). This prevents the boot state from depending 
 completing Q2 before the agent can use its own core tools.
 
 `"system"` is a new allowed value for the `source` column on `reborn_tools`,
-`reborn_tool_skills`, and `reborn_skills` (V053 adds it to the CHECK constraints).
+`reborn_tool_skills`, and `reborn_skills` (V056 adds it to the CHECK constraints).
 Q1 errors in the seeder content are a build-time bug, not a runtime failure mode — they
 must be caught in CI.
 
@@ -1387,10 +1459,10 @@ full `LIKE` validates the suffix naturally). No separate path 3 branch is needed
 
 ### 0.17.2 New Columns and Indexes on `reborn_intent_inputs`
 
-**Migration V054** adds three columns and two indexes:
+**Migration V057** adds three columns and two indexes:
 
 ```sql
--- V054__reborn_intent_inputs_template.sql
+-- V057__reborn_intent_inputs_template.sql
 
 ALTER TABLE reborn_intent_inputs
   ADD COLUMN is_template      BOOLEAN NOT NULL DEFAULT false,
@@ -1853,7 +1925,7 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 
 #### Files to create
 
-- `crates/brassclaw_pg/migrations/V047__reborn_recipe_step_descriptions.sql`
+- `crates/brassclaw_pg/migrations/V050__reborn_recipe_step_descriptions.sql`
   ```sql
   ALTER TABLE reborn_recipes ADD COLUMN IF NOT EXISTS step_descriptions JSONB;
   ```
@@ -1919,6 +1991,26 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   and all other component types that participate in dependency traversal. Each component
   owns its own flat indexed registry.
 
+- `crates/brassclaw_reborn_composition/src/pg_recipe_store.rs` — extend the **store
+  round-trip** so the new `step_descriptions` / `variants` / `dependency_registry` columns
+  are persisted AND loaded (otherwise the Phase A column is orphaned / write-only / never
+  loaded):
+  - `PgRecipe` struct (line 117): add `step_descriptions: serde_json::Value`,
+    `variants: Vec<RecipeVariant>`, `dependency_registry: serde_json::Value` fields.
+  - `RECIPE_SELECT` (line 208): add the three columns to the SELECT list.
+  - `decode_recipe_row` (line 219, **positional** — see M5): read the three columns at the
+    correct positional index. Because `decode_recipe_row` is positional, adding columns
+    means **re-indexing every later `row.get::<_, T>(N)` call** in the same edit (see the
+    M5 review note; Phase N column drops require the same discipline).
+  - `NewPgRecipe` (line 147): carry the three fields so INSERT/UPDATE persist them. The
+    WebUI save path (create/update recipe) must pass `step_descriptions` through.
+  This makes the column writable + loadable from Phase A. Whether `RecipeMatchDto`
+  (line 799) exposes `step_descriptions` to the runtime `RecipeStage` is a **Phase H**
+  decision (extend the DTO + `find_recipe` path, or route `RecipeStage` through
+  `PostgresSource::fetch_for_turn`, which reads the column directly) — see the Phase H
+  review note. Either way, the store must round-trip the column from Phase A so it is
+  never orphaned.
+
   > **Naming note:** The existing `types/recipe.rs` already defines `RecipeStep { skill, tool,
   > params, description }` — a name-based v2 type. The IBS module introduces a **different**
   > `RecipeStep` type in `instruction_builder.rs` that uses UUIDs and channels. To avoid a
@@ -1937,6 +2029,30 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   ```
 
 - `crates/brassclaw_engine/src/memory/mod.rs` — `pub mod instruction_builder`
+
+> **✅ Review note (pre-v3 audit) — the engine `Recipe` struct is NOT the type the runtime
+> `RecipeStage` consumes; the store round-trip is missing from Phase A's file list — RESOLVED:**
+> `pg_recipe_store.rs` (PgRecipe struct + RECIPE_SELECT + decode_recipe_row + NewPgRecipe, with
+> the positional re-indexing caveat) has been added to Phase A's "Files to modify" above so the
+> column is writable + loadable from Phase A and never orphaned. The `RecipeMatchDto` exposure
+> decision is deferred to Phase H as the note recommends. Original audit detail retained below:
+> The runtime stage consumes `RecipeMatchDto` from `RecipeLookup::find_recipe`
+> (`crates/brassclaw_reborn_composition/src/pg_recipe_store.rs:764`), which is built from the
+> `PgRecipe` store row and today carries only `id, name, tier, wilson_lower, tier0_eligible,
+> validation_kind, steps, match_score` (line 799) — `steps` here is the **v2** `serde_json::Value`
+> from the `reborn_recipes.steps` column via `steps_to_dtos`. It does **not** carry
+> `step_descriptions`, `variants`, `step_link`, or `variable_patterns`. Separately, `PgRecipe`
+> (`pg_recipe_store.rs:117`), `RECIPE_SELECT` (line 208), `decode_recipe_row` (line 219, indexed),
+> and `NewPgRecipe` (line 147) also have no `step_descriptions` field. So Phase A's addition of
+> `step_descriptions`/`variants`/`dependency_registry` to the **engine** `Recipe` struct
+> (`types/recipe.rs`) is greenfield, but unless `pg_recipe_store.rs` (SELECT + decode + insert) is
+> also extended in the same phase, the column is orphaned (write-only / never loaded). Phase A's
+> "Files to modify" does **not** list `pg_recipe_store.rs`. **Resolution required in Phase H:** the
+> v3 Tier-0/Tier-1 dispatch reads `step_descriptions` straight from the recipe row via
+> `PostgresSource::fetch_for_turn` (intent/IBS path, §0.3), which is a **different** path from
+> `RecipeLookup::find_recipe`. Phase H must specify which path feeds `RecipeStage` (extend
+> `RecipeMatchDto` + store round-trip, or route through `PostgresSource`), and must ensure the two
+> paths do not both fire for the same turn. See the Phase H review note.
 
 #### Tests
 
@@ -1966,12 +2082,21 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 
 #### Files to create
 
-- `crates/brassclaw_pg/migrations/V048__reborn_python_code.sql`  
+- `crates/brassclaw_pg/migrations/V051__reborn_python_code.sql`  
   Same column shape as `V036__reborn_specs.sql`. `class_code = 22`.  
   Default consumer tags: `{02:orchestrator, 05:validator}`.  
   **Do NOT include** `queue_code`, `review_attempts`, `review_feedback`, `rejected_at`,
-  or `validation_errors` columns — this table is created after Phase N is planned and
-  uses `reborn_validation_queue` from day one (see §0.18, Phase N.4).
+  or `validation_errors` columns — those five are centralised on `reborn_validation_queue`
+  (§0.18, Phase N / V058). The table DOES carry `validation_status` (the post-validation
+  gate, which STAYS on the component table — see §0.18). Note the ordering: `reborn_validation_queue`
+  and its Q1/Q2 gate logic land in V058/Phase N, ~12 phases after V051. Until Phase N lands,
+  a WebUI-authored PythonCode row is `validation_status='pending'` with **no queue row**;
+  the §0.5 snippet→Q1→Q2 promotion flow is a **Phase N capability** (it needs the queue +
+  gate logic) and cannot run before then. Pre-Phase-N, only system-seeded (Phase L) or
+  operator-validated PythonCode is usable in `type:"component"` steps; the V058
+  boot-integrity check auto-submits any pending rows when Phase N lands. This is consistent
+  with "no per-table queue columns" — the table simply has no Q1/Q2 tracking until the
+  central queue exists.
 
 - `crates/brassclaw_reborn_composition/src/pg_python_code_store.rs` — new store
 
@@ -1985,7 +2110,11 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
   > Currently neither has one — class 22 silently returns nothing on both code paths.
   > Phase B adds both arms.
 - `crates/brassclaw_engine/src/memory/intent_system.rs` — add `22 => "python_code"` to `class_label`
-- `crates/brassclaw_engine/src/memory/retrieval_source.rs` — add `22 => 0.42` arm to `doc_type_weight_by_class(i32)`
+  > **✅ Review note (pre-v3 audit) — RESOLVED (obsolete, do not implement):** the plan previously also instructed adding a
+  > `22 => 0.42` arm to `doc_type_weight_by_class(i32)` in `retrieval_source.rs`. That
+  > function no longer exists (removed in `Goals_pre_v3_review.md` Step 12) — both retrieval
+  > backends now order by `(class_code ASC, prompt_uid ASC)`. This sub-step is dropped; see
+  > §0.11 review note.
 - `crates/brassclaw_engine/src/memory/component_validator.rs` — class 22 dispatch:
   name format, non-empty content, soft 10k token budget, shell-injection scan.
   > **⚠️ FINDING E — `ComponentPayload` for class 22:** The existing `ComponentPayload` enum has
@@ -2004,7 +2133,7 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 #### Tests
 
 - Unit: `class_label(22) == "python_code"`
-- Unit: `doc_type_weight_by_class(22) == 0.42`
+- ~~Unit: `doc_type_weight_by_class(22) == 0.42`~~ — **removed**: function no longer exists (§0.11 review note)
 - Integration: PythonCode row retrieved via `fetch_for_consumer` with consumer tag `02:orchestrator`
 - Integration: PythonCode row retrieved via `fetch_component_by_id(uuid, 22)` (UUID lookup path)
 
@@ -2018,13 +2147,19 @@ implement the IBS as a pure-Rust module. This is Phase A because all later phase
 
 #### Files to create
 
-- `crates/brassclaw_pg/migrations/V049__reborn_extension_catalogues.sql`  
+- `crates/brassclaw_pg/migrations/V052__reborn_extension_catalogues.sql`  
   Columns: scope tuple + `name`, `description`, `version`, `overview_doc TEXT`,
   `task_groups JSONB`, `child_component_ids UUID[]`, `intent_index JSONB` (audit-only),
   `validation_status TEXT` (post-validation gate only), `updated_at`, `created_at`,
   `class_code SMALLINT DEFAULT 23`.  
   **Do NOT include** `queue_code`, `review_attempts`, `review_feedback`, `rejected_at`,
-  or `validation_errors` columns — uses `reborn_validation_queue` from day one (§0.18, Phase N.4).
+  or `validation_errors` columns — those five are centralised on `reborn_validation_queue`
+  (§0.18, Phase N / V058); the table carries `validation_status` only (which STAYS). Same
+  Phase-N ordering caveat as Phase B: `reborn_validation_queue` + its Q1/Q2 gate logic land
+  in V058/Phase N, after V052. Until Phase N, a WebUI-authored catalogue row is
+  `validation_status='pending'` with no queue row; the snippet→Q1→Q2 promotion flow is a
+  Phase N capability. The V058 boot-integrity check auto-submits pending rows when Phase N
+  lands.
 
 - `crates/brassclaw_reborn_composition/src/pg_extension_catalogue_store.rs` — new store
 
@@ -2037,7 +2172,9 @@ Same engine files as Phase B, but for class 23:
   > **⚠️ FINDING C (same as Phase B):** Both `fetch_for_consumer` AND `fetch_component_by_id`
   > need a class 23 arm. Neither has one today.
 - `intent_system.rs` — `23 => "extension_catalogue"` in `class_label`
-- `retrieval_source.rs` — add `23 => 0.38` arm to `doc_type_weight_by_class(i32)`
+  > **✅ Review note (pre-v3 audit) — RESOLVED (obsolete, do not implement):** as with Phase B, the previously-planned `23 => 0.38`
+  > arm on `doc_type_weight_by_class(i32)` in `retrieval_source.rs` is obsolete — that
+  > function was already removed; see §0.11 review note. No weight arm to add.
 - `component_validator.rs` — class 23: name format, non-empty `overview_doc`, ≥1 `task_group`,
   valid UUID syntax in `child_component_ids`
 
@@ -2061,7 +2198,7 @@ Same engine files as Phase B, but for class 23:
 #### Tests
 
 - Unit: `class_label(23) == "extension_catalogue"`
-- Unit: `doc_type_weight_by_class(23) == 0.38`
+- ~~Unit: `doc_type_weight_by_class(23) == 0.38`~~ — **removed**: function no longer exists (§0.11 review note)
 - Integration: Catalogue with `task_groups` → retrieved with `overview_doc` as `effective_content` via `fetch_for_consumer`
 - Integration: Catalogue retrieved via `fetch_component_by_id(uuid, 23)` (direct UUID lookup)
 
@@ -2076,7 +2213,7 @@ Same engine files as Phase B, but for class 23:
 
 #### Files to create
 
-- `crates/brassclaw_pg/migrations/V050__reborn_intent_inputs_step_link.sql`
+- `crates/brassclaw_pg/migrations/V053__reborn_intent_inputs_step_link.sql`
   ```sql
   ALTER TABLE reborn_intent_inputs ADD COLUMN IF NOT EXISTS step_link TEXT
       CHECK (length(step_link) <= 4096);
@@ -2106,10 +2243,10 @@ Same engine files as Phase B, but for class 23:
   - `intent_system.rs` — `record_disambiguation_choice` return statement (**FINDING A**)
 
 > **Sequencing invariant:** The Rust code change (adding `step_link` to `IntentResolution::Match`
-> and the `SELECT ... step_link` query) **requires V050 to have run first**. V050 adds the column.
-> If the code change deploys before V050 runs, the `SELECT` will fail at runtime.
-> Required order: run V050 migration → then deploy the code that reads `step_link`.
-> This means Phase D migration (V050) and Phase D code change are a two-step deploy,
+> and the `SELECT ... step_link` query) **requires V053 to have run first**. V053 adds the column.
+> If the code change deploys before V053 runs, the `SELECT` will fail at runtime.
+> Required order: run V053 migration → then deploy the code that reads `step_link`.
+> This means Phase D migration (V053) and Phase D code change are a two-step deploy,
 > not a single atomic deploy. Plan accordingly.
 
 **Notes:**
@@ -2121,6 +2258,89 @@ Same engine files as Phase B, but for class 23:
 
 - Unit: intent row with `step_link` → `IntentResolution::Match { step_link: Some(...) }`
 - Unit: intent row without `step_link` → `IntentResolution::Match { step_link: None }` → existing path unchanged
+
+---
+
+### Phase E.0 — Wire `PostgresSource` in Composition (Prerequisite — resolves C2/C3/C4)
+
+**Status:** [ ] Pending
+
+**Goal:** Make `PostgresSource` the **live** retrieval backend before any phase consumes its
+new `FetchForTurnResult` variants. Today `manager.rs:377–383` constructs `RamSource` and
+passes it to `with_retrieval_source(...)`; `PostgresSource` is exported from
+`brassclaw_engine` but **never instantiated in the composition path** (verified — a
+`TODO(Phase K)` marker sits at `manager.rs:377`). Phases E/F/G/H all assume the
+intent-driven `fetch_for_turn` path is live; without E.0 it is dormant and those phases
+ship correct-but-unreachable code. Phase K then becomes pure deletion (no wiring race).
+
+This is the single most important ordering fix in the plan. It is scheduled as **E.0**
+(zeroth step of the E family) so it lands before Phase E's `fetch_for_turn` upgrade and
+before Phase H's `RecipeStage` dispatch (which consumes `SplitResult`/`ActionShortCircuit`
+via the §H.0 `LoopRetrievalPort`). Cross-ref `Goals_pre_v3_review.md` Step 14's ordering
+constraint: "Phase K must come AFTER the `PostgresSource` wiring sub-task; otherwise the
+production retrieval path breaks." E.0 is that wiring sub-task, pulled forward.
+
+#### Files to modify
+
+- `crates/brassclaw_engine/src/runtime/manager.rs` — `ThreadManager::new` (line 64) does
+  NOT take a `pg_pool`, and lines 382–383 build `RamSource` internally from `self.store`.
+  Add a composition-injectable override: an `Option<Arc<dyn RetrievalSource>>` field on
+  `ThreadManager` + a `with_retrieval_source(Arc<dyn RetrievalSource>)` builder (the
+  `ExecutionLoop::with_retrieval_source` at line 400 is internal-only, not callable from
+  composition). In the spawn path (377–400), use the injected source when set:
+  ```rust
+  // E.0: PostgresSource is the live intent-driven retrieval backend.
+  // RamSource is retained only until Phase K.3 deletes it.
+  let retrieval_source: Arc<dyn crate::memory::RetrievalSource> = self
+      .retrieval_source_override
+      .clone()
+      .unwrap_or_else(|| Arc::new(crate::memory::RamSource::new(store_for_retrieval)));
+  ```
+  Remove the `TODO(Phase K)` comment at `manager.rs:377` (satisfied by E.0). Keep
+  `RamSource` importable (Phase K.3 deletes it). (Alternative: add a `pg_pool` field to
+  `ThreadManager` and build `PostgresSource` at 382–383 when present — equally valid; pick
+  whichever matches the existing composition wiring. Either way, no `pg_pool` in
+  production → hard error, never a silent `RamSource` fallback.)
+- `crates/brassclaw_reborn_composition/src/runtime.rs` — where the engine `ThreadManager`
+  is built (the composition layer owns the `pg_pool`), construct
+  `PostgresSource::new(pg_pool.clone())` (`PostgresSource::new` takes `Arc<PgPool>`,
+  `retrieval_source.rs:248`) and inject it via the new
+  `ThreadManager::with_retrieval_source(...)`. The composition layer already depends on
+  `brassclaw_engine`, so importing `PostgresSource` there is crate-boundary-clean (unlike
+  `brassclaw_agent_loop`/`brassclaw_turns` — see §H.0).
+
+#### Acceptance (must be verified live, not just unit-tested)
+
+- A real turn's `__assemble_prior_knowledge__` takes the `RetrievalSource` arm
+  (`orchestrator.rs:2574` `if let Some(source) = retrieval_source`) and calls
+  `PostgresSource::fetch_for_turn` (not the legacy `retrieve_context` fallback at
+  `orchestrator.rs:2620–2637`).
+- `resolve_intent` is exercised on live user text (log/trace confirms the intent path).
+- Tier-2 keyword fallback still works when `resolve_intent` returns `NoMatch` (Phase E's
+  `fetch_for_turn` falls back to `fetch_for_consumer` inside `PostgresSource`).
+
+> **✅ Review note (pre-v3 audit) — the dominant cross-cutting hazard is `PostgresSource`
+> wiring spanning E/F/G/H/K (RESOLVED by this E.0 step):** verified fact —
+> `manager.rs:383` wires `RamSource`; `PostgresSource` is never constructed in composition;
+> `orchestrator.rs:2552–2637` calls `fetch_for_turn` only when the source is `Some`, else
+> falls through to the legacy `retrieve_context` (MemoryDoc) block at `2620–2637`, which is
+> the **actual production retrieval path today**. Consequences reconciled by E.0:
+> (C2) Phase E edits target a dormant backend → E.0 makes it live first.
+> (C3) Phase F must not delete the `retrieve_context` fallback until `PostgresSource` is
+> wired → E.0 wires it, so Phase F's fallback-preservation note (below) holds and removal is
+> deferred to Phase K. (C4) Phase K.3 must not delete `RamSource` before wiring → E.0
+> wires first, so K.3 is split into wire-verify-then-delete (K.3 already-satisfied by E.0;
+> K.3 becomes pure deletion). This E.0 step is the cleanest resolution of C2/C3/C4 and the
+> transitive H4 dependency.
+
+#### Tests
+
+- Integration: boot the runtime with a `pg_pool`, assert `with_retrieval_source` was
+  called with a `PostgresSource` (not `RamSource`) — e.g. a retrieval-source-type probe.
+- Integration: a live turn with an intent-input row present takes the
+  `PostgresSource::fetch_for_turn` path (trace/log assertion).
+- Integration: a turn with no intent match still returns components via the
+  `PostgresSource` keyword fallback (Tier 2 preserved).
 
 ---
 
@@ -2180,6 +2400,20 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
     seq-scan on every `fetch_for_consumer` call. Document the required indexes in the Phase B/C
     migration files alongside the table CREATE.
 
+> **✅ Review note (pre-v3 audit) — Phase E code is correct but unreachable in production until
+> `PostgresSource` is wired — RESOLVED by the new Phase E.0 above:** E.0 wires
+> `PostgresSource` as the live backend before Phase E, so the `SplitResult`/`ActionShortCircuit`
+> variants are reachable at deploy time. Original audit detail retained below:
+> All edits here target `PostgresSource::fetch_for_turn`, which is
+> not the active retrieval backend (`manager.rs:383` wires `RamSource`; see §0.3 review note).
+> The `SplitResult`/`ActionShortCircuit` variants and the IBS call are therefore dormant at
+> deploy time — the unit/integration tests above will pass, but no live turn takes this path
+> until the composition layer calls `with_retrieval_source(PostgresSource)`. Treat
+> `PostgresSource` wiring as a Phase E/H prerequisite, not a Phase K item (Phase K only *removes*
+> `RamSource`; it must not be the first phase that wires `PostgresSource`, or turns lose retrieval
+> entirely between the `RamSource` removal and the wiring). Cross-ref `Goals_pre_v3_review.md`
+> Step 14 ordering constraint.
+
 #### Tests
 
 - Unit: Recipe match with `step_link` → `SplitResult`; `rust_items` contain only ToolSkills; `orchestrator_items` contain only Skills and PythonCode
@@ -2204,8 +2438,13 @@ Fix the hardcoded `tenant_id: "default"` scope bug (see §below).
 > **Clarification — which handler is upgraded:**
 > `handle_retrieve_docs` calls `RetrievalEngine::retrieve_context` (legacy MemoryDoc path).
 > It is **not** upgraded — it is removed unconditionally in Phase K (no compatibility window).
-> `handle_assemble_prior_knowledge` already calls `fetch_for_turn` via `PostgresSource`.
-> This is the handler that v3 extends to handle `SplitResult` and `ActionShortCircuit`.
+> `handle_assemble_prior_knowledge` already calls `fetch_for_turn` via the wired
+> `RetrievalSource` trait object (`RamSource` today; `PostgresSource` after Phase E.0 wires
+> it — see the C2/C3/C4 resolution). This is the handler that v3 extends to handle
+> `SplitResult` and `ActionShortCircuit`. **Preserve the legacy `retrieve_context` fallback
+> (`orchestrator.rs:2620–2637`) unchanged in Phase F** — it is the actual production
+> retrieval path until E.0 wires `PostgresSource`, and remains a safety net for the
+> `None`/error case afterwards. Its removal is a Phase K.3 action (see C4 resolution).
 
 #### Files to modify
 
@@ -2265,6 +2504,56 @@ Fix the hardcoded `tenant_id: "default"` scope bug (see §below).
 > tenant, agent, and project identities. The `Thread` struct must carry `tenant_id`
 > and `agent_id` (verify if they already exist; if not, they must be added).
 > This is a **correctness and isolation bug** — fix it as part of Phase F, not deferred.
+>
+> **✅ Review note (pre-v3 audit) — bug location and `Thread` field gap verified — RESOLVED
+> (pre-v3 code fix applied):** the hardcoded scope at `orchestrator.rs:2575–2580` was fixed
+> in code (this audit pass): `tenant_id = thread.user_id.clone()`, `agent_id = "default"`
+> — aligned with the documented sibling convention at `orchestrator.rs:3126–3136`
+> (`__list_skills__` / `scope_from_thread_ids`), with a code comment noting the Phase-1 stub
+> and that the deeper 4-tuple threading is a "Phase 2+ / v3 Phase F" follow-up. Verified the
+> production `RamSource` backend ignores `tenant_id`/`agent_id` (`fetch_for_consumer` uses
+> only `project_id`+`user_id`), so the fix is behavior-preserving today and only becomes
+> load-bearing when `PostgresSource` is wired (E.0). The broader `Thread`-carries-`tenant_id`
+> /`agent_id` work (option a) remains a v3 Phase F item, not a pre-v3 change. Original audit
+> detail retained below:
+> The hardcoded scope is at `orchestrator.rs:2575–2580` (the plan cites "line 2581"; the
+> `ComponentScope { … }` literal spans 2575–2580, with `tenant_id: "default"` at 2576 and
+> `agent_id: String::new()` at 2578). More importantly, the `Thread` struct
+> (`crates/brassclaw_engine/src/types/thread.rs:212`) carries `user_id` and `project_id` but
+> **has no `tenant_id` field and no `agent_id` field**. So the handler cannot source the real
+> tenant/agent from `thread` today — that is *why* the literals are hardcoded. Phase F must
+> either (a) add `tenant_id` and `agent_id` to `Thread` (touching `Thread::new`, every thread
+> creator, and checkpoint serde via `#[serde(default)]`), or (b) source them from the
+> turn/loop context that reaches this handler (verify what identity is available on the
+> engine execution context at call time). Option (b) is likely cheaper but must be confirmed
+> against the actual call site; option (a) is the broader, more durable fix. Either way this
+> is larger than "construct the scope from the thread" implies, and must be scoped in Phase F.
+>
+> **✅ Review note (pre-v3 audit) — the legacy `retrieve_context` fallback must survive Phase F — RESOLVED:** E.0 wires `PostgresSource` first (so the fallback is no longer the *primary* production path after E.0), and the Phase F "Clarification" + body above now explicitly instruct "preserve the `retrieve_context` fallback (`orchestrator.rs:2620–2637`) unchanged in Phase F; removal is a Phase K.3 action." Phase K.3 (see the C4 resolution below) is updated to explicitly delete this block (plus `handle_retrieve_docs` +, if no remaining callers, `retrieve_context` itself). Original audit detail retained below:
+> The plan's §0.9 / Q7 framing (line ~2298, ~3682) says `handle_assemble_prior_knowledge`
+> "already calls `fetch_for_turn` via `PostgresSource`". That is **imprecise** and risks an
+> implementer dropping the wrong code. Verified at `orchestrator.rs:2552-2637`: the handler
+> takes `retrieval_source: Option<&Arc<dyn RetrievalSource>>` (line 2556) and calls
+> `source.fetch_for_turn(...)` (line 2582-2584) ONLY `if let Some(source) = retrieval_source`
+> (line 2574). In production that trait object is `RamSource` (or `None`), **not**
+> `PostgresSource` — `PostgresSource` is not wired (see §0.3 / Phase E notes). When the
+> source is `None` or `fetch_for_turn` errors, control **falls through** to the legacy
+> block at `orchestrator.rs:2620-2637`: `retrieval.retrieve_context(project_id, user_id,
+> goal, LEGACY_MAX_DOCS)` (the `RetrievalEngine` / MemoryDoc path). **That fallback is the
+> actual production retrieval path today** — it is what serves `__assemble_prior_knowledge__`
+> until `PostgresSource` is wired (Phase E/H prerequisite). Phase F's instruction to "extend
+> the handler to handle `SplitResult` and `ActionShortCircuit`" is **silent on this
+> fallback**. Hazard: an implementer who restructures the handler around the four
+> `FetchForTurnResult` variants (which all presuppose a live `PostgresSource`) could delete
+> or orphan the `retrieve_context` block — breaking all retrieval before `PostgresSource`
+> is wired. **Phase F must preserve the `retrieve_context` fallback unchanged.** Its removal
+> belongs in Phase K, alongside `handle_retrieve_docs`: Phase K (line ~3011) says "remove
+> `RetrievalEngine::retrieve_context` if it has no other callers" — but this fallback IS a
+> second caller (the first being `handle_retrieve_docs` at line 2509), so Phase K must
+> explicitly delete the `orchestrator.rs:2620-2637` block, not just the `__retrieve_docs__`
+> registration. Net: Phase F = add variants, keep fallback; Phase K (after `PostgresSource`
+> wiring) = remove `handle_retrieve_docs` AND the `retrieve_context` fallback AND, if no
+> remaining callers, `retrieve_context` itself.
 
 #### Tests
 
@@ -2329,6 +2618,89 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 **Goal:** Activate the RecipeStage stub so it dispatches correctly for Tier 0, Tier 1,
 and falls through to Tier 2 on no match.
 
+#### H.0 Host-port prerequisites (resolves H3 + H4)
+
+`RecipeStage` lives in `brassclaw_agent_loop`, which (like `brassclaw_turns`) does **not**
+depend on `brassclaw_engine`. Two things `RecipeStage` needs are only reachable through
+`brassclaw_engine` or host-side state, so they MUST be exposed as new `brassclaw_turns`
+host ports — mirroring the existing `LoopRecipePort::recipe_lookup` → `&dyn RecipeLookup`
+pattern (host.rs:2081–2093). Add both before the `RecipeStage` dispatch body:
+
+**H4 — retrieval port (the `fetch_for_turn` host boundary).** `RetrievalSource` /
+`PostgresSource` / `FetchForTurnResult` / `ComponentItem` all live in `brassclaw_engine`
+(`memory/retrieval_source.rs`); `RecipeStage` cannot import them.
+- `crates/brassclaw_turns/src/run_profile/host.rs` — add a new opt-in port:
+  ```rust
+  /// Intent-driven retrieval port. Hosts that wire `PostgresSource` implement
+  /// this; `RecipeStage` calls it for Tier 0/1 dispatch. Hosts without a
+  /// retrieval source inherit `NoRetrieval` and `RecipeStage` falls through to
+  /// Tier 2 (no short-circuit).
+  pub trait LoopRetrievalPort: Send + Sync {
+      async fn fetch_for_turn(
+          &self,
+          context: &LoopRunContext,
+          query: &str,
+          token_budget: usize,
+          sender_class_code: &str,
+      ) -> Option<RetrievalTurnResult>;
+  }
+  ```
+  `RetrievalTurnResult` is a **`brassclaw_turns`-native** type (NOT `FetchForTurnResult`):
+  it carries the two routing booleans (`tier0_eligible`, `llm_call_required`) plus the
+  rust/orchestrator item arrays as `serde_json::Value` — the same crate-boundary
+  discipline already used for `state.recipe_rust_context` / `state.recipe_hint` (see the
+  constraint note in item 1 below). Add `LoopRetrievalPort` to the `AgentLoopDriverHost`
+  supertrait list (host.rs:2185–2201) and a `NoRetrieval` default impl returning `None`
+  (mirror `NoRecipeLookup`). `RecipeStage::process` calls
+  `ctx.host.fetch_for_turn(context, user_text, budget, "02")` — NOT a direct
+  `PostgresSource` import. (The §0.3 pseudocode `retrieval_source.fetch_for_turn` is
+  satisfied through this port.) This is the exact method H4 asked the plan to specify.
+- `crates/brassclaw_reborn_composition/src/...` — implement `LoopRetrievalPort` by
+  delegating to the wired `PostgresSource::fetch_for_turn` and serializing the engine
+  `ComponentItem`s / `TurnRoutingSignals` into `RetrievalTurnResult`. (Requires Phase E.0
+  wiring — see the C2/C3/C4 resolution; `PostgresSource` must be live before this port
+  returns non-`None`.)
+
+**H3 — user-text resolution (the `message_ref → text` host boundary).** `LoopInput::UserMessage
+{ message_ref }` (host.rs:844) holds an **opaque ref**, not text. `consume_drainable_inputs`
+(input.rs:154–210) only advances `input_cursor`; it never extracts text. The agent loop
+**never holds raw user text** today — `LoopContextMessage` carries `safe_summary`
+(sanitized; host.rs:727–737) and `LoopPromptBundle` carries `content_ref` (still a ref;
+host.rs:938–942, 1004–1017); the host resolves content host-side under scope/policy
+(host.rs:1001–1003). So `state.last_user_text` cannot be populated from the `LoopInput`
+value alone.
+- Resolve `message_ref → text` via a **host fetch**. The raw text already exists
+  host-side: the composition layer records it keyed by `(scope, accepted_message_ref)`
+  in `SkillActivationMessage { text, .. }` / `messages_by_run`
+  (`brassclaw_first_party_extension_ports/src/activation.rs:254–272`, written from
+  `runtime.rs:1036`), and it is live for the whole turn until `clear_accepted_message`
+  (runtime.rs:1062). Expose it via a new `LoopContextPort` method (host.rs:779):
+  ```rust
+  async fn resolve_message_text(
+      &self,
+      context: &LoopRunContext,
+      message_ref: &LoopMessageRef,
+  ) -> Result<String, AgentLoopHostError>;
+  ```
+  This must return the **raw** accepted-message body — NOT `safe_summary` (sanitized
+  `safe_summary` redacts credential-like tokens to `[redacted]` (host.rs:1170–1198),
+  which would corrupt intent matching for `resolve_intent`). The composition layer
+  implements it against `messages_by_run`.
+- `InputStage` (`input.rs`): `consume_drainable_inputs` is a free function with no host
+  access, so it cannot resolve the ref itself. Change it to **return the last consumed
+  user-facing `message_ref`** (bind `LoopInput::UserMessage { message_ref }` /
+  `FollowUp` / `Steering` in the drain-mode arm, input.rs:170–174, and return the last
+  one). Then `drain` (which holds `ctx`) calls
+  `ctx.host.resolve_message_text(context, &last_message_ref)` and stores the result in
+  `state.last_user_text`. This is the exact call H3 asked the plan to specify.
+
+> **Note:** Both ports are **Phase H prerequisites**, not Phase K afterthoughts. They are
+> additive `brassclaw_turns` traits with `NoRetrieval` / `resolve_message_text`-returning-
+> `None` defaults, so existing host impls (tests) keep compiling. They MUST be added in
+> the same phase as the `RecipeStage` dispatch body (item 3) — the dispatch pseudocode
+> (`result = retrieval_source.fetch_for_turn(...)`, `user_text = state.last_user_text`)
+> is unimplementable without them.
+
 #### Files to modify
 
 1. `crates/brassclaw_agent_loop/src/state.rs` — add to `LoopExecutionState`:
@@ -2379,6 +2751,25 @@ and falls through to Tier 2 on no match.
    > `content` is an assumption — it has NOT been verified by reading that crate's source.
    > Before implementing, read `brassclaw_turns/src/lib.rs` or wherever `LoopInput` is
    > defined and confirm the exact field name. The implementation must not guess.
+   >
+   > **✅ Review note (pre-v3 audit) — COMP-01 RESOLVED by reading the source — and the
+   > H3 "specify which call" follow-up is RESOLVED in §H.0 above:** `LoopContextPort::resolve_message_text(context, message_ref)` reads the raw text from the composition
+   > `messages_by_run` store; `consume_drainable_inputs` returns the last consumed ref and
+   > `drain` resolves it. Original audit detail retained below:
+   > `LoopInput` is defined in `crates/brassclaw_turns/src/run_profile/host.rs:843` and
+   > re-exported from `lib.rs:56`. The variant is `UserMessage { message_ref: LoopMessageRef }`
+   > — there is **no `content` field**; the payload is a `message_ref`, not text. `LoopMessageRef`
+   > is an opaque newtype produced by the `loop_ref!` macro (`brassclaw_turns/src/ids.rs:242`,
+   > string form `"msg:…"`); it is a reference, **not embedded message text**. The other
+   > user-facing variants are identical: `FollowUp { message_ref }`, `Steering { message_ref }`.
+   > Consequence for Phase H: `consume_drainable_inputs` (`input.rs:154`) cannot "extract the
+   > text" from the `LoopInput` value alone — it only holds an opaque ref. To populate
+   > `state.last_user_text`, Phase H must resolve the ref to its text via a host/turn API
+   > (the accepted-message body keyed by `message_ref`), or capture the text earlier in the
+   > pipeline where it is still available (e.g. the turn-submission path that mints the ref).
+   > The plan's "capture the text from whichever UserMessage/Steering input was consumed"
+   > understates this: the text is not in the `LoopInput`, so a host fetch or an upstream
+   > capture is required. Specify exactly which call resolves `message_ref → text`.
 
 3. `crates/brassclaw_agent_loop/src/executor/recipe.rs` — replace stub with full dispatch:
 
@@ -2413,6 +2804,26 @@ and falls through to Tier 2 on no match.
    > Python scripting engine) so it CAN apply rust_items to the Rust execution context
    > directly. For Tier 1, rust_items are stashed in `state.recipe_rust_context` and
    > applied by the executor before the Python script is invoked.
+   >
+   > **✅ Review note (pre-v3 audit) — resolves the Phase A "store round-trip" gap for the runtime
+   > path — RESOLVED:** follow-up (1) (WebUI save path: `RECIPE_SELECT`/`decode_recipe_row`/
+   > `NewPgRecipe`) is now in Phase A's "Files to modify" (see the H1 resolution); follow-up (2)
+   > (H4: `RecipeStage` reaching `PostgresSource` across the crate boundary) is RESOLVED in §H.0
+   > above via the new `LoopRetrievalPort` host port. Original audit detail retained below:
+   > Because Phase H routes Tier 0/1 through `PostgresSource::fetch_for_turn` (intent/IBS),
+   > which reads `step_descriptions` + `variable_patterns` **straight from the `reborn_recipes`
+   > row** (Phase E step 2), the runtime never needs `step_descriptions` on `RecipeMatchDto` or on
+   > the engine `Recipe` struct. That resolves the Phase A concern *for the dispatch path*. Two
+   > follow-ups remain: (1) the **WebUI authoring/save path** (`PgRecipeStoreFacade`,
+   > `pg_recipe_store.rs:861`) still needs to SELECT/decode/insert `step_descriptions` so authors
+   > can write and re-load it — `RECIPE_SELECT`/`decode_recipe_row`/`NewPgRecipe` must be extended
+   > (this was missing from Phase A's file list); (2) `RecipeStage::process` calls
+   > `retrieval_source.fetch_for_turn` — confirm `RecipeStage` (in `brassclaw_agent_loop`) can
+   > actually reach `PostgresSource`. The agent-loop crate does **not** depend on
+   > `brassclaw_engine`, and `RetrievalSource`/`PostgresSource` live in `brassclaw_engine`. The
+   > retrieval source is exposed to stages via the host port (`ctx.host.…`), not as a direct
+   > engine import — Phase H must specify the host port method that exposes `fetch_for_turn` to
+   > `RecipeStage` (the §0.3 flow assumes this exists; verify it does, or add it).
 
    ```
    RecipeStage::process(state):
@@ -2687,13 +3098,76 @@ column on all component tables.
 
 #### J.1 Skill `intent_examples` seeding
 
-- `crates/brassclaw_skills/src/types.rs` — add `intent_examples: Vec<String>` (≤512 chars
-  each, capped at 20) to `SkillManifest`; enforce limits in `ActivationCriteria::enforce_limits`.
-- On skill `auto_passed` transition: call `seed_intent_input` for each intent expression.
-- On skill wipe/delete: call `purge_component_inputs(component_id)`.
+Intent examples already live on `reborn_skills.intent_examples` (JSONB array of
+`{input, class}` objects, `class` ∈ 1|2|3) — added in `V027__reborn_skills.sql:67` with a
+GIN index at `V027:139–141`. They are authored via the **skill store** input structs
+(`CreateSkillInput`/`UpdateSkillInput`, `db_store.rs:167`/`:207`), validated to the
+`{input, class}` shape at `db_store.rs:348–371`. **Migration V054's `ADD COLUMN IF NOT
+EXISTS intent_examples` is therefore a NO-OP** (the §2 table already flags this) — do not
+expect it to create a column.
 
-**Migration V051:**
+The genuinely missing piece is **propagation into the intent table**: today
+`reborn_skills.intent_examples` never reaches `reborn_intent_inputs`, so `resolve_intent`
+cannot match skill intents. J.1 wires that propagation:
+
+- **Do NOT add `intent_examples: Vec<String>` to `SkillManifest`** (`types.rs:127`).
+  `SkillManifest` has no such field today, and `Vec<String>` is **shape-incompatible**
+  with the existing DB column (which stores `{input, class}` objects, dropping the
+  `class` 1|2|3 the schema/validator require). Keep intent examples **DB-only** via the
+  skill store API (the existing authoring surface). (If SKILL.md-frontmatter authoring is
+  later desired, it must use `{input, class}` objects — not `Vec<String>` — so the
+  manifest ↔ DB round-trip is consistent; that is a separate, optional change, not J.1.)
+- On skill `auto_passed` transition (Q1 auto-pass in the validation queue): call
+  `seed_intent_input` (`intent_system.rs:462`, writes `reborn_intent_inputs`, the V028
+  table `resolve_intent` queries) for each `{input, class}` intent expression, so skill
+  intents become matchable. `seed_intent_input` is not called from `brassclaw_skills`
+  today (only `intent_system.rs` / `pg_intent_inputs_store.rs` reference it) — this is
+  the new wiring. **Ordering:** `auto_passed` is a queue state from the Phase N gate
+  logic (V058); this wiring therefore lands after Phase N's queue/gate is in place (or,
+  pre-Phase-N, hook the existing `validation_status='validated'` transition as the
+  interim trigger).
+- On skill wipe/delete: call `purge_component_inputs(component_id)` (remove its rows
+  from `reborn_intent_inputs`).
+
+> **✅ Review note (pre-v3 audit) — J.1 conflates three things; the migration is a no-op and the
+> `SkillManifest` shape is wrong — RESOLVED:** the J.1 body above has been rewritten to match
+> this audit: the migration is stated as a NO-OP, the `SkillManifest` `Vec<String>` change is
+> dropped as shape-incompatible (intent examples stay DB-only via the store API), and the real
+> wiring (`auto_passed → seed_intent_input` + `purge_component_inputs` on delete) is retained.
+> Original audit detail retained below for traceability:
+> 1. **Migration V054 `ADD COLUMN IF NOT EXISTS intent_examples` is a NO-OP.** `reborn_skills`
+>    already has an `intent_examples JSONB NOT NULL DEFAULT '[]'` column — added in
+>    `V027__reborn_skills.sql:67`, with a GIN index at `V027:139–141`. It stores an array of
+>    `{input, class}` objects (the `class` is 1|2|3), **not** an array of strings. The §2 migration
+>    table already flags V054 as a no-op; J.1 should state it explicitly so the implementer does
+>    not expect a column to be created.
+> 2. **`SkillManifest` (`crates/brassclaw_skills/src/types.rs:127`) has NO `intent_examples`
+>    field** today. Intent examples are authored via the **skill store** input structs
+>    (`CreateSkillInput`/`UpdateSkillInput` in `db_store.rs:167`/`:207`) as `intent_examples:
+>    JsonValue`, validated to the `{input, class}` shape at `db_store.rs:348–371` and persisted at
+>    `db_store.rs:463/505`. So intent examples are **DB-only metadata set through the store API**,
+>    not a SKILL.md frontmatter field. Adding `intent_examples: Vec<String>` to `SkillManifest`
+>    would (a) introduce a *new* SKILL.md authoring surface that doesn't exist today, and
+>    (b) be **shape-incompatible** with the existing DB column — `Vec<String>` drops the `class`
+>    1|2|3 field that the schema and validator require. Reconcile before implementing: either keep
+>    intent examples DB-only (drop the `SkillManifest` change entirely) or, if SKILL.md
+>    authoring is desired, use `{input, class}` objects (not `Vec<String>`) so the manifest ↔ DB
+>    round-trip is consistent.
+> 3. **The genuinely missing wiring is the propagation
+>    `reborn_skills.intent_examples` → `reborn_intent_inputs`.** `seed_intent_input`
+>    (`intent_system.rs:462`, writes to `reborn_intent_inputs`, the V028 table that
+>    `resolve_intent` actually queries) is **not called from `brassclaw_skills` today** (verified:
+>    the only references are `intent_system.rs` and `pg_intent_inputs_store.rs`). So skill intent
+>    examples sit on the skill row but never reach the intent-inputs table — `resolve_intent`
+>    cannot match them until J.1 wires the `auto_passed` → `seed_intent_input` call. This is the
+>    correct core of J.1; the `SkillManifest`/`Vec<String>` addition is a separable authoring
+>    question (point 2) and the migration is a no-op (point 1).
+
+**Migration V054:**
 ```sql
+-- NO-OP: reborn_skills.intent_examples already exists (V027__reborn_skills.sql:67,
+-- JSONB NOT NULL DEFAULT '[]' of {input, class} objects). IF NOT EXISTS makes this
+-- idempotent and harmless; do not expect it to create a column.
 ALTER TABLE reborn_skills ADD COLUMN IF NOT EXISTS intent_examples JSONB;
 ```
 
@@ -2711,7 +3185,7 @@ traversal. This is a nullable column — components with no declared dependencie
 New tables (Phases B, C) include the column from creation: `reborn_python_code`,
 `reborn_extension_catalogues`.
 
-**Migration V051** (same file, additional statements):
+**Migration V054** (same file, additional statements):
 ```sql
 ALTER TABLE reborn_skills        ADD COLUMN IF NOT EXISTS dependency_registry JSONB;
 ALTER TABLE reborn_tools         ADD COLUMN IF NOT EXISTS dependency_registry JSONB;
@@ -2741,9 +3215,13 @@ channels by `class_code` and merged into the corresponding `SplitResult` item li
 
 #### Tests
 
-- Unit: `SkillManifest` with `intent_examples` YAML roundtrip
-- Unit: entry > 512 chars → rejected by `enforce_limits`
-- Integration: Skill with `intent_examples` → resolves via `resolve_intent`
+- Unit: skill store `CreateSkillInput`/`UpdateSkillInput` `intent_examples` round-trips
+  `{input, class}` objects (validated to the `{input, class}` shape at `db_store.rs:348–371`);
+  a `Vec<String>`-shaped value is rejected (shape-incompatible — see J.1; `SkillManifest`
+  has no `intent_examples` field)
+- Unit: `intent_examples` entry > 512 chars → rejected by the store validator
+- Integration: Skill with `intent_examples` → `auto_passed` calls `seed_intent_input` →
+  resolves via `resolve_intent` (the J.1 wiring)
 - Integration: `resolve_dependencies` with `"1[all]"` → full transitive closure fetched
 - Integration: `resolve_dependencies` with `"5[2,6]"` → only indices 2 and 6 fetched, no sub-deps
 - Integration: `resolve_dependencies` — UUID already in `visited` → skipped (deduplication)
@@ -2758,7 +3236,7 @@ channels by `class_code` and merged into the corresponding `SplitResult` item li
 
 #### K.1 BasicPromptStore
 
-**Migration V052.**
+**Migration V055.**
 
 ```sql
 CREATE TABLE reborn_basic_prompt_store (
@@ -2814,18 +3292,53 @@ All inserted with `validation_status = 'pending'` — external MCP content must 
 - Remove step-0 shim comment block from `default.py` (the `# Pre-Phase-5 fallback`
   comment block around the dead `__retrieve_docs__(goal, 5)` call — Phase G already
   removes the call itself; Phase K removes the comment artefact).
-- Delete `crates/brassclaw_engine/src/memory/retrieval_dbless.rs`. All helper
-  functions that survive (`extract_keywords`, `keyword_match_score`,
-  `doc_type_weight_by_class`) are moved to `retrieval_source.rs` as private helpers.
-  The `doc_type_weight(DocType)` enum-keyed function is deleted outright — it is only
-  used by `RamSource` tests, which are also deleted.
+- Delete `crates/brassclaw_engine/src/memory/retrieval_dbless.rs`. Surviving helper
+  functions (`extract_keywords`, `keyword_match_score`) are moved to `retrieval_source.rs`
+  as private helpers.
+  > **✅ Review note (pre-v3 audit) — RESOLVED (obsolete, already done):** `doc_type_weight_by_class` was already deleted in
+  > `Goals_pre_v3_review.md` Step 12 (together with the filesystem fallback-content path),
+  > not here in Phase K — there is nothing left to move for it. The enum-keyed
+  > `doc_type_weight(DocType)` function was already removed in the same Step 12 pass. What
+  > remains for Phase K to delete from `retrieval_dbless.rs` is `extract_keywords` /
+  > `keyword_match_score` (move to `retrieval_source.rs`) plus the file itself, and the
+  > `RamSource` struct/tests in `retrieval_source.rs`.
 - Delete `RamSource` from `retrieval_source.rs` and remove it from `mod.rs` exports.
   `RamSource` is the DB-less fallback; it has no role in a Postgres-only deployment.
   All unit tests that construct a `RamSource` directly are replaced by integration tests
-  against `PostgresSource`.
+  against `PostgresSource`. **Prerequisite satisfied by Phase E.0:** `PostgresSource` is
+  already the live backend (E.0 wired it + removed the `TODO(Phase K)` marker), so this
+  K.3 step is **pure deletion** — no wiring race, no "no retrieval backend" window. Verify
+  E.0's acceptance criteria (live turns take `PostgresSource::fetch_for_turn`) still hold
+  immediately before this deletion.
+  > **✅ Review note (pre-v3 audit) — ORDERING HAZARD: do not delete `RamSource` until
+  > `PostgresSource` is wired in production — RESOLVED by Phase E.0:** E.0 (added before
+  > Phase E) wires `PostgresSource` as the live backend and removes the `TODO(Phase K)`
+  > marker, so by Phase K `RamSource` is no longer the active backend — K.3 is pure
+  > deletion, exactly the "wire-then-delete" split the note required (with the wire step
+  > pulled forward to E.0). Original audit detail retained below:
+  > `RamSource` is the *active* production
+  > retrieval backend today (`manager.rs:383`, with the `TODO(Phase K)` from
+  > `Goals_pre_v3_review.md` Step 8). Deleting it before the composition layer calls
+  > `with_retrieval_source(PostgresSource)` leaves the engine with **no** retrieval backend
+  > — every turn's `__assemble_prior_knowledge__` returns empty. Phase K.3 must be split
+  > into two ordered sub-steps: (1) wire `PostgresSource` into `manager.rs` (composition),
+  > ship and verify live turns take the intent path; (2) **then** delete `RamSource` +
+  > `retrieval_dbless.rs`. This matches `Goals_pre_v3_review.md` Step 14's ordering
+  > constraint and the §0.3 / Phase E review notes. If Phase K is also the first phase to
+  > wire `PostgresSource`, the wiring sub-step must be done *and verified* before the
+  > deletion sub-step in the same phase.
 - Remove `handle_retrieve_docs` from `orchestrator.rs` (the function body, not just
   the registration). Remove `RetrievalEngine::retrieve_context` if it has no other
   callers after this deletion.
+- **Delete the legacy `retrieve_context` fallback block in `handle_assemble_prior_knowledge`
+  (`orchestrator.rs:2620–2637`).** This is the second caller of `retrieve_context` (the
+  first being `handle_retrieve_docs`), preserved unchanged through Phase F per the C3
+  resolution. With `PostgresSource` live (E.0) and `RamSource` deleted (previous bullet),
+  the `if let Some(source) = retrieval_source` arm at `orchestrator.rs:2574` is always
+  taken in production, so the `None`/error fallthrough to `retrieve_context` is dead.
+  Delete the block; then `retrieve_context` has no remaining callers and is removed by
+  the previous bullet. (Order: delete `handle_retrieve_docs` + this fallback block first,
+  then remove `retrieve_context` itself.)
 - Add deprecation notice to `__list_skills__`: no longer called from default step-0;
   remains callable for external/custom orchestrators.
 - `__assemble_prior_knowledge__` is **not removed**. It is the primary prior-knowledge
@@ -2854,10 +3367,10 @@ external third-party MCP servers (unknown shape, must enter Q1/Q2). The builtin 
 targets the 23 first-party tools: content is hand-authored, quality is guaranteed at
 compile time, and Q2 manual review is bypassed (`source = "system"`, `validation_status = "validated"`).
 
-#### L.1 New migration: V053
+#### L.1 New migration: V056
 
 ```sql
--- V053__reborn_tools_capability_id_and_system_source.sql
+-- V056__reborn_tools_capability_id_and_system_source.sql
 ALTER TABLE reborn_tools ADD COLUMN IF NOT EXISTS capability_id TEXT;
 CREATE INDEX IF NOT EXISTS reborn_tools_capability_id_idx
     ON reborn_tools (tenant_id, user_id, agent_id, project_id, capability_id)
@@ -2984,9 +3497,9 @@ and editable without recompiling.
 will match user text that fits the template. Value extraction is automatic from
 template segments; `variable_patterns` remains optional refinement.
 
-#### M.1 New migration: V054
+#### M.1 New migration: V057
 
-**File:** `crates/brassclaw_pg/migrations/V054__reborn_intent_inputs_template.sql`
+**File:** `crates/brassclaw_pg/migrations/V057__reborn_intent_inputs_template.sql`
 
 ```sql
 ALTER TABLE reborn_intent_inputs
@@ -3089,7 +3602,7 @@ In the intent expression input field:
 
 #### Files to create
 
-- `crates/brassclaw_pg/migrations/V054__reborn_intent_inputs_template.sql`
+- `crates/brassclaw_pg/migrations/V057__reborn_intent_inputs_template.sql`
 - `crates/brassclaw_engine/src/memory/template_extractor.rs` (or inline in `intent_system.rs`)
 
 #### Files to modify
@@ -3132,12 +3645,12 @@ tables' `validation_status` column and all retrieval queries are unchanged.
 > **Pre-requisite awareness:** Phase N touches 13 component tables. Each column removal
 > is a two-step migration: (1) add the column to the queue table and populate it from
 > the existing component columns (data migration), (2) drop the now-redundant columns.
-> Both steps are in a single migration file (V055). The migration is additive-first,
+> Both steps are in a single migration file (V058). The migration is additive-first,
 > destructive-second within one transaction to guarantee atomicity.
 
-#### N.1 New migration: V055
+#### N.1 New migration: V058
 
-**File:** `crates/brassclaw_pg/migrations/V055__reborn_validation_queue.sql`
+**File:** `crates/brassclaw_pg/migrations/V058__reborn_validation_queue.sql`
 
 ```sql
 -- Step 1: create the queue table (see §0.18 for full DDL)
@@ -3170,7 +3683,22 @@ SELECT
     created_at
 FROM reborn_skills
 WHERE validation_status != 'validated'
--- Repeated for each of the 13 component tables with correct class_code values.
+-- Repeated for each of the 15 component tables with the correct class_code value:
+-- the 13 existing tables + reborn_python_code (class 22) and reborn_extension_catalogues
+-- (class 23). The two Phase B/C tables carry validation_status (the column that STAYS on
+-- the component table — see §0.18) even though they never carried the five queue-tracking
+-- columns, so their pending rows MUST be populated here too.
+--
+-- IMPLEMENTATION NOTE: the SELECT above references review_attempts / review_feedback /
+-- validation_errors — columns the 13 EXISTING tables have. The two Phase B/C tables
+-- (reborn_python_code, reborn_extension_catalogues) do NOT have these columns, so their
+-- per-table INSERT arm must substitute literal defaults in place of the column refs:
+--     COALESCE(NULL, 0) AS counter,           -- 0  (no prior attempts)
+--     NULL       AS review_feedback,           -- no Q2 feedback yet
+--     '{}'::TEXT[] AS validation_errors         -- no Q1 errors yet
+-- (the scope columns tenant_id/user_id/agent_id/project_id and the CASE on
+-- validation_status ARE available on all 15 tables). Failing to substitute the
+-- literals would make the 22/23 arm reference a non-existent column and abort V058.
 ON CONFLICT DO NOTHING;
 
 -- Step 3: add last_graduation_at to scope cursor
@@ -3178,9 +3706,13 @@ ALTER TABLE reborn_monty_vm_settings
     ADD COLUMN IF NOT EXISTS last_graduation_at TIMESTAMPTZ;
 
 -- Step 4: trigger — bump last_graduation_at on queue row DELETE (= graduation)
--- ⚠️ FINDING D: PgMontyVmSettingsStore::upsert is NOT INSERT...ON CONFLICT — a scope row
--- may not exist yet when the first graduation fires. Use INSERT...ON CONFLICT here, not
--- a bare UPDATE, so the first graduation creates the cursor row atomically.
+-- Uses INSERT ... ON CONFLICT so the first graduation creates the cursor row
+-- atomically even when no reborn_monty_vm_settings row exists yet for the scope
+-- (every resource column has a NOT NULL DEFAULT in V034, so the 5-column INSERT
+-- succeeds and the remaining columns take their defaults). This matches the
+-- existing PgMontyVmSettingsStore::upsert pattern (pg_monty_vm_settings.rs:162-179,
+-- an INSERT ... ON CONFLICT ON CONSTRAINT ... DO UPDATE). See the FINDING D
+-- resolution note below.
 CREATE OR REPLACE FUNCTION reborn_validation_queue_graduation()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
@@ -3205,37 +3737,65 @@ ALTER TABLE reborn_skills
     DROP COLUMN IF EXISTS review_feedback,
     DROP COLUMN IF EXISTS rejected_at,
     DROP COLUMN IF EXISTS validation_errors;
--- Repeated for all 13 component tables.
+-- Repeated for all 13 EXISTING component tables (the ones that carried these columns).
+-- The Phase B/C tables (reborn_python_code, reborn_extension_catalogues) never carried
+-- these five columns (see §0.18 / Phase B+C "Do NOT include") so there is nothing to
+-- drop from them — no ALTER is needed for those two.
 -- validation_status is NOT dropped — it remains as the post-validation gate.
 ```
 
 **Note on scope cursor:** `reborn_monty_vm_settings` has a guaranteed row for every
 active scope.
 
-> **⚠️ FINDING D — `PgMontyVmSettingsStore::upsert` is NOT a true INSERT … ON CONFLICT:**
-> The `upsert` method (line 103 in `pg_monty_vm_settings.rs`) does a `SELECT` first, then
-> writes. It is NOT an `INSERT ... ON CONFLICT DO UPDATE` pattern — it will NOT create a row
-> if one does not yet exist for the scope. If `reborn_monty_vm_settings` has no row for a
-> scope at graduation time, the trigger's `UPDATE reborn_monty_vm_settings SET last_graduation_at = now() WHERE ...`
-> is a **silent no-op** — graduation events would be invisible to the cache.
->
-> **Required fix in Phase N:**
-> Either (a) change `PgMontyVmSettingsStore::upsert` to a real `INSERT ... ON CONFLICT DO UPDATE`
-> so a row is guaranteed to exist on first write, OR (b) in the graduation trigger function,
-> use `INSERT ... ON CONFLICT DO UPDATE` rather than a bare `UPDATE`:
-> ```sql
-> INSERT INTO reborn_monty_vm_settings (tenant_id, user_id, agent_id, project_id, last_graduation_at)
->     VALUES (OLD.tenant_id, OLD.user_id, OLD.agent_id, OLD.project_id, now())
->     ON CONFLICT (tenant_id, user_id, agent_id, project_id)
->     DO UPDATE SET last_graduation_at = now();
-> ```
-> Option (b) is self-contained in the migration trigger and does not require changing
-> `PgMontyVmSettingsStore`. This is the recommended approach.
->
-> The bare `UPDATE` in the current N.1 SQL block is wrong — it must be replaced with the
-> `INSERT ... ON CONFLICT DO UPDATE` form shown above in `reborn_validation_queue_graduation()`.
+> **✅ FINDING D — RESOLVED (pre-v3 audit): struck as stale / factually wrong.**
+> The original block here asserted that `PgMontyVmSettingsStore::upsert` was "NOT a true
+> INSERT … ON CONFLICT" and that the graduation trigger used a "bare `UPDATE`" that would be
+> a "silent no-op". Both premises are **false** against the current code and this plan's own
+> Step-4 SQL above. See the **Review note (pre-v3 audit)** immediately below for the full
+> line-by-line verification. Summary: `upsert` (`pg_monty_vm_settings.rs:108`; SQL `:162–179`)
+> **is** an `INSERT … ON CONFLICT ON CONSTRAINT … DO UPDATE` (creates the row if absent); the
+> Step-4 trigger **already** uses `INSERT … ON CONFLICT DO UPDATE`; the V034 schema
+> (`NOT NULL DEFAULT …` on every resource column) makes the 5-column INSERT valid. **No
+> Phase N code change is required** — do not add a duplicate `INSERT … ON CONFLICT` "fix" and
+> do not rewrite `upsert` (doing so risks introducing a real bug). The original "Required
+> fix" / "bare UPDATE" / "silent no-op" text that occupied this block has been removed.
 
-No separate `reborn_scope_cursors` table is needed, but the trigger SQL must be the INSERT+ON CONFLICT form, not a bare UPDATE.
+> **Review note (pre-v3 audit) — FINDING D is STALE and factually wrong; the N.1 SQL already
+> does the right thing. Verify before implementing — do NOT "fix" what is not broken:**
+> 1. **The premise is false.** `PgMontyVmSettingsStore::upsert`
+>    (`crates/brassclaw_reborn_composition/src/pg_monty_vm_settings.rs:108`; the write SQL is at
+>    `:162–179`) **is** a true `INSERT INTO reborn_monty_vm_settings (…) VALUES (…) ON CONFLICT ON
+>    CONSTRAINT reborn_monty_vm_settings_scope_unique DO UPDATE SET …`. It does read the current
+>    row first (`self.get(…)` at `:125`) — but only to fill in *unchanged* fields for the
+>    `DO UPDATE SET` clause; the write itself is an `INSERT … ON CONFLICT … DO UPDATE`, which
+>    **creates** the row if absent. So "it will NOT create a row if one does not yet exist" is
+>    incorrect. (The line cite "line 103" is also off — the `pub async fn upsert` signature is at
+>    `:108`.)
+> 2. **The N.1 SQL block already uses the recommended form.** The
+>    `reborn_validation_queue_graduation()` trigger above (lines ~3371–3376) already issues
+>    `INSERT INTO reborn_monty_vm_settings (tenant_id, user_id, agent_id, project_id,
+>    last_graduation_at) VALUES (…) ON CONFLICT (tenant_id, user_id, agent_id, project_id) DO
+>    UPDATE SET last_graduation_at = now()` — i.e. option (b) is *already implemented* in the
+>    plan. FINDING D's claim that the block contains a "bare `UPDATE`" describes a state that
+>    does not exist in this plan. The conflict target `(tenant_id, user_id, agent_id,
+>    project_id)` is backed by the `reborn_monty_vm_settings_scope_unique` UNIQUE constraint
+>    (`V034:67–69`), so the `ON CONFLICT (…)` resolves correctly.
+> 3. **The INSERT is valid against the V034 schema.** `reborn_monty_vm_settings` (`V034:15–69`)
+>    has `id DEFAULT gen_random_uuid()` and every resource column (`max_duration_secs`,
+>    `max_allocations`, `max_memory_bytes`, `failure_rollback_threshold`,
+>    `prior_knowledge_token_budget`, `q4_retention_days`, `forensic_packet_retention_days`) is
+>    `NOT NULL DEFAULT …`; `created_at`/`updated_at` default to `now()`. Only
+>    `active_orchestrator_id` is nullable. So the trigger's 5-column INSERT (plus
+>    `last_graduation_at`, added nullable in Step 3 of this same migration) succeeds — the
+>    remaining columns take their defaults — and the first graduation atomically creates the
+>    cursor row. The "silent no-op" alarm is unfounded.
+> **Action:** treat FINDING D as already-resolved/superseded. Do not add a second
+> `INSERT … ON CONFLICT` "fix" on top of the existing trigger (it would be a no-op duplicate),
+> and do not rewrite `PgMontyVmSettingsStore::upsert` — it is already correct. If anything,
+> update the FINDING D prose to match the SQL (or delete it) so a future implementer does not
+> "correct" a correct trigger and risk introducing a real bug.
+
+No separate `reborn_scope_cursors` table is needed; the Step-4 trigger SQL above is already the `INSERT ... ON CONFLICT DO UPDATE` form (FINDING D resolved — see note above).
 
 #### N.2 Application-layer write paths
 
@@ -3305,7 +3865,7 @@ correct. Fine-grained per-component eviction is a future optimisation.
 Remove from all 13 component tables: `queue_code`, `review_attempts`, `review_feedback`,
 `rejected_at`, `validation_errors`.
 
-> **Rust struct sync required:** After V055 drops these columns, ALL structs that read
+> **Rust struct sync required:** After V058 drops these columns, ALL structs that read
 > or write them must be updated atomically. Affected:
 >
 > - **`Recipe` + `ToolSkill` in `crates/brassclaw_engine/src/types/recipe.rs`:**
@@ -3324,17 +3884,35 @@ Remove from all 13 component tables: `queue_code`, `review_attempts`, `review_fe
 >   Must be updated when the columns are dropped.
 >
 > - **`component_validator.rs`** — creates `Recipe` structs with `validation_errors`.
-> - **`recipe_matcher.rs`** — reads `wilson_lower` + `tier` (NOT dropped by V055),
+> - **`recipe_matcher.rs`** — reads `wilson_lower` + `tier` (NOT dropped by V058),
 >   but also references `validation_errors` in some paths — audit required.
 > - Any other caller that constructs or destructures these structs.
 >
 > **Two-phase deploy required (zero-downtime):**
-> V055 drops columns. If the old binary is still running when V055 runs (rolling deploy),
+> V058 drops columns. If the old binary is still running when V058 runs (rolling deploy),
 > it will SELECT dropped columns → runtime panic on every request. Required deploy order:
 > 1. Deploy new binary (with structs updated to use `Option<T>` + `#[serde(default)]`
 >    for the fields being dropped — existing data still returns values, new `None` is fine).
-> 2. Run V055 migration (now safe — binary no longer queries dropped columns as required).
+> 2. Run V058 migration (now safe — binary no longer queries dropped columns as required).
 > 3. Remove the `Option` wrappers in a follow-up cleanup commit.
+
+> **✅ Review note (pre-v3 audit) — N.4 struct audit verified with exact line refs — RESOLVED:**
+> the positional-re-index caveat is captured below (dropping a column from `RECIPE_SELECT`
+> requires renumbering every later `row.get(N)` in `decode_recipe_row`); the N.4 task now
+> carries that re-index instruction so the column-drop migration does not silently read the
+> wrong column. This gates the Phase N column-drop migration — no code change yet.
+> Original detail retained:
+> Confirmed against current code: the engine `Recipe` struct (`types/recipe.rs:144`) carries
+> `validation_errors: Vec<String>` (:167), `review_feedback: Option<String>` (:168),
+> `review_attempts: u32` (:169), `rejected_at: Option<DateTime<Utc>>` (:170) and has **no**
+> `queue_code` (matches N.4). `PgRecipe` (`pg_recipe_store.rs:117`) + `RECIPE_SELECT` (:208–217)
+> select and decode all five incl. `queue_code` (:120, :236 area) — `decode_recipe_row` (:219) is
+> positional, so dropping a column requires renumbering every `row.get(N)` index after it (the
+> plan's "remove all five from both `PgRecipe` and `RECIPE_SELECT`" must therefore also re-index
+> `decode_recipe_row`, not just delete the lines). `RecipeValidationStatusUpdate` (:170) does
+> carry `validation_errors`/`review_feedback`/`queue_code`. `recipe_matcher.rs` reads
+> `wilson_lower` + `tier` (not dropped) and does reference the dropped fields in conversion
+> paths — the N.4 "audit required" is genuine. The two-phase deploy is the correct mitigation.
 
 The 13 tables are: `reborn_skills`, `reborn_tools`, `reborn_tool_skills`,
 `reborn_recipes`, `reborn_actions`, `reborn_specs`, `reborn_plans`, `reborn_summaries`,
@@ -3344,9 +3922,17 @@ The 13 tables are: `reborn_skills`, `reborn_tools`, `reborn_tool_skills`,
 the start (they are new tables authored after this design is decided).
 
 **`reborn_python_code` and `reborn_extension_catalogues` (Phases B and C):** These
-tables are created after Phase N is planned. They must NOT include `queue_code`,
-`review_attempts`, `review_feedback`, `rejected_at`, or `validation_errors` columns —
-they rely on `reborn_validation_queue` from day one.
+tables are created in V051/V052, ~12 phases **before** `reborn_validation_queue` lands
+(V058/Phase N). They must NOT include `queue_code`, `review_attempts`,
+`review_feedback`, `rejected_at`, or `validation_errors` columns (those five are
+centralised on the queue). They DO carry `validation_status` (the post-validation gate,
+which STAYS on the component table — see §0.18). Until Phase N lands, a WebUI-authored
+row in these tables is `validation_status='pending'` with **no queue row** — the §0.5
+snippet→Q1→Q2 promotion flow is a **Phase N capability** (it needs the queue + gate
+logic); pre-Phase-N only system-seeded (Phase L) or operator-validated rows are usable.
+The V058 boot-integrity check auto-submits any pending rows when Phase N lands. (See the
+matching Phase B/C "Do NOT include" guidance and the C1 resolution — "rely on the queue
+from day one" is wrong; the queue does not exist until V058.)
 
 #### N.5 Integrity check at boot
 
@@ -3354,15 +3940,42 @@ A boot-time check (in `brassclaw_reborn_composition` init sequence):
 
 ```sql
 -- Components not in 'validated' state that have no queue row are inconsistent.
-SELECT component_id, 'skills' AS source FROM reborn_skills
+-- UNION ALL over EVERY component table that carries validation_status (15 today):
+-- the 13 pre-existing tables PLUS the V051/V052 additions (classes 22/23).
+-- The two new tables (reborn_python_code, reborn_extension_catalogues) MUST be
+-- included or their components never enter the queue even after V058 lands
+-- (C1 resolution: V051/V052 carry validation_status but no queue row pre-Phase-N).
+SELECT id AS component_id, 'skills'      AS source FROM reborn_skills
 WHERE validation_status != 'validated'
-  AND id NOT IN (SELECT component_id FROM reborn_validation_queue
-                 WHERE tenant_id = $1 AND ...)
--- UNION ALL for each table
+  AND id NOT IN (SELECT component_id FROM reborn_validation_queue WHERE tenant_id = $1 AND ...)
+UNION ALL SELECT id, 'actions'     FROM reborn_actions            WHERE validation_status != 'validated' AND id NOT IN (SELECT component_id FROM reborn_validation_queue WHERE tenant_id = $1 AND ...)
+UNION ALL SELECT id, 'tools'       FROM reborn_tools              WHERE validation_status != 'validated' AND id NOT IN (SELECT component_id FROM reborn_validation_queue WHERE tenant_id = $1 AND ...)
+UNION ALL SELECT id, 'extensions'  FROM reborn_extensions_unified WHERE validation_status != 'validated' AND id NOT IN (SELECT component_id FROM reborn_validation_queue WHERE tenant_id = $1 AND ...)
+UNION ALL SELECT id, 'recipes'     FROM reborn_recipes            WHERE validation_status != 'validated' AND id NOT IN (SELECT component_id FROM reborn_validation_queue WHERE tenant_id = $1 AND ...)
+UNION ALL SELECT id, 'specs'       FROM reborn_specs              WHERE validation_status != 'validated' AND id NOT IN (SELECT component_id FROM reborn_validation_queue WHERE tenant_id = $1 AND ...)
+UNION ALL SELECT id, 'tool_skills' FROM reborn_tool_skills        WHERE validation_status != 'validated' AND id NOT IN (SELECT component_id FROM reborn_validation_queue WHERE tenant_id = $1 AND ...)
+UNION ALL SELECT id, 'plans'       FROM reborn_plans              WHERE validation_status != 'validated' AND id NOT IN (SELECT component_id FROM reborn_validation_queue WHERE tenant_id = $1 AND ...)
+UNION ALL SELECT id, 'summaries'   FROM reborn_summaries          WHERE validation_status != 'validated' AND id NOT IN (SELECT component_id FROM reborn_validation_queue WHERE tenant_id = $1 AND ...)
+UNION ALL SELECT id, 'docus'       FROM reborn_docus              WHERE validation_status != 'validated' AND id NOT IN (SELECT component_id FROM reborn_validation_queue WHERE tenant_id = $1 AND ...)
+UNION ALL SELECT id, 'lessons'     FROM reborn_lessons            WHERE validation_status != 'validated' AND id NOT IN (SELECT component_id FROM reborn_validation_queue WHERE tenant_id = $1 AND ...)
+UNION ALL SELECT id, 'issues'      FROM reborn_issues             WHERE validation_status != 'validated' AND id NOT IN (SELECT component_id FROM reborn_validation_queue WHERE tenant_id = $1 AND ...)
+UNION ALL SELECT id, 'notes'      FROM reborn_notes              WHERE validation_status != 'validated' AND id NOT IN (SELECT component_id FROM reborn_validation_queue WHERE tenant_id = $1 AND ...)
+UNION ALL SELECT id, 'python_code'         FROM reborn_python_code           -- V051 / class 22 (NEW)
+                                                       WHERE validation_status != 'validated' AND id NOT IN (SELECT component_id FROM reborn_validation_queue WHERE tenant_id = $1 AND ...)
+UNION ALL SELECT id, 'ext_catalogues'      FROM reborn_extension_catalogues   -- V052 / class 23 (NEW)
+                                                       WHERE validation_status != 'validated' AND id NOT IN (SELECT component_id FROM reborn_validation_queue WHERE tenant_id = $1 AND ...)
+-- (The $1 tenant_id and per-table filter are applied per scope; the host-side
+--  loop iterates the 15 tables, or this is emitted as one prepared statement.)
 ```
 
 Inconsistent rows are logged as warnings and automatically submitted to state 1 as
-a recovery action. This covers edge cases from the V058 data migration.
+a recovery action. This covers edge cases from the V058 data migration, and
+critically **back-fills the V051/V052 tables**: any WebUI-authored PythonCode
+(class 22) or ExtensionCatalogue (class 23) row that sat at
+`validation_status='pending'` with no queue row between Phase B/C and Phase N
+(see the C1 resolution — the snippet→Q1→Q2 promotion is a Phase N capability) is
+auto-submitted to the queue here, so the promotion flow becomes reachable the
+moment V058 lands.
 
 #### Tests
 
@@ -3395,6 +4008,59 @@ a recovery action. This covers edge cases from the V058 data migration.
 | `V058__reborn_validation_queue.sql` | New table `reborn_validation_queue` (§0.18); populate from existing component table state; add `last_graduation_at` to scope cursor; graduation trigger; drop `queue_code`/`review_attempts`/`review_feedback`/`rejected_at`/`validation_errors` from all 13 component tables | |
 
 All additive-first. No DROP, no renames. No existing rows break.
+
+> **✅ Review note (pre-v3 audit) — §2 ordering hazard (validation queue vs. new classes
+> 22/23) — RESOLVED (third path chosen):** neither recommended option (a) nor (b) was
+> adopted; a third, cleaner path was taken. V051/V052 carry **only** `validation_status`
+> (no per-table queue columns, no queue table hoisted), and the plan now states plainly
+> that the snippet→Q1→Q2 promotion is a **Phase N capability** — the queue + gate logic
+> both land together at V058. Pre-Phase-N, a WebUI-authored PythonCode (class 22) /
+> ExtensionCatalogue (class 23) row sits at `validation_status='pending'` with **no queue
+> row**, and `fetch_component_by_id` only returns `validation_status='validated'` rows, so
+> such rows are **not yet usable** in `type:"component"` steps — this is a documented
+> pre-Phase-N limitation, not a contradiction. System-seeded rows (Phase L, inserted with
+> `validation_status='validated'`, Q1 run at build time) and operator-validated rows remain
+> usable throughout. V058 then **back-fills the gap**: its populate UNION ALLs over all 15
+> tables (13 existing + the two Phase B/C tables), its boot-integrity check auto-submits
+> every `pending`-with-no-queue row (including the backlogged class 22/23 rows) to the
+> queue, and the Q1/Q2 gate logic makes the snippet→component promotion reachable the
+> moment V058 lands. This is landable: no migration reordering, no "from day one" lie
+> (the contradictory phrase was corrected at §0.5/Phase B/Phase C/Phase N.4), and the
+> pre-Phase-N window is an explicit, gated limitation rather than dead code. Concrete
+> edits already in the plan: (i) Phase B/C "Do NOT include" guidance + Phase N.4 now say
+> the queue lands at V058, ~12 phases after V051/V052 — "rely on the queue from day one"
+> was rewritten; (ii) V058 populate = 15 tables (Step 2, with the literal-default
+> IMPLEMENTATION NOTE for the column-less 22/23 arms), drop = 13 existing tables (Step 5,
+> the two Phase B/C tables never carried the five columns so nothing is dropped from them);
+> (iii) N.5 boot-integrity UNION ALL enumerates all 15 tables explicitly. Original audit
+> detail retained below:
+> The plan tells Phase B (V051 `reborn_python_code`) at line ~2048 and Phase C (V052
+> `reborn_extension_catalogues`) at line ~2105 to **NOT** include per-table `queue_code` /
+> `review_attempts` / `review_feedback` / `rejected_at` / `validation_errors` columns
+> because they "use `reborn_validation_queue` from day one (§0.18, Phase N.4)". But
+> `reborn_validation_queue` is created in **V058 / Phase N** — roughly 12 phases *after*
+> V051/V052. So "from day one" is self-contradictory: between V051 and V058, classes 22
+> and 23 have **neither** the per-table Q1/Q2 columns **nor** the central queue. Consequences
+> the migration sequence must resolve before implementation:
+> (1) The §0.5 snippet→PythonCode promotion flow ("on WebUI save → creates a PythonCode
+> component (class 22), enters Q1 queue") is **unreachable** between Phase B and Phase N —
+> a WebUI-authored PythonCode cannot pass Q1/Q2 because no queue exists, so it can never be
+> promoted from `type: "snippet"` to `type: "component"` (the IBS refuses un-promoted
+> snippets → `IbsError::UnpromotedSnippet`). Phase B's own core WebUI-save path is dead
+> until Phase N lands.
+> (2) V058's populate (line ~3357 "Repeated for each of the 13 component tables") and drop
+> (line ~3392 "Repeated for all 13 component tables") and the boot-integrity UNION ALL
+> (line ~3593 "UNION ALL for each table") all say "13" / "each table" without explicitly
+> listing classes 22/23. Since V051/V052 add no per-table columns there is nothing to DROP
+> (consistent), but the POPULATE / boot-integrity INSERT *must* UNION ALL over the two new
+> tables too, or their components never enter the queue even after V058.
+> **Recommended fix:** either (a) hoist a minimal `reborn_validation_queue`-table-only
+> migration ahead of V051 (split V058 into "create table + indexes" early and "populate +
+> drop legacy columns" at N), or (b) have V051/V052 carry the legacy per-table Q1/Q2
+> columns temporarily and extend V058's populate/drop to all 15 tables. Option (a) keeps
+> the "from day one" promise literally true and is preferred; option (b) requires amending
+> the "13 component tables" counts to 15 and walking back the "Do NOT include" guidance at
+> lines 2048/2105. Either way the sequence as written is not landable.
 
 **`step_link` is nullable** — existing intent rows without it use the existing
 `fetch_component_by_id` path unchanged. Zero breakage on upgrade.

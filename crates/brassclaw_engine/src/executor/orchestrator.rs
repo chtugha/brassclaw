@@ -2572,10 +2572,21 @@ async fn handle_assemble_prior_knowledge(
 
     // Phase 5/6.7 path: use the RetrievalSource backend (intent-driven).
     if let Some(source) = retrieval_source {
+        // Build a scope from the thread's identifiers.  `tenant_id` and
+        // `agent_id` are not carried on `Thread` in Phase 1 — use the user_id
+        // as the tenant and a fixed string for agent_id so scope queries return
+        // per-user results (matches `__list_skills__` / `scope_from_thread_ids`
+        // below).  Phase 2+ / v3 Phase F will tighten this once the full 4-tuple
+        // is threaded through `Thread`.  The production `RamSource` backend
+        // ignores `tenant_id`/`agent_id`, so this only affects scoping once
+        // `PostgresSource` is wired (v3 Phase E); the previous hardcoded
+        // `tenant_id: "default"` / `agent_id: ""` deviated from the sibling
+        // convention and would have broken per-user isolation under
+        // `PostgresSource`.
         let scope = ComponentScope {
-            tenant_id: "default".to_string(),
+            tenant_id: thread.user_id.clone(), // tenant_id stub (Phase 1)
             user_id: thread.user_id.clone(),
-            agent_id: String::new(),
+            agent_id: "default".to_string(), // agent_id stub (Phase 1)
             project_id: thread.project_id.to_string(),
         };
 
