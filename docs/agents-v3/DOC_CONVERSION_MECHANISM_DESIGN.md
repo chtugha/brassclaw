@@ -158,7 +158,8 @@ Section 7 was authored *specifically* to be machine-convertible — a
 compressed, bullet-form, line-cited summary of the subsystem. This makes
 the conversion largely **deterministic** (extract §7 + the header
 metadata) with an **optional LLM-assisted compression** pass for docs
-that exceed the per-doc token budget.
+whose §7 extract is noisy or quotes injection payloads (for clarity /
+injection-safety, **not** to hit a token ceiling — see §3.3).
 
 ### 3.2 The converted form
 
@@ -168,7 +169,7 @@ The LLM-optimized form stored in `reborn_docus.content` is:
 ## 17:{prompt_uid}  Docu  "{name}"
 
 <doc-slug> · <one-line description>
-<§7 LLM-summary verbatim, or LLM-compressed to fit the per-doc budget>
+<§7 LLM-summary verbatim, or LLM-compressed for clarity/injection-safety (no per-doc budget — see §3.3)>
 ```
 
 This matches the `do_reassemble` render format exactly

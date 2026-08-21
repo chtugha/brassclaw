@@ -7942,19 +7942,26 @@ via the WebUI, Phase K.1 §K.1.7).
 `parse_skill_md` — without becoming `reborn_skills` DB rows, so Q1+Q2 never
 run — are migrated into `reborn_skills` rows seeded through the Phase P.0
 path. The disk-loaded `SkillSource::System` path is removed (or relegated to a
-one-time import). `db_skill_loader.rs:67` (which filters `validated`) then
-loads them as first-class DB skills.
+one-time import). `crates/brassclaw_engine/src/executor/db_skill_loader.rs`
+(`fetch_llm_skills_as_json` / `fetch_monty_skills_as_json` at `:67`/`:83`,
+which call `DbSkillStore::fetch_for_consumer` — the actual
+`validation_status = 'validated'` filter lives at
+`crates/brassclaw_skills/src/db_store.rs:554`) then loads them as
+first-class DB skills.
 
 **Files (indicative):** `crates/brassclaw_skills/src/management.rs`
 (`SYSTEM_SKILLS_ROOT`, the `:243`/`:263` load sites, `parse_skill_md`), the
-seeder, `crates/brassclaw_skills/src/db_skill_loader.rs` (`:67` validated
-filter).
+seeder, `crates/brassclaw_engine/src/executor/db_skill_loader.rs`
+(`:67`/`:83` runtime load site calling `fetch_for_consumer`), and
+`crates/brassclaw_skills/src/db_store.rs` (`:554` validated filter inside
+`fetch_for_consumer`).
 
 **Depends on:** Phase P.0.
 
 **Tests:**
 - Integration: a system skill seeded → appears as a `reborn_skills` row →
-  passes Q1+Q2 → `validated` → loaded by `db_skill_loader`.
+  passes Q1+Q2 → `validated` → loaded by `brassclaw_engine`'s `db_skill_loader`
+  (`fetch_llm_skills_as_json`).
 - Regression: no `SkillSource::System` disk load remains for migrated skills
   (grep-enforced).
 
@@ -7975,8 +7982,11 @@ tables); V056 (Phase K.1 — `reborn_basic_prompt_store`); V057
 (`PgBasicPromptStore::mark_stale`); **Phase P.0** (no-bypass Q2); **Phase P.1**
 (system-skills DB migration).
 
-**Migration:** **none.** Phase P reuses existing V040/V051/V052/V053/V056/V057
-— see §2. The only host code is the step-1 composition const edit and the
+**Migration:** **none.** Phase P adds no migration of its own. It reuses
+`V040` (Docu table — **live today**) plus the migrations created by its
+not-yet-implemented prerequisite phases — `V051` (Phase A.5), `V052`/`V053`
+(Phase B/C), `V056` (Phase K.1), `V057` (Phase K.1) — none of which are live
+yet (see §2). The only host code is the step-1 composition const edit and the
 step-3 `component_db` Rust Tool (+ its ToolSkill DB row, seeded through Phase
 P.0); everything else is v3 artifacts authored as DB rows through Q1+Q2.
 
@@ -8064,7 +8074,9 @@ All additive-first. No DROP, no renames. No existing rows break. V059 is the onl
 > + SCH-02 + `validation_status`), plus `V051` (validation queue), `V052`/`V053`
 > (`reborn_python_code` / `reborn_extension_catalogues`), `V056`
 > (`reborn_basic_prompt_store`), and `V057` (`capability_id` for the
-> `component_db` Tool). The only host-Rust edits are the step-1
+> `component_db` Tool) — **of these, only `V040` is live today; `V051`–`V057`
+> are created by their own not-yet-implemented prerequisite phases
+> (A.5 / B / C / K.1).** The only host-Rust edits are the step-1
 > `COMPONENT_TABLES`/`class_label` const (no migration) and the step-3
 > `component_db` Tool. **Phase P.0** (validation-system extension) may add one
 > small additive column to `reborn_validation_queue` (V051) to record the Q2
