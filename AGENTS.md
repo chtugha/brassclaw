@@ -25,6 +25,63 @@ BrassClaw Reborn is organized in three conceptual layers:
 
 New Reborn work belongs in `crates/`.
 
+## Orchestrator-First, LLM-Minimal Design (Mandatory)
+
+**The orchestrator IS the execution engine. Rust makes tools available. The LLM
+is consulted ONLY when a task requires creative reasoning, composition, or
+irreversible decisions the user must confirm. Everything else is Tier 0.**
+
+This principle governs all Recipe, Skill, PythonCode, and ToolSkill authoring:
+
+### The Two-Channel Execution Model
+
+```
+channel: "rust"           → pre-loads the ToolSkill binding (does NOT execute)
+channel: "orchestrator"   → PythonCode calls __execute_action__() to actually run the tool
+```
+
+A Tier-0 recipe MUST have both channels. A rust-only Tier-0 recipe is a Q1 hard
+error (§tier0-orchestrator-channel Rule 2). The orchestrator **never** calls Rust
+directly — it calls Rust tools through `__execute_action__()` in a PythonCode step.
+
+### Tier Decision Hierarchy
+
+1. **Tier 0 first**: Can the task be done deterministically with known inputs? → Author a Tier-0 recipe with a PythonCode executor.
+2. **Split by variant**: Each distinct invocation pattern gets its own recipe + intent examples.
+3. **Tier 1 only when necessary**: LLM involvement ONLY for creative content, user-composed inputs, or confirmation of irreversible actions.
+4. **One leaf skill per approach**: If a tool has 3 common usage patterns, author 3 leaf skills — not one monolithic skill.
+5. **10+ intent examples per recipe**: More examples = better routing precision.
+
+### PythonCode Executor Pattern (Canonical Tier-0 body)
+
+```python
+# Channel: orchestrator | Class: 22 | No I/O, no imports except stdlib, no network.
+# IBS bakes in {{vars.slotN}} values before execution.
+# __execute_action__ is provided by the runtime sandbox — not imported.
+result = __execute_action__("tool_name", {"param": "{{vars.slot0}}"})
+```
+
+### What Forces Tier 1
+
+- Content composition (write_file, apply_patch, user-composed shell commands)
+- Ambiguous intent requiring the LLM to decide between alternatives
+- Irreversible operations benefiting from LLM confirmation
+- User-supplied strings that must be validated before tool dispatch
+
+### Q1 Hard Errors (enforced on all authored components)
+
+- **Rule 1**: Tier-0 `orchestrator_steps` may ONLY contain PythonCode (class 22). Skill bodies are LLM prose — unexecutable without an LLM.
+- **Rule 2**: If `llm_call_required == false` AND `rust_steps` has tool bindings, then `orchestrator_steps` MUST contain ≥1 PythonCode UUID.
+- **§shell-guard**: Any Recipe using `builtin.shell` where the command string is user-supplied is `llm_call_required: true`. Always.
+- **§shell-safe-fixed**: A Recipe using `builtin.shell` with a *fully pre-validated, compile-time-constant command string* (no user-supplied parts) MAY be `llm_call_required: false`.
+- **§spawn_subagent-guard**: Any Recipe referencing `builtin.spawn_subagent` is `llm_call_required: true`. Always.
+
+### Extension Authoring Reference
+
+Extension component stacks (Tools, ToolSkills, PythonCode, Leaf Skills, Domain Skills, Recipes, ExtensionCatalogues) are fully specified in:
+- `builtin_stuff_v3.md` — built-in capabilities
+- `tomedo_v3.md` — tomedo EMR integration example (reference implementation)
+
 ## Where to Work
 
 | Area | Location |

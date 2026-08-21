@@ -159,6 +159,13 @@
 >
 > **Prerequisite phases:** A–C (V050–V053), L (V057 adds `source='system'`).
 > `reborn_python_code` (V052) and `reborn_extension_catalogues` (V053) must exist.
+>
+> **Reference implementation for extensions:** `tomedo_v3.md` applies every
+> principle in this document to a real external API (tomedo EMR). Read it as
+> the canonical example of how to structure an extension's full component stack:
+> Tools → ToolSkills → PythonCode → Leaf Skills → Domain Skills → Recipes →
+> ExtensionCatalogues, with Tier-0 coverage of all deterministic operations and
+> Tier-1 only where the LLM genuinely adds value.
 
 ---
 

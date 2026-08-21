@@ -198,6 +198,9 @@ BrassClaw Reborn stores all reusable knowledge artifacts (specs, plans, lessons,
 
 | Class code | Type | Table |
 |------------|------|-------|
+| 0 | Tool | `reborn_tools` |
+| 1 | Leaf Skill (Rusty) | `reborn_skills` |
+| 2 | Domain Skill (Monty) | `reborn_skills` |
 | 10 | Orchestrator | `reborn_component_catalog` (class 10) |
 | 11 | Actions | `reborn_actions` |
 | 12 | Spec | `reborn_specs` |
@@ -208,9 +211,39 @@ BrassClaw Reborn stores all reusable knowledge artifacts (specs, plans, lessons,
 | 19 | Issue | `reborn_issues` |
 | 20 | Note | `reborn_notes` |
 | 21 | Recipe | `reborn_recipes` |
+| 22 | PythonCode | `reborn_python_code` |
+| 23 | ExtensionCatalogue | `reborn_extension_catalogues` |
 | 50 | Scaffold | `reborn_component_catalog` (class 50) |
 
 Legacy `brassclaw_memory_docs` rows are migrated into the appropriate class table at boot by `run_component_import` (`crates/brassclaw_reborn_composition/src/component_import.rs`).
+
+### Orchestrator-First, LLM-Minimal (Core Design Principle)
+
+**The orchestrator IS the execution engine. Rust makes tools *available*. The
+LLM is consulted only when creative reasoning, content composition, or user
+confirmation is genuinely required. All other operations are Tier 0.**
+
+The two-channel execution model is mandatory for all Tier-0 recipes:
+```
+channel: "rust"           → pre-loads the ToolSkill binding (does NOT execute)
+channel: "orchestrator"   → PythonCode calls __execute_action__() to run the tool
+```
+
+**Authoring rules** (enforced at Q1 validation):
+- **One leaf skill per approach**: Three skills covering three patterns is better
+  than one monolithic skill covering all three. If a tool has N common usage
+  patterns, author N leaf skills.
+- **One recipe per variant**: Each distinct invocation pattern gets its own Tier-0
+  recipe. The intent system routes to the right recipe; the recipe executes
+  deterministically without LLM involvement.
+- **PythonCode bodies**: Class-22 executors call `__execute_action__()` exactly
+  once with a hardcoded tool name. Pure-logic helpers (data transformation) do
+  not call `__execute_action__()` at all.
+- **Never inline tool calls in LLM prose**: Skills are orchestrator-facing
+  narrative. Tool execution happens in PythonCode steps only.
+
+Full specification: `builtin_stuff_v3.md` (built-in capabilities),
+`tomedo_v3.md` (reference implementation for an extension).
 
 ### Consumer-Tag Gating (§3.9)
 
