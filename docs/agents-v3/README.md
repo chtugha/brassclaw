@@ -37,7 +37,7 @@ documentation effort.
 | 09 | `09-sempai-kohai.md` | Sempai-Kohai interceptor: routing (Kohai always-on) vs rerouting (Sempai pre-send review); `SempaiReviewOutcome` → adjusted prompt + Q1 proposals (`SempaiProposalSink`); base-prompt config keys; `base-prompt` substitution is Phase K.1 | done |
 | 10 | `10-prefix-base-prompt.md` | vLLM prefix caching, `base-prompt` placeholder substitution, `reborn_basic_prompt_store` (Phase K.1/V056), Sempai vs Kohai base prompt, `do_reassemble` assembly, Prefix Tab | done |
 | 11 | `11-retrieval-system.md` | `RetrievalSource` trait, `RamSource` (current prod, keyword-over-postgres), `PostgresSource` (intent-driven UNION ALL, dormant), `fetch_for_turn` vs `fetch_for_consumer`, `FetchForTurnResult`, `fetch_component_by_id`, SEC-01 gate, E.0 wire-then-K.3-delete split | done |
-| 12 | `12-agent-loop.md` | Turn pipeline stages, `RecipeStep::Continue`, `TierZeroExecutionStage` (Phase H.0), host ports, DRIVER-GAP | planned |
+| 12 | `12-agent-loop.md` | Canonical executor pipeline (`DefaultExecutorPipeline` stages), `ExecutorStage` trait, `RecipeStage` stub (Tier 0/1/2), 13-port `AgentLoopDriverHost`, DRIVER-GAP (engine vs agent-loop drivers), `TierZeroExecutionStage` + `LoopRetrievalPort`/`LoopOrchestratorPort` (Phase H.0) | done |
 | 13 | `13-orchestrator-default-py.md` | Python orchestrator `default.py`: step-0 three calls, `__llm_complete__`, `execute_action_procedure`, v3 step-0 handler changes | planned |
 | 14 | `14-validation-queue.md` | `reborn_validation_queue` (Phase N/V058), Q1/Q2 graduation, Wilson scoring, graduation trigger + upsert | planned |
 | 15 | `15-component-catalog.md` | Unified component tables (class 12–20), new classes 22/23, `PgMemoryDocStore`, `component_import` | planned |
