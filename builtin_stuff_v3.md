@@ -5302,6 +5302,257 @@ validation_status: "validated"
 
 ---
 
+## Step 14.x — `builtin.time` Additional Operations (diff + format)
+
+> **`time.diff` and `time.format` are both implemented in Rust** (`first_party_tools/time.rs`)
+> but were missing from the plan. These are pure Tier-0 operations — deterministic, no LLM.
+> `diff` returns signed seconds/minutes/hours/days between two timestamps.
+> `format` renders a timestamp as a human-readable string using a chrono format string.
+
+### Step 14.14 — ToolSkill: `ts-time-diff` (class 13)
+
+```
+name:        "ts-time-diff"
+tool_name:   "time"
+description: "Executor binding: compute the signed difference between two timestamps.
+             Operation: 'diff'. Required: input (first timestamp string), timestamp2
+             (second timestamp string). Optional: from_timezone / timezone (IANA, if
+             inputs lack timezone info). Returns {seconds, minutes, hours, days} — all
+             signed: positive when timestamp2 is after input."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "operation":    {"type": "string", "enum": ["diff"]},
+    "input":        {"type": "string", "description": "First timestamp string"},
+    "timestamp":    {"type": "string", "description": "Alias for input"},
+    "timestamp2":   {"type": "string", "description": "Second timestamp string"},
+    "timezone":     {"type": "string", "description": "IANA timezone for both inputs"},
+    "from_timezone":{"type": "string", "description": "Alias for timezone in diff context"}
+  },
+  "required": ["operation", "input", "timestamp2"],
+  "additionalProperties": false
+}
+param_template:  '{"operation":"diff","input":"{{input}}","timestamp2":"{{timestamp2}}"}'
+preconditions:   ["both input and timestamp2 must be recognisable timestamp strings"]
+error_handling:  "unrecognised format → tool error; ambiguous local time → tool error"
+category:        "time"
+consumer_tags:   ["00:rusty", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 14.15 — ToolSkill: `ts-time-format` (class 13)
+
+```
+name:        "ts-time-format"
+tool_name:   "time"
+description: "Executor binding: format a timestamp as a human-readable string.
+             Operation: 'format'. Required: input (timestamp string). Optional:
+             format / format_string (chrono format string, default '%Y-%m-%d %H:%M:%S %Z'),
+             timezone (IANA timezone to express the output in),
+             from_timezone (IANA timezone for interpreting a naive input).
+             Returns {formatted, utc_iso, timezone?}."
+param_schema: {
+  "type": "object",
+  "properties": {
+    "operation":    {"type": "string", "enum": ["format"]},
+    "input":        {"type": "string", "description": "Timestamp string to format"},
+    "timestamp":    {"type": "string", "description": "Alias for input"},
+    "format":       {"type": "string", "description": "chrono format string, e.g. '%d %b %Y'"},
+    "format_string":{"type": "string", "description": "Alias for format"},
+    "timezone":     {"type": "string", "description": "IANA timezone for the output"},
+    "from_timezone":{"type": "string", "description": "IANA timezone for interpreting a naive input"}
+  },
+  "required": ["operation", "input"],
+  "additionalProperties": false
+}
+param_template:  '{"operation":"format","input":"{{input}}"}'
+preconditions:   ["input must be a recognisable timestamp string"]
+error_handling:  "unrecognised format → tool error; invalid timezone → tool error"
+category:        "time"
+consumer_tags:   ["00:rusty", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 14.16 — PythonCode: `pc-exec-time-diff` (class 22)
+
+```
+name:        "pc-exec-time-diff"
+description: "Orchestrator executor: calls __execute_action__ to compute the signed
+              difference between two timestamps via builtin.time operation='diff'.
+              Input: input (string), timestamp2 (string). Output: {seconds, minutes,
+              hours, days} — all signed."
+content: |
+  # Orchestrator executor body. No I/O, no imports, no network.
+  # IBS bakes in slot values before execution.
+  _input = "{{vars.slot0}}"
+  _ts2   = "{{vars.slot1}}"
+  result = __execute_action__("time", {
+      "operation":  "diff",
+      "input":      _input,
+      "timestamp2": _ts2
+  })
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 14.17 — PythonCode: `pc-exec-time-format` (class 22)
+
+```
+name:        "pc-exec-time-format"
+description: "Orchestrator executor: calls __execute_action__ to format a timestamp
+              as a human-readable string via builtin.time operation='format'.
+              Input: input (string), optional format_string (string), optional timezone
+              (string). Output: {formatted, utc_iso, timezone?}."
+content: |
+  # Orchestrator executor body. No I/O, no imports, no network.
+  # IBS bakes in slot values before execution.
+  _input  = "{{vars.slot0}}"
+  _fmt    = "{{vars.slot1}}"
+  _tz     = "{{vars.slot2}}"
+  _params = {"operation": "format", "input": _input}
+  if _fmt:
+      _params["format_string"] = _fmt
+  if _tz:
+      _params["timezone"] = _tz
+  result = __execute_action__("time", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 14.18 — Leaf Skill: `skill-time-diff` (class 1)
+
+```
+name:        "skill-time-diff"
+class_code:  1
+description: "Leaf skill: how to compute the difference between two timestamps."
+body: |
+  Use `ts-time-diff` (via pc-exec-time-diff) to compute the signed duration between
+  two timestamps. Provide both `input` (first timestamp) and `timestamp2` (second
+  timestamp) as ISO 8601 strings or any recognised format. The result contains
+  `seconds`, `minutes`, `hours`, and `days` — all signed (positive when timestamp2
+  is after input). If the inputs are in local time without timezone info, supply
+  `from_timezone` (IANA name). Use this when the user asks 'how long ago', 'how
+  many days between', or 'what is the duration between these dates'.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+---
+
+### Step 14.19 — Leaf Skill: `skill-time-format` (class 1)
+
+```
+name:        "skill-time-format"
+class_code:  1
+description: "Leaf skill: how to format a timestamp as a human-readable string."
+body: |
+  Use `ts-time-format` (via pc-exec-time-format) to render a timestamp in a custom
+  or human-readable format. Provide `input` as the source timestamp and optionally
+  `format_string` using chrono format codes (e.g. `'%d %b %Y'`, `'%I:%M %p'`,
+  `'%A, %B %-d, %Y'`). Optionally supply `timezone` (IANA) to localise the output.
+  Default format is `'%Y-%m-%d %H:%M:%S %Z'`. Use when the user asks to display a
+  date in a particular style, or when building a human-readable timestamp label for
+  memory entries, reports, or logs.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+---
+
+### Step 14.20 — Recipe: `time-diff` (class 21)
+
+> **Tier:** 0 — fully deterministic. The Rust layer computes the duration; no LLM needed.
+
+```
+name:        "time-diff"
+description: "Compute the signed difference between two timestamps (seconds, minutes, hours, days)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-time-diff>"],
+    "label":   "Pre-load ts-time-diff ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-time-diff>"],
+    "label":   "PythonCode calls __execute_action__(time, {operation:diff, input, timestamp2})"
+  }
+]
+intent_examples: [
+  {"input": "how many days between these two dates",        "class": 2},
+  {"input": "how long ago was this timestamp",              "class": 2},
+  {"input": "compute the duration between two timestamps",  "class": 1},
+  {"input": "what is the difference in hours between X and Y", "class": 2},
+  {"input": "time diff",                                    "class": 1},
+  {"input": "how many seconds between these two times",     "class": 2},
+  {"input": "elapsed time between these events",            "class": 2},
+  {"input": "time difference in days",                      "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 14.21 — Recipe: `time-format` (class 21)
+
+> **Tier:** 0 — deterministic format rendering. No LLM needed.
+
+```
+name:        "time-format"
+description: "Format a timestamp as a human-readable string using a chrono format string."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-time-format>"],
+    "label":   "Pre-load ts-time-format ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-time-format>"],
+    "label":   "PythonCode calls __execute_action__(time, {operation:format, input, format_string?})"
+  }
+]
+intent_examples: [
+  {"input": "format this date as day month year",          "class": 2},
+  {"input": "display this timestamp in a readable format", "class": 1},
+  {"input": "format this timestamp",                       "class": 1},
+  {"input": "render this date as DD MMM YYYY",             "class": 2},
+  {"input": "time format",                                 "class": 1},
+  {"input": "show this date in 12-hour time",              "class": 2},
+  {"input": "format the current date for a log entry",     "class": 2},
+  {"input": "pretty-print this timestamp",                 "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
 ## Step 15 — `builtin.json` (JSON Operations)
 
 > **Capability:** `builtin.json` · **Effect:** `read_only` · **Permission:** Allow
@@ -7832,11 +8083,21 @@ description: "The time domain provides one tool for all time operations:
               CONVERTING:
               — skill-time-convert: Convert a timestamp to a different timezone.
 
+              DIFFING:
+              — skill-time-diff: Compute the signed duration between two timestamps.
+                Returns {seconds, minutes, hours, days}. Positive = timestamp2 is after input.
+
+              FORMATTING:
+              — skill-time-format: Render a timestamp as a human-readable string.
+                Uses chrono format codes. Default: '%Y-%m-%d %H:%M:%S %Z'.
+
               Decision guide:
               • What time is it now → skill-time-now
               • Time in a specific timezone → skill-time-now (with timezone parameter)
               • Parse a date/time string → skill-time-parse
               • Convert between timezones → skill-time-convert
+              • How long between two timestamps → skill-time-diff
+              • Display a date in a human-readable style → skill-time-format
 
               PythonCode in the orchestrator must NEVER use datetime.now() or any date
               library directly — always call skill-time-now first to get the current time
@@ -8420,13 +8681,15 @@ overview_doc: |
   Tool: builtin.time
   Effect: read_only
 
-  Provides three time operations via a single tool: now, parse, convert.
+  Provides five time operations via a single tool: now, parse, convert, diff, format.
 
   Approaches:
   - Get current time (UTC): → time-now recipe (Tier 0)
   - Get current time in a timezone: → time-now-tz recipe (Tier 0)
   - Parse a timestamp string: → time-parse recipe (Tier 0)
   - Convert between timezones: → time-convert recipe (Tier 0)
+  - Compute duration between two timestamps: → time-diff recipe (Tier 0)
+  - Format a timestamp as a human-readable string: → time-format recipe (Tier 0)
 
   PythonCode MUST NOT use datetime.now() — always use the time tool.
 
@@ -8437,23 +8700,35 @@ task_groups:
     description: "Parse timestamp strings"
   - group_name:  "time-convert"
     description: "Timezone conversion"
+  - group_name:  "time-diff"
+    description: "Duration between timestamps"
+  - group_name:  "time-format"
+    description: "Human-readable timestamp rendering"
 
 child_component_ids: [
   "<uuid:time>",
   "<uuid:ts-time-now>",
   "<uuid:ts-time-parse>",
   "<uuid:ts-time-convert>",
+  "<uuid:ts-time-diff>",
+  "<uuid:ts-time-format>",
   "<uuid:pc-exec-time-now>",
   "<uuid:pc-exec-time-parse>",
   "<uuid:pc-exec-time-convert>",
+  "<uuid:pc-exec-time-diff>",
+  "<uuid:pc-exec-time-format>",
   "<uuid:skill-time-now>",
   "<uuid:skill-time-parse>",
   "<uuid:skill-time-convert>",
+  "<uuid:skill-time-diff>",
+  "<uuid:skill-time-format>",
   "<uuid:skill-time>",
   "<uuid:time-now>",
   "<uuid:time-now-tz>",
   "<uuid:time-parse>",
-  "<uuid:time-convert>"
+  "<uuid:time-convert>",
+  "<uuid:time-diff>",
+  "<uuid:time-format>"
 ]
 source: "system"
 validation_status: "validated"
@@ -9387,19 +9662,21 @@ validation_status: "validated"
 | Class | Type | Count | Component names |
 |-------|------|-------|-----------------|
 | 0 | Tool | 23 | builtin.shell, read_file, write_file, list_dir, glob, grep, apply_patch, http, http.save, memory_search, memory_write, memory_read, memory_tree, time, json, skill_list, skill_install, skill_remove, trigger_create, trigger_list, trigger_remove, spawn_subagent, echo |
-| 13 | ToolSkill | 28 | ts-shell-run, ts-read-file, ts-write-file, ts-list-dir, ts-glob, ts-grep, ts-apply-patch, ts-http-fetch, ts-http-save, ts-memory-search, ts-memory-write, ts-memory-read, ts-memory-tree, ts-time-now, ts-time-parse, ts-time-convert, ts-json-query, ts-json-stringify, ts-json-validate, ts-skill-list, ts-skill-install, ts-skill-remove, ts-trigger-create, ts-trigger-list, ts-trigger-remove, ts-spawn-subagent, ts-web-search, ts-echo |
-| 22 | PythonCode | 60 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-list-filter-by-type, pc-exec-glob, pc-exec-grep, pc-exec-grep-case-insensitive, pc-exec-grep-type-filtered, pc-exec-apply-patch, pc-exec-http-get, pc-exec-http-get-authenticated, pc-exec-http-post, pc-exec-http-head, pc-exec-http-put, pc-exec-http-patch, pc-exec-http-delete, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-url-encode, pc-web-search-extract, pc-web-search-query-build, pc-exec-echo, pc-exec-shell-git-status, pc-exec-shell-git-log, pc-exec-shell-git-diff-stat, pc-exec-shell-git-branch, pc-exec-shell-git-stash-list, pc-exec-shell-git-log-n, pc-exec-shell-git-remote, pc-exec-shell-git-show-stat, pc-exec-shell-git-tag-list, pc-exec-shell-pwd, pc-exec-shell-df, pc-exec-shell-ps, pc-exec-shell-env, pc-exec-shell-uname, pc-exec-shell-which, pc-exec-shell-date, pc-exec-shell-hostname, pc-exec-shell-whoami, pc-exec-shell-uptime, pc-exec-shell-free, pc-exec-shell-wc-l |
-| 1 | Leaf Skill | 74 | skill-shell-run, skill-shell-safe-check, skill-shell-git-status, skill-shell-git-log, skill-shell-git-diff-stat, skill-shell-git-branch, skill-shell-git-stash-list, skill-shell-pwd, skill-shell-df, skill-shell-ps, skill-shell-env, skill-shell-uname, skill-shell-which, skill-shell-git-remote, skill-shell-git-show-stat, skill-shell-git-tag-list, skill-shell-date, skill-shell-hostname, skill-shell-whoami, skill-shell-uptime, skill-shell-free, skill-shell-wc-l, skill-read-file, skill-read-file-range, skill-write-file-new, skill-write-file-replace, skill-write-file-template, skill-list-dir, skill-list-dir-recursive, skill-list-dir-files-only, skill-list-dir-dirs-only, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-grep-case-insensitive, skill-grep-type-filtered, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-head, skill-http-put, skill-http-patch, skill-http-delete, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, skill-memory-read, skill-memory-tree, skill-time-now, skill-time-parse, skill-time-convert, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search (74 total) |
+| 13 | ToolSkill | 30 | ts-shell-run, ts-read-file, ts-write-file, ts-list-dir, ts-glob, ts-grep, ts-apply-patch, ts-http-fetch, ts-http-save, ts-memory-search, ts-memory-write, ts-memory-read, ts-memory-tree, ts-time-now, ts-time-parse, ts-time-convert, **ts-time-diff**, **ts-time-format**, ts-json-query, ts-json-stringify, ts-json-validate, ts-skill-list, ts-skill-install, ts-skill-remove, ts-trigger-create, ts-trigger-list, ts-trigger-remove, ts-spawn-subagent, ts-web-search, ts-echo |
+| 22 | PythonCode | 62 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-list-filter-by-type, pc-exec-glob, pc-exec-grep, pc-exec-grep-case-insensitive, pc-exec-grep-type-filtered, pc-exec-apply-patch, pc-exec-http-get, pc-exec-http-get-authenticated, pc-exec-http-post, pc-exec-http-head, pc-exec-http-put, pc-exec-http-patch, pc-exec-http-delete, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, **pc-exec-time-diff**, **pc-exec-time-format**, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-url-encode, pc-web-search-extract, pc-web-search-query-build, pc-exec-echo, pc-exec-shell-git-status, pc-exec-shell-git-log, pc-exec-shell-git-diff-stat, pc-exec-shell-git-branch, pc-exec-shell-git-stash-list, pc-exec-shell-git-log-n, pc-exec-shell-git-remote, pc-exec-shell-git-show-stat, pc-exec-shell-git-tag-list, pc-exec-shell-pwd, pc-exec-shell-df, pc-exec-shell-ps, pc-exec-shell-env, pc-exec-shell-uname, pc-exec-shell-which, pc-exec-shell-date, pc-exec-shell-hostname, pc-exec-shell-whoami, pc-exec-shell-uptime, pc-exec-shell-free, pc-exec-shell-wc-l |
+| 1 | Leaf Skill | 76 | skill-shell-run, skill-shell-safe-check, skill-shell-git-status, skill-shell-git-log, skill-shell-git-diff-stat, skill-shell-git-branch, skill-shell-git-stash-list, skill-shell-pwd, skill-shell-df, skill-shell-ps, skill-shell-env, skill-shell-uname, skill-shell-which, skill-shell-git-remote, skill-shell-git-show-stat, skill-shell-git-tag-list, skill-shell-date, skill-shell-hostname, skill-shell-whoami, skill-shell-uptime, skill-shell-free, skill-shell-wc-l, skill-read-file, skill-read-file-range, skill-write-file-new, skill-write-file-replace, skill-write-file-template, skill-list-dir, skill-list-dir-recursive, skill-list-dir-files-only, skill-list-dir-dirs-only, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-grep-case-insensitive, skill-grep-type-filtered, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-head, skill-http-put, skill-http-patch, skill-http-delete, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, skill-memory-read, skill-memory-tree, skill-time-now, skill-time-parse, skill-time-convert, **skill-time-diff**, **skill-time-format**, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search (76 total) |
 | 2 | Domain Skill | 9 | skill-filesystem, skill-http, skill-memory, skill-shell, skill-skills, skill-triggers, skill-subagent, skill-time, skill-json |
-| 21 | Recipe | 93 | file-read, file-read-range, file-write, file-write-template, file-list, file-list-recursive, file-list-files-only, file-list-dirs-only, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-glob-recent, file-grep, file-grep-files, file-grep-content, file-grep-count, file-grep-case-insensitive, file-grep-type-filtered, file-patch, file-patch-replace-all, http-get, http-get-json, http-authenticated-get, http-head, http-post, http-post-json-webhook, http-put, http-patch, http-delete, http-save, http-save-large, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, memory-tree-deep, time-now, time-now-tz, time-parse, time-convert, json-query, json-stringify, json-parse, json-validate, skill-list, skill-list-user-only, skill-list-system-only, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, subagent-spawn, web-search, echo-ping, shell-run, shell-script, shell-git-status, shell-git-log, shell-git-diff-stat, shell-git-branch, shell-git-stash-list, shell-git-remote, shell-git-show-stat, shell-git-tag-list, shell-pwd, shell-df, shell-ps, shell-env, shell-uname, shell-which, shell-date, shell-hostname, shell-whoami, shell-uptime, shell-free, shell-wc-l |
+| 21 | Recipe | 95 | file-read, file-read-range, file-write, file-write-template, file-list, file-list-recursive, file-list-files-only, file-list-dirs-only, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-glob-recent, file-grep, file-grep-files, file-grep-content, file-grep-count, file-grep-case-insensitive, file-grep-type-filtered, file-patch, file-patch-replace-all, http-get, http-get-json, http-authenticated-get, http-head, http-post, http-post-json-webhook, http-put, http-patch, http-delete, http-save, http-save-large, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, memory-tree-deep, time-now, time-now-tz, time-parse, time-convert, **time-diff**, **time-format**, json-query, json-stringify, json-parse, json-validate, skill-list, skill-list-user-only, skill-list-system-only, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, subagent-spawn, web-search, echo-ping, shell-run, shell-script, shell-git-status, shell-git-log, shell-git-diff-stat, shell-git-branch, shell-git-stash-list, shell-git-remote, shell-git-show-stat, shell-git-tag-list, shell-pwd, shell-df, shell-ps, shell-env, shell-uname, shell-which, shell-date, shell-hostname, shell-whoami, shell-uptime, shell-free, shell-wc-l |
 | 23 | ExtensionCatalogue | 24 | builtin-filesystem, builtin-network, builtin-memory, builtin-process, builtin-management, ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch, ext-http, ext-http-save, ext-memory-search, ext-memory-write, ext-memory-read, ext-memory-tree, ext-time, ext-json, ext-shell, ext-skill-management, ext-trigger-management, ext-spawn-subagent, ext-web-search |
 
-> **Actual totals (v3, fully optimized):** 23 Tools + 28 ToolSkills + 60 PythonCode + 74 Leaf Skills + 9 Domain Skills + 93 Recipes + 24 ExtensionCatalogues = **311 components**
+> **Actual totals (v3, fully optimized):** 23 Tools + 30 ToolSkills + 62 PythonCode + 76 Leaf Skills + 9 Domain Skills + 95 Recipes + 24 ExtensionCatalogues = **319 components**
 >
-> **Tier-0 recipe count: 77 out of 93** (83%). Breakdown of increases from previous revision:
-> §shell-safe-fixed adds 9 more fixed commands (date, hostname, whoami, uptime, free,
-> git-remote, git-show-stat, git-tag-list, wc-l); file-list-dirs-only, http-save-large,
-> and echo-ping add 3 more Tier-0 recipes; http-patch is Tier 1 (LLM composes body).
+> **New in this revision (diff + format):** +2 ToolSkills, +2 PythonCode, +2 Leaf Skills, +2 Recipes.
+> Both `time.diff` and `time.format` are implemented in Rust (`first_party_tools/time.rs`) and
+> were previously absent from the plan despite being fully functional.
+>
+> **Tier-0 recipe count: 79 out of 95** (83%). The two new recipes (time-diff, time-format)
+> are both Tier 0 — fully deterministic Rust operations, no LLM involvement.
 > The orchestrator handles 83% of all built-in tasks completely autonomously —
 > LLM involvement is required for only 17%.
 
@@ -9471,4 +9748,4 @@ producing duplicate rows.
 
 ---
 
-*End of builtin_stuff_v3.md — all Steps + Final section complete. v3 fully revised: 311 components, 93 Recipes (77 Tier-0 = 83%, §shell-safe-fixed + §shell-guard-custom), 24 ExtensionCatalogues (5 global domain + 19 per-tool), orchestrator-first design. Full builtin coverage: all 23 tools fully covered; HTTP PATCH added; echo-ping diagnostic recipe added; 9 new sysinfo/git shell Tier-0 recipes; file-list-dirs-only added. The orchestrator handles 83% of all built-in tasks autonomously — LLM involvement required for only 17%.*
+*End of builtin_stuff_v3.md — all Steps + Final section complete. v3 fully revised: 319 components, 95 Recipes (79 Tier-0 = 83%, §shell-safe-fixed + §shell-guard-custom), 24 ExtensionCatalogues (5 global domain + 19 per-tool), orchestrator-first design. Full builtin coverage: all 23 tools fully covered; HTTP PATCH added; echo-ping diagnostic recipe added; 9 new sysinfo/git shell Tier-0 recipes; file-list-dirs-only added; time.diff and time.format operations (implemented in Rust, previously missing from plan) added as Tier-0 recipes. The orchestrator handles 83% of all built-in tasks autonomously — LLM involvement required for only 17%.*
