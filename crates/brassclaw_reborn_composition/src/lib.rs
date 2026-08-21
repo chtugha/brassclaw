@@ -97,6 +97,8 @@ pub mod migration;
 pub(crate) mod pg_auth_product_services;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_chat_memory_record_store;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_extension_catalogue_store;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_intent_inputs_store;
 #[cfg(feature = "postgres")]

@@ -40,6 +40,7 @@ const BUDGET_SKILL_DEFAULT: u32 = 5_000;
 
 use crate::memory::recipe_validator::{RecipeValidator, ValidationResult};
 use crate::types::recipe::{Recipe, ToolSkill};
+use serde_json::Value;
 
 /// Per-class validation configuration. Mirrors `reborn_validation_config` columns.
 /// All fields use `Option` so a partial row can be passed; `None` falls back to the
@@ -64,6 +65,13 @@ pub struct GenericComponent<'a> {
     pub description: &'a str,
     /// Raw content (body/steps/code). Used only for non-empty check and token budget.
     pub content: &'a str,
+    /// Structured extras for classes whose DB shape carries more than a text
+    /// body. Phase C (class 23 / ExtensionCatalogue) populates this with the
+    /// catalogue extras object `{ task_groups, child_component_ids,
+    /// intent_index }` so the validator can check `>=1 task_group` and valid
+    /// UUID syntax in `child_component_ids` (COMP-04 Option A). `None` for
+    /// every class that maps 1:1 onto `content`.
+    pub extra: Option<Value>,
 }
 
 impl<'a> GenericComponent<'a> {
@@ -201,6 +209,34 @@ impl ComponentValidator {
                 ComponentPayload::Recipe(_) => {
                     ValidationResult::from_error("PythonCode class requires a Generic payload")
                 }
+            },
+            // ExtensionCatalogue (23): documentation-container that organises a
+            // capability domain (§0.2). Uses the Generic payload with
+            // `extra = { task_groups, child_component_ids, intent_index }`
+            // (COMP-04 Option A). `content` carries `overview_doc` (the
+            // primary text field). Q1 here is structural-only: name format +
+            // non-empty overview_doc + >=1 task_group + valid UUID syntax in
+            // child_component_ids. Cross-reference checks (recipe_ids resolve,
+            // child UUIDs exist) land in Phase I/N (require a pool).
+            23 => match &component {
+                ComponentPayload::Generic(g) => {
+                    let mut result = validate_soft_budget_named(
+                        g.name,
+                        g.description,
+                        g.content,
+                        config,
+                        BUDGET_STANDARD,
+                        false,
+                    );
+                    validate_extension_catalogue_extras(g, &mut result);
+                    result
+                }
+                ComponentPayload::ToolSkill(_) => ValidationResult::from_error(
+                    "ExtensionCatalogue class requires a Generic payload",
+                ),
+                ComponentPayload::Recipe(_) => ValidationResult::from_error(
+                    "ExtensionCatalogue class requires a Generic payload",
+                ),
             },
             // Notes class (15): soft 2000 budget
             15 => {
@@ -360,6 +396,76 @@ fn validate_python_code_body(content: &str, result: &mut ValidationResult) {
             "PythonCode body uses input() (will hang in the VM — likely a copy-paste error)"
                 .to_string(),
         );
+    }
+}
+
+/// Validate the ExtensionCatalogue-specific extras carried in
+/// [`GenericComponent::extra`] (Phase C / COMP-04 Option A).
+///
+/// `content` carries `overview_doc` (the catalogue's primary text field); an
+/// empty overview is a hard error — a documentation-container that documents
+/// nothing is structurally malformed. `extra` must carry the catalogue extras
+/// object `{ task_groups, child_component_ids, intent_index }`; the validator
+/// enforces:
+/// - `task_groups` is a JSON array with at least one entry (a catalogue with
+///   no task groups has no organisational content).
+/// - `child_component_ids` is a JSON array whose every entry is a valid UUID
+///   string (lineage syntax — the DB column is `UUID[]`; an empty array is
+///   allowed, a catalogue may declare children later).
+/// - `intent_index` is carried but NOT validated (audit-only, §0.2).
+///
+/// Cross-reference checks (recipe_ids resolve to real recipes, child UUIDs
+/// exist as components) land in Phase I/N — they require a live pool.
+fn validate_extension_catalogue_extras(
+    component: &GenericComponent<'_>,
+    result: &mut ValidationResult,
+) {
+    // overview_doc (carried as `content`) must be non-empty — hard error.
+    if component.content.trim().is_empty() {
+        result
+            .errors
+            .push("ExtensionCatalogue overview_doc must not be empty".to_string());
+    }
+
+    let Some(extra) = component.extra.as_ref() else {
+        result.errors.push(
+            "ExtensionCatalogue requires extra {task_groups, child_component_ids, intent_index} \
+             (COMP-04)"
+                .to_string(),
+        );
+        return;
+    };
+
+    // task_groups: JSON array with >=1 entry.
+    match extra.get("task_groups").and_then(Value::as_array) {
+        Some(arr) if !arr.is_empty() => {}
+        Some(_) => result
+            .errors
+            .push("ExtensionCatalogue must declare at least one task_group".to_string()),
+        None => result
+            .errors
+            .push("ExtensionCatalogue task_groups must be a JSON array".to_string()),
+    }
+
+    // child_component_ids: JSON array of valid UUID strings. An empty array is
+    // allowed (children may be declared later); each present entry must parse.
+    match extra.get("child_component_ids").and_then(Value::as_array) {
+        Some(arr) => {
+            for entry in arr {
+                match entry.as_str() {
+                    Some(s) if uuid::Uuid::parse_str(s).is_ok() => {}
+                    Some(s) => result.errors.push(format!(
+                        "ExtensionCatalogue child_component_ids entry `{s}` is not a valid UUID"
+                    )),
+                    None => result.errors.push(format!(
+                        "ExtensionCatalogue child_component_ids entry `{entry}` is not a UUID string"
+                    )),
+                }
+            }
+        }
+        None => result
+            .errors
+            .push("ExtensionCatalogue child_component_ids must be a JSON array".to_string()),
     }
 }
 
@@ -592,6 +698,7 @@ mod tests {
             name: "deploy-step",
             description: "Deploy the artifact",
             content: &"x".repeat(100_000), // huge content
+            extra: None,
         };
         let result = ComponentValidator::validate_by_class(
             16,
@@ -619,6 +726,7 @@ mod tests {
             name: "my-extension",
             description: "An extension",
             content: &"w".repeat(50_001), // ~12500 tokens
+            extra: None,
         };
         let result = ComponentValidator::validate_by_class(
             4,
@@ -648,6 +756,7 @@ mod tests {
             name: "read-file-leaf",
             description: "Reads a file via the host read_file action",
             content: body,
+            extra: None,
         };
         let result = ComponentValidator::validate_by_class(
             22,
@@ -670,6 +779,7 @@ mod tests {
             name: "bad-leaf",
             description: "Tries to import the OS module directly",
             content: "import os\nos.getcwd()",
+            extra: None,
         };
         let result = ComponentValidator::validate_by_class(
             22,
@@ -692,6 +802,7 @@ mod tests {
             name: "debug-leaf",
             description: "Emits debug stdout",
             content: "print(\"debug\")\nreturn 0",
+            extra: None,
         };
         let result = ComponentValidator::validate_by_class(
             22,
@@ -710,6 +821,130 @@ mod tests {
             "expected a print() warning, got {:?}",
             result.warnings
         );
+    }
+
+    #[test]
+    fn class23_extension_catalogue_valid_passes() {
+        // A catalogue with a non-empty overview_doc, one task_group, and one
+        // valid child UUID — the canonical Phase-C shape (COMP-04 Option A).
+        let child = uuid::Uuid::new_v4().to_string();
+        let g = GenericComponent {
+            name: "file-management-catalogue",
+            description: "Catalogue covering local file management",
+            content: "This catalogue covers local file management. Its Recipes handle these task groups...",
+            extra: Some(serde_json::json!({
+                "task_groups": [
+                    {
+                        "group_name": "file-management",
+                        "summary": "Local file management recipes",
+                        "recipe_ids": ["recipe-read-file", "recipe-write-file"]
+                    }
+                ],
+                "child_component_ids": [child],
+                "intent_index": []
+            })),
+        };
+        let result = ComponentValidator::validate_by_class(
+            23,
+            ComponentPayload::Generic(g),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result.errors.is_empty(),
+            "expected no hard errors for a valid ExtensionCatalogue, got {:?}",
+            result.errors
+        );
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn class23_extension_catalogue_empty_overview_is_hard_error() {
+        let child = uuid::Uuid::new_v4().to_string();
+        let g = GenericComponent {
+            name: "empty-overview-catalogue",
+            description: "Catalogue with no overview text",
+            content: "   ",
+            extra: Some(serde_json::json!({
+                "task_groups": [{ "group_name": "g", "summary": "s", "recipe_ids": [] }],
+                "child_component_ids": [child],
+                "intent_index": []
+            })),
+        };
+        let result = ComponentValidator::validate_by_class(
+            23,
+            ComponentPayload::Generic(g),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("overview_doc must not be empty")),
+            "expected a hard error for an empty overview_doc, got {:?}",
+            result.errors
+        );
+        assert!(!result.is_ok());
+    }
+
+    #[test]
+    fn class23_extension_catalogue_no_task_groups_is_hard_error() {
+        let g = GenericComponent {
+            name: "no-task-groups-catalogue",
+            description: "Catalogue with zero task groups",
+            content: "An overview with no task groups.",
+            extra: Some(serde_json::json!({
+                "task_groups": [],
+                "child_component_ids": [],
+                "intent_index": []
+            })),
+        };
+        let result = ComponentValidator::validate_by_class(
+            23,
+            ComponentPayload::Generic(g),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|e| e.contains("at least one task_group")),
+            "expected a hard error for zero task_groups, got {:?}",
+            result.errors
+        );
+        assert!(!result.is_ok());
+    }
+
+    #[test]
+    fn class23_extension_catalogue_bad_child_uuid_is_hard_error() {
+        let g = GenericComponent {
+            name: "bad-child-uuid-catalogue",
+            description: "Catalogue with a malformed child UUID",
+            content: "An overview with a bad child UUID.",
+            extra: Some(serde_json::json!({
+                "task_groups": [{ "group_name": "g", "summary": "s", "recipe_ids": [] }],
+                "child_component_ids": ["not-a-uuid"],
+                "intent_index": []
+            })),
+        };
+        let result = ComponentValidator::validate_by_class(
+            23,
+            ComponentPayload::Generic(g),
+            &ValidationConfig::default(),
+            &[],
+            &[],
+        );
+        assert!(
+            result.errors.iter().any(|e| e.contains("not a valid UUID")),
+            "expected a hard error for a malformed child UUID, got {:?}",
+            result.errors
+        );
+        assert!(!result.is_ok());
     }
 
     #[test]
@@ -745,6 +980,7 @@ mod tests {
             name: "my-skill",
             description: "Use this to run a shell command",
             content: "some content",
+            extra: None,
         };
         let result = ComponentValidator::validate_by_class(
             1,
@@ -769,6 +1005,7 @@ mod tests {
             name: "my-skill",
             description: "",
             content: "some content",
+            extra: None,
         };
         let result = ComponentValidator::validate_by_class(
             2,
@@ -793,6 +1030,7 @@ mod tests {
             name: &"a".repeat(65),
             description: "Use this to do something useful",
             content: "body",
+            extra: None,
         };
         let result = ComponentValidator::validate_by_class(
             1,

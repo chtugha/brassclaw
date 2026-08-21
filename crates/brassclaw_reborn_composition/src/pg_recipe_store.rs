@@ -1665,6 +1665,7 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
                 name: &name,
                 description: &description,
                 content: &content_combined,
+                extra: None,
             });
 
             let result = ComponentValidator::validate_by_class(

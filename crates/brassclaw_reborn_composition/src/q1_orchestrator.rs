@@ -130,6 +130,7 @@ mod tests {
             name: "test-note",
             description: "a note",
             content: "body text",
+            extra: None,
         })
     }
 
@@ -138,6 +139,7 @@ mod tests {
             name: "",
             description: "x",
             content: "y",
+            extra: None,
         })
     }
 

@@ -78,6 +78,7 @@ fn class_label(class_code: u16) -> &'static str {
         20 => "Note",
         21 => "Recipe",
         22 => "PythonCode",
+        23 => "Catalogue",
         50 => "Scaffold",
         _ => "Component",
     }
@@ -478,5 +479,10 @@ mod tests {
     #[test]
     fn class_label_22_is_python_code() {
         assert_eq!(class_label(22), "PythonCode");
+    }
+
+    #[test]
+    fn class_label_23_is_catalogue() {
+        assert_eq!(class_label(23), "Catalogue");
     }
 }

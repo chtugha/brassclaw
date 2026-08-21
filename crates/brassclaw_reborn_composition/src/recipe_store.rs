@@ -877,6 +877,7 @@ fn class_label(code: u16) -> String {
         20 => "Workflow".to_string(),
         21 => "Recipe".to_string(),
         22 => "PythonCode".to_string(),
+        23 => "Catalogue".to_string(),
         50 => "Scaffold".to_string(),
         other => format!("Component ({other})"),
     }
@@ -1113,6 +1114,11 @@ mod tests {
     #[test]
     fn class_label_22_is_python_code() {
         assert_eq!(class_label(22), "PythonCode");
+    }
+
+    #[test]
+    fn class_label_23_is_catalogue() {
+        assert_eq!(class_label(23), "Catalogue");
     }
 
     /// Minimal `Store` impl used only by these tests. Implements the
