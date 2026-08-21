@@ -258,16 +258,28 @@ body: |
 
   Tier 0 — Fixed pre-validated commands (§shell-safe-fixed):
   Use when the command is a fixed literal with no user input.
+  Git inspection:
   — skill-shell-git-status: run 'git status'
   — skill-shell-git-log: run 'git log --oneline -20'
   — skill-shell-git-diff-stat: run 'git diff --stat'
   — skill-shell-git-branch: run 'git branch -a'
+  — skill-shell-git-stash-list: run 'git stash list'
+  — skill-shell-git-remote: run 'git remote -v'
+  — skill-shell-git-show-stat: run 'git show --stat HEAD'
+  — skill-shell-git-tag-list: run 'git tag --list'
+  System information:
   — skill-shell-pwd: run 'pwd'
   — skill-shell-df: run 'df -h'
   — skill-shell-ps: run 'ps aux'
   — skill-shell-env: run 'env'
   — skill-shell-uname: run 'uname -a'
   — skill-shell-which: run 'which <tool>' (tool name is a fixed slot, not user-composed)
+  — skill-shell-date: run 'date -u' (UTC date/time)
+  — skill-shell-hostname: run 'hostname'
+  — skill-shell-whoami: run 'whoami'
+  — skill-shell-uptime: run 'uptime'
+  — skill-shell-free: run 'free -h' (Linux only)
+  — skill-shell-wc-l: run 'wc -l <file>' (line count, path validated)
 
   Tier 1 — Custom/user-composed commands (§shell-guard-custom):
   Use when the command string involves user intent, user-supplied paths, or composition.
@@ -1140,6 +1152,596 @@ intent_examples: [
   {"input": "locate the binary",                               "class": 2},
   {"input": "which command",                                   "class": 1},
   {"input": "find the tool path",                              "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+## Step 1.x.16 — Additional Shell Tier-0 Infrastructure (§shell-safe-fixed)
+
+> More fixed-literal shell commands that are universally safe. Every one maps to a
+> dedicated PythonCode executor, a leaf skill, and a Tier-0 recipe.
+
+### PythonCode: `pc-exec-shell-date` (class 22)
+
+```
+name:        "pc-exec-shell-date"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'date -u +%Y-%m-%dT%H:%M:%SZ'
+              to print the current UTC date/time as ISO-8601. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input.
+  result = __execute_action__("shell", {"command": "date -u +%Y-%m-%dT%H:%M:%SZ"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-exec-shell-hostname` (class 22)
+
+```
+name:        "pc-exec-shell-hostname"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'hostname' to print the
+              machine hostname. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input.
+  result = __execute_action__("shell", {"command": "hostname"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-exec-shell-whoami` (class 22)
+
+```
+name:        "pc-exec-shell-whoami"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'whoami' to print the
+              current user account name. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input.
+  result = __execute_action__("shell", {"command": "whoami"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-exec-shell-uptime` (class 22)
+
+```
+name:        "pc-exec-shell-uptime"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'uptime' to show system
+              uptime, load average, and logged-in user count. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input.
+  result = __execute_action__("shell", {"command": "uptime"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-exec-shell-free` (class 22)
+
+```
+name:        "pc-exec-shell-free"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'free -h' to show memory
+              usage in human-readable format. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input.
+  result = __execute_action__("shell", {"command": "free -h"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-exec-shell-git-remote` (class 22)
+
+```
+name:        "pc-exec-shell-git-remote"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'git remote -v' to list
+              all configured remote repositories and their URLs. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input.
+  result = __execute_action__("shell", {"command": "git remote -v"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-exec-shell-git-show-stat` (class 22)
+
+```
+name:        "pc-exec-shell-git-show-stat"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'git show --stat HEAD' to
+              show the last commit's changed files and line counts. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input.
+  result = __execute_action__("shell", {"command": "git show --stat HEAD"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-exec-shell-git-tag-list` (class 22)
+
+```
+name:        "pc-exec-shell-git-tag-list"
+description: "Orchestrator executor (§shell-safe-fixed): runs 'git tag --list' to enumerate
+              all tags in the repository. Fixed literal command."
+content: |
+  # §shell-safe-fixed: fixed command, no user input.
+  result = __execute_action__("shell", {"command": "git tag --list"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### PythonCode: `pc-exec-shell-wc-l` (class 22)
+
+> Semi-fixed: file path is a single safe identifier-style slot. Validated before dispatch.
+
+```
+name:        "pc-exec-shell-wc-l"
+description: "Orchestrator executor (§shell-safe-fixed variant): runs 'wc -l <filepath>'
+              to count lines in a file. Input: filepath (string — must be a safe scoped
+              workspace path matching no special characters). Validates before dispatch."
+content: |
+  import re as _re
+  _filepath = "{{vars.slot0}}"
+  # Validate: only allow safe relative paths (no shell metacharacters)
+  if not _re.match(r'^[a-zA-Z0-9_\-./]{1,256}$', _filepath):
+      result = {"error": "Invalid filepath — must be a safe relative path", "success": False}
+  else:
+      result = __execute_action__("shell", {"command": f"wc -l {_filepath}"})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Leaf Skills: Additional Fixed Shell Commands (class 1)
+
+```
+name:        "skill-shell-date"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'date -u' to get current UTC date/time."
+body: |
+  Use `pc-exec-shell-date` to obtain the current UTC date/time as ISO-8601. Fixed command
+  — no LLM required. Prefer skill-time-now for runtime clock; use this only when the shell
+  date output format is specifically required.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-hostname"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'hostname' to get the machine name."
+body: |
+  Use `pc-exec-shell-hostname` to get the current machine's hostname. Fixed command — no
+  LLM required. Useful when building environment-specific configuration or diagnosing
+  which machine the agent is running on.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-whoami"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'whoami' to get the current user name."
+body: |
+  Use `pc-exec-shell-whoami` to identify the current OS user account. Fixed command — no
+  LLM required. Useful for confirming permissions before running user-specific operations.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-uptime"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'uptime' to check system load and uptime."
+body: |
+  Use `pc-exec-shell-uptime` to get the system uptime and current load average. Fixed
+  command — no LLM required. Useful for diagnosing whether the host is under load before
+  triggering resource-intensive operations.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-free"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'free -h' to check available memory."
+body: |
+  Use `pc-exec-shell-free` to inspect available and used memory on Linux hosts. Fixed
+  command — no LLM required. Useful before spawning memory-intensive processes. Note:
+  'free' is a Linux-specific command; it may not be available on macOS — use 'vm_stat'
+  via shell-run instead if on macOS.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-git-remote"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'git remote -v' to list remote repos."
+body: |
+  Use `pc-exec-shell-git-remote` to see all configured git remotes and their fetch/push
+  URLs. Fixed command — no LLM required. Useful before push/pull operations to confirm
+  which remote URL is active.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-git-show-stat"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'git show --stat HEAD' for last commit details."
+body: |
+  Use `pc-exec-shell-git-show-stat` to see which files the last commit changed and how
+  many lines were added/removed. Fixed command — no LLM required. More informative than
+  git-diff-stat (which shows unstaged changes); this shows the committed diff.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-git-tag-list"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed): run 'git tag --list' to enumerate all tags."
+body: |
+  Use `pc-exec-shell-git-tag-list` to list all tags in the repository. Fixed command — no
+  LLM required. Useful for checking the current version tags before creating a release.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+```
+name:        "skill-shell-wc-l"
+class_code:  1
+description: "Leaf skill (§shell-safe-fixed variant): run 'wc -l <file>' to count lines."
+body: |
+  Use `pc-exec-shell-wc-l` with a safe workspace-relative file path to count the number
+  of lines in a file. The PythonCode validates the path before dispatch — no injection
+  risk. Faster than reading the file with skill-read-file when only the line count is
+  needed.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+---
+
+### Tier-0 Recipes: Additional Fixed Shell Commands (§shell-safe-fixed)
+
+#### Recipe: `shell-date` (class 21)
+
+```
+name:        "shell-date"
+description: "Print the current UTC date/time in ISO-8601 format ('date -u +...')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-date>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'date -u +...'})"
+  }
+]
+intent_examples: [
+  {"input": "what is today's date",                  "class": 1},
+  {"input": "print the current date",                "class": 1},
+  {"input": "date command",                          "class": 1},
+  {"input": "current date in ISO format",            "class": 1},
+  {"input": "system date",                           "class": 1},
+  {"input": "what date is it",                       "class": 1},
+  {"input": "show the current date and time",        "class": 1},
+  {"input": "get the date from the shell",           "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+#### Recipe: `shell-hostname` (class 21)
+
+```
+name:        "shell-hostname"
+description: "Print the machine hostname."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-hostname>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'hostname'})"
+  }
+]
+intent_examples: [
+  {"input": "what is this machine called",           "class": 1},
+  {"input": "hostname",                              "class": 1},
+  {"input": "what is the server name",               "class": 1},
+  {"input": "show me the machine hostname",          "class": 1},
+  {"input": "what host is this",                     "class": 1},
+  {"input": "machine name",                          "class": 1},
+  {"input": "get the hostname",                      "class": 1},
+  {"input": "show hostname of this server",          "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+#### Recipe: `shell-whoami` (class 21)
+
+```
+name:        "shell-whoami"
+description: "Print the current OS user account name ('whoami')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-whoami>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'whoami'})"
+  }
+]
+intent_examples: [
+  {"input": "who am I running as",                  "class": 1},
+  {"input": "what user is this",                    "class": 1},
+  {"input": "whoami",                               "class": 1},
+  {"input": "current user",                         "class": 1},
+  {"input": "what is my username",                  "class": 1},
+  {"input": "which user account is active",         "class": 1},
+  {"input": "show the current user",                "class": 1},
+  {"input": "am I running as root",                 "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+#### Recipe: `shell-uptime` (class 21)
+
+```
+name:        "shell-uptime"
+description: "Show system uptime and current load average ('uptime')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-uptime>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'uptime'})"
+  }
+]
+intent_examples: [
+  {"input": "how long has this server been running", "class": 1},
+  {"input": "uptime",                                "class": 1},
+  {"input": "system uptime",                         "class": 1},
+  {"input": "when was this server last rebooted",    "class": 2},
+  {"input": "what is the load average",              "class": 1},
+  {"input": "is the system under load",              "class": 2},
+  {"input": "check server uptime",                   "class": 1},
+  {"input": "show me uptime and load",               "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+#### Recipe: `shell-free` (class 21)
+
+```
+name:        "shell-free"
+description: "Show memory usage in human-readable format ('free -h')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-free>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'free -h'})"
+  }
+]
+intent_examples: [
+  {"input": "check memory usage",                    "class": 1},
+  {"input": "how much RAM is available",             "class": 1},
+  {"input": "free -h",                               "class": 1},
+  {"input": "memory usage",                          "class": 1},
+  {"input": "how much memory does this process use", "class": 2},
+  {"input": "is RAM running low",                    "class": 2},
+  {"input": "show memory stats",                     "class": 1},
+  {"input": "available and used RAM",                "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+#### Recipe: `shell-git-remote` (class 21)
+
+```
+name:        "shell-git-remote"
+description: "List all configured git remotes and their URLs ('git remote -v')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-remote>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'git remote -v'})"
+  }
+]
+intent_examples: [
+  {"input": "list git remotes",                      "class": 1},
+  {"input": "what is the git remote URL",            "class": 1},
+  {"input": "git remote -v",                         "class": 1},
+  {"input": "show remote repositories",              "class": 1},
+  {"input": "what origin URL is configured",         "class": 2},
+  {"input": "list all configured remotes",           "class": 1},
+  {"input": "what remotes does this repo have",      "class": 2},
+  {"input": "show git remote configuration",         "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+#### Recipe: `shell-git-show-stat` (class 21)
+
+```
+name:        "shell-git-show-stat"
+description: "Show changed files and line counts for the last commit ('git show --stat HEAD')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-show-stat>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'git show --stat HEAD'})"
+  }
+]
+intent_examples: [
+  {"input": "what did the last commit change",       "class": 1},
+  {"input": "git show --stat HEAD",                  "class": 1},
+  {"input": "show files changed in last commit",     "class": 1},
+  {"input": "what was in the previous commit",       "class": 2},
+  {"input": "show stat for most recent commit",      "class": 1},
+  {"input": "what was the last thing committed",     "class": 2},
+  {"input": "show HEAD commit diff summary",         "class": 1},
+  {"input": "git show stat last commit",             "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+#### Recipe: `shell-git-tag-list` (class 21)
+
+```
+name:        "shell-git-tag-list"
+description: "List all tags in the repository ('git tag --list')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-git-tag-list>"],
+    "label":   "PythonCode calls __execute_action__(shell, {command:'git tag --list'})"
+  }
+]
+intent_examples: [
+  {"input": "list git tags",                         "class": 1},
+  {"input": "what tags exist in this repo",          "class": 1},
+  {"input": "show all release tags",                 "class": 1},
+  {"input": "git tag --list",                        "class": 1},
+  {"input": "what versions are tagged",              "class": 2},
+  {"input": "list all git version tags",             "class": 1},
+  {"input": "show me the tags in this repository",   "class": 1},
+  {"input": "what is the latest git tag",            "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+#### Recipe: `shell-wc-l` (class 21)
+
+```
+name:        "shell-wc-l"
+description: "Count the number of lines in a file ('wc -l <filepath>')."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-shell-run>"],
+    "label":   "Pre-load ts-shell-run ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-shell-wc-l>"],
+    "label":   "PythonCode validates path then calls __execute_action__(shell, {command:'wc -l <file>'})"
+  }
+]
+intent_examples: [
+  {"input": "how many lines in this file",           "class": 1},
+  {"input": "line count of this file",               "class": 1},
+  {"input": "wc -l on this file",                    "class": 1},
+  {"input": "count lines in the log file",           "class": 2},
+  {"input": "how long is this file",                 "class": 2},
+  {"input": "how many rows does this CSV have",      "class": 2},
+  {"input": "get line count without reading file",   "class": 2},
+  {"input": "count the lines in this source file",   "class": 2}
 ]
 source: "system"
 validation_status: "validated"
@@ -2662,6 +3264,8 @@ description: "The filesystem domain provides six scoped tools for working with t
               LISTING / FINDING:
               — skill-list-dir: List contents of a single directory level.
               — skill-list-dir-recursive: Recursively scan a directory tree.
+              — skill-list-dir-files-only: List only regular files (no subdirs).
+              — skill-list-dir-dirs-only: List only subdirectories.
               — skill-glob-by-extension: Find all files of a given extension.
               — skill-glob-by-name: Find files whose names match a pattern.
               — skill-glob-in-subdir: Restrict a glob to a specific subdirectory.
@@ -2670,10 +3274,13 @@ description: "The filesystem domain provides six scoped tools for working with t
               — skill-grep-files: Find which files contain a pattern (fast, compact output).
               — skill-grep-content: Retrieve matching lines with surrounding context.
               — skill-grep-count: Count occurrences without returning content.
+              — skill-grep-case-insensitive: Case-insensitive grep (add case_insensitive=true).
+              — skill-grep-type-filtered: Grep only specific file types via glob filter.
 
               WRITING / EDITING:
               — skill-write-file-new: Create a new file with full content.
               — skill-write-file-replace: Replace an existing file's entire content.
+              — skill-write-file-template: Write a file from pre-baked template vars (no LLM).
               — skill-apply-patch-single: Replace one unique occurrence in a file.
               — skill-apply-patch-all: Replace every occurrence of a string in a file.
 
@@ -3145,6 +3752,139 @@ validation_status: "validated"
 
 ## Step 9.x — HTTP Domain Skill + PythonCode Helpers
 
+### Step 9.x.0 — Additional HTTP Variant: PATCH method
+
+> `http-patch` covers the PATCH HTTP method — partial resource update. Distinct from PUT
+> (full replacement). The PATCH body is partial: only the fields to be updated. Tier 1
+> because the LLM must compose the partial update body from user intent.
+
+#### Leaf Skill: `skill-http-patch` (class 1)
+
+```
+name:        "skill-http-patch"
+class_code:  1
+description: "Leaf skill: how to make an HTTP PATCH request for partial resource update."
+body: |
+  Use `ts-http-fetch` with method='patch' and a `body` containing only the fields to
+  update (via a custom pc-exec-http-patch-like call). PATCH is idempotent partial update
+  — unlike PUT which replaces the full resource. Include Content-Type: application/json
+  and Authorization headers when required. Non-2xx responses are not tool errors.
+source:       "system"
+validation_status: "validated"
+consumer_tags: ["02:orchestrator", "05:validator"]
+```
+
+#### PythonCode: `pc-exec-http-patch` (class 22)
+
+```
+name:        "pc-exec-http-patch"
+description: "Orchestrator executor: calls __execute_action__ for an HTTP PATCH request via
+              builtin.http. Input: url (string), body (JSON value), headers (optional dict).
+              Output: status + body."
+content: |
+  # Orchestrator executor body.
+  _url = "{{vars.slot0}}"
+  _body = {{vars.slot1}}
+  _headers = {{vars.slot2}}
+  _params = {"url": _url, "method": "patch", "body": _body}
+  if _headers:
+      _params["headers"] = _headers
+  result = __execute_action__("http", _params)
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+#### Recipe: `http-patch` (class 21)
+
+> **Tier:** 1 — LLM must compose the PATCH URL, headers, and partial update body.
+
+```
+name:        "http-patch"
+description: "Send an HTTP PATCH request to partially update a resource."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-http-patch>", "<uuid:skill-http-authenticated>"],
+    "label":   "Load http-patch + auth leaf skill context"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM constructs the PATCH URL, headers, and partial update body from user instructions"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-fetch>"],
+    "label":   "Pre-load ts-http-fetch binding"
+  }
+]
+intent_examples: [
+  {"input": "partially update this resource via PATCH",        "class": 1},
+  {"input": "PATCH request to update one field",               "class": 1},
+  {"input": "send a PATCH to change the status field",         "class": 2},
+  {"input": "HTTP PATCH this endpoint",                        "class": 1},
+  {"input": "update this resource partially via REST",         "class": 2},
+  {"input": "patch this record with new values",               "class": 2},
+  {"input": "PATCH the user email in the API",                 "class": 2},
+  {"input": "partial update via HTTP PATCH",                   "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 9.x.0b — Additional HTTP-Save Variant: Large Response
+
+> `http-save-large` explicitly caps the response at 5 MiB. Useful when fetching large
+> datasets that could otherwise silently truncate. Tier 0 — slots supply url and path.
+
+#### Recipe: `http-save-large` (class 21)
+
+> **Tier:** 0 — deterministic large-response save with explicit 5 MiB cap.
+
+```
+name:        "http-save-large"
+description: "Fetch a URL and save up to 5 MiB of the response body to a file."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-http-save>"],
+    "label":   "Pre-load ts-http-save ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-http-save>"],
+    "label":   "PythonCode calls __execute_action__(http.save, {url, save_to, response_body_limit: 5242880})"
+  }
+]
+intent_examples: [
+  {"input": "download a large file and save it",               "class": 1},
+  {"input": "fetch a large API response and store it",         "class": 1},
+  {"input": "download this dataset to workspace",              "class": 2},
+  {"input": "save a large response up to 5MB",                 "class": 2},
+  {"input": "fetch and save this big response body",           "class": 1},
+  {"input": "download and persist this large JSON dataset",    "class": 2},
+  {"input": "http save large response",                        "class": 1},
+  {"input": "save 5mb response body to file",                  "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
 ### Step 9.x.1 — Domain Skill `skill-http` (class 2)
 
 ```
@@ -3156,6 +3896,10 @@ description: "The HTTP domain provides two tools for outbound HTTP requests:
               — skill-http-get: GET request, response inline.
               — skill-http-post: POST request with body, response inline.
               — skill-http-authenticated: Any method with auth headers.
+              — skill-http-head: HEAD request — metadata only, no body.
+              — skill-http-put: PUT request — full resource replacement.
+              — skill-http-patch: PATCH request — partial resource update.
+              — skill-http-delete: DELETE request — remove a resource.
 
               SAVED RESPONSE (>256 KiB or must persist):
               — skill-http-save-download: Download and save to a workspace file.
@@ -3163,8 +3907,12 @@ description: "The HTTP domain provides two tools for outbound HTTP requests:
 
               Decision guide:
               • Small response needed immediately → skill-http-get
-              • POST/PUT/PATCH with body → skill-http-post
+              • POST with body → skill-http-post
               • Authenticated request → skill-http-authenticated (combine with above)
+              • Existence/metadata check only → skill-http-head (no body returned)
+              • Full resource replace → skill-http-put
+              • Partial update → skill-http-patch
+              • Delete a resource → skill-http-delete
               • Response >256 KiB or must be saved → skill-http-save-download
               • Large API response for later parsing → skill-http-save-api
 
@@ -5976,9 +6724,63 @@ validation_status: "validated"
 consumer_tags: ["02:orchestrator"]
 ```
 
-> **Note:** No Recipe is defined for `builtin.echo`. It is a development/test utility
-> only. There are no leaf skills or domain skills for echo — it does not represent a
-> user-visible capability.
+> **Note:** A minimal diagnostic recipe `echo-ping` is defined below for development and
+> integration testing only. It is NOT intended for production use — route real tasks to
+> appropriate domain recipes.
+
+### Step 19.3 — PythonCode: `pc-exec-echo` (class 22)
+
+```
+name:        "pc-exec-echo"
+description: "Orchestrator executor: calls __execute_action__ for builtin.echo (diagnostic
+              passthrough). Input: message (string). Output: {message} — returned verbatim."
+content: |
+  # Diagnostic executor body. __execute_action__ provided by runtime sandbox.
+  _message = "{{vars.slot0}}"
+  result = __execute_action__("echo", {"message": _message})
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+### Step 19.4 — Recipe: `echo-ping` (class 21)
+
+> **Tier:** 0 — diagnostic passthrough. Used to verify the orchestrator tool dispatch
+> pipeline is functional without side effects.
+
+```
+name:        "echo-ping"
+description: "Diagnostic: echo a message through the tool dispatch pipeline (builtin.echo)."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-echo>"],
+    "label":   "Pre-load ts-echo ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-echo>"],
+    "label":   "PythonCode calls __execute_action__(echo, {message}) — returned verbatim"
+  }
+]
+intent_examples: [
+  {"input": "echo test",                                       "class": 1},
+  {"input": "echo ping",                                       "class": 1},
+  {"input": "test the tool pipeline",                          "class": 2},
+  {"input": "diagnostic echo",                                 "class": 1},
+  {"input": "verify the orchestrator can call tools",          "class": 2},
+  {"input": "echo this message back",                          "class": 1},
+  {"input": "test tool dispatch is working",                   "class": 2},
+  {"input": "echo-ping",                                       "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
 
 ---
 
@@ -6487,6 +7289,49 @@ intent_examples: [
   {"input": "list files in the project root",                  "class": 2},
   {"input": "just the files please no subfolders",             "class": 1},
   {"input": "enumerate files in this folder",                  "class": 1}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4.x.6 — Recipe: `file-list-dirs-only` (class 21)
+
+> **Tier:** 0 — list only subdirectories in a directory. One recipe per variant.
+> Directories-only listing is a distinct use case for project exploration and navigation
+> — routes here when the user says "show subdirectories" or "list folders only".
+
+```
+name:        "file-list-dirs-only"
+description: "List only subdirectories (no regular files) in a directory."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-list-dir>"],
+    "label":   "Pre-load ts-list-dir ToolSkill binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-exec-list-dir>", "<uuid:pc-exec-list-filter-by-type>"],
+    "label":   "PythonCode: list_dir then filter entries to type='directory'"
+  }
+]
+intent_examples: [
+  {"input": "list only subdirectories",                        "class": 1},
+  {"input": "show me only the folders",                        "class": 1},
+  {"input": "directories only, no files",                      "class": 1},
+  {"input": "what subdirectories are in this folder",          "class": 1},
+  {"input": "list only the immediate subdirs",                 "class": 1},
+  {"input": "show folder structure without files",             "class": 2},
+  {"input": "list the top-level project directories",          "class": 2},
+  {"input": "just folders no files",                           "class": 1},
+  {"input": "what are the child directories here",             "class": 2}
 ]
 source: "system"
 validation_status: "validated"
@@ -7142,6 +7987,7 @@ overview_doc: |
   - Shallow listing: path only → file-list recipe
   - Recursive scan: path + recursive:true → file-list-recursive recipe
   - Files only: list then filter → file-list-files-only recipe
+  - Directories only: list then filter → file-list-dirs-only recipe
 
 task_groups:
   - group_name:  "dir-list-shallow"
@@ -7149,7 +7995,7 @@ task_groups:
   - group_name:  "dir-list-recursive"
     description: "Recursive directory tree scan"
   - group_name:  "dir-list-filtered"
-    description: "Type-filtered listing (files-only)"
+    description: "Type-filtered listing (files-only, dirs-only)"
 
 child_component_ids: [
   "<uuid:list_dir>",
@@ -7316,8 +8162,8 @@ overview_doc: |
   Effect: network_egress
   Permission: Ask
 
-  Issues HTTP requests (GET, POST, PUT, DELETE, HEAD) and returns the response inline
-  (body capped at 256 KiB). For larger responses use ext-http-save.
+  Issues HTTP requests (GET, POST, PUT, PATCH, DELETE, HEAD) and returns the response
+  inline (body capped at 256 KiB). For larger responses use ext-http-save.
 
   Approaches:
   - GET a URL: → http-get recipe (Tier 0)
@@ -7327,6 +8173,7 @@ overview_doc: |
   - POST JSON body: → http-post recipe (Tier 1, LLM composes body)
   - POST webhook: → http-post-json-webhook recipe (Tier 0, pre-structured body)
   - PUT (replace resource): → http-put recipe (Tier 1, LLM composes body)
+  - PATCH (partial update): → http-patch recipe (Tier 1, LLM composes partial body)
   - DELETE (remove resource): → http-delete recipe (Tier 1, user confirmation required)
 
 task_groups:
@@ -7345,6 +8192,7 @@ child_component_ids: [
   "<uuid:pc-exec-http-post>",
   "<uuid:pc-exec-http-head>",
   "<uuid:pc-exec-http-put>",
+  "<uuid:pc-exec-http-patch>",
   "<uuid:pc-exec-http-delete>",
   "<uuid:pc-http-status-check>",
   "<uuid:pc-json-extract-field>",
@@ -7353,6 +8201,7 @@ child_component_ids: [
   "<uuid:skill-http-authenticated>",
   "<uuid:skill-http-head>",
   "<uuid:skill-http-put>",
+  "<uuid:skill-http-patch>",
   "<uuid:skill-http-delete>",
   "<uuid:http-get>",
   "<uuid:http-get-json>",
@@ -7361,6 +8210,7 @@ child_component_ids: [
   "<uuid:http-post>",
   "<uuid:http-post-json-webhook>",
   "<uuid:http-put>",
+  "<uuid:http-patch>",
   "<uuid:http-delete>",
   "<uuid:skill-http>"
 ]
@@ -7385,6 +8235,7 @@ overview_doc: |
   Approaches:
   - Download and save: url + save_to → http-save recipe (Tier 0)
   - Save large API response for parsing: url + save_to → http-save recipe (Tier 0)
+  - Save with explicit large cap (5 MiB): → http-save-large recipe (Tier 0)
 
 task_groups:
   - group_name:  "http-save-download"
@@ -7398,7 +8249,8 @@ child_component_ids: [
   "<uuid:pc-exec-http-save>",
   "<uuid:skill-http-save-download>",
   "<uuid:skill-http-save-api>",
-  "<uuid:http-save>"
+  "<uuid:http-save>",
+  "<uuid:http-save-large>"
 ]
 source: "system"
 validation_status: "validated"
@@ -7673,9 +8525,11 @@ overview_doc: |
   §shell-safe-fixed (Tier 0): Fixed-literal pre-validated commands.
   No user input enters the command string — zero injection surface.
   - Git inspection: → shell-git-status, shell-git-log, shell-git-diff-stat,
-    shell-git-branch, shell-git-stash-list recipes (all Tier 0)
+    shell-git-branch, shell-git-stash-list, shell-git-remote, shell-git-show-stat,
+    shell-git-tag-list recipes (all Tier 0)
   - System info: → shell-pwd, shell-df, shell-ps, shell-env, shell-uname,
-    shell-which recipes (all Tier 0)
+    shell-which, shell-date, shell-hostname, shell-whoami, shell-uptime,
+    shell-free, shell-wc-l recipes (all Tier 0)
 
   §shell-guard-custom (Tier 1): User-composed or user-supplied commands.
   LLM must validate and compose the exact command before dispatch.
@@ -7703,36 +8557,63 @@ child_component_ids: [
   "<uuid:pc-exec-shell-git-branch>",
   "<uuid:pc-exec-shell-git-stash-list>",
   "<uuid:pc-exec-shell-git-log-n>",
+  "<uuid:pc-exec-shell-git-remote>",
+  "<uuid:pc-exec-shell-git-show-stat>",
+  "<uuid:pc-exec-shell-git-tag-list>",
   "<uuid:pc-exec-shell-pwd>",
   "<uuid:pc-exec-shell-df>",
   "<uuid:pc-exec-shell-ps>",
   "<uuid:pc-exec-shell-env>",
   "<uuid:pc-exec-shell-uname>",
   "<uuid:pc-exec-shell-which>",
+  "<uuid:pc-exec-shell-date>",
+  "<uuid:pc-exec-shell-hostname>",
+  "<uuid:pc-exec-shell-whoami>",
+  "<uuid:pc-exec-shell-uptime>",
+  "<uuid:pc-exec-shell-free>",
+  "<uuid:pc-exec-shell-wc-l>",
 
   "<uuid:skill-shell-git-status>",
   "<uuid:skill-shell-git-log>",
   "<uuid:skill-shell-git-diff-stat>",
   "<uuid:skill-shell-git-branch>",
   "<uuid:skill-shell-git-stash-list>",
+  "<uuid:skill-shell-git-remote>",
+  "<uuid:skill-shell-git-show-stat>",
+  "<uuid:skill-shell-git-tag-list>",
   "<uuid:skill-shell-pwd>",
   "<uuid:skill-shell-df>",
   "<uuid:skill-shell-ps>",
   "<uuid:skill-shell-env>",
   "<uuid:skill-shell-uname>",
   "<uuid:skill-shell-which>",
+  "<uuid:skill-shell-date>",
+  "<uuid:skill-shell-hostname>",
+  "<uuid:skill-shell-whoami>",
+  "<uuid:skill-shell-uptime>",
+  "<uuid:skill-shell-free>",
+  "<uuid:skill-shell-wc-l>",
 
   "<uuid:shell-git-status>",
   "<uuid:shell-git-log>",
   "<uuid:shell-git-diff-stat>",
   "<uuid:shell-git-branch>",
   "<uuid:shell-git-stash-list>",
+  "<uuid:shell-git-remote>",
+  "<uuid:shell-git-show-stat>",
+  "<uuid:shell-git-tag-list>",
   "<uuid:shell-pwd>",
   "<uuid:shell-df>",
   "<uuid:shell-ps>",
   "<uuid:shell-env>",
   "<uuid:shell-uname>",
   "<uuid:shell-which>",
+  "<uuid:shell-date>",
+  "<uuid:shell-hostname>",
+  "<uuid:shell-whoami>",
+  "<uuid:shell-uptime>",
+  "<uuid:shell-free>",
+  "<uuid:shell-wc-l>",
 
   "<uuid:skill-shell-run>",
   "<uuid:skill-shell-safe-check>",
@@ -7995,6 +8876,7 @@ child_component_ids: [
   "<uuid:file-list>",
   "<uuid:file-list-recursive>",
   "<uuid:file-list-files-only>",
+  "<uuid:file-list-dirs-only>",
 
   "<uuid:builtin.glob>",
   "<uuid:ts-glob>",
@@ -8093,6 +8975,7 @@ child_component_ids: [
   "<uuid:pc-exec-http-post>",
   "<uuid:pc-exec-http-head>",
   "<uuid:pc-exec-http-put>",
+  "<uuid:pc-exec-http-patch>",
   "<uuid:pc-exec-http-delete>",
   "<uuid:pc-http-status-check>",
   "<uuid:pc-json-extract-field>",
@@ -8101,6 +8984,7 @@ child_component_ids: [
   "<uuid:skill-http-authenticated>",
   "<uuid:skill-http-head>",
   "<uuid:skill-http-put>",
+  "<uuid:skill-http-patch>",
   "<uuid:skill-http-delete>",
   "<uuid:http-get>",
   "<uuid:http-get-json>",
@@ -8109,6 +8993,7 @@ child_component_ids: [
   "<uuid:http-post>",
   "<uuid:http-post-json-webhook>",
   "<uuid:http-put>",
+  "<uuid:http-patch>",
   "<uuid:http-delete>",
 
   "<uuid:builtin.http.save>",
@@ -8117,6 +9002,7 @@ child_component_ids: [
   "<uuid:skill-http-save-download>",
   "<uuid:skill-http-save-api>",
   "<uuid:http-save>",
+  "<uuid:http-save-large>",
 
   "<uuid:skill-http>",
 
@@ -8283,34 +9169,61 @@ child_component_ids: [
   "<uuid:pc-exec-shell-git-branch>",
   "<uuid:pc-exec-shell-git-stash-list>",
   "<uuid:pc-exec-shell-git-log-n>",
+  "<uuid:pc-exec-shell-git-remote>",
+  "<uuid:pc-exec-shell-git-show-stat>",
+  "<uuid:pc-exec-shell-git-tag-list>",
   "<uuid:pc-exec-shell-pwd>",
   "<uuid:pc-exec-shell-df>",
   "<uuid:pc-exec-shell-ps>",
   "<uuid:pc-exec-shell-env>",
   "<uuid:pc-exec-shell-uname>",
   "<uuid:pc-exec-shell-which>",
+  "<uuid:pc-exec-shell-date>",
+  "<uuid:pc-exec-shell-hostname>",
+  "<uuid:pc-exec-shell-whoami>",
+  "<uuid:pc-exec-shell-uptime>",
+  "<uuid:pc-exec-shell-free>",
+  "<uuid:pc-exec-shell-wc-l>",
   "<uuid:skill-shell-git-status>",
   "<uuid:skill-shell-git-log>",
   "<uuid:skill-shell-git-diff-stat>",
   "<uuid:skill-shell-git-branch>",
   "<uuid:skill-shell-git-stash-list>",
+  "<uuid:skill-shell-git-remote>",
+  "<uuid:skill-shell-git-show-stat>",
+  "<uuid:skill-shell-git-tag-list>",
   "<uuid:skill-shell-pwd>",
   "<uuid:skill-shell-df>",
   "<uuid:skill-shell-ps>",
   "<uuid:skill-shell-env>",
   "<uuid:skill-shell-uname>",
   "<uuid:skill-shell-which>",
+  "<uuid:skill-shell-date>",
+  "<uuid:skill-shell-hostname>",
+  "<uuid:skill-shell-whoami>",
+  "<uuid:skill-shell-uptime>",
+  "<uuid:skill-shell-free>",
+  "<uuid:skill-shell-wc-l>",
   "<uuid:shell-git-status>",
   "<uuid:shell-git-log>",
   "<uuid:shell-git-diff-stat>",
   "<uuid:shell-git-branch>",
   "<uuid:shell-git-stash-list>",
+  "<uuid:shell-git-remote>",
+  "<uuid:shell-git-show-stat>",
+  "<uuid:shell-git-tag-list>",
   "<uuid:shell-pwd>",
   "<uuid:shell-df>",
   "<uuid:shell-ps>",
   "<uuid:shell-env>",
   "<uuid:shell-uname>",
   "<uuid:shell-which>",
+  "<uuid:shell-date>",
+  "<uuid:shell-hostname>",
+  "<uuid:shell-whoami>",
+  "<uuid:shell-uptime>",
+  "<uuid:shell-free>",
+  "<uuid:shell-wc-l>",
   "<uuid:skill-shell-run>",
   "<uuid:skill-shell-safe-check>",
   "<uuid:skill-shell>",
@@ -8457,7 +9370,9 @@ child_component_ids: [
   "<uuid:json-validate>",
 
   "<uuid:builtin.echo>",
-  "<uuid:ts-echo>"
+  "<uuid:ts-echo>",
+  "<uuid:pc-exec-echo>",
+  "<uuid:echo-ping>"
 ]
 source: "system"
 validation_status: "validated"
@@ -8473,19 +9388,20 @@ validation_status: "validated"
 |-------|------|-------|-----------------|
 | 0 | Tool | 23 | builtin.shell, read_file, write_file, list_dir, glob, grep, apply_patch, http, http.save, memory_search, memory_write, memory_read, memory_tree, time, json, skill_list, skill_install, skill_remove, trigger_create, trigger_list, trigger_remove, spawn_subagent, echo |
 | 13 | ToolSkill | 28 | ts-shell-run, ts-read-file, ts-write-file, ts-list-dir, ts-glob, ts-grep, ts-apply-patch, ts-http-fetch, ts-http-save, ts-memory-search, ts-memory-write, ts-memory-read, ts-memory-tree, ts-time-now, ts-time-parse, ts-time-convert, ts-json-query, ts-json-stringify, ts-json-validate, ts-skill-list, ts-skill-install, ts-skill-remove, ts-trigger-create, ts-trigger-list, ts-trigger-remove, ts-spawn-subagent, ts-web-search, ts-echo |
-| 22 | PythonCode | 49 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-list-filter-by-type, pc-exec-glob, pc-exec-grep, pc-exec-grep-case-insensitive, pc-exec-grep-type-filtered, pc-exec-apply-patch, pc-exec-http-get, pc-exec-http-get-authenticated, pc-exec-http-post, pc-exec-http-head, pc-exec-http-put, pc-exec-http-delete, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-url-encode, pc-web-search-extract, pc-web-search-query-build, pc-exec-shell-git-status, pc-exec-shell-git-log, pc-exec-shell-git-diff-stat, pc-exec-shell-git-branch, pc-exec-shell-git-stash-list, pc-exec-shell-git-log-n, pc-exec-shell-pwd, pc-exec-shell-df, pc-exec-shell-ps, pc-exec-shell-env, pc-exec-shell-uname, pc-exec-shell-which |
-| 1 | Leaf Skill | 64 | skill-shell-run, skill-shell-safe-check, skill-shell-git-status, skill-shell-git-log, skill-shell-git-diff-stat, skill-shell-git-branch, skill-shell-git-stash-list, skill-shell-pwd, skill-shell-df, skill-shell-ps, skill-shell-env, skill-shell-uname, skill-shell-which, skill-read-file, skill-read-file-range, skill-write-file-new, skill-write-file-replace, skill-write-file-template, skill-list-dir, skill-list-dir-recursive, skill-list-dir-files-only, skill-list-dir-dirs-only, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-grep-case-insensitive, skill-grep-type-filtered, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-head, skill-http-put, skill-http-delete, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, skill-memory-read, skill-memory-tree, skill-time-now, skill-time-parse, skill-time-convert, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search (64 total) |
+| 22 | PythonCode | 60 | pc-exec-read-file, pc-exec-write-file, pc-exec-list-dir, pc-exec-list-filter-by-type, pc-exec-glob, pc-exec-grep, pc-exec-grep-case-insensitive, pc-exec-grep-type-filtered, pc-exec-apply-patch, pc-exec-http-get, pc-exec-http-get-authenticated, pc-exec-http-post, pc-exec-http-head, pc-exec-http-put, pc-exec-http-patch, pc-exec-http-delete, pc-exec-http-save, pc-exec-memory-search, pc-exec-memory-write, pc-exec-memory-patch, pc-exec-memory-read, pc-exec-memory-tree, pc-exec-time-now, pc-exec-time-parse, pc-exec-time-convert, pc-exec-json-query, pc-exec-json-stringify, pc-exec-json-validate, pc-exec-skill-list, pc-exec-trigger-list, pc-http-status-check, pc-json-extract-field, pc-memory-extract-section, pc-memory-format-entry, pc-url-encode, pc-web-search-extract, pc-web-search-query-build, pc-exec-echo, pc-exec-shell-git-status, pc-exec-shell-git-log, pc-exec-shell-git-diff-stat, pc-exec-shell-git-branch, pc-exec-shell-git-stash-list, pc-exec-shell-git-log-n, pc-exec-shell-git-remote, pc-exec-shell-git-show-stat, pc-exec-shell-git-tag-list, pc-exec-shell-pwd, pc-exec-shell-df, pc-exec-shell-ps, pc-exec-shell-env, pc-exec-shell-uname, pc-exec-shell-which, pc-exec-shell-date, pc-exec-shell-hostname, pc-exec-shell-whoami, pc-exec-shell-uptime, pc-exec-shell-free, pc-exec-shell-wc-l |
+| 1 | Leaf Skill | 74 | skill-shell-run, skill-shell-safe-check, skill-shell-git-status, skill-shell-git-log, skill-shell-git-diff-stat, skill-shell-git-branch, skill-shell-git-stash-list, skill-shell-pwd, skill-shell-df, skill-shell-ps, skill-shell-env, skill-shell-uname, skill-shell-which, skill-shell-git-remote, skill-shell-git-show-stat, skill-shell-git-tag-list, skill-shell-date, skill-shell-hostname, skill-shell-whoami, skill-shell-uptime, skill-shell-free, skill-shell-wc-l, skill-read-file, skill-read-file-range, skill-write-file-new, skill-write-file-replace, skill-write-file-template, skill-list-dir, skill-list-dir-recursive, skill-list-dir-files-only, skill-list-dir-dirs-only, skill-glob-by-extension, skill-glob-by-name, skill-glob-in-subdir, skill-grep-files, skill-grep-content, skill-grep-count, skill-grep-case-insensitive, skill-grep-type-filtered, skill-apply-patch-single, skill-apply-patch-all, skill-http-get, skill-http-post, skill-http-authenticated, skill-http-head, skill-http-put, skill-http-patch, skill-http-delete, skill-http-save-download, skill-http-save-api, skill-memory-search, skill-memory-search-broad, skill-memory-write-log, skill-memory-write-main, skill-memory-write-patch, skill-memory-read, skill-memory-tree, skill-time-now, skill-time-parse, skill-time-convert, skill-json-query, skill-json-stringify, skill-json-parse, skill-json-validate, skill-skill-list, skill-skill-install, skill-skill-remove, skill-trigger-list, skill-trigger-create, skill-trigger-remove, skill-spawn-subagent, skill-spawn-named-procedure, skill-web-search (74 total) |
 | 2 | Domain Skill | 9 | skill-filesystem, skill-http, skill-memory, skill-shell, skill-skills, skill-triggers, skill-subagent, skill-time, skill-json |
-| 21 | Recipe | 80 | file-read, file-read-range, file-write, file-write-template, file-list, file-list-recursive, file-list-files-only, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-glob-recent, file-grep, file-grep-files, file-grep-content, file-grep-count, file-grep-case-insensitive, file-grep-type-filtered, file-patch, file-patch-replace-all, http-get, http-get-json, http-authenticated-get, http-head, http-post, http-post-json-webhook, http-put, http-delete, http-save, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, memory-tree-deep, time-now, time-now-tz, time-parse, time-convert, json-query, json-stringify, json-parse, json-validate, skill-list, skill-list-user-only, skill-list-system-only, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, subagent-spawn, web-search, shell-run, shell-script, shell-git-status, shell-git-log, shell-git-diff-stat, shell-git-branch, shell-git-stash-list, shell-pwd, shell-df, shell-ps, shell-env, shell-uname, shell-which |
+| 21 | Recipe | 93 | file-read, file-read-range, file-write, file-write-template, file-list, file-list-recursive, file-list-files-only, file-list-dirs-only, file-glob, file-glob-by-extension, file-glob-by-name, file-glob-in-subdir, file-glob-recent, file-grep, file-grep-files, file-grep-content, file-grep-count, file-grep-case-insensitive, file-grep-type-filtered, file-patch, file-patch-replace-all, http-get, http-get-json, http-authenticated-get, http-head, http-post, http-post-json-webhook, http-put, http-patch, http-delete, http-save, http-save-large, memory-search, memory-search-broad, memory-write, memory-write-log, memory-write-main, memory-write-patch, memory-read, memory-read-main, memory-read-heartbeat, memory-tree, memory-tree-deep, time-now, time-now-tz, time-parse, time-convert, json-query, json-stringify, json-parse, json-validate, skill-list, skill-list-user-only, skill-list-system-only, skill-install, skill-remove, trigger-list, trigger-create, trigger-remove, subagent-spawn, web-search, echo-ping, shell-run, shell-script, shell-git-status, shell-git-log, shell-git-diff-stat, shell-git-branch, shell-git-stash-list, shell-git-remote, shell-git-show-stat, shell-git-tag-list, shell-pwd, shell-df, shell-ps, shell-env, shell-uname, shell-which, shell-date, shell-hostname, shell-whoami, shell-uptime, shell-free, shell-wc-l |
 | 23 | ExtensionCatalogue | 24 | builtin-filesystem, builtin-network, builtin-memory, builtin-process, builtin-management, ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch, ext-http, ext-http-save, ext-memory-search, ext-memory-write, ext-memory-read, ext-memory-tree, ext-time, ext-json, ext-shell, ext-skill-management, ext-trigger-management, ext-spawn-subagent, ext-web-search |
 
-> **Actual totals (v3, fully optimized):** 23 Tools + 28 ToolSkills + 49 PythonCode + 64 Leaf Skills + 9 Domain Skills + 80 Recipes + 24 ExtensionCatalogues = **277 components**
+> **Actual totals (v3, fully optimized):** 23 Tools + 28 ToolSkills + 60 PythonCode + 74 Leaf Skills + 9 Domain Skills + 93 Recipes + 24 ExtensionCatalogues = **311 components**
 >
-> **Tier-0 recipe count: 65 out of 80** (81%). The increase from 233 is intentional:
-> §shell-safe-fixed unlocks 11 new Tier-0 shell recipes (git + system info);
-> file-write-template, file-patch-replace-all, and file-glob-recent add 3 more Tier-0
-> filesystem variants. The result: the orchestrator handles 81% of all built-in tasks
-> completely autonomously — LLM involvement is required for only 19%.
+> **Tier-0 recipe count: 77 out of 93** (83%). Breakdown of increases from previous revision:
+> §shell-safe-fixed adds 9 more fixed commands (date, hostname, whoami, uptime, free,
+> git-remote, git-show-stat, git-tag-list, wc-l); file-list-dirs-only, http-save-large,
+> and echo-ping add 3 more Tier-0 recipes; http-patch is Tier 1 (LLM composes body).
+> The orchestrator handles 83% of all built-in tasks completely autonomously —
+> LLM involvement is required for only 17%.
 
 ---
 
@@ -8510,11 +9426,11 @@ For each domain group:
 
 | Pass | Group | Primary ExtCatalogue | Per-tool ExtCatalogues | Tools | ToolSkills | PythonCode | Leaf Skills | Domain Skills | Recipes |
 |------|-------|----------------------|------------------------|-------|------------|------------|-------------|---------------|---------|
-| 1 | filesystem | builtin-filesystem | ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch | 6 | 6 | 10 | 17 | 1 | 21 |
-| 2 | network | builtin-network | ext-http, ext-http-save, ext-web-search | 2 | 3 | 12 | 9 | 1 | 11 |
+| 1 | filesystem | builtin-filesystem | ext-read-file, ext-write-file, ext-list-dir, ext-glob, ext-grep, ext-apply-patch | 6 | 6 | 10 | 19 | 1 | 23 |
+| 2 | network | builtin-network | ext-http, ext-http-save, ext-web-search | 2 | 3 | 14 | 11 | 1 | 14 |
 | 3 | memory | builtin-memory | ext-memory-search, ext-memory-write, ext-memory-read, ext-memory-tree | 4 | 4 | 7 | 7 | 1 | 11 |
-| 4 | process | builtin-process | ext-shell, ext-spawn-subagent, ext-trigger-management | 5 | 1 | 14 | 17 | 3 | 18 |
-| 5 | management | builtin-management | ext-skill-management, ext-time, ext-json | 6 | 9 | 7 | 14 | 3 | 11 |
+| 4 | process | builtin-process | ext-shell, ext-spawn-subagent, ext-trigger-management | 5 | 1 | 26 | 30 | 3 | 29 |
+| 5 | management | builtin-management | ext-skill-management, ext-time, ext-json | 6 | 9 | 8 | 14 | 3 | 12 |
 
 ---
 
@@ -8555,4 +9471,4 @@ producing duplicate rows.
 
 ---
 
-*End of builtin_stuff_v3.md — all Steps + Final section complete. v3 fully revised: 277 components, 80 Recipes (65 Tier-0, §shell-safe-fixed + §shell-guard-custom), 24 ExtensionCatalogues (5 global domain + 19 per-tool), orchestrator-first design. The orchestrator runs shell/file/HTTP/memory operations without LLM involvement wherever the command is fixed or slots are fully bound.*
+*End of builtin_stuff_v3.md — all Steps + Final section complete. v3 fully revised: 311 components, 93 Recipes (77 Tier-0 = 83%, §shell-safe-fixed + §shell-guard-custom), 24 ExtensionCatalogues (5 global domain + 19 per-tool), orchestrator-first design. Full builtin coverage: all 23 tools fully covered; HTTP PATCH added; echo-ping diagnostic recipe added; 9 new sysinfo/git shell Tier-0 recipes; file-list-dirs-only added. The orchestrator handles 83% of all built-in tasks autonomously — LLM involvement required for only 17%.*
