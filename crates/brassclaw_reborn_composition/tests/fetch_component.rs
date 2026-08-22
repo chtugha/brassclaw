@@ -23,7 +23,7 @@
 
 use std::sync::Arc;
 
-use brassclaw_engine::memory::retrieval_source::fetch_component_by_id;
+use brassclaw_engine::memory::retrieval_source::{fetch_component_by_id, fetch_component_by_name};
 use brassclaw_engine::memory::{
     ComponentScope, FetchForTurnResult, PostgresSource, RetrievalSource,
 };
@@ -218,6 +218,77 @@ async fn fetch_component_by_id_returns_action_item() {
     assert!(
         item.override_prompt_creation,
         "actions default to override_prompt_creation = true"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Phase G.2 — `__resolve_component_by_name__(name, class_code)` resolves the
+// correct validated Action item by name. Drives `fetch_component_by_name`
+// (the live engine API the G.2 handler calls), mirroring #8 above. The
+// SEC-01 gate is exercised by the cross-tenant case below: a name owned by
+// tenant A must NOT resolve for tenant B.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn fetch_component_by_name_resolves_action_item() {
+    let rig = match pg_rig_or_skip().await {
+        Some(r) => r,
+        None => return,
+    };
+    let scope = unique_scope();
+
+    let action_id = Uuid::new_v4();
+    let action_name = unique_name("act");
+    insert_action(&rig.pool, &scope, action_id, &action_name).await;
+
+    // `__resolve_component_by_name__(name, 16)` delegates to
+    // fetch_component_by_name — must return the same item #8 found by id.
+    let items = fetch_component_by_name(&rig.pool, &scope, &action_name, 16)
+        .await
+        .expect("fetch_component_by_name succeeds");
+
+    assert_eq!(items.len(), 1, "exactly one validated action for the name");
+    let item = &items[0];
+    assert_eq!(item.id, action_id, "correct id");
+    assert_eq!(item.class_code, 16, "correct class_code");
+    assert_eq!(item.name, action_name, "correct name");
+    assert_eq!(item.effective_content, "action description");
+    assert!(
+        item.override_prompt_creation,
+        "actions default to override_prompt_creation = true"
+    );
+}
+
+#[tokio::test]
+async fn fetch_component_by_name_is_tenant_scoped() {
+    let rig = match pg_rig_or_skip().await {
+        Some(r) => r,
+        None => return,
+    };
+    let scope_a = unique_scope();
+    let scope_b = unique_scope();
+
+    // Tenant A owns a validated Action with a unique name.
+    let action_id = Uuid::new_v4();
+    let action_name = unique_name("act");
+    insert_action(&rig.pool, &scope_a, action_id, &action_name).await;
+
+    // Positive control: tenant A resolves A's action by name.
+    let items_a = fetch_component_by_name(&rig.pool, &scope_a, &action_name, 16)
+        .await
+        .expect("fetch_component_by_name succeeds");
+    assert_eq!(items_a.len(), 1, "tenant A resolves its own action");
+    assert_eq!(items_a[0].id, action_id);
+
+    // Negative: tenant B issues the SAME name — must NOT resolve (empty vec,
+    // never A's action id). The `tenant_id = $2` scope filter prevents the
+    // cross-tenant leak (the core F.1–F.4 / G.2 security guarantee).
+    let items_b = fetch_component_by_name(&rig.pool, &scope_b, &action_name, 16)
+        .await
+        .expect("fetch_component_by_name succeeds");
+    assert!(
+        items_b.is_empty(),
+        "CROSS-TENANT LEAK: tenant B resolved tenant A's action by name: {items_b:?}"
     );
 }
 

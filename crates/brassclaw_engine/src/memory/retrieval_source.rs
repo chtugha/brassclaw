@@ -1091,6 +1091,89 @@ pub async fn fetch_component_by_id(
     Ok(items)
 }
 
+/// Fetch a single validated component from its class-specific table by
+/// **name** (v3 Phase G.2 / Q-G4 — the Option B fallback the §0.9
+/// `call_action` uses when it holds a step **name**, not a UUID).
+///
+/// Mirrors [`fetch_component_by_id`]: same `class_code_to_table` mapping,
+/// the same SEC-01 validation gate
+/// (`validation_status = 'validated' AND '05:validator' != ALL(consumer_tags)`),
+/// and the same scope tuple — only the lookup key differs (`name = $1`
+/// instead of `id = $1`). `LIMIT 1` so a name that is unique within a scope
+/// resolves to exactly one component; bind order is **name first**, then the
+/// scope tuple, matching the §0.9 plan.
+///
+/// Returns an empty vec if no validated component with that name exists
+/// under the scope or the class code is unmapped (e.g. class 0 tools).
+#[cfg(feature = "skills-db")]
+pub async fn fetch_component_by_name(
+    pool: &brassclaw_pg::PgPool,
+    scope: &ComponentScope,
+    name: &str,
+    component_class_code: i32,
+) -> Result<Vec<ComponentItem>, RetrievalSourceError> {
+    use tokio_postgres::types::ToSql;
+
+    let Some((table, content_expr)) = class_code_to_table(component_class_code) else {
+        return Ok(vec![]);
+    };
+
+    let client = pool
+        .get()
+        .await
+        .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
+
+    let query_sql = format!(
+        "SELECT id::text, class_code::int, prompt_uid::bigint,
+                name, COALESCE(description,'') AS description,
+                {content_expr} AS effective_content,
+                override_prompt_creation
+         FROM {table}
+         WHERE name = $1
+           AND tenant_id  = $2
+           AND user_id    = $3
+           AND agent_id   = $4
+           AND project_id = $5
+           AND validation_status = 'validated'
+           AND '05:validator' != ALL(consumer_tags)
+         LIMIT 1"
+    );
+
+    let params: &[&(dyn ToSql + Sync)] = &[
+        &name,
+        &scope.tenant_id,
+        &scope.user_id,
+        &scope.agent_id,
+        &scope.project_id,
+    ];
+
+    let rows = client
+        .query(&query_sql, params)
+        .await
+        .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
+
+    let items: Vec<ComponentItem> = rows
+        .iter()
+        .map(|row| {
+            let id_str: &str = row.get(0);
+            let id = id_str
+                .parse::<uuid::Uuid>()
+                .unwrap_or_else(|_| uuid::Uuid::nil());
+            ComponentItem {
+                id,
+                class_code: row.get(1),
+                prompt_uid: row.get(2),
+                name: row.get::<_, &str>(3).to_string(),
+                description: row.get::<_, &str>(4).to_string(),
+                effective_content: row.get::<_, &str>(5).to_string(),
+                override_prompt_creation: row.get(6),
+            }
+        })
+        .collect();
+
+    Ok(items)
+}
+
 /// Batch-fetch multiple components in O(tables) round-trips instead of O(N)
 /// (PERF-02 / FIND-P9-04 — a Phase E requirement, not a future optimisation).
 ///

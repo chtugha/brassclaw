@@ -735,6 +735,21 @@ pub async fn execute_orchestrator(
                         .await
                     }
 
+                    // __resolve_component_by_name__(name, class_code) -> dict | None
+                    // The §0.9 Option B fallback: fetches a single validated
+                    // component by name + class code (SEC-01 gate). Used by
+                    // `call_action` when it holds a step name, not a UUID.
+                    // v3 Phase G.2 (Q-G4).
+                    "__resolve_component_by_name__" => {
+                        handle_resolve_component_by_name(
+                            args,
+                            thread,
+                            #[cfg(feature = "skills-db")]
+                            pg_pool,
+                        )
+                        .await
+                    }
+
                     // Unknown — let Monty resolve it (user-defined functions, builtins)
                     other => ExtFunctionResult::NotFound(other.to_string()),
                 };
@@ -2853,6 +2868,77 @@ async fn handle_fetch_component(
             }
             Err(e) => {
                 debug!("__fetch_component__: fetch failed: {e}");
+                ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
+            }
+        }
+    }
+
+    #[cfg(not(feature = "skills-db"))]
+    ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
+}
+
+/// Handle `__resolve_component_by_name__(name, class_code)` (v3 Phase G.2 /
+/// Q-G4 — the §0.9 Option B fallback host function).
+///
+/// Fetches a single validated component by **name** + class code from its
+/// class-specific table, enforcing the same SEC-01 validation gate as
+/// [`handle_fetch_component`]. Used by `call_action` when it holds a step
+/// **name** rather than a UUID (plan §0.9 Option B).
+///
+/// Returns the same Python dict shape as `handle_fetch_component`
+/// (`{ id, class_code, name, description, content, override_prompt_creation }`)
+/// for the single matched [`ComponentItem`], or `None` when: the `skills-db`
+/// feature is off, no pool is wired, the name or class-code args are
+/// missing/invalid, the component is absent, or the fetch errors. Scope is
+/// built from the thread's real identity (`thread.tenant_id` /
+/// `thread.agent_id` — F.1/F.3), mirroring `handle_fetch_component`.
+async fn handle_resolve_component_by_name(
+    _args: &[MontyObject],
+    _thread: &Thread,
+    #[cfg(feature = "skills-db")] pg_pool: Option<&brassclaw_pg::PgPool>,
+) -> ExtFunctionResult {
+    #[cfg(feature = "skills-db")]
+    {
+        use crate::memory::retrieval_source::fetch_component_by_name;
+
+        let name = _args.first().map(monty_to_string).unwrap_or_default();
+        if name.is_empty() {
+            return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
+        }
+        let class_code = match _args.get(1) {
+            Some(MontyObject::Int(i)) => *i as i32,
+            _ => {
+                return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
+            }
+        };
+        let Some(pool) = pg_pool else {
+            return ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null));
+        };
+
+        let scope = ComponentScope {
+            tenant_id: _thread.tenant_id.clone(),
+            user_id: _thread.user_id.clone(),
+            agent_id: _thread.agent_id.clone(),
+            project_id: _thread.project_id.to_string(),
+        };
+
+        match fetch_component_by_name(pool, &scope, &name, class_code).await {
+            Ok(items) => {
+                if let Some(item) = items.into_iter().next() {
+                    return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                        "id": item.id.to_string(),
+                        "class_code": item.class_code,
+                        "name": item.name,
+                        "description": item.description,
+                        "content": item.effective_content,
+                        "override_prompt_creation": item.override_prompt_creation,
+                    })));
+                }
+                debug!("__resolve_component_by_name__: no validated component for name {name:?}");
+                ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
+            }
+            Err(e) => {
+                debug!("__resolve_component_by_name__: fetch failed: {e}");
                 ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
             }
         }
@@ -7816,7 +7902,10 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
             let arr = json["active_skills"]
                 .as_array()
                 .unwrap_or_else(|| panic!("{arm} arm must emit an active_skills array"));
-            assert!(arr.is_empty(), "{arm} arm active_skills must be [] without a pool");
+            assert!(
+                arr.is_empty(),
+                "{arm} arm active_skills must be [] without a pool"
+            );
         };
 
         // SplitResult arm.
@@ -7824,7 +7913,10 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
             phase_f7_split_result(),
             Arc::new(Mutex::new(None)),
         ));
-        empty_arr(&phase_f7_assemble(src, &phase_f7_thread("list files")).await, "SplitResult");
+        empty_arr(
+            &phase_f7_assemble(src, &phase_f7_thread("list files")).await,
+            "SplitResult",
+        );
 
         // Components arm (no-match broad scan).
         let result = FetchForTurnResult::Components(vec![
@@ -7866,6 +7958,54 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         empty_arr(
             &phase_f7_assemble(src, &phase_f7_thread("ambiguous query")).await,
             "Disambiguation",
+        );
+    }
+
+    /// Phase G.2 — `handle_resolve_component_by_name` returns `Value::Null`
+    /// whenever the SEC-01-validated named lookup cannot run: no `pg_pool`
+    /// (non-skills-db config / unit-test path), an empty name, or a missing
+    /// class-code arg. The skills-db-populated (validated component found)
+    /// case is a DB-integration test (composition `tests/`,
+    /// skip-if-no-docker) mirroring `fetch_component.rs`.
+    #[tokio::test]
+    async fn phase_g2_resolve_by_name_returns_null_on_unresolvable_paths() {
+        let thread = phase_f7_thread("deploy now");
+
+        async fn null_from(args: Vec<MontyObject>, thread: &Thread) -> serde_json::Value {
+            let result = handle_resolve_component_by_name(
+                &args,
+                thread,
+                #[cfg(feature = "skills-db")]
+                None,
+            )
+            .await;
+            match result {
+                ExtFunctionResult::Return(obj) => monty_to_json(&obj),
+                other => panic!("expected Return, got: {other:?}"),
+            }
+        }
+
+        // No-pool path (the unit-test reality): a well-formed call returns Null.
+        let json = null_from(
+            vec![MontyObject::String("deploy".into()), MontyObject::Int(16)],
+            &thread,
+        )
+        .await;
+        assert!(json.is_null(), "no-pool path must return Null, got {json}");
+
+        // Empty name early-returns Null.
+        let json = null_from(
+            vec![MontyObject::String("".into()), MontyObject::Int(16)],
+            &thread,
+        )
+        .await;
+        assert!(json.is_null(), "empty name must return Null, got {json}");
+
+        // Missing class-code arg returns Null.
+        let json = null_from(vec![MontyObject::String("deploy".into())], &thread).await;
+        assert!(
+            json.is_null(),
+            "missing class-code must return Null, got {json}"
         );
     }
 
