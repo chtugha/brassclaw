@@ -191,7 +191,26 @@
 >   caused this exact crash. The only difference from blank POST is the trigger is
 >   deferred by milliseconds (the sync scan happens on the next `ZSTransferFetchedDataThread`
 >   tick), making it appear "safe" until client logs are checked.
->   **Recovery:** `sudo systemctl restart tomedo-server` via SSH.
+>   **Recovery (temporary):** `sudo systemctl restart tomedo-server` via SSH — clears the
+>   in-memory sync queue but does NOT remove bad rows from the `change` table. Clients that
+>   reconnect fresh will crash again until the DB is cleaned.
+>   **Recovery (permanent):** Direct SQL DELETE on the `change` table, the `karteieintrag`
+>   table, and the `patientendetailsrelationen_karteieintraege` join table.
+>   The `change` table is **append-only** — `PUT /patientendetailsrelationen` only appends
+>   new rows, it cannot overwrite or remove existing ones. There is no REST endpoint for
+>   deleting `change` rows (DELETE /change → HTTP 404; GET /change → HTTP 410 Gone).
+>   ```sql
+>   -- Run in this order (FK constraints: join table first, then entries, then change)
+>   DELETE FROM patientendetailsrelationen_karteieintraege
+>     WHERE karteieintraege_ident IN (<bad_idents>);
+>   DELETE FROM karteieintrag
+>     WHERE ident IN (<bad_idents>);
+>   DELETE FROM change
+>     WHERE clientid IS NULL AND changedate IS NULL
+>     AND revision IN (<revision_numbers>);
+>   ```
+>   Identify revision numbers via:
+>   `SELECT revision, entitytype, entityid, value FROM change WHERE clientid IS NULL AND changedate IS NULL ORDER BY revision;`
 >
 > - **✅ PATIENT LINK SOLVED — THREE-STEP (confirmed live 2026-08-22+):**
 >   The patient association is a CoreData join-table relationship managed server-side.
