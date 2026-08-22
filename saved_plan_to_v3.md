@@ -5243,7 +5243,7 @@ Fix the hardcoded `tenant_id: "default"` scope bug (see §below).
 
 ### Phase G — Python Step-0 Upgrade + `call_action` Migration
 
-**Status:** [ ] Pending
+**Status:** [x] Done
 
 > **Subplan (resolved BEFORE implementation):** grounding after Phase A–F
 > revealed 11 gaps/forks (e.g. `__resolve_component_by_name__` + `handle_disambiguation`
@@ -5416,6 +5416,24 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > **684 default / 695 skills-db** (0 failed both; +6 vs 678/689 baseline = the
 > 6 G.8 `step0_` tests); skills-db full lib run twice → 695/0 both (flake
 > resolved). Executed before resuming G.8.
+
+> **Substep G.8 (resumed) — Monty step-0 harness + `step0_` unit tests +
+> composition `call_action` integration test.** ✅ Done. Extended the Monty
+> harness with `run_python_step0` (injects the 5 `run_loop` entry-point
+> globals + mocks all step-0 host fns into a `Step0Recording`) and added 6
+> `step0_` unit tests (orchestrator.rs::tests) covering the step-0 v3 flow
+> end-to-end through Monty: upgraded-pkr inject, action_short_circuit
+> hit/miss, disambiguation, no-match, and the SEC-07 blocked-tool error
+> path. Composition integration test `call_action_resolves_nested_action_
+> by_uuid` (tests/fetch_component.rs) drives `fetch_component_by_id` for
+> BOTH a child Action + its parent (whose `call_action` step carries the
+> child UUID `action_id`) by UUID (class 16) against real Postgres —
+> asserts child resolves with executable `steps`+`allowed_tools` and parent
+> resolves with `steps/0/type=="call_action"` + `steps/0/action_id`==
+> child UUID. Verified both configs: fmt clean; clippy clean (engine +
+> composition); engine lib **684 default / 695 skills-db** (0 failed both);
+> composition `fetch_component` **7 passed / 0 failed**. **Phase G
+> complete.** Tier 0 (`tier_zero`) dispatch deferred to Phase H per Q-G1.
 
 ---
 

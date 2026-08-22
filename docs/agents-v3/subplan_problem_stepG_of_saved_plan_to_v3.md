@@ -444,4 +444,38 @@ composition tests):**
   `full_boot_cycle_from_scratch` integration test passes (refinery applies
   V000–V062 cleanly against real Postgres 16); clippy `brassclaw_pg` clean;
   fmt clean. Committed+pushed `ea68f214`.
-- G.8 — pending.
+- G.8 — Done. Extended the Monty step-0 harness (`orchestrator.rs::tests`)
+  with `run_python_step0` (sibling of `run_python_final`) — injects
+  `context`/`goal`/`actions`/`state`/`config` globals (mirroring
+  `build_orchestrator_inputs`, `max_iterations=1`/`step_count=0` → only
+  step-0 runs) + mocks the step-0 host fns (`__assemble_prior_knowledge__`→
+  preset pkr, `__fetch_component__`→preset doc/None,
+  `__resolve_component_by_name__`→preset doc/None, `__emit_event__`/
+  `__transition_to__`/`__set_active_skills__`/`__llm_complete__`/
+  `__get_actions__`/`__list_skills__`/`__retrieve_docs__` → capture into a
+  `Step0Recording`). 6 unit tests (`step0_…`) drive the step-0 v3 flow
+  through Monty: (1) upgraded-pkr → `orchestrator_content` injected at
+  N-1, `__list_skills__`/`__retrieve_docs__` NOT called; (2)
+  `action_short_circuit`+fetched doc → `execute_action_procedure` runs,
+  NO `__llm_complete__`; (3) `action_short_circuit`+None fetch →
+  `action_unresolved` + falls through to Tier-2; (4) `disambiguation` →
+  `handle_disambiguation` (event + outcome `disambiguation`), NO
+  `__llm_complete__`; (5) no-match → `orchestrator_content` injected +
+  active_skills set; (6) `action_short_circuit`+tool_call to a blocked
+  tool → outcome `error` (SEC-07), no `__llm_complete__`. Test #4 exposed
+  the `str.format()`-Monty-unsupported crash → resolved by the G8-STRFMT
+  sub-substep before G.8 resumed. Composition integration test
+  `call_action_resolves_nested_action_by_uuid` (composition `tests/
+  fetch_component.rs`): seeds a child Action (single `return` step) + a
+  parent Action whose `call_action` step carries the child UUID
+  (`action_id`), then drives `fetch_component_by_id` for BOTH child +
+  parent by UUID (class 16) against real Postgres — asserts child
+  resolves with executable `steps` + `allowed_tools`, parent resolves
+  with `steps/0/type == "call_action"` + `steps/0/action_id == child_id`.
+  Verified both configs: fmt clean; clippy clean (engine + composition,
+  default + skills-db); engine lib **684 default / 695 skills-db**
+  (0 failed both; +6 vs 678/689 baseline = the 6 `step0_` tests);
+  composition `fetch_component` 7 passed / 0 failed (incl. the new
+  nested-resolution test + the G-STUB tests). Committed+pushed below.
+  **Phase G complete — Tier 0 (`tier_zero`) dispatch deferred to Phase H
+  per Q-G1.**

@@ -21,6 +21,7 @@
 //! - Phase G.2 `__resolve_component_by_name__(name, 16)` → correct Action item and tenant scoping → `fetch_component_by_name_resolves_action_item`, `fetch_component_by_name_is_tenant_scoped`
 //! - Phase G / Q-G-STUB1 class-16 fetch surfaces executable `steps` and `allowed_tools` by id → `fetch_component_by_id_returns_action_steps`
 //! - Phase G / Q-G-STUB1 class-16 fetch surfaces executable `steps` and `allowed_tools` by name → `fetch_component_by_name_returns_action_steps`
+//! - Phase G.8 `call_action` nested resolution by UUID (`__fetch_component__(action_id, 16)`) → `call_action_resolves_nested_action_by_uuid`
 //!
 #![cfg(feature = "skills-db")]
 
@@ -513,4 +514,115 @@ async fn cross_tenant_intent_isolation() {
         }
         other => panic!("tenant B expected Components (no match), got {other:?}"),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Phase G.8 — `call_action` nested resolution by UUID. A parent Action's
+// `call_action` step holds a child `action_id` (UUID); default.py:850 resolves
+// it via `__fetch_component__(nested_action_id, 16)` → `fetch_component_by_id`.
+// This drives that exact live API for BOTH the child (the nested resolution
+// target) and the parent (whose own `steps` carry the `call_action` step), so
+// the nested target AND the parent procedure are retrievable with executable
+// steps against real Postgres — i.e. a `call_action` can fetch its child's
+// real procedure and the parent that contains the `call_action` is itself
+// runnable. Mirrors `fetch_component_by_id_returns_action_steps` (the
+// Rust-API-direct approach the G-STUB established); the Python `call_action`
+// execution logic itself is covered by the engine-lib `step0_` unit tests with
+// mocked fetch.
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn call_action_resolves_nested_action_by_uuid() {
+    let rig = match pg_rig_or_skip().await {
+        Some(r) => r,
+        None => return,
+    };
+    let scope = unique_scope();
+
+    // Child Action: a trivial executable procedure (a single return step).
+    let child_id = Uuid::new_v4();
+    let child_name = unique_name("child");
+    let child_steps = serde_json::json!([{ "type": "return", "value": "child-done" }]);
+    let child_tools = vec!["shell".to_string()];
+    insert_action_with_procedure(
+        &rig.pool,
+        &scope,
+        child_id,
+        &child_name,
+        &child_steps,
+        &child_tools,
+    )
+    .await;
+
+    // Parent Action: its procedure is a `call_action` step that references the
+    // child by UUID (`action_id`) — the §0.9 v3 preferred resolution path
+    // (default.py:847-851).
+    let parent_id = Uuid::new_v4();
+    let parent_name = unique_name("parent");
+    let parent_steps =
+        serde_json::json!([{ "type": "call_action", "action": child_name, "action_id": child_id }]);
+    let parent_tools = vec!["shell".to_string()];
+    insert_action_with_procedure(
+        &rig.pool,
+        &scope,
+        parent_id,
+        &parent_name,
+        &parent_steps,
+        &parent_tools,
+    )
+    .await;
+
+    // The exact resolution `call_action` performs: fetch the child by UUID.
+    let child_items = fetch_component_by_id(&rig.pool, &scope, child_id, 16)
+        .await
+        .expect("fetch_component_by_id (child) succeeds");
+    assert_eq!(child_items.len(), 1, "nested child action resolves by uuid");
+    let child = &child_items[0];
+    assert_eq!(child.id, child_id, "correct child id");
+    assert_eq!(child.class_code, 16);
+    let child_steps_val = child
+        .steps
+        .as_ref()
+        .expect("nested child fetch must surface executable steps");
+    assert_eq!(
+        child_steps_val.as_array().map(Vec::len),
+        Some(1),
+        "child procedure round-tripped"
+    );
+    assert_eq!(
+        child_steps_val.pointer("/0/type").and_then(|v| v.as_str()),
+        Some("return")
+    );
+    assert!(
+        child.allowed_tools.is_some(),
+        "child allowed_tools surfaced"
+    );
+
+    // The parent procedure (carrying the `call_action` step) is itself
+    // retrievable with executable steps, so execute_action_procedure can run
+    // the parent and reach the `call_action` step that resolves the child.
+    let parent_items = fetch_component_by_id(&rig.pool, &scope, parent_id, 16)
+        .await
+        .expect("fetch_component_by_id (parent) succeeds");
+    assert_eq!(parent_items.len(), 1, "parent action resolves by uuid");
+    let parent = &parent_items[0];
+    assert_eq!(parent.id, parent_id, "correct parent id");
+    let parent_steps_val = parent
+        .steps
+        .as_ref()
+        .expect("parent fetch must surface executable steps");
+    assert_eq!(
+        parent_steps_val.pointer("/0/type").and_then(|v| v.as_str()),
+        Some("call_action"),
+        "parent's call_action step round-tripped"
+    );
+    let action_id_str = parent_steps_val
+        .pointer("/0/action_id")
+        .and_then(|v| v.as_str())
+        .expect("call_action step carries action_id");
+    assert_eq!(
+        action_id_str,
+        child_id.to_string(),
+        "call_action step carries the child UUID"
+    );
 }
