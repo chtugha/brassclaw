@@ -840,17 +840,32 @@ def _execute_action_steps(action, scope_vars, depth, step_counter):
             # Invoke a nested Action (SEC-09 depth bounded above).
             nested_name = step_def.get("action", "")
             nested_params = step_def.get("params", {})
-            # Retrieve the nested action from the prior-knowledge docs.
-            nested_docs = __retrieve_docs__(nested_name, 1)
-            if not nested_docs:
+            # Resolve the nested Action via the v3 component store (Phase G.6 /
+            # Q-G4/Q-G5): prefer an explicit `action_id` (UUID) on the step; fall
+            # back to a name lookup (§0.9 Option B). Replaces the legacy
+            # __retrieve_docs__ RamSource scan (deleted from step-0 by G.5).
+            nested_action_id = step_def.get("action_id", "")
+            nested_action = None
+            if nested_action_id:
+                fetched = __fetch_component__(nested_action_id, 16)
+                nested_action = fetched if isinstance(fetched, dict) else None
+            else:
+                resolved = __resolve_component_by_name__(nested_name, 16)
+                nested_action = resolved if isinstance(resolved, dict) else None
+            if not nested_action:
                 return {
-                    "error": "call_action: Action '{}' not found".format(nested_name)
+                    "error": "call_action: Action '{}' not resolvable (no action_id and name lookup failed)".format(nested_name),
+                    "unresolvable_action": True,
                 }, step_counter
-            nested_action = nested_docs[0]
             nested_scope = dict(nested_params)
             sub_result, step_counter = _execute_action_steps(
                 nested_action, nested_scope, depth + 1, step_counter
             )
+            # Propagate the unresolvable_action marker up through nested
+            # call_action chains so execute_action_procedure can convert it to
+            # the fall_back_to_tier2 signal (Q-G5).
+            if sub_result is not None and sub_result.get("unresolvable_action"):
+                return sub_result, step_counter
             if sub_result is not None:
                 scope_vars["_last_result"] = sub_result
                 if "result" in sub_result:
@@ -921,6 +936,14 @@ def execute_action_procedure(action_doc, goal, state):
     if result is None:
         # Action completed without an explicit `return` step.
         return complete_result(state, "completed", "Action completed.")
+    # Q-G5: a nested call_action that could not resolve its Action bubbles an
+    # `unresolvable_action` marker up through _execute_action_steps. Convert it
+    # to the fall_back_to_tier2 outcome so run_loop step-0 (G.5) falls through
+    # to Tier-2 __llm_complete__ instead of erroring.
+    if result is not None and result.get("unresolvable_action"):
+        return complete_result(
+            state, "fall_back_to_tier2", extra={"reason": result.get("error", "")}
+        )
     if "error" in result:
         return complete_result(state, "error", None, error=result["error"])
     return complete_result(state, "completed", result.get("result", ""))
