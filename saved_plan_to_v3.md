@@ -5467,8 +5467,19 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > sequence (H.1–H.13) + verification in
 > `./docs/agents-v3/subplan_problem_stepH_of_saved_plan_to_v3.md`
 > (Zenflow subplan substep under Phase H step `9d94d6cb-3a45-47cc-8e0f-85203c936652`).
-> Execute H.1→H.13 one-by-one; H.4 may spawn a nested subplan for `recipe_id`
-> surfacing.
+> Execute H.1→H.13 one-by-one; H.4 SPAWNED a nested subplan for `recipe_id`
+> surfacing + the engine→composition outcome-recording bridge — see
+> `./docs/agents-v3/subplan_problem_stepH4_of_saved_plan_to_v3.md`
+> (Zenflow nested subplan substep; H4.1–H4.8 one-by-one). Two design questions
+> answered before H.4 implementation: Q-H6 (mixed mechanism — success via
+> `complete_result(extra={"tier_zero_outcome":{recipe_id,success:true}})` +
+> failure via the `recipe_tier_zero_failed` event the engine reads from
+> `thread.events`) and Q-H7 Architecture A via A2 (event-based — typed
+> `RecipeTierZeroStarted`/`Succeeded`/`Failed` `EventKind` variants carrying
+> `recipe_id` + a composition event listener calls
+> `PgRecipeLibrary::record_recipe_outcome(recipe_id, success)` fire-and-forget;
+> `OrchestratorResult.tier_zero_outcome` still populated from extra/event for
+> tests; no duplicated Wilson SQL, no new engine `brassclaw_turns` dep).
 
 **Status:** [ ] Pending
 

@@ -230,21 +230,25 @@ Test: step-0 harness with a `pkr` carrying `tier_zero=True` +
 **H.4 — engine→composition Tier-0 outcome-recording bridge** (resolves Q-H3). The
 hard part. Goal: after a Tier-0 run, composition calls
 `record_recipe_outcome(recipe_id, success)`. Sub-problem (§2.4): `recipe_id` is
-not surfaced today. Approach: extend `OrchestratorResult` (`orchestrator.rs:64`)
-to carry `tier_zero_outcome: Option<TierZeroOutcome>` where
-`TierZeroOutcome{recipe_id: String, success: bool}`; the engine populates it
-when `default.py` returns a Tier-0 `completed` (recipe_id from the matched
-recipe — surfaced from `handle_assemble_prior_knowledge`'s `SplitResult` arm
-which has `routing.matched_component_ids`; the *recipe* id is the recipe
-component itself, available in the `SplitResult` via the routing/recipe row —
-verify the exact source during H.4; if it needs DB re-fetch or a new field on
-`TurnRoutingSignals`, **write a nested subplan
-`subplan_problem_stepH4_of_saved_plan_to_v3.md`** and execute it before
-resuming H.4). Composition's `loop_engine` caller reads
-`result.tier_zero_outcome` and calls `RecipeLookup::record_recipe_outcome`. If
-the plumbing touches `loop_engine.rs` / `manager.rs` widely, do it via the nested
-subplan. `record_recipe_outcome` is a fire-and-forget best-effort call (errors
-logged at `debug!`, never break the turn).
+not surfaced today. **The plumbing proved large (engine `types/event.rs` +
+`memory/retrieval_source.rs` + `executor/orchestrator.rs` + composition event
+listener) so H.4 SPAWNED the nested subplan
+`./docs/agents-v3/subplan_problem_stepH4_of_saved_plan_to_v3.md` (Zenflow nested
+subplan substep; H4.1–H4.8 one-by-one). Two design questions answered before
+implementation: Q-H6 (mixed mechanism — success via
+`complete_result(extra={"tier_zero_outcome":{recipe_id,success:true}})` +
+failure via the `recipe_tier_zero_failed` event read from `thread.events`) and
+Q-H7 Architecture A via A2 (event-based — typed
+`RecipeTierZeroStarted`/`Succeeded`/`Failed` `EventKind` variants carrying
+`recipe_id` + a composition event listener calls
+`PgRecipeLibrary::record_recipe_outcome(recipe_id, success)` fire-and-forget;
+`OrchestratorResult.tier_zero_outcome` still populated from extra/event for
+tests; no duplicated Wilson SQL, no new engine `brassclaw_turns` dep).
+`recipe_id` surfacing: add `recipe_id: Option<String>` to
+`TurnRoutingSignals`, populate at both `fetch_recipe_split_result` construction
+sites, surface it into the `pkr` dict, and emit it on the Tier-0 events.
+`record_recipe_outcome` is a fire-and-forget best-effort call (errors logged at
+`debug!`, never break the turn).
 
 **H.5 — Model A composition integration test.** Tier-0 recipe in the DB:
 `wilson_lower >= 0.70`, `validation_status = 'validated'`, `llm_call_required =
