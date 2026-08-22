@@ -5480,6 +5480,20 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > `PgRecipeLibrary::record_recipe_outcome(recipe_id, success)` fire-and-forget;
 > `OrchestratorResult.tier_zero_outcome` still populated from extra/event for
 > tests; no duplicated Wilson SQL, no new engine `brassclaw_turns` dep).
+>
+> **H4.8 spawned a nested subplan** — the final-verification `cargo test` (both
+> configs) surfaced a **pre-existing** test regression
+> (`tests/engine_v2_skill_codeact.rs::skill_codeact_persists_active_skill_provenance`,
+> red on origin/main since Phase G.1 `e7c2ce31` — `skill_provenance_for_items`
+> returns `Vec::new()` when `pg_pool` is `None`, and `ThreadManager` did not plumb
+> a pg_pool into the `ExecutionLoop`; **not** caused by H4). User decision (Option
+> A): fix now via subplan — add `ThreadManager::with_pg_pool` plumbing + migrate
+> the test to testcontainer-pg + `skills-db` + skip-if-no-docker (seed
+> `reborn_skills` via raw SQL) + faithfully update the `snippet_names` assertion
+> to `vec![]` (reborn_skills has no `code_snippets` column by design). See
+> `./docs/agents-v3/subplan_problem_stepH4_8_of_saved_plan_to_v3.md` (Zenflow
+> nested substep under the Phase H.4 nested-subplan step `fa9fb137`; S1–S4
+> one-by-one). Execute S1→S4 before marking H4.8 Done.
 
 **Status:** [ ] Pending
 
