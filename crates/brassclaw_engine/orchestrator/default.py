@@ -926,6 +926,42 @@ def execute_action_procedure(action_doc, goal, state):
     return complete_result(state, "completed", result.get("result", ""))
 
 
+def handle_disambiguation(candidates, state):
+    """Surface an intent-disambiguation result to the user (v3 Phase G.3 / Q-G2).
+
+    Called from run_loop step-0 when `__assemble_prior_knowledge__` returns a
+    `disambiguation` result — the intent system matched multiple candidates
+    with no unique winner (spec §3.12 Q11). Emits a `disambiguation_required`
+    event, transitions to the `disambiguation` state, and returns a
+    `complete_result` carrying the human-readable candidate list as the
+    response plus the raw `candidates` (each
+    `{component_id, component_class_code, class_label, score}`) so the WebUI
+    can render clickable choice buttons.
+
+    Monty-safe: no f-strings, no list-comp-with-if — builds the response lines
+    with an explicit for-loop + `.format()` + `.append()`, joined with
+    `"\n".join(...)` (all established Monty-supported patterns, default.py:103).
+    """
+    __emit_event__("disambiguation_required", candidates=candidates)
+    __transition_to__("disambiguation", "awaiting user choice")
+
+    lines = []
+    for c in candidates:
+        lines.append("{} (class {}, score {})".format(
+            c.get("class_label", ""),
+            c.get("component_class_code", ""),
+            c.get("score", ""),
+        ))
+    response = "\n".join(lines)
+
+    return complete_result(
+        state,
+        "disambiguation",
+        response=response,
+        extra={"candidates": candidates},
+    )
+
+
 # ── Main execution loop ─────────────────────────────────────
 
 
