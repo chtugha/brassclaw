@@ -2795,12 +2795,12 @@ validation_status: "validated"
 
 ---
 
-### Recipe: `tomedo-ebmleistung-create` (class 21) — Tier 0
+### Recipe: `tomedo-ebmleistung-create` (class 21) — Tier 1
 
 ```
 name:              "tomedo-ebmleistung-create"
-description:       "Add an EBM billing code (Ziffer) to a patient's KV-Schein — two-step write: POST /ebmleistung then PUT /kvschein. Both steps are mandatory: POST creates the leistung row; PUT writes invkvschein_ident on that row AND the KVSchein change record that ZSTransferFetchedDataThread reads to show the Ziffer in the Mac client. Without the PUT the leistung is orphaned and invisible. Fully Tier 0: Ziffer→catalog ident is a static lookup baked into PythonCode; datum, schein_ident, nutzer_ident, betriebsstaette_ident are resolved from session context or a preceding patientenDetailsRelationen read. No LLM needed. Cleanup if something goes wrong: DELETE FROM leistung + DELETE FROM change (two tables only — no join table exists for EBMLeistung, unlike KarteiEintrag which needs three)."
-llm_call_required: false
+description:       "Add an EBM billing code (Ziffer) to a patient's KV-Schein — two-step write: POST /ebmleistung then PUT /kvschein. Both steps are mandatory: POST creates the leistung row; PUT writes invkvschein_ident on that row AND the KVSchein change record that ZSTransferFetchedDataThread reads to show the Ziffer in the Mac client. Without the PUT the leistung is orphaned and invisible. Tier 1 because it contains POST + PUT writes. Ziffer→catalog ident is a static lookup baked into PythonCode; datum, schein_ident, nutzer_ident, betriebsstaette_ident are resolved from session context or a preceding patientenDetailsRelationen read. Cleanup if something goes wrong: DELETE FROM leistung + DELETE FROM change (two tables only — no join table exists for EBMLeistung, unlike KarteiEintrag which needs three)."
+llm_call_required: true
 step_descriptions: [
   {
     "step_id": "step-0",
@@ -4994,14 +4994,14 @@ step_descriptions: [
     "label":   "Parse day list → unique patient IDs with arrival/departure and insurance flags"
   },
   {
-    "step_id": "step-7",
+    "step_id": "step-8",
     "type":    "component",
     "channel": "rust",
     "include": ["<uuid:ts-tomedo-patient-relations>"],
     "label":   "Pre-load ts-tomedo-patient-relations binding (used per-patient in loop)"
   },
   {
-    "step_id": "step-8",
+    "step_id": "step-9",
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-tomedo-patient-relations-audit>"],
