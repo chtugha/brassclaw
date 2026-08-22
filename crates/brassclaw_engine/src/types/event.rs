@@ -409,6 +409,38 @@ pub enum EventKind {
         budget_tokens: u64,
     },
 
+    // ── Recipe Tier-0 execution (v3 Phase H.4) ───────────────
+    /// Emitted when a Tier-0 Recipe (class 21, `llm_call_required == false`)
+    /// begins deterministic no-LLM execution of its orchestrator channel.
+    /// `recipe_id` is the matched Recipe component UUID; `recipe_name` is
+    /// the recipe's display name. The companion `RecipeTierZeroSucceeded`
+    /// / `RecipeTierZeroFailed` terminal events carry the same `recipe_id`
+    /// so a composition event listener can call `record_recipe_outcome`
+    /// (Q-H7-surface A2: the terminal event is the fire-and-forget signal).
+    RecipeTierZeroStarted {
+        recipe_id: String,
+        recipe_name: String,
+    },
+    /// Emitted when a Tier-0 Recipe's orchestrator channel ran all its
+    /// PythonCode steps successfully (Q-H4: `outcome == "success"`). The
+    /// turn completes with the channel reply and NO `__llm_complete__` call.
+    RecipeTierZeroSucceeded {
+        recipe_id: String,
+        recipe_name: String,
+    },
+    /// Emitted when a Tier-0 Recipe's orchestrator channel failed (Q-H4:
+    /// `outcome == "error"`). A Tier-0 failure does NOT abort the turn —
+    /// it degrades to a Tier-2 LLM call so the user still gets a reply.
+    /// This terminal event is the SOLE failure signal the engine reads
+    /// (a degraded turn still completes, so the outcome alone is
+    /// ambiguous) and the signal the composition listener uses to record
+    /// `record_recipe_outcome(recipe_id, false)`.
+    RecipeTierZeroFailed {
+        recipe_id: String,
+        recipe_name: String,
+        message: String,
+    },
+
     /// Unknown event kind — catch-all for forward compatibility during
     /// rolling deploys. Older binaries deserializing events written by
     /// newer binaries will produce this variant instead of failing.
@@ -586,5 +618,63 @@ mod tests {
             }
             other => panic!("expected ActionFailed, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn recipe_tier_zero_event_variants_serde_round_trip() {
+        // v3 Phase H.4: the three typed Tier-0 EventKind variants must
+        // round-trip through serde (they are persisted into thread.events
+        // via append_events and read back by the composition listener).
+        // serde uses the externally-tagged enum representation, so the
+        // JSON shape is `{"RecipeTierZeroStarted": {..}}`.
+        let started = EventKind::RecipeTierZeroStarted {
+            recipe_id: "11111111-1111-1111-1111-111111111111".into(),
+            recipe_name: "greet-recipe".into(),
+        };
+        let json = serde_json::to_string(&started).expect("started serializes");
+        assert!(json.contains("\"RecipeTierZeroStarted\""), "json: {json}");
+        assert!(json.contains("\"greet-recipe\""), "json: {json}");
+        let back: EventKind = serde_json::from_str(&json).expect("started deserializes");
+        assert!(
+            matches!(
+                back,
+                EventKind::RecipeTierZeroStarted { ref recipe_name, .. } if recipe_name == "greet-recipe"
+            ),
+            "round-trip mismatch: {back:?}"
+        );
+
+        let succeeded = EventKind::RecipeTierZeroSucceeded {
+            recipe_id: "22222222-2222-2222-2222-222222222222".into(),
+            recipe_name: "ok-recipe".into(),
+        };
+        let json = serde_json::to_string(&succeeded).expect("succeeded serializes");
+        assert!(json.contains("\"RecipeTierZeroSucceeded\""), "json: {json}");
+        let back: EventKind = serde_json::from_str(&json).expect("succeeded deserializes");
+        assert!(
+            matches!(
+                back,
+                EventKind::RecipeTierZeroSucceeded { ref recipe_id, .. }
+                if recipe_id == "22222222-2222-2222-2222-222222222222"
+            ),
+            "round-trip mismatch: {back:?}"
+        );
+
+        let failed = EventKind::RecipeTierZeroFailed {
+            recipe_id: "33333333-3333-3333-3333-333333333333".into(),
+            recipe_name: "bad-recipe".into(),
+            message: "step raised: boom".into(),
+        };
+        let json = serde_json::to_string(&failed).expect("failed serializes");
+        assert!(json.contains("\"RecipeTierZeroFailed\""), "json: {json}");
+        assert!(json.contains("\"step raised: boom\""), "json: {json}");
+        let back: EventKind = serde_json::from_str(&json).expect("failed deserializes");
+        assert!(
+            matches!(
+                back,
+                EventKind::RecipeTierZeroFailed { ref message, .. }
+                if message == "step raised: boom"
+            ),
+            "round-trip mismatch: {back:?}"
+        );
     }
 }
