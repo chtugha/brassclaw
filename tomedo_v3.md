@@ -913,6 +913,41 @@ source:         "system"
 validation_status: "validated"
 ```
 
+---
+
+### Step 2.21 — ToolSkill: `ts-tomedo-termin-update` (class 13)
+
+```
+name:          "ts-tomedo-termin-update"
+tool_name:     "tomedo-api"
+description:   "PUT /{db}/termin/{ident} — partial update of an existing Termin.
+                Most common use: cancel with {removed: true}.
+                Can also reschedule: {beginn: epoch_ms, ende: epoch_ms}.
+                Or update info text: {info: 'new reason'}.
+                removed is Boolean (true/false). DELETE is not supported (HTTP 405).
+                Returns: HTTP 204 No Content on success."
+param_schema:  [
+  {name: "url",     param_type: "string", required: true,
+   description: "https://{host}:{port}/{db}/termin/{termin_ident}"},
+  {name: "method",  param_type: "string", required: true, description: "PUT"},
+  {name: "body",    param_type: "string", required: true,
+   description: "JSON partial update, e.g. {removed: true} or {beginn: epoch_ms, ende: epoch_ms}"},
+  {name: "headers", param_type: "object", required: true,
+   description: "Must include Content-Type: application/json"}
+]
+param_template: {
+  "url":    "{{vars.tomedo_base_url}}/termin/{{vars.termin_ident}}",
+  "method": "PUT",
+  "headers": {"Content-Type": "application/json"},
+  "body":   "{{vars.body_json}}"
+}
+preconditions:  "termin_ident must be an existing Termin ident."
+error_handling: "HTTP 460: field type mismatch. HTTP 204 = success. HTTP 405 = tried DELETE — not supported."
+category:       "tomedo"
+source:         "system"
+validation_status: "validated"
+```
+
 
 ## Step 3 — PythonCode Executors (class 22)
 
@@ -1304,6 +1339,45 @@ else:
 
 ---
 
+### Step 3.33b — PythonCode: `pc-tomedo-termin-update` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 1 (LLM or orchestrator confirms before update)
+# Partial-updates an existing Termin. Most common: {removed: true} to cancel.
+# vars.body_json must be a valid JSON partial-update string.
+import json as _j
+_base = "{{vars.tomedo_base_url}}"
+_ident = "{{vars.termin_ident}}"
+if not _base or not _ident:
+    result = {"error": "tomedo_base_url or termin_ident not configured"}
+else:
+    result = __execute_action__("tomedo-api", {
+        "url": f"{_base}/termin/{_ident}",
+        "method": "PUT",
+        "headers": {"Content-Type": "application/json"},
+        "body": "{{vars.body_json}}",
+        "timeout_ms": 15000
+    })
+```
+
+---
+
+### Step 3.10 — PythonCode: `pc-tomedo-patient-search` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 1 (LLM composes query string)
+# Executes patient name search. query must be URL-encoded.
+# NOTE: searchByAttributes returns {} (empty dict) on no match — not an empty array.
+# NOTE: This endpoint is known to return {} on some server configurations.
+result = __execute_action__("tomedo-api", {
+    "url": "{{vars.tomedo_base_url}}/patient/searchByAttributes?query={{vars.query}}",
+    "method": "GET",
+    "timeout_ms": 15000
+})
+```
+
+---
+
 ### Step 3.34 — PythonCode: `pc-tomedo-kvschein-get` (class 22)
 
 ```python
@@ -1454,8 +1528,13 @@ class_code:  1
 description: "Leaf skill: fetch visit/consultation records for a patient."
 body: |
   Use ts-tomedo-patient-visits to fetch Besuch (visit) records.
-  URL: {{vars.tomedo_base_url}}/besuch/{patient_id}/besucheForPatient
+  ⚠️ The URL uses a BESUCH ident, NOT a patient ident.
+  First call pc-tomedo-patient-relations to obtain a besuch ident from the response:
+    besuch[].ident or besucheForPatient[].ident
+  Then call pc-tomedo-patient-visits:
+    URL: {{vars.tomedo_base_url}}/besuch/{{vars.besuch_ident}}/besucheForPatient
   Returns visit records for the patient's consultation history.
+  Each record: datum (epoch ms), diagnosen[], behandlungen[], arzt.
   Empty array means no recorded visits.
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
@@ -1504,25 +1583,35 @@ body: |
 
   Patient lookup by name (Tier 1 — LLM composes query):
     → skill-tomedo-patient-search-by-name
+    Recipe: tomedo-patient-search-by-name
 
-  Full patient data (known patient_id — all Tier 0):
-    • Name + DOB + phones:  skill-tomedo-patient-detail
-    • Diagnoses:            skill-tomedo-patient-diagnoses
-    • Medications:          skill-tomedo-patient-medications
-    • Appointments:         skill-tomedo-patient-appointments
-    • Visit history:        skill-tomedo-patient-visits
+  Full patient summary — automated (Tier 0, all reads in sequence):
+    → use recipe: tomedo-patient-summary
+    (fetches name/DOB/phones + diagnoses + medications + next appointment)
+
+  Individual patient data (known patient_id — all Tier 0):
+    • Name + DOB + phones:  skill-tomedo-patient-detail           → tomedo-patient-detail
+    • Diagnoses:            skill-tomedo-patient-diagnoses        → tomedo-patient-diagnoses
+    • Medications:          skill-tomedo-patient-medications      → tomedo-patient-medications
+    • Next appointment:     skill-tomedo-patient-appointments     → tomedo-patient-next-appointment
+    • Visit history:        skill-tomedo-patient-visits           → tomedo-patient-visits
+      ⚠️ visits needs besuch_ident from patientenDetailsRelationen first
 
   EBM/GOÄ Leistungen (Tier 0, safe two-step path):
-    → skill-tomedo-leistungen-read
+    → skill-tomedo-leistungen-read                                → tomedo-leistungen-read
     ⚠️ NEVER use /leistung?patient=X — crashes server
 
-  Writes (all Tier 1 — LLM confirms before dispatch):
-    • Create karteieintrag: skill-tomedo-karteieintrag-create (3-step!)
-    • Update karteieintrag: skill-tomedo-karteieintrag-update
-    • Create appointment:   skill-tomedo-termin-create
+  KarteiEintrag writes (Tier 1 — LLM confirms before dispatch):
+    • Full create (any type):    skill-tomedo-karteieintrag-create   → tomedo-karteieintrag-create
+    • Quick ANM note (optimised):                                     → tomedo-karteieintrag-anmerkung
+    • Update/soft-delete:        skill-tomedo-karteieintrag-update   → tomedo-karteieintrag-update
+
+  Appointment writes (Tier 1 — LLM confirms before dispatch):
+    • Create appointment:        skill-tomedo-termin-create          → tomedo-termin-create
+    • Cancel/reschedule:         skill-tomedo-termin-update          → tomedo-termin-update
 
   AUTH: All API calls require tomedo_cert_pem config key set (mTLS).
-  Run tomedo-cert-fetch recipe to set it up.
+  Run tomedo-cert-fetch recipe once for first-time setup.
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1595,14 +1684,18 @@ body: |
   Update an existing KarteiEintrag by ident using ts-tomedo-karteieintrag-update.
   URL: PUT {{vars.tomedo_base_url}}/karteieintrag/{karteieintrag_ident}
 
-  Common operations:
-    Soft-delete:   {visible: false}
-    Update text:   {text: "new text"}
-    Change type:   {karteiEintragTyp: {kuerzel: "BRIEF"}}
+  Common operations (body_json examples):
+    Soft-delete:   {"visible": false}
+    Update text:   {"text": "corrected text"}
+    Change type:   {"karteiEintragTyp": {"ident": 6}}   ← use ident NOT kuerzel
+
+  ⚠️ Always use ident-based references — kuerzel strings are not resolved server-side.
+  ⚠️ DO NOT include letzterNutzer in a PUT body — it is read-only via PUT and
+     corrupts the sync record, causing JSON2CoreData.m:349 crash loop.
 
   Before dispatching: confirm the change with the user.
   A successful update returns HTTP 204 (no body).
-  DELETE is NOT supported — always use PUT {visible:false} to hide entries.
+  DELETE is NOT supported — always use PUT {"visible": false} to hide entries.
 
   PythonCode: use pc-tomedo-karteieintrag-update.
 consumer_tags: ["02:orchestrator", "05:validator"]
@@ -1625,10 +1718,39 @@ body: |
 
   Before dispatching: show the user the date/time and reason and ask for confirmation.
   After creation: the response contains {ident: N} — surface the new ident.
-  To cancel: use ts-tomedo-termin-create with method PUT /termin/{ident} body {removed: true}.
+  To cancel an existing Termin: use skill-tomedo-termin-update (PUT /termin/{ident} {removed:true}).
 
   Date/time: convert human-readable time to epoch ms before passing.
+  Duration: typical appointments are 10–30 min; use 1800000 ms (30 min) as default if not specified.
   PythonCode: use pc-tomedo-termin-create.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4a.5 — Leaf Skill: `skill-tomedo-termin-update` (class 1)
+
+```
+name:        "skill-tomedo-termin-update"
+class_code:  1
+description: "Leaf skill: update or cancel an existing Termin via PUT — Tier 1."
+body: |
+  Update or cancel an existing Termin by ident using ts-tomedo-termin-update.
+  URL: PUT {{vars.tomedo_base_url}}/termin/{{vars.termin_ident}}
+
+  Common operations (body_json examples):
+    Cancel:        {"removed": true}
+    Reschedule:    {"beginn": epoch_ms, "ende": epoch_ms}
+    Update info:   {"info": "new reason text"}
+
+  ⚠️ removed is Boolean (true/false) — not an integer.
+  DELETE is NOT supported — use PUT {"removed": true} to cancel.
+
+  Before dispatching: confirm the action with the user.
+  A successful update returns HTTP 204 (no body).
+  PythonCode: use pc-tomedo-termin-update.
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1961,7 +2083,7 @@ validation_status: "validated"
 
 ```
 name:              "tomedo-patient-visits"
-description:       "Fetch visit/consultation records for a patient."
+description:       "Fetch visit/consultation records for a patient. First resolves a besuch_ident from patientenDetailsRelationen, then fetches visit records."
 llm_call_required: false
 step_descriptions: [
   {
@@ -1975,15 +2097,29 @@ step_descriptions: [
     "step_id": "step-1",
     "type":    "component",
     "channel": "rust",
-    "include": ["<uuid:ts-tomedo-patient-visits>"],
-    "label":   "Pre-load ts-tomedo-patient-visits binding"
+    "include": ["<uuid:ts-tomedo-patient-relations>"],
+    "label":   "Pre-load ts-tomedo-patient-relations binding (to obtain besuch ident)"
   },
   {
     "step_id": "step-2",
     "type":    "component",
     "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-patient-relations>"],
+    "label":   "Execute: GET /patient/{id}/patientenDetailsRelationen → extract besuch[0].ident as besuch_ident"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-patient-visits>"],
+    "label":   "Pre-load ts-tomedo-patient-visits binding"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "orchestrator",
     "include": ["<uuid:pc-tomedo-patient-visits>"],
-    "label":   "Execute: GET /besuch/{id}/besucheForPatient"
+    "label":   "Execute: GET /besuch/{besuch_ident}/besucheForPatient"
   }
 ]
 intent_examples: [
@@ -1994,7 +2130,11 @@ intent_examples: [
   {"input": "arztbesuche patient abrufen",                "class": 2},
   {"input": "visit history for patient",                  "class": 2},
   {"input": "besuchsprotokoll",                           "class": 1},
-  {"input": "krankenakte besuche",                        "class": 2}
+  {"input": "krankenakte besuche",                        "class": 2},
+  {"input": "wann war patient zuletzt hier",              "class": 3},
+  {"input": "letzter besuch patient 13550",               "class": 3},
+  {"input": "show consultation history for patient",      "class": 2},
+  {"input": "patient vorstellungen anzeigen",             "class": 2}
 ]
 source: "system"
 validation_status: "validated"
@@ -2006,7 +2146,7 @@ validation_status: "validated"
 
 ```
 name:              "tomedo-patient-search-by-name"
-description:       "Search patients by name — LLM composes the URL-encoded query from user intent."
+description:       "Search patients by name — LLM composes the URL-encoded query from user intent, orchestrator executes the GET."
 llm_call_required: true
 step_descriptions: [
   {
@@ -2019,7 +2159,7 @@ step_descriptions: [
   {
     "step_id": "step-1",
     "type":    "llm",
-    "label":   "LLM composes URL-encoded query from user's name input"
+    "label":   "LLM URL-encodes the patient name from user intent (e.g. 'Müller' → 'M%C3%BCller')"
   },
   {
     "step_id": "step-2",
@@ -2027,6 +2167,13 @@ step_descriptions: [
     "channel": "rust",
     "include": ["<uuid:ts-tomedo-patient-search>"],
     "label":   "Pre-load ts-tomedo-patient-search binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-patient-search>"],
+    "label":   "Execute: GET /patient/searchByAttributes?query={encoded_name}"
   }
 ]
 intent_examples: [
@@ -2037,7 +2184,11 @@ intent_examples: [
   {"input": "suche patient Müller",                       "class": 3},
   {"input": "patient search by name",                     "class": 2},
   {"input": "nach patient suchen",                        "class": 2},
-  {"input": "find Herbert in tomedo",                     "class": 3}
+  {"input": "find Herbert in tomedo",                     "class": 3},
+  {"input": "patient Schmidt nachschlagen",               "class": 3},
+  {"input": "lookup patient by last name",                "class": 2},
+  {"input": "search for patient Weber",                   "class": 3},
+  {"input": "patienten mit nachnamen Bauer finden",       "class": 3}
 ]
 source: "system"
 validation_status: "validated"
@@ -2049,17 +2200,51 @@ validation_status: "validated"
 
 ```
 name:              "tomedo-leistungen-read"
-class_code:        21
-description:       "Read Leistungen (billing codes) for a patient via the safe two-step KV-Schein path."
+description:       "Read Leistungen (EBM/GOÄ billing codes) for a patient via the safe two-step KV-Schein path. Never uses the crash-inducing /leistung?patient=X endpoint."
 llm_call_required: false
-rust_steps: [
-  {uuid: "...", component_name: "ts-tomedo-patient-relations"},
-  {uuid: "...", component_name: "ts-tomedo-kvschein-get"},
-  {uuid: "...", component_name: "ts-tomedo-ebmkatalogeintrag-get"}
-]
-orchestrator_steps: [
-  {uuid: "...", component_name: "pc-tomedo-patient-relations"},
-  {uuid: "...", component_name: "pc-tomedo-kvschein-get"}
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-leistungen-read>", "<uuid:skill-tomedo>"],
+    "label":   "Load leistungen-read leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-patient-relations>"],
+    "label":   "Pre-load ts-tomedo-patient-relations binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-patient-relations>"],
+    "label":   "Execute: GET /patient/{id}/patientenDetailsRelationen?limitScheine=true → kvScheine[].ident"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-kvschein-get>"],
+    "label":   "Pre-load ts-tomedo-kvschein-get binding"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-kvschein-get>"],
+    "label":   "Execute: GET /kvschein/{schein_ident} → ebmLeistungen[], goaeLeistungen[]"
+  },
+  {
+    "step_id": "step-5",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-ebmkatalogeintrag-get>"],
+    "label":   "Pre-load ts-tomedo-ebmkatalogeintrag-get binding (for catalog ident → Ziffer lookup)"
+  }
 ]
 intent_examples: [
   {"input": "welche leistungen hat der patient",              "class": 3},
@@ -2071,7 +2256,9 @@ intent_examples: [
   {"input": "EBM ziffer 03220 vorhanden",                     "class": 2},
   {"input": "was wurde heute abgerechnet",                    "class": 2},
   {"input": "abrechnungsziffern anzeigen",                    "class": 3},
-  {"input": "fetch billing codes patient",                    "class": 2}
+  {"input": "fetch billing codes patient",                    "class": 2},
+  {"input": "KV-Schein leistungen lesen",                     "class": 2},
+  {"input": "abgerechnete EBM ziffern heute",                 "class": 2}
 ]
 source: "system"
 validation_status: "validated"
@@ -2083,18 +2270,63 @@ validation_status: "validated"
 
 ```
 name:              "tomedo-karteieintrag-create"
-class_code:        21
-description:       "Create a new KarteiEintrag for a patient — three-step: POST entry, PUT patient DB join, PUT patientendetailsrelationen sync record. LLM confirms content, orchestrator executes all three steps. Confirmed live 2026-08-22+."
+description:       "Create a new KarteiEintrag for a patient — three-step write: POST entry, PUT patient DB join row, PUT patientendetailsrelationen sync record. LLM confirms content before any dispatch."
 llm_call_required: true
-rust_steps: [
-  {uuid: "...", component_name: "ts-tomedo-karteieintrag-create"},
-  {uuid: "...", component_name: "ts-tomedo-patient-link-karteieintrag"},
-  {uuid: "...", component_name: "ts-tomedo-patientendetailsrelationen-link"}
-]
-orchestrator_steps: [
-  {uuid: "...", component_name: "pc-tomedo-karteieintrag-create"},
-  {uuid: "...", component_name: "pc-tomedo-karteieintrag-link"},
-  {uuid: "...", component_name: "pc-tomedo-patientendetailsrelationen-link"}
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-karteieintrag-create>", "<uuid:skill-tomedo>"],
+    "label":   "Load karteieintrag-create leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM confirms entry text, type (ANM/BEF/DIA/LAB), and patient with user before dispatch"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-karteieintrag-create>"],
+    "label":   "Pre-load ts-tomedo-karteieintrag-create binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-karteieintrag-create>"],
+    "label":   "Step 1: POST /karteieintrag with all 4 mandatory relation fields → {new_ident}"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-patient-link-karteieintrag>"],
+    "label":   "Pre-load ts-tomedo-patient-link-karteieintrag binding"
+  },
+  {
+    "step_id": "step-5",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-karteieintrag-link>"],
+    "label":   "Step 2: PUT /patient/{id} → writes DB join row"
+  },
+  {
+    "step_id": "step-6",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-patientendetailsrelationen-link>"],
+    "label":   "Pre-load ts-tomedo-patientendetailsrelationen-link binding"
+  },
+  {
+    "step_id": "step-7",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-patientendetailsrelationen-link>"],
+    "label":   "Step 3: PUT /patientendetailsrelationen/{id} → writes sync record, Mac client shows entry"
+  }
 ]
 intent_examples: [
   {"input": "neuen karteieintrag erstellen",                  "class": 3},
@@ -2106,7 +2338,9 @@ intent_examples: [
   {"input": "neuen akte eintrag anlegen",                     "class": 3},
   {"input": "lab result note kartei",                         "class": 2},
   {"input": "karteieintrag mit text BRIEF anlegen",           "class": 3},
-  {"input": "save consultation note to tomedo",               "class": 2}
+  {"input": "save consultation note to tomedo",               "class": 2},
+  {"input": "befund in kartei eintragen patient",             "class": 3},
+  {"input": "diagnosenotiz anlegen",                          "class": 3}
 ]
 source: "system"
 validation_status: "validated"
@@ -2118,14 +2352,35 @@ validation_status: "validated"
 
 ```
 name:              "tomedo-karteieintrag-update"
-class_code:        21
-description:       "Update or soft-delete an existing KarteiEintrag — LLM confirms change, orchestrator PUTs."
+description:       "Update or soft-delete an existing KarteiEintrag — LLM confirms change, orchestrator PUTs. Use {visible:false} to hide; DELETE is not supported."
 llm_call_required: true
-rust_steps: [
-  {uuid: "...", component_name: "ts-tomedo-karteieintrag-update"}
-]
-orchestrator_steps: [
-  {uuid: "...", component_name: "pc-tomedo-karteieintrag-update"}
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-karteieintrag-update>", "<uuid:skill-tomedo>"],
+    "label":   "Load karteieintrag-update leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM confirms the update (text change, soft-delete, or type change) with user"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-karteieintrag-update>"],
+    "label":   "Pre-load ts-tomedo-karteieintrag-update binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-karteieintrag-update>"],
+    "label":   "Execute: PUT /karteieintrag/{ident} with body_json"
+  }
 ]
 intent_examples: [
   {"input": "karteieintrag ausblenden",                       "class": 3},
@@ -2137,7 +2392,9 @@ intent_examples: [
   {"input": "karteieintrag sichtbarkeit ändern",              "class": 3},
   {"input": "soft delete kartei note",                        "class": 2},
   {"input": "visible false karteieintrag",                    "class": 3},
-  {"input": "edit existing record entry tomedo",              "class": 2}
+  {"input": "edit existing record entry tomedo",              "class": 2},
+  {"input": "karteieintrag 192572 ausblenden",                "class": 3},
+  {"input": "kartei eintrag text berichtigen",                "class": 3}
 ]
 source: "system"
 validation_status: "validated"
@@ -2149,14 +2406,35 @@ validation_status: "validated"
 
 ```
 name:              "tomedo-termin-create"
-class_code:        21
-description:       "Create a new appointment (Termin) for a patient — LLM confirms datetime and info, orchestrator POSTs."
+description:       "Create a new appointment (Termin) for a patient — LLM confirms datetime, duration, and reason with user, orchestrator POSTs."
 llm_call_required: true
-rust_steps: [
-  {uuid: "...", component_name: "ts-tomedo-termin-create"}
-]
-orchestrator_steps: [
-  {uuid: "...", component_name: "pc-tomedo-termin-create"}
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-termin-create>", "<uuid:skill-tomedo>"],
+    "label":   "Load termin-create leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM converts human-readable date/time to epoch ms and confirms with user"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-termin-create>"],
+    "label":   "Pre-load ts-tomedo-termin-create binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-termin-create>"],
+    "label":   "Execute: POST /termin → {ident: N}"
+  }
 ]
 intent_examples: [
   {"input": "termin anlegen für patient",                     "class": 3},
@@ -2168,7 +2446,257 @@ intent_examples: [
   {"input": "nächsten termin anlegen",                        "class": 3},
   {"input": "book follow-up appointment",                     "class": 2},
   {"input": "termin für kontrolluntersuchung",                "class": 3},
-  {"input": "new termin datum uhrzeit",                       "class": 3}
+  {"input": "new termin datum uhrzeit",                       "class": 3},
+  {"input": "termin morgen 10 uhr patient 776",               "class": 3},
+  {"input": "folgetermin buchen nach behandlung",             "class": 3}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-termin-update` (class 21) — Tier 1
+
+```
+name:              "tomedo-termin-update"
+description:       "Update or cancel an existing Termin — LLM confirms the action, orchestrator PUTs. Use {removed:true} to cancel."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-termin-update>", "<uuid:skill-tomedo>"],
+    "label":   "Load termin-update leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM confirms the cancellation or rescheduling with user"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-termin-update>"],
+    "label":   "Pre-load ts-tomedo-termin-update binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-termin-update>"],
+    "label":   "Execute: PUT /termin/{ident} with body_json"
+  }
+]
+intent_examples: [
+  {"input": "termin absagen",                                 "class": 3},
+  {"input": "termin stornieren",                              "class": 3},
+  {"input": "cancel appointment tomedo",                      "class": 2},
+  {"input": "termin patient absagen",                         "class": 3},
+  {"input": "termin verschieben",                             "class": 3},
+  {"input": "reschedule appointment",                         "class": 2},
+  {"input": "termin entfernen removed true",                  "class": 3},
+  {"input": "appointment cancellation",                       "class": 2},
+  {"input": "cancel follow-up termin",                        "class": 3},
+  {"input": "termin 192572 stornieren",                       "class": 3},
+  {"input": "nächsten termin absagen",                        "class": 3},
+  {"input": "termin für patient abbrechen",                   "class": 3}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-patient-summary` (class 21) — Tier 0
+
+```
+name:              "tomedo-patient-summary"
+description:       "Fetch a complete patient summary in one automated sequence: basic record, diagnoses, medications, and next appointment. Useful for automated context-gathering before a consultation or agent action."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-patient-detail>", "<uuid:skill-tomedo>"],
+    "label":   "Load patient-detail leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-patient-detail>"],
+    "label":   "Pre-load ts-tomedo-patient-detail binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-patient-detail>"],
+    "label":   "Fetch: GET /patient/{id} → name, DOB, phones"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-patient-relations>"],
+    "label":   "Pre-load ts-tomedo-patient-relations binding"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-patient-relations>"],
+    "label":   "Fetch: GET /patient/{id}/patientenDetailsRelationen → diagnosen[]"
+  },
+  {
+    "step_id": "step-5",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-parse-diagnosen>"],
+    "label":   "Parse diagnoses → comma-separated text"
+  },
+  {
+    "step_id": "step-6",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-patient-medications>"],
+    "label":   "Pre-load ts-tomedo-patient-medications binding"
+  },
+  {
+    "step_id": "step-7",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-patient-medications>"],
+    "label":   "Fetch: GET /patient/{id}/.../medikamentenPlan"
+  },
+  {
+    "step_id": "step-8",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-parse-medications>"],
+    "label":   "Format medications with dosing notation"
+  },
+  {
+    "step_id": "step-9",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-patient-appointments>"],
+    "label":   "Pre-load ts-tomedo-patient-appointments binding"
+  },
+  {
+    "step_id": "step-10",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-patient-appointments>"],
+    "label":   "Fetch: GET /patient/{id}/termine?flach=true"
+  },
+  {
+    "step_id": "step-11",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-parse-next-appointment>"],
+    "label":   "Find and format next future appointment"
+  }
+]
+intent_examples: [
+  {"input": "patient zusammenfassung",                        "class": 2},
+  {"input": "patient overview",                               "class": 2},
+  {"input": "alle infos zu patient 13550",                    "class": 3},
+  {"input": "full patient summary",                           "class": 2},
+  {"input": "patientenkontext für consultation",              "class": 3},
+  {"input": "bereite patientenakte vor",                      "class": 3},
+  {"input": "prepare patient context for consultation",       "class": 2},
+  {"input": "diagnosen medikamente termin patient abrufen",   "class": 3},
+  {"input": "komplettübersicht patient",                      "class": 2},
+  {"input": "patient info vor termin laden",                  "class": 3},
+  {"input": "summarize patient data",                         "class": 2},
+  {"input": "patient daten zusammentragen",                   "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-karteieintrag-anmerkung` (class 21) — Tier 1
+
+```
+name:              "tomedo-karteieintrag-anmerkung"
+description:       "Create a plain-text Anmerkung (ANM type) KarteiEintrag for a patient — optimized for scripted/automated note creation. LLM provides the text only; all structural params (typ=ANM, mediaTyp=Text) are pre-fixed."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-karteieintrag-create>", "<uuid:skill-tomedo>"],
+    "label":   "Load karteieintrag-create leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM generates/confirms the note text only — typ=ANM(6), mediaTyp=1 are pre-set"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-karteieintrag-create>"],
+    "label":   "Pre-load ts-tomedo-karteieintrag-create binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-karteieintrag-create>"],
+    "label":   "Step 1: POST /karteieintrag — karteiEintragTyp=6(ANM), mediaTyp=1(Text)"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-patient-link-karteieintrag>"],
+    "label":   "Pre-load ts-tomedo-patient-link-karteieintrag binding"
+  },
+  {
+    "step_id": "step-5",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-karteieintrag-link>"],
+    "label":   "Step 2: PUT /patient/{id} → writes DB join row"
+  },
+  {
+    "step_id": "step-6",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-patientendetailsrelationen-link>"],
+    "label":   "Pre-load ts-tomedo-patientendetailsrelationen-link binding"
+  },
+  {
+    "step_id": "step-7",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-patientendetailsrelationen-link>"],
+    "label":   "Step 3: PUT /patientendetailsrelationen/{id} → Mac client shows entry immediately"
+  }
+]
+intent_examples: [
+  {"input": "anmerkung für patient anlegen",                  "class": 3},
+  {"input": "notiz in kartei schreiben",                      "class": 3},
+  {"input": "quick note for patient",                         "class": 2},
+  {"input": "telefonnotiz patient",                           "class": 3},
+  {"input": "schnellnotiz kartei",                            "class": 2},
+  {"input": "add simple note to patient record",              "class": 2},
+  {"input": "textnotiz für patient 13550",                    "class": 3},
+  {"input": "kurze notiz in die kartei",                      "class": 3},
+  {"input": "ANM eintrag patient",                            "class": 3},
+  {"input": "plain text karteieintrag",                       "class": 2},
+  {"input": "consultation note plain text",                   "class": 2},
+  {"input": "automatische notiz in kartei",                   "class": 3}
 ]
 source: "system"
 validation_status: "validated"
@@ -2262,6 +2790,11 @@ task_groups: [
     ]
   },
   {
+    "group_name": "patient-summary",
+    "summary": "Automated full patient context: name/DOB/phones + diagnoses + medications + next appointment (Tier 0 multi-step)",
+    "recipe_ids": ["tomedo-patient-summary"]
+  },
+  {
     "group_name": "leistungen-read",
     "summary": "Read EBM/GOÄ billing codes via safe two-step kvschein path (Tier 0)",
     "recipe_ids": ["tomedo-leistungen-read"]
@@ -2272,12 +2805,20 @@ task_groups: [
     "recipe_ids": ["tomedo-patient-search-by-name"]
   },
   {
-    "group_name": "writes",
-    "summary": "Create/update KarteiEinträge and Termine via direct mTLS REST (Tier 1)",
+    "group_name": "karteieintrag-writes",
+    "summary": "Create/update KarteiEinträge via direct mTLS REST (Tier 1)",
     "recipe_ids": [
       "tomedo-karteieintrag-create",
-      "tomedo-karteieintrag-update",
-      "tomedo-termin-create"
+      "tomedo-karteieintrag-anmerkung",
+      "tomedo-karteieintrag-update"
+    ]
+  },
+  {
+    "group_name": "termin-writes",
+    "summary": "Create/cancel/reschedule Termine via direct mTLS REST (Tier 1)",
+    "recipe_ids": [
+      "tomedo-termin-create",
+      "tomedo-termin-update"
     ]
   }
 ]
@@ -2502,16 +3043,49 @@ validation_status: "validated"
 
 ```
 name:              "tomedo-cert-fetch"
-class_code:        21
 description:       "One-time setup: fetch mTLS certs from the tomedo server via SSH and configure BrassClaw for HTTPS API access."
 llm_call_required: true
-rust_steps: [
-  {uuid: "...", component_name: "ts-tomedo-cert-fetch"},
-  {uuid: "...", component_name: "ts-tomedo-serverstatus"}
-]
-orchestrator_steps: [
-  {uuid: "...", component_name: "pc-tomedo-cert-fetch"},
-  {uuid: "...", component_name: "pc-tomedo-serverstatus"}
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-cert-fetch>"],
+    "label":   "Load cert-fetch leaf skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM presents SSH host/user/key to user and asks for confirmation before running"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-cert-fetch>"],
+    "label":   "Pre-load ts-tomedo-cert-fetch binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-cert-fetch>"],
+    "label":   "Execute: SSH to server, fetch 3 PEM files, chmod 0600 private key"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-serverstatus>"],
+    "label":   "Pre-load ts-tomedo-serverstatus binding for verification"
+  },
+  {
+    "step_id": "step-5",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-serverstatus>"],
+    "label":   "Verify: GET /serverstatus with new certs — confirms mTLS works"
+  }
 ]
 intent_examples: [
   {"input": "tomedo zertifikate einrichten",                  "class": 3},
@@ -2537,13 +3111,13 @@ validation_status: "validated"
 | Class | Count | Names |
 |-------|-------|-------|
 | 0 — Tool | 2 | `tomedo-api`, `tomedo-cert-fetch-tool` |
-| 1 — Leaf Skill | 12 | `skill-tomedo-serverstatus` … `skill-tomedo-cert-fetch` |
+| 1 — Leaf Skill | 14 | `skill-tomedo-serverstatus` … `skill-tomedo-termin-update` |
 | 2 — Domain Skill | 1 | `skill-tomedo` |
-| 13 — ToolSkill | 15 | `ts-tomedo-serverstatus` … `ts-tomedo-cert-fetch` |
-| 21 — Recipe | 12 | `tomedo-serverstatus` … `tomedo-cert-fetch` |
-| 22 — PythonCode | 19 | `pc-tomedo-serverstatus` … `pc-tomedo-cert-fetch` |
+| 13 — ToolSkill | 16 | `ts-tomedo-serverstatus` … `ts-tomedo-cert-fetch` |
+| 21 — Recipe | 15 | `tomedo-serverstatus` … `tomedo-cert-fetch` |
+| 22 — PythonCode | 22 | `pc-tomedo-serverstatus` … `pc-tomedo-cert-fetch` |
 | 23 — ExtensionCatalogue | 2 | `ext-tomedo`, `ext-tomedo-cert-fetch` |
-| **Total** | **63** | |
+| **Total** | **72** | |
 
 ---
 
@@ -2551,8 +3125,8 @@ validation_status: "validated"
 
 | Tier | Recipes | Reason |
 |------|---------|--------|
-| **Tier 0** | 8 | Direct REST reads with known patient_id — deterministic + Leistungen two-step |
-| **Tier 1** | 4 | 1 name-search + 3 writes + 1 cert-fetch (LLM confirms or composes input) |
+| **Tier 0** | 8 | Direct REST reads (known patient_id) + Leistungen two-step + patient-summary multi-step |
+| **Tier 1** | 7 | 1 name-search + 5 writes (karteieintrag create/anmerkung/update, termin create/update) + 1 cert-fetch |
 
 ---
 
@@ -2576,67 +3150,74 @@ Group 2 — ToolSkills (class 13):
   12. ts-tomedo-patientendetailsrelationen-link
   13. ts-tomedo-karteieintrag-update
   14. ts-tomedo-termin-create
-  15. ts-tomedo-kvschein-get
-  16. ts-tomedo-ebmkatalogeintrag-get
-  17. ts-tomedo-cert-fetch
+  15. ts-tomedo-termin-update
+  16. ts-tomedo-kvschein-get
+  17. ts-tomedo-ebmkatalogeintrag-get
+  18. ts-tomedo-cert-fetch
 
 Group 3 — PythonCode executors (class 22, with __execute_action__):
-  18. pc-tomedo-serverstatus
-  19. pc-tomedo-patient-detail
-  20. pc-tomedo-patient-relations
-  21. pc-tomedo-patient-medications
-  22. pc-tomedo-patient-appointments
-  23. pc-tomedo-patient-visits
-  24. pc-tomedo-karteieintrag-create
-  25. pc-tomedo-karteieintrag-link
-  26. pc-tomedo-patientendetailsrelationen-link
-  27. pc-tomedo-karteieintrag-update
-  28. pc-tomedo-termin-create
-  29. pc-tomedo-kvschein-get
-  30. pc-tomedo-ebmkatalogeintrag-get
-  31. pc-tomedo-cert-fetch
+  19. pc-tomedo-serverstatus
+  20. pc-tomedo-patient-detail
+  21. pc-tomedo-patient-relations
+  22. pc-tomedo-patient-medications
+  23. pc-tomedo-patient-appointments
+  24. pc-tomedo-patient-visits
+  25. pc-tomedo-patient-search
+  26. pc-tomedo-karteieintrag-create
+  27. pc-tomedo-karteieintrag-link
+  28. pc-tomedo-patientendetailsrelationen-link
+  29. pc-tomedo-karteieintrag-update
+  30. pc-tomedo-termin-create
+  31. pc-tomedo-termin-update
+  32. pc-tomedo-kvschein-get
+  33. pc-tomedo-ebmkatalogeintrag-get
+  34. pc-tomedo-cert-fetch
 
 Group 4 — PythonCode pure-logic helpers (class 22, no __execute_action__):
-  32. pc-tomedo-parse-diagnosen
-  33. pc-tomedo-parse-medications
-  34. pc-tomedo-parse-next-appointment
-  35. pc-tomedo-epoch-to-date
-  36. pc-tomedo-extract-phone-fields
+  35. pc-tomedo-parse-diagnosen
+  36. pc-tomedo-parse-medications
+  37. pc-tomedo-parse-next-appointment
+  38. pc-tomedo-epoch-to-date
+  39. pc-tomedo-extract-phone-fields
 
 Group 5 — Leaf Skills (class 1):
-  37. skill-tomedo-serverstatus
-  38. skill-tomedo-patient-detail
-  39. skill-tomedo-patient-diagnoses
-  40. skill-tomedo-patient-medications
-  41. skill-tomedo-patient-appointments
-  42. skill-tomedo-patient-visits
-  43. skill-tomedo-patient-search-by-name
-  44. skill-tomedo-karteieintrag-create
-  45. skill-tomedo-karteieintrag-update
-  46. skill-tomedo-termin-create
-  47. skill-tomedo-leistungen-read
-  48. skill-tomedo-cert-fetch
+  40. skill-tomedo-serverstatus
+  41. skill-tomedo-patient-detail
+  42. skill-tomedo-patient-diagnoses
+  43. skill-tomedo-patient-medications
+  44. skill-tomedo-patient-appointments
+  45. skill-tomedo-patient-visits
+  46. skill-tomedo-patient-search-by-name
+  47. skill-tomedo-karteieintrag-create
+  48. skill-tomedo-karteieintrag-update
+  49. skill-tomedo-termin-create
+  50. skill-tomedo-termin-update
+  51. skill-tomedo-leistungen-read
+  52. skill-tomedo-cert-fetch
 
 Group 6 — Domain Skills (class 2):
-  49. skill-tomedo
+  53. skill-tomedo
 
 Group 7 — Recipes (class 21):
-  50. tomedo-serverstatus                           (Tier 0)
-  51. tomedo-patient-detail                         (Tier 0)
-  52. tomedo-patient-diagnoses                      (Tier 0)
-  53. tomedo-patient-medications                    (Tier 0)
-  54. tomedo-patient-next-appointment               (Tier 0)
-  55. tomedo-patient-visits                         (Tier 0)
-  56. tomedo-leistungen-read                        (Tier 0 — kvschein two-step)
-  57. tomedo-patient-search-by-name                 (Tier 1 — LLM composes URL query)
-  58. tomedo-karteieintrag-create                   (Tier 1 — LLM confirms, orchestrator POSTs 3-step)
-  59. tomedo-karteieintrag-update                   (Tier 1 — LLM confirms, orchestrator PUTs)
-  60. tomedo-termin-create                          (Tier 1 — LLM confirms, orchestrator POSTs)
-  61. tomedo-cert-fetch                             (Tier 1 — one-time setup, LLM confirms SSH)
+  54. tomedo-serverstatus                            (Tier 0)
+  55. tomedo-patient-detail                          (Tier 0)
+  56. tomedo-patient-diagnoses                       (Tier 0)
+  57. tomedo-patient-medications                     (Tier 0)
+  58. tomedo-patient-next-appointment                (Tier 0)
+  59. tomedo-patient-visits                          (Tier 0)
+  60. tomedo-leistungen-read                         (Tier 0 — kvschein two-step)
+  61. tomedo-patient-summary                         (Tier 0 — automated multi-step context fetch)
+  62. tomedo-patient-search-by-name                  (Tier 1 — LLM URL-encodes name)
+  63. tomedo-karteieintrag-create                    (Tier 1 — LLM confirms, orchestrator POSTs 3-step)
+  64. tomedo-karteieintrag-anmerkung                 (Tier 1 — ANM optimised, LLM provides text only)
+  65. tomedo-karteieintrag-update                    (Tier 1 — LLM confirms, orchestrator PUTs)
+  66. tomedo-termin-create                           (Tier 1 — LLM confirms date/time, orchestrator POSTs)
+  67. tomedo-termin-update                           (Tier 1 — LLM confirms cancel/reschedule, orchestrator PUTs)
+  68. tomedo-cert-fetch                              (Tier 1 — one-time setup, LLM confirms SSH)
 
 Group 8 — ExtensionCatalogues (class 23):
-  62. ext-tomedo
-  63. ext-tomedo-cert-fetch
+  69. ext-tomedo
+  70. ext-tomedo-cert-fetch
 ```
 
 > **Note:** Seeding happens after all lower-dependency classes are seeded.
@@ -2660,17 +3241,21 @@ computed on first insert and checked on subsequent runs.
 | Decision | Rationale |
 |----------|-----------|
 | Two tool surfaces via `builtin.http` + `builtin.shell` | http handles all mTLS GET/POST/PUT calls; shell handles SSH cert-fetch setup |
-| 15 ToolSkills | One per distinct URL/method pattern — reads, writes, Leistungen, cert-fetch |
-| 14 PythonCode executors + 5 pure-logic helpers | Executors call `__execute_action__`; helpers transform data without I/O |
-| 12 leaf skills | One per distinct approach — REST reads + writes + Leistungen + cert-fetch |
-| 8 Tier-0 recipes | All known-ID read ops + Leistungen two-step path — deterministic, no LLM |
-| 4 Tier-1 recipes | 1 name-search + 3 writes + 1 cert-fetch |
-| German + English intent examples | Praxis staff speak German; orchestrator must handle both |
+| 16 ToolSkills | One per distinct URL/method/operation — reads, writes, Leistungen, termin-update, cert-fetch |
+| 16 PythonCode executors + 6 pure-logic helpers | Executors call `__execute_action__`; helpers transform data without I/O |
+| 14 leaf skills | One per distinct approach — REST reads + writes + Leistungen + cert-fetch |
+| 9 Tier-0 recipes | All known-ID read ops + Leistungen two-step + patient-summary automated multi-step |
+| 7 Tier-1 recipes | 1 name-search + 5 write variants + 1 cert-fetch |
+| `tomedo-patient-summary` Tier-0 | Automated context-gathering sequence — orchestrator runs 4 reads with no LLM |
+| `tomedo-karteieintrag-anmerkung` | Optimised for scripted notes — LLM provides text only, structural params (ANM/Text) pre-fixed |
+| `tomedo-termin-update` added | Cancel/reschedule was missing — `removed:true` to cancel, `beginn`/`ende` to reschedule |
+| All recipes use `step_descriptions` | Consistent format; old `rust_steps`/`orchestrator_steps` fields removed |
+| German + English intent examples (12+ each) | Praxis staff speak German; orchestrator must handle both |
 | Direct mTLS REST API supports GET + POST + PUT | Confirmed live 2026-08-22 — no partner agreement needed for writes |
 | Leistungen via kvschein two-step only | `GET /leistung?patient=X` crashes server — must go patientenDetailsRelationen → kvschein |
-| `$[l %nr 0d ,]$` → kvschein path | Client-side Leistung kommando reveals the server-side safe read: patientenDetailsRelationen → GET /kvschein/{ident} → ebmLeistungen[] → ebmkatalogeintrag |
 | EBM/GOÄ mode via Schein presence | `patInfoPanelMode` is transient/computed — detect EBM vs GOÄ by checking kvScheine vs goaeScheine in relations |
 | Cert-fetch extension | One-time SSH setup fetches mTLS PEM bundle from server; required before any tomedo REST call |
-| 3-step karteieintrag write (JSON2CoreData crash rule) | POST creates entry → POST links to patient (patientenDetailsRelationen join row) → PUT patientendetailsrelationen/{id} syncs Mac client; without step 3 the Mac client crashes with `JSON2CoreData.m:349 ident != NULL` |
-| `letzterNutzer` required in POST body | Missing field causes `JSON2CoreData.m:349 ident != NULL` assertion in Mac client |
+| 3-step karteieintrag write (JSON2CoreData crash rule) | POST creates entry → PUT /patient links DB join row → PUT /patientendetailsrelationen syncs Mac client; without step 3 the Mac client crashes with `JSON2CoreData.m:349 ident != NULL` |
+| `letzterNutzer` required in POST body, forbidden in PUT | Missing from POST → crash; present in PUT → corrupts sync record → crash |
+| visits recipe two-phase | besuch_ident must come from patientenDetailsRelationen before calling /besuch/{id}/besucheForPatient |
 
