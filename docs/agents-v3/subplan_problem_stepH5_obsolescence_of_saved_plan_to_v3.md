@@ -133,6 +133,26 @@ Python fns (H.1 `_parse_orchestrator_channel_steps`, H.2
    (match the user's *"get to final architecture without wasting energy on obsolete
    stuff"*).
 
+### 3.1 O2 sub-decisions (answered by user after grounding the mission footprint)
+
+Grounding revealed the mission surface is wider than the engine mission system alone: a
+**separate `brassclaw_host_api::MissionId`** (a *string* scope/audit tag, distinct from the
+engine's UUID `MissionId`) is woven through low-level infra (`host_api` `ids.rs`/
+`scope.rs`/`audit.rs`/`resource.rs`, `events/cursor.rs`, `processes/types.rs`,
+`secrets/lib.rs` + tests), always `Option`, never populated; and **15 `parent_mission_id
+UUID` columns** (V027 skills + 14 component tables) are dead schema (nullable, zero Rust
+reads/writes). User decisions:
+
+6. **`brassclaw_host_api::MissionId` → full purge** (remove across host_api/events/
+   processes/secrets + all consumers), not just the engine mission system.
+7. **`parent_mission_id` columns → drop** in a new migration (15-table schema change),
+   not leave-as-dead-schema.
+8. **e2e `test_mission_gmail_3133.py` → delete; historical mission plan docs → leave as
+   archives; `CLAUDE.md`/`AGENTS.md` mission mentions → update.**
+
+O2 is therefore executed as four sequential sub-steps **O2.1–O2.4**, each committed +
+pushed individually before the next begins.
+
 ---
 
 ## 4. Implementation sequence (O1–O5 one-by-one, commit+push each)
@@ -150,19 +170,65 @@ reference blockquote into `saved_plan_to_v3.md` at the H.5 item (after the H4.8 
 note, before the H.5 `Status:` line); add the Zenflow substep under the Phase H step
 `9d94d6cb`. No production code. Commit + push.
 
-**O2 — Delete the dormant mission system.** Ground the full mission dependency footprint
-FIRST (workspace grep for `Mission`/`MissionId`/`MissionManager`/`MissionCadence`/
-`MissionNotification`/`MissionStatus`/`MissionGateInfo`/`MissionUpdate`/`FireRateLimit`/
-`BudgetGate`-engine-trait; mission DB tables/migrations; composition/product mission API
-endpoints/stores; engine mission wiring beyond `mission.rs`; mission tests outside
-`mission.rs`). Then delete: `runtime/mission.rs`, `types/mission.rs`, their `mod`
-registrations, all wiring + tests + any mission DB migration/table drops (if a mission
-table exists, drop it in a new migration — DB schema change, document as an upgrade).
-Resolve every dangling reference (the engine `join_thread` sole caller, the conversation
-manager's mission-related arms, etc.). Verify: fmt + `cargo clippy --all --benches --tests
---examples --all-features -- -D warnings` clean (modulo the user's separate
-`basic_prompt_store` WIP blockage, documented) + `cargo test` (both configs; DB tests
-skip-if-no-docker). Commit + push.
+**O2 — Delete the dormant mission system (four sub-steps O2.1–O2.4).** Grounding the full
+mission footprint is done (§3.1): two distinct surfaces (engine mission system +
+`brassclaw_host_api::MissionId` string scope tag) + 15 dead `parent_mission_id` columns.
+
+  **O2.1 — Drop the 15 `parent_mission_id` columns (new migration).** Create
+  `crates/brassclaw_pg/migrations/V064__drop_parent_mission_id.sql` issuing
+  `ALTER TABLE ... DROP COLUMN IF EXISTS parent_mission_id` for all 15 tables (V027
+  `reborn_skills` + the 14 component class tables: reborn_actions/tools/extensions/
+  recipes/specs/tool_skills/plans/summaries/docus/lessons/issues/notes/python_code/
+  extension_catalogues). **Grounding correction:** the up-front claim "zero Rust code
+  reads/writes `parent_mission_id`" was WRONG — a workspace grep surfaced **23 `.rs`
+  references across 6 files in 4 crates**: positional `row.get(N)` DB reads + SQL
+  INSERT/SELECT statements in `brassclaw_extensions/unified_store.rs`,
+  `brassclaw_reborn_composition/{pg_extension_catalogue_store,pg_python_code_store,
+  skill_import}.rs`, `brassclaw_skills/db_store.rs`, `brassclaw_engine/db_skill_loader.rs`.
+  Dropping the column without removing these would break the stores at runtime, so O2.1
+  was expanded to remove all 23 Rust references (struct fields, SQL column lists,
+  positional decode indices re-based, `&[...]` bind arrays, 2 column-count unit tests
+  updated to 29/25 cols) — a mechanical necessity of the approved column drop, not a design
+  decision. Verify: embedded PG boot applies V000–V064; engine + composition clippy clean
+  (both configs); `cargo test` (both configs; DB tests skip-if-no-docker). Commit + push.
+  ✅ **DONE** (this commit).
+
+  **O2.2 — Remove the engine mission system.** Delete `crates/brassclaw_engine/src/runtime/
+  mission.rs` + `crates/brassclaw_engine/src/types/mission.rs`; remove their `mod`
+  registrations (`runtime/mod.rs:12,22`, `types/mod.rs:15`) + `lib.rs` re-exports
+  (`lib.rs:53,99-102,104` — note `ValidTimezone` is re-exported from `types::mission` but
+  is actually `brassclaw_common::ValidTimezone`; re-home the re-export to avoid breaking
+  any `brassclaw_engine::ValidTimezone` user, or drop if unused — ground during this step);
+  remove the mission methods from the `Store` trait (`traits/store.rs:188-237,249-255`:
+  `save_mission`/`load_mission`/`list_missions`/`update_mission_status`/
+  `list_missions_with_shared`/`list_shared_missions`/`list_all_missions`) + their impls in
+  every `Store` implementor (composition `pg_memory_doc_store.rs:225-237`,
+  `memory_doc_libsql_store.rs:346-377`; test mocks `tests/engine_v2_skill_codeact.rs:487-516`,
+  `orchestrator.rs:8433-8454` + `:8699-8720`; grep `impl Store for` to find any others);
+  remove `recipe_store.rs:1104` mission test usage + `lib.rs:141` test usage. Resolve every
+  dangling reference. Verify: fmt + `cargo clippy -p brassclaw_engine -p
+  brassclaw_reborn_composition --all-targets -- -D warnings` (both configs) + `cargo test`
+  (both configs). Commit + push.
+
+  **O2.3 — Purge `brassclaw_host_api::MissionId` (full cross-crate).** Remove the
+  `MissionId` type from `brassclaw_host_api/src/ids.rs`; remove the `Mission(MissionId)`
+  scope enum variant + `ResourceScope.mission_id` field (`scope.rs`); remove
+  `mission_id: Option<MissionId>` from `audit.rs`, `resource.rs`; then propagate to all
+  consumers: `events/cursor.rs`, `processes/types.rs`, `secrets/lib.rs` (+ tests
+  `:1463-1465,1803-1805,2111-2113`), `event_projections` tests, `capabilities` tests,
+  `gateway` JS, and any other `MissionId` user (grep `\bMissionId\b` workspace-wide).
+  Ground the full consumer set FIRST during this step. Verify: fmt + workspace clippy
+  `--all --benches --tests --examples --all-features -- -D warnings` (modulo the user's
+  `basic_prompt_store` WIP blockage) + `cargo test` (both configs). Commit + push.
+
+  **O2.4 — Delete e2e mission test + update CLAUDE.md/AGENTS.md.** Delete
+  `tests/e2e/scenarios/test_mission_gmail_3133.py`; update mission mentions in
+  `crates/brassclaw_engine/CLAUDE.md` + `crates/brassclaw_engine/AGENTS.md` ( +
+  `docs/brassclaw-architecture.md` / `docs/internal/engine-v2-architecture.md` if they
+  state missions as current architecture) to record missions as removed (v1 routines
+  reborn, dormant, deleted in v3 H.5 obsolescence cleanup). Leave historical plan docs
+  (`docs/plans/2026-03-24-missions.md`, `docs/plans/2026-04-11-defi-portfolio-keeper.md`)
+  as archives. Verify: fmt + clippy clean (both configs). Commit + push.
 
 **O3 — Delete Model A Python `tier_zero` (H.3) from `default.py` + Model-A step-0 tests.**
 Remove the H.3 `default.py` step-0 `tier_zero` early-return branch + the `recipe_tier_zero_*`
@@ -201,8 +267,11 @@ H.8 — NOT in this subplan.
 
 ## 5. Verification + status (updated as steps complete)
 
-- O1 — Pending.
-- O2 — Pending.
+- O1 — Done (commit `d6c91828`).
+- O2.1 — Pending.
+- O2.2 — Pending.
+- O2.3 — Pending.
+- O2.4 — Pending.
 - O3 — Pending.
 - O4 — Pending.
 - O5 — Pending.

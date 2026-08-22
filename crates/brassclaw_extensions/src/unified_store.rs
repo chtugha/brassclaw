@@ -186,8 +186,6 @@ pub struct UnifiedExtension {
     pub last_audit_at: Option<chrono::DateTime<chrono::Utc>>,
     /// Count of consecutive audit failures.
     pub audit_failure_count: i16,
-    /// UUID of the mission that produced this extension.
-    pub parent_mission_id: Option<Uuid>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
@@ -398,9 +396,8 @@ fn decode_row(row: &tokio_postgres::Row) -> Result<UnifiedExtension, UnifiedStor
     let parent_version: Option<String> = row.get(25);
     let last_audit_at: Option<chrono::DateTime<chrono::Utc>> = row.get(26);
     let audit_failure_count: i16 = row.get(27);
-    let parent_mission_id: Option<Uuid> = row.get(28);
-    let created_at: chrono::DateTime<chrono::Utc> = row.get(29);
-    let updated_at: chrono::DateTime<chrono::Utc> = row.get(30);
+    let created_at: chrono::DateTime<chrono::Utc> = row.get(28);
+    let updated_at: chrono::DateTime<chrono::Utc> = row.get(29);
 
     let class = ExtensionClass::try_from_str(&class_str)?;
 
@@ -433,7 +430,6 @@ fn decode_row(row: &tokio_postgres::Row) -> Result<UnifiedExtension, UnifiedStor
         parent_version,
         last_audit_at,
         audit_failure_count,
-        parent_mission_id,
         created_at,
         updated_at,
     })
@@ -448,7 +444,7 @@ const SELECT_COLS: &str = "
     validation_status, validation_errors, review_feedback, review_attempts,
     rejected_at, queue_code, source, content_hash,
     similarity_parent_id, replaces_id, parent_version,
-    last_audit_at, audit_failure_count, parent_mission_id,
+    last_audit_at, audit_failure_count,
     created_at, updated_at
 ";
 
@@ -745,7 +741,6 @@ impl UnifiedExtensionStore for PgUnifiedExtensionStore {
              SET source             = 'wiped',
                  content_hash       = NULL,
                  similarity_parent_id = NULL,
-                 parent_mission_id  = NULL,
                  review_feedback    = NULL
              WHERE id = $1
                AND tenant_id = $2 AND user_id = $3

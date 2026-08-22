@@ -171,8 +171,6 @@ mod inner {
         pub extra_consumer_tags: Vec<String>,
         /// SHA-256 of the content; callers compute it externally.
         pub content_hash: String,
-        /// Optional parent mission that triggered this write.
-        pub parent_mission_id: Option<Uuid>,
         /// Optional ID of the skill this row is replacing (version upgrade).
         pub replaces_id: Option<Uuid>,
         /// Optional similarity parent for dedup lineage.
@@ -225,7 +223,6 @@ mod inner {
         pub content_hash: String,
         pub last_audit_at: Option<DateTime<Utc>>,
         pub audit_failure_count: i32,
-        pub parent_mission_id: Option<Uuid>,
         pub created_at: DateTime<Utc>,
         pub updated_at: DateTime<Utc>,
     }
@@ -463,7 +460,7 @@ mod inner {
                         intent_examples,
                         consumer_tags,
                         source, content_hash,
-                        parent_mission_id, replaces_id, similarity_parent_id,
+                        replaces_id, similarity_parent_id,
                         validation_status, queue_code
                     ) VALUES (
                         $1,$2,$3,$4,
@@ -476,7 +473,7 @@ mod inner {
                         $22,
                         $23,
                         $24,$25,
-                        $26,$27,$28,
+                        $26,$27,
                         'pending','q1_auto'
                     )
                     RETURNING id",
@@ -506,7 +503,6 @@ mod inner {
                         &consumer_tags,
                         &input.source,
                         &input.content_hash,
-                        &input.parent_mission_id,
                         &input.replaces_id,
                         &input.similarity_parent_id,
                     ],
@@ -545,7 +541,7 @@ mod inner {
                         review_feedback, review_attempts, rejected_at, queue_code,
                         similarity_parent_id, replaces_id, parent_version,
                         content_hash, last_audit_at, audit_failure_count,
-                        parent_mission_id, created_at, updated_at
+                        created_at, updated_at
                      FROM reborn_skills
                     WHERE tenant_id = $1
                       AND user_id   = $2
@@ -594,7 +590,7 @@ mod inner {
                         review_feedback, review_attempts, rejected_at, queue_code,
                         similarity_parent_id, replaces_id, parent_version,
                         content_hash, last_audit_at, audit_failure_count,
-                        parent_mission_id, created_at, updated_at
+                        created_at, updated_at
                      FROM reborn_skills
                      WHERE id = $1
                        AND tenant_id  = $2
@@ -639,7 +635,7 @@ mod inner {
                         review_feedback, review_attempts, rejected_at, queue_code,
                         similarity_parent_id, replaces_id, parent_version,
                         content_hash, last_audit_at, audit_failure_count,
-                        parent_mission_id, created_at, updated_at
+                        created_at, updated_at
                      FROM reborn_skills
                      WHERE name       = $1
                        AND tenant_id  = $2
@@ -1004,7 +1000,6 @@ mod inner {
             content_hash: row.get("content_hash"),
             last_audit_at: row.get("last_audit_at"),
             audit_failure_count: row.get("audit_failure_count"),
-            parent_mission_id: row.get("parent_mission_id"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
         })
@@ -1054,7 +1049,6 @@ mod inner {
                 ]),
                 extra_consumer_tags: vec![],
                 content_hash: "abc123".into(),
-                parent_mission_id: None,
                 replaces_id: None,
                 similarity_parent_id: None,
                 source: "authored".into(),

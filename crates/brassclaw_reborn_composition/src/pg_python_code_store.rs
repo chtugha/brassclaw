@@ -90,7 +90,7 @@ fn map_pg(e: tokio_postgres::Error) -> PgPythonCodeStoreError {
 /// A fully-decoded `reborn_python_code` row.
 ///
 /// Column order matches [`PYTHON_CODE_SELECT`] / [`decode_python_code_row`].
-/// `reborn_python_code` has 26 columns: the 5 scope fields, the 3 content
+/// `reborn_python_code` has 25 columns: the 5 scope fields, the 3 content
 /// fields, the 2 solution-override columns, class/uid/tags/intent, the
 /// post-validation `validation_status`, source + similarity/replaces/audit
 /// columns, the dependency registry, and created/updated timestamps. The five
@@ -125,7 +125,6 @@ pub(crate) struct PgPythonCode {
     pub(crate) parent_version: Option<String>,
     pub(crate) last_audit_at: Option<chrono::DateTime<chrono::Utc>>,
     pub(crate) audit_failure_count: i16,
-    pub(crate) parent_mission_id: Option<Uuid>,
 
     pub(crate) dependency_registry: Option<Value>,
     pub(crate) created_at: chrono::DateTime<chrono::Utc>,
@@ -168,7 +167,7 @@ const PYTHON_CODE_SELECT: &str = "
     class_code, prompt_uid, consumer_tags, intent_examples,
     validation_status, source, content_hash,
     similarity_parent_id, replaces_id, parent_version,
-    last_audit_at, audit_failure_count, parent_mission_id,
+    last_audit_at, audit_failure_count,
     dependency_registry, created_at, updated_at
 ";
 
@@ -198,10 +197,9 @@ fn decode_python_code_row(
         parent_version: row.get(19),
         last_audit_at: row.get(20),
         audit_failure_count: row.get(21),
-        parent_mission_id: row.get(22),
-        dependency_registry: row.get(23),
-        created_at: row.get(24),
-        updated_at: row.get(25),
+        dependency_registry: row.get(22),
+        created_at: row.get(23),
+        updated_at: row.get(24),
     })
 }
 
@@ -467,7 +465,7 @@ impl PgPythonCodeStore {
 mod tests {
     use super::*;
 
-    /// `PYTHON_CODE_SELECT` must list exactly the 26 `reborn_python_code`
+    /// `PYTHON_CODE_SELECT` must list exactly the 25 `reborn_python_code`
     /// columns in the order [`decode_python_code_row`] reads them. A mismatch
     /// (missing/extra/reordered column) would silently mis-decode every row —
     /// this test pins the contract without needing a live Postgres pool.
@@ -478,12 +476,12 @@ mod tests {
             .map(|c| c.trim())
             .filter(|c| !c.is_empty())
             .collect();
-        assert_eq!(cols.len(), 26, "PYTHON_CODE_SELECT must list 26 columns");
+        assert_eq!(cols.len(), 25, "PYTHON_CODE_SELECT must list 25 columns");
         assert_eq!(cols[0], "id");
         assert_eq!(cols[7], "content");
         assert_eq!(cols[14], "validation_status");
-        assert_eq!(cols[23], "dependency_registry");
-        assert_eq!(cols[25], "updated_at");
+        assert_eq!(cols[22], "dependency_registry");
+        assert_eq!(cols[24], "updated_at");
     }
 
     /// The validator consumer tag is load-bearing for the SEC-01 delivery

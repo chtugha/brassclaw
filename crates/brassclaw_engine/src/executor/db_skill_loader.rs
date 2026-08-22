@@ -333,7 +333,6 @@ mod inner {
                 content_hash: "abc".into(),
                 last_audit_at: None,
                 audit_failure_count: 0,
-                parent_mission_id: None,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             }

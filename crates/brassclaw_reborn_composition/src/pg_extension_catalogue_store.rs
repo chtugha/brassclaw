@@ -100,7 +100,7 @@ fn map_pg(e: tokio_postgres::Error) -> PgExtensionCatalogueStoreError {
 /// A fully-decoded `reborn_extension_catalogues` row.
 ///
 /// Column order matches [`EXTENSION_CATALOGUE_SELECT`] /
-/// [`decode_extension_catalogue_row`]. `reborn_extension_catalogues` has 30
+/// [`decode_extension_catalogue_row`]. `reborn_extension_catalogues` has 29
 /// columns: the 5 scope fields, `name`/`description`/`version`, the primary
 /// text `overview_doc`, the structured extras `task_groups`/`child_component_ids`/
 /// `intent_index`, the 2 solution-override columns, class/uid/tags/intent, the
@@ -142,7 +142,6 @@ pub(crate) struct PgExtensionCatalogue {
     pub(crate) parent_version: Option<String>,
     pub(crate) last_audit_at: Option<chrono::DateTime<chrono::Utc>>,
     pub(crate) audit_failure_count: i16,
-    pub(crate) parent_mission_id: Option<Uuid>,
 
     pub(crate) dependency_registry: Option<Value>,
     pub(crate) created_at: chrono::DateTime<chrono::Utc>,
@@ -191,7 +190,7 @@ const EXTENSION_CATALOGUE_SELECT: &str = "
     class_code, prompt_uid, consumer_tags, intent_examples,
     validation_status, source, content_hash,
     similarity_parent_id, replaces_id, parent_version,
-    last_audit_at, audit_failure_count, parent_mission_id,
+    last_audit_at, audit_failure_count,
     dependency_registry, created_at, updated_at
 ";
 
@@ -225,10 +224,9 @@ fn decode_extension_catalogue_row(
         parent_version: row.get(23),
         last_audit_at: row.get(24),
         audit_failure_count: row.get(25),
-        parent_mission_id: row.get(26),
-        dependency_registry: row.get(27),
-        created_at: row.get(28),
-        updated_at: row.get(29),
+        dependency_registry: row.get(26),
+        created_at: row.get(27),
+        updated_at: row.get(28),
     })
 }
 
@@ -502,7 +500,7 @@ impl PgExtensionCatalogueStore {
 mod tests {
     use super::*;
 
-    /// `EXTENSION_CATALOGUE_SELECT` must list exactly the 30
+    /// `EXTENSION_CATALOGUE_SELECT` must list exactly the 29
     /// `reborn_extension_catalogues` columns in the order
     /// [`decode_extension_catalogue_row`] reads them. A mismatch
     /// (missing/extra/reordered column) would silently mis-decode every row —
@@ -516,14 +514,14 @@ mod tests {
             .collect();
         assert_eq!(
             cols.len(),
-            30,
-            "EXTENSION_CATALOGUE_SELECT must list 30 columns"
+            29,
+            "EXTENSION_CATALOGUE_SELECT must list 29 columns"
         );
         assert_eq!(cols[0], "id");
         assert_eq!(cols[8], "overview_doc");
         assert_eq!(cols[18], "validation_status");
-        assert_eq!(cols[27], "dependency_registry");
-        assert_eq!(cols[29], "updated_at");
+        assert_eq!(cols[26], "dependency_registry");
+        assert_eq!(cols[28], "updated_at");
     }
 
     /// The validator consumer tag is load-bearing for the SEC-01 delivery
