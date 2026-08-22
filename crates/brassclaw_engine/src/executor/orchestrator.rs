@@ -2628,6 +2628,7 @@ async fn handle_assemble_prior_knowledge(
                 // from `IntentResolution::Match.component_name` (FIND-P5-06), so
                 // no second DB fetch happened to get here.
                 return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                    "orchestrator_content": "",
                     "content": "",
                     "formatted_content": "",
                     "override_prompt_creation": false,
@@ -2638,20 +2639,54 @@ async fn handle_assemble_prior_knowledge(
                 })));
             }
             Ok(FetchForTurnResult::SplitResult {
-                orchestrator_items, ..
+                rust_items,
+                orchestrator_items,
+                routing,
+                ..
             }) => {
                 // A Recipe (class 21) intent match with a `step_link`: the IBS
                 // split the steps into a Rust-only channel (`rust_items`, for
                 // Tier-0 deterministic dispatch) and an orchestrator channel
                 // (`orchestrator_items`, the LLM-facing prior knowledge). This
-                // dormant engine assembler consumes ONLY the orchestrator
-                // channel — that is the LLM prior knowledge. The Rust channel
-                // and the `TurnRoutingSignals` are dispatched by the Phase-H
-                // agent-loop Tier-0/Tier-1 consumer, not this pre-Tier-0 Python
-                // path (see the E0-A re-target). They are therefore ignored
-                // here by design, not silenced: this path does not dispatch
-                // Tier-0/Tier-1.
-                return assemble_from_component_items(&orchestrator_items);
+                // dormant engine assembler emits the full §0.9 routing dict
+                // (Q-F1): `orchestrator_content` (the formatted orchestrator
+                // channel) with `formatted_content` as an alias, `tier_zero`
+                // (= `!routing.llm_call_required` — the dormant-path equivalent
+                // of `RetrievalTurnResult.tier0_eligible`, Q-F4), the
+                // `rust_items` serialized (informational — the Python side
+                // never applies them directly; the live `RecipeStage` does,
+                // §0.9 note), `matched_component_ids` from `routing` (the
+                // orchestrator-channel identity set), and the routing context.
+                // The LIVE Tier-0/Tier-1 dispatch is the Phase-H agent-loop
+                // consumer (via the composition `PgRetrievalLookup` bridge);
+                // this path is dormant but plan-faithful if re-activated.
+                let (orchestrator_content, _, _) = assemble_component_strings(&orchestrator_items);
+                let rust_items_json: Vec<serde_json::Value> = rust_items
+                    .iter()
+                    .map(|item| {
+                        serde_json::json!({
+                            "id": item.id.to_string(),
+                            "class_code": item.class_code,
+                            "name": item.name,
+                            "content": item.effective_content,
+                        })
+                    })
+                    .collect();
+                return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                    "orchestrator_content": orchestrator_content,
+                    "formatted_content": orchestrator_content,
+                    "action_short_circuit": false,
+                    "disambiguation": false,
+                    "tier_zero": !routing.llm_call_required,
+                    "override_prompt_creation": routing.override_prompt_creation,
+                    "matched_component_ids": routing.matched_component_ids,
+                    "rust_items": rust_items_json,
+                    "variant_label": routing.variant_label,
+                    "step_link": routing.step_link,
+                    "wilson_lower": routing.wilson_lower,
+                    "llm_call_required": routing.llm_call_required,
+                    "tier0_eligible": routing.tier0_eligible,
+                })));
             }
             Err(e) => {
                 debug!("assemble_prior_knowledge: RetrievalSource failed: {e}");
@@ -2723,7 +2758,24 @@ fn assemble_from_component_items(items: &[crate::memory::ComponentItem]) -> ExtF
         })));
     }
 
-    // Normal Assembly: multi-component JSON ordered (class_code asc, prompt_uid asc).
+    let (formatted, raw_content, matched_ids) = assemble_component_strings(items);
+    ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+        "content": raw_content,
+        "formatted_content": formatted,
+        "override_prompt_creation": false,
+        "matched_component_ids": matched_ids,
+    })))
+}
+
+/// Assemble the normal multi-component LLM-readable JSON, the raw plain-text
+/// concatenation, and the matched component id list from a slice of
+/// [`ComponentItem`]s (no Solution Override short-circuit). Shared by
+/// [`assemble_from_component_items`] (the `Components` arm) and the `SplitResult`
+/// §0.9 routing-dict assembly (v3 Phase F.5) so both produce identical body
+/// content. Entries follow the same schema as `format_prior_knowledge_for_llm`.
+fn assemble_component_strings(
+    items: &[crate::memory::ComponentItem],
+) -> (String, String, Vec<String>) {
     let matched_ids: Vec<String> = items.iter().map(|item| item.id.to_string()).collect();
 
     // Build the JSON entries using the same schema as format_prior_knowledge_for_llm.
@@ -2767,12 +2819,7 @@ fn assemble_from_component_items(items: &[crate::memory::ComponentItem]) -> ExtF
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
-        "content": raw_content,
-        "formatted_content": formatted,
-        "override_prompt_creation": false,
-        "matched_component_ids": matched_ids,
-    })))
+    (formatted, raw_content, matched_ids)
 }
 
 /// Map a `DocType` to its `(class_code, label)` pair.

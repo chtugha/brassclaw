@@ -2006,7 +2006,10 @@ async fn handle_rlm_query(
     // `#[serde(default)]` (no `brassclaw_turns` identity source in the engine);
     // the LIVE retrieval path sources tenant from `LoopRunContext.scope.tenant_id`
     // (F.4).
-    .with_tenant_agent(parent_thread.tenant_id.clone(), parent_thread.agent_id.clone());
+    .with_tenant_agent(
+        parent_thread.tenant_id.clone(),
+        parent_thread.agent_id.clone(),
+    );
 
     // Add the prompt as a user message
     child_thread.add_message(ThreadMessage::user(&prompt));
