@@ -3438,9 +3438,9 @@ validation_status: "validated"
 | 2 — Domain Skill | 1 | `skill-tomedo` |
 | 13 — ToolSkill | 21 | `ts-tomedo-serverstatus` … `ts-tomedo-kvschein-link-leistung` |
 | 21 — Recipe | 21 | `tomedo-serverstatus` … `tomedo-ebmleistung-create` |
-| 22 — PythonCode | 40 | `pc-tomedo-serverstatus` … `pc-tomedo-kvschein-link-leistung` |
+| 22 — PythonCode | 41 | `pc-tomedo-serverstatus` … `pc-tomedo-check-01100-erforderlich` |
 | 23 — ExtensionCatalogue | 2 | `ext-tomedo`, `ext-tomedo-cert-fetch` |
-| **Total** | **109** | |
+| **Total** | **110** | |
 
 ---
 
@@ -3630,6 +3630,8 @@ computed on first insert and checked on subsequent runs.
 | `POST /ebmleistung` NOT `/leistung` | `/leistung` stores `dtype='Leistung'` and drops `ebmKatalogEintrag` — confirmed broken 2026-08-22; only `/ebmleistung` creates correct `EBMLeistung` rows |
 | EBMLeistung 2-step write | POST `/ebmleistung` → `{new_ident}`; then PUT `/kvschein/{id}` with `{ebmLeistungen:[{ident:N}]}` sets `invkvschein_ident` and writes KVSchein change record for Mac client sync |
 | EBM Ziffer → catalog ident lookup | Ziffer strings (e.g. `01100`) must be resolved to internal ints via `ebmkatalogeintrag.code`; known: `1=01100`, `270=03003`, `298=03230` (this server) |
+| 01100 late-arrival rule | GKV only (not Privat, not HZV): Monday `ankunft` > 20:00 local / Tue–Sun > 19:00 local → EBM 01100 required on Schein; `ankunft` epoch ms from API is UTC — convert via `Europe/Berlin` tz |
+| `ankunft` field confirmed via API | `GET /besuch/{patient_id}/besucheForPatient` returns `ankunft` as epoch ms UTC, `kvFall` bool, `privatFall` bool — confirmed live 2026-08-22 |
 
 
 
@@ -4032,11 +4034,14 @@ except Exception as e:
 # Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
 # Checks completeness for a GKV-Patient.
 # Required: Diagnose · ANA + BEF + BES in Kartei · KV-Schein vorhanden · EBM-Ziffern auf Schein.
+# Also checks whether 01100 is required (late-arrival rule) and present.
 # Inputs (all JSON strings baked in by IBS):
 #   {{vars.diagnosen_json}}       — diagnosen[] array from patientenDetailsRelationen
 #   {{vars.kartei_check_json}}    — output of pc-tomedo-check-kartei-vollstaendigkeit
 #   {{vars.kv_scheine_json}}      — kvScheine[] array from patientenDetailsRelationen
 #   {{vars.ebm_leistungen_json}}  — ebmLeistungen[] array from kvschein
+#   {{vars.check_01100_json}}     — output of pc-tomedo-check-01100-erforderlich
+#                                    {"erforderlich": bool, "reason": str}
 # Returns list of missing item strings (empty list = vollständig).
 import json as _j
 try:
@@ -4054,6 +4059,17 @@ try:
     ebm = _j.loads("{{vars.ebm_leistungen_json}}")
     if not isinstance(ebm, list) or len(ebm) == 0:
         missing.append("EBM-Ziffern fehlen (keine Leistungen auf dem Schein)")
+    # 01100 late-arrival check
+    check_01100 = _j.loads("{{vars.check_01100_json}}")
+    if check_01100.get("erforderlich"):
+        # check whether 01100 (ebmKatalogEintrag.ident == 1) is already on the schein
+        ebm_list = ebm if isinstance(ebm, list) else []
+        has_01100 = any(
+            (e.get("ebmKatalogEintrag") or {}).get("ident") == 1
+            for e in ebm_list
+        )
+        if not has_01100:
+            missing.append("EBM 01100 fehlt (" + check_01100.get("reason", "") + ")")
     result = missing
 except Exception as e:
     result = ["Fehler bei der Prüfung: " + str(e)]
@@ -4254,6 +4270,76 @@ except Exception as e:
 # No inputs needed — uses the system clock at execution time.
 import datetime as _dt
 result = _dt.date.today().strftime("%Y-%m-%d")
+```
+
+---
+
+#### PythonCode: `pc-tomedo-check-01100-erforderlich` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
+# Checks whether EBM 01100 (Unvorhergesehene Inanspruchnahme) must be added
+# to the KV-Schein based on the patient's arrival time (ankunft).
+#
+# Rule (GKV-only — do NOT apply to Privat or HZV):
+#   Monday (weekday 0):  ankunft local time > 20:00 → 01100 required
+#   Tue–Sun (weekday 1–6): ankunft local time > 19:00 → 01100 required
+#
+# Inputs (IBS bakes in before execution):
+#   {{vars.ankunft_ms}}   — ankunft epoch ms (UTC) from besuch API response
+#   {{vars.kv_fall}}      — "true"/"false" string
+#   {{vars.privat_fall}}  — "true"/"false" string
+#   {{vars.scheinart}}    — scheinart string from kvschein (for HZV exclusion)
+#
+# Returns dict:
+#   {"erforderlich": bool, "reason": str}
+#   erforderlich=True  → 01100 must be added
+#   erforderlich=False → not required (with reason string)
+#
+# Timezone: epoch ms from tomedo API is UTC. Server runs CEST (UTC+2 summer,
+# UTC+1 winter). Use Europe/Berlin for correct local-time comparison.
+import datetime as _dt
+try:
+    import zoneinfo as _zi
+    _tz = _zi.ZoneInfo("Europe/Berlin")
+except ImportError:
+    # fallback: assume UTC+2 (CEST) — valid for summer months
+    _tz = _dt.timezone(_dt.timedelta(hours=2))
+
+_kv     = "{{vars.kv_fall}}".lower()    == "true"
+_privat = "{{vars.privat_fall}}".lower() == "true"
+_sa     = "{{vars.scheinart}}".lower()
+_ms     = int("{{vars.ankunft_ms}}" or "0")
+
+if not _kv or _privat:
+    result = {"erforderlich": False, "reason": "Nicht GKV (Privat oder kein KV-Fall)"}
+elif "hzv" in _sa:
+    result = {"erforderlich": False, "reason": "HZV-Patient — 01100 nicht anwendbar"}
+elif _ms == 0:
+    result = {"erforderlich": False, "reason": "ankunft_ms fehlt oder null"}
+else:
+    _local = _dt.datetime.fromtimestamp(_ms / 1000, tz=_tz)
+    _wday  = _local.weekday()       # 0=Montag, 6=Sonntag
+    _h     = _local.hour
+    _m     = _local.minute
+    _hm    = _h * 60 + _m           # minutes since midnight (local)
+    _threshold = 20 * 60 if _wday == 0 else 19 * 60  # 20:00 Mon, 19:00 Tue-Sun
+    if _hm > _threshold:
+        _tag = ["Mo","Di","Mi","Do","Fr","Sa","So"][_wday]
+        _limit = "20:00" if _wday == 0 else "19:00"
+        result = {
+            "erforderlich": True,
+            "reason": f"GKV-Ankunft {_tag} {_local.strftime('%H:%M')} > {_limit} → 01100 erforderlich"
+        }
+    else:
+        _tag = ["Mo","Di","Mi","Do","Fr","Sa","So"][_wday]
+        _limit = "20:00" if _wday == 0 else "19:00"
+        result = {
+            "erforderlich": False,
+            "reason": f"Ankunft {_tag} {_local.strftime('%H:%M')} ≤ {_limit} — kein Notfalleinsatz"
+        }
+except Exception as e:
+    result = {"erforderlich": False, "reason": "Fehler: " + str(e)}
 ```
 
 ---
