@@ -38,6 +38,20 @@
 > generates code/XML/JSON that the user then pastes into the tomedo UI.
 > Every recipe below targets Tier 0 unless noted otherwise.
 >
+> **⚠️ CRITICAL SAFETY CONSTRAINT — `GET /patient?flach=true` is a BULK ENDPOINT:**
+> This endpoint returns ~15 000 patient records in a single JSON response
+> (typically 8–20 MB). Calling it directly from a recipe step or loading the
+> response into LLM context WILL cause server memory exhaustion and a process
+> crash. It is only permitted as input to `pc-tomedo-filter-recent-patients`
+> (which immediately trims the list before any further use) or to feed an
+> offline crawl pipeline. **No skill, recipe, or LLM prompt may invoke
+> `ts-tomedo-patient-list` without an immediate filter/reduce step.**
+>
+> **For all patient-search use-cases, prefer in order:**
+> 1. `ts-tomedo-patient-search` — `searchByAttributes?query=` (server-side name search, returns only matches, safe)
+> 2. `ts-tomedo-crawl-rag-query` — semantic/phonetic search via sidecar index (phone, name, fuzzy, safe)
+> 3. `ts-tomedo-patient-list` + `pc-tomedo-filter-recent-patients` — **bulk pull, only for crawl delta sync, never for interactive queries**
+>
 > **Auth guard (§tomedo-auth):**
 > All tomedo tool calls require `tomedo_base_url` and `tomedo_cert_pem` config
 > values to be set. PythonCode bodies include an auth-check guard that surfaces a
@@ -102,6 +116,43 @@
 > | POST | `/config` | 1 | Write config keys (needs confirm) |
 > | GET | `/ollama/status` | 0 | Ollama embedding service status |
 >
+> ### tomedo LLM Service (OpenAI-compatible REST, via mTLS or LAN HTTP)
+>
+> | Method | Path | Tier | Description |
+> |--------|------|------|-------------|
+> | POST | `/{db}/llmservice/{user_ident}/v1/chat/completions` | 1 | OpenAI-compatible chat completions (DSGVO-compliant, zollsoft-hosted models) |
+>
+> **Why this matters:** The tomedo server exposes the same backend as the tomedo
+> Kartei-Chat as a REST endpoint. BrassClaw can call it directly to run
+> DSGVO-compliant LLM inference without external API keys or cloud services.
+> All models are served via zollsoft-operated zero-retention infrastructure.
+>
+> **Endpoint forms:**
+> - LAN HTTP: `http://tomedo.localnet:8080/tomedo_live/llmservice/{user_ident}/v1/chat/completions`
+> - mTLS HTTPS: `https://{host}:8443/{db}/llmservice/{user_ident}/v1/chat/completions`
+>
+> **Models (confirmed by forum users, Sep–Nov 2025):**
+> - `gemini-2.5-pro` — highest quality, higher latency
+> - `gemini-2.5-flash` — fast, recommended for most tasks
+> - `mistral-medium-2508` — EU/DSGVO-compliant Mistral model
+>
+> **Auth:** Same mTLS cert as the rest of the tomedo API (HTTPS variant).
+> LAN HTTP variant requires no cert but must be on the practice LAN.
+>
+> **user_ident:** A numeric string — the tomedo user's ident from the statistics
+> SQL table (`SELECT ident FROM t_benutzer WHERE login = ?`). Typically a
+> low integer (e.g., "4").
+>
+> **Budget:** zollsoft imposes a monthly budget per user. Calls beyond the
+> budget return an error response. Track usage and inform the user.
+>
+> **Request format:** OpenAI-compatible JSON:
+> ```json
+> {"model": "gemini-2.5-flash", "messages": [{"role":"user","content":"..."}], "stream": false}
+> ```
+>
+> **Response:** OpenAI-compatible — content at `choices[0].message.content`.
+>
 > ---
 >
 > ## Key JSON Field Reference (tomedo patient object)
@@ -158,44 +209,236 @@
 >
 > ---
 >
+> ## §write-paths — All Write Paths to tomedo (Confirmed by Live Server Probe)
+>
+> **Probed:** 2026-08-22 via SSH to 192.168.10.9 (Linux tomedo server)
+>
+> ### Write Path 1 — Official tomedo.API Connector (INSTALLED, needs Keycloak credentials)
+>
+> **Status:** Software fully installed and running, cloud credentials not yet configured.
+>
+> **Architecture (confirmed by decompiling `/opt/data/apiConnector/bin/api-connector.jar`):**
+> ```
+> Partner App (BrassClaw)
+>     ↕ HTTPS (Keycloak JWT, E2E encrypted EC P-521)
+> zollsoft Gateway Cloud  ←→  BridgeConnector (CometD/Bayeux WebSocket)
+>     ↕
+> api-connector.jar (port 8502 on tomedo server)
+>     ↕ mTLS (client cert already configured)
+> tomedo server (port 8443)
+> ```
+>
+> **The connector is already installed and running** on this server at
+> `/opt/data/apiConnector/` as a Java 21 Spring Boot service on port 8502.
+> It has end-to-end EC P-521 encryption keys already generated and mTLS
+> client certificates already configured for the tomedo server at port 8443.
+>
+> **What is missing:** Only the zollsoft Keycloak credentials (gateway URL +
+> client ID + realm) needed to connect to the zollsoft cloud gateway.
+> Current log shows `"No Keycloak credentials are configured with this server!"`
+> every 5 minutes as it tries to reconnect.
+>
+> **What it can do once credentials are added:**
+> - The connector proxies **any HTTP method** (GET/POST/PUT/PATCH/DELETE) from the
+>   gateway to the tomedo server at port 8443
+> - Partner access credentials are obtained by signing the tomedo.API partner
+>   agreement with zollsoft GmbH (contact: Toni Ringling / Madita Poslovsky)
+> - Once connected, the gateway sends `RequestMessage` objects that the connector
+>   forwards to the tomedo server — the response is relayed back end-to-end encrypted
+>
+> **To activate the connector (three steps):**
+> 1. Contact zollsoft to sign the partner agreement and receive:
+>    - `app.ws.gateway.url` — the CometD WebSocket gateway URL
+>    - Keycloak realm + client ID for the `/realms/auth/protocol/openid-connect/token` token endpoint
+> 2. Add these to `/opt/data/apiConnector/config/properties.yaml` under `app.ws.gateway.*`
+> 3. Restart the api-connector service: `sudo systemctl restart tomedo-api-connector` (or equivalent)
+>
+> **BrassClaw integration once live:**
+> BrassClaw does NOT call the connector directly. The zollsoft gateway acts as the
+> intermediary. BrassClaw would be implemented as a **partner** — it registers with
+> the zollsoft gateway, then sends requests through the gateway → connector → tomedo.
+> All write recipes will be Tier 1: LLM confirms content, orchestrator executes.
+>
+> ### Write Path 2 — Direct PostgreSQL Write (via SSH)
+>
+> **Status:** Available NOW — BrassClaw can SSH to the server and write directly
+> to the PostgreSQL database at `localhost:5432` (database: `tomedo`).
+>
+> **Why this works:**
+> - SSH access confirmed: `technik@192.168.10.9` (password: `k8DwSVpZmf`)
+> - PostgreSQL is running and accepting local connections
+> - Tomedo stores all data (patients, Karteieinträge, appointments, diagnoses) in
+>   its PostgreSQL database
+>
+> **Risk:** Direct DB writes bypass tomedo's business logic, validation, and
+> event system. This can corrupt data, miss side effects (e.g., auto-notifications),
+> and break BDR replication. Use ONLY for well-understood insert operations
+> where the schema is known and the operation is idempotent.
+>
+> **Safe use cases for direct DB writes:**
+> - Writing a `Karteieintrag` (new text entry in the patient record) — known table/columns
+> - Writing a `CustomKarteiEintrag` field value (if the CKE is already defined)
+> - Inserting a result into a `datenTransferProxy` field
+>
+> **Required config:** `tomedo_ssh_host`, `tomedo_ssh_user`, `tomedo_ssh_password`,
+> `tomedo_pg_db` (default: `tomedo`)
+>
+> **BrassClaw tool approach:**
+> Use `builtin.shell` via SSH to execute `psql` commands on the server.
+> OR install the `tomedo-crawl` sidecar write path if it exposes one.
+>
+> ### Write Path 3 — Aktionskette HTTP Trigger (Mac-side only, NOT server-side)
+>
+> **CORRECTION from earlier analysis:** The Aktionskette URL scheme
+> `http://{ip}:8070/aktionskette?ak=...` listens on the **Mac tomedo client process**,
+> NOT the Linux server. Port 8070 is **not open on the Linux server** (confirmed by
+> `ss -tlnp`). This write path is only usable from another Mac on the LAN that
+> has a running tomedo client. It is NOT accessible from BrassClaw running on the
+> server or from an external IP.
+>
+> ### Write Path 4 — AppleScript (Mac-only)
+>
+> Confirmed viable from macOS: `osascript -e 'tell application "tomedo" to ...'`
+> can create Karteieinträge, trigger Aktionsketten, and navigate the UI.
+> This only works on the Mac running the tomedo client. Not applicable for
+> server-side BrassClaw deployments.
+>
+> ---
+>
 > ## §future-api — Official tomedo.API (Partner Program, Write-Capable)
 >
-> **Status:** Early-release partner program (Beta with VITAS completed Nov 2025).
-> Not accessible via direct mTLS. Requires signed partner agreement with zollsoft.
+> **Status:** Software fully installed on this server. Awaiting Keycloak credentials
+> from zollsoft (see §write-paths Write Path 1 above for full details).
 >
-> **What it is:** A separate, cloud-brokered API built by zollsoft for third-party
-> software vendors (teleassistants, booking systems, etc.). VITAS was the first
-> partner; PraxisConcierge and others are waiting. Documentation is NDA-gated and
-> issued only after contract signing.
->
-> **What it covers (from forum evidence):**
-> - Calendar/appointment read AND write (booking, cancellation) — the primary use
->   case for AI telephone assistants like VITAS
+> **What it covers (from forum evidence + connector decompilation):**
+> - Calendar/appointment read AND write (booking, cancellation)
 > - Patient lookup (name, insurance number)
-> - Prescription/referral status
-> - The API runs through a zollsoft-operated intermediary server (authentication
->   layer), not directly against the practice server
-> - Uses token-based auth (not mTLS) — multiple partners can connect simultaneously
->   once each implements the authentication
->
-> **Write-back to Karteieinträge (v1.163+):** tomedo v1.163 added write-back to
-> Karteieinträge via Aktionsketten (action chains inside the tomedo UI — not via
-> external REST). The external REST write-back for `datenTransferProxy` fields is
-> planned for v1.165+. This is NOT available via the direct mTLS port 8443 today.
+> - Any HTTP method proxied through to tomedo server port 8443
+> - End-to-end encrypted (EC P-521 key pair already provisioned on this server)
 >
 > **Integration path for BrassClaw:**
 > 1. Request tomedo.API partner access via zollsoft (contact: Toni Ringling/Madita
 >    Poslovsky at zollsoft GmbH, Jena).
-> 2. Sign partner agreement. Receive API documentation and credentials.
-> 3. Implement a new `tool` (class 0) wrapping `builtin.http` against the
->    zollsoft cloud intermediary endpoint with token auth.
-> 4. All write recipes (appointment creation, Karteieintrag write, patient update)
+> 2. Sign partner agreement. Receive gateway URL + Keycloak client credentials.
+> 3. Add credentials to `/opt/data/apiConnector/config/properties.yaml`.
+> 4. Restart api-connector service.
+> 5. Implement BrassClaw as a partner: register with the zollsoft gateway,
+>    send requests through it to the connector → tomedo server.
+> 6. All write recipes (appointment creation, Karteieintrag write, patient update)
 >    will be Tier 1: LLM confirms the content, orchestrator executes.
 >
-> **This plan does NOT implement write operations** because the API is partner-gated
-> and the endpoint shapes are not publicly documented. The recipes below are
-> read-only against the direct mTLS API. A `v4` extension plan should add write
-> operations once the partner API is accessible.
+> **The direct mTLS REST API (port 8443) remains read-only** from the external
+> perspective — all write operations go through the connector/gateway path.
+>
+> ---
+>
+> ## §briefkommandos — Briefkommandos: Template Syntax and REST API Field Mapping
+>
+> **Source:** https://support.tomedo.de/handbuch/tomedo/kommunikation-mit-aerzten-patienten/briefschreibung/kommandos/ (scraped live Aug 2026)
+>
+> Briefkommandos are **tomedo server-side template placeholders** of the form `$[kommando]$`
+> used inside Briefvorlagen (letter templates) and Aktionsketten conditions.
+> They are **not REST endpoints** — tomedo evaluates them internally when rendering
+> a letter for a specific patient context.
+>
+> **Critical insight: Briefkommandos and the REST API share the same underlying
+> CoreData object graph.** The keypath Briefkommando `$[&p.someKeyPath]$` traverses
+> the same object tree exposed by `GET /patient/{id}`. This means:
+> - Every REST response field can also be expressed as a Briefkommando keypath
+> - The REST API is BrassClaw's *read interface*; Briefkommandos are tomedo's *render interface*
+> - When composing Briefvorlagen, BrassClaw should map the user's field request to
+>   the correct Briefkommando shorthand OR keypath — the scraped table below is the mapping
+>
+> ### Briefkommando Syntax Reference
+>
+> **Simple placeholders** (no parameters): `$[kommandoname]$`
+> **Keypath** (CoreData object traversal): `$[&p.someKey.nestedKey]$`
+>   — objects: `p` (Patient), `pr` (Rechnung/invoice), `termin` (Appointment)
+> **Parameterized**: `$[kommando param1 param2 ...]$`
+> **Conditional**: `$[if condition operator value trueResult falseResult]$`
+> **Date**: `$[d S dd.MM.yyyy]$` (S=System, B=last visit, E=Karteieintrag, L=last Leistung)
+>
+> ### Field → Briefkommando → REST JSON Path Mapping (confirmed live, Aug 2026)
+>
+> | Field | Briefkommando shorthand | Keypath form | REST JSON path |
+> |-------|------------------------|-------------|----------------|
+> | Patient ID | `$[pid]$` | `$[&p.ident]$` | `ident` |
+> | Family name | `$[pn]$` | `$[&p.nachname]$` | `nachname` |
+> | Given name | `$[pv]$` | `$[&p.vorname]$` | `vorname` |
+> | Title | `$[pt]$` | `$[&p.titel]$` | `titel` |
+> | Full name | `$[pvoll]$` | — | — |
+> | Date of birth | `$[pg]$` / `$[bes_gebDatum]$` | — | `geburtsDatum` (epoch ms) |
+> | Street | `$[ps]$` / `$[patient_strasse]$` | — | `patientenDetails.kontaktdaten.adresse.strasse` |
+> | Postcode | `$[pp]$` / `$[patient_plz]$` | — | `patientenDetails.kontaktdaten.adresse.plz` |
+> | City/town | `$[po]$` / `$[patient_ort]$` | — | `ort` / `patientenDetails.kontaktdaten.adresse.ort` |
+> | Country | `$[pLand]$` | `$[&p.patientenDetails.kontaktdaten.adresse.land]$` | `patientenDetails.kontaktdaten.adresse.land` |
+> | Mobile phone | `$[phandy]$` | — | `patientenDetails.kontaktdaten.handyNummer` |
+> | Main phone | `$[ptel]$` | — | `patientenDetails.kontaktdaten.telefon` |
+> | E-Mail | `$[pemail]$` | — | `patientenDetails.kontaktdaten.email` |
+> | Gender | `$[pmw]$` / `$[pMW]$` | — | — |
+> | Occupation | `$[pb]$` | — | `patientenDetails.beruf` |
+> | Insurance type | `$[patient_versichertenstatus]$` | — | — |
+> | Insurance number | `$[pversnr]$` | — | — |
+> | Insurance name | `$[pk]$` | — | — |
+> | Insurance IK | `$[kasse_ik]$` | — | — |
+> | Address block (recipient) | `$[adressfeld_empfaenger]$` | — | — |
+> | Salutation | `$[anrede]$` | — | — |
+> | Practice city | `$[ort]$` | — | — |
+> | Today's date | `$[datum]$` / `$[d S]$` | — | — |
+> | Last visit date | `$[d B]$` | — | — |
+> | Birthday | `$[bes_gebDatum]$` | — | `geburtsDatum` |
+> | First treating physician | — | `$[&p.patientenDetails.arzt]$` | `patientenDetails.arzt` |
+> | Body height (last BMI) | `$[koerpergroesseAusLetztemBMI]$` | — | — |
+> | Body weight (last BMI) | `$[gewichtAusLetztemBMI]$` | — | — |
+> | Systolic BP | `$[letzterBlutdruckSystolisch]$` | — | — |
+> | Diastolic BP | `$[etzterBlutdruckDiastolisch]$` | — | — |
+> | First registration date | `$[erstaufnahme]$` | — | — |
+> | Appointment list | `$[selektierteTermineListe %A:_%d]$` | — | `termine[]` |
+> | Invoice paid | — | `$[&pr.bezahlt]$` | — |
+> | Lab value | `$[laborwert LAB QUICK %w_%e L]$` | `$[&p.patientenDetails.patientenDetailsRelationen.karteiEintraege.laborauftrag.befunde.lbTest.lbGNR.gebuehrennummer]$` | `patientenDetailsRelationen.karteiEintraege[]` |
+> | Current KV-Schein quarter | — | `$[&p.patientenDetails.patientenDetailsRelationen.currentKVSchein.quartalAsString]$` | — |
+> | Referring physician | — | `$[&p.selektierterSchein.ueberweisenderArztName]$` | — |
+> | Custom Kartei entry value | `$[karteiEintragValue_withArgs KÜRZEL customKarteiEintragEntries.V2 _N]$` | — | `patientenDetailsRelationen.karteiEintraege[]` |
+>
+> ### Key Briefkommando Families for Composition
+>
+> **Conditional (`if`):** `$[if condition operator value trueText falseText]$`
+> - `zs_equals`, `zs_not_equal`, `zs_less_then`, `zs_contains` are the comparison operators
+> - Example: `$[if_frau unsere_gemeinsame_Patientin unseren_gemeinsamen_Patient]$` — gender branch
+> - Example: `$[if ptel zs_equals <leer> nicht_ausgefüllt ptel]$` — empty check
+>
+> **Date (`d`):** `$[d S dd.MM.yyyy]$`
+> - `S` = system date, `B` = last visit, `E <TYPE>` = last Karteieintrag of type, `L <ZIFFER>` = last billing code date
+> - Format chars: `dd.MM.yyyy` = 31.03.2025, `d.MMMM.yyyy` = 31. März 2025, `HH:mm` = time
+>
+> **Keypath (`&`):** `$[&p.patientenDetails.kontaktdaten.telefon]$`
+> - Any field accessible in the Admin → Kommandos → Keypath browser can be used
+> - `p` = patient, `pr` = Rechnung, `termin` = appointment
+> - The keypath paths are **identical to the JSON field paths in GET /patient/{id}**
+>
+> **Salutation (`a`):** `$[a Sehr_geehrte_Frau_%pn Sehr_geehrter_Herr_%pn ...]$`
+> - Gender-aware auto-salutation. Underscores = spaces in output.
+>
+> **Custom Kartei entry:** `$[karteiEintragValue_withArgs KÜRZEL customKarteiEintragEntries.FIELD _ N]$`
+> - Reads a specific field from a CustomKarteiEintrag by its abbreviation (Kürzel)
+>
+> **Lab value:** `$[laborwert LAB QUICK %w_%e L]$`
+> - `LAB` = Karteieintrag type, `QUICK` = lab value abbreviation
+> - `%w` = value, `%e` = unit
+>
+> **Score variable:** `0$[v1]$+0$[v2]$`
+> - CKE score fields; prepend 0 to prevent null-multiplication errors
+>
+> ### Implication for BrassClaw Composition
+>
+> When the user asks to compose a Briefvorlage or needs a Briefkommando for a
+> specific field, the orchestrator should:
+> 1. Check the mapping table above — if the field has a known shorthand, use it
+> 2. If no shorthand exists, use `$[&p.keypath]$` where `keypath` mirrors the REST JSON path
+> 3. Only invoke the LLM (`skill-tomedo-lookup-briefkommando`) when the field is
+>    not in the table and requires traversal of unfamiliar nested objects
+> 4. For date fields, always use the `d` kommando family with appropriate source (S/B/E/L)
+> 5. For gender-conditional text, always use `if_frau` or the full `a` kommando
 >
 > ---
 >
@@ -331,6 +574,60 @@ validation_status: "validated"
 ```
 
 
+### Step 1.3 — Tool: `tomedo-llm-api` (class 0)
+
+```
+name:            "tomedo-llm-api"
+description:     "POST to the tomedo LLM service — an OpenAI-compatible /v1/chat/completions
+                  endpoint exposed by the tomedo server itself.
+                  This is the same backend as the tomedo Kartei-Chat, accessible via REST.
+                  Models: gemini-2.5-pro, gemini-2.5-flash, mistral-medium-2508.
+                  All models run on zollsoft-operated zero-retention infrastructure (DSGVO-compliant).
+
+                  TWO endpoint variants (both supported):
+                    HTTPS mTLS: https://{host}:{port}/{db}/llmservice/{user_ident}/v1/chat/completions
+                    LAN HTTP:   http://tomedo.localnet:8080/tomedo_live/llmservice/{user_ident}/v1/chat/completions
+
+                  Request body: {model, messages:[{role,content}], stream:false}
+                  Response:     choices[0].message.content (OpenAI format)
+                  Timeout:      60 000 ms (LLM inference — not a data fetch).
+                  Budget:       Monthly per-user limit enforced by zollsoft. Budget errors surface
+                                as non-200 or error body — always relay to user."
+capability_id:   "builtin.http"
+effect_type:     "read"
+param_schema: {
+  "type": "object",
+  "properties": {
+    "url":        {"type": "string",  "description": "Full LLM service URL including user_ident path segment"},
+    "method":     {"type": "string",  "enum": ["POST"], "description": "Always POST"},
+    "headers":    {"type": "object",  "description": "Must include Content-Type: application/json"},
+    "body":       {"type": "string",  "description": "JSON string: {model, messages, stream:false}"},
+    "timeout_ms": {"type": "number",  "description": "Use 60000 for LLM inference"}
+  },
+  "required": ["url", "body"]
+}
+param_template: {
+  "url": "{{vars.tomedo_llm_endpoint}}/llmservice/{{vars.tomedo_user_ident}}/v1/chat/completions",
+  "method": "POST",
+  "headers": {"Content-Type": "application/json"},
+  "timeout_ms": 60000
+}
+preconditions:   "tomedo_user_ident config key must be set (numeric string from tomedo statistics/t_benutzer).
+                  tomedo_llm_endpoint must be set (e.g. 'http://tomedo.localnet:8080/tomedo_live' or
+                  'https://192.168.10.9:8443/live').
+                  For HTTPS variant: tomedo_cert_pem must also be set.
+                  For LAN HTTP variant: device must be on the practice LAN."
+error_handling:  "Non-200: surface status + body — may indicate budget exhaustion.
+                  TLS error (HTTPS variant): cert invalid or expired.
+                  Timeout 60000 ms: inference too slow — retry with gemini-2.5-flash.
+                  Empty choices[]: model error — surface to user."
+consumer_tags:   ["00:rusty", "02:orchestrator", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+---
+
 ## Step 2 — ToolSkills (class 13)
 
 One ToolSkill per distinct call pattern. Each binds exactly one tool and
@@ -365,21 +662,31 @@ validation_status: "validated"
 
 ### Step 2.2 — ToolSkill: `ts-tomedo-patient-list` (class 13)
 
+⚠️ **CRAWL-PIPELINE USE ONLY** — This ToolSkill returns ~15 000 records (8–20 MB).
+It MUST only be dispatched from `pc-tomedo-filter-recent-patients` or an offline
+crawl delta job. It is FORBIDDEN in interactive recipes or any step that passes
+its output directly to the LLM context. For interactive patient lookup always use
+`ts-tomedo-patient-search` (name) or `ts-tomedo-crawl-rag-query` (phone/fuzzy).
+
 ```
 name:          "ts-tomedo-patient-list"
 tool_name:     "tomedo-api"
-description:   "GET /{db}/patient?flach=true. Returns all patients as a flat JSON array
-                (~15 000 records). Fields per record: ident, nachname, vorname, titel,
-                geburtsDatum (epoch ms, may be negative), ort, zuletztAufgerufen.
-                Phone numbers are NOT included in the flat list. Use timeout_ms: 60000."
+description:   "GET /{db}/patient?flach=true. Returns ALL patients as a flat JSON array
+                (~15 000 records, 8–20 MB). Fields per record: ident, nachname, vorname,
+                titel, geburtsDatum (epoch ms, may be negative), ort, zuletztAufgerufen.
+                Phone numbers are NOT included in the flat list.
+                ⚠️ CRAWL-PIPELINE USE ONLY — never load this response into LLM context.
+                Always pipe immediately to pc-tomedo-filter-recent-patients.
+                Use timeout_ms: 60000."
 param_schema:  [
   {name: "url",        param_type: "string", required: true,
    description: "https://{host}:{port}/{db}/patient?flach=true"},
   {name: "timeout_ms", param_type: "number", required: false,
-   description: "Use 60000 — full list response can be large"}
+   description: "Must be 60000 — full list response is large"}
 ]
 param_template: {"url": "{{tomedo_base_url}}/patient?flach=true", "method": "GET", "timeout_ms": 60000}
-preconditions:  "tomedo_cert_pem must be set. Large response — do not use in-context without filtering."
+preconditions:  "tomedo_cert_pem must be set. MUST be followed by pc-tomedo-filter-recent-patients
+                 or equivalent reduce step. DO NOT pass raw output to LLM or recipe context."
 error_handling: "Non-200 → auth or server error. Empty array → no patients or wrong db name."
 category:       "tomedo"
 source:         "system"
@@ -737,6 +1044,47 @@ source:         "system"
 validation_status: "validated"
 ```
 
+---
+
+### Step 2.15 — ToolSkill: `ts-tomedo-llm-chat` (class 13)
+
+```
+name:          "ts-tomedo-llm-chat"
+tool_name:     "tomedo-llm-api"
+description:   "POST /{db}/llmservice/{user_ident}/v1/chat/completions.
+                Calls the tomedo LLM service with an OpenAI-compatible messages array.
+                Returns a chat completion — extract content from choices[0].message.content.
+                Timeout: 60000 ms.
+
+                Supports three DSGVO-compliant models:
+                  gemini-2.5-flash     — fast, recommended default
+                  gemini-2.5-pro       — highest quality, higher latency
+                  mistral-medium-2508  — Mistral EU-compliant alternative
+
+                IMPORTANT: This ToolSkill is used for ALL prompt types (medical
+                report extraction, translation, text analysis). The prompt content
+                is the only differentiator — one ToolSkill, many PythonCode executors."
+param_schema:  [
+  {name: "url",        param_type: "string", required: true,
+   description: "Full URL: {llm_endpoint}/llmservice/{user_ident}/v1/chat/completions"},
+  {name: "body",       param_type: "string", required: true,
+   description: "JSON string: {model, messages:[{role,content}], stream:false}"},
+  {name: "timeout_ms", param_type: "number", required: false,
+   description: "Use 60000"}
+]
+param_template: {
+  "url": "{{vars.tomedo_llm_endpoint}}/llmservice/{{vars.tomedo_user_ident}}/v1/chat/completions",
+  "method": "POST",
+  "headers": {"Content-Type": "application/json"},
+  "timeout_ms": 60000
+}
+preconditions:  "tomedo_user_ident and tomedo_llm_endpoint config keys must be set."
+error_handling: "Non-200 → check for budget-exhaustion message in body. Timeout → try gemini-2.5-flash."
+category:       "tomedo"
+source:         "system"
+validation_status: "validated"
+```
+
 
 ## Step 3 — PythonCode Executors (class 22)
 
@@ -764,15 +1112,26 @@ result = __execute_action__("tomedo-api", {
 
 ### Step 3.2 — PythonCode: `pc-tomedo-patient-list` (class 22)
 
+⚠️ **CRAWL-PIPELINE USE ONLY** — Only call this from a crawl-delta recipe step.
+Never use in interactive recipes. Always chain with `pc-tomedo-filter-recent-patients`
+immediately after — never pass the raw body to context or the LLM.
+
 ```python
 # Channel: orchestrator | Class: 22
+# ⚠️ CRAWL-PIPELINE USE ONLY — ~15k records, 8-20 MB response.
 # Dispatches ts-tomedo-patient-list.
-# Returns all ~15k patients (flat, no phones). Large response — save to file.
-result = __execute_action__("tomedo-api", {
-    "url": "{{vars.tomedo_base_url}}/patient?flach=true",
-    "method": "GET",
-    "timeout_ms": 60000
-})
+# MUST be immediately followed by pc-tomedo-filter-recent-patients.
+# Never pass result directly to LLM or recipe context.
+import json as _j
+_base = "{{vars.tomedo_base_url}}"
+if not _base:
+    result = {"error": "tomedo_base_url not configured"}
+else:
+    result = __execute_action__("tomedo-api", {
+        "url": f"{_base}/patient?flach=true",
+        "method": "GET",
+        "timeout_ms": 60000
+    })
 ```
 
 ---
@@ -1100,6 +1459,280 @@ except Exception as e:
     result = []
 ```
 
+---
+
+### Step 3.22 — PythonCode: `pc-tomedo-llm-arztbericht` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 1
+# Submits a raw Arztbericht (medical report) to the tomedo LLM service
+# and returns a structured extraction.
+# Slots: {{vars.tomedo_llm_endpoint}}, {{vars.tomedo_user_ident}}, {{vars.bericht_text}}
+import json as _j
+body = _j.dumps({
+    "model": "gemini-2.5-flash",
+    "messages": [
+        {"role": "system", "content": (
+            "Du bist ein medizinischer Dokumentationsassistent. Extrahiere aus dem folgenden "
+            "Arztbericht die wichtigsten Befunde, Diagnosen und Empfehlungen in strukturierter Form. "
+            "Antworte auf Deutsch."
+        )},
+        {"role": "user", "content": "{{vars.bericht_text}}"}
+    ],
+    "stream": False
+})
+result = __execute_action__("tomedo-llm-api", {
+    "url": "{{vars.tomedo_llm_endpoint}}/llmservice/{{vars.tomedo_user_ident}}/v1/chat/completions",
+    "method": "POST",
+    "headers": {"Content-Type": "application/json"},
+    "body": body,
+    "timeout_ms": 60000
+})
+```
+
+---
+
+### Step 3.23 — PythonCode: `pc-tomedo-llm-ct-befund` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 1
+# Extracts structured findings from a CT/MRI radiology report text.
+# Slots: {{vars.tomedo_llm_endpoint}}, {{vars.tomedo_user_ident}}, {{vars.befund_text}}
+import json as _j
+body = _j.dumps({
+    "model": "gemini-2.5-flash",
+    "messages": [
+        {"role": "system", "content": (
+            "Du bist ein Radiologe-Assistent. Extrahiere aus dem folgenden CT/MRT-Befund: "
+            "1) Untersuchte Organe/Regionen, 2) Pathologische Befunde mit Lokalisation und Größe, "
+            "3) Beurteilung/Diagnose, 4) Empfehlungen. Antworte strukturiert auf Deutsch."
+        )},
+        {"role": "user", "content": "{{vars.befund_text}}"}
+    ],
+    "stream": False
+})
+result = __execute_action__("tomedo-llm-api", {
+    "url": "{{vars.tomedo_llm_endpoint}}/llmservice/{{vars.tomedo_user_ident}}/v1/chat/completions",
+    "method": "POST",
+    "headers": {"Content-Type": "application/json"},
+    "body": body,
+    "timeout_ms": 60000
+})
+```
+
+---
+
+### Step 3.24 — PythonCode: `pc-tomedo-llm-schlaflabor` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 1
+# Extracts structured results from a sleep lab (Schlaflabor) report.
+# Slots: {{vars.tomedo_llm_endpoint}}, {{vars.tomedo_user_ident}}, {{vars.bericht_text}}
+import json as _j
+body = _j.dumps({
+    "model": "gemini-2.5-flash",
+    "messages": [
+        {"role": "system", "content": (
+            "Du bist ein Schlafmedizin-Assistent. Extrahiere aus dem folgenden Schlaflaborbericht: "
+            "AHI/RDI, Sauerstoffsättigung (min/mean), Schnarchindex, CPAP-Druck, Maskentyp, "
+            "ESS-Score, Diagnose (z.B. OSAS Grad), Therapieempfehlung. "
+            "Antworte strukturiert auf Deutsch."
+        )},
+        {"role": "user", "content": "{{vars.bericht_text}}"}
+    ],
+    "stream": False
+})
+result = __execute_action__("tomedo-llm-api", {
+    "url": "{{vars.tomedo_llm_endpoint}}/llmservice/{{vars.tomedo_user_ident}}/v1/chat/completions",
+    "method": "POST",
+    "headers": {"Content-Type": "application/json"},
+    "body": body,
+    "timeout_ms": 60000
+})
+```
+
+---
+
+### Step 3.25 — PythonCode: `pc-tomedo-llm-laborbefund` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 1
+# Interprets a lab report text and flags values outside the reference range.
+# Slots: {{vars.tomedo_llm_endpoint}}, {{vars.tomedo_user_ident}}, {{vars.labor_text}}
+import json as _j
+body = _j.dumps({
+    "model": "gemini-2.5-flash",
+    "messages": [
+        {"role": "system", "content": (
+            "Du bist ein Labormedizin-Assistent. Extrahiere aus dem folgenden Laborbefund "
+            "alle Messwerte mit Einheit und Referenzbereich. Markiere Werte außerhalb des "
+            "Referenzbereichs deutlich. Gib eine klinische Einschätzung der auffälligen Befunde. "
+            "Antworte strukturiert auf Deutsch."
+        )},
+        {"role": "user", "content": "{{vars.labor_text}}"}
+    ],
+    "stream": False
+})
+result = __execute_action__("tomedo-llm-api", {
+    "url": "{{vars.tomedo_llm_endpoint}}/llmservice/{{vars.tomedo_user_ident}}/v1/chat/completions",
+    "method": "POST",
+    "headers": {"Content-Type": "application/json"},
+    "body": body,
+    "timeout_ms": 60000
+})
+```
+
+---
+
+### Step 3.26 — PythonCode: `pc-tomedo-llm-gutachten` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 1
+# Drafts a medical expert opinion (Gutachten) request or pre-fills a Gutachtenauftrag.
+# Slots: {{vars.tomedo_llm_endpoint}}, {{vars.tomedo_user_ident}},
+#        {{vars.patient_context}}, {{vars.gutachten_anfrage}}
+import json as _j
+body = _j.dumps({
+    "model": "gemini-2.5-pro",
+    "messages": [
+        {"role": "system", "content": (
+            "Du bist ein erfahrener Facharzt. Erstelle auf Basis des Patientenkontextes einen "
+            "professionellen Gutachtenauftrag oder eine ärztliche Stellungnahme. "
+            "Verwende formale medizinische Sprache. Antworte auf Deutsch."
+        )},
+        {"role": "user", "content": (
+            "Patientenkontext:\n{{vars.patient_context}}\n\n"
+            "Anfrage/Fragestellung:\n{{vars.gutachten_anfrage}}"
+        )}
+    ],
+    "stream": False
+})
+result = __execute_action__("tomedo-llm-api", {
+    "url": "{{vars.tomedo_llm_endpoint}}/llmservice/{{vars.tomedo_user_ident}}/v1/chat/completions",
+    "method": "POST",
+    "headers": {"Content-Type": "application/json"},
+    "body": body,
+    "timeout_ms": 60000
+})
+```
+
+---
+
+### Step 3.27 — PythonCode: `pc-tomedo-llm-patientenbrief` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 1
+# Drafts a patient letter (Patientenbrief) from a medical context summary.
+# Slots: {{vars.tomedo_llm_endpoint}}, {{vars.tomedo_user_ident}},
+#        {{vars.patient_kontext}}, {{vars.brief_anlass}}
+import json as _j
+body = _j.dumps({
+    "model": "gemini-2.5-flash",
+    "messages": [
+        {"role": "system", "content": (
+            "Du bist ein Arzt und schreibst einen verständlichen, freundlichen Brief an den Patienten. "
+            "Verwende klare, patientenverständliche Sprache ohne übermäßigen Fachjargon. "
+            "Antworte auf Deutsch."
+        )},
+        {"role": "user", "content": (
+            "Patienteninfo:\n{{vars.patient_kontext}}\n\n"
+            "Anlass des Briefes:\n{{vars.brief_anlass}}"
+        )}
+    ],
+    "stream": False
+})
+result = __execute_action__("tomedo-llm-api", {
+    "url": "{{vars.tomedo_llm_endpoint}}/llmservice/{{vars.tomedo_user_ident}}/v1/chat/completions",
+    "method": "POST",
+    "headers": {"Content-Type": "application/json"},
+    "body": body,
+    "timeout_ms": 60000
+})
+```
+
+---
+
+### Step 3.28 — PythonCode: `pc-tomedo-llm-uebersetzung` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 1
+# Translates a medical text to/from German using the tomedo LLM service.
+# Slots: {{vars.tomedo_llm_endpoint}}, {{vars.tomedo_user_ident}},
+#        {{vars.quelltext}}, {{vars.zielsprache}}
+import json as _j
+body = _j.dumps({
+    "model": "gemini-2.5-flash",
+    "messages": [
+        {"role": "system", "content": (
+            "Du bist ein medizinischer Übersetzer. Übersetze den folgenden medizinischen Text "
+            "nach {{vars.zielsprache}}. Bewahre die medizinische Fachterminologie und Präzision. "
+            "Gib nur die Übersetzung zurück, ohne Kommentar."
+        )},
+        {"role": "user", "content": "{{vars.quelltext}}"}
+    ],
+    "stream": False
+})
+result = __execute_action__("tomedo-llm-api", {
+    "url": "{{vars.tomedo_llm_endpoint}}/llmservice/{{vars.tomedo_user_ident}}/v1/chat/completions",
+    "method": "POST",
+    "headers": {"Content-Type": "application/json"},
+    "body": body,
+    "timeout_ms": 60000
+})
+```
+
+---
+
+### Step 3.29 — PythonCode: `pc-tomedo-llm-bga` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 | Tier 1
+# Interprets a blood gas analysis (Blutgasanalyse/BGA) and provides clinical context.
+# Slots: {{vars.tomedo_llm_endpoint}}, {{vars.tomedo_user_ident}}, {{vars.bga_werte}}
+import json as _j
+body = _j.dumps({
+    "model": "gemini-2.5-flash",
+    "messages": [
+        {"role": "system", "content": (
+            "Du bist ein Intensivmedizin-Assistent. Analysiere die folgende Blutgasanalyse (BGA). "
+            "Beurteile: pH, paCO2, paO2, HCO3, BE, SpO2, Laktat. "
+            "Klassifiziere: Azidose/Alkalose, respiratorisch/metabolisch/gemischt, Kompensation. "
+            "Gib eine klinische Handlungsempfehlung. Antworte strukturiert auf Deutsch."
+        )},
+        {"role": "user", "content": "{{vars.bga_werte}}"}
+    ],
+    "stream": False
+})
+result = __execute_action__("tomedo-llm-api", {
+    "url": "{{vars.tomedo_llm_endpoint}}/llmservice/{{vars.tomedo_user_ident}}/v1/chat/completions",
+    "method": "POST",
+    "headers": {"Content-Type": "application/json"},
+    "body": body,
+    "timeout_ms": 60000
+})
+```
+
+---
+
+### Step 3.30 — PythonCode: `pc-tomedo-llm-extract-response` (class 22)
+
+```python
+# Channel: orchestrator | Class: 22 — pure logic, no __execute_action__
+# Extracts the text content from a tomedo LLM service response.
+# {{vars.llm_response}} is the raw JSON response from the LLM service.
+import json as _j
+try:
+    data = _j.loads("{{vars.llm_response}}")
+    choices = data.get("choices", [])
+    if choices:
+        result = choices[0].get("message", {}).get("content", "")
+    else:
+        # Budget exhausted or model error — surface the raw body
+        result = "Fehler: " + data.get("error", {}).get("message", str(data))
+except Exception as e:
+    result = "Fehler beim Parsen der LLM-Antwort: " + str(e)
+```
+
 
 ## Step 4 — Leaf Skills (class 1) and Domain Skills (class 2)
 
@@ -1129,20 +1762,34 @@ validation_status: "validated"
 
 ### Step 4.2 — Leaf Skill: `skill-tomedo-patient-list` (class 1)
 
+⚠️ **CRAWL-PIPELINE USE ONLY** — This skill MUST NOT be selected for any
+interactive patient-lookup query. The orchestrator must refuse to use it for
+any user-facing request and must redirect to `skill-tomedo-patient-search-by-name`
+(name lookup) or `skill-tomedo-crawl-phone-lookup` (phone lookup) instead.
+
 ```
 name:        "skill-tomedo-patient-list"
 class_code:  1
-description: "Leaf skill: fetch the complete flat patient list from tomedo."
+description: "Leaf skill: fetch the complete flat patient list from tomedo — CRAWL-PIPELINE USE ONLY."
 body: |
-  Use ts-tomedo-patient-list to fetch all patients.
-  URL: {{vars.tomedo_base_url}}/patient?flach=true
-  Timeout: 60 000 ms — the response is large (~15k records).
-  The flat list contains: ident, nachname, vorname, geburtsDatum (epoch ms),
-  ort, zuletztAufgerufen. Phone numbers are NOT in the flat list.
-  Always save large responses to a file via the http.save path and read back
-  only the fields you need. Do NOT load 15k records into context.
-  For searching by phone: use skill-tomedo-crawl-phone-lookup instead.
-  For searching by name: use skill-tomedo-patient-search-by-name instead.
+  ⚠️ CRAWL-PIPELINE USE ONLY.
+  This skill fetches ALL ~15 000 patients in one HTTP call (~8–20 MB response).
+  It MUST NOT be used for interactive patient lookup, name search, or phone lookup.
+  Calling it naively will exhaust server memory and crash the process.
+
+  WHEN TO USE: Only when performing a crawl delta-sync (e.g. finding patients
+  modified since last_crawl to update the vector index). Always chain the result
+  immediately to pc-tomedo-filter-recent-patients to reduce the list before
+  any further processing.
+
+  FOR PATIENT SEARCH BY NAME → use skill-tomedo-patient-search-by-name
+  FOR PATIENT SEARCH BY PHONE → use skill-tomedo-crawl-phone-lookup
+  FOR RECENT PATIENTS → fetch list + pc-tomedo-filter-recent-patients (limit 20)
+
+  PythonCode:
+    Use pc-tomedo-patient-list, then immediately pipe through
+    pc-tomedo-filter-recent-patients with limit={{vars.limit|20}}.
+    Never pass the raw body anywhere else.
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1420,10 +2067,12 @@ body: |
   routes you to the correct leaf skill for each operation.
 
   ARCHITECTURE:
-  Two integration surfaces:
+  Three integration surfaces:
     1. Direct tomedo REST API (mTLS HTTPS, port 8443) — patient data reads.
     2. tomedo-crawl sidecar (loopback HTTP, port 13181) — phone lookup, RAG,
        crawl control. Always check /health before querying the sidecar.
+    3. tomedo LLM service (mTLS HTTPS or LAN HTTP) — DSGVO-compliant LLM
+       inference via the tomedo server's built-in Kartei-Chat backend.
 
   OPERATION ROUTING:
 
@@ -1458,15 +2107,30 @@ body: |
     • Trigger crawl:     skill-tomedo-crawl-trigger (Tier 0)
     • Read config:       skill-tomedo-crawl-config-read (Tier 0)
 
+  tomedo LLM SERVICE (DSGVO-compliant, via tomedo server):
+    • Arztbericht extraction:   skill-tomedo-llm-arztbericht (Tier 1)
+    • CT/MRI report extraction: skill-tomedo-llm-ct-befund (Tier 1)
+    • Sleep lab extraction:     skill-tomedo-llm-schlaflabor (Tier 1)
+    • Lab report interpretation:skill-tomedo-llm-laborbefund (Tier 1)
+    • Expert opinion draft:     skill-tomedo-llm-gutachten (Tier 1)
+    • Patient letter draft:     skill-tomedo-llm-patientenbrief (Tier 1)
+    • Medical translation:      skill-tomedo-llm-uebersetzung (Tier 1)
+    • BGA interpretation:       skill-tomedo-llm-bga (Tier 1)
+    CONFIG REQUIRED: tomedo_user_ident, tomedo_llm_endpoint
+    Models: gemini-2.5-flash (default), gemini-2.5-pro, mistral-medium-2508
+    Budget: monthly per-user limit from zollsoft — surface budget errors to user.
+
   AUTH REQUIREMENT:
   All direct tomedo API calls require the mTLS client certificate PEM file.
   Check tomedo_cert_pem config before any direct API call.
+  LLM service (LAN HTTP variant) requires tomedo_user_ident only.
 
   TIER-0 ELIGIBILITY:
   All read operations with a known patient_id are Tier 0.
   The direct mTLS REST API (port 8443) is read-only — no write endpoints.
   Name search is Tier 1 (LLM composes the query from user intent).
   LLM object composition (Python markers, stats, letters, CKEs, forms) is Tier 1.
+  LLM service calls (text analysis, translation, BGA) are Tier 1.
   Official tomedo.API write operations (appointments, Karteieintrag) require the
   partner program — see §future-api in the plan header for details.
 
@@ -1634,17 +2298,26 @@ body: |
   CONTEXT FILE (briefvorlage_context.txt / Briefvorlagen.txt — zollsoft download):
   The context teaches the LLM:
   - Supported HTML tags and styling
-  - Briefkommando placeholder syntax: $[d:Nachname]$, $[&p.vorname]$, etc.
+  - Briefkommando placeholder syntax and common shorthands (see §briefkommandos)
   - Page layout, header/footer, logo positioning
   - Table formatting for lab values, medications, billing items
 
-  BRIEF HINT: To find the exact Briefkommando placeholder for a specific field,
-  use skill-tomedo-lookup-briefkommando BEFORE composing the template.
+  BRIEFKOMMANDO LOOKUP (orchestrator-first, before asking the LLM):
+  For standard patient fields, use the embedded mapping from skill-tomedo-lookup-briefkommando:
+  - Patient name: $[pvoll]$, $[pn]$, $[pv]$
+  - Address block: $[adressfeld_empfaenger]$
+  - Salutation: $[anrede]$ or $[a Sehr_geehrte_Frau_%pn Sehr_geehrter_Herr_%pn ...]$
+  - Date: $[d S dd.MM.yyyy]$ (today), $[d B]$ (last visit), $[pg]$ (DOB)
+  - Phone: $[ptel]$, $[phandy]$
+  - Diagnosis (from Kartei): $[&p.patientenDetails.patientenDetailsRelationen.diagnosen]$
+  - Any REST field: $[&p.{json_field_path}]$
+  For unknown or complex fields, call skill-tomedo-lookup-briefkommando first.
 
   PROMPT PATTERN:
   [Full context file content]
   ---
   Erstelle eine Briefvorlage für [user requirement in German].
+  Verwende folgende Briefkommandos für Patientenfelder: [list from lookup above]
 
   COMMON USE CASES (from forum users):
   - Medical report (Befundbericht) with structured sections
@@ -1664,29 +2337,74 @@ validation_status: "validated"
 ```
 name:        "skill-tomedo-lookup-briefkommando"
 class_code:  1
-description: "Leaf skill: look up the correct Briefkommando placeholder for a given patient/practice data field."
+description: "Leaf skill: look up the correct Briefkommando placeholder for a given patient/practice data field. Orchestrator-first: check the embedded table before calling the LLM."
 body: |
   Use this skill when the user needs to find the exact Briefkommando placeholder
   for a specific data field to use in a letter template.
   This is a LOOKUP skill — it does NOT generate a complete template.
 
-  INTEGRATION: Briefkommandos are used inside Briefvorlagen as $[...]$ placeholders.
+  ORCHESTRATOR-FIRST APPROACH (Tier 0 for known fields):
+  Before calling the LLM, check this embedded lookup table. If the field is
+  listed, return the answer directly — no LLM call needed.
 
-  CONTEXT FILE (briefkommandos_context.txt / BriefkommandosKompakt.txt — zollsoft download):
-  Acts as a knowledge base — not to generate objects but to find the right placeholder.
+  EMBEDDED FIELD → BRIEFKOMMANDO TABLE (from §briefkommandos, confirmed live Aug 2026):
+  | Field                  | Shorthand           | Keypath form                                          |
+  |------------------------|---------------------|-------------------------------------------------------|
+  | Patient ID             | $[pid]$             | $[&p.ident]$                                          |
+  | Family name            | $[pn]$              | $[&p.nachname]$                                       |
+  | Given name             | $[pv]$              | $[&p.vorname]$                                        |
+  | Title                  | $[pt]$              | $[&p.titel]$                                          |
+  | Full name              | $[pvoll]$           | —                                                     |
+  | Date of birth          | $[pg]$              | —                                                     |
+  | Street                 | $[ps]$              | —                                                     |
+  | Postcode               | $[pp]$              | —                                                     |
+  | City/town              | $[po]$              | —                                                     |
+  | Country                | $[pLand]$           | $[&p.patientenDetails.kontaktdaten.adresse.land]$      |
+  | Mobile phone           | $[phandy]$          | —                                                     |
+  | Main phone             | $[ptel]$            | —                                                     |
+  | E-Mail                 | $[pemail]$          | —                                                     |
+  | Gender                 | $[pmw]$             | —                                                     |
+  | Insurance type         | $[patient_versichertenstatus]$ | —                                          |
+  | Insurance name         | $[pk]$              | —                                                     |
+  | Insurance IK           | $[kasse_ik]$        | —                                                     |
+  | Address block          | $[adressfeld_empfaenger]$ | —                                               |
+  | Salutation             | $[anrede]$          | —                                                     |
+  | Today's date           | $[datum]$ / $[d S]$ | —                                                     |
+  | Last visit date        | $[d B]$             | —                                                     |
+  | Body height (BMI)      | $[koerpergroesseAusLetztemBMI]$ | —                                          |
+  | Body weight (BMI)      | $[gewichtAusLetztemBMI]$ | —                                                |
+  | Referring physician    | —                   | $[&p.selektierterSchein.ueberweisenderArztName]$       |
+  | First treating physician | —                 | $[&p.patientenDetails.arzt]$                          |
+  | Invoice paid status    | —                   | $[&pr.bezahlt]$                                       |
 
+  KEYPATH RULE: If the field is not in the table but is known from the REST API
+  response (GET /patient/{id}), derive the Briefkommando as:
+    $[&p.{json_field_path}]$
+  e.g. if the REST field is patientenDetails.kontaktdaten.telefon2:
+    → $[&p.patientenDetails.kontaktdaten.telefon2]$
+
+  DATE KOMMANDO RULE:
+  - Current date: $[d S dd.MM.yyyy]$
+  - Patient DOB: $[pg]$ (short) or $[pg2]$ (with 4-digit year)
+  - Last visit: $[d B]$
+  - Last Karteieintrag of type X: $[d E dd.MM.yyyy X]$
+  - Last billing code Y: $[d L dd.MM.yyyy Y]$
+
+  CONDITIONAL RULE:
+  - Gender branch: $[if_frau TextFrau TextMann]$
+  - Empty check: $[if ptel zs_equals <leer> kein_Telefon ptel]$
+  - if_then (only show if not empty): $[if_then pemail zs_not_equal <leer> pemail]$
+
+  LLM FALLBACK (only if field not in table and keypath not derivable):
+  CONTEXT FILE (briefkommandos_context.txt / BriefkommandosKompakt.txt — zollsoft):
+  Acts as a knowledge base for unusual/compound Briefkommandos.
   PROMPT PATTERN:
   [Full context file content]
   ---
   Welches Briefkommando gibt [user's field description in German] aus?
 
-  EXAMPLES:
-  - "Welches Briefkommando gibt das Geburtsdatum des Patienten aus?"
-  - "Welches Briefkommando gibt den Namen des angemeldeten Nutzers aus?"
-  - "Welches Briefkommando gibt die vollständige Patientenadresse aus?"
-
-  Return the LLM's answer as a short formatted list of placeholders
-  with descriptions. The user can then use these in a Briefvorlage.
+  Return the answer as: "Briefkommando: $[...]$" with a one-line description.
+  If multiple forms exist (shorthand + keypath), list both.
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1778,6 +2496,284 @@ body: |
   After the LLM generates the JSON, return it with instructions:
   "Erstellen Sie ein neues Patientenformular in tomedo und fügen Sie
   diesen JSON-Code in den JSON-Tab ein."
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+
+## Step 4c — Leaf Skills for tomedo LLM Service (class 1)
+
+One leaf skill per medical text analysis / generation task type.
+Each maps directly to one PythonCode executor. All are Tier 1.
+These skills enable BrassClaw to use the tomedo server's own DSGVO-compliant
+LLM service for clinical text work without external API keys.
+
+---
+
+### Step 4c.1 — Leaf Skill: `skill-tomedo-llm-arztbericht` (class 1)
+
+```
+name:        "skill-tomedo-llm-arztbericht"
+class_code:  1
+description: "Leaf skill: extract structured findings from a medical report (Arztbericht) using the tomedo LLM service."
+body: |
+  Use this skill when the user wants to extract the key findings, diagnoses
+  and recommendations from a free-text Arztbericht.
+
+  USE CASE: A doctor receives a referral letter, discharge summary, or specialist
+  report and wants it extracted into structured bullet points.
+
+  APPROACH:
+  1. Pre-load ts-tomedo-llm-chat (channel: rust)
+  2. Execute pc-tomedo-llm-arztbericht (channel: orchestrator)
+     Slot {{vars.bericht_text}}: the raw report text
+  3. Execute pc-tomedo-llm-extract-response to extract choices[0].message.content
+  4. Present the structured result to the user
+
+  MODEL: gemini-2.5-flash (default) — switch to gemini-2.5-pro for complex reports
+  DSGVO: All processing on zollsoft zero-retention infrastructure. No text leaves EU.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4c.2 — Leaf Skill: `skill-tomedo-llm-ct-befund` (class 1)
+
+```
+name:        "skill-tomedo-llm-ct-befund"
+class_code:  1
+description: "Leaf skill: extract structured findings from a CT or MRI radiology report using the tomedo LLM service."
+body: |
+  Use this skill when the user wants structured extraction from a CT or MRI
+  radiology report (Befundbericht) — confirmed use case from Dr. Baumann's
+  forum posts (Sep 2025, Thorax/Abdomen CT extraction).
+
+  EXTRACTS FROM REPORT:
+  - Examined organs/regions
+  - Pathological findings with location and size measurements
+  - Radiological diagnosis / Beurteilung
+  - Follow-up recommendations
+
+  APPROACH:
+  1. Pre-load ts-tomedo-llm-chat (channel: rust)
+  2. Execute pc-tomedo-llm-ct-befund (channel: orchestrator)
+     Slot {{vars.befund_text}}: the raw radiology report text
+  3. Execute pc-tomedo-llm-extract-response to get the content string
+  4. Present structured extraction to the user
+
+  MODEL: gemini-2.5-flash
+  NOTE: For reports with complex measurements or rare findings, use gemini-2.5-pro.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4c.3 — Leaf Skill: `skill-tomedo-llm-schlaflabor` (class 1)
+
+```
+name:        "skill-tomedo-llm-schlaflabor"
+class_code:  1
+description: "Leaf skill: extract structured sleep lab results (AHI, CPAP, ESS, diagnosis) from a Schlaflaborbericht using the tomedo LLM service."
+body: |
+  Use this skill when the user wants structured extraction from a
+  Schlaflaborbericht (polysomnography or polygraphy report).
+  Confirmed use case: pulmonology practices extracting CPAP/OSAS data (Dr. Baumann).
+
+  EXTRACTS FROM REPORT:
+  - AHI / RDI value and classification
+  - Minimum and mean SpO2
+  - Snoring index (Schnarchindex)
+  - CPAP pressure setting
+  - Mask type
+  - ESS score (Epworth Sleepiness Scale)
+  - Primary diagnosis (e.g., OSAS Grad III)
+  - Therapy recommendation
+
+  APPROACH:
+  1. Pre-load ts-tomedo-llm-chat (channel: rust)
+  2. Execute pc-tomedo-llm-schlaflabor (channel: orchestrator)
+     Slot {{vars.bericht_text}}: the raw sleep lab report text
+  3. Execute pc-tomedo-llm-extract-response
+  4. Present extracted values to user (ready for CKE entry)
+
+  MODEL: gemini-2.5-flash
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4c.4 — Leaf Skill: `skill-tomedo-llm-laborbefund` (class 1)
+
+```
+name:        "skill-tomedo-llm-laborbefund"
+class_code:  1
+description: "Leaf skill: interpret a laboratory report — flag out-of-range values and provide clinical context — using the tomedo LLM service."
+body: |
+  Use this skill when the user wants to interpret a Laborbefund (lab result
+  report) and identify values outside the reference range.
+
+  OUTPUT INCLUDES:
+  - Table: parameter, value, unit, reference range, status (normal/high/low)
+  - Clinical assessment of abnormal values
+  - Suggested follow-up actions
+
+  APPROACH:
+  1. Pre-load ts-tomedo-llm-chat (channel: rust)
+  2. Execute pc-tomedo-llm-laborbefund (channel: orchestrator)
+     Slot {{vars.labor_text}}: the raw laboratory report text
+  3. Execute pc-tomedo-llm-extract-response
+  4. Present the interpreted result to the user
+
+  MODEL: gemini-2.5-flash
+  NOTE: For complex panels (e.g., endocrinology, oncology markers), gemini-2.5-pro
+  provides better reference range awareness.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4c.5 — Leaf Skill: `skill-tomedo-llm-gutachten` (class 1)
+
+```
+name:        "skill-tomedo-llm-gutachten"
+class_code:  1
+description: "Leaf skill: draft a medical expert opinion (Gutachtenauftrag / ärztliche Stellungnahme) using patient context and the tomedo LLM service."
+body: |
+  Use this skill when the user wants to draft a formal Gutachtenauftrag or
+  ärztliche Stellungnahme (medical expert opinion / referral for assessment).
+
+  INPUTS REQUIRED:
+  - {{vars.patient_context}}: structured patient data (use pc-tomedo-format-patient-context
+    to build this from tomedo data before calling this skill)
+  - {{vars.gutachten_anfrage}}: the specific question or purpose of the Gutachten
+
+  APPROACH:
+  1. Fetch patient context first using tomedo-patient-full-context recipe
+  2. Pre-load ts-tomedo-llm-chat (channel: rust)
+  3. Execute pc-tomedo-llm-gutachten (channel: orchestrator)
+  4. Execute pc-tomedo-llm-extract-response
+  5. Present draft to user for review before use
+
+  MODEL: gemini-2.5-pro (required — formal medical document, highest quality)
+  NOTE: Always present as a DRAFT. The physician must review and sign.
+  OUTPUT is NOT automatically written to tomedo — user copies the draft.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4c.6 — Leaf Skill: `skill-tomedo-llm-patientenbrief` (class 1)
+
+```
+name:        "skill-tomedo-llm-patientenbrief"
+class_code:  1
+description: "Leaf skill: draft a patient-facing letter (Patientenbrief) in plain language using patient context and the tomedo LLM service."
+body: |
+  Use this skill when the user wants to draft a letter TO the patient.
+  The letter uses plain, patient-friendly German (no complex medical jargon).
+
+  INPUTS REQUIRED:
+  - {{vars.patient_kontext}}: patient name, diagnosis summary, relevant info
+  - {{vars.brief_anlass}}: reason for the letter (e.g., "Terminbestätigung",
+    "Laborbefund-Mitteilung", "Nachsorgeempfehlung nach Entlassung")
+
+  APPROACH:
+  1. Pre-load ts-tomedo-llm-chat (channel: rust)
+  2. Execute pc-tomedo-llm-patientenbrief (channel: orchestrator)
+  3. Execute pc-tomedo-llm-extract-response
+  4. Present draft to user for review
+
+  MODEL: gemini-2.5-flash
+  NOTE: Draft only. User must review and optionally paste into a tomedo Briefvorlage.
+  For letters requiring formal layout with Briefkommando placeholders, use
+  skill-tomedo-compose-briefvorlage instead.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4c.7 — Leaf Skill: `skill-tomedo-llm-uebersetzung` (class 1)
+
+```
+name:        "skill-tomedo-llm-uebersetzung"
+class_code:  1
+description: "Leaf skill: translate a medical text to or from German using the tomedo LLM service (DSGVO-compliant, no external API)."
+body: |
+  Use this skill when the user wants to translate a medical text.
+  Commonly: foreign-language patient records, international lab reports,
+  English-language studies, or German discharge summaries for foreign patients.
+
+  INPUTS REQUIRED:
+  - {{vars.quelltext}}: the source text to translate
+  - {{vars.zielsprache}}: target language (e.g., "Englisch", "Türkisch", "Arabisch",
+    "Russisch", "Französisch", "Spanisch")
+
+  APPROACH:
+  1. Pre-load ts-tomedo-llm-chat (channel: rust)
+  2. Execute pc-tomedo-llm-uebersetzung (channel: orchestrator)
+  3. Execute pc-tomedo-llm-extract-response
+  4. Present translation to user
+
+  MODEL: gemini-2.5-flash (handles most European languages well)
+  NOTE: For rare languages or complex medical abbreviations, gemini-2.5-pro
+  is recommended. No patient data leaves EU — all via zollsoft infrastructure.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4c.8 — Leaf Skill: `skill-tomedo-llm-bga` (class 1)
+
+```
+name:        "skill-tomedo-llm-bga"
+class_code:  1
+description: "Leaf skill: interpret a blood gas analysis (Blutgasanalyse/BGA) using the tomedo LLM service."
+body: |
+  Use this skill when the user has BGA values and wants clinical interpretation.
+  Confirmed use case: pneumology and intensive care practices (Dr. Baumann).
+
+  BGA PARAMETERS INTERPRETED:
+  - pH → acidosis / alkalosis classification
+  - paCO2 → respiratory component
+  - paO2 → oxygenation status
+  - HCO3 / BE → metabolic component
+  - SpO2 / FiO2 → if available
+  - Lactate → perfusion / shock marker
+
+  FULL CLASSIFICATION OUTPUT:
+  - Primary disturbance (respiratory / metabolic / mixed)
+  - Compensation status (compensated / partially / uncompensated)
+  - Oxygenation assessment (Horovitz index if FiO2 given)
+  - Clinical action recommendation (O2 therapy, ventilation adjustment, etc.)
+
+  INPUT:
+  - {{vars.bga_werte}}: BGA values as text (e.g. "pH 7.32, paCO2 52, paO2 68,
+    HCO3 26, BE +2, SpO2 91%, Laktat 1.8")
+
+  APPROACH:
+  1. Pre-load ts-tomedo-llm-chat (channel: rust)
+  2. Execute pc-tomedo-llm-bga (channel: orchestrator)
+  3. Execute pc-tomedo-llm-extract-response
+  4. Present interpretation to user
+
+  MODEL: gemini-2.5-flash
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -2741,10 +3737,456 @@ source: "system"
 validation_status: "validated"
 ```
 
+---
+
+### Recipe: `tomedo-llm-arztbericht` (class 21) — Tier 1
+
+```
+name:              "tomedo-llm-arztbericht"
+description:       "Extract structured findings, diagnoses, and recommendations from a medical report (Arztbericht) using the tomedo LLM service."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-llm-arztbericht>", "<uuid:skill-tomedo>"],
+    "label":   "Load Arztbericht extraction leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-llm-chat>"],
+    "label":   "Pre-load ts-tomedo-llm-chat binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-llm-arztbericht>"],
+    "label":   "POST to tomedo LLM service: structured Arztbericht extraction"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-llm-extract-response>"],
+    "label":   "Extract choices[0].message.content from LLM response"
+  }
+]
+intent_examples: [
+  {"input": "arztbericht auswerten",                     "class": 2},
+  {"input": "befundbericht strukturieren",               "class": 2},
+  {"input": "entlassbrief zusammenfassen",               "class": 2},
+  {"input": "medical report extraction tomedo",          "class": 2},
+  {"input": "diagnosen aus arztbericht extrahieren",     "class": 3},
+  {"input": "überweisungsschreiben auswerten",           "class": 2},
+  {"input": "befund zusammenfassen mit ki",              "class": 2},
+  {"input": "extract findings from medical report",      "class": 2},
+  {"input": "arztbrief ki analyse",                      "class": 2},
+  {"input": "report text strukturieren",                 "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-llm-ct-befund` (class 21) — Tier 1
+
+```
+name:              "tomedo-llm-ct-befund"
+description:       "Extract structured findings from a CT or MRI radiology report using the tomedo LLM service."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-llm-ct-befund>", "<uuid:skill-tomedo>"],
+    "label":   "Load CT/MRI extraction leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-llm-chat>"],
+    "label":   "Pre-load ts-tomedo-llm-chat binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-llm-ct-befund>"],
+    "label":   "POST to tomedo LLM service: CT/MRI structured extraction"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-llm-extract-response>"],
+    "label":   "Extract content from LLM response"
+  }
+]
+intent_examples: [
+  {"input": "ct befund auswerten",                       "class": 2},
+  {"input": "mrt befund strukturieren",                  "class": 2},
+  {"input": "radiologiebefund extrahieren",              "class": 2},
+  {"input": "ct report extraction tomedo",               "class": 2},
+  {"input": "thorax ct befund auswerten ki",             "class": 3},
+  {"input": "röntgen befund zusammenfassen",             "class": 2},
+  {"input": "extract ct findings",                       "class": 2},
+  {"input": "mri report structured extraction",          "class": 2},
+  {"input": "radiologie bericht analysieren",            "class": 2},
+  {"input": "befund aus radiologie strukturieren",       "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-llm-schlaflabor` (class 21) — Tier 1
+
+```
+name:              "tomedo-llm-schlaflabor"
+description:       "Extract structured sleep lab results (AHI, CPAP settings, ESS, diagnosis) from a Schlaflaborbericht using the tomedo LLM service."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-llm-schlaflabor>", "<uuid:skill-tomedo>"],
+    "label":   "Load sleep-lab extraction leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-llm-chat>"],
+    "label":   "Pre-load ts-tomedo-llm-chat binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-llm-schlaflabor>"],
+    "label":   "POST to tomedo LLM service: sleep lab structured extraction"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-llm-extract-response>"],
+    "label":   "Extract content from LLM response"
+  }
+]
+intent_examples: [
+  {"input": "schlaflaborbericht auswerten",              "class": 2},
+  {"input": "osas diagnose aus bericht",                 "class": 2},
+  {"input": "schlafapnoe befund strukturieren",          "class": 2},
+  {"input": "polysomnographie auswertung ki",            "class": 2},
+  {"input": "ahi ess aus schlaflabor extrahieren",       "class": 3},
+  {"input": "cpap einstellung aus bericht",              "class": 2},
+  {"input": "sleep lab report extraction",               "class": 2},
+  {"input": "schlaflabor ki auswertung",                 "class": 2},
+  {"input": "polygraphy report structured",              "class": 2},
+  {"input": "sauerstoffsättigung nacht aus bericht",     "class": 3}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-llm-laborbefund` (class 21) — Tier 1
+
+```
+name:              "tomedo-llm-laborbefund"
+description:       "Interpret a laboratory report — flag out-of-range values and provide clinical context — using the tomedo LLM service."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-llm-laborbefund>", "<uuid:skill-tomedo>"],
+    "label":   "Load lab-result interpretation leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-llm-chat>"],
+    "label":   "Pre-load ts-tomedo-llm-chat binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-llm-laborbefund>"],
+    "label":   "POST to tomedo LLM service: lab result interpretation"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-llm-extract-response>"],
+    "label":   "Extract content from LLM response"
+  }
+]
+intent_examples: [
+  {"input": "laborbefund auswerten",                     "class": 2},
+  {"input": "labor interpretieren ki",                   "class": 2},
+  {"input": "welche laborwerte sind auffällig",          "class": 3},
+  {"input": "lab report interpretation tomedo",          "class": 2},
+  {"input": "blutwerte außerhalb referenzbereich",       "class": 2},
+  {"input": "laborergebnis klinisch einschätzen",        "class": 2},
+  {"input": "interpret lab results",                     "class": 2},
+  {"input": "labor übersicht mit bewertung",             "class": 2},
+  {"input": "auffällige laborwerte analysieren",         "class": 2},
+  {"input": "pathologische laborwerte markieren",        "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-llm-gutachten` (class 21) — Tier 1
+
+```
+name:              "tomedo-llm-gutachten"
+description:       "Draft a medical expert opinion (Gutachtenauftrag / ärztliche Stellungnahme) from patient context using the tomedo LLM service."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-llm-gutachten>", "<uuid:skill-tomedo>"],
+    "label":   "Load Gutachten drafting leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-patient-detail>", "<uuid:ts-tomedo-patient-relations>", "<uuid:ts-tomedo-patient-medications>"],
+    "label":   "Pre-load patient data bindings for context assembly"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-patient-detail>", "<uuid:pc-tomedo-patient-relations>", "<uuid:pc-tomedo-patient-medications>", "<uuid:pc-tomedo-format-patient-context>"],
+    "label":   "Fetch patient context (detail + diagnoses + meds)"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-llm-chat>"],
+    "label":   "Pre-load ts-tomedo-llm-chat binding"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-llm-gutachten>"],
+    "label":   "POST to tomedo LLM service (gemini-2.5-pro): draft Gutachtenauftrag"
+  },
+  {
+    "step_id": "step-5",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-llm-extract-response>"],
+    "label":   "Extract draft text from LLM response"
+  }
+]
+intent_examples: [
+  {"input": "gutachtenauftrag erstellen",                "class": 2},
+  {"input": "ärztliche stellungnahme verfassen",         "class": 2},
+  {"input": "gutachten für patient schreiben",           "class": 3},
+  {"input": "medical expert opinion draft tomedo",       "class": 2},
+  {"input": "stellungnahme mdkgutachten",                "class": 2},
+  {"input": "rentenversicherung gutachten patient",      "class": 3},
+  {"input": "ärztliches attest automatisch",             "class": 2},
+  {"input": "create medical assessment letter",          "class": 2},
+  {"input": "begutachtung anfrage formulieren",          "class": 2},
+  {"input": "sozialmedizinische stellungnahme ki",       "class": 3}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-llm-patientenbrief` (class 21) — Tier 1
+
+```
+name:              "tomedo-llm-patientenbrief"
+description:       "Draft a plain-language patient letter (Patientenbrief) using patient context from tomedo and the tomedo LLM service."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-llm-patientenbrief>", "<uuid:skill-tomedo>"],
+    "label":   "Load Patientenbrief drafting leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-llm-chat>"],
+    "label":   "Pre-load ts-tomedo-llm-chat binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-llm-patientenbrief>"],
+    "label":   "POST to tomedo LLM service: draft patient letter"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-llm-extract-response>"],
+    "label":   "Extract letter draft from LLM response"
+  }
+]
+intent_examples: [
+  {"input": "patientenbrief schreiben",                  "class": 2},
+  {"input": "brief an patient verfassen ki",             "class": 2},
+  {"input": "terminbestätigung brief patient",           "class": 2},
+  {"input": "patient letter draft tomedo",               "class": 2},
+  {"input": "laborbefund brief an patient",              "class": 3},
+  {"input": "nachsorgeempfehlung schreiben patient",     "class": 3},
+  {"input": "write patient letter in plain language",    "class": 2},
+  {"input": "befundergebnis brief erstellen",            "class": 2},
+  {"input": "entlassungsbrief für patient",              "class": 2},
+  {"input": "brief in einfacher sprache patient",        "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-llm-uebersetzung` (class 21) — Tier 1
+
+```
+name:              "tomedo-llm-uebersetzung"
+description:       "Translate a medical text to or from German using the tomedo LLM service (DSGVO-compliant, zollsoft infrastructure)."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-llm-uebersetzung>", "<uuid:skill-tomedo>"],
+    "label":   "Load medical translation leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-llm-chat>"],
+    "label":   "Pre-load ts-tomedo-llm-chat binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-llm-uebersetzung>"],
+    "label":   "POST to tomedo LLM service: translate medical text"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-llm-extract-response>"],
+    "label":   "Extract translation from LLM response"
+  }
+]
+intent_examples: [
+  {"input": "medizinischen text übersetzen",             "class": 2},
+  {"input": "arztbrief ins englische übersetzen",        "class": 3},
+  {"input": "befund auf türkisch übersetzen",            "class": 3},
+  {"input": "translate medical text tomedo",             "class": 2},
+  {"input": "fremdsprachiger befund deutsch",            "class": 2},
+  {"input": "englischer entlassbrief übersetzen",        "class": 3},
+  {"input": "medical translation for patient",           "class": 2},
+  {"input": "ausländischer patient arztbrief",           "class": 2},
+  {"input": "befund russisch übersetzen",                "class": 3},
+  {"input": "dsgvo konform übersetzen ki",               "class": 2}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
+### Recipe: `tomedo-llm-bga` (class 21) — Tier 1
+
+```
+name:              "tomedo-llm-bga"
+description:       "Interpret a blood gas analysis (BGA) — classify acid-base disturbance, oxygenation, and give clinical recommendation — using the tomedo LLM service."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-llm-bga>", "<uuid:skill-tomedo>"],
+    "label":   "Load BGA interpretation leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-llm-chat>"],
+    "label":   "Pre-load ts-tomedo-llm-chat binding"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-llm-bga>"],
+    "label":   "POST to tomedo LLM service: BGA interpretation"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-llm-extract-response>"],
+    "label":   "Extract BGA interpretation from LLM response"
+  }
+]
+intent_examples: [
+  {"input": "bga auswerten",                             "class": 2},
+  {"input": "blutgasanalyse interpretieren",             "class": 2},
+  {"input": "bga azidose oder alkalose",                 "class": 3},
+  {"input": "blood gas analysis interpretation",         "class": 2},
+  {"input": "ph wert bga einschätzen",                   "class": 2},
+  {"input": "respiratorische azidose bga",               "class": 2},
+  {"input": "metabolische alkalose bga",                 "class": 2},
+  {"input": "bga ki analyse",                            "class": 2},
+  {"input": "sauerstoffsättigung bga bewerten",          "class": 2},
+  {"input": "bga intensivstation auswertung",            "class": 3}
+]
+source: "system"
+validation_status: "validated"
+```
+
 
 ## Step 6 — ExtensionCatalogues (class 23)
 
-Two catalogues: one per integration surface.
+Three catalogues: tomedo REST API, tomedo-crawl sidecar, and tomedo LLM service.
 
 ---
 
@@ -2923,20 +4365,99 @@ validation_status: "validated"
 
 ---
 
+### ExtensionCatalogue: `ext-tomedo-llm` (class 23)
+
+```
+name:        "ext-tomedo-llm"
+description: "tomedo LLM service integration — DSGVO-compliant medical text analysis using the tomedo server's built-in OpenAI-compatible LLM endpoint."
+version:     "1.0"
+overview_doc: |
+  This catalogue covers all components for calling the tomedo LLM service —
+  the same backend as the tomedo Kartei-Chat, accessible as a REST endpoint.
+
+  BASE URL (choose one):
+    HTTPS mTLS: https://{host}:8443/{db}/llmservice/{user_ident}/v1/chat/completions
+    LAN HTTP:   http://tomedo.localnet:8080/tomedo_live/llmservice/{user_ident}/v1/chat/completions
+  AUTH:     Same mTLS cert as the rest of the tomedo API (HTTPS variant).
+            LAN HTTP variant: no cert required, must be on practice LAN.
+  NOTE:     Monthly budget limit per user (zollsoft enforced). Budget errors surface
+            as non-200 responses — always relay to user.
+
+  WHY USE THIS SERVICE:
+  The tomedo LLM service provides DSGVO-compliant LLM inference without external
+  API keys. All models run on zollsoft-operated zero-retention infrastructure.
+  No patient data leaves the EU. This is ideal for medical text analysis,
+  report extraction, letter drafting, and BGA interpretation.
+
+  AVAILABLE MODELS:
+  • gemini-2.5-flash     — recommended default (fast, good quality)
+  • gemini-2.5-pro       — highest quality (use for formal documents, Gutachten)
+  • mistral-medium-2508  — EU/DSGVO Mistral alternative
+
+  REQUIRED CONFIG KEYS:
+  • tomedo_user_ident     — numeric user ID from tomedo (t_benutzer.ident)
+  • tomedo_llm_endpoint   — base URL without /llmservice/... path
+
+  TOOL: tomedo-llm-api (wraps builtin.http POST)
+  TOOLSKILL: ts-tomedo-llm-chat (one ToolSkill for ALL prompt types)
+  PYTHONCODE EXECUTORS: one per clinical use case (one function per skill rule)
+  RESPONSE EXTRACTION: pc-tomedo-llm-extract-response (pure logic, no I/O)
+
+  TASK GROUPS:
+  1. Report extraction:   tomedo-llm-arztbericht, tomedo-llm-ct-befund,
+                          tomedo-llm-schlaflabor, tomedo-llm-laborbefund
+  2. Text generation:     tomedo-llm-gutachten, tomedo-llm-patientenbrief
+  3. Text processing:     tomedo-llm-uebersetzung
+  4. Clinical analysis:   tomedo-llm-bga
+
+task_groups: [
+  {
+    "group_name": "report-extraction",
+    "summary": "Extract structured data from medical reports (Arztbericht, CT, Schlaflabor, Labor)",
+    "recipe_ids": [
+      "tomedo-llm-arztbericht",
+      "tomedo-llm-ct-befund",
+      "tomedo-llm-schlaflabor",
+      "tomedo-llm-laborbefund"
+    ]
+  },
+  {
+    "group_name": "text-generation",
+    "summary": "Draft formal medical documents and patient letters via LLM (Tier 1)",
+    "recipe_ids": ["tomedo-llm-gutachten", "tomedo-llm-patientenbrief"]
+  },
+  {
+    "group_name": "text-processing",
+    "summary": "Translate medical texts without leaving the EU (DSGVO-compliant)",
+    "recipe_ids": ["tomedo-llm-uebersetzung"]
+  },
+  {
+    "group_name": "clinical-analysis",
+    "summary": "Interpret clinical values — blood gas analysis (BGA)",
+    "recipe_ids": ["tomedo-llm-bga"]
+  }
+]
+consumer_tags:   ["02:orchestrator", "05:validator"]
+source:          "system"
+validation_status: "validated"
+```
+
+---
+
 ## Step 7 — Component Summary & Seeding Order
 
 ### Complete Component Count (tomedo v3 stack)
 
 | Class | Count | Names |
 |-------|-------|-------|
-| 0 — Tool | 2 | `tomedo-api`, `tomedo-crawl-api` |
-| 1 — Leaf Skill | 20 | `skill-tomedo-serverstatus` … `skill-tomedo-compose-patientenformular` |
+| 0 — Tool | 3 | `tomedo-api`, `tomedo-crawl-api`, `tomedo-llm-api` |
+| 1 — Leaf Skill | 28 | `skill-tomedo-serverstatus` … `skill-tomedo-llm-bga` |
 | 2 — Domain Skill | 2 | `skill-tomedo`, `skill-tomedo-crawl` |
-| 13 — ToolSkill | 14 | `ts-tomedo-serverstatus` … `ts-tomedo-crawl-config-read` |
-| 21 — Recipe | 18 | `tomedo-serverstatus` … `tomedo-compose-patientenformular` |
-| 22 — PythonCode | 20 | `pc-tomedo-serverstatus` … `pc-tomedo-filter-recent-patients` |
-| 23 — ExtensionCatalogue | 2 | `ext-tomedo`, `ext-tomedo-crawl` |
-| **Total** | **78** | |
+| 13 — ToolSkill | 15 | `ts-tomedo-serverstatus` … `ts-tomedo-llm-chat` |
+| 21 — Recipe | 26 | `tomedo-serverstatus` … `tomedo-llm-bga` |
+| 22 — PythonCode | 30 | `pc-tomedo-serverstatus` … `pc-tomedo-llm-extract-response` |
+| 23 — ExtensionCatalogue | 3 | `ext-tomedo`, `ext-tomedo-crawl`, `ext-tomedo-llm` |
+| **Total** | **107** | |
 
 ---
 
@@ -2945,7 +4466,7 @@ validation_status: "validated"
 | Tier | Recipes | Reason |
 |------|---------|--------|
 | **Tier 0** | 12 | All read ops with known params — deterministic, no LLM needed |
-| **Tier 1** | 6 | Name search (LLM query) + 5 LLM object composition recipes |
+| **Tier 1** | 14 | 1 name search + 5 object composition + 8 LLM service recipes |
 
 ---
 
@@ -2955,99 +4476,129 @@ validation_status: "validated"
 Group 1 — Tools (class 0):
   1. tomedo-api
   2. tomedo-crawl-api
+  3. tomedo-llm-api
 
 Group 2 — ToolSkills (class 13):
-  3. ts-tomedo-serverstatus
-  4. ts-tomedo-patient-list
-  5. ts-tomedo-patient-detail
-  6. ts-tomedo-patient-relations
-  7. ts-tomedo-patient-medications
-  8. ts-tomedo-patient-appointments
-  9. ts-tomedo-patient-visits
-  10. ts-tomedo-patient-search
-  11. ts-tomedo-crawl-health
-  12. ts-tomedo-crawl-register-caller
-  13. ts-tomedo-crawl-get-caller
-  14. ts-tomedo-crawl-rag-query
-  15. ts-tomedo-crawl-trigger
-  16. ts-tomedo-crawl-config-read
+  4. ts-tomedo-serverstatus
+  5. ts-tomedo-patient-list
+  6. ts-tomedo-patient-detail
+  7. ts-tomedo-patient-relations
+  8. ts-tomedo-patient-medications
+  9. ts-tomedo-patient-appointments
+  10. ts-tomedo-patient-visits
+  11. ts-tomedo-patient-search
+  12. ts-tomedo-crawl-health
+  13. ts-tomedo-crawl-register-caller
+  14. ts-tomedo-crawl-get-caller
+  15. ts-tomedo-crawl-rag-query
+  16. ts-tomedo-crawl-trigger
+  17. ts-tomedo-crawl-config-read
+  18. ts-tomedo-llm-chat
 
 Group 3 — PythonCode executors (class 22, with __execute_action__):
-  17. pc-tomedo-serverstatus
-  18. pc-tomedo-patient-list
-  19. pc-tomedo-patient-detail
-  20. pc-tomedo-patient-relations
-  21. pc-tomedo-patient-medications
-  22. pc-tomedo-patient-appointments
-  23. pc-tomedo-patient-visits
-  24. pc-tomedo-crawl-health
-  25. pc-tomedo-crawl-register-caller
-  26. pc-tomedo-crawl-get-caller
-  27. pc-tomedo-crawl-rag-query
-  28. pc-tomedo-crawl-trigger
-  29. pc-tomedo-crawl-config-read
+  19. pc-tomedo-serverstatus
+  20. pc-tomedo-patient-list
+  21. pc-tomedo-patient-detail
+  22. pc-tomedo-patient-relations
+  23. pc-tomedo-patient-medications
+  24. pc-tomedo-patient-appointments
+  25. pc-tomedo-patient-visits
+  26. pc-tomedo-crawl-health
+  27. pc-tomedo-crawl-register-caller
+  28. pc-tomedo-crawl-get-caller
+  29. pc-tomedo-crawl-rag-query
+  30. pc-tomedo-crawl-trigger
+  31. pc-tomedo-crawl-config-read
+  32. pc-tomedo-llm-arztbericht
+  33. pc-tomedo-llm-ct-befund
+  34. pc-tomedo-llm-schlaflabor
+  35. pc-tomedo-llm-laborbefund
+  36. pc-tomedo-llm-gutachten
+  37. pc-tomedo-llm-patientenbrief
+  38. pc-tomedo-llm-uebersetzung
+  39. pc-tomedo-llm-bga
 
 Group 4 — PythonCode pure-logic helpers (class 22, no __execute_action__):
-  30. pc-tomedo-parse-diagnosen
-  31. pc-tomedo-parse-medications
-  32. pc-tomedo-parse-next-appointment
-  33. pc-tomedo-epoch-to-date
-  34. pc-tomedo-format-patient-context
-  35. pc-tomedo-extract-phone-fields
-  36. pc-tomedo-filter-recent-patients
+  40. pc-tomedo-parse-diagnosen
+  41. pc-tomedo-parse-medications
+  42. pc-tomedo-parse-next-appointment
+  43. pc-tomedo-epoch-to-date
+  44. pc-tomedo-format-patient-context
+  45. pc-tomedo-extract-phone-fields
+  46. pc-tomedo-filter-recent-patients
+  47. pc-tomedo-llm-extract-response
 
 Group 5 — Leaf Skills (class 1) — REST API reads + crawl:
-  37. skill-tomedo-serverstatus
-  38. skill-tomedo-patient-list
-  39. skill-tomedo-patient-detail
-  40. skill-tomedo-patient-diagnoses
-  41. skill-tomedo-patient-medications
-  42. skill-tomedo-patient-appointments
-  43. skill-tomedo-patient-visits
-  44. skill-tomedo-patient-search-by-name
-  45. skill-tomedo-crawl-health
-  46. skill-tomedo-crawl-phone-lookup
-  47. skill-tomedo-crawl-rag-query
-  48. skill-tomedo-crawl-trigger
-  49. skill-tomedo-crawl-config-read
-  50. skill-tomedo-format-context
+  48. skill-tomedo-serverstatus
+  49. skill-tomedo-patient-list
+  50. skill-tomedo-patient-detail
+  51. skill-tomedo-patient-diagnoses
+  52. skill-tomedo-patient-medications
+  53. skill-tomedo-patient-appointments
+  54. skill-tomedo-patient-visits
+  55. skill-tomedo-patient-search-by-name
+  56. skill-tomedo-crawl-health
+  57. skill-tomedo-crawl-phone-lookup
+  58. skill-tomedo-crawl-rag-query
+  59. skill-tomedo-crawl-trigger
+  60. skill-tomedo-crawl-config-read
+  61. skill-tomedo-format-context
 
-Group 5b — Leaf Skills (class 1) — LLM object composition:
-  51. skill-tomedo-compose-python-marker
-  52. skill-tomedo-compose-statistic
-  53. skill-tomedo-compose-briefvorlage
-  54. skill-tomedo-lookup-briefkommando
-  55. skill-tomedo-compose-cke
-  56. skill-tomedo-compose-patientenformular
+Group 5b — Leaf Skills (class 1) — LLM object composition (context file → paste to tomedo):
+  62. skill-tomedo-compose-python-marker
+  63. skill-tomedo-compose-statistic
+  64. skill-tomedo-compose-briefvorlage
+  65. skill-tomedo-lookup-briefkommando
+  66. skill-tomedo-compose-cke
+  67. skill-tomedo-compose-patientenformular
+
+Group 5c — Leaf Skills (class 1) — LLM service (tomedo server inference):
+  68. skill-tomedo-llm-arztbericht
+  69. skill-tomedo-llm-ct-befund
+  70. skill-tomedo-llm-schlaflabor
+  71. skill-tomedo-llm-laborbefund
+  72. skill-tomedo-llm-gutachten
+  73. skill-tomedo-llm-patientenbrief
+  74. skill-tomedo-llm-uebersetzung
+  75. skill-tomedo-llm-bga
 
 Group 6 — Domain Skills (class 2):
-  57. skill-tomedo
-  58. skill-tomedo-crawl
+  76. skill-tomedo
+  77. skill-tomedo-crawl
 
-Group 7 — Recipes (class 21) — Tier 0 (read) + Tier 1 (search/compose):
-  59. tomedo-serverstatus
-  60. tomedo-patient-detail
-  61. tomedo-patient-diagnoses
-  62. tomedo-patient-medications
-  63. tomedo-patient-next-appointment
-  64. tomedo-patient-visits
-  65. tomedo-phone-lookup
-  66. tomedo-rag-query
-  67. tomedo-rag-query-for-patient
-  68. tomedo-crawl-health
-  69. tomedo-crawl-trigger
-  70. tomedo-crawl-config-read
-  71. tomedo-patient-full-context
-  72. tomedo-patient-search-by-name      (Tier 1 — name search)
-  73. tomedo-compose-python-marker       (Tier 1 — LLM compose)
-  74. tomedo-compose-statistic           (Tier 1 — LLM compose)
-  75. tomedo-compose-briefvorlage        (Tier 1 — LLM compose)
-  76. tomedo-compose-cke                 (Tier 1 — LLM compose)
-  77. tomedo-compose-patientenformular   (Tier 1 — LLM compose)
+Group 7 — Recipes (class 21) — Tier 0 (read) + Tier 1 (search/compose/llm):
+  78. tomedo-serverstatus                           (Tier 0)
+  79. tomedo-patient-detail                         (Tier 0)
+  80. tomedo-patient-diagnoses                      (Tier 0)
+  81. tomedo-patient-medications                    (Tier 0)
+  82. tomedo-patient-next-appointment               (Tier 0)
+  83. tomedo-patient-visits                         (Tier 0)
+  84. tomedo-phone-lookup                           (Tier 0)
+  85. tomedo-rag-query                              (Tier 0)
+  86. tomedo-rag-query-for-patient                  (Tier 0)
+  87. tomedo-crawl-health                           (Tier 0)
+  88. tomedo-crawl-trigger                          (Tier 0)
+  89. tomedo-crawl-config-read                      (Tier 0)
+  90. tomedo-patient-full-context                   (Tier 0, multi-step)
+  91. tomedo-patient-search-by-name                 (Tier 1 — LLM query)
+  92. tomedo-compose-python-marker                  (Tier 1 — LLM compose, context file)
+  93. tomedo-compose-statistic                      (Tier 1 — LLM compose, context file)
+  94. tomedo-compose-briefvorlage                   (Tier 1 — LLM compose, context file)
+  95. tomedo-compose-cke                            (Tier 1 — LLM compose, context file)
+  96. tomedo-compose-patientenformular              (Tier 1 — LLM compose, context file)
+  97. tomedo-llm-arztbericht                        (Tier 1 — tomedo LLM service)
+  98. tomedo-llm-ct-befund                          (Tier 1 — tomedo LLM service)
+  99. tomedo-llm-schlaflabor                        (Tier 1 — tomedo LLM service)
+  100. tomedo-llm-laborbefund                       (Tier 1 — tomedo LLM service)
+  101. tomedo-llm-gutachten                         (Tier 1 — tomedo LLM service, + patient context fetch)
+  102. tomedo-llm-patientenbrief                    (Tier 1 — tomedo LLM service)
+  103. tomedo-llm-uebersetzung                      (Tier 1 — tomedo LLM service)
+  104. tomedo-llm-bga                               (Tier 1 — tomedo LLM service)
 
 Group 8 — ExtensionCatalogues (class 23):
-  78. ext-tomedo
-  79. ext-tomedo-crawl
+  105. ext-tomedo
+  106. ext-tomedo-crawl
+  107. ext-tomedo-llm
 ```
 
 > **Note:** Seeding happens after all lower-dependency classes are seeded.
@@ -3070,16 +4621,18 @@ computed on first insert and checked on subsequent runs.
 
 | Decision | Rationale |
 |----------|-----------|
-| Both surfaces via `builtin.http` | No separate Rust capability needed — http already handles mTLS |
-| 14 ToolSkills (not 2) | One per distinct URL pattern — maps to exact recipe steps |
-| 13 PythonCode executors + 7 pure-logic helpers | Executors call `__execute_action__`; helpers transform data without I/O |
-| 20 leaf skills (14 + 6 composition) | One per distinct approach — enforces the one-function-per-skill rule |
-| 12 Tier-0 recipes | All known-ID read ops are deterministic — no LLM needed |
-| 6 Tier-1 recipes | 1 name search (LLM query) + 5 LLM object composition recipes |
+| Three surfaces via `builtin.http` | No separate Rust capability needed — http handles mTLS, plain HTTP, and POST body |
+| 15 ToolSkills (not 3) | One per distinct URL/method pattern — maps to exact recipe steps |
+| 22 PythonCode executors + 8 pure-logic helpers | Executors call `__execute_action__`; helpers transform data without I/O |
+| 28 leaf skills (14 REST + 6 composition + 8 LLM service) | One per distinct approach — enforces the one-function-per-skill rule |
+| 13 Tier-0 recipes | All known-ID read ops are deterministic — no LLM needed |
+| 14 Tier-1 recipes | 1 name search + 5 context-file composition + 8 LLM service inference |
 | `tomedo-patient-full-context` | Multi-step composed recipe; always chains the same 4 calls |
 | Phone lookup via sidecar only | Confirmed: server-side phone search returns `{}` (non-functional) |
 | German + English intent examples | Praxis staff speak German; orchestrator must handle both |
 | Direct mTLS REST API is read-only | Confirmed live 2026-04-11; write ops require official tomedo.API partner program |
-| LLM composition uses embedded context files | zollsoft provides `pythonmarker_context.txt` etc; BrassClaw embeds in skill bodies |
-| No write to tomedo from composition recipes | Output is copy-pasteable code/XML/JSON — user pastes into tomedo UI |
+| LLM object composition uses embedded context files | zollsoft provides `pythonmarker_context.txt` etc; BrassClaw embeds in skill bodies |
+| tomedo LLM service = one ToolSkill, 8 PythonCode | Same endpoint for all LLM calls; prompt content is the differentiator |
+| tomedo LLM service budget tracking | Monthly per-user limit enforced by zollsoft; budget errors always surfaced to user |
+| No write to tomedo from any recipe | All outputs (codes, letters, Gutachten) are copy-pasteable — user inserts into tomedo |
 
