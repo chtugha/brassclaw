@@ -5439,6 +5439,37 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 
 ### Phase H — RecipeStage: `last_user_text` + Tier 0/1 Dispatch
 
+> **Subplan — Phase H problem resolution:** Phase H activates Tier-0 deterministic
+> recipe execution + Tier-1 guided execution across **two runtimes** — **Model A**
+> (production engine `ExecutionLoop`/Monty `default.py` path: `default.py` step-0
+> `tier_zero` early-return branch + `execute_recipe_orchestrator_channel` +
+> `_parse_orchestrator_channel_steps` + the engine→composition outcome-recording
+> bridge) and **Model B/C** (agent-loop `DefaultExecutorPipeline` target-state,
+> test-only until switchover: `PriorKnowledgeBundle`/`TierZeroReply` turns types +
+> `LoopOrchestratorPort` + `RecipeStep::TierZero`/`ActionExecuted` + `canonical.rs`
+> `PostRecipeOutcome` + `TierZeroExecutionStage` + engine `pub` fns
+> `assemble_prior_knowledge_with_hint`/`execute_tier_zero_channel` + composition
+> impl + `LoopPromptBundleRequest.recipe_hint` + PromptStage hint copy). Grounding
+> found Phase E.0 already delivered H3 (user-text via `resolve_message_text` +
+> `SkillActivationMessageTextResolver`) + H4 (`LoopRetrievalPort` + composition
+> `RetrievalLookup` impl + `RecipeStage` producer fetch → `last_retrieval_result`),
+> and the engine `handle_assemble_prior_knowledge` `SplitResult` arm already emits
+> `tier_zero: !routing.llm_call_required` + the full §0.9 routing dict into the
+> Python `pkr`; `format_orchestrator_content` already produces the
+> `## [{Heading}: {name}]\n{body}` prose block format (heading from
+> `StepContextSpec::from_class_code().heading()`). Real gap: the `default.py`
+> step-0 `tier_zero` *branch* (still a Q-G1-deferred comment) + the channel
+> executor + `recipe_id` surfacing for `record_recipe_outcome` (not called from the
+> engine `ExecutionLoop` today). 4 design questions answered (Q-H1 migrate to
+> `recipe_hint`/`recipe_rust_context` from `last_retrieval_result`; Q-H2 both
+> paths Model-A-first; Q-H3 engine→composition outcome bridge;
+> Q-H4 `outcome=='success'`/`'error'` sole signal). Full approach + 13-substep
+> sequence (H.1–H.13) + verification in
+> `./docs/agents-v3/subplan_problem_stepH_of_saved_plan_to_v3.md`
+> (Zenflow subplan substep under Phase H step `9d94d6cb-3a45-47cc-8e0f-85203c936652`).
+> Execute H.1→H.13 one-by-one; H.4 may spawn a nested subplan for `recipe_id`
+> surfacing.
+
 **Status:** [ ] Pending
 
 **Goal:** Activate the RecipeStage stub so it dispatches correctly for Tier 0, Tier 1,
