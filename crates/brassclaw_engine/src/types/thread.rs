@@ -224,6 +224,19 @@ pub struct Thread {
     /// Tenant isolation: the user who owns this thread.
     #[serde(default = "default_user_id")]
     pub user_id: String,
+    /// Tenant identifier. Added v3 Phase F. `#[serde(default)]` = "" for legacy
+    /// threads: the engine spawn API has no `brassclaw_turns` identity source,
+    /// so spawn-created threads keep the empty default and the subagent child
+    /// inherits the parent's via [`Thread::with_tenant_agent`]. The LIVE
+    /// retrieval path sources tenant from `LoopRunContext.scope.tenant_id`
+    /// (Phase F.4), not from `Thread`.
+    #[serde(default)]
+    pub tenant_id: String,
+    /// Agent context identifier. Added v3 Phase F. `#[serde(default)]` = "" for
+    /// legacy threads; set via [`Thread::with_tenant_agent`] where a real agent
+    /// identity is known (the subagent child inherits the parent's).
+    #[serde(default)]
+    pub agent_id: String,
     pub parent_id: Option<ThreadId>,
     pub config: ThreadConfig,
     /// User-visible transcript for the thread.
@@ -262,6 +275,8 @@ impl Thread {
             state: ThreadState::Created,
             project_id,
             user_id: user_id.into(),
+            tenant_id: String::new(),
+            agent_id: String::new(),
             parent_id: None,
             config,
             messages: Vec::new(),
@@ -281,6 +296,21 @@ impl Thread {
     /// Create a child thread with a parent reference.
     pub fn with_parent(mut self, parent_id: ThreadId) -> Self {
         self.parent_id = Some(parent_id);
+        self
+    }
+
+    /// Set the tenant + agent identity (v3 Phase F). Engine spawn-created
+    /// threads leave these empty (no `brassclaw_turns` identity source in the
+    /// engine); the subagent child inherits the parent's values; tests set
+    /// explicit values. The LIVE retrieval path sources tenant from
+    /// `LoopRunContext.scope.tenant_id` (Phase F.4), not from `Thread`.
+    pub fn with_tenant_agent(
+        mut self,
+        tenant_id: impl Into<String>,
+        agent_id: impl Into<String>,
+    ) -> Self {
+        self.tenant_id = tenant_id.into();
+        self.agent_id = agent_id.into();
         self
     }
 

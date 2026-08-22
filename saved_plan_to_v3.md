@@ -5005,6 +5005,29 @@ with a `step_link`, call the IBS, fetch component items for each channel, and re
 
 **Status:** [ ] Pending
 
+> **🔗 SUBSTEP — Phase F problem resolution (pre-E0-A-plan vs post-E0-A-codebase
+> gap):** Phase F was written before the E0-A re-target. Grounding after E.0–E.6
+> found four gaps: (1) the dormant engine `handle_assemble_prior_knowledge` already
+> has all four `FetchForTurnResult` arms but its `SplitResult` arm ignores
+> `rust_items`/`routing` and returns a plain dict (not the §0.9 routing dict); (2)
+> `Thread` carries no `tenant_id`/`agent_id`, so the scope stubs at
+> `orchestrator.rs:2586` + `:3177` use `thread.user_id`/`"default"` (cross-tenant
+> leak now `PostgresSource` is wired); (3) the LIVE `build_component_scope`
+> (`retrieval_lookup_impl.rs:131`) has the same `tenant_id = user_id` stub — but
+> `LoopRunContext.scope` (`TurnScope`) already carries a real `tenant_id`; (4)
+> `__fetch_component__` is not registered. Also: `brassclaw_engine` has no
+> `brassclaw_turns` dep and the engine `Thread`/`spawn_*` API has zero
+> composition/agent-loop callers, so the engine spawn path has no tenant/agent
+> source (only the subagent child at `scripting.rs:1995` can inherit the parent's).
+> The 5 user design decisions (Q-F1 dormant-handler §0.9 upgrade; Q-F2 fix BOTH
+> live scope + `Thread` fields + both stubs; Q-F3 register `__fetch_component__`
+> now; Q-F4 `RetrievalTurnResult.tier0_eligible` is the live signal / dormant
+> `tier_zero` = `!llm_call_required`; Q-F5 engine spawn default-empty + subagent
+> inherits + live via F.4) and the ordered F.1–F.7 substeps:
+> **`docs/agents-v3/subplan_problem_stepF_of_saved_plan_to_v3.md`**.
+> Run that subplan's steps (F.1 `Thread` fields first) before the remainder of
+> this Phase F section.
+
 **Goal:** Upgrade the Rust handler behind `__assemble_prior_knowledge__` to handle all
 four `FetchForTurnResult` variants — including the new `SplitResult` and
 `ActionShortCircuit` variants added in Phase E. Register `__fetch_component__`.
