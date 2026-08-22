@@ -1,5 +1,29 @@
 # tomedo v3 — Extension Plan
 
+> [!CAUTION]
+> ## ⛔ LIVE PRODUCTION SYSTEM — READ THIS BEFORE WRITING ANYTHING
+>
+> This plan operates against a **live production tomedo server** with real patient data.
+> Every POST and PUT is immediately visible to Mac clients in the practice.
+> The following actions have each caused a server-wide client crash loop confirmed
+> in production (2026-08-22), requiring `sudo systemctl restart tomedo-server` to recover:
+>
+> | Action | Consequence |
+> |--------|-------------|
+> | `POST /karteieintrag` with **any** of the 4 mandatory relation fields missing (`karteiEintragTyp`, `mediaTyp`, `dokumentierenderNutzer`, `betriebsstaette`) | Null ident in sync record → `JSON2CoreData.m:349` assert crash on **every connected Mac client**, crash loop until server restart |
+> | `POST /karteieintrag` with a blank or partial body | Same crash loop — change record is permanent, `visible:false` does NOT stop the sync replay |
+> | Including `letzterNutzer` in a **PUT** body (update) | Corrupts the sync record → same crash loop |
+> | Calling `GET /leistung?patient=X`, `GET /patient/{id}/leistungen`, or `GET /schein?patient=X` | Unbounded DB query — crashes the server process entirely |
+> | Any write without running all 3 steps of the karteieintrag pattern | Entry exists but client never sees it, or client crashes — see §karteieintrag-write-rule |
+>
+> **Recovery from crash loop:** `ssh technik@192.168.10.9` → `sudo systemctl restart tomedo-server`
+>
+> **Before any write:** confirm with the user, verify all 4 relation idents are non-null integers,
+> and never use kürzel strings (e.g. `"ANM"`) — only numeric idents (e.g. `6`).
+>
+> **Test patient for all write tests:** ident `13550` — `Test, Toni`. Never write to real patients during development.
+
+
 > **Purpose:** This document defines every v3 artifact required to integrate the
 > tomedo EMR REST API into BrassClaw Reborn as a first-class extension.
 > It follows the same orchestrator-first, LLM-minimal design as `builtin_stuff_v3.md`.
