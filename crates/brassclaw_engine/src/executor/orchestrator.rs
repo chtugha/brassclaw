@@ -4738,6 +4738,221 @@ mod tests {
         }
     }
 
+    // ── Phase G.8 — step-0 `run_loop` harness ───────────────────────
+    //
+    // Drives the full `run_loop` step-0 path through the Monty VM with the
+    // §0.9 v3 single `__assemble_prior_knowledge__` call (G.5), mocking every
+    // host function step-0 can reach. `max_iterations = 1` + `step_count = 0`
+    // so exactly one iteration (step 0) runs — enough to exercise the
+    // action_short_circuit / disambiguation / override / orchestrator_content
+    // branches and the Tier-2 fall-through to `__llm_complete__`.
+    //
+    // Returns the `run_loop` outcome dict (the `FINAL()` argument) plus a
+    // recording of every host-function call so tests can assert dispatch +
+    // injection behaviour. Sibling of `run_python_final`; uses the same
+    // `LoadGlobalCallable` property that makes undefined `__*__` *calls* yield
+    // `RunProgress::FunctionCall` (not `NameLookup`).
+
+    /// Recorded host-function activity from a step-0 `run_loop` run.
+    #[derive(Default, Debug)]
+    struct Step0Recording {
+        /// `__emit_event__(name, **kwargs)` calls: `(name, kwargs_json)`.
+        events: Vec<(String, serde_json::Value)>,
+        /// `__transition_to__(state, reason)` calls.
+        transitions: Vec<(String, String)>,
+        /// `__set_active_skills__(skills)` payload (`None` if never called).
+        set_active_skills: Option<serde_json::Value>,
+        /// `__fetch_component__(id, class_code)` calls.
+        fetch_component_calls: Vec<(String, i64)>,
+        /// `__resolve_component_by_name__(name, class_code)` calls.
+        resolve_by_name_calls: Vec<(String, i64)>,
+        /// True iff `__llm_complete__` was reached (Tier-2 fall-through).
+        llm_complete_called: bool,
+        /// `working_messages` passed to `__llm_complete__`.
+        llm_complete_messages: Option<serde_json::Value>,
+        /// True iff the legacy `__get_actions__` shim was reached.
+        get_actions_called: bool,
+        /// True iff the legacy `__list_skills__` shim was reached (must stay
+        /// false in the §0.9 v3 step-0 — G.5 removed that round-trip).
+        list_skills_called: bool,
+        /// True iff the legacy `__retrieve_docs__` shim was reached (must stay
+        /// false in the §0.9 v3 step-0 — G.5 removed that shim).
+        retrieve_docs_called: bool,
+    }
+
+    /// Convert Monty kwargs `[(key, value)]` into a JSON object.
+    fn kwargs_to_json(kwargs: &[(MontyObject, MontyObject)]) -> serde_json::Value {
+        let mut map = serde_json::Map::new();
+        for (k, v) in kwargs {
+            let key = match k {
+                MontyObject::String(s) => s.clone(),
+                other => format!("{other:?}"),
+            };
+            map.insert(key, monty_to_json(v));
+        }
+        serde_json::Value::Object(map)
+    }
+
+    /// Read the class-code argument (`args[1]`) as `i64`, defaulting to 0.
+    fn class_code_arg(args: &[MontyObject]) -> i64 {
+        match args.get(1) {
+            Some(MontyObject::Int(i)) => *i,
+            _ => 0,
+        }
+    }
+
+    /// Run `run_loop([], "goal", [], {}, {"max_iterations":1,"step_count":0})`
+    /// through Monty with mocked step-0 host functions. `pkr` is returned by
+    /// `__assemble_prior_knowledge__`; `fetch_doc` / `resolve_doc` are returned
+    /// by `__fetch_component__` / `__resolve_component_by_name__` (`None` →
+    /// Monty `None`). Returns the `run_loop` outcome dict + the call recording.
+    fn run_python_step0(
+        pkr: serde_json::Value,
+        fetch_doc: Option<serde_json::Value>,
+        resolve_doc: Option<serde_json::Value>,
+    ) -> (serde_json::Value, Step0Recording) {
+        // default.py ends with its own entry point
+        //   `result = run_loop(context, goal, actions, state, config); FINAL(result)`
+        // so we inject those five globals by name (mirroring
+        // `build_orchestrator_inputs`) instead of appending a second call.
+        // `max_iterations = 1` + `step_count = 0` so exactly step-0 runs.
+        let input_names: Vec<String> = vec![
+            "context".into(),
+            "goal".into(),
+            "actions".into(),
+            "state".into(),
+            "config".into(),
+        ];
+        let input_values = vec![
+            json_to_monty(&serde_json::json!([])),
+            json_to_monty(&serde_json::json!("goal")),
+            json_to_monty(&serde_json::json!([])),
+            json_to_monty(&serde_json::json!({})),
+            json_to_monty(&serde_json::json!({"max_iterations": 1, "step_count": 0})),
+        ];
+        let runner = MontyRun::new(DEFAULT_ORCHESTRATOR.to_string(), "test.py", input_names)
+            .expect("Failed to parse orchestrator step-0");
+        let mut stdout = String::new();
+        let tracker =
+            LimitedTracker::new(ResourceLimits::new().max_allocations(TEST_MAX_ALLOCATIONS));
+        let mut rec = Step0Recording::default();
+
+        let mut progress = runner
+            .start(
+                input_values,
+                tracker,
+                PrintWriter::CollectString(&mut stdout),
+            )
+            .expect("Failed to start orchestrator step-0");
+
+        loop {
+            match progress {
+                RunProgress::Complete(obj) => return (monty_to_json(&obj), rec),
+                RunProgress::FunctionCall(call) => {
+                    if call.function_name == "FINAL" {
+                        let val = call.args.first().cloned().unwrap_or(MontyObject::None);
+                        let _ = call.resume(
+                            ExtFunctionResult::Return(MontyObject::None),
+                            PrintWriter::CollectString(&mut stdout),
+                        );
+                        return (monty_to_json(&val), rec);
+                    }
+                    let ext_result = match call.function_name.as_str() {
+                        "__check_signals__" => ExtFunctionResult::Return(MontyObject::None),
+                        "__check_budget__" => {
+                            ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                                "tokens_remaining": 100000,
+                                "time_remaining_ms": 1000000,
+                                "usd_remaining": 100,
+                            })))
+                        }
+                        "__assemble_prior_knowledge__" => {
+                            ExtFunctionResult::Return(json_to_monty(&pkr))
+                        }
+                        "__fetch_component__" => {
+                            let id = call.args.first().map(monty_to_string).unwrap_or_default();
+                            rec.fetch_component_calls
+                                .push((id, class_code_arg(&call.args)));
+                            match &fetch_doc {
+                                Some(doc) => ExtFunctionResult::Return(json_to_monty(doc)),
+                                None => ExtFunctionResult::Return(MontyObject::None),
+                            }
+                        }
+                        "__resolve_component_by_name__" => {
+                            let name = call.args.first().map(monty_to_string).unwrap_or_default();
+                            rec.resolve_by_name_calls
+                                .push((name, class_code_arg(&call.args)));
+                            match &resolve_doc {
+                                Some(doc) => ExtFunctionResult::Return(json_to_monty(doc)),
+                                None => ExtFunctionResult::Return(MontyObject::None),
+                            }
+                        }
+                        "__emit_event__" => {
+                            let name = call.args.first().map(monty_to_string).unwrap_or_default();
+                            rec.events.push((name, kwargs_to_json(&call.kwargs)));
+                            ExtFunctionResult::Return(MontyObject::None)
+                        }
+                        "__transition_to__" => {
+                            let state = call.args.first().map(monty_to_string).unwrap_or_default();
+                            let reason = call.args.get(1).map(monty_to_string).unwrap_or_default();
+                            rec.transitions.push((state, reason));
+                            ExtFunctionResult::Return(MontyObject::None)
+                        }
+                        "__set_active_skills__" => {
+                            rec.set_active_skills = call.args.first().map(monty_to_json);
+                            ExtFunctionResult::Return(MontyObject::None)
+                        }
+                        "__llm_complete__" => {
+                            rec.llm_complete_called = true;
+                            rec.llm_complete_messages = call.args.first().map(monty_to_json);
+                            // Terminal text response carrying FINAL() so run_loop
+                            // returns `complete_result(state, "completed", "done")`
+                            // immediately, avoiding the obligation/__get_actions__
+                            // branch.
+                            ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                                "type": "text",
+                                "content": "FINAL(done)",
+                                "usage": {"input_tokens": 1, "output_tokens": 1},
+                            })))
+                        }
+                        "__get_actions__" => {
+                            rec.get_actions_called = true;
+                            ExtFunctionResult::Return(json_to_monty(&serde_json::json!([])))
+                        }
+                        "__list_skills__" => {
+                            rec.list_skills_called = true;
+                            ExtFunctionResult::Return(json_to_monty(&serde_json::json!([])))
+                        }
+                        "__retrieve_docs__" => {
+                            rec.retrieve_docs_called = true;
+                            ExtFunctionResult::Return(json_to_monty(&serde_json::json!([])))
+                        }
+                        "__execute_action__" => ExtFunctionResult::Return(json_to_monty(
+                            &serde_json::json!({"output": "mocked_action_output"}),
+                        )),
+                        "__get_reduction_rules__" => {
+                            ExtFunctionResult::Return(json_to_monty(&serde_json::json!([])))
+                        }
+                        _ => ExtFunctionResult::Return(MontyObject::None),
+                    };
+                    progress = call
+                        .resume(ext_result, PrintWriter::CollectString(&mut stdout))
+                        .expect("step-0 host function resume failed");
+                }
+                RunProgress::NameLookup(lookup) => {
+                    let name = lookup.name.clone();
+                    progress = lookup
+                        .resume(
+                            NameLookupResult::Undefined,
+                            PrintWriter::CollectString(&mut stdout),
+                        )
+                        .unwrap_or_else(|e| panic!("step-0 NameError '{name}': {e}"));
+                }
+                _ => panic!("Unexpected RunProgress variant in step-0 test"),
+            }
+        }
+    }
+
     // ── __regex_match__ host function reachability ───────────────
 
     #[test]
@@ -4785,6 +5000,371 @@ mod tests {
                 panic!("select_skills should pick ceo-setup for curly-quoted input, got: {other:?}")
             }
         }
+    }
+
+    // ── Phase G.8 — §0.9 v3 step-0 dispatch unit tests ───────────────
+    //
+    // Each test drives `run_loop` step-0 through Monty via `run_python_step0`
+    // with a preset prior-knowledge result (the dict `__assemble_prior_knowledge__`
+    // returns) and asserts the §0.9 v3 routing + injection behaviour added in
+    // G.5/G.6. `max_iterations = 1` so only step-0 runs.
+
+    /// True iff `messages` (the captured `working_messages`) contains a User
+    /// message whose `content` equals `expected`.
+    fn working_messages_has_user(messages: &serde_json::Value, expected: &str) -> bool {
+        messages.as_array().is_some_and(|arr| {
+            arr.iter().any(|m| {
+                m.get("role").and_then(|r| r.as_str()) == Some("User")
+                    && m.get("content").and_then(|c| c.as_str()) == Some(expected)
+            })
+        })
+    }
+
+    #[test]
+    fn step0_orchestrator_content_injected_and_legacy_shims_not_called() {
+        // Upgraded pkr: orchestrator_content set, no short-circuit / disambig /
+        // override → Normal Assembly injects the prose at N-1 and falls through
+        // to Tier-2 __llm_complete__.
+        let pkr = serde_json::json!({
+            "orchestrator_content": "PK PROSE BLOCK",
+            "matched_component_ids": [],
+            "active_skills": []
+        });
+        let (outcome, rec) = run_python_step0(pkr, None, None);
+
+        assert!(
+            rec.llm_complete_called,
+            "Normal Assembly must fall through to Tier-2 __llm_complete__"
+        );
+        let msgs = rec
+            .llm_complete_messages
+            .as_ref()
+            .expect("working_messages captured at __llm_complete__");
+        assert!(
+            working_messages_has_user(msgs, "PK PROSE BLOCK"),
+            "orchestrator_content must be injected at N-1, got: {msgs}"
+        );
+        // §0.9 v3 (G.5): the legacy __list_skills__ + __retrieve_docs__ shims
+        // were removed from step-0 — the single __assemble_prior_knowledge__
+        // call replaces them.
+        assert!(
+            !rec.list_skills_called,
+            "__list_skills__ must NOT be called in the v3 step-0"
+        );
+        assert!(
+            !rec.retrieve_docs_called,
+            "__retrieve_docs__ must NOT be called in the v3 step-0"
+        );
+        assert_eq!(
+            outcome.get("outcome").and_then(|o| o.as_str()),
+            Some("completed")
+        );
+    }
+
+    #[test]
+    fn step0_action_short_circuit_executes_procedure_without_llm() {
+        // action_short_circuit + __fetch_component__ returns a doc WITH the
+        // executable `steps` (Q-G-STUB1) → execute_action_procedure runs the
+        // real procedure, run_loop returns the action result directly, NO
+        // __llm_complete__.
+        let pkr = serde_json::json!({
+            "action_short_circuit": true,
+            "action_component_id": "act-uuid",
+            "action_name": "do-thing",
+            "matched_component_ids": ["act-uuid"],
+            "active_skills": []
+        });
+        let fetch_doc = serde_json::json!({
+            "id": "act-uuid",
+            "class_code": 16,
+            "name": "do-thing",
+            "steps": [{"type": "return", "value": "done"}],
+            "allowed_tools": []
+        });
+        let (outcome, rec) = run_python_step0(pkr, Some(fetch_doc), None);
+
+        assert_eq!(
+            rec.fetch_component_calls,
+            vec![("act-uuid".to_string(), 16)],
+            "action doc fetched by UUID + class 16"
+        );
+        assert!(
+            !rec.llm_complete_called,
+            "action short-circuit must NOT call __llm_complete__"
+        );
+        assert_eq!(
+            outcome.get("outcome").and_then(|o| o.as_str()),
+            Some("completed")
+        );
+        assert_eq!(
+            outcome.get("response").and_then(|r| r.as_str()),
+            Some("done"),
+            "the action's return value becomes the turn result"
+        );
+        assert!(
+            rec.transitions.iter().any(|(s, _)| s == "running"),
+            "transition to running before action execution"
+        );
+        assert!(
+            rec.transitions.iter().any(|(s, _)| s == "completed"),
+            "transition to completed after action execution"
+        );
+        let started = rec.events.iter().find(|(n, _)| n == "action_started");
+        assert!(started.is_some(), "action_started event must be emitted");
+        assert_eq!(
+            started
+                .and_then(|(_, kw)| kw.get("action_name"))
+                .and_then(|v| v.as_str()),
+            Some("do-thing")
+        );
+        assert!(
+            rec.events.iter().all(|(n, _)| n != "action_unresolved"),
+            "a fetched action must not emit action_unresolved"
+        );
+        // run_loop returns inside the action branch — before
+        // _set_active_skills_from_matched_ids runs.
+        assert!(
+            rec.set_active_skills.is_none(),
+            "active-skill registration is skipped when the action short-circuits"
+        );
+    }
+
+    #[test]
+    fn step0_action_short_circuit_no_doc_falls_back_to_tier2() {
+        // action_short_circuit + __fetch_component__ returns None →
+        // action_unresolved event + transition to prompting + fall through to
+        // Tier-2 __llm_complete__ (un-augmented working_messages).
+        let pkr = serde_json::json!({
+            "action_short_circuit": true,
+            "action_component_id": "act-uuid",
+            "action_name": "do-thing",
+            "matched_component_ids": ["act-uuid"],
+            "active_skills": []
+        });
+        let (outcome, rec) = run_python_step0(pkr, None, None);
+
+        assert_eq!(
+            rec.fetch_component_calls,
+            vec![("act-uuid".to_string(), 16)]
+        );
+        assert!(
+            rec.llm_complete_called,
+            "an unresolved action must fall through to Tier-2 __llm_complete__"
+        );
+        let unresolved = rec.events.iter().find(|(n, _)| n == "action_unresolved");
+        assert!(
+            unresolved.is_some(),
+            "action_unresolved event must be emitted when fetch returns None"
+        );
+        assert_eq!(
+            unresolved
+                .and_then(|(_, kw)| kw.get("action_name"))
+                .and_then(|v| v.as_str()),
+            Some("do-thing")
+        );
+        assert!(
+            rec.transitions.iter().any(|(s, _)| s == "prompting"),
+            "must transition to prompting before the Tier-2 fall-through"
+        );
+        assert_eq!(
+            outcome.get("outcome").and_then(|o| o.as_str()),
+            Some("completed")
+        );
+    }
+
+    #[test]
+    fn step0_disambiguation_surfaces_candidates_without_llm() {
+        // disambiguation: true → handle_disambiguation runs (emits
+        // disambiguation_required, transitions to disambiguation, returns
+        // outcome "disambiguation" with the candidate list). NO __llm_complete__.
+        let candidates = serde_json::json!([
+            {"component_id": "c1", "component_class_code": 12, "class_label": "Tool: foo", "score": 0.9},
+            {"component_id": "c2", "component_class_code": 16, "class_label": "Action: bar", "score": 0.8}
+        ]);
+        let pkr = serde_json::json!({
+            "disambiguation": true,
+            "candidates": candidates,
+            "matched_component_ids": [],
+            "active_skills": []
+        });
+        let (outcome, rec) = run_python_step0(pkr, None, None);
+
+        assert!(
+            !rec.llm_complete_called,
+            "disambiguation must NOT call __llm_complete__"
+        );
+        assert_eq!(
+            outcome.get("outcome").and_then(|o| o.as_str()),
+            Some("disambiguation")
+        );
+        let req = rec
+            .events
+            .iter()
+            .find(|(n, _)| n == "disambiguation_required");
+        assert!(
+            req.is_some(),
+            "disambiguation_required event must be emitted"
+        );
+        assert_eq!(
+            req.and_then(|(_, kw)| kw.get("candidates")),
+            Some(&candidates),
+            "the candidate list is forwarded on the event for WebUI choice buttons"
+        );
+        assert!(
+            rec.transitions.iter().any(|(s, _)| s == "disambiguation"),
+            "must transition to the disambiguation state"
+        );
+        // complete_result(extra={"candidates": ...}) flattens candidates to a
+        // top-level key (default.py:657) so the WebUI can render the choices.
+        assert_eq!(
+            outcome.get("candidates"),
+            Some(&candidates),
+            "candidates must be carried on the outcome for the choice UI"
+        );
+        let response = outcome
+            .get("response")
+            .and_then(|r| r.as_str())
+            .unwrap_or_default();
+        assert!(
+            response.contains("Tool: foo"),
+            "response must list candidate 1, got: {response}"
+        );
+        assert!(
+            response.contains("Action: bar"),
+            "response must list candidate 2, got: {response}"
+        );
+    }
+
+    #[test]
+    fn step0_no_match_forwards_active_skills_and_records_matched_ids() {
+        // No-match broad-scan pkr: orchestrator_content set + active_skills
+        // populated → orchestrator_content injected + _set_active_skills_from_
+        // matched_ids forwards the provenance to __set_active_skills__ and
+        // records the matched ids in state.
+        let pkr = serde_json::json!({
+            "orchestrator_content": "BROAD SCAN PROSE",
+            "matched_component_ids": ["c1", "c2"],
+            "active_skills": [{"name": "skillX"}]
+        });
+        let (outcome, rec) = run_python_step0(pkr, None, None);
+
+        assert!(
+            rec.llm_complete_called,
+            "no-match must fall through to Tier-2 __llm_complete__"
+        );
+        let msgs = rec
+            .llm_complete_messages
+            .as_ref()
+            .expect("working_messages captured at __llm_complete__");
+        assert!(
+            working_messages_has_user(msgs, "BROAD SCAN PROSE"),
+            "orchestrator_content must be injected at N-1, got: {msgs}"
+        );
+        let set_skills = rec
+            .set_active_skills
+            .as_ref()
+            .expect("__set_active_skills__ must be called when pkr carries active_skills");
+        assert_eq!(
+            set_skills.as_array().map(|a| a.len()),
+            Some(1),
+            "the single active skill is forwarded: {set_skills}"
+        );
+        assert_eq!(
+            set_skills
+                .as_array()
+                .and_then(|a| a.first())
+                .and_then(|s| s.get("name"))
+                .and_then(|n| n.as_str()),
+            Some("skillX")
+        );
+        // _set_active_skills_from_matched_ids records matched ids + resets
+        // snippet names in state (reborn_skills has no code_snippets column).
+        assert_eq!(
+            outcome
+                .pointer("/state/active_skill_ids")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len()),
+            Some(2),
+            "state.active_skill_ids must record the matched_component_ids"
+        );
+        assert_eq!(
+            outcome
+                .pointer("/state/skill_snippet_names")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len()),
+            Some(0),
+            "state.skill_snippet_names is always [] (no code_snippets column)"
+        );
+        assert_eq!(
+            outcome.get("outcome").and_then(|o| o.as_str()),
+            Some("completed")
+        );
+    }
+
+    #[test]
+    fn step0_action_tool_call_blocked_returns_error_outcome() {
+        // Regression for the str.format() fix
+        // (subplan_problem_stepG8_str_format): action_short_circuit + a fetched
+        // action doc whose single step is a tool_call to a tool NOT in
+        // allowed_tools → _execute_action_steps hits the SEC-07 block path
+        // (default.py line ~736, formerly a `.format()` call that crashed the
+        // Monty VM with AttributeError). execute_action_procedure converts the
+        // `{"error": ...}` to outcome "error"; run_loop returns it directly with
+        // NO __llm_complete__. The error string is now built with `+`
+        // concatenation, so it must reach Monty without crashing.
+        let pkr = serde_json::json!({
+            "action_short_circuit": true,
+            "action_component_id": "act-uuid",
+            "action_name": "do-thing",
+            "matched_component_ids": ["act-uuid"],
+            "active_skills": []
+        });
+        let fetch_doc = serde_json::json!({
+            "id": "act-uuid",
+            "class_code": 16,
+            "name": "do-thing",
+            "steps": [{"type": "tool_call", "tool": "blocked_tool", "params": {}}],
+            "allowed_tools": ["allowed_tool"]
+        });
+        let (outcome, rec) = run_python_step0(pkr, Some(fetch_doc), None);
+
+        assert!(
+            !rec.llm_complete_called,
+            "a blocked tool_call must NOT call __llm_complete__"
+        );
+        assert_eq!(
+            rec.fetch_component_calls,
+            vec![("act-uuid".to_string(), 16)],
+            "action doc fetched by UUID + class 16"
+        );
+        assert_eq!(
+            outcome.get("outcome").and_then(|o| o.as_str()),
+            Some("error"),
+            "a blocked tool_call yields an error outcome, got: {outcome}"
+        );
+        let error = outcome
+            .get("error")
+            .and_then(|e| e.as_str())
+            .expect("error message present on a blocked-tool outcome");
+        assert!(
+            error.contains("blocked_tool"),
+            "error must name the blocked tool, got: {error}"
+        );
+        assert!(
+            error.contains("SEC-07"),
+            "error must carry the SEC-07 marker, got: {error}"
+        );
+        assert!(
+            error.contains("not in allowed_tools"),
+            "error must explain the block reason, got: {error}"
+        );
+        // The block path returns before __execute_action__ is dispatched, so the
+        // outcome is "error" (not "completed" with the mocked action output) —
+        // proving the SEC-07 gate fired.
+        assert!(
+            outcome.get("response").is_none(),
+            "a blocked-tool error outcome carries no response"
+        );
     }
 
     #[tokio::test]
@@ -6678,8 +7258,27 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         assert!(over, "expected PromptOverBudget event on thread");
     }
 
+    // ── Reduction-rules cache test serialization ───────────────────────────
+    //
+    // `invalidate_reduction_rules_cache()` is a process-wide flush: it clears
+    // EVERY cached slot, not just the caller's. Four tests here call it and
+    // `cargo test` runs them in parallel, so one test's invalidate can clear a
+    // sibling test's slot between its two `load_reduction_rules` calls — turning
+    // a "DB called exactly once" cache assertion into a spurious second query
+    // (the intermittent `load_reduction_rules_db_error_returns_empty_and_caches`
+    // failure). This test-only `std::sync::Mutex` serializes just the
+    // reduction-rules cache tests so the process-wide flush cannot race with a
+    // sibling's slot. The async tests hold the guard across `.await` on a
+    // current-thread `#[tokio::test]` runtime (no thread migration → no
+    // self-deadlock); see the `#[allow(clippy::await_holding_lock)]` on each,
+    // matching the oauth/hooks convention.
+    static REDUCTION_RULES_TEST_LOCK: Mutex<()> = Mutex::new(());
+
     #[test]
     fn invalidate_reduction_rules_cache_returns_zero_when_unused() {
+        let _test_lock = REDUCTION_RULES_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         // Ensure the public API exists and is callable; in this fresh
         // state no slots are populated so cleared is zero.
         let _ = invalidate_reduction_rules_cache();
@@ -6706,8 +7305,14 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         doc
     }
 
+    // Lock held across await to serialize the reduction-rules cache tests
+    // (process-wide invalidate race — see REDUCTION_RULES_TEST_LOCK).
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn load_reduction_rules_cache_miss_then_hit() {
+        let _test_lock = REDUCTION_RULES_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         // First call loads from DB; second call returns from cache (exactly
         // one DB query total, proven by using a store that counts calls).
         use std::sync::atomic::{AtomicUsize, Ordering};
@@ -6935,8 +7540,14 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         assert_eq!(rules, rules2, "cache hit must return identical data");
     }
 
+    // Lock held across await to serialize the reduction-rules cache tests
+    // (process-wide invalidate race — see REDUCTION_RULES_TEST_LOCK).
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn load_reduction_rules_ignores_docs_without_tag() {
+        let _test_lock = REDUCTION_RULES_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         // A doc without the `reduction_rule` tag must be silently skipped.
         use crate::types::memory::{DocType, MemoryDoc};
         let project_id = crate::types::project::ProjectId::new();
@@ -6960,8 +7571,14 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
         );
     }
 
+    // Lock held across await to serialize the reduction-rules cache tests
+    // (process-wide invalidate race — see REDUCTION_RULES_TEST_LOCK).
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn load_reduction_rules_db_error_returns_empty_and_caches() {
+        let _test_lock = REDUCTION_RULES_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         // When the DB fails the function must return an empty vec and cache
         // that result so the slot is not re-queried on every subsequent call.
         use std::sync::atomic::{AtomicUsize, Ordering};

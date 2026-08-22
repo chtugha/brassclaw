@@ -5385,6 +5385,38 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > steps` added (skip-if-no-docker, compile-validated). No migration changed (G.7 V062 boot
 > verification stands). Executed before G.8; resume G.8 next.
 
+> **Substep G8-STRFMT (inserted while implementing G.8) — `str.format()` is not
+> Monty-supported (Q-G8-STRFMT).** ✅ Done. G.8 test #4
+> (`step0_disambiguation_surfaces_candidates_without_llm`) drove
+> `handle_disambiguation` through the Monty VM for the first time and crashed:
+> `AttributeError: 'str' object has no attribute 'format'`. Proof:
+> `crates/monty/src/types/str.rs:324` lists `str.format()`/`format_map()` as
+> deliberately unimplemented. `orchestrator/default.py` used `.format()` in 5
+> places (lines ~736, 804, 833, 857, 973) — all latent Monty crashes; line 973
+> (`handle_disambiguation`) is live on every disambiguation result, the other 4
+> are action-step SEC-07/unresolvable error paths. The file's own style guide
+> (line ~241) and the `handle_disambiguation` docstring (line ~964) both
+> **wrongly asserted** `.format()` is Monty-supported — the "written half-way
+> and silenced" anti-pattern (G.3 added the path, no test ever drove it through
+> Monty). Subplan: `docs/agents-v3/subplan_problem_stepG8_str_format_of_saved_plan_to_v3.md`.
+> Fix: replace all 5 `.format()` with Monty-safe `+` concatenation + `str()`
+> wrapping for non-string interpolands; repair the 2 stale docstring/comment
+> claims. Tests: G.8 test #4 covers line 973; new G.8 test #6
+> `step0_action_tool_call_blocked_returns_error_outcome` covers the line-736
+> SEC-07 block path through Monty. **Adjacent repair (encountered during
+> verification):** the skills-db full-lib run surfaced an intermittent failure
+> of `load_reduction_rules_db_error_returns_empty_and_caches` — root cause is
+> `invalidate_reduction_rules_cache()` being a process-wide flush (clears EVERY
+> slot) raced by 4 parallel reduction-rules tests; fixed with a test-only
+> `std::sync::Mutex` serialization lock `REDUCTION_RULES_TEST_LOCK` in
+> `orchestrator.rs::tests` (3 async tests hold it across `.await` with
+> `#[allow(clippy::await_holding_lock)]` per the existing oauth/hooks
+> convention); no new dependency, no production code change. Verified both
+> configs: fmt clean; clippy clean (default + skills-db); engine lib
+> **684 default / 695 skills-db** (0 failed both; +6 vs 678/689 baseline = the
+> 6 G.8 `step0_` tests); skills-db full lib run twice → 695/0 both (flake
+> resolved). Executed before resuming G.8.
+
 ---
 
 ### Phase H — RecipeStage: `last_user_text` + Tier 0/1 Dispatch

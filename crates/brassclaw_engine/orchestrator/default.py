@@ -238,7 +238,8 @@ def estimate_context_tokens(messages):
 # Monty-safe conventions used throughout:
 #   - no `import` statements
 #   - no classes (only functions and dicts)
-#   - no f-strings (use `"...".format(...)`)
+#   - no f-strings and NO `"...".format(...)` — `str.format()` is unimplemented
+#     in Monty (`crates/monty/src/types/str.rs`); use `+` concatenation + `str()`
 #   - no list comprehensions with `if` (use explicit for-loops)
 #   - no `match`, `del`, `yield`, `with`
 #   - no `any` / `all` builtins (use explicit loops)
@@ -733,7 +734,7 @@ def _execute_action_steps(action, scope_vars, depth, step_counter):
             tool_name = step_def.get("tool", "")
             if tool_name not in allowed_tools:
                 return {
-                    "error": "tool_call blocked: '{}' not in allowed_tools (SEC-07)".format(tool_name)
+                    "error": "tool_call blocked: '" + tool_name + "' not in allowed_tools (SEC-07)"
                 }, step_counter
             params = step_def.get("params", {})
             result = __execute_action__(tool_name, params)
@@ -801,7 +802,7 @@ def _execute_action_steps(action, scope_vars, depth, step_counter):
             params = step_def.get("params", {})
             if skill_name not in allowed_tools:
                 return {
-                    "error": "call_skill blocked: '{}' not in allowed_tools (SEC-07)".format(skill_name)
+                    "error": "call_skill blocked: '" + skill_name + "' not in allowed_tools (SEC-07)"
                 }, step_counter
             result = __execute_action__(skill_name, params)
             scope_vars["_last_result"] = result
@@ -830,7 +831,7 @@ def _execute_action_steps(action, scope_vars, depth, step_counter):
                 tool_name = call.get("tool", "")
                 if tool_name not in allowed_tools:
                     return {
-                        "error": "parallel tool_call blocked: '{}' not in allowed_tools (SEC-07)".format(tool_name)
+                        "error": "parallel tool_call blocked: '" + tool_name + "' not in allowed_tools (SEC-07)"
                     }, step_counter
                 calls_to_run.append({"name": tool_name, "params": call.get("params", {})})
             results = __execute_actions_parallel__(calls_to_run)
@@ -854,7 +855,7 @@ def _execute_action_steps(action, scope_vars, depth, step_counter):
                 nested_action = resolved if isinstance(resolved, dict) else None
             if not nested_action:
                 return {
-                    "error": "call_action: Action '{}' not resolvable (no action_id and name lookup failed)".format(nested_name),
+                    "error": "call_action: Action '" + nested_name + "' not resolvable (no action_id and name lookup failed)",
                     "unresolvable_action": True,
                 }, step_counter
             nested_scope = dict(nested_params)
@@ -962,19 +963,22 @@ def handle_disambiguation(candidates, state):
     can render clickable choice buttons.
 
     Monty-safe: no f-strings, no list-comp-with-if — builds the response lines
-    with an explicit for-loop + `.format()` + `.append()`, joined with
-    `"\n".join(...)` (all established Monty-supported patterns, default.py:103).
+    with an explicit for-loop + `+` string concatenation + `str()` + `.append()`,
+    joined with `"\n".join(...)` (all established Monty-supported patterns,
+    default.py:103). NOTE: `str.format()` is NOT Monty-supported
+    (`crates/monty/src/types/str.rs` lists it unimplemented), so `+`/`str()`
+    is used instead — see `subplan_problem_stepG8_str_format`.
     """
     __emit_event__("disambiguation_required", candidates=candidates)
     __transition_to__("disambiguation", "awaiting user choice")
 
     lines = []
     for c in candidates:
-        lines.append("{} (class {}, score {})".format(
-            c.get("class_label", ""),
-            c.get("component_class_code", ""),
-            c.get("score", ""),
-        ))
+        lines.append(
+            c.get("class_label", "")
+            + " (class " + str(c.get("component_class_code", "")) + ", score "
+            + str(c.get("score", "")) + ")"
+        )
     response = "\n".join(lines)
 
     return complete_result(
