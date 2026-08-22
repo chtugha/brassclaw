@@ -4487,6 +4487,22 @@ Same engine files as Phase B, but for class 23:
 
 **Status:** [ ] Pending
 
+> **🔗 SUBSTEP — Re-targeted E0-A (agent-loop adaptation):** Grounding proved the engine
+> `ExecutionLoop`/`ThreadManager`/`execute_orchestrator`/`fetch_for_turn` path this section
+> targets (`manager.rs:377–383`) is **dormant / test-only** — the live production turn
+> driver is the **agent-loop** stack (`PlannedDriver`/`CanonicalAgentLoopExecutor`), which
+> today runs with **no retrieval wired** (`LoopContextPort.memory_snippets` = `Vec::new()`;
+> `RecipeStage::process` is a no-op stub because the pipeline never exposes raw user text).
+> Per user decision (E0-A + Option 1, plan-ordered), E.0 is re-targeted to make
+> `PostgresSource::fetch_for_turn` fire inside **live agent-loop turns** via the composition
+> bridge, pulling `LoopRetrievalPort` (Phase H4) + user-text plumbing (Phase H3) forward.
+> Full approach, faithful deviations (orphan-rule/dependency → mirror the `RecipeLookup`
+> precedent via a new turns-layer `RetrievalLookup`/`MessageTextResolver` trait), exact edit
+> sites, tests, and acceptance: **`docs/agents-v3/subplan_problem_stepE0_of_saved_plan_to_v3.md`**.
+> Run that subplan's steps before resuming the remainder of this E.0 section. Routing booleans
+> stay conservative (`llm_call_required=true`, `tier0_eligible=false`) until Phase E's
+> `SplitResult`; the Tier-0/Tier-1 consumer stays at Phase H.
+
 **Goal:** Make `PostgresSource` the **live** retrieval backend before any phase consumes its
 new `FetchForTurnResult` variants. Today `manager.rs:377–383` constructs `RamSource` and
 passes it to `with_retrieval_source(...)`; `PostgresSource` is exported from

@@ -92,6 +92,10 @@ releases/
 # Completed planning / subplan docs — one-shot execution scripts that have
 # served their purpose and would only add noise to history.
 subplan_*.md
+# Exception: subplans filed in the v3 docs home are retained documentation of
+# executed substeps and MUST be tracked + pushed (per task directive: never lose
+# subplans to gitignore). Repo-root subplans stay ignored as one-shot scripts.
+!docs/agents-v3/subplan_*.md
 plan_stub_*.md
 final_gaps_pre-v3.md
 last_cleanup_pre-v3.md
