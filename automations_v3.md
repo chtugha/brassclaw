@@ -34,8 +34,24 @@ Browser (automations-page.js)
 
 All new write endpoints go through the existing `TriggerRepository` — no new DB
 tables are required. The host-runtime capability layer already abstracts the
-repository. The plan adds **five new capabilities**, **five new facade trait
-methods**, **five new HTTP routes**, and **a fully featured SPA page**.
+repository. The plan adds **five new first-party capabilities** (three already
+exist: create, list, remove), **seven facade trait methods**, **seven HTTP
+routes**, and **a fully featured SPA page**.
+
+> **Key naming corrections (grounded in live source):**
+> - Capability IDs use the `builtin.*` namespace, not `brassclaw.*`.
+>   Existing: `builtin.trigger_create`, `builtin.trigger_list`,
+>   `builtin.trigger_remove` — defined in
+>   `crates/brassclaw_host_runtime/src/first_party_tools/trigger_management.rs`.
+> - Create uses `upsert_trigger` (the existing repo method), not a new
+>   `create_trigger`. The upsert is idempotent on `trigger_id`.
+> - Delete uses `remove_scoped_trigger` (enforces creator-scope check).
+> - The `AutomationProductFacade` **trait** lives in
+>   `brassclaw_product_workflow/src/reborn_services.rs` (line 408).
+>   The **impl** (`RebornWebuiAutomationFacade`) lives in
+>   `brassclaw_reborn_composition/src/automation.rs`.
+>   `UnsupportedAutomationProductFacade` (same file) must also implement every
+>   new method with `automation_unavailable()` fallbacks.
 
 ---
 
@@ -47,10 +63,11 @@ methods**, **five new HTTP routes**, and **a fully featured SPA page**.
 |---|---|
 | DB table | `brassclaw_triggers` (V021) — all columns needed |
 | Domain types | `TriggerRecord`, `TriggerSchedule::Cron`, `TriggerState`, `TriggerCompletionPolicy`, `TriggerRunStatus` in `brassclaw_triggers/src/lib.rs` |
-| Repository trait | `TriggerRepository` — `list_scoped_triggers`, `upsert_trigger`, `delete_trigger`, `get_trigger`, `patch_trigger_state` etc. in `brassclaw_triggers/src/lib.rs` |
+| Repository trait | `TriggerRepository` — `upsert_trigger`, `get_trigger`, `list_triggers`, `list_scoped_triggers`, `remove_trigger`, `remove_scoped_trigger` in `brassclaw_triggers/src/lib.rs` (lines 608–732). **Missing:** `update_trigger`, `list_trigger_runs`. **No** `create_trigger`, `set_trigger_state`, or `delete_trigger` exist under those names. |
 | Poller worker | `brassclaw_triggers/src/worker.rs` — fires due triggers, submits trusted inbound turns |
 | Cron parsing | `normalize_cron_expression`, `parse_cron_schedule`, `reject_sub_minute_cadence` in `brassclaw_triggers/src/lib.rs` |
-| List capability | `TRIGGER_LIST_CAPABILITY_ID` in `brassclaw_host_runtime` → `automation.rs` composition adapter |
+| Existing capabilities | `TRIGGER_CREATE_CAPABILITY_ID` (`"builtin.trigger_create"`), `TRIGGER_LIST_CAPABILITY_ID` (`"builtin.trigger_list"`), `TRIGGER_REMOVE_CAPABILITY_ID` (`"builtin.trigger_remove"`) — all in `trigger_management.rs`. The `create` handler hard-codes `completion_policy: Recurring`; the `remove` handler uses `remove_scoped_trigger` (caller-scope enforced). |
+| Composition adapter (existing) | `RebornWebuiAutomationFacade` in `automation.rs` implements the `AutomationProductFacade` trait (defined in `reborn_services.rs` line 408). Only `list_automations` is currently implemented. |
 | HTTP route (read) | `GET /api/webchat/v2/automations` → `list_automations` handler |
 | Facade method (read) | `RebornServicesApi::list_automations` → `AutomationProductFacade::list_automations` |
 | Frontend page (read) | `automations-page.js` + `useAutomations.js` + `automations-list.js` + `automations-summary-strip.js` + `automations-presenters.js` |
@@ -59,10 +76,11 @@ methods**, **five new HTTP routes**, and **a fully featured SPA page**.
 
 | Layer | Gap |
 |---|---|
-| Host-runtime capabilities | `CREATE`, `GET`, `UPDATE_STATE` (pause/resume), `UPDATE_CONFIG` (edit), `MANUAL_FIRE`, `GET_RUN_HISTORY` |
-| `TriggerRepository` methods | May be missing `get_trigger`, `create_trigger`, `delete_trigger`, `set_trigger_state` — verify and add if absent |
+| Host-runtime capabilities | `GET` (new), `UPDATE` (new, name+cron+prompt), `SET_STATE` (new, pause/resume), `FIRE_NOW` (new, manual fire), `RUN_HISTORY` (new). `CREATE`, `LIST`, `REMOVE` already exist — but `CREATE` needs `completion_policy` input support added. |
+| `TriggerRepository` methods | `update_trigger` (new), `list_trigger_runs` (new). `upsert_trigger` covers create. `remove_scoped_trigger` covers scoped delete. `get_trigger` already exists. **No need to add** `create_trigger`, `set_trigger_state`, or `delete_trigger` as separate methods. |
 | Composition adapter | `create_automation`, `get_automation`, `update_automation`, `delete_automation`, `pause_automation`, `resume_automation`, `fire_automation_now`, `get_automation_run_history` |
-| Product facade trait | 6 new `RebornServicesApi` methods with request/response DTOs |
+| `AutomationProductFacade` trait | 6 new methods to add to the trait in `reborn_services.rs`: `create_automation`, `get_automation`, `update_automation`, `set_automation_state`, `delete_automation`, `fire_automation_now`, `get_automation_run_history`. `UnsupportedAutomationProductFacade` must also implement each with `automation_unavailable()`. |
+| `RebornServicesApi` trait | 7 new default-body methods (returns 501), delegating to `automation_facade` |
 | HTTP routes | `POST /automations`, `GET /automations/:id`, `PATCH /automations/:id/state`, `PATCH /automations/:id`, `DELETE /automations/:id`, `POST /automations/:id/fire` |
 | Frontend | Create/edit modal, detail panel, action buttons (pause/resume/fire/delete), run history tab, i18n strings |
 | Routines page | Currently a stub; this plan merges its pattern into the Automations page replacing it |
@@ -71,35 +89,36 @@ methods**, **five new HTTP routes**, and **a fully featured SPA page**.
 
 ## 2. DB Layer — Verify Repository Completeness
 
-### Step 2.1 — Audit `TriggerRepository` trait methods
+### Step 2.1 — Audit `TriggerRepository` trait methods (grounded in live source)
 
-**File:** `crates/brassclaw_triggers/src/lib.rs`
+**File:** `crates/brassclaw_triggers/src/lib.rs` (lines 608–732)
 
-Verify the trait has ALL of the following. If any are absent, add them to the
-trait and implement in `crates/brassclaw_triggers/src/postgres.rs`:
+The following methods **already exist** and must be reused, not re-added:
 
 ```rust
-// Must exist:
+// Already exists — use for create:
+async fn upsert_trigger(&self, record: TriggerRecord) -> Result<(), TriggerError>;
+
+// Already exists — use for get:
 async fn get_trigger(&self, tenant_id: TenantId, trigger_id: TriggerId)
     -> Result<Option<TriggerRecord>, TriggerError>;
 
-async fn create_trigger(&self, record: TriggerRecord)
-    -> Result<TriggerRecord, TriggerError>;
-
-// May already exist as `upsert_trigger` — verify:
-async fn upsert_trigger(&self, record: TriggerRecord)
-    -> Result<TriggerRecord, TriggerError>;
-
-async fn delete_trigger(&self, tenant_id: TenantId, trigger_id: TriggerId)
-    -> Result<bool, TriggerError>;  // returns true if row existed
-
-async fn set_trigger_state(
+// Already exists — use for scoped delete (caller-scope enforced):
+async fn remove_scoped_trigger(
     &self,
     tenant_id: TenantId,
+    creator_user_id: UserId,
+    agent_id: Option<AgentId>,
+    project_id: Option<ProjectId>,
     trigger_id: TriggerId,
-    state: TriggerState,
-) -> Result<Option<TriggerRecord>, TriggerError>;  // None if not found
+) -> Result<Option<TriggerRecord>, TriggerError>;
+```
 
+The following two methods are **genuinely missing** and must be added to the
+trait and implemented in `crates/brassclaw_triggers/src/postgres.rs`:
+
+```rust
+// NEW — partial field update:
 async fn update_trigger(
     &self,
     tenant_id: TenantId,
@@ -107,6 +126,7 @@ async fn update_trigger(
     patch: TriggerUpdatePatch,
 ) -> Result<Option<TriggerRecord>, TriggerError>;  // None if not found
 
+// NEW — run history from brassclaw_runs table:
 async fn list_trigger_runs(
     &self,
     tenant_id: TenantId,
@@ -114,6 +134,13 @@ async fn list_trigger_runs(
     limit: usize,
 ) -> Result<Vec<TriggerRunRecord>, TriggerError>;
 ```
+
+**There is no `create_trigger`, `delete_trigger`, or `set_trigger_state` —
+these names do not exist in the codebase.** Use `upsert_trigger`,
+`remove_scoped_trigger`, and the new `update_trigger` (with only the `state`
+field set) for state changes. Alternatively, add a dedicated
+`set_trigger_state` only if a state-only SQL UPDATE is preferred for
+atomicity; see Step 2.4.
 
 ### Step 2.2 — Add `TriggerUpdatePatch` struct (if absent)
 
@@ -180,29 +207,38 @@ run metadata before implementing this query.
 
 ### Step 2.4 — PostgreSQL implementation
 
-For each new method above, implement in `crates/brassclaw_triggers/src/postgres.rs`
+For the two **new** methods, implement in `crates/brassclaw_triggers/src/postgres.rs`
 following the existing patterns (deadpool-postgres, param binding, row mapping).
-Key SQL shapes:
 
-**create_trigger:**
-```sql
-INSERT INTO brassclaw_triggers (
-    trigger_id, tenant_id, creator_user_id, agent_id, project_id,
-    name, source, schedule_expression, completion_policy,
-    prompt, state, next_run_at, last_run_at, last_fired_slot,
-    last_status, active_fire_slot, active_run_ref, created_at
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-ON CONFLICT (trigger_id) DO NOTHING
-RETURNING *
+**Note on create:** The existing `upsert_trigger` already writes the full record
+via an `INSERT … ON CONFLICT DO UPDATE` pattern. The `create_automation`
+capability handler (Step 3.2b) will build a `TriggerRecord` and call
+`upsert_trigger` directly — no new SQL needed for create.
+
+**Note on set_state:** The preferred approach is to add a dedicated
+`set_trigger_state` SQL UPDATE for atomicity (state-only, no race with
+schedule recompute). Add it to the trait as:
+
+```rust
+// OPTIONAL but recommended — atomic state-only update:
+async fn set_trigger_state(
+    &self,
+    tenant_id: TenantId,
+    trigger_id: TriggerId,
+    state: TriggerState,
+) -> Result<Option<TriggerRecord>, TriggerError>;  // None if not found
 ```
 
-**set_trigger_state:**
+SQL:
 ```sql
 UPDATE brassclaw_triggers
 SET state = $3
 WHERE tenant_id = $1 AND trigger_id = $2
 RETURNING *
 ```
+
+If `set_trigger_state` is not added, the `set_state` capability handler can
+instead call `get_trigger` + mutate the state field + `upsert_trigger`.
 
 **update_trigger (partial patch, only non-null columns):**
 ```sql
@@ -230,50 +266,164 @@ Return `rows_affected > 0`.
 
 ## 3. Host-Runtime Capability Layer
 
-**Location:** `crates/brassclaw_host_runtime/first_party_tools/`
+**Location:** `crates/brassclaw_host_runtime/src/first_party_tools/trigger_management.rs`
 
-The existing `TRIGGER_LIST_CAPABILITY_ID` capability demonstrates the pattern.
-Add six new capability ID constants and their handler implementations.
+Three capabilities already exist with a `builtin.*` namespace and are fully
+implemented. This section covers what to add and what to modify.
 
-### Step 3.1 — New capability ID constants
-
-In the trigger capability constants file (or `mod.rs`):
+### Step 3.1 — Existing capability constants (DO NOT rename or re-add)
 
 ```rust
-pub const TRIGGER_CREATE_CAPABILITY_ID: &str  = "brassclaw.triggers.create";
-pub const TRIGGER_GET_CAPABILITY_ID: &str     = "brassclaw.triggers.get";
-pub const TRIGGER_UPDATE_CAPABILITY_ID: &str  = "brassclaw.triggers.update";
-pub const TRIGGER_SET_STATE_CAPABILITY_ID: &str = "brassclaw.triggers.set_state";
-pub const TRIGGER_DELETE_CAPABILITY_ID: &str  = "brassclaw.triggers.delete";
-pub const TRIGGER_FIRE_NOW_CAPABILITY_ID: &str = "brassclaw.triggers.fire_now";
-pub const TRIGGER_RUN_HISTORY_CAPABILITY_ID: &str = "brassclaw.triggers.run_history";
+// Already in trigger_management.rs — use as-is:
+pub const TRIGGER_CREATE_CAPABILITY_ID: &str = "builtin.trigger_create";  // line 29
+pub const TRIGGER_LIST_CAPABILITY_ID: &str   = "builtin.trigger_list";    // line 30
+pub const TRIGGER_REMOVE_CAPABILITY_ID: &str = "builtin.trigger_remove";  // line 31
 ```
 
-### Step 3.2 — Capability handler: `triggers.create`
+### Step 3.1b — New capability ID constants (add to `trigger_management.rs`)
 
-Input JSON:
-```json
-{
-  "tenant_id": "...",
-  "creator_user_id": "...",
-  "agent_id": "...",          // optional
-  "project_id": "...",        // optional
-  "name": "Daily report",
-  "cron": "0 8 * * *",
-  "prompt": "Generate and send the daily usage report.",
-  "completion_policy": "recurring"  // or "complete_after_first_fire"
+```rust
+pub const TRIGGER_GET_CAPABILITY_ID: &str       = "builtin.trigger_get";
+pub const TRIGGER_UPDATE_CAPABILITY_ID: &str    = "builtin.trigger_update";
+pub const TRIGGER_SET_STATE_CAPABILITY_ID: &str = "builtin.trigger_set_state";
+pub const TRIGGER_FIRE_NOW_CAPABILITY_ID: &str  = "builtin.trigger_fire_now";
+pub const TRIGGER_RUN_HISTORY_CAPABILITY_ID: &str = "builtin.trigger_run_history";
+```
+
+Register each in `insert_trigger_handlers` (pattern: `registry.insert_handler(...)`
+alongside the existing three registrations, lines 101–109).
+
+Add new manifest entries in `manifests()` (lines 33–56):
+
+```rust
+// trigger_get — read, no external write:
+first_party_capability_manifest(
+    TRIGGER_GET_CAPABILITY_ID,
+    "Get a caller-scoped scheduled trigger by ID",
+    vec![EffectKind::DispatchCapability],
+    PermissionMode::Allow,
+    resource_profile(),
+)?
+// trigger_update — write:
+first_party_capability_manifest(
+    TRIGGER_UPDATE_CAPABILITY_ID,
+    "Update a caller-scoped scheduled trigger",
+    vec![EffectKind::DispatchCapability, EffectKind::ExternalWrite],
+    PermissionMode::Ask,
+    resource_profile(),
+)?
+// trigger_set_state — write:
+first_party_capability_manifest(
+    TRIGGER_SET_STATE_CAPABILITY_ID,
+    "Pause or resume a caller-scoped scheduled trigger",
+    vec![EffectKind::DispatchCapability, EffectKind::ExternalWrite],
+    PermissionMode::Ask,
+    resource_profile(),
+)?
+// trigger_fire_now — write + dispatch:
+first_party_capability_manifest(
+    TRIGGER_FIRE_NOW_CAPABILITY_ID,
+    "Manually fire a caller-scoped scheduled trigger now",
+    vec![EffectKind::DispatchCapability, EffectKind::ExternalWrite],
+    PermissionMode::Ask,
+    resource_profile(),
+)?
+// trigger_run_history — read:
+first_party_capability_manifest(
+    TRIGGER_RUN_HISTORY_CAPABILITY_ID,
+    "Get run history for a caller-scoped scheduled trigger",
+    vec![EffectKind::DispatchCapability],
+    PermissionMode::Allow,
+    resource_profile(),
+)?
+```
+
+### Step 3.2 — Capability handler: `triggers.create` (MODIFY existing handler)
+
+The `create_trigger` function in `trigger_management.rs` already exists (lines
+210–261) and handles name, prompt, cron, ULID generation, `next_run_at`
+computation, `upsert_trigger`, and rollback on hook failure. It hard-codes:
+
+```rust
+completion_policy: TriggerCompletionPolicy::Recurring,  // line 229
+```
+
+**Only change needed:** Parse an optional `completion_policy` field from the
+input and apply it. Add to `TriggerCreateInput`:
+
+```rust
+#[derive(Deserialize)]
+struct TriggerCreateInput {
+    name: String,
+    prompt: String,
+    cron: String,
+    #[serde(default)]
+    completion_policy: Option<String>,  // NEW
 }
 ```
 
-Handler steps:
-1. Parse and validate `cron` via `TriggerSchedule::cron(cron)?`
-2. Generate `trigger_id` as a new ULID
-3. Compute `next_run_at` via `schedule.next_slot_after(Utc::now())?`
-4. Build `TriggerRecord` with `state: TriggerState::Scheduled`
-5. Call `repository.create_trigger(record).await?`
-6. Return serialized `TriggerRecord`
+In `create_trigger`, replace the hard-coded `Recurring` with:
 
-Output JSON: serialized `TriggerRecord`.
+```rust
+completion_policy: match input.completion_policy.as_deref() {
+    Some("complete_after_first_fire") => TriggerCompletionPolicy::CompleteAfterFirstFire,
+    _ => TriggerCompletionPolicy::Recurring,  // default
+},
+```
+
+### Step 3.2b — Extend `trigger_output()` to emit `prompt` and `completion_policy`
+
+The composition adapter parses the capability output JSON into
+`RawAutomationRecord`. The detail panel and edit form require `prompt` and
+`completion_policy`. Extend `trigger_output()` (line 312) to include them:
+
+```rust
+fn trigger_output(record: &TriggerRecord) -> Value {
+    json!({
+        "trigger_id": record.trigger_id.to_string(),
+        "agent_id": record.agent_id.as_ref().map(|id| id.as_str()),
+        "project_id": record.project_id.as_ref().map(|id| id.as_str()),
+        "name": record.name,
+        "prompt": record.prompt,                      // ADD
+        "completion_policy": record.completion_policy, // ADD
+        "source": record.source,
+        "schedule": record.schedule,
+        "state": record.state,
+        "next_run_at": record.next_run_at,
+        "last_run_at": record.last_run_at,
+        "last_status": record.last_status,
+        "is_active": record.has_active_fire(),
+        "created_at": record.created_at,
+    })
+}
+```
+
+This change also fixes the `list_automations` response to include `prompt` and
+`completion_policy` for the detail panel. Update `RawAutomationRecord` in
+`automation.rs` to accept these new fields:
+
+```rust
+#[derive(Debug, Deserialize)]
+struct RawAutomationRecord {
+    // ... existing fields ...
+    #[serde(default)]
+    prompt: Option<String>,          // ADD
+    #[serde(default)]
+    completion_policy: Option<String>, // ADD — raw string from JSON
+}
+```
+
+And propagate them through `automation_info()`:
+
+```rust
+fn automation_info(record: RawAutomationRecord) -> Option<RebornAutomationInfo> {
+    Some(RebornAutomationInfo {
+        // ... existing fields ...
+        prompt: record.prompt,
+        completion_policy: record.completion_policy,
+    })
+}
+```
 
 ### Step 3.3 — Capability handler: `triggers.get`
 
@@ -305,23 +455,43 @@ Handler:
 
 ### Step 3.5 — Capability handler: `triggers.set_state`
 
-Input: `{ "tenant_id": "...", "trigger_id": "...", "state": "paused"|"scheduled" }`
+Input: `{ "trigger_id": "...", "state": "paused"|"scheduled" }`
+
+`tenant_id`, `creator_user_id`, `agent_id`, `project_id` come from
+`request.scope` (the `ResourceScope`), never from the JSON input.
 
 Only allows `paused` and `scheduled` transitions from product code (not
-`completed`). `completed` is set only by the poller worker.
-
-Handler: calls `repository.set_trigger_state(...)`.
-
-### Step 3.6 — Capability handler: `triggers.delete`
-
-Input: `{ "tenant_id": "...", "trigger_id": "..." }`
+`completed`). `completed` is set only by the poller worker. Reject any other
+value with `input_error()`.
 
 Handler:
-1. If trigger has `active_fire_slot` (currently firing), return error
-   `{ "error": "trigger_has_active_fire" }` — do not delete while a run is in
-   flight. Caller should pause first then retry.
-2. Call `repository.delete_trigger(tenant_id, trigger_id).await?`
-3. Return `{ "deleted": true|false }`
+1. Parse `trigger_id` and `state` from input.
+2. Validate `state` ∈ `{"paused", "scheduled"}`.
+3. Call `repository.set_trigger_state(scope.tenant_id, trigger_id, state).await?`
+   (or `get_trigger` + mutate + `upsert_trigger` if `set_trigger_state` was not
+   added as a dedicated method — see Step 2.4).
+4. If `None` returned (not found), emit `{ "found": false }`.
+5. Return `{ "found": true, "trigger": trigger_output(&record) }`.
+
+### Step 3.6 — Capability handler: `triggers.delete` (uses `remove_scoped_trigger`)
+
+**Important:** The existing `remove_trigger` function (lines 289–310) already
+uses `remove_scoped_trigger` to enforce caller-scope. The new `delete`
+capability must do the same — use `remove_scoped_trigger`, not a bare
+`remove_trigger`.
+
+Input: `{ "trigger_id": "..." }` (scope fields come from `request.scope`)
+
+Handler:
+1. Parse `trigger_id`.
+2. Load trigger via `repository.get_trigger(scope.tenant_id, trigger_id)`.
+3. If `None`, return `{ "removed": false }`.
+4. If trigger has `active_fire_slot` (`has_active_fire()` returns true), return
+   error `{ "error": "trigger_has_active_fire" }` — do not delete while a run
+   is in flight. Caller should pause first then retry.
+5. Call `repository.remove_scoped_trigger(scope.tenant_id, scope.user_id,
+   scope.agent_id, scope.project_id, trigger_id).await?`
+6. Return `{ "removed": removed.is_some() }`
 
 ### Step 3.7 — Capability handler: `triggers.fire_now`
 
@@ -359,11 +529,21 @@ capability-handler registration pattern.
 
 ---
 
-## 4. Composition Adapter — `automation.rs`
+## 4. Composition Adapter + `AutomationProductFacade` Trait
 
-**File:** `crates/brassclaw_reborn_composition/src/automation.rs`
+**Trait location:** `crates/brassclaw_product_workflow/src/reborn_services.rs`
+(lines 408–434 — `AutomationProductFacade` trait + `UnsupportedAutomationProductFacade`).
 
-Add new public(crate) methods to `RebornWebuiAutomationFacade`.
+**Impl location:** `crates/brassclaw_reborn_composition/src/automation.rs`
+(`RebornWebuiAutomationFacade` implements the trait).
+
+**All six new methods must be added to the `AutomationProductFacade` trait first.**
+Then implemented on `RebornWebuiAutomationFacade`. Then stubbed on
+`UnsupportedAutomationProductFacade` with `automation_unavailable()` (or a
+similar error sentinel already used in that file).
+
+The `invoke_trigger` helper (lines 55–116 in `automation.rs`) is the shared
+entry point — pass the appropriate new capability ID constant to it.
 
 ### Step 4.1 — `create_automation`
 
@@ -1069,8 +1249,10 @@ Add action buttons per row (pause/resume, fire now, open detail):
 
 ```javascript
 // Each row gets:
-// - [Pause] or [Resume] button depending on is_active
-// - [Run now] button (disabled if automation has active_fire)
+// - [Pause] or [Resume] button depending on automation.is_active
+//   (field name: `is_active` — set to true when active_fire_slot is non-null)
+// - [Run now] button — disabled when automation.is_active is true (run in flight)
+//   or when state === "paused" (409 state_conflict from backend)
 // - [→] / row click → open detail panel
 ```
 
@@ -1521,10 +1703,10 @@ Execute in strict dependency order:
 
 | Phase | Work | Crate(s) |
 |---|---|---|
-| **P1** | Audit + fill `TriggerRepository` (get, create, update, delete, set_state, list_runs); add `TriggerUpdatePatch`; add `TriggerRunRecord` | `brassclaw_triggers` |
-| **P2** | Add 7 new capability ID constants + handlers in host_runtime | `brassclaw_host_runtime` |
-| **P3** | Extend `RebornWebuiAutomationFacade` with 7 new methods | `brassclaw_reborn_composition` |
-| **P4** | Add new DTO types; add 7 new trait methods (default unavailable) to `RebornServicesApi`; implement concretely on `RebornServices` | `brassclaw_product_workflow` |
+| **P1** | Add `update_trigger` + `list_trigger_runs` (+ optional `set_trigger_state`) to `TriggerRepository` trait and postgres impl; add `TriggerUpdatePatch` struct; add `TriggerRunRecord` struct. `upsert_trigger`, `get_trigger`, `remove_scoped_trigger` already exist. | `brassclaw_triggers` |
+| **P2** | (a) Patch existing `TriggerCreateInput` + `create_trigger` for `completion_policy`; extend `trigger_output()` to emit `prompt` + `completion_policy`. (b) Add 5 new capability constants (`builtin.trigger_get/update/set_state/fire_now/run_history`) + their handler functions; register in `insert_trigger_handlers`; add manifests. | `brassclaw_host_runtime` |
+| **P3** | Add 6 new methods to `AutomationProductFacade` trait; stub them on `UnsupportedAutomationProductFacade`; implement on `RebornWebuiAutomationFacade`; extend `RawAutomationRecord` + `automation_info()` for `prompt`/`completion_policy` fields. | `brassclaw_product_workflow` + `brassclaw_reborn_composition` |
+| **P4** | Add new DTO types (8 structs/enums); add 7 new trait methods (default 501) to `RebornServicesApi`; implement concretely on `RebornServices`; extend `RebornAutomationInfo` with `prompt` + `completion_policy` fields. | `brassclaw_product_workflow` |
 | **P5** | Add route constants + descriptor functions; add routes to router; add handler functions; update descriptor contract test | `brassclaw_webui_v2` |
 | **P6** | Add 8 new API client functions to `api.js` | `brassclaw_webui_v2_static` |
 | **P7** | Extend `useAutomations.js` with mutations; add `useAutomationDetail.js` | `brassclaw_webui_v2_static` |
@@ -1542,12 +1724,11 @@ Execute in strict dependency order:
 
 ## 18. Open Questions to Resolve Before P1
 
-1. **`get_trigger` / `create_trigger` / `delete_trigger`** — do they already
-   exist in `TriggerRepository`? Run:
-   ```bash
-   grep -n "async fn " crates/brassclaw_triggers/src/lib.rs | head -60
-   ```
-   If any are present under different names (e.g. `upsert_trigger`), reuse them.
+1. **Repository method names — RESOLVED.** `upsert_trigger`, `get_trigger`, and
+   `remove_scoped_trigger` all exist in `TriggerRepository` (lines 609, 611, 640
+   of `brassclaw_triggers/src/lib.rs`). Only `update_trigger` and
+   `list_trigger_runs` are genuinely new. `set_trigger_state` is optional but
+   recommended for atomicity.
 
 2. **`active_run_ref` as run-history link** — verify that the trusted-submit
    path stores the `trigger_id` somewhere on the run record (in run `metadata`
@@ -1577,12 +1758,12 @@ Execute in strict dependency order:
 
 | File | Change type |
 |---|---|
-| `crates/brassclaw_triggers/src/lib.rs` | Add `TriggerUpdatePatch`, `TriggerRunRecord`; extend `TriggerRepository` trait |
-| `crates/brassclaw_triggers/src/postgres.rs` | Implement new repository methods |
-| `crates/brassclaw_host_runtime/first_party_tools/<triggers>.rs` | Add 7 capability constants + handlers |
-| `crates/brassclaw_reborn_composition/src/automation.rs` | Add 7 composition methods + `CreateAutomationInput` / `UpdateAutomationInput` structs |
-| `crates/brassclaw_product_workflow/src/reborn_services/types.rs` | Add 8 request/response DTO types; extend `RebornAutomationInfo` |
-| `crates/brassclaw_product_workflow/src/reborn_services.rs` | Add 7 trait methods (default + concrete impl) |
+| `crates/brassclaw_triggers/src/lib.rs` | Add `TriggerUpdatePatch`, `TriggerRunRecord`; add `update_trigger` + `list_trigger_runs` (+ optional `set_trigger_state`) to `TriggerRepository` trait |
+| `crates/brassclaw_triggers/src/postgres.rs` | Implement `update_trigger`, `list_trigger_runs`, optionally `set_trigger_state` |
+| `crates/brassclaw_host_runtime/src/first_party_tools/trigger_management.rs` | Extend `TriggerCreateInput` + `create_trigger` for `completion_policy`; extend `trigger_output()` for `prompt`/`completion_policy`; add 5 new capability constants + handler branches + manifests |
+| `crates/brassclaw_reborn_composition/src/automation.rs` | Implement 6 new methods on `RebornWebuiAutomationFacade`; extend `RawAutomationRecord` + `automation_info()` for `prompt`/`completion_policy`; add `CreateAutomationInput` / `UpdateAutomationInput` structs |
+| `crates/brassclaw_product_workflow/src/reborn_services.rs` | Add 6 new methods to `AutomationProductFacade` trait; stub on `UnsupportedAutomationProductFacade`; add 7 new `RebornServicesApi` trait methods (default 501 + concrete impl on `RebornServices`) |
+| `crates/brassclaw_product_workflow/src/reborn_services/types.rs` | Add 8 request/response DTO types; extend `RebornAutomationInfo` with `prompt` + `completion_policy` fields |
 | `crates/brassclaw_webui_v2/src/descriptors.rs` | Add 7 route constants + descriptor functions |
 | `crates/brassclaw_webui_v2/src/router.rs` | Mount 5 new route patterns |
 | `crates/brassclaw_webui_v2/src/handlers.rs` | Add 7 handler functions + `AutomationRunsQuery` struct |
