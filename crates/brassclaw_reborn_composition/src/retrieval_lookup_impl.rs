@@ -230,7 +230,7 @@ fn retrieval_turn_result_for_split(
     rust_items: Vec<brassclaw_engine::memory::ComponentItem>,
     orchestrator_items: Vec<brassclaw_engine::memory::ComponentItem>,
     routing: brassclaw_engine::memory::TurnRoutingSignals,
-    instruction: Option<brassclaw_engine::memory::instruction_builder::BuildInstruction>,
+    instruction: Option<Box<brassclaw_engine::memory::instruction_builder::BuildInstruction>>,
 ) -> Result<RetrievalTurnResult, RetrievalLookupError> {
     let rust_json = serde_json::to_value(&rust_items)
         .map_err(|error| RetrievalLookupError::Decode(error.to_string()))?;
@@ -678,8 +678,9 @@ mod tests {
             llm_call_required: false,
             wilson_lower: 0.82,
             tier0_eligible: true,
+            recipe_id: None,
         };
-        let instruction = Some(
+        let instruction = Some(Box::new(
             brassclaw_engine::memory::instruction_builder::BuildInstruction {
                 llm_call_required: false,
                 variable_patterns: Vec::new(),
@@ -687,7 +688,7 @@ mod tests {
                 rust_steps: Vec::new(),
                 orchestrator_steps: Vec::new(),
             },
-        );
+        ));
         let result = retrieval_turn_result_for_split(rust_items, orch_items, routing, instruction)
             .expect("map split");
 

@@ -134,6 +134,14 @@ pub struct TurnRoutingSignals {
     /// validation`, so the `has_validation` guard is subsumed by the
     /// `validation_status = 'validated'` requirement (Q2→A).
     pub tier0_eligible: bool,
+    /// The matched Recipe component UUID (class 21) as a string. `Some`
+    /// whenever this `SplitResult` came from `fetch_recipe_split_result`
+    /// (both construction sites there receive the `recipe_id` param), so
+    /// Tier-0 consumers can stamp it onto `recipe_tier_zero_*` events and
+    /// the engine can surface it through the pkr dict + `OrchestratorResult.
+    /// tier_zero_outcome` (v3 Phase H.4). `None` on non-recipe paths and in
+    /// test fixtures (v3 Phase H4.3).
+    pub recipe_id: Option<String>,
 }
 
 /// Result of an intent-driven `fetch_for_turn` call.
@@ -179,7 +187,15 @@ pub enum FetchForTurnResult {
         /// Tier-0 tool invocations without re-compiling. `None` when
         /// `build_instruction` soft-failed (§7.4: empty channels +
         /// `llm_call_required = true`). Upgrade per subplan §7.5.
-        instruction: Option<crate::memory::instruction_builder::BuildInstruction>,
+        /// Boxed to keep `FetchForTurnResult::SplitResult` under clippy's
+        /// `large_enum_variant` threshold — `BuildInstruction` carries four
+        /// `Vec`s (~96 bytes inline) and, together with the routing signals
+        /// added in v3 Phase H.4, would otherwise dominate the whole enum's
+        /// size. `FetchForTurnResult` is a one-shot transient return from
+        /// `fetch_for_turn` (built once per turn, never bulk-stored), so the
+        /// single heap indirection has no throughput cost. Matches the
+        /// `ThreadOutcome::GatePaused.paused_lease` boxing precedent.
+        instruction: Option<Box<crate::memory::instruction_builder::BuildInstruction>>,
     },
 }
 
@@ -837,6 +853,7 @@ impl PostgresSource {
                     llm_call_required: true,
                     wilson_lower,
                     tier0_eligible: false,
+                    recipe_id: Some(recipe_id.to_string()),
                 },
                 instruction: None,
             });
@@ -923,8 +940,9 @@ impl PostgresSource {
                 llm_call_required,
                 wilson_lower,
                 tier0_eligible,
+                recipe_id: Some(recipe_id.to_string()),
             },
-            instruction: Some(instruction),
+            instruction: Some(Box::new(instruction)),
         })
     }
 }
@@ -1622,5 +1640,47 @@ mod tests {
         assert_eq!(class_code_to_table(51), None);
         assert_eq!(class_code_to_table(-1), None);
         assert_eq!(class_code_to_table(999), None);
+    }
+
+    #[test]
+    fn turn_routing_signals_recipe_id_carried_through_split_result() {
+        // v3 Phase H4.3: a SplitResult built on the recipe path carries
+        // `recipe_id == Some(uuid)` so the Tier-0 consumers downstream of
+        // this struct can read it: H4.4 surfaces it into the pkr dict,
+        // H4.5 stamps it onto `recipe_tier_zero_*` events, and H4.6 builds
+        // `OrchestratorResult.tier_zero_outcome` from it. Both
+        // `fetch_recipe_split_result` construction sites set
+        // `Some(recipe_id.to_string())`; non-recipe paths + fixtures use
+        // `None`. The DB-backed assertion that the recipe sites actually
+        // populate `Some` is the Phase-H.5 composition integration test;
+        // this unit test locks in the field's presence + accessibility
+        // (guards against accidental removal / silent drop).
+        let recipe_uuid = uuid::Uuid::nil();
+        let routing = TurnRoutingSignals {
+            override_prompt_creation: false,
+            matched_component_ids: Vec::new(),
+            variant_label: "default".to_string(),
+            step_link: "recipe#greet".to_string(),
+            llm_call_required: false,
+            wilson_lower: 0.85,
+            tier0_eligible: true,
+            recipe_id: Some(recipe_uuid.to_string()),
+        };
+        let split = FetchForTurnResult::SplitResult {
+            rust_items: Vec::new(),
+            orchestrator_items: Vec::new(),
+            routing,
+            instruction: None,
+        };
+        match split {
+            FetchForTurnResult::SplitResult { routing, .. } => {
+                assert_eq!(
+                    routing.recipe_id.as_deref(),
+                    Some(recipe_uuid.to_string()).as_deref(),
+                    "recipe_id must be carried through the SplitResult variant"
+                );
+            }
+            _ => panic!("expected SplitResult"),
+        }
     }
 }

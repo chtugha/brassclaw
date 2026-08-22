@@ -9042,6 +9042,7 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
             llm_call_required: true,
             wilson_lower: 0.0,
             tier0_eligible: false,
+            recipe_id: None,
         };
         FetchForTurnResult::SplitResult {
             rust_items: vec![toolskill],
