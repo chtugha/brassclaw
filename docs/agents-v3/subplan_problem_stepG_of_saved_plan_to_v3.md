@@ -411,6 +411,22 @@ composition tests):**
   documented here. Open: decide in a later Phase G cleanup substep whether
   to retire `select_skills` + its test (they are dead production code) or
   keep them as a helper-library artifact. Not blocking G.6.
-- G.6 — pending.
+- G.6 — Done. Migrated `call_action` (`_execute_action_steps`) to the v3
+  component store: prefer step `action_id` (UUID) via
+  `__fetch_component__(id, 16)`, else name lookup via
+  `__resolve_component_by_name__(name, 16)` (§0.9 Option B); on resolution
+  failure return `{error, unresolvable_action: True}`; after the nested
+  `_execute_action_steps` call, propagate an upstream `unresolvable_action`
+  sub_result back up the chain. `execute_action_procedure`: before
+  `if "error" in result:`, convert a bubbled `unresolvable_action` marker
+  into `complete_result(state, "fall_back_to_tier2", extra={reason})` —
+  run_loop step-0 (G.5) checks `outcome == "fall_back_to_tier2"` and falls
+  through to Tier-2. Removes the last production-Python `__retrieve_docs__`
+  usage (host fn stays registered until Phase K.3 / Answer 2). call_action /
+  execute_action_procedure tests land in G.8. Verified: ast.parse clean;
+  fmt clean; clippy clean both configs; 678 default / 689 skills-db lib
+  tests pass (0 regressions; the 96 orchestrator helper tests compile
+  `_execute_action_steps` + `execute_action_procedure` via Monty).
+  Committed+pushed `84518fb4`.
 - G.7 — pending.
 - G.8 — pending.
