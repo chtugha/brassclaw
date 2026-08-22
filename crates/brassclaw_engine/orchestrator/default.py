@@ -1060,71 +1060,50 @@ def run_loop(context, goal, actions, state, config):
         # (InstructionBundleBuilder priority 2). The orchestrator registers
         # which skills are active for tracking and event emission only.
         if step == 0:
-            # ── Prior-knowledge assembly (§3.13/§3.14, Phase 8 Step 8.1) ─
+            # ── Prior-knowledge assembly (§0.9 v3 flow, Phase G.5) ──────
+            # Single __assemble_prior_knowledge__ call; the Rust assembler
+            # (Phase F) surfaces action_short_circuit / disambiguation /
+            # override / orchestrator_content / active_skills in the pkr dict.
+            # tier_zero dispatch is deferred to Phase H (Q-G1).
             token_budget = config.get("prior_knowledge_token_budget", 100000) if isinstance(config, dict) else 100000
             pkr = __assemble_prior_knowledge__(goal, token_budget, "02")
+            active_skills = []
+            matched_ids = []
             if isinstance(pkr, dict):
-                if pkr.get("override_prompt_creation"):
-                    # Solution Override — formatted PKC becomes the stable KV-cache
-                    # base. Raw pkr["content"] is for Rust dispatch only.
-                    working_messages = [{"role": "User", "content": pkr.get("formatted_content", "")}]
-                elif pkr.get("formatted_content"):
-                    # Normal Assembly — inject formatted prior knowledge at N-1.
-                    insert_as_user_message_at_n_minus_1(working_messages, pkr["formatted_content"])
-                # Always inject volatile thread context at N-1, regardless of path.
-                # Under Override this is the only non-PKC message the model sees.
-                insert_volatile_context_at_n_minus_1(working_messages)
-
-            # ── Action short-circuit (class_code 16, §3.11) ──────────────
-            # Pre-Phase-5 fallback: __assemble_prior_knowledge__ is a stub that
-            # always returns override_prompt_creation=false and does NOT surface
-            # Action components via matched_component_ids.  Until Phase 5 wires
-            # the real intent-driven assembly, we call __retrieve_docs__ here as
-            # a separate pass to detect Actions (class_code 16) and short-circuit
-            # before calling __llm_complete__.  Phase 5 removes this second call:
-            # pkr["matched_component_ids"] will contain Action IDs directly.
-            docs = __retrieve_docs__(goal, 5)
-            if docs:
-                for doc in docs:
-                    metadata = doc.get("metadata", {}) if isinstance(doc, dict) else {}
-                    if metadata.get("class_code") == 16:
-                        __emit_event__("action_started", action_name=metadata.get("name", ""))
-                        __transition_to__("running", "action execution")
-                        action_result = execute_action_procedure(doc, goal, state)
-                        __transition_to__("completed", "action completed")
-                        return action_result
-            # ─────────────────────────────────────────────────────────────
-
-            # Register active skills for tracking / event emission.
-            all_skills = __list_skills__()
-            active_skills = select_skills(all_skills, goal, max_candidates=3, max_tokens=SELECT_SKILLS_DEFAULT_MAX_TOKENS)
-            if active_skills:
-                # Build the payload without list-comprehensions-with-if (Monty-safe §conventions).
-                active_skill_payload = []
-                for s in active_skills:
-                    s_meta = s.get("metadata", {})
-                    snippet_names = []
-                    for sn in s_meta.get("code_snippets", []):
-                        sn_name = sn.get("name", "")
-                        if sn_name:
-                            snippet_names.append(sn_name)
-                    active_skill_payload.append({
-                        "doc_id": s.get("doc_id", ""),
-                        "name": s_meta.get("name", "?"),
-                        "version": s_meta.get("version", 1),
-                        "snippet_names": snippet_names,
-                        "force_activated": False,
-                    })
-                __set_active_skills__(active_skill_payload)
-                # Emit skill activation event for CLI/gateway display.
-                skill_names = ",".join(s.get("metadata", {}).get("name", "?") for s in active_skills)
-                __emit_event__("skill_activated", skill_names=skill_names)
-                # Store active skill IDs in state for tracking.
-                state["active_skill_ids"] = [s.get("doc_id", "") for s in active_skills]
-                state["skill_snippet_names"] = []
-                for s in active_skills:
-                    for sn in s.get("metadata", {}).get("code_snippets", []):
-                        state["skill_snippet_names"].append(sn.get("name", ""))
+                matched_ids = pkr.get("matched_component_ids", [])
+                active_skills = pkr.get("active_skills", [])
+                if pkr.get("action_short_circuit"):
+                    __emit_event__("action_started", action_name=pkr.get("action_name", ""))
+                    __transition_to__("running", "action execution")
+                    action_doc = __fetch_component__(pkr.get("action_component_id", ""), 16)
+                    if isinstance(action_doc, dict):
+                        action_result = execute_action_procedure(action_doc, goal, state)
+                        if action_result.get("outcome") == "fall_back_to_tier2":
+                            __emit_event__("action_unresolved", action_name=pkr.get("action_name", ""))
+                            __transition_to__("prompting", "action unresolved -> tier-2")
+                            # fall through to Tier-2: the elif override/orchestrator_content
+                            # branches below are skipped (this if-branch was taken), so
+                            # __llm_complete__ runs with un-augmented working_messages.
+                        else:
+                            __transition_to__("completed", "action completed")
+                            return action_result
+                    else:
+                        __emit_event__("action_unresolved", action_name=pkr.get("action_name", ""))
+                        __transition_to__("prompting", "action not fetched -> tier-2")
+                        # fall through to Tier-2 (un-augmented __llm_complete__).
+                elif pkr.get("disambiguation"):
+                    return handle_disambiguation(pkr.get("candidates", []), state)
+                elif pkr.get("override_prompt_creation"):
+                    working_messages = [{"role": "User",
+                                          "content": pkr.get("orchestrator_content", pkr.get("formatted_content", ""))}]
+                elif pkr.get("orchestrator_content"):
+                    insert_as_user_message_at_n_minus_1(working_messages, pkr["orchestrator_content"])
+            # Outside `if isinstance(pkr, dict):` — always run (baseline preserved
+            # when pkr is not a dict, e.g. legacy non-dict return). Volatile-context
+            # injection is currently a no-op (Phase 5.2b wires it); the call site
+            # is positioned so the stable KV-cache prefix is reusable across turns.
+            insert_volatile_context_at_n_minus_1(working_messages)
+            _set_active_skills_from_matched_ids(matched_ids, state, active_skills)
 
         # 3.4 Post-assembly reduction pipeline.
         # If the assembled prompt is over budget, fetch the per-user/user
