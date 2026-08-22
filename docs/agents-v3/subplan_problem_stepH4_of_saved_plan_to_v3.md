@@ -182,8 +182,8 @@ resume the parent Phase H subplan at H.5.
 
 ## 4. Verification + status (updated as steps complete)
 
-- H4.1 — Pending.
-- H4.2 — Pending.
+- H4.1 — Done. Added `RecipeTierZeroStarted`/`RecipeTierZeroSucceeded`/`RecipeTierZeroFailed` `EventKind` variants before `#[serde(other)] Unknown` (carrying `recipe_id`+`recipe_name`, +`message` on Failed). Verified all existing `EventKind` matches use wildcard arms (engine `mission.rs`/`loop_engine.rs`/`trace.rs`/`thread.rs`; downstream `brassclaw_common` is a parallel wire enum + `brassclaw_turns` uses its own `TurnEventKind` — none break). Serde round-trip unit test added. clippy clean both default + `skills-db`; commit `b84a6197`.
+- H4.2 — Done. Added `handle_emit_event` (`orchestrator.rs:2365`) match arms for `recipe_tier_zero_started`/`recipe_tier_zero_succeeded`/`recipe_tier_zero_failed` extracting `recipe_id` (`recipe_id` kwarg), `recipe_name` (`recipe` kwarg), `message` (`message` kwarg, failed only) via `extract_string_kwarg`. The events are now pushed to `thread.events` + broadcast on `event_tx` (the fallthrough previously DROPPED them). The `run_python_step0`/`run_python_tier0_channel` harness `__emit_event__` mocks capture all events via `kwargs_to_json` regardless of name, so no harness change was needed. Added `handle_emit_event_dispatches_recipe_tier_zero_events` unit test. clippy clean both configs; commit pending.
 - H4.3 — Pending.
 - H4.4 — Pending.
 - H4.5 — Pending.

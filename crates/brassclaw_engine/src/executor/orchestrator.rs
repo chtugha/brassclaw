@@ -2445,6 +2445,42 @@ fn handle_emit_event(
                 budget_tokens: budget,
             }
         }
+        // ── Recipe Tier-0 execution (v3 Phase H.4) ───────────────
+        // `default.py`'s step-0 tier_zero branch emits these (H.3/H4.5).
+        // Before H4.2 the fallthrough below DROPPED them (`debug!` + return,
+        // NOT pushed to `thread.events`), so a Tier-0 run left no record and
+        // the composition listener (H4.7) could never see the outcome. Now
+        // they are typed `EventKind` variants pushed to `thread.events` +
+        // broadcast on `event_tx`. `recipe_id` rides the `recipe_id` kwarg
+        // (H4.5 adds it); `recipe_name` rides the `recipe` kwarg (the name
+        // the H.3 branch already passes as `recipe=...`); `message` (failed
+        // only) rides the `message` kwarg.
+        "recipe_tier_zero_started" => {
+            let recipe_id = extract_string_kwarg(kwargs, "recipe_id").unwrap_or_default();
+            let recipe_name = extract_string_kwarg(kwargs, "recipe").unwrap_or_default();
+            EventKind::RecipeTierZeroStarted {
+                recipe_id,
+                recipe_name,
+            }
+        }
+        "recipe_tier_zero_succeeded" => {
+            let recipe_id = extract_string_kwarg(kwargs, "recipe_id").unwrap_or_default();
+            let recipe_name = extract_string_kwarg(kwargs, "recipe").unwrap_or_default();
+            EventKind::RecipeTierZeroSucceeded {
+                recipe_id,
+                recipe_name,
+            }
+        }
+        "recipe_tier_zero_failed" => {
+            let recipe_id = extract_string_kwarg(kwargs, "recipe_id").unwrap_or_default();
+            let recipe_name = extract_string_kwarg(kwargs, "recipe").unwrap_or_default();
+            let message = extract_string_kwarg(kwargs, "message").unwrap_or_default();
+            EventKind::RecipeTierZeroFailed {
+                recipe_id,
+                recipe_name,
+                message,
+            }
+        }
         _ => {
             debug!(kind = %kind_str, "orchestrator: unknown event kind, skipping");
             return ExtFunctionResult::Return(MontyObject::None);
@@ -7847,6 +7883,93 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
             )
         });
         assert!(over, "expected PromptOverBudget event on thread");
+    }
+
+    #[test]
+    fn handle_emit_event_dispatches_recipe_tier_zero_events() {
+        // v3 Phase H4.2: the three Tier-0 events emitted by `default.py`'s
+        // step-0 tier_zero branch must be recorded as typed `EventKind`
+        // variants on `thread.events` (before H4.2 the fallthrough DROPPED
+        // them). `recipe_id` rides the `recipe_id` kwarg, `recipe_name`
+        // rides the `recipe` kwarg, and `message` (failed only) rides the
+        // `message` kwarg — matching the H4.5 `default.py` emit shapes.
+        let mut thread = Thread::new(
+            "goal",
+            crate::types::thread::ThreadType::Foreground,
+            crate::types::project::ProjectId::new(),
+            "user",
+            crate::types::thread::ThreadConfig::default(),
+        );
+        thread.transition_to(ThreadState::Running, None).unwrap();
+
+        let recipe_id = "11111111-1111-1111-1111-111111111111";
+        let recipe_name = "greet-recipe";
+
+        // started
+        let args = vec![MontyObject::String("recipe_tier_zero_started".into())];
+        let kwargs = vec![
+            (
+                MontyObject::String("recipe".into()),
+                MontyObject::String(recipe_name.into()),
+            ),
+            (
+                MontyObject::String("recipe_id".into()),
+                MontyObject::String(recipe_id.into()),
+            ),
+        ];
+        handle_emit_event(&args, &kwargs, &mut thread, None);
+
+        // succeeded
+        let args = vec![MontyObject::String("recipe_tier_zero_succeeded".into())];
+        handle_emit_event(&args, &kwargs, &mut thread, None);
+
+        // failed (adds a `message` kwarg)
+        let args = vec![MontyObject::String("recipe_tier_zero_failed".into())];
+        let mut failed_kwargs = kwargs.clone();
+        failed_kwargs.push((
+            MontyObject::String("message".into()),
+            MontyObject::String("step raised: boom".into()),
+        ));
+        handle_emit_event(&args, &failed_kwargs, &mut thread, None);
+
+        let started = thread.events.iter().any(|e| {
+            matches!(
+                &e.kind,
+                EventKind::RecipeTierZeroStarted {
+                    recipe_id: id,
+                    recipe_name: name
+                } if id.as_str() == recipe_id && name == recipe_name
+            )
+        });
+        assert!(started, "expected RecipeTierZeroStarted event on thread");
+
+        let succeeded = thread.events.iter().any(|e| {
+            matches!(
+                &e.kind,
+                EventKind::RecipeTierZeroSucceeded {
+                    recipe_id: id,
+                    recipe_name: name
+                } if id.as_str() == recipe_id && name == recipe_name
+            )
+        });
+        assert!(
+            succeeded,
+            "expected RecipeTierZeroSucceeded event on thread"
+        );
+
+        let failed = thread.events.iter().any(|e| {
+            matches!(
+                &e.kind,
+                EventKind::RecipeTierZeroFailed {
+                    recipe_id: id,
+                    recipe_name: name,
+                    message
+                } if id.as_str() == recipe_id
+                    && name == recipe_name
+                    && message == "step raised: boom"
+            )
+        });
+        assert!(failed, "expected RecipeTierZeroFailed event on thread");
     }
 
     // ── Reduction-rules cache test serialization ───────────────────────────
