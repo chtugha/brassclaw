@@ -275,3 +275,92 @@ async fn lookup_component_class(
   `ActionShortCircuit` to the turns layer with real routing booleans (replacing
   E.0's conservative defaults) — Phase H's `LoopOrchestratorPort` consumer can
   then dispatch Tier-0/Tier-1.
+
+---
+
+## 6. Upgrade — Phase M.4/M.5 template-extraction/substitution front-loaded into E.3
+
+**Why this is here (task rule: "do not blindly remove upgrades; document,
+repair, complete or leave them").** E.4 (`PostgresSource::fetch_for_turn`) must
+substitute `{{vars.name}}` into `orchestrator_content` + ToolBinding `params`
+at assembly time (§0.20.3, §0.4.1). The plan originally scheduled the slot
+extraction as `extract_template_slots` in **Phase M.4** and the
+`variable_patterns` refinement as **Phase M.5**, with no substitution-helper
+signature specified at all (§0.20.3 only describes the behaviour: "the IBS
+applies `{{vars.name}}` → literal value substitution"). Phase E runs before
+Phase M, so Phase E cannot call a Phase-M function that does not yet exist.
+The clean resolution (accepted as an upgrade, not a deletion of Phase M): E.3
+implements the pure helpers NOW in the IBS home
+(`crates/brassclaw_engine/src/memory/instruction_builder.rs`), and Phase M
+later re-references them rather than re-creating them.
+
+**What E.3 adds (all pure, synchronous, no DB, no feature-gate — they are IBS
+builder helpers, compiled in both default and `skills-db` configs):**
+
+- `pub fn extract_template_slots(template: &str, user_text: &str) -> Vec<(String, String)>`
+  — Phase M.4 canonical signature + algorithm verbatim. Splits `template` on
+  `%` into literal segments; prefix anchors the start (found left), suffix
+  anchors the end (found right), middle separators are searched left-to-right
+  within `[cursor, suffix_start]`; each gap is a positional slot
+  (`slot0`, `slot1`, …). Empty vec when no `%`; partial vec when a middle
+  separator is missing (remaining slots dropped).
+- `pub fn capture_variables(template, user_text, variable_patterns: &[VariablePattern]) -> Vec<(String, String)>`
+  — Phase M.5 refinement on top of `extract_template_slots`. Each
+  `variable_patterns` entry is paired with its slot **by order** (the
+  `VariablePattern` struct has no slot-index field — order is the only
+  field-less mapping, confirmed against M.5). The entry's regex is applied to
+  the auto-extracted value (NOT the full `user_text`); on a match the slot is
+  renamed to the entry's semantic `name` and, if the regex captures a named
+  group, that group's value replaces the raw value (transformation). On a
+  regex mismatch OR compile failure the slot is **demoted** — raw value +
+  positional name kept (§0.17.3: "extraction just gets the raw value"; a bad
+  regex is a Q1 authoring error caught at Phase I, not a runtime turn
+  failure). Entries beyond the slot count are ignored (dangling — Q1 warns at
+  Phase I).
+- `pub fn substitute_vars(content: &str, vars: &[(String, String)]) -> String`
+  — §0.20.3 substitution. Replaces each literal `{{vars.name}}` token with its
+  value. Distinct names never overlap. Unresolved placeholders are left intact
+  (Q1 "missing template" authoring error — Phase I — not a runtime
+  fabrication).
+- `pub fn substitute_vars_in_value(value: &serde_json::Value, vars) -> serde_json::Value`
+  — §0.4.1 ToolBinding `params` substitution. Recursively walks
+  Object/Array/String; substitutes string leaves only (keys + non-string
+  leaves pass through unchanged).
+
+**Naming reconciliation.** The E-subplan's E.3 step called these
+`capture_variables` + `substitute_vars` (entry-point names); the plan's Phase
+M.4 called the pure extractor `extract_template_slots`. Both names now coexist:
+`extract_template_slots` (Phase M.4 pure extractor, with the M.4-mandated unit
+tests) is called by `capture_variables` (the E.3/E.4 entry point that adds the
+M.5 refinement). Phase M later references `extract_template_slots` from
+`fetch_for_turn` per its M.4 "Files to modify" — it will find it already
+implemented here (no re-creation). The Phase M.4 `parse_template` helper
+(template → `(prefix, suffix)` for DB indexing) is a DIFFERENT operation and
+stays in `intent_system.rs` as Phase M's own concern (E.3 does not implement
+it).
+
+**Tests added (22, all in `instruction_builder::tests`, both configs):** the 7
+Phase M.4 canonical `extract_template_slots` tests (single-slot, two-slot
+middle-separator, no-slots, trailing-`%`, leading-`%`, adjacent-`%%`
+degenerate, missing-middle-separator partial); 8 `capture_variables` tests
+(empty patterns, named-group transform+rename, validation-only rename,
+validation-failure demote, no-pattern rename, bad-regex demote,
+more-patterns-than-slots, two-slots-two-patterns paired by order); 4
+`substitute_vars` tests (replace-all, distinct-names-no-overlap,
+unresolved-left-intact, no-placeholders); 3 `substitute_vars_in_value` tests
+(string-leaves-only, nested array+object, preserves object keys).
+
+**Verification:** `cargo clippy -p brassclaw_engine --all-targets -- -D
+warnings` clean in BOTH default and `--features skills-db`; `cargo fmt` clean;
+`cargo test -p brassclaw_engine --lib` → 666 (default) / 677 (skills-db), both
++22 vs the E.2 baseline (644 / 655), no regression.
+
+**Open item deferred to E.4 (NOT a Phase-M front-load):** the template
+expression source at `fetch_for_turn` time. `IntentResolution::Match` today
+carries `{ component_id, class_code, step_link, component_name }` — no
+template/prefix/suffix — so `capture_variables`'s `template` argument has no
+source yet. E.4 must decide how `fetch_for_turn` obtains the matched template
+(extend `Match` with `template_prefix`/`template_suffix`, re-query
+`reborn_intent_inputs`, or re-match `RecipeVariant.intent_examples`). That is
+an E.4 design decision to raise with the user before E.4 implementation.
+

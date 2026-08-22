@@ -10,6 +10,7 @@
 //! live in [`crate::types::ibs`]; this module owns the IBS **builder / output**
 //! types only (FIND-NEW-01 / Decision 1).
 
+use regex::{Captures, Match, Regex};
 use serde::{Deserialize, Serialize};
 
 use crate::types::ibs::{ToolBinding, VariablePattern};
@@ -634,6 +635,212 @@ fn resolve_end_index(steps: &[StepEntry], end: &StepBound) -> Result<usize, Stri
     }
 }
 
+// ---------------------------------------------------------------------------
+// Template slot extraction + variable capture + {{vars.name}} substitution
+// (§0.17.3 / §0.20.3 / Phase M.4 + M.5). Front-loaded into the IBS at Phase E
+// because `PostgresSource::fetch_for_turn` (E.4) must substitute {{vars.name}}
+// into orchestrator_content + ToolBinding `params` at assembly time, BEFORE
+// Phase M runs. Phase M later re-references these helpers (the M.4 `parse_
+// template` prefix/suffix split for DB indexing stays in `intent_system.rs`
+// as Phase M's own concern — it is a different operation over the template
+// string). This front-load is an upgrade accepted per the task rule "do not
+// blindly remove upgrades; document, repair, complete or leave them" — see
+// `docs/agents-v3/subplan_problem_stepE_of_saved_plan_to_v3.md` §6.
+// ---------------------------------------------------------------------------
+
+/// Extract positional slot values from a matched template expression
+/// (§0.17.3 / Phase M.4).
+///
+/// Splits `template` on `%` into literal segments, then walks `user_text`:
+/// the prefix segment (`segments[0]`) anchors the start (found from the
+/// left), the suffix segment (`segments[n_slots]`) anchors the end (found
+/// from the right), and each gap between consecutive segments is one slot
+/// value. Middle separators are searched left-to-right within
+/// `[cursor, suffix_start]`. Slots are named positionally — `slot0`,
+/// `slot1`, … in left-to-right order.
+///
+/// Returns an empty vec when the template has no `%` (a literal match with
+/// no slots), and a partial vec when a middle separator cannot be found
+/// (the remaining slots are unextractable — the caller treats them as
+/// missing). Adjacent `%` yield empty slot values; Q1 rejects adjacent slots
+/// at authoring time (Phase I), so a validated recipe never reaches that
+/// path.
+///
+/// Pure, synchronous, no DB. Canonical signature + algorithm per Phase M.4.
+pub fn extract_template_slots(template: &str, user_text: &str) -> Vec<(String, String)> {
+    let segments: Vec<&str> = template.split('%').collect();
+    let n_slots = segments.len().saturating_sub(1);
+    if n_slots == 0 {
+        return Vec::new();
+    }
+
+    // Prefix anchor (segments[0]): found from the left. For a prefix-anchored
+    // template this sits at position 0; for a leading-`%` template segments[0]
+    // is "" and `find("")` yields Some(0).
+    let mut cursor = match user_text.find(segments[0]) {
+        Some(i) => i + segments[0].len(),
+        None => return Vec::new(),
+    };
+
+    // Suffix anchor (segments[n_slots]): found from the right. For a
+    // trailing-`%` template this is "" and the suffix sits at the end.
+    let suffix = segments[n_slots];
+    let suffix_start = if suffix.is_empty() {
+        user_text.len()
+    } else {
+        user_text.rfind(suffix).unwrap_or(user_text.len())
+    };
+
+    let mut result: Vec<(String, String)> = Vec::with_capacity(n_slots);
+    for slot_idx in 0..n_slots {
+        if slot_idx == n_slots - 1 {
+            // Last slot: the gap between the current cursor and the suffix anchor.
+            let value = user_text
+                .get(cursor..suffix_start)
+                .unwrap_or("")
+                .to_string();
+            result.push((format!("slot{slot_idx}"), value));
+        } else {
+            // Middle slot: the gap between the cursor and the next separator
+            // (segments[slot_idx + 1]), searched within [cursor, suffix_start].
+            let sep = segments[slot_idx + 1];
+            let search_end = suffix_start.max(cursor);
+            let region = user_text.get(cursor..search_end).unwrap_or("");
+            match region.find(sep) {
+                Some(rel) => {
+                    let abs = cursor + rel;
+                    result.push((
+                        format!("slot{slot_idx}"),
+                        user_text.get(cursor..abs).unwrap_or("").to_string(),
+                    ));
+                    cursor = abs + sep.len();
+                }
+                None => return result, // separator missing — remaining slots unextractable
+            }
+        }
+    }
+    result
+}
+
+/// Capture template variables from the user text, refining the positional
+/// slots with the matched variant's `variable_patterns` (§0.17.3 / Phase M.5).
+///
+/// Step 1: auto-extract positional slots via [`extract_template_slots`]
+/// (`slot0`, `slot1`, …). Step 2: for each `variable_patterns` entry (paired
+/// with the slot BY ORDER), apply its regex to the auto-extracted value —
+/// NOT to the full `user_text`. When the regex matches, the slot is RENAMED
+/// to the entry's semantic `name`; if the regex captures a named group, that
+/// group's value replaces the raw value (transformation), otherwise the raw
+/// value is kept (validation only). When the regex does NOT match, or fails
+/// to compile, the slot is DEMOTED — the raw value + positional name are kept
+/// (§0.17.3: "extraction just gets the raw value"; a bad regex is a Q1
+/// authoring error caught at Phase I, not a runtime turn failure). Entries
+/// beyond the slot count are ignored (dangling — Q1 warns at Phase I).
+///
+/// Pure, synchronous, no DB. The E.4 `fetch_for_turn` caller feeds the
+/// returned `(name, value)` pairs to [`substitute_vars`] /
+/// [`substitute_vars_in_value`].
+pub fn capture_variables(
+    template: &str,
+    user_text: &str,
+    variable_patterns: &[VariablePattern],
+) -> Vec<(String, String)> {
+    let mut slots = extract_template_slots(template, user_text);
+    for (idx, vp) in variable_patterns.iter().enumerate() {
+        let Some(slot) = slots.get_mut(idx) else {
+            break; // more patterns than slots — dangling (Q1 warns at Phase I)
+        };
+        let Some(pattern) = &vp.pattern else {
+            // No regex: rename to the semantic name only (no validation/transform).
+            slot.0 = vp.name.clone();
+            continue;
+        };
+        let Ok(re) = Regex::new(pattern) else {
+            // Bad regex: demote — keep raw value + positional name (Q1 catches at Phase I).
+            continue;
+        };
+        let Some(caps) = re.captures(&slot.1) else {
+            // Validation failed: demote — keep raw value + positional name.
+            continue;
+        };
+        // Matched: rename to the semantic name. Prefer a named capture group
+        // (matching `vp.name`, else the first named group) for the value;
+        // fall back to the full match (validation-only pattern, no named group).
+        let refined = caps
+            .name(&vp.name)
+            .or_else(|| first_named_capture(&re, &caps))
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_else(|| slot.1.clone());
+        *slot = (vp.name.clone(), refined);
+    }
+    slots
+}
+
+/// Return the first named capture group's match in `caps`, or `None` when the
+/// regex has no named groups (validation-only pattern).
+fn first_named_capture<'c>(re: &Regex, caps: &Captures<'c>) -> Option<Match<'c>> {
+    for name in re.capture_names().flatten() {
+        if let Some(m) = caps.name(name) {
+            return Some(m);
+        }
+    }
+    None
+}
+
+/// Substitute `{{vars.NAME}}` placeholders in `content` with the captured
+/// values (§0.20.3 — the IBS bakes variables into `orchestrator_content` /
+/// ToolBinding `params` before execution, so runtime bodies see literal
+/// values, not placeholders).
+///
+/// Each `(name, value)` pair replaces the literal `{{vars.name}}` token.
+/// Distinct names never overlap (`{{vars.dir}}` and `{{vars.directory}}` are
+/// different literals). Placeholders with no matching capture are left intact
+/// (a Q1 "missing template" authoring error — Phase I — not a runtime
+/// fabrication).
+///
+/// Pure, synchronous, no DB.
+pub fn substitute_vars(content: &str, vars: &[(String, String)]) -> String {
+    let mut out = content.to_string();
+    for (name, value) in vars {
+        let placeholder = format!("{{{{vars.{name}}}}}");
+        if out.contains(&placeholder) {
+            out = out.replace(&placeholder, value);
+        }
+    }
+    out
+}
+
+/// Recursively substitute `{{vars.NAME}}` placeholders in every string leaf of
+/// a JSON value (§0.4.1 — ToolBinding `params` carry `{{vars.name}}`
+/// placeholders substituted before `__execute_action__` dispatch).
+///
+/// Object keys are preserved; only string values are substituted. Non-string
+/// leaves (numbers, bools, null) pass through unchanged. Placeholders with no
+/// matching capture are left intact (same rule as [`substitute_vars`]).
+///
+/// Pure, synchronous, no DB.
+pub fn substitute_vars_in_value(
+    value: &serde_json::Value,
+    vars: &[(String, String)],
+) -> serde_json::Value {
+    match value {
+        serde_json::Value::String(s) => serde_json::Value::String(substitute_vars(s, vars)),
+        serde_json::Value::Array(arr) => serde_json::Value::Array(
+            arr.iter()
+                .map(|v| substitute_vars_in_value(v, vars))
+                .collect(),
+        ),
+        serde_json::Value::Object(obj) => {
+            let mut map = serde_json::Map::with_capacity(obj.len());
+            for (k, v) in obj {
+                map.insert(k.clone(), substitute_vars_in_value(v, vars));
+            }
+            serde_json::Value::Object(map)
+        }
+        other => other.clone(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1047,5 +1254,270 @@ mod tests {
         let v = serde_json::to_value(&bi).unwrap();
         let back: BuildInstruction = serde_json::from_value(v).unwrap();
         assert_eq!(bi, back);
+    }
+
+    // -------------------------------------------------------------------------
+    // E.3 — extract_template_slots (Phase M.4 canonical tests)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn extract_template_slots_single_slot_prefix_suffix_anchored() {
+        let slots = extract_template_slots(
+            "show me files in the % directory",
+            "show me files in the /tmp directory",
+        );
+        assert_eq!(slots, vec![("slot0".to_string(), "/tmp".to_string())]);
+    }
+
+    #[test]
+    fn extract_template_slots_two_slots_middle_separator() {
+        let slots = extract_template_slots("search for % in %", "search for TODO in /src");
+        assert_eq!(
+            slots,
+            vec![
+                ("slot0".to_string(), "TODO".to_string()),
+                ("slot1".to_string(), "/src".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn extract_template_slots_no_slots_returns_empty() {
+        // A literal template (no `%`) has no slots to extract.
+        let slots = extract_template_slots("no slots here", "no slots here");
+        assert!(slots.is_empty());
+    }
+
+    #[test]
+    fn extract_template_slots_trailing_percent() {
+        // "search for %" → prefix "search for ", suffix "" → slot0 is the tail.
+        let slots = extract_template_slots("search for %", "search for TODO");
+        assert_eq!(slots, vec![("slot0".to_string(), "TODO".to_string())]);
+    }
+
+    #[test]
+    fn extract_template_slots_leading_percent() {
+        // "% directory" → prefix "", suffix " directory" → slot0 is the head.
+        let slots = extract_template_slots("% directory", "/tmp directory");
+        assert_eq!(slots, vec![("slot0".to_string(), "/tmp".to_string())]);
+    }
+
+    #[test]
+    fn extract_template_slots_adjacent_slots_degenerate() {
+        // Truly adjacent slots ("%%", no literal between) are a Q1 hard error at
+        // authoring time (Phase I). The pure helper still produces a defined
+        // (degenerate) result: slot0 collapses to empty, slot1 takes the
+        // remainder. This test documents that degenerate path; a validated
+        // recipe never reaches it.
+        let slots = extract_template_slots("%%", "ab");
+        assert_eq!(slots[0].0, "slot0");
+        assert!(slots[0].1.is_empty(), "adjacent slot0 collapses to empty");
+        assert_eq!(slots[1], ("slot1".to_string(), "ab".to_string()));
+    }
+
+    #[test]
+    fn extract_template_slots_missing_middle_separator_returns_partial() {
+        // When a middle separator is absent the helper stops: slots already
+        // extracted are returned, the rest are dropped (unextractable). With a
+        // 3-slot template "a % b % c % d" whose " c " separator is missing in
+        // the user text, only slot0 is recoverable.
+        let slots = extract_template_slots("a % b % c % d", "a 1 b 2 x 3 d");
+        assert_eq!(slots, vec![("slot0".to_string(), "1".to_string())]);
+    }
+
+    // -------------------------------------------------------------------------
+    // E.3 — capture_variables (Phase M.5 refinement)
+    // -------------------------------------------------------------------------
+
+    fn vp(name: &str, pattern: Option<&str>) -> VariablePattern {
+        VariablePattern {
+            name: name.to_string(),
+            pattern: pattern.map(str::to_string),
+            description: None,
+        }
+    }
+
+    #[test]
+    fn capture_variables_empty_patterns_keeps_positional() {
+        let vars = capture_variables(
+            "show me files in the % directory",
+            "show me files in the /tmp directory",
+            &[],
+        );
+        assert_eq!(vars, vec![("slot0".to_string(), "/tmp".to_string())]);
+    }
+
+    #[test]
+    fn capture_variables_named_group_transforms_and_renames() {
+        // The pattern carries a named group `dir`; its captured value replaces
+        // the raw auto-extracted value AND the slot is renamed to `dir`.
+        let vars = capture_variables(
+            "show me files in the % directory",
+            "show me files in the /tmp directory",
+            &[vp("dir", Some(r"(?P<dir>/[\w./-]+)"))],
+        );
+        assert_eq!(vars, vec![("dir".to_string(), "/tmp".to_string())]);
+    }
+
+    #[test]
+    fn capture_variables_validation_only_pattern_renames_keeps_raw() {
+        // No named group → the pattern only validates; the raw value is kept
+        // and the slot is renamed to the semantic name.
+        let vars = capture_variables(
+            "show me files in the % directory",
+            "show me files in the /tmp directory",
+            &[vp("dir", Some(r"^/\w+$"))],
+        );
+        assert_eq!(vars, vec![("dir".to_string(), "/tmp".to_string())]);
+    }
+
+    #[test]
+    fn capture_variables_validation_failure_demotes_keeps_positional() {
+        // The regex does not match "/tmp" → demote: raw value + positional name.
+        let vars = capture_variables(
+            "show me files in the % directory",
+            "show me files in the /tmp directory",
+            &[vp("dir", Some(r"^[0-9]+$"))],
+        );
+        assert_eq!(vars, vec![("slot0".to_string(), "/tmp".to_string())]);
+    }
+
+    #[test]
+    fn capture_variables_no_pattern_renames_only() {
+        // pattern: None → rename to the semantic name, value unchanged.
+        let vars = capture_variables(
+            "show me files in the % directory",
+            "show me files in the /tmp directory",
+            &[vp("dir", None)],
+        );
+        assert_eq!(vars, vec![("dir".to_string(), "/tmp".to_string())]);
+    }
+
+    #[test]
+    fn capture_variables_bad_regex_demotes_keeps_positional() {
+        // An uncompiled regex is a Q1 authoring error (Phase I); at runtime the
+        // slot is demoted — raw value + positional name (no turn failure).
+        let vars = capture_variables(
+            "show me files in the % directory",
+            "show me files in the /tmp directory",
+            &[vp("dir", Some("["))],
+        );
+        assert_eq!(vars, vec![("slot0".to_string(), "/tmp".to_string())]);
+    }
+
+    #[test]
+    fn capture_variables_more_patterns_than_slots_ignores_extras() {
+        // Two patterns but one slot → only the first applies; the second is
+        // dangling (Q1 warns at Phase I) and ignored.
+        let vars = capture_variables(
+            "show me files in the % directory",
+            "show me files in the /tmp directory",
+            &[vp("dir", None), vp("extra", None)],
+        );
+        assert_eq!(vars, vec![("dir".to_string(), "/tmp".to_string())]);
+    }
+
+    #[test]
+    fn capture_variables_two_slots_two_patterns_paired_by_order() {
+        let vars = capture_variables(
+            "search for % in %",
+            "search for TODO in /src",
+            &[vp("term", None), vp("path", Some(r"^/.*"))],
+        );
+        assert_eq!(
+            vars,
+            vec![
+                ("term".to_string(), "TODO".to_string()),
+                ("path".to_string(), "/src".to_string()),
+            ]
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // E.3 — substitute_vars (§0.20.3 string substitution)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn substitute_vars_replaces_all_placeholders() {
+        let vars = vec![
+            ("dir".to_string(), "/tmp".to_string()),
+            ("file".to_string(), "a.txt".to_string()),
+        ];
+        assert_eq!(
+            substitute_vars("run {{vars.dir}}/{{vars.file}}", &vars),
+            "run /tmp/a.txt"
+        );
+    }
+
+    #[test]
+    fn substitute_vars_distinct_names_do_not_overlap() {
+        // `{{vars.dir}}` and `{{vars.directory}}` are different literals.
+        let vars = vec![
+            ("dir".to_string(), "x".to_string()),
+            ("directory".to_string(), "y".to_string()),
+        ];
+        assert_eq!(
+            substitute_vars("{{vars.dir}} {{vars.directory}}", &vars),
+            "x y"
+        );
+    }
+
+    #[test]
+    fn substitute_vars_unresolved_placeholder_left_intact() {
+        // No matching capture → placeholder stays (Q1 "missing template" is an
+        // authoring error caught at Phase I, not a runtime fabrication).
+        let vars = vec![("dir".to_string(), "/tmp".to_string())];
+        assert_eq!(
+            substitute_vars("{{vars.missing}}", &vars),
+            "{{vars.missing}}"
+        );
+    }
+
+    #[test]
+    fn substitute_vars_no_placeholders_unchanged() {
+        let vars = vec![("dir".to_string(), "/tmp".to_string())];
+        assert_eq!(substitute_vars("plain text", &vars), "plain text");
+    }
+
+    // -------------------------------------------------------------------------
+    // E.3 — substitute_vars_in_value (§0.4.1 ToolBinding params substitution)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn substitute_vars_in_value_substitutes_string_leaves_only() {
+        let vars = vec![("dir".to_string(), "/tmp".to_string())];
+        let input = serde_json::json!({ "path": "{{vars.dir}}/a.txt", "n": 3, "flag": true });
+        let out = substitute_vars_in_value(&input, &vars);
+        assert_eq!(out["path"], serde_json::json!("/tmp/a.txt"));
+        assert_eq!(
+            out["n"],
+            serde_json::json!(3),
+            "non-string leaves pass through"
+        );
+        assert_eq!(out["flag"], serde_json::json!(true));
+    }
+
+    #[test]
+    fn substitute_vars_in_value_walks_nested_arrays_and_objects() {
+        let vars = vec![("dir".to_string(), "/tmp".to_string())];
+        let input = serde_json::json!([
+            { "inner": "{{vars.dir}}" },
+            ["{{vars.dir}}", "literal"],
+        ]);
+        let out = substitute_vars_in_value(&input, &vars);
+        assert_eq!(out[0]["inner"], serde_json::json!("/tmp"));
+        assert_eq!(out[1][0], serde_json::json!("/tmp"));
+        assert_eq!(out[1][1], serde_json::json!("literal"));
+    }
+
+    #[test]
+    fn substitute_vars_in_value_preserves_object_keys() {
+        let vars = vec![("dir".to_string(), "/tmp".to_string())];
+        let input = serde_json::json!({ "{{vars.dir}}": "value" });
+        // Only string VALUES are substituted; keys are preserved verbatim.
+        let out = substitute_vars_in_value(&input, &vars);
+        let keys: Vec<&String> = out.as_object().unwrap().keys().collect();
+        assert_eq!(keys, vec![&"{{vars.dir}}".to_string()]);
+        assert_eq!(out["{{vars.dir}}"], serde_json::json!("value"));
     }
 }
