@@ -373,7 +373,14 @@ composition tests):**
   / `fetch_component_by_name_is_tenant_scoped` (DB-integration, skip-if-no-
   docker). fmt/clippy/test green both configs (678/689 lib). Committed+pushed
   `da1bee7b`.
-- G.3 — pending.
+- G.3 — Done. `handle_disambiguation(candidates, state)` in `default.py`
+  (helpers region, before `run_loop`): emits `disambiguation_required`,
+  transitions to `disambiguation`, returns `complete_result(outcome=
+  "disambiguation", response=<candidate list>, extra={"candidates": ...})`.
+  Monty-safe (for-loop + `.format()` + `.append()` + `"\n".join`). Not yet
+  called (wired in G.5). Verified: ast.parse clean; clippy clean both configs;
+  96 orchestrator helper tests pass both configs (Monty parses it).
+  Committed+pushed `0b02d024`.
 - G.4 — pending.
 - G.5 — pending.
 - G.6 — pending.
