@@ -962,6 +962,13 @@ where
     subagent_prompt_composer: Option<SubagentPromptComposer>,
     driver_requirements: HashMap<LoopDriverRegistryKey, DriverRequirements>,
     recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>>,
+    /// Intent-driven retrieval source (v3 Phase E.0 / plan §H4). When `Some`,
+    /// `RecipeStage` calls `fetch_for_turn` on a live turn and stashes the
+    /// result for the Phase-H consumer; when `None`, falls through to Tier 2.
+    /// The engine-backed `RetrievalLookup` impl is supplied by composition
+    /// (the sole crate depending on `brassclaw_engine`), mirroring
+    /// `recipe_lookup` / `RecipeLookup`.
+    retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>>,
     /// Optional forensic packet store for the Sempai–Kohai interceptor.
     /// When `None` (default), a [`NoopInterceptorStore`] is used and no
     /// packets are persisted.
@@ -1047,6 +1054,7 @@ where
             subagent_prompt_composer: None,
             driver_requirements: HashMap::new(),
             recipe_lookup: None,
+            retrieval_lookup: None,
             interceptor_store: Arc::new(NoopInterceptorStore),
             #[cfg(feature = "root-llm-provider")]
             proposal_sink: Arc::new(NoopProposalSink),
@@ -1366,6 +1374,19 @@ where
         lookup: Arc<dyn brassclaw_turns::run_profile::RecipeLookup>,
     ) -> Self {
         self.recipe_lookup = Some(lookup);
+        self
+    }
+
+    /// Install the intent-driven retrieval source (v3 Phase E.0 / plan §H4).
+    /// When set, `RecipeStage` calls `fetch_for_turn` on a live turn and
+    /// stashes the result for the Phase-H consumer. When unset, `RecipeStage`
+    /// falls through to Tier 2 (pre-E.0 behavior). Mirrors `with_recipe_lookup`:
+    /// the engine-backed `RetrievalLookup` impl is supplied by composition.
+    pub fn with_retrieval_lookup(
+        mut self,
+        lookup: Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>,
+    ) -> Self {
+        self.retrieval_lookup = Some(lookup);
         self
     }
 
@@ -1740,6 +1761,7 @@ where
             compaction,
             cancellation,
             recipe_lookup: self.recipe_lookup.clone(),
+            retrieval_lookup: self.retrieval_lookup.clone(),
             interceptor_store: Arc::clone(&self.interceptor_store),
             #[cfg(feature = "root-llm-provider")]
             proposal_sink: Arc::clone(&self.proposal_sink),
@@ -1815,6 +1837,7 @@ pub struct RebornLoopDriverHost {
     compaction: Arc<dyn LoopCompactionPort>,
     cancellation: Arc<dyn LoopCancellationPort>,
     recipe_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RecipeLookup>>,
+    retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>>,
     interceptor_store: Arc<dyn InterceptorStore>,
     /// Proposal sink for Sempai-proposed component updates and intent examples.
     /// Routes `proposed_recipe_updates` / `proposed_intent_examples` to Q1.
@@ -1865,6 +1888,18 @@ impl LoopRecipePort for RebornLoopDriverHost {
         // keeping the agent-loop crate free of brassclaw_engine deps. When
         // not wired, the executor falls through to the LLM (Tier 2).
         self.recipe_lookup.as_deref()
+    }
+}
+
+impl brassclaw_turns::run_profile::LoopRetrievalPort for RebornLoopDriverHost {
+    fn retrieval_lookup(&self) -> Option<&dyn brassclaw_turns::run_profile::RetrievalLookup> {
+        // Intent-driven retrieval (v3 Phase E.0 / plan §H4) — opt-in. The
+        // composition layer wires this through
+        // `RebornLoopDriverHostFactory::with_retrieval_lookup`, keeping the
+        // agent-loop + reborn crates free of brassclaw_engine deps (the
+        // engine-backed `RetrievalLookup` impl lives in composition). When
+        // not wired, `RecipeStage` falls through to the LLM (Tier 2).
+        self.retrieval_lookup.as_deref()
     }
 }
 

@@ -816,6 +816,12 @@ mod tests {
         }
     }
 
+    impl brassclaw_turns::run_profile::LoopRetrievalPort for ResumePayloadHost {
+        fn retrieval_lookup(&self) -> Option<&dyn brassclaw_turns::run_profile::RetrievalLookup> {
+            self.inner.retrieval_lookup()
+        }
+    }
+
     #[async_trait::async_trait]
     impl brassclaw_turns::run_profile::LoopInterceptorPort for ResumePayloadHost {
         async fn on_prompt_assembled(

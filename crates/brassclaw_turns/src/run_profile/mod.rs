@@ -23,6 +23,7 @@ mod prompt_text;
 mod recipe_lookup;
 mod refs;
 mod resolver;
+mod retrieval_lookup;
 mod skill_context;
 mod snapshot;
 mod snippet_ref;
@@ -59,12 +60,13 @@ pub use host::{
     LoopModelPort, LoopModelRequest, LoopModelResponse, LoopModelRouteSnapshot, LoopModelUsage,
     LoopProcessRef, LoopProgressEvent, LoopProgressPort, LoopPromptBundle,
     LoopPromptBundleAuthority, LoopPromptBundleGrant, LoopPromptBundleRef, LoopPromptBundleRequest,
-    LoopPromptPort, LoopRecipePort, LoopRunContext, LoopRunInfoPort, LoopSafeSummary,
-    LoopTranscriptPort, ModelStreamChunk, NoInterceptor, NoRecipeLookup, ParentLoopOutput,
-    ProcessHandleSummary, PromptMode, ProviderToolCall, ProviderToolCallCapabilityIds,
-    ProviderToolCallReference, ProviderToolCallReplay, ProviderToolDefinition,
-    StageCheckpointPayloadRequest, UpdateAssistantDraft, VisibleCapabilityRequest,
-    VisibleCapabilitySurface, sanitize_model_visible_text, validate_model_route_component_value,
+    LoopPromptPort, LoopRecipePort, LoopRetrievalPort, LoopRunContext, LoopRunInfoPort,
+    LoopSafeSummary, LoopTranscriptPort, ModelStreamChunk, NoInterceptor, NoRecipeLookup,
+    NoRetrieval, ParentLoopOutput, ProcessHandleSummary, PromptMode, ProviderToolCall,
+    ProviderToolCallCapabilityIds, ProviderToolCallReference, ProviderToolCallReplay,
+    ProviderToolDefinition, StageCheckpointPayloadRequest, UpdateAssistantDraft,
+    VisibleCapabilityRequest, VisibleCapabilitySurface, sanitize_model_visible_text,
+    validate_model_route_component_value,
 };
 pub use instruction_bundle::{
     InMemoryInstructionMaterializationStore, InstructionBundle, InstructionBundleBuilder,
@@ -112,6 +114,7 @@ pub use resolver::{
     InMemoryRunProfileRegistry, InMemoryRunProfileResolver, RunProfileDefinition,
     RunProfileRegistryError, RunProfileResolutionRequest, RunProfileResolver,
 };
+pub use retrieval_lookup::{RetrievalLookup, RetrievalLookupError, RetrievalTurnResult};
 pub use skill_context::{
     InstalledSkillSnapshot, NoopSkillContextSource, SkillContextBudget, SkillContextError,
     SkillContextService, SkillContextSnippet, SkillContextSource, SkillRunSnapshot,

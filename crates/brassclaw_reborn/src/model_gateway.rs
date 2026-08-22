@@ -1224,7 +1224,8 @@ fn map_capability_host_error(error: AgentLoopHostError) -> HostManagedModelError
         AgentLoopHostErrorKind::Unavailable
         | AgentLoopHostErrorKind::CheckpointRejected
         | AgentLoopHostErrorKind::TranscriptWriteFailed
-        | AgentLoopHostErrorKind::Internal => HostManagedModelErrorKind::Unavailable,
+        | AgentLoopHostErrorKind::Internal
+        | AgentLoopHostErrorKind::Unimplemented => HostManagedModelErrorKind::Unavailable,
     };
     HostManagedModelError::safe(kind, error.safe_summary)
 }

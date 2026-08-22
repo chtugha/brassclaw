@@ -589,6 +589,12 @@ impl brassclaw_turns::run_profile::LoopRecipePort for ForbiddenResumeHost {
     }
 }
 
+impl brassclaw_turns::run_profile::LoopRetrievalPort for ForbiddenResumeHost {
+    fn retrieval_lookup(&self) -> Option<&dyn brassclaw_turns::run_profile::RetrievalLookup> {
+        None
+    }
+}
+
 #[async_trait::async_trait]
 impl brassclaw_turns::run_profile::LoopInterceptorPort for ForbiddenResumeHost {
     async fn on_prompt_assembled(

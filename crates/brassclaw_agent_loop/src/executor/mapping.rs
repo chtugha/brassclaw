@@ -105,7 +105,8 @@ pub(super) fn model_error_class(error: &AgentLoopHostError) -> Option<ModelError
         | AgentLoopHostErrorKind::Invalid
         | AgentLoopHostErrorKind::PolicyDenied
         | AgentLoopHostErrorKind::CheckpointRejected
-        | AgentLoopHostErrorKind::TranscriptWriteFailed => None,
+        | AgentLoopHostErrorKind::TranscriptWriteFailed
+        | AgentLoopHostErrorKind::Unimplemented => None,
     }
 }
 

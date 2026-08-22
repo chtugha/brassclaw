@@ -885,6 +885,12 @@ impl brassclaw_turns::run_profile::LoopRecipePort for MockAgentLoopDriverHost {
     }
 }
 
+impl brassclaw_turns::run_profile::LoopRetrievalPort for MockAgentLoopDriverHost {
+    fn retrieval_lookup(&self) -> Option<&dyn brassclaw_turns::run_profile::RetrievalLookup> {
+        None
+    }
+}
+
 #[async_trait::async_trait]
 impl brassclaw_turns::run_profile::LoopInterceptorPort for MockAgentLoopDriverHost {
     async fn on_prompt_assembled(

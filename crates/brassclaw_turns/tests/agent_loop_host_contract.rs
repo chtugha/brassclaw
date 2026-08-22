@@ -2720,6 +2720,12 @@ impl LoopRecipePort for RecordingAgentLoopHost {
     }
 }
 
+impl brassclaw_turns::run_profile::LoopRetrievalPort for RecordingAgentLoopHost {
+    fn retrieval_lookup(&self) -> Option<&dyn brassclaw_turns::run_profile::RetrievalLookup> {
+        None
+    }
+}
+
 #[async_trait::async_trait]
 impl LoopInterceptorPort for RecordingAgentLoopHost {
     async fn on_prompt_assembled(

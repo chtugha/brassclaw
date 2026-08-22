@@ -627,6 +627,11 @@ pub enum AgentLoopHostErrorKind {
     CheckpointRejected,
     TranscriptWriteFailed,
     Internal,
+    /// The host does not implement this opt-in port method in the current
+    /// configuration (e.g. `LoopContextPort::resolve_message_text` when no
+    /// raw-text resolver is wired). Callers fall back to a safe default
+    /// (the Tier-2 LLM path) rather than failing the whole turn.
+    Unimplemented,
 }
 
 impl AgentLoopHostErrorKind {
@@ -647,6 +652,7 @@ impl AgentLoopHostErrorKind {
             Self::CheckpointRejected => "checkpoint_rejected",
             Self::TranscriptWriteFailed => "transcript_write_failed",
             Self::Internal => "internal",
+            Self::Unimplemented => "unimplemented",
         }
     }
 }
@@ -2092,6 +2098,30 @@ impl LoopRecipePort for NoRecipeLookup {
     }
 }
 
+/// Intent-driven retrieval port — opt-in (v3 Phase E.0 / plan §H4).
+///
+/// Hosts that wire a `PostgresSource`-backed retrieval source implement this
+/// port so `RecipeStage` can call `fetch_for_turn` for Tier 0/1 dispatch. The
+/// port exposes a narrow accessor returning a
+/// [`crate::run_profile::RetrievalLookup`] trait object — the engine-backed
+/// impl lives in composition (the sole crate depending on `brassclaw_engine`),
+/// threaded into the host via a builder, mirroring the `LoopRecipePort` /
+/// `RecipeLookup` precedent. Hosts without a retrieval source inherit
+/// [`NoRetrieval`] and `RecipeStage` falls through to Tier 2 (no short-circuit).
+pub trait LoopRetrievalPort: Send + Sync {
+    /// Returns `None` if no retrieval source is wired into this host.
+    fn retrieval_lookup(&self) -> Option<&dyn crate::run_profile::RetrievalLookup>;
+}
+
+/// Default no-op implementation so hosts without a retrieval source still
+/// satisfy the trait bound.
+pub struct NoRetrieval;
+impl LoopRetrievalPort for NoRetrieval {
+    fn retrieval_lookup(&self) -> Option<&dyn crate::run_profile::RetrievalLookup> {
+        None
+    }
+}
+
 /// Result returned by [`LoopInterceptorPort::on_prompt_assembled`].
 ///
 /// The `packet_id` is the stable forensic-packet identifier the executor
@@ -2195,6 +2225,7 @@ pub trait AgentLoopDriverHost:
     + LoopCompactionPort
     + LoopCancellationPort
     + LoopRecipePort
+    + LoopRetrievalPort
     + LoopInterceptorPort
     + Send
     + Sync
@@ -2214,6 +2245,7 @@ impl<T> AgentLoopDriverHost for T where
         + LoopCompactionPort
         + LoopCancellationPort
         + LoopRecipePort
+        + LoopRetrievalPort
         + LoopInterceptorPort
         + Send
         + Sync
