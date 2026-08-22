@@ -192,4 +192,5 @@ G.8.
   regressions); `fetch_component` integration tests compile + pass (skip on
   this no-docker host). No migration changed, so the G.7 embedded-PG
   `full_boot_cycle_from_scratch` (V000–V062) verification still stands.
-- **Commit:** (filled post-commit) — code + this subplan doc together.
+- **Commit:** `07165137` — code + this subplan doc together (pushed to
+  `origin/main`, `ab059b7b..07165137`).

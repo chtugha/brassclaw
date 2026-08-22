@@ -5361,6 +5361,30 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 - Unit: no-match path → UNION ALL `orchestrator_content` injected (baseline preserved)
 - Integration: `call_action` using `__fetch_component__` → correct Action fetched by UUID
 
+> **Substep G-STUB (inserted while grounding G.8) — `action_short_circuit` / `call_action`
+> executable-steps stub (Q-G-STUB1).** ✅ Done — commit `07165137`. G.5/G.6 wired the
+> `action_short_circuit` + `call_action` paths to fetch an Action via `__fetch_component__` /
+> `__resolve_component_by_name__` and hand the doc to `execute_action_procedure`, which reads
+> `action.get("steps")` + `action.get("allowed_tools")`. But those handlers returned a
+> component *view* dict with NO `steps`/`allowed_tools` keys — for class 16 `content` is the
+> LLM-readable description (`COALESCE(prior_knowledge_content, description)`), NOT the
+> executable `steps` JSONB — so `_execute_action_steps` got `steps = []` and silently ran zero
+> steps (and the G.6 `fall_back_to_tier2` signal was never produced). This was the
+> "written half-way and silenced" stub the task calls out. Subplan:
+> `docs/agents-v3/subplan_stub_stepG_action_steps_of_saved_plan_to_v3.md`. Fix (Option A,
+> minimal — `steps` + `allowed_tools` only, no `timeout_secs`): `ComponentItem` gains
+> `steps` + `allowed_tools` `Option<serde_json::Value>` (class-16 only); `fetch_component_
+> by_id` / `fetch_component_by_name` gained a class-16 projection (`steps`, `allowed_tools`
+> for class 16; `NULL::jsonb` / `NULL::text[]` otherwise → uniform 9-column shape) + a shared
+> `component_item_from_row` helper; the two handlers emit `steps` + `allowed_tools` when
+> `Some`; the prompt-assembly constructors (RamSource legacy, broad-scan `Components`,
+> batched `fetch_components_by_ids`) deliberately stay `None` (they build
+> `orchestrator_content`, not an executable doc). Verified: fmt/clippy clean both configs;
+> engine lib 678 default / 689 skills-db (0 failed both); composition integration tests
+> `fetch_component_by_id_returns_action_steps` + `fetch_component_by_name_returns_action_
+> steps` added (skip-if-no-docker, compile-validated). No migration changed (G.7 V062 boot
+> verification stands). Executed before G.8; resume G.8 next.
+
 ---
 
 ### Phase H — RecipeStage: `last_user_text` + Tier 0/1 Dispatch
