@@ -214,7 +214,10 @@ fn extract_tarball(bytes: &[u8], dest: &Path) -> Result<(), EmbeddedPostgresErro
 ///
 /// Used for the pgvector archive whose entries are directly `lib/vector.so`,
 /// `share/extension/vector.control`, etc.  No path component stripping.
-fn extract_flat_tarball(bytes: &[u8], dest: &Path) -> Result<(), EmbeddedPostgresError> {
+///
+/// `pub(crate)` so `initdb::procure_pgvector_from_url` can reuse it to extract
+/// a `BRASSCLAW_PGVECTOR_URL`-downloaded prebuilt tarball of the same layout.
+pub(crate) fn extract_flat_tarball(bytes: &[u8], dest: &Path) -> Result<(), EmbeddedPostgresError> {
     let gz = GzDecoder::new(bytes);
     let mut archive = tar::Archive::new(gz);
 

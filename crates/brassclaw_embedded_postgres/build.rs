@@ -190,6 +190,20 @@ fn try_build_pgvector(
         return false;
     }
 
+    // 1b. Sanitise the pre-built PG's Makefile.global. The theseus-rs binaries
+    // bake the CI machine's toolchain into the base CPPFLAGS/CFLAGS:
+    //   - `PG_SYSROOT = /Applications/Xcode_15.4.app/.../MacOSX14.5.sdk` (absent
+    //     on dev machines) → CPPFLAGS `-isysroot $(PG_SYSROOT)`.
+    //   - `-I/Users/runner/brew/opt/icu4c/include` (CI brew ICU; PG was built
+    //     --without-icu so it is not even needed).
+    //   - `-Werror=unguarded-availability-new` (Xcode-version-specific).
+    // and an `ifdef PROFILE / CFLAGS += $(PROFILE)` block that injects cargo's
+    // build-script `PROFILE=debug` env as a bare `debug` token → clang aborts
+    // with "no such file or directory: 'debug'". These leak via the base
+    // CPPFLAGS/CFLAGS, which the PG_CFLAGS sanitiser below does NOT reach (it
+    // only cleans the appended PG_CFLAGS). Strip them here so `make` succeeds.
+    sanitise_pg_makefiles(&pg_install);
+
     // 2. Download pgvector source.
     let pgvector_src_archive = build_dir.join("pgvector-src.tar.gz");
     if !pgvector_src_archive.exists() {
@@ -211,17 +225,17 @@ fn try_build_pgvector(
 
     // 3. Build: make PG_CONFIG=<path>.
     //
-    // Pre-built PG binaries may encode a `-isysroot` pointing at the SDK of
-    // the CI machine that compiled them (e.g. MacOSX14.5.sdk). On dev machines
-    // that SDK path doesn't exist, causing clang to abort with
-    // "no such file or directory: 'debug'" (the debug flag falls through as a
-    // positional argument after clang rejects the sysroot).
-    //
-    // Work around this by overriding PG_CFLAGS to strip `-isysroot` and any
-    // stale `-Wno-*-availability-new` flags that are Xcode-version-specific.
-    // This is safe: we are compiling an extension against headers only, not
-    // the full PG server, and the sysroot flag is optional for header-only
-    // builds on the same OS family.
+    // The primary detox of the pre-built PG's stale CI toolchain is done in
+    // `sanitise_pg_makefiles` above (Makefile.global base CPPFLAGS/CFLAGS +
+    // the `ifdef PROFILE` block). Two further guards here:
+    //   - `.env_remove("PROFILE")`: cargo sets PROFILE=debug in every
+    //     build-script env; even with the Makefile.global block removed, this
+    //     prevents any residual `ifdef PROFILE` path from injecting `debug`.
+    //   - `PG_CFLAGS=<sanitised>`: a sanitised copy of `pg_config --cflags`
+    //     (stripped of -isysroot / bare words / -W*-availability-new) is
+    //     appended by pgxs, belt-and-suspenders against future stale tokens.
+    // Compiling an extension against headers only does not need the full PG
+    // server sysroot on the same OS family.
     let pg_config = pg_install.join("bin").join("pg_config");
     let pg_config_str = pg_config.display().to_string();
 
@@ -249,7 +263,8 @@ fn try_build_pgvector(
                 &format!("PG_CFLAGS={sanitised_cflags}"),
                 "all",
             ])
-            .current_dir(&pgvector_src),
+            .current_dir(&pgvector_src)
+            .env_remove("PROFILE"),
         "make pgvector",
     ) {
         return false;
@@ -269,7 +284,8 @@ fn try_build_pgvector(
                 &format!("DESTDIR={staging_str}"),
                 "install",
             ])
-            .current_dir(&pgvector_src),
+            .current_dir(&pgvector_src)
+            .env_remove("PROFILE"),
         "make install pgvector",
     ) {
         return false;
@@ -309,6 +325,220 @@ fn try_build_pgvector(
     pack_pgvector_files(&files, &staging, pgvector_archive, target);
     eprintln!("build.rs: pgvector built and packed successfully");
     true
+}
+
+/// Sanitise the pre-built PostgreSQL `Makefile.global` so pgvector compiles
+/// on a dev machine whose toolchain differs from the CI machine that produced
+/// the theseus-rs binaries.
+///
+/// Edits `<pg_install>/lib/pgxs/src/Makefile.global` in place:
+/// - `CPPFLAGS =` assignment: drop `-isysroot <arg>` (and `-isysroot=<arg>`)
+///   and any `-I<path>` whose path contains `/runner/` (the CI brew ICU path;
+///   PG was built `--without-icu` so it is unused).
+/// - `CFLAGS =` assignment: drop `-Werror=unguarded-availability-new` and
+///   `-Wno-unguarded-availability-new` (Xcode-version-specific).
+/// - `LDFLAGS =` assignment: drop `-isysroot <arg>` (and `-isysroot=<arg>`)
+///   and any `-L<path>` whose path contains `/runner/` (the CI brew ICU lib
+///   path; PG was built `--without-icu` so it is unused). The baked
+///   `LDFLAGS = $(LDFLAGS_INTERNAL) -isysroot $(PG_SYSROOT) -L/Users/runner/...
+///   line is the link-stage leak: once `PG_SYSROOT` is blanked, `-isysroot
+///   $(PG_SYSROOT)` expands to a bare empty `-isysroot`, which on macOS makes
+///   the linker look for libSystem in an empty sysroot → fatal
+///   `ld: library 'System' not found`. Dropping `-isysroot` + its arg lets the
+///   link fall back to the dev machine's active SDK. `LDFLAGS_INTERNAL`
+///   (`-L$(libdir)`) is clean and left untouched.
+/// - `PG_SYSROOT =` assignment: blank the value (no longer referenced after
+///   the CPPFLAGS/LDFLAGS edits, but kept clean).
+/// - `ifdef PROFILE ... endif` block: removed entirely. cargo sets
+///   `PROFILE=debug` in build-script envs, and `CFLAGS += $(PROFILE)` injects
+///   a bare `debug` token that clang treats as an input file → fatal
+///   "no such file or directory: 'debug'". (Also neutralised at the `make`
+///   call site via `.env_remove("PROFILE")`.)
+///
+/// Only the bare `NAME =` assignments are rewritten — `override` / `+=` /
+/// `NAME_SL` lines are left untouched. Idempotent: re-running on an already
+/// sanitised file changes nothing.
+///
+/// Returns `true` on success (file read + written, or no change needed),
+/// `false` only if `Makefile.global` is absent/unreadable (treated as soft —
+/// `make` will then fail and the caller writes the empty placeholder).
+fn sanitise_pg_makefiles(pg_install: &Path) -> bool {
+    let path = pg_install
+        .join("lib")
+        .join("pgxs")
+        .join("src")
+        .join("Makefile.global");
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        eprintln!(
+            "build.rs: pgvector: Makefile.global not found at {} (skipping sanitise)",
+            path.display()
+        );
+        return false;
+    };
+
+    let mut out_lines: Vec<String> = Vec::with_capacity(content.lines().count());
+    let mut changed = false;
+    // >0 while skipping an `ifdef PROFILE ... endif` block slated for removal.
+    let mut profile_block_depth: i32 = 0;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        // Inside an ifdef PROFILE block being removed: skip until the matching
+        // endif, tracking nested conditionals so an inner ifdef doesn't fool us.
+        if profile_block_depth > 0 {
+            if trimmed.starts_with("ifdef")
+                || trimmed.starts_with("ifndef")
+                || trimmed.starts_with("ifeq")
+                || trimmed.starts_with("ifneq")
+            {
+                profile_block_depth += 1;
+            } else if trimmed == "endif" {
+                profile_block_depth -= 1;
+            }
+            changed = true;
+            continue;
+        }
+
+        // Start of the block we remove. Match `ifdef PROFILE` exactly (not
+        // `ifdef COPT` or other conditionals).
+        if trimmed == "ifdef PROFILE" {
+            profile_block_depth = 1;
+            changed = true;
+            continue;
+        }
+
+        // `CPPFLAGS = ...` (the bare assignment, not `override ...` / `:=`).
+        if (line.starts_with("CPPFLAGS =") || line.starts_with("CPPFLAGS="))
+            && let Some(new) = sanitise_flags_assignment(line, |tok| {
+                if tok.starts_with("-isysroot=") {
+                    return true;
+                }
+                if let Some(rest) = tok.strip_prefix("-I") {
+                    // Drop CI-machine brew include paths (PG is --without-icu).
+                    if rest.contains("/runner/") {
+                        return true;
+                    }
+                }
+                false
+            })
+        {
+            out_lines.push(new);
+            changed = true;
+            continue;
+        }
+
+        // `CFLAGS = ...` (the bare assignment).
+        if (line.starts_with("CFLAGS =") || line.starts_with("CFLAGS="))
+            && let Some(new) = sanitise_flags_assignment(line, |tok| {
+                tok == "-Werror=unguarded-availability-new"
+                    || tok == "-Wno-unguarded-availability-new"
+            })
+        {
+            out_lines.push(new);
+            changed = true;
+            continue;
+        }
+
+        // `LDFLAGS = ...` (the bare assignment). The theseus-rs Makefile.global
+        // bakes `LDFLAGS = $(LDFLAGS_INTERNAL) -isysroot $(PG_SYSROOT)
+        // -L/Users/runner/brew/opt/icu4c/lib -Wl,-dead_strip_dylibs`. Two leaks:
+        //   - `-isysroot $(PG_SYSROOT)`: PG_SYSROOT was blanked above, so this
+        //     expands to a bare `-isysroot` with an EMPTY argument. On macOS that
+        //     makes the linker look for libSystem in an empty sysroot → fatal
+        //     `ld: library 'System' not found`. Drop `-isysroot` + its arg token
+        //     (here the `$(PG_SYSROOT)` make var ref) so the link falls back to
+        //     the dev machine's active SDK (the default without `-isysroot`).
+        //   - `-L/Users/runner/brew/opt/icu4c/lib`: CI-machine brew ICU lib path;
+        //     PG was built `--without-icu` so it is unused.
+        // `LDFLAGS_INTERNAL` is clean (`-L$(libdir)`) so it is left untouched.
+        if (line.starts_with("LDFLAGS =") || line.starts_with("LDFLAGS="))
+            && let Some(new) = sanitise_flags_assignment(line, |tok| {
+                if tok.starts_with("-isysroot=") {
+                    return true;
+                }
+                if let Some(rest) = tok.strip_prefix("-L") {
+                    // Drop CI-machine brew library paths (PG is --without-icu).
+                    if rest.contains("/runner/") {
+                        return true;
+                    }
+                }
+                false
+            })
+        {
+            out_lines.push(new);
+            changed = true;
+            continue;
+        }
+
+        // `PG_SYSROOT = <stale CI SDK path>` → blank.
+        if line.starts_with("PG_SYSROOT =") || line.starts_with("PG_SYSROOT=") {
+            let blanked = "PG_SYSROOT =".to_string();
+            if blanked != line {
+                out_lines.push(blanked);
+                changed = true;
+                continue;
+            }
+        }
+
+        out_lines.push(line.to_string());
+    }
+
+    if !changed {
+        eprintln!("build.rs: pgvector: Makefile.global already sanitised (no change)");
+        return true;
+    }
+
+    let new_content = format!("{}\n", out_lines.join("\n"));
+    if let Err(e) = std::fs::write(&path, new_content) {
+        eprintln!(
+            "build.rs: pgvector: failed to write sanitised Makefile.global ({}): {e}",
+            path.display()
+        );
+        return false;
+    }
+    eprintln!("build.rs: pgvector: sanitised stale CI tokens in Makefile.global");
+    true
+}
+
+/// Rebuild a `NAME = tokens` assignment line, dropping tokens for which
+/// `drop_token(tok)` returns true, and (always) dropping `-isysroot` plus the
+/// path token that follows it. Returns `Some(new_line)` when the value
+/// changed, `None` when it is unchanged (so the caller can leave the line as
+/// is). The rebuilt line preserves the `NAME =` prefix and rejoins the kept
+/// tokens with single spaces.
+fn sanitise_flags_assignment(line: &str, drop_token: impl Fn(&str) -> bool) -> Option<String> {
+    let eq = line.find('=')?;
+    let name = line[..eq].trim_end();
+    let value = line[eq + 1..].trim();
+    let tokens: Vec<&str> = value.split_whitespace().collect();
+
+    let mut kept: Vec<&str> = Vec::with_capacity(tokens.len());
+    let mut skip_next = false;
+    for tok in &tokens {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if *tok == "-isysroot" {
+            skip_next = true;
+            continue;
+        }
+        if drop_token(tok) {
+            continue;
+        }
+        kept.push(tok);
+    }
+
+    let new_value = kept.join(" ");
+    if new_value == value {
+        return None;
+    }
+    Some(if new_value.is_empty() {
+        format!("{name} =")
+    } else {
+        format!("{name} = {new_value}")
+    })
 }
 
 /// Sanitise a `pg_config --cflags` string for cross-SDK use.

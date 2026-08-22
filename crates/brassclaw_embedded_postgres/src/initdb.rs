@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use tokio::process::Command;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::config::{DEFAULT_EMBEDDED_PG_LISTEN_ADDRESSES, EmbeddedPostgresConfig};
 use crate::error::EmbeddedPostgresError;
@@ -238,12 +238,27 @@ pub async fn install_pgvector(
     // Check that the pgvector control file is present in the source tree.
     let control_src = ext_src.join("vector.control");
     if !control_src.exists() {
-        // pgvector may already be installed globally — this is not fatal if the
-        // extension is available at the OS level. Log a warning.
-        tracing::warn!(
+        // The embedded pgvector archive was empty (compile failed on this host).
+        // Try the runtime fallback chain (system/brew PG-16 ->
+        // BRASSCLAW_PGVECTOR_URL) before degrading. This is a degraded-mode
+        // escape hatch; the normal path is fully embedded (no runtime network).
+        if procure_pgvector_fallback(pg_base).await {
+            debug!(
+                "pgvector procured via runtime fallback \
+                 (system/brew or BRASSCLAW_PGVECTOR_URL)"
+            );
+            // The fallback places files directly into pg_base/lib +
+            // pg_base/share/extension (== lib_dst + ext_dst). Re-check the
+            // control file; if present, V000 `CREATE EXTENSION vector` can proceed.
+            if ext_dst.join("vector.control").exists() {
+                return Ok(());
+            }
+        }
+        warn!(
             path = %control_src.display(),
-            "pgvector control file not found in embedded distribution; \
-             CREATE EXTENSION vector will fail if pgvector is not installed globally"
+            "pgvector control file not found in embedded distribution and runtime \
+             fallback did not procure it; CREATE EXTENSION vector will fail unless \
+             pgvector is installed globally"
         );
         return Ok(());
     }
@@ -301,4 +316,372 @@ pub async fn install_pgvector(
 
     debug!("pgvector extension files installed in data directory");
     Ok(())
+}
+
+/// Procure pgvector at runtime when the embedded archive was empty (compile
+/// failed on this host). A **degraded-mode escape hatch** — the normal path is
+/// fully embedded (no runtime network; see the `build.rs` header). Fires only
+/// inside `install_pgvector` when `pg_base/share/extension/vector.control` is
+/// absent.
+///
+/// Tries, in order, and returns `true` only when a `vector.control` lands in
+/// `pg_base/share/extension`:
+///
+/// (a) **System/brew location (no network):** probe candidate roots for a
+///     PG-16 pgvector (`vector.control` + `vector.dylib|so` + `vector--*.sql`)
+///     and copy the files into `pg_base/lib` + `pg_base/share/extension`. PG's
+///     extension ABI is stable within a major version, so a system PG-16
+///     `vector.dylib` loads in the embedded PG 16.4.0 — gated on major 16.
+/// (b) **Env-URL download (network, opt-in):** if `BRASSCLAW_PGVECTOR_URL` is
+///     set, download a prebuilt flat tarball (`lib/vector.*` +
+///     `share/extension/*`) via `curl` (mirroring `build.rs::download_with_curl`)
+///     and extract it into `pg_base`.
+/// (c) Neither procures → `false`.
+///
+/// Errors are logged at `debug` and swallowed — this is best-effort, never a
+/// hard failure (the caller warns + returns `Ok` so V000 reports the real error).
+async fn procure_pgvector_fallback(pg_base: &Path) -> bool {
+    let lib_dst = pg_base.join("lib");
+    let ext_dst = pg_base.join("share").join("extension");
+    for dir in [&lib_dst, &ext_dst] {
+        if let Err(e) = tokio::fs::create_dir_all(dir).await {
+            debug!(path = %dir.display(), error = %e, "pgvector fallback: create_dir failed");
+        }
+    }
+
+    if procure_pgvector_from_system(&lib_dst, &ext_dst).await {
+        return ext_dst.join("vector.control").exists();
+    }
+
+    if let Ok(url) = std::env::var("BRASSCLAW_PGVECTOR_URL") {
+        let url = url.trim();
+        if !url.is_empty() {
+            debug!(url = %url, "pgvector fallback: downloading prebuilt tarball");
+            if procure_pgvector_from_url(url, pg_base).await {
+                return ext_dst.join("vector.control").exists();
+            }
+        }
+    }
+
+    false
+}
+
+/// System/brew pgvector probe (no network). Builds the per-platform candidate
+/// `(extension_dir, lib_dir)` pairs plus a `pg_config --version`-gated PG-16
+/// probe, then delegates the copy to `copy_pgvector_from_candidates`.
+async fn procure_pgvector_from_system(lib_dst: &Path, ext_dst: &Path) -> bool {
+    let mut candidates = pgvector_system_candidates();
+    if let Some((ext_dir, lib_dir)) = pgvector_via_pgconfig().await {
+        candidates.push((ext_dir, lib_dir));
+    }
+    copy_pgvector_from_candidates(&candidates, lib_dst, ext_dst).await
+}
+
+/// Copy the first **complete** pgvector set from `candidates` into the embedded
+/// install tree `(lib_dst, ext_dst)`. A candidate is complete when its
+/// `extension_dir` holds `vector.control` (and any `vector--*.sql`) AND its
+/// `lib_dir` holds one of `vector.dylib` / `vector.so` / `vector.dll`.
+///
+/// Candidate-injected so the side-effecting copy path is unit-testable with
+/// temp dirs (the production caller supplies the real system/brew + pg_config
+/// candidate list; tests supply a synthetic one).
+async fn copy_pgvector_from_candidates(
+    candidates: &[(std::path::PathBuf, std::path::PathBuf)],
+    lib_dst: &Path,
+    ext_dst: &Path,
+) -> bool {
+    for (ext_dir, lib_dir) in candidates {
+        if !ext_dir.join("vector.control").exists() {
+            continue;
+        }
+        // Need at least one shared library (vector.dylib on macOS, vector.so on Linux).
+        let mut lib_name: Option<&str> = None;
+        for n in ["vector.dylib", "vector.so", "vector.dll"] {
+            if lib_dir.join(n).exists() {
+                lib_name = Some(n);
+                break;
+            }
+        }
+        let Some(lib_name) = lib_name else { continue };
+
+        // Copy control + all vector--*.sql scripts.
+        if tokio::fs::copy(
+            ext_dir.join("vector.control"),
+            ext_dst.join("vector.control"),
+        )
+        .await
+        .is_err()
+        {
+            continue;
+        }
+        if let Ok(mut rd) = tokio::fs::read_dir(ext_dir).await {
+            while let Ok(Some(entry)) = rd.next_entry().await {
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                if name_str.starts_with("vector--") && name_str.ends_with(".sql") {
+                    let _ = tokio::fs::copy(entry.path(), ext_dst.join(&*name_str)).await;
+                }
+            }
+        }
+        // Copy the shared library.
+        let _ = tokio::fs::copy(lib_dir.join(lib_name), lib_dst.join(lib_name)).await;
+
+        debug!(
+            ext_dir = %ext_dir.display(),
+            lib_dir = %lib_dir.display(),
+            "pgvector system fallback: copied extension files"
+        );
+        return true;
+    }
+    false
+}
+
+/// Per-platform candidate `(extension_dir, lib_dir)` pairs for a system/brew
+/// pgvector. Covers Homebrew `postgresql@16` / `libpgvector` / `pgvector` kegs
+/// (Apple Silicon + Intel) and the PGDG/Debian apt layout. Returns empty on
+/// targets with no known system layout (the `pg_config` probe may still find one).
+fn pgvector_system_candidates() -> Vec<(std::path::PathBuf, std::path::PathBuf)> {
+    let mut out: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
+    push_macos_pgvector_candidates(&mut out);
+    push_linux_pgvector_candidates(&mut out);
+    out
+}
+
+#[cfg(target_os = "macos")]
+fn push_macos_pgvector_candidates(out: &mut Vec<(std::path::PathBuf, std::path::PathBuf)>) {
+    let brew = if cfg!(target_arch = "aarch64") {
+        "/opt/homebrew"
+    } else {
+        "/usr/local"
+    };
+    // Homebrew `postgresql@16` keg.
+    out.push((
+        format!("{brew}/opt/postgresql@16/share/postgresql@16/extension").into(),
+        format!("{brew}/opt/postgresql@16/lib").into(),
+    ));
+    // Homebrew shared tree (unlinked keg writes here).
+    out.push((
+        format!("{brew}/share/postgresql@16/extension").into(),
+        format!("{brew}/lib").into(),
+    ));
+    // Homebrew `libpgvector` / `pgvector` standalone kegs.
+    out.push((
+        format!("{brew}/opt/libpgvector/share/extension").into(),
+        format!("{brew}/opt/libpgvector/lib").into(),
+    ));
+    out.push((
+        format!("{brew}/opt/pgvector/share/extension").into(),
+        format!("{brew}/opt/pgvector/lib").into(),
+    ));
+}
+
+#[cfg(not(target_os = "macos"))]
+fn push_macos_pgvector_candidates(_out: &mut Vec<(std::path::PathBuf, std::path::PathBuf)>) {}
+
+#[cfg(target_os = "linux")]
+fn push_linux_pgvector_candidates(out: &mut Vec<(std::path::PathBuf, std::path::PathBuf)>) {
+    // PGDG / Debian apt `postgresql-16` layout.
+    out.push((
+        "/usr/share/postgresql/16/extension".into(),
+        "/usr/lib/postgresql/16/lib".into(),
+    ));
+}
+
+#[cfg(not(target_os = "linux"))]
+fn push_linux_pgvector_candidates(_out: &mut Vec<(std::path::PathBuf, std::path::PathBuf)>) {}
+
+/// If `pg_config` is on `PATH` and reports PostgreSQL 16.x, return
+/// `(<sharedir>/extension, <pkglibdir>)` as a candidate probe root. PG major 16
+/// is required (ABI-stable within a major version → loads in embedded PG 16.4.0).
+async fn pgvector_via_pgconfig() -> Option<(std::path::PathBuf, std::path::PathBuf)> {
+    let version_output = Command::new("pg_config")
+        .arg("--version")
+        .output()
+        .await
+        .ok()?;
+    if !version_output.status.success() {
+        return None;
+    }
+    let version = String::from_utf8_lossy(&version_output.stdout);
+    let major = pg_major_from_version(&version)?;
+    if major != 16 {
+        debug!(
+            version = %version.trim(),
+            "pgvector fallback: pg_config is not PG-16, skipping system probe"
+        );
+        return None;
+    }
+    let pkglibdir = pg_config_dir("--pkglibdir").await?;
+    let sharedir = pg_config_dir("--sharedir").await?;
+    Some((sharedir.join("extension"), pkglibdir))
+}
+
+/// Run `pg_config <flag>` and return its trimmed stdout as a path, or `None` on
+/// any failure.
+async fn pg_config_dir(flag: &str) -> Option<std::path::PathBuf> {
+    let out = Command::new("pg_config").arg(flag).output().await.ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if s.is_empty() {
+        return None;
+    }
+    Some(s.into())
+}
+
+/// Parse the major version number from a `pg_config --version` string like
+/// `"PostgreSQL 16.4"` or `"PostgreSQL 16.4.0"`. Returns `None` if no leading
+/// integer follows the `PostgreSQL` token.
+fn pg_major_from_version(version: &str) -> Option<u32> {
+    let after = version.split("PostgreSQL").nth(1)?;
+    let num = after
+        .trim_start()
+        .split(|c: char| !c.is_ascii_digit())
+        .next()?;
+    num.parse::<u32>().ok()
+}
+
+/// Download a prebuilt pgvector tarball from `BRASSCLAW_PGVECTOR_URL` via `curl`
+/// and extract it (flat layout `lib/vector.*` + `share/extension/*`) into
+/// `pg_base`. Mirrors `build.rs::download_with_curl`. Uses `curl --output -` so
+/// the bytes land in memory (the tarball is small) — no temp file needed.
+/// Returns `true` on success.
+async fn procure_pgvector_from_url(url: &str, pg_base: &Path) -> bool {
+    let out = Command::new("curl")
+        .args([
+            "--proto",
+            "=https",
+            "--tlsv1.2",
+            "--retry",
+            "5",
+            "--retry-connrefused",
+            "--location",
+            "--silent",
+            "--show-error",
+            "--fail",
+            "--output",
+            "-",
+            url,
+        ])
+        .output()
+        .await;
+    let bytes = match out {
+        Ok(o) if o.status.success() => o.stdout,
+        _ => {
+            debug!("pgvector fallback: curl download failed");
+            return false;
+        }
+    };
+    if bytes.is_empty() {
+        debug!("pgvector fallback: downloaded tarball is empty");
+        return false;
+    }
+    let dest = pg_base.to_path_buf();
+    let result =
+        tokio::task::spawn_blocking(move || crate::extract::extract_flat_tarball(&bytes, &dest))
+            .await;
+    matches!(result, Ok(Ok(())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pg_major_from_version_parses_postgres_versions() {
+        assert_eq!(pg_major_from_version("PostgreSQL 16.4"), Some(16));
+        assert_eq!(pg_major_from_version("PostgreSQL 16.4.0\n"), Some(16));
+        assert_eq!(pg_major_from_version("PostgreSQL 17.0"), Some(17));
+        assert_eq!(pg_major_from_version("PostgreSQL 16beta1"), Some(16));
+        assert_eq!(pg_major_from_version("not a version"), None);
+        assert_eq!(pg_major_from_version(""), None);
+    }
+
+    #[test]
+    fn system_candidates_extension_dirs_end_in_extension() {
+        let candidates = pgvector_system_candidates();
+        // On macOS/Linux at least one candidate is registered; on other targets
+        // the static list is empty (the pg_config probe may still find one at
+        // runtime). Every registered extension dir must end in `extension`.
+        for (ext_dir, _lib_dir) in &candidates {
+            assert!(
+                ext_dir
+                    .file_name()
+                    .map(|n| n == "extension")
+                    .unwrap_or(false),
+                "extension dir must end in `extension`: {}",
+                ext_dir.display()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn copy_pgvector_from_candidates_copies_complete_set() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+
+        // Synthetic "system" pgvector layout.
+        let sys_ext = root.join("sys").join("share").join("extension");
+        let sys_lib = root.join("sys").join("lib");
+        tokio::fs::create_dir_all(&sys_ext).await.unwrap();
+        tokio::fs::create_dir_all(&sys_lib).await.unwrap();
+        tokio::fs::write(sys_ext.join("vector.control"), b"# control")
+            .await
+            .unwrap();
+        tokio::fs::write(sys_ext.join("vector--0.0.0.sql"), b"-- sql")
+            .await
+            .unwrap();
+        tokio::fs::write(sys_ext.join("not-vector.sql"), b"ignore me")
+            .await
+            .unwrap();
+        tokio::fs::write(sys_lib.join("vector.dylib"), b"\x7fELF-fake")
+            .await
+            .unwrap();
+
+        // Destination (embedded install tree).
+        let dst_lib = root.join("dst").join("lib");
+        let dst_ext = root.join("dst").join("share").join("extension");
+        tokio::fs::create_dir_all(&dst_lib).await.unwrap();
+        tokio::fs::create_dir_all(&dst_ext).await.unwrap();
+
+        let candidates = vec![(sys_ext.clone(), sys_lib.clone())];
+        let ok = copy_pgvector_from_candidates(&candidates, &dst_lib, &dst_ext).await;
+        assert!(ok, "complete candidate must copy");
+
+        // Control + matching sql + lib copied; non-matching sql ignored.
+        assert!(dst_ext.join("vector.control").exists());
+        assert!(dst_ext.join("vector--0.0.0.sql").exists());
+        assert!(!dst_ext.join("not-vector.sql").exists());
+        assert!(dst_lib.join("vector.dylib").exists());
+    }
+
+    #[tokio::test]
+    async fn copy_pgvector_from_candidates_skips_incomplete_set() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+
+        // Candidate with a control file but NO shared library -> incomplete.
+        let sys_ext = root.join("sys_ext");
+        let sys_lib = root.join("sys_lib");
+        tokio::fs::create_dir_all(&sys_ext).await.unwrap();
+        tokio::fs::create_dir_all(&sys_lib).await.unwrap();
+        tokio::fs::write(sys_ext.join("vector.control"), b"# control")
+            .await
+            .unwrap();
+        // No vector.dylib/so/dll in sys_lib.
+
+        let dst_lib = root.join("dst_lib");
+        let dst_ext = root.join("dst_ext");
+        tokio::fs::create_dir_all(&dst_lib).await.unwrap();
+        tokio::fs::create_dir_all(&dst_ext).await.unwrap();
+
+        let candidates = vec![(sys_ext.clone(), sys_lib.clone())];
+        let ok = copy_pgvector_from_candidates(&candidates, &dst_lib, &dst_ext).await;
+        assert!(!ok, "candidate missing a shared library must be skipped");
+        assert!(
+            !dst_ext.join("vector.control").exists(),
+            "incomplete candidate must not copy the control file"
+        );
+    }
 }
