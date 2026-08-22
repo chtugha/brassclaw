@@ -4810,6 +4810,7 @@ mod tests {
         pkr: serde_json::Value,
         fetch_doc: Option<serde_json::Value>,
         resolve_doc: Option<serde_json::Value>,
+        code_step_result: serde_json::Value,
     ) -> (serde_json::Value, Step0Recording) {
         // default.py ends with its own entry point
         //   `result = run_loop(context, goal, actions, state, config); FINAL(result)`
@@ -4927,6 +4928,15 @@ mod tests {
                             rec.retrieve_docs_called = true;
                             ExtFunctionResult::Return(json_to_monty(&serde_json::json!([])))
                         }
+                        "__execute_code_step__" => {
+                            // Phase H.3: the tier_zero branch calls
+                            // execute_recipe_orchestrator_channel, which calls
+                            // __execute_code_step__(body, {}). Return the
+                            // caller-supplied result dict so H.3 tests can drive
+                            // both the success (-> completed, no LLM) and the
+                            // error (-> degrade to Tier-2 LLM) paths.
+                            ExtFunctionResult::Return(json_to_monty(&code_step_result))
+                        }
                         "__execute_action__" => ExtFunctionResult::Return(json_to_monty(
                             &serde_json::json!({"output": "mocked_action_output"}),
                         )),
@@ -5030,7 +5040,12 @@ mod tests {
             "matched_component_ids": [],
             "active_skills": []
         });
-        let (outcome, rec) = run_python_step0(pkr, None, None);
+        let (outcome, rec) = run_python_step0(
+            pkr,
+            None,
+            None,
+            step_result(serde_json::Value::Null, "", None, false, None),
+        );
 
         assert!(
             rec.llm_complete_called,
@@ -5081,7 +5096,12 @@ mod tests {
             "steps": [{"type": "return", "value": "done"}],
             "allowed_tools": []
         });
-        let (outcome, rec) = run_python_step0(pkr, Some(fetch_doc), None);
+        let (outcome, rec) = run_python_step0(
+            pkr,
+            Some(fetch_doc),
+            None,
+            step_result(serde_json::Value::Null, "", None, false, None),
+        );
 
         assert_eq!(
             rec.fetch_component_calls,
@@ -5141,7 +5161,12 @@ mod tests {
             "matched_component_ids": ["act-uuid"],
             "active_skills": []
         });
-        let (outcome, rec) = run_python_step0(pkr, None, None);
+        let (outcome, rec) = run_python_step0(
+            pkr,
+            None,
+            None,
+            step_result(serde_json::Value::Null, "", None, false, None),
+        );
 
         assert_eq!(
             rec.fetch_component_calls,
@@ -5187,7 +5212,12 @@ mod tests {
             "matched_component_ids": [],
             "active_skills": []
         });
-        let (outcome, rec) = run_python_step0(pkr, None, None);
+        let (outcome, rec) = run_python_step0(
+            pkr,
+            None,
+            None,
+            step_result(serde_json::Value::Null, "", None, false, None),
+        );
 
         assert!(
             !rec.llm_complete_called,
@@ -5246,7 +5276,12 @@ mod tests {
             "matched_component_ids": ["c1", "c2"],
             "active_skills": [{"name": "skillX"}]
         });
-        let (outcome, rec) = run_python_step0(pkr, None, None);
+        let (outcome, rec) = run_python_step0(
+            pkr,
+            None,
+            None,
+            step_result(serde_json::Value::Null, "", None, false, None),
+        );
 
         assert!(
             rec.llm_complete_called,
@@ -5326,7 +5361,12 @@ mod tests {
             "steps": [{"type": "tool_call", "tool": "blocked_tool", "params": {}}],
             "allowed_tools": ["allowed_tool"]
         });
-        let (outcome, rec) = run_python_step0(pkr, Some(fetch_doc), None);
+        let (outcome, rec) = run_python_step0(
+            pkr,
+            Some(fetch_doc),
+            None,
+            step_result(serde_json::Value::Null, "", None, false, None),
+        );
 
         assert!(
             !rec.llm_complete_called,
@@ -7005,6 +7045,170 @@ FINAL(1 if ok else 0)
         );
         assert_eq!(res["outcome"], "error");
         assert_eq!(calls, 1);
+    }
+
+    // ── Phase H.3 — step-0 tier_zero early-return integration tests ──
+    //
+    // Drives the full `run_loop` step-0 path through `run_python_step0` with a
+    // `pkr` carrying `tier_zero` + `orchestrator_content`, mocking
+    // `__execute_code_step__` (the H.2 channel executor's only host call) via
+    // the `code_step_result` harness arg. Asserts the §0.9 v3 / Phase H.3
+    // Model A wiring: success → completed reply with NO `__llm_complete__`;
+    // error → degrade to Tier-2 LLM (the user still gets a reply).
+
+    fn recording_has_transition(rec: &Step0Recording, state: &str, reason: &str) -> bool {
+        rec.transitions
+            .iter()
+            .any(|(s, r)| s == state && r == reason)
+    }
+
+    fn recording_has_event(rec: &Step0Recording, name: &str) -> bool {
+        rec.events.iter().any(|(n, _)| n == name)
+    }
+
+    #[test]
+    fn phase_h3_tier_zero_success_returns_completed_no_llm() {
+        // tier_zero + a single PythonCode step whose FINAL("hello") succeeds
+        // → run_loop returns `completed` with `response = "hello"` and NEVER
+        // calls __llm_complete__ (the no-LLM Tier-0 path). The success reply
+        // text comes from the H.2 `final_answer` extraction (Q-H5result).
+        let pkr = serde_json::json!({
+            "tier_zero": true,
+            "orchestrator_content": "## [PythonCode: greet]\nFINAL(\"hello\")",
+            "recipe_name": "greet-recipe",
+            "matched_component_ids": [],
+            "active_skills": []
+        });
+        let (outcome, rec) = run_python_step0(
+            pkr,
+            None,
+            None,
+            step_result(serde_json::Value::Null, "", Some("hello"), false, None),
+        );
+
+        assert!(
+            !rec.llm_complete_called,
+            "Tier-0 success must NOT call __llm_complete__"
+        );
+        assert_eq!(
+            outcome.get("outcome").and_then(|o| o.as_str()),
+            Some("completed"),
+            "Tier-0 success outcome must be 'completed'"
+        );
+        assert_eq!(
+            outcome.get("response").and_then(|r| r.as_str()),
+            Some("hello"),
+            "Tier-0 success response must be the channel reply text"
+        );
+        assert!(
+            recording_has_event(&rec, "recipe_tier_zero_started"),
+            "must emit recipe_tier_zero_started"
+        );
+        assert!(
+            !recording_has_event(&rec, "recipe_tier_zero_failed"),
+            "a success must NOT emit recipe_tier_zero_failed"
+        );
+        assert!(
+            recording_has_transition(&rec, "running", "recipe tier-0 execution"),
+            "must transition to running for tier-0 execution"
+        );
+        assert!(
+            recording_has_transition(&rec, "completed", "tier-0 recipe executed"),
+            "must transition to completed on tier-0 success"
+        );
+    }
+
+    #[test]
+    fn phase_h3_tier_zero_error_degrades_to_tier2_llm() {
+        // tier_zero + a PythonCode step that fails (had_error) → H.2 returns
+        // {outcome: error}; step-0 degrades to Tier-2: emits
+        // recipe_tier_zero_failed, transitions to prompting, and falls through
+        // to __llm_complete__ (the user still gets a reply). The reply is the
+        // LLM mock's "done", NOT the failed channel output — the failed
+        // orchestrator_content is NOT re-injected as prior knowledge.
+        let pkr = serde_json::json!({
+            "tier_zero": true,
+            "orchestrator_content": "## [PythonCode: bad]\nbody",
+            "recipe_name": "bad-recipe",
+            "matched_component_ids": [],
+            "active_skills": []
+        });
+        let (outcome, rec) = run_python_step0(
+            pkr,
+            None,
+            None,
+            step_result(serde_json::Value::Null, "Error: boom", None, true, None),
+        );
+
+        assert!(
+            rec.llm_complete_called,
+            "Tier-0 error must degrade to Tier-2 __llm_complete__"
+        );
+        assert_eq!(
+            outcome.get("outcome").and_then(|o| o.as_str()),
+            Some("completed"),
+            "degraded turn still completes (LLM reply)"
+        );
+        assert_eq!(
+            outcome.get("response").and_then(|r| r.as_str()),
+            Some("done"),
+            "degraded reply must be the Tier-2 LLM output, not the failed channel"
+        );
+        assert!(
+            recording_has_event(&rec, "recipe_tier_zero_started"),
+            "tier-0 attempt always emits recipe_tier_zero_started"
+        );
+        assert!(
+            recording_has_event(&rec, "recipe_tier_zero_failed"),
+            "a failure must emit recipe_tier_zero_failed"
+        );
+        assert!(
+            recording_has_transition(&rec, "prompting", "tier-0 recipe failed -> tier-2"),
+            "must transition to prompting on tier-0 failure"
+        );
+        // The failed orchestrator_content must NOT be injected into the LLM
+        // messages (degrade is a PLAIN Tier-2 call, not a Tier-1 guided call).
+        let msgs = rec
+            .llm_complete_messages
+            .as_ref()
+            .expect("working_messages captured at __llm_complete__");
+        assert!(
+            !working_messages_has_user(msgs, "## [PythonCode: bad]\nbody"),
+            "failed orchestrator_content must NOT be re-injected: {msgs}"
+        );
+    }
+
+    #[test]
+    fn phase_h3_tier_zero_without_orchestrator_content_falls_through() {
+        // tier_zero with NO orchestrator_content has nothing deterministic to
+        // run → the `elif tier_zero and orchestrator_content` guard is False,
+        // so step-0 falls through to a plain Tier-2 __llm_complete__ (the
+        // documented "treated as a failure, degrades to Tier-2, NOT skipped"
+        // behaviour). No recipe_tier_zero_started event is emitted.
+        let pkr = serde_json::json!({
+            "tier_zero": true,
+            "matched_component_ids": [],
+            "active_skills": []
+        });
+        let (outcome, rec) = run_python_step0(
+            pkr,
+            None,
+            None,
+            step_result(serde_json::Value::Null, "", None, false, None),
+        );
+
+        assert!(
+            rec.llm_complete_called,
+            "tier_zero without channel content must fall through to Tier-2"
+        );
+        assert!(
+            !recording_has_event(&rec, "recipe_tier_zero_started"),
+            "must not start tier-0 without orchestrator_content"
+        );
+        assert_eq!(
+            outcome.get("outcome").and_then(|o| o.as_str()),
+            Some("completed")
+        );
     }
 
     #[test]

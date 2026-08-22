@@ -1251,11 +1251,12 @@ def run_loop(context, goal, actions, state, config):
         # (InstructionBundleBuilder priority 2). The orchestrator registers
         # which skills are active for tracking and event emission only.
         if step == 0:
-            # ── Prior-knowledge assembly (§0.9 v3 flow, Phase G.5) ──────
+            # ── Prior-knowledge assembly (§0.9 v3 flow, Phase G.5/H.3) ───
             # Single __assemble_prior_knowledge__ call; the Rust assembler
             # (Phase F) surfaces action_short_circuit / disambiguation /
-            # override / orchestrator_content / active_skills in the pkr dict.
-            # tier_zero dispatch is deferred to Phase H (Q-G1).
+            # override / orchestrator_content / active_skills / tier_zero in
+            # the pkr dict. The tier_zero early-return branch (Phase H.3) runs
+            # the recipe's orchestrator channel with NO LLM call.
             token_budget = config.get("prior_knowledge_token_budget", 100000) if isinstance(config, dict) else 100000
             pkr = __assemble_prior_knowledge__(goal, token_budget, "02")
             active_skills = []
@@ -1282,6 +1283,47 @@ def run_loop(context, goal, actions, state, config):
                         __emit_event__("action_unresolved", action_name=pkr.get("action_name", ""))
                         __transition_to__("prompting", "action not fetched -> tier-2")
                         # fall through to Tier-2 (un-augmented __llm_complete__).
+                elif pkr.get("tier_zero") and pkr.get("orchestrator_content"):
+                    # Tier-0 Recipe (class 21, llm_call_required == false) — NEW
+                    # no-LLM early return (v3 Phase H.3). NOT the same as
+                    # `override_prompt_creation` (Solution Override, an LLM path
+                    # below). `tier_zero` is the dedicated signal emitted by
+                    # `handle_assemble_prior_knowledge` when `fetch_for_turn`
+                    # returns `SplitResult { llm_call_required: false }` (Phase
+                    # E.0 / H.0). It runs the recipe's orchestrator channel
+                    # deterministically (H.2) and returns WITHOUT calling
+                    # `__llm_complete__` — exactly the `execute_action_procedure`
+                    # "return before __llm_complete__" pattern generalised from
+                    # class-16 Actions to Tier-0 Recipes. See §0.3 Model A and
+                    # Phase H item 3b. Requires BOTH `tier_zero` AND a non-empty
+                    # `orchestrator_content` (the `format_orchestrator_content`
+                    # prose block) — a `tier_zero` pkr with no channel content
+                    # has nothing deterministic to run, so it is treated as a
+                    # failure and degrades to Tier-2 below (NOT skipped).
+                    __emit_event__("recipe_tier_zero_started", recipe=pkr.get("recipe_name", ""))
+                    __transition_to__("running", "recipe tier-0 execution")
+                    tier0_result = execute_recipe_orchestrator_channel(pkr.get("orchestrator_content", ""))
+                    if tier0_result.get("outcome") == "success":
+                        __transition_to__("completed", "tier-0 recipe executed")
+                        return complete_result(state, "completed",
+                                               response=tier0_result.get("result", ""))
+                    # outcome == "error" (Q-H4 — `outcome` is the SOLE signal):
+                    # a Tier-0 failure does NOT abort the turn — it degrades to
+                    # a Tier-2 (LLM) call so the user still gets a reply. The
+                    # `orchestrator_content` was owned by the Tier-0 path; a
+                    # Tier-0 failure degrades to a PLAIN Tier-2 call (NOT a
+                    # Tier-1 guided call) — the failed content is NOT injected
+                    # as prior knowledge (an error means the deterministic
+                    # channel could not run; re-injecting it would mis-guide the
+                    # LLM). Emit a trace event + transition to prompting, then
+                    # fall through to the Tier-2 `__llm_complete__` path below
+                    # (un-augmented `working_messages`, exactly like the
+                    # action_short_circuit unresolved fall-through above).
+                    __emit_event__("recipe_tier_zero_failed",
+                                   recipe=pkr.get("recipe_name", ""),
+                                   message=tier0_result.get("message", ""))
+                    __transition_to__("prompting", "tier-0 recipe failed -> tier-2")
+                    # fall through to Tier-2 (un-augmented __llm_complete__).
                 elif pkr.get("disambiguation"):
                     return handle_disambiguation(pkr.get("candidates", []), state)
                 elif pkr.get("override_prompt_creation"):

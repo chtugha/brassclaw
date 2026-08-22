@@ -415,7 +415,53 @@ Mark this subplan Zenflow substep Completed.
   applied; clippy clean both default + skills-db configs; 12 tests pass both
   configs (default: 697 total = 685 + 12; skills-db: 708 total = 696 + 12; 0
   regressions).
-- H.3 — Pending.
+- H.3 — Done. `default.py` step-0 `tier_zero` early-return branch wired into
+  `run_loop` step-0 inside `if isinstance(pkr, dict):` as a NEW `elif
+  pkr.get("tier_zero") and pkr.get("orchestrator_content"):` sibling, placed
+  AFTER the `action_short_circuit` block and BEFORE `disambiguation` /
+  `override_prompt_creation` / `orchestrator_content` (matching the §0.9 Model
+  A ordering: action_short_circuit → tier_zero → disambiguation → override →
+  orchestrator_content). The stale "tier_zero dispatch is deferred to Phase H
+  (Q-G1)" comment was removed and replaced with the H.3-done explanation.
+  Branch flow: on `tier_zero` + non-empty `orchestrator_content` →
+  `__emit_event__("recipe_tier_zero_started", recipe=...)` +
+  `__transition_to__("running", "recipe tier-0 execution")` + call
+  `execute_recipe_orchestrator_channel(pkr.get("orchestrator_content", ""))`
+  (H.2, single-arg — see the H.2 signature-reconciliation note); on
+  `outcome == "success"` → `__transition_to__("completed", "tier-0 recipe
+  executed")` + `return complete_result(state, "completed",
+  response=tier0_result.get("result", ""))` (early return, NO
+  `__llm_complete__`); on `outcome == "error"` (Q-H4 sole signal) →
+  `__emit_event__("recipe_tier_zero_failed", recipe=..., message=...)` +
+  `__transition_to__("prompting", "tier-0 recipe failed -> tier-2")` + fall
+  through to the Tier-2 `__llm_complete__` path (un-augmented
+  `working_messages` — the failed `orchestrator_content` is NOT re-injected as
+  prior knowledge; degrade is a PLAIN Tier-2 call, not a Tier-1 guided call,
+  exactly mirroring the `action_short_circuit` unresolved fall-through). The
+  guard requires BOTH `tier_zero` AND non-empty `orchestrator_content`: a
+  `tier_zero` pkr with no channel content has nothing deterministic to run, so
+  the elif is skipped and step-0 falls through to a plain Tier-2 LLM call
+  (documented "treated as a failure, degrades to Tier-2, NOT skipped"). No
+  `else` arm was added (matches the existing if/elif chain shape — an
+  unrecognised pkr falls through to Tier-2 by design). Monty-safe (no
+  f-strings/`.format()`/`re`). **Tests:** 3 new `run_python_step0` integration
+  tests (the harness's 4th arg `code_step_result` mocks `__execute_code_step__`
+  for the H.2 channel executor): (1) `phase_h3_tier_zero_success_returns_
+  completed_no_llm` — single PythonCode FINAL("hello") success → outcome
+  `completed`, response `hello`, `llm_complete_called == false`, events
+  include `recipe_tier_zero_started` (not `_failed`), transitions include
+  `running`→`completed`; (2) `phase_h3_tier_zero_error_degrades_to_tier2_llm`
+  — `had_error` step → `llm_complete_called == true`, response `done` (LLM
+  mock, NOT the failed channel), events include both `recipe_tier_zero_started`
+  + `recipe_tier_zero_failed`, transition `prompting`, and the failed
+  `orchestrator_content` is NOT in the LLM messages; (3)
+  `phase_h3_tier_zero_without_orchestrator_content_falls_through` — `tier_zero`
+  with no `orchestrator_content` → `llm_complete_called == true`, no
+  `recipe_tier_zero_started` event. Added `recording_has_transition` +
+  `recording_has_event` helpers. Verified: `python3 ast.parse` clean; fmt
+  clean; clippy clean both default + skills-db; 3 tests pass both configs
+  (default: 700 total = 697 + 3; skills-db: 711 total = 708 + 3; 0
+  regressions).
 - H.4 — Pending (may spawn nested subplan `subplan_problem_stepH4_of_saved_plan_to_v3.md`
   if `recipe_id` surfacing proves large).
 - H.5 — Pending.
