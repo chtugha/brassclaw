@@ -75,6 +75,13 @@ pub(super) struct MockHost {
     fail_checkpoint: Arc<Mutex<Option<LoopCheckpointKind>>>,
     fail_visible_capabilities: bool,
     fail_prompt_bundle: bool,
+    /// Scripted raw message text returned by `resolve_message_text` (v3 plan §H3).
+    /// `None` → `Err(Unimplemented)` (Tier-2 fall-through, matching the default).
+    scripted_message_text: Arc<Mutex<Option<String>>>,
+    /// Captured `message_ref` arg from every `resolve_message_text` call.
+    recorded_message_refs: Arc<Mutex<Vec<LoopMessageRef>>>,
+    /// Captured `context` arg from every `resolve_message_text` call.
+    recorded_resolve_contexts: Arc<Mutex<Vec<LoopRunContext>>>,
 }
 
 impl MockHost {
@@ -111,6 +118,9 @@ impl MockHost {
             fail_checkpoint: Arc::new(Mutex::new(None)),
             fail_visible_capabilities: false,
             fail_prompt_bundle: false,
+            scripted_message_text: Arc::new(Mutex::new(None)),
+            recorded_message_refs: Arc::new(Mutex::new(Vec::new())),
+            recorded_resolve_contexts: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -158,6 +168,25 @@ impl MockHost {
     pub(super) fn with_failing_prompt_bundle(mut self) -> Self {
         self.fail_prompt_bundle = true;
         self
+    }
+
+    /// Script the raw text returned by `resolve_message_text` (v3 plan §H3).
+    /// When set, `InputStage::drain` populates `state.last_user_text` with this
+    /// text; when unset, `resolve_message_text` returns `Err(Unimplemented)`
+    /// and `last_user_text` stays `None` (Tier-2 fall-through).
+    pub(super) fn with_scripted_message_text(self, text: impl Into<String>) -> Self {
+        *self.scripted_message_text.lock().expect("lock") = Some(text.into());
+        self
+    }
+
+    /// Captured `message_ref` args from every `resolve_message_text` call.
+    pub(super) fn recorded_message_refs(&self) -> Vec<LoopMessageRef> {
+        self.recorded_message_refs.lock().expect("lock").clone()
+    }
+
+    /// Captured `context` args from every `resolve_message_text` call.
+    pub(super) fn recorded_resolve_contexts(&self) -> Vec<LoopRunContext> {
+        self.recorded_resolve_contexts.lock().expect("lock").clone()
     }
 
     pub(super) fn with_input_batches(self, batches: Vec<LoopInputBatch>) -> Self {
@@ -464,6 +493,33 @@ impl brassclaw_turns::run_profile::LoopContextPort for MockHost {
             instruction_snippets: Vec::new(),
             memory_snippets: Vec::new(),
         })
+    }
+
+    // v3 plan §H3: override the default (Err(Unimplemented)) with a scripted
+    // raw text so `InputStage::drain` can populate `state.last_user_text`.
+    // Captures both args (AGENTS.md): the `context` and `message_ref` the
+    // production caller passes. When no text is scripted, returns
+    // `Err(Unimplemented)` — matching the default Tier-2 fall-through.
+    async fn resolve_message_text(
+        &self,
+        context: &LoopRunContext,
+        message_ref: &LoopMessageRef,
+    ) -> Result<String, AgentLoopHostError> {
+        self.recorded_message_refs
+            .lock()
+            .expect("lock")
+            .push(message_ref.clone());
+        self.recorded_resolve_contexts
+            .lock()
+            .expect("lock")
+            .push(context.clone());
+        match self.scripted_message_text.lock().expect("lock").clone() {
+            Some(text) => Ok(text),
+            None => Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::Unimplemented,
+                "no scripted message text on MockHost",
+            )),
+        }
     }
 }
 

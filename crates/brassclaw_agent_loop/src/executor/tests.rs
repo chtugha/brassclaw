@@ -7,10 +7,10 @@ use brassclaw_turns::{
         CapabilityInputIssueCode, CapabilityInputRef, CapabilityInputRepair, CapabilityOutcome,
         CapabilityRecoveryHint, CapabilityResultMessage, LoopCancelReasonKind, LoopCheckpointKind,
         LoopCompactionError, LoopCompactionOutcome, LoopCompactionResponse,
-        LoopContextCompactionKind, LoopContextCompactionMetadata, LoopInput, LoopInputAckToken,
-        LoopInputBatch, LoopInputCursor, LoopInterruptKind, LoopProcessRef, LoopRunInfoPort,
-        LoopSafeSummary, LoopSummaryArtifactId, ObservationTrust, ParentLoopOutput,
-        ProcessHandleSummary, ProviderToolCallReplay, SameCallRetryConstraint,
+        LoopContextCompactionKind, LoopContextCompactionMetadata, LoopContextPort, LoopInput,
+        LoopInputAckToken, LoopInputBatch, LoopInputCursor, LoopInterruptKind, LoopProcessRef,
+        LoopRunInfoPort, LoopSafeSummary, LoopSummaryArtifactId, ObservationTrust,
+        ParentLoopOutput, ProcessHandleSummary, ProviderToolCallReplay, SameCallRetryConstraint,
         ToolObservationDetail, ToolObservationStatus, VisibleCapabilityRequest,
     },
 };
@@ -1032,13 +1032,14 @@ fn consume_drainable_inputs_empty_batch_short_circuits() {
         next_cursor: before_cursor.clone(),
     };
 
-    let (drained, ack_tokens, cancelled_reason_kind) =
+    let (drained, ack_tokens, cancelled_reason_kind, last_message_ref) =
         consume_drainable_inputs(&batch, UserFacingInputDrainMode::Steering, &mut state)
             .expect("consume inputs");
 
     assert!(!drained);
     assert!(ack_tokens.is_empty());
     assert!(cancelled_reason_kind.is_none());
+    assert!(last_message_ref.is_none());
     assert_eq!(state.input_cursor, before_cursor);
 }
 
@@ -1063,6 +1064,145 @@ fn consume_drainable_inputs_returns_planner_contract_error_when_acks_missing() {
             detail: "input batch omitted ack metadata for consumed inputs"
         }
     ));
+}
+
+#[tokio::test]
+async fn resolve_message_text_returns_scripted_raw_text() {
+    // v3 plan §H3: a host that wires a `MessageTextResolver` returns the raw
+    // (unsanitized) accepted-message body via `LoopContextPort::resolve_message_text`.
+    // `MockHost::with_scripted_message_text` stands in for the composition-backed
+    // resolver; the production wiring is exercised by the Step 3 composition tests.
+    let host = MockHost::new(Vec::new()).with_scripted_message_text("hello raw text");
+    let run_context = host.run_context().clone();
+    let ref_to_resolve = message_ref("msg:resolve-direct");
+
+    let resolved = host
+        .resolve_message_text(&run_context, &ref_to_resolve)
+        .await
+        .expect("scripted resolver returns raw text");
+
+    assert_eq!(resolved, "hello raw text");
+    assert_eq!(
+        host.recorded_message_refs(),
+        vec![message_ref("msg:resolve-direct")]
+    );
+    assert_eq!(host.recorded_resolve_contexts(), vec![run_context]);
+}
+
+#[tokio::test]
+async fn resolve_message_text_unwired_host_falls_through_to_tier2() {
+    // v3 plan §H3 / FIND-28: an unwired host returns `Err(Unimplemented)` so the
+    // caller (`InputStage::drain`) leaves `last_user_text = None` (Tier-2 fall-through)
+    // rather than failing the whole turn. This is the default behaviour every host
+    // inherits unless it overrides `resolve_message_text`.
+    let host = MockHost::new(Vec::new());
+    let run_context = host.run_context().clone();
+    let message_ref = message_ref("msg:unwired");
+
+    let error = host
+        .resolve_message_text(&run_context, &message_ref)
+        .await
+        .expect_err("unwired host returns Err(Unimplemented)");
+
+    assert_eq!(error.kind, AgentLoopHostErrorKind::Unimplemented);
+}
+
+#[tokio::test]
+async fn drain_populates_last_user_text_from_resolver() {
+    // v3 plan §H3, AGENTS.md "test through the caller": drive the real
+    // `InputStage::drain` call site with a wired resolver and assert the raw text
+    // lands in `state.last_user_text` (the side effect `resolve_message_text` gates).
+    let host = MockHost::new(Vec::new()).with_scripted_message_text("hello raw text");
+    let run_context = host.run_context().clone();
+    let host = host.with_input_batches(vec![LoopInputBatch {
+        inputs: vec![LoopInput::UserMessage {
+            message_ref: message_ref("msg:user-text-drain"),
+        }],
+        input_acks: vec![input_ack(
+            &run_context,
+            "input-cursor:after-user-text",
+            "input-ack:after-user-text",
+        )],
+        next_cursor: input_cursor(&run_context, "input-cursor:after-user-text"),
+    }]);
+    let family = crate::families::default();
+    let ctx = StageContext {
+        planner: family.planner(),
+        host: &host,
+    };
+    let state = LoopExecutionState::initial_for_run(host.run_context());
+
+    let step = InputStage
+        .process(
+            ctx,
+            DrainInput {
+                state,
+                pending_input_ack: PendingInputAck::default(),
+                mode: UserFacingInputDrainMode::Steering,
+            },
+        )
+        .await
+        .expect("input stage drains user text");
+
+    match step {
+        InputStep::Continue { state, drained, .. } => {
+            assert!(drained);
+            assert_eq!(state.last_user_text.as_deref(), Some("hello raw text"));
+            assert_eq!(
+                host.recorded_message_refs(),
+                vec![message_ref("msg:user-text-drain")]
+            );
+        }
+        InputStep::Exit(exit) => panic!("expected continue, got {exit:?}"),
+    }
+}
+
+#[tokio::test]
+async fn drain_leaves_last_user_text_none_when_resolver_unwired() {
+    // v3 plan §H3 / FIND-28: when no resolver is wired, `drain` leaves
+    // `last_user_text = None` (Tier-2 fall-through) rather than failing the turn.
+    let host = MockHost::new(Vec::new());
+    let run_context = host.run_context().clone();
+    let host = host.with_input_batches(vec![LoopInputBatch {
+        inputs: vec![LoopInput::UserMessage {
+            message_ref: message_ref("msg:user-text-unwired"),
+        }],
+        input_acks: vec![input_ack(
+            &run_context,
+            "input-cursor:after-user-text-unwired",
+            "input-ack:after-user-text-unwired",
+        )],
+        next_cursor: input_cursor(&run_context, "input-cursor:after-user-text-unwired"),
+    }]);
+    let family = crate::families::default();
+    let ctx = StageContext {
+        planner: family.planner(),
+        host: &host,
+    };
+    let state = LoopExecutionState::initial_for_run(host.run_context());
+
+    let step = InputStage
+        .process(
+            ctx,
+            DrainInput {
+                state,
+                pending_input_ack: PendingInputAck::default(),
+                mode: UserFacingInputDrainMode::Steering,
+            },
+        )
+        .await
+        .expect("input stage drains even without a resolver");
+
+    match step {
+        InputStep::Continue { state, drained, .. } => {
+            assert!(drained);
+            assert!(
+                state.last_user_text.is_none(),
+                "unwired resolver must leave last_user_text None (Tier-2 fall-through)"
+            );
+        }
+        InputStep::Exit(exit) => panic!("expected continue, got {exit:?}"),
+    }
 }
 
 #[tokio::test]

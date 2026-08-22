@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use brassclaw_turns::{
-    LoopCancelledReasonKind, LoopExit,
+    LoopCancelledReasonKind, LoopExit, LoopMessageRef,
     run_profile::{LoopInput, LoopInputAckToken, LoopInputBatch},
 };
+use tracing::debug;
 
 use crate::state::{CheckpointKind, LoopExecutionState};
 
@@ -140,8 +141,28 @@ impl InputStage {
             .map_err(|_| AgentLoopExecutorError::HostUnavailable {
                 stage: HostStage::Input,
             })?;
-        let (drained, ack_tokens, cancelled_reason_kind) =
+        let (drained, ack_tokens, cancelled_reason_kind, last_message_ref) =
             consume_drainable_inputs(&batch, mode, &mut state)?;
+        // v3 plan §H3: resolve the raw user-facing message text so RecipeStage
+        // can run intent-driven retrieval without the assembled prompt. On any
+        // error (host does not wire a resolver, or no text recorded for the
+        // ref) leave `last_user_text = None` and fall through to Tier-2.
+        if let Some(message_ref) = last_message_ref {
+            match ctx
+                .host
+                .resolve_message_text(ctx.host.run_context(), &message_ref)
+                .await
+            {
+                Ok(text) => state.last_user_text = Some(text),
+                Err(error) => {
+                    debug!(
+                        kind = ?error.kind,
+                        "resolve_message_text unavailable; leaving last_user_text None (Tier-2 fall-through)"
+                    );
+                    state.last_user_text = None;
+                }
+            }
+        }
         Ok(DrainedInputs {
             state,
             drained,
@@ -151,25 +172,33 @@ impl InputStage {
     }
 }
 
+/// Output of [`consume_drainable_inputs`]: whether any user-facing input was
+/// drained, the ack tokens to confirm, an early cancellation reason (if a
+/// cancel/interrupt was hit), and the last consumed user-facing `message_ref`
+/// (so `drain` can resolve its raw text for intent-driven retrieval, v3 §H3).
+type ConsumedDrainableInputs = (
+    bool,
+    Vec<LoopInputAckToken>,
+    Option<LoopCancelledReasonKind>,
+    Option<LoopMessageRef>,
+);
+
 pub(super) fn consume_drainable_inputs(
     batch: &LoopInputBatch,
     mode: UserFacingInputDrainMode,
     state: &mut LoopExecutionState,
-) -> Result<
-    (
-        bool,
-        Vec<LoopInputAckToken>,
-        Option<LoopCancelledReasonKind>,
-    ),
-    AgentLoopExecutorError,
-> {
+) -> Result<ConsumedDrainableInputs, AgentLoopExecutorError> {
     let mut consumed_len = 0;
     let mut drained = false;
     let mut cancelled_reason_kind = None;
+    let mut last_message_ref: Option<LoopMessageRef> = None;
     for input in &batch.inputs {
         if user_facing_input_matches_drain_mode(input, mode) {
             consumed_len += 1;
             drained = true;
+            // Capture the last consumed user-facing message ref so `drain` can
+            // resolve its raw text for intent-driven retrieval (v3 plan §H3).
+            last_message_ref = user_facing_message_ref(input).cloned();
             continue;
         }
         match input {
@@ -192,7 +221,7 @@ pub(super) fn consume_drainable_inputs(
         }
     }
     if consumed_len == 0 {
-        return Ok((false, Vec::new(), None));
+        return Ok((false, Vec::new(), None, None));
     }
     if batch.input_acks.len() < consumed_len {
         return Err(AgentLoopExecutorError::PlannerContract {
@@ -207,7 +236,7 @@ pub(super) fn consume_drainable_inputs(
         .take(consumed_len)
         .map(|ack| ack.token.clone())
         .collect();
-    Ok((drained, ack_tokens, cancelled_reason_kind))
+    Ok((drained, ack_tokens, cancelled_reason_kind, last_message_ref))
 }
 
 fn user_facing_input_matches_drain_mode(input: &LoopInput, mode: UserFacingInputDrainMode) -> bool {
@@ -224,5 +253,16 @@ fn user_facing_input_matches_drain_mode(input: &LoopInput, mode: UserFacingInput
                 LoopInput::FollowUp { .. } | LoopInput::UserMessage { .. }
             )
         }
+    }
+}
+
+/// Extract the `message_ref` from a user-facing `LoopInput` variant
+/// (`UserMessage` / `FollowUp` / `Steering`); `None` for all other variants.
+fn user_facing_message_ref(input: &LoopInput) -> Option<&LoopMessageRef> {
+    match input {
+        LoopInput::UserMessage { message_ref }
+        | LoopInput::FollowUp { message_ref }
+        | LoopInput::Steering { message_ref } => Some(message_ref),
+        _ => None,
     }
 }

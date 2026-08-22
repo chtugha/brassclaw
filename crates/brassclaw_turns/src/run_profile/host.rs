@@ -787,6 +787,25 @@ pub trait LoopContextPort: Send + Sync {
         &self,
         request: LoopContextRequest,
     ) -> Result<LoopContextBundle, AgentLoopHostError>;
+
+    /// Resolve the **raw** accepted-message body for `message_ref` (v3 plan §H3).
+    ///
+    /// Returns the unsanitized user text so intent matching is not corrupted
+    /// by `[redacted]` placeholders. The default returns
+    /// `Err(Unimplemented)`; hosts that wire a
+    /// [`crate::run_profile::MessageTextResolver`] override this to return the
+    /// raw text. Callers (`InputStage::drain`) populate
+    /// `state.last_user_text` on `Ok` and fall back to Tier-2 on `Err`.
+    async fn resolve_message_text(
+        &self,
+        _context: &LoopRunContext,
+        _message_ref: &LoopMessageRef,
+    ) -> Result<String, AgentLoopHostError> {
+        Err(AgentLoopHostError::new(
+            AgentLoopHostErrorKind::Unimplemented,
+            "resolve_message_text not wired on this host",
+        ))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

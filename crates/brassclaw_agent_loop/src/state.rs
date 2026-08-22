@@ -19,7 +19,7 @@ pub use slots::{
 
 use brassclaw_turns::{
     LoopGateRef, LoopMessageRef, LoopResultRef,
-    run_profile::{CapabilitySurfaceVersion, LoopInputCursor, LoopRunContext},
+    run_profile::{CapabilitySurfaceVersion, LoopInputCursor, LoopRunContext, RetrievalTurnResult},
 };
 
 use crate::content_cache::ContentCacheState;
@@ -43,7 +43,13 @@ pub const CHECKPOINT_SCHEMA_VERSION: u64 = 1;
 /// Stop and Gate each own their own slot — there is no shared `control_state`
 /// — so a family's future growth in either dimension can't accidentally mix
 /// concerns through a shared struct.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+///
+/// `Eq` is intentionally not derived: `last_retrieval_result` carries a
+/// `RetrievalTurnResult` whose `rust_items`/`orchestrator_items`/`routing_meta`
+/// are `serde_json::Value` (no `Eq`, since JSON numbers admit NaN). `PartialEq`
+/// is retained for `assert_eq!` in tests; no consumer requires `Eq` (the state
+/// is held behind `Mutex`/checkpoint bytes, never used as a map key).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LoopExecutionState {
     // executor-universal
     pub iteration: u32,
@@ -100,6 +106,21 @@ pub struct LoopExecutionState {
     /// library skill. Cleared after the subagent spawn is handled.
     #[serde(default)]
     pub spawn_subagent_hint: Option<String>,
+    /// Raw user-facing text for the current turn (v3 plan §H3). Populated by
+    /// `InputStage::drain` from `LoopContextPort::resolve_message_text` so
+    /// `RecipeStage` can run intent-driven retrieval without the assembled
+    /// prompt. `None` until the first user-facing input drains, or when the
+    /// host does not wire a `MessageTextResolver` (Tier-2 fall-through).
+    #[serde(default)]
+    pub last_user_text: Option<String>,
+    /// Intent-driven retrieval result for the current turn (v3 Phase E.0 /
+    /// plan §H4). Populated by `RecipeStage::process` from
+    /// `RetrievalLookup::fetch_for_turn` and durably stashed here for the
+    /// Phase-H Tier-0/Tier-1 consumer (which migrates this into the plan's
+    /// `recipe_hint`/`recipe_rust_context` split). Conservative routing
+    /// booleans until Phase E's `SplitResult`.
+    #[serde(default)]
+    pub last_retrieval_result: Option<RetrievalTurnResult>,
 }
 
 impl LoopExecutionState {
@@ -136,6 +157,8 @@ impl LoopExecutionState {
             pending_prose_conversion: None,
             content_cache: ContentCacheState::default(),
             spawn_subagent_hint: None,
+            last_user_text: None,
+            last_retrieval_result: None,
         }
     }
 
@@ -443,6 +466,33 @@ mod tests {
         let restored: LoopExecutionState = serde_json::from_value(value).unwrap();
 
         assert_eq!(restored, state);
+    }
+
+    #[test]
+    fn last_user_text_and_last_retrieval_result_round_trip_through_json() {
+        // v3 plan §H3 / §H4: the raw user text and the intent-driven retrieval
+        // result are durably stashed on `LoopExecutionState` so a checkpoint can
+        // carry them to the Phase-H Tier-0/Tier-1 consumer. Both must survive a
+        // serde round-trip (the checkpoint persistence path).
+        let context = test_run_context();
+        let mut state = LoopExecutionState::initial_for_run(&context);
+        state.last_user_text = Some("please review this PR".to_string());
+        state.last_retrieval_result = Some(RetrievalTurnResult {
+            tier0_eligible: false,
+            llm_call_required: true,
+            rust_items: json!([{ "id": "02-001", "kind": "tool_skill" }]),
+            orchestrator_items: json!([{ "id": "04-001", "kind": "python_code" }]),
+            routing_meta: json!({ "variant": "components", "count": 2 }),
+        });
+
+        let value = serde_json::to_value(&state).unwrap();
+        let object = value.as_object().expect("state serializes as object");
+        assert!(object.contains_key("last_user_text"));
+        assert!(object.contains_key("last_retrieval_result"));
+        let restored: LoopExecutionState = serde_json::from_value(value).unwrap();
+
+        assert_eq!(restored.last_user_text, state.last_user_text);
+        assert_eq!(restored.last_retrieval_result, state.last_retrieval_result);
     }
 
     #[test]

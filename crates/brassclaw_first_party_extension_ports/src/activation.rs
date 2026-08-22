@@ -377,6 +377,33 @@ where
             )))
     }
 
+    /// Non-consuming read of the raw accepted-message text recorded for
+    /// `(scope, accepted_message_ref)` (v3 plan §H3). Returns `None` when no
+    /// message is recorded (already taken by the activation path or never
+    /// written). Does NOT remove the entry — unlike
+    /// [`take_message_for_run`](Self::take_message_for_run) — so the text
+    /// remains available for intent-driven retrieval across the turn.
+    ///
+    /// Returns the **raw** `SkillActivationMessage::text`, NOT the sanitized
+    /// `safe_summary`, so intent matching is not corrupted by `[redacted]`
+    /// placeholders. Backs the composition `MessageTextResolver` impl that the
+    /// production host wires via `with_message_text_resolver`.
+    pub fn peek_message_text(
+        &self,
+        scope: &TurnScope,
+        accepted_message_ref: &AcceptedMessageRef,
+    ) -> Result<Option<String>, SkillActivationSelectionError> {
+        Ok(self
+            .messages_by_run
+            .lock()
+            .map_err(|_| SkillActivationSelectionError::Internal)?
+            .get(&SkillActivationMessageKey::new(
+                scope.clone(),
+                accepted_message_ref.clone(),
+            ))
+            .map(|message| message.text.clone()))
+    }
+
     async fn selected_candidates(
         &self,
         run_context: &LoopRunContext,
@@ -2317,6 +2344,99 @@ mod tests {
             second_selected.len(),
             1,
             "clearing one accepted message must not remove another message"
+        );
+    }
+
+    #[tokio::test]
+    async fn peek_message_text_returns_raw_text_and_is_non_consuming() {
+        // v3 plan §H3: `peek_message_text` returns the raw (unsanitized)
+        // accepted-message body and is non-consuming — unlike
+        // `take_message_for_run`, which removes the entry. This backs the
+        // composition `MessageTextResolver` so intent matching reads the raw
+        // text (no `[redacted]` placeholders) without destroying the record.
+        let source = Arc::new(StaticSkillBundleSource::new(vec![(
+            SkillSourceKind::User,
+            "code-review",
+            &skill_md(
+                "code-review",
+                "Review code",
+                &["review"],
+                "CODE_REVIEW_SENTINEL",
+            ),
+        )]));
+        let selectable =
+            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
+        let context = run_context().await;
+        selectable
+            .record_user_message(
+                context.scope.clone(),
+                accepted_message_ref(&context),
+                "please review this raw PR text",
+            )
+            .expect("record message");
+
+        // First peek returns the raw recorded text.
+        let first_peek = selectable
+            .peek_message_text(&context.scope, &accepted_message_ref(&context))
+            .expect("first peek");
+        assert_eq!(
+            first_peek.as_deref(),
+            Some("please review this raw PR text")
+        );
+
+        // Non-consuming: a second peek returns the same text (entry still present).
+        let second_peek = selectable
+            .peek_message_text(&context.scope, &accepted_message_ref(&context))
+            .expect("second peek");
+        assert_eq!(
+            second_peek.as_deref(),
+            Some("please review this raw PR text"),
+            "peek must not remove the recorded message"
+        );
+
+        // The consuming accessor removes the entry and returns the same raw text.
+        let taken = selectable
+            .take_message_for_run(&context.scope, &accepted_message_ref(&context))
+            .expect("take message for run")
+            .expect("message was recorded");
+        assert_eq!(taken.text, "please review this raw PR text");
+
+        // After the consuming take, peek returns None — proving peek earlier did
+        // not consume, and take did.
+        let peek_after_take = selectable
+            .peek_message_text(&context.scope, &accepted_message_ref(&context))
+            .expect("peek after take");
+        assert!(
+            peek_after_take.is_none(),
+            "take must have removed the entry; peek must now miss"
+        );
+    }
+
+    #[tokio::test]
+    async fn peek_message_text_misses_for_unrecorded_ref() {
+        // v3 plan §H3: `peek_message_text` returns `None` when no message is
+        // recorded for the ref (never written or already taken) — the soft-miss
+        // the resolver maps to Tier-2 fall-through.
+        let source = Arc::new(StaticSkillBundleSource::new(vec![(
+            SkillSourceKind::User,
+            "code-review",
+            &skill_md(
+                "code-review",
+                "Review code",
+                &["review"],
+                "CODE_REVIEW_SENTINEL",
+            ),
+        )]));
+        let selectable =
+            SelectableSkillContextSource::new(source, SkillActivationSelectorConfig::default());
+        let context = run_context().await;
+
+        let peek = selectable
+            .peek_message_text(&context.scope, &accepted_message_ref(&context))
+            .expect("peek on empty store");
+        assert!(
+            peek.is_none(),
+            "peek on a never-written ref must return None"
         );
     }
 

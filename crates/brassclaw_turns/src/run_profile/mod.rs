@@ -13,6 +13,7 @@ mod driver;
 mod host;
 mod instruction_bundle;
 mod memory_context;
+mod message_text_resolver;
 mod milestones;
 mod model;
 mod model_observation;
@@ -77,6 +78,7 @@ pub use instruction_bundle::{
 pub use memory_context::{
     EmptyMemoryPromptContextService, MemoryPromptContextRequest, MemoryPromptContextService,
 };
+pub use message_text_resolver::MessageTextResolver;
 pub use milestones::{
     HookDecisionSummary, HookMilestoneSink, InMemoryHookMilestoneSink,
     InMemoryLoopHostMilestoneSink, LoopHostMilestone, LoopHostMilestoneEmitter,

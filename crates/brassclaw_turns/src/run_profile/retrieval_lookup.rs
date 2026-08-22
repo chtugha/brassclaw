@@ -51,7 +51,7 @@ use crate::run_profile::LoopRunContext;
 ///   (E0-A) / `state.recipe_hint` (Phase H) for the Python step-0 handler.
 /// - `routing_meta`: routing metadata (variant label, matched component UUID
 ///   count, etc.) for telemetry and stash/unstash disambiguation.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RetrievalTurnResult {
     pub tier0_eligible: bool,
     pub llm_call_required: bool,
