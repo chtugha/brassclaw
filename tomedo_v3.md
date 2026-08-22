@@ -3676,7 +3676,7 @@ computed on first insert and checked on subsequent runs.
 | EBMLeistung 2-step write | POST `/ebmleistung` → `{new_ident}`; then PUT `/kvschein/{id}` with `{"ident":<schein>,"ebmLeistungen":[{"ident":<leistung>}]}` — **reference-only**: each ebmLeistungen entry must be `{"ident":N}` only. Adding any other fields (datum, ebmKatalogEintrag, etc.) writes a nested object → `JSON2CoreData.m:679` crash loop. Confirmed live 2026-08-22. |
 | PUT /kvschein ebmLeistungen is reference-only | `DeepUpdater.mergeCollection` requires a non-zero `ident` pointing to an existing leistung row. `ident=0` → "illegal value" (HTTP 460). Passing a non-existing ident (e.g. patient ident) → server creates a bogus leistung row with that ident and writes full nested body to change table → Mac crash. Cannot create leistung via PUT /kvschein alone — POST /ebmleistung first is mandatory. |
 | EBM Ziffer → catalog ident lookup | Ziffer strings (e.g. `01100`) must be resolved to internal ints via `ebmkatalogeintrag.code`; known: `1=01100`, `270=03003`, `298=03230` (this server) |
-| 01100 late-arrival rule | GKV only (not Privat, not HZV): Monday `ankunft` > 20:00 local / Tue–Sun > 19:00 local → EBM 01100 required on Schein; `ankunft` epoch ms from API is UTC — convert via `Europe/Berlin` tz |
+| 01100 late-arrival rule | GKV only (not Privat, not HZV): Saturday + Sunday `ankunft` > 19:00 local → EBM 01100 required on Schein; `ankunft` epoch ms from API is UTC — convert via `Europe/Berlin` tz |
 | `ankunft` field confirmed via API | `GET /besuch/{patient_id}/besucheForPatient` returns `ankunft` as epoch ms UTC, `kvFall` bool, `privatFall` bool — confirmed live 2026-08-22 |
 | Tier-0/Tier-1 split for automated writes | `tomedo-abend-audit` (Tier 0) reads + checks only; `tomedo-abend-audit-auto-add-01100` (Tier 1) handles the write — a Tier-0 recipe must never contain POST/PUT steps |
 | No orphaned rust steps | Every `rust` pre-load step must be immediately followed by an `orchestrator` PythonCode executor; a lone `rust` step is a Q1 hard error |
@@ -4317,8 +4317,8 @@ except Exception as e:
 # to the KV-Schein based on the patient's arrival time (ankunft).
 #
 # Rule (GKV-only — do NOT apply to Privat or HZV):
-#   Monday (weekday 0):  ankunft local time > 20:00 → 01100 required
-#   Tue–Sun (weekday 1–6): ankunft local time > 19:00 → 01100 required
+#   Saturday (weekday 5) + Sunday (weekday 6): ankunft local time > 19:00 → 01100 required
+#   Mon–Fri (weekday 0–4): 01100 not required regardless of arrival time
 #
 # Inputs (IBS bakes in before execution):
 #   {{vars.ankunft_ms}}   — ankunft epoch ms (UTC) from besuch API response
@@ -4355,23 +4355,22 @@ elif _ms == 0:
 else:
     _local = _dt.datetime.fromtimestamp(_ms / 1000, tz=_tz)
     _wday  = _local.weekday()       # 0=Montag, 6=Sonntag
-    _h     = _local.hour
-    _m     = _local.minute
-    _hm    = _h * 60 + _m           # minutes since midnight (local)
-    _threshold = 20 * 60 if _wday == 0 else 19 * 60  # 20:00 Mon, 19:00 Tue-Sun
-    if _hm > _threshold:
-        _tag = ["Mo","Di","Mi","Do","Fr","Sa","So"][_wday]
-        _limit = "20:00" if _wday == 0 else "19:00"
+    _tag   = ["Mo","Di","Mi","Do","Fr","Sa","So"][_wday]
+    _hm    = _local.hour * 60 + _local.minute  # minutes since midnight (local)
+    if _wday in (5, 6) and _hm > 19 * 60:      # Sa=5, So=6, threshold 19:00
         result = {
             "erforderlich": True,
-            "reason": f"GKV-Ankunft {_tag} {_local.strftime('%H:%M')} > {_limit} → 01100 erforderlich"
+            "reason": f"GKV-Ankunft {_tag} {_local.strftime('%H:%M')} > 19:00 → 01100 erforderlich"
         }
-    else:
-        _tag = ["Mo","Di","Mi","Do","Fr","Sa","So"][_wday]
-        _limit = "20:00" if _wday == 0 else "19:00"
+    elif _wday in (5, 6):
         result = {
             "erforderlich": False,
-            "reason": f"Ankunft {_tag} {_local.strftime('%H:%M')} ≤ {_limit} — kein Notfalleinsatz"
+            "reason": f"Ankunft {_tag} {_local.strftime('%H:%M')} ≤ 19:00 — kein Notfalleinsatz"
+        }
+    else:
+        result = {
+            "erforderlich": False,
+            "reason": f"Ankunft {_tag} — Wochentag, 01100 nicht erforderlich"
         }
 except Exception as e:
     result = {"erforderlich": False, "reason": "Fehler: " + str(e)}
