@@ -281,6 +281,11 @@ brassclaw_triggers = { path = "crates/brassclaw_triggers", version = "0.1.0" }
 brassclaw_trust = { path = "crates/brassclaw_trust", version = "0.1.0" }
 # Same idea for embeddings: `MockEmbeddings` is only reachable in dev builds.
 brassclaw_embeddings = { path = "crates/brassclaw_embeddings", version = "0.1.0", features = ["testing"] }
+# Postgres pool + refinery migrations for tests/-tier integration tests that
+# exercise the DB-backed skill-provenance path (e.g. the skills-db-gated
+# skill_codeact_persists_active_skill_provenance rig). `deadpool-postgres`
+# itself is already a root dep via the `postgres` (default) feature.
+brassclaw_pg = { path = "crates/brassclaw_pg", version = "0.1.0" }
 
 [features]
 default = ["postgres", "html-to-markdown", "tui"]
@@ -341,6 +346,11 @@ pr7-ready = []
 # `#[cfg(feature = "root-llm-provider")]` to gate fields in DefaultPlannedRuntimeParts
 # when `--all-features` is passed.
 root-llm-provider = ["brassclaw_reborn/root-llm-provider"]
+# Forward to brassclaw_engine's skills-db feature so tests/-tier integration
+# tests can `#[cfg(feature = "skills-db")]`-gate the DB-backed skill-provenance
+# path (ThreadManager::with_pg_pool + skill_provenance_for_items). Default-off;
+# build with `cargo test --features skills-db`.
+skills-db = ["brassclaw_engine/skills-db"]
 
 [profile.release]
 strip = true          # Remove debug symbols from release binaries
