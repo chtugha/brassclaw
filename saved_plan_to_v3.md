@@ -5494,6 +5494,19 @@ Migrate `call_action` nested lookup to `__fetch_component__`.
 > `./docs/agents-v3/subplan_problem_stepH4_8_of_saved_plan_to_v3.md` (Zenflow
 > nested substep under the Phase H.4 nested-subplan step `fa9fb137`; S1–S4
 > one-by-one). Execute S1→S4 before marking H4.8 Done.
+>
+> **H4.8 COMPLETE** (commits `701f4194` S1, `b01129ef`+`5426cce0` S2,
+> `ad07906a` S3, `0f78d80d` S4): `ThreadManager::with_pg_pool` plumbed, test
+> migrated to testcontainer-pg + `skills-db` + skip-if-no-docker, `snippet_names`
+> faithfully → `vec![]`. Verified: fmt clean; engine clippy `-D warnings` clean
+> both configs; full default `cargo test` GREEN (regression gone); full
+> `--features skills-db` `cargo test` GREEN (gated test skips w/o docker). One
+> **outside-H4.8** blockage remains (documented in the H4.8 subplan §7, NOT
+> H4.8's): the full-workspace `cargo clippy --all ... -D warnings` gate is blocked
+> by 4 clippy lints + fmt diffs in the user's separate uncommitted
+> `basic_prompt_store` WIP — H4.8 does not touch/commit those files. Phase H.4
+> Zenflow step `fa9fb137` + H4.8 substep `d48d5809` marked Completed. Resume
+> Phase H at H.5.
 
 **Status:** [ ] Pending
 
