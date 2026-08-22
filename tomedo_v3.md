@@ -49,26 +49,34 @@
 > The LLM is consulted ONLY when a task requires creative reasoning, composition,
 > or an irreversible decision the user must confirm. Everything else is Tier 0.
 >
-> **The two-channel execution model (MANDATORY for every tomedo recipe):**
+> **The two-channel execution model (MANDATORY for every recipe with a tool call):**
 > ```
 > channel: "rust"           → pre-loads the ToolSkill binding (does NOT execute — availability only)
 > channel: "orchestrator"   → PythonCode calls __execute_action__() to ACTUALLY run the tool
 > ```
-> A Tier-0 recipe MUST have BOTH channels. A `rust`-only step with no matching
-> `orchestrator` PythonCode executor is a Q1 hard error (§tier0-orchestrator-channel Rule 2).
+> Every `rust` step MUST be immediately followed by a matching `orchestrator` PythonCode step
+> that calls `__execute_action__()`. A `rust` step with no matching `orchestrator` executor
+> is a **Q1 hard error** (§tier0-orchestrator-channel Rule 2).
+> A `rust`-only recipe step that expects the Rust layer to execute on its own is **categorically
+> forbidden** — Rust only makes the tool *available*. The orchestrator always drives execution.
 >
 > **Granularity rules (strictly enforced):**
 > - One ToolSkill = one URL pattern + one HTTP method (not one "feature")
 > - One PythonCode executor = exactly one `__execute_action__` call
 > - Pure-logic PythonCode helpers = zero I/O, zero `__execute_action__` calls
 > - Three narrowly-scoped skills that share the same Rust tool beat one monolithic skill
+> - One leaf skill per distinct approach — never bundle multiple tool calls into one skill
+> - Prefer many small Tier-0 recipes over one large recipe with mixed Tier steps
 >
 > **Tier rules:**
 > - All GET reads with a known ID/date (deterministic inputs) → **Tier 0**
-> - All POST/PUT writes → **Tier 1** (LLM confirms irreversible content before dispatch)
+> - All POST/PUT writes → **Tier 1** — even automated writes (e.g. audit auto-add) need a
+>   dedicated Tier-1 recipe so the write path is explicit and auditable
 > - Cert-fetch (SSH with user credentials) → **Tier 1**
 > - Name search (user-supplied string) → **Tier 1** (LLM URL-encodes the query)
-> - Automated nightly audit, date arithmetic, JSON parsing → **Tier 0** (no LLM)
+> - Automated reads, date arithmetic, JSON parsing, completeness checks → **Tier 0** (no LLM)
+> - **A Tier-0 recipe must never contain POST or PUT steps.** If an automated workflow
+>   needs to write, split it: Tier-0 recipe checks, Tier-1 recipe writes.
 >
 > **⚠️ SAFETY — never use open-ended collection endpoints:**
 > `GET /leistung?patient=X`, `/patient/{id}/leistungen`, `/schein?patient=X`,
@@ -1824,42 +1832,26 @@ Write skills are Tier 1 — the LLM confirms content before the orchestrator dis
 ```
 name:        "skill-tomedo-karteieintrag-create"
 class_code:  1
-description: "Leaf skill: create a new KarteiEintrag for a patient — three-step: POST entry, PUT patient DB join, PUT patientendetailsrelationen sync record — Tier 1."
+description: "Leaf skill: create a new KarteiEintrag for a patient — three-step write via ts-tomedo-karteieintrag-create, ts-tomedo-patient-link-karteieintrag, ts-tomedo-patientendetailsrelationen-link — Tier 1."
 body: |
-  Create a KarteiEintrag for patient {{vars.patient_id}} using the confirmed three-step pattern.
+  Use ts-tomedo-karteieintrag-create to POST a new KarteiEintrag, then
+  ts-tomedo-patient-link-karteieintrag to write the DB join row, then
+  ts-tomedo-patientendetailsrelationen-link to write the sync change record.
 
-  ⚠️ CRASH RULE: ALL FOUR relation fields mandatory in step 1. Omitting any one →
-  null-ident sync crash in ZSTransferFetchedDataThread / JSON2CoreData.m:349 on Mac clients.
-  Use ident-based references (NOT kuerzel — kuerzel not resolved server-side).
-  letzterNutzer MUST be set in step 1 POST body (same ident as dokumentierenderNutzer).
-  DO NOT PUT letzterNutzer after creation — read-only via PUT, corrupts sync record.
+  ⚠️ CRASH RULE: ALL FOUR relation fields (karteiEintragTyp, mediaTyp,
+  dokumentierenderNutzer, betriebsstaette) plus letzterNutzer MUST be present
+  in the POST body with valid integer idents. Omitting any one causes a
+  null-ident sync crash (JSON2CoreData.m:349) on every Mac client.
+  Use ident-based references only — kuerzel strings are not resolved server-side.
+  DO NOT include letzterNutzer in a subsequent PUT — it is read-only via PUT
+  and corrupts the sync record.
 
-  STEP 1 — Create the entry (pc-tomedo-karteieintrag-create):
-    POST {{vars.tomedo_base_url}}/karteieintrag
-    Required vars:
-      text                   — entry text
-      datum                  — epoch ms (use current time if not specified)
-      kartei_typ_ident       — use ident: 6=ANM, 2=BEF, 4=DIA, 20=LAB
-      media_typ_ident        — 1 (Text)
-      nutzer_ident           — dokumentierenderNutzer ident (e.g. 39205294877179905)
-      betriebsstaette_ident  — 1 (practice default)
-    Returns: {new_ident}
+  The POST returns {new_ident}. Pass new_ident to both subsequent PUTs.
+  Without the third step (patientendetailsrelationen PUT), the Mac client
+  never shows the entry — the sync change record is the trigger.
 
-  STEP 2 — Write DB join row (pc-tomedo-karteieintrag-link):
-    PUT {{vars.tomedo_base_url}}/patient/{{vars.patient_id}}
-    Body: {patientenDetails:{patientenDetailsRelationen:{karteiEintraege:[{ident:<new_ident>}]}}}
-    Returns: HTTP 204. (DB join table written, Mac client NOT yet notified.)
-
-  STEP 3 — Write sync change record (pc-tomedo-patientendetailsrelationen-link):
-    PUT {{vars.tomedo_base_url}}/patientendetailsrelationen/{{vars.patient_id}}
-    Body: {ident: <patient_id>, karteiEintraege: [{ident: <new_ident>}]}
-    Returns: HTTP 204. ZSTransferFetchedDataThread picks up the PatientenDetailsRelationen
-    change record and immediately adds the entry to every Mac client's kartei list.
-    ⚠️ Both ident values in this body MUST be valid integers — null ident → crash loop.
-
-  Before dispatching step 1: show the user the text and entry type and ask for confirmation.
-  After step 3: surface the new ident to the user and confirm it is visible in kartei.
-  To undo: call skill-tomedo-karteieintrag-update with {visible: false}.
+  Before dispatching: confirm entry text and type with the user.
+  To undo after creation: use ts-tomedo-karteieintrag-update with {visible: false}.
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1958,30 +1950,17 @@ name:        "skill-tomedo-leistungen-read"
 class_code:  1
 description: "Leaf skill: read Leistungen (billing codes) for a patient via safe two-step path — Tier 0."
 body: |
-  Read Leistungen (EBM/GOÄ billing codes) for patient {{vars.patient_id}}.
+  Use ts-tomedo-patient-relations (limitScheine=true) then ts-tomedo-kvschein-get
+  to read EBM/GOÄ billing codes.
 
-  ⚠️ NEVER call /leistung?patient=X, /patient/{id}/leistungen, or /schein?patient=X —
-  all of these crash the tomedo server (unbounded queries, confirmed 2026-08-22).
+  ⚠️ NEVER use /leistung?patient=X, /patient/{id}/leistungen, or /schein?patient=X —
+  all crash the tomedo server (unbounded queries, confirmed 2026-08-22).
 
-  SAFE READ PATH (two steps):
-  1. Use pc-tomedo-patient-relations with limitScheine=true to get kvScheine[].ident
-  2. For each schein ident of interest: use pc-tomedo-kvschein-get to get
-     ebmLeistungen[] and goaeLeistungen[]
-
-  EBMLeistung fields:
-    ident           — internal Leistung ID
-    datum           — epoch ms
-    anzahl          — count (default 1)
-    ebmKatalogEintrag.ident — internal catalog int (NOT the EBM Ziffer string)
-    leistungserbringer.ident — Arzt ident
-    visible         — false if soft-deleted
-
-  To resolve catalog ident → EBM Ziffer string (e.g. 270 → '03220'):
-    Use pc-tomedo-ebmkatalogeintrag-get.
-
-  The Briefkommando $[l %nr 0d ,]$ reads Leistungen from the currently-open
-  Schein in the Mac client — it is NOT a REST path. Use this REST path instead
-  when BrassClaw needs Leistung data server-side.
+  The safe path: patientenDetailsRelationen → kvScheine[].ident → GET /kvschein/{ident}.
+  Each kvschein contains ebmLeistungen[] and goaeLeistungen[].
+  ebmKatalogEintrag.ident is an internal int (NOT the Ziffer string) — use
+  ts-tomedo-ebmkatalogeintrag-get to resolve it to the human-readable code (e.g. '03220').
+  Visible=false means the Leistung is soft-deleted; skip it in checks.
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -1994,44 +1973,25 @@ validation_status: "validated"
 ```
 name:        "skill-tomedo-ebmleistung-create"
 class_code:  1
-description: "Leaf skill: add an EBM billing code (Ziffer) to a patient's KV-Schein — two-step: POST /ebmleistung, PUT /kvschein link — Tier 1."
+description: "Leaf skill: add an EBM billing code (Ziffer) to a patient's KV-Schein via ts-tomedo-ebmleistung-create + ts-tomedo-kvschein-link-leistung — two-step write, Tier 1."
 body: |
-  Add EBM Ziffer {{vars.ebm_code}} to patient {{vars.patient_id}}'s KV-Schein {{vars.schein_ident}}.
+  Use ts-tomedo-ebmleistung-create to POST /ebmleistung, then
+  ts-tomedo-kvschein-link-leistung to PUT /kvschein/{schein_ident} linking the new entry.
 
   ⚠️ ENDPOINT RULE: POST to /ebmleistung (NOT /leistung).
   /leistung stores dtype='Leistung' and drops ebmKatalogEintrag — confirmed broken 2026-08-22.
   Only /ebmleistung stores dtype='EBMLeistung' with ebmKatalogEintrag correctly.
 
-  STEP 1 — Create the EBMLeistung (pc-tomedo-ebmleistung-create):
-    POST {{vars.tomedo_base_url}}/ebmleistung
-    Body (all fields mandatory):
-    {
-      "datum":                  <epoch_ms>,
-      "visible":                true,
-      "anzahl":                 1,
-      "ebmKatalogEintrag":      {"ident": <ebm_catalog_ident>},   ← internal ident, NOT Ziffer string
-      "leistungserbringer":     {"ident": <nutzer_ident>},
-      "betriebsstaette":        {"ident": 1},
-      "dokumentierenderNutzer": {"ident": <nutzer_ident>},
-      "letzterNutzer":          {"ident": <nutzer_ident>},
-      "abrechnenderArzt":       {"ident": <nutzer_ident>}
-    }
-    Returns: {new_leistung_ident}
+  ebmKatalogEintrag.ident is an internal integer — NOT the EBM Ziffer string.
+  Known idents on this server: 1=01100, 270=03003, 298=03230.
+  All five relation idents are mandatory: leistungserbringer, betriebsstaette,
+  dokumentierenderNutzer, letzterNutzer, abrechnenderArzt.
 
-  To resolve EBM Ziffer string → internal catalog ident:
-    Query: SELECT ident FROM ebmkatalogeintrag WHERE code = '<ziffer>';
-    Or use pc-tomedo-ebmkatalogeintrag-get if only the internal ident is known (reverse: ident→code).
-    Known idents: 1=01100, 270=03003, 298=03230 (confirmed live this server).
+  The POST returns {new_leistung_ident}. The subsequent PUT sets invkvschein_ident
+  on the leistung row and writes the KVSchein change record so Mac clients pick up
+  the new Leistung immediately via ZSTransferFetchedDataThread.
 
-  STEP 2 — Link to KV-Schein (pc-tomedo-kvschein-link-leistung):
-    PUT {{vars.tomedo_base_url}}/kvschein/{{vars.schein_ident}}
-    Body: {"ident": <schein_ident>, "ebmLeistungen": [{"ident": <new_leistung_ident>}]}
-    Returns: HTTP 204. Sets invkvschein_ident on leistung row, writes KVSchein change record.
-    Mac client picks up the new Leistung via ZSTransferFetchedDataThread immediately.
-
-  Before dispatching step 1: confirm the Ziffer, patient, and Schein with the user.
-  To undo: DELETE directly from leistung table (no REST delete endpoint — HTTP 405).
-    Also DELETE the KVSchein change row linking to this leistung from the change table.
+  Before dispatching: confirm the Ziffer, Schein, and Nutzer ident with the user.
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -3437,10 +3397,10 @@ validation_status: "validated"
 | 1 — Leaf Skill | 23 | `skill-tomedo-serverstatus` … `skill-tomedo-abend-audit-auto-add-01100` |
 | 2 — Domain Skill | 1 | `skill-tomedo` |
 | 13 — ToolSkill | 21 | `ts-tomedo-serverstatus` … `ts-tomedo-kvschein-link-leistung` |
-| 21 — Recipe | 21 | `tomedo-serverstatus` … `tomedo-ebmleistung-create` |
+| 21 — Recipe | 22 | `tomedo-serverstatus` … `tomedo-abend-audit-auto-add-01100` |
 | 22 — PythonCode | 41 | `pc-tomedo-serverstatus` … `pc-tomedo-check-01100-erforderlich` |
 | 23 — ExtensionCatalogue | 2 | `ext-tomedo`, `ext-tomedo-cert-fetch` |
-| **Total** | **111** | |
+| **Total** | **112** | |
 
 ---
 
@@ -3448,8 +3408,8 @@ validation_status: "validated"
 
 | Tier | Recipes | Reason |
 |------|---------|--------|
-| **Tier 0** | 13 | Direct REST reads + Leistungen two-step + patient-summary + all audit recipes (tagesliste, per-patient fetch/check, full audit, karteieintragtyp-list) |
-| **Tier 1** | 8 | 1 name-search + 6 writes (karteieintrag create/anmerkung/update, termin create/update, ebmleistung create) + 1 cert-fetch |
+| **Tier 0** | 13 | Direct REST reads + Leistungen two-step + patient-summary + all audit check recipes (tagesliste, per-patient fetch/check, full audit, karteieintragtyp-list) — **no POST/PUT in any Tier-0 recipe** |
+| **Tier 1** | 9 | 1 name-search + 7 writes (karteieintrag create/anmerkung/update, termin create/update, ebmleistung create, abend-audit-auto-add-01100) + 1 cert-fetch |
 
 ---
 
@@ -3570,16 +3530,17 @@ Group 7 — Recipes (class 21):
   98. tomedo-termin-create                           (Tier 1 — LLM confirms date/time, orchestrator POSTs)
   99. tomedo-termin-update                           (Tier 1 — LLM confirms cancel/reschedule, orchestrator PUTs)
   100. tomedo-ebmleistung-create                     (Tier 1 — LLM confirms Ziffer + Schein, orchestrator POSTs 2-step)
-  101. tomedo-cert-fetch                             (Tier 1 — one-time setup, LLM confirms SSH)
-  102. tomedo-karteieintragtyp-list                  (Tier 0 — setup: resolve ANA ident, pending)
-  103. tomedo-tagesliste-get                         (Tier 0 — day schedule, pending)
-  104. tomedo-abend-audit-fetch-patient              (Tier 0 — per-patient data fetch)
-  105. tomedo-abend-audit-check-patient              (Tier 0 — per-patient completeness check)
-  106. tomedo-abend-audit                            (Tier 0 — full nightly audit, pending tagesliste)
+  101. tomedo-abend-audit-auto-add-01100             (Tier 1 — write-only; called per flagged GKV patient; orchestrator-driven, no LLM)
+  102. tomedo-cert-fetch                             (Tier 1 — one-time setup, LLM confirms SSH)
+  103. tomedo-karteieintragtyp-list                  (Tier 0 — setup: resolve ANA ident, pending)
+  104. tomedo-tagesliste-get                         (Tier 0 — day schedule, pending)
+  105. tomedo-abend-audit-fetch-patient              (Tier 0 — per-patient data fetch)
+  106. tomedo-abend-audit-check-patient              (Tier 0 — per-patient completeness check incl. 01100 rule)
+  107. tomedo-abend-audit                            (Tier 0 — full nightly audit, read+check only, pending tagesliste)
 
 Group 8 — ExtensionCatalogues (class 23):
-  107. ext-tomedo
-  108. ext-tomedo-cert-fetch
+  108. ext-tomedo
+  109. ext-tomedo-cert-fetch
 ```
 
 > **Note:** Seeding happens after all lower-dependency classes are seeded.
@@ -3633,6 +3594,8 @@ computed on first insert and checked on subsequent runs.
 | EBM Ziffer → catalog ident lookup | Ziffer strings (e.g. `01100`) must be resolved to internal ints via `ebmkatalogeintrag.code`; known: `1=01100`, `270=03003`, `298=03230` (this server) |
 | 01100 late-arrival rule | GKV only (not Privat, not HZV): Monday `ankunft` > 20:00 local / Tue–Sun > 19:00 local → EBM 01100 required on Schein; `ankunft` epoch ms from API is UTC — convert via `Europe/Berlin` tz |
 | `ankunft` field confirmed via API | `GET /besuch/{patient_id}/besucheForPatient` returns `ankunft` as epoch ms UTC, `kvFall` bool, `privatFall` bool — confirmed live 2026-08-22 |
+| Tier-0/Tier-1 split for automated writes | `tomedo-abend-audit` (Tier 0) reads + checks only; `tomedo-abend-audit-auto-add-01100` (Tier 1) handles the write — a Tier-0 recipe must never contain POST/PUT steps |
+| No orphaned rust steps | Every `rust` pre-load step must be immediately followed by an `orchestrator` PythonCode executor; a lone `rust` step is a Q1 hard error |
 
 
 
@@ -4406,33 +4369,19 @@ validation_status: "pending"
 ```
 name:        "skill-tomedo-abend-audit-fetch-patient"
 class_code:  1
-description: "Leaf skill: fetch all audit-relevant data for one patient — Tier 0. One patientenDetailsRelationen call + one kvschein call."
+description: "Leaf skill: fetch all audit-relevant data for one patient — Tier 0. Uses ts-tomedo-patient-relations and ts-tomedo-kvschein-get."
 body: |
-  For patient {{vars.patient_id}}, fetch all data needed for the completeness audit:
-
-  STEP 1 — patientenDetailsRelationen (pc-tomedo-patient-relations-audit):
-    GET /patient/{{vars.patient_id}}/patientenDetailsRelationen
-      ?limitScheine=true&limitKartei=100&limitVerordnungen=0
-      &limitZeiterfassungen=false&limitBehandlungsfaelle=false
-    Strips control characters from response body.
-    Provides: diagnosen[], karteiEintraege[], kvScheine[].
-
-  STEP 2 — Extract arrays using pure-logic helpers:
-    pc-tomedo-extract-diagnosen-from-relations     → diagnosen[]
-    pc-tomedo-extract-karteieintraege-from-relations → karteiEintraege[]
-    pc-tomedo-extract-kvscheine-from-relations     → kvScheine[] + first_ident
-
-  STEP 3 — KV-Schein fetch (pc-tomedo-kvschein-audit), only if first_ident is non-null:
-    GET /kvschein/{{vars.schein_ident}}
-    Provides: ebmLeistungen[], goaeLeistungen[], scheinart.
-
-  STEP 4 — Extract from schein (pure-logic helpers):
-    pc-tomedo-extract-scheinart                    → scheinart string
-    pc-tomedo-extract-leistungen-from-schein (ebm) → ebmLeistungen[]
-    pc-tomedo-extract-leistungen-from-schein (goae)→ goaeLeistungen[]
+  Use ts-tomedo-patient-relations (limitScheine=true, limitKartei=100) to fetch
+  diagnosen[], karteiEintraege[], and kvScheine[] for the patient.
+  Then use ts-tomedo-kvschein-get on the first kvSchein ident to get
+  ebmLeistungen[], goaeLeistungen[], and scheinart.
 
   ⚠️ Do NOT call /leistung?patient=X or /patient/{id}/leistungen — server crash.
-  The kvschein path is the ONLY safe Leistungen read path.
+  The kvschein path is the ONLY safe Leistungen read path (confirmed 2026-08-22).
+
+  The patientenDetailsRelationen response body may contain embedded control characters —
+  strip them before parsing (pc-tomedo-patient-relations-audit handles this).
+  Skip the kvschein fetch if kvScheine[] is empty (no schein exists for this patient yet).
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -4477,9 +4426,11 @@ validation_status: "validated"
 ```
 name:        "skill-tomedo-abend-audit-check-gkv"
 class_code:  1
-description: "Leaf skill: check documentation completeness for one GKV-Patient — Tier 0."
+description: "Leaf skill: check documentation completeness for one GKV-Patient including the 01100 late-arrival rule — Tier 0."
 body: |
-  Check completeness for a GKV-Patient using pc-tomedo-check-gkv-vollstaendigkeit.
+  Use pc-tomedo-check-gkv-vollstaendigkeit to check completeness for a GKV-Patient.
+  Also requires pc-tomedo-check-01100-erforderlich output (check_01100_json) to evaluate
+  whether EBM 01100 is required and present.
 
   Required for GKV-Patienten:
     ✓ Diagnose (diagnosen[] non-empty)
@@ -4488,13 +4439,10 @@ body: |
     ✓ Karteieintrag BES (Besuch, ident=18)
     ✓ Schein vorhanden (kvScheine[] non-empty)
     ✓ EBM-Ziffern auf dem Schein (ebmLeistungen[] non-empty)
+    ✓ 01100 present if late-arrival rule triggered (check_01100_json.erforderlich=true)
 
-  Inputs needed (from skill-tomedo-abend-audit-fetch-patient output):
-    diagnosen_json      — JSON array string of diagnosen[]
-    kartei_check_json   — JSON dict from pc-tomedo-check-kartei-vollstaendigkeit
-    kv_scheine_json     — JSON array string of kvScheine[]
-    ebm_leistungen_json — JSON array string of ebmLeistungen[]
-
+  Inputs: diagnosen_json, kartei_check_json, kv_scheine_json, ebm_leistungen_json,
+  check_01100_json (from pc-tomedo-check-01100-erforderlich).
   Returns list of missing item strings. Empty list = vollständig.
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
@@ -4543,46 +4491,23 @@ validation_status: "validated"
 ```
 name:        "skill-tomedo-abend-audit-auto-add-01100"
 class_code:  1
-description: "Leaf skill: auto-add EBM 01100 to a GKV patient's KV-Schein during the evening audit when the late-arrival rule is triggered and 01100 is not yet present — Tier 0 (no LLM, all inputs deterministic)."
+description: "Leaf skill: add EBM 01100 to a GKV patient's KV-Schein — use ts-tomedo-ebmleistung-create then ts-tomedo-kvschein-link-leistung — Tier 1, called only when pc-tomedo-check-01100-erforderlich returned erforderlich=true."
 body: |
-  Automatically add EBM 01100 (Unvorhergesehene Inanspruchnahme, ebmKatalogEintrag.ident=1)
-  to a GKV patient's KV-Schein when all of these are true:
-    1. insurance_type == "GKV" (not Privat, not HZV)
-    2. pc-tomedo-check-01100-erforderlich returned erforderlich=true
-    3. EBM 01100 (ebmKatalogEintrag.ident==1) is NOT already in ebmLeistungen[]
+  Use ts-tomedo-ebmleistung-create to POST /ebmleistung with ebmKatalogEintrag.ident=1
+  (01100 on this server), then ts-tomedo-kvschein-link-leistung to PUT /kvschein/{schein_ident}.
 
-  Only run when the above conditions are confirmed. Do not run for Privat or HZV patients.
+  This skill applies only to GKV patients where pc-tomedo-check-01100-erforderlich
+  returned erforderlich=true AND ebmLeistungen[] does not already contain an entry with
+  ebmKatalogEintrag.ident == 1. Do not call for Privat or HZV patients.
 
-  STEP 1 — POST /ebmleistung (pc-tomedo-ebmleistung-create):
-    Body vars required:
-      tomedo_base_url         — from config
-      body_json               — JSON string with all mandatory fields:
-        {
-          "datum":                  <ankunft_ms>,          ← use patient's ankunft_ms as datum
-          "visible":                true,
-          "anzahl":                 1,
-          "ebmKatalogEintrag":      {"ident": 1},          ← 01100, always ident=1 on this server
-          "leistungserbringer":     {"ident": <nutzer>},   ← from config key tomedo_nutzer_ident
-          "betriebsstaette":        {"ident": 1},
-          "dokumentierenderNutzer": {"ident": <nutzer>},
-          "letzterNutzer":          {"ident": <nutzer>},
-          "abrechnenderArzt":       {"ident": <nutzer>}
-        }
-    Returns: {new_leistung_ident}
+  Required config: tomedo_nutzer_ident (Arzt ident for auto-written Leistungen).
+  datum for the new Leistung = the patient's ankunft_ms from the besuch record.
+  schein_ident = first kvSchein ident from the patient's patientenDetailsRelationen.
 
-  STEP 2 — PUT /kvschein/{schein_ident} (pc-tomedo-kvschein-link-leistung):
-    Vars: schein_ident (first kvSchein ident from patientenDetailsRelationen),
-          leistung_ident (from step 1 result)
-    Returns: HTTP 204 — leistung linked, Mac client sees 01100 immediately.
-
-  After successful write: remove "EBM 01100 fehlt" from this patient's missing[] list
-  in the audit report — it has been resolved automatically.
-
-  Config keys required:
-    tomedo_nutzer_ident   — default Arzt ident for auto-written Leistungen
-    tomedo_base_url       — https://{host}:8443/{db}
-
-  ⚠️ ENDPOINT: POST to /ebmleistung (NOT /leistung) — confirmed live 2026-08-22.
+  ⚠️ POST to /ebmleistung — NOT /leistung (confirmed broken 2026-08-22).
+  The POST returns {new_leistung_ident}. Pass it to the subsequent kvschein PUT.
+  All five relation idents are mandatory in the POST body (same pattern as
+  skill-tomedo-ebmleistung-create).
 consumer_tags: ["02:orchestrator"]
 source:        "system"
 validation_status: "validated"
@@ -4592,7 +4517,9 @@ validation_status: "validated"
 
 ### Step 8.5 — Recipes (class 21) for Abenddokumentation-Audit
 
-All Tier 0. The orchestrator runs the full audit without LLM involvement.
+All read/check recipes are Tier 0. The auto-add write recipe is Tier 1.
+The orchestrator runs the full audit check without LLM involvement.
+The auto-add step is a separate Tier-1 recipe — keeps Tier-0 audit clean.
 Intent examples cover both manual trigger ("check documentation now") and
 the automated nightly invocation ("run evening audit").
 
@@ -4922,7 +4849,7 @@ validation_status: "validated"
 
 ```
 name:              "tomedo-abend-audit"
-description:       "Automated evening documentation audit: fetch today's patient list, classify by insurance type (Privat/GKV/HZV), check each patient for documentation completeness (diagnose, karteiEintraege ANA/BEF/BES, schein, leistungen, 01100 late-arrival rule), auto-add EBM 01100 to GKV Schein if required and missing, then send a report to chat. Fully orchestrator-driven — no LLM."
+description:       "Automated evening documentation audit (Tier 0 — read + check only). Fetches today's patient list, classifies by insurance type (Privat/GKV/HZV), checks each patient for documentation completeness including the 01100 late-arrival rule, and reports patients with missing items to chat. Fully orchestrator-driven — no LLM, no writes. When 01100 is flagged missing the orchestrator calls the separate Tier-1 recipe tomedo-abend-audit-auto-add-01100 per patient."
 llm_call_required: false
 step_descriptions: [
   {
@@ -4935,10 +4862,9 @@ step_descriptions: [
       "<uuid:skill-tomedo-abend-audit-check-privat>",
       "<uuid:skill-tomedo-abend-audit-check-gkv>",
       "<uuid:skill-tomedo-abend-audit-check-hzv>",
-      "<uuid:skill-tomedo-abend-audit-auto-add-01100>",
       "<uuid:skill-tomedo>"
     ],
-    "label":   "Load all audit leaf skills (incl. auto-add-01100) + domain skill into orchestrator context"
+    "label":   "Load all audit read/check leaf skills + domain skill into orchestrator context"
   },
   {
     "step_id": "step-1",
@@ -5095,39 +5021,11 @@ step_descriptions: [
     "label":   "Per-patient (HZV only): check diagnose + kartei + HZV-Schein + HZV-Ziffern"
   },
   {
-    "step_id": "step-21b",
-    "type":    "component",
-    "channel": "rust",
-    "include": ["<uuid:ts-tomedo-ebmleistung-create>"],
-    "label":   "Pre-load ts-tomedo-ebmleistung-create binding (used for auto-add 01100)"
-  },
-  {
-    "step_id": "step-21c",
-    "type":    "component",
-    "channel": "orchestrator",
-    "include": ["<uuid:pc-tomedo-ebmleistung-create>"],
-    "label":   "Per-patient (GKV, 01100 erforderlich + fehlt): POST /ebmleistung → {new_leistung_ident}"
-  },
-  {
-    "step_id": "step-21d",
-    "type":    "component",
-    "channel": "rust",
-    "include": ["<uuid:ts-tomedo-kvschein-link-leistung>"],
-    "label":   "Pre-load ts-tomedo-kvschein-link-leistung binding (used for auto-add 01100)"
-  },
-  {
-    "step_id": "step-21e",
-    "type":    "component",
-    "channel": "orchestrator",
-    "include": ["<uuid:pc-tomedo-kvschein-link-leistung>"],
-    "label":   "Per-patient (GKV, 01100 erforderlich + fehlt): PUT /kvschein/{id} → links leistung, Mac client notified"
-  },
-  {
     "step_id": "step-22",
     "type":    "component",
     "channel": "orchestrator",
     "include": ["<uuid:pc-tomedo-format-audit-bericht>"],
-    "label":   "Format audit report: list patients with remaining missing items → send to chat"
+    "label":   "Format audit report: list patients with missing items → send to chat. GKV patients missing 01100 are flagged for tomedo-abend-audit-auto-add-01100"
   }
 ]
 intent_examples: [
@@ -5148,5 +5046,69 @@ intent_examples: [
 ]
 source: "system"
 validation_status: "pending"
+```
+
+---
+
+#### Recipe: `tomedo-abend-audit-auto-add-01100` (class 21) — Tier 1
+
+> Write-only complement to `tomedo-abend-audit`. Called once per GKV patient
+> where the audit flagged "EBM 01100 fehlt". Contains the POST/PUT write steps
+> that are forbidden in Tier-0 recipes. No LLM needed — all inputs are
+> deterministic from the preceding Tier-0 audit check.
+
+```
+name:              "tomedo-abend-audit-auto-add-01100"
+description:       "Add EBM 01100 to one GKV patient's KV-Schein after the evening audit flagged it missing (late-arrival rule). Two-step write: POST /ebmleistung → PUT /kvschein link. All inputs deterministic — no LLM needed despite being Tier 1."
+llm_call_required: false
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-abend-audit-auto-add-01100>", "<uuid:skill-tomedo>"],
+    "label":   "Load auto-add-01100 leaf skill + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-ebmleistung-create>"],
+    "label":   "Pre-load ts-tomedo-ebmleistung-create binding (Rust makes the tool available)"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-ebmleistung-create>"],
+    "label":   "Orchestrator executes: POST /ebmleistung with all mandatory fields → {new_leistung_ident}"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-kvschein-link-leistung>"],
+    "label":   "Pre-load ts-tomedo-kvschein-link-leistung binding (Rust makes the tool available)"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-kvschein-link-leistung>"],
+    "label":   "Orchestrator executes: PUT /kvschein/{schein_ident} → invkvschein_ident set, Mac client synced"
+  }
+]
+intent_examples: [
+  {"input": "01100 für patient automatisch nachtragen",        "class": 3},
+  {"input": "EBM 01100 auf schein buchen GKV spät",            "class": 3},
+  {"input": "auto-add 01100 after evening audit",              "class": 2},
+  {"input": "unvorhergesehene inanspruchnahme eintragen",      "class": 3},
+  {"input": "01100 fehlt automatisch ergänzen",                "class": 3},
+  {"input": "late arrival code add to schein",                 "class": 2},
+  {"input": "01100 nachtragen KV-Schein audit",                "class": 3},
+  {"input": "add missing 01100 from audit result",             "class": 2}
+]
+source: "system"
+validation_status: "validated"
 ```
 
