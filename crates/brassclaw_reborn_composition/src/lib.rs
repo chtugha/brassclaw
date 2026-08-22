@@ -119,6 +119,7 @@ mod provider_admin;
 mod provider_admin_product_command;
 mod readiness;
 mod recipe_library;
+pub mod recipe_outcome_listener;
 #[cfg(feature = "postgres")]
 pub(crate) mod recipe_store;
 #[cfg(feature = "postgres")]
