@@ -34,9 +34,10 @@ Browser (automations-page.js)
 
 All new write endpoints go through the existing `TriggerRepository` — no new DB
 tables are required. The host-runtime capability layer already abstracts the
-repository. The plan adds **five new first-party capabilities** (three already
-exist: create, list, remove), **seven facade trait methods**, **seven HTTP
-routes**, and **a fully featured SPA page**.
+repository. The plan adds **four new first-party capabilities** (three already
+exist: create, list, remove; `fire_now` is composition-layer only — see §3.7),
+**seven facade trait methods**, **seven HTTP routes**, and **a fully featured
+SPA page**.
 
 > **Key naming corrections (grounded in live source):**
 > - Capability IDs use the `builtin.*` namespace, not `brassclaw.*`.
@@ -164,7 +165,10 @@ impl TriggerUpdatePatch {
         }
         if let Some(name) = &self.name {
             if name.trim().is_empty() {
-                return Err(TriggerError::Validation("name must not be empty".into()));
+                // TriggerError has no Validation variant — use InvalidRecord
+                return Err(TriggerError::InvalidRecord {
+                    reason: "name must not be empty".into(),
+                });
             }
         }
         Ok(())
@@ -313,12 +317,9 @@ RETURNING *
 When `schedule` is patched, also recompute `next_run_at` in Rust before
 persisting (use `TriggerSchedule::next_slot_after(now)`).
 
-**delete_trigger:**
-```sql
-DELETE FROM brassclaw_triggers
-WHERE tenant_id = $1 AND trigger_id = $2
-```
-Return `rows_affected > 0`.
+**Note on delete:** Do NOT add a new `delete_trigger` SQL method. Use the existing
+`remove_scoped_trigger` (which already enforces caller scope) via the
+`triggers.delete` capability handler (§3.6). No new SQL needed for deletion.
 
 ---
 
@@ -380,14 +381,6 @@ first_party_capability_manifest(
 first_party_capability_manifest(
     TRIGGER_SET_STATE_CAPABILITY_ID,
     "Pause or resume a caller-scoped scheduled trigger",
-    vec![EffectKind::DispatchCapability, EffectKind::ExternalWrite],
-    PermissionMode::Ask,
-    resource_profile(),
-)?
-// trigger_fire_now — write + dispatch:
-first_party_capability_manifest(
-    TRIGGER_FIRE_NOW_CAPABILITY_ID,
-    "Manually fire a caller-scoped scheduled trigger now",
     vec![EffectKind::DispatchCapability, EffectKind::ExternalWrite],
     PermissionMode::Ask,
     resource_profile(),
@@ -501,24 +494,17 @@ Reuse `trigger_output()` for the full record shape.
 
 ### Step 3.4 — Capability handler: `triggers.update`
 
-Input:
-```json
-{
-  "tenant_id": "...",
-  "trigger_id": "...",
-  "name": "...",              // optional
-  "cron": "0 9 * * *",       // optional — recomputes next_run_at
-  "prompt": "...",            // optional
-  "completion_policy": "..."  // optional
-}
-```
+Input: `{ "trigger_id": "...", "name"?: "...", "cron"?: "...", "prompt"?: "...", "completion_policy"?: "..." }`
+
+All fields except `trigger_id` are optional. `tenant_id` comes from `request.scope`.
 
 Handler:
-1. Build `TriggerUpdatePatch` from non-null fields
+1. Build `TriggerUpdatePatch` from non-null JSON fields.
 2. Validate patch via `patch.validate()?`
 3. If `cron` changed, compute new `next_run_at = schedule.next_slot_after(now)?`
-4. Call `repository.update_trigger(tenant_id, trigger_id, patch).await?`
-5. Return updated `TriggerRecord` or 404 signal
+   (returns `Timestamp`, not `DateTime<Utc>` — `next_run_at` is typed `Timestamp` in `TriggerRecord`).
+4. Call `repository.update_trigger(scope.tenant_id, trigger_id, patch).await?`
+5. Return `{ "found": true, "trigger": trigger_output(&record) }` or `{ "found": false }`.
 
 ### Step 3.5 — Capability handler: `triggers.set_state`
 
@@ -572,46 +558,9 @@ Handler:
 
 The `fire_now` capability must be handled at the **composition layer**
 (`brassclaw_reborn_composition/src/automation.rs`), not in `trigger_management.rs`.
-There are two valid approaches:
+The correct approach:
 
-**Approach A (Recommended) — Composition-layer method, no new capability constant:**
-Skip the `builtin.trigger_fire_now` capability entirely. Instead, add a
-`fire_automation_now` method directly to `RebornWebuiAutomationFacade` in
-`automation.rs` that goes **around** the capability call and directly invokes
-the trusted submit path already wired in composition (the poller's
-`TrustedTriggerFireSubmitter` instance).
-
-This requires:
-1. `RebornWebuiAutomationFacade` gains a second field:
-   ```rust
-   pub struct RebornWebuiAutomationFacade {
-       host_runtime: Arc<dyn HostRuntime>,
-       trigger_repository: Arc<dyn TriggerRepository>,  // ADD
-       trusted_submitter: Arc<dyn TrustedTriggerFireSubmitter>,  // ADD
-       backend_timeout: Duration,
-   }
-   ```
-2. `RebornWebuiAutomationFacade::new` gains two new parameters.
-3. The wiring in `crates/brassclaw_reborn_composition/src/webui.rs` (lines 61–64)
-   must pass `trigger_repository` and `trusted_submitter` when constructing
-   the facade. Both are available on the composition services struct at that
-   point.
-4. `fire_automation_now` implementation:
-   - Load trigger via `trigger_repository.get_trigger(caller.tenant_id, trigger_id)`
-   - Verify state is `Scheduled` and `!record.has_active_fire()`
-   - Build `TriggerFireIdentity::new(tenant_id, trigger_id, now)` (public constructor)
-   - Build `TriggerFire { identity, creator_user_id, agent_id, project_id, prompt }`
-   - Call `TriggerPromptMaterializer::materialize_prompt(fire.clone())` — the
-     materializer is already wired in composition
-   - Construct `TrustedTriggerSubmitRequest::new(fire, materialized_prompt, now)`
-     — **only works because this code is inside the `brassclaw_triggers` crate
-     boundary via composition**, which has the trusted submit path
-   - Actually: `TrustedTriggerSubmitRequest::new` is `pub(crate)` in the
-     **worker** module of `brassclaw_triggers`. Composition is a separate crate.
-     This means even approach A cannot call `TrustedTriggerSubmitRequest::new`
-     directly.
-
-**Approach B (Correct) — Expose a public constructor or a fire helper on `TriggerFire`:**
+**Approach B — Expose a public constructor on `TrustedTriggerSubmitRequest`:**
 Add a `pub` constructor or a small public helper to `brassclaw_triggers` that
 creates the submit request:
 
@@ -1036,7 +985,7 @@ pub completion_policy: Option<String>,
 
 **File:** `crates/brassclaw_product_workflow/src/reborn_services.rs`
 
-Add six new methods to the `RebornServicesApi` trait. Each gets a **default
+Add seven new methods to the `RebornServicesApi` trait. Each gets a **default
 "unavailable" body** that returns a 501 so existing fakes and tests keep
 compiling:
 
@@ -1157,7 +1106,9 @@ pub const WEBUI_V2_ROUTE_FIRE_AUTOMATION_NOW: &str  = "webui.v2.fire_automation_
 pub const WEBUI_V2_ROUTE_GET_AUTOMATION_RUNS: &str  = "webui.v2.get_automation_run_history";
 
 // URL patterns
-pub const WEBUI_V2_PATTERN_AUTOMATIONS: &str              = "/api/webchat/v2/automations";
+// Note: WEBUI_V2_PATTERN_LIST_AUTOMATIONS already exists at descriptors.rs:124
+// as "/api/webchat/v2/automations". Reuse that constant for GET + POST.
+// Do NOT add a duplicate WEBUI_V2_PATTERN_AUTOMATIONS constant.
 pub const WEBUI_V2_PATTERN_AUTOMATION_ID: &str            = "/api/webchat/v2/automations/:automation_id";
 pub const WEBUI_V2_PATTERN_AUTOMATION_STATE: &str         = "/api/webchat/v2/automations/:automation_id/state";
 pub const WEBUI_V2_PATTERN_AUTOMATION_FIRE: &str          = "/api/webchat/v2/automations/:automation_id/fire";
@@ -1191,8 +1142,9 @@ abuse.
 
 ```rust
 // /api/webchat/v2/automations  (list existing, create new)
+// Reuse the existing WEBUI_V2_PATTERN_LIST_AUTOMATIONS constant — do not add a duplicate.
 .route(
-    WEBUI_V2_PATTERN_AUTOMATIONS,
+    WEBUI_V2_PATTERN_LIST_AUTOMATIONS,
     get(handlers::list_automations).post(handlers::create_automation),
 )
 // /api/webchat/v2/automations/:automation_id  (get, update, delete)
@@ -2006,11 +1958,16 @@ Execute in strict dependency order:
    directly from the trigger row as a one-item "run history" until proper
    run-metadata tagging is added.
 
-3. **`TriggerFireAccessChecker` for manual fire** — does the
-   `TriggerPollerAuthorizerConfig::CreatorAccessRequired` authorizer already
-   accept non-poller manual-fire requests? If the `fire_now` capability reuses
-   the same `TrustedTriggerFireSubmitter` as the poller worker, it must pass
-   the same access-check. Review the authorizer logic to confirm.
+3. **`TriggerFireAccessChecker` for manual fire — RESOLVED (security note).**
+   `fire_automation_now` in `RebornWebuiAutomationFacade` calls
+   `TrustedTriggerFireSubmitter::submit_trusted_trigger_fire` directly. This
+   path does **not** invoke `TriggerFireAccessChecker` (which is the
+   poller-internal `AccessCheckerTriggerFireAuthorizer`). The trust boundary is
+   the composition layer itself: only `brassclaw_reborn_composition` (a trusted
+   crate) can call this method, and it enforces its own guards (state ≠ paused,
+   no active fire). This is acceptable by design — the access-checker is a
+   poller-level guard, not a general-purpose auth gate. Document this in the
+   implementation PR review checklist.
 
 4. **Cron preview client-side library** — the existing `automations-presenters.js`
    parses cron strings purely in JS without a library. For the "next fire"
