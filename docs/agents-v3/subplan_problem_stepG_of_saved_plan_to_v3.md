@@ -358,7 +358,12 @@ composition tests):**
 
 (updated as substeps complete)
 
-- G.1 — pending.
+- G.1 — Done. `fetch_skill_provenance_by_ids` in `db_skill_loader.rs` +
+  `skill_provenance_for_items` helper + `handle_assemble_prior_knowledge`
+  `pg_pool` threading + `assemble_from_component_items` `active_skills` arg
+  + all four `FetchForTurnResult` arms emit `active_skills` +
+  `phase_g1_active_skills_emitted_in_every_arm` test. fmt/clippy/test green
+  both configs (677/688 lib tests). Committed+pushed `e7c2ce31`.
 - G.2 — pending.
 - G.3 — pending.
 - G.4 — pending.
