@@ -1078,6 +1078,113 @@ def _parse_orchestrator_channel_steps(orchestrator_content):
     return steps
 
 
+def execute_recipe_orchestrator_channel(orchestrator_content):
+    """Tier-0 no-LLM orchestrator-channel executor (v3 Phase H.2).
+
+    Drives the deterministic, no-LLM execution of a Tier-0 Recipe's
+    orchestrator channel — the `## [{Heading}: {name}]\\n{body}` prose
+    block produced by `format_orchestrator_content` (Rust,
+    orchestrator.rs:3003) and surfaced in `pkr["orchestrator_content"]`
+    when `pkr["tier_zero"]` is true (Phase H.3 wires that branch).
+
+    Flow:
+    1. Parse `orchestrator_content` into step dicts via
+       `_parse_orchestrator_channel_steps` (Phase H.1). A parse failure
+       (malformed heading / missing `: ` separator) is caught here and
+       converted to `{outcome: "error"}`.
+    2. Only `kind == "PythonCode"` steps are executable at Tier 0
+       (FIND-P9-02 Q1 constraint: Tier-0 recipes are PythonCode-only;
+       Skill bodies are LLM prose, not formal programs — interpreting
+       them without an LLM is fragile). Any non-PythonCode step, or an
+       empty step list, -> `{outcome: "error"}`. `ToolSkill` (class 13)
+       never appears here (the formatter skips it, §2.3 invariant), so
+       an unexpected `ToolSkill` kind is also an error.
+    3. Each PythonCode step runs via `__execute_code_step__(body, {})` —
+       fresh Monty VM state per step (ISOLATION INVARIANT: the `{}`
+       kwargs means no variables are shared between steps; each step
+       sees only the IBS-baked-in literals from `{{vars.slot0}}`
+       substitution, §0.20.3 — there is NO runtime `vars` dict).
+    4. A step fails when `__execute_code_step__` raises (hard
+       RuntimeError from `execute_code` returning Err, caught by
+       `except Exception`) OR its result dict has `had_error` truthy
+       (internal SyntaxError / runtime error) OR `pending_gate` is set
+       (a tool call paused on an approval gate — per Q-H4 the channel
+       signal is binary success/error, so a gate pause degrades to
+       `{outcome: "error"}`; the Tier-2 LLM path owns full gate
+       handling, so the user's request still proceeds). On first
+       failure -> `{outcome: "error", message: <reason>}`.
+    5. All-success -> `{outcome: "success", result: <reply text>}` where
+       the reply text is extracted from the LAST step's result (Q-H4 /
+       Q-H5result): `final_answer` (from `FINAL("...")`, the established
+       RLM reply pattern) -> else `return_value` (stringified if not a
+       str) -> else captured `stdout` -> else `""`.
+
+    `outcome` is the SOLE signal (Q-H4): `"success"` -> Tier-0 success
+    (H.3 returns it as the completed reply with no LLM call);
+    `"error"` -> H.3 falls through to Tier-2 (a Tier-0 failure degrades
+    to a normal LLM call so the user still gets a reply).
+
+    Monty-safe: `str`, `+`, `in`, `.get()`, `len()`, `.append()`,
+    `isinstance`, `try/except Exception as exc: str(exc)`, `is not None`.
+    NO f-strings, NO `str.format()` (Monty-unsupported per
+    subplan_problem_stepG8_str_format), NO `re`.
+    """
+    try:
+        steps = _parse_orchestrator_channel_steps(orchestrator_content)
+    except Exception as exc:
+        return {"outcome": "error", "message": str(exc)}
+    if len(steps) == 0:
+        return {
+            "outcome": "error",
+            "message": "no orchestrator channel steps to execute",
+        }
+    last_result = None
+    for step in steps:
+        kind = step["kind"]
+        if kind != "PythonCode":
+            return {
+                "outcome": "error",
+                "message": "tier-0 channel step is not PythonCode: " + kind,
+            }
+        body = step["body"]
+        try:
+            step_result = __execute_code_step__(body, {})
+        except Exception as exc:
+            return {"outcome": "error", "message": str(exc)}
+        if not isinstance(step_result, dict):
+            return {
+                "outcome": "error",
+                "message": "step returned a non-dict result",
+            }
+        if step_result.get("had_error"):
+            stdout = step_result.get("stdout", "")
+            return {"outcome": "error", "message": "step raised: " + str(stdout)}
+        if step_result.get("pending_gate") is not None:
+            return {
+                "outcome": "error",
+                "message": "tier-0 step paused on approval gate; degrading to LLM",
+            }
+        last_result = step_result
+    # All steps succeeded: extract the reply text from the last step
+    # (Q-H4 / Q-H5result — final_answer -> return_value -> stdout -> "").
+    result_text = ""
+    if last_result is not None:
+        if last_result.get("final_answer") is not None:
+            result_text = last_result["final_answer"]
+        else:
+            rv = last_result.get("return_value")
+            if rv is not None:
+                if isinstance(rv, str):
+                    result_text = rv
+                else:
+                    result_text = str(rv)
+            else:
+                stdout = last_result.get("stdout", "")
+                if stdout != "":
+                    result_text = stdout
+    return {"outcome": "success", "result": result_text}
+
+
 # ── Main execution loop ─────────────────────────────────────
 
 

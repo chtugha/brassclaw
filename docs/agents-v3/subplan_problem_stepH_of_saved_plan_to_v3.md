@@ -349,7 +349,72 @@ Mark this subplan Zenflow substep Completed.
   `python3 ast.parse` clean; fmt clean; clippy clean both configs; test passes
   both configs (1 passed, 684 default / 695 skills-db filtered — 0 regressions).
   Committed+pushed (this commit).
-- H.2 — Pending.
+- H.2 — Done. `execute_recipe_orchestrator_channel(orchestrator_content)` helper
+  in `default.py` (helpers region, immediately after
+  `_parse_orchestrator_channel_steps`). The Tier-0 no-LLM channel executor.
+  Flow: (1) parse via H.1 — a parse failure is caught and →
+  `{outcome:"error",message:str(exc)}`; (2) empty steps →
+  `{outcome:"error",message:"no orchestrator channel steps to execute"}`; (3) for
+  each step, only `kind=="PythonCode"` runs via `__execute_code_step__(body,{})`
+  (fresh Monty state per step — ISOLATION INVARIANT; the `{}` kwargs means no
+  vars are shared between steps; bodies see only IBS-baked-in `{{vars.slot0}}`
+  literals, §0.20.3 — NO runtime `vars` dict). A non-PythonCode `kind` (Skill /
+  ToolSkill / unknown) → `{outcome:"error",message:"tier-0 channel step is not
+  PythonCode: <kind>"}` and the executor is NOT called for that step; (4) a step
+  fails when `__execute_code_step__` raises (hard RuntimeError, caught by
+  `except Exception as exc`) OR `step_result.get("had_error")` is truthy
+  (internal SyntaxError/runtime error) OR `step_result.get("pending_gate") is
+  not None` (Q-H5gate — a gate pause is binary error: degrades to Tier-2 LLM,
+  which owns gate handling) →
+  `{outcome:"error",message:<reason>}`; on first failure the channel STOPS
+  (later steps never run); (5) all-success →
+  `{outcome:"success",result:<reply text>}` where the reply text is extracted
+  from the LAST step's result (Q-H5result): `final_answer` (from `FINAL("...")`,
+  the established RLM reply pattern) → else `return_value` (stringified via
+  `str()` if not a `str`) → else captured `stdout` → else `""`. `outcome` is the
+  SOLE signal (Q-H4): `"success"` → H.3 returns it as the completed reply (no
+  LLM); `"error"` → H.3 falls through to Tier-2 (a Tier-0 failure degrades to a
+  normal LLM call so the user still gets a reply). Monty-safe (`str`, `+`, `in`,
+  `.get()`, `len()`, `.append()`, `isinstance`, `try/except Exception as exc:
+  str(exc)`, `is not None`; NO f-strings/`.format()`/`re`).
+  **Signature reconciliation with plan §0.9 / FIND-P9-02:** the plan's pseudocode
+  specifies `execute_recipe_orchestrator_channel(pkr, goal, state)`; this
+  implementation uses `execute_recipe_orchestrator_channel(orchestrator_content)`
+  (single arg). Rationale: `goal` is NOT needed at runtime (the IBS already
+  substituted `{{vars.slot0}}` into the bodies before the channel runs,
+  §0.20.3 — bodies are self-contained); passing the turn `state` would VIOLATE
+  the fresh-state-per-step ISOLATION INVARIANT (sharing turn state across Tier-0
+  steps would be a correctness bug). So the subplan signature supersedes the
+  plan pseudocode, which predates the grounding that established isolation. The
+  plan §0.9 pseudocode is left as-is (it is the design intent); the
+  implementation refines the signature for correctness. H.3 calls
+  `execute_recipe_orchestrator_channel(pkr["orchestrator_content"])`.
+  **Two design questions answered by the user before H.2 implementation
+  (extending Q-H4):**
+  - **Q-H5gate** — a Tier-0 PythonCode step that pauses on an approval gate
+    (`pending_gate` set, not a hard error, not success): per Q-H4's binary
+    signal, treat as `{outcome:"error"}` → degrade to Tier-2 LLM (the LLM path
+    owns full gate handling; the recipe is recorded as a failure). NOT a third
+    outcome; NOT success.
+  - **Q-H5result** — the success dict's `result` (used as the chat reply via
+    H.3 `response=result`): `final_answer` (FINAL) → else `return_value`
+    (stringified if not str) → else `stdout` → else `""`. (Chosen over
+    raw-`return_value`-only, which would be Null for the standard FINAL-based
+    reply pattern, and over the full step dict, which is not a chat reply.)
+  **Tests:** new `run_python_tier0_channel` test harness (sibling of
+  `run_python_step0`) drives the helper through Monty with a MOCKED
+  `__execute_code_step__` (queued result dicts + optional raise-on-step) so the
+  branching/extraction logic is unit-tested without the full engine stack; it
+  also returns the `__execute_code_step__` call count. 12 Monty unit tests:
+  single-step FINAL success; single-step return_value success; stdout fallback;
+  non-str return_value stringified; `had_error` → error; raised RuntimeError →
+  error; `pending_gate` → error (degrade); non-PythonCode kind → error +
+  executor NOT called (calls==0); empty steps → error + calls==0; malformed
+  content → error + calls==0; multi-step last-result wins (calls==2); multi-step
+  first-error stops (calls==1). Verified: `python3 ast.parse` clean; `cargo fmt`
+  applied; clippy clean both default + skills-db configs; 12 tests pass both
+  configs (default: 697 total = 685 + 12; skills-db: 708 total = 696 + 12; 0
+  regressions).
 - H.3 — Pending.
 - H.4 — Pending (may spawn nested subplan `subplan_problem_stepH4_of_saved_plan_to_v3.md`
   if `recipe_id` surfacing proves large).

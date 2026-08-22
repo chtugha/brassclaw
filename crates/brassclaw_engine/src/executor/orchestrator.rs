@@ -6680,6 +6680,333 @@ FINAL(1 if ok else 0)
         );
     }
 
+    // ── Phase H.2 — execute_recipe_orchestrator_channel harness ──────
+    //
+    // Drives `execute_recipe_orchestrator_channel(orchestrator_content)` through
+    // Monty with a mocked `__execute_code_step__` so the Tier-0 channel executor
+    // can be unit-tested without the full engine stack (thread/llm/effects/
+    // leases/policy/gate). `step_results` is a queue: the i-th
+    // `__execute_code_step__` call returns `step_results[i]` (or a default
+    // had_error dict if the queue is exhausted — guards against unexpected
+    // extra calls). `raise_on_step = Some(i)` makes the i-th call raise a
+    // Monty RuntimeError (simulating `execute_code` returning Err, which the
+    // production `handle_execute_code_step` surfaces as `ExtFunctionResult::
+    // Error`). Returns the `{outcome, result|message}` dict plus the count of
+    // `__execute_code_step__` calls so tests can assert the channel stops at
+    // the first error / never calls the executor for a non-PythonCode step.
+
+    fn run_python_tier0_channel(
+        orchestrator_content: &str,
+        step_results: Vec<serde_json::Value>,
+        raise_on_step: Option<usize>,
+    ) -> (serde_json::Value, usize) {
+        let helpers_end = DEFAULT_ORCHESTRATOR
+            .find("\ndef run_loop(")
+            .unwrap_or(DEFAULT_ORCHESTRATOR.len());
+        let helpers = &DEFAULT_ORCHESTRATOR[..helpers_end];
+        let program = format!(
+            "r = execute_recipe_orchestrator_channel({content:?}); FINAL(r)",
+            content = orchestrator_content
+        );
+        let code = format!("{helpers}\n{program}");
+        let runner =
+            MontyRun::new(code, "test.py", vec![]).expect("Failed to parse tier0 channel test");
+        let mut stdout = String::new();
+        let tracker =
+            LimitedTracker::new(ResourceLimits::new().max_allocations(TEST_MAX_ALLOCATIONS));
+        let mut progress = runner
+            .start(vec![], tracker, PrintWriter::CollectString(&mut stdout))
+            .expect("Failed to start tier0 channel test");
+        let mut call_idx: usize = 0;
+
+        loop {
+            match progress {
+                RunProgress::Complete(obj) => return (monty_to_json(&obj), call_idx),
+                RunProgress::FunctionCall(call) => {
+                    if call.function_name == "FINAL" {
+                        let val = call.args.first().cloned().unwrap_or(MontyObject::None);
+                        let _ = call.resume(
+                            ExtFunctionResult::Return(MontyObject::None),
+                            PrintWriter::CollectString(&mut stdout),
+                        );
+                        return (monty_to_json(&val), call_idx);
+                    }
+                    let ext_result = match call.function_name.as_str() {
+                        "__execute_code_step__" => {
+                            let idx = call_idx;
+                            call_idx += 1;
+                            if raise_on_step == Some(idx) {
+                                ExtFunctionResult::Error(monty::MontyException::new(
+                                    monty::ExcType::RuntimeError,
+                                    Some("simulated execute_code failure".into()),
+                                ))
+                            } else {
+                                let result = step_results.get(idx).cloned().unwrap_or_else(|| {
+                                    serde_json::json!({
+                                        "return_value": serde_json::Value::Null,
+                                        "stdout": "",
+                                        "action_results": [],
+                                        "final_answer": serde_json::Value::Null,
+                                        "had_error": true,
+                                        "pending_gate": serde_json::Value::Null,
+                                    })
+                                });
+                                ExtFunctionResult::Return(json_to_monty(&result))
+                            }
+                        }
+                        _ => ExtFunctionResult::Return(MontyObject::None),
+                    };
+                    progress = call
+                        .resume(ext_result, PrintWriter::CollectString(&mut stdout))
+                        .expect("tier0 host function resume failed");
+                }
+                RunProgress::NameLookup(lookup) => {
+                    let name = lookup.name.clone();
+                    progress = lookup
+                        .resume(
+                            NameLookupResult::Undefined,
+                            PrintWriter::CollectString(&mut stdout),
+                        )
+                        .unwrap_or_else(|e| panic!("tier0 NameError '{name}': {e}"));
+                }
+                _ => panic!("Unexpected RunProgress variant in tier0 channel test"),
+            }
+        }
+    }
+
+    /// Build a `__execute_code_step__` result dict with the given fields;
+    /// everything else defaults to the production success shape.
+    fn step_result(
+        return_value: serde_json::Value,
+        stdout: &str,
+        final_answer: Option<&str>,
+        had_error: bool,
+        pending_gate: Option<serde_json::Value>,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "return_value": return_value,
+            "stdout": stdout,
+            "action_results": [],
+            "final_answer": final_answer.map(|s| serde_json::json!(s)).unwrap_or(serde_json::Value::Null),
+            "had_error": had_error,
+            "pending_gate": pending_gate.unwrap_or(serde_json::Value::Null),
+        })
+    }
+
+    #[test]
+    fn phase_h2_single_pythoncode_step_success_final_answer() {
+        // FINAL("...") is the established RLM reply pattern: the body sets
+        // `final_answer`, so the success `result` must come from there (NOT
+        // return_value, which is Null for a FINAL-only body).
+        let (res, calls) = run_python_tier0_channel(
+            "## [PythonCode: greet]\nFINAL(\"hello\")",
+            vec![step_result(
+                serde_json::Value::Null,
+                "",
+                Some("hello"),
+                false,
+                None,
+            )],
+            None,
+        );
+        assert_eq!(res["outcome"], "success");
+        assert_eq!(res["result"], "hello");
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn phase_h2_single_pythoncode_step_success_return_value() {
+        // No FINAL -> result falls back to the step's return_value (a str).
+        let (res, calls) = run_python_tier0_channel(
+            "## [PythonCode: greet]\nbody",
+            vec![step_result(
+                serde_json::json!("hi-from-rv"),
+                "",
+                None,
+                false,
+                None,
+            )],
+            None,
+        );
+        assert_eq!(res["outcome"], "success");
+        assert_eq!(res["result"], "hi-from-rv");
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn phase_h2_success_falls_back_to_stdout() {
+        // No FINAL, no return_value -> result falls back to captured stdout.
+        let (res, _calls) = run_python_tier0_channel(
+            "## [PythonCode: greet]\nprint('printed-out')",
+            vec![step_result(
+                serde_json::Value::Null,
+                "printed-out",
+                None,
+                false,
+                None,
+            )],
+            None,
+        );
+        assert_eq!(res["outcome"], "success");
+        assert_eq!(res["result"], "printed-out");
+    }
+
+    #[test]
+    fn phase_h2_return_value_non_str_is_stringified() {
+        // A non-str return_value (int) is stringified for the reply text.
+        let (res, _calls) = run_python_tier0_channel(
+            "## [PythonCode: count]\nbody",
+            vec![step_result(serde_json::json!(42), "", None, false, None)],
+            None,
+        );
+        assert_eq!(res["outcome"], "success");
+        assert_eq!(res["result"], "42");
+    }
+
+    #[test]
+    fn phase_h2_step_had_error_returns_error() {
+        // An internal step failure (had_error true) -> error, never success.
+        let (res, _calls) = run_python_tier0_channel(
+            "## [PythonCode: bad]\nbody",
+            vec![step_result(
+                serde_json::Value::Null,
+                "Error: boom",
+                None,
+                true,
+                None,
+            )],
+            None,
+        );
+        assert_eq!(res["outcome"], "error");
+        assert!(
+            res["message"].as_str().unwrap().contains("step raised"),
+            "had_error message must say 'step raised': {}",
+            res["message"]
+        );
+    }
+
+    #[test]
+    fn phase_h2_step_raises_runtime_error_returns_error() {
+        // `__execute_code_step__` raising (execute_code Err) is caught by
+        // `except Exception` and surfaced as {outcome: error}.
+        let (res, calls) = run_python_tier0_channel(
+            "## [PythonCode: boom]\nbody",
+            vec![step_result(serde_json::Value::Null, "", None, false, None)],
+            Some(0),
+        );
+        assert_eq!(res["outcome"], "error");
+        assert!(
+            res["message"]
+                .as_str()
+                .unwrap()
+                .contains("simulated execute_code failure"),
+            "raised-exception message must carry the RuntimeError text: {}",
+            res["message"]
+        );
+        assert_eq!(calls, 1);
+    }
+
+    #[test]
+    fn phase_h2_pending_gate_degrades_to_error() {
+        // Q-H5gate: a gate pause is binary error (degrades to Tier-2 LLM,
+        // which owns gate handling) — never success, never a third outcome.
+        let (res, _calls) = run_python_tier0_channel(
+            "## [PythonCode: gated]\nbody",
+            vec![step_result(
+                serde_json::Value::Null,
+                "",
+                None,
+                false,
+                Some(serde_json::json!({
+                    "gate_paused": true,
+                    "gate_name": "shell_approval",
+                })),
+            )],
+            None,
+        );
+        assert_eq!(res["outcome"], "error");
+        assert!(
+            res["message"].as_str().unwrap().contains("approval gate"),
+            "pending_gate message must mention the gate: {}",
+            res["message"]
+        );
+    }
+
+    #[test]
+    fn phase_h2_non_pythoncode_kind_returns_error_without_executing() {
+        // FIND-P9-02 Q1: only PythonCode is executable at Tier 0. A Skill
+        // step (LLM prose) -> error, and __execute_code_step__ is NEVER
+        // called (calls == 0).
+        let (res, calls) = run_python_tier0_channel("## [Skill: s1]\nbody", vec![], None);
+        assert_eq!(res["outcome"], "error");
+        assert!(
+            res["message"]
+                .as_str()
+                .unwrap()
+                .contains("not PythonCode: Skill"),
+            "non-PythonCode message must name the kind: {}",
+            res["message"]
+        );
+        assert_eq!(calls, 0);
+    }
+
+    #[test]
+    fn phase_h2_empty_steps_returns_error() {
+        // Empty orchestrator_content -> no steps -> error (nothing to run).
+        let (res, calls) = run_python_tier0_channel("", vec![], None);
+        assert_eq!(res["outcome"], "error");
+        assert!(
+            res["message"]
+                .as_str()
+                .unwrap()
+                .contains("no orchestrator channel steps"),
+            "empty-steps message must say so: {}",
+            res["message"]
+        );
+        assert_eq!(calls, 0);
+    }
+
+    #[test]
+    fn phase_h2_malformed_content_returns_error() {
+        // A parse failure (non-heading first line) is caught and converted
+        // to {outcome: error} — never propagates as an uncaught exception.
+        let (res, calls) = run_python_tier0_channel("not a heading", vec![], None);
+        assert_eq!(res["outcome"], "error");
+        assert_eq!(calls, 0);
+    }
+
+    #[test]
+    fn phase_h2_multi_step_last_result_wins() {
+        // Two PythonCode steps: the LAST step's reply is the channel result.
+        let (res, calls) = run_python_tier0_channel(
+            "## [PythonCode: a]\nbody1\n\n## [PythonCode: b]\nbody2",
+            vec![
+                step_result(serde_json::json!("first"), "", None, false, None),
+                step_result(serde_json::Value::Null, "", Some("second"), false, None),
+            ],
+            None,
+        );
+        assert_eq!(res["outcome"], "success");
+        assert_eq!(res["result"], "second");
+        assert_eq!(calls, 2);
+    }
+
+    #[test]
+    fn phase_h2_multi_step_first_error_stops_channel() {
+        // First step fails -> channel stops immediately (calls == 1), second
+        // step never runs.
+        let (res, calls) = run_python_tier0_channel(
+            "## [PythonCode: a]\nbody1\n\n## [PythonCode: b]\nbody2",
+            vec![
+                step_result(serde_json::Value::Null, "Error: first", None, true, None),
+                step_result(serde_json::json!("never"), "", None, false, None),
+            ],
+            None,
+        );
+        assert_eq!(res["outcome"], "error");
+        assert_eq!(calls, 1);
+    }
+
     #[test]
     fn action_errors_nudge_injected_at_threshold() {
         // When consecutive_action_errors reaches max_consecutive_errors,
