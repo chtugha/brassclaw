@@ -5245,6 +5245,21 @@ Fix the hardcoded `tenant_id: "default"` scope bug (see §below).
 
 **Status:** [ ] Pending
 
+> **Subplan (resolved BEFORE implementation):** grounding after Phase A–F
+> revealed 11 gaps/forks (e.g. `__resolve_component_by_name__` + `handle_disambiguation`
+> + `_set_active_skills_from_matched_ids` do NOT exist; `ActiveSkillProvenance.version`
+> is u32 but `DbSkillRow.version` is a String → latent silent-fail bug; Monty v0.0.16
+> supports try/except+async but NOT custom classes → Q-G5 uses a result-dict marker
+> not a custom exception; `run_loop` is not unit-tested today → G.8 extends the Monty
+> harness). 8 design questions answered (Q-G1 `tier_zero`→Phase H defer; Q-G2
+> implement `handle_disambiguation`; Q-G3 Rust emits `active_skills` in pkr via new
+> `fetch_skill_provenance_by_ids`; Q-G4 add `__resolve_component_by_name__` host fn;
+> Q-G5 fall back to Tier-2 via Monty-safe result-dict marker; Q-G6 V062 Flyway
+> migration overrides plan's "not Flyway"; Q-G7/Q-G8 folded). Full approach +
+> substep sequence (G.1–G.8) + verification in
+> `./docs/agents-v3/subplan_problem_stepG_of_saved_plan_to_v3.md`
+> (Zenflow substep `24e3d17b-b36d-4fe9-ae19-0d9ab7e02d8e`). Execute G.1→G.8 one-by-one.
+
 **Goal:** Remove the dead step-0 shim calls from `default.py` so it makes a single
 `__assemble_prior_knowledge__` call (which is already the primary call at line 997).
 Migrate `call_action` nested lookup to `__fetch_component__`.
