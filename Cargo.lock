@@ -1318,6 +1318,7 @@ dependencies = [
  "brassclaw_memory",
  "brassclaw_network",
  "brassclaw_oauth",
+ "brassclaw_pg",
  "brassclaw_processes",
  "brassclaw_product_adapters",
  "brassclaw_product_workflow",
