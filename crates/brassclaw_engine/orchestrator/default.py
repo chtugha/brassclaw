@@ -962,6 +962,38 @@ def handle_disambiguation(candidates, state):
     )
 
 
+def _set_active_skills_from_matched_ids(matched_component_ids, state, active_skills):
+    """Persist active-skill provenance from the matched orchestrator-channel
+    ids (v3 Phase G.4 / Q-G3).
+
+    Replaces the old `__list_skills__()` + `select_skills()` round-trip: the
+    prior-knowledge assembler already matched the skill-class ids (class 1–3)
+    and Rust emitted their provenance as `pkr["active_skills"]` (each
+    `{doc_id, name, version, snippet_names, force_activated}`, `version`
+    already a u32 — fixes the latent `ActiveSkillProvenance.version`
+    String→u32 silent-fail). This helper forwards that payload to
+    `__set_active_skills__`, emits the `skill_activated` event, and records
+    the matched ids in state.
+
+    3-arg signature (minor deviation from the plan's 2-arg form, justified by
+    Q-G3 putting `active_skills` in pkr): `matched_component_ids` is the pkr
+    matched-identity set; `active_skills` is the provenance list.
+
+    Monty-safe: no f-strings, no list-comp-with-if — explicit for-loop +
+    `.append()` + `",".join(...)` (established patterns, default.py:1088).
+    """
+    if active_skills:
+        __set_active_skills__(active_skills)
+        skill_names = []
+        for s in active_skills:
+            skill_names.append(s.get("name", "?"))
+        __emit_event__("skill_activated", skill_names=",".join(skill_names))
+    # Always record the matched ids + reset snippet names. reborn_skills has no
+    # code_snippets column (§1 finding 7), so snippet_names is always [].
+    state["active_skill_ids"] = matched_component_ids
+    state["skill_snippet_names"] = []
+
+
 # ── Main execution loop ─────────────────────────────────────
 
 
