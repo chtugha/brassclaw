@@ -2572,21 +2572,18 @@ async fn handle_assemble_prior_knowledge(
 
     // Phase 5/6.7 path: use the RetrievalSource backend (intent-driven).
     if let Some(source) = retrieval_source {
-        // Build a scope from the thread's identifiers.  `tenant_id` and
-        // `agent_id` are not carried on `Thread` in Phase 1 — use the user_id
-        // as the tenant and a fixed string for agent_id so scope queries return
-        // per-user results (matches `__list_skills__` / `scope_from_thread_ids`
-        // below).  Phase 2+ / v3 Phase F will tighten this once the full 4-tuple
-        // is threaded through `Thread`.  The production `RamSource` backend
-        // ignores `tenant_id`/`agent_id`, so this only affects scoping once
-        // `PostgresSource` is wired (v3 Phase E); the previous hardcoded
-        // `tenant_id: "default"` / `agent_id: ""` deviated from the sibling
-        // convention and would have broken per-user isolation under
-        // `PostgresSource`.
+        // Build the retrieval scope from the thread's real identity. v3 Phase F
+        // (Q-F2 / FIND-P8-01): `Thread` now carries `tenant_id` + `agent_id`
+        // (added F.1); the subagent child inherits the parent's (F.2) and engine
+        // spawn-created threads keep the empty `#[serde(default)]` (the engine
+        // has no `brassclaw_turns` identity source — Q-F5 -> A). The LIVE
+        // retrieval path sources tenant from `LoopRunContext.scope.tenant_id`
+        // (F.4); this dormant engine handler reads `thread.tenant_id` /
+        // `thread.agent_id` so it is correct if re-activated.
         let scope = ComponentScope {
-            tenant_id: thread.user_id.clone(), // tenant_id stub (Phase 1)
+            tenant_id: thread.tenant_id.clone(),
             user_id: thread.user_id.clone(),
-            agent_id: "default".to_string(), // agent_id stub (Phase 1)
+            agent_id: thread.agent_id.clone(),
             project_id: thread.project_id.to_string(),
         };
 
@@ -3169,15 +3166,14 @@ async fn handle_list_skills(
     #[cfg(feature = "skills-db")]
     if let Some(pool) = pg_pool {
         use crate::executor::db_skill_loader::{fetch_llm_skills_as_json, scope_from_thread_ids};
-        // Build a scope from the thread's identifiers.  `tenant_id` and
-        // `agent_id` are not carried on `Thread` in Phase 1 — use the user_id
-        // as the tenant and a fixed string for agent_id so scope queries return
-        // per-user results.  Phase 2+ will tighten this once the full 4-tuple
-        // is threaded through.
+        // Build the retrieval scope from the thread's real identity. v3 Phase F
+        // (Q-F2 / FIND-P8-01): `Thread` now carries `tenant_id` + `agent_id`
+        // (F.1); the subagent child inherits the parent's (F.2) and engine
+        // spawn-created threads keep the empty `#[serde(default)]` (Q-F5 -> A).
         let scope = scope_from_thread_ids(
-            &thread.user_id, // tenant_id stub (Phase 1 — Phase 2+ will tighten)
+            &thread.tenant_id,
             &thread.user_id,
-            "default", // agent_id stub (Phase 1)
+            &thread.agent_id,
             thread.project_id.0.to_string(),
         );
         match fetch_llm_skills_as_json(pool, &scope).await {
