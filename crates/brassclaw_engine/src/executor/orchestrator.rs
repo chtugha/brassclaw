@@ -2854,14 +2854,26 @@ async fn handle_fetch_component(
         match fetch_component_by_id(pool, &scope, component_id, class_code).await {
             Ok(items) => {
                 if let Some(item) = items.into_iter().next() {
-                    return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                    let mut value = serde_json::json!({
                         "id": item.id.to_string(),
                         "class_code": item.class_code,
                         "name": item.name,
                         "description": item.description,
                         "content": item.effective_content,
                         "override_prompt_creation": item.override_prompt_creation,
-                    })));
+                    });
+                    // Q-G-STUB1: surface the executable `steps` + `allowed_tools`
+                    // for class-16 Actions so `execute_action_procedure` can run
+                    // the real procedure (absent for every other class).
+                    if let Some(obj) = value.as_object_mut() {
+                        if let Some(steps) = item.steps {
+                            obj.insert("steps".to_string(), steps);
+                        }
+                        if let Some(allowed_tools) = item.allowed_tools {
+                            obj.insert("allowed_tools".to_string(), allowed_tools);
+                        }
+                    }
+                    return ExtFunctionResult::Return(json_to_monty(&value));
                 }
                 debug!("__fetch_component__: no validated component for uuid {component_id}");
                 ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
@@ -2925,14 +2937,26 @@ async fn handle_resolve_component_by_name(
         match fetch_component_by_name(pool, &scope, &name, class_code).await {
             Ok(items) => {
                 if let Some(item) = items.into_iter().next() {
-                    return ExtFunctionResult::Return(json_to_monty(&serde_json::json!({
+                    let mut value = serde_json::json!({
                         "id": item.id.to_string(),
                         "class_code": item.class_code,
                         "name": item.name,
                         "description": item.description,
                         "content": item.effective_content,
                         "override_prompt_creation": item.override_prompt_creation,
-                    })));
+                    });
+                    // Q-G-STUB1: surface the executable `steps` + `allowed_tools`
+                    // for class-16 Actions (the §0.9 Option B fallback path),
+                    // mirroring `handle_fetch_component`.
+                    if let Some(obj) = value.as_object_mut() {
+                        if let Some(steps) = item.steps {
+                            obj.insert("steps".to_string(), steps);
+                        }
+                        if let Some(allowed_tools) = item.allowed_tools {
+                            obj.insert("allowed_tools".to_string(), allowed_tools);
+                        }
+                    }
+                    return ExtFunctionResult::Return(json_to_monty(&value));
                 }
                 debug!("__resolve_component_by_name__: no validated component for name {name:?}");
                 ExtFunctionResult::Return(json_to_monty(&serde_json::Value::Null))
@@ -7625,6 +7649,9 @@ evt["estimated_tokens"] == {et} and evt["budget_tokens"] == 100
             description: String::new(),
             effective_content: content.to_string(),
             override_prompt_creation: false,
+            // Test fixture: no executable Action steps (Q-G-STUB1).
+            steps: None,
+            allowed_tools: None,
         }
     }
 

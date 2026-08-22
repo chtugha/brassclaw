@@ -8,16 +8,19 @@
 //! (the dormant Python-VM handler is thin glue over it, and `brassclaw_engine`
 //! has no testcontainers dev-dep, so DB-backed tests live here at the
 //! composition `tests/` tier). Each test starts an isolated Postgres-16
-//! testcontainer, runs the full migration set (V000–V061), seeds, calls, and
+//! testcontainer, runs the full migration set (V000–V062), seeds, calls, and
 //! asserts. Returns early (pass) when docker/testcontainers is unavailable.
 //! Gated to `skills-db` because `fetch_component_by_id` / `PostgresSource` are
 //! skills-db-only.
 //!
-//! Plan Phase F DB-integration test list → test fn map:
+//! Plan Phase F / G DB-integration test list → test fn map:
 //! - #8 `__fetch_component__(uuid, 16)` → correct Action item
 //!   → `fetch_component_by_id_returns_action_item`
 //! - #9 two-tenant isolation (A's intents do NOT match for B's thread)
 //!   → `cross_tenant_intent_isolation`
+//! - Phase G.2 `__resolve_component_by_name__(name, 16)` → correct Action item and tenant scoping → `fetch_component_by_name_resolves_action_item`, `fetch_component_by_name_is_tenant_scoped`
+//! - Phase G / Q-G-STUB1 class-16 fetch surfaces executable `steps` and `allowed_tools` by id → `fetch_component_by_id_returns_action_steps`
+//! - Phase G / Q-G-STUB1 class-16 fetch surfaces executable `steps` and `allowed_tools` by name → `fetch_component_by_name_returns_action_steps`
 //!
 #![cfg(feature = "skills-db")]
 
@@ -290,6 +293,170 @@ async fn fetch_component_by_name_is_tenant_scoped() {
         items_b.is_empty(),
         "CROSS-TENANT LEAK: tenant B resolved tenant A's action by name: {items_b:?}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Phase G / Q-G-STUB1 — the class-16 fetch surfaces the executable `steps`
+// (JSONB) + `allowed_tools` (TEXT[]) so `execute_action_procedure` can run the
+// real procedure. Before the fix `__fetch_component__`/`__resolve_component_
+// by_name__` returned a component *view* (description only) with no `steps`
+// key, so `_execute_action_steps` saw `steps = []` and silently ran zero steps.
+// These drive the live engine APIs the G.6 step-0 + `call_action` paths call.
+// ---------------------------------------------------------------------------
+
+/// Seed a validated Action carrying an explicit executable procedure (the
+/// `steps` JSONB + `allowed_tools` TEXT[]). Mirrors `insert_action` but
+/// populates the two columns the Q-G-STUB1 fetch branch projects.
+async fn insert_action_with_procedure(
+    pool: &deadpool_postgres::Pool,
+    scope: &ComponentScope,
+    id: Uuid,
+    name: &str,
+    steps: &serde_json::Value,
+    allowed_tools: &Vec<String>,
+) {
+    let client = pool.get().await.expect("pool client");
+    client
+        .execute(
+            "INSERT INTO reborn_actions
+                 (id, tenant_id, user_id, agent_id, project_id, name, description,
+                  validation_status, steps, allowed_tools)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+            &[
+                &id as &(dyn ToSql + Sync),
+                &scope.tenant_id,
+                &scope.user_id,
+                &scope.agent_id,
+                &scope.project_id,
+                &name,
+                &"action description",
+                &"validated",
+                steps,
+                allowed_tools,
+            ],
+        )
+        .await
+        .expect("insert reborn_actions with procedure");
+}
+
+/// The known procedure the tests seed + assert against (kept shared so the
+/// by-id and by-name variants assert the identical round-tripped shape).
+fn known_procedure() -> (serde_json::Value, Vec<String>) {
+    let steps = serde_json::json!([
+        { "type": "tool_call", "tool": "shell", "args": { "cmd": "echo hi" } },
+        { "type": "return", "value": "done" }
+    ]);
+    let allowed_tools = vec!["shell".to_string(), "memory".to_string()];
+    (steps, allowed_tools)
+}
+
+#[tokio::test]
+async fn fetch_component_by_id_returns_action_steps() {
+    let rig = match pg_rig_or_skip().await {
+        Some(r) => r,
+        None => return,
+    };
+    let scope = unique_scope();
+
+    let action_id = Uuid::new_v4();
+    let action_name = unique_name("act");
+    let (steps, allowed_tools) = known_procedure();
+    insert_action_with_procedure(
+        &rig.pool,
+        &scope,
+        action_id,
+        &action_name,
+        &steps,
+        &allowed_tools,
+    )
+    .await;
+
+    // `__fetch_component__(uuid, 16)` delegates to fetch_component_by_id — the
+    // Q-G-STUB1 class-16 branch must surface the executable steps + tools.
+    let items = fetch_component_by_id(&rig.pool, &scope, action_id, 16)
+        .await
+        .expect("fetch_component_by_id succeeds");
+
+    assert_eq!(items.len(), 1, "exactly one validated action for the uuid");
+    let item = &items[0];
+    assert_eq!(item.id, action_id, "correct id");
+    assert_eq!(item.class_code, 16, "correct class_code");
+
+    // The executable `steps` JSONB is surfaced for class 16 (Q-G-STUB1).
+    let steps_val = item
+        .steps
+        .as_ref()
+        .expect("class-16 fetch must surface executable steps");
+    let steps_arr = steps_val.as_array().expect("steps must be a JSON array");
+    assert_eq!(
+        steps_arr.len(),
+        2,
+        "both authored steps survived the round-trip"
+    );
+    assert_eq!(
+        steps_arr[0].get("type").and_then(|v| v.as_str()),
+        Some("tool_call")
+    );
+    assert_eq!(
+        steps_arr[1].get("type").and_then(|v| v.as_str()),
+        Some("return")
+    );
+
+    // `allowed_tools` TEXT[] → JSON array of strings.
+    let allowed_val = item
+        .allowed_tools
+        .as_ref()
+        .expect("class-16 fetch must surface allowed_tools");
+    let allowed_arr = allowed_val
+        .as_array()
+        .expect("allowed_tools must be a JSON array");
+    assert_eq!(allowed_arr.len(), 2);
+    assert!(allowed_arr.iter().any(|v| v.as_str() == Some("shell")));
+    assert!(allowed_arr.iter().any(|v| v.as_str() == Some("memory")));
+}
+
+#[tokio::test]
+async fn fetch_component_by_name_returns_action_steps() {
+    // Symmetric to the by-id case: `__resolve_component_by_name__(name, 16)`
+    // (the §0.9 Option B fallback) must ALSO surface the executable steps, so
+    // a `call_action` that holds a step name (not a UUID) runs real steps too.
+    let rig = match pg_rig_or_skip().await {
+        Some(r) => r,
+        None => return,
+    };
+    let scope = unique_scope();
+
+    let action_id = Uuid::new_v4();
+    let action_name = unique_name("act");
+    let (steps, allowed_tools) = known_procedure();
+    insert_action_with_procedure(
+        &rig.pool,
+        &scope,
+        action_id,
+        &action_name,
+        &steps,
+        &allowed_tools,
+    )
+    .await;
+
+    let items = fetch_component_by_name(&rig.pool, &scope, &action_name, 16)
+        .await
+        .expect("fetch_component_by_name succeeds");
+
+    assert_eq!(items.len(), 1, "exactly one validated action for the name");
+    let item = &items[0];
+    assert_eq!(item.id, action_id, "correct id");
+
+    let steps_val = item
+        .steps
+        .as_ref()
+        .expect("by-name class-16 fetch must surface executable steps");
+    assert_eq!(
+        steps_val.as_array().map(Vec::len),
+        Some(2),
+        "both authored steps survived the round-trip"
+    );
+    assert!(item.allowed_tools.is_some(), "allowed_tools surfaced");
 }
 
 // ---------------------------------------------------------------------------

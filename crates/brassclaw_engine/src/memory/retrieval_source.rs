@@ -56,6 +56,20 @@ pub struct ComponentItem {
     /// When true, this component's content replaces the normal assembly and
     /// should be returned verbatim to `default.py` (§3.13 Solution Override).
     pub override_prompt_creation: bool,
+    /// Executable step list for class-16 Actions (the `reborn_actions.steps`
+    /// JSONB, parsed). `None` for every other class — only
+    /// [`fetch_component_by_id`] / [`fetch_component_by_name`] populate this
+    /// (for class 16) so `execute_action_procedure` can run the real procedure
+    /// (v3 Phase G / Q-G-STUB1 — `subplan_stub_stepG_action_steps`). The
+    /// broad-scan assembly path does not fetch steps (it builds
+    /// `orchestrator_content`, not an executable doc).
+    pub steps: Option<serde_json::Value>,
+    /// Allowed-tools list for class-16 Actions (the `reborn_actions.
+    /// allowed_tools` TEXT[], as a JSON array of strings). `None` for every
+    /// other class. See [`steps`].
+    ///
+    /// [`steps`]: ComponentItem::steps
+    pub allowed_tools: Option<serde_json::Value>,
 }
 
 /// Scope for component retrieval — must match the 4-part scope tuple on all
@@ -289,6 +303,10 @@ impl RetrievalSource for RamSource {
                     description: String::new(),
                     effective_content: doc.content.clone(),
                     override_prompt_creation: false,
+                    // RamSource is a prompt-assembly path; executable Action
+                    // steps are not surfaced here (Q-G-STUB1).
+                    steps: None,
+                    allowed_tools: None,
                 });
             }
 
@@ -584,6 +602,11 @@ impl RetrievalSource for PostgresSource {
                 description: description.to_string(),
                 effective_content: effective_content.to_string(),
                 override_prompt_creation,
+                // Broad-scan Components path builds orchestrator_content, not
+                // an executable doc; Action steps are not surfaced here
+                // (Q-G-STUB1).
+                steps: None,
+                allowed_tools: None,
             });
         }
 
@@ -1012,6 +1035,39 @@ fn class_code_to_table(code: i32) -> Option<(&'static str, &'static str)> {
     }
 }
 
+/// Build a [`ComponentItem`] from a 9-column fetch row produced by
+/// [`fetch_component_by_id`] / [`fetch_component_by_name`] (Q-G-STUB1 —
+/// `subplan_stub_stepG_action_steps`).
+///
+/// Row shape (columns 0–8): `id::text, class_code::int, prompt_uid::bigint,
+/// name, description, effective_content, override_prompt_creation,
+/// steps_json, allowed_tools_arr`. Columns 7–8 are the executable `steps`
+/// (JSONB) + `allowed_tools` (TEXT[]) for **class-16 Actions** and SQL NULL
+/// for every other class, so they are read as `Option` to stay NULL-safe;
+/// `steps` is surfaced only when the JSONB value is an array (class 16).
+#[cfg(feature = "skills-db")]
+fn component_item_from_row(row: &tokio_postgres::Row) -> ComponentItem {
+    let id_str: &str = row.get(0);
+    let id = id_str
+        .parse::<uuid::Uuid>()
+        .unwrap_or_else(|_| uuid::Uuid::nil());
+    let steps_val: Option<serde_json::Value> = row.get(7);
+    let allowed_tools_val: Option<Vec<String>> = row.get(8);
+    ComponentItem {
+        id,
+        class_code: row.get(1),
+        prompt_uid: row.get(2),
+        name: row.get::<_, &str>(3).to_string(),
+        description: row.get::<_, &str>(4).to_string(),
+        effective_content: row.get::<_, &str>(5).to_string(),
+        override_prompt_creation: row.get(6),
+        steps: steps_val.filter(|v| v.is_array()),
+        allowed_tools: allowed_tools_val.map(|v| {
+            serde_json::Value::Array(v.into_iter().map(serde_json::Value::String).collect())
+        }),
+    }
+}
+
 /// Fetch a single component from its class-specific table by ID (Step 6.7).
 ///
 /// Enforces the SEC-01 validation gate:
@@ -1041,11 +1097,25 @@ pub async fn fetch_component_by_id(
         .await
         .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
 
+    // Class-16 Actions carry the executable `steps` (JSONB) + `allowed_tools`
+    // (TEXT[]) so `execute_action_procedure` can run the real procedure
+    // (Q-G-STUB1 — `subplan_stub_stepG_action_steps`). These columns exist only
+    // on `reborn_actions`, so they are SELECTed via a class-16-specific
+    // projection; for every other class the two extra columns are NULL, giving
+    // a uniform 9-column row shape.
+    let (steps_expr, allowed_tools_expr) = if component_class_code == 16 {
+        ("steps", "allowed_tools")
+    } else {
+        ("NULL::jsonb", "NULL::text[]")
+    };
+
     let query_sql = format!(
         "SELECT id::text, class_code::int, prompt_uid::bigint,
                 name, COALESCE(description,'') AS description,
                 {content_expr} AS effective_content,
-                override_prompt_creation
+                override_prompt_creation,
+                {steps_expr} AS steps_json,
+                {allowed_tools_expr} AS allowed_tools_arr
          FROM {table}
          WHERE id = $1
            AND tenant_id  = $2
@@ -1069,24 +1139,7 @@ pub async fn fetch_component_by_id(
         .await
         .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
 
-    let items: Vec<ComponentItem> = rows
-        .iter()
-        .map(|row| {
-            let id_str: &str = row.get(0);
-            let id = id_str
-                .parse::<uuid::Uuid>()
-                .unwrap_or_else(|_| uuid::Uuid::nil());
-            ComponentItem {
-                id,
-                class_code: row.get(1),
-                prompt_uid: row.get(2),
-                name: row.get::<_, &str>(3).to_string(),
-                description: row.get::<_, &str>(4).to_string(),
-                effective_content: row.get::<_, &str>(5).to_string(),
-                override_prompt_creation: row.get(6),
-            }
-        })
-        .collect();
+    let items: Vec<ComponentItem> = rows.iter().map(component_item_from_row).collect();
 
     Ok(items)
 }
@@ -1123,11 +1176,23 @@ pub async fn fetch_component_by_name(
         .await
         .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
 
+    // Class-16 Actions carry the executable `steps` (JSONB) + `allowed_tools`
+    // (TEXT[]), mirroring `fetch_component_by_id` (Q-G-STUB1). Same
+    // class-16-specific projection; for every other class the two extra
+    // columns are NULL.
+    let (steps_expr, allowed_tools_expr) = if component_class_code == 16 {
+        ("steps", "allowed_tools")
+    } else {
+        ("NULL::jsonb", "NULL::text[]")
+    };
+
     let query_sql = format!(
         "SELECT id::text, class_code::int, prompt_uid::bigint,
                 name, COALESCE(description,'') AS description,
                 {content_expr} AS effective_content,
-                override_prompt_creation
+                override_prompt_creation,
+                {steps_expr} AS steps_json,
+                {allowed_tools_expr} AS allowed_tools_arr
          FROM {table}
          WHERE name = $1
            AND tenant_id  = $2
@@ -1152,24 +1217,7 @@ pub async fn fetch_component_by_name(
         .await
         .map_err(|e| RetrievalSourceError::Db(e.to_string()))?;
 
-    let items: Vec<ComponentItem> = rows
-        .iter()
-        .map(|row| {
-            let id_str: &str = row.get(0);
-            let id = id_str
-                .parse::<uuid::Uuid>()
-                .unwrap_or_else(|_| uuid::Uuid::nil());
-            ComponentItem {
-                id,
-                class_code: row.get(1),
-                prompt_uid: row.get(2),
-                name: row.get::<_, &str>(3).to_string(),
-                description: row.get::<_, &str>(4).to_string(),
-                effective_content: row.get::<_, &str>(5).to_string(),
-                override_prompt_creation: row.get(6),
-            }
-        })
-        .collect();
+    let items: Vec<ComponentItem> = rows.iter().map(component_item_from_row).collect();
 
     Ok(items)
 }
@@ -1265,6 +1313,12 @@ pub async fn fetch_components_by_ids(
                 description: row.get::<_, &str>(4).to_string(),
                 effective_content: row.get::<_, &str>(5).to_string(),
                 override_prompt_creation: row.get(6),
+                // Batched IBS-include fetch is a prompt-assembly path; the
+                // executable `steps` of an included Action are fetched
+                // separately by `__fetch_component__` / `__resolve_component_
+                // by_name__` at execution time (Q-G-STUB1).
+                steps: None,
+                allowed_tools: None,
             });
         }
     }

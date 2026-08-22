@@ -514,6 +514,10 @@ mod tests {
             description: "sync description".to_string(),
             effective_content: "sync prior knowledge".to_string(),
             override_prompt_creation: true,
+            // Prompt-assembly mapping fixture; executable steps not exercised
+            // here (Q-G-STUB1).
+            steps: None,
+            allowed_tools: None,
         }];
         let result = retrieval_turn_result_for_components(items).expect("map components");
         // E.0 conservative routing booleans (Phase E's SplitResult replaces them).
@@ -636,6 +640,10 @@ mod tests {
             description: String::new(),
             effective_content: "rust body".to_string(),
             override_prompt_creation: false,
+            // IBS-split mapping fixture; executable steps not exercised here
+            // (Q-G-STUB1).
+            steps: None,
+            allowed_tools: None,
         }];
         let orch_items = vec![
             ComponentItem {
@@ -646,6 +654,8 @@ mod tests {
                 description: String::new(),
                 effective_content: "orch body a".to_string(),
                 override_prompt_creation: false,
+                steps: None,
+                allowed_tools: None,
             },
             ComponentItem {
                 id: Uuid::new_v4(),
@@ -655,6 +665,8 @@ mod tests {
                 description: String::new(),
                 effective_content: "orch body b".to_string(),
                 override_prompt_creation: false,
+                steps: None,
+                allowed_tools: None,
             },
         ];
         let matched_ids: Vec<String> = orch_items.iter().map(|i| i.id.to_string()).collect();
