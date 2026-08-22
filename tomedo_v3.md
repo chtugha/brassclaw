@@ -156,6 +156,8 @@
 > | POST | `/{db}/patient` | ✅ HTTP 200 | `{new_ident}` | Creates patient; `gesperrt:1` (integer!) via PUT to block |
 > | PUT  | `/{db}/karteieintrag/{id}` | ✅ HTTP 204 | — | Partial update; `visible:false` hides entry |
 > | PUT  | `/{db}/termin/{id}` | ✅ HTTP 204 | — | Partial update; `removed:true` cancels |
+> | POST | `/{db}/ebmleistung` | ✅ HTTP 200 | `{new_ident}` | Create EBMLeistung — **use `/ebmleistung` NOT `/leistung`** (dtype, ebmKatalogEintrag stored correctly only via this endpoint — confirmed 2026-08-22) |
+> | PUT  | `/{db}/kvschein/{id}` | ✅ HTTP 204 | — | Step 2: link EBMLeistung to Schein — `{"ident":<schein>,"ebmLeistungen":[{"ident":<leistung>}]}` |
 > | DELETE | `/{db}/karteieintrag/{id}` | ❌ HTTP 405 | — | Not supported — use PUT `visible:false` |
 > | DELETE | `/{db}/termin/{id}` | ❌ HTTP 405 | — | Not supported — use PUT `removed:true` |
 >
@@ -999,6 +1001,79 @@ source:         "system"
 validation_status: "validated"
 ```
 
+---
+
+### Step 2.22 — ToolSkill: `ts-tomedo-ebmleistung-create` (class 13)
+
+```
+name:          "ts-tomedo-ebmleistung-create"
+tool_name:     "tomedo-api"
+description:   "POST /{db}/ebmleistung — create a new EBMLeistung (billing code entry) on a KV-Schein.
+                ⚠️ Use /ebmleistung NOT /leistung — the /leistung endpoint stores dtype='Leistung'
+                and drops ebmKatalogEintrag. Only /ebmleistung stores dtype='EBMLeistung' correctly
+                (confirmed live 2026-08-22).
+                Mandatory fields: datum(epoch ms), visible(true), anzahl(1),
+                ebmKatalogEintrag{ident}, leistungserbringer{ident}, betriebsstaette{ident},
+                dokumentierenderNutzer{ident}, letzterNutzer{ident}, abrechnenderArzt{ident}.
+                Returns HTTP 200 with {new_leistung_ident}.
+                Step 2: PUT /kvschein/{schein_ident} with {ident, ebmLeistungen:[{ident:N}]} → HTTP 204."
+param_schema:  [
+  {name: "url",     param_type: "string", required: true,
+   description: "https://{host}:{port}/{db}/ebmleistung"},
+  {name: "method",  param_type: "string", required: true, description: "POST"},
+  {name: "body",    param_type: "string", required: true,
+   description: "JSON with all mandatory fields"},
+  {name: "headers", param_type: "object", required: true,
+   description: "Must include Content-Type: application/json"}
+]
+param_template: {
+  "url":     "{{vars.tomedo_base_url}}/ebmleistung",
+  "method":  "POST",
+  "headers": {"Content-Type": "application/json"},
+  "body":    "{{vars.body_json}}"
+}
+preconditions:  "ebmKatalogEintrag.ident must be from ebmkatalogeintrag table. All 5 relation idents must be valid."
+error_handling: "HTTP 460: missing or invalid field. HTTP 200 + {ident} = success."
+category:       "tomedo"
+source:         "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 2.23 — ToolSkill: `ts-tomedo-kvschein-link-leistung` (class 13)
+
+```
+name:          "ts-tomedo-kvschein-link-leistung"
+tool_name:     "tomedo-api"
+description:   "PUT /{db}/kvschein/{schein_ident} — link a newly created EBMLeistung to a KV-Schein.
+                Must be called as step 2 immediately after POST /ebmleistung.
+                Body: {ident:<schein_ident>, ebmLeistungen:[{ident:<leistung_ident>}]}.
+                Sets invkvschein_ident on the leistung row and writes KVSchein change record
+                so Mac clients pick up the new Leistung immediately.
+                Returns HTTP 204 on success."
+param_schema:  [
+  {name: "url",     param_type: "string", required: true,
+   description: "https://{host}:{port}/{db}/kvschein/{schein_ident}"},
+  {name: "method",  param_type: "string", required: true, description: "PUT"},
+  {name: "body",    param_type: "string", required: true,
+   description: "JSON: {ident:<schein_ident>, ebmLeistungen:[{ident:<leistung_ident>}]}"},
+  {name: "headers", param_type: "object", required: true,
+   description: "Must include Content-Type: application/json"}
+]
+param_template: {
+  "url":     "{{vars.tomedo_base_url}}/kvschein/{{vars.schein_ident}}",
+  "method":  "PUT",
+  "headers": {"Content-Type": "application/json"},
+  "body":    "{\"ident\":{{vars.schein_ident}},\"ebmLeistungen\":[{\"ident\":{{vars.leistung_ident}}}]}"
+}
+preconditions:  "leistung_ident must be a freshly created EBMLeistung ident. schein_ident must be a visible KVSchein."
+error_handling: "HTTP 460 'No object with ID X found for class EBMLeistung': leistung_ident wrong or used /leistung instead of /ebmleistung for POST. HTTP 204 = success."
+category:       "tomedo"
+source:         "system"
+validation_status: "validated"
+```
+
 
 ## Step 3 — PythonCode Executors (class 22)
 
@@ -1466,6 +1541,39 @@ result = __execute_action__("tomedo-api", {
 ```
 
 
+---
+
+### Step 3.36 — PythonCode: `pc-tomedo-ebmleistung-create` (class 22)
+
+```
+# Channel: orchestrator | Class: 22
+# POST /ebmleistung — create new EBMLeistung, return new ident.
+# IBS bakes in {{vars.body_json}} before execution.
+result = __execute_action__("tomedo-api", {
+    "url":     "{{vars.tomedo_base_url}}/ebmleistung",
+    "method":  "POST",
+    "headers": {"Content-Type": "application/json"},
+    "body":    "{{vars.body_json}}"
+})
+```
+
+---
+
+### Step 3.37 — PythonCode: `pc-tomedo-kvschein-link-leistung` (class 22)
+
+```
+# Channel: orchestrator | Class: 22
+# PUT /kvschein/{schein_ident} — link EBMLeistung to KV-Schein, writes sync change record.
+# IBS bakes in {{vars.schein_ident}} and {{vars.leistung_ident}} before execution.
+result = __execute_action__("tomedo-api", {
+    "url":     "{{vars.tomedo_base_url}}/kvschein/{{vars.schein_ident}}",
+    "method":  "PUT",
+    "headers": {"Content-Type": "application/json"},
+    "body":    "{\"ident\":{{vars.schein_ident}},\"ebmLeistungen\":[{\"ident\":{{vars.leistung_ident}}}]}"
+})
+```
+
+
 ## Step 4 — Leaf Skills (class 1) and Domain Skills (class 2)
 
 One leaf skill per distinct approach. Domain skills reference leaves by name
@@ -1874,6 +1982,56 @@ body: |
   The Briefkommando $[l %nr 0d ,]$ reads Leistungen from the currently-open
   Schein in the Mac client — it is NOT a REST path. Use this REST path instead
   when BrassClaw needs Leistung data server-side.
+consumer_tags: ["02:orchestrator", "05:validator"]
+source:        "system"
+validation_status: "validated"
+```
+
+---
+
+### Step 4a.6 — Leaf Skill: `skill-tomedo-ebmleistung-create` (class 1)
+
+```
+name:        "skill-tomedo-ebmleistung-create"
+class_code:  1
+description: "Leaf skill: add an EBM billing code (Ziffer) to a patient's KV-Schein — two-step: POST /ebmleistung, PUT /kvschein link — Tier 1."
+body: |
+  Add EBM Ziffer {{vars.ebm_code}} to patient {{vars.patient_id}}'s KV-Schein {{vars.schein_ident}}.
+
+  ⚠️ ENDPOINT RULE: POST to /ebmleistung (NOT /leistung).
+  /leistung stores dtype='Leistung' and drops ebmKatalogEintrag — confirmed broken 2026-08-22.
+  Only /ebmleistung stores dtype='EBMLeistung' with ebmKatalogEintrag correctly.
+
+  STEP 1 — Create the EBMLeistung (pc-tomedo-ebmleistung-create):
+    POST {{vars.tomedo_base_url}}/ebmleistung
+    Body (all fields mandatory):
+    {
+      "datum":                  <epoch_ms>,
+      "visible":                true,
+      "anzahl":                 1,
+      "ebmKatalogEintrag":      {"ident": <ebm_catalog_ident>},   ← internal ident, NOT Ziffer string
+      "leistungserbringer":     {"ident": <nutzer_ident>},
+      "betriebsstaette":        {"ident": 1},
+      "dokumentierenderNutzer": {"ident": <nutzer_ident>},
+      "letzterNutzer":          {"ident": <nutzer_ident>},
+      "abrechnenderArzt":       {"ident": <nutzer_ident>}
+    }
+    Returns: {new_leistung_ident}
+
+  To resolve EBM Ziffer string → internal catalog ident:
+    Query: SELECT ident FROM ebmkatalogeintrag WHERE code = '<ziffer>';
+    Or use pc-tomedo-ebmkatalogeintrag-get if only the internal ident is known (reverse: ident→code).
+    Known idents: 1=01100, 270=03003, 298=03230 (confirmed live this server).
+
+  STEP 2 — Link to KV-Schein (pc-tomedo-kvschein-link-leistung):
+    PUT {{vars.tomedo_base_url}}/kvschein/{{vars.schein_ident}}
+    Body: {"ident": <schein_ident>, "ebmLeistungen": [{"ident": <new_leistung_ident>}]}
+    Returns: HTTP 204. Sets invkvschein_ident on leistung row, writes KVSchein change record.
+    Mac client picks up the new Leistung via ZSTransferFetchedDataThread immediately.
+
+  Before dispatching step 1: confirm the Ziffer, patient, and Schein with the user.
+  To undo: DELETE directly from leistung table (no REST delete endpoint — HTTP 405).
+    Also DELETE the KVSchein change row linking to this leistung from the change table.
 consumer_tags: ["02:orchestrator", "05:validator"]
 source:        "system"
 validation_status: "validated"
@@ -2588,6 +2746,74 @@ validation_status: "validated"
 
 ---
 
+### Recipe: `tomedo-ebmleistung-create` (class 21) — Tier 1
+
+```
+name:              "tomedo-ebmleistung-create"
+description:       "Add an EBM billing code (Ziffer) to a patient's KV-Schein — two-step write: POST /ebmleistung, PUT /kvschein link. LLM confirms Ziffer and Schein with user before dispatch."
+llm_call_required: true
+step_descriptions: [
+  {
+    "step_id": "step-0",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:skill-tomedo-ebmleistung-create>", "<uuid:skill-tomedo>"],
+    "label":   "Load ebmleistung-create leaf + domain skill"
+  },
+  {
+    "step_id": "step-1",
+    "type":    "llm",
+    "label":   "LLM resolves EBM Ziffer string → catalog ident, confirms Schein ident and Nutzer ident with user before dispatch"
+  },
+  {
+    "step_id": "step-2",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-ebmleistung-create>"],
+    "label":   "Pre-load ts-tomedo-ebmleistung-create binding"
+  },
+  {
+    "step_id": "step-3",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-ebmleistung-create>"],
+    "label":   "Step 1: POST /ebmleistung with all mandatory fields → {new_leistung_ident}"
+  },
+  {
+    "step_id": "step-4",
+    "type":    "component",
+    "channel": "rust",
+    "include": ["<uuid:ts-tomedo-kvschein-link-leistung>"],
+    "label":   "Pre-load ts-tomedo-kvschein-link-leistung binding"
+  },
+  {
+    "step_id": "step-5",
+    "type":    "component",
+    "channel": "orchestrator",
+    "include": ["<uuid:pc-tomedo-kvschein-link-leistung>"],
+    "label":   "Step 2: PUT /kvschein/{schein_ident} → links leistung, Mac client sees Ziffer immediately"
+  }
+]
+intent_examples: [
+  {"input": "EBM Ziffer eintragen",                              "class": 3},
+  {"input": "Leistung auf Schein buchen",                        "class": 3},
+  {"input": "add EBM code to schein",                            "class": 2},
+  {"input": "EBM 01100 für patient erfassen",                    "class": 3},
+  {"input": "Ziffer 03220 auf KV-Schein",                        "class": 3},
+  {"input": "billing code to schein tomedo",                     "class": 2},
+  {"input": "EBM abrechnen patient",                             "class": 3},
+  {"input": "leistung hinzufügen zum schein",                    "class": 3},
+  {"input": "post ebm leistung",                                 "class": 2},
+  {"input": "neue EBM Ziffer auf aktuellem Schein",              "class": 3},
+  {"input": "Unvorhergesehene Inanspruchnahme eintragen",        "class": 3},
+  {"input": "add billing code 03003 to patient schein",          "class": 3}
+]
+source: "system"
+validation_status: "validated"
+```
+
+---
+
 ### Recipe: `tomedo-patient-summary` (class 21) — Tier 0
 
 ```
@@ -3208,13 +3434,13 @@ validation_status: "validated"
 | Class | Count | Names |
 |-------|-------|-------|
 | 0 — Tool | 2 | `tomedo-api`, `tomedo-cert-fetch-tool` |
-| 1 — Leaf Skill | 21 | `skill-tomedo-serverstatus` … `skill-tomedo-abend-audit-check-hzv` |
+| 1 — Leaf Skill | 22 | `skill-tomedo-serverstatus` … `skill-tomedo-ebmleistung-create` |
 | 2 — Domain Skill | 1 | `skill-tomedo` |
-| 13 — ToolSkill | 19 | `ts-tomedo-serverstatus` … `ts-tomedo-karteieintragtyp-list` |
-| 21 — Recipe | 20 | `tomedo-serverstatus` … `tomedo-abend-audit` |
-| 22 — PythonCode | 38 | `pc-tomedo-serverstatus` … `pc-tomedo-format-audit-bericht` |
+| 13 — ToolSkill | 21 | `ts-tomedo-serverstatus` … `ts-tomedo-kvschein-link-leistung` |
+| 21 — Recipe | 21 | `tomedo-serverstatus` … `tomedo-ebmleistung-create` |
+| 22 — PythonCode | 40 | `pc-tomedo-serverstatus` … `pc-tomedo-kvschein-link-leistung` |
 | 23 — ExtensionCatalogue | 2 | `ext-tomedo`, `ext-tomedo-cert-fetch` |
-| **Total** | **103** | |
+| **Total** | **109** | |
 
 ---
 
@@ -3223,7 +3449,7 @@ validation_status: "validated"
 | Tier | Recipes | Reason |
 |------|---------|--------|
 | **Tier 0** | 13 | Direct REST reads + Leistungen two-step + patient-summary + all audit recipes (tagesliste, per-patient fetch/check, full audit, karteieintragtyp-list) |
-| **Tier 1** | 7 | 1 name-search + 5 writes (karteieintrag create/anmerkung/update, termin create/update) + 1 cert-fetch |
+| **Tier 1** | 8 | 1 name-search + 6 writes (karteieintrag create/anmerkung/update, termin create/update, ebmleistung create) + 1 cert-fetch |
 
 ---
 
@@ -3251,102 +3477,108 @@ Group 2 — ToolSkills (class 13):
   16. ts-tomedo-kvschein-get
   17. ts-tomedo-ebmkatalogeintrag-get
   18. ts-tomedo-cert-fetch
-  19. ts-tomedo-tagesliste-get                      ← Abenddokumentation-Audit (pending)
-  20. ts-tomedo-besuch-tagesliste-get               ← fallback day-list (pending)
-  21. ts-tomedo-karteieintragtyp-list               ← ANA ident discovery (pending)
+  19. ts-tomedo-ebmleistung-create                  ← EBM Ziffer write (step 1)
+  20. ts-tomedo-kvschein-link-leistung              ← EBM Ziffer write (step 2)
+  21. ts-tomedo-tagesliste-get                      ← Abenddokumentation-Audit (pending)
+  22. ts-tomedo-besuch-tagesliste-get               ← fallback day-list (pending)
+  23. ts-tomedo-karteieintragtyp-list               ← ANA ident discovery (pending)
 
 Group 3 — PythonCode executors (class 22, with __execute_action__):
-  22. pc-tomedo-serverstatus
-  23. pc-tomedo-patient-detail
-  24. pc-tomedo-patient-relations
-  25. pc-tomedo-patient-medications
-  26. pc-tomedo-patient-appointments
-  27. pc-tomedo-patient-visits
-  28. pc-tomedo-patient-search
-  29. pc-tomedo-karteieintrag-create
-  30. pc-tomedo-karteieintrag-link
-  31. pc-tomedo-patientendetailsrelationen-link
-  32. pc-tomedo-karteieintrag-update
-  33. pc-tomedo-termin-create
-  34. pc-tomedo-termin-update
-  35. pc-tomedo-kvschein-get
-  36. pc-tomedo-ebmkatalogeintrag-get
-  37. pc-tomedo-cert-fetch
-  38. pc-tomedo-tagesliste-get                      ← Abenddokumentation-Audit (pending)
-  39. pc-tomedo-besuch-tagesliste-get               ← fallback (pending)
-  40. pc-tomedo-karteieintragtyp-list               ← ANA discovery (pending)
-  41. pc-tomedo-patient-relations-audit             ← per-patient audit fetch
-  42. pc-tomedo-kvschein-audit                      ← per-patient schein fetch
+  24. pc-tomedo-serverstatus
+  25. pc-tomedo-patient-detail
+  26. pc-tomedo-patient-relations
+  27. pc-tomedo-patient-medications
+  28. pc-tomedo-patient-appointments
+  29. pc-tomedo-patient-visits
+  30. pc-tomedo-patient-search
+  31. pc-tomedo-karteieintrag-create
+  32. pc-tomedo-karteieintrag-link
+  33. pc-tomedo-patientendetailsrelationen-link
+  34. pc-tomedo-karteieintrag-update
+  35. pc-tomedo-termin-create
+  36. pc-tomedo-termin-update
+  37. pc-tomedo-kvschein-get
+  38. pc-tomedo-ebmkatalogeintrag-get
+  39. pc-tomedo-cert-fetch
+  40. pc-tomedo-ebmleistung-create                  ← EBM Ziffer write (step 1)
+  41. pc-tomedo-kvschein-link-leistung              ← EBM Ziffer write (step 2)
+  42. pc-tomedo-tagesliste-get                      ← Abenddokumentation-Audit (pending)
+  43. pc-tomedo-besuch-tagesliste-get               ← fallback (pending)
+  44. pc-tomedo-karteieintragtyp-list               ← ANA discovery (pending)
+  45. pc-tomedo-patient-relations-audit             ← per-patient audit fetch
+  46. pc-tomedo-kvschein-audit                      ← per-patient schein fetch
 
 Group 4 — PythonCode pure-logic helpers (class 22, no __execute_action__):
-  43. pc-tomedo-parse-diagnosen
-  44. pc-tomedo-parse-medications
-  45. pc-tomedo-parse-next-appointment
-  46. pc-tomedo-epoch-to-date
-  47. pc-tomedo-extract-phone-fields
-  48. pc-tomedo-build-today-date                    ← Abenddokumentation-Audit
-  49. pc-tomedo-parse-tagesliste                    ← extract unique patient IDs
-  50. pc-tomedo-classify-insurance                  ← Privat | GKV | HZV
-  51. pc-tomedo-extract-diagnosen-from-relations    ← extract diagnosen[]
-  52. pc-tomedo-extract-karteieintraege-from-relations ← extract karteiEintraege[]
-  53. pc-tomedo-extract-kvscheine-from-relations    ← extract kvScheine[] + first_ident
-  54. pc-tomedo-extract-scheinart                   ← extract scheinart string
-  55. pc-tomedo-extract-leistungen-from-schein      ← extract ebm/goae leistungen[]
-  56. pc-tomedo-check-kartei-vollstaendigkeit        ← ANA/BEF/BES presence check
-  57. pc-tomedo-check-privat-vollstaendigkeit        ← Privat completeness
-  58. pc-tomedo-check-gkv-vollstaendigkeit           ← GKV completeness
-  59. pc-tomedo-check-hzv-vollstaendigkeit           ← HZV completeness
-  60. pc-tomedo-format-audit-bericht                ← format final report
+  47. pc-tomedo-parse-diagnosen
+  48. pc-tomedo-parse-medications
+  49. pc-tomedo-parse-next-appointment
+  50. pc-tomedo-epoch-to-date
+  51. pc-tomedo-extract-phone-fields
+  52. pc-tomedo-build-today-date                    ← Abenddokumentation-Audit
+  53. pc-tomedo-parse-tagesliste                    ← extract unique patient IDs
+  54. pc-tomedo-classify-insurance                  ← Privat | GKV | HZV
+  55. pc-tomedo-extract-diagnosen-from-relations    ← extract diagnosen[]
+  56. pc-tomedo-extract-karteieintraege-from-relations ← extract karteiEintraege[]
+  57. pc-tomedo-extract-kvscheine-from-relations    ← extract kvScheine[] + first_ident
+  58. pc-tomedo-extract-scheinart                   ← extract scheinart string
+  59. pc-tomedo-extract-leistungen-from-schein      ← extract ebm/goae leistungen[]
+  60. pc-tomedo-check-kartei-vollstaendigkeit        ← ANA/BEF/BES presence check
+  61. pc-tomedo-check-privat-vollstaendigkeit        ← Privat completeness
+  62. pc-tomedo-check-gkv-vollstaendigkeit           ← GKV completeness
+  63. pc-tomedo-check-hzv-vollstaendigkeit           ← HZV completeness
+  64. pc-tomedo-format-audit-bericht                ← format final report
 
 Group 5 — Leaf Skills (class 1):
-  61. skill-tomedo-serverstatus
-  62. skill-tomedo-patient-detail
-  63. skill-tomedo-patient-diagnoses
-  64. skill-tomedo-patient-medications
-  65. skill-tomedo-patient-appointments
-  66. skill-tomedo-patient-visits
-  67. skill-tomedo-patient-search-by-name
-  68. skill-tomedo-karteieintrag-create
-  69. skill-tomedo-karteieintrag-update
-  70. skill-tomedo-termin-create
-  71. skill-tomedo-termin-update
-  72. skill-tomedo-leistungen-read
-  73. skill-tomedo-cert-fetch
-  74. skill-tomedo-karteieintragtyp-list            ← Abenddokumentation-Audit setup
-  75. skill-tomedo-tagesliste-get                   ← day schedule fetch
-  76. skill-tomedo-abend-audit-fetch-patient        ← per-patient data fetch
-  77. skill-tomedo-abend-audit-check-privat         ← Privat completeness leaf
-  78. skill-tomedo-abend-audit-check-gkv            ← GKV completeness leaf
-  79. skill-tomedo-abend-audit-check-hzv            ← HZV completeness leaf
+  65. skill-tomedo-serverstatus
+  66. skill-tomedo-patient-detail
+  67. skill-tomedo-patient-diagnoses
+  68. skill-tomedo-patient-medications
+  69. skill-tomedo-patient-appointments
+  70. skill-tomedo-patient-visits
+  71. skill-tomedo-patient-search-by-name
+  72. skill-tomedo-karteieintrag-create
+  73. skill-tomedo-karteieintrag-update
+  74. skill-tomedo-termin-create
+  75. skill-tomedo-termin-update
+  76. skill-tomedo-leistungen-read
+  77. skill-tomedo-ebmleistung-create               ← EBM Ziffer write
+  78. skill-tomedo-cert-fetch
+  79. skill-tomedo-karteieintragtyp-list            ← Abenddokumentation-Audit setup
+  80. skill-tomedo-tagesliste-get                   ← day schedule fetch
+  81. skill-tomedo-abend-audit-fetch-patient        ← per-patient data fetch
+  82. skill-tomedo-abend-audit-check-privat         ← Privat completeness leaf
+  83. skill-tomedo-abend-audit-check-gkv            ← GKV completeness leaf
+  84. skill-tomedo-abend-audit-check-hzv            ← HZV completeness leaf
 
 Group 6 — Domain Skills (class 2):
-  80. skill-tomedo
+  85. skill-tomedo
 
 Group 7 — Recipes (class 21):
-  81. tomedo-serverstatus                            (Tier 0)
-  82. tomedo-patient-detail                          (Tier 0)
-  83. tomedo-patient-diagnoses                       (Tier 0)
-  84. tomedo-patient-medications                     (Tier 0)
-  85. tomedo-patient-next-appointment                (Tier 0)
-  86. tomedo-patient-visits                          (Tier 0)
-  87. tomedo-leistungen-read                         (Tier 0 — kvschein two-step, now with ebmkatalogeintrag executor)
-  88. tomedo-patient-summary                         (Tier 0 — automated multi-step context fetch)
-  89. tomedo-patient-search-by-name                  (Tier 1 — LLM URL-encodes name)
-  90. tomedo-karteieintrag-create                    (Tier 1 — LLM confirms, orchestrator POSTs 3-step)
-  91. tomedo-karteieintrag-anmerkung                 (Tier 1 — ANM optimised, LLM provides text only)
-  92. tomedo-karteieintrag-update                    (Tier 1 — LLM confirms, orchestrator PUTs)
-  93. tomedo-termin-create                           (Tier 1 — LLM confirms date/time, orchestrator POSTs)
-  94. tomedo-termin-update                           (Tier 1 — LLM confirms cancel/reschedule, orchestrator PUTs)
-  95. tomedo-cert-fetch                              (Tier 1 — one-time setup, LLM confirms SSH)
-  96. tomedo-karteieintragtyp-list                   (Tier 0 — setup: resolve ANA ident, pending)
-  97. tomedo-tagesliste-get                          (Tier 0 — day schedule, pending)
-  98. tomedo-abend-audit-fetch-patient               (Tier 0 — per-patient data fetch)
-  99. tomedo-abend-audit-check-patient               (Tier 0 — per-patient completeness check)
-  100. tomedo-abend-audit                             (Tier 0 — full nightly audit, pending tagesliste)
+  86. tomedo-serverstatus                            (Tier 0)
+  87. tomedo-patient-detail                          (Tier 0)
+  88. tomedo-patient-diagnoses                       (Tier 0)
+  89. tomedo-patient-medications                     (Tier 0)
+  90. tomedo-patient-next-appointment                (Tier 0)
+  91. tomedo-patient-visits                          (Tier 0)
+  92. tomedo-leistungen-read                         (Tier 0 — kvschein two-step, now with ebmkatalogeintrag executor)
+  93. tomedo-patient-summary                         (Tier 0 — automated multi-step context fetch)
+  94. tomedo-patient-search-by-name                  (Tier 1 — LLM URL-encodes name)
+  95. tomedo-karteieintrag-create                    (Tier 1 — LLM confirms, orchestrator POSTs 3-step)
+  96. tomedo-karteieintrag-anmerkung                 (Tier 1 — ANM optimised, LLM provides text only)
+  97. tomedo-karteieintrag-update                    (Tier 1 — LLM confirms, orchestrator PUTs)
+  98. tomedo-termin-create                           (Tier 1 — LLM confirms date/time, orchestrator POSTs)
+  99. tomedo-termin-update                           (Tier 1 — LLM confirms cancel/reschedule, orchestrator PUTs)
+  100. tomedo-ebmleistung-create                     (Tier 1 — LLM confirms Ziffer + Schein, orchestrator POSTs 2-step)
+  101. tomedo-cert-fetch                             (Tier 1 — one-time setup, LLM confirms SSH)
+  102. tomedo-karteieintragtyp-list                  (Tier 0 — setup: resolve ANA ident, pending)
+  103. tomedo-tagesliste-get                         (Tier 0 — day schedule, pending)
+  104. tomedo-abend-audit-fetch-patient              (Tier 0 — per-patient data fetch)
+  105. tomedo-abend-audit-check-patient              (Tier 0 — per-patient completeness check)
+  106. tomedo-abend-audit                            (Tier 0 — full nightly audit, pending tagesliste)
 
 Group 8 — ExtensionCatalogues (class 23):
-  101. ext-tomedo
-  102. ext-tomedo-cert-fetch
+  107. ext-tomedo
+  108. ext-tomedo-cert-fetch
 ```
 
 > **Note:** Seeding happens after all lower-dependency classes are seeded.
@@ -3370,11 +3602,11 @@ computed on first insert and checked on subsequent runs.
 | Decision | Rationale |
 |----------|-----------|
 | Two tool surfaces via `builtin.http` + `builtin.shell` | http handles all mTLS GET/POST/PUT calls; shell handles SSH cert-fetch setup |
-| 21 ToolSkills | One per distinct URL/method/operation — reads, writes, Leistungen, termin-update, cert-fetch, + 3 audit ToolSkills |
-| 21 PythonCode executors + 17 pure-logic helpers | Executors call `__execute_action__` exactly once; helpers transform data without I/O; strict 1:1 ratio per tool binding |
-| 21 leaf skills | One per distinct approach — each skill covers one sub-task, not one "feature"; audit has 6 dedicated leaf skills |
+| 23 ToolSkills | One per distinct URL/method/operation — reads, writes, Leistungen, termin-update, ebmleistung create/link, cert-fetch, + 3 audit ToolSkills |
+| 23 PythonCode executors + 17 pure-logic helpers | Executors call `__execute_action__` exactly once; helpers transform data without I/O; strict 1:1 ratio per tool binding |
+| 22 leaf skills | One per distinct approach — each skill covers one sub-task, not one "feature"; audit has 6 dedicated leaf skills |
 | 13 Tier-0 recipes | All known-ID/date reads + Leistungen two-step + patient-summary + full audit suite (orchestrator-only) |
-| 7 Tier-1 recipes | 1 name-search + 5 write variants + 1 cert-fetch |
+| 8 Tier-1 recipes | 1 name-search + 6 write variants (incl. ebmleistung create) + 1 cert-fetch |
 | Orchestrator-first mandatory | Every rust step MUST be paired with an orchestrator PythonCode executor — rust alone is a Q1 error |
 | One-tool-call-per-skill | Three similar skills > one monolithic skill; each PythonCode calls `__execute_action__` exactly once |
 | `tomedo-leistungen-read` fix | Added missing `pc-tomedo-ebmkatalogeintrag-get` orchestrator step — was a Q1 Rule 2 violation |
@@ -3395,6 +3627,9 @@ computed on first insert and checked on subsequent runs.
 | Tagesliste pending validation | Two endpoint candidates (`termin?datum` + `besuch/tagesliste`) need live probing; recipe pre-loads both with fallback logic |
 | ANA ident requires one-time setup | `GET /karteieintragtyp` once to discover ANA ident; fallback is kürzel-string matching in check logic |
 | Insurance type from besuch flags | `privatFall=true` → Privat; `kvFall=true` + `scheinart` containing "hzv" → HZV; `kvFall=true` otherwise → GKV |
+| `POST /ebmleistung` NOT `/leistung` | `/leistung` stores `dtype='Leistung'` and drops `ebmKatalogEintrag` — confirmed broken 2026-08-22; only `/ebmleistung` creates correct `EBMLeistung` rows |
+| EBMLeistung 2-step write | POST `/ebmleistung` → `{new_ident}`; then PUT `/kvschein/{id}` with `{ebmLeistungen:[{ident:N}]}` sets `invkvschein_ident` and writes KVSchein change record for Mac client sync |
+| EBM Ziffer → catalog ident lookup | Ziffer strings (e.g. `01100`) must be resolved to internal ints via `ebmkatalogeintrag.code`; known: `1=01100`, `270=03003`, `298=03230` (this server) |
 
 
 
